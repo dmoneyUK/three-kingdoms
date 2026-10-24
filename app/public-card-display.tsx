@@ -6,6 +6,7 @@ import type { PresentationSnapshotPublicCardEffect, PresentationSnapshotRootActi
 import type { PresentationTargetCardSettlementMovement } from "../game/presentation-v2";
 import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
 import { cardDefinition } from "../game/cards";
+import { compactLustDuelAttackMessage } from "./lust-public-copy";
 import { CardFace } from "./card-face";
 import { recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 
@@ -93,6 +94,10 @@ export type PublicCardDisplayAction = {
   showNegationChainOrdinals?: boolean;
   /** Shared, read-only H4 explanation derived only from a proven public reaction chain. */
   publicNegationNarration?: PublicNegationNarration;
+  /** Shared waiting label derived from the proven public LUST Duel actor. */
+  publicActivityMessage?: string;
+  /** Full accessible activity copy when a short stage label is shown visually. */
+  publicActivityAccessibleMessage?: string;
   /** Public participant proven to be affected by the active Bumper Harvest Negation. */
   harvestEffectRecipient?: { participantId: string; participantName: string };
   motion?: PublicCardDisplayMotion;
@@ -131,6 +136,7 @@ export type PublicCardDisplayAction = {
     activationEventId: string;
     title: string;
     message: string;
+    accessibleMessage?: string;
     compactMessage?: string;
   };
   /** Validated public proof material for a shared A/C/E frame. */
@@ -467,7 +473,6 @@ const REVEAL_CARD = { width: 90, height: 135 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
 const PARKED_CARD = { width: 48, height: 72 };
 const HARVEST_MOBILE_RESPONSE_CARD = { width: 32, height: 48 };
-const LUST_COST_FRAME = { width: 168, height: 190, cardOffsetLeft: 39, cardOffsetTop: 43 };
 const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 520;
 // Two 15px mobile lines at 1.2 line-height plus 4px vertical padding and
 // borders. Used only before the mounted announcement can be measured.
@@ -1499,13 +1504,6 @@ function compactPublicNotice(notice: string, actorName: string | null) {
   return notice.trim();
 }
 
-function compactLustDuelPlayerName(name: string | null) {
-  if (!name) return null;
-  const normalized = name.trim();
-  const characters = Array.from(normalized);
-  return characters.length > 10 ? `${characters.slice(0, 9).join("").trimEnd()}…` : normalized;
-}
-
 function isHarvestNegationPresentation(action: PublicCardDisplayAction) {
   return !action.settlement
     && action.motion?.type === "negation"
@@ -1657,28 +1655,35 @@ function publicCardAnnouncementCopy(
   sourceName: string | null,
   targetName: string | null,
   compactPlayerNamesById: CompactPublicPlayerNames,
+  eventId?: string,
 ): PublicCardAnnouncementCopy {
   if ((action.motion?.type === "lust-cost" || action.motion?.type === "lust-duel") && action.lustCostFrame) {
     if (action.motion.type === "lust-duel" && action.settlement) {
       const message = action.publicNotice ?? action.ariaLabel;
       return { message, compactMessage: action.publicNoticeCompact, accessibleLabel: message };
     }
-    const response = action.motion.type === "lust-duel"
-      ? action.responses?.find((entry) => entry.ariaLabel === notice && entry.actorId === actorId)
-      : undefined;
+    const responseByEvent = action.motion.type === "lust-duel" && eventId
+      ? action.responses?.filter((entry) => entry.eventId === eventId && entry.actorId === actorId) ?? []
+      : [];
+    const responseByNotice = action.motion.type === "lust-duel"
+      ? action.responses?.filter((entry) => entry.ariaLabel === notice && entry.actorId === actorId) ?? []
+      : [];
+    const response = responseByEvent.length === 1 ? responseByEvent[0]
+      : responseByEvent.length === 0 && responseByNotice.length === 1 ? responseByNotice[0]
+        : undefined;
     if (response) {
-      const responseActorName = actorName ?? compactPlayerNamesById[actorId] ?? null;
+      const responseActorName = response.actorName ?? actorName ?? compactPlayerNamesById[actorId] ?? null;
       if (response.targetName) {
-        const compact = `${compactLustDuelPlayerName(responseActorName) ?? "A player"} played Attack on ${compactLustDuelPlayerName(response.targetName)}.`;
-        return { message: notice, compactMessage: compact, accessibleLabel: notice };
+        const compact = compactLustDuelAttackMessage(responseActorName, response.targetName);
+        return { message: notice, compactMessage: compact ?? notice, accessibleLabel: notice };
       }
-      const compact = compactPublicNotice(notice, compactLustDuelPlayerName(responseActorName));
+      const compact = compactPublicNotice(notice, responseActorName);
       return { message: notice, compactMessage: compact === notice ? undefined : compact, accessibleLabel: notice };
     }
     return {
       message: action.lustCostFrame.message,
       compactMessage: action.lustCostFrame.compactMessage,
-      accessibleLabel: action.lustCostFrame.message,
+      accessibleLabel: action.lustCostFrame.accessibleMessage ?? action.lustCostFrame.message,
     };
   }
   if (isHarvestNegationPresentation(action)) {
@@ -1749,6 +1754,13 @@ function rememberPublicCardAnnouncementBand(key: string, band: PublicCardAnnounc
 function publicCardAnnouncementPlacementKey(action: PublicCardDisplayAction, roomCode?: string) {
   const scope = action.motion?.scopeKey ?? action.interactionId ?? action.rootEventId;
   return `${roomCode ?? "room"}:${scope}`;
+}
+
+function appendAnnouncementContext(label: string | undefined, context: string | undefined) {
+  const supporting = context?.trim();
+  if (!supporting) return label;
+  const primary = label?.trim().replace(/[.!?]+$/, "");
+  return primary ? `${primary}. ${supporting}` : supporting;
 }
 
 function PublicCardAnnouncement({
@@ -1884,9 +1896,9 @@ function PublicCardAnnouncement({
       const safeTop = Math.max(8, viewportTop + 4, tableRect.top + 8);
       const safeBottom = Math.min(viewportBottom - 8, tableRect.bottom - 2);
       const terminalLustResult = outcome === "LUST_DUEL_DAMAGE_APPLIED" || outcome === "LUST_DUEL_DAMAGE_PREVENTED";
-      const mobileLustFrame = !terminalLustResult && stableCenterAnchor && stableFallbackCardRect
-        && stableFallbackCardRect.width >= LUST_COST_FRAME.width - 1
-        && viewportWidth <= 480;
+      const lustDisplayAllowsNameWrapping = display.dataset.publicCardMotion === "lust-cost"
+        || display.dataset.publicCardMotion === "lust-duel";
+      const mobileLustFrame = !terminalLustResult && lustDisplayAllowsNameWrapping && viewportWidth <= 480;
       const compactMobileLustFrame = mobileLustFrame && viewportBottom - viewportTop <= 860;
       const availableAnnouncementWidth = mobileLustFrame
         ? Math.min(PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH, viewportWidth - 16)
@@ -2029,7 +2041,10 @@ function PublicCardAnnouncement({
       }
       const textElement = copy.querySelector<HTMLElement>("b");
       const supportElement = copy.querySelector<HTMLElement>(".public-negation-narration-support");
-      const maxTextLines = hasNegationNarration ? 3 : 2;
+      // LUST participant names are identity, not expendable copy. Let their
+      // measured text grow naturally; safe bounds and obstacle checks below
+      // still reject any placement that would cover a Seat or the Dock.
+      const maxTextLines = lustDisplayAllowsNameWrapping ? Number.POSITIVE_INFINITY : hasNegationNarration ? 3 : 2;
       const compactDiffers = Boolean((compactMessage && compactMessage !== message)
         || compactSupportingMessage !== supportingMessage);
       const announcementOptions = [
@@ -2041,10 +2056,22 @@ function PublicCardAnnouncement({
         if (compactIndex > 0) announcementOptions.unshift(announcementOptions.splice(compactIndex, 1)[0]);
       }
       const setAnnouncementMeasureMode = (compact: boolean, width: number) => {
+        copy.style.width = `${width}px`;
         if (compact) copy.dataset.publicCardAnnouncementCompact = "true";
         else delete copy.dataset.publicCardAnnouncementCompact;
         if (hasNegationNarration && width <= 224) copy.dataset.publicCardAnnouncementTightCopy = "true";
         else delete copy.dataset.publicCardAnnouncementTightCopy;
+        if (mobileLustFrame && textElement) {
+          delete copy.dataset.publicCardAnnouncementLongNames;
+          const range = document.createRange();
+          range.selectNodeContents(textElement);
+          const lineTops = [...range.getClientRects()].filter((rect) => rect.width > 0 && rect.height > 0)
+            .reduce((tops, rect) => {
+              if (!tops.some((top) => Math.abs(top - rect.top) <= 1)) tops.push(rect.top);
+              return tops;
+            }, [] as number[]);
+          if (lineTops.length > 2) copy.dataset.publicCardAnnouncementLongNames = "true";
+        } else delete copy.dataset.publicCardAnnouncementLongNames;
         copy.dataset.publicCardAnnouncementWidth = `${Math.round(width)}`;
       };
       const textLines = () => {
@@ -2315,6 +2342,26 @@ function PublicCardAnnouncement({
       }
 
       if (!selected) {
+        const incomingDisplayedCopy: DisplayedPublicCardAnnouncement = {
+          message,
+          supporting: supportingMessage ?? "",
+          eventId: narrationEventId ?? eventId,
+          latestCommittedEventId: narrationLatestCommittedEventId,
+          checkpointId: narrationCheckpointId,
+          phase: narrationPhase,
+          rootEffectState: narrationRootEffectState,
+          accessibleLabel: narrationAccessibleLabel,
+        };
+        if (displayedCopy.message !== incomingDisplayedCopy.message
+          || displayedCopy.supporting !== incomingDisplayedCopy.supporting
+          || displayedCopy.eventId !== incomingDisplayedCopy.eventId
+          || displayedCopy.latestCommittedEventId !== incomingDisplayedCopy.latestCommittedEventId
+          || displayedCopy.checkpointId !== incomingDisplayedCopy.checkpointId
+          || displayedCopy.phase !== incomingDisplayedCopy.phase
+          || displayedCopy.rootEffectState !== incomingDisplayedCopy.rootEffectState
+          || displayedCopy.accessibleLabel !== incomingDisplayedCopy.accessibleLabel) {
+          setDisplayedCopy(incomingDisplayedCopy);
+        }
         copy.style.visibility = "hidden";
         copy.dataset.publicCardAnnouncementFallback = "true";
         return;
@@ -2447,7 +2494,7 @@ function PublicCardAnnouncement({
   >
     {heading && <span className="public-event-announcement-heading">{heading}</span>}
     <b aria-label={displayedCopy.accessibleLabel ?? displayedCopy.message}>{displayedCopy.message}</b>
-    {negationNarration && displayedCopy.supporting && <span className="public-negation-narration-support" aria-hidden="true">{displayedCopy.supporting}</span>}
+    {displayedCopy.supporting && <span className="public-card-announcement-support public-negation-narration-support" aria-hidden="true">{displayedCopy.supporting}</span>}
   </div>;
 }
 
@@ -2537,7 +2584,7 @@ function AttackDodgeCardJourney({
   const activeActorName = activeJourneyCard?.actorName ?? latestResponse?.actorName ?? latestDeflection?.actorName ?? sourceName;
   const activeRevealStartedAtMs = activeJourneyCard?.revealStartedAtMs ?? null;
   const activeRevealRemainingMs = activeJourneyCard?.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS;
-  const announcementCopy = publicCardAnnouncementCopy(action, activeNotice, activeActorName, activeActorId, sourceName, targetName, compactPlayerNamesById);
+  const announcementCopy = publicCardAnnouncementCopy(action, activeNotice, activeActorName, activeActorId, sourceName, targetName, compactPlayerNamesById, activeEventId);
   const announcement = withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
   const compactAnnouncement = announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION"))
     ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, action.settlement ? undefined : action.phaseNotice, true)
@@ -4206,9 +4253,12 @@ function SingleTargetCardJourney({
       phase={harvestPoolVisible || publicEffectFrameOwnsAnnouncementAnchor ? "static" : announcementAnchorCard?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
-      accessibleLabel={announcementCopy.accessibleLabel}
-      supportingMessage={negationNarration?.supportingMessage}
-      compactSupportingMessage={negationNarration?.compactSupportingMessage}
+      accessibleLabel={action.publicActivityMessage && motion?.type === "lust-cost"
+        ? appendAnnouncementContext(announcementCopy.accessibleLabel ?? announcementCopy.message,
+          action.publicActivityAccessibleMessage ?? action.publicActivityMessage)
+        : announcementCopy.accessibleLabel}
+      supportingMessage={negationNarration?.supportingMessage ?? (motion?.type === "lust-cost" ? action.publicActivityMessage : undefined)}
+      compactSupportingMessage={negationNarration?.compactSupportingMessage ?? (motion?.type === "lust-cost" ? action.publicActivityMessage : undefined)}
       negationNarration={negationNarration}
       fallbackCardRect={harvestPoolVisible
         ? journey.center
@@ -4945,7 +4995,7 @@ function DuelCardJourney({
   const currentPublicCard = activeEvent?.cardFace ?? latestResponse?.cardFace ?? action.cardFace ?? null;
   const activeActorId = activeEvent?.actorId ?? latestResponse?.actorId ?? action.sourceId;
   const activeMessage = activeEvent?.ariaLabel ?? latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
-  const announcementCopy = publicCardAnnouncementCopy(action, activeMessage, activeEvent?.actorName ?? latestResponse?.actorName ?? sourceName, activeActorId, sourceName, targetName, compactPlayerNamesById);
+  const announcementCopy = publicCardAnnouncementCopy(action, activeMessage, activeEvent?.actorName ?? latestResponse?.actorName ?? sourceName, activeActorId, sourceName, targetName, compactPlayerNamesById, activeEventId);
   const negationNarration = action.publicNegationNarration;
   const announcement = negationNarration?.headline ?? withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
   const compactAnnouncement = negationNarration?.compactHeadline ?? ((announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION")))
@@ -5073,6 +5123,7 @@ function DuelCardJourney({
     data-public-card-renderer-kind="duel-journey"
     data-public-card-ready="true"
     data-public-card-motion={action.motion?.type === "lust-duel" ? "lust-duel" : "duel"}
+    data-public-card-has-activity-message={action.publicActivityMessage ? "true" : undefined}
     data-public-card-viewer-id={viewerId}
     data-public-card-layout-viewer-id={journey.viewerId || undefined}
     data-public-card-layout-pending={journey.layoutPending || viewerLayoutPending ? "true" : "false"}
@@ -5110,17 +5161,24 @@ function DuelCardJourney({
       </li>)}
     </ol>
     <PublicCardAnnouncement
-      eventId={negationNarration?.eventId ?? (action.motion?.type === "lust-duel" && activeCard?.role === "root" && action.lustCostFrame
+      key={`${action.motion?.scopeKey ?? action.rootEventId}:${activeEventId}`}
+      eventId={negationNarration?.eventId ?? (action.motion?.type === "lust-duel" && activeEventId === action.rootEventId && activeCard?.role === "root" && action.lustCostFrame
         ? action.lustCostFrame.activationEventId : activeEventId)}
-      placementKey={publicCardAnnouncementPlacementKey(action)}
+      // A new public response card needs a freshly measured H4 position. Reusing
+      // the order caption's band can trap a longer response copy against the
+      // newly centred card and hide it on short phones.
+      placementKey={`${publicCardAnnouncementPlacementKey(action)}${action.motion?.type === "lust-duel" ? `:${activeEventId}` : ""}`}
       viewerLayoutKey={viewerId}
       anchorEventId={activeEventId}
       phase={activeEvent?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
-      accessibleLabel={announcementCopy.accessibleLabel}
-      supportingMessage={negationNarration?.supportingMessage}
-      compactSupportingMessage={negationNarration?.compactSupportingMessage}
+      accessibleLabel={action.publicActivityMessage && action.motion?.type === "lust-duel"
+        ? appendAnnouncementContext(announcementCopy.accessibleLabel ?? announcementCopy.message,
+          action.publicActivityAccessibleMessage ?? action.publicActivityMessage)
+        : announcementCopy.accessibleLabel}
+      supportingMessage={negationNarration?.supportingMessage ?? (action.motion?.type === "lust-duel" ? action.publicActivityMessage : undefined)}
+      compactSupportingMessage={negationNarration?.compactSupportingMessage ?? (action.motion?.type === "lust-duel" ? action.publicActivityMessage : undefined)}
       negationNarration={negationNarration}
       fallbackCardRect={action.motion?.type === "lust-duel" && action.lustCostFrame
         ? battlefieldLustDuelAnnouncementAnchor(journey.center) : journey.center}
@@ -5201,7 +5259,7 @@ export function PublicCardDisplay({
   const eventId = latestResponse?.eventId ?? action.rootEventId;
   const actorId = latestResponse?.actorId ?? action.sourceId;
   const notice = latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
-  const announcementCopy = publicCardAnnouncementCopy(action, notice, latestResponse?.actorName ?? sourceName, actorId, sourceName, targetName, compactPlayerNamesById);
+  const announcementCopy = publicCardAnnouncementCopy(action, notice, latestResponse?.actorName ?? sourceName, actorId, sourceName, targetName, compactPlayerNamesById, eventId);
   const announcement = withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
   const compactAnnouncement = announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION"))
     ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, action.settlement ? undefined : action.phaseNotice, true)

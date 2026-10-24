@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { publicCardAnnouncement } from "../app/public-card-display.tsx";
+import {
+  compactLustDuelAttackMessage,
+  compactLustDuelOrderMessage,
+  compactLustDuelResultMessage,
+} from "../app/lust-public-copy.ts";
 
 const action = (overrides = {}) => ({
   key: "test-action",
@@ -11,6 +16,21 @@ const action = (overrides = {}) => ({
   cardLabel: "ATTACK",
   ariaLabel: "Source played Attack targeting Target",
   ...overrides,
+});
+
+test("LUST compact copy preserves full player identities and follows the proven actor id", () => {
+  const first = { id: "participant-3", name: "Test Player 3" };
+  const second = { id: "participant-4", name: "Test Player 4" };
+  assert.equal(compactLustDuelOrderMessage(first, second, first), "Test Player 3 first\nTest Player 4 second");
+  assert.equal(compactLustDuelOrderMessage(first, second, second), "Test Player 3 second\nTest Player 4 first");
+  assert.equal(compactLustDuelOrderMessage(
+    { id: "one", name: "玩家姓名特别特别特别长测试乙甲乙丙丁" },
+    { id: "two", name: "測試玩家4號辛壬癸甲乙丙丁戊" },
+    { id: "one", name: "玩家姓名特别特别特别长测试乙甲乙丙丁" },
+  ), "玩家姓名特别特别特别长测试乙甲乙丙丁 first\n測試玩家4號辛壬癸甲乙丙丁戊 second");
+  assert.equal(compactLustDuelOrderMessage(first, second, { id: "unproven", name: "Unknown" }), null);
+  assert.equal(compactLustDuelAttackMessage("玩家姓名特别特别特别长测试乙", "Test Player 4"), "玩家姓名特别特别特别长测试乙 attacks Test Player 4");
+  assert.equal(compactLustDuelResultMessage("玩家姓名特别特别特别长测试乙", "Test Player 4", 1), "Duel: 玩家姓名特别特别特别长测试乙 failed Attack; 1 damage from Test Player 4.");
 });
 
 test("public battle announcements keep proof-backed event meaning in concise copy", () => {
@@ -167,10 +187,12 @@ test("Bumper Harvest Negation announcements name the current effect or Negation 
 test("public announcement typography is readable and never truncates its verified sentence", () => {
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   const announcement = css.match(/\.public-card-display-journey-copy\{([^}]+)\}/)?.[1] ?? "";
-  const text = css.match(/\.public-card-display-journey-copy>b\{([^}]+)\}/)?.[1] ?? "";
+  const text = css.match(/^\.public-card-display-journey-copy>b\{([^}]+)\}/m)?.[1] ?? "";
   assert.match(announcement, /520px/);
   assert.match(text, /font:600 15px\/1\.2 Arial,sans-serif/);
   assert.match(text, /letter-spacing:\.01em/);
   assert.doesNotMatch(text, /line-clamp|overflow:hidden/);
+  assert.match(css, /\.public-card-display-journey\[data-public-card-motion="lust-cost"\]>.public-card-display-journey-copy>b,\.public-card-display-journey\[data-public-card-motion="lust-duel"\]>.public-card-display-journey-copy>b\{white-space:pre-line\}/);
+  assert.match(css, /\.public-card-display-journey\[data-public-card-motion="lust-cost"\][^}]*overflow:visible[^}]*-webkit-line-clamp:unset/);
   assert.doesNotMatch(css, /public-card-display-journey-copy\.is-condensed/);
 });

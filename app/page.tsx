@@ -31,6 +31,7 @@ import { PublicActivityChip } from "./public-activity-chip";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
 import { equipmentArrivalIdentity, pendingEquipmentArrivalIdentities as derivePendingEquipmentArrivalIdentities } from "../game/equipment-arrival.js";
+import { compactLustDuelOrderMessage, compactLustDuelResultMessage } from "./lust-public-copy";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -1285,38 +1286,18 @@ export function HeroDetailsPreview({ hero, onClose, returnFocusTo }: { hero: Her
 
 function heroName(id?: string | null) { return id ? id.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") : "Unknown"; }
 function lustDuelOrderMessage(
+  first: { id: string; name: string; hero?: string | null },
+  second: { id: string; name: string; hero?: string | null },
+  firstActor: { id: string; name: string; hero?: string | null },
+) {
+  return compactLustDuelOrderMessage(first, second, firstActor) ?? "LUST Duel order unavailable.";
+}
+function lustDuelOrderAccessibleMessage(
   first: { name: string; hero?: string | null },
   second: { name: string; hero?: string | null },
   firstActor: { name: string; hero?: string | null },
 ) {
   return `${first.name} vs. ${second.name} · ${firstActor.name} attacks first.`;
-}
-function compactLustPlayerName(name: string) {
-  const normalized = name.trim();
-  const characters = Array.from(normalized);
-  return characters.length <= 10 ? normalized : `${characters.slice(0, 9).join("").trimEnd()}…`;
-}
-function compactLustResultPlayerName(name: string) {
-  const normalized = name.trim();
-  const characters = Array.from(normalized);
-  return characters.length <= 6 ? normalized : `${characters.slice(0, 5).join("").trimEnd()}…`;
-}
-function lustDuelCompactOrderMessage(
-  first: Pick<Player, "id" | "name">,
-  second: Pick<Player, "id" | "name">,
-  firstActor: Pick<Player, "id" | "name">,
-) {
-  const firstActorIsFirst = firstActor.id === first.id;
-  return firstActorIsFirst
-    ? `${compactLustPlayerName(first.name)} first · ${compactLustPlayerName(second.name)} second.`
-    : `${compactLustPlayerName(first.name)} second · ${compactLustPlayerName(second.name)} first.`;
-}
-function lustDuelCompactResultMessage(failedName: string | undefined, damageSourceName: string | undefined, damageAmount: number) {
-  if (!failedName) return undefined;
-  const failed = compactLustResultPlayerName(failedName);
-  if (damageAmount === 0) return `Duel: ${failed} failed Attack; damage prevented.`;
-  if (!damageSourceName) return undefined;
-  return `Duel: ${failed} failed Attack; ${damageAmount} damage from ${compactLustResultPlayerName(damageSourceName)}.`;
 }
 function heroSkillNames(hero: Pick<Hero, "id" | "skills">) { return hero.skills?.map((skill) => skill.name) ?? [heroSkillName(hero.id) ?? "Hero"]; }
 function heroSkillName(id?: string | null) { return id ? HEROES.find((hero) => hero.id === id)?.skills[0]?.name ?? null : null; }
@@ -5791,7 +5772,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     targetId: null,
     cardFace: lustCostFrameCandidate.costCard,
     cardLabel: "LUST COST",
-    ariaLabel: `Diao Chan used Lust. ${lustCostFrameCandidate.firstParticipant.name} and ${lustCostFrameCandidate.secondParticipant.name} enter a Duel. ${lustCostFrameCandidate.firstActor.name} plays Attack first.`,
+    ariaLabel: `Diao Chan used Lust. ${lustDuelOrderAccessibleMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor)}`,
     motion: {
       type: "lust-cost",
       scopeKey: [room.code, lustCostFrameCandidate.activation.eventId, lustCostFrameCandidate.costEvent.id].join(":"),
@@ -5802,10 +5783,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       activationEventId: lustCostFrameCandidate.activation.eventId,
       title: "LUST",
       message: lustDuelOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor),
-      compactMessage: lustDuelCompactOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor),
+      accessibleMessage: lustDuelOrderAccessibleMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor),
+      compactMessage: compactLustDuelOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor) ?? undefined,
     },
     publicCardEffectFrame: lustPublicCardEffectFrame(lustCostFrameCandidate, room.players,
-      lustDuelOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor)),
+      lustDuelOrderAccessibleMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor)),
   } : null;
   const prodigalHealerCostFrameCandidate = (() => {
     const effects = room.presentationSnapshot?.publicCardEffects ?? [];
@@ -6025,7 +6007,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     cardFace: lustDuelExchangeDisplayCandidate.costFrame.costCard,
     cardLabel: "LUST",
     ariaLabel: lustDuelExchangeDisplayCandidate.settlementCopy?.message
-      ?? `Diao Chan used Lust: ${lustDuelExchangeDisplayCandidate.costFrame.firstParticipant.name} and ${lustDuelExchangeDisplayCandidate.costFrame.secondParticipant.name} enter a Duel; ${lustDuelExchangeDisplayCandidate.costFrame.firstActor.name} plays Attack first.`,
+      ?? `Diao Chan used Lust: ${lustDuelOrderAccessibleMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor)}`,
     publicNotice: lustDuelExchangeDisplayCandidate.settlementCopy?.message
       ?? (lustDuelExchangeDisplayCandidate.responses.at(-1)?.responseEvent.type === "message"
       ? lustDuelExchangeDisplayCandidate.responses.at(-1)?.responseActor.name + " provided an Attack in the Lust Duel."
@@ -6043,12 +6025,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       activationEventId: lustDuelExchangeDisplayCandidate.exchange.root.activationEventId,
       title: "LUST",
       message: lustDuelOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor),
-      compactMessage: lustDuelCompactOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor),
+      accessibleMessage: lustDuelOrderAccessibleMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor),
+      compactMessage: compactLustDuelOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor) ?? undefined,
     },
     publicCardEffectFrame: lustPublicCardEffectFrame(lustDuelExchangeDisplayCandidate.costFrame, room.players,
-      lustDuelOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor)),
+      lustDuelOrderAccessibleMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor)),
     ...(lustDuelExchangeDisplayCandidate.exchange.settlement ? {
-      publicNoticeCompact: lustDuelCompactResultMessage(
+      publicNoticeCompact: compactLustDuelResultMessage(
         room.players.find((player) => player.id === lustDuelExchangeDisplayCandidate.exchange.settlement?.failedPlayerId)?.name,
         room.players.find((player) => player.id === lustDuelExchangeDisplayCandidate.exchange.settlement?.damageSourceId)?.name,
         lustDuelExchangeDisplayCandidate.exchange.settlement.damageAmount,
@@ -6506,8 +6489,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     };
   };
   const activeDeflectionAction = deflectionForPublicAction(selectedPublicCardAction);
+  const selectedLustOrderOwnsActivityBand = Boolean(selectedPublicCardAction
+    && (selectedPublicCardAction.motion?.type === "lust-cost" || selectedPublicCardAction.motion?.type === "lust-duel")
+    && (publicActivityStatus.kind === "duel" || publicActivityStatus.kind === "resolving"));
   const publicCardDisplayAction: PublicCardDisplayAction | null = selectedPublicCardAction ? {
     ...selectedPublicCardAction,
+    publicActivityMessage: selectedLustOrderOwnsActivityBand
+      ? publicActivityStatus.heading ?? publicActivityStatus.text : undefined,
+    publicActivityAccessibleMessage: selectedLustOrderOwnsActivityBand
+      ? [publicActivityStatus.text, publicActivityStatus.stage].filter(Boolean).join(" · ") : undefined,
     ...(selectedPublicCardAction.motion?.type === "attack-dodge" ? {
       motion: {
         ...selectedPublicCardAction.motion,
@@ -6536,6 +6526,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const publicCardDisplayEnabled = Boolean(publicCardDisplayAction && rootActionSource?.name
     && (publicCardDisplayAction.targetId === null || rootActionTarget?.name)
     && !rootActionTemporarilyBlocked);
+  // The initial LUST order copy names the proven first actor, so it owns the
+  // centre band only until the first public Duel response is committed.
+  const lustOrderOwnsActivityBand = Boolean(publicCardDisplayEnabled && selectedLustOrderOwnsActivityBand);
   const publicCardDisplayReady = publicCardDisplayEnabled;
   const targetCardChoiceAnnouncement = publicCardDisplayAction && room.pendingTargetCard
     && rootActionSource?.name && rootActionTarget?.name
@@ -8294,7 +8287,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         roomCode={room.code}
         viewerId={room.meId}
       />}
-      {!targetCardChoiceMergeActive && <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey} harvestPoolReadOnly={harvestReadOnlyDuringNegation} />}
+      {!targetCardChoiceMergeActive && !lustOrderOwnsActivityBand && <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey} harvestPoolReadOnly={harvestReadOnlyDuringNegation} />}
       {visibleInfoCard && <CardDetailsPreview card={visibleInfoCard} context={infoCardContext} onClose={closeCardDetails} returnFocusTo={cardInfoReturnFocusRef.current} />}
       {infoHero && me && <HeroDetailsPreview hero={infoHero} onClose={closeHeroDetails} returnFocusTo={heroInfoReturnFocusRef.current} />}
     </section>
