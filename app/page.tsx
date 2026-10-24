@@ -2211,7 +2211,11 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
             aria-label={selfTargetable ? `Select ${player?.name ?? "your character"}` : `Explain ${hero.name}`}
             aria-pressed={selfTargetable ? selfTargetSelected : undefined}
             onClick={(event) => selfTargetable ? onSelfTarget() : onHeroInfo(hero, event.currentTarget)}
-          ><span className="local-hero-portrait" data-hero-id={hero.id} aria-hidden="true"><HeroPortrait hero={hero} /><span className="local-hero-overlay"><span className="local-hero-label">{hero.name}</span><span className="local-hero-vitals"><strong className="local-hero-role">{player?.role ?? "Role pending"}</strong><span className="local-hero-hp">HP {player?.hp ?? 0}/{player?.maxHp ?? 0}</span><span className="local-hero-hearts">{hpDisplay(player?.hp ?? null)}</span></span></span></span></button>
+          ><span className="local-hero-portrait" data-hero-id={hero.id} aria-hidden="true"><HeroPortrait hero={hero} /></span></button>
+          <div className="local-hero-identity-footer" aria-label="Your role and health">
+            <span className="local-hero-role" aria-label={player?.role ? `Role: ${player.role}` : "Role pending"}>{player?.role ?? "Role pending"}</span>
+            <span className="local-hero-hp" aria-label={`HP ${player?.hp ?? 0} of ${player?.maxHp ?? 0}`}>HP {player?.hp ?? 0}/{player?.maxHp ?? 0}</span>
+          </div>
           {selfTargetable && <button type="button" className="hero-card-info-button local-hero-info-button" aria-label={`View ${hero.name} details`} onClick={(event) => { event.stopPropagation(); onHeroInfo(hero, event.currentTarget); }}><span aria-hidden="true">i</span></button>}
         </> : <div className="local-hero-card local-hero-card-empty" aria-label="Hero not selected"><span className="local-hero-portrait" aria-hidden="true"><span className="local-hero-label">HERO</span></span></div>}
         {judgementCards.length > 0 && <div ref={judgementRailRef} className="local-judgement-cards local-judgement-overlay" data-judgement-layout={judgementCardLayout.measured ? "measured" : "pending"} style={{ justifyContent: judgementCards.length === 1 ? "center" : "flex-start" }} role="group" aria-label="Persistent Judgement cards">

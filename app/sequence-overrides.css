@@ -675,17 +675,11 @@
    card or distorting the repository image. */
 .local-hero-portrait > .hero-art-image { position: absolute; top: -5%; left: 50%; width: auto; height: 115%; max-width: none; object-fit: cover; object-position: center 20%; translate: -50% 0; }
 .local-hero-portrait > .hero-art-fallback { position: absolute; inset: 0; display: grid; place-items: center; }
-.local-hero-overlay { position: absolute; inset: auto 0 0; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; padding: 14px 3px 3px; overflow: visible; background: linear-gradient(180deg, transparent 0%, #080b09df 38%, #080b09f2 100%); }
-.local-hero-vitals { display: flex; flex-direction: column; align-items: center; gap: 1px; width: 100%; min-width: 0; overflow: visible; }
-.local-hero-label,
-.local-hero-vitals,
-.local-hero-hp,
-.local-hero-hearts,
-.local-hero-role { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.local-hero-label { position: static; color: #f4e6bd; font: 700 clamp(7px, 2vw, 10px)/1.1 Georgia, serif !important; letter-spacing: .02em !important; }
-.local-hero-hp { color: #ead6a1; font: 700 clamp(6px, 1.8vw, 9px)/1 Arial, sans-serif; letter-spacing: .02em; }
-.local-hero-hearts { max-width: none; overflow: visible; color: #f0d28c; font: clamp(6px, 1.8vw, 9px)/1 Arial, sans-serif; letter-spacing: 0; white-space: nowrap; }
-.local-hero-role { color: #fff0b4; font: 800 clamp(8px, 2.4vw, 12px)/1 Arial, sans-serif; letter-spacing: .06em; text-transform: uppercase; text-shadow: 0 1px 3px #000; }
+.local-hero-label { color: #f4e6bd; font: 700 clamp(7px, 2vw, 10px)/1.1 Georgia, serif; letter-spacing: .02em; }
+.local-hero-identity-footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; width: 100%; min-width: 0; }
+.local-hero-role,
+.local-hero-hp { box-sizing: border-box; display: block; width: 100%; min-width: 0; min-height: 12px; padding: 1px 2px; overflow: hidden; border: 1px solid #765f3c99; border-radius: 2px; background: #0b100de8; color: #f0d9a4; font: 700 clamp(7px, 1.8vw, 8.5px)/1 Arial, sans-serif; letter-spacing: .03em; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.local-hero-role { color: #fff0b4; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .local-hero-skills { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 6px; width: 100%; max-width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; }
 .local-hero-skills .hero-skill-button { box-sizing: border-box; flex: 1 1 0; width: auto; min-width: 44px; max-width: none; min-height: 44px; padding: 6px 8px; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: normal; word-break: normal; hyphens: none; font-size: clamp(7.5px, 1.8vw, 9px); line-height: 1.1; letter-spacing: .01em; text-align: center; }
 

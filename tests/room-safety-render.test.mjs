@@ -577,7 +577,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /\.opponent-hero-portrait \.hero-art-image \{[^}]*object-fit: cover; object-position: center top;/, "opponent artwork uses cover framing");
   assert.doesNotMatch(globalStyleSource, /\.player-square-target \.player-square-portrait \{[^}]*height: clamp\(44px, 8vw, 92px\)/, "opponent portraits do not regress to the shallow mobile rule");
   assert.match(gameRoomSource, /<HeroPortrait hero=\{playerHero\} \/>/, "opponents use the shared HeroPortrait renderer");
-  assert.match(html, /class="local-hero-card"[\s\S]*class="local-hero-label">Cao Cao<\/span>[\s\S]*class="local-hero-role">Lord<\/strong>[\s\S]*class="local-hero-hp">HP 4\/4<\/span>[\s\S]*class="local-hero-hearts">♥♥♥♥<\/span>/, "local hero card orders name, role, HP, and hearts");
+  assert.match(html, /class="local-hero-card"[\s\S]*class="local-hero-portrait"[^>]*data-hero-id="cao-cao"[\s\S]*<\/button><div class="local-hero-identity-footer" aria-label="Your role and health"><span class="local-hero-role" aria-label="Role: Lord">Lord<\/span><span class="local-hero-hp" aria-label="HP 4 of 4">HP 4\/4<\/span><\/div>/, "local identity footer follows the genuine portrait and keeps role before numeric HP");
+  assert.doesNotMatch(html, /class="local-hero-overlay"|class="local-hero-hearts"/, "local artwork has no identity overlay or heart markers");
   assert.equal(hpDisplay(5), "♥♥♥♥♥");
   assert.equal(hpDisplay(4), "♥♥♥♥");
   assert.equal(hpDisplay(1), "♥");
@@ -586,7 +587,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
     const hpRoom = normalizeRoomData({ ...payload, code: `DOCK-HP-${current}-${max}`, players: players.map((player) => player.id === "p1" ? { ...player, hp: current, maxHp: max } : player) });
     assert.ok(hpRoom);
     const hpHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: hpRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
-    assert.match(hpHtml, new RegExp(`class="local-hero-hp">HP ${current}/${max}<\\/span>[\\s\\S]*class="local-hero-hearts">${"♥".repeat(current)}<\\/span>`), `${current}/${max} renders one heart per current HP`);
+    assert.match(hpHtml, new RegExp(`class="local-hero-identity-footer"[\\s\\S]*class="local-hero-hp" aria-label="HP ${current} of ${max}">HP ${current}/${max}<\\/span>`), `${current}/${max} renders the authoritative numeric HP in the external footer`);
+    assert.doesNotMatch(hpHtml, /class="local-hero-hearts"/, "numeric HP does not duplicate decorative hearts");
   }
   assert.match(html, /class="local-status-panel"[\s\S]*class="hero-skills local-hero-skills"[\s\S]*>Treachery<\/button>[\s\S]*>Entourage<\/button>/, "local skills move into the flexible top panel");
   assert.doesNotMatch(html, /class="local-status-panel"[\s\S]*local-status-hp|class="local-status-panel"[\s\S]*local-status-hearts|class="local-status-panel"[\s\S]*local-status-role/);
@@ -601,7 +603,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.equal((html.match(/class="local-equipment-panel"/g) ?? []).length, 1);
   assert.equal((html.match(/class="local-judgement-panel"/g) ?? []).length, 0, "persistent Judgement has no independent Dock panel");
   assert.equal((html.match(/class="local-judgement-cards local-judgement-overlay"/g) ?? []).length, 1, "local Judgement is overlaid on the Hero");
-  assert.match(html, /class="local-hero-anchor"[\s\S]*?class="local-hero-card"[\s\S]*?<\/button><div[^>]*class="local-judgement-cards local-judgement-overlay"/, "overlay controls are siblings of the Hero button");
+  assert.match(html, /class="local-hero-anchor"[\s\S]*?class="local-hero-card"[\s\S]*?<\/button><div class="local-hero-identity-footer"[\s\S]*?<\/div>[\s\S]*?class="local-judgement-cards local-judgement-overlay"/, "identity footer and persistent Judgement stay outside the Hero button in the existing anchor");
   assert.equal((html.match(/data-judgement-id="lightning"/g) ?? []).length, 1, "the local physical Judgement card renders once");
   assert.equal((html.match(/data-judgement-id="overindulgence"/g) ?? []).length, 1, "the second local physical Judgement card renders once");
   assert.equal((html.match(/class="local-judgement-cards local-judgement-overlay[\s\S]*?class="local-judgement-card-slot"/g) ?? []).length, 1, "the overlay contains its existing physical-card slots");
@@ -733,8 +735,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /@media \(max-width: 360px\)[\s\S]*grid-template-columns: 64px minmax\(0, 1fr\)/);
   assert.match(sequenceStyleSource, /\.local-hero-anchor\s*\{[^}]*width: min\(100%, 72px\)[^}]*max-width: 72px/);
   assert.match(sequenceStyleSource, /\.local-hero-card\s*\{[\s\S]*width: 100%[\s\S]*height: auto[\s\S]*aspect-ratio: 2 \/ 3/);
-  assert.match(sequenceStyleSource, /\.local-hero-overlay\s*\{[\s\S]*background: linear-gradient/);
-  assert.match(sequenceStyleSource, /\.local-hero-vitals\s*\{[\s\S]*flex-direction: column/);
+  assert.match(sequenceStyleSource, /\.local-hero-identity-footer\s*\{[\s\S]*display: grid[\s\S]*width: 100%/);
+  assert.match(sequenceStyleSource, /\.local-hero-role,[\s\S]*\.local-hero-hp\s*\{[\s\S]*background: #0b100de8[\s\S]*text-align: center/);
   assert.match(sequenceStyleSource, /\.local-status-panel\s*\{[\s\S]*align-items: stretch[\s\S]*overflow: visible/);
   assert.match(sequenceStyleSource, /\.local-hero-skills\s*\{[\s\S]*flex-direction: column/);
   assert.match(sequenceStyleSource, /\.player-board \{ grid-template-rows: minmax\(100px, 1fr\) auto minmax\(70px, \.35fr\); \}/, "mobile board gives less unused space below the side opponents");
@@ -768,7 +770,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   const switchedHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: switched, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((switchedHtml.match(/class="player-square opponent-player-card/g) ?? []).length, 3, "switching the controlled seat keeps three opponents on the board");
   assert.match(switchedHtml, /data-hero-id="zhang-fei"/);
-  assert.match(switchedHtml, /class="local-hero-card"[\s\S]*class="local-hero-role">Loyalist<\/strong>/);
+  assert.match(switchedHtml, /class="local-hero-identity-footer"[\s\S]*class="local-hero-role" aria-label="Role: Loyalist">Loyalist<\/span>/, "TEST SWITCH updates the private role footer for the controlled viewer");
   assert.match(switchedHtml, /Dodge/);
 });
 

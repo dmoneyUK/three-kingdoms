@@ -2288,9 +2288,9 @@ for (const count of [4, 10]) {
 }
 
 for (const hero of ["cao-cao", "liu-bei"]) {
-  for (const width of [480, 650]) {
+  for (const width of [390, 480]) {
     test(`UX2.0VIS-12G local ${hero} art uses a proportional upper-body crop at ${width}px`, async ({ page }, testInfo) => {
-      await loadFixture(page, { state: "rest", count: 4, width, height: 900, hero });
+      await loadFixture(page, { state: "rest", count: 4, width, height: width === 390 ? 700 : 844, hero });
       const localHero = page.locator('.local-player-dock[data-player-anchor="p1"] .local-hero-card');
       const crop = await localHero.locator(".hero-art-image").evaluate((art) => {
         const frame = art.parentElement;
@@ -2322,12 +2322,53 @@ for (const hero of ["cao-cao", "liu-bei"]) {
       expect(crop.art.height / crop.frame.height).toBeCloseTo(1.15, 2);
       expect((crop.frame.top - crop.art.top) / crop.frame.height).toBeCloseTo(0.05, 2);
       expect(crop.pageWidth, "the local Hero crop does not create horizontal page overflow").toBeLessThanOrEqual(crop.viewportWidth);
-      await expect(localHero.locator(".local-hero-label")).toBeVisible();
-      await expect(localHero.locator(".local-hero-role")).toBeVisible();
-      await expect(localHero.locator(".local-hero-hp")).toBeVisible();
+      const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
+      const footer = dock.locator(".local-hero-identity-footer");
+      await expect(localHero.locator(".local-hero-label, .local-hero-role, .local-hero-hp, .local-hero-hearts")).toHaveCount(0);
+      await expect(footer.locator(".local-hero-role")).toBeVisible();
+      await expect(footer.locator(".local-hero-hp")).toBeVisible();
+      const identityGeometry = await page.evaluate(() => {
+        const portrait = document.querySelector('.local-player-dock[data-player-anchor="p1"] .local-hero-card');
+        const footer = document.querySelector('.local-player-dock[data-player-anchor="p1"] .local-hero-identity-footer');
+        if (!portrait || !footer) return null;
+        const portraitRect = portrait.getBoundingClientRect();
+        const footerRect = footer.getBoundingClientRect();
+        const identity = document.querySelector('.local-player-dock[data-player-anchor="p1"] .local-dock-identity');
+        const hand = document.querySelector('.local-player-dock[data-player-anchor="p1"] .local-hand-section');
+        const guidance = document.querySelector('.local-player-dock[data-player-anchor="p1"] .console-guidance');
+        const controls = document.querySelector('.local-player-dock[data-player-anchor="p1"] .turn-controls');
+        const rect = (element) => {
+          if (!element) return null;
+          const value = element.getBoundingClientRect();
+          return { left: value.left, top: value.top, right: value.right, bottom: value.bottom };
+        };
+        const intersects = (a, b) => Boolean(a && b && Math.min(a.right, b.right) > Math.max(a.left, b.left)
+          && Math.min(a.bottom, b.bottom) > Math.max(a.top, b.top));
+        return {
+          portraitBottom: portraitRect.bottom,
+          footerTop: footerRect.top,
+          roleInsidePortrait: Boolean(portrait.contains(footer.querySelector(".local-hero-role"))),
+          hpInsidePortrait: Boolean(portrait.contains(footer.querySelector(".local-hero-hp"))),
+          identity: {
+            footer: rect(footer),
+            identity: rect(identity),
+            handOverlap: intersects(rect(footer), rect(hand)),
+            guidanceOverlap: intersects(rect(footer), rect(guidance)),
+            controlsOverlap: intersects(rect(footer), rect(controls)),
+          },
+        };
+      });
+      expect(identityGeometry?.footerTop).toBeGreaterThanOrEqual(identityGeometry?.portraitBottom ?? 0);
+      expect(identityGeometry?.roleInsidePortrait).toBe(false);
+      expect(identityGeometry?.hpInsidePortrait).toBe(false);
+      expect(identityGeometry?.identity?.footer.top).toBeGreaterThanOrEqual(identityGeometry?.portraitBottom ?? 0);
+      expect(identityGeometry?.identity?.footer.bottom).toBeLessThanOrEqual(identityGeometry?.identity?.identity.bottom ?? 0);
+      expect(identityGeometry?.identity?.handOverlap).toBe(false);
+      expect(identityGeometry?.identity?.guidanceOverlap).toBe(false);
+      expect(identityGeometry?.identity?.controlsOverlap).toBe(false);
 
       if (width === 480) {
-        await testInfo.attach(`vis-12g-local-${hero}-480`, {
+        await testInfo.attach(`vis-12g-local-${hero}-${width}`, {
           body: await page.screenshot({ animations: "disabled" }),
           contentType: "image/png",
         });
@@ -2342,7 +2383,9 @@ for (const state of ["local-judgement-one", "local-judgement-two"]) {
     const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
     const hero = dock.locator(".local-hero-card");
     await expect(hero.locator(".hero-art-image")).toBeVisible();
-    await expect(hero.locator(".local-hero-label")).toHaveText("Cao Cao");
+    await expect(hero.locator(".local-hero-label, .local-hero-role, .local-hero-hp, .local-hero-hearts")).toHaveCount(0);
+    await expect(dock.locator(".local-hero-identity-footer .local-hero-role")).toHaveText("Lord");
+    await expect(dock.locator(".local-hero-identity-footer .local-hero-hp")).toHaveText("HP 4/4");
     const judgement = dock.locator(".local-judgement-overlay .local-zone-card");
     await expect(judgement).toHaveCount(state === "local-judgement-one" ? 1 : 2);
     await expect(judgement.first().locator(".zone-info-button")).toBeVisible();
