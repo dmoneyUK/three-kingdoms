@@ -1289,11 +1289,12 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-journey-card[data-public-card-journey-size="thumbnail"] .public-card-duel-physical-face>.played-card>i small{font-size:5px}
 .public-card-journey-card[data-public-card-journey-size="thumbnail"] .public-card-duel-physical-face>.played-card .card-name-mark{font-size:clamp(8px,2.4vw,10px)}
 .public-card-journey-card[data-public-card-journey-size="thumbnail"] .public-card-duel-physical-face>.played-card>strong{font-size:4px}
-.public-card-lust-cost-frame-panel{position:absolute;z-index:0;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:8px 8px;overflow:hidden;border:1px solid #d4b46f;background:#11140ff5;box-shadow:0 8px 24px #000b;color:#ead7a5;text-align:center;pointer-events:none;transition:transform .38s cubic-bezier(.2,.7,.2,1)}
+.public-card-lust-cost-frame-panel{position:absolute;z-index:0;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:8px 8px;overflow:hidden;border:1px solid #c6a45c;background:#10130ff5;box-shadow:0 5px 16px #000b,inset 0 0 0 1px #d7bd7840;color:#ead7a5;text-align:center;pointer-events:none;transition:transform .38s cubic-bezier(.2,.7,.2,1)}
 .public-card-effect-frame-panel{display:block}
 .public-card-lust-cost-frame-panel.is-moving{opacity:0;transition:none}
-.public-card-lust-cost-frame-panel::after{content:"";position:absolute;inset:4px;border:1px solid #d4b46f66;pointer-events:none}
+.public-card-lust-cost-frame-panel::after{content:"";position:absolute;inset:4px;border:1px solid #d7bd7860;pointer-events:none}
 .public-card-effect-frame-title,.public-card-lust-cost-frame-title{position:relative;z-index:1;display:block;width:100%;color:#e7c974;font:700 22px/1.1 Arial,sans-serif;letter-spacing:.14em;text-align:center;text-transform:uppercase}
+.public-card-lust-cost-frame-panel .public-card-lust-cost-frame-title{color:#f2d58f;font-size:20px;line-height:1.08;letter-spacing:.1em}
 .public-card-effect-frame-count{position:absolute;z-index:1;left:8px;right:8px;top:31px;display:block;color:#b9a36f;font:700 6px/1 Arial,sans-serif;letter-spacing:.12em;text-align:center}
 .public-card-effect-frame-materials{position:absolute;display:grid;align-content:start;justify-content:center;pointer-events:none}
 .public-card-effect-frame-material{position:relative;display:block;min-width:0;min-height:0;overflow:hidden;border-radius:7px}
