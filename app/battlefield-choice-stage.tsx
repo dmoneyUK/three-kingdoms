@@ -53,6 +53,8 @@ type BattlefieldChoicePlacementOptions = {
   placementKey: string;
 };
 
+type ScheduledBattlefieldFrame = { kind: "animation"; id: number } | { kind: "timeout"; id: ReturnType<typeof setTimeout> };
+
 /** Measures the shared panel and places it in Harvest's current safe battlefield corridor. */
 export function useBattlefieldChoicePlacement({ enabled, playerCount, placementKey }: BattlefieldChoicePlacementOptions) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -60,17 +62,26 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
   const [insets, setInsets] = useState<BattlefieldChoiceInsets | null>(null);
 
   useLayoutEffect(() => {
+    const scheduleFrame = (callback: FrameRequestCallback): ScheduledBattlefieldFrame => typeof window.requestAnimationFrame === "function"
+      ? { kind: "animation", id: window.requestAnimationFrame(callback) }
+      : { kind: "timeout", id: globalThis.setTimeout(() => callback(Date.now()), 0) };
+    const cancelFrame = (frame: ScheduledBattlefieldFrame | null) => {
+      if (!frame) return;
+      if (frame.kind === "animation") {
+        if (typeof window.cancelAnimationFrame === "function") window.cancelAnimationFrame(frame.id);
+      } else globalThis.clearTimeout(frame.id);
+    };
     if (!enabled) {
-      const resetFrame = window.requestAnimationFrame(() => {
+      const resetFrame = scheduleFrame(() => {
         setTop(null);
         setInsets(null);
       });
-      return () => window.cancelAnimationFrame(resetFrame);
+      return () => cancelFrame(resetFrame);
     }
     const stage = ref.current;
     const table = stage?.closest<HTMLElement>(".play-table");
     if (!stage || !table) return;
-    let frame = 0;
+    let frame: ScheduledBattlefieldFrame | null = null;
     const observed = new Set<Element>();
     let observer: ResizeObserver | null = null;
     const targetCardSelect = stage.dataset.choiceMode === "actor-target-select";
@@ -88,8 +99,8 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
       ".turn-controls",
     ];
     const measure = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
+      cancelFrame(frame);
+      frame = scheduleFrame(() => {
         const tableRect = table.getBoundingClientRect();
         const panel = stage.querySelector<HTMLElement>(".card-pool-panel, .harvest-choice-panel");
         if (!panel || tableRect.width <= 0 || tableRect.height <= 0) return;
@@ -179,7 +190,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
       window.visualViewport?.removeEventListener("resize", measure);
       observer?.disconnect();
       mutationObserver?.disconnect();
-      window.cancelAnimationFrame(frame);
+      cancelFrame(frame);
     };
   }, [enabled, playerCount, placementKey]);
 
