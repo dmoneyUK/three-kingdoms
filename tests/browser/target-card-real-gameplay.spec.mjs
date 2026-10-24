@@ -36,6 +36,7 @@ async function controlledRoomView(request, code, token, viewerId) {
 }
 
 async function tapMobile(page, locator) {
+  await locator.scrollIntoViewIfNeeded();
   const bounds = await locator.boundingBox();
   expect(bounds, "the intended mobile control has a visible touch target").toBeTruthy();
   await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
@@ -110,6 +111,8 @@ async function expectModal(page, title, instruction, cta) {
     return {
       x: box.x, y: box.y, right: box.right, bottom: box.bottom,
       viewportWidth: innerWidth, viewportHeight: innerHeight,
+      panelWidthCss: getComputedStyle(element).width,
+      panelMaxWidthCss: getComputedStyle(element).maxWidth,
       rootPosition: overlay && getComputedStyle(overlay).position,
       rootInsets: overlay && ["top", "right", "bottom", "left"].map((property) => getComputedStyle(overlay)[property]),
       rootPointerEvents: overlay && getComputedStyle(overlay).pointerEvents,
@@ -139,6 +142,69 @@ async function expectModal(page, title, instruction, cta) {
   expect(geometry.cardTargets.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(geometry.viewportWidth);
   return dialog;
+}
+
+async function expectTargetPool(page, title, instruction, cta) {
+  const pool = page.locator(".card-pool-panel--actor-target-select");
+  await expect(pool).toBeVisible();
+  await expect(pool).toHaveAccessibleName(`${title} target card selection`);
+  await expect(pool.locator(".card-pool-panel__title")).toHaveText(title);
+  await expect(pool.locator(".card-pool-panel__instruction")).toHaveText(instruction);
+  await expect(pool.getByRole("button", { name: cta, exact: true })).toBeVisible();
+  await expect(page.locator(".target-card-picker-overlay")).toHaveCount(0);
+  const geometry = await pool.evaluate((element) => {
+    const stage = element.parentElement;
+    const table = stage?.parentElement;
+    const panel = element.getBoundingClientRect();
+    const stageStyle = stage ? getComputedStyle(stage) : null;
+    const panelStyle = getComputedStyle(element);
+    return {
+      left: panel.left, top: panel.top, right: panel.right, bottom: panel.bottom,
+      width: panel.width,
+      viewportWidth: innerWidth, viewportHeight: innerHeight,
+      stageRect: stage && (() => { const rect = stage.getBoundingClientRect(); return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height }; })(),
+      tableRect: table && (() => { const rect = table.getBoundingClientRect(); return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height }; })(),
+      stagePointerEvents: stageStyle?.pointerEvents,
+      panelWidthCss: panelStyle.width,
+      panelMaxWidthCss: panelStyle.maxWidth,
+      stageMeasuredTop: stage?.getAttribute("data-target-card-pool-top"),
+      stageInlineTop: stage?.style.top,
+      children: [...element.children].map((child) => {
+        const rect = child.getBoundingClientRect();
+        const style = getComputedStyle(child);
+        return { className: child.className, width: rect.width, cssWidth: style.width, maxWidth: style.maxWidth, flex: style.flex };
+      }),
+      panelPointerEvents: getComputedStyle(element).pointerEvents,
+      withinTable: Boolean(table && panel.left >= table.getBoundingClientRect().left - 1
+        && panel.right <= table.getBoundingClientRect().right + 1
+        && panel.top >= table.getBoundingClientRect().top - 1
+        && panel.bottom <= table.getBoundingClientRect().bottom + 1),
+      touches: [...element.querySelectorAll(".card-pool-panel__target-select, .card-pool-panel__target-info, .card-pool-panel__tab, .card-pool-panel__confirm")].map((button) => {
+        const rect = button.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      }),
+      obstacles: [...document.querySelectorAll(".opponent-player-card, .public-card-display-journey-copy, .public-card-journey-card.is-current, .public-activity-chip, .visible-countdown, .stage-system-cluster, .opponent-inspection-floating-shell, .local-player-dock, .local-hand-section, .turn-controls")]
+        .map((obstacle) => ({ element: obstacle, rect: obstacle.getBoundingClientRect(), style: getComputedStyle(obstacle) }))
+        .filter(({ rect, style }) => style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0)
+        .map(({ element: obstacle, rect }) => ({
+          name: obstacle.className,
+          rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
+          separated: panel.right <= rect.left || rect.right <= panel.left || panel.bottom <= rect.top || rect.bottom <= panel.top,
+        })),
+    };
+  });
+  expect(geometry.left).toBeGreaterThanOrEqual(0);
+  expect(geometry.top).toBeGreaterThanOrEqual(0);
+  expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
+  expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
+  expect(geometry.right - geometry.left, JSON.stringify(geometry)).toBeLessThanOrEqual(geometry.viewportWidth - 16);
+  expect(geometry.withinTable).toBe(true);
+  expect(geometry.stagePointerEvents).toBe("none");
+  expect(geometry.panelPointerEvents).toBe("auto");
+  expect(geometry.touches.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
+  expect(geometry.obstacles.filter(({ separated }) => !separated), JSON.stringify(geometry)).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(geometry.viewportWidth);
+  return pool;
 }
 
 function fourPlayers(source, target) {
@@ -202,7 +268,7 @@ async function openRealTargetCardDecision({ page, request, kind, viewport, handC
 
   const title = kind === "Dismantle" ? "Burning Bridge" : "Steal";
   const instruction = kind === "Dismantle" ? "Choose 1 card to discard" : "Choose 1 card to obtain";
-  const dialog = await expectModal(page, title, instruction, `Use ${title}`);
+  const dialog = await expectTargetPool(page, title, instruction, `Use ${title}`);
   return { seed, actorView, dialog, hidden, weapon, armor, delayed, title };
 }
 
@@ -293,9 +359,8 @@ test("mandatory target-card picker keeps actor inspection and TEST SWITCH toucha
       localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name: playerName }));
     }, { roomCode: code, sessionToken: token, playerName: name });
     await page.goto(`${API}/`);
-    const dialog = page.getByRole("dialog", { name: "Steal target card selection" });
-    await expect(dialog).toBeVisible();
-    const hidden = dialog.getByRole("button", { name: "Hidden hand card 1" });
+    const dialog = await expectTargetPool(page, "Steal", "Choose 1 card to obtain", "Use Steal");
+    const hidden = dialog.getByRole("button", { name: "Choose hidden Hand position 1" });
     await expect(hidden).toBeEnabled({ timeout: 15_000 });
     await tapMobile(page, hidden);
     await expect(hidden).toHaveAttribute("aria-pressed", "true");
@@ -325,7 +390,7 @@ test("mandatory target-card picker keeps actor inspection and TEST SWITCH toucha
     await expect(page.locator(`.local-player-dock[data-player-anchor="${source.id}"]`)).toBeVisible();
     await expect(dialog).toBeVisible();
     await expect(hidden).toHaveAttribute("aria-pressed", "false");
-    await expect(dialog.getByRole("button", { name: "Use Steal" })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Use Steal", exact: true })).toBeDisabled();
     const actorAfterReturn = await controlledRoomView(request, code, token, source.id);
     expect(actorAfterReturn.actionRevision).toBe(actorAction.actionRevision);
     await page.screenshot({ path: testInfo.outputPath("steal-picker-actor-return-390x700.png"), animations: "disabled" });
@@ -342,7 +407,7 @@ async function attachScreenshot(testInfo, name, page) {
 }
 
 for (const kind of ["Steal", "Dismantle"]) {
-  test(`real ${kind} gameplay reaches the shared modal from the server target-card decision`, async ({ page, request, browser }) => {
+  test(`real ${kind} gameplay reaches the shared pool from the server target-card decision`, async ({ page, request, browser }) => {
     const material = card(kind, `real-${kind.toLowerCase()}-material`);
     const hidden = [card("Peach", `real-${kind.toLowerCase()}-hidden-a`), card("Dodge", `real-${kind.toLowerCase()}-hidden-b`)];
     const shield = card("NioShield", `real-${kind.toLowerCase()}-shield`);
@@ -376,15 +441,16 @@ for (const kind of ["Steal", "Dismantle"]) {
 
     const action = kind === "Steal" ? "Steal" : "Burning Bridge";
     const instruction = kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
-    const dialog = await expectModal(page, action, instruction, `Use ${action}`);
-    await expect(dialog.locator('[data-target-card-zone="hand-position"]')).toHaveCount(2);
+    const dialog = await expectTargetPool(page, action, instruction, `Use ${action}`);
+    await expect(dialog.locator('.card-pool-panel__target-choice[data-choice-key-type="concealed-position"]')).toHaveCount(2);
+    await dialog.getByRole("tab", { name: "EQUIPMENT 1" }).click();
     await expect(dialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true })).toBeVisible();
 
     const sourceBeforeObserver = await roomView(request, seed, 0);
     const spectatorPage = await browser.newPage();
     try {
       await openGame(spectatorPage, seed, 2);
-      await expect(spectatorPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+      await expect(spectatorPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
       const spectatorView = await roomView(request, seed, 2);
       expect(spectatorView.isMyAction).toBe(false);
       expect(spectatorView.currentAction?.targetCardSelection).toBeUndefined();
@@ -404,10 +470,11 @@ for (const kind of ["Steal", "Dismantle"]) {
       await spectatorPage.close();
     }
 
+    await dialog.getByRole("tab", { name: "JUDGEMENT 1" }).click();
     const judgment = dialog.getByRole("button", { name: "Judgement: Lightning", exact: true });
     await judgment.click();
     await expect(judgment).toHaveAttribute("aria-pressed", "true");
-    await expect(dialog.locator(".target-card-picker-count")).toHaveText("1 / 1 selected");
+    await expect(dialog.locator(".card-pool-panel__selection-count")).toHaveText("1 / 1 selected");
 
     const submitPromise = page.waitForResponse((response) => {
       if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
@@ -480,8 +547,7 @@ for (const kind of ["Steal", "Dismantle"]) {
         const chip = viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]');
         await expect(chip).toBeVisible();
         await expect(chip).toHaveAttribute("aria-label", sharedLabel);
-        await expect(chip).toContainText("SOURCE is choosing one card");
-        await expect(chip).toContainText(`${effectName} · from TARGET`);
+        await expect(chip.locator("strong")).toHaveText("Choosing TARGET's card");
         const chipRect = await chip.boundingBox();
         const tableRect = await viewerPage.locator(".play-table").boundingBox();
         expect(chipRect && tableRect).toBeTruthy();
@@ -493,7 +559,7 @@ for (const kind of ["Steal", "Dismantle"]) {
           const layout = await chip.getAttribute("data-public-activity-layout");
           expect(layout).toMatch(/^(target-seat-adjacent|bottom-center|lower-band-(center|left|right))$/);
         }
-        const targetPicker = viewerPage.locator(".target-card-picker-panel");
+        const targetPicker = viewerPage.locator(".card-pool-panel--actor-target-select");
         if (await targetPicker.count()) {
           const pickerRect = await targetPicker.boundingBox();
           expect(pickerRect && (chipRect.x + chipRect.width <= pickerRect.x
@@ -512,7 +578,7 @@ for (const kind of ["Steal", "Dismantle"]) {
         const chipText = `${await chip.innerText()} ${await chip.innerHTML()}`;
         expect(chipText).not.toMatch(/Hand|Equipment|Judgement|hand:|index|eligible|candidate/i);
         expect(chipText).not.toContain(hidden.id);
-        if (index > 0) await expect(viewerPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+        if (index > 0) await expect(viewerPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
       }
 
       for (const [index, viewerPage] of pages.entries()) {
@@ -522,8 +588,8 @@ for (const kind of ["Steal", "Dismantle"]) {
       }
 
       const instruction = kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
-      const dialog = await expectModal(actorPage, modalTitle, instruction, `Use ${modalTitle}`);
-      const hiddenCard = dialog.getByRole("button", { name: "Hidden hand card 1", exact: true });
+      const dialog = await expectTargetPool(actorPage, modalTitle, instruction, `Use ${modalTitle}`);
+      const hiddenCard = dialog.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
       await hiddenCard.click();
       await expect(hiddenCard).toHaveAttribute("aria-pressed", "true");
       const submitPromise = actorPage.waitForResponse((response) => {
@@ -588,9 +654,11 @@ test("settled Steal and Burning Bridges share proven source-to-destination outco
 
       const kindTitle = kind === "Steal" ? "Steal" : "Burning Bridge";
       const instruction = kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
-      const dialog = await expectModal(pages[0], kindTitle, instruction, `Use ${kindTitle}`);
+      const dialog = await expectTargetPool(pages[0], kindTitle, instruction, `Use ${kindTitle}`);
+      if (zone === "equipment") await dialog.getByRole("tab", { name: "EQUIPMENT 1" }).click();
+      if (zone === "judgement") await dialog.getByRole("tab", { name: "JUDGEMENT 1" }).click();
       const option = zone === "hand"
-        ? dialog.getByRole("button", { name: "Hidden hand card 1", exact: true })
+        ? dialog.getByRole("button", { name: "Choose hidden Hand position 1", exact: true })
         : zone === "equipment"
           ? dialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true })
           : dialog.getByRole("button", { name: "Judgement: Lightning", exact: true });
@@ -680,7 +748,7 @@ test("settled Steal and Burning Bridges share proven source-to-destination outco
         expect(replayed.presentationV2[publicField]).toEqual(views[index].presentationV2[publicField]);
         expect(replayed.presentationSnapshot[publicField]).toEqual(views[index].presentationSnapshot[publicField]);
         expect(JSON.stringify(replayed.presentationSnapshot[publicField])).toBe(JSON.stringify(views[0].presentationSnapshot[publicField]));
-        await expect(viewerPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+        await expect(viewerPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
       }
     } finally {
       await Promise.all(contexts.map((context) => context.close()));
@@ -819,13 +887,14 @@ test("T3 settlement stays shared across mobile sizes, 4/6/8 seats, reloads, and 
         expect(cueGeometry.width).toBeLessThanOrEqual(156);
         const cueRect = await choiceCue.boundingBox();
         for (const obstacle of await viewerPage.locator(
-          ".target-card-picker-panel, .public-card-display-journey-copy, .public-card-journey-card, .player-square, .visible-countdown",
+          ".card-pool-panel--actor-target-select, .public-card-display-journey-copy, .public-card-journey-card, .player-square, .visible-countdown",
         ).all()) {
           const obstacleRect = await obstacle.boundingBox();
           if (!cueRect || !obstacleRect) continue;
-          expect(cueRect.x + cueRect.width <= obstacleRect.x || obstacleRect.x + obstacleRect.width <= cueRect.x
-            || cueRect.y + cueRect.height <= obstacleRect.y || obstacleRect.y + obstacleRect.height <= cueRect.y,
-          `${label} viewer ${index} cue avoids visible stage obstacles`).toBe(true);
+          const separated = cueRect.x + cueRect.width <= obstacleRect.x || obstacleRect.x + obstacleRect.width <= cueRect.x
+            || cueRect.y + cueRect.height <= obstacleRect.y || obstacleRect.y + obstacleRect.height <= cueRect.y;
+          expect(separated,
+            `${label} viewer ${index} cue avoids ${await obstacle.getAttribute("class")}: ${JSON.stringify({ cue: cueRect, obstacle: obstacleRect })}`).toBe(true);
         }
         const display = viewerPage.locator('[data-public-card-display="true"]');
         await expect(display).toHaveCount(1);
@@ -836,14 +905,14 @@ test("T3 settlement stays shared across mobile sizes, 4/6/8 seats, reloads, and 
         );
         await expect(rootCardRepresentations).toHaveCount(1);
         if (actorPage) {
-          await expect(viewerPage.locator(".target-card-picker-overlay")).toBeVisible();
-          const picker = viewerPage.locator(".target-card-picker-panel");
+          await expect(viewerPage.locator(".card-pool-panel--actor-target-select")).toBeVisible();
+          const picker = viewerPage.locator(".card-pool-panel--actor-target-select");
           const [cueRect, pickerRect] = await Promise.all([choiceCue.boundingBox(), picker.boundingBox()]);
           expect(cueRect && pickerRect).toBeTruthy();
           expect(cueRect.x + cueRect.width <= pickerRect.x || pickerRect.x + pickerRect.width <= cueRect.x
             || cueRect.y + cueRect.height <= pickerRect.y || pickerRect.y + pickerRect.height <= cueRect.y).toBe(true);
         } else {
-          await expect(viewerPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+          await expect(viewerPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
         }
         expect(await viewerPage.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(scenario.viewport.width);
         if (scenario.reducedMotion) {
@@ -874,7 +943,7 @@ test("T3 settlement stays shared across mobile sizes, 4/6/8 seats, reloads, and 
         await reconnectingObserver.reload();
         await expect(reconnectingObserver.locator(".game-shell")).toBeVisible();
         await expect(reconnectingObserver.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toBeVisible();
-        await expect(reconnectingObserver.locator(".target-card-picker-overlay")).toHaveCount(0);
+        await expect(reconnectingObserver.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
         const nextPoll = reconnectingObserver.waitForResponse((response) => response.request().method() === "GET"
           && response.url().startsWith(`${API}/api/rooms?`), { timeout: 8_000 });
         await nextPoll;
@@ -895,9 +964,11 @@ test("T3 settlement stays shared across mobile sizes, 4/6/8 seats, reloads, and 
 
       const modalTitle = scenario.kind === "Steal" ? "Steal" : "Burning Bridge";
       const instruction = scenario.kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
-      const dialog = await expectModal(pages[0], modalTitle, instruction, `Use ${modalTitle}`);
+      const dialog = await expectTargetPool(pages[0], modalTitle, instruction, `Use ${modalTitle}`);
+      if (scenario.zone === "equipment") await dialog.getByRole("tab", { name: "EQUIPMENT 1" }).click();
+      if (scenario.zone === "judgement") await dialog.getByRole("tab", { name: "JUDGEMENT 1" }).click();
       const choice = scenario.zone === "hand"
-        ? dialog.getByRole("button", { name: "Hidden hand card 1", exact: true })
+        ? dialog.getByRole("button", { name: "Choose hidden Hand position 1", exact: true })
         : scenario.zone === "equipment"
           ? dialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true })
           : dialog.getByRole("button", { name: "Judgement: Lightning", exact: true });
@@ -996,7 +1067,7 @@ test("T3 settlement stays shared across mobile sizes, 4/6/8 seats, reloads, and 
       await Promise.all(pages.map((viewerPage) => viewerPage.reload()));
       for (const [index, viewerPage] of pages.entries()) {
         await expect(viewerPage.locator(".game-shell")).toBeVisible();
-        await expect(viewerPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+        await expect(viewerPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
         const replayed = await roomView(request, seed, viewerIndexes[index]);
         expect(replayed.presentationV2[publicField].find((entry) => entry.rootEventId === rootEvent.id)).toEqual(proof);
       }
@@ -1013,7 +1084,8 @@ test("T3 settlement stays shared across mobile sizes, 4/6/8 seats, reloads, and 
           await expect(viewerPage.locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-root-event-id", nextRootEvent.id);
           await expect(viewerPage.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`)).toHaveCount(0);
         }
-        const nextDialog = await expectModal(pages[0], "Burning Bridge", "Choose 1 card to discard", "Use Burning Bridge");
+        const nextDialog = await expectTargetPool(pages[0], "Burning Bridge", "Choose 1 card to discard", "Use Burning Bridge");
+        await nextDialog.getByRole("tab", { name: "EQUIPMENT 1" }).click();
         const armorChoice = nextDialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true });
         await expect(armorChoice).toBeEnabled();
         await tapMobile(pages[0], armorChoice);
@@ -1087,7 +1159,7 @@ test("T3 counter-Negation keeps Steal private until the restored root opens its 
     for (const state of states) expect(state.pendingTargetCard).toBeNull();
     for (const viewerPage of pages) {
       await expect(viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toHaveCount(0);
-      await expect(viewerPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+      await expect(viewerPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
     }
 
     await commitNegationAndPassWindow(1, targetNegation.id);
@@ -1097,7 +1169,7 @@ test("T3 counter-Negation keeps Steal private until the restored root opens its 
     for (const state of states) expect(state.pendingTargetCard).toBeNull();
     for (const viewerPage of pages) {
       await expect(viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toHaveCount(0);
-      await expect(viewerPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+      await expect(viewerPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
     }
 
     await commitNegationAndPassWindow(0, actorNegation.id);
@@ -1110,12 +1182,12 @@ test("T3 counter-Negation keeps Steal private until the restored root opens its 
     for (const [index, viewerPage] of pages.entries()) {
       await expect(viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toBeVisible();
       await expect(viewerPage.locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-root-event-id", rootEvent.id);
-      if (index === 0) await expect(viewerPage.locator(".target-card-picker-overlay")).toBeVisible();
-      else await expect(viewerPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+      if (index === 0) await expect(viewerPage.locator(".card-pool-panel--actor-target-select")).toBeVisible();
+      else await expect(viewerPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
       if (index !== 0) expect(JSON.stringify(states[index].presentationSnapshot)).not.toContain(hidden.id);
     }
-    const dialog = await expectModal(pages[0], "Steal", "Choose 1 card to obtain", "Use Steal");
-    const hiddenChoice = dialog.getByRole("button", { name: "Hidden hand card 1", exact: true });
+    const dialog = await expectTargetPool(pages[0], "Steal", "Choose 1 card to obtain", "Use Steal");
+    const hiddenChoice = dialog.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
     await expect(hiddenChoice, "the legal target-card choice stays touchable after counter-Negation restores Steal").toBeEnabled();
     await tapMobile(pages[0], hiddenChoice);
     const use = dialog.getByRole("button", { name: "Use Steal", exact: true });
@@ -1449,161 +1521,107 @@ for (const kind of ["Dismantle", "Steal"]) {
     { width: 390, height: 844 },
     { width: 440, height: 766 },
     { width: 480, height: 900 },
-    { width: 1440, height: 900 },
   ]) {
-    test(`real ${kind === "Dismantle" ? "Burning Bridge" : kind} mixed-zone modal is scannable at ${viewport.width}×${viewport.height}`, async ({ page, request }, testInfo) => {
-      const { seed, dialog, hidden, title } = await openRealTargetCardDecision({ page, request, kind, viewport });
-      const zones = dialog.locator(".target-card-picker-zones");
-      const positions = dialog.locator('[data-target-card-zone="hand-position"]');
-      const handRow = dialog.locator('.target-card-picker-zone-hand .target-card-picker-card-row');
-      const equipment = dialog.locator('[data-target-card-zone="equipment"]');
-      const judgement = dialog.locator('[data-target-card-zone="judgement"]');
-      const use = dialog.getByRole("button", { name: `Use ${title}` });
-      const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
-      await expect(cancel).toHaveCount(0);
-
-      await expect(zones).toHaveAttribute("data-zone-composition", "hand-equipment-judgement");
-      await expect(zones.locator(":scope > .target-card-picker-zone h3")).toHaveText([
-        "HAND · 4", "EQUIPMENT", "JUDGMENT",
-      ]);
-      await expect(positions).toHaveCount(4);
-      await expect(equipment).toHaveCount(2);
-      await expect(judgement).toHaveCount(1);
-      for (let index = 0; index < hidden.length; index += 1) {
-        await expect(positions.nth(index)).toHaveAccessibleName(`Hidden hand card ${index + 1}`);
-        await expect(positions.nth(index)).not.toContainText(/Peach|real-/);
-      }
-      await expect(dialog.getByRole("button", { name: "Equipment: Zhuge Crossbow", exact: true })).toBeVisible();
-      await expect(dialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true })).toBeVisible();
-      await expect(dialog.getByRole("button", { name: "Judgement: Lightning", exact: true })).toBeVisible();
-
-      const [rowBox, positionBoxes, equipmentBox, judgementBox, panelBox, useBox, zoneMetrics, publicNameMetrics] = await Promise.all([
-        handRow.boundingBox(),
-        positions.evaluateAll((elements) => elements.map((element) => {
-          const { x, y, width, height } = element.getBoundingClientRect();
-          return { x, y, width, height };
-        })),
-        equipment.first().boundingBox(),
-        judgement.boundingBox(),
-        dialog.boundingBox(),
-        use.boundingBox(),
-        zones.evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth })),
-        dialog.locator('[data-target-card-zone="equipment"], [data-target-card-zone="judgement"]').evaluateAll((elements) => elements.map((element) => {
-          const name = element.querySelector(".card-name-mark");
-          return { clientWidth: name.clientWidth, scrollWidth: name.scrollWidth, clientHeight: name.clientHeight, scrollHeight: name.scrollHeight };
+    test(`real ${kind === "Dismantle" ? "Burning Bridge" : kind} shared pool remains compact and touchable at ${viewport.width}×${viewport.height}`, async ({ browser, request }, testInfo) => {
+      const page = await browser.newPage({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+      const { seed, dialog: pool, hidden, title } = await openRealTargetCardDecision({ page, request, kind, viewport });
+      const tabs = pool.getByRole("tab");
+      const use = pool.getByRole("button", { name: `Use ${title}`, exact: true });
+      const hiddenPositions = pool.locator('.card-pool-panel__target-choice[data-choice-key-type="concealed-position"]');
+      const [panelBox, useBox, rowGeometry, positions] = await Promise.all([
+        pool.boundingBox(), use.boundingBox(), pool.locator(".card-pool-panel__target-row").evaluate((row) => ({
+          width: row.getBoundingClientRect().width,
+          clientWidth: row.clientWidth,
+          scrollWidth: row.scrollWidth,
+          overflowX: getComputedStyle(row).overflowX,
+        })), hiddenPositions.evaluateAll((elements) => elements.map((element) => {
+          const box = element.getBoundingClientRect();
+          return { x: box.x, y: box.y, width: box.width, height: box.height };
         })),
       ]);
-      await attachScreenshot(testInfo, `${title.toLowerCase().replaceAll(" ", "-")}-mixed-open-${viewport.width}`, page);
-      expect(rowBox && positionBoxes.length === 4 && equipmentBox && judgementBox && panelBox && useBox).toBeTruthy();
-      expect(positionBoxes.every((box) => box.width >= 44 && box.height >= 44)).toBe(true);
-      expect(positionBoxes.every((box) => box.x >= rowBox.x - 1 && box.x + box.width <= rowBox.x + rowBox.width + 1)).toBe(true);
-      expect(positionBoxes[0].width).toBeLessThan(equipmentBox.width);
-      expect(equipmentBox.width).toBeGreaterThanOrEqual(viewport.width <= 600 ? 48 : 70);
-      expect(judgementBox.width).toBeGreaterThanOrEqual(viewport.width <= 600 ? 48 : 70);
-      expect(publicNameMetrics.every((metrics) => metrics.scrollWidth <= metrics.clientWidth + 1 && metrics.scrollHeight <= metrics.clientHeight + 1), JSON.stringify(publicNameMetrics)).toBe(true);
-      for (const box of [useBox]) {
-        expect(box.x).toBeGreaterThanOrEqual(panelBox.x - 1);
-        expect(box.x + box.width).toBeLessThanOrEqual(panelBox.x + panelBox.width + 1);
-        expect(box.y).toBeGreaterThanOrEqual(panelBox.y - 1);
-        expect(box.y + box.height, JSON.stringify({ box, panelBox, viewport, zoneMetrics })).toBeLessThanOrEqual(panelBox.y + panelBox.height + 1);
-        expect(box.y).toBeGreaterThanOrEqual(0);
-        expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
-        expect(box.height).toBeGreaterThanOrEqual(44);
-      }
-      expect(await use.evaluate((element) => {
-        const box = element.getBoundingClientRect();
-        return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)?.closest("button") === element;
-      })).toBe(true);
-      if (viewport.width === 390) expect(zoneMetrics.scrollHeight).toBeLessThanOrEqual(zoneMetrics.clientHeight + 1);
+      expect(panelBox && useBox).toBeTruthy();
+      expect(rowGeometry.width).toBeLessThanOrEqual(panelBox.width);
+      expect(rowGeometry.clientWidth).toBeGreaterThanOrEqual(68);
+      expect(rowGeometry.scrollWidth).toBeGreaterThanOrEqual(rowGeometry.clientWidth);
+      expect(rowGeometry.overflowX).toBe("auto");
+      await expect(tabs).toHaveCount(3);
+      await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+      await expect(tabs.nth(0)).toHaveText("HAND 4");
+      await expect(tabs.nth(1)).toHaveText("EQUIPMENT 2");
+      await expect(tabs.nth(2)).toHaveText("JUDGEMENT 1");
+      await expect(hiddenPositions).toHaveCount(4);
+      expect(positions.every((box) => box.width >= 44 && box.height >= 44)).toBe(true);
+      expect(positions[0].x).toBeGreaterThanOrEqual(panelBox.x);
+      expect(positions[0].x + positions[0].width).toBeLessThanOrEqual(panelBox.x + panelBox.width);
+      for (const privateCard of hidden) expect(await page.locator("body").innerHTML()).not.toContain(privateCard.id);
+      await expect(use).toBeDisabled();
+      await expect(pool.locator(".card-pool-panel__tabpanel .card-pool-panel__target-choice")).toHaveCount(4);
+
+      const firstHidden = pool.getByRole("button", { name: "Choose hidden Hand position 2", exact: true });
+      await firstHidden.scrollIntoViewIfNeeded();
+      await tapMobile(page, firstHidden);
+      await expect(firstHidden).toHaveAttribute("aria-pressed", "true");
+      await expect(use).toBeEnabled();
+      await expect(pool.locator(".card-pool-panel__selection-count")).toHaveText("1 / 1 selected");
+
+      await tapMobile(page, tabs.nth(1));
+      await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+      await expect(pool.locator(".card-pool-panel__tabpanel .card-pool-panel__target-choice")).toHaveCount(2);
+      await expect(pool.getByRole("status")).toContainText("Selection retained · HAND 4");
+      const actionBeforeInfo = await roomView(request, seed, 0);
+      const info = pool.getByRole("button", { name: "Card details: Equipment: Nio Shield", exact: true });
+      await expect(info).toBeVisible();
+      await tapMobile(page, info);
+      const details = page.locator('.card-details-panel[data-card-details-context="public-zone"]');
+      await expect(details).toBeVisible();
+      await tapMobile(page, page.getByRole("button", { name: "Close card details" }));
+      await expect(details).toHaveCount(0);
+      await expect(pool.getByRole("status")).toContainText("Selection retained · HAND 4");
+      await expect(pool.locator(".card-pool-panel__selection-count")).toHaveText("1 / 1 selected");
+      await tapMobile(page, tabs.nth(0));
+      await expect(pool.getByRole("button", { name: "Choose hidden Hand position 2", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await tapMobile(page, tabs.nth(1));
+      const actionAfterInfo = await roomView(request, seed, 0);
+      expect(actionAfterInfo.actionRevision).toBe(actionBeforeInfo.actionRevision);
+
+      await tapMobile(page, tabs.nth(2));
+      await expect(pool.locator(".card-pool-panel__tabpanel .card-pool-panel__target-choice")).toHaveCount(1);
+      await expect(pool.getByRole("status")).toContainText("Selection retained · HAND 4");
+      await expect(use).toBeEnabled();
+      await expect(pool.locator(".target-card-picker-overlay")).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
-
-      if (kind === "Dismantle" && viewport.width === 390) {
-        const positionsBefore = await positions.evaluateAll((elements) => elements.map((element) => {
-          const { x, y, width, height } = element.getBoundingClientRect();
-          return { x, y, width, height };
-        }));
-        const selected = positions.nth(1);
-        await selected.click();
-        await expect(selected).toHaveAttribute("aria-pressed", "true");
-        await expect(selected.locator(".target-card-picker-check")).toHaveText("✓");
-        await expect(use).toBeEnabled();
-        const selectedStyle = await selected.evaluate((element) => {
-          const style = getComputedStyle(element);
-          return { borderColor: style.borderTopColor, outlineStyle: style.outlineStyle, boxShadow: style.boxShadow };
-        });
-        expect(selectedStyle.borderColor).toBe("rgb(240, 200, 107)");
-        expect(selectedStyle.outlineStyle).toBe("none");
-        expect(selectedStyle.boxShadow).not.toContain("28px");
-        const positionsAfter = await positions.evaluateAll((elements) => elements.map((element) => {
-          const { x, y, width, height } = element.getBoundingClientRect();
-          return { x, y, width, height };
-        }));
-        for (let index = 0; index < positionsBefore.length; index += 1) {
-          for (const coordinate of ["x", "y", "width", "height"]) {
-            expect(Math.abs(positionsAfter[index][coordinate] - positionsBefore[index][coordinate])).toBeLessThanOrEqual(1);
-          }
-        }
-        await attachScreenshot(testInfo, "burning-bridge-selected-hidden-position-390", page);
-        await selected.click();
-        await expect(selected).toHaveAttribute("aria-pressed", "false");
-        await expect(use).toBeDisabled();
-        await selected.click();
-        await expect(use).toBeEnabled();
-
-        const actionBeforeInfo = await roomView(request, seed, 0);
-        const info = dialog.getByRole("button", { name: "Card details: Equipment: Nio Shield" });
-        await expect(info).toBeVisible();
-        await info.click();
-        const details = page.locator('.card-details-panel[data-card-details-context="public-zone"]');
-        await expect(details).toBeVisible();
-        await expect(selected).toHaveAttribute("aria-pressed", "true");
-        await page.getByRole("button", { name: "Close card details" }).click();
-        await expect(details).toHaveCount(0);
-        await expect(selected).toHaveAttribute("aria-pressed", "true");
-        const actionAfterInfo = await roomView(request, seed, 0);
-        expect(actionAfterInfo.actionRevision).toBe(actionBeforeInfo.actionRevision);
-        expect(actionAfterInfo.currentAction).toMatchObject({ actorId: seed.players[0].id, kind: "target_card" });
-      }
+      await attachScreenshot(testInfo, `${title.toLowerCase().replaceAll(" ", "-")}-shared-pool-${viewport.width}x${viewport.height}`, page);
     });
   }
 }
 
-test("real Burning Bridge Hand + Equipment omits Judgment and balances the full Hand row", async ({ page, request }, testInfo) => {
+test("real Burning Bridge omits empty Judgement and keeps available zones in tabs", async ({ browser, request }, testInfo) => {
   const viewport = { width: 390, height: 844 };
-  const { dialog } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, judgement: false });
-  const zones = dialog.locator(".target-card-picker-zones");
-  const positions = dialog.locator('[data-target-card-zone="hand-position"]');
-  await expect(zones).toHaveAttribute("data-zone-composition", "hand-equipment");
-  await expect(dialog.locator(".target-card-picker-zone-judgement")).toHaveCount(0);
-  await expect(positions).toHaveCount(4);
-  const [zoneMetrics, rowBox, boxes] = await Promise.all([
-    zones.evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight })),
-    dialog.locator('.target-card-picker-zone-hand .target-card-picker-card-row').boundingBox(),
-    positions.evaluateAll((elements) => elements.map((element) => {
-      const { x, width } = element.getBoundingClientRect();
-      return { x, width };
-    })),
-  ]);
-  expect(zoneMetrics.scrollHeight).toBeLessThanOrEqual(zoneMetrics.clientHeight + 1);
-  expect(boxes.every((box) => box.x >= rowBox.x - 1 && box.x + box.width <= rowBox.x + rowBox.width + 1)).toBe(true);
+  const page = await browser.newPage({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const { dialog: pool } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, judgement: false });
+  const tabs = pool.getByRole("tab");
+  await expect(tabs).toHaveCount(2);
+  await expect(tabs.nth(0)).toHaveText("HAND 4");
+  await expect(tabs.nth(1)).toHaveText("EQUIPMENT 2");
+  await expect(pool.getByRole("tab", { name: /JUDGEMENT/i })).toHaveCount(0);
+  await expect(pool.locator(".card-pool-panel__target-row")).toHaveCount(1);
+  await tapMobile(page, tabs.nth(1));
+  await expect(pool.locator(".card-pool-panel__target-row .card-pool-panel__target-choice")).toHaveCount(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
-  await attachScreenshot(testInfo, "burning-bridge-hand-equipment-no-empty-judgment-390", page);
+  await attachScreenshot(testInfo, "burning-bridge-hand-equipment-tabs-390", page);
 });
 
-test("real Burning Bridge one-card Hand-only choice fits and submits an anonymous position", async ({ page, request }, testInfo) => {
+test("real Burning Bridge one-card Hand-only choice submits the anonymous position", async ({ browser, request }, testInfo) => {
   const viewport = { width: 390, height: 700 };
-  const { dialog, actorView } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 1, equipment: false, judgement: false });
-  const zones = dialog.locator(".target-card-picker-zones");
-  const handCard = dialog.getByRole("button", { name: "Hidden hand card 1", exact: true });
-  const use = dialog.getByRole("button", { name: "Use Burning Bridge" });
-  await expect(zones).toHaveAttribute("data-zone-composition", "hand");
-  await expect(zones).toHaveAttribute("data-zone-count", "1");
-  await expect(dialog.locator(".target-card-picker-zone-equipment, .target-card-picker-zone-judgement")).toHaveCount(0);
+  const page = await browser.newPage({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const { dialog: pool, actorView } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 1, equipment: false, judgement: false });
+  const handCard = pool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
+  const use = pool.getByRole("button", { name: "Use Burning Bridge", exact: true });
+  await expect(pool.getByRole("tab")).toHaveCount(0);
   expect(actorView.currentAction.targetCardSelection.eligibleKeys).toEqual(["hand:0"]);
   await expect(handCard).toBeVisible();
-  await expect(handCard).toBeEnabled();
   await expect(use).toBeDisabled();
-  await handCard.click();
+  await tapMobile(page, handCard);
   await expect(handCard).toHaveAttribute("aria-pressed", "true");
   await expect(use).toBeEnabled();
 
@@ -1612,7 +1630,7 @@ test("real Burning Bridge one-card Hand-only choice fits and submits an anonymou
     try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
     catch { return false; }
   });
-  await use.click();
+  await tapMobile(page, use);
   const submitted = await submitPromise;
   expect(submitted.ok()).toBe(true);
   expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
@@ -1621,18 +1639,16 @@ test("real Burning Bridge one-card Hand-only choice fits and submits an anonymou
   await attachScreenshot(testInfo, "burning-bridge-one-card-hand-only-390x700", page);
 });
 
-test("real Burning Bridge equipment-only choice omits empty Hand and Judgment groups", async ({ page, request }, testInfo) => {
+test("real Burning Bridge equipment-only choice omits empty zones and submits the public card", async ({ browser, request }, testInfo) => {
   const viewport = { width: 390, height: 700 };
-  const { seed, dialog, armor } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 0, judgement: false });
-  const zones = dialog.locator(".target-card-picker-zones");
-  const equipmentCard = dialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true });
-  const use = dialog.getByRole("button", { name: "Use Burning Bridge" });
-  await expect(zones).toHaveAttribute("data-zone-composition", "equipment");
-  await expect(zones).toHaveAttribute("data-zone-count", "1");
-  await expect(dialog.locator(".target-card-picker-zone-hand, .target-card-picker-zone-judgement")).toHaveCount(0);
-  await expect(dialog.locator('[data-target-card-zone="equipment"]')).toHaveCount(2);
+  const page = await browser.newPage({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const { seed, dialog: pool, armor } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 0, judgement: false });
+  const equipmentCard = pool.getByRole("button", { name: "Equipment: Nio Shield", exact: true });
+  const use = pool.getByRole("button", { name: "Use Burning Bridge", exact: true });
+  await expect(pool.getByRole("tab")).toHaveCount(0);
+  await expect(pool.locator(".card-pool-panel__target-row .card-pool-panel__target-choice")).toHaveCount(2);
   await expect(use).toBeDisabled();
-  await equipmentCard.click();
+  await tapMobile(page, equipmentCard);
   await expect(equipmentCard).toHaveAttribute("aria-pressed", "true");
   await expect(use).toBeEnabled();
 
@@ -1641,7 +1657,7 @@ test("real Burning Bridge equipment-only choice omits empty Hand and Judgment gr
     try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
     catch { return false; }
   });
-  await use.click();
+  await tapMobile(page, use);
   const submitted = await submitPromise;
   expect(submitted.ok()).toBe(true);
   expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
@@ -1651,45 +1667,15 @@ test("real Burning Bridge equipment-only choice omits empty Hand and Judgment gr
   expect((await roomView(request, seed, 0)).currentAction?.kind).not.toBe("target_card");
 });
 
-test("real Burning Bridge Hand-only target uses the full modal width for four anonymous positions", async ({ page, request }, testInfo) => {
+test("real Burning Bridge Hand-only pool scrolls horizontally without page overflow", async ({ browser, request }, testInfo) => {
   const viewport = { width: 390, height: 844 };
-  const { dialog } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, equipment: false, judgement: false });
-  const zones = dialog.locator(".target-card-picker-zones");
-  const handZone = dialog.locator(".target-card-picker-zone-hand");
-  const row = handZone.locator(".target-card-picker-card-row");
-  const positions = dialog.locator('[data-target-card-zone="hand-position"]');
-  const [dialogBox, zoneBox, rowBox, boxes, zoneMetrics] = await Promise.all([
-    dialog.boundingBox(), handZone.boundingBox(), row.boundingBox(),
-    positions.evaluateAll((elements) => elements.map((element) => {
-      const { x, width, height } = element.getBoundingClientRect();
-      return { x, width, height };
-    })),
-    zones.evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight })),
-  ]);
-  expect(dialogBox && zoneBox && rowBox && boxes.length === 4).toBeTruthy();
-  await expect(zones).toHaveAttribute("data-zone-composition", "hand");
-  expect(zoneBox.width).toBeGreaterThan(dialogBox.width * 0.84);
-  expect(zoneMetrics.scrollHeight).toBeLessThanOrEqual(zoneMetrics.clientHeight + 1);
-  expect(boxes.every((box) => box.width >= 44 && box.height >= 44)).toBe(true);
-  expect(boxes.every((box) => box.x >= rowBox.x - 1 && box.x + box.width <= rowBox.x + rowBox.width + 1)).toBe(true);
-  const compositionCenter = (boxes[0].x + boxes.at(-1).x + boxes.at(-1).width) / 2;
-  expect(Math.abs(compositionCenter - (rowBox.x + rowBox.width / 2))).toBeLessThanOrEqual(1);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
-  await attachScreenshot(testInfo, "burning-bridge-hand-only-four-visible-390", page);
-});
-
-test("real Burning Bridge larger Hand shows deliberate contained scrolling without page overflow", async ({ page, request }, testInfo) => {
-  const viewport = { width: 390, height: 844 };
-  const { dialog, actorView } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 10, equipment: false, judgement: false });
-  const zones = dialog.locator(".target-card-picker-zones");
-  const row = dialog.locator('.target-card-picker-zone-hand .target-card-picker-card-row');
-  const positions = dialog.locator('[data-target-card-zone="hand-position"]');
+  const page = await browser.newPage({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const { dialog: pool, actorView } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 10, equipment: false, judgement: false });
+  const row = pool.locator(".card-pool-panel__target-row");
+  const positions = pool.locator('.card-pool-panel__target-choice[data-choice-key-type="concealed-position"]');
   const geometry = await row.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
   expect(actorView.currentAction.targetCardSelection.eligibleKeys).toEqual(Array.from({ length: 10 }, (_, index) => `hand:${index}`));
-  await expect(zones).toHaveAttribute("data-zone-composition", "hand");
   await expect(positions).toHaveCount(10);
-  await expect(row).toHaveAttribute("data-hand-scrollable", "true");
-  await expect(dialog.getByText("Swipe to see all", { exact: true })).toBeHidden();
   expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
   const lastPosition = positions.last();
@@ -1697,7 +1683,6 @@ test("real Burning Bridge larger Hand shows deliberate contained scrolling witho
   const [lastBox, rowBox] = await Promise.all([lastPosition.boundingBox(), row.boundingBox()]);
   expect(lastBox.x).toBeGreaterThanOrEqual(rowBox.x - 1);
   expect(lastBox.x + lastBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
-  await expect(dialog.getByRole("button", { name: "Use Burning Bridge" })).toBeDisabled();
-  await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+  await expect(pool.getByRole("button", { name: "Use Burning Bridge", exact: true })).toBeDisabled();
   await attachScreenshot(testInfo, "burning-bridge-large-hand-contained-overflow-390", page);
 });

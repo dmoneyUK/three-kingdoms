@@ -6469,3 +6469,215 @@
 .game-shell .public-card-display-journey > .public-card-journey-card.is-response-history-owner-pending {
   visibility: hidden !important;
 }
+
+/* UX2 §10.22.3 S3: Steal and Burning Bridges use the shared battlefield pool
+   without a modal backdrop. Only the panel accepts input; switching seats,
+   inspecting opponents, and the dock remain reachable around it. */
+.game-shell .play-table > .card-pool-target-stage {
+  z-index: 26;
+}
+
+.game-shell .card-pool-panel--actor-target-select.harvest-choice-panel {
+  box-sizing: border-box;
+  align-items: flex-start;
+  width: max-content;
+  min-width: 0;
+  max-width: min(calc(100vw - 16px), 520px);
+  padding: 6px;
+  gap: 5px;
+}
+
+.game-shell .play-table[data-seat-topology="side-column"] .card-pool-panel--actor-target-select.harvest-choice-panel {
+  width: max-content;
+  max-width: 100%;
+}
+
+.game-shell .card-pool-panel__tabs {
+  display: flex;
+  flex: 0 0 auto;
+  width: max-content;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x;
+}
+
+.game-shell .card-pool-panel__tabs::-webkit-scrollbar { display: none; }
+
+.game-shell .card-pool-panel__tab {
+  flex: 1 0 auto;
+  min-width: 72px;
+  min-height: 44px;
+  padding: 5px 8px;
+  border: 1px solid #675532;
+  background: #11140e;
+  color: #c4b486;
+  font: 700 8px/1.15 Arial, sans-serif;
+  letter-spacing: .04em;
+  text-align: center;
+  touch-action: manipulation;
+}
+
+.game-shell .card-pool-panel__tab[aria-selected="true"] {
+  border-color: #e3c36e;
+  background: #382d17;
+  color: #ffe5a5;
+  box-shadow: inset 0 0 0 1px #e3c36e55;
+}
+
+.game-shell .card-pool-panel__tabpanel {
+  width: max-content;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.game-shell .card-pool-panel__target-row {
+  width: max-content;
+  max-width: 100%;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 4px 2px 6px;
+  touch-action: pan-x;
+}
+
+.game-shell .card-pool-panel__target-choice {
+  flex: 0 0 var(--hand-card-face-width);
+  width: var(--hand-card-face-width);
+  height: var(--hand-card-face-height);
+  overflow: visible;
+}
+
+.game-shell .card-pool-panel__concealed,
+.game-shell .card-pool-panel__random-hand {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid #9b804d;
+  border-radius: 5px;
+  background: repeating-linear-gradient(45deg, #242b21, #242b21 7px, #171b15 7px, #171b15 14px);
+  color: #f0d28c;
+  font: 700 8px/1.15 Arial, sans-serif;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.game-shell .card-pool-panel__concealed > b,
+.game-shell .card-pool-panel__random-hand > b {
+  font: 700 28px/1 Georgia, serif;
+}
+
+.game-shell .card-pool-panel__concealed > small,
+.game-shell .card-pool-panel__random-hand > small {
+  max-width: 100%;
+  font: 700 6px/1.15 Arial, sans-serif;
+  letter-spacing: .04em;
+}
+
+.game-shell .card-pool-panel__target-choice.pending-choice .card-pool-panel__concealed,
+.game-shell .card-pool-panel__target-choice.pending-choice .card-pool-panel__random-hand {
+  outline: 2px solid #f2ca65;
+  outline-offset: -3px;
+}
+
+.game-shell .card-pool-panel__target-select {
+  z-index: 3;
+}
+
+.game-shell .card-pool-panel__target-info {
+  z-index: 4;
+}
+
+.game-shell .card-pool-panel__target-selected {
+  position: absolute;
+  z-index: 2;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  border: 1px solid #f2ca65;
+  border-radius: 50%;
+  background: #70531de8;
+  color: #fff2cb;
+  font: 700 11px/1 Arial, sans-serif;
+  pointer-events: none;
+}
+
+.game-shell .card-pool-panel__selected-zone {
+  flex: 0 0 auto;
+  margin: 0;
+  color: #e9d08f;
+  font: 600 8px/1.2 Arial, sans-serif;
+}
+
+.game-shell .card-pool-panel--actor-target-select .card-pool-panel__footer {
+  width: max-content;
+  max-width: 100%;
+  min-height: 44px;
+  gap: 6px;
+}
+
+.game-shell .card-pool-panel--actor-target-select .card-pool-panel__confirm {
+  min-width: min(150px, 50%);
+  min-height: 44px;
+  max-width: 62%;
+  overflow: hidden;
+  padding-inline: 8px;
+  text-overflow: ellipsis;
+}
+
+.game-shell .card-pool-panel__error {
+  flex: 0 0 auto;
+  margin: 0;
+  font: 9px/1.25 Arial, sans-serif;
+}
+
+@media (max-width: 360px) {
+  .game-shell .card-pool-panel--actor-target-select { padding: 4px; }
+  .game-shell .card-pool-panel__tab { min-width: 66px; padding-inline: 5px; }
+  .game-shell .card-pool-panel__target-row { gap: 3px; padding-inline: 0; }
+}
+
+@media (max-width: 520px) {
+  /* Keep a full-width timer/system cluster clear by using its left-side lane. */
+  .game-shell .play-table:has(.visible-countdown) > .card-pool-target-stage {
+    box-sizing: border-box;
+    justify-content: flex-start;
+    padding-inline: 6px;
+  }
+  .game-shell .play-table:has(.visible-countdown) .card-pool-panel--actor-target-select.harvest-choice-panel {
+    max-width: calc(100vw - 80px);
+  }
+
+  /* A live public root remains in the centre while an actor chooses its target.
+     Use the clear left lane on phones so the pool cannot cover that card. */
+  .game-shell:has(.public-card-journey-card.is-current) .play-table > .card-pool-target-stage {
+    box-sizing: border-box;
+    justify-content: flex-start;
+    padding-inline: 8px;
+  }
+  .game-shell:has(.public-card-journey-card.is-current) .card-pool-panel--actor-target-select.harvest-choice-panel {
+    max-width: calc((100vw - 90px) / 2 - 8px);
+  }
+  .game-shell:has(.public-card-journey-card.is-current) .card-pool-panel--actor-target-select .card-pool-panel__footer {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+  .game-shell:has(.public-card-journey-card.is-current) .card-pool-panel--actor-target-select .card-pool-panel__confirm {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}

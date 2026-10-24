@@ -23,8 +23,8 @@ import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSele
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus } from "../game/public-activity";
 import { CardFace } from "./card-face";
-import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice } from "./card-pool-panel";
-import { BattlefieldChoiceStage, chooseBattlefieldChoiceInsets, chooseBattlefieldChoiceTopOffset } from "./battlefield-choice-stage";
+import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
+import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
 import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, harvestNegationDecisionCopy, publicCardActionKey, type PublicCardDisplayAction, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
@@ -2251,9 +2251,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const handViewportSnapshotRef = useRef<HandViewportSnapshot | null>(null);
   const [handRailWidth, setHandRailWidth] = useState(0);
   const [harvestDraft, setHarvestDraft] = useState<{ viewerId: string; actorId: string; actionRevision: string; cardId: string } | null>(null);
-  const harvestStageRef = useRef<HTMLDivElement | null>(null);
-  const [harvestStageTop, setHarvestStageTop] = useState<number | null>(null);
-  const [harvestStageInsets, setHarvestStageInsets] = useState<{ left: number; right: number } | null>(null);
   const [harvestSubmitting, setHarvestSubmitting] = useState<{ cardId: string; playerId: string; playerName: string } | null>(null);
   const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
   const [optimisticPlay, setOptimisticPlay] = useState<GameEvent | null>(null);
@@ -2267,6 +2264,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [targetCardIndex, setTargetCardIndex] = useState<number | null>(null);
   const [targetCardZone, setTargetCardZone] = useState<"hand" | "equipment" | "judgement" | "">("");
   const [targetCardId, setTargetCardId] = useState("");
+  const [pendingTargetCardActiveZone, setPendingTargetCardActiveZone] = useState<TargetCardPoolZone["id"]>("hand");
   const [triggerSelectedKeys, setTriggerSelectedKeys] = useState<string[]>([]);
   const targetCardSubmissionRef = useRef("");
   const targetCardPickerSubmissionRef = useRef("");
@@ -2307,122 +2305,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const harvestReadOnlyDuringNegation = Boolean(room.publicHarvestPool && !room.pendingHarvest);
   const harvestPending = Boolean(harvestDisplay);
   const harvestActorId = room.pendingHarvest?.actorId ?? "";
-  useLayoutEffect(() => {
-    if (!harvestPending) {
-      setHarvestStageInsets((current) => current ? null : current);
-      return;
-    }
-    const stage = harvestStageRef.current;
-    const table = stage?.closest<HTMLElement>(".play-table");
-    if (!stage || !table) return;
-    let frame = 0;
-    const observed = new Set<Element>();
-    let observer: ResizeObserver | null = null;
-    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
-      observeLayout();
-      measure();
-    });
-    const protectedSelectors = [
-      ".player-board > .opponent-player-card",
-      ".public-card-display-journey-copy",
-      ".public-activity-chip",
-      "[data-public-activity-chip]",
-      ".visible-countdown",
-      ".stage-system-cluster",
-      ".opponent-inspection-floating-shell",
-      ".local-player-dock",
-      ".local-hand-section",
-      ".turn-controls",
-    ];
-    const observeLayout = () => {
-      for (const node of [table, stage, stage.querySelector(".harvest-choice-panel"), ...protectedSelectors.flatMap((selector) => [...document.querySelectorAll(selector)])]) {
-        if (!node || observed.has(node)) continue;
-        observed.add(node);
-        observer?.observe(node);
-      }
-    };
-    const measure = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        const tableRect = table.getBoundingClientRect();
-        const panel = stage.querySelector<HTMLElement>(".harvest-choice-panel");
-        if (!panel || tableRect.width <= 0 || tableRect.height <= 0) return;
-        const panelRect = panel.getBoundingClientRect();
-        if (panelRect.width <= 0 || panelRect.height <= 0) return;
-
-        const margin = 6;
-        const compactFiveSeatPhoneActor = room.players.length === 5
-          && window.matchMedia("(max-width: 400px)").matches
-          && panel.classList.contains("harvest-choice-panel--actor");
-        if (compactFiveSeatPhoneActor) {
-          const board = table.querySelector<HTMLElement>(".player-board[data-player-count='5']");
-          const leftSeats = [...(board?.querySelectorAll<HTMLElement>(":scope > [data-side-column='left']") ?? [])]
-            .map((seat) => seat.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
-          const rightSeats = [...(board?.querySelectorAll<HTMLElement>(":scope > [data-side-column='right']") ?? [])]
-            .map((seat) => seat.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
-          const timer = table.querySelector<HTMLElement>(".stage-system-cluster .visible-countdown-event");
-          const timerRect = timer?.getBoundingClientRect();
-          const timerStyle = timer ? window.getComputedStyle(timer) : null;
-          const timerVisible = Boolean(timerRect && timerStyle?.display !== "none" && timerStyle?.visibility !== "hidden"
-            && timerRect.width > 0 && timerRect.height > 0);
-          const requiredButton = panel.querySelector<HTMLElement>(".harvest-confirm-row > .primary");
-          const footer = panel.querySelector<HTMLElement>(".harvest-confirm-row");
-          const panelStyle = window.getComputedStyle(panel);
-          const footerStyle = footer ? window.getComputedStyle(footer) : null;
-          const cssPixels = (value: string | undefined) => Number.parseFloat(value ?? "0") || 0;
-          const requiredWidth = requiredButton && footerStyle
-            ? cssPixels(window.getComputedStyle(requiredButton).minWidth)
-              + cssPixels(footerStyle.columnGap || footerStyle.gap)
-              + cssPixels(footerStyle.paddingLeft) + cssPixels(footerStyle.paddingRight)
-              + cssPixels(panelStyle.paddingLeft) + cssPixels(panelStyle.paddingRight)
-              + cssPixels(panelStyle.borderLeftWidth) + cssPixels(panelStyle.borderRightWidth)
-            : Number.POSITIVE_INFINITY;
-          const insets = chooseBattlefieldChoiceInsets({
-            table: tableRect,
-            leftSeats,
-            rightSeats,
-            timer: timerVisible ? timerRect! : null,
-            requiredWidth,
-            margin,
-          });
-          setHarvestStageInsets((current) => current?.left === insets?.left && current?.right === insets?.right
-            ? current : insets);
-        } else {
-          setHarvestStageInsets((current) => current ? null : current);
-        }
-        const obstacles = [...new Set(protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]))]
-          .filter((element) => element !== stage && !stage.contains(element))
-          .map((element) => ({ element, rect: element.getBoundingClientRect() }))
-          .filter(({ element, rect }) => {
-            const style = window.getComputedStyle(element);
-            return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
-              && panelRect.left < rect.right + margin && panelRect.right > rect.left - margin;
-          });
-
-        const offset = chooseBattlefieldChoiceTopOffset({
-          table: tableRect,
-          panel: panelRect,
-          obstacles: obstacles.map(({ rect }) => rect),
-          viewportHeight: window.innerHeight,
-          margin,
-        });
-        setHarvestStageTop((current) => current === offset ? current : offset);
-      });
-    };
-    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    observeLayout();
-    measure();
-    window.addEventListener("resize", measure);
-    window.visualViewport?.addEventListener("resize", measure);
-    mutationObserver?.observe(table, { childList: true, subtree: true, characterData: true });
-    return () => {
-      window.removeEventListener("resize", measure);
-      window.visualViewport?.removeEventListener("resize", measure);
-      observer?.disconnect();
-      mutationObserver?.disconnect();
-      window.cancelAnimationFrame(frame);
-    };
-  }, [harvestPending, harvestActorId, room.players.length, room.meId, expandedOpponentId]);
+  const harvestPlacement = useBattlefieldChoicePlacement({
+    enabled: harvestPending,
+    playerCount: room.players.length,
+    placementKey: [room.code, room.meId, harvestActorId, harvestDisplay?.revealEventId ?? "", expandedOpponentId ?? ""].join("\u001f"),
+  });
+  const harvestStageRef = harvestPlacement.ref;
+  const harvestStageTop = harvestPlacement.top;
+  const harvestStageInsets = harvestPlacement.insets;
   const cardInfoReturnFocusRef = useRef<HTMLElement | null>(null);
   const heroInfoReturnFocusRef = useRef<HTMLElement | null>(null);
   const closeCardDetails = useCallback((restoreFocus = true) => {
@@ -3188,6 +3078,70 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? `hand:${targetCardIndex}`
     : targetCardId;
   const pendingTargetCardSelectedKeys = pendingTargetCardSelectedKey ? [pendingTargetCardSelectedKey] : [];
+  const pendingTargetCardPoolZones: TargetCardPoolZone[] = pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget
+    && supportsAuthoritativeTargetCardSelection(pendingTargetCardSelectableSelection, pendingTargetCardSelectableTarget)
+    ? (() => {
+      const eligible = new Set(pendingTargetCardSelectableSelection.eligibleKeys);
+      const handKeys = pendingTargetCardSelectableSelection.eligibleKeys.filter((key) => /^hand:(0|[1-9]\d*)$/.test(key));
+      const handChoices = eligible.has("hand")
+        ? [{
+          type: "random-hand-zone" as const,
+          opaqueKey: "hand" as const,
+          accessibleLabel: `Choose one random card from Hand, ${pendingTargetCardSelectableTarget.handCount} cards`,
+          totalPublicHandCount: pendingTargetCardSelectableTarget.handCount,
+          state: pendingTargetCardSelectedKeys.includes("hand") ? "selected" as const : "available" as const,
+        }]
+        : handKeys.map((key) => {
+          const position = Number(key.slice(5));
+          return {
+            type: "concealed-position" as const,
+            opaqueKey: key,
+            accessibleLabel: `Choose hidden Hand position ${position + 1}`,
+            position,
+            state: pendingTargetCardSelectedKeys.includes(key) ? "selected" as const : "available" as const,
+          };
+        });
+      const equipmentChoices = pendingTargetCardSelectableTarget.equipmentCards
+        .filter((item) => eligible.has(item.id))
+        .map((publicCardFace) => ({
+          type: "public-card" as const,
+          eligibleKey: publicCardFace.id,
+          publicCardFace,
+          cardName: cardDefinition(publicCardFace.kind).name,
+          accessibleLabel: `Equipment: ${cardDefinition(publicCardFace.kind).name}`,
+          state: pendingTargetCardSelectedKeys.includes(publicCardFace.id) ? "selected" as const : "available" as const,
+        }));
+      const judgementChoices = pendingTargetCardSelectableTarget.judgementCards
+        .filter((item) => eligible.has(item.id))
+        .map((publicCardFace) => ({
+          type: "public-card" as const,
+          eligibleKey: publicCardFace.id,
+          publicCardFace,
+          cardName: cardDefinition(publicCardFace.kind).name,
+          accessibleLabel: `Judgement: ${cardDefinition(publicCardFace.kind).name}`,
+          state: pendingTargetCardSelectedKeys.includes(publicCardFace.id) ? "selected" as const : "available" as const,
+        }));
+      return [
+        ...(handChoices.length ? [{ id: "hand" as const, title: `HAND ${pendingTargetCardSelectableTarget.handCount}`, accessibleName: `Hand, ${pendingTargetCardSelectableTarget.handCount} cards`, choices: handChoices }] : []),
+        ...(equipmentChoices.length ? [{ id: "equipment" as const, title: `EQUIPMENT ${equipmentChoices.length}`, accessibleName: `Equipment, ${equipmentChoices.length} eligible cards`, choices: equipmentChoices }] : []),
+        ...(judgementChoices.length ? [{ id: "judgement" as const, title: `JUDGEMENT ${judgementChoices.length}`, accessibleName: `Judgement, ${judgementChoices.length} eligible cards`, choices: judgementChoices }] : []),
+      ];
+    })()
+    : [];
+  const pendingTargetCardPoolResetKey = [room.code, room.meId, room.actionRevision ?? "", pendingTargetCardSelectableSelection?.targetId ?? ""].join("\u001f");
+  const pendingTargetCardPoolFirstZone = pendingTargetCardPoolZones[0]?.id ?? "hand";
+  useEffect(() => {
+    setPendingTargetCardActiveZone(pendingTargetCardPoolFirstZone);
+  }, [pendingTargetCardPoolResetKey, pendingTargetCardPoolFirstZone]);
+  const pendingTargetCardPoolPlacement = useBattlefieldChoicePlacement({
+    enabled: pendingTargetCardUsesUnifiedModal && pendingTargetCardPoolZones.length > 0,
+    playerCount: room.players.length,
+    placementKey: [room.code, room.meId, room.actionRevision ?? "", pendingTargetCardSelectableSelection?.targetId ?? "", ...(pendingTargetCardSelectableSelection?.eligibleKeys ?? [])].join("\u001f"),
+  });
+  const pendingTargetCardSelectedZone = pendingTargetCardPoolZones.find((zone) => zone.choices.some((choice) => {
+    const key = choice.type === "public-card" ? choice.eligibleKey : choice.opaqueKey;
+    return pendingTargetCardSelectedKeys.includes(key);
+  }));
   const submitWithLocalTargetPreview = async (submit: () => Promise<boolean>) => {
     const targetId = [...localTargetSelection.selectedTargetIds].reverse().find((id) => id !== room.meId);
     if (!targetId) {
@@ -3781,7 +3735,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // A response may advance to another decision without changing the turn,
   // phase, or acting seat. The authoritative revision identifies that new
   // decision and prevents a previous provider/cost from leaking into it.
-  useEffect(() => { const timer = setTimeout(() => { setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setResponseProviderId(""); setSelected(""); setTargetIds([]); setBorrowedSwordTargetId(""); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); targetCardSubmissionRef.current = ""; targetCardPickerSubmissionRef.current = ""; }, 0); return () => clearTimeout(timer); }, [room.actionRevision]);
+  useEffect(() => { const timer = setTimeout(() => { setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setResponseProviderId(""); setSelected(""); setTargetIds([]); setBorrowedSwordTargetId(""); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setPendingTargetCardActiveZone("hand"); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); targetCardSubmissionRef.current = ""; targetCardPickerSubmissionRef.current = ""; }, 0); return () => clearTimeout(timer); }, [room.actionRevision]);
   useEffect(() => {
     const nextIdentity = { roomCode: room.code, viewerId: room.meId, actionRevision: room.actionRevision ?? "" };
     const previousIdentity = targetActionIdentityRef.current;
@@ -7606,7 +7560,41 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         {harvestPoolProps && <CardPoolPanel {...harvestPoolProps} />}
       </BattlefieldChoiceStage>}
       <div className="play-center" aria-hidden="true"><div className="draw-stack" data-draw-anchor="true" /><div className="discard-stack" data-discard-anchor="true" /></div>
-      {pendingTargetCardUsesUnifiedModal && pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget && supportsAuthoritativeTargetCardSelection(pendingTargetCardSelectableSelection, pendingTargetCardSelectableTarget) && room.pendingTargetCard && pendingTargetCardActionName && <TargetCardPicker option={null} presentationCopy={{ title: pendingTargetCardActionName, accessibleName: `${pendingTargetCardActionName} target card selection`, instruction: room.pendingTargetCard.cardKind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard", actionLabel: `Use ${pendingTargetCardActionName}` }} selection={pendingTargetCardSelectableSelection} target={pendingTargetCardSelectableTarget} selectedKeys={pendingTargetCardSelectedKeys} disabled={busy || !canUseAction(room.currentAction, "choose_target_card")} canDecline={false} showCancel={false} allowPublicCardInfo error={error} onToggle={togglePendingTargetCardSelection} onUse={submitPendingTargetCardPicker} onCancel={clearPendingTargetCardSelection} onDecline={() => undefined} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} />}
+      {pendingTargetCardUsesUnifiedModal && pendingTargetCardPoolZones.length > 0 && pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget && room.pendingTargetCard && pendingTargetCardActionName && <BattlefieldChoiceStage
+        key={`${room.actionRevision ?? ""}:${pendingTargetCardSelectableTarget.id}`}
+        ref={pendingTargetCardPoolPlacement.ref}
+        className="game-event-stage harvest-choice-stage card-pool-target-stage"
+        mode="actor-target-select"
+        accessibilityLabel={`${pendingTargetCardActionName} target card selection`}
+        data-target-card-choice-actor={room.meId}
+        data-target-card-choice-target={pendingTargetCardSelectableTarget.id}
+        data-target-card-choice-action-revision={room.actionRevision ?? undefined}
+        data-target-card-pool-top={pendingTargetCardPoolPlacement.top ?? undefined}
+        style={{
+          top: pendingTargetCardPoolPlacement.top === null ? undefined : `${pendingTargetCardPoolPlacement.top}px`,
+          left: pendingTargetCardPoolPlacement.insets ? `${pendingTargetCardPoolPlacement.insets.left}px` : undefined,
+          right: pendingTargetCardPoolPlacement.insets ? `${pendingTargetCardPoolPlacement.insets.right}px` : undefined,
+        }}
+      >
+        <CardPoolPanel
+          mode="actor-target-select"
+          title={pendingTargetCardActionName}
+          instruction={room.pendingTargetCard.cardKind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard"}
+          accessibilityLabel={`${pendingTargetCardActionName} target card selection`}
+          zones={pendingTargetCardPoolZones}
+          activeZone={pendingTargetCardActiveZone}
+          onActiveZoneChange={setPendingTargetCardActiveZone}
+          selectionCount={`${pendingTargetCardSelectedKeys.length} / ${pendingTargetCardSelectableSelection.max} selected`}
+          selectedZoneMessage={pendingTargetCardSelectedZone ? `Selection retained · ${pendingTargetCardSelectedZone.title}` : undefined}
+          actionLabel={`Use ${pendingTargetCardActionName}`}
+          disabled={busy || !canUseAction(room.currentAction, "choose_target_card")}
+          confirmDisabled={busy || !pendingTargetCardSelectionComplete || !canUseAction(room.currentAction, "choose_target_card")}
+          error={error}
+          onToggle={togglePendingTargetCardSelection}
+          onConfirm={() => submitPendingTargetCardPicker(pendingTargetCardSelectedKeys)}
+          onInfo={(card, trigger) => openCardDetails(card, "public-zone", trigger)}
+        />
+      </BattlefieldChoiceStage>}
       {targetCardPickerInModal && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && <TargetCardPicker option={targetCardPickerOption} compact={targetCardPickerOption.effectId === "sima_yi_fankui"} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={triggerControlsDisabled} canDecline={Boolean(consoleDecision.authoritativeDecline)} showCancel={targetCardPickerOption.effectId !== "sima_yi_fankui" && (targetCardPickerUsesUnifiedModal || consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId))} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={submitTargetCardPicker} onCancel={cancelTargetCardPicker} onDecline={() => onAction("decline_trigger")} />}
       {triggerResponse && responseDecisionReady && choiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={choiceTriggerOption} selection={choiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={triggerControlsDisabled} error={error} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => { const validKeys = triggerSelectedKeys.filter((selectedKey) => choiceTriggerOption.selection?.type === "choice" && choiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = choiceTriggerOption.selection?.type === "choice" ? choiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; setTriggerSelectedKeys(validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys); }} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: choiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}

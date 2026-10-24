@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, type ComponentPropsWithoutRef, type CSSProperties, type ReactNode } from "react";
+import { forwardRef, useLayoutEffect, useRef, useState, type ComponentPropsWithoutRef, type CSSProperties, type ReactNode } from "react";
 
 export type BattlefieldChoiceRect = Pick<DOMRect, "left" | "top" | "right" | "bottom" | "width" | "height">;
 
@@ -8,7 +8,7 @@ export type BattlefieldChoiceInsets = { left: number; right: number };
 
 type BattlefieldChoiceStageProps = Omit<ComponentPropsWithoutRef<"div">, "children" | "className" | "style" | "title"> & {
   className: string;
-  mode: "public-readonly" | "actor-select";
+  mode: "public-readonly" | "actor-select" | "actor-target-select";
   accessibilityLabel?: string;
   title?: string;
   instruction?: string;
@@ -46,6 +46,145 @@ export const BattlefieldChoiceStage = forwardRef<HTMLDivElement, BattlefieldChoi
     {footer}
   </div>;
 });
+
+type BattlefieldChoicePlacementOptions = {
+  enabled: boolean;
+  playerCount: number;
+  placementKey: string;
+};
+
+/** Measures the shared panel and places it in Harvest's current safe battlefield corridor. */
+export function useBattlefieldChoicePlacement({ enabled, playerCount, placementKey }: BattlefieldChoicePlacementOptions) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [top, setTop] = useState<number | null>(null);
+  const [insets, setInsets] = useState<BattlefieldChoiceInsets | null>(null);
+
+  useLayoutEffect(() => {
+    if (!enabled) {
+      const resetFrame = window.requestAnimationFrame(() => {
+        setTop(null);
+        setInsets(null);
+      });
+      return () => window.cancelAnimationFrame(resetFrame);
+    }
+    const stage = ref.current;
+    const table = stage?.closest<HTMLElement>(".play-table");
+    if (!stage || !table) return;
+    let frame = 0;
+    const observed = new Set<Element>();
+    let observer: ResizeObserver | null = null;
+    const targetCardSelect = stage.dataset.choiceMode === "actor-target-select";
+    const protectedSelectors = [
+      ".player-board > .opponent-player-card",
+      ".public-card-display-journey-copy",
+      ...(targetCardSelect ? [".public-card-journey-card.is-current"] : []),
+      ".public-activity-chip",
+      "[data-public-activity-chip]",
+      ".visible-countdown",
+      ".stage-system-cluster",
+      ".opponent-inspection-floating-shell",
+      ".local-player-dock",
+      ".local-hand-section",
+      ".turn-controls",
+    ];
+    const measure = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const tableRect = table.getBoundingClientRect();
+        const panel = stage.querySelector<HTMLElement>(".card-pool-panel, .harvest-choice-panel");
+        if (!panel || tableRect.width <= 0 || tableRect.height <= 0) return;
+        const panelRect = panel.getBoundingClientRect();
+        if (panelRect.width <= 0 || panelRect.height <= 0) return;
+
+        const margin = 6;
+        const actorSelect = stage.dataset.choiceMode === "actor-select" || stage.dataset.choiceMode === "actor-target-select";
+        const compactFiveSeatPhoneActor = playerCount === 5
+          && window.matchMedia("(max-width: 400px)").matches
+          && actorSelect;
+        if (compactFiveSeatPhoneActor) {
+          const board = table.querySelector<HTMLElement>(".player-board[data-player-count='5']");
+          const leftSeats = [...(board?.querySelectorAll<HTMLElement>(":scope > [data-side-column='left']") ?? [])]
+            .map((seat) => seat.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
+          const rightSeats = [...(board?.querySelectorAll<HTMLElement>(":scope > [data-side-column='right']") ?? [])]
+            .map((seat) => seat.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
+          const timer = table.querySelector<HTMLElement>(".stage-system-cluster .visible-countdown-event");
+          const timerRect = timer?.getBoundingClientRect();
+          const timerStyle = timer ? window.getComputedStyle(timer) : null;
+          const timerVisible = Boolean(timerRect && timerStyle?.display !== "none" && timerStyle?.visibility !== "hidden"
+            && timerRect.width > 0 && timerRect.height > 0);
+          const requiredButton = panel.querySelector<HTMLElement>(".card-pool-panel__footer > .primary, .harvest-confirm-row > .primary");
+          const footer = panel.querySelector<HTMLElement>(".card-pool-panel__footer, .harvest-confirm-row");
+          const panelStyle = window.getComputedStyle(panel);
+          const footerStyle = footer ? window.getComputedStyle(footer) : null;
+          const cssPixels = (value: string | undefined) => Number.parseFloat(value ?? "0") || 0;
+          const requiredWidth = requiredButton && footerStyle
+            ? cssPixels(window.getComputedStyle(requiredButton).minWidth)
+              + cssPixels(footerStyle.columnGap || footerStyle.gap)
+              + cssPixels(footerStyle.paddingLeft) + cssPixels(footerStyle.paddingRight)
+              + cssPixels(panelStyle.paddingLeft) + cssPixels(panelStyle.paddingRight)
+              + cssPixels(panelStyle.borderLeftWidth) + cssPixels(panelStyle.borderRightWidth)
+            : Number.POSITIVE_INFINITY;
+          const nextInsets = chooseBattlefieldChoiceInsets({
+            table: tableRect,
+            leftSeats,
+            rightSeats,
+            timer: timerVisible ? timerRect! : null,
+            requiredWidth,
+            margin,
+          });
+          setInsets((current) => current?.left === nextInsets?.left && current?.right === nextInsets?.right ? current : nextInsets);
+        } else {
+          setInsets((current) => current ? null : current);
+        }
+
+        const obstacles = [...new Set(protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]))]
+          .filter((element) => element !== stage && !stage.contains(element))
+          .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+          .filter(({ element, rect }) => {
+            const style = window.getComputedStyle(element);
+            return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
+              && panelRect.left < rect.right + margin && panelRect.right > rect.left - margin;
+          });
+        const offset = chooseBattlefieldChoiceTopOffset({
+          table: tableRect,
+          panel: panelRect,
+          obstacles: obstacles.map(({ rect }) => rect),
+          viewportHeight: window.innerHeight,
+          margin,
+        });
+        setTop((current) => current === offset ? current : offset);
+      });
+    };
+    const observeLayout = () => {
+      const nodes = [table, stage, stage.querySelector(".card-pool-panel, .harvest-choice-panel"),
+        ...protectedSelectors.flatMap((selector) => [...document.querySelectorAll(selector)])];
+      for (const node of nodes) {
+        if (!node || observed.has(node)) continue;
+        observed.add(node);
+        observer?.observe(node);
+      }
+    };
+    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
+      observeLayout();
+      measure();
+    });
+    observeLayout();
+    measure();
+    window.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("resize", measure);
+    mutationObserver?.observe(table, { attributes: true, childList: true, subtree: true, characterData: true });
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
+      observer?.disconnect();
+      mutationObserver?.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, [enabled, playerCount, placementKey]);
+
+  return { ref, top, insets };
+}
 
 type SideLanePlacementInput = {
   table: BattlefieldChoiceRect;
