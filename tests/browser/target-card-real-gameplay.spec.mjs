@@ -902,7 +902,9 @@ test("settled Steal and Burning Bridges share proven source-to-destination outco
           ? dialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true })
           : dialog.getByRole("button", { name: "Judgement: Lightning", exact: true });
       await expect(option).toBeVisible();
-      await option.click();
+      const optionBox = await option.boundingBox();
+      expect(optionBox, `${effect}/${zone} option has a visible card face`).not.toBeNull();
+      await option.click({ position: { x: optionBox.width / 2, y: Math.min(12, optionBox.height * 0.2) } });
       await expect(option).toHaveAttribute("aria-pressed", "true");
 
       const submitPromise = pages[0].waitForResponse((response) => {
@@ -951,7 +953,7 @@ test("settled Steal and Burning Bridges share proven source-to-destination outco
         ? `${zone === "hand" ? "Peach" : zone === "equipment" ? "Nio Shield" : "Lightning"} (${affected.rank}${affected.suit})`
         : "one card";
       const expectedCopy = effect === "Steal"
-        ? `SOURCE took ${expectedName} from TARGET's ${zone[0].toUpperCase()}${zone.slice(1)} into SOURCE's Hand.`
+        ? `SOURCE took ${zone === "hand" ? "one card" : expectedName} from TARGET.`
         : `SOURCE discarded ${expectedName} from TARGET's ${zone[0].toUpperCase()}${zone.slice(1)} to the discard pile.`;
 
       await Promise.all(pages.map(async (viewerPage, index) => {
@@ -967,6 +969,10 @@ test("settled Steal and Burning Bridges share proven source-to-destination outco
         const announcement = viewerPage.locator('[data-public-card-announcement="true"]');
         await expect(announcement).toHaveCount(1);
         await expect(announcement).toContainText(expectedCopy);
+        if (effect === "Steal") {
+          await expect(announcement).toHaveText(expectedCopy);
+          await expect(announcement).not.toContainText("into SOURCE's Hand");
+        }
         const publicPresenterMarkup = await journey.innerHTML();
         if (effect === "Steal" && zone === "hand") expect(publicPresenterMarkup).not.toContain(hidden.id);
         if (index > 0 && effect === "Steal" && zone === "hand") {
@@ -1648,9 +1654,15 @@ for (const kind of ["Steal", "Dismantle"]) {
       for (const view of negatedViews) {
         expect(view.pendingNegation).toBeNull();
         expect(view.pendingTargetCard).toBeNull();
+        const settlements = kind === "Steal"
+          ? view.presentationSnapshot.stealSettlements
+          : view.presentationSnapshot.dismantleSettlements;
+        expect(settlements).toEqual([], "a Negated root must not publish a successful target-card movement");
       }
       for (const viewerPage of pages) {
         await expect(viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toHaveCount(0, { timeout: 15_000 });
+        const announcements = (await viewerPage.locator('[data-public-card-announcement="true"]').allTextContents()).join(" ");
+        expect(announcements).not.toMatch(/\b(?:took|discarded)\b/i, "Negated roots must not announce a successful target-card movement");
       }
 
       for (const [index, viewerPage] of pages.entries()) {

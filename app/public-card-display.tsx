@@ -1598,8 +1598,19 @@ export function publicCardAnnouncement(
       }
       return `${source} resolved ${cardName} on ${target}.`;
     case "STEAL_RESOLVED":
-      if (targetCardMovement?.destinationZone === "hand" && targetCardSourceZone) {
-        return `${source} took ${targetCardName} from ${target}'s ${targetCardSourceZone} into ${source}'s Hand.`;
+      if (targetCardMovement?.destinationZone === "hand"
+        && targetCardMovement.destinationOwnerId === action.sourceId
+        && action.targetId !== null
+        && (targetCardMovement.sourceZone === "judgement"
+          ? targetCardMovement.affectedCardOwnerId === null
+          : targetCardMovement.affectedCardOwnerId === action.targetId)) {
+        if (targetCardMovement.sourceZone === "hand" && !targetCardFace) {
+          return `${source} took one card from ${target}.`;
+        }
+        if ((targetCardMovement.sourceZone === "equipment" || targetCardMovement.sourceZone === "judgement")
+          && targetCardFace) {
+          return `${source} took ${targetCardName} from ${target}.`;
+        }
       }
       return `${source} resolved ${cardName} on ${target}.`;
     case "ROOT_CANCELLED":

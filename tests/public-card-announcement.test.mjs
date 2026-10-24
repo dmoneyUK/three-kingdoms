@@ -42,7 +42,7 @@ test("public battle announcements keep proof-backed event meaning in concise cop
       targetCardMovement: { sourceZone: "hand", affectedCardOwnerId: "target", destinationZone: "hand", destinationOwnerId: "source" },
     } }),
     "Source played Steal targeting Target", "Source", "Source", "Target",
-  ), "Source took one card from Target's Hand into Source's Hand.");
+  ), "Source took one card from Target.");
 
   assert.equal(publicCardAnnouncement(
     action({ cardLabel: "STEAL", settlement: {
@@ -53,7 +53,45 @@ test("public battle announcements keep proof-backed event meaning in concise cop
       },
     } }),
     "Source played Steal targeting Target", "Source", "Source", "Target",
-  ), "Source took Zhuge Crossbow (A♦) from Target's Equipment into Source's Hand.");
+  ), "Source took Zhuge Crossbow (A♦) from Target.");
+
+  assert.equal(publicCardAnnouncement(
+    action({ cardLabel: "STEAL", settlement: {
+      eventId: "steal-judgement", outcome: "STEAL_RESOLVED", exiting: false,
+      targetCardMovement: {
+        sourceZone: "judgement", affectedCardOwnerId: null, destinationZone: "hand", destinationOwnerId: "source",
+        affectedCardFace: { id: "public-judgement", kind: "Lightning", suit: "♣", rank: "K" },
+      },
+    } }),
+    "Source played Steal targeting Target", "Source", "Source", "Target",
+  ), "Source took Lightning (K♣) from Target.");
+
+  assert.equal(publicCardAnnouncement(
+    action({ cardLabel: "STEAL", settlement: {
+      eventId: "steal-mismatched-judgement", outcome: "STEAL_RESOLVED", exiting: false,
+      targetCardMovement: {
+        sourceZone: "judgement", affectedCardOwnerId: "target", destinationZone: "hand", destinationOwnerId: "source",
+        affectedCardFace: { id: "unproven-judgement", kind: "Lightning", suit: "♣", rank: "K" },
+      },
+    } }),
+    "Source played Steal targeting Target", "Source", "Source", "Target",
+  ), "Source resolved Steal on Target.");
+
+  assert.equal(publicCardAnnouncement(
+    action({ cardLabel: "STEAL", settlement: {
+      eventId: "steal-mismatched-hand", outcome: "STEAL_RESOLVED", exiting: false,
+      targetCardMovement: {
+        sourceZone: "hand", affectedCardOwnerId: "target", destinationZone: "hand", destinationOwnerId: "source",
+        affectedCardFace: { id: "must-stay-private", kind: "Peach", suit: "♥", rank: "7" },
+      },
+    } }),
+    "Source played Steal targeting Target", "Source", "Source", "Target",
+  ), "Source resolved Steal on Target.");
+
+  assert.equal(publicCardAnnouncement(
+    action({ cardLabel: "STEAL", settlement: { eventId: "cancelled-steal", outcome: "ROOT_CANCELLED", exiting: false } }),
+    "Source played Steal targeting Target", "Counter", "Source", "Target",
+  ), "Counter's Negation cancelled Source's Steal on Target.");
 
   assert.equal(publicCardAnnouncement(
     action({ cardLabel: "BURNING BRIDGE", settlement: {
