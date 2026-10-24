@@ -370,6 +370,58 @@ function verifiedBetrothmentCostFrameForEvent(
     : `${target.name} recovered 1 HP through ${owner.name}'s Betrothment.`;
   return { costEvent, effect, costCards: costEvent.cards, owner, target, recoveryCopy };
 }
+type VerifiedEquilibriumCostFrameProof = {
+  costEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  costCards: readonly Card[];
+  owner: Player;
+};
+function verifiedEquilibriumCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedEquilibriumCostFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const costEvent = eventMatches.length === 1 && eventMatches[0].type === "cards" ? eventMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "discard" || !costEvent.resolutionId || costEvent.cards.length === 0
+    || costEvent.cards.some((card) => !card.id)
+    || new Set(costEvent.cards.map((card) => card.id)).size !== costEvent.cards.length) return null;
+
+  const matchingEffects = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "sun_quan_zhiheng" && effect.effectClass === "COST");
+  const matchingRawEffects = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "sun_quan_zhiheng" && effect.effectClass === "COST");
+  if (matchingEffects.length !== 1 || matchingRawEffects.length !== 1) return null;
+  const effect = matchingEffects[0];
+  const rawEffect = matchingRawEffects[0];
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "sun-quan");
+  if (!owner?.name || effect.semantics !== "PROVEN"
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.targetId || rawEffect.targetId || effect.targetIds?.length || rawEffect.targetIds?.length
+    || effect.outcome !== "DRAW_COUNT_MATCHES_DISCARDED" || rawEffect.outcome !== effect.outcome
+    || effect.cards.length !== costEvent.cards.length
+    || effect.materials.length !== costEvent.cards.length
+    || rawEffect.materials.length !== costEvent.cards.length) return null;
+
+  for (const [index, costCard] of costEvent.cards.entries()) {
+    const projectedCard = effect.cards[index];
+    const material = effect.materials[index];
+    const rawMaterial = rawEffect.materials[index];
+    if (!projectedCard || !material || !rawMaterial
+      || projectedCard.id !== costCard.id || projectedCard.kind !== costCard.kind
+      || projectedCard.suit !== costCard.suit || projectedCard.rank !== costCard.rank
+      || material.cardId !== costCard.id || rawMaterial.cardId !== costCard.id
+      || material.ownerId !== owner.id || rawMaterial.ownerId !== owner.id
+      || (material.fromZone !== "HAND" && material.fromZone !== "EQUIPMENT")
+      || rawMaterial.fromZone !== material.fromZone
+      || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD") return null;
+  }
+
+  return { costEvent, effect, costCards: costEvent.cards, owner };
+}
 function verifiedLustCostFrameForEvent(
   timeline: readonly GameEvent[],
   notices: readonly PresentationSnapshotDiaoChanSkillNotice[],
@@ -5833,8 +5885,41 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
+  const equilibriumCostFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "sun_quan_zhiheng"
+      && effect.effectClass === "COST")
+      .flatMap((effect) => {
+        const frame = verifiedEquilibriumCostFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
+  })();
+  const equilibriumCostFrameAction: PublicCardDisplayAction | null = equilibriumCostFrameCandidate ? {
+    key: ["equilibrium-cost", equilibriumCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: equilibriumCostFrameCandidate.costEvent.id,
+    sourceId: equilibriumCostFrameCandidate.owner.id,
+    targetId: null,
+    cardFace: equilibriumCostFrameCandidate.costCards[0],
+    cardLabel: "EQUILIBRIUM COST",
+    ariaLabel: `${equilibriumCostFrameCandidate.owner.name} used Equilibrium, discarding ${equilibriumCostFrameCandidate.costCards.length} Hand or Equipment cards and privately drawing the same number of replacement cards.`,
+    publicNotice: `${equilibriumCostFrameCandidate.owner.name} used Equilibrium, discarding ${equilibriumCostFrameCandidate.costCards.length} cards and drawing the same number privately.`,
+    publicNoticeCompact: `Equilibrium: ${equilibriumCostFrameCandidate.owner.name} discarded ${equilibriumCostFrameCandidate.costCards.length} and privately drew ${equilibriumCostFrameCandidate.costCards.length}.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "sun_quan_zhiheng", equilibriumCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(equilibriumCostFrameCandidate.costEvent.id)
+        ? [] : [equilibriumCostFrameCandidate.costEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(equilibriumCostFrameCandidate.effect, {
+      title: "EQUILIBRIUM",
+      accessibleLabel: `${equilibriumCostFrameCandidate.owner.name} discarded ${equilibriumCostFrameCandidate.costCards.length} Hand and/or Equipment cards for Equilibrium, then drew the same number of private replacement cards. Replacement card identities are visible only to ${equilibriumCostFrameCandidate.owner.name}.`,
+      activationOwnerName: equilibriumCostFrameCandidate.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
   const latestW3CostFrameAction = [
-    prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction, betrothmentCostFrameAction,
+    prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction, betrothmentCostFrameAction, equilibriumCostFrameAction,
   ].filter((action): action is PublicCardDisplayAction => Boolean(action))
     .reduce<PublicCardDisplayAction | null>((latest, action) => {
       if (!latest) return action;

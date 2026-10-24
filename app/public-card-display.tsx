@@ -4048,6 +4048,7 @@ function SingleTargetCardJourney({
   const publicEffectFrameOwnsAnnouncementAnchor = (action.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer"
     || action.publicCardEffectFrame?.effectId === "yue_jin_dauntless"
     || action.publicCardEffectFrame?.effectId === "lady_gan_divine_wisdom"
+    || action.publicCardEffectFrame?.effectId === "sun_quan_zhiheng"
     || action.publicCardEffectFrame?.effectId === "sun_shangxiang_betrothment") && motion?.type !== "lust-cost";
   const currentNotice = groupRootStageOwnsCopy
     ? action.ariaLabel
