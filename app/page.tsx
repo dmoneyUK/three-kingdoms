@@ -979,6 +979,11 @@ function compactLustPlayerName(name: string) {
   const characters = Array.from(normalized);
   return characters.length <= 10 ? normalized : `${characters.slice(0, 9).join("").trimEnd()}…`;
 }
+function compactLustResultPlayerName(name: string) {
+  const normalized = name.trim();
+  const characters = Array.from(normalized);
+  return characters.length <= 6 ? normalized : `${characters.slice(0, 5).join("").trimEnd()}…`;
+}
 function lustDuelCompactOrderMessage(
   first: Pick<Player, "id" | "name">,
   second: Pick<Player, "id" | "name">,
@@ -991,10 +996,10 @@ function lustDuelCompactOrderMessage(
 }
 function lustDuelCompactResultMessage(failedName: string | undefined, damageSourceName: string | undefined, damageAmount: number) {
   if (!failedName) return undefined;
-  const failed = compactLustPlayerName(failedName);
-  if (damageAmount === 0) return `${failed} failed to play Attack; Duel damage was prevented.`;
+  const failed = compactLustResultPlayerName(failedName);
+  if (damageAmount === 0) return `Duel: ${failed} failed Attack; damage prevented.`;
   if (!damageSourceName) return undefined;
-  return `${failed} failed to play Attack; ${damageAmount} Duel damage from ${compactLustPlayerName(damageSourceName)} applies.`;
+  return `Duel: ${failed} failed Attack; ${damageAmount} damage from ${compactLustResultPlayerName(damageSourceName)}.`;
 }
 function heroSkillNames(hero: Pick<Hero, "id" | "skills">) { return hero.skills?.map((skill) => skill.name) ?? [heroSkillName(hero.id) ?? "Hero"]; }
 function heroSkillName(id?: string | null) { return id ? HEROES.find((hero) => hero.id === id)?.skills[0]?.name ?? null : null; }
@@ -4288,7 +4293,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         || !diaoChanNoticeMatchesEvent(resultEvent.publicDiaoChanNotice, result)) return null;
       settlementNotice = result;
       settlementCopy = diaoChanNoticeCopy(result, room.players);
-      if (!settlementCopy || exchange.settlement.readRemainingMs <= 0) return null;
+      if (!settlementCopy) return null;
     } else if (exchange.currentParticipantId === null || exchange.decisionActorId === null) return null;
     return { exchange, costFrame, responses, settlementNotice, settlementCopy };
   })();

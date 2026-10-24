@@ -814,6 +814,35 @@ export function provenLustDuelExchange(
     || settlement.failedPlayerId === settlement.damageSourceId)) return null;
   if (!settlement && !participants.has(exchange.currentParticipantId as string)
     || exchange.decisionActorId !== null && exchange.decisionActorId !== exchange.currentParticipantId) return null;
+  const settlementSharesDamageContinuation = Boolean(settlement && scene && identity && stable
+    && scene.semantics === "PROVEN"
+    && scene.interactionId === exchange.interactionId && identity.interactionId === exchange.interactionId
+    && scene.rootFrameId === exchange.rootFrameId && scene.continuity.relation === "CHILD_FRAME"
+    && scene.parentFrameId === exchange.rootFrameId && scene.stage === "DAMAGE"
+    && scene.effect?.toLowerCase() === "duel"
+    && scene.rootOrigin?.frameId === exchange.rootFrameId && scene.rootOrigin.stage === "DUEL_EXCHANGE"
+    && scene.rootOrigin.effect.toLowerCase() === "duel"
+    && scene.rootOrigin.targetIds.length === 2
+    && scene.rootOrigin.targetIds.includes(root.firstParticipantId as string)
+    && scene.rootOrigin.targetIds.includes(root.secondParticipantId as string)
+    && scene.sourceId === settlement.damageSourceId && scene.activeSourceId === settlement.damageSourceId
+    && scene.targetIds.length === 1 && scene.targetIds[0] === settlement.failedPlayerId
+    && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === settlement.failedPlayerId
+    && scene.currentParticipantId === settlement.failedPlayerId
+    && scene.decisionActorId === settlement.failedPlayerId
+    && scene.activeResolverId === settlement.failedPlayerId
+    && scene.participantRoles.sourceId === settlement.damageSourceId
+    && scene.participantRoles.originalTargetIds.length === 1
+    && scene.participantRoles.originalTargetIds[0] === settlement.failedPlayerId
+    && scene.participantRoles.activeTargetIds.length === 1
+    && scene.participantRoles.activeTargetIds[0] === settlement.failedPlayerId
+    && scene.participantRoles.currentParticipantId === settlement.failedPlayerId
+    && scene.participantRoles.decisionActorId === settlement.failedPlayerId
+    && scene.participantRoles.activeResolverId === settlement.failedPlayerId
+    && stable.kind === "CHOICE" && stable.interactionId === identity.interactionId
+    && stable.checkpointId === identity.checkpointId
+    && stable.presentationRevision === identity.presentationRevision
+    && stable.decisionActorId === settlement.failedPlayerId);
   const eventIds = new Set<string>([root.activationEventId as string, root.costEventId as string]);
   if (settlement) {
     if (eventIds.has(settlement.eventId as string)) return null;
@@ -868,7 +897,8 @@ export function provenLustDuelExchange(
 
   if (scene !== undefined || identity !== undefined || stable !== undefined) {
     if (hasSettlement) {
-      if (scene !== null || identity !== null || stable?.kind !== "REST") return null;
+      const settledAtRest = scene === null && identity === null && stable?.kind === "REST";
+      if (!settledAtRest && !settlementSharesDamageContinuation) return null;
     } else if (!scene || !identity || !stable || scene.semantics !== "PROVEN"
       || scene.stage !== "DUEL_EXCHANGE" || stable.kind !== "CHOICE"
       || scene.interactionId !== exchange.interactionId || identity.interactionId !== exchange.interactionId

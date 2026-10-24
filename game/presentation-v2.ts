@@ -4,6 +4,8 @@ import { CARD_DEFINITIONS } from "./cards";
 import { CARD_KINDS, type Card, type CardKind } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestNegationResponseRecord, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type NegationHistoryRecord } from "./pending";
 
+const LUST_DUEL_SETTLEMENT_PROJECTION_RETENTION_MS = 8_000;
+
 export type PresentationV2Event = {
   id: string;
   type: "message" | "card" | "cards" | string;
@@ -3457,11 +3459,34 @@ function lustDuelExchangeFor(
   const causal = record(item?.causal);
   const continuationCausal = record(continuation?.causal);
   const activeLustDuel = item?.kind === "response" && continuation?.kind === "duel" && activeLust !== null;
+  const now = Date.now();
   const terminalCandidates = diaoChanSkillNotices.filter((notice): notice is Extract<PresentationDiaoChanSkillNotice, { effectId: "diao_chan_lust"; notice: "DUEL_RESULT" }> =>
     notice.effectId === "diao_chan_lust" && notice.notice === "DUEL_RESULT"
       && Boolean(notice.interactionId && notice.rootFrameId && Number.isSafeInteger(notice.responseCount)
-        && notice.settledAt && Date.now() - notice.settledAt >= 0 && Date.now() - notice.settledAt < 2000));
-  const terminalResult = !item && !scene && terminalCandidates.length === 1 ? terminalCandidates[0] : null;
+        && notice.settledAt && now - notice.settledAt >= 0 && now - notice.settledAt < LUST_DUEL_SETTLEMENT_PROJECTION_RETENTION_MS));
+  const terminalCandidate = terminalCandidates.length === 1 ? terminalCandidates[0] : null;
+  const settlementTriggerContinuation = Boolean(item?.kind === "trigger" && terminalCandidate && envelope
+    && envelope.interactionId === terminalCandidate.interactionId
+    && envelope.checkpoint.stage === "DAMAGE" && envelope.checkpoint.frameId === envelope.activeFrameId
+    && envelope.frames.find((frame) => frame.frameId === envelope.activeFrameId)?.stage === "DAMAGE"
+    && envelope.frames.find((frame) => frame.frameId === terminalCandidate.rootFrameId)?.parentFrameId == null
+    && envelope.frames.find((frame) => frame.frameId === terminalCandidate.rootFrameId)?.stage === "DUEL_EXCHANGE"
+    && (() => {
+      let ancestor = envelope.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
+      const visited = new Set<string>();
+      while (ancestor?.parentFrameId && !visited.has(ancestor.frameId)) {
+        if (ancestor.parentFrameId === terminalCandidate.rootFrameId) return true;
+        visited.add(ancestor.frameId);
+        ancestor = envelope.frames.find((frame) => frame.frameId === ancestor?.parentFrameId) ?? null;
+      }
+      return false;
+    })()
+    && (!scene || scene.semantics === "PROVEN" && scene.interactionId === terminalCandidate.interactionId
+      && scene.rootFrameId === terminalCandidate.rootFrameId && scene.activeFrameId === envelope.activeFrameId
+      && scene.stage === "DAMAGE"));
+  const terminalResult = terminalCandidate && (settlementTriggerContinuation
+    || !item && !scene && (!envelope || envelope.interactionId === terminalCandidate.interactionId))
+    ? terminalCandidate : null;
   const terminalResultEvent = terminalResult ? uniqueTimelineEventById(terminalResult.eventId, timeline) : null;
   const terminalResultIsPublic = Boolean(terminalResultEvent?.type === "message" && terminalResultEvent.finalResult === true
     && terminalResultEvent.presentation !== false && typeof terminalResultEvent.privateToPlayerId !== "string");
@@ -3522,7 +3547,7 @@ function lustDuelExchangeFor(
     || scene.participantRoles.sourceId !== firstActorId
     || scene.participantRoles.currentParticipantId !== scene.currentParticipantId
     || scene.participantRoles.decisionActorId !== scene.decisionActorId)) return null;
-  if (settledLustDuel && (!terminalResult || !settledAt || readRemainingMs === null || readRemainingMs <= 0
+  if (settledLustDuel && (!terminalResult || !settledAt || readRemainingMs === null
     || !Number.isSafeInteger(responseCount) || (responseCount as number) < 0
     || !interactionId || !rootFrameId || !ownerId || !firstParticipantId || !secondParticipantId || !firstActorId
     || ownerId === firstParticipantId || ownerId === secondParticipantId || firstParticipantId === secondParticipantId
