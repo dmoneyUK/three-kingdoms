@@ -217,6 +217,54 @@ function verifiedProdigalHealerCostFrameForEvent(
   if (!owner?.name || !target?.name) return null;
   return { costEvent, effect, costCard, owner, target };
 }
+type VerifiedDivineWisdomCostFrameProof = {
+  costEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  costCards: readonly Card[];
+  owner: Player;
+};
+function verifiedDivineWisdomCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedDivineWisdomCostFrameProof | null {
+  const costMatches = timeline.filter((event) => event.id === eventId);
+  const costEvent = costMatches.length === 1 && costMatches[0].type === "cards" ? costMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "discard" || !costEvent.resolutionId || costEvent.cards.length === 0) return null;
+
+  const matchingEffects = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "lady_gan_divine_wisdom" && effect.effectClass === "COST");
+  const matchingRawEffects = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "lady_gan_divine_wisdom" && effect.effectClass === "COST");
+  if (matchingEffects.length !== 1 || matchingRawEffects.length !== 1) return null;
+  const effect = matchingEffects[0];
+  const rawEffect = matchingRawEffects[0];
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "lady-gan");
+  if (!owner?.name || !costEvent.cards.every((card) => card.id)
+    || new Set(costEvent.cards.map((card) => card.id)).size !== costEvent.cards.length
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.outcome !== rawEffect.outcome
+    || (effect.outcome !== "RECOVERY_APPLIED" && effect.outcome !== "NO_RECOVERY")
+    || effect.cards.length !== costEvent.cards.length
+    || effect.materials.length !== costEvent.cards.length
+    || rawEffect.materials.length !== costEvent.cards.length) return null;
+
+  for (const [index, costCard] of costEvent.cards.entries()) {
+    const material = effect.materials[index];
+    const rawMaterial = rawEffect.materials[index];
+    const projectedCard = effect.cards[index];
+    if (!material || !rawMaterial || !projectedCard
+      || material.cardId !== costCard.id || rawMaterial.cardId !== costCard.id || projectedCard.id !== costCard.id
+      || material.ownerId !== owner.id || rawMaterial.ownerId !== owner.id
+      || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+      || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+      || projectedCard.kind !== costCard.kind || projectedCard.suit !== costCard.suit || projectedCard.rank !== costCard.rank) return null;
+  }
+  return { costEvent, effect, costCards: costEvent.cards, owner };
+}
 function verifiedLustCostFrameForEvent(
   timeline: readonly GameEvent[],
   notices: readonly PresentationSnapshotDiaoChanSkillNotice[],
@@ -5581,6 +5629,39 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
+  const divineWisdomCostFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "lady_gan_divine_wisdom"
+      && effect.effectClass === "COST")
+      .flatMap((effect) => {
+        const frame = verifiedDivineWisdomCostFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
+  })();
+  const divineWisdomCostFrameAction: PublicCardDisplayAction | null = divineWisdomCostFrameCandidate ? {
+    key: ["divine-wisdom-cost", divineWisdomCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: divineWisdomCostFrameCandidate.costEvent.id,
+    sourceId: divineWisdomCostFrameCandidate.owner.id,
+    targetId: null,
+    cardFace: divineWisdomCostFrameCandidate.costCards[0],
+    cardLabel: "DIVINE WISDOM COST",
+    ariaLabel: divineWisdomCostFrameCandidate.effect.outcome === "RECOVERY_APPLIED"
+      ? `${divineWisdomCostFrameCandidate.owner.name} used Divine Wisdom and discarded ${divineWisdomCostFrameCandidate.costCards.length} Hand cards, recovering 1 HP.`
+      : `${divineWisdomCostFrameCandidate.owner.name} used Divine Wisdom and discarded ${divineWisdomCostFrameCandidate.costCards.length} Hand cards. No HP was recovered.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "lady_gan_divine_wisdom", divineWisdomCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(divineWisdomCostFrameCandidate.costEvent.id)
+        ? [] : [divineWisdomCostFrameCandidate.costEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(divineWisdomCostFrameCandidate.effect, {
+      title: "DIVINE WISDOM",
+      accessibleLabel: `${divineWisdomCostFrameCandidate.owner.name} discarded all ${divineWisdomCostFrameCandidate.costCards.length} Hand cards for Divine Wisdom.${divineWisdomCostFrameCandidate.effect.outcome === "RECOVERY_APPLIED" ? " They recovered 1 HP." : " No HP was recovered."}`,
+      activationOwnerName: divineWisdomCostFrameCandidate.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
   const lustDuelPublicAction: PublicCardDisplayAction | null = lustDuelExchangeDisplayCandidate ? {
     key: ["lust-duel", lustDuelExchangeDisplayCandidate.exchange.interactionId,
       lustDuelExchangeDisplayCandidate.exchange.rootFrameId,
@@ -5657,6 +5738,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? lustCostFrameAction
     : prodigalHealerCostFrameAction
     ? prodigalHealerCostFrameAction
+    : divineWisdomCostFrameAction
+    ? divineWisdomCostFrameAction
     : groupSettlementCandidate
     ? {
       key: ["group", groupSettlementCandidate.settlement.interactionId, groupSettlementCandidate.settlement.groupFrameId, groupSettlementCandidate.rootEvent.id].join(":"),

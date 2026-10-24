@@ -1739,6 +1739,7 @@ function PublicCardAnnouncement({
   outcome,
   negationWaiting = false,
   stableCenterAnchor = false,
+  keepCenterAnchorClear = false,
   stableHarvestAnchor = false,
   ignoreJourneyLayoutPending = false,
   preferredVerticalMode,
@@ -1761,6 +1762,7 @@ function PublicCardAnnouncement({
   outcome?: NonNullable<PublicCardDisplayAction["settlement"]>["outcome"];
   negationWaiting?: boolean;
   stableCenterAnchor?: boolean;
+  keepCenterAnchorClear?: boolean;
   stableHarvestAnchor?: boolean;
   ignoreJourneyLayoutPending?: boolean;
   preferredVerticalMode?: "above" | "below";
@@ -1949,7 +1951,7 @@ function PublicCardAnnouncement({
       const existingBandRect = existingBand
         ? new DOMRect(existingBand.left, existingBandTop ?? existingBand.top, existingBand.width, measuredCopyHeight)
         : null;
-      const existingBandOverlapsProtectedCenter = (phase === "reveal" || stableCenterAnchor)
+      const existingBandOverlapsProtectedCenter = (phase === "reveal" || stableCenterAnchor || keepCenterAnchorClear)
         && existingBandRect && centerCardStillOccupiesStage
         && rectsOverlap(toCardRect(existingBandRect), centerCardRect, gap);
       const existingBandOverlapsObstacle = existingBandRect && obstacles.some(({ element, rect }) =>
@@ -2068,7 +2070,7 @@ function PublicCardAnnouncement({
         if (centeredLeft < safeLeft || centeredLeft + width > safeRight) return false;
         if (placementBand && !allowBandEscape && Math.abs(top + height / 2 - placementBand.centerY) > 16) return false;
         if (top < safeTop || top + height > safeBottom || !staysAbovePrivateDraw(top, height)) return false;
-        const clearsCenterCard = (!isLargeRevealAnchor && !stableCenterAnchor) || !centerCardStillOccupiesStage
+        const clearsCenterCard = (!isLargeRevealAnchor && !stableCenterAnchor && !keepCenterAnchorClear) || !centerCardStillOccupiesStage
           || (allowBandEscape
             ? top >= centerCardRect.top + centerCardRect.height + gap - 0.5
               || top + height + gap <= centerCardRect.top + 0.5
@@ -2393,7 +2395,7 @@ function PublicCardAnnouncement({
       anchorObserver?.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [accessibleLabel, anchorEventId, compactMessage, compactSupportingMessage, displayedCopy, eventId, hasNegationNarration, heading, ignoreJourneyLayoutPending, message, narrationAccessibleLabel, narrationCheckpointId, narrationEventId, narrationLatestCommittedEventId, narrationPhase, narrationRootEffectState, negationWaiting, outcome, phase, placementKey, preferredVerticalMode, privateDrawAware, stableCenterAnchor, stableFallbackCardRect, stableHarvestAnchor, supportingMessage, viewerLayoutKey]);
+  }, [accessibleLabel, anchorEventId, compactMessage, compactSupportingMessage, displayedCopy, eventId, hasNegationNarration, heading, ignoreJourneyLayoutPending, keepCenterAnchorClear, message, narrationAccessibleLabel, narrationCheckpointId, narrationEventId, narrationLatestCommittedEventId, narrationPhase, narrationRootEffectState, negationWaiting, outcome, phase, placementKey, preferredVerticalMode, privateDrawAware, stableCenterAnchor, stableFallbackCardRect, stableHarvestAnchor, supportingMessage, viewerLayoutKey]);
 
   return <div
     ref={copyRef}
@@ -4033,8 +4035,8 @@ function SingleTargetCardJourney({
   const announcementEventId = groupRootStageOwnsCopy
     ? action.settlement?.eventId ?? action.rootEventId
     : activeEventId;
-  const publicEffectFrameOwnsAnnouncementAnchor = action.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer"
-    && motion?.type !== "lust-cost";
+  const publicEffectFrameOwnsAnnouncementAnchor = (action.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer"
+    || action.publicCardEffectFrame?.effectId === "lady_gan_divine_wisdom") && motion?.type !== "lust-cost";
   const currentNotice = groupRootStageOwnsCopy
     ? action.ariaLabel
     : currentCard?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
@@ -4164,6 +4166,7 @@ function SingleTargetCardJourney({
       outcome={allParked ? action.settlement?.outcome : undefined}
       negationWaiting={Boolean(negationNarration || action.phaseNotice?.includes("NEGATION"))}
       stableCenterAnchor={motion?.type === "lust-cost"}
+      keepCenterAnchorClear={publicEffectFrameOwnsAnnouncementAnchor}
       stableHarvestAnchor={harvestPoolVisible}
       ignoreJourneyLayoutPending={harvestPoolVisible}
       preferredVerticalMode={harvestPoolVisible || publicEffectFrameOwnsAnnouncementAnchor ? "above" : motion?.type === "lust-cost" ? "below" : undefined}
