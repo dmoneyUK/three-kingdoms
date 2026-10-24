@@ -22,6 +22,8 @@ const fastTests = [
   "tests/causal-context.test.mjs",
   "tests/attack-dodge-ux-trace.test.mjs",
   "tests/public-card-announcement.test.mjs",
+  "tests/public-card-effect-frame-layout.test.mjs",
+  "tests/public-card-effect-frame-view.test.mjs",
   "tests/wrangler-worker-supervisor.test.mjs",
 ];
 

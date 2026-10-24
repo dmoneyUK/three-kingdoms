@@ -26,7 +26,7 @@ import { CardFace } from "./card-face";
 import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
-import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, harvestNegationDecisionCopy, publicCardActionKey, type PublicCardDisplayAction, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
+import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, harvestNegationDecisionCopy, publicCardActionKey, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
@@ -162,6 +162,7 @@ type VerifiedLustCostFrameProof = {
   activation: LustActivationNotice & { costEventId: string };
   activationEvent: Extract<GameEvent, { type: "message" }>;
   costEvent: CardEvent | CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
   costCard: Card;
   owner: Player;
   firstParticipant: Player;
@@ -222,7 +223,20 @@ function verifiedLustCostFrameForEvent(
   const secondParticipant = players.find((player) => player.id === activation.secondParticipantId);
   const firstActor = players.find((player) => player.id === activation.firstActorId);
   if (!owner?.name || !firstParticipant?.name || !secondParticipant?.name || !firstActor?.name) return null;
-  return { activation, activationEvent, costEvent, costCard, owner, firstParticipant, secondParticipant, firstActor };
+  return { activation, activationEvent, costEvent, effect, costCard, owner, firstParticipant, secondParticipant, firstActor };
+}
+
+function lustPublicCardEffectFrame(
+  proof: VerifiedLustCostFrameProof,
+  players: readonly Player[],
+  accessibleLabel: string,
+): PublicCardEffectFrameView | null {
+  return createPublicCardEffectFrameView(proof.effect, {
+    title: "LUST",
+    accessibleLabel,
+    activationOwnerName: proof.owner.name,
+    ownerNamesById: Object.fromEntries(players.map((player) => [player.id, player.name])),
+  });
 }
 type LocalTargetPreviewPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null };
 type LocalTargetPreviewSubmission = { targetId: string; presentationKey: string; actionRevision: string; currentActionKey: string };
@@ -5486,6 +5500,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       message: lustDuelOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor),
       compactMessage: lustDuelCompactOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor),
     },
+    publicCardEffectFrame: lustPublicCardEffectFrame(lustCostFrameCandidate, room.players,
+      lustDuelOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor)),
   } : null;
   const lustDuelPublicAction: PublicCardDisplayAction | null = lustDuelExchangeDisplayCandidate ? {
     key: ["lust-duel", lustDuelExchangeDisplayCandidate.exchange.interactionId,
@@ -5520,6 +5536,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       message: lustDuelOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor),
       compactMessage: lustDuelCompactOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor),
     },
+    publicCardEffectFrame: lustPublicCardEffectFrame(lustDuelExchangeDisplayCandidate.costFrame, room.players,
+      lustDuelOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor)),
     ...(lustDuelExchangeDisplayCandidate.exchange.settlement ? {
       publicNoticeCompact: lustDuelCompactResultMessage(
         room.players.find((player) => player.id === lustDuelExchangeDisplayCandidate.exchange.settlement?.failedPlayerId)?.name,
@@ -6008,16 +6026,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && (publicCardDisplayAction.targetId === null || rootActionTarget?.name)
     && !rootActionTemporarilyBlocked);
   const publicCardDisplayReady = publicCardDisplayEnabled;
-  const activeLustDisplayAction = publicCardDisplayReady && publicCardDisplayAction?.lustCostFrame
-    && (publicCardDisplayAction.motion?.type === "lust-cost" || publicCardDisplayAction.motion?.type === "lust-duel")
+  const activePublicEffectFrameAction = publicCardDisplayReady && publicCardDisplayAction?.publicCardEffectFrame
     ? publicCardDisplayAction : null;
-  const activeLustPresentationEventIds = new Set([
-    activeLustDisplayAction?.rootEventId,
-    activeLustDisplayAction?.lustCostFrame?.activationEventId,
-    activeLustDisplayAction?.settlement?.eventId,
+  const activePublicEffectFrameEventIds = new Set([
+    activePublicEffectFrameAction?.publicCardEffectFrame?.eventId,
+    activePublicEffectFrameAction?.publicCardEffectFrame?.activationEventId,
+    activePublicEffectFrameAction?.settlement?.eventId,
   ].filter((eventId): eventId is string => Boolean(eventId)));
-  const effectNoticeOwnedByLustPresentation = Boolean(effectNotice
-    && activeLustPresentationEventIds.has(effectNotice.eventId));
+  const effectNoticeOwnedByPublicCardFrame = Boolean(effectNotice
+    && activePublicEffectFrameEventIds.has(effectNotice.eventId));
   const publicCardDisplayOwnsPresentation = Boolean(publicCardDisplayReady
     || publicCardDisplayAction?.motion?.type === "attack-dodge"
       && rootActionSource?.name
@@ -7558,7 +7575,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       />
       {effectNotice && effectNotice.roomCode === room.code && effectNotice.viewerId === room.meId
         && !effectNotice.beautyRootEventId
-        && !effectNoticeOwnedByLustPresentation
+        && !effectNoticeOwnedByPublicCardFrame
           && <div key={effectNotice.eventId} className={`effect-notice${effectNotice.exiting ? " is-exiting" : ""}`} role="status" aria-live="polite" aria-atomic="true" data-effect-notice-event-id={effectNotice.eventId} data-diao-chan-beauty-root-event-id={effectNotice.beautyRootEventId} data-diao-chan-beauty-source-id={effectNotice.beautySourceId} data-diao-chan-beauty-proof-event-id={effectNotice.beautyProofEventId} data-diao-chan-beauty-phase={effectNotice.beautyPhase}><span>{effectNotice.heading}</span><b>{effectNotice.message}</b></div>}
       </div>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}

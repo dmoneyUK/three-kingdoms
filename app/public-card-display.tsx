@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Card, CardKind } from "../game/model";
-import type { PresentationSnapshotRootAction } from "../game/presentation-snapshot";
+import type { PresentationSnapshotPublicCardEffect, PresentationSnapshotRootAction } from "../game/presentation-snapshot";
 import type { PresentationTargetCardSettlementMovement } from "../game/presentation-v2";
+import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
 import { cardDefinition } from "../game/cards";
 import { CardFace } from "./card-face";
 import { recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
@@ -132,8 +133,65 @@ export type PublicCardDisplayAction = {
     message: string;
     compactMessage?: string;
   };
+  /** Validated public proof material for a shared A/C/E frame. */
+  publicCardEffectFrame?: PublicCardEffectFrameView;
   responses?: readonly PublicCardDisplayResponseNode[];
 };
+
+const publicCardEffectFrameViewBrand: unique symbol = Symbol("validatedPublicCardEffectFrameView");
+
+export type PublicCardEffectFrameView = {
+  [publicCardEffectFrameViewBrand]: true;
+  eventId: string;
+  activationEventId?: string;
+  effectId: string;
+  effectClass: "COST" | "CONVERSION" | "EFFECT" | "JUDGEMENT";
+  activationOwnerId: string;
+  activationOwnerName: string;
+  title: string;
+  materials: readonly { card: Card; ownerId: string | null; ownerName?: string }[];
+  accessibleLabel: string;
+};
+
+/** Converts the already-validated public snapshot proof into immutable renderer input. */
+export function createPublicCardEffectFrameView(
+  effect: PresentationSnapshotPublicCardEffect,
+  copy: { title: string; accessibleLabel: string; activationOwnerName: string; ownerNamesById: Readonly<Record<string, string>> },
+): PublicCardEffectFrameView | null {
+  const classIsSupported = effect.effectClass === "COST" || effect.effectClass === "CONVERSION"
+    || effect.effectClass === "EFFECT" || effect.effectClass === "JUDGEMENT";
+  const cards = Array.isArray(effect.cards) ? effect.cards : [];
+  const materials = Array.isArray(effect.materials) ? effect.materials : [];
+  if (effect.semantics !== "PROVEN" || !effect.eventId || !effect.activationOwnerId || !classIsSupported
+    || !copy.title.trim() || copy.title.length > 40 || !copy.accessibleLabel.trim() || copy.accessibleLabel.length > 240
+    || !copy.activationOwnerName.trim() || !cards.length || cards.length !== materials.length
+    || new Set(cards.map((card) => card.id)).size !== cards.length
+    || materials.some((material, index) => !material.cardId || material.cardId !== cards[index]?.id
+      || material.ownerId !== null && !copy.ownerNamesById[material.ownerId]?.trim())
+    || effect.activationEventId === effect.eventId) return null;
+  const suitNames: Record<Card["suit"], string> = { "♥": "Hearts", "♦": "Diamonds", "♣": "Clubs", "♠": "Spades" };
+  const materialsAccessibleLabel = cards.map((card, index) => {
+    const material = materials[index];
+    const ownerName = material.ownerId ? copy.ownerNamesById[material.ownerId] : null;
+    return `${ownerName ? `${ownerName}'s ` : "Public-source "}${cardDefinition(card.kind).name}, ${card.rank} of ${suitNames[card.suit]}`;
+  }).join("; ");
+  return {
+    [publicCardEffectFrameViewBrand]: true,
+    eventId: effect.eventId,
+    ...(effect.activationEventId ? { activationEventId: effect.activationEventId } : {}),
+    effectId: effect.effectId,
+    effectClass: effect.effectClass,
+    activationOwnerId: effect.activationOwnerId,
+    activationOwnerName: copy.activationOwnerName,
+    title: copy.title.trim(),
+    materials: cards.map((card, index) => ({
+      card,
+      ownerId: materials[index].ownerId,
+      ...(materials[index].ownerId ? { ownerName: copy.ownerNamesById[materials[index].ownerId!] } : {}),
+    })),
+    accessibleLabel: `${copy.title.trim()} ${effect.effectClass.toLowerCase()} frame. Material cards: ${materialsAccessibleLabel}. ${copy.accessibleLabel.trim()}`,
+  };
+}
 
 /** A public, proof-backed event with no physical card face or card anchor. */
 export type PublicSkillEventAnnouncement = {
@@ -203,6 +261,7 @@ function PublicJourneyCard({
   passive = false,
   harvestRootParked = false,
   lustCostFrame,
+  publicCardEffectFrame,
   onInspectCard,
 }: {
   card: JourneyCard;
@@ -216,22 +275,43 @@ function PublicJourneyCard({
   passive?: boolean;
   harvestRootParked?: boolean;
   lustCostFrame?: PublicCardDisplayAction["lustCostFrame"];
+  publicCardEffectFrame?: PublicCardEffectFrameView;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
   const inspectable = !passive && card.phase === "parked" && Boolean(onInspectCard);
+  const publicFrameAccessible = Boolean(publicCardEffectFrame && card.phase !== "move");
+  const frameMaterials = publicCardEffectFrame?.materials ?? [];
+  const frameLayout = publicCardEffectFrame && typeof window !== "undefined"
+    ? publicCardEffectFrameLayout(frameMaterials.length, window.innerWidth, window.innerHeight)
+    : null;
+  const physicalCards = card.cardFaces ?? [card.cardFace];
   const definition = cardDefinition(card.cardFace.kind);
+  const groupDescription = physicalCards.map((face) => {
+    const cardDefinitionForFace = cardDefinition(face.kind);
+    return `${cardDefinitionForFace.name} ${face.rank}${face.suit}`;
+  }).join(", ");
   const publicOrdinalLabel = card.globalOrdinal === undefined ? ""
     : ordinalContext === "negation-chain" ? `, Negation chain step ${card.globalOrdinal}`
       : ordinalContext === "duel" ? `, Duel event ${card.globalOrdinal}`
         : `, public card chain step ${card.globalOrdinal}`;
+  const accessibleName = inspectable
+    ? publicCardEffectFrame
+      ? `View public ${publicCardEffectFrame.accessibleLabel}. Parked cards: ${groupDescription}.`
+      : `View public ${card.actorName}'s ${physicalCards.length > 1 ? `${physicalCards.length}-card group` : definition.name} card details, ${groupDescription}${publicOrdinalLabel}`
+    : publicFrameAccessible ? publicCardEffectFrame?.accessibleLabel : undefined;
   return <button
     type="button"
-    className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${card.layoutPending ? "is-layout-pending" : ""} ${harvestHistory && card.phase === "parked" ? "is-harvest-history-parked" : ""} ${passive ? "is-harvest-history-passive" : ""} ${className} ${lustCostFrame ? "is-lust-cost" : ""} ${inspectable ? "is-inspectable" : ""}`}
-    disabled={!inspectable}
+    role={publicFrameAccessible && !inspectable ? "group" : undefined}
+    className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${card.layoutPending ? "is-layout-pending" : ""} ${harvestHistory && card.phase === "parked" ? "is-harvest-history-parked" : ""} ${passive ? "is-harvest-history-passive" : ""} ${className} ${lustCostFrame ? "is-lust-cost" : ""} ${publicCardEffectFrame ? "is-public-effect-frame" : ""} ${inspectable ? "is-inspectable" : ""}`}
+    disabled={!inspectable && !publicFrameAccessible}
     tabIndex={inspectable ? 0 : -1}
-    aria-hidden={inspectable ? undefined : true}
-    aria-label={inspectable ? `View public ${card.actorName}'s ${definition.name} card details, ${card.cardFace.rank}${card.cardFace.suit}${publicOrdinalLabel}` : undefined}
-    onClick={inspectable ? (event) => onInspectCard?.(card.cardFace, event.currentTarget) : undefined}
+    aria-hidden={inspectable || publicFrameAccessible ? undefined : true}
+    aria-label={accessibleName}
+    onClick={inspectable ? (event) => {
+      const requestedCardId = (event.target as HTMLElement).closest<HTMLElement>("[data-public-card-effect-frame-card-id]")?.dataset.publicCardEffectFrameCardId;
+      const inspectedCard = physicalCards.find((face) => face.id === requestedCardId) ?? card.cardFace;
+      onInspectCard?.(inspectedCard, event.currentTarget);
+    } : undefined}
     data-public-card-journey-event-id={card.eventId}
     data-public-card-journey-actor-id={card.actorId}
     data-public-card-journey-card-id={card.cardFace.id}
@@ -256,34 +336,62 @@ function PublicJourneyCard({
     data-public-card-copy-anchor-event-id={card.eventId}
     style={{ left: card.rect.left, top: card.rect.top, width: card.rect.width, height: card.rect.height }}
   >
-    {lustCostFrame && card.phase !== "parked" && <span
-      className={`public-card-lust-cost-frame-panel${card.phase === "move" ? " is-moving" : ""}`}
+    {publicCardEffectFrame && frameLayout && card.phase !== "parked" && <span
+      className={`public-card-effect-frame-panel public-card-lust-cost-frame-panel${card.phase === "move" ? " is-moving" : ""}`}
       aria-hidden="true"
-      data-public-card-frame-kind="DIAO_CHAN_LUST_COST"
-      data-public-card-frame-event-id={lustCostFrame.activationEventId}
+      data-public-card-frame-kind={publicCardEffectFrame.effectId === "diao_chan_lust" ? "DIAO_CHAN_LUST_COST" : publicCardEffectFrame.effectClass}
+      data-public-card-frame-class={publicCardEffectFrame.effectClass}
+      data-public-card-frame-effect-id={publicCardEffectFrame.effectId}
+      data-public-card-frame-activation-owner-id={publicCardEffectFrame.activationOwnerId}
+      data-public-card-frame-material-owner-ids={frameMaterials.map((material) => material.ownerId ?? "deck").join(",")}
+      data-public-card-frame-material-card-ids={frameMaterials.map((material) => material.card.id).join(",")}
+      data-public-card-frame-material-count={frameMaterials.length}
+      data-public-card-frame-event-id={publicCardEffectFrame.activationEventId ?? publicCardEffectFrame.eventId}
       data-public-card-frame-card-event-id={card.eventId}
       style={{
-        left: -LUST_COST_FRAME.cardOffsetLeft,
-        top: -LUST_COST_FRAME.cardOffsetTop,
-        width: `min(${LUST_COST_FRAME.width}px, calc(100vw - 16px))`,
-        height: LUST_COST_FRAME.height,
+        left: -frameLayout.cardOffsetLeft,
+        top: -frameLayout.cardOffsetTop,
+        width: frameLayout.frameWidth,
+        height: frameLayout.frameHeight,
         transform: `scale(${card.rect.width / REVEAL_CARD.width})`,
-        transformOrigin: `${LUST_COST_FRAME.cardOffsetLeft}px ${LUST_COST_FRAME.cardOffsetTop}px`,
+        transformOrigin: `${frameLayout.cardOffsetLeft}px ${frameLayout.cardOffsetTop}px`,
         opacity: card.phase === "move" ? 0 : 1,
       }}
     >
-      <strong className="public-card-lust-cost-frame-title">{lustCostFrame.title}</strong>
+      <strong className="public-card-effect-frame-title public-card-lust-cost-frame-title">{publicCardEffectFrame.title}</strong>
+      {frameMaterials.length > 1 && <small className="public-card-effect-frame-count">{frameMaterials.length} MATERIAL CARDS</small>}
+      <span
+        className="public-card-effect-frame-materials"
+        data-public-card-frame-grid-columns={frameLayout.columns}
+        style={{
+          left: frameLayout.cardOffsetLeft,
+          top: frameLayout.cardOffsetTop,
+          width: frameLayout.gridWidth,
+          height: frameLayout.gridHeight,
+          gridTemplateColumns: `repeat(${frameLayout.columns}, minmax(0, 1fr))`,
+          gridAutoRows: frameLayout.cardHeight,
+          gap: frameLayout.gap,
+        }}
+      >
+        {frameMaterials.map(({ card: face, ownerId }, index) => <span
+          className="public-card-effect-frame-material"
+          key={face.id}
+          data-public-card-effect-frame-material-owner-id={ownerId ?? "deck"}
+          data-public-card-effect-frame-material-index={index}
+        ><CardFace card={face} publicEffectFrameCardId={face.id} /></span>)}
+      </span>
     </span>}
     {card.cardFaces && card.cardFaces.length > 1
       ? <span className="public-card-duel-physical-group">
         {card.cardFaces.map((face, index) => <span
           className="public-card-duel-physical-face"
           key={face.id}
+          data-public-card-effect-frame-card-id={face.id}
           style={{ left: `calc(50% + ${(index - (card.cardFaces!.length - 1) / 2) * 6}px)`, zIndex: index + 1 }}
         ><CardFace card={face} /></span>)}
       </span>
-      : <CardFace card={card.cardFace} />}
-    {lustCostFrame && card.phase === "parked" && <small className="public-card-lust-cost-parked">LUST</small>}
+      : <CardFace card={card.cardFace} publicEffectFrameCardId={publicCardEffectFrame ? card.cardFace.id : undefined} />}
+    {publicCardEffectFrame && card.phase === "parked" && <small className="public-card-lust-cost-parked">{publicCardEffectFrame.title}</small>}
     {card.semanticLabel && <small className="public-card-journey-semantic">{card.semanticLabel}</small>}
     {showOrdinal && card.globalOrdinal !== undefined && <small className="public-card-journey-ordinal" aria-hidden="true">#{card.globalOrdinal}</small>}
   </button>;
@@ -461,20 +569,22 @@ function battlefieldCenterCard(
   return safe ?? boundCardRect(preferredLeft, preferredTop, size.width, size.height);
 }
 
-function battlefieldLustCostCard(): CardRect {
+function battlefieldPublicEffectFrameCard(materialCount = 1): CardRect {
   const table = document.querySelector<HTMLElement>(".play-table");
   const bounds = table?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
   const safeLeft = Math.max(8, bounds.left + 8);
   const safeRight = Math.min(window.innerWidth - 8, bounds.right - 8);
-  const frameWidth = Math.max(1, Math.min(LUST_COST_FRAME.width, safeRight - safeLeft));
+  const frameLayout = publicCardEffectFrameLayout(materialCount, window.innerWidth, window.innerHeight);
+  const frameWidth = Math.max(1, Math.min(frameLayout.frameWidth, safeRight - safeLeft));
   const safeTop = Math.max(8, bounds.top + 8);
   const safeBottom = Math.min(window.innerHeight - 8, bounds.bottom - 2);
   const maxFrameLeft = Math.max(safeLeft, safeRight - frameWidth);
   const frameLeft = Math.max(safeLeft, Math.min(maxFrameLeft, bounds.left + (bounds.width - frameWidth) / 2));
   const announcementGap = PUBLIC_CARD_ANNOUNCEMENT_GAP;
   const announcementHeight = 50;
-  const maxFrameTop = safeBottom - LUST_COST_FRAME.height - announcementGap - announcementHeight;
-  const preferredTop = bounds.top + (bounds.height - LUST_COST_FRAME.height) / 2;
+  const frameHeight = frameLayout.frameHeight;
+  const maxFrameTop = safeBottom - frameHeight - announcementGap - announcementHeight;
+  const preferredTop = bounds.top + (bounds.height - frameHeight) / 2;
   const obstacleElements = [...document.querySelectorAll<HTMLElement>(
     ".opponent-player-card[data-player-anchor], .player-square, .player-square-target, .play-seat, .player-board-status, .visible-countdown, .stage-system-cluster, .local-player-dock, .console-guidance, .public-activity-chip",
   )];
@@ -495,7 +605,7 @@ function battlefieldLustCostCard(): CardRect {
   });
   const candidateTops = [preferredTop, ...obstacles.flatMap((obstacle) => [
     obstacle.bottom + 8,
-    obstacle.top - LUST_COST_FRAME.height - 8,
+    obstacle.top - frameHeight - 8,
   ])];
   for (let distance = 8; distance <= 200; distance += 8) {
     candidateTops.push(preferredTop - distance, preferredTop + distance);
@@ -504,33 +614,34 @@ function battlefieldLustCostCard(): CardRect {
     .filter((top) => top >= minimumFrameTop && top <= maxFrameTop)
     .sort((left, right) => Math.abs(left - preferredTop) - Math.abs(right - preferredTop));
   const selectedFrameTop = legalFrameTops.find((top) => {
-      const frameRect = { left: frameLeft, top, width: frameWidth, height: LUST_COST_FRAME.height };
+      const frameRect = { left: frameLeft, top, width: frameWidth, height: frameHeight };
       return obstacles.every((obstacle) => !rectsOverlap(frameRect, obstacle, 1));
     });
   const frameTop = selectedFrameTop ?? Math.max(minimumFrameTop, Math.min(maxFrameTop, preferredTop));
   return {
-    left: frameLeft + LUST_COST_FRAME.cardOffsetLeft,
-    top: frameTop + LUST_COST_FRAME.cardOffsetTop,
+    left: frameLeft + frameLayout.cardOffsetLeft,
+    top: frameTop + frameLayout.cardOffsetTop,
     width: REVEAL_CARD.width,
     height: REVEAL_CARD.height,
   };
 }
 
-function battlefieldLustCostFrame(card: CardRect): CardRect {
-  const table = document.querySelector<HTMLElement>(".play-table");
-  const bounds = table?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
-  const safeLeft = Math.max(8, bounds.left + 8);
-  const safeRight = Math.min(window.innerWidth - 8, bounds.right - 8);
+function battlefieldLustCostCard(): CardRect {
+  return battlefieldPublicEffectFrameCard(1);
+}
+
+function battlefieldPublicEffectFrame(card: CardRect, materialCount = 1): CardRect {
+  const layout = publicCardEffectFrameLayout(materialCount, window.innerWidth, window.innerHeight);
   return {
-    left: card.left - LUST_COST_FRAME.cardOffsetLeft,
-    top: card.top - LUST_COST_FRAME.cardOffsetTop,
-    width: Math.max(1, Math.min(LUST_COST_FRAME.width, safeRight - safeLeft)),
-    height: LUST_COST_FRAME.height,
+    left: card.left - layout.cardOffsetLeft,
+    top: card.top - layout.cardOffsetTop,
+    width: layout.frameWidth,
+    height: layout.frameHeight,
   };
 }
 
 function battlefieldLustDuelAnnouncementAnchor(card: CardRect): CardRect {
-  return battlefieldLustCostFrame(card);
+  return battlefieldPublicEffectFrame(card, 1);
 }
 
 function hasPaintedLargePublicCard(eventId: string, size: Pick<CardRect, "width" | "height">) {
@@ -1741,10 +1852,13 @@ function PublicCardAnnouncement({
       const safeTop = Math.max(8, viewportTop + 4, tableRect.top + 8);
       const safeBottom = Math.min(viewportBottom - 8, tableRect.bottom - 2);
       const terminalLustResult = outcome === "LUST_DUEL_DAMAGE_APPLIED" || outcome === "LUST_DUEL_DAMAGE_PREVENTED";
-      const shortLustFrame = !terminalLustResult && stableCenterAnchor && stableFallbackCardRect
+      const mobileLustFrame = !terminalLustResult && stableCenterAnchor && stableFallbackCardRect
         && stableFallbackCardRect.width >= LUST_COST_FRAME.width - 1
-        && viewportBottom - viewportTop <= 740;
-      const availableAnnouncementWidth = shortLustFrame ? Math.min(224, viewportWidth - 16) : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH;
+        && viewportWidth <= 480;
+      const compactMobileLustFrame = mobileLustFrame && viewportBottom - viewportTop <= 860;
+      const availableAnnouncementWidth = mobileLustFrame
+        ? Math.min(PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH, viewportWidth - 16)
+        : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH;
       const maxWidth = Math.max(1, Math.min(
         availableAnnouncementWidth,
         negationWaiting ? 420 : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH,
@@ -1810,7 +1924,8 @@ function PublicCardAnnouncement({
       }
       const obstacleClearance = (element: HTMLElement | null) => privateDrawAware && element?.matches(".private-draw-content")
         ? 10
-        : element?.matches(".opponent-player-card, .player-square") ? 0 : 2;
+        : compactMobileLustFrame && element?.matches(".public-activity-chip") ? 6
+          : element?.matches(".opponent-player-card, .player-square") ? 0 : 2;
       const overlapsObstacle = (rect: DOMRect, element: HTMLElement | null, obstacleRect: DOMRect) =>
         rectsOverlap(toCardRect(rect), obstacleRect, obstacleClearance(element));
       const privateDrawObstacle = privateDrawAware
@@ -1872,7 +1987,11 @@ function PublicCardAnnouncement({
         .map((width) => Math.min(width, maxWidth)))]
         .filter((width) => width > 0)
         .sort((left, right) => right - left);
-      if (placementBand) {
+      // Preserve the narration's established center through settlement, but
+      // let the terminal result reclaim the available phone width. Reusing
+      // the earlier compact order-line width can make the longer, final
+      // outcome unnecessarily narrow and harder to read.
+      if (placementBand && !terminalLustResult) {
         const reusableWidth = widths.indexOf(Math.min(placementBand.width, maxWidth));
         if (reusableWidth > 0) widths.unshift(widths.splice(reusableWidth, 1)[0]);
       }
@@ -1885,6 +2004,10 @@ function PublicCardAnnouncement({
         { message, supporting: supportingMessage ?? "", compact: false },
         ...(compactDiffers ? [{ message: compactMessage ?? message, supporting: compactSupportingMessage ?? supportingMessage ?? "", compact: true }] : []),
       ];
+      if (mobileLustFrame && compactDiffers) {
+        const compactIndex = announcementOptions.findIndex((option) => option.compact);
+        if (compactIndex > 0) announcementOptions.unshift(announcementOptions.splice(compactIndex, 1)[0]);
+      }
       const setAnnouncementMeasureMode = (compact: boolean, width: number) => {
         if (compact) copy.dataset.publicCardAnnouncementCompact = "true";
         else delete copy.dataset.publicCardAnnouncementCompact;
@@ -3055,6 +3178,8 @@ function AttackDodgeCardJourney({
         size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
         className={`${isCurrent ? "is-current" : ""} ${isHistorical ? "is-prior" : ""} ${card.role === "deflection" ? "is-deflection" : ""}`}
         primary={isCurrent}
+        publicCardEffectFrame={card.role === "root" && card.eventId === action.publicCardEffectFrame?.eventId
+          ? action.publicCardEffectFrame : undefined}
       />;
     })}
     <PublicCardAnnouncement
@@ -3084,12 +3209,25 @@ function withFirstQueuedSingleTargetReveal(cards: SingleTargetJourneyCard[], cen
 
 function singleTargetJourneyEvents(action: PublicCardDisplayAction, sourceName: string | null): JourneyCard[] {
   const events: JourneyCard[] = [];
-  if (action.cardFace && sourceName) events.push({
+  const frame = action.publicCardEffectFrame?.eventId === action.rootEventId
+    ? action.publicCardEffectFrame : null;
+  const frameMaterials = frame?.materials ?? [];
+  const frameOwnerId = frameMaterials[0]?.ownerId ?? null;
+  const frameOwnerIsConsistent = frameMaterials.length > 0
+    && frameMaterials.every((material) => material.ownerId === frameOwnerId)
+    && frameOwnerId !== null;
+  const frameCards = frameOwnerIsConsistent ? frameMaterials.map((material) => material.card) : [];
+  const frameActorId = frameOwnerIsConsistent ? frameOwnerId : action.sourceId;
+  const frameActorName = frameOwnerIsConsistent
+    ? frameMaterials[0]?.ownerName ?? (frameActorId === action.sourceId ? sourceName : "")
+    : sourceName;
+  const rootCards = frameCards.length ? frameCards : action.cardFace ? [action.cardFace] : [];
+  if (rootCards.length && frameActorName) events.push({
     eventId: action.rootEventId,
-    actorId: action.sourceId,
-    actorName: sourceName,
-    cardFace: action.cardFace,
-    cardFaces: [action.cardFace],
+    actorId: frameActorId,
+    actorName: frameActorName,
+    cardFace: rootCards[0],
+    cardFaces: rootCards,
     ariaLabel: action.ariaLabel,
     role: "root",
     globalOrdinal: 1,
@@ -3294,8 +3432,10 @@ function SingleTargetCardJourney({
     const currentMotion = singleTargetJourneyMotion(currentAction.motion);
     const currentSourceName = sourceNameRef.current;
     if (!journeyEnabled || !currentMotion || !currentSourceName) return;
-    const center = currentMotion.type === "lust-cost" && currentAction.lustCostFrame
-      ? battlefieldLustCostCard()
+    const center = currentAction.publicCardEffectFrame
+      ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame.materials.length)
+      : currentMotion.type === "lust-cost" && currentAction.lustCostFrame
+        ? battlefieldLustCostCard()
       : battlefieldCenterCard(REVEAL_CARD, currentMotion.type === "negation" || currentMotion.type === "group-root"
         ? { reserveSeatHistoryDepth: 2 }
         : { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
@@ -3622,8 +3762,10 @@ function SingleTargetCardJourney({
         if (current.scopeKey !== scopeKey) return;
         const currentAction = actionRef.current;
         const currentMotion = singleTargetJourneyMotion(currentAction.motion);
-        const center = currentMotion?.type === "lust-cost" && currentAction.lustCostFrame
-          ? battlefieldLustCostCard()
+        const center = currentAction.publicCardEffectFrame
+          ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame.materials.length)
+          : currentMotion?.type === "lust-cost" && currentAction.lustCostFrame
+            ? battlefieldLustCostCard()
           : battlefieldCenterCard(REVEAL_CARD, currentMotion?.type === "negation" || currentMotion?.type === "group-root"
             ? { reserveSeatHistoryDepth: 2 }
             : { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
@@ -3984,6 +4126,8 @@ function SingleTargetCardJourney({
         harvestRootParked={(harvestRootPoolVisible || harvestChoiceActive && isBumperHarvest)
           && card.role === "root" && card.phase === "parked"}
         lustCostFrame={action.motion?.type === "lust-cost" && card.role === "root" ? action.lustCostFrame : undefined}
+        publicCardEffectFrame={card.role === "root" && card.eventId === action.publicCardEffectFrame?.eventId
+          ? action.publicCardEffectFrame : undefined}
       />;
     })}
     <ol className="duel-public-card-history-accessible" aria-label={showNegationChainOrdinals ? "Chronological Negation chain history" : "Chronological public card history"}>
@@ -4289,8 +4433,10 @@ function DuelCardJourney({
     const latestFreshEvent = [...events].reverse().find((event) => fresh.has(event.eventId) && event.cardFace) ?? null;
     const lustRootIsCurrent = latestFreshEvent?.role === "root"
       || (!latestFreshEvent && events.at(-1)?.role === "root");
-    const center = currentMotion.type === "lust-duel" && currentAction.lustCostFrame && lustRootIsCurrent
-      ? battlefieldLustCostCard()
+    const center = currentAction.publicCardEffectFrame && currentMotion.type === "lust-duel" && lustRootIsCurrent
+      ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame.materials.length)
+      : currentMotion.type === "lust-duel" && currentAction.lustCostFrame && lustRootIsCurrent
+        ? battlefieldLustCostCard()
       : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
     const previous = journeyRef.current;
     const sameInteraction = previous.scopeKey === scopeKey;
@@ -4560,7 +4706,9 @@ function DuelCardJourney({
         ? latestFreshEvent
         : !latestFreshEvent && lastEvent?.role === "root" ? lastEvent : null;
       if (!currentRootEvent) return;
-      const center = battlefieldLustCostCard();
+      const center = currentAction.publicCardEffectFrame
+        ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame.materials.length)
+        : battlefieldLustCostCard();
       setSettledLustFrameViewerKey(`${scopeKey}:${viewerId}`);
       setJourney((current) => {
         if (current.scopeKey !== scopeKey || !current.cards.some((card) => card.eventId === currentRootEvent.eventId && card.phase === "reveal")) return current;
@@ -4654,8 +4802,10 @@ function DuelCardJourney({
         const latestFreshEvent = [...events].reverse().find((event) => fresh.has(event.eventId) && event.cardFace) ?? null;
         const lustRootIsCurrent = latestFreshEvent?.role === "root"
           || (!latestFreshEvent && events.at(-1)?.role === "root");
-        const center = currentMotion?.type === "lust-duel" && currentAction.lustCostFrame && lustRootIsCurrent
-          ? battlefieldLustCostCard()
+        const center = currentAction.publicCardEffectFrame && currentMotion?.type === "lust-duel" && lustRootIsCurrent
+          ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame.materials.length)
+          : currentMotion?.type === "lust-duel" && currentAction.lustCostFrame && lustRootIsCurrent
+            ? battlefieldLustCostCard()
           : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
         const targets = duelParkingTargets(events);
         setJourney((current) => {
@@ -4841,6 +4991,8 @@ function DuelCardJourney({
         showOrdinal
         ordinalContext="duel"
         lustCostFrame={action.motion?.type === "lust-duel" && card.role === "root" ? action.lustCostFrame : undefined}
+        publicCardEffectFrame={card.role === "root" && card.eventId === action.publicCardEffectFrame?.eventId
+          ? action.publicCardEffectFrame : undefined}
       />)}
       <ol className="duel-public-card-history-accessible" aria-label="Chronological Duel card history">
         {parkedHistoryCards.map((card, index) => <li key={card.eventId} value={card.globalOrdinal ?? index + 1}>
@@ -4885,6 +5037,8 @@ function DuelCardJourney({
       showOrdinal
       ordinalContext="duel"
       lustCostFrame={action.motion?.type === "lust-duel" && card.role === "root" ? action.lustCostFrame : undefined}
+      publicCardEffectFrame={card.role === "root" && card.eventId === action.publicCardEffectFrame?.eventId
+        ? action.publicCardEffectFrame : undefined}
     />)}
     <ol className="duel-public-card-history-accessible" aria-label="Chronological Duel card history">
       {incoming.map((event) => <li key={event.eventId} value={event.globalOrdinal}>

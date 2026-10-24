@@ -5,7 +5,7 @@ function suitColorClass(suit: Card["suit"]) {
   return suit === "♥" || suit === "♦" ? "red-suit" : "black-suit";
 }
 
-export function CardFace({ card, settlementCardId, harvestChoice = false }: { card: Card; settlementCardId?: string; harvestChoice?: boolean }) {
+export function CardFace({ card, settlementCardId, harvestChoice = false, publicEffectFrameCardId }: { card: Card; settlementCardId?: string; harvestChoice?: boolean; publicEffectFrameCardId?: string }) {
   const definition = cardDefinition(card.kind);
   // This single long word cannot fit a phone Harvest card face at the
   // established readable type size. Add a discretionary hyphen at a natural
@@ -14,7 +14,7 @@ export function CardFace({ card, settlementCardId, harvestChoice = false }: { ca
   const displayName = harvestChoice && card.kind === "Overindulgence"
     ? "Overindul\u00adgence"
     : definition.name;
-  return <div className={`played-card ${card.kind.toLowerCase()} ${suitColorClass(card.suit)}`} data-settlement-card-id={settlementCardId}>
+  return <div className={`played-card ${card.kind.toLowerCase()} ${suitColorClass(card.suit)}`} data-settlement-card-id={settlementCardId} data-public-card-effect-frame-card-id={publicEffectFrameCardId}>
     <i>{card.rank}<small>{card.suit}</small></i>
     <b className="card-name-mark">{displayName}</b>
     <strong>{definition.category} card</strong>

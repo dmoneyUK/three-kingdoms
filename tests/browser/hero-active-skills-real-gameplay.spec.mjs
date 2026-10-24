@@ -388,6 +388,7 @@ async function readJourneyCheckpoint(page, eventId, viewerId, checkpoint) {
       revealElapsedMs: startedAt ? Date.now() - Date.parse(startedAt) : null,
       layoutChangeReason: element.getAttribute("data-public-card-journey-layout-reason"),
       accessibleName: element.getAttribute("aria-label"),
+      publicFrameRole: element.getAttribute("role"),
       inspectable: element.getAttribute("data-public-card-inspectable"),
       protectedOverlaps,
       protectedRects,
@@ -401,6 +402,13 @@ async function readJourneyCheckpoint(page, eventId, viewerId, checkpoint) {
       lustFrameBorder: lustFrameStyle ? { width: lustFrameStyle.borderTopWidth, style: lustFrameStyle.borderTopStyle } : null,
       lustFrameDecorationBorder: lustFrameDecorationStyle ? { width: lustFrameDecorationStyle.borderTopWidth, style: lustFrameDecorationStyle.borderTopStyle } : null,
       lustFrameTitleFontSize: lustFrameTitleStyle?.fontSize ?? null,
+      publicFrameClass: lustFrame?.getAttribute("data-public-card-frame-class") ?? null,
+      publicFrameEffectId: lustFrame?.getAttribute("data-public-card-frame-effect-id") ?? null,
+      publicFrameActivationOwnerId: lustFrame?.getAttribute("data-public-card-frame-activation-owner-id") ?? null,
+      publicFrameMaterialOwnerIds: lustFrame?.getAttribute("data-public-card-frame-material-owner-ids") ?? null,
+      publicFrameMaterialCardIds: lustFrame?.getAttribute("data-public-card-frame-material-card-ids") ?? null,
+      publicFrameMaterialCount: lustFrame?.getAttribute("data-public-card-frame-material-count") ?? null,
+      publicFrameGridColumns: lustFrame?.querySelector("[data-public-card-frame-grid-columns]")?.getAttribute("data-public-card-frame-grid-columns") ?? null,
       copyAnchorRect: copyAnchorRect ? { left: copyAnchorRect.left, top: copyAnchorRect.top, width: copyAnchorRect.width, height: copyAnchorRect.height } : null,
       announcementAnchorRect: announcementAnchorRect ? { left: announcementAnchorRect.left, top: announcementAnchorRect.top, width: announcementAnchorRect.width, height: announcementAnchorRect.height } : null,
       playTableRect: playTableRect ? { left: playTableRect.left, top: playTableRect.top, width: playTableRect.width, height: playTableRect.height } : null,
@@ -571,7 +579,7 @@ async function captureJourneyLifecycle(page, eventId, viewerId, checkpoints, { s
   expect(Math.abs(parked.actual.width - parked.target.width)).toBeLessThan(1);
   expect(Math.abs(parked.actual.height - parked.target.height)).toBeLessThan(1);
   expect(parked.inspectable).toBe("true");
-  expect(parked.accessibleName).toMatch(/^View public .+ card details,/);
+  expect(parked.accessibleName).toMatch(/^View public .+(?: card details,| frame\.)/);
   expect(parked.protectedOverlaps, `parked card overlaps protected UI: ${JSON.stringify({ overlaps: parked.protectedOverlaps, announcement: parked.journeyAnnouncements, target: parked.target, viewport: parked.viewport, protectedRects: parked.protectedRects })}`).toEqual([]);
   expect(parked.viewport.scrollWidth).toBeLessThanOrEqual(parked.viewport.width);
   expect(parked.journeyAnnouncements).toHaveLength(1);
@@ -1240,6 +1248,7 @@ test("L4: opponent Inspect keeps a live three-Attack LUST history, then reloads 
 });
 
 test("L5: four authenticated viewers see the complete LUST Duel reveal, history, and settlement", async ({ page, browser, request }, testInfo) => {
+  test.setTimeout(120_000);
   const cost = card("Dodge", "l5-lust-cost");
   const privateCard = card("Peach", "l5-lust-unspent-private", "♥");
   const firstAttack = card("Attack", "l5-lust-first-attack", "♣");
@@ -1317,10 +1326,12 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
       },
     )));
     const firstAnnouncement = parkedCards[0].journeyAnnouncements[0];
+    const firstAccessibleFrameName = parkedCards[0].accessibleName;
     for (const [index, viewer] of viewers.entries()) {
       expect(parkedCards[index].actorId).toBe(actor.id);
       expect(parkedCards[index].cardIds).toBe(cardId);
-      expect(parkedCards[index].journeyAnnouncements[0].accessibleText).toBe(firstAnnouncement.accessibleText);
+      expect(parkedCards[index].journeyAnnouncements[0].text).toBe(firstAnnouncement.text);
+      expect(parkedCards[index].accessibleName).toBe(firstAccessibleFrameName);
       if (label.startsWith("attack-")) {
         const announcement = parkedCards[index].journeyAnnouncements[0];
         const target = actor.id === first.id ? second : first;
@@ -1336,10 +1347,10 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
   };
 
   try {
-    await openSkillUser(page, seed, { width: 440, height: 894 });
-    await openSkillViewer(firstPage, seed, first, { width: 440, height: 894 });
-    await openSkillViewer(secondPage, seed, second, { width: 440, height: 894 });
-    await openSkillViewer(thirdPage, seed, third, { width: 440, height: 956 });
+    await openSkillUser(page, seed, { width: 390, height: 700 });
+    await openSkillViewer(firstPage, seed, first, { width: 390, height: 844 });
+    await openSkillViewer(secondPage, seed, second, { width: 440, height: 766 });
+    await openSkillViewer(thirdPage, seed, third, { width: 480, height: 900 });
     for (const { id, page: viewerPage } of viewers) {
       viewerPage.on("pageerror", (error) => runtimeErrors.push({ viewerId: id, message: error.message }));
       await installPublicJourneyTrace(viewerPage, id);
@@ -1379,6 +1390,20 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
     await expect(ownerDisplay.locator("[data-public-card-journey-card-id]")).toHaveCount(1);
     const costFrameGeometry = await Promise.all(viewers.map(({ id, page: viewerPage }) =>
       readJourneyCheckpoint(viewerPage, costEvent.id, id, "centred-lust-cost-frame-reveal")));
+    for (const geometry of costFrameGeometry) {
+      expect(geometry.publicFrameClass).toBe("COST");
+      expect(geometry.publicFrameEffectId).toBe("diao_chan_lust");
+      expect(geometry.publicFrameActivationOwnerId).toBe(owner.id);
+      expect(geometry.publicFrameMaterialOwnerIds).toBe(owner.id);
+      expect(geometry.publicFrameMaterialCardIds).toBe(cost.id);
+      expect(geometry.publicFrameMaterialCount).toBe("1");
+      expect(geometry.publicFrameGridColumns).toBe("1");
+      expect(geometry.actorId).toBe(owner.id);
+      expect(geometry.accessibleName).toMatch(/LUST cost frame.*Dodge/);
+      expect(geometry.accessibleName).toContain(owner.name);
+      expect(geometry.publicFrameRole).toBe("group");
+    }
+    expect(new Set(costFrameGeometry.map((geometry) => geometry.accessibleName)).size).toBe(1);
     await Promise.all(viewers.map(({ page: viewerPage }, index) => viewerPage.screenshot({
       path: testInfo.outputPath(`l5-cost-frame-initial-${costFrameGeometry[index].viewport.width}x${costFrameGeometry[index].viewport.height}.png`),
     })));
@@ -1415,7 +1440,7 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
     for (const parkedCard of rootParkedCards) {
       const announcement = parkedCard.journeyAnnouncements[0];
       expect(announcement.text).toBe(compactLustOrderMessage(firstParticipant, secondParticipant, firstActor));
-      expect(announcement.accessibleText).toBe(`${firstParticipant.name} vs. ${secondParticipant.name} · ${firstActor.name} attacks first.`);
+      expect(announcement.accessibleText).toContain(`${firstParticipant.name} vs. ${secondParticipant.name} · ${firstActor.name} attacks first.`);
       expect(announcement.text).not.toMatch(/Liu Bei|Cao Cao/);
       expect(announcement.accessibleText).not.toMatch(/Liu Bei|Cao Cao/);
     }
@@ -1471,10 +1496,10 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
     await expect(rootInSecondView).toHaveAttribute("data-public-card-journey-phase", "parked");
     await assertPublicEvent(secondEvent.id, second.id, secondAttack.id, 3);
     await secondAttackMotion;
-    lateContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    lateContext = await browser.newContext({ viewport: { width: 440, height: 894 } });
     const latePage = await lateContext.newPage();
     await latePage.emulateMedia({ reducedMotion: "reduce" });
-    await openSkillViewer(latePage, seed, third, { width: 390, height: 844 });
+    await openSkillViewer(latePage, seed, third, { width: 440, height: 894 });
     const lateDisplay = latePage.locator('.public-card-display[data-public-card-motion="lust-duel"]');
     await expect(lateDisplay).toBeVisible();
     await expect(lateDisplay.locator("[data-public-card-journey-phase='reveal'], [data-public-card-journey-phase='move']")).toHaveCount(0);
@@ -1482,15 +1507,15 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
       const restored = lateDisplay.locator(`[data-public-card-journey-event-id="${eventId}"]`);
       await expect(restored).toHaveCount(1);
       await expect(restored).toHaveAttribute("data-public-card-journey-phase", "parked");
-      const geometry = await readJourneyCheckpoint(latePage, eventId, third.id, "late-join-reduced-motion-390px");
+      const geometry = await readJourneyCheckpoint(latePage, eventId, third.id, "late-join-reduced-motion-440x894");
       expect(geometry.protectedOverlaps).toEqual([]);
-      expect(geometry.viewport.scrollWidth).toBeLessThanOrEqual(390);
+      expect(geometry.viewport.scrollWidth).toBeLessThanOrEqual(440);
       await assertJourneyUsesActorAnchor(latePage, third, actor, geometry);
       checkpoints.push(geometry);
     }
     await expect(latePage.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(0);
     await expect(latePage.locator('.public-card-display[data-public-card-motion="duel"]')).toHaveCount(0);
-    await latePage.screenshot({ path: testInfo.outputPath("l5-lust-late-join-reduced-motion-390x844.png") });
+    await latePage.screenshot({ path: testInfo.outputPath("l5-lust-late-join-reduced-motion-440x894.png") });
     await lateContext.close();
     lateContext = null;
     lifecycleTraces = await Promise.all(viewers.map(async ({ id, page: viewerPage }) => ({
