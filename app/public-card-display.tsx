@@ -4033,6 +4033,8 @@ function SingleTargetCardJourney({
   const announcementEventId = groupRootStageOwnsCopy
     ? action.settlement?.eventId ?? action.rootEventId
     : activeEventId;
+  const publicEffectFrameOwnsAnnouncementAnchor = action.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer"
+    && motion?.type !== "lust-cost";
   const currentNotice = groupRootStageOwnsCopy
     ? action.ariaLabel
     : currentCard?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
@@ -4143,8 +4145,8 @@ function SingleTargetCardJourney({
       eventId={negationNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId)}
       placementKey={`${publicCardAnnouncementPlacementKey(action)}${harvestPoolVisible ? ":harvest-public-pool" : ""}`}
       viewerLayoutKey={harvestPoolVisible ? "public-harvest" : viewerId}
-      anchorEventId={harvestPoolVisible || groupRootStageOwnsCopy ? null : activeEventId}
-      phase={harvestPoolVisible ? "static" : announcementAnchorCard?.phase ?? "static"}
+      anchorEventId={harvestPoolVisible || groupRootStageOwnsCopy || publicEffectFrameOwnsAnnouncementAnchor ? null : activeEventId}
+      phase={harvestPoolVisible || publicEffectFrameOwnsAnnouncementAnchor ? "static" : announcementAnchorCard?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
       accessibleLabel={announcementCopy.accessibleLabel}
@@ -4155,6 +4157,8 @@ function SingleTargetCardJourney({
         ? journey.center
       : motion?.type === "lust-cost" && journey.center
         ? battlefieldLustDuelAnnouncementAnchor(journey.center)
+        : publicEffectFrameOwnsAnnouncementAnchor && journey.center && action.publicCardEffectFrame
+          ? battlefieldPublicEffectFrame(journey.center, action.publicCardEffectFrame.materials.length)
         : motion?.type === "group-root" && !groupRootCenterIsStillOccupied ? undefined : journey.center}
       phaseNotice={negationNarration ? undefined : action.phaseNotice}
       outcome={allParked ? action.settlement?.outcome : undefined}
@@ -4162,7 +4166,7 @@ function SingleTargetCardJourney({
       stableCenterAnchor={motion?.type === "lust-cost"}
       stableHarvestAnchor={harvestPoolVisible}
       ignoreJourneyLayoutPending={harvestPoolVisible}
-      preferredVerticalMode={harvestPoolVisible ? "above" : motion?.type === "lust-cost" ? "below" : undefined}
+      preferredVerticalMode={harvestPoolVisible || publicEffectFrameOwnsAnnouncementAnchor ? "above" : motion?.type === "lust-cost" ? "below" : undefined}
     />}
   </section>;
 }

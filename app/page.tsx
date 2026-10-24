@@ -169,6 +169,54 @@ type VerifiedLustCostFrameProof = {
   secondParticipant: Player;
   firstActor: Player;
 };
+type VerifiedProdigalHealerCostFrameProof = {
+  costEvent: CardEvent | CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  costCard: Card;
+  owner: Player;
+  target: Player;
+};
+function verifiedProdigalHealerCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedProdigalHealerCostFrameProof | null {
+  const costMatches = timeline.filter((event) => event.id === eventId);
+  const costEvent = costMatches.length === 1 && (costMatches[0].type === "card" || costMatches[0].type === "cards")
+    ? costMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "discard" || !costEvent.resolutionId) return null;
+
+  const matchingEffects = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "hua_tuo_prodigal_healer" && effect.effectClass === "COST");
+  const matchingRawEffects = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "hua_tuo_prodigal_healer" && effect.effectClass === "COST");
+  if (matchingEffects.length !== 1 || matchingRawEffects.length !== 1) return null;
+  const effect = matchingEffects[0];
+  const rawEffect = matchingRawEffects[0];
+  const costCards = costEvent.type === "card" ? [costEvent.card] : costEvent.cards;
+  const [costCard] = costCards;
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const targetId = effect.targetId;
+  if (costCards.length !== 1 || !costCard || !material || !rawMaterial || !projectedCard
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "RECOVERY_APPLIED" || rawEffect.outcome !== "RECOVERY_APPLIED"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || material.cardId !== costCard.id || rawMaterial.cardId !== costCard.id || projectedCard.id !== costCard.id
+    || material.ownerId !== effect.activationOwnerId || rawMaterial.ownerId !== effect.activationOwnerId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+    || projectedCard.kind !== costCard.kind || projectedCard.suit !== costCard.suit || projectedCard.rank !== costCard.rank) return null;
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "hua-tuo");
+  const target = players.find((player) => player.id === targetId);
+  if (!owner?.name || !target?.name) return null;
+  return { costEvent, effect, costCard, owner, target };
+}
 function verifiedLustCostFrameForEvent(
   timeline: readonly GameEvent[],
   notices: readonly PresentationSnapshotDiaoChanSkillNotice[],
@@ -5502,6 +5550,37 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     publicCardEffectFrame: lustPublicCardEffectFrame(lustCostFrameCandidate, room.players,
       lustDuelOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor)),
   } : null;
+  const prodigalHealerCostFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "hua_tuo_prodigal_healer"
+      && effect.effectClass === "COST")
+      .flatMap((effect) => {
+        const frame = verifiedProdigalHealerCostFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
+  })();
+  const prodigalHealerCostFrameAction: PublicCardDisplayAction | null = prodigalHealerCostFrameCandidate ? {
+    key: ["prodigal-healer-cost", prodigalHealerCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: prodigalHealerCostFrameCandidate.costEvent.id,
+    sourceId: prodigalHealerCostFrameCandidate.owner.id,
+    targetId: prodigalHealerCostFrameCandidate.target.id,
+    cardFace: prodigalHealerCostFrameCandidate.costCard,
+    cardLabel: "PRODIGAL HEALER COST",
+    ariaLabel: `${prodigalHealerCostFrameCandidate.owner.name} used Prodigal Healer on ${prodigalHealerCostFrameCandidate.target.name}, paying one Hand card.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "hua_tuo_prodigal_healer", prodigalHealerCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(prodigalHealerCostFrameCandidate.costEvent.id)
+        ? [] : [prodigalHealerCostFrameCandidate.costEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(prodigalHealerCostFrameCandidate.effect, {
+      title: "PRODIGAL HEALER",
+      accessibleLabel: `${prodigalHealerCostFrameCandidate.owner.name} paid one Hand card to use Prodigal Healer on ${prodigalHealerCostFrameCandidate.target.name}.`,
+      activationOwnerName: prodigalHealerCostFrameCandidate.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
   const lustDuelPublicAction: PublicCardDisplayAction | null = lustDuelExchangeDisplayCandidate ? {
     key: ["lust-duel", lustDuelExchangeDisplayCandidate.exchange.interactionId,
       lustDuelExchangeDisplayCandidate.exchange.rootFrameId,
@@ -5576,6 +5655,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? lustDuelPublicAction
     : lustCostFrameAction
     ? lustCostFrameAction
+    : prodigalHealerCostFrameAction
+    ? prodigalHealerCostFrameAction
     : groupSettlementCandidate
     ? {
       key: ["group", groupSettlementCandidate.settlement.interactionId, groupSettlementCandidate.settlement.groupFrameId, groupSettlementCandidate.rootEvent.id].join(":"),
