@@ -1169,6 +1169,233 @@ test("W3: Divine Wisdom shows every proven Hand cost card to all phone viewers",
   }
 });
 
+test("W3: Dauntless shows Yue Jin's proven Basic Hand cost to every phone viewer", async ({ page, browser, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const cost = card("Peach", "w3-dauntless-basic-cost", "♥");
+  const ownerPrivate = card("Dodge", "w3-dauntless-yue-private");
+  const targetPrivate = card("Peach", "w3-dauntless-target-private", "♦");
+  const rebelPrivate = card("Attack", "w3-dauntless-rebel-private");
+  const equipment = card("ZhugeCrossbow", "w3-dauntless-target-equipment");
+  const seeded = await request.post(`${API}/__test/seed-playing-game`, {
+    data: {
+      phase: "play", turnSeat: 0,
+      players: [
+        { name: "ENDING PLAYER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [targetPrivate], equipment: { weapon: equipment } },
+        { name: "YUE JIN", role: "Loyalist", hero: "yue-jin", hp: 4, maxHp: 4, hand: [cost, ownerPrivate] },
+        { name: "REBEL", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [rebelPrivate] },
+        { name: "RENEGADE", role: "Renegade", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
+      ],
+    },
+  });
+  expect(seeded.ok()).toBeTruthy();
+  const seed = await seeded.json();
+  const owner = seed.players[1];
+  const target = seed.players[0];
+  const openedViewers = await Promise.all(seed.players.map(async (player, index) => {
+    if (index === 1) return null;
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    return { player, context, page: await context.newPage() };
+  }));
+  const viewers = [
+    { player: owner, page, context: null },
+    ...openedViewers.filter(Boolean),
+  ].sort((left, right) => left.player.seat - right.player.seat);
+
+  try {
+    await Promise.all(viewers.map(({ player, page: viewerPage }) =>
+      openSkillViewer(viewerPage, seed, player, { width: 390, height: 844 })));
+    await Promise.all(viewers.map(({ player, page: viewerPage }) =>
+      expect(viewerPage.locator(`.local-player-dock[data-player-anchor="${player.id}"]`)).toBeVisible()));
+
+    const frameWaiters = viewers.map(({ player, page: viewerPage }, index) => viewerPage.waitForFunction(() => {
+      const frame = document.querySelector('[data-public-card-frame-effect-id="yue_jin_dauntless"]');
+      const journeyCard = frame?.closest("[data-public-card-journey-event-id]");
+      const display = journeyCard?.closest(".public-card-display");
+      const announcement = display?.querySelector('[data-public-card-announcement="true"]');
+      const announcementStyle = announcement ? getComputedStyle(announcement) : null;
+      const announcementRect = announcement?.getBoundingClientRect();
+      if (!frame || !journeyCard || !display || !announcement
+        || announcement.dataset.publicCardAnnouncementPositioned !== "true"
+        || !announcementStyle || announcementStyle.display === "none" || announcementStyle.visibility !== "visible"
+        || Number(announcementStyle.opacity) <= 0 || !announcementRect || announcementRect.width <= 0 || announcementRect.height <= 0
+        || display.dataset.publicCardLayoutPending !== "false") return false;
+      const frameRect = frame.getBoundingClientRect();
+      const visibleAnnouncementRect = announcement.getBoundingClientRect();
+      return {
+        eventId: journeyCard.dataset.publicCardJourneyEventId,
+        phase: journeyCard.dataset.publicCardJourneyPhase,
+        viewerId: display.dataset.publicCardViewerId,
+        actorId: journeyCard.dataset.publicCardJourneyActorId,
+        cardIds: journeyCard.dataset.publicCardJourneyCardIds,
+        effectId: frame.dataset.publicCardFrameEffectId,
+        effectClass: frame.dataset.publicCardFrameClass,
+        activationOwnerId: frame.dataset.publicCardFrameActivationOwnerId,
+        materialOwnerIds: frame.dataset.publicCardFrameMaterialOwnerIds,
+        materialCardIds: frame.dataset.publicCardFrameMaterialCardIds,
+        title: frame.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
+        announcement: {
+          left: visibleAnnouncementRect.left, top: visibleAnnouncementRect.top,
+          right: visibleAnnouncementRect.right, bottom: visibleAnnouncementRect.bottom,
+          text: announcement.textContent?.trim(), visibility: announcementStyle.visibility,
+          opacity: Number(announcementStyle.opacity),
+        },
+        frame: { left: frameRect.left, top: frameRect.top, right: frameRect.right, bottom: frameRect.bottom },
+        viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
+      };
+    }, null, { timeout: 10_000 }).then(async (handle) => {
+      const evidence = await handle.jsonValue();
+      await attachJourneyScreenshot(viewerPage, testInfo,
+        `w3-dauntless-${index === 0 ? "target" : `viewer-${index + 1}`}-390x844`, "revealed-frame");
+      return evidence;
+    }).catch((error) => ({ timeout: true, viewerId: player.id, error: String(error) })));
+
+    const ended = await request.post(`${API}/api/rooms`, {
+      data: { action: "end_turn", code: seed.code, token: target.token },
+    });
+    expect(ended.ok()).toBeTruthy();
+    const ownerProjection = await projectedRoom(request, seed, owner);
+    expect(ownerProjection.currentAction).toMatchObject({ kind: "trigger", actorId: owner.id, triggerEvent: "turn_end" });
+    expect(ownerProjection.currentAction.triggerOptions.map((option) => option.effectId)).toContain("yue_jin_dauntless");
+
+    const ownerDock = page.locator(`.local-player-dock[data-player-anchor="${owner.id}"]`);
+    const skill = ownerDock.locator(".local-hero-skills").getByRole("button", { name: "Dauntless", exact: true });
+    await expect(skill).toBeEnabled();
+    await skill.click();
+    await ownerDock.locator(`[data-hand-card-id="${cost.id}"] .game-card`).click();
+    const ownerConfirm = ownerDock.locator('[data-action-slot="primary"] button.primary');
+    await expect(ownerConfirm).toHaveText("Confirm");
+    const activationPromise = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "trigger"
+      && response.request().postDataJSON()?.providerId === "yue_jin_dauntless");
+    await ownerConfirm.click();
+    const activation = await activationPromise;
+    expect(activation.ok()).toBeTruthy();
+    expect(activation.request().postDataJSON()).toMatchObject({
+      action: "trigger", providerId: "yue_jin_dauntless", cardIds: [cost.id],
+    });
+    const committed = await activation.json();
+    const costEvent = committed.room.timeline.find((event) => (event.type === "card" && event.card.id === cost.id)
+      || (event.type === "cards" && event.cards.length === 1 && event.cards[0].id === cost.id));
+    expect(costEvent).toBeTruthy();
+    expect(costEvent.resolutionId).toBeTruthy();
+    expect(costEvent.action).toBe("discard");
+    const costFaces = costEvent.type === "card" ? [costEvent.card] : costEvent.cards;
+    const effect = committed.room.presentationSnapshot.publicCardEffects.find((candidate) => candidate.eventId === costEvent.id);
+    const rawCostEffects = costEvent.publicCardEffects.filter((candidate) =>
+      candidate.effectId === "yue_jin_dauntless" && candidate.effectClass === "COST");
+    expect(rawCostEffects).toHaveLength(1);
+    expect(rawCostEffects[0]).toMatchObject({
+      activationOwnerId: owner.id, targetId: target.id, outcome: "ACTIVATION_COST",
+      materials: [{ cardId: cost.id, ownerId: owner.id, fromZone: "HAND", toZone: "DISCARD" }],
+    });
+    expect(effect).toMatchObject({
+      semantics: "PROVEN", eventId: costEvent.id, effectId: "yue_jin_dauntless", effectClass: "COST",
+      activationOwnerId: owner.id, targetId: target.id, outcome: "ACTIVATION_COST",
+      cards: [cost], materials: [{ cardId: cost.id, ownerId: owner.id, fromZone: "HAND", toZone: "DISCARD" }],
+    });
+    expect(costFaces).toEqual([cost]);
+    expect(committed.room.currentAction).toMatchObject({ kind: "trigger", actorId: target.id, triggerEvent: "turn_end" });
+
+    const frameEvidence = await Promise.all(frameWaiters);
+    expect(frameEvidence.filter((evidence) => evidence?.timeout), JSON.stringify(frameEvidence)).toHaveLength(0);
+    for (const [index, { player }] of viewers.entries()) {
+      const evidence = frameEvidence[index];
+      expect(evidence).toMatchObject({
+        eventId: costEvent.id, phase: "reveal", viewerId: player.id, actorId: owner.id,
+        cardIds: cost.id, effectId: "yue_jin_dauntless", effectClass: "COST",
+        activationOwnerId: owner.id, materialOwnerIds: owner.id, materialCardIds: cost.id,
+        title: "DAUNTLESS", viewport: { width: 390, height: 844, scrollWidth: 390 },
+      });
+      expect(evidence.announcement.text).toContain("YUE JIN");
+      expect(evidence.announcement.text).toContain("ENDING PLAYER");
+      expect(evidence.announcement.text).toContain("Dauntless");
+      expect(evidence.announcement.text).toContain("Basic Hand card");
+      expect(evidence.announcement.visibility).toBe("visible");
+      expect(evidence.announcement.opacity).toBeGreaterThan(0);
+      expect(evidence.announcement.bottom <= evidence.frame.top - 2 || evidence.announcement.top >= evidence.frame.bottom + 2)
+        .toBe(true);
+    }
+
+    const parkedEvidence = await Promise.all(viewers.map(async ({ player, page: viewerPage }) => {
+      await waitForJourneyActorAnchor(viewerPage, player, owner, costEvent.id);
+      return viewerPage.locator(`[data-public-card-journey-event-id="${costEvent.id}"]`).evaluate((journeyCard) => {
+        const rect = journeyCard.getBoundingClientRect();
+        return {
+          phase: journeyCard.dataset.publicCardJourneyPhase,
+          viewerId: journeyCard.closest(".public-card-display")?.getAttribute("data-public-card-viewer-id"),
+          actorId: journeyCard.dataset.publicCardJourneyActorId,
+          cardIds: journeyCard.dataset.publicCardJourneyCardIds,
+          actual: { left: rect.left, top: rect.top },
+          target: {
+            left: Number(journeyCard.dataset.publicCardJourneyTargetLeft),
+            top: Number(journeyCard.dataset.publicCardJourneyTargetTop),
+          },
+        };
+      });
+    }));
+    for (const [index, { player }] of viewers.entries()) {
+      expect(parkedEvidence[index]).toMatchObject({ phase: "parked", viewerId: player.id, actorId: owner.id, cardIds: cost.id });
+      expect(Math.abs(parkedEvidence[index].actual.left - parkedEvidence[index].target.left)).toBeLessThan(1);
+      expect(Math.abs(parkedEvidence[index].actual.top - parkedEvidence[index].target.top)).toBeLessThan(1);
+    }
+
+    const privateCards = [
+      { ownerId: owner.id, card: ownerPrivate },
+      { ownerId: target.id, card: targetPrivate },
+      { ownerId: seed.players[2].id, card: rebelPrivate },
+    ];
+    const projections = await Promise.all(viewers.map(({ player }) => projectedRoom(request, seed, player)));
+    for (const [index, { player, page: viewerPage }] of viewers.entries()) {
+      const serialized = JSON.stringify(projections[index]);
+      expect(serialized).toContain(cost.id);
+      for (const { ownerId, card: privateCard } of privateCards) {
+        const isOwner = player.id === ownerId;
+        expect(serialized.includes(privateCard.id)).toBe(isOwner);
+        expect(await viewerPage.locator(`[data-hand-card-id="${privateCard.id}"]`).count()).toBe(isOwner ? 1 : 0);
+      }
+    }
+
+    const targetProjection = await projectedRoom(request, seed, target);
+    expect(targetProjection.currentAction).toMatchObject({ kind: "trigger", actorId: target.id, triggerEvent: "turn_end" });
+    expect(targetProjection.currentAction.triggerOptions.find((option) => option.effectId === "yue_jin_dauntless")?.selection)
+      .toMatchObject({ type: "target_cards", targetId: target.id, eligibleKeys: [equipment.id] });
+    const targetPage = viewers.find(({ player }) => player.id === target.id).page;
+    const targetDock = targetPage.locator(`.local-player-dock[data-player-anchor="${target.id}"]`);
+    const equipmentChoice = targetDock.locator(`[data-equipment-id="${equipment.id}"] .local-zone-card-button`);
+    await expect(equipmentChoice).toBeEnabled();
+    await equipmentChoice.click();
+    const targetConfirm = targetDock.locator('[data-action-slot="primary"] button.primary');
+    await expect(targetConfirm).toHaveText("Confirm");
+    const equipmentPromise = targetPage.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "trigger"
+      && response.request().postDataJSON()?.providerId === "yue_jin_dauntless");
+    await targetConfirm.click();
+    const equipmentResponse = await equipmentPromise;
+    expect(equipmentResponse.ok()).toBeTruthy();
+    expect(equipmentResponse.request().postDataJSON()).toMatchObject({
+      action: "trigger", providerId: "yue_jin_dauntless", cardKeys: [equipment.id],
+    });
+    const equipmentResolved = await equipmentResponse.json();
+    const equipmentEvent = equipmentResolved.room.timeline.find((event) => (event.type === "card" && event.card.id === equipment.id)
+      || (event.type === "cards" && event.cards.some((face) => face.id === equipment.id)));
+    const equipmentEffect = equipmentResolved.room.presentationSnapshot.publicCardEffects.find((candidate) => candidate.eventId === equipmentEvent?.id);
+    expect(equipmentEffect).toMatchObject({
+      effectId: "yue_jin_dauntless", effectClass: "EFFECT", activationOwnerId: owner.id, targetId: target.id,
+      outcome: "DAMAGE_PREVENTED",
+      materials: [{ cardId: equipment.id, ownerId: target.id, fromZone: "EQUIPMENT", toZone: "DISCARD" }],
+    });
+    await attachJourneyJson(testInfo, "w3-dauntless-four-viewer-frame-evidence.json", {
+      costEvent, effect, ownerId: owner.id, targetId: target.id, viewers: frameEvidence,
+      parkedEvidence, equipmentEvent, equipmentEffect,
+      privacy: privateCards.map(({ ownerId, card: privateCard }) => ({ ownerId, cardId: privateCard.id })),
+    });
+  } finally {
+    await Promise.all(openedViewers.filter(Boolean).map(({ context }) => context.close()));
+  }
+});
+
 test("real Prodigal Healer submits the eligible card and injured character", async ({ page, request }) => {
   const cost = card("Attack", "real-prodigal-cost");
   const seed = await seedSkillRoom(request, {

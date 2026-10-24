@@ -265,6 +265,56 @@ function verifiedDivineWisdomCostFrameForEvent(
   }
   return { costEvent, effect, costCards: costEvent.cards, owner };
 }
+type VerifiedDauntlessCostFrameProof = {
+  costEvent: CardEvent | CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  costCard: Card;
+  owner: Player;
+  target: Player;
+};
+function verifiedDauntlessCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedDauntlessCostFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const costEvent = eventMatches.length === 1
+    && (eventMatches[0].type === "card" || eventMatches[0].type === "cards") ? eventMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "discard" || !costEvent.resolutionId) return null;
+
+  const matchingEffects = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "yue_jin_dauntless" && effect.effectClass === "COST");
+  const matchingRawEffects = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "yue_jin_dauntless" && effect.effectClass === "COST");
+  if (matchingEffects.length !== 1 || matchingRawEffects.length !== 1) return null;
+  const effect = matchingEffects[0];
+  const rawEffect = matchingRawEffects[0];
+  const costCards = costEvent.type === "card" ? [costEvent.card] : costEvent.cards;
+  const [costCard] = costCards;
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const targetId = effect.targetId;
+  if (costCards.length !== 1 || !costCard || cardDefinition(costCard.kind).category !== "basic"
+    || !material || !rawMaterial || !projectedCard
+    || effect.semantics !== "PROVEN"
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "ACTIVATION_COST" || rawEffect.outcome !== "ACTIVATION_COST"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || material.cardId !== costCard.id || rawMaterial.cardId !== costCard.id || projectedCard.id !== costCard.id
+    || material.ownerId !== effect.activationOwnerId || rawMaterial.ownerId !== effect.activationOwnerId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+    || projectedCard.kind !== costCard.kind || projectedCard.suit !== costCard.suit || projectedCard.rank !== costCard.rank) return null;
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "yue-jin");
+  const target = players.find((player) => player.id === targetId);
+  if (!owner?.name || !target?.name || owner.id === target.id) return null;
+  return { costEvent, effect, costCard, owner, target };
+}
 function verifiedLustCostFrameForEvent(
   timeline: readonly GameEvent[],
   notices: readonly PresentationSnapshotDiaoChanSkillNotice[],
@@ -5662,6 +5712,45 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
+  const dauntlessCostFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "yue_jin_dauntless"
+      && effect.effectClass === "COST")
+      .flatMap((effect) => {
+        const frame = verifiedDauntlessCostFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
+  })();
+  const dauntlessCostFrameAction: PublicCardDisplayAction | null = dauntlessCostFrameCandidate ? {
+    key: ["dauntless-cost", dauntlessCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: dauntlessCostFrameCandidate.costEvent.id,
+    sourceId: dauntlessCostFrameCandidate.owner.id,
+    targetId: dauntlessCostFrameCandidate.target.id,
+    cardFace: dauntlessCostFrameCandidate.costCard,
+    cardLabel: "DAUNTLESS COST",
+    ariaLabel: `${dauntlessCostFrameCandidate.owner.name} used Dauntless on ${dauntlessCostFrameCandidate.target.name}, paying one Basic Hand card.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "yue_jin_dauntless", dauntlessCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(dauntlessCostFrameCandidate.costEvent.id)
+        ? [] : [dauntlessCostFrameCandidate.costEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(dauntlessCostFrameCandidate.effect, {
+      title: "DAUNTLESS",
+      accessibleLabel: `${dauntlessCostFrameCandidate.owner.name} paid one Basic Hand card to use Dauntless on ${dauntlessCostFrameCandidate.target.name}.`,
+      activationOwnerName: dauntlessCostFrameCandidate.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const latestW3CostFrameAction = [
+    prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction,
+  ].filter((action): action is PublicCardDisplayAction => Boolean(action))
+    .reduce<PublicCardDisplayAction | null>((latest, action) => {
+      if (!latest) return action;
+      return room.timeline.findIndex((event) => event.id === action.rootEventId)
+        > room.timeline.findIndex((event) => event.id === latest.rootEventId) ? action : latest;
+    }, null);
   const lustDuelPublicAction: PublicCardDisplayAction | null = lustDuelExchangeDisplayCandidate ? {
     key: ["lust-duel", lustDuelExchangeDisplayCandidate.exchange.interactionId,
       lustDuelExchangeDisplayCandidate.exchange.rootFrameId,
@@ -5736,10 +5825,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? lustDuelPublicAction
     : lustCostFrameAction
     ? lustCostFrameAction
-    : prodigalHealerCostFrameAction
-    ? prodigalHealerCostFrameAction
-    : divineWisdomCostFrameAction
-    ? divineWisdomCostFrameAction
+    : latestW3CostFrameAction
+    ? latestW3CostFrameAction
     : groupSettlementCandidate
     ? {
       key: ["group", groupSettlementCandidate.settlement.interactionId, groupSettlementCandidate.settlement.groupFrameId, groupSettlementCandidate.rootEvent.id].join(":"),

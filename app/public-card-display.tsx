@@ -4036,6 +4036,7 @@ function SingleTargetCardJourney({
     ? action.settlement?.eventId ?? action.rootEventId
     : activeEventId;
   const publicEffectFrameOwnsAnnouncementAnchor = (action.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer"
+    || action.publicCardEffectFrame?.effectId === "yue_jin_dauntless"
     || action.publicCardEffectFrame?.effectId === "lady_gan_divine_wisdom") && motion?.type !== "lust-cost";
   const currentNotice = groupRootStageOwnsCopy
     ? action.ariaLabel
