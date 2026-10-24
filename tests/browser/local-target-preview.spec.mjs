@@ -138,15 +138,17 @@ test("active-skill self target stays in the Local Dock and opponent choices use 
   await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
 });
 
-test("authoritative Attack Response replaces the local inspector", async ({ page }) => {
+test("authoritative Attack Response closes the local inspector and transfers decision authority", async ({ page }) => {
   await loadFixture(page, { state: "ordinary-turn", width: 390, height: 844, acknowledge: true });
   await selectOrdinaryTarget(page);
   await expect(inspector(page)).toHaveAttribute("data-inspect-player-id", "p2");
 
   await page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" }).click();
-  const stage = page.locator('.interaction-stage[data-stage="ATTACK_RESPONSE"]');
-  await expect(stage).toBeVisible();
-  await expect(stage).not.toHaveAttribute("data-local-ui-mode", /.+/);
-  await expect(stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"]')).toBeVisible();
-  await expect(stage.locator(".opponent-inspection-panel")).toHaveCount(0);
+  await expect(page.locator(".opponent-inspection-panel, .interaction-stage-inspect-only")).toHaveCount(0);
+  const acknowledgedAction = await page.evaluate(() => ({
+    phase: window.__browserRoom.phase,
+    kind: window.__browserRoom.currentAction?.kind,
+    actorId: window.__browserRoom.currentAction?.actorId,
+  }));
+  expect(acknowledgedAction).toEqual({ phase: "response", kind: "response", actorId: "p2" });
 });
