@@ -198,7 +198,7 @@ async function expectTargetPool(page, title, instruction, cta) {
   expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
   expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
   expect(geometry.right - geometry.left, JSON.stringify(geometry)).toBeLessThanOrEqual(geometry.viewportWidth - 16);
-  expect(geometry.withinTable).toBe(true);
+  expect(geometry.withinTable, JSON.stringify(geometry)).toBe(true);
   expect(geometry.stagePointerEvents).toBe("none");
   expect(geometry.panelPointerEvents).toBe("auto");
   expect(geometry.touches.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
@@ -218,6 +218,7 @@ function fourPlayers(source, target) {
 
 const STANDARD_ROLES_BY_SEAT_COUNT = {
   4: ["Lord", "Loyalist", "Rebel", "Renegade"],
+  5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"],
   6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"],
   8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"],
 };
@@ -756,10 +757,11 @@ test("settled Steal and Burning Bridges share proven source-to-destination outco
   }
 });
 
-test("T3 settlement stays shared across mobile sizes, 4/6/8 seats, reloads, and a fast next Stratagem", async ({ browser, request }, testInfo) => {
+test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, and a fast next Stratagem", async ({ browser, request }, testInfo) => {
   test.setTimeout(360_000);
   const scenarios = [
     { seats: 4, viewport: { width: 390, height: 844 }, effect: "Steal", kind: "Steal", zone: "hand", extraRoot: true },
+    { seats: 5, viewport: { width: 390, height: 700 }, effect: "Steal", kind: "Steal", zone: "hand" },
     { seats: 6, viewport: { width: 440, height: 894 }, effect: "Dismantle", kind: "Dismantle", zone: "equipment", equipmentOnly: true, longNames: true },
     { seats: 8, viewport: { width: 480, height: 900 }, effect: "Steal", kind: "Steal", zone: "judgement", reducedMotion: true },
     { seats: 4, viewport: { width: 390, height: 700 }, effect: "Dismantle", kind: "Dismantle", zone: "hand", oneCard: true },
@@ -889,12 +891,13 @@ test("T3 settlement stays shared across mobile sizes, 4/6/8 seats, reloads, and 
         for (const obstacle of await viewerPage.locator(
           ".card-pool-panel--actor-target-select, .public-card-display-journey-copy, .public-card-journey-card, .player-square, .visible-countdown",
         ).all()) {
+          if (!await obstacle.isVisible()) continue;
           const obstacleRect = await obstacle.boundingBox();
           if (!cueRect || !obstacleRect) continue;
           const separated = cueRect.x + cueRect.width <= obstacleRect.x || obstacleRect.x + obstacleRect.width <= cueRect.x
             || cueRect.y + cueRect.height <= obstacleRect.y || obstacleRect.y + obstacleRect.height <= cueRect.y;
           expect(separated,
-            `${label} viewer ${index} cue avoids ${await obstacle.getAttribute("class")}: ${JSON.stringify({ cue: cueRect, obstacle: obstacleRect })}`).toBe(true);
+            `${label} viewer ${index} cue avoids ${await obstacle.getAttribute("class")}: ${JSON.stringify({ cue: cueRect, obstacle: obstacleRect, placements: activityPlacementLogs[index].map((values) => values[1]) })}`).toBe(true);
         }
         const display = viewerPage.locator('[data-public-card-display="true"]');
         await expect(display).toHaveCount(1);
@@ -965,8 +968,13 @@ test("T3 settlement stays shared across mobile sizes, 4/6/8 seats, reloads, and 
       const modalTitle = scenario.kind === "Steal" ? "Steal" : "Burning Bridge";
       const instruction = scenario.kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
       const dialog = await expectTargetPool(pages[0], modalTitle, instruction, `Use ${modalTitle}`);
-      if (scenario.zone === "equipment") await dialog.getByRole("tab", { name: "EQUIPMENT 1" }).click();
-      if (scenario.zone === "judgement") await dialog.getByRole("tab", { name: "JUDGEMENT 1" }).click();
+      const populatedZoneCount = [hiddenHand.length > 0, Boolean(equipment), judgement.length > 0].filter(Boolean).length;
+      if (populatedZoneCount > 1) {
+        if (scenario.zone === "equipment") await dialog.getByRole("tab", { name: "EQUIPMENT 1" }).click();
+        if (scenario.zone === "judgement") await dialog.getByRole("tab", { name: "JUDGEMENT 1" }).click();
+      } else {
+        await expect(dialog.getByRole("tab")).toHaveCount(0);
+      }
       const choice = scenario.zone === "hand"
         ? dialog.getByRole("button", { name: "Choose hidden Hand position 1", exact: true })
         : scenario.zone === "equipment"
@@ -1060,8 +1068,9 @@ test("T3 settlement stays shared across mobile sizes, 4/6/8 seats, reloads, and 
         const publicWire = JSON.stringify({ presentationV2: view.presentationV2, presentationSnapshot: view.presentationSnapshot, timeline: view.timeline, log: view.log });
         const hiddenId = hiddenHand[0]?.id;
         if (hiddenId) expect(publicWire.includes(hiddenId)).toBe(scenario.kind === "Dismantle" && scenario.zone === "hand");
-        if (hiddenId && scenario.kind === "Steal" && scenario.zone === "hand" && index !== 0) {
-          expect(await pages[index].locator("body").innerHTML()).not.toContain(hiddenId);
+        const browserViewerIndex = viewerIndexes.indexOf(index);
+        if (hiddenId && scenario.kind === "Steal" && scenario.zone === "hand" && browserViewerIndex >= 0 && index !== 0) {
+          expect(await pages[browserViewerIndex].locator("body").innerHTML()).not.toContain(hiddenId);
         }
       }
       await Promise.all(pages.map((viewerPage) => viewerPage.reload()));

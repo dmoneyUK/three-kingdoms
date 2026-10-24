@@ -330,8 +330,13 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
         || element.matches("[data-player-count], [data-seat-topology]")));
     };
     const mutationObserver = new MutationObserver((records) => {
-      if (records.some((record) => record.type === "attributes"
-        || [...record.addedNodes, ...record.removedNodes].some(relevantMutation))) schedule();
+      if (records.some((record) => {
+        if (record.type === "attributes") {
+          if (record.attributeName !== "style") return true;
+          return record.target !== chip && relevantMutation(record.target);
+        }
+        return [...record.addedNodes, ...record.removedNodes].some(relevantMutation);
+      })) schedule();
     });
     mutationObserver.observe(table, {
       subtree: true,
@@ -341,6 +346,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
         // Protected obstacles enter/leave their collision geometry through
         // state classes (for example, a centred reveal becoming a parked mini).
         "class",
+        "style",
         "data-player-count",
         "data-seat-topology",
         "data-public-card-journey-target-left",

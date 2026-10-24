@@ -6655,7 +6655,7 @@
     padding-inline: 6px;
   }
   .game-shell .play-table:has(.visible-countdown) .card-pool-panel--actor-target-select.harvest-choice-panel {
-    max-width: calc(100vw - 80px);
+    max-width: calc(100vw - 96px);
   }
 
   /* A live public root remains in the centre while an actor chooses its target.
