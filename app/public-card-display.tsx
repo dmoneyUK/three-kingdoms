@@ -1666,6 +1666,14 @@ function publicCardAnnouncementCopy(
     const compactMessage = bumperHarvestNegationCopy(action, true);
     return { message, compactMessage: compactMessage === message ? undefined : compactMessage };
   }
+  if (action.publicCardEffectFrame && action.publicNotice) {
+    const compactMessage = action.publicNoticeCompact?.trim();
+    return {
+      message: action.publicNotice,
+      compactMessage: compactMessage && compactMessage !== action.publicNotice ? compactMessage : undefined,
+      accessibleLabel: action.publicCardEffectFrame.accessibleLabel,
+    };
+  }
   const message = publicCardAnnouncement(action, notice, actorName, sourceName, targetName);
   const compactMessage = publicCardAnnouncement(
     action,
@@ -1674,7 +1682,9 @@ function publicCardAnnouncementCopy(
     compactPlayerNamesById[action.sourceId] ?? sourceName,
     action.targetId ? compactPlayerNamesById[action.targetId] ?? targetName : targetName,
   );
-  return { message, compactMessage: compactMessage === message ? undefined : compactMessage };
+  const explicitCompactMessage = action.publicNoticeCompact?.trim();
+  const selectedCompactMessage = explicitCompactMessage || compactMessage;
+  return { message, compactMessage: selectedCompactMessage === message ? undefined : selectedCompactMessage };
 }
 
 function withPublicCardPhaseNotice(message: string, phaseNotice: string | undefined, compact = false) {
@@ -4037,7 +4047,8 @@ function SingleTargetCardJourney({
     : activeEventId;
   const publicEffectFrameOwnsAnnouncementAnchor = (action.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer"
     || action.publicCardEffectFrame?.effectId === "yue_jin_dauntless"
-    || action.publicCardEffectFrame?.effectId === "lady_gan_divine_wisdom") && motion?.type !== "lust-cost";
+    || action.publicCardEffectFrame?.effectId === "lady_gan_divine_wisdom"
+    || action.publicCardEffectFrame?.effectId === "sun_shangxiang_betrothment") && motion?.type !== "lust-cost";
   const currentNotice = groupRootStageOwnsCopy
     ? action.ariaLabel
     : currentCard?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;

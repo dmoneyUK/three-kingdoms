@@ -33,6 +33,7 @@ test("Betrothment uses exactly two Hand cards, recovers Sun first then the injur
     { cardId: "peach-betrothment-b", ownerId: sun.id, fromZone: "HAND", toZone: "DISCARD" },
   ]);
   assert.equal(betrothmentEvent.publicCardEffects?.[0]?.activationOwnerId, sun.id);
+  assert.equal(betrothmentEvent.publicCardEffects?.[0]?.outcome, "SOURCE_AND_TARGET_RECOVERED");
   const resolved = (await state(game.code, game.members[0].token)).data;
   assert.equal(resolved.players.find((player) => player.id === sun.id).hp, 3);
   assert.equal(resolved.players.find((player) => player.id === target.id).hp, 3);
@@ -56,6 +57,13 @@ test("Betrothment remains legal for full-HP Sun, excludes full-HP/female/dead ma
   const invalid = await request("trigger", { code: game.code, token: game.members[0].token, providerId: "sun_shangxiang_betrothment", cardIds: ["betrothment-equipment", "dodge-betrothment-a"], targetId: target.id });
   assert.equal(invalid.status, 409);
   assert.equal(JSON.parse(query(`SELECT skill_state_json FROM rooms WHERE code=${quote(game.code)}`) || "{}").betrothmentUsed, undefined);
+  setEquipment(sun.id, {});
+  const valid = await request("trigger", { code: game.code, token: game.members[0].token, providerId: "sun_shangxiang_betrothment", cardIds: ["dodge-betrothment-a", "peach-betrothment-b"], targetId: target.id });
+  assert.equal(valid.status, 200, JSON.stringify(valid.data));
+  const validEvent = valid.data.room.timeline.find((event) => event.type === "cards"
+    && event.cards.some((item) => item.id === "dodge-betrothment-a"));
+  assert.equal(validEvent.publicCardEffects?.[0]?.outcome, "TARGET_RECOVERED");
+  assert.equal(valid.data.room.presentationSnapshot.publicCardEffects.find((effect) => effect.eventId === validEvent.id)?.outcome, "TARGET_RECOVERED");
 });
 
 test("Daredevil observes Equipment replacement and offers one private draw of two cards", async () => {

@@ -7,7 +7,7 @@ import { STANDARD_PRESET_CARD_KINDS, TEST_HAND_PRESET_OPTIONS, testHandPresetFor
 import { baselineHand, updatePrivateHand } from "../game/private-hand.js";
 import { mergeEffectNoticeQueue, type EffectNoticeQueueEntry } from "./effect-notice-queue.js";
 import { getResponseOptions } from "../game/responses";
-import { HEROES, type HeroSkill } from "../game/heroes";
+import { HEROES, heroGender, type HeroSkill } from "../game/heroes";
 import { normalizeRoomData } from "../game/room-safety.js";
 import { canUseAction, type CurrentAction, type GameplayAction, type PlayTargetRejectionView, type TriggerOptionView } from "../game/protocol.js";
 import { latestPublicMessages } from "../game/messages.js";
@@ -314,6 +314,61 @@ function verifiedDauntlessCostFrameForEvent(
   const target = players.find((player) => player.id === targetId);
   if (!owner?.name || !target?.name || owner.id === target.id) return null;
   return { costEvent, effect, costCard, owner, target };
+}
+type VerifiedBetrothmentCostFrameProof = {
+  costEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  costCards: readonly Card[];
+  owner: Player;
+  target: Player;
+  recoveryCopy: string;
+};
+function verifiedBetrothmentCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedBetrothmentCostFrameProof | null {
+  const costMatches = timeline.filter((event) => event.id === eventId);
+  const costEvent = costMatches.length === 1 && costMatches[0].type === "cards" ? costMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "discard" || !costEvent.resolutionId || costEvent.cards.length !== 2) return null;
+
+  const matchingEffects = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "sun_shangxiang_betrothment" && effect.effectClass === "COST");
+  const matchingRawEffects = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "sun_shangxiang_betrothment" && effect.effectClass === "COST");
+  if (matchingEffects.length !== 1 || matchingRawEffects.length !== 1) return null;
+  const effect = matchingEffects[0];
+  const rawEffect = matchingRawEffects[0];
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "sun-shangxiang");
+  const targetId = effect.targetId;
+  const target = targetId ? players.find((player) => player.id === targetId) : null;
+  if (!owner?.name || !target?.name || owner.id === target.id || heroGender(target.hero) !== "male"
+    || effect.semantics !== "PROVEN"
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.cards.length !== 2 || effect.materials.length !== 2 || rawEffect.materials.length !== 2
+    || !["SOURCE_AND_TARGET_RECOVERED", "TARGET_RECOVERED"].includes(effect.outcome ?? "")
+    || effect.outcome !== rawEffect.outcome) return null;
+
+  for (const [index, costCard] of costEvent.cards.entries()) {
+    const material = effect.materials[index];
+    const rawMaterial = rawEffect.materials[index];
+    const projectedCard = effect.cards[index];
+    if (!costCard?.id || !material || !rawMaterial || !projectedCard
+      || material.cardId !== costCard.id || rawMaterial.cardId !== costCard.id || projectedCard.id !== costCard.id
+      || material.ownerId !== owner.id || rawMaterial.ownerId !== owner.id
+      || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+      || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+      || projectedCard.kind !== costCard.kind || projectedCard.suit !== costCard.suit || projectedCard.rank !== costCard.rank) return null;
+  }
+
+  const recoveryCopy = effect.outcome === "SOURCE_AND_TARGET_RECOVERED"
+    ? `${owner.name} and ${target.name} each recovered 1 HP through Betrothment.`
+    : `${target.name} recovered 1 HP through ${owner.name}'s Betrothment.`;
+  return { costEvent, effect, costCards: costEvent.cards, owner, target, recoveryCopy };
 }
 function verifiedLustCostFrameForEvent(
   timeline: readonly GameEvent[],
@@ -5743,8 +5798,43 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
+  const betrothmentCostFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "sun_shangxiang_betrothment"
+      && effect.effectClass === "COST")
+      .flatMap((effect) => {
+        const frame = verifiedBetrothmentCostFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
+  })();
+  const betrothmentCostFrameAction: PublicCardDisplayAction | null = betrothmentCostFrameCandidate ? {
+    key: ["betrothment-cost", betrothmentCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: betrothmentCostFrameCandidate.costEvent.id,
+    sourceId: betrothmentCostFrameCandidate.owner.id,
+    targetId: betrothmentCostFrameCandidate.target.id,
+    cardFace: betrothmentCostFrameCandidate.costCards[0],
+    cardLabel: "BETROTHMENT COST",
+    ariaLabel: `${betrothmentCostFrameCandidate.owner.name} used Betrothment on ${betrothmentCostFrameCandidate.target.name}, paying exactly two Hand cards. ${betrothmentCostFrameCandidate.recoveryCopy}`,
+    publicNotice: `${betrothmentCostFrameCandidate.owner.name} used Betrothment on ${betrothmentCostFrameCandidate.target.name}. ${betrothmentCostFrameCandidate.recoveryCopy}`,
+    publicNoticeCompact: betrothmentCostFrameCandidate.effect.outcome === "SOURCE_AND_TARGET_RECOVERED"
+      ? `Betrothment: ${betrothmentCostFrameCandidate.owner.name} and ${betrothmentCostFrameCandidate.target.name} both healed 1 HP.`
+      : `${betrothmentCostFrameCandidate.owner.name}'s Betrothment: ${betrothmentCostFrameCandidate.target.name} healed 1 HP.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "sun_shangxiang_betrothment", betrothmentCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(betrothmentCostFrameCandidate.costEvent.id)
+        ? [] : [betrothmentCostFrameCandidate.costEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(betrothmentCostFrameCandidate.effect, {
+      title: "BETROTHMENT",
+      accessibleLabel: `${betrothmentCostFrameCandidate.owner.name} discarded exactly two Hand cards for Betrothment on ${betrothmentCostFrameCandidate.target.name}. ${betrothmentCostFrameCandidate.recoveryCopy}`,
+      activationOwnerName: betrothmentCostFrameCandidate.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
   const latestW3CostFrameAction = [
-    prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction,
+    prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction, betrothmentCostFrameAction,
   ].filter((action): action is PublicCardDisplayAction => Boolean(action))
     .reduce<PublicCardDisplayAction | null>((latest, action) => {
       if (!latest) return action;

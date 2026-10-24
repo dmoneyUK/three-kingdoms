@@ -6270,7 +6270,9 @@ export async function POST(request: Request) {
           log = materials
             ? addCardGroupEventWithPublicEffect(log, liveMe.name, selected, "discard", liveMe.name, {
               effectId: "sun_shangxiang_betrothment", effectClass: "COST", activationOwnerId: liveMe.id,
-              materials, targetId: target.id, outcome: "RECOVERY_RESOLVED",
+              materials, targetId: target.id,
+              outcome: sourceRecovered > 0 && targetRecovered > 0 ? "SOURCE_AND_TARGET_RECOVERED"
+                : targetRecovered > 0 ? "TARGET_RECOVERED" : "NO_RECOVERY",
             }).log
             : addDiscardEvent(log, liveMe.name, selected);
           log = addLog(log, `${liveMe.name} uses Betrothment on ${target.name}.`);

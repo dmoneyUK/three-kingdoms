@@ -1396,6 +1396,185 @@ test("W3: Dauntless shows Yue Jin's proven Basic Hand cost to every phone viewer
   }
 });
 
+test("W3: Betrothment shows its two proven costs and actual recovery to every phone viewer", async ({ page, browser, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const costCards = [card("Dodge", "w3-betrothment-cost-dodge", "♣"), card("Peach", "w3-betrothment-cost-peach", "♥")];
+  const privateCards = [
+    card("Attack", "w3-betrothment-private-owner"),
+    card("Peach", "w3-betrothment-private-target", "♦"),
+    card("Dodge", "w3-betrothment-private-rebel"),
+    card("Attack", "w3-betrothment-private-renegade"),
+  ];
+  const seeded = await request.post(`${API}/__test/seed-playing-game`, {
+    data: {
+      phase: "play", turnSeat: 0,
+      players: [
+        { name: "SUN SHANGXIANG", role: "Lord", hero: "sun-shangxiang", hp: 3, maxHp: 4, hand: [...costCards, privateCards[0]] },
+        { name: "INJURED MAN", role: "Loyalist", hero: "zhao-yun", hp: 3, maxHp: 4, hand: [privateCards[1]] },
+        { name: "REBEL", role: "Rebel", hero: "cao-cao", hp: 4, maxHp: 4, hand: [privateCards[2]] },
+        { name: "RENEGADE", role: "Renegade", hero: "liu-bei", hp: 4, maxHp: 4, hand: [privateCards[3]] },
+      ],
+    },
+  });
+  expect(seeded.ok()).toBeTruthy();
+  const seed = await seeded.json();
+  const owner = seed.players[0];
+  const target = seed.players[1];
+  const openedViewers = await Promise.all(seed.players.map(async (player, index) => {
+    if (index === 0) return null;
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    return { player, context, page: await context.newPage() };
+  }));
+  const viewers = [{ player: owner, page, context: null }, ...openedViewers.filter(Boolean)]
+    .sort((left, right) => left.player.seat - right.player.seat);
+
+  try {
+    await Promise.all(viewers.map(({ player, page: viewerPage }) =>
+      openSkillViewer(viewerPage, seed, player, { width: 390, height: 844 })));
+    await Promise.all(viewers.map(({ player, page: viewerPage }) =>
+      expect(viewerPage.locator(`.local-player-dock[data-player-anchor="${player.id}"]`)).toBeVisible()));
+
+    const frameWaiters = viewers.map(({ player, page: viewerPage }, index) => viewerPage.waitForFunction(() => {
+      const frame = document.querySelector('[data-public-card-frame-effect-id="sun_shangxiang_betrothment"]');
+      const journeyCard = frame?.closest("[data-public-card-journey-event-id]");
+      const display = journeyCard?.closest(".public-card-display");
+      const announcement = display?.querySelector('[data-public-card-announcement="true"]');
+      const announcementStyle = announcement ? getComputedStyle(announcement) : null;
+      const announcementRect = announcement?.getBoundingClientRect();
+      if (!frame || !journeyCard || !display || !announcement || !announcementStyle || !announcementRect
+        || display.dataset.publicCardLayoutPending !== "false") return false;
+      const frameRect = frame.getBoundingClientRect();
+      const visibleAnnouncementRect = announcement.getBoundingClientRect();
+      return {
+        eventId: journeyCard.dataset.publicCardJourneyEventId,
+        phase: journeyCard.dataset.publicCardJourneyPhase,
+        viewerId: display.dataset.publicCardViewerId,
+        actorId: journeyCard.dataset.publicCardJourneyActorId,
+        cardIds: journeyCard.dataset.publicCardJourneyCardIds,
+        effectId: frame.dataset.publicCardFrameEffectId,
+        effectClass: frame.dataset.publicCardFrameClass,
+        activationOwnerId: frame.dataset.publicCardFrameActivationOwnerId,
+        materialOwnerIds: frame.dataset.publicCardFrameMaterialOwnerIds,
+        materialCardIds: frame.dataset.publicCardFrameMaterialCardIds,
+        materialCount: Number(frame.dataset.publicCardFrameMaterialCount),
+        title: frame.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
+        frame: { left: frameRect.left, top: frameRect.top, right: frameRect.right, bottom: frameRect.bottom },
+        announcement: {
+          left: visibleAnnouncementRect.left, top: visibleAnnouncementRect.top,
+          right: visibleAnnouncementRect.right, bottom: visibleAnnouncementRect.bottom,
+          text: announcement.textContent?.trim(), visibility: announcementStyle.visibility,
+          opacity: Number(announcementStyle.opacity),
+          positioned: announcement.dataset.publicCardAnnouncementPositioned === "true",
+          fallback: announcement.dataset.publicCardAnnouncementFallback === "true",
+          compact: announcement.dataset.publicCardAnnouncementCompact === "true",
+          width: announcement.dataset.publicCardAnnouncementWidth,
+          rect: { width: announcementRect.width, height: announcementRect.height },
+        },
+        viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
+      };
+    }, null, { timeout: 10_000 }).then(async (handle) => {
+      const evidence = await handle.jsonValue();
+      await viewerPage.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await attachJourneyScreenshot(viewerPage, testInfo,
+        `w3-betrothment-${index === 0 ? "owner" : `viewer-${index + 1}`}-390x844`, "revealed-frame");
+      return evidence;
+    }).catch((error) => ({ timeout: true, viewerId: player.id, error: String(error) })));
+
+    const started = await completeSkillSelection({
+      page, request, seed, skillName: "Betrothment", providerId: "sun_shangxiang_betrothment",
+      cardIds: costCards.map((cost) => cost.id), targetIndexes: [1],
+    });
+    const costEvent = started.room.timeline.find((event) => event.type === "cards"
+      && event.action === "discard" && event.cards.length === 2
+      && costCards.every((cost) => event.cards.some((face) => face.id === cost.id)));
+    expect(costEvent).toBeTruthy();
+    expect(costEvent.resolutionId).toBeTruthy();
+    expect(costEvent.cards.map((face) => face.id)).toEqual(costCards.map((cost) => cost.id));
+    const rawEffect = costEvent.publicCardEffects.find((candidate) =>
+      candidate.effectId === "sun_shangxiang_betrothment" && candidate.effectClass === "COST");
+    const effect = started.room.presentationSnapshot.publicCardEffects.find((candidate) => candidate.eventId === costEvent.id);
+    expect(rawEffect).toMatchObject({
+      effectId: "sun_shangxiang_betrothment", effectClass: "COST", activationOwnerId: owner.id,
+      targetId: target.id, outcome: "SOURCE_AND_TARGET_RECOVERED",
+      materials: costCards.map((cost) => ({ cardId: cost.id, ownerId: owner.id, fromZone: "HAND", toZone: "DISCARD" })),
+    });
+    expect(effect).toMatchObject({
+      semantics: "PROVEN", eventId: costEvent.id, effectId: "sun_shangxiang_betrothment", effectClass: "COST",
+      activationOwnerId: owner.id, targetId: target.id, outcome: "SOURCE_AND_TARGET_RECOVERED",
+      cards: costCards,
+      materials: costCards.map((cost) => ({ cardId: cost.id, ownerId: owner.id, fromZone: "HAND", toZone: "DISCARD" })),
+    });
+    expect(started.room.players.find((player) => player.id === owner.id).hp).toBe(4);
+    expect(started.room.players.find((player) => player.id === target.id).hp).toBe(4);
+
+    const frameEvidence = await Promise.all(frameWaiters);
+    expect(frameEvidence.filter((evidence) => evidence?.timeout), JSON.stringify(frameEvidence)).toHaveLength(0);
+    for (const [index, { player }] of viewers.entries()) {
+      const evidence = frameEvidence[index];
+      expect(evidence).toMatchObject({
+        eventId: costEvent.id, phase: "reveal", viewerId: player.id, actorId: owner.id,
+        cardIds: costCards.map((cost) => cost.id).join(","), effectId: "sun_shangxiang_betrothment",
+        effectClass: "COST", activationOwnerId: owner.id,
+        materialOwnerIds: Array(costCards.length).fill(owner.id).join(","),
+        materialCardIds: costCards.map((cost) => cost.id).join(","), materialCount: 2,
+        title: "BETROTHMENT", viewport: { width: 390, height: 844, scrollWidth: 390 },
+      });
+      expect(evidence.announcement.positioned, JSON.stringify(evidence)).toBe(true);
+      expect(evidence.announcement.visibility).toBe("visible");
+      expect(evidence.announcement.opacity).toBeGreaterThan(0);
+      expect(evidence.announcement.text).toContain("SUN SHANGXIANG");
+      expect(evidence.announcement.text).toContain("INJURED MAN");
+      expect(evidence.announcement.text).toContain("both healed 1 HP");
+      expect(evidence.announcement.bottom <= evidence.frame.top - 2 || evidence.announcement.top >= evidence.frame.bottom + 2)
+        .toBe(true);
+    }
+
+    const parkedEvidence = await Promise.all(viewers.map(async ({ player, page: viewerPage }) => {
+      await waitForJourneyActorAnchor(viewerPage, player, owner, costEvent.id);
+      return viewerPage.locator(`[data-public-card-journey-event-id="${costEvent.id}"]`).evaluate((journeyCard) => {
+        const rect = journeyCard.getBoundingClientRect();
+        return {
+          phase: journeyCard.dataset.publicCardJourneyPhase,
+          viewerId: journeyCard.closest(".public-card-display")?.getAttribute("data-public-card-viewer-id"),
+          actorId: journeyCard.dataset.publicCardJourneyActorId,
+          cardIds: journeyCard.dataset.publicCardJourneyCardIds,
+          actual: { left: rect.left, top: rect.top },
+          target: {
+            left: Number(journeyCard.dataset.publicCardJourneyTargetLeft),
+            top: Number(journeyCard.dataset.publicCardJourneyTargetTop),
+          },
+        };
+      });
+    }));
+    for (const [index, { player }] of viewers.entries()) {
+      expect(parkedEvidence[index]).toMatchObject({
+        phase: "parked", viewerId: player.id, actorId: owner.id, cardIds: costCards.map((cost) => cost.id).join(","),
+      });
+      expect(Math.abs(parkedEvidence[index].actual.left - parkedEvidence[index].target.left)).toBeLessThan(1);
+      expect(Math.abs(parkedEvidence[index].actual.top - parkedEvidence[index].target.top)).toBeLessThan(1);
+    }
+
+    const projections = await Promise.all(viewers.map(({ player }) => projectedRoom(request, seed, player)));
+    for (const [index, { player, page: viewerPage }] of viewers.entries()) {
+      const serialized = JSON.stringify(projections[index]);
+      for (const cost of costCards) expect(serialized).toContain(cost.id);
+      for (const [ownerIndex, privateCard] of privateCards.entries()) {
+        expect(serialized.includes(privateCard.id)).toBe(player.id === seed.players[ownerIndex].id);
+        await expect(viewerPage.locator(`[data-hand-card-id="${privateCard.id}"]`))
+          .toHaveCount(player.id === seed.players[ownerIndex].id ? 1 : 0);
+      }
+    }
+    await attachJourneyJson(testInfo, "w3-betrothment-four-viewer-evidence.json", {
+      costEvent, rawEffect, effect, ownerId: owner.id, targetId: target.id,
+      viewers: frameEvidence, parkedEvidence,
+      recovery: { ownerHp: 4, targetHp: 4, outcome: effect.outcome },
+      privacy: privateCards.map((privateCard, index) => ({ ownerId: seed.players[index].id, cardId: privateCard.id })),
+    });
+  } finally {
+    await Promise.all(openedViewers.filter(Boolean).map(({ context }) => context.close()));
+  }
+});
+
 test("real Prodigal Healer submits the eligible card and injured character", async ({ page, request }) => {
   const cost = card("Attack", "real-prodigal-cost");
   const seed = await seedSkillRoom(request, {
