@@ -5705,8 +5705,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         : undefined,
       ...(singleTargetNegationUsesJourney ? {
         motion: {
-          type: singleTargetNegationProofCandidate.root.cardKind === "Dismantle" ? "single-target" as const : "negation" as const,
+          type: singleTargetNegationProofCandidate.root.cardKind === "Dismantle"
+            || singleTargetNegationProofCandidate.root.cardKind === "Steal" ? "single-target" as const : "negation" as const,
           scopeKey: singleTargetNegationProofCandidate.root.cardKind === "Dismantle"
+            || singleTargetNegationProofCandidate.root.cardKind === "Steal"
             ? [room.code, singleTargetNegationProofCandidate.rootEvent.id].join(":")
             : [room.code, singleTargetNegationProofCandidate.chain.interactionId, singleTargetNegationProofCandidate.rootEvent.id].join(":"),
           freshEventIds: [singleTargetNegationProofCandidate.rootEvent.id, ...singleTargetNegationResponses.map((response) => response.eventId)]
@@ -6385,7 +6387,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           && canUseAction(room.currentAction, "respond")
           ? { publicNotice: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "A player"} played Attack on you. Dodge or Skip.` }
           : {}),
-      } : rootAction.cardKind === "Dismantle" ? {
+      } : rootAction.cardKind === "Dismantle" || rootAction.cardKind === "Steal" ? {
         motion: {
           type: "single-target" as const,
           scopeKey: [room.code, rootAction.rootEventId].join(":"),
