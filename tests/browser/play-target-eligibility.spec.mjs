@@ -8,8 +8,10 @@ async function loadFixture(page, width = 390) {
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
-async function selectAttack(page) {
-  await page.locator('[data-hand-card-id="browser-target-eligibility-attack"] .game-card').click();
+async function selectAttack(page, input = "click") {
+  const attack = page.locator('[data-hand-card-id="browser-target-eligibility-attack"] .game-card');
+  if (input === "tap") await attack.tap();
+  else await attack.click();
 }
 
 test("mobile target highlights and same-tap rejection follow CurrentAction, with Inspector and Card Details still usable", async ({ page }) => {
@@ -129,15 +131,95 @@ test("five-seat phone Attack selection uses portrait touch and retap deselection
   }
 });
 
-test("five-seat non-Attack and four/six/eight-seat mobile selection keep existing Inspect and Cancel controls", async ({ page }) => {
-  for (const count of [4, 6, 8]) {
-    await page.setViewportSize({ width: 390, height: 700 });
-    await page.goto(`/tests/browser/fixture.html?state=target-eligibility&count=${count}`);
-    await expect(page.locator(".game-shell")).toBeVisible();
-    await selectAttack(page);
-    await expect(page.locator(".opponent-seat-inspect-button")).toHaveCount(count - 1);
-    await expect(page.locator(".local-target-selection")).toBeVisible();
-    await expect(page.locator(".local-target-cancel")).toBeVisible();
+test("four/six/eight-seat mobile targeting separates compact name Inspect from legal portrait taps", async ({ browser, page }) => {
+  test.setTimeout(90_000);
+  const cases = [
+    [4, 390, 700], [4, 390, 844], [4, 440, 894], [4, 480, 900],
+    [6, 390, 700], [6, 440, 894],
+    [8, 390, 700], [8, 390, 844], [8, 440, 894], [8, 480, 900],
+  ];
+  for (const [count, width, height] of cases) {
+    const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+    try {
+      const page = await context.newPage();
+      await page.goto(`http://127.0.0.1:4177/tests/browser/fixture.html?state=target-eligibility&count=${count}`);
+      await expect(page.locator(".game-shell")).toBeVisible();
+      await selectAttack(page, "tap");
+      await expect(page.locator(".opponent-seat-inspect-button")).toHaveCount(count - 1);
+      await expect(page.locator(".local-target-selection")).toBeVisible();
+      await expect(page.locator(".local-target-cancel")).toBeVisible();
+
+      const seatHitAreas = await page.locator(".opponent-player-card").evaluateAll((seats) => seats.map((seat) => {
+        const target = seat.querySelector(".opponent-hero-target");
+        const inspect = seat.querySelector(".opponent-seat-inspect-button");
+        const heroCard = seat.querySelector(".opponent-hero-card");
+        const portrait = seat.querySelector(".opponent-hero-portrait");
+        const seatRect = seat.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const inspectRect = inspect.getBoundingClientRect();
+        const heroRect = heroCard.getBoundingClientRect();
+        const portraitRect = portrait.getBoundingClientRect();
+        const inspectStyle = getComputedStyle(inspect);
+        return {
+          playerId: seat.dataset.playerAnchor,
+          seat: { top: seatRect.top, bottom: seatRect.bottom, left: seatRect.left, right: seatRect.right },
+          target: { top: targetRect.top, bottom: targetRect.bottom, width: targetRect.width, height: targetRect.height },
+          inspect: { top: inspectRect.top, bottom: inspectRect.bottom, left: inspectRect.left, right: inspectRect.right, height: inspectRect.height },
+          hero: { top: heroRect.top, bottom: heroRect.bottom, left: heroRect.left, right: heroRect.right },
+          portrait: { top: portraitRect.top, bottom: portraitRect.bottom, left: portraitRect.left, right: portraitRect.right },
+          inspectPaint: {
+            background: inspectStyle.backgroundColor,
+            radius: inspectStyle.borderRadius,
+            shadow: inspectStyle.boxShadow,
+            name: inspect.querySelector(".opponent-player-name")?.textContent,
+            nameCount: inspect.querySelectorAll(".opponent-player-name").length,
+            label: inspect.getAttribute("aria-label"),
+          },
+        };
+      }));
+      expect(seatHitAreas, `mobile ${count}-seat ${width}x${height} hit regions`).toHaveLength(count - 1);
+      for (const { playerId, seat, target, inspect, hero, portrait, inspectPaint } of seatHitAreas) {
+        const context = `${count}-seat ${width}x${height} ${playerId}`;
+        expect(inspect.height, `Inspect height ${context}`).toBeGreaterThanOrEqual(44);
+        expect(inspect.left, `Inspect left ${context}`).toBeGreaterThanOrEqual(seat.left - 0.5);
+        expect(inspect.right, `Inspect right ${context}`).toBeLessThanOrEqual(seat.right + 0.5);
+        expect(inspect.top, `Inspect top ${context}`).toBeGreaterThanOrEqual(seat.top - 0.5);
+        expect(inspect.bottom, `Inspect bottom ${context}`).toBeLessThanOrEqual(seat.bottom + 0.5);
+        expect(target.width, `Target width ${context}`).toBeGreaterThanOrEqual(44);
+        expect(target.height, `Target height ${context}`).toBeGreaterThanOrEqual(32);
+        expect(target.width * target.height, `Target hit area ${context}`).toBeGreaterThanOrEqual(44 * 44);
+        expect(target.bottom, `Target/Inspect separation ${context}`).toBeLessThanOrEqual(inspect.top + 0.5);
+        expect(portrait, `Hero art remains full-size ${context}`).toEqual(hero);
+        expect(inspectPaint).toEqual({
+          background: "rgba(0, 0, 0, 0)",
+          radius: "0px",
+          shadow: "none",
+          name: `Player ${playerId.slice(1)}`,
+          nameCount: 1,
+          label: `Inspect Player ${playerId.slice(1)}`,
+        });
+      }
+
+      const legalTarget = page.locator('.opponent-player-card[data-target-selectable="true"]').first();
+      const legalTargetId = await legalTarget.getAttribute("data-player-anchor");
+      const inspectSeat = page.locator(`.opponent-player-card:not([data-player-anchor="${legalTargetId}"])`).first();
+      const inspectedId = await inspectSeat.getAttribute("data-player-anchor");
+      await legalTarget.locator(".opponent-hero-target").tap();
+      await expect(legalTarget).toHaveClass(/selected-target/);
+      await expect(page.locator(`.opponent-inspection-panel[data-inspect-player-id="${legalTargetId}"]`)).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+      await expect(legalTarget).toHaveClass(/selected-target/);
+
+      await inspectSeat.locator(".opponent-seat-inspect-button").tap();
+      await expect(page.locator(`.opponent-inspection-panel[data-inspect-player-id="${inspectedId}"]`)).toBeVisible();
+      await expect(legalTarget).toHaveClass(/selected-target/);
+      await expect(inspectSeat).not.toHaveClass(/selected-target/);
+      expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+      await page.keyboard.press("Escape");
+    } finally {
+      await context.close();
+    }
   }
 
   await page.setViewportSize({ width: 390, height: 700 });
@@ -147,6 +229,10 @@ test("five-seat non-Attack and four/six/eight-seat mobile selection keep existin
   await expect(page.locator(".opponent-seat-inspect-button")).toHaveCount(4);
   await expect(page.locator(".local-target-selection")).toBeVisible();
   await expect(page.locator(".local-target-cancel")).toBeVisible();
+  const stealInspector = page.locator('.opponent-player-card[data-player-anchor="p2"] .opponent-seat-inspect-button');
+  await stealInspector.click();
+  await expect(page.locator('.opponent-inspection-panel[data-inspect-player-id="p2"]')).toBeVisible();
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 });
 
 test("a target excluded by a newer CurrentAction revision is cleared and reported", async ({ page }) => {

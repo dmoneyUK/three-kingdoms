@@ -707,7 +707,7 @@ async function projectedRoom(request, seed, user) {
   return response.json();
 }
 
-async function completeSkillSelection({ page, request, seed, skillName, providerId, cardIds, targetIndexes, userIndex = 0 }) {
+async function completeSkillSelection({ page, request, seed, skillName, providerId, cardIds, targetIndexes, userIndex = 0, onChoosingTargets }) {
   const user = seed.players[userIndex];
   const projection = await projectedRoom(request, seed, user);
   expect(projection.currentAction).toMatchObject({ kind: "turn", actorId: user.id });
@@ -726,6 +726,7 @@ async function completeSkillSelection({ page, request, seed, skillName, provider
     await expect(cardButton).toBeEnabled();
     await cardButton.click();
   }
+  await onChoosingTargets?.();
   for (const index of targetIndexes) {
     const target = seed.players[index];
     await page.getByRole("button", { name: `Select ${target.name}`, exact: true }).click();
@@ -812,7 +813,49 @@ test("real Lust keeps player-name order through Skip and settlement after the co
     ],
   });
   await openSkillUser(page, seed, { width: 440, height: 894 });
-  const started = await completeSkillSelection({ page, request, seed, skillName: "Lust", providerId: "diao_chan_lust", cardIds: [cost.id], targetIndexes: [1, 2] });
+  const preSubmitActions = [];
+  page.on("request", (browserRequest) => {
+    if (browserRequest.url() === `${API}/api/rooms` && browserRequest.method() === "POST") {
+      preSubmitActions.push(browserRequest.postDataJSON()?.action ?? "unknown");
+    }
+  });
+  const started = await completeSkillSelection({
+    page, request, seed, skillName: "Lust", providerId: "diao_chan_lust", cardIds: [cost.id], targetIndexes: [1, 2],
+    onChoosingTargets: async () => {
+      const inspectButtons = page.locator(".opponent-seat-inspect-button");
+      await expect(inspectButtons).toHaveCount(3);
+      const firstTarget = page.locator(`[data-player-anchor="${seed.players[1].id}"]`);
+      const hitGeometry = await firstTarget.evaluate((seat) => {
+        const bounds = (element) => {
+          const rect = element.getBoundingClientRect();
+          return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right, width: rect.width, height: rect.height };
+        };
+        const portrait = seat.querySelector(".opponent-hero-portrait");
+        const hero = seat.querySelector(".opponent-hero-card");
+        const target = seat.querySelector(".opponent-hero-target");
+        const inspect = seat.querySelector(".opponent-seat-inspect-button");
+        const style = getComputedStyle(inspect);
+        return {
+          portrait: bounds(portrait), hero: bounds(hero), target: bounds(target), inspect: bounds(inspect),
+          inspectPaint: { background: style.backgroundColor, radius: style.borderRadius, shadow: style.boxShadow },
+          visibleName: inspect.querySelector(".opponent-player-name")?.textContent,
+        };
+      });
+      expect(hitGeometry.portrait).toEqual(hitGeometry.hero);
+      expect(hitGeometry.target.bottom).toBeLessThanOrEqual(hitGeometry.inspect.top + 0.5);
+      expect(hitGeometry.inspect.height).toBeGreaterThanOrEqual(44);
+      expect(hitGeometry.inspectPaint).toEqual({ background: "rgba(0, 0, 0, 0)", radius: "0px", shadow: "none" });
+      expect(hitGeometry.visibleName).toBe("FIRST MAN");
+      await expect(page.locator(`[data-hand-card-id="${cost.id}"]`)).toHaveAttribute("data-card-selected", "true");
+
+      await firstTarget.locator(".opponent-seat-inspect-button").click();
+      await expect(page.locator(`.opponent-inspection-panel[data-inspect-player-id="${seed.players[1].id}"]`)).toBeVisible();
+      await expect(page.locator(`[data-hand-card-id="${cost.id}"]`)).toHaveAttribute("data-card-selected", "true");
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+      expect(preSubmitActions).toEqual([]);
+    },
+  });
   const activation = started.room.presentationSnapshot.diaoChanSkillNotices.find((notice) => notice.notice === "ACTIVATION");
   expect(activation).toMatchObject({
     effectId: "diao_chan_lust", sourceId: seed.players[0].id,
@@ -833,7 +876,7 @@ test("real Lust keeps player-name order through Skip and settlement after the co
   await expect(presentedCost).toHaveAttribute("data-public-card-journey-phase", "parked");
   await expect(presentedCost).toHaveAttribute("data-public-card-journey-actor-id", seed.players[0].id);
   await expect(announcement).toHaveAttribute("data-public-card-announcement-event-id", activation.costEventId);
-  await expect(announcement).toContainText("FIRST MAN vs. SECOND MAN · FIRST MAN attacks first.");
+  await expect(announcement).toContainText(compactLustOrderMessage(seed.players[1], seed.players[2], seed.players[1]));
   await expect(page.locator(`[data-effect-notice-event-id="${activation.eventId}"]`)).toHaveCount(0);
   await expect(display.locator("[data-public-card-frame-kind='DIAO_CHAN_LUST_COST']")).toHaveCount(0);
   await expect(display.locator("[data-public-card-journey-card-id]")).toHaveCount(1);
