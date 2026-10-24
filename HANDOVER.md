@@ -1,17 +1,13 @@
 # HANDOVER
 
-Target branch: `ux-v2` (working branch: `codex/quick-test-modes`). Phone-first; no desktop review.
+Target branch: `ux-v2` (working branch: `codex/quick-test-modes`). Phone-only.
 
-## Latest execution state
+## Latest execution result
 
-**T3-F1 · R2 — IMPLEMENTED LOCALLY / CI AND DEPLOYMENT PENDING / PENDING USER PHONE RE-REVIEW.** Reviewed `docs/UX2-refine.md` §10.10.3.1 at `origin/ux-v2` `c4411a6`; intervening changes only add W3-F2-R1 design instructions and do not alter T3-F1 R2.
+**T3-F1 · R2 — IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW.** Source `e5abe17e81df79d9dfe7026a862dc2dfb0da5e05`; exact-SHA [Actions `40144601280`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40144601280) passed lint/fast, API, browser startup/room smoke, D1 migration, Worker deployment and production smoke. Worker `5b32634b-0b4d-468d-b992-0272e606777b`; live `/` and `/api/health` returned HTTP 200, health `{"ok":true,"worker":"available"}`. The focused local mobile check passed for authentic local Steal at 390×844 (four-seat seed, two viewer sessions); see §10.10.3.1 for scope and unverified cases. No phone acceptance is inferred.
 
-The proven local Steal/Burning Bridges root now keeps one `single-target` renderer and room/viewer/root/card/author ownership through Negation, target choice and settlement wrappers. Local authored roots prefer the actual Local Player Dock. Same-geometry observer callbacks are no-ops; an in-flight MOVE keeps its painted position and remaining duration through reflow, while unsafe missing author geometry retries without a synthetic centre miniature. Server legality, settlement, card identity and private-hand projections are unchanged.
-
-**Focused validation:** `npm run build` passed; `node --import tsx --test tests/public-card-announcement.test.mjs` passed 5/5; focused ESLint passed with 0 errors and 16 existing Hook-dependency warnings; one authenticated mobile Playwright regression passed 1/1 (4-seat seed, 390×844, two viewer sessions, real local Steal and hidden-Hand privacy); `git diff --check` passed. This covered unchanged-geometry resize during MOVE and all-pass Steal settlement. Local/opponent Dismantle, counter-Negation, real viewport resize mid-MOVE, TEST SWITCH, Inspector interaction, and 6/8-seat layouts remain unverified and are not claimed as passes.
-
-The last observed successful pushed Actions run was `40142844364` on `f954d67390ae3a548429addf5d8be39fb96c497f`; it is baseline evidence only. This implementation has not yet been pushed, and no exact-SHA CI, Worker deployment or production health is claimed.
+Reviewed latest `docs/UX2-refine.md` at `e5abe17`; T3-F1 R2 moved out of Table A into Table B pending user review. The newly active Table A top item is TGT-A2 §10.21. User’s confirmed scope is only the failed selected-Attack retap behavior (or Cancel surface if the exact failure reproduces); preserve the four explicit phone passes and first diagnose the composite failure before changing code.
 
 ## Exactly one current bounded task
 
-Finish T3-F1 R2 delivery: commit and push only this task's implementation, focused regressions, design-status and handoff updates to `ux-v2`; verify all required Actions jobs and deployed Worker/production smoke on the exact pushed SHA. Then leave T3-F1 **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**, preserving the earlier passed opponent Dismantle/continuation checks and requesting review of local Steal, Negation/counter and 6/8-seat switching.
+**TGT-A2 §10.21 — diagnose and fix the five-seat mobile normal-Attack retap-to-deselect failure.** Reproduce with real server-authorized Attack selection and touch hit-testing; establish whether the selected physical Attack surface misses retap, a Cancel surface reappears, or neither. Correct only the demonstrated #4 path. Preserve legal target IDs, selection/target reset, zero gameplay POST on deselect, Card Details access, Inspector, privacy, and the previously passed checks. Local UI/browser testing is capped at five minutes. After implementation, run the required exact-SHA Actions/deploy pipeline and leave TGT-A2 **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**, never accepted.
