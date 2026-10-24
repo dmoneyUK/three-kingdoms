@@ -1063,13 +1063,15 @@ type OpponentPlayerCardProps = {
 };
 
 const subscribeToPhoneViewport = (onChange: () => void) => {
-  if (typeof window === "undefined") return () => undefined;
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => undefined;
   const query = window.matchMedia("(max-width: 520px)");
   query.addEventListener("change", onChange);
   return () => query.removeEventListener("change", onChange);
 };
 
-const getPhoneViewportSnapshot = () => typeof window !== "undefined" && window.matchMedia("(max-width: 520px)").matches;
+const getPhoneViewportSnapshot = () => typeof window !== "undefined"
+  && typeof window.matchMedia === "function"
+  && window.matchMedia("(max-width: 520px)").matches;
 
 export function projectSideColumnSeat(totalPlayers: number, relativeIndex: number): { side: "left" | "right"; row: number; rowCount: number } | null {
   if (!Number.isInteger(totalPlayers) || !Number.isInteger(relativeIndex) || totalPlayers < 5 || totalPlayers > 10 || relativeIndex < 1 || relativeIndex >= totalPlayers) return null;
