@@ -3,8 +3,7 @@ import type { CardKind } from "./model";
 
 export const TEST_HAND_PRESET_OPTIONS = [
   { id: "random", name: "Random Hands (Default)" },
-  { id: "attack_dodge", name: "Attack / Dodge Test" },
-  { id: "attack_negation", name: "Attack / Negation Test" },
+  { id: "dismantle_steal", name: "Dismantle / Steal + Weapon & Delayed Stratagem" },
   { id: "duel_chain", name: "Duel / Attack Test" },
   { id: "custom", name: "Custom Hands" },
 ] as const;
@@ -20,10 +19,12 @@ export const STANDARD_PRESET_CARD_KINDS = Object.keys(STANDARD_DECK_COUNTS)
 
 const PRESET_HANDS: Record<Exclude<TestHandPresetId, "custom">, Record<number, CardKind[]>> = {
   random: {},
-  attack_dodge: { 0: ["Attack", "Attack"], 1: ["Dodge", "Dodge"] },
-  attack_negation: {
-    0: ["DrawTwo", "Attack", "Negation", "Negation"],
-    1: ["Negation", "Negation", "Dodge"],
+  dismantle_steal: {
+    0: ["Dismantle", "Steal", "ZhugeCrossbow", "Lightning"],
+    1: ["Dismantle", "Steal", "BlueSteelSword", "Overindulgence"],
+    2: ["Dismantle", "Steal", "YinYangSwords", "Lightning"],
+    3: ["Dismantle", "Steal", "FrostSword", "Overindulgence"],
+    4: ["Dismantle", "Steal", "RockCleavingAxe", "Overindulgence"],
   },
   // Use real Standard copies only. Generated seats receive Duel and Attack;
   // Dodge fills the remaining slots so this preset isolates Duel testing
@@ -80,6 +81,21 @@ export function validateTestHandPreset(
     if (count > available) return { preset: null, error: `The Standard deck contains only ${available} ${kind} card${available === 1 ? "" : "s"}; ${count} were requested.` };
   }
   return { preset: { id, handsBySeat }, error: null };
+}
+
+const RETIRED_TEST_HAND_PRESET_IDS = new Set(["attack_dodge", "attack_negation"]);
+
+/** Older open test rooms may still persist presets that were removed from the lobby. */
+export function validateStoredTestHandPreset(
+  value: unknown,
+  availableSeats?: ReadonlySet<number>,
+): { preset: TestHandPreset | null; error: string | null } {
+  const storedId = value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>).id
+    : null;
+  return typeof storedId === "string" && RETIRED_TEST_HAND_PRESET_IDS.has(storedId)
+    ? validateTestHandPreset(testHandPresetFor("random"), availableSeats)
+    : validateTestHandPreset(value, availableSeats);
 }
 
 function parseHandsBySeat(value: unknown, availableSeats?: ReadonlySet<number>): { handsBySeat: Record<number, CardKind[]>; error: string | null } {

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { cardDefinition, effectivePhysicalSuit, isAttackCard, makeDeck, shuffle } from "../../../game/cards";
 import { CARD_KINDS, type Card, type EquipmentZone } from "../../../game/model";
-import { testHandPresetFor, validateTestHandPreset } from "../../../game/test-hand-presets";
+import { testHandPresetFor, validateStoredTestHandPreset, validateTestHandPreset } from "../../../game/test-hand-presets";
 import { canDeclareAttack as canDeclareAttackFor, effectiveDistanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithNegation, getAttackCardProvider, getPlayPhaseActions, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
@@ -165,7 +165,7 @@ function hostControlledTestRoster(room: RoomRow, players: PlayerRow[], hostToken
 function testPresetFromRoom(room: RoomRow, seats: ReadonlySet<number>) {
   if (!room.test_room) return { preset: testHandPresetFor("random"), error: null as string | null };
   const stored = parse<unknown>(room.test_hand_preset_json, testHandPresetFor("random"));
-  return validateTestHandPreset(stored, seats);
+  return validateStoredTestHandPreset(stored, seats);
 }
 
 async function beginStandardHeroSelection(roomId: string, players: PlayerRow[], testRoom = false) {
