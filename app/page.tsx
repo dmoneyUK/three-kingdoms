@@ -1043,6 +1043,7 @@ type OpponentPlayerCardProps = {
   isGroupPreview: boolean;
   interactionRoles: InteractionSeatSemanticRoles;
   targetSelectionActive: boolean;
+  showSeparateInspectAffordance: boolean;
   targetAttemptEnabled: boolean;
   targetAttemptDescription: string | null;
   isInspected: boolean;
@@ -1060,6 +1061,15 @@ type OpponentPlayerCardProps = {
   triggerCardOption: TriggerOptionView | null;
   onToggleEquipment: (cardId: string) => void;
 };
+
+const subscribeToPhoneViewport = (onChange: () => void) => {
+  if (typeof window === "undefined") return () => undefined;
+  const query = window.matchMedia("(max-width: 520px)");
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+};
+
+const getPhoneViewportSnapshot = () => typeof window !== "undefined" && window.matchMedia("(max-width: 520px)").matches;
 
 export function projectSideColumnSeat(totalPlayers: number, relativeIndex: number): { side: "left" | "right"; row: number; rowCount: number } | null {
   if (!Number.isInteger(totalPlayers) || !Number.isInteger(relativeIndex) || totalPlayers < 5 || totalPlayers > 10 || relativeIndex < 1 || relativeIndex >= totalPlayers) return null;
@@ -1090,7 +1100,7 @@ function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
   return <span className="opponent-equipment-horse-mark" aria-hidden="true">{slot === "defensiveHorse" ? "+1" : "−1"}</span>;
 }
 
-function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, targetAttemptEnabled, targetAttemptDescription, isInspected, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
+function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, showSeparateInspectAffordance, targetAttemptEnabled, targetAttemptDescription, isInspected, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
   const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex);
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
   for (const equipment of player.equipmentCards) {
@@ -1129,7 +1139,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
         </button>
         <div className="opponent-hero-overlay">
           <span className="opponent-player-name" aria-label={player.name} title={player.name}>{player.name}</span>
-          {targetSelectionActive && <button type="button" className="opponent-hero-inspect-name opponent-seat-inspect-button" aria-label={`Inspect ${player.name}`} aria-pressed={isInspected} aria-expanded={isInspected} title={`Inspect ${player.name}`} onClick={(event) => { event.stopPropagation(); onInspect(event.currentTarget); }}><span aria-hidden="true">i</span></button>}
+          {targetSelectionActive && showSeparateInspectAffordance && <button type="button" className="opponent-hero-inspect-name opponent-seat-inspect-button" aria-label={`Inspect ${player.name}`} aria-pressed={isInspected} aria-expanded={isInspected} title={`Inspect ${player.name}`} onClick={(event) => { event.stopPropagation(); onInspect(event.currentTarget); }}><span aria-hidden="true">i</span></button>}
         </div>
         {playerHero && (player.isTestPlayer || player.isHost) && testViewerController && <button type="button" className="test-view-switch-button" data-testid={`test-view-switch-${player.id}`} data-test-viewer-id={player.id} aria-label={`Switch to ${player.name}`} title={`Switch to ${player.name}`} onClick={(event) => { event.stopPropagation(); onSwitchTestViewer(player.id); }}>SWITCH</button>}
       </div>
@@ -2234,6 +2244,7 @@ function captureHandViewportSnapshot(rail: HTMLElement, viewerId: string | null)
 }
 
 export function GameRoom({ room, presentationView, busy, busyAction = null, error, onAction, onLeave, onPublicCounterReadVisible, onSwitchTestViewer = async () => undefined }: { room: Room; presentationView?: PresentationClientView; busy: boolean; busyAction?: string | null; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void; onSwitchTestViewer?: (playerId: string) => Promise<void> }) {
+  const isPhoneViewport = useSyncExternalStore(subscribeToPhoneViewport, getPhoneViewportSnapshot, () => false);
   const initialPendingSequence = pendingTimelineSequence(room);
   const clientPresentation = useMemo(() => presentationView ?? buildPresentationClientView(room.presentationSnapshot ?? null, room.meId), [presentationView, room.presentationSnapshot, room.meId]);
   const skillEffectSettlements = clientPresentation.skillEffectSettlements ?? NO_SKILL_EFFECT_SETTLEMENTS;
@@ -2986,6 +2997,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const triggerTargetComplete = Boolean(triggerTargetMode && targetIds.length >= triggerTargetMin && targetIds.length <= triggerTargetMax);
   const triggerSubmissionComplete = triggerSelectionComplete && (!triggerTargetSelection || triggerTargetComplete);
   const normalTargetSelectionActive = targetSelectionActive && !borrowedSwordTargetSelectionActive && !triggerTargetMode && !activeSkillTargetMode;
+  const simpleAttackTargetMode = Boolean(
+    room.isMyTurn
+    && canPlay
+    && normalTargetSelectionActive
+    && card?.kind === "Attack"
+    && selected === card.id
+    && !wushengMode
+    && !longdanMode
+    && !serpentMode,
+  );
+  const fiveSeatPhoneAttackMode = room.players.length === 5 && isPhoneViewport && simpleAttackTargetMode;
   const localTargetFlow: LocalTargetFlow | null = borrowedSwordTargetSelectionActive ? "borrowed-sword" : triggerTargetMode ? "trigger" : activeSkillTargetMode ? "active-skill" : serpentMode ? "serpent" : normalTargetSelectionActive ? "normal" : null;
   const localTargetIds = borrowedSwordTargetSelectionActive
     ? (borrowedSwordTargetId ? [borrowedSwordTargetId] : [])
@@ -7440,7 +7462,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ...(canFormSerpentAttack ? [serpentMode ? "Normal" : "Spear"] : []),
     ...(room.isMyTurn && canPlay ? ["End"] : []),
   ].filter((label, index, all) => Boolean(label) && all.indexOf(label) === index);
-  const consoleLocalCancelVisible = !lustLocalSelectionActive && (
+  const consoleLocalCancelVisible = !fiveSeatPhoneAttackMode && !lustLocalSelectionActive && (
     localTargetSelection.canCancel && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface
     || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal)
     || canClearTargetCardPickerSelection
@@ -7629,6 +7651,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             isGroupPreview={groupScopePreview.affectedPlayerIds.includes(player.id)}
             interactionRoles={interactionRoles}
             targetSelectionActive={targetSelectionActive}
+            showSeparateInspectAffordance={!fiveSeatPhoneAttackMode}
             targetAttemptEnabled={normalTargetSelectionActive}
             targetAttemptDescription={normalTargetSelectionActive && !targetablePlayer ? blockedTargetReason : null}
             isInspected={expandedOpponentId === player.id}
@@ -7646,6 +7669,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                     targetId: player.id,
                     message: blockedTargetReason,
                   });
+                  if (fiveSeatPhoneAttackMode) openOpponentInspection(player.id, trigger);
                   return;
                 }
                 setLocalPlayTargetNotice(null);

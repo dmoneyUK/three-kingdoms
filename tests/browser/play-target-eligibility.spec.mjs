@@ -16,6 +16,10 @@ test("mobile target highlights and same-tap rejection follow CurrentAction, with
   await loadFixture(page);
   await selectAttack(page);
 
+  await expect(page.locator(".opponent-seat-inspect-button")).toHaveCount(0);
+  await expect(page.locator(".local-target-selection")).toHaveCount(0);
+  await expect(page.locator(".local-target-cancel")).toHaveCount(0);
+
   const eligibleNear = page.locator('.opponent-player-card[data-player-anchor="p2"]');
   const blockedFar = page.locator('.opponent-player-card[data-player-anchor="p3"]');
   await expect(eligibleNear).toHaveAttribute("data-target-selectable", "true");
@@ -29,9 +33,12 @@ test("mobile target highlights and same-tap rejection follow CurrentAction, with
   await expect(page.locator(".decision-status")).toHaveAttribute("data-local-target-notice", "rejected");
   await expect(blockedFar).not.toHaveClass(/selected-target/);
   await expect(eligibleNear).not.toHaveClass(/selected-target/);
-  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+  await expect(page.locator('.opponent-inspection-panel[data-inspect-player-id="p3"]')).toBeVisible();
   await expect(page.locator('[data-console-surface="local-operation"] button.primary')).toBeDisabled();
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
 
   const details = page.getByTestId("hand-card-details-action").first();
   await expect(details).toBeVisible();
@@ -40,7 +47,7 @@ test("mobile target highlights and same-tap rejection follow CurrentAction, with
   await expect(page.locator('.card-details-panel[data-card-details-context="private-hand"]')).toBeVisible();
   await page.getByRole("button", { name: "Close card details" }).click();
 
-  await page.locator('[data-player-anchor="p3"] .opponent-seat-inspect-button').click();
+  await blockedFar.locator(".opponent-hero-target").click();
   await expect(page.getByRole("region", { name: "Player 3 opponent inspection" })).toBeVisible();
   await expect(blockedFar).not.toHaveClass(/selected-target/);
   await expect(page.locator(".decision-status")).toContainText("Cannot attack Player 3 — distance 2; Attack range 1.");
@@ -53,6 +60,93 @@ test("mobile target highlights and same-tap rejection follow CurrentAction, with
   await expect(page.locator(".decision-status")).not.toHaveAttribute("data-local-target-notice", "rejected");
   await expect(page.locator('[data-console-surface="local-operation"] button.primary')).toBeEnabled();
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+
+  await page.keyboard.press("Escape");
+  await blockedFar.locator(".opponent-hero-target").click();
+  await expect(page.locator(".decision-status")).toContainText("Cannot attack Player 3 — distance 2; Attack range 1.");
+  await expect(eligibleNear).toHaveClass(/selected-target/);
+  await expect(blockedFar).not.toHaveClass(/selected-target/);
+  await expect(page.locator('[data-console-surface="local-operation"] button.primary')).toBeEnabled();
+  await expect(page.locator('.opponent-inspection-panel[data-inspect-player-id="p3"]')).toBeVisible();
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+
+  await page.keyboard.press("Escape");
+  await page.locator('[data-hand-card-id="browser-target-eligibility-attack"] .game-card').click();
+  await expect(page.locator('[data-hand-card-id="browser-target-eligibility-attack"]')).toHaveAttribute("data-card-selected", "false");
+  await expect(page.locator(".opponent-player-card.selected-target")).toHaveCount(0);
+  await expect(page.locator(".decision-status")).not.toHaveAttribute("data-local-target-notice", "rejected");
+  await expect(page.locator('[data-console-surface="local-operation"] button.primary')).toBeDisabled();
+  await expect(page.locator(".local-target-selection, .local-target-cancel")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+});
+
+test("five-seat phone Attack selection uses portrait touch and retap deselection at approved viewport sizes", async ({ browser }) => {
+  test.setTimeout(120_000);
+  for (const viewport of [{ width: 390, height: 700 }, { width: 390, height: 844 }, { width: 440, height: 766 }, { width: 440, height: 894 }, { width: 480, height: 900 }]) {
+    const context = await browser.newContext({ viewport, isMobile: true, hasTouch: true });
+    try {
+      const page = await context.newPage();
+      await page.goto("http://127.0.0.1:4177/tests/browser/fixture.html?state=target-eligibility&count=5");
+      await expect(page.locator(".game-shell")).toBeVisible();
+      const seatGeometry = () => page.locator(".opponent-player-card").evaluateAll((seats) => seats.map((seat) => {
+        const rect = seat.getBoundingClientRect();
+        return { id: seat.dataset.playerAnchor, x: +rect.x.toFixed(2), y: +rect.y.toFixed(2), width: +rect.width.toFixed(2), height: +rect.height.toFixed(2) };
+      }));
+      const seatsBefore = await seatGeometry();
+      const attack = page.locator('[data-hand-card-id="browser-target-eligibility-attack"] .game-card');
+      await attack.tap();
+
+      await expect(page.locator(".opponent-seat-inspect-button")).toHaveCount(0);
+      await expect(page.locator(".local-target-selection, .local-target-cancel")).toHaveCount(0);
+      expect(await seatGeometry()).toEqual(seatsBefore);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+      const portraitHit = await page.locator('.opponent-player-card[data-player-anchor="p2"] .opponent-hero-target').evaluate((target) => {
+        const rect = target.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return Boolean(hit?.closest(".opponent-hero-target") === target);
+      });
+      expect(portraitHit, JSON.stringify(viewport)).toBe(true);
+
+      const target = page.locator('.opponent-player-card[data-player-anchor="p2"] .opponent-hero-target');
+      const bounds = await target.boundingBox();
+      expect(bounds).toBeTruthy();
+      await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      await expect(page.locator('.opponent-inspection-panel[data-inspect-player-id="p2"]')).toBeVisible();
+      await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+      await expect(page.locator('[data-console-surface="local-operation"] button.primary')).toBeEnabled();
+      expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+
+      await page.keyboard.press("Escape");
+      await attack.tap();
+      await expect(page.locator('[data-hand-card-id="browser-target-eligibility-attack"]')).toHaveAttribute("data-card-selected", "false");
+      await expect(page.locator(".opponent-player-card.selected-target")).toHaveCount(0);
+      await expect(page.locator('[data-console-surface="local-operation"] button.primary')).toBeDisabled();
+      await expect(page.locator(".local-target-selection, .local-target-cancel")).toHaveCount(0);
+      expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  }
+});
+
+test("five-seat non-Attack and four/six/eight-seat mobile selection keep existing Inspect and Cancel controls", async ({ page }) => {
+  for (const count of [4, 6, 8]) {
+    await page.setViewportSize({ width: 390, height: 700 });
+    await page.goto(`/tests/browser/fixture.html?state=target-eligibility&count=${count}`);
+    await expect(page.locator(".game-shell")).toBeVisible();
+    await selectAttack(page);
+    await expect(page.locator(".opponent-seat-inspect-button")).toHaveCount(count - 1);
+    await expect(page.locator(".local-target-selection")).toBeVisible();
+    await expect(page.locator(".local-target-cancel")).toBeVisible();
+  }
+
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.goto("/tests/browser/fixture.html?state=target-eligibility&count=5");
+  await expect(page.locator(".game-shell")).toBeVisible();
+  await page.locator('[data-hand-card-id="browser-target-eligibility-steal"] .game-card').click();
+  await expect(page.locator(".opponent-seat-inspect-button")).toHaveCount(4);
+  await expect(page.locator(".local-target-selection")).toBeVisible();
+  await expect(page.locator(".local-target-cancel")).toBeVisible();
 });
 
 test("a target excluded by a newer CurrentAction revision is cleared and reported", async ({ page }) => {
@@ -179,15 +273,13 @@ test("live five-seat mobile targeting preserves private authority, Inspector, De
   await expect(eligibleTarget).toHaveAttribute("data-target-selectable", "true");
   await expect(blockedTarget).not.toHaveAttribute("data-target-selectable", "true");
   await expect(blockedTarget.locator(".opponent-hero-target")).toBeEnabled();
-  const targetAndInspectBounds = await blockedTarget.evaluate((seat) => {
+  await expect(page.locator(".opponent-seat-inspect-button")).toHaveCount(0);
+  const portraitHit = await blockedTarget.evaluate((seat) => {
     const target = seat.querySelector(".opponent-hero-target").getBoundingClientRect();
-    const inspect = seat.querySelector(".opponent-seat-inspect-button").getBoundingClientRect();
-    return { target: { left: target.left, right: target.right, top: target.top, bottom: target.bottom }, inspect: { left: inspect.left, right: inspect.right, top: inspect.top, bottom: inspect.bottom } };
+    const hit = document.elementFromPoint(target.left + target.width / 2, target.top + target.height / 2);
+    return Boolean(hit?.closest(".opponent-hero-target") === seat.querySelector(".opponent-hero-target"));
   });
-  expect(targetAndInspectBounds.inspect.right <= targetAndInspectBounds.target.left
-    || targetAndInspectBounds.inspect.left >= targetAndInspectBounds.target.right
-    || targetAndInspectBounds.inspect.bottom <= targetAndInspectBounds.target.top
-    || targetAndInspectBounds.inspect.top >= targetAndInspectBounds.target.bottom).toBe(true);
+  expect(portraitHit).toBe(true);
   await blockedTarget.locator(".opponent-hero-target").click();
   const distanceRejection = attackProjection.rejections.find((entry) => entry.targetId === blockedId);
   await expect(page.locator(".decision-status")).toContainText(
@@ -195,9 +287,9 @@ test("live five-seat mobile targeting preserves private authority, Inspector, De
   );
   await expect(blockedTarget).not.toHaveClass(/selected-target/);
   await expect(page.locator('[data-console-surface="local-operation"] button.primary')).toBeDisabled();
+  await expect(page.locator(`.opponent-inspection-panel[data-inspect-player-id="${blockedId}"]`)).toBeVisible();
   expect(playPosts).toHaveLength(0);
 
-  await blockedTarget.locator(".opponent-seat-inspect-button").click();
   await expect(page.getByRole("region", { name: `${blockedPlayer.name} opponent inspection` })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
@@ -208,7 +300,7 @@ test("live five-seat mobile targeting preserves private authority, Inspector, De
   await page.getByRole("button", { name: "Close card details" }).click();
 
   const inspector = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
-  await blockedTarget.locator(".opponent-seat-inspect-button").click();
+  await blockedTarget.locator(".opponent-hero-target").click();
   await expect(inspector).toHaveAttribute("data-inspect-player-id", blockedId);
   const inspectorAnchorMetrics = () => page.evaluate((subjectId) => {
     const rect = (element) => {
