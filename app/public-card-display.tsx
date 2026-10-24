@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Card, CardKind } from "../game/model";
 import type { PresentationSnapshotPublicCardEffect, PresentationSnapshotRootAction } from "../game/presentation-snapshot";
 import type { PresentationTargetCardSettlementMovement } from "../game/presentation-v2";
@@ -146,6 +146,23 @@ export type PublicCardDisplayAction = {
   responses?: readonly PublicCardDisplayResponseNode[];
 };
 
+/**
+ * Keeps the renderer owner stable while a proven Steal/Dismantle root moves
+ * through Negation, target choice, and settlement presentation wrappers.
+ */
+export function publicCardJourneyOwnershipIdentity(
+  action: PublicCardDisplayAction,
+  roomCode: string,
+  viewerId: string,
+): string {
+  if (action.motion?.type === "single-target"
+    && (action.cardKind === "Steal" || action.cardKind === "Dismantle")
+    && action.rootEventId && action.cardFace?.id && action.sourceId) {
+    return [roomCode, viewerId, "single-target-root", action.rootEventId, action.cardFace.id, action.sourceId].join("\u001f");
+  }
+  return [roomCode, viewerId, action.key].join("\u001f");
+}
+
 const publicCardEffectFrameViewBrand: unique symbol = Symbol("validatedPublicCardEffectFrameView");
 
 export type PublicCardEffectFrameView = {
@@ -234,6 +251,8 @@ type JourneyCard = {
   revealElapsedMs?: number;
   revealRemainingMs?: number;
   moveStartedAtMs?: number | null;
+  moveRemainingMs?: number;
+  awaitingParkingTarget?: boolean;
   layoutChangeReason?: string;
   /** Keep one unresolved actor placement from hiding unrelated public cards. */
   layoutPending?: boolean;
@@ -288,7 +307,7 @@ function PublicJourneyCard({
   publicCardEffectFrame?: PublicCardEffectFrameView;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
-  const placementUnavailable = !parkingTargetKnown && card.phase !== "reveal";
+  const placementUnavailable = !parkingTargetKnown && card.phase === "parked";
   const inspectable = !placementUnavailable && !passive && card.phase === "parked" && Boolean(onInspectCard);
   const publicFrameAccessible = !placementUnavailable && Boolean(publicCardEffectFrame && card.phase !== "move");
   const frameMaterials = publicCardEffectFrame?.materials ?? [];
@@ -350,8 +369,9 @@ function PublicJourneyCard({
       top: card.rect.top,
       width: card.rect.width,
       height: card.rect.height,
+      ["--public-card-journey-move-duration"]: `${Math.max(0, Math.round(card.moveRemainingMs ?? MOVE_DURATION_MS))}ms`,
       ...(placementUnavailable ? { visibility: "hidden", pointerEvents: "none" } : {}),
-    }}
+    } as CSSProperties}
   >
     {publicCardEffectFrame && frameLayout && card.phase !== "parked" && <span
       className={`public-card-effect-frame-panel public-card-lust-cost-frame-panel${card.phase === "move" ? " is-moving" : ""}`}
@@ -675,9 +695,26 @@ function hasPaintedLargePublicCard(eventId: string, size: Pick<CardRect, "width"
     && rect.right > 0 && rect.left < window.innerWidth && rect.bottom > 0 && rect.top < window.innerHeight);
 }
 
-function actorParkedCard(actorId: string, cardIndex = 0): CardRect | null {
-  const anchor = [...document.querySelectorAll<HTMLElement>("[data-player-anchor]")]
-    .find((candidate) => candidate.dataset.playerAnchor === actorId);
+function renderedJourneyCardRect(eventId: string): CardRect | null {
+  const element = [...document.querySelectorAll<HTMLElement>("[data-public-card-journey-event-id]")]
+    .find((candidate) => candidate.dataset.publicCardJourneyEventId === eventId);
+  const rect = element?.getBoundingClientRect();
+  return rect && rect.width > 0 && rect.height > 0
+    ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+    : null;
+}
+
+function actorParkedCard(actorId: string, cardIndex = 0, preferLocalAuthorDock = false): CardRect | null {
+  const actorAnchors = [...document.querySelectorAll<HTMLElement>("[data-player-anchor]")]
+    .filter((candidate) => candidate.dataset.playerAnchor === actorId);
+  const visible = (candidate: HTMLElement) => {
+    const rect = candidate.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+  const anchor = (preferLocalAuthorDock
+    ? actorAnchors.find((candidate) => candidate.classList.contains("local-player-dock") && visible(candidate))
+    : null)
+    ?? actorAnchors.find(visible);
   if (!anchor) return null;
   const bounds = anchor.getBoundingClientRect();
   if (bounds.width <= 0 || bounds.height <= 0) return null;
@@ -719,6 +756,8 @@ type SeatHistoryCardParkingOptions = {
   extendNegationChainCollisionSlots?: boolean;
   onPlacementFailure?: (detail: Record<string, unknown>) => void;
   anchorLocalHero?: boolean;
+  preferLocalAuthorDock?: boolean;
+  protectSingleTargetControls?: boolean;
   avoidAuthorSeat?: boolean;
   protectInteractionControls?: boolean;
   allowHarvestPoolOverlap?: boolean;
@@ -735,6 +774,7 @@ function seatHistoryParkingProtectedSelectors(options: SeatHistoryCardParkingOpt
     ".local-judgement-cards",
     ".local-dock-zones", ".local-status-panel", ".local-equipment-panel", ".local-hand-section",
     ".local-hand-rail [data-hand-card-id]", ".local-hand-rail button", ".turn-controls", ".turn-controls button",
+    ...(options.protectSingleTargetControls ? [".opponent-inspection-floating-shell", ".card-pool-panel", ".target-card-picker-panel"] : []),
     ...(options.allowHarvestPoolOverlap ? [
       // The panel itself is a soft overlay for a parked Harvest history mini.
       // Keep the real choice faces and their Info/selection controls as hard
@@ -794,9 +834,17 @@ function seatHistoryCardParking(
       const rect = candidate.getBoundingClientRect();
       return rect.width > 0 && rect.height > 0;
     });
-  const anchor = options.anchorLocalHero
-    ? actorAnchors.find((candidate) => candidate.classList.contains("local-player-dock")) ?? visibleAnchor
-    : visibleAnchor;
+  const preferredLocalDock = options.anchorLocalHero || options.preferLocalAuthorDock
+    ? actorAnchors.find((candidate) => candidate.classList.contains("local-player-dock") && (() => {
+      const rect = candidate.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    })())
+    : null;
+  const anchor = preferredLocalDock
+    ?? (options.anchorLocalHero
+      ? actorAnchors.find((candidate) => candidate.classList.contains("local-player-dock"))
+      : null)
+    ?? visibleAnchor;
   const table = document.querySelector<HTMLElement>(".play-table");
   if (!anchor || !table) {
     reportEarlyFailure("author-anchor-or-table-missing", { actorAnchorCount: actorAnchors.length, hasTable: Boolean(table) });
@@ -3534,45 +3582,57 @@ function SingleTargetCardJourney({
   const harvestRootPoolVisible = harvestPoolReadOnly && isBumperHarvest;
   const harvestPoolAboveRoot = harvestPoolVisible;
   const historyOnly = Boolean(retainHarvestHistory && isBumperHarvest && !enabled);
-  const journeyEnabled = enabled || historyOnly;
   const responseHistoryEventIds = new Set((action.responseHistory ?? []).map((response) => response.eventId));
   const activeResponseEventIds = new Set((action.responses ?? []).map((response) => response.eventId));
   const responseHistoryOwnershipByEventId = new Map(responseHistoryOwnership.map((response) => [response.eventId, new Set(response.cardIds)]));
   const scopeKey = motion?.scopeKey ?? action.rootEventId;
+  const ownershipIdentity = publicCardJourneyOwnershipIdentity(action, roomCode, viewerId);
   const [journey, setJourney] = useState<SingleTargetJourneyState>({ scopeKey: "", viewerId: "", harvestPoolReadOnly: false, showNegationChainOrdinals: false, cards: [], center: null, suppressTransitions: false, layoutPending: false });
+  const retainSingleTargetJourney = motion?.type === "single-target"
+    && (action.cardKind === "Steal" || action.cardKind === "Dismantle")
+    && journey.scopeKey === scopeKey
+    && journey.cards.some((card) => card.role === "root" && card.eventId === action.rootEventId
+      && card.cardFace.id === action.cardFace?.id && card.actorId === action.sourceId);
+  const journeyEnabled = enabled || historyOnly || retainSingleTargetJourney;
   const journeyRef = useRef(journey);
   const actionRef = useRef(action);
   const sourceNameRef = useRef(sourceName);
   const viewerIdRef = useRef(viewerId);
   const mountedRef = useRef(false);
-  const enabledRef = useRef(enabled);
+  const enabledRef = useRef(journeyEnabled);
   const documentVisibleRef = useRef(true);
   const [documentVisible, setDocumentVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
   const notifiedSettlementEventIdRef = useRef<string | null>(null);
   const parkedNotifiedEventIdsRef = useRef(new Set<string>());
   const traceSignaturesRef = useRef(new Map<string, string>());
   const parkingFailureSignaturesRef = useRef(new Map<string, string>());
-  const placementFailureReporter = useCallback((event: JourneyCard): SeatHistoryCardParkingOptions => ({
-    onPlacementFailure: isBumperHarvest && (event.role === "root" || event.role === "response")
-      ? (detail: Record<string, unknown>) => {
-        const currentViewerId = viewerIdRef.current;
-        const currentAction = actionRef.current;
-        const key = `${currentViewerId}:${event.eventId}`;
-        const signature = JSON.stringify(detail);
-        if (parkingFailureSignaturesRef.current.get(key) === signature) return;
-        parkingFailureSignaturesRef.current.set(key, signature);
-        recordAttackDodgeUxTrace("harvest-history-parking-failure", {
-          interactionId: currentAction.interactionId ?? null,
-          rootEventId: currentAction.rootEventId,
-          eventId: event.eventId,
-          publicActorId: event.actorId,
-          publicViewerId: currentViewerId,
-          publicCardId: event.cardFace.id,
-          ...detail,
-        });
-      }
-      : undefined,
-  }), [isBumperHarvest]);
+  const placementFailureReporter = useCallback((event: JourneyCard): SeatHistoryCardParkingOptions => {
+    const currentAction = actionRef.current;
+    const harvestFailure = isBumperHarvest && (event.role === "root" || event.role === "response");
+    const singleTargetRootFailure = event.role === "root"
+      && (currentAction.cardKind === "Steal" || currentAction.cardKind === "Dismantle");
+    return {
+      onPlacementFailure: harvestFailure || singleTargetRootFailure
+        ? (detail: Record<string, unknown>) => {
+          const currentViewerId = viewerIdRef.current;
+          const latestAction = actionRef.current;
+          const key = `${currentViewerId}:${event.eventId}`;
+          const signature = JSON.stringify(detail);
+          if (parkingFailureSignaturesRef.current.get(key) === signature) return;
+          parkingFailureSignaturesRef.current.set(key, signature);
+          recordAttackDodgeUxTrace(harvestFailure ? "harvest-history-parking-failure" : "single-target-root-parking-failure", {
+            interactionId: latestAction.interactionId ?? null,
+            rootEventId: latestAction.rootEventId,
+            eventId: event.eventId,
+            publicActorId: event.actorId,
+            publicViewerId: currentViewerId,
+            publicCardId: event.cardFace.id,
+            ...detail,
+          });
+        }
+        : undefined,
+    };
+  }, [isBumperHarvest]);
   const incoming = singleTargetJourneyEvents(action, sourceName);
   const journeyEvents = motion?.type === "group-root" && journey.scopeKey === scopeKey
     ? preserveGroupRootJourneyEvents(incoming, journey.cards)
@@ -3637,15 +3697,21 @@ function SingleTargetCardJourney({
       const old = priorById.get(event.eventId);
       const actorIndex = actorIndexes.get(event.actorId) ?? 0;
       actorIndexes.set(event.actorId, actorIndex + 1);
+      const localAuthor = event.actorId === viewerId
+        && (currentAction.cardKind === "Steal" || currentAction.cardKind === "Dismantle");
       const parkingOptions = {
         ...singleTargetParkingOptions(action, event, harvestPoolAboveRoot, hasNegationChainParking),
+        ...(event.actorId === viewerId ? { preferLocalAuthorDock: true } : {}),
+        ...(localAuthor ? { anchorLocalHero: true, protectInteractionControls: true, protectSingleTargetControls: true } : {}),
         sameAuthorRects: measuredRectsByActor.get(event.actorId) ?? [],
         ...placementFailureReporter(event),
       };
       const measuredTarget = (old && !viewerChanged && !harvestLayoutChanged && !ordinalLayoutChanged && !hasNegationChainParking && !previous.layoutPending && !parkingOptions.protectInteractionControls
         ? old.target
         : seatHistoryCardParking(event.actorId, actorIndex, occupied, parkingOptions)?.rect
-          ?? (!parkingOptions.protectInteractionControls ? actorParkedCard(event.actorId, actorIndex) : null));
+          ?? (!parkingOptions.protectInteractionControls
+            ? actorParkedCard(event.actorId, actorIndex, event.actorId === viewerId)
+            : null));
       const parkedSize = parkingOptions.cardSize ?? PARKED_CARD;
       const fallbackRect = old?.target ?? center;
       const target = measuredTarget ?? { left: fallbackRect.left, top: fallbackRect.top, ...parkedSize };
@@ -3656,6 +3722,35 @@ function SingleTargetCardJourney({
         measuredRectsByActor.set(event.actorId, [...(measuredRectsByActor.get(event.actorId) ?? []), measuredTarget]);
       }
       if (old && !viewerChanged) {
+        const now = performance.now();
+        const moveTargetChanged = old.phase === "move" && Boolean(measuredTarget) && !cardRectsMatch(old.target, target);
+        const moveElapsedMs = old.phase === "move" && old.moveStartedAtMs != null
+          ? Math.max(0, now - old.moveStartedAtMs)
+          : 0;
+        const moveRemainingMs = old.phase === "move"
+          ? Math.max(0, (old.moveRemainingMs ?? MOVE_DURATION_MS) - moveElapsedMs)
+          : old.moveRemainingMs;
+        if (old.awaitingParkingTarget && measuredTarget) {
+          const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          return {
+            ...event,
+            ...old,
+            actorName: event.actorName,
+            cardFace: event.cardFace,
+            ariaLabel: event.ariaLabel,
+            semanticLabel: event.semanticLabel,
+            phase: reducedMotion ? "parked" : "move",
+            rect: target,
+            target,
+            revealStartedAtMs: null,
+            revealRemainingMs: 0,
+            moveStartedAtMs: reducedMotion ? null : now,
+            moveRemainingMs: reducedMotion ? 0 : MOVE_DURATION_MS,
+            awaitingParkingTarget: false,
+            layoutPending: false,
+            layoutChangeReason: reducedMotion ? "four-second-reveal-complete-reduced-motion" : "author-parking-anchor-recovered",
+          };
+        }
         if (latestFreshResponseEventId && event.eventId !== latestFreshResponseEventId && old.phase === "reveal") {
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
           return {
@@ -3667,7 +3762,9 @@ function SingleTargetCardJourney({
             semanticLabel: event.semanticLabel,
             phase: reducedMotion ? "parked" : "move",
             rect: target,
-            moveStartedAtMs: reducedMotion ? null : performance.now(),
+            moveStartedAtMs: reducedMotion ? null : now,
+            moveRemainingMs: reducedMotion ? 0 : MOVE_DURATION_MS,
+            awaitingParkingTarget: false,
             revealStartedAtMs: null,
             revealRemainingMs: 0,
             target,
@@ -3682,14 +3779,25 @@ function SingleTargetCardJourney({
           cardFace: event.cardFace,
           ariaLabel: event.ariaLabel,
           semanticLabel: event.semanticLabel,
-          rect: old.phase === "parked" ? target : old.phase === "reveal" ? center : old.rect,
+          rect: moveTargetChanged ? target
+            : old.phase === "move" && !measuredTarget ? renderedJourneyCardRect(old.eventId) ?? old.rect
+              : old.phase === "parked" ? target : old.phase === "reveal" ? center : old.rect,
           target,
+          ...(old.phase === "move" && !measuredTarget ? {
+            moveStartedAtMs: null,
+            moveRemainingMs,
+          } : moveTargetChanged ? {
+            moveStartedAtMs: now,
+            moveRemainingMs,
+            layoutChangeReason: "move-rebased-to-updated-author-target",
+          } : {}),
           layoutPending: !measuredTarget,
-          layoutChangeReason: measuredTarget ? old.layoutChangeReason : "author-parking-unavailable-awaiting-remeasure",
+          ...(moveTargetChanged || old.phase === "move" && !measuredTarget ? {}
+            : { layoutChangeReason: measuredTarget ? old.layoutChangeReason : "author-parking-unavailable-awaiting-remeasure" }),
         };
       }
       if (old && viewerChanged) {
-        const phase: SingleTargetJourneyPhase = old.phase === "move" ? "parked" : old.phase;
+        const phase: SingleTargetJourneyPhase = old.phase;
         return {
           ...event,
           ...old,
@@ -3700,7 +3808,9 @@ function SingleTargetCardJourney({
           phase,
           rect: phase === "parked" ? target : phase === "reveal" ? center : old.rect,
           target,
-          moveStartedAtMs: null,
+          moveStartedAtMs: phase === "move" && measuredTarget
+            ? old.moveStartedAtMs ?? performance.now()
+            : phase === "move" ? null : old.moveStartedAtMs,
           layoutPending: !measuredTarget,
           layoutChangeReason: measuredTarget ? "viewer-switch" : "viewer-switch-awaiting-author-anchor",
         };
@@ -3771,7 +3881,7 @@ function SingleTargetCardJourney({
     ?? action.rootEventId;
   const activePhase = activeCard?.phase ?? null;
   useEffect(() => {
-    if (!enabled || !documentVisible || journey.scopeKey !== scopeKey || !activeCard || !activePhase) return;
+    if (!journeyEnabled || !documentVisible || journey.scopeKey !== scopeKey || !activeCard || !activePhase) return;
     const timers = journey.cards.flatMap((card) => {
       if (card.phase === "reveal" && card.revealStartedAtMs != null) {
         const delay = Math.max(0, (card.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS)
@@ -3781,8 +3891,23 @@ function SingleTargetCardJourney({
           setJourney((current) => {
             const currentCard = current.cards.find((candidate) => candidate.eventId === card.eventId);
             if (current.scopeKey !== scopeKey || !currentCard || currentCard.phase !== "reveal") return current;
-            const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
             const now = performance.now();
+            if (currentCard.layoutPending) {
+              const cards = current.cards.map((candidate) => candidate.eventId === card.eventId
+                ? {
+                  ...candidate,
+                  revealStartedAtMs: null,
+                  revealElapsedMs: (candidate.revealElapsedMs ?? 0) + Math.max(0, now - (candidate.revealStartedAtMs ?? now)),
+                  revealRemainingMs: 0,
+                  awaitingParkingTarget: true,
+                  layoutChangeReason: "reveal-complete-awaiting-safe-author-slot",
+                }
+                : candidate);
+              const next = { ...current, cards };
+              journeyRef.current = next;
+              return next;
+            }
+            const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
             const shouldMove = !reducedMotion && !currentCard.layoutPending;
             const cards = current.cards.map((candidate) => candidate.eventId === card.eventId
               ? {
@@ -3793,6 +3918,8 @@ function SingleTargetCardJourney({
                 revealElapsedMs: (candidate.revealElapsedMs ?? 0) + Math.max(0, now - (candidate.revealStartedAtMs ?? now)),
                 revealRemainingMs: 0,
                 moveStartedAtMs: shouldMove ? now : null,
+                moveRemainingMs: shouldMove ? MOVE_DURATION_MS : undefined,
+                awaitingParkingTarget: false,
                 layoutChangeReason: currentCard.layoutPending ? "reveal-complete-awaiting-seat-anchor"
                   : reducedMotion ? "four-second-reveal-complete-reduced-motion" : "four-second-reveal-complete",
               }
@@ -3804,15 +3931,35 @@ function SingleTargetCardJourney({
         }, delay)];
       }
       if (card.phase === "move") {
-        const startedAt = card.moveStartedAtMs ?? performance.now();
-        const delay = Math.max(0, MOVE_DURATION_MS - Math.max(0, performance.now() - startedAt));
+        if (card.layoutPending) return [];
+        if (card.moveStartedAtMs == null) {
+          const now = performance.now();
+          setJourney((current) => {
+            if (current.scopeKey !== scopeKey) return current;
+            const cards = current.cards.map((candidate) => candidate.eventId === card.eventId
+              && candidate.phase === "move" && candidate.moveStartedAtMs == null && !candidate.layoutPending
+              ? {
+                ...candidate,
+                rect: candidate.target,
+                moveStartedAtMs: now,
+                moveRemainingMs: (candidate.moveRemainingMs ?? 0) > 0 ? candidate.moveRemainingMs : MOVE_DURATION_MS,
+              }
+              : candidate);
+            const next = { ...current, cards };
+            journeyRef.current = next;
+            return next;
+          });
+          return [];
+        }
+        const startedAt = card.moveStartedAtMs;
+        const delay = Math.max(0, (card.moveRemainingMs ?? MOVE_DURATION_MS) - Math.max(0, performance.now() - startedAt));
         return [window.setTimeout(() => {
           if (!mountedRef.current) return;
           setJourney((current) => {
             const currentCard = current.cards.find((candidate) => candidate.eventId === card.eventId);
             if (current.scopeKey !== scopeKey || !currentCard || currentCard.phase !== "move") return current;
             const cards = current.cards.map((candidate) => candidate.eventId === card.eventId
-              ? { ...candidate, phase: "parked" as const, rect: candidate.target, moveStartedAtMs: null, layoutChangeReason: "380ms-seat-parking-complete" }
+              ? { ...candidate, phase: "parked" as const, rect: candidate.target, moveStartedAtMs: null, moveRemainingMs: 0, layoutChangeReason: "380ms-seat-parking-complete" }
               : candidate);
             const next = { ...current, cards };
             journeyRef.current = next;
@@ -3843,7 +3990,15 @@ function SingleTargetCardJourney({
         }
         if (card.phase === "move") {
           changed = true;
-          return { ...card, phase: "parked" as const, rect: card.target, moveStartedAtMs: null, layoutChangeReason: "view-hidden-or-temporarily-disabled" };
+          const elapsed = card.moveStartedAtMs == null ? 0 : Math.max(0, now - card.moveStartedAtMs);
+          const painted = renderedJourneyCardRect(card.eventId);
+          return {
+            ...card,
+            rect: painted ?? card.rect,
+            moveStartedAtMs: null,
+            moveRemainingMs: Math.max(0, (card.moveRemainingMs ?? MOVE_DURATION_MS) - elapsed),
+            layoutChangeReason: "view-hidden-or-temporarily-disabled",
+          };
         }
         return card;
       });
@@ -3852,10 +4007,11 @@ function SingleTargetCardJourney({
       journeyRef.current = next;
       if (mountedRef.current) setJourney(next);
     };
-  }, [enabled, documentVisible, journey.cards, journey.scopeKey, scopeKey, activeCard?.eventId, activePhase]);
+  }, [journeyEnabled, documentVisible, journey.cards, journey.scopeKey, scopeKey, activeCard?.eventId, activePhase]);
 
   useEffect(() => {
-    if (!enabled || !documentVisible || journey.scopeKey !== scopeKey || !activeCard || activeCard.phase !== "reveal" || activeCard.revealStartedAtMs != null) return;
+    if (!journeyEnabled || !documentVisible || journey.scopeKey !== scopeKey || !activeCard || activeCard.phase !== "reveal"
+      || activeCard.revealStartedAtMs != null || activeCard.awaitingParkingTarget) return;
     let firstFrame = 0;
     let secondFrame = 0;
     const markFirstPaint = () => {
@@ -3867,7 +4023,7 @@ function SingleTargetCardJourney({
       const startedAtIso = new Date().toISOString();
       setJourney((current) => {
         const card = current.cards.find((candidate) => candidate.eventId === activeCard.eventId);
-        if (current.scopeKey !== scopeKey || !card || card.phase !== "reveal" || card.revealStartedAtMs != null) return current;
+        if (current.scopeKey !== scopeKey || !card || card.phase !== "reveal" || card.revealStartedAtMs != null || card.awaitingParkingTarget) return current;
         const cards = current.cards.map((candidate) => candidate.eventId === card.eventId
           ? { ...candidate, revealStartedAtMs: startedAt, revealStartedAtIso: candidate.revealStartedAtIso ?? startedAtIso, layoutChangeReason: "centre-card-presented" }
           : candidate);
@@ -3880,12 +4036,14 @@ function SingleTargetCardJourney({
       secondFrame = window.requestAnimationFrame(markFirstPaint);
     });
     return () => { window.cancelAnimationFrame(firstFrame); window.cancelAnimationFrame(secondFrame); };
-  }, [enabled, documentVisible, journey.scopeKey, scopeKey, activeCard?.eventId, activeCard?.phase, activeCard?.revealStartedAtMs]);
+  }, [journeyEnabled, documentVisible, journey.scopeKey, scopeKey, activeCard?.eventId, activeCard?.phase, activeCard?.revealStartedAtMs, activeCard?.awaitingParkingTarget]);
 
   useLayoutEffect(() => {
     if (!journeyEnabled || journey.scopeKey !== scopeKey) return;
     let resizeFrame = 0;
-    let previousLayoutSignature = "";
+    let previousSampleSignature = "";
+    let committedLayoutSignature = "";
+    let pendingLayoutSignature = "";
     let stableFrames = 0;
     let sampledFrames = 0;
     let layoutObserver: ResizeObserver | null = null;
@@ -3893,47 +4051,55 @@ function SingleTargetCardJourney({
     let announcementObserver: MutationObserver | null = null;
     let placementRetryTimer = 0;
     let placementRetryAttempts = 0;
-    const observeLayout = () => {
-      const elements = [
-        document.querySelector<HTMLElement>(".play-table"),
-        document.querySelector<HTMLElement>(".player-board"),
-        ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
-        ...(isBumperHarvest ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")] : []),
-      ];
-      for (const element of elements) if (element) layoutObserver?.observe(element);
-    };
-    const reflow = () => {
-      window.cancelAnimationFrame(resizeFrame);
-      setJourney((current) => {
-        if (current.scopeKey !== scopeKey) return current;
-        const next: SingleTargetJourneyState = {
-          ...current,
-          suppressTransitions: true,
-          layoutPending: true,
-          cards: current.cards.map((card) => card.phase === "move"
-            ? { ...card, phase: "parked", rect: card.target, moveStartedAtMs: null, layoutChangeReason: "layout-epoch-pending" }
-            : card),
-        };
-        journeyRef.current = next;
-        return next;
+    const parkingSelectors = () => {
+      const action = actionRef.current;
+      const isSingleTarget = action.cardKind === "Steal" || action.cardKind === "Dismantle";
+      return seatHistoryParkingProtectedSelectors({
+        protectInteractionControls: isSingleTarget,
+        protectSingleTargetControls: isSingleTarget,
       });
-      previousLayoutSignature = "";
+    };
+    const layoutElements = () => [...new Set([
+      document.querySelector<HTMLElement>(".play-table"),
+      document.querySelector<HTMLElement>(".player-board"),
+      ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
+      ...(isBumperHarvest ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")] : []),
+      ...parkingSelectors().flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]),
+    ].filter((element): element is HTMLElement => Boolean(element)))];
+    const readLayoutSignature = () => [
+      window.innerWidth,
+      window.innerHeight,
+      window.visualViewport?.width ?? 0,
+      window.visualViewport?.height ?? 0,
+      window.visualViewport?.offsetLeft ?? 0,
+      window.visualViewport?.offsetTop ?? 0,
+      window.visualViewport?.scale ?? 1,
+      ...layoutElements().flatMap((element) => {
+        const rect = element.getBoundingClientRect();
+        return [element.dataset.playerAnchor ?? "", element.className, element.dataset.sideColumn ?? "",
+          rect.left, rect.top, rect.width, rect.height]
+          .map((value) => typeof value === "number" ? Math.round(value * 2) / 2 : value);
+      }),
+    ].join(":");
+    committedLayoutSignature = readLayoutSignature();
+    const observeLayout = () => { for (const element of layoutElements()) layoutObserver?.observe(element); };
+    const reflow = (force = false) => {
+      const requestedSignature = readLayoutSignature();
+      if (!force && (requestedSignature === committedLayoutSignature || requestedSignature === pendingLayoutSignature)) return;
+      pendingLayoutSignature = requestedSignature;
+      window.cancelAnimationFrame(resizeFrame);
       stableFrames = 0;
       sampledFrames = 0;
+      previousSampleSignature = "";
       const measureWhenSettled = () => {
-        const layoutElements = [
-          document.querySelector<HTMLElement>(".play-table"),
-          document.querySelector<HTMLElement>(".player-board"),
-          ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
-          ...(isBumperHarvest ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")] : []),
-        ].filter((element): element is HTMLElement => Boolean(element));
-        const layoutSignature = [window.innerWidth, window.innerHeight, window.visualViewport?.width ?? 0, window.visualViewport?.height ?? 0,
-          ...layoutElements.flatMap((element) => {
-            const rect = element.getBoundingClientRect();
-            return [rect.left, rect.top, rect.width, rect.height].map((value) => Math.round(value * 2) / 2);
-          })].join(":");
-        stableFrames = layoutSignature === previousLayoutSignature ? stableFrames + 1 : 0;
-        previousLayoutSignature = layoutSignature;
+        const layoutSignature = readLayoutSignature();
+        if (layoutSignature !== pendingLayoutSignature) {
+          pendingLayoutSignature = layoutSignature;
+          stableFrames = 0;
+          previousSampleSignature = "";
+        }
+        stableFrames = layoutSignature === previousSampleSignature ? stableFrames + 1 : 0;
+        previousSampleSignature = layoutSignature;
         sampledFrames += 1;
         if (stableFrames < 1 && sampledFrames < 120) {
           resizeFrame = window.requestAnimationFrame(measureWhenSettled);
@@ -3959,8 +4125,12 @@ function SingleTargetCardJourney({
         const cards = current.cards.map((card) => {
           const actorIndex = actorIndexes.get(card.actorId) ?? 0;
           actorIndexes.set(card.actorId, actorIndex + 1);
+          const localAuthor = card.actorId === viewerIdRef.current
+            && (currentAction.cardKind === "Steal" || currentAction.cardKind === "Dismantle");
           const parkingOptions = {
             ...singleTargetParkingOptions(currentAction, card, harvestPoolAboveRoot),
+            ...(card.actorId === viewerIdRef.current ? { preferLocalAuthorDock: true } : {}),
+            ...(localAuthor ? { anchorLocalHero: true, protectInteractionControls: true, protectSingleTargetControls: true } : {}),
             sameAuthorRects: measuredRectsByActor.get(card.actorId) ?? [],
             ...placementFailureReporter(card),
           };
@@ -3971,29 +4141,53 @@ function SingleTargetCardJourney({
             parkingOptions,
           )?.rect;
           const parkedSize = parkingOptions.cardSize ?? PARKED_CARD;
-          const target = measuredTarget ?? { left: card.target.left, top: card.target.top, ...parkedSize };
+          const renderedRect = card.phase === "move" ? renderedJourneyCardRect(card.eventId) : null;
+          const target = measuredTarget
+            ?? (card.phase === "move" ? renderedRect ?? card.rect : { left: card.target.left, top: card.target.top, ...parkedSize });
           if (measuredTarget) {
             parkingFailureSignaturesRef.current.delete(`${viewerIdRef.current}:${card.eventId}`);
             measuredTargets.set(card.eventId, measuredTarget);
             occupied.push(measuredTarget);
             measuredRectsByActor.set(card.actorId, [...(measuredRectsByActor.get(card.actorId) ?? []), measuredTarget]);
           }
-          const phase = card.phase === "move" ? "parked" as const : card.phase;
+          const now = performance.now();
+          const moveElapsedMs = card.moveStartedAtMs == null ? 0 : Math.max(0, now - card.moveStartedAtMs);
+          const moveRemainingMs = card.phase === "move"
+            ? Math.max(0, (card.moveRemainingMs ?? MOVE_DURATION_MS) - moveElapsedMs)
+            : card.moveRemainingMs;
+          const waitingRevealWithTarget = card.phase === "reveal" && card.awaitingParkingTarget && Boolean(measuredTarget);
+          const reducedMotion = waitingRevealWithTarget && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
           return {
             ...card,
-            phase,
+            phase: waitingRevealWithTarget ? reducedMotion ? "parked" as const : "move" as const : card.phase,
             target,
-            rect: phase === "reveal" ? center : phase === "parked" && measuredTarget ? target : card.rect,
-            moveStartedAtMs: card.phase === "move" ? null : card.moveStartedAtMs,
+            rect: waitingRevealWithTarget ? target
+              : card.phase === "reveal" ? center
+              : card.phase === "move" ? measuredTarget ? target : renderedRect ?? card.rect
+                : measuredTarget ? target : card.rect,
+            moveStartedAtMs: card.phase !== "move" ? card.moveStartedAtMs
+              : measuredTarget ? now
+                : null,
+            moveRemainingMs: card.phase !== "move" ? card.moveRemainingMs
+              : moveRemainingMs,
+            ...(waitingRevealWithTarget ? {
+              awaitingParkingTarget: false,
+              moveStartedAtMs: reducedMotion ? null : now,
+              moveRemainingMs: reducedMotion ? 0 : MOVE_DURATION_MS,
+            } : {}),
             layoutPending: !measuredTarget,
-            layoutChangeReason: measuredTarget ? "viewport-resize-author-anchor-measured" : "author-parking-unavailable-awaiting-remeasure",
+            layoutChangeReason: waitingRevealWithTarget
+              ? reducedMotion ? "four-second-reveal-complete-reduced-motion" : "author-parking-anchor-recovered"
+              : measuredTarget ? "viewport-resize-author-anchor-measured" : "author-parking-unavailable-awaiting-remeasure",
           };
         });
         const layoutPending = cards.some((card) => !measuredTargets.has(card.eventId));
-        if (layoutPending && sampledFrames < 120) {
+        if (layoutPending && sampledFrames < 8) {
           resizeFrame = window.requestAnimationFrame(measureWhenSettled);
           return;
         }
+        committedLayoutSignature = layoutSignature;
+        pendingLayoutSignature = "";
         const unchanged = current.center && cardRectsMatch(current.center, center)
           && cards.length === current.cards.length
           && current.layoutPending === layoutPending
@@ -4014,25 +4208,27 @@ function SingleTargetCardJourney({
           const latest = journeyRef.current;
           if (latest.scopeKey !== scopeKey || !latest.layoutPending || placementRetryAttempts >= 5) return;
           placementRetryAttempts += 1;
-          reflow();
+          reflow(true);
           if (placementRetryAttempts < 5) schedulePlacementRetry();
         }, 2400);
       };
       schedulePlacementRetry();
     }
-    layoutObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reflow);
+    layoutObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => reflow());
     observeLayout();
     const shell = document.querySelector<HTMLElement>(".game-shell");
     mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
-      const containsPlayerAnchor = (node: Node) => node instanceof Element
-        && (node.matches("[data-player-anchor]") || Boolean(node.querySelector("[data-player-anchor]")));
+      const relevantSelectors = ["[data-player-anchor]", ...parkingSelectors()];
+      const containsRelevantLayout = (node: Node) => node instanceof Element
+        && (relevantSelectors.some((selector) => node.matches(selector) || Boolean(node.querySelector(selector))));
       if (records.some((record) => record.type === "attributes"
-        || [...record.addedNodes, ...record.removedNodes].some(containsPlayerAnchor))) {
+        ? record.target instanceof Element && containsRelevantLayout(record.target)
+        : [...record.addedNodes, ...record.removedNodes].some(containsRelevantLayout))) {
         observeLayout();
         reflow();
       }
     });
-    if (shell) mutationObserver?.observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-player-anchor"] });
+    if (shell) mutationObserver?.observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-player-anchor", "class", "style", "hidden"] });
     if (isBumperHarvest && typeof MutationObserver !== "undefined") {
       const announcementLayoutSignature = () => [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
         .map((element) => {
@@ -4053,11 +4249,12 @@ function SingleTargetCardJourney({
         announcementObserver.observe(announcement, { attributes: true, attributeFilter: ["style"] });
       }
     }
-    window.addEventListener("resize", reflow);
-    window.visualViewport?.addEventListener("resize", reflow);
+    const onViewportResize = () => reflow();
+    window.addEventListener("resize", onViewportResize);
+    window.visualViewport?.addEventListener("resize", onViewportResize);
     return () => {
-      window.removeEventListener("resize", reflow);
-      window.visualViewport?.removeEventListener("resize", reflow);
+      window.removeEventListener("resize", onViewportResize);
+      window.visualViewport?.removeEventListener("resize", onViewportResize);
       layoutObserver?.disconnect();
       mutationObserver?.disconnect();
       announcementObserver?.disconnect();
@@ -4128,15 +4325,15 @@ function SingleTargetCardJourney({
     };
   }, [historyOnly, journey.cards, viewerId]);
   useEffect(() => {
-    if (!enabled || journey.scopeKey !== scopeKey) return;
+    if (!journeyEnabled || journey.scopeKey !== scopeKey) return;
     for (const card of journey.cards) {
       if (card.phase !== "parked" || card.layoutPending || parkedNotifiedEventIdsRef.current.has(card.eventId)) continue;
       parkedNotifiedEventIdsRef.current.add(card.eventId);
       onJourneyEventParked?.(card.eventId);
     }
-  }, [enabled, journey.cards, journey.layoutPending, journey.scopeKey, onJourneyEventParked, scopeKey]);
+  }, [journeyEnabled, journey.cards, journey.layoutPending, journey.scopeKey, onJourneyEventParked, scopeKey]);
   useEffect(() => {
-    if (!enabled || journey.scopeKey !== scopeKey) return;
+    if (!journeyEnabled || journey.scopeKey !== scopeKey) return;
     const record = () => {
       const elements = [...document.querySelectorAll<HTMLElement>("[data-public-card-journey-event-id]")];
       for (const card of journey.cards) {
@@ -4216,7 +4413,7 @@ function SingleTargetCardJourney({
     if (!journey.cards.some((card) => card.phase === "reveal" || card.phase === "move")) return;
     const interval = window.setInterval(record, 500);
     return () => window.clearInterval(interval);
-  }, [action.targetId, enabled, journey.cards, journey.layoutPending, journey.scopeKey, journey.viewerId, scopeKey, viewerId, viewerLayoutPending]);
+  }, [action.targetId, journeyEnabled, journey.cards, journey.layoutPending, journey.scopeKey, journey.viewerId, scopeKey, viewerId, viewerLayoutPending]);
   const currentPublicCard = currentCard?.cardFace ?? action.cardFace ?? null;
   const groupRootStageOwnsCopy = motion?.type === "group-root" && !action.phaseNotice?.includes("NEGATION");
   const groupRootCenterIsStillOccupied = motion?.type === "group-root"
@@ -4256,19 +4453,19 @@ function SingleTargetCardJourney({
     : undefined);
   useEffect(() => {
     const settlementEventId = action.settlement?.eventId;
-    if (!enabled || journey.scopeKey !== scopeKey || !allParked || !settlementEventId
+    if (!journeyEnabled || journey.scopeKey !== scopeKey || !allParked || !settlementEventId
       || notifiedSettlementEventIdRef.current === settlementEventId) return;
     notifiedSettlementEventIdRef.current = settlementEventId;
     onJourneySettled?.(settlementEventId);
-  }, [action.settlement?.eventId, allParked, enabled, journey.scopeKey, onJourneySettled, scopeKey]);
+  }, [action.settlement?.eventId, allParked, journeyEnabled, journey.scopeKey, onJourneySettled, scopeKey]);
   const ownershipCards = journey.cards.filter((card) => card.phase !== "queued").map((card) => ({
     eventId: card.eventId,
     cardIds: (card.cardFaces ?? [card.cardFace]).map((face) => face.id).sort(),
   })).sort((left, right) => left.eventId.localeCompare(right.eventId));
   const ownershipCardsSignature = JSON.stringify(ownershipCards);
-  const ownershipScopeKey = journeyEnabled && Boolean(sourceName) && journey.scopeKey === scopeKey
+  const ownershipScopeKey = Boolean(sourceName) && journey.scopeKey === scopeKey
     && ownershipCards.length > 0
-    ? [roomCode, viewerId, action.key, scopeKey].join("\u001f")
+    ? [ownershipIdentity, scopeKey].join("\u001f")
     : null;
   const lastPublishedOwnershipRef = useRef<{ scopeKey: string; signature: string } | null>(null);
   useLayoutEffect(() => {
@@ -4278,16 +4475,16 @@ function SingleTargetCardJourney({
     lastPublishedOwnershipRef.current = { scopeKey: ownershipScopeKey, signature: ownershipCardsSignature };
     // Ownership is a semantic event/card fact. Geometry can temporarily be
     // pending without transferring ownership to the legacy sequence renderer.
-    onJourneyOwnershipChange?.(roomCode, action.key, viewerId, true, ownershipCards);
-  }, [action.key, onJourneyOwnershipChange, ownershipCards, ownershipCardsSignature, ownershipScopeKey, roomCode, viewerId]);
+    onJourneyOwnershipChange?.(roomCode, ownershipIdentity, viewerId, true, ownershipCards);
+  }, [onJourneyOwnershipChange, ownershipCards, ownershipCardsSignature, ownershipIdentity, ownershipScopeKey, roomCode, viewerId]);
   useLayoutEffect(() => {
     if (!ownershipScopeKey) return;
     return () => {
       if (lastPublishedOwnershipRef.current?.scopeKey !== ownershipScopeKey) return;
       lastPublishedOwnershipRef.current = null;
-      onJourneyOwnershipChange?.(roomCode, action.key, viewerId, false, []);
+      onJourneyOwnershipChange?.(roomCode, ownershipIdentity, viewerId, false, []);
     };
-  }, [action.key, onJourneyOwnershipChange, ownershipScopeKey, roomCode, viewerId]);
+  }, [onJourneyOwnershipChange, ownershipIdentity, ownershipScopeKey, roomCode, viewerId]);
   if (!journeyEnabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
   return <section
     className={`public-card-display public-card-display-journey${harvestPoolAboveRoot ? " is-harvest-pool-active" : ""}${historyOnly ? " is-harvest-history-passive" : ""}${showNegationChainOrdinals ? " is-negation-chain-ordinal" : ""}${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}${viewerLayoutPending ? " is-viewer-layout-pending" : ""}`}

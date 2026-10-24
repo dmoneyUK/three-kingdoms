@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { publicCardAnnouncement } from "../app/public-card-display.tsx";
+import { publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
 import {
   compactLustDuelAttackMessage,
   compactLustDuelOrderMessage,
@@ -16,6 +16,28 @@ const action = (overrides = {}) => ({
   cardLabel: "ATTACK",
   ariaLabel: "Source played Attack targeting Target",
   ...overrides,
+});
+
+test("T3 single-target root ownership survives Negation, target choice, and settlement wrappers", () => {
+  const root = action({
+    key: "negation-read:root",
+    cardKind: "Steal",
+    cardFace: { id: "physical-steal-card", kind: "Steal", suit: "♠", rank: "7" },
+    motion: { type: "single-target", scopeKey: "room:root-event", freshEventIds: ["root-event"] },
+  });
+  const settlement = {
+    ...root,
+    key: "steal-settlement:root-event:settlement-event",
+    motion: { type: "single-target", scopeKey: "room:root-event", freshEventIds: [] },
+    settlement: { eventId: "settlement-event", outcome: "STEAL_RESOLVED", exiting: false },
+  };
+
+  const owner = publicCardJourneyOwnershipIdentity(root, "ROOM", "viewer");
+  assert.equal(publicCardJourneyOwnershipIdentity(settlement, "ROOM", "viewer"), owner);
+  assert.notEqual(publicCardJourneyOwnershipIdentity(settlement, "ROOM", "other-viewer"), owner);
+  assert.notEqual(publicCardJourneyOwnershipIdentity({ ...settlement, rootEventId: "next-root" }, "ROOM", "viewer"), owner);
+  assert.notEqual(publicCardJourneyOwnershipIdentity({ ...settlement, cardFace: { ...root.cardFace, id: "other-physical-card" } }, "ROOM", "viewer"), owner);
+  assert.notEqual(publicCardJourneyOwnershipIdentity({ ...settlement, sourceId: "other-author" }, "ROOM", "viewer"), owner);
 });
 
 test("LUST compact copy preserves full player identities and follows the proven actor id", () => {

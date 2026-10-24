@@ -1,13 +1,17 @@
 # HANDOVER
 
-Target branch: `ux-v2` (working branch: `codex/quick-test-modes`). Phone-first; preserve the 4–8 player test-room limit.
+Target branch: `ux-v2` (working branch: `codex/quick-test-modes`). Phone-first; no desktop review.
 
 ## Latest execution state
 
-**Quick Test starting-hand presets — IMPLEMENTED / DEPLOYED; PENDING USER REVIEW.** Based on latest `origin/ux-v2` at `ad3d351`. Reviewed the latest T3-F1 design update; this task only adds test preset setup and does not change Dismantle/Steal gameplay or presentation behavior. Removed Attack/Dodge and Attack/Negation from selectable presets. Added Dismantle/Steal preset: each of the first five seats starts with Dismantle, Steal, a unique weapon, and either Lightning or Overindulgence. Seats beyond the fifth keep the normal random deal. Saved rooms using either retired preset fall back to Random Hands. Source SHA: `f954d67390ae3a548429addf5d8be39fb96c497f`.
+**T3-F1 · R2 — IMPLEMENTED LOCALLY / CI AND DEPLOYMENT PENDING / PENDING USER PHONE RE-REVIEW.** Reviewed `docs/UX2-refine.md` §10.10.3.1 at `origin/ux-v2` `c4411a6`; intervening changes only add W3-F2-R1 design instructions and do not alter T3-F1 R2.
 
-**Validation:** focused preset tests passed 3/3 using the already-installed `tsx` runtime; added the test file to the fast-test list. No local browser/UI test was run. Exact-SHA [GitHub Actions run 40142844364](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40142844364) passed lint/fast tests, API tests, browser startup/room smoke, Worker deployment and production smoke. Live homepage returned HTTP 200; `/api/health` returned `{"ok":true,"worker":"available"}`.
+The proven local Steal/Burning Bridges root now keeps one `single-target` renderer and room/viewer/root/card/author ownership through Negation, target choice and settlement wrappers. Local authored roots prefer the actual Local Player Dock. Same-geometry observer callbacks are no-ops; an in-flight MOVE keeps its painted position and remaining duration through reflow, while unsafe missing author geometry retries without a synthetic centre miniature. Server legality, settlement, card identity and private-hand projections are unchanged.
+
+**Focused validation:** `npm run build` passed; `node --import tsx --test tests/public-card-announcement.test.mjs` passed 5/5; focused ESLint passed with 0 errors and 16 existing Hook-dependency warnings; one authenticated mobile Playwright regression passed 1/1 (4-seat seed, 390×844, two viewer sessions, real local Steal and hidden-Hand privacy); `git diff --check` passed. This covered unchanged-geometry resize during MOVE and all-pass Steal settlement. Local/opponent Dismantle, counter-Negation, real viewport resize mid-MOVE, TEST SWITCH, Inspector interaction, and 6/8-seat layouts remain unverified and are not claimed as passes.
+
+The last observed successful pushed Actions run was `40142844364` on `f954d67390ae3a548429addf5d8be39fb96c497f`; it is baseline evidence only. This implementation has not yet been pushed, and no exact-SHA CI, Worker deployment or production health is claimed.
 
 ## Exactly one current bounded task
 
-Owner: review the new Dismantle/Steal starting-hand preset in Quick Test on mobile. Confirm the removed presets are absent and the first five seats receive the configured cards. Do not mark USER-ACCEPTED until the owner reports acceptance.
+Finish T3-F1 R2 delivery: commit and push only this task's implementation, focused regressions, design-status and handoff updates to `ux-v2`; verify all required Actions jobs and deployed Worker/production smoke on the exact pushed SHA. Then leave T3-F1 **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**, preserving the earlier passed opponent Dismantle/continuation checks and requesting review of local Steal, Negation/counter and 6/8-seat switching.

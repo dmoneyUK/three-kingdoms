@@ -26,7 +26,7 @@ import { CardFace } from "./card-face";
 import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
-import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, harvestNegationDecisionCopy, publicCardActionKey, publicCardAnnouncement, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
+import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, harvestNegationDecisionCopy, publicCardActionKey, publicCardAnnouncement, publicCardJourneyOwnershipIdentity, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
@@ -6303,6 +6303,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: stealSettlementCandidate.rootEvent.card,
       cardLabel: "STEAL",
       ariaLabel: `${stealSettlementCandidate.source.name} played Steal targeting ${stealSettlementCandidate.target.name}`,
+      motion: {
+        type: "single-target",
+        scopeKey: [room.code, stealSettlementCandidate.action.rootEventId].join(":"),
+        freshEventIds: publicCardJourneySeenEventIds.has(stealSettlementCandidate.action.rootEventId)
+          ? []
+          : [stealSettlementCandidate.action.rootEventId],
+      },
       settlement: {
         eventId: stealSettlementCandidate.action.eventId,
         outcome: stealSettlementCandidate.action.outcome,
@@ -6551,6 +6558,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     } : {}),
     deflection: activeDeflectionAction ?? undefined,
   } : null;
+  const publicCardDisplayOwnershipIdentity = publicCardDisplayAction
+    ? publicCardJourneyOwnershipIdentity(publicCardDisplayAction, room.code, room.meId)
+    : "";
   const markPublicCardDisplayEventParked = useCallback((eventId: string) => {
     markPublicCardJourneyEventParked(eventId);
     if (publicCardDisplayAction?.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer"
@@ -6698,7 +6708,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && publicCardJourneyOwnership.ready
     && publicCardJourneyOwnership.roomCode === room.code
     && publicCardJourneyOwnership.viewerId === room.meId
-    && publicCardJourneyOwnership.actionKey === publicCardDisplayAction.key);
+    && publicCardJourneyOwnership.actionKey === publicCardDisplayOwnershipIdentity);
   const publicDisplayOwnedResponseHistory = publicCardJourneyOwnershipReady && publicCardDisplayAction
     ? (publicCardDisplayAction.responseHistory ?? []).filter((response) => {
       const responseCards = response.cardFaces ?? (response.cardFace ? [response.cardFace] : []);

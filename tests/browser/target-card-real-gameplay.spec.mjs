@@ -1125,6 +1125,124 @@ test("T3-F1 keeps the authentic Steal and Burning Bridges root at its author acr
   }
 });
 
+test("T3-F1 R2 keeps the local Steal root journey through same-layout callbacks and settlement", async ({ browser, request }) => {
+  test.setTimeout(120_000);
+  const steal = card("Steal", "t3-r2-local-steal-root");
+  const hidden = card("Peach", "t3-r2-hidden-hand", "♥", "4");
+  const seed = await seedGame(request, fourPlayers({ hand: [steal] }, { hand: [hidden] }));
+  const contexts = await Promise.all([0, 1].map(() => browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 3,
+  })));
+  const pages = await Promise.all(contexts.map((context) => context.newPage()));
+
+  try {
+    await Promise.all(pages.map((page, index) => openGame(page, seed, index, { width: 390, height: 844 })));
+    await playCardThroughPage(pages[0], steal.id, "TARGET");
+    const actorView = await roomView(request, seed, 0);
+    const rootEvent = actorView.timeline.find((event) => event?.type === "card" && event.action === "play" && event.card?.id === steal.id);
+    expect(rootEvent).toBeTruthy();
+    const authorId = seed.players[0].id;
+    const reveal = await Promise.all(pages.map((page) => expectRootJourneyReveal(page, {
+      eventId: rootEvent.id,
+      cardId: steal.id,
+      actorId: authorId,
+    })));
+    const initialActionKey = await pages[0].locator('[data-public-card-display="true"]').getAttribute("data-public-card-action-key");
+    await pages[0].evaluate((eventId) => {
+      const root = document.querySelector(`[data-public-card-journey-event-id="${eventId}"][data-public-card-journey-role="root"]`);
+      if (!root) throw new Error("T3-F1 root must be mounted before monitoring its move.");
+      window.__t3MovePhases = [];
+      window.__t3MoveResizeSample = null;
+      const observer = new MutationObserver(() => {
+        const phase = root.getAttribute("data-public-card-journey-phase");
+        if (!phase) return;
+        window.__t3MovePhases.push({ phase, at: performance.now() });
+        if (phase !== "move" || window.__t3MoveResizeStarted) return;
+        window.__t3MoveResizeStarted = true;
+        const before = root.getBoundingClientRect();
+        const transitionDuration = getComputedStyle(root).transitionDuration.split(",")[0].trim();
+        window.dispatchEvent(new Event("resize"));
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          const after = root.getBoundingClientRect();
+          window.__t3MoveResizeSample = {
+            phase: root.getAttribute("data-public-card-journey-phase"),
+            transitionDuration,
+            before: { left: before.left, top: before.top },
+            after: { left: after.left, top: after.top },
+          target: {
+            left: Number(root.getAttribute("data-public-card-journey-target-left")),
+            top: Number(root.getAttribute("data-public-card-journey-target-top")),
+          },
+          };
+        }));
+      });
+      window.__t3MoveResizeStarted = false;
+      observer.observe(root, { attributes: true, attributeFilter: ["data-public-card-journey-phase"] });
+    }, rootEvent.id);
+
+    await passEmptyResponses(request, seed);
+    const waitingPool = await expectTargetPool(pages[0], "Steal", "Choose 1 card to obtain", "Use Steal");
+    await expect(pages[0].locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
+    await expect(pages[0].locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
+    await pages[0].waitForFunction(() => Boolean(window.__t3MoveResizeSample), null, { timeout: 8_000 });
+    const moveEvidence = await pages[0].evaluate(() => window.__t3MoveResizeSample);
+    expect(moveEvidence.phase).toBe("move");
+    expect(["0.38s", "380ms"]).toContain(moveEvidence.transitionDuration);
+    const pathX = moveEvidence.target.left - moveEvidence.before.left;
+    const pathY = moveEvidence.target.top - moveEvidence.before.top;
+    const pathLengthSquared = pathX ** 2 + pathY ** 2;
+    const progress = ((moveEvidence.after.left - moveEvidence.before.left) * pathX
+      + (moveEvidence.after.top - moveEvidence.before.top) * pathY) / pathLengthSquared;
+    expect(progress).toBeGreaterThan(0);
+    expect(progress).toBeLessThan(0.5);
+    await pages[0].waitForFunction(() => window.__t3MovePhases?.some(({ phase }) => phase === "parked"), null, { timeout: 3_000 });
+    const phases = await pages[0].evaluate(() => window.__t3MovePhases.map(({ phase }) => phase));
+    expect(phases.indexOf("move")).toBeGreaterThanOrEqual(0);
+    expect(phases.indexOf("parked")).toBeGreaterThan(phases.indexOf("move"));
+
+    for (const [index, page] of pages.entries()) {
+      await expect(page.locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
+      await expect(page.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`)).toHaveCount(1);
+      await expect(page.locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
+      if (index === 1) await expect(page.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
+    }
+    await Promise.all(pages.map((page, index) => expectRootJourneyParkedByAuthor(page, {
+      eventId: rootEvent.id,
+      cardId: steal.id,
+      actorId: authorId,
+      revealStartedAt: reveal[index].revealStartedAt,
+    })));
+
+    const hiddenChoice = waitingPool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
+    await tapMobile(pages[0], hiddenChoice);
+    const submit = pages[0].waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+      catch { return false; }
+    });
+    await tapMobile(pages[0], waitingPool.getByRole("button", { name: "Use Steal", exact: true }));
+    expect((await submit).ok()).toBe(true);
+
+    for (const page of pages) {
+      const display = page.locator('[data-public-card-display="true"]');
+      await expect(display).toHaveAttribute("data-public-card-motion", "single-target");
+      await expect(display).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
+      await expect(display).toHaveAttribute("data-public-card-root-event-id", rootEvent.id);
+      await expect(page.locator(`[data-public-card-journey-event-id="${rootEvent.id}"][data-public-card-journey-role="root"]`)).toHaveCount(1);
+      await expect(page.locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
+      await expect(display).toHaveAttribute("data-public-card-settlement-outcome", "STEAL_RESOLVED", { timeout: 15_000 });
+    }
+    const settledActionKey = await pages[0].locator('[data-public-card-display="true"]').getAttribute("data-public-card-action-key");
+    expect(settledActionKey).not.toBe(initialActionKey);
+    expect(JSON.stringify(await roomView(request, seed, 1))).not.toContain(hidden.id);
+  } finally {
+    await Promise.all(contexts.map((context) => context.close()));
+  }
+});
+
 test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, and a fast next Stratagem", async ({ browser, request }, testInfo) => {
   test.setTimeout(360_000);
   const scenarios = [
