@@ -90,6 +90,8 @@ export type PublicCardDisplayAction = {
   ariaLabel: string;
   publicNotice?: string;
   publicNoticeCompact?: string;
+  /** Keep a proved historical CardFace while retiring its active announcement. */
+  suppressAnnouncement?: boolean;
   /** True only when this action was built from the fully validated public Negation-chain proof. */
   showNegationChainOrdinals?: boolean;
   /** Shared, read-only H4 explanation derived only from a proven public reaction chain. */
@@ -1783,6 +1785,7 @@ function PublicCardAnnouncement({
   stableCenterAnchor = false,
   keepCenterAnchorClear = false,
   stableHarvestAnchor = false,
+  stableCopyPlacement = false,
   ignoreJourneyLayoutPending = false,
   preferredVerticalMode,
   privateDrawAware = false,
@@ -1806,6 +1809,7 @@ function PublicCardAnnouncement({
   stableCenterAnchor?: boolean;
   keepCenterAnchorClear?: boolean;
   stableHarvestAnchor?: boolean;
+  stableCopyPlacement?: boolean;
   ignoreJourneyLayoutPending?: boolean;
   preferredVerticalMode?: "above" | "below";
   privateDrawAware?: boolean;
@@ -1813,6 +1817,17 @@ function PublicCardAnnouncement({
   const copyRef = useRef<HTMLDivElement>(null);
   const measuredCenterRef = useRef<{ bandKey: string; rect: CardRect } | null>(null);
   const placementGenerationRef = useRef(0);
+  const lastValidPlacementRef = useRef<{
+    identity: string;
+    layoutEpoch: string;
+    left: number;
+    top: number;
+    width: number;
+    compact: boolean;
+    message: string;
+    supporting: string;
+  } | null>(null);
+  const placementFailureRef = useRef<{ identity: string; layoutEpoch: string; startedAt: number } | null>(null);
   const [displayedCopy, setDisplayedCopy] = useState<DisplayedPublicCardAnnouncement>(() => ({
     message: negationNarration?.headline ?? message,
     supporting: negationNarration?.supportingMessage ?? supportingMessage ?? "",
@@ -1824,6 +1839,12 @@ function PublicCardAnnouncement({
     accessibleLabel: accessibleLabel ?? negationNarration?.accessibleLabel,
   }));
   const hasNegationNarration = Boolean(negationNarration);
+  const announcementEventId = negationNarration?.eventId ?? eventId;
+  const announcementIdentity = JSON.stringify([
+    placementKey, viewerLayoutKey, announcementEventId, message, supportingMessage ?? "", phaseNotice ?? "",
+    negationNarration?.latestCommittedEventId ?? "", negationNarration?.checkpointId ?? "",
+    negationNarration?.phase ?? "", negationNarration?.rootEffectState ?? "",
+  ]);
   const narrationEventId = negationNarration?.eventId;
   const narrationLatestCommittedEventId = negationNarration?.latestCommittedEventId;
   const narrationCheckpointId = negationNarration?.checkpointId;
@@ -1845,6 +1866,8 @@ function PublicCardAnnouncement({
     const copy = copyRef.current;
     const display = copy?.closest<HTMLElement>(".public-card-display");
     if (!copy || !display) return;
+    if (displayedCopy.eventId !== announcementEventId
+      || displayedCopy.message !== (negationNarration?.headline ?? message)) copy.style.visibility = "hidden";
 
     const copyAnchorEventId = anchorEventId === null ? "" : anchorEventId ?? eventId;
     const getAnchor = () => copyAnchorEventId
@@ -1856,7 +1879,50 @@ function PublicCardAnnouncement({
     let mutationObserver: MutationObserver | null = null;
     let anchorObserver: MutationObserver | null = null;
     let frame = 0;
+    let placementFailureTimer: number | null = null;
     const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-content"] : [])].join(", ");
+
+    const notePlacementFailure = (layoutEpoch: string) => {
+      if (!stableCopyPlacement) return false;
+      const now = performance.now();
+      const failure = placementFailureRef.current;
+      if (!failure || failure.identity !== announcementIdentity || failure.layoutEpoch !== layoutEpoch) {
+        placementFailureRef.current = { identity: announcementIdentity, layoutEpoch, startedAt: now };
+        if (placementFailureTimer === null) {
+          placementFailureTimer = window.setTimeout(() => {
+            placementFailureTimer = null;
+            schedule();
+          }, 520);
+        }
+        return false;
+      }
+      if (now - failure.startedAt > 500) {
+        copy.style.visibility = "hidden";
+        copy.dataset.publicCardAnnouncementStability = "hidden-after-sustained-placement-failure";
+        return true;
+      }
+      return false;
+    };
+
+    const retainLastValidPlacement = (layoutEpoch: string) => {
+      if (!stableCopyPlacement) return false;
+      const previous = lastValidPlacementRef.current;
+      const sustainedFailure = notePlacementFailure(layoutEpoch);
+      if (sustainedFailure) return false;
+      if (!previous || previous.identity !== announcementIdentity || previous.layoutEpoch !== layoutEpoch) return false;
+      const textElement = copy.querySelector<HTMLElement>("b");
+      const supportElement = copy.querySelector<HTMLElement>(".public-negation-narration-support");
+      if (textElement) textElement.textContent = previous.message;
+      if (supportElement) supportElement.textContent = previous.supporting;
+      copy.style.left = `${previous.left}px`;
+      copy.style.top = `${previous.top}px`;
+      copy.style.width = `${previous.width}px`;
+      if (previous.compact) copy.dataset.publicCardAnnouncementCompact = "true";
+      else delete copy.dataset.publicCardAnnouncementCompact;
+      copy.dataset.publicCardAnnouncementStability = "retained-same-event-placement";
+      copy.style.visibility = "visible";
+      return true;
+    };
 
     const place = () => {
       if (placementGeneration !== placementGenerationRef.current) return;
@@ -1866,14 +1932,14 @@ function PublicCardAnnouncement({
         && displayedCopy.phase === narrationPhase
         && displayedCopy.rootEffectState === narrationRootEffectState;
       if (hasNegationNarration && !displayedNarrationMatches) copy.style.visibility = "hidden";
-      if (!ignoreJourneyLayoutPending && display.dataset.publicCardLayoutPending === "true") {
-        copy.style.visibility = "hidden";
-        return;
-      }
       const anchor = getAnchor();
       const actualRect = anchor?.getBoundingClientRect();
       const tableRect = display.closest<HTMLElement>(".play-table")?.getBoundingClientRect() ?? null;
-      if (!tableRect) return;
+      if (!tableRect) {
+        const previous = lastValidPlacementRef.current;
+        if (!previous || !retainLastValidPlacement(previous.layoutEpoch)) copy.style.visibility = "hidden";
+        return;
+      }
       // An announcement band and its measured centre card belong to the
       // viewer's current battlefield geometry. Reuse them across semantic
       // checkpoints only while that geometry remains materially unchanged.
@@ -1883,6 +1949,10 @@ function PublicCardAnnouncement({
       const layoutEpoch = [tableRect.left, tableRect.top, tableRect.width, tableRect.height]
         .map((value) => Math.round(value / 24) * 24)
         .join(":");
+      if (!ignoreJourneyLayoutPending && !stableCopyPlacement && display.dataset.publicCardLayoutPending === "true") {
+        if (!retainLastValidPlacement(layoutEpoch)) copy.style.visibility = "hidden";
+        return;
+      }
       const bandKey = `${viewerLayoutKey}:${placementKey}:${layoutEpoch}`;
 
       const visualViewport = window.visualViewport;
@@ -2051,7 +2121,7 @@ function PublicCardAnnouncement({
         { message, supporting: supportingMessage ?? "", compact: false },
         ...(compactDiffers ? [{ message: compactMessage ?? message, supporting: compactSupportingMessage ?? supportingMessage ?? "", compact: true }] : []),
       ];
-      if (mobileLustFrame && compactDiffers) {
+      if ((mobileLustFrame || stableCopyPlacement && window.innerHeight <= 740) && compactDiffers) {
         const compactIndex = announcementOptions.findIndex((option) => option.compact);
         if (compactIndex > 0) announcementOptions.unshift(announcementOptions.splice(compactIndex, 1)[0]);
       }
@@ -2362,7 +2432,7 @@ function PublicCardAnnouncement({
           || displayedCopy.accessibleLabel !== incomingDisplayedCopy.accessibleLabel) {
           setDisplayedCopy(incomingDisplayedCopy);
         }
-        copy.style.visibility = "hidden";
+        if (!retainLastValidPlacement(layoutEpoch)) copy.style.visibility = "hidden";
         copy.dataset.publicCardAnnouncementFallback = "true";
         return;
       }
@@ -2376,6 +2446,11 @@ function PublicCardAnnouncement({
           });
         if (parkedMiniOverlaps.length) copy.dataset.publicCardAnnouncementHarvestMiniOverlapCount = `${parkedMiniOverlaps.length}`;
         else delete copy.dataset.publicCardAnnouncementHarvestMiniOverlapCount;
+      }
+      placementFailureRef.current = null;
+      if (placementFailureTimer !== null) {
+        window.clearTimeout(placementFailureTimer);
+        placementFailureTimer = null;
       }
       delete copy.dataset.publicCardAnnouncementFallback;
       rememberPublicCardAnnouncementBand(bandKey, {
@@ -2415,7 +2490,21 @@ function PublicCardAnnouncement({
       copy.dataset.publicCardAnnouncementLines = `${selected.lines}`;
       copy.dataset.publicCardAnnouncementPositioned = "true";
       copy.dataset.publicCardAnnouncementPlacement = verticalMode === "above" ? "center-band-above" : "center-band-below";
+      delete copy.dataset.publicCardAnnouncementStability;
       copy.style.visibility = "visible";
+      if (stableCopyPlacement) {
+        lastValidPlacementRef.current = {
+          identity: announcementIdentity,
+          layoutEpoch,
+          left: selected.left,
+          top: selected.top,
+          width: selected.width,
+          compact: selected.compact,
+          message: selected.message,
+          supporting: selected.supporting,
+        };
+        placementFailureRef.current = null;
+      }
     };
     const schedule = () => {
       if (placementGeneration !== placementGenerationRef.current) return;
@@ -2467,12 +2556,13 @@ function PublicCardAnnouncement({
       window.removeEventListener("resize", onResize);
       viewport?.removeEventListener("resize", onResize);
       viewport?.removeEventListener("scroll", onResize);
+      if (placementFailureTimer !== null) window.clearTimeout(placementFailureTimer);
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
       anchorObserver?.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [accessibleLabel, anchorEventId, compactMessage, compactSupportingMessage, displayedCopy, eventId, hasNegationNarration, heading, ignoreJourneyLayoutPending, keepCenterAnchorClear, message, narrationAccessibleLabel, narrationCheckpointId, narrationEventId, narrationLatestCommittedEventId, narrationPhase, narrationRootEffectState, negationWaiting, outcome, phase, placementKey, preferredVerticalMode, privateDrawAware, stableCenterAnchor, stableFallbackCardRect, stableHarvestAnchor, supportingMessage, viewerLayoutKey]);
+  }, [accessibleLabel, anchorEventId, announcementEventId, announcementIdentity, compactMessage, compactSupportingMessage, displayedCopy, eventId, hasNegationNarration, heading, ignoreJourneyLayoutPending, keepCenterAnchorClear, message, negationNarration, narrationAccessibleLabel, narrationCheckpointId, narrationEventId, narrationLatestCommittedEventId, narrationPhase, narrationRootEffectState, negationWaiting, outcome, phase, placementKey, preferredVerticalMode, privateDrawAware, stableCenterAnchor, stableCopyPlacement, stableFallbackCardRect, stableHarvestAnchor, supportingMessage, viewerLayoutKey]);
 
   return <div
     ref={copyRef}
@@ -2487,6 +2577,7 @@ function PublicCardAnnouncement({
     data-public-negation-checkpoint-id={displayedCopy.checkpointId}
     data-public-negation-phase={displayedCopy.phase}
     data-public-negation-effect-state={displayedCopy.rootEffectState}
+    data-public-card-announcement-stable-copy={stableCopyPlacement ? "true" : undefined}
     data-public-card-copy-anchor-event-id={anchorEventId === null ? undefined : anchorEventId ?? eventId}
     data-public-card-phase-notice={phaseNotice}
     data-public-card-result={outcome}
@@ -3363,6 +3454,7 @@ function singleTargetParkingOptions(
     && typeof window !== "undefined" && window.matchMedia("(max-width: 520px)").matches;
   return {
     extendNegationChainCollisionSlots,
+    ...(action.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer" ? { avoidAuthorSeat: true } : {}),
     // All parked Harvest history (root and committed responses) uses the
     // same footprint. The 90×135 reveal remains a separate live phase.
     cardSize: compactHarvestMini ? HARVEST_MOBILE_RESPONSE_CARD : PARKED_CARD,
@@ -3401,6 +3493,7 @@ function SingleTargetCardJourney({
   sourceName,
   targetName,
   compactPlayerNamesById,
+  roomCode,
   viewerId,
   resultReadRemainingMs,
   onInspectCard,
@@ -3418,12 +3511,14 @@ function SingleTargetCardJourney({
   sourceName: string | null;
   targetName: string | null;
   compactPlayerNamesById: CompactPublicPlayerNames;
+  roomCode: string;
   viewerId: string;
   resultReadRemainingMs: number | null;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneySettled?: (settlementEventId: string) => void;
   onJourneyEventParked?: (eventId: string) => void;
   onJourneyOwnershipChange?: (
+    roomCode: string,
     actionKey: string,
     ownerViewerId: string,
     ready: boolean,
@@ -4166,24 +4261,40 @@ function SingleTargetCardJourney({
     notifiedSettlementEventIdRef.current = settlementEventId;
     onJourneySettled?.(settlementEventId);
   }, [action.settlement?.eventId, allParked, enabled, journey.scopeKey, onJourneySettled, scopeKey]);
+  const ownershipCards = journey.cards.filter((card) => card.phase !== "queued").map((card) => ({
+    eventId: card.eventId,
+    cardIds: (card.cardFaces ?? [card.cardFace]).map((face) => face.id).sort(),
+  })).sort((left, right) => left.eventId.localeCompare(right.eventId));
+  const ownershipCardsSignature = JSON.stringify(ownershipCards);
+  const ownershipScopeKey = journeyEnabled && Boolean(sourceName) && journey.scopeKey === scopeKey
+    && ownershipCards.length > 0
+    ? [roomCode, viewerId, action.key, scopeKey].join("\u001f")
+    : null;
+  const lastPublishedOwnershipRef = useRef<{ scopeKey: string; signature: string } | null>(null);
   useLayoutEffect(() => {
-    const ready = journeyEnabled && Boolean(sourceName) && journey.scopeKey === scopeKey
-      && !journey.layoutPending && Boolean(journey.center);
-    const cards = ready
-      ? journey.cards.filter((card) => card.phase !== "queued").map((card) => ({
-        eventId: card.eventId,
-        cardIds: (card.cardFaces ?? [card.cardFace]).map((face) => face.id),
-      }))
-      : [];
-    onJourneyOwnershipChange?.(action.key, viewerId, ready, cards);
-    return () => onJourneyOwnershipChange?.(action.key, viewerId, false, []);
-  }, [action.key, journey.cards, journey.center, journey.layoutPending, journey.scopeKey, journeyEnabled, onJourneyOwnershipChange, scopeKey, sourceName, viewerId]);
+    if (!ownershipScopeKey) return;
+    const previous = lastPublishedOwnershipRef.current;
+    if (previous?.scopeKey === ownershipScopeKey && previous.signature === ownershipCardsSignature) return;
+    lastPublishedOwnershipRef.current = { scopeKey: ownershipScopeKey, signature: ownershipCardsSignature };
+    // Ownership is a semantic event/card fact. Geometry can temporarily be
+    // pending without transferring ownership to the legacy sequence renderer.
+    onJourneyOwnershipChange?.(roomCode, action.key, viewerId, true, ownershipCards);
+  }, [action.key, onJourneyOwnershipChange, ownershipCards, ownershipCardsSignature, ownershipScopeKey, roomCode, viewerId]);
+  useLayoutEffect(() => {
+    if (!ownershipScopeKey) return;
+    return () => {
+      if (lastPublishedOwnershipRef.current?.scopeKey !== ownershipScopeKey) return;
+      lastPublishedOwnershipRef.current = null;
+      onJourneyOwnershipChange?.(roomCode, action.key, viewerId, false, []);
+    };
+  }, [action.key, onJourneyOwnershipChange, ownershipScopeKey, roomCode, viewerId]);
   if (!journeyEnabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
   return <section
     className={`public-card-display public-card-display-journey${harvestPoolAboveRoot ? " is-harvest-pool-active" : ""}${historyOnly ? " is-harvest-history-passive" : ""}${showNegationChainOrdinals ? " is-negation-chain-ordinal" : ""}${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}${viewerLayoutPending ? " is-viewer-layout-pending" : ""}`}
     data-public-card-display="true"
     data-public-card-renderer-kind="single-target-journey"
     data-public-card-ready="true"
+    data-public-card-action-key={action.key}
     data-public-card-motion={motion?.type ?? "single-target"}
     data-public-card-viewer-id={viewerId}
     data-public-card-layout-pending={journey.layoutPending || viewerLayoutPending ? "true" : "false"}
@@ -4273,6 +4384,7 @@ function SingleTargetCardJourney({
       stableCenterAnchor={motion?.type === "lust-cost"}
       keepCenterAnchorClear={publicEffectFrameOwnsAnnouncementAnchor}
       stableHarvestAnchor={harvestPoolVisible}
+      stableCopyPlacement={action.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer"}
       ignoreJourneyLayoutPending={harvestPoolVisible}
       preferredVerticalMode={harvestPoolVisible || publicEffectFrameOwnsAnnouncementAnchor ? "above" : motion?.type === "lust-cost" ? "below" : undefined}
     />}
@@ -5236,6 +5348,7 @@ export function PublicCardDisplay({
   onJourneyEventParked?: (eventId: string) => void;
   onJourneySettled?: (settlementEventId: string) => void;
   onJourneyOwnershipChange?: (
+    roomCode: string,
     actionKey: string,
     ownerViewerId: string,
     ready: boolean,
@@ -5248,7 +5361,7 @@ export function PublicCardDisplay({
   }
   if (action.motion?.type === "single-target" || action.motion?.type === "negation"
     || action.motion?.type === "group-root" || action.motion?.type === "lust-cost") {
-    return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement} retainHarvestHistory={retainHarvestHistory} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
+    return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHarvestHistory={retainHarvestHistory} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
   }
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {
     return <DuelCardJourney action={action} enabled={enabled} retainHistoryDuringInspection={retainDuelHistoryDuringInspection} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
@@ -5295,7 +5408,7 @@ export function PublicCardDisplay({
     data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
     {card && <div className="public-card-display-static-card" data-public-card-copy-anchor-event-id={eventId} data-public-card-static-event-id={eventId} data-public-card-static-card-id={card.id} data-harvest-root-parked={harvestRootParked ? "true" : undefined}><CardFace card={card} /></div>}
-    {!suppressAnnouncement && <PublicCardAnnouncement
+    {!suppressAnnouncement && !action.suppressAnnouncement && <PublicCardAnnouncement
       eventId={eventId}
       placementKey={publicCardAnnouncementPlacementKey(action, roomCode)}
       viewerLayoutKey={viewerId}

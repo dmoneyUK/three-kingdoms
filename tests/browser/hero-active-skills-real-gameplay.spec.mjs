@@ -813,10 +813,11 @@ test("real Betrothment requires two cards and an injured male target", async ({ 
 test("W3: Prodigal Healer shows its proven Hand cost to every phone viewer", async ({ page, browser, request }, testInfo) => {
   test.setTimeout(120_000);
   const cost = card("Attack", "w3-prodigal-public-cost");
-  const privateCard = card("Peach", "w3-prodigal-private-hand", "♥");
+  const privateCard = card("Dodge", "w3-prodigal-private-hand", "♥");
+  const nextTurnAttack = card("Attack", "w3-prodigal-next-turn-attack", "♣");
   const seed = await seedSkillRoom(request, {
     hero: "hua-tuo", hand: [cost, privateCard],
-    targets: [{ name: "INJURED TARGET", role: "Loyalist", hero: "liu-bei", hp: 3, maxHp: 4, hand: [] }],
+    targets: [{ name: "INJURED TARGET", role: "Loyalist", hero: "liu-bei", hp: 3, maxHp: 4, hand: [nextTurnAttack] }],
   });
   const owner = seed.players[0];
   const target = seed.players[1];
@@ -830,9 +831,80 @@ test("W3: Prodigal Healer shows its proven Hand cost to every phone viewer", asy
   try {
     await Promise.all(viewers.map(({ player, page: viewerPage }) => player.id === owner.id
       ? openSkillUser(viewerPage, seed, { width: 390, height: 844 })
-      : openSkillViewer(viewerPage, seed, player, { width: 390, height: 844 })));
+      : openSkillViewer(viewerPage, seed, player, player.id === seed.players[3].id
+        ? { width: 390, height: 700 } : { width: 390, height: 844 })));
     await Promise.all(viewers.map(({ player, page: viewerPage }) =>
       expect(viewerPage.locator(`.local-player-dock[data-player-anchor="${player.id}"]`)).toBeVisible()));
+    await Promise.all(viewers.map(({ page: viewerPage }) => expect(viewerPage.locator(".public-card-display")).toHaveCount(0)));
+    await Promise.all(viewers.map(({ page: viewerPage }) => viewerPage.evaluate(() => {
+      const trace = { active: true, announcementTransitions: [], ownershipTransitions: [], lastAnnouncement: null, lastAnnouncementState: null, lastOwnership: null };
+      const sample = () => {
+        const display = [...document.querySelectorAll(".public-card-display[data-public-card-action-key]")]
+          .find((candidate) => candidate.dataset.publicCardActionKey?.startsWith("prodigal-healer-cost:")) ?? null;
+        const announcement = display?.querySelector('[data-public-card-announcement="true"]') ?? null;
+        const style = announcement ? getComputedStyle(announcement) : null;
+        const rect = announcement?.getBoundingClientRect();
+        const frameRect = display?.querySelector('[data-public-card-frame-effect-id="hua_tuo_prodigal_healer"]')?.getBoundingClientRect();
+        const visible = Boolean(announcement && style && rect && style.display !== "none" && style.visibility === "visible"
+          && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0);
+        const state = {
+          visible,
+          eventId: announcement?.dataset.publicCardAnnouncementEventId ?? null,
+          text: announcement?.textContent?.trim() ?? null,
+          rootEventId: display?.getAttribute("data-public-card-root-event-id") ?? null,
+          actionKey: display?.getAttribute("data-public-card-action-key") ?? null,
+          motion: display?.getAttribute("data-public-card-motion") ?? null,
+          layoutPending: display?.getAttribute("data-public-card-layout-pending") ?? null,
+          currentPhase: document.querySelector("[data-console-decision-kind]")?.getAttribute("data-console-decision-kind") ?? null,
+          copy: announcement ? {
+            positioned: announcement.dataset.publicCardAnnouncementPositioned ?? null,
+            fallback: announcement.dataset.publicCardAnnouncementFallback ?? null,
+            stableCopy: announcement.dataset.publicCardAnnouncementStableCopy ?? null,
+            stability: announcement.dataset.publicCardAnnouncementStability ?? null,
+            compact: announcement.dataset.publicCardAnnouncementCompact ?? null,
+            rect: rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null,
+          } : null,
+          frame: frameRect ? { left: frameRect.left, top: frameRect.top, right: frameRect.right, bottom: frameRect.bottom } : null,
+        };
+        const key = `${visible ? "visible" : "hidden"}:${state.eventId ?? "none"}:${state.actionKey ?? "none"}`;
+        const transitionKey = `${key}:${state.copy?.positioned ?? ""}:${state.copy?.fallback ?? ""}:${state.copy?.stability ?? ""}`;
+        if (transitionKey !== trace.lastAnnouncement && trace.announcementTransitions.length < 300) {
+          const at = performance.now();
+          const previous = trace.lastAnnouncementState;
+          if (previous?.visible && (!visible || previous.eventId !== state.eventId)) {
+            trace.announcementTransitions.push({ at, ...previous, visible: false, reason: visible ? "replaced-by-new-event" : "removed-or-hidden" });
+          }
+          if (visible) trace.announcementTransitions.push({ at, ...state });
+          else if (!previous?.visible && key !== trace.lastAnnouncement) trace.announcementTransitions.push({ at, ...state });
+          trace.lastAnnouncement = transitionKey;
+          trace.lastAnnouncementState = state;
+        }
+        const table = document.querySelector(".play-table");
+        const ownership = {
+          ready: table?.getAttribute("data-public-card-journey-ownership-ready") ?? null,
+          rootEventId: display?.getAttribute("data-public-card-root-event-id") ?? null,
+          actionKey: display?.getAttribute("data-public-card-action-key") ?? null,
+        };
+        const ownershipKey = JSON.stringify(ownership);
+        if (ownershipKey !== trace.lastOwnership && trace.ownershipTransitions.length < 300) {
+          trace.ownershipTransitions.push({ at: performance.now(), ...ownership });
+          trace.lastOwnership = ownershipKey;
+        }
+      };
+      const observer = new MutationObserver(sample);
+      observer.observe(document.documentElement, {
+        attributes: true, attributeFilter: ["style", "class", "data-public-card-journey-ownership-ready", "data-public-card-layout-pending"],
+        childList: true, subtree: true,
+      });
+      const tick = () => {
+        if (!trace.active) return;
+        sample();
+        requestAnimationFrame(tick);
+      };
+      trace.stop = () => { trace.active = false; observer.disconnect(); };
+      window.__w3ProdigalLifecycleTrace = trace;
+      requestAnimationFrame(tick);
+    })));
 
     const frameWaiters = viewers.map(({ player, page: viewerPage }, index) => viewerPage.waitForFunction((viewerId) => {
       const frame = document.querySelector('[data-public-card-frame-effect-id="hua_tuo_prodigal_healer"]');
@@ -841,11 +913,15 @@ test("W3: Prodigal Healer shows its proven Hand cost to every phone viewer", asy
       const announcement = display?.querySelector('[data-public-card-announcement="true"]');
       const announcementStyle = announcement ? getComputedStyle(announcement) : null;
       const announcementRect = announcement?.getBoundingClientRect();
-      if (!frame || !journeyCard || !display || !announcement
-        || announcement.dataset.publicCardAnnouncementPositioned !== "true"
-        || !announcementStyle || announcementStyle.display === "none" || announcementStyle.visibility !== "visible"
-        || Number(announcementStyle.opacity) <= 0 || !announcementRect || announcementRect.width <= 0 || announcementRect.height <= 0
-        || display.dataset.publicCardLayoutPending !== "false") return false;
+      const announcementVisible = Boolean(announcement && announcementStyle && announcementRect
+        && announcementStyle.display !== "none" && announcementStyle.visibility === "visible"
+        && Number(announcementStyle.opacity) > 0 && announcementRect.width > 0 && announcementRect.height > 0
+        && announcement.dataset.publicCardAnnouncementPositioned === "true");
+      const safelyHiddenForShortViewport = innerHeight <= 740
+        && announcement?.dataset.publicCardAnnouncementStability === "hidden-after-sustained-placement-failure";
+      if (!frame || !journeyCard || !display || !announcement || !announcementStyle || !announcementRect
+        || display.dataset.publicCardLayoutPending !== "false"
+        || (!announcementVisible && !safelyHiddenForShortViewport)) return false;
       const anchorId = journeyCard.dataset.publicCardJourneyActorId;
       const anchor = viewerId === anchorId
         ? document.querySelector(`.local-player-dock[data-player-anchor="${anchorId}"]`)
@@ -873,11 +949,15 @@ test("W3: Prodigal Healer shows its proven Hand cost to every phone viewer", asy
         },
         frame: { left: frameRect.left, top: frameRect.top, right: frameRect.right, bottom: frameRect.bottom },
         announcement: {
+          status: announcementVisible ? "visible" : "hidden-no-safe-anchor",
           left: visibleAnnouncementRect.left, top: visibleAnnouncementRect.top,
           right: visibleAnnouncementRect.right, bottom: visibleAnnouncementRect.bottom,
           visibility: announcementStyle.visibility, opacity: Number(announcementStyle.opacity),
           text: announcement.textContent?.trim(),
           placement: announcement.dataset.publicCardAnnouncementPlacement,
+          stableCopy: announcement.dataset.publicCardAnnouncementStableCopy,
+          fallback: announcement.dataset.publicCardAnnouncementFallback,
+          stability: announcement.dataset.publicCardAnnouncementStability,
         },
         anchor: anchorRect ? {
           left: anchorRect.left, top: anchorRect.top, right: anchorRect.right,
@@ -887,11 +967,45 @@ test("W3: Prodigal Healer shows its proven Hand cost to every phone viewer", asy
       };
     }, player.id, { timeout: 8_000 }).then(async (handle) => {
       const evidence = await handle.jsonValue();
+      const size = evidence.viewport.height === 700 ? "390x700" : "390x844";
       await attachJourneyScreenshot(
-        viewerPage, testInfo, `w3-prodigal-${index === 0 ? "owner" : `viewer-${index + 1}`}-390x844`, "revealed-frame");
+        viewerPage, testInfo, `w3-prodigal-${index === 0 ? "owner" : `viewer-${index + 1}`}-${size}`, "revealed-frame");
       return evidence;
-    }).catch((error) => ({
-      timeout: true, viewerId: player.id, error: String(error),
+    }).catch(async (error) => ({
+      timeout: true,
+      viewerId: player.id,
+      error: String(error),
+      state: await viewerPage.evaluate(() => ({
+        viewport: { width: innerWidth, height: innerHeight, visualViewportHeight: visualViewport?.height ?? null },
+        displays: [...document.querySelectorAll(".public-card-display")].map((display) => ({
+          attributes: { ...display.dataset },
+          className: display.className,
+          tableRect: (() => {
+            const rect = display.closest(".play-table")?.getBoundingClientRect();
+            return rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
+          })(),
+          cards: [...display.querySelectorAll("[data-public-card-journey-event-id]")].map((card) => ({ ...card.dataset })),
+        })),
+        anchors: [...document.querySelectorAll("[data-player-anchor]")].map((anchor) => {
+          const rect = anchor.getBoundingClientRect();
+          return { playerId: anchor.getAttribute("data-player-anchor"), className: anchor.className,
+            rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
+        }),
+        announcements: [...document.querySelectorAll('[data-public-card-announcement="true"]')].map((node) => ({
+          eventId: node.dataset.publicCardAnnouncementEventId,
+          visibility: getComputedStyle(node).visibility,
+          positioned: node.dataset.publicCardAnnouncementPositioned,
+          stableCopy: node.dataset.publicCardAnnouncementStableCopy,
+          fallback: node.dataset.publicCardAnnouncementFallback,
+          stability: node.dataset.publicCardAnnouncementStability,
+          rect: (() => { const rect = node.getBoundingClientRect(); return { left: rect.left, top: rect.top, width: rect.width, height: rect.height }; })(),
+          text: node.textContent?.trim(),
+        })),
+        lifecycleTrace: (() => {
+          const trace = window.__w3ProdigalLifecycleTrace;
+          return trace ? { announcementTransitions: trace.announcementTransitions, ownershipTransitions: trace.ownershipTransitions } : null;
+        })(),
+      })),
     })));
 
     const started = await completeSkillSelection({
@@ -937,14 +1051,23 @@ test("W3: Prodigal Healer shows its proven Hand cost to every phone viewer", asy
         eventId: costEvent.id, phase: "reveal", viewerId: player.id, actorId: owner.id,
         cardIds: cost.id, effectId: "hua_tuo_prodigal_healer", effectClass: "COST",
         activationOwnerId: owner.id, materialOwnerIds: owner.id, materialCardIds: cost.id,
-        title: "PRODIGAL HEALER", viewport: { width: 390, height: 844, scrollWidth: 390 },
+        title: "PRODIGAL HEALER", viewport: {
+          width: 390, height: player.id === seed.players[3].id ? 700 : 844, scrollWidth: 390,
+        },
       });
       expect(evidence.anchor).toBeTruthy();
       expect(evidence.announcement.text).toContain("Prodigal Healer");
-      expect(evidence.announcement.visibility).toBe("visible");
-      expect(evidence.announcement.opacity).toBeGreaterThan(0);
-      expect(evidence.announcement.bottom <= evidence.frame.top - 2 || evidence.announcement.top >= evidence.frame.bottom + 2,
-        JSON.stringify({ viewerId: player.id, evidence })).toBe(true);
+      if (evidence.announcement.status === "hidden-no-safe-anchor") {
+        expect(evidence.viewport.height).toBe(700);
+        expect(evidence.announcement.stableCopy).toBe("true");
+        expect(evidence.announcement.fallback).toBe("true");
+        expect(evidence.announcement.stability).toBe("hidden-after-sustained-placement-failure");
+      } else {
+        expect(evidence.announcement.visibility).toBe("visible");
+        expect(evidence.announcement.opacity).toBeGreaterThan(0);
+        expect(evidence.announcement.bottom <= evidence.frame.top - 2 || evidence.announcement.top >= evidence.frame.bottom + 2,
+          JSON.stringify({ viewerId: player.id, evidence })).toBe(true);
+      }
       if (player.id === owner.id) {
         expect(evidence.target.left).toBeCloseTo(evidence.anchor.left + 8, 0);
         expect(evidence.target.top).toBeCloseTo(evidence.anchor.top - evidence.target.height - 6, 0);
@@ -982,7 +1105,89 @@ test("W3: Prodigal Healer shows its proven Hand cost to every phone viewer", asy
         expect(serialized).not.toContain(privateCard.id);
         expect(handCardInDom).toBe(0);
       }
+      if (player.id === target.id) expect(serialized).toContain(nextTurnAttack.id);
+      else expect(serialized).not.toContain(nextTurnAttack.id);
     }
+
+    await Promise.all(viewers.map(({ page: viewerPage }) => expect(viewerPage.locator(
+      `[data-public-card-announcement-event-id="${costEvent.id}"]`,
+    )).toHaveCount(0, { timeout: 8_000 })));
+    for (const { page: viewerPage } of viewers) {
+      await expect(viewerPage.locator(`[data-public-card-journey-event-id="${costEvent.id}"]`)).toHaveAttribute("data-public-card-journey-phase", "parked");
+    }
+
+    const ended = await request.post(`${API}/api/rooms`, {
+      data: { action: "end_turn", code: seed.code, token: owner.token },
+    });
+    expect(ended.ok()).toBeTruthy();
+    const afterEnd = await projectedRoom(request, seed, target);
+    expect(afterEnd.currentAction).toMatchObject({ kind: "turn", actorId: target.id });
+    const drew = await request.post(`${API}/api/rooms`, {
+      data: { action: "draw", code: seed.code, token: target.token },
+    });
+    expect(drew.ok()).toBeTruthy();
+    const attacked = await request.post(`${API}/api/rooms`, {
+      data: { action: "play_card", code: seed.code, token: target.token, cardId: nextTurnAttack.id, targetId: owner.id },
+    });
+    expect(attacked.ok()).toBeTruthy();
+    const attackProjection = await projectedRoom(request, seed, owner);
+    expect(attackProjection.currentAction).toMatchObject({ kind: "response", actorId: owner.id, requirement: "dodge" });
+    const attackEvent = attackProjection.timeline.find((event) => event.type === "card" && event.card.id === nextTurnAttack.id);
+    expect(attackEvent).toBeTruthy();
+    await Promise.all(viewers.map(async ({ page: viewerPage }) => {
+      const attackDisplay = viewerPage.locator(`.public-card-display[data-public-card-motion="attack-dodge"][data-public-card-root-event-id="${attackEvent.id}"]`);
+      await expect(attackDisplay).toBeVisible({ timeout: 10_000 });
+      await expect(attackDisplay.locator('[data-public-card-announcement="true"]')).toContainText("Attack");
+      await expect(viewerPage.locator(`[data-public-card-announcement-event-id="${costEvent.id}"]`)).toHaveCount(0);
+    }));
+
+    const response = await request.post(`${API}/api/rooms`, {
+      data: { action: "respond", code: seed.code, token: owner.token, providerId: "card", cardId: privateCard.id },
+    });
+    expect(response.ok()).toBeTruthy();
+    for (const turnOwner of [target, seed.players[2], seed.players[3]]) {
+      const current = await projectedRoom(request, seed, turnOwner);
+      expect(current.currentAction).toMatchObject({ kind: "turn", actorId: turnOwner.id });
+      if (current.phase === "draw") {
+        const drew = await request.post(`${API}/api/rooms`, {
+          data: { action: "draw", code: seed.code, token: turnOwner.token },
+        });
+        expect(drew.ok()).toBeTruthy();
+      }
+      const passed = await request.post(`${API}/api/rooms`, {
+        data: { action: "end_turn", code: seed.code, token: turnOwner.token },
+      });
+      expect(passed.ok()).toBeTruthy();
+      await Promise.all(viewers.map(({ page: viewerPage }) =>
+        expect(viewerPage.locator(`[data-public-card-announcement-event-id="${costEvent.id}"]`)).toHaveCount(0)));
+    }
+    const lifecycleTrace = await Promise.all(viewers.map(async ({ player, page: viewerPage }) => ({
+      viewerId: player.id,
+      ...await viewerPage.evaluate(() => {
+        const trace = window.__w3ProdigalLifecycleTrace;
+        trace.stop?.();
+        return { announcementTransitions: trace.announcementTransitions, ownershipTransitions: trace.ownershipTransitions };
+      }),
+    })));
+    for (const [index, trace] of lifecycleTrace.entries()) {
+      const costTransitions = trace.announcementTransitions.filter((entry) => entry.eventId === costEvent.id);
+      if (frameEvidence[index].announcement.status === "hidden-no-safe-anchor") {
+        expect(costTransitions.some((entry) => entry.copy?.stability === "hidden-after-sustained-placement-failure"),
+          JSON.stringify(trace)).toBe(true);
+        expect(costTransitions.filter((entry) => entry.visible), JSON.stringify(trace)).toHaveLength(0);
+      } else {
+        expect(costTransitions.filter((entry) => entry.visible), JSON.stringify(trace)).toHaveLength(1);
+        expect(costTransitions.at(-1)?.visible, JSON.stringify(trace)).toBe(false);
+      }
+      const rapidOwnershipFlaps = trace.ownershipTransitions.filter((entry, index, entries) => index > 0
+        && entry.ready !== entries[index - 1]?.ready
+        && entry.ready === "false"
+        && entries.slice(index + 1).some((later) => later.ready === "true" && later.at - entry.at < 250));
+      expect(rapidOwnershipFlaps, JSON.stringify(trace)).toHaveLength(0);
+    }
+    await attachJourneyJson(testInfo, "w3-prodigal-lifecycle-trace.json", { costEventId: costEvent.id, attackEventId: attackEvent.id, viewers: lifecycleTrace });
+    await viewers[2].page.reload();
+    await expect(viewers[2].page.locator(`[data-public-card-announcement-event-id="${costEvent.id}"]`)).toHaveCount(0);
 
     await attachJourneyJson(testInfo, "w3-prodigal-four-viewer-frame-evidence.json", {
       costEventId: costEvent.id, costCardId: cost.id, activationOwnerId: owner.id, targetId: target.id,

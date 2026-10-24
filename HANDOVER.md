@@ -2,14 +2,14 @@
 
 Target branch: `ux-v2` (working branch: `codex/ux2-equilibrium-phone`). Phone-only; maximum 8 players.
 
-## Latest result
+## Latest execution state
 
-**`UX2-10.21-TGT-A2-FIX-04` — IMPLEMENTED / DEPLOYED, PENDING OWNER PHONE RE-REVIEW.** Commit `7aff0585216ffcec54c0e5e83d12c3fda69f6df5`; exact-SHA [Actions `40133917306`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40133917306) passed browser startup/room smoke (1m11s), lint/fast, API, Worker deployment and production smoke. No focused local UI test ran on the fix; CI smoke does not prove the retap interaction. Owner phone acceptance remains pending.
+**`UX2-10.9 W3 Prodigal Healer F1 → F2` — implementation prepared; exact-SHA CI and deployment pending.** Reviewed the current remote design at `6779f320577879eb06c6b2430bac5fc19a9aae05`, §10.9 W3 F1/F2. The change keeps verified historical COST proof, retires the announcement after parking or a newer committed root, scopes retirement by room/viewer, and stabilizes semantic journey ownership and copy placement. Source has not yet been pushed; no deployment is claimed.
 
-**Latest design reviewed:** remote `ux-v2` at `7aff0585216ffcec54c0e5e83d12c3fda69f6df5`, including §10.21 TGT-A2 and the five-minute local UI-test cap.
+**Validation:** `npm run build` passed; `node --test tests/public-hero-cost-lifecycle.test.mjs` passed 2/2; focused ESLint reported 0 errors and 16 existing Hook-dependency warnings; `git diff --check` passed. The focused four-viewer browser flow was not completed: three bounded runs reached the W3 frame and privacy checks, with 390×844 announcements visible and the 390×700 announcement safely hidden after sustained lack of a safe placement. The last run then stopped because the fixture tried to play before the next player drew. The fixture now draws before Attack and on later draw turns; it was not rerun under the local five-minute UI-test limit. Do not report this browser regression as PASS.
+
+Latest pre-change `ux-v2` Actions run `40133917306` succeeded at `7aff0585216ffcec54c0e5e83d12c3fda69f6df5`; this does not validate the pending source SHA. After pushing, verify every required exact-SHA job, deployment, and production `/` plus `/api/health`.
 
 ## Exactly one current bounded task
 
-**`UX2-10.21-TGT-A2-FIX-04` — owner phone re-review of same-physical-Attack retap.** A focused five-seat mobile Worker/D1 run at 390×844 showed no Local Cancel row or bottom Cancel (#4a passed). It reproduced #4b: after selecting Attack and leaving Inspector open, tapping the original screen coordinate hit `.hand-card-visual` below the lifted face; selection stayed active and no gameplay request was sent. Commit `7aff0585216ffcec54c0e5e83d12c3fda69f6df5` adds a dedicated accessible button in the 17px face-lift gap. Exact-SHA Actions passed and deployed the change, but no focused local UI test ran after the fix. Review the deployed behavior on phone; do not mark accepted until the owner confirms it.
-
-**Validation boundary:** preserve phone PASS #1/#2/#3/#5, server target legality, Inspector/Card Details, provider-specific Cancel/Skip/Decline in other modes, and normal touch scrolling. The owner-set five-minute local UI-test cap is recorded in the workflow. Exact-SHA CI/deployment is green; focused retap behavior awaits owner phone re-review. Keep TGT-A2 pending review and do not self-accept it.
+Finish delivery of **`UX2-10.9 W3 Prodigal Healer F1 → F2`**: push the prepared change to `ux-v2`, verify exact-SHA CI and Worker deployment/health, then hand off for owner real-iPhone re-review. Final product status must remain **IMPLEMENTED / DEPLOYED — PENDING USER REAL-iPHONE RE-REVIEW** until the owner accepts it.

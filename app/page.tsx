@@ -32,6 +32,7 @@ import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodg
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
 import { equipmentArrivalIdentity, pendingEquipmentArrivalIdentities as derivePendingEquipmentArrivalIdentities } from "../game/equipment-arrival.js";
 import { compactLustDuelOrderMessage, compactLustDuelResultMessage } from "./lust-public-copy";
+import { publicHeroCostAnnouncementLifecycle } from "../game/public-hero-cost-lifecycle";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -2766,6 +2767,26 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     roomCode: room.code,
     eventIds: new Set((room.timeline ?? []).map((event) => event.id)),
   }));
+  const [retiredProdigalHealerFrame, setRetiredProdigalHealerFrame] = useState<{
+    roomCode: string;
+    viewerId: string;
+    eventIds: Set<string>;
+  }>(() => ({ roomCode: room.code, viewerId: room.meId, eventIds: new Set((room.timeline ?? []).map((event) => event.id)) }));
+  if (retiredProdigalHealerFrame.roomCode !== room.code || retiredProdigalHealerFrame.viewerId !== room.meId) {
+    setRetiredProdigalHealerFrame({ roomCode: room.code, viewerId: room.meId, eventIds: new Set((room.timeline ?? []).map((event) => event.id)) });
+  }
+  const retiredProdigalHealerFrameEventIds = retiredProdigalHealerFrame.roomCode === room.code
+    && retiredProdigalHealerFrame.viewerId === room.meId
+    ? retiredProdigalHealerFrame.eventIds
+    : new Set((room.timeline ?? []).map((event) => event.id));
+  const markProdigalHealerFrameRead = useCallback((eventId: string) => {
+    setRetiredProdigalHealerFrame((current) => {
+      const inScope = current.roomCode === room.code && current.viewerId === room.meId;
+      const eventIds = inScope ? current.eventIds : new Set((room.timeline ?? []).map((event) => event.id));
+      if (inScope && eventIds.has(eventId)) return current;
+      return { roomCode: room.code, viewerId: room.meId, eventIds: new Set([...eventIds, eventId]) };
+    });
+  }, [room.code, room.meId, room.timeline]);
   const markPublicCardJourneyEventParked = useCallback((eventId: string) => {
     setPublicCardJourneySeen((current) => {
       const seen = current.roomCode === room.code
@@ -2784,11 +2805,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     cardIds: Set<string>;
   }>({ roomCode: "", viewerId: "", actionKey: "", ready: false, eventIds: new Set(), cardIds: new Set() });
   const reportPublicCardJourneyOwnership = useCallback((
+    ownerRoomCode: string,
     actionKey: string,
     viewerId: string,
     ready: boolean,
     cards: readonly { eventId: string; cardIds: readonly string[] }[],
   ) => {
+    if (ownerRoomCode !== room.code || viewerId !== room.meId) return;
     const eventIds = new Set(cards.map(({ eventId }) => eventId));
     const cardIds = new Set(cards.flatMap(({ cardIds: ids }) => ids));
     setPublicCardJourneyOwnership((current) => {
@@ -2798,7 +2821,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       if (matches && current.ready === ready && sameSet(current.eventIds, eventIds) && sameSet(current.cardIds, cardIds)) return current;
       return { roomCode: room.code, viewerId, actionKey, ready, eventIds, cardIds };
     });
-  }, [room.code]);
+  }, [room.code, room.meId]);
   if (publicCardJourneySeen.roomCode !== room.code) {
     setPublicCardJourneySeen({ roomCode: room.code, eventIds: new Set((room.timeline ?? []).map((event) => event.id)) });
   }
@@ -5799,6 +5822,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       });
     return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
   })();
+  const prodigalHealerAnnouncementLifecycle = prodigalHealerCostFrameCandidate
+    ? publicHeroCostAnnouncementLifecycle({
+      roomCode: room.code,
+      candidateRoomCode: room.code,
+      candidateEventId: prodigalHealerCostFrameCandidate.costEvent.id,
+      timelineEventIds: room.timeline.map((event) => event.id),
+      retiredEventIds: retiredProdigalHealerFrameEventIds,
+      currentRootEventId: rootAction && rootActionCardFace ? rootAction.rootEventId : null,
+    })
+    : { status: "unavailable" as const };
+  const supersededProdigalHealerEventId = prodigalHealerAnnouncementLifecycle.status === "superseded"
+    ? prodigalHealerCostFrameCandidate?.costEvent.id ?? null
+    : null;
+  useEffect(() => {
+    if (!supersededProdigalHealerEventId) return;
+    markProdigalHealerFrameRead(supersededProdigalHealerEventId);
+  }, [markProdigalHealerFrameRead, supersededProdigalHealerEventId]);
   const prodigalHealerCostFrameAction: PublicCardDisplayAction | null = prodigalHealerCostFrameCandidate ? {
     key: ["prodigal-healer-cost", prodigalHealerCostFrameCandidate.costEvent.id].join(":"),
     rootEventId: prodigalHealerCostFrameCandidate.costEvent.id,
@@ -5806,11 +5846,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     targetId: prodigalHealerCostFrameCandidate.target.id,
     cardFace: prodigalHealerCostFrameCandidate.costCard,
     cardLabel: "PRODIGAL HEALER COST",
+    suppressAnnouncement: prodigalHealerAnnouncementLifecycle.status !== "active",
+    publicNotice: `${prodigalHealerCostFrameCandidate.owner.name} used Prodigal Healer on ${prodigalHealerCostFrameCandidate.target.name}, paying one Hand card.`,
+    publicNoticeCompact: `${prodigalHealerCostFrameCandidate.owner.name} · Prodigal Healer → ${prodigalHealerCostFrameCandidate.target.name}`,
     ariaLabel: `${prodigalHealerCostFrameCandidate.owner.name} used Prodigal Healer on ${prodigalHealerCostFrameCandidate.target.name}, paying one Hand card.`,
     motion: {
       type: "single-target",
       scopeKey: [room.code, "hua_tuo_prodigal_healer", prodigalHealerCostFrameCandidate.costEvent.id].join(":"),
-      freshEventIds: publicCardJourneySeenEventIds.has(prodigalHealerCostFrameCandidate.costEvent.id)
+      freshEventIds: retiredProdigalHealerFrameEventIds.has(prodigalHealerCostFrameCandidate.costEvent.id)
         ? [] : [prodigalHealerCostFrameCandidate.costEvent.id],
     },
     publicCardEffectFrame: createPublicCardEffectFrameView(prodigalHealerCostFrameCandidate.effect, {
@@ -5988,7 +6031,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const latestHeroPublicCardEffectFrameAction = [
     prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction, betrothmentCostFrameAction,
     equilibriumCostFrameAction, firstAidConversionFrameAction,
-  ].filter((action): action is PublicCardDisplayAction => Boolean(action))
+  ].filter((action): action is PublicCardDisplayAction => action !== null
+    && !(action.rootEventId === prodigalHealerCostFrameCandidate?.costEvent.id
+      && prodigalHealerAnnouncementLifecycle.status === "superseded"))
     .reduce<PublicCardDisplayAction | null>((latest, action) => {
       if (!latest) return action;
       return room.timeline.findIndex((event) => event.id === action.rootEventId)
@@ -6506,6 +6551,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     } : {}),
     deflection: activeDeflectionAction ?? undefined,
   } : null;
+  const markPublicCardDisplayEventParked = useCallback((eventId: string) => {
+    markPublicCardJourneyEventParked(eventId);
+    if (publicCardDisplayAction?.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer"
+      && publicCardDisplayAction.rootEventId === eventId) {
+      markProdigalHealerFrameRead(eventId);
+    }
+  }, [markProdigalHealerFrameRead, markPublicCardJourneyEventParked,
+    publicCardDisplayAction?.publicCardEffectFrame?.effectId, publicCardDisplayAction?.rootEventId]);
   const rootActionSource = publicCardDisplayAction ? room.players.find((player) => player.id === publicCardDisplayAction.sourceId) : null;
   const rootActionTarget = publicCardDisplayAction ? room.players.find((player) => player.id === publicCardDisplayAction.targetId) : null;
   const compactPublicPlayerNamesById = Object.fromEntries(room.players.flatMap((player) => player.hero
@@ -8277,7 +8330,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         })}
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
-      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} suppressAnnouncement={targetCardChoiceMergeActive} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} responseHistoryOwnership={publicDisplayOwnedResponseHistory.map((response) => ({ eventId: response.eventId, cardIds: (response.cardFaces ?? [response.cardFace]).map((card) => card.id) }))} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardJourneyEventParked} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
+      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} suppressAnnouncement={targetCardChoiceMergeActive} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} responseHistoryOwnership={publicDisplayOwnedResponseHistory.map((response) => ({ eventId: response.eventId, cardIds: (response.cardFaces ?? [response.cardFace]).map((card) => card.id) }))} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardDisplayEventParked} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
         setActiveDismantleSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
           ? { ...current, journeySettled: true }
           : current);
