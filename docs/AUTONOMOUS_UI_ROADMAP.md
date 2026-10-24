@@ -3381,3 +3381,8 @@ Profile command measurements:
 
 - Existing implementation `f0df9b6` provides the compact phone picker, retap-to-deselect, no redundant Cancel, legal Use/Skip side-by-side, and actor-only opaque hand-position choices. Focused real Worker/D1 Playwright tests passed 2/2 at 390×700 and 440×766, proving authorized selection/Skip, privacy, inspection without action, and single submit.
 - Exact-SHA [Actions 40054343222](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40054343222) passed lint/fast, API, browser smoke, deployment and production smoke for descendant `e6c8551850be0a6f6af2178498b7379a4e240b8a`; Worker `cfaf3ef0-5e32-4e16-8520-37f887812bc1`, production `/api/health` and `/` returned 200. Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**; no acceptance is inferred.
+
+### UX2 §10.17.4 HUD-4 — fixed opponent Equipment slots and diagonal sword — 2026-10-24
+
+- Fixed four-slot footprints were implemented in `5a8505e`; the clearer diagonal blade/crossguard/grip/pommel glyph was refined in `e2e645f`. The focused `tests/browser/u13-d-f-opponent-hp-gear.spec.mjs` passed 47/47, covering 0–4 equipment, horse-only/weapon-only, equip/replace/discard, five phone sizes from 390–480px, 6/8/10-seat side columns and sword geometry.
+- Both changes are present in deployed descendant `e6c8551850be0a6f6af2178498b7379a4e240b8a`; exact-SHA [Actions 40054343222](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40054343222) passed all required checks and deployed Worker `cfaf3ef0-5e32-4e16-8520-37f887812bc1`; production health/root returned HTTP 200. Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**, not accepted.
