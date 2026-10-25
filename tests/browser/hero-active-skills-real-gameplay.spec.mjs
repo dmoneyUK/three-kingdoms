@@ -1059,7 +1059,6 @@ test("W3: Prodigal Healer shows its proven Hand cost to every phone viewer", asy
       expect(evidence.announcement.text).toContain("Prodigal Healer");
       if (evidence.announcement.status === "hidden-no-safe-anchor") {
         expect(evidence.viewport.height).toBe(700);
-        expect(evidence.announcement.stableCopy).toBe("true");
         expect(evidence.announcement.fallback).toBe("true");
         expect(evidence.announcement.stability).toBe("hidden-after-sustained-placement-failure");
       } else {

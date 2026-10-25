@@ -6719,7 +6719,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       rootEventId: latestHeroPublicCardEffectFrameAction.rootEventId,
       checkpointEventId: publicCardActionCheckpointEventId(latestHeroPublicCardEffectFrameAction),
       priority: 1,
-      active: latestHeroPublicCardEffectFrameAction.suppressAnnouncement !== true,
+      // Retiring the public copy must not remove its proof-backed physical
+      // CardFace; suppressAnnouncement is handled by the shared renderer.
       supersedeOnNewerPublicPlay: true,
     }] : []),
   ], room.timeline.filter((event) => event.presentation !== false && !event.privateToPlayerId).map((event) => event.id), laterPublicCardPlayEventIds);
