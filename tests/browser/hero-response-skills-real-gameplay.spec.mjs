@@ -451,6 +451,99 @@ test("W4: God of War frames the same real red card as Attack for mobile viewers"
   }
 });
 
+test("W4: Braveheart frames the same real Dodge as Attack for mobile viewers", async ({ page, browser, request }) => {
+  test.setTimeout(60_000);
+  const braveheartDodge = card("Dodge", "w4-braveheart-dodge-as-attack", "♣");
+  const privateCard = card("Peach", "w4-braveheart-private-peach", "♥");
+  const targetDodge = card("Dodge", "w4-braveheart-target-dodge", "♠");
+  const seedData = await seed(request, [
+    { name: "ZHAO YUN", role: "Lord", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [braveheartDodge, privateCard] },
+    { name: "TARGET", role: "Loyalist", hero: "cao-cao", hp: 4, maxHp: 4, hand: [targetDodge] },
+    { name: "OBSERVER", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+    { name: "FOURTH", role: "Renegade", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
+  ]);
+  const observerContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  try {
+    const zhaoYun = await openPlayer(page, seedData, 0);
+    const observerPage = await observerContext.newPage();
+    const observer = await openPlayer(observerPage, seedData, 2);
+    const played = await request.post(`${API}/api/rooms`, {
+      data: {
+        action: "play_card", code: seedData.code, token: seedData.players[0].token,
+        cardId: braveheartDodge.id, playAs: "attack", targetId: seedData.players[1].id,
+      },
+    });
+    expect(played.ok()).toBeTruthy();
+    const result = await played.json();
+    const conversionEvent = result.room.timeline.find((event) => event.type === "card" && event.card?.id === braveheartDodge.id);
+    expect(conversionEvent).toMatchObject({ action: "play", playedAs: "attack", player: seedData.players[0].name, target: seedData.players[1].name });
+    expect(conversionEvent.publicCardEffects).toContainEqual(expect.objectContaining({
+      effectId: "zhao_yun_dodge_as_attack", effectClass: "CONVERSION", activationOwnerId: seedData.players[0].id,
+      targetId: seedData.players[1].id, resultingCardKind: "Attack", outcome: "AS_ATTACK",
+      materials: [{ cardId: braveheartDodge.id, ownerId: seedData.players[0].id, fromZone: "HAND", toZone: "DISCARD" }],
+    }));
+    const targetProjection = await view(request, seedData, 1);
+    expect(targetProjection.currentAction).toMatchObject({ kind: "response", actorId: seedData.players[1].id, requirement: "dodge" });
+    expect(targetProjection.currentAction.options.find((option) => option.providerId === "card")?.selection.eligibleCardIds).toContain(targetDodge.id);
+    const observerProjection = await view(request, seedData, 2);
+    expect(JSON.stringify(observerProjection)).not.toContain(privateCard.id);
+    expect(JSON.stringify(observerProjection)).not.toContain(targetDodge.id);
+    for (const { viewerPage, viewerId } of [
+      { viewerPage: page, viewerId: zhaoYun.id },
+      { viewerPage: observerPage, viewerId: observer.id },
+    ]) {
+      const evidence = await viewerPage.waitForFunction(({ eventId, materialId, viewerId }) => {
+        const journeyCard = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
+          .find((element) => element.dataset.publicCardJourneyEventId === eventId);
+        const display = journeyCard?.closest(".public-card-display");
+        const frame = journeyCard?.querySelector('[data-public-card-frame-effect-id="zhao_yun_dodge_as_attack"]');
+        const announcement = display?.querySelector('[data-public-card-announcement="true"]');
+        const style = announcement ? getComputedStyle(announcement) : null;
+        if (!journeyCard || !display || !frame || !announcement || display.dataset.publicCardViewerId !== viewerId
+          || !["reveal", "move"].includes(journeyCard.dataset.publicCardJourneyPhase)
+          || display.dataset.publicCardLayoutPending !== "false"
+          || frame.dataset.publicCardFrameMaterialCardIds !== materialId
+          || announcement.dataset.publicCardAnnouncementPositioned !== "true"
+          || style?.visibility !== "visible" || style.display === "none" || Number(style.opacity) <= 0) return false;
+        const frameRect = frame.getBoundingClientRect();
+        const noticeRect = announcement.getBoundingClientRect();
+        return {
+          viewerId: display.dataset.publicCardViewerId,
+          eventId: journeyCard.dataset.publicCardJourneyEventId,
+          phase: journeyCard.dataset.publicCardJourneyPhase,
+          actorId: journeyCard.dataset.publicCardJourneyActorId,
+          frameEventId: frame.dataset.publicCardFrameEventId,
+          effectId: frame.dataset.publicCardFrameEffectId,
+          activationOwnerId: frame.dataset.publicCardFrameActivationOwnerId,
+          materialCardIds: frame.dataset.publicCardFrameMaterialCardIds,
+          title: frame.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
+          journeyLabel: journeyCard.getAttribute("aria-label"),
+          notice: announcement.textContent?.trim(),
+          noticePositioned: announcement.dataset.publicCardAnnouncementPositioned,
+          overlap: noticeRect.left < frameRect.right && noticeRect.right > frameRect.left
+            && noticeRect.top < frameRect.bottom && noticeRect.bottom > frameRect.top,
+          viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
+        };
+      }, { eventId: conversionEvent.id, materialId: braveheartDodge.id, viewerId }, { timeout: 15_000 });
+      const details = await evidence.jsonValue();
+      expect(details).toMatchObject({
+        viewerId, eventId: conversionEvent.id, phase: expect.stringMatching(/^(reveal|move)$/),
+        actorId: zhaoYun.id, frameEventId: conversionEvent.id, effectId: "zhao_yun_dodge_as_attack",
+        activationOwnerId: zhaoYun.id, materialCardIds: braveheartDodge.id,
+        title: "BRAVEHEART · DODGE AS ATTACK", viewport: { width: 390, height: 844, scrollWidth: 390 },
+      });
+      expect(details.journeyLabel).toContain("DODGE AS ATTACK");
+      expect(details.notice).toContain("Dodge AS ATTACK");
+      expect(details.notice).toContain(seedData.players[1].name);
+      expect(details.noticePositioned).toBe("true");
+      expect(details.overlap).toBe(false);
+    }
+    await expect(observerPage.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(0);
+  } finally {
+    await observerContext.close();
+  }
+});
+
 test("real God of War is offered for a Duel Attack response and accepts only the red card", async ({ page, request }) => {
   const duel = card("Duel", "real-wusheng-duel");
   const redPeach = card("Peach", "real-wusheng-red-peach", "♥");
