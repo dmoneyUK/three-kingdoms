@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   isTestHandPresetId,
+  testHandPresetCompatibilityError,
   testHandPresetFor,
   TEST_HAND_PRESET_OPTIONS,
   validateStoredTestHandPreset,
@@ -9,9 +10,10 @@ import {
 } from "../game/test-hand-presets.ts";
 
 test("test-hand options remove Attack presets and include Dismantle/Steal", () => {
-  assert.deepEqual(TEST_HAND_PRESET_OPTIONS.map(({ id }) => id), ["random", "dismantle_steal", "duel_chain", "custom"]);
+  assert.deepEqual(TEST_HAND_PRESET_OPTIONS.map(({ id }) => id), ["random", "dismantle_steal", "steal_dismantle_negation", "duel_chain", "custom"]);
   assert.equal(isTestHandPresetId("attack_dodge"), false);
   assert.equal(isTestHandPresetId("attack_negation"), false);
+  assert.equal(isTestHandPresetId("steal_dismantle_negation"), true);
   assert.equal(validateTestHandPreset({ id: "attack_dodge" }).preset, null);
   assert.equal(validateTestHandPreset({ id: "attack_negation" }).preset, null);
 });
@@ -28,6 +30,35 @@ test("Dismantle/Steal preset gives each of five seats both cards, a weapon, and 
     assert.equal(hand.length, 4);
   }
   assert.equal(validateTestHandPreset(preset).error, null, "all specified physical cards fit the Standard deck");
+});
+
+test("Negation kit gives each of four seats one targeted card, Negation, gear, and delayed Stratagem", () => {
+  const seats = [0, 1, 2, 3];
+  const preset = testHandPresetFor("steal_dismantle_negation");
+  const gearKinds = new Set(["ZhugeCrossbow", "NioShield", "BlueSteelSword", "YinYangSwords"]);
+  for (const seat of seats) {
+    const hand = preset.handsBySeat[seat];
+    assert.equal(Number(hand.includes("Dismantle")) + Number(hand.includes("Steal")), 1, `seat ${seat + 1} has exactly one targeted card`);
+    assert.equal(hand.filter((kind) => kind === "Negation").length, 1, `seat ${seat + 1} has one Negation`);
+    assert.equal(hand.filter((kind) => gearKinds.has(kind)).length, 1, `seat ${seat + 1} has one weapon or shield`);
+    assert.equal(hand.filter((kind) => kind === "Lightning" || kind === "Overindulgence").length, 1, `seat ${seat + 1} has one delayed Stratagem`);
+    assert.equal(hand.length, 4);
+  }
+  assert.equal(Object.values(preset.handsBySeat).flat().filter((kind) => kind === "Negation").length, 4);
+  assert.equal(validateTestHandPreset(preset, new Set(seats)).error, null, "all assigned cards are real copies from the Standard deck");
+  assert.equal(testHandPresetCompatibilityError(preset.id, new Set([0, 1, 2, 3])), null);
+  assert.match(testHandPresetCompatibilityError(preset.id, new Set([0, 1, 2, 3, 4])), /exactly four players/);
+  assert.match(validateTestHandPreset(preset, new Set([0, 1, 2, 3, 4])).error, /exactly four players/);
+});
+
+test("Negation kit follows four current seat numbers and stays editable if the lobby roster changes", () => {
+  const seats = [1, 2, 5, 7];
+  const preset = testHandPresetFor("steal_dismantle_negation", seats);
+  assert.deepEqual(Object.keys(preset.handsBySeat), seats.map(String));
+  assert.equal(validateTestHandPreset(preset, new Set(seats)).error, null);
+  const stored = validateStoredTestHandPreset(preset, new Set([1, 2, 5, 7, 8]));
+  assert.equal(stored.error, null);
+  assert.deepEqual(Object.keys(stored.preset.handsBySeat), seats.map(String));
 });
 
 test("persisted removed presets safely fall back to random hands", () => {

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { cardDefinition, effectivePhysicalSuit, isAttackCard, makeDeck, shuffle } from "../../../game/cards";
 import { CARD_KINDS, type Card, type EquipmentZone } from "../../../game/model";
-import { testHandPresetFor, validateStoredTestHandPreset, validateTestHandPreset } from "../../../game/test-hand-presets";
+import { testHandPresetCompatibilityError, testHandPresetFor, validateStoredTestHandPreset, validateTestHandPreset } from "../../../game/test-hand-presets";
 import { canDeclareAttack as canDeclareAttackFor, effectiveDistanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithNegation, getAttackCardProvider, getPlayPhaseActions, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
@@ -2603,6 +2603,10 @@ async function beginMatch(roomId: string, players: PlayerRow[]) {
   const seatSet = new Set(players.map((player) => player.seat));
   const configured = testPresetFromRoom(room, seatSet);
   if (configured.error || !configured.preset) throw new Error(configured.error ?? "The saved test-hand preset is invalid.");
+  if (room.test_room) {
+    const compatibilityError = testHandPresetCompatibilityError(configured.preset.id, seatSet);
+    if (compatibilityError) throw new Error(compatibilityError);
+  }
   if (room.test_room) {
     const host = players.find((player) => player.id === room.host_player_id);
     if (!host || players.some((player) => player.id !== host.id && (player.is_test_player !== 1 || player.token_hash !== host.token_hash))) {
@@ -7555,8 +7559,11 @@ export async function POST(request: Request) {
     if (players.length < 4 || players.length > room.max_players) return json({ error: "Classic mode needs 4–8 players." }, 409);
     if (room.test_room) {
       if (!hostControlledTestRoster(room, players, tokenHash)) return json({ error: "A test game may contain only the host and host-controlled Test Players." }, 409);
-      const preset = testPresetFromRoom(room, new Set(players.map((player) => player.seat)));
+      const seatSet = new Set(players.map((player) => player.seat));
+      const preset = testPresetFromRoom(room, seatSet);
       if (preset.error || !preset.preset) return json({ error: preset.error ?? "The saved test-hand preset is invalid." }, 409);
+      const compatibilityError = testHandPresetCompatibilityError(preset.preset.id, seatSet);
+      if (compatibilityError) return json({ error: compatibilityError }, 409);
     }
     if (!await beginStandardHeroSelection(room.id, players, Boolean(room.test_room))) return json({ error: "The lobby has already started." }, 409);
     await resetAudit(room.id);

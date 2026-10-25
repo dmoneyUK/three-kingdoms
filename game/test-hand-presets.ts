@@ -4,6 +4,7 @@ import type { CardKind } from "./model";
 export const TEST_HAND_PRESET_OPTIONS = [
   { id: "random", name: "Random Hands (Default)" },
   { id: "dismantle_steal", name: "Dismantle / Steal + Weapon & Delayed Stratagem" },
+  { id: "steal_dismantle_negation", name: "Steal / Dismantle + Negation Kit (4 players)" },
   { id: "duel_chain", name: "Duel / Attack Test" },
   { id: "custom", name: "Custom Hands" },
 ] as const;
@@ -26,6 +27,12 @@ const PRESET_HANDS: Record<Exclude<TestHandPresetId, "custom">, Record<number, C
     3: ["Dismantle", "Steal", "FrostSword", "Overindulgence"],
     4: ["Dismantle", "Steal", "RockCleavingAxe", "Overindulgence"],
   },
+  steal_dismantle_negation: {
+    0: ["Dismantle", "Negation", "ZhugeCrossbow", "Lightning"],
+    1: ["Steal", "Negation", "NioShield", "Overindulgence"],
+    2: ["Dismantle", "Negation", "BlueSteelSword", "Overindulgence"],
+    3: ["Steal", "Negation", "YinYangSwords", "Lightning"],
+  },
   // Use real Standard copies only. Generated seats receive Duel and Attack;
   // Dodge fills the remaining slots so this preset isolates Duel testing
   // without requiring Negation cards in the controlled hands.
@@ -37,8 +44,21 @@ const PRESET_HANDS: Record<Exclude<TestHandPresetId, "custom">, Record<number, C
   },
 };
 
-export function testHandPresetFor(id: Exclude<TestHandPresetId, "custom">): TestHandPreset {
-  return { id, handsBySeat: Object.fromEntries(Object.entries(PRESET_HANDS[id]).map(([seat, kinds]) => [Number(seat), [...kinds]])) };
+export function testHandPresetFor(id: Exclude<TestHandPresetId, "custom">, seatOrder?: readonly number[]): TestHandPreset {
+  const presetHands = PRESET_HANDS[id];
+  if (id === "steal_dismantle_negation" && seatOrder) {
+    const seats = [...new Set(seatOrder)].sort((left, right) => left - right).slice(0, 4);
+    return {
+      id,
+      handsBySeat: Object.fromEntries(seats.map((seat, index) => [seat, [...(presetHands[index] ?? [])]])),
+    };
+  }
+  return { id, handsBySeat: Object.fromEntries(Object.entries(presetHands).map(([seat, kinds]) => [Number(seat), [...kinds]])) };
+}
+
+export function testHandPresetCompatibilityError(id: TestHandPresetId, availableSeats?: ReadonlySet<number>): string | null {
+  if (id !== "steal_dismantle_negation" || !availableSeats || availableSeats.size === 4) return null;
+  return "This scenario uses all four Standard Negation cards, so it requires exactly four players.";
 }
 
 export function isTestHandPresetId(value: unknown): value is TestHandPresetId {
@@ -53,9 +73,11 @@ export function validateTestHandPreset(
   const input = value as Record<string, unknown>;
   if (!isTestHandPresetId(input.id)) return { preset: null, error: "Choose a valid starting-hand preset." };
   const id = input.id;
+  const compatibilityError = testHandPresetCompatibilityError(id, availableSeats);
+  if (compatibilityError) return { preset: null, error: compatibilityError };
   let handsBySeat: Record<number, CardKind[]>;
   if (id !== "custom") {
-    const expected = testHandPresetFor(id);
+    const expected = testHandPresetFor(id, availableSeats ? [...availableSeats] : undefined);
     if (input.handsBySeat !== undefined) {
       const provided = parseHandsBySeat(input.handsBySeat, availableSeats);
       if (provided.error) return provided;
@@ -93,6 +115,13 @@ export function validateStoredTestHandPreset(
   const storedId = value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>).id
     : null;
+  if (storedId === "steal_dismantle_negation") {
+    const currentSeats = availableSeats ? [...availableSeats] : undefined;
+    // A lobby may gain or lose seats after saving. Rebuild this server-owned
+    // preset for its current roster so the host can still change the preset;
+    // save/start separately enforce its four-player requirement.
+    return { preset: testHandPresetFor(storedId, currentSeats), error: null };
+  }
   return typeof storedId === "string" && RETIRED_TEST_HAND_PRESET_IDS.has(storedId)
     ? validateTestHandPreset(testHandPresetFor("random"), availableSeats)
     : validateTestHandPreset(value, availableSeats);
