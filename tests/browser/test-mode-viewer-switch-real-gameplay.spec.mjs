@@ -964,7 +964,7 @@ test("Quick Test SWITCH hides an Attack journey until its current mobile author 
 for (const kind of ["Steal", "Dismantle"]) {
   const displayName = kind === "Dismantle" ? "Burning Bridges" : kind;
   test(`W3-F2-R1 ${displayName} public announcement stays stable across TEST SWITCH and target choice`, async ({ page, request }, testInfo) => {
-    test.setTimeout(90_000);
+    test.setTimeout(45_000);
     const name = `W3 F2 R1 ${kind.toUpperCase()} ${Date.now().toString(36).toUpperCase()}`;
     const createdResponse = await request.post(`${API}/api/rooms`, { data: { action: "create", name } });
     const created = await createdResponse.json();
@@ -1085,6 +1085,7 @@ for (const kind of ["Steal", "Dismantle"]) {
         const localViewerId = document.querySelector(".local-player-dock")?.getAttribute("data-player-anchor") ?? null;
         const viewerId = display?.getAttribute("data-public-card-viewer-id") ?? null;
         const layoutViewerId = display?.getAttribute("data-public-card-layout-viewer-id") ?? null;
+        const rootCopyInstances = document.querySelectorAll(`[data-public-card-announcement-event-id="${watchedRootEventId}"]`).length;
         const visible = Boolean(copy && style && rect && copy.dataset.publicCardAnnouncementPositioned === "true"
           && style.display !== "none" && style.visibility === "visible" && Number(style.opacity) > 0
           && rect.width > 0 && rect.height > 0);
@@ -1093,6 +1094,8 @@ for (const kind of ["Steal", "Dismantle"]) {
           pending: display?.getAttribute("data-public-card-layout-pending") ?? null,
           copyEventId: copy?.getAttribute("data-public-card-announcement-event-id") ?? null,
           copyKey: copy?.getAttribute("data-public-card-announcement-copy-key") ?? null,
+          geometryKey: copy?.getAttribute("data-public-card-announcement-geometry-key") ?? null,
+          rootCopyInstances,
           rect: rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null,
         };
         if (trace.lastVisible !== visible && trace.transitions.length < 120) trace.transitions.push(state);
@@ -1111,6 +1114,11 @@ for (const kind of ["Steal", "Dismantle"]) {
     const switchTo = async (viewerId, phase = "negation") => {
       const currentViewerId = await page.locator(".local-player-dock").getAttribute("data-player-anchor");
       if (currentViewerId === viewerId) return;
+      const previousGeometryKey = await page.evaluate((watchedRootEventId) => {
+        const display = document.querySelector(`.public-card-display[data-public-card-root-event-id="${watchedRootEventId}"]`);
+        return display?.querySelector('[data-public-card-announcement="true"]')
+          ?.getAttribute("data-public-card-announcement-geometry-key") ?? null;
+      }, rootEventId);
       const transitionStart = await page.evaluate(() => window.__w3F2R1AnnouncementTrace.transitions.length);
       await page.getByTestId(`test-view-switch-${viewerId}`).click();
       await expect(page.locator(`.local-player-dock[data-player-anchor="${viewerId}"]`)).toBeVisible({ timeout: 8_000 });
@@ -1126,12 +1134,18 @@ for (const kind of ["Steal", "Dismantle"]) {
           && copy?.dataset.publicCardAnnouncementPositioned === "true"
           && style?.visibility === "visible" && Number(style.opacity) > 0);
         }, viewerId), { timeout: 8_000 }).toBe(true);
+        const currentGeometryKey = await rootDisplay.locator('[data-public-card-announcement="true"]')
+          .getAttribute("data-public-card-announcement-geometry-key");
+        if (previousGeometryKey) expect(currentGeometryKey).not.toBe(previousGeometryKey);
+        expect(JSON.parse(currentGeometryKey).viewerKey).toBe(JSON.stringify([code, viewerId]));
+        await expect(page.locator(`[data-public-card-announcement-event-id="${rootEventId}"]`)).toHaveCount(1);
+        await expect(page.locator(`[role="status"][data-public-card-announcement-event-id="${rootEventId}"]`)).toHaveCount(1);
         await page.waitForFunction(() => {
           const trace = window.__w3F2R1AnnouncementTrace;
           const tail = trace.states.slice(-10);
           return tail.length === 10 && tail.every((state) => state.visible
             && state.viewerId === state.localViewerId && state.layoutViewerId === state.localViewerId
-            && state.pending === "false");
+            && state.pending === "false" && state.rootCopyInstances === 1);
         }, undefined, { timeout: 3_000 });
         const transitionEnd = await page.evaluate(() => window.__w3F2R1AnnouncementTrace.transitions.length);
         const transitions = await page.evaluate(({ start, end }) => window.__w3F2R1AnnouncementTrace.transitions.slice(start, end), {
@@ -1192,6 +1206,8 @@ for (const kind of ["Steal", "Dismantle"]) {
         await expect(pool).toHaveCount(0);
         await expect(rootDisplay.locator('[data-public-card-announcement="true"]')).toHaveCount(1);
         await expect(rootDisplay.locator('[data-public-card-announcement="true"]')).toBeVisible();
+        await expect(page.locator(`[data-public-card-announcement-event-id="${rootEventId}"]`)).toHaveCount(1);
+        await expect(page.locator(`[role="status"][data-public-card-announcement-event-id="${rootEventId}"]`)).toHaveCount(1);
         const viewerState = await readView(viewerId);
         expect(viewerState.isMyAction).toBe(false);
         expect(viewerState.currentAction?.targetCardSelection).toBeUndefined();

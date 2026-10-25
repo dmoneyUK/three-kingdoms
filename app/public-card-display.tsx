@@ -6,7 +6,7 @@ import type { PresentationSnapshotPublicCardEffect, PresentationSnapshotRootActi
 import type { PresentationTargetCardSettlementMovement } from "../game/presentation-v2";
 import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
 import { cardDefinition } from "../game/cards";
-import { publicAnnouncementEventCopyKey as buildPublicAnnouncementEventCopyKey, publicAnnouncementGeometryKey, transitionPublicAnnouncementCopyLifecycle, type PublicAnnouncementCopyLifecycle } from "../game/public-announcement";
+import { publicAnnouncementEventCopyKey as buildPublicAnnouncementEventCopyKey, publicAnnouncementGeometryIdentity, publicAnnouncementGeometryKey, transitionPublicAnnouncementCopyLifecycle, type PublicAnnouncementCopyLifecycle, type PublicAnnouncementProtectedGeometry, type PublicAnnouncementSeatGeometry } from "../game/public-announcement";
 import { compactLustDuelAttackMessage } from "./lust-public-copy";
 import { CardFace } from "./card-face";
 import { recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
@@ -1919,13 +1919,6 @@ function PublicCardAnnouncement({
   useLayoutEffect(() => () => {
     copyLifecycleRef.current = transitionPublicAnnouncementCopyLifecycle(copyLifecycleRef.current, null);
   }, []);
-  const hasNegationNarration = Boolean(negationNarration);
-  const narrationEventId = negationNarration?.eventId;
-  const narrationLatestCommittedEventId = negationNarration?.latestCommittedEventId;
-  const narrationCheckpointId = negationNarration?.checkpointId;
-  const narrationPhase = negationNarration?.phase;
-  const narrationRootEffectState = negationNarration?.rootEffectState;
-  const narrationAccessibleLabel = accessibleLabel ?? negationNarration?.accessibleLabel;
   const fallbackLeft = fallbackCardRect?.left;
   const fallbackTop = fallbackCardRect?.top;
   const fallbackWidth = fallbackCardRect?.width;
@@ -1935,6 +1928,16 @@ function PublicCardAnnouncement({
     ? null
     : { left: fallbackLeft, top: fallbackTop, width: fallbackWidth, height: fallbackHeight },
   [fallbackHeight, fallbackLeft, fallbackTop, fallbackWidth]);
+  const latestInputs = {
+    eventId, anchorEventId, eventCopyKey, geometryKey, copyLifecycleStage, placementKey, viewerLayoutKey,
+    phase, heading, message, compactMessage, accessibleLabel, supportingMessage, compactSupportingMessage,
+    negationNarration, fallbackCardRect: stableFallbackCardRect, phaseNotice, outcome, negationWaiting,
+    stableCenterAnchor, keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending,
+    preferredVerticalMode, privateDrawAware,
+  };
+  const latestInputsRef = useRef(latestInputs);
+  const placementInputKey = JSON.stringify(latestInputs);
+  const schedulePlacementRef = useRef<(() => void) | null>(null);
 
   useLayoutEffect(() => {
     const placementGeneration = ++placementGenerationRef.current;
@@ -1944,14 +1947,6 @@ function PublicCardAnnouncement({
     const geometryChanged = Boolean(lastGeometryKeyRef.current && lastGeometryKeyRef.current !== geometryKey);
     if (geometryChanged && copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
     if (geometryChanged) lastGeometryKeyRef.current = geometryKey;
-    const lifecycle = transitionPublicAnnouncementCopyLifecycle(copyLifecycleRef.current, {
-      eventCopyKey,
-      stage: copyLifecycleStage,
-    });
-    copyLifecycleRef.current = lifecycle;
-    if (copy.dataset.publicCardAnnouncementLifecycle !== lifecycle.stage) {
-      copy.dataset.publicCardAnnouncementLifecycle = lifecycle.stage;
-    }
 
     const copyAnchorEventId = anchorEventId === null ? "" : anchorEventId ?? eventId;
     const getAnchor = () => copyAnchorEventId
@@ -2032,6 +2027,20 @@ function PublicCardAnnouncement({
 
     const place = () => {
       if (placementGeneration !== placementGenerationRef.current) return;
+      const {
+        eventId, geometryKey, placementKey, viewerLayoutKey, phase, message, compactMessage,
+        accessibleLabel, supportingMessage, compactSupportingMessage, negationNarration,
+        fallbackCardRect: currentFallbackCardRect, outcome, negationWaiting, stableCenterAnchor,
+        keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, preferredVerticalMode,
+        privateDrawAware,
+      } = latestInputsRef.current;
+      const hasNegationNarration = Boolean(negationNarration);
+      const narrationEventId = negationNarration?.eventId;
+      const narrationLatestCommittedEventId = negationNarration?.latestCommittedEventId;
+      const narrationCheckpointId = negationNarration?.checkpointId;
+      const narrationPhase = negationNarration?.phase;
+      const narrationRootEffectState = negationNarration?.rootEffectState;
+      const narrationAccessibleLabel = accessibleLabel ?? negationNarration?.accessibleLabel;
       const incomingDisplayedCopy: DisplayedPublicCardAnnouncement = {
         message: negationNarration?.headline ?? message,
         supporting: negationNarration?.supportingMessage ?? supportingMessage ?? "",
@@ -2068,15 +2077,21 @@ function PublicCardAnnouncement({
       const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight);
       const geometryNumber = (value: number) => Math.round(value * 2) / 2;
       const shell = display.closest<HTMLElement>(".game-shell") ?? document;
-      const playerAnchorGeometry = [...shell.querySelectorAll<HTMLElement>("[data-player-anchor]")]
+      const playerAnchorGeometry: PublicAnnouncementSeatGeometry[] = [...shell.querySelectorAll<HTMLElement>("[data-player-anchor]")]
         .flatMap((element) => {
           const rect = element.getBoundingClientRect();
           const style = window.getComputedStyle(element);
           if (style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0) return [];
-          return [[element.dataset.playerAnchor ?? "", geometryNumber(rect.left), geometryNumber(rect.top),
-            geometryNumber(rect.width), geometryNumber(rect.height)]];
+          return [{
+            anchorId: element.dataset.playerAnchor ?? "",
+            rect: {
+              left: geometryNumber(rect.left), top: geometryNumber(rect.top),
+              right: geometryNumber(rect.right), bottom: geometryNumber(rect.bottom),
+            },
+          }];
         })
-        .sort((left, right) => String(left[0]).localeCompare(String(right[0])) || Number(left[1]) - Number(right[1]));
+        .sort((left, right) => left.anchorId.localeCompare(right.anchorId)
+          || left.rect.left - right.rect.left || left.rect.top - right.rect.top);
       const isLargeRevealAnchor = phase === "reveal" && !stableCenterAnchor
         && actualRect && actualRect.width > 0 && actualRect.height > 0;
       const obstacles: Array<{ element: HTMLElement | null; rect: DOMRect }> = [...document.querySelectorAll<HTMLElement>(
@@ -2104,20 +2119,38 @@ function PublicCardAnnouncement({
           rect: new DOMRect(anchorTarget.left, anchorTarget.top, anchorTarget.width, anchorTarget.height),
         });
       }
-      const protectedGeometry = obstacles.map(({ element, rect }) => [
-        element?.className?.toString() ?? "journey-target",
-        element?.dataset.publicCardCopyAnchorEventId ?? element?.dataset.playerAnchor ?? "",
-        geometryNumber(rect.left), geometryNumber(rect.top), geometryNumber(rect.width), geometryNumber(rect.height),
-      ]).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+      const protectedGeometry: PublicAnnouncementProtectedGeometry[] = obstacles.map(({ element, rect }) => ({
+        kind: element?.className?.toString() ?? "journey-target",
+        identity: element?.dataset.publicCardCopyAnchorEventId ?? element?.dataset.playerAnchor ?? "",
+        rect: {
+          left: geometryNumber(rect.left), top: geometryNumber(rect.top),
+          right: geometryNumber(rect.right), bottom: geometryNumber(rect.bottom),
+        },
+      })).sort((left, right) => left.kind.localeCompare(right.kind)
+        || left.identity.localeCompare(right.identity)
+        || left.rect.left - right.rect.left || left.rect.top - right.rect.top);
       const anchorGeometry = actualRect && actualRect.width > 0 && actualRect.height > 0
-        ? [geometryNumber(actualRect.left), geometryNumber(actualRect.top), geometryNumber(actualRect.width), geometryNumber(actualRect.height)]
+        ? {
+          left: geometryNumber(actualRect.left), top: geometryNumber(actualRect.top),
+          right: geometryNumber(actualRect.right), bottom: geometryNumber(actualRect.bottom),
+        }
         : null;
-      currentGeometryIdentity = JSON.stringify([
-        geometryKey,
-        geometryNumber(viewportLeft), geometryNumber(viewportTop), geometryNumber(viewportRight), geometryNumber(viewportBottom),
-        geometryNumber(tableRect.left), geometryNumber(tableRect.top), geometryNumber(tableRect.width), geometryNumber(tableRect.height),
-        playerAnchorGeometry, anchorGeometry, protectedGeometry,
-      ]);
+      currentGeometryIdentity = publicAnnouncementGeometryIdentity({
+        viewerKey: geometryKey,
+        layoutRevision: `${viewerLayoutKey}:${layoutEpoch}`,
+        viewport: {
+          left: geometryNumber(viewportLeft), top: geometryNumber(viewportTop),
+          right: geometryNumber(viewportRight), bottom: geometryNumber(viewportBottom),
+        },
+        table: {
+          left: geometryNumber(tableRect.left), top: geometryNumber(tableRect.top),
+          right: geometryNumber(tableRect.right), bottom: geometryNumber(tableRect.bottom),
+        },
+        seats: playerAnchorGeometry,
+        anchor: anchorGeometry,
+        protectedRects: protectedGeometry,
+      });
+      setData("data-public-card-announcement-geometry-key", currentGeometryIdentity);
       const bandKey = `${currentGeometryIdentity}:${viewerLayoutKey}:${placementKey}:${layoutEpoch}`;
       if (!ignoreJourneyLayoutPending && display.dataset.publicCardLayoutPending === "true") {
         if (!retainLastValidPlacement(layoutEpoch) && copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
@@ -2153,7 +2186,7 @@ function PublicCardAnnouncement({
         : isLargeRevealAnchor ? toCardRect(actualRect) : null;
       if (centerCardRect) measuredCenterRef.current = { bandKey, rect: centerCardRect };
       if (!centerCardRect && measuredCenterRef.current?.bandKey === bandKey) centerCardRect = measuredCenterRef.current.rect;
-      if (!centerCardRect && stableFallbackCardRect) centerCardRect = stableFallbackCardRect;
+      if (!centerCardRect && currentFallbackCardRect) centerCardRect = currentFallbackCardRect;
       if (!centerCardRect) {
         centerCardRect = {
           left: tableRect.left + tableRect.width / 2,
@@ -2616,6 +2649,7 @@ function PublicCardAnnouncement({
         place();
       });
     };
+    schedulePlacementRef.current = schedule;
     const anchor = getAnchor();
     anchorObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
     if (anchor) anchorObserver?.observe(anchor, { attributes: true, attributeFilter: ["style", "data-harvest-root-parked"] });
@@ -2623,7 +2657,7 @@ function PublicCardAnnouncement({
     if (harvestStage) anchorObserver?.observe(harvestStage, { attributes: true, attributeFilter: ["style"], childList: stableHarvestAnchor, subtree: stableHarvestAnchor });
     anchorObserver?.observe(display, { attributes: true, attributeFilter: ["data-public-card-layout-pending"] });
     const onResize = schedule;
-    place();
+    schedule();
     window.addEventListener("resize", onResize);
     const viewport = window.visualViewport;
     viewport?.addEventListener("resize", onResize);
@@ -2658,6 +2692,7 @@ function PublicCardAnnouncement({
 
     return () => {
       if (placementGeneration === placementGenerationRef.current) placementGenerationRef.current += 1;
+      if (schedulePlacementRef.current === schedule) schedulePlacementRef.current = null;
       window.removeEventListener("resize", onResize);
       viewport?.removeEventListener("resize", onResize);
       viewport?.removeEventListener("scroll", onResize);
@@ -2667,7 +2702,25 @@ function PublicCardAnnouncement({
       anchorObserver?.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [accessibleLabel, anchorEventId, compactMessage, compactSupportingMessage, copyLifecycleStage, eventCopyKey, eventId, geometryKey, hasNegationNarration, heading, ignoreJourneyLayoutPending, keepCenterAnchorClear, message, narrationAccessibleLabel, narrationCheckpointId, narrationEventId, narrationLatestCommittedEventId, narrationPhase, narrationRootEffectState, negationWaiting, outcome, phase, placementKey, preferredVerticalMode, privateDrawAware, stableCenterAnchor, stableFallbackCardRect, stableHarvestAnchor, supportingMessage, viewerLayoutKey]);
+  }, [anchorEventId, eventId, geometryKey, privateDrawAware, stableHarvestAnchor]);
+
+  useLayoutEffect(() => {
+    latestInputsRef.current = latestInputs;
+  });
+
+  useLayoutEffect(() => {
+    const inputs = latestInputsRef.current;
+    const lifecycle = transitionPublicAnnouncementCopyLifecycle(copyLifecycleRef.current, {
+      eventCopyKey: inputs.eventCopyKey,
+      stage: inputs.copyLifecycleStage,
+    });
+    copyLifecycleRef.current = lifecycle;
+    const copy = copyRef.current;
+    if (copy && copy.dataset.publicCardAnnouncementLifecycle !== lifecycle.stage) {
+      copy.dataset.publicCardAnnouncementLifecycle = lifecycle.stage;
+    }
+    schedulePlacementRef.current?.();
+  }, [placementInputKey]);
 
   return <div
     ref={copyRef}

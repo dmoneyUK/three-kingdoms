@@ -5,6 +5,7 @@ import { publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../a
 import {
   canClearPublicJourneyOwnership,
   publicAnnouncementEventCopyKey,
+  publicAnnouncementGeometryIdentity,
   publicAnnouncementGeometryKey,
   selectPublicAnnouncementCandidate,
   transitionPublicAnnouncementCopyLifecycle,
@@ -63,6 +64,41 @@ test("announcement copy identity is viewer-independent while geometry identity i
   assert.equal(publicAnnouncementEventCopyKey(identity), publicAnnouncementEventCopyKey(identity));
   assert.notEqual(publicAnnouncementGeometryKey("ROOM", "player-1"), publicAnnouncementGeometryKey("ROOM", "player-2"));
   assert.notEqual(publicAnnouncementEventCopyKey(identity), publicAnnouncementEventCopyKey({ ...identity, checkpointEventId: "response-2", proofEventId: "response-2" }));
+});
+
+test("measured announcement geometry identity is stable per viewer and invalidates on layout changes", () => {
+  const base = {
+    viewerKey: publicAnnouncementGeometryKey("ROOM", "viewer-1"),
+    layoutRevision: "viewer-1:0:144:384:768",
+    viewport: { left: 0, top: 0, right: 390, bottom: 844 },
+    table: { left: 8, top: 148, right: 382, bottom: 780 },
+    seats: [
+      { anchorId: "viewer-2", rect: { left: 12, top: 160, right: 128, bottom: 272 } },
+      { anchorId: "viewer-1", rect: { left: 140, top: 160, right: 250, bottom: 272 } },
+    ],
+    anchor: { left: 164, top: 404, right: 226, bottom: 496 },
+    protectedRects: [
+      { kind: "visible-countdown", identity: "", rect: { left: 300, top: 712, right: 370, bottom: 760 } },
+    ],
+  };
+  const identity = publicAnnouncementGeometryIdentity(base);
+  assert.equal(publicAnnouncementGeometryIdentity({ ...base, seats: [...base.seats].reverse() }), identity);
+  assert.notEqual(publicAnnouncementGeometryIdentity({
+    ...base,
+    viewerKey: publicAnnouncementGeometryKey("ROOM", "viewer-2"),
+  }), identity);
+  assert.notEqual(publicAnnouncementGeometryIdentity({
+    ...base,
+    layoutRevision: "viewer-1:0:144:384:720",
+  }), identity);
+  assert.notEqual(publicAnnouncementGeometryIdentity({
+    ...base,
+    viewport: { ...base.viewport, bottom: 700 },
+  }), identity);
+  assert.notEqual(publicAnnouncementGeometryIdentity({
+    ...base,
+    protectedRects: [{ ...base.protectedRects[0], rect: { ...base.protectedRects[0].rect, top: 690 } }],
+  }), identity);
 });
 
 test("announcement copy lifecycle advances UNSEEN to ACTIVE to READING to RETIRED without regression", () => {

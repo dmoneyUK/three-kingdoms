@@ -75,6 +75,62 @@ export function publicAnnouncementGeometryKey(roomCode: string, viewerId: string
   return JSON.stringify([roomCode, viewerId]);
 }
 
+export type PublicAnnouncementRect = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+};
+
+export type PublicAnnouncementSeatGeometry = {
+  anchorId: string;
+  rect: PublicAnnouncementRect;
+};
+
+export type PublicAnnouncementProtectedGeometry = {
+  kind: string;
+  identity: string;
+  rect: PublicAnnouncementRect;
+};
+
+/**
+ * Identifies the current viewer's measured layout, not just its viewer ID.
+ * Equivalent measurements are stable; a viewport, table, seat, anchor, or
+ * protected-obstacle change invalidates any cached announcement placement.
+ */
+export function publicAnnouncementGeometryIdentity(input: {
+  viewerKey: string;
+  layoutRevision: string;
+  viewport: PublicAnnouncementRect;
+  table: PublicAnnouncementRect;
+  seats: readonly PublicAnnouncementSeatGeometry[];
+  anchor: PublicAnnouncementRect | null;
+  protectedRects: readonly PublicAnnouncementProtectedGeometry[];
+}): string {
+  if (!input.viewerKey.trim()) return "";
+  const rectKey = (rect: PublicAnnouncementRect | null) => rect
+    ? [rect.left, rect.top, rect.right, rect.bottom]
+    : null;
+  const seats = [...input.seats]
+    .sort((left, right) => left.anchorId.localeCompare(right.anchorId)
+      || JSON.stringify(rectKey(left.rect)).localeCompare(JSON.stringify(rectKey(right.rect))))
+    .map(({ anchorId, rect }) => [anchorId, rectKey(rect)]);
+  const protectedRects = [...input.protectedRects]
+    .sort((left, right) => left.kind.localeCompare(right.kind)
+      || left.identity.localeCompare(right.identity)
+      || JSON.stringify(rectKey(left.rect)).localeCompare(JSON.stringify(rectKey(right.rect))))
+    .map(({ kind, identity, rect }) => [kind, identity, rectKey(rect)]);
+  return JSON.stringify({
+    viewerKey: input.viewerKey,
+    layoutRevision: input.layoutRevision,
+    viewport: rectKey(input.viewport),
+    table: rectKey(input.table),
+    seats,
+    anchor: rectKey(input.anchor),
+    protectedRects,
+  });
+}
+
 export function canClearPublicJourneyOwnership(current: {
   roomCode: string;
   viewerId: string;
