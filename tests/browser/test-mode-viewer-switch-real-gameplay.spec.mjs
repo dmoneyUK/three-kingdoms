@@ -1059,6 +1059,7 @@ for (const kind of ["Steal", "Dismantle"]) {
       && event.action === "play" && event.card?.kind === kind);
     expect(material, `the real ${kind} root is present in the public timeline`).toBeTruthy();
     const rootEventId = material.id;
+    const publicCardsByEventId = new Map([[rootEventId, { actorId: source.id, cardId: material.card.id }]]);
     const windowId = room.currentAction?.negationWindowId;
     expect(windowId, "the committed root opens the shared Negation window").toBeTruthy();
     const hold = await request.post(`${API}/__test/negation-window-clock`, { data: { code, windowId, mode: "hold" } });
@@ -1166,9 +1167,9 @@ for (const kind of ["Steal", "Dismantle"]) {
           await expect.poll(readViewerLayout, { timeout: 8_000 }).toMatchObject({
             viewerId,
             layoutViewerId: viewerId,
-            pending: "false",
             positioned: "true",
             visibility: "visible",
+            copyEventId: expectedEventId,
           });
         } catch (error) {
           console.log("W3-F2-R1 viewer layout diagnostic", JSON.stringify(await readViewerLayout()));
@@ -1180,12 +1181,18 @@ for (const kind of ["Steal", "Dismantle"]) {
         expect(JSON.parse(currentGeometryKey).viewerKey).toBe(JSON.stringify([code, viewerId]));
         await expect(page.locator(`[data-public-card-announcement-event-id="${expectedEventId}"]`)).toHaveCount(1);
         await expect(page.locator(`[role="status"][data-public-card-announcement-event-id="${expectedEventId}"]`)).toHaveCount(1);
+        const expectedPublicCard = publicCardsByEventId.get(expectedEventId);
+        expect(expectedPublicCard, `public event ${expectedEventId} has its committed card identity`).toBeTruthy();
+        const publicCard = page.locator(`[data-public-card-journey-event-id="${expectedEventId}"]`);
+        await expect(publicCard).toHaveCount(1);
+        await expect(publicCard).toHaveAttribute("data-public-card-journey-actor-id", expectedPublicCard.actorId);
+        await expect(publicCard).toHaveAttribute("data-public-card-journey-card-id", expectedPublicCard.cardId);
         await page.waitForFunction(({ activeEventId }) => {
           const trace = window.__w3F2R1AnnouncementTrace;
           const tail = trace.states.slice(-10);
           return tail.length === 10 && tail.every((state) => state.visible
             && state.viewerId === state.localViewerId && state.layoutViewerId === state.localViewerId
-            && state.pending === "false" && state.copyEventId === activeEventId && state.activeCopyInstances === 1);
+            && state.copyEventId === activeEventId && state.activeCopyInstances === 1);
         }, { activeEventId: expectedEventId }, { timeout: 3_000 });
         const transitionEnd = await page.evaluate(() => window.__w3F2R1AnnouncementTrace.transitions.length);
         const transitions = await page.evaluate(({ start, end }) => window.__w3F2R1AnnouncementTrace.transitions.slice(start, end), {
@@ -1198,8 +1205,7 @@ for (const kind of ["Steal", "Dismantle"]) {
           const display = [...document.querySelectorAll(".public-card-display[data-public-card-root-event-id]")]
             .find((candidate) => candidate.getAttribute("data-public-card-root-event-id") === window.__w3F2R1RootEventId);
           return Boolean(display?.getAttribute("data-public-card-viewer-id") === expectedViewerId
-            && display.getAttribute("data-public-card-layout-viewer-id") === expectedViewerId
-            && display.getAttribute("data-public-card-layout-pending") === "false");
+            && display.getAttribute("data-public-card-layout-viewer-id") === expectedViewerId);
         }, viewerId), { timeout: 8_000 }).toBe(true);
       }
     };
@@ -1276,6 +1282,7 @@ for (const kind of ["Steal", "Dismantle"]) {
     const firstNegation = await findLegalNegation(windowId, new Set(), [target, source]);
     expect(firstNegation, "a viewer with a server-projected Negation provider and card can answer the root").toBeTruthy();
     const firstNegationCycle = await submitNegationAndSettle(firstNegation.player, firstNegation.cardId, windowId);
+    publicCardsByEventId.set(firstNegationCycle.event.id, { actorId: firstNegation.player.id, cardId: firstNegation.cardId });
     for (const viewerId of [alternate.id, fourth.id, source.id, target.id]) {
       await switchTo(viewerId, "negation", firstNegationCycle.event.id);
     }
@@ -1283,6 +1290,7 @@ for (const kind of ["Steal", "Dismantle"]) {
     const counterNegation = await findLegalNegation(firstNegationCycle.windowId, new Set([firstNegation.cardId]), [source, target]);
     expect(counterNegation, "a different unused physical Negation is server-authorized in the counter window").toBeTruthy();
     const counterNegationCycle = await submitNegationAndSettle(counterNegation.player, counterNegation.cardId, firstNegationCycle.windowId);
+    publicCardsByEventId.set(counterNegationCycle.event.id, { actorId: counterNegation.player.id, cardId: counterNegation.cardId });
     for (const viewerId of [target.id, fourth.id, alternate.id, source.id]) {
       await switchTo(viewerId, "negation", counterNegationCycle.event.id);
     }

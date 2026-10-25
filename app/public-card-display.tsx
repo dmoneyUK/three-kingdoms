@@ -4736,7 +4736,10 @@ function SingleTargetCardJourney({
       stableCenterAnchor={motion?.type === "lust-cost"}
       keepCenterAnchorClear={publicEffectFrameOwnsAnnouncementAnchor}
       stableHarvestAnchor={harvestPoolVisible}
-      ignoreJourneyLayoutPending={harvestPoolVisible}
+      // Public Negation narration has its own safe-positioning pass and is
+      // backed by a committed event. A missing thumbnail parking slot must not
+      // suppress that independent public explanation.
+      ignoreJourneyLayoutPending={harvestPoolVisible || Boolean(negationNarration)}
       preferredVerticalMode={harvestPoolVisible || publicEffectFrameOwnsAnnouncementAnchor ? "above" : motion?.type === "lust-cost" ? "below" : undefined}
     />}
   </section>;
