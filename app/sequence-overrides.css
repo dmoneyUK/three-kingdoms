@@ -6422,6 +6422,21 @@
 /* ST5-1: five-player phone tables keep the existing relative seat mapping,
    while the two physical opponent rows follow the top safe edge. */
 @media (max-width: 520px) {
+  /* H2-G3-F1: keep the safe upper edge seats first, then pack the remaining
+     side seats directly below them instead of stretching rows down the board. */
+  .game-shell .player-board[data-seat-topology="side-column"][data-player-count="6"],
+  .game-shell .player-board[data-seat-topology="side-column"][data-player-count="8"] {
+    grid-template-rows: repeat(var(--seat-row-count), max-content);
+    align-content: start;
+    align-items: start;
+    row-gap: clamp(4px, 1.2vw, 8px);
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"][data-player-count="6"] > .opponent-player-card,
+  .game-shell .player-board[data-seat-topology="side-column"][data-player-count="8"] > .opponent-player-card {
+    align-self: start;
+  }
+
   .game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] {
     grid-template-rows: repeat(2, max-content);
     align-content: start;

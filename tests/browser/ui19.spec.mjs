@@ -2782,6 +2782,19 @@ for (const width of [480, 650, 1440]) {
       expect(result.seats.map(({ relativeIndex, id, side, row }) => ({ relativeIndex, id, side, row }))).toEqual(
         SIDE_COLUMN_MAPPING[count].map(([side, row], index) => ({ relativeIndex: index + 1, id: `p${index + 2}`, side, row }))
       );
+      if (width <= 520 && [6, 8].includes(count)) {
+        const upperSeats = result.seats.filter(({ row }) => row === 1);
+        expect(upperSeats, "use both safe top-edge Seat positions first").toHaveLength(2);
+        expect(Math.min(...upperSeats.map(({ y }) => y)) - result.board.y, "top Seats start at the board's upper edge").toBeLessThanOrEqual(4);
+        for (const side of ["left", "right"]) {
+          const sideSeats = result.seats.filter((seat) => seat.side === side).sort((left, right) => left.row - right.row);
+          for (let index = 1; index < sideSeats.length; index += 1) {
+            const gap = sideSeats[index].y - sideSeats[index - 1].bottom;
+            expect(gap, `${side} Seats use a compact safe gap`).toBeGreaterThanOrEqual(4);
+            expect(gap, `${side} Seats do not retain a stretched grid gap`).toBeLessThanOrEqual(12);
+          }
+        }
+      }
       const left30 = result.board.x + result.board.width * .30;
       const right70 = result.board.x + result.board.width * .70;
       for (const side of ["left", "right"]) {
