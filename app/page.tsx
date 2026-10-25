@@ -1110,6 +1110,77 @@ function verifiedKirinBowEffectFrameForEvent(
     || effectEvent.player !== materialOwner.name || effectEvent.target !== materialOwner.name) return null;
   return { effectEvent, effect, rootEvent, mount, activationOwner, materialOwner };
 }
+type VerifiedYinYangSwordsEffectFrameProof = {
+  effectEvent: CardEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  rootEvent: CardEvent | CardGroupEvent;
+  discardedCard: Card;
+  activationOwner: Player;
+  materialOwner: Player;
+};
+function verifiedYinYangSwordsEffectFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedYinYangSwordsEffectFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const effectEvent = eventMatches.length === 1 && eventMatches[0].type === "card"
+    ? eventMatches[0] : null;
+  if (!effectEvent || effectEvent.presentation === false || effectEvent.privateToPlayerId
+    || effectEvent.action !== "discard" || !effectEvent.resolutionId) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === effectEvent.id
+    && effect.effectId === "yin_yang_swords_attack_targeted" && effect.effectClass === "EFFECT");
+  const rawMatches = (effectEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "yin_yang_swords_attack_targeted" && effect.effectClass === "EFFECT");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const discardedCard = effectEvent.card;
+  const targetId = effect.targetId;
+  const rootEventId = effect.rootEventId;
+  const rootResolutionId = effect.rootResolutionId;
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== effectEvent.id || rawEffect.eventId !== effectEvent.id
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "TARGET_DISCARDED" || rawEffect.outcome !== "TARGET_DISCARDED"
+    || !rootEventId || rootEventId !== rawEffect.rootEventId || rootEventId === effectEvent.id
+    || !rootResolutionId || rootResolutionId !== rawEffect.rootResolutionId
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || material.cardId !== discardedCard.id || rawMaterial.cardId !== discardedCard.id || projectedCard.id !== discardedCard.id
+    || material.ownerId !== targetId || rawMaterial.ownerId !== targetId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+    || projectedCard.kind !== discardedCard.kind || projectedCard.suit !== discardedCard.suit
+    || projectedCard.rank !== discardedCard.rank) return null;
+
+  const rootMatches = timeline.filter((event) => event.id === rootEventId);
+  const rootEvent = rootMatches.length === 1 && (rootMatches[0].type === "card" || rootMatches[0].type === "cards")
+    ? rootMatches[0] : null;
+  if (!rootEvent || rootEvent.presentation === false || rootEvent.privateToPlayerId
+    || !rootEvent.resolutionId || rootEvent.resolutionId !== rootResolutionId || rootEvent.action !== "play") return null;
+
+  const activationOwner = players.find((player) => player.id === effect.activationOwnerId);
+  const materialOwner = players.find((player) => player.id === targetId);
+  const isAttackRoot = rootEvent.type === "card"
+    ? rootEvent.card.kind === "Attack" || rootEvent.playedAs === "attack"
+    : rootEvent.playedAs === "attack" && rootEvent.cards.length === 2
+      && (rootEvent.publicCardEffects ?? []).some((rootEffect) => rootEffect.semantics === "PROVEN"
+        && rootEffect.effectId === "serpent_spear_attack" && rootEffect.effectClass === "CONVERSION"
+        && rootEffect.resultingCardKind === "Attack" && rootEffect.outcome === "AS_ATTACK"
+        && rootEffect.activationOwnerId === activationOwner?.id && rootEffect.targetId === materialOwner?.id);
+  if (!activationOwner?.name || !materialOwner?.name || activationOwner.id === materialOwner.id || !isAttackRoot
+    || rootEvent.player !== activationOwner.name || rootEvent.target !== materialOwner.name
+    || effectEvent.player !== materialOwner.name || effectEvent.target !== materialOwner.name) return null;
+  return { effectEvent, effect, rootEvent, discardedCard, activationOwner, materialOwner };
+}
 function verifiedLustCostFrameForEvent(
   timeline: readonly GameEvent[],
   notices: readonly PresentationSnapshotDiaoChanSkillNotice[],
@@ -6930,11 +7001,54 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
+  const yinYangSwordsEffectFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "yin_yang_swords_attack_targeted"
+      && effect.effectClass === "EFFECT")
+      .flatMap((effect) => {
+        const frame = verifiedYinYangSwordsEffectFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.effectEvent) - room.timeline.indexOf(left.effectEvent))[0] ?? null;
+  })();
+  const yinYangSwordsEffectFrameAction: PublicCardDisplayAction | null = yinYangSwordsEffectFrameCandidate ? {
+    key: ["yin-yang-swords-effect", yinYangSwordsEffectFrameCandidate.effectEvent.id].join(":"),
+    rootEventId: yinYangSwordsEffectFrameCandidate.effectEvent.id,
+    sourceId: yinYangSwordsEffectFrameCandidate.materialOwner.id,
+    targetId: null,
+    cardFace: yinYangSwordsEffectFrameCandidate.discardedCard,
+    cardLabel: "YIN-YANG SWORDS · HAND DISCARD",
+    ariaLabel: yinYangSwordsEffectFrameCandidate.activationOwner.name + " used Yin-Yang Swords against "
+      + yinYangSwordsEffectFrameCandidate.materialOwner.name + ". "
+      + cardDefinition(yinYangSwordsEffectFrameCandidate.discardedCard.kind).name + ", "
+      + yinYangSwordsEffectFrameCandidate.discardedCard.rank + yinYangSwordsEffectFrameCandidate.discardedCard.suit
+      + ", was discarded from the target's Hand; the Attack continues.",
+    publicNotice: yinYangSwordsEffectFrameCandidate.activationOwner.name + " used Yin-Yang Swords. "
+      + yinYangSwordsEffectFrameCandidate.materialOwner.name + " discarded a Hand card; the Attack continues.",
+    publicNoticeCompact: "Yin-Yang Swords: " + yinYangSwordsEffectFrameCandidate.materialOwner.name + " discarded a Hand card.",
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "yin_yang_swords_attack_targeted", yinYangSwordsEffectFrameCandidate.effectEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(yinYangSwordsEffectFrameCandidate.effectEvent.id)
+        ? [] : [yinYangSwordsEffectFrameCandidate.effectEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(yinYangSwordsEffectFrameCandidate.effect, {
+      title: "YIN-YANG SWORDS · TARGET DISCARD",
+      accessibleLabel: yinYangSwordsEffectFrameCandidate.activationOwner.name + " used Yin-Yang Swords against "
+        + yinYangSwordsEffectFrameCandidate.materialOwner.name + ". The target's committed Hand discard was "
+        + cardDefinition(yinYangSwordsEffectFrameCandidate.discardedCard.kind).name + ", "
+        + yinYangSwordsEffectFrameCandidate.discardedCard.rank + yinYangSwordsEffectFrameCandidate.discardedCard.suit
+        + "; the Attack continues.",
+      activationOwnerName: yinYangSwordsEffectFrameCandidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
   const latestHeroPublicCardEffectFrameAction = [
     prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction,
     dauntlessEquipmentEffectFrameAction, betrothmentCostFrameAction,
     equilibriumCostFrameAction, firstAidConversionFrameAction, necromancyJudgementFrameAction,
     stauchnessCostFrameAction, rockCleavingAxeCostFrameAction, kirinBowEffectFrameAction,
+    yinYangSwordsEffectFrameAction,
   ].filter((action): action is PublicCardDisplayAction => action !== null
     && !(action.rootEventId === prodigalHealerCostFrameCandidate?.costEvent.id
       && prodigalHealerAnnouncementLifecycle.status === "superseded"))
