@@ -994,7 +994,7 @@ for (const kind of ["Steal", "Dismantle"]) {
       presetId: "custom",
       expectedRevision: 0,
       handsBySeat: Object.fromEntries(room.players.map((player) => [player.seat,
-        player.id === source.id ? [kind]
+        player.id === source.id ? [kind, "Negation"]
           : player.id === target.id ? ["Negation", "Peach"]
             : ["Dodge"],
       ])),
@@ -1075,7 +1075,7 @@ for (const kind of ["Steal", "Dismantle"]) {
     await expect(rootDisplay.locator('[data-public-card-announcement="true"]')).toHaveCount(1);
     await expect(rootDisplay.locator('[data-public-card-announcement="true"]')).toBeVisible({ timeout: 12_000 });
     await page.evaluate((watchedRootEventId) => {
-      const trace = { active: true, lastVisible: null, transitions: [], states: [] };
+      const trace = { active: true, lastVisible: null, expectedEventId: watchedRootEventId, transitions: [], states: [] };
       const sample = () => {
         if (!trace.active) return;
         const display = document.querySelector(`.public-card-display[data-public-card-root-event-id="${watchedRootEventId}"]`);
@@ -1085,7 +1085,7 @@ for (const kind of ["Steal", "Dismantle"]) {
         const localViewerId = document.querySelector(".local-player-dock")?.getAttribute("data-player-anchor") ?? null;
         const viewerId = display?.getAttribute("data-public-card-viewer-id") ?? null;
         const layoutViewerId = display?.getAttribute("data-public-card-layout-viewer-id") ?? null;
-        const rootCopyInstances = document.querySelectorAll(`[data-public-card-announcement-event-id="${watchedRootEventId}"]`).length;
+        const activeCopyInstances = document.querySelectorAll(`[data-public-card-announcement-event-id="${trace.expectedEventId}"]`).length;
         const visible = Boolean(copy && style && rect && copy.dataset.publicCardAnnouncementPositioned === "true"
           && style.display !== "none" && style.visibility === "visible" && Number(style.opacity) > 0
           && rect.width > 0 && rect.height > 0);
@@ -1095,7 +1095,7 @@ for (const kind of ["Steal", "Dismantle"]) {
           copyEventId: copy?.getAttribute("data-public-card-announcement-event-id") ?? null,
           copyKey: copy?.getAttribute("data-public-card-announcement-copy-key") ?? null,
           geometryKey: copy?.getAttribute("data-public-card-announcement-geometry-key") ?? null,
-          rootCopyInstances,
+          activeCopyInstances,
           rect: rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null,
         };
         if (trace.lastVisible !== visible && trace.transitions.length < 120) trace.transitions.push(state);
@@ -1111,7 +1111,8 @@ for (const kind of ["Steal", "Dismantle"]) {
     await expect.poll(() => page.evaluate(() => window.__w3F2R1AnnouncementTrace.states.length > 10)).toBe(true);
     await page.evaluate(() => window.__w3F2R1AnnouncementTrace.clearTransitions());
 
-    const switchTo = async (viewerId, phase = "negation") => {
+    const switchTo = async (viewerId, phase = "negation", expectedEventId = rootEventId) => {
+      await page.evaluate((eventId) => { window.__w3F2R1AnnouncementTrace.expectedEventId = eventId; }, expectedEventId);
       const currentViewerId = await page.locator(".local-player-dock").getAttribute("data-player-anchor");
       if (currentViewerId === viewerId) return;
       const previousGeometryKey = await page.evaluate((watchedRootEventId) => {
@@ -1123,30 +1124,69 @@ for (const kind of ["Steal", "Dismantle"]) {
       await page.getByTestId(`test-view-switch-${viewerId}`).click();
       await expect(page.locator(`.local-player-dock[data-player-anchor="${viewerId}"]`)).toBeVisible({ timeout: 8_000 });
       if (phase === "negation") {
-        await expect.poll(() => page.evaluate((expectedViewerId) => {
-        const display = [...document.querySelectorAll(".public-card-display[data-public-card-root-event-id]")]
-          .find((candidate) => candidate.getAttribute("data-public-card-root-event-id") === window.__w3F2R1RootEventId);
-        const copy = display?.querySelector('[data-public-card-announcement="true"]');
-        const style = copy ? getComputedStyle(copy) : null;
-        return Boolean(display?.getAttribute("data-public-card-viewer-id") === expectedViewerId
-          && display.getAttribute("data-public-card-layout-viewer-id") === expectedViewerId
-          && display.getAttribute("data-public-card-layout-pending") === "false"
-          && copy?.dataset.publicCardAnnouncementPositioned === "true"
-          && style?.visibility === "visible" && Number(style.opacity) > 0);
-        }, viewerId), { timeout: 8_000 }).toBe(true);
+        const readViewerLayout = () => page.evaluate((expectedViewerId) => {
+          const display = [...document.querySelectorAll(".public-card-display[data-public-card-root-event-id]")]
+            .find((candidate) => candidate.getAttribute("data-public-card-root-event-id") === window.__w3F2R1RootEventId);
+          const copy = display?.querySelector('[data-public-card-announcement="true"]');
+          const style = copy ? getComputedStyle(copy) : null;
+          const cards = [...(display?.querySelectorAll("[data-public-card-journey-event-id]") ?? [])].map((card) => {
+            const rect = card.getBoundingClientRect();
+            const cardStyle = getComputedStyle(card);
+            return {
+              eventId: card.getAttribute("data-public-card-journey-event-id"),
+              actorId: card.getAttribute("data-public-card-journey-actor-id"),
+              phase: card.getAttribute("data-public-card-journey-phase"),
+              layoutPending: card.getAttribute("data-public-card-journey-layout-pending"),
+              layoutChangeReason: card.getAttribute("data-public-card-journey-layout-reason"),
+              visibility: cardStyle.visibility,
+              rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+            };
+          });
+          return {
+            viewerId: display?.getAttribute("data-public-card-viewer-id") ?? null,
+            layoutViewerId: display?.getAttribute("data-public-card-layout-viewer-id") ?? null,
+            pending: display?.getAttribute("data-public-card-layout-pending") ?? null,
+            positioned: copy?.dataset.publicCardAnnouncementPositioned ?? null,
+            visibility: style?.visibility ?? null,
+            opacity: style?.opacity ?? null,
+            copyEventId: copy?.getAttribute("data-public-card-announcement-event-id") ?? null,
+            fallback: copy?.getAttribute("data-public-card-announcement-fallback") ?? null,
+            stability: copy?.getAttribute("data-public-card-announcement-stability") ?? null,
+            placement: copy?.getAttribute("data-public-card-announcement-placement") ?? null,
+            width: copy?.getAttribute("data-public-card-announcement-width") ?? null,
+            message: copy?.textContent?.trim() ?? null,
+            copyRect: (() => {
+              const rect = copy?.getBoundingClientRect();
+              return rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
+            })(),
+            cards,
+          };
+        }, viewerId);
+        try {
+          await expect.poll(readViewerLayout, { timeout: 8_000 }).toMatchObject({
+            viewerId,
+            layoutViewerId: viewerId,
+            pending: "false",
+            positioned: "true",
+            visibility: "visible",
+          });
+        } catch (error) {
+          console.log("W3-F2-R1 viewer layout diagnostic", JSON.stringify(await readViewerLayout()));
+          throw error;
+        }
         const currentGeometryKey = await rootDisplay.locator('[data-public-card-announcement="true"]')
           .getAttribute("data-public-card-announcement-geometry-key");
         if (previousGeometryKey) expect(currentGeometryKey).not.toBe(previousGeometryKey);
         expect(JSON.parse(currentGeometryKey).viewerKey).toBe(JSON.stringify([code, viewerId]));
-        await expect(page.locator(`[data-public-card-announcement-event-id="${rootEventId}"]`)).toHaveCount(1);
-        await expect(page.locator(`[role="status"][data-public-card-announcement-event-id="${rootEventId}"]`)).toHaveCount(1);
-        await page.waitForFunction(() => {
+        await expect(page.locator(`[data-public-card-announcement-event-id="${expectedEventId}"]`)).toHaveCount(1);
+        await expect(page.locator(`[role="status"][data-public-card-announcement-event-id="${expectedEventId}"]`)).toHaveCount(1);
+        await page.waitForFunction(({ activeEventId }) => {
           const trace = window.__w3F2R1AnnouncementTrace;
           const tail = trace.states.slice(-10);
           return tail.length === 10 && tail.every((state) => state.visible
             && state.viewerId === state.localViewerId && state.layoutViewerId === state.localViewerId
-            && state.pending === "false" && state.rootCopyInstances === 1);
-        }, undefined, { timeout: 3_000 });
+            && state.pending === "false" && state.copyEventId === activeEventId && state.activeCopyInstances === 1);
+        }, { activeEventId: expectedEventId }, { timeout: 3_000 });
         const transitionEnd = await page.evaluate(() => window.__w3F2R1AnnouncementTrace.transitions.length);
         const transitions = await page.evaluate(({ start, end }) => window.__w3F2R1AnnouncementTrace.transitions.slice(start, end), {
           start: transitionStart, end: transitionEnd,
@@ -1172,6 +1212,83 @@ for (const kind of ["Steal", "Dismantle"]) {
     const negationTrace = await page.evaluate(() => ({ transitions: window.__w3F2R1AnnouncementTrace.transitions, states: window.__w3F2R1AnnouncementTrace.states }));
     expect(negationTrace.states.some((state) => state.visible), JSON.stringify(negationTrace.states.slice(-100))).toBe(true);
 
+    const submitNegationAndSettle = async (actor, cardId, windowId) => {
+      const actorView = await readView(actor.id);
+      expect(actorView.currentAction).toMatchObject({ kind: "response", actorId: actor.id, negationWindowId: windowId });
+      const privateIntent = await request.post(`${API}/api/rooms`, {
+        data: {
+          action: "respond", code, token, providerId: "negation_card", cardId,
+          context: {
+            actionRevision: actorView.actionRevision, meId: actor.id, phase: actorView.phase,
+            pendingKind: actorView.pending?.kind ?? null, windowId,
+          },
+        },
+      });
+      const privateIntentText = await privateIntent.text();
+      expect(privateIntent.ok(), `${actor.name} can submit the legal Negation: ${privateIntentText}`).toBe(true);
+      for (const player of room.players) {
+        if (player.id === actor.id) continue;
+        const passView = await readView(player.id);
+        const passed = await request.post(`${API}/api/rooms`, {
+          data: {
+            action: "decline_response", code, token,
+            context: {
+              actionRevision: passView.actionRevision, meId: player.id, phase: "response",
+              pendingKind: "response", windowId,
+            },
+          },
+        });
+        const passedText = await passed.text();
+        expect(passed.ok(), `${player.name} passes the Negation window: ${passedText}`).toBe(true);
+      }
+      const settled = await readView(source.id);
+      const publicEvent = settled.timeline.find((event) => event.type === "card" && event.action === "play" && event.card?.id === cardId);
+      expect(publicEvent, "the submitted Negation becomes public only after the shared window settles").toBeTruthy();
+      expect(publicEvent).toMatchObject({ action: "play", player: actor.name, card: { id: cardId, kind: "Negation" } });
+      const nextWindowId = settled.currentAction?.negationWindowId;
+      expect(nextWindowId, "a committed Negation opens its server-owned counter window").toBeTruthy();
+      await request.post(`${API}/__test/negation-window-clock`, { data: { code, windowId: nextWindowId, mode: "hold" } })
+        .then(async (response) => {
+          expect(response.ok()).toBe(true);
+          expect(await response.json()).toEqual({ adjusted: true });
+        });
+      return { event: publicEvent, windowId: nextWindowId, settled };
+    };
+
+    const findLegalNegation = async (activeWindowId, usedCardIds = new Set(), preferredPlayers = []) => {
+      const orderedPlayers = [
+        ...preferredPlayers,
+        ...room.players.filter((player) => !preferredPlayers.some((preferred) => preferred.id === player.id)),
+      ];
+      for (const player of orderedPlayers) {
+        const view = await readView(player.id);
+        if (view.currentAction?.kind !== "response" || view.currentAction.negationWindowId !== activeWindowId) continue;
+        const provider = view.currentAction.options?.find((option) => option.providerId === "negation_card");
+        if (!provider) continue;
+        const eligibleIds = provider.selection?.eligibleCardIds;
+        const held = view.myHand.find((candidate) => candidate.kind === "Negation"
+          && !usedCardIds.has(candidate.id) && (!eligibleIds?.length || eligibleIds.includes(candidate.id)));
+        if (held) return { player, cardId: held.id, view };
+      }
+      return null;
+    };
+
+    const firstNegation = await findLegalNegation(windowId, new Set(), [target, source]);
+    expect(firstNegation, "a viewer with a server-projected Negation provider and card can answer the root").toBeTruthy();
+    const firstNegationCycle = await submitNegationAndSettle(firstNegation.player, firstNegation.cardId, windowId);
+    for (const viewerId of [alternate.id, fourth.id, source.id, target.id]) {
+      await switchTo(viewerId, "negation", firstNegationCycle.event.id);
+    }
+
+    const counterNegation = await findLegalNegation(firstNegationCycle.windowId, new Set([firstNegation.cardId]), [source, target]);
+    expect(counterNegation, "a different unused physical Negation is server-authorized in the counter window").toBeTruthy();
+    const counterNegationCycle = await submitNegationAndSettle(counterNegation.player, counterNegation.cardId, firstNegationCycle.windowId);
+    for (const viewerId of [target.id, fourth.id, alternate.id, source.id]) {
+      await switchTo(viewerId, "negation", counterNegationCycle.event.id);
+    }
+    expect(counterNegationCycle.settled.timeline.some((event) => event.type === "card" && event.card?.id === firstNegation.cardId)).toBe(true);
+    expect(counterNegationCycle.settled.timeline.some((event) => event.type === "card" && event.card?.id === counterNegation.cardId)).toBe(true);
+
     let current = await readView(source.id);
     for (const player of current.players.filter((candidate) => candidate.alive)) {
       current = await readView(player.id);
@@ -1186,13 +1303,15 @@ for (const kind of ["Steal", "Dismantle"]) {
     }
     current = await readView(source.id);
     expect(current.currentAction).toMatchObject({ kind: "target_card", actorId: source.id });
+    const activeNegationEvent = [...current.timeline].reverse().find((event) => event.type === "card" && event.card?.kind === "Negation");
+    expect(activeNegationEvent).toBeTruthy();
     const targetPrivateIds = (await readView(target.id)).myHand.map((held) => held.id);
-    await switchTo(source.id, "target-card");
+    await switchTo(source.id, "target-card", activeNegationEvent.id);
     const pool = page.locator(".card-pool-panel--actor-target-select");
     await expect(pool).toBeVisible({ timeout: 8_000 });
     const title = kind === "Steal" ? "Steal" : "Burning Bridge";
     for (const viewerId of [target.id, source.id, alternate.id, source.id, fourth.id, source.id]) {
-      await switchTo(viewerId, "target-card");
+      await switchTo(viewerId, "target-card", activeNegationEvent.id);
       if (viewerId === source.id) {
         await expect(pool).toBeVisible();
         await expect(page.locator(".public-card-display-journey-copy")).toHaveCount(0);
@@ -1204,10 +1323,10 @@ for (const kind of ["Steal", "Dismantle"]) {
         }
       } else {
         await expect(pool).toHaveCount(0);
-        await expect(rootDisplay.locator('[data-public-card-announcement="true"]')).toHaveCount(1);
-        await expect(rootDisplay.locator('[data-public-card-announcement="true"]')).toBeVisible();
-        await expect(page.locator(`[data-public-card-announcement-event-id="${rootEventId}"]`)).toHaveCount(1);
-        await expect(page.locator(`[role="status"][data-public-card-announcement-event-id="${rootEventId}"]`)).toHaveCount(1);
+        await expect(rootDisplay.locator(`[data-public-card-announcement-event-id="${activeNegationEvent.id}"]`)).toHaveCount(1);
+        await expect(rootDisplay.locator(`[data-public-card-announcement-event-id="${activeNegationEvent.id}"]`)).toBeVisible();
+        await expect(page.locator(`[data-public-card-announcement-event-id="${activeNegationEvent.id}"]`)).toHaveCount(1);
+        await expect(page.locator(`[role="status"][data-public-card-announcement-event-id="${activeNegationEvent.id}"]`)).toHaveCount(1);
         const viewerState = await readView(viewerId);
         expect(viewerState.isMyAction).toBe(false);
         expect(viewerState.currentAction?.targetCardSelection).toBeUndefined();

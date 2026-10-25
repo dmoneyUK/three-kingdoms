@@ -1896,6 +1896,7 @@ function PublicCardAnnouncement({
   const lastValidPlacementRef = useRef<{
     geometryIdentity: string;
     layoutEpoch: string;
+    viewerLayoutKey: string;
     left: number;
     top: number;
     width: number;
@@ -2429,10 +2430,15 @@ function PublicCardAnnouncement({
         }
       }
 
-      if (!selected && stableCenterAnchor) {
+      const canReflowNegationBand = hasNegationNarration
+        && (!lastValidPlacementRef.current
+          || lastValidPlacementRef.current.viewerLayoutKey !== viewerLayoutKey
+          || lastValidPlacementRef.current.layoutEpoch !== layoutEpoch);
+      if (!selected && (stableCenterAnchor || canReflowNegationBand)) {
         // Keep the previous H4 position and preferred side when either fits.
-        // A viewer's parked cards can close that old gap; search both safe
-        // sides of the stable center card before hiding the public result.
+        // If a TEST SWITCH or material table resize invalidates that baseline,
+        // search the current viewer's safe area on both sides of the center
+        // card. Protected Seat, Dock, Hand and control rects still apply.
         for (const option of announcementOptions) {
           if (textElement) textElement.textContent = option.message;
           if (supportElement) supportElement.textContent = option.supporting;
@@ -2633,6 +2639,7 @@ function PublicCardAnnouncement({
       lastValidPlacementRef.current = {
         geometryIdentity: currentGeometryIdentity,
         layoutEpoch,
+        viewerLayoutKey,
         left: selected.left,
         top: selected.top,
         width: selected.width,
