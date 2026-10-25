@@ -249,6 +249,8 @@ type JourneyCard = {
   moveStartedAtMs?: number | null;
   moveRemainingMs?: number;
   awaitingParkingTarget?: boolean;
+  /** Viewer whose geometry last proved this card's author parking slot. */
+  parkingTargetViewerId?: string;
   layoutChangeReason?: string;
   /** Keep one unresolved actor placement from hiding unrelated public cards. */
   layoutPending?: boolean;
@@ -275,6 +277,8 @@ const MAX_RETAINED_ATTACK_DODGE_JOURNEYS = 256;
 function PublicJourneyCard({
   card,
   parkingTargetKnown = true,
+  preservePendingParking = false,
+  authorReservation,
   className = "",
   size,
   primary = false,
@@ -290,6 +294,8 @@ function PublicJourneyCard({
 }: {
   card: JourneyCard;
   parkingTargetKnown?: boolean;
+  preservePendingParking?: boolean;
+  authorReservation?: CardRect | null;
   className?: string;
   size: string;
   primary?: boolean;
@@ -303,7 +309,7 @@ function PublicJourneyCard({
   publicCardEffectFrame?: PublicCardEffectFrameView;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
-  const placementUnavailable = !parkingTargetKnown && card.phase === "parked";
+  const placementUnavailable = !parkingTargetKnown && card.phase === "parked" && !preservePendingParking;
   const inspectable = !placementUnavailable && !passive && card.phase === "parked" && Boolean(onInspectCard);
   const publicFrameAccessible = !placementUnavailable && Boolean(publicCardEffectFrame && card.phase !== "move");
   const frameMaterials = publicCardEffectFrame?.materials ?? [];
@@ -343,6 +349,12 @@ function PublicJourneyCard({
     data-public-card-journey-card-id={card.cardFace.id}
     data-public-card-journey-card-ids={(card.cardFaces ?? [card.cardFace]).map((face) => face.id).join(",")}
     data-public-card-journey-role={card.role}
+    data-public-card-journey-preserve-authentic-position={preservePendingParking ? "true" : undefined}
+    data-public-card-journey-author-reservation={authorReservation ? "true" : undefined}
+    data-public-card-journey-author-reservation-left={authorReservation?.left}
+    data-public-card-journey-author-reservation-top={authorReservation?.top}
+    data-public-card-journey-author-reservation-width={authorReservation?.width}
+    data-public-card-journey-author-reservation-height={authorReservation?.height}
     data-public-card-harvest-history-parked={harvestHistory && card.phase === "parked" ? "true" : undefined}
     data-public-card-compact-response={(harvestHistory || card.role === "response") && card.rect.width < PARKED_CARD.width ? "true" : undefined}
     data-harvest-root-parked={harvestRootParked ? "true" : undefined}
@@ -770,7 +782,10 @@ function seatHistoryParkingProtectedSelectors(options: SeatHistoryCardParkingOpt
     ".local-judgement-cards",
     ".local-dock-zones", ".local-status-panel", ".local-equipment-panel", ".local-hand-section",
     ".local-hand-rail [data-hand-card-id]", ".local-hand-rail button", ".turn-controls", ".turn-controls button",
-    ...(options.protectSingleTargetControls ? [".opponent-inspection-floating-shell", ".card-pool-panel", ".target-card-picker-panel"] : []),
+    // The picker stage measures the real root/author reservation and moves
+    // itself around that geometry. Making the author solver also avoid the
+    // panel creates a two-way layout dependency and can invalidate both slots.
+    ...(options.protectSingleTargetControls ? [".opponent-inspection-floating-shell", ".target-card-picker-panel"] : []),
     ...(options.allowHarvestPoolOverlap ? [
       // The panel itself is a soft overlay for a parked Harvest history mini.
       // Keep the real choice faces and their Info/selection controls as hard
@@ -3864,8 +3879,10 @@ function SingleTargetCardJourney({
             ? actorParkedCard(event.actorId, actorIndex, event.actorId === viewerId)
             : null));
       const parkedSize = parkingOptions.cardSize ?? PARKED_CARD;
-      const fallbackRect = old?.target ?? center;
-      const target = measuredTarget ?? { left: fallbackRect.left, top: fallbackRect.top, ...parkedSize };
+      // Retain the last real author target while a same-viewer measurement is
+      // pending. A first-time missing target remains an unproven centre-sized
+      // placeholder and is never treated as a valid parked position.
+      const target = measuredTarget ?? old?.target ?? { left: center.left, top: center.top, ...parkedSize };
       if (measuredTarget) {
         parkingFailureSignaturesRef.current.delete(`${viewerIdRef.current}:${event.eventId}`);
         measuredTargetEventIds.add(event.eventId);
@@ -3898,6 +3915,7 @@ function SingleTargetCardJourney({
             moveStartedAtMs: reducedMotion ? null : now,
             moveRemainingMs: reducedMotion ? 0 : MOVE_DURATION_MS,
             awaitingParkingTarget: false,
+            parkingTargetViewerId: viewerId,
             layoutPending: false,
             layoutChangeReason: reducedMotion ? "four-second-reveal-complete-reduced-motion" : "author-parking-anchor-recovered",
           };
@@ -3919,6 +3937,7 @@ function SingleTargetCardJourney({
             revealStartedAtMs: null,
             revealRemainingMs: 0,
             target,
+            parkingTargetViewerId: measuredTarget ? viewerId : old.parkingTargetViewerId,
             layoutPending: !measuredTarget,
             layoutChangeReason: "interrupted-by-new-committed-response",
           };
@@ -3934,6 +3953,7 @@ function SingleTargetCardJourney({
             : old.phase === "move" && !measuredTarget ? renderedJourneyCardRect(old.eventId) ?? old.rect
               : old.phase === "parked" ? target : old.phase === "reveal" ? center : old.rect,
           target,
+          parkingTargetViewerId: measuredTarget ? viewerId : old.parkingTargetViewerId,
           ...(old.phase === "move" && !measuredTarget ? {
             moveStartedAtMs: null,
             moveRemainingMs,
@@ -3959,6 +3979,7 @@ function SingleTargetCardJourney({
           phase,
           rect: phase === "parked" ? target : phase === "reveal" ? center : old.rect,
           target,
+          parkingTargetViewerId: measuredTarget ? viewerId : old.parkingTargetViewerId,
           moveStartedAtMs: phase === "move" && measuredTarget
             ? old.moveStartedAtMs ?? performance.now()
             : phase === "move" ? null : old.moveStartedAtMs,
@@ -3972,6 +3993,7 @@ function SingleTargetCardJourney({
         phase,
         rect: phase === "parked" ? target : center,
         target,
+        parkingTargetViewerId: measuredTarget ? viewerId : undefined,
         revealStartedAtMs: null,
         revealStartedAtIso: null,
         revealElapsedMs: 0,
@@ -4310,6 +4332,7 @@ function SingleTargetCardJourney({
           const reducedMotion = waitingRevealWithTarget && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
           return {
             ...card,
+            parkingTargetViewerId: measuredTarget ? viewerIdRef.current : card.parkingTargetViewerId,
             phase: waitingRevealWithTarget ? reducedMotion ? "parked" as const : "move" as const : card.phase,
             target,
             rect: waitingRevealWithTarget ? target
@@ -4684,10 +4707,22 @@ function SingleTargetCardJourney({
         && responseHistoryEventIds.has(card.eventId)
         && !activeResponseEventIds.has(card.eventId)
         && !responseHistoryOwnershipAcknowledged;
+      const singleTargetRoot = motion?.type === "single-target"
+        && (action.cardKind === "Steal" || action.cardKind === "Dismantle")
+        && card.role === "root"
+        && card.eventId === action.rootEventId
+        && card.actorId === action.sourceId
+        && card.cardFace.id === action.cardFace?.id;
+      const authorReservation = singleTargetRoot && card.parkingTargetViewerId === viewerId
+        ? card.target
+        : null;
       return <PublicJourneyCard
         key={card.eventId}
         card={card}
         parkingTargetKnown={!card.layoutPending}
+        preservePendingParking={Boolean(singleTargetRoot && card.phase === "parked" && card.layoutPending
+          && card.parkingTargetViewerId === viewerId && !viewerLayoutPending)}
+        authorReservation={authorReservation}
         onInspectCard={historyOnly ? undefined : onInspectCard}
         size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
         className={`${isCurrent ? "is-current" : "is-prior"}${responseHistoryOwnerPending ? " is-response-history-owner-pending" : ""}`}

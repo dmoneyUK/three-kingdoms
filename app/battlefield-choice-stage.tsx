@@ -8,7 +8,7 @@ export type BattlefieldChoiceInsets = { left: number; right: number; width?: num
 
 type BattlefieldChoiceStageProps = Omit<ComponentPropsWithoutRef<"div">, "children" | "className" | "style" | "title"> & {
   className: string;
-  mode: "public-readonly" | "actor-select" | "actor-target-select";
+  mode: "public-readonly" | "actor-select" | "actor-target-select" | "target-readonly";
   accessibilityLabel?: string;
   title?: string;
   instruction?: string;
@@ -104,6 +104,8 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
     const observed = new Set<Element>();
     let observer: ResizeObserver | null = null;
     const targetCardSelect = stage.dataset.choiceMode === "actor-target-select";
+    const targetCardReadOnly = stage.dataset.choiceMode === "target-readonly";
+    const authorReservationSelector = ".public-card-journey-card[data-public-card-journey-author-reservation='true']";
     const targetWidthProbe = centralTargetLayout ? document.createElement("div") : null;
     if (targetWidthProbe) {
       targetWidthProbe.style.cssText = "position:absolute;left:-10000px;top:0;height:0;visibility:hidden;pointer-events:none;contain:layout;";
@@ -112,7 +114,10 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
     const protectedSelectors = [
       ".player-board > .opponent-player-card",
       ".public-card-display-journey-copy",
-      ...(targetCardSelect ? [centralTargetLayout ? ".public-card-journey-card" : ".public-card-journey-card.is-current"] : []),
+      ...(targetCardSelect ? [
+        centralTargetLayout ? ".public-card-journey-card" : ".public-card-journey-card.is-current",
+        authorReservationSelector,
+      ] : targetCardReadOnly ? [".public-card-journey-card.is-current", authorReservationSelector] : []),
       ".public-activity-chip",
       "[data-public-activity-chip]",
       ".visible-countdown",
@@ -132,6 +137,17 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
         if (panelRect.width <= 0 || panelRect.height <= 0) return;
 
         const margin = 6;
+        const measureAuthorReservationRects = () => [...table.querySelectorAll<HTMLElement>(authorReservationSelector)]
+          .map((element) => {
+            const left = Number(element.dataset.publicCardJourneyAuthorReservationLeft);
+            const top = Number(element.dataset.publicCardJourneyAuthorReservationTop);
+            const width = Number(element.dataset.publicCardJourneyAuthorReservationWidth);
+            const height = Number(element.dataset.publicCardJourneyAuthorReservationHeight);
+            return [left, top, width, height].every(Number.isFinite) && width > 0 && height > 0
+              ? new DOMRect(left, top, width, height)
+              : null;
+          })
+          .filter((rect): rect is DOMRect => Boolean(rect));
         const mobileCentralTarget = centralTargetLayout && targetCardSelect && window.matchMedia("(max-width: 520px)").matches;
         if (mobileCentralTarget) {
           const board = table.querySelector<HTMLElement>(".player-board");
@@ -186,12 +202,17 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
               return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
                 && panelRect.left < rect.right + margin && panelRect.right > rect.left - margin;
             });
+          // A moving root may still be at centre. Reserve its measured final
+          // author mini as well, so the pool can use the remaining lane without
+          // asking the author-placement solver to dodge the pool in return.
+          const authorReservationRects = measureAuthorReservationRects();
+          const obstacleRects = [...obstacles.map(({ rect }) => rect), ...authorReservationRects];
           const visualViewport = window.visualViewport;
           const viewportBottom = Math.min(window.innerHeight, (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight));
           const safePlacement = {
             table: tableRect,
             panel: panelRect,
-            obstacles: obstacles.map(({ rect }) => rect),
+            obstacles: obstacleRects,
             viewportHeight: viewportBottom,
             margin,
           };
@@ -199,11 +220,14 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
           const mergedCopyFallbackTop = safeTop === null
             ? findBattlefieldChoiceSafeTopOffset({
               ...safePlacement,
-              obstacles: obstacles.filter(({ element }) => !(
+              obstacles: [
+                ...obstacles.filter(({ element }) => !(
                 rootEventId
                 && element.matches(".public-card-journey-card[data-public-card-journey-role='root']")
                 && element.dataset.publicCardJourneyEventId === rootEventId
-              )).map(({ rect }) => rect),
+                )).map(({ rect }) => rect),
+                ...authorReservationRects,
+              ],
             })
             : null;
           const resolvedTop = safeTop ?? mergedCopyFallbackTop;
@@ -272,7 +296,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
         const offset = chooseBattlefieldChoiceTopOffset({
           table: tableRect,
           panel: panelRect,
-          obstacles: obstacles.map(({ rect }) => rect),
+          obstacles: [...obstacles.map(({ rect }) => rect), ...measureAuthorReservationRects()],
           viewportHeight: window.innerHeight,
           margin,
         });

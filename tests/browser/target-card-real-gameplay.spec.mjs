@@ -709,6 +709,78 @@ for (const kind of ["Steal", "Dismantle"]) {
   });
 }
 
+test("T3-F1 R3-B gives the actor an interactive pool and spectators a public read-only pool", async ({ browser, request }) => {
+  test.setTimeout(180_000);
+  for (const kind of ["Steal", "Dismantle"]) {
+    const prefix = `t3-r3-spectator-${kind.toLowerCase()}-${Date.now().toString(36)}`;
+    const material = card(kind, `${prefix}-root`);
+    const hidden = [card("Peach", `${prefix}-hidden-a`), card("Dodge", `${prefix}-hidden-b`)];
+    const shield = card("NioShield", `${prefix}-shield`);
+    const delayed = card("Lightning", `${prefix}-judgement`);
+    const seed = await seedGame(request, fourPlayers(
+      { hand: [material] },
+      { hand: hidden, equipment: { armor: shield }, judgement: [delayed] },
+    ));
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+    const actorPage = await context.newPage();
+    const spectatorPage = await context.newPage();
+    try {
+      await openGame(actorPage, seed, 0, { width: 390, height: 844 });
+      await playCardThroughPage(actorPage, material.id, "TARGET");
+      await passEmptyResponses(request, seed);
+
+      const actorView = await roomView(request, seed, 0);
+      expect(actorView.currentAction).toMatchObject({ kind: "target_card", actorId: seed.players[0].id });
+      expect(actorView.currentAction.legalActions).toContain("choose_target_card");
+      expect(actorView.currentAction.targetCardSelection.targetId).toBe(seed.players[1].id);
+      const actorTitle = kind === "Steal" ? "Steal" : "Burning Bridge";
+      const actorInstruction = kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
+      const actorPool = await expectTargetPool(actorPage, actorTitle, actorInstruction, `Use ${actorTitle}`);
+      await openGame(spectatorPage, seed, 2, { width: 390, height: 844 });
+
+      const spectatorPool = spectatorPage.locator(".card-pool-panel--target-readonly");
+      await expect(spectatorPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
+      await expect(spectatorPool).toBeVisible({ timeout: 8_000 });
+      await expect(spectatorPool).toHaveAttribute("data-target-card-pool-readonly", "true");
+      await expect(spectatorPool.locator(".card-pool-panel__title")).toContainText(kind === "Steal" ? "STEAL · SOURCE → TARGET" : "BURNING BRIDGES · SOURCE → TARGET");
+      await expect(spectatorPool.locator(".card-pool-panel__instruction")).toHaveText(kind === "Steal"
+        ? "SOURCE is choosing a card from TARGET"
+        : "SOURCE is choosing a card to discard from TARGET");
+      await expect(spectatorPool.locator('[data-target-card-public-zone="hand"]')).toContainText("HAND · 2");
+      await expect(spectatorPool.locator('[data-target-card-public-zone="hand"] .card-pool-panel__target-public-back')).toHaveCount(2);
+      await expect(spectatorPool.locator('[data-target-card-public-zone="equipment"]')).toContainText("Nio Shield");
+      await expect(spectatorPool.locator('[data-target-card-public-zone="judgement"]')).toContainText("Lightning");
+      await expect(spectatorPool.locator("button, [tabindex]")).toHaveCount(0);
+      expect(await spectatorPage.locator(".card-pool-target-stage--spectator").evaluate((stage) => getComputedStyle(stage).pointerEvents)).toBe("none");
+
+      const spectatorView = await roomView(request, seed, 2);
+      expect(spectatorView.currentAction?.targetCardSelection).toBeUndefined();
+      const spectatorMarkup = await spectatorPage.locator("body").innerHTML();
+      for (const concealed of hidden) {
+        expect(JSON.stringify(spectatorView)).not.toContain(concealed.id);
+        expect(spectatorMarkup).not.toContain(concealed.id);
+      }
+      expect(spectatorMarkup).not.toMatch(/hand:[0-9]+|eligibleKeys|opaqueKey/i);
+
+      const hiddenChoice = actorPool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
+      await tapMobile(actorPage, hiddenChoice);
+      await expect(hiddenChoice).toHaveAttribute("aria-pressed", "true");
+      await expect(spectatorPool.locator(".is-selected, .pending-choice, [aria-pressed='true']")).toHaveCount(0);
+      const submit = actorPage.waitForResponse((response) => {
+        if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+        try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+        catch { return false; }
+      });
+      await tapMobile(actorPage, actorPool.getByRole("button", { name: `Use ${actorTitle}`, exact: true }));
+      expect((await submit).ok()).toBe(true);
+      await expect(spectatorPage.locator(".card-pool-panel--target-readonly")).toHaveCount(0, { timeout: 8_000 });
+      expect((await roomView(request, seed, 2)).pendingTargetCard).toBeNull();
+    } finally {
+      await context.close();
+    }
+  }
+});
+
 for (const kind of ["Steal", "Dismantle"]) {
   test(`real ${kind} target choice has identical private-safe progress on four independent mobile views`, async ({ browser, request }, testInfo) => {
     test.setTimeout(90_000);
@@ -1125,7 +1197,7 @@ test("T3-F1 keeps the authentic Steal and Burning Bridges root at its author acr
   }
 });
 
-test("T3-F1 R2 keeps the local Steal root journey through same-layout callbacks and settlement", async ({ browser, request }) => {
+test("T3-F1 R3-A keeps the local Steal root visible through actor-pool handoff and settlement", async ({ browser, request }) => {
   test.setTimeout(120_000);
   const steal = card("Steal", "t3-r2-local-steal-root");
   const hidden = card("Peach", "t3-r2-hidden-hand", "♥", "4");
@@ -1156,6 +1228,45 @@ test("T3-F1 R2 keeps the local Steal root journey through same-layout callbacks 
       if (!root) throw new Error("T3-F1 root must be mounted before monitoring its move.");
       window.__t3MovePhases = [];
       window.__t3MoveResizeSample = null;
+      window.__t3HandoffMonitor = {
+        startedAt: performance.now(),
+        frames: 0,
+        firstFailure: null,
+        readyAt: null,
+        timedOut: false,
+      };
+      const sampleHandoff = () => {
+        const monitor = window.__t3HandoffMonitor;
+        if (!monitor || monitor.readyAt !== null || monitor.timedOut) return;
+        const currentRoot = document.querySelector(`[data-public-card-journey-event-id="${eventId}"][data-public-card-journey-role="root"]`);
+        const rect = currentRoot?.getBoundingClientRect();
+        const style = currentRoot ? getComputedStyle(currentRoot) : null;
+        monitor.frames += 1;
+        if (!monitor.firstFailure && (!currentRoot || !rect || rect.width <= 0 || rect.height <= 0
+          || style?.display === "none" || style?.visibility === "hidden" || Number(style?.opacity ?? 0) <= 0)) {
+          monitor.firstFailure = {
+            phase: currentRoot?.getAttribute("data-public-card-journey-phase") ?? null,
+            visibility: style?.visibility ?? null,
+            display: style?.display ?? null,
+            opacity: style?.opacity ?? null,
+            layoutPending: currentRoot?.getAttribute("data-public-card-journey-layout-pending") ?? null,
+            rect: rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null,
+          };
+        }
+        const readyStage = document.querySelector('.card-pool-target-stage[data-target-card-pool-layout="central"][data-target-card-pool-ready="true"]');
+        const pool = readyStage?.querySelector(".card-pool-panel--actor-target-select");
+        const poolStyle = pool ? getComputedStyle(pool) : null;
+        if (pool && poolStyle?.display !== "none" && poolStyle.visibility !== "hidden" && pool.getBoundingClientRect().width > 0) {
+          monitor.readyAt = performance.now();
+          return;
+        }
+        if (performance.now() - monitor.startedAt > 12_000) {
+          monitor.timedOut = true;
+          return;
+        }
+        requestAnimationFrame(sampleHandoff);
+      };
+      requestAnimationFrame(sampleHandoff);
       const observer = new MutationObserver(() => {
         const phase = root.getAttribute("data-public-card-journey-phase");
         if (!phase) return;
@@ -1184,9 +1295,32 @@ test("T3-F1 R2 keeps the local Steal root journey through same-layout callbacks 
     }, rootEvent.id);
 
     await passEmptyResponses(request, seed);
+    const choiceProjection = await roomView(request, seed, 0);
+    expect(choiceProjection.currentAction).toMatchObject({ kind: "target_card", actorId: authorId });
+    expect(choiceProjection.pendingTargetCard).toMatchObject({ kind: "target_card", actorId: authorId, sourceId: authorId });
+    await pages[0].evaluate(() => { window.__t3ChoiceProjectionConfirmedAt = performance.now(); });
     const waitingPool = await expectTargetPool(pages[0], "Steal", "Choose 1 card to obtain", "Use Steal");
     await expect(pages[0].locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
     await expect(pages[0].locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
+    await pages[0].waitForFunction(() => window.__t3HandoffMonitor?.readyAt !== null, null, { timeout: 1_000 });
+    const handoffEvidence = await pages[0].evaluate(() => {
+      const monitor = window.__t3HandoffMonitor;
+      const confirmedAt = window.__t3ChoiceProjectionConfirmedAt;
+      return {
+        frames: monitor?.frames ?? 0,
+        firstFailure: monitor?.firstFailure ?? null,
+        timedOut: monitor?.timedOut ?? false,
+        readyLatencyMs: monitor?.readyAt === null || confirmedAt === undefined
+          ? null
+          : Math.max(0, monitor.readyAt - confirmedAt),
+      };
+    });
+    expect(handoffEvidence.frames).toBeGreaterThan(0);
+    expect(handoffEvidence.firstFailure, JSON.stringify(handoffEvidence)).toBeNull();
+    expect(handoffEvidence.timedOut, JSON.stringify(handoffEvidence)).toBe(false);
+    expect(handoffEvidence.readyLatencyMs, JSON.stringify(handoffEvidence)).not.toBeNull();
+    expect(handoffEvidence.readyLatencyMs, JSON.stringify(handoffEvidence)).toBeLessThan(5_000);
+    await expect(waitingPool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true })).toBeEnabled();
     await pages[0].waitForFunction(() => Boolean(window.__t3MoveResizeSample), null, { timeout: 8_000 });
     const moveEvidence = await pages[0].evaluate(() => window.__t3MoveResizeSample);
     expect(moveEvidence.phase).toBe("move");

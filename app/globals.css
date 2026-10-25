@@ -1360,7 +1360,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-display-journey.is-negation-chain-ordinal .public-card-journey-ordinal{right:2px;top:2px;min-width:18px;min-height:18px;padding:1px 3px;border-radius:4px;font:700 12px/14px Arial,sans-serif}
 .duel-public-card-history-accessible{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 .public-card-display-journey.is-reflowing .public-card-journey-card.is-parked,.public-card-display-journey.is-reflowing .public-card-journey-card.is-parked>.played-card,.public-card-display-journey.is-reflowing .public-card-journey-card.is-parked>.played-card>i,.public-card-display-journey.is-reflowing .public-card-journey-card.is-parked>.played-card>i small,.public-card-display-journey.is-reflowing .public-card-journey-card.is-parked .card-name-mark,.public-card-display-journey.is-reflowing .public-card-journey-card.is-parked>.played-card>strong{transition:none!important}
-.public-card-display-journey .public-card-journey-card.is-layout-pending.is-parked{visibility:hidden!important}
+.public-card-display-journey .public-card-journey-card.is-layout-pending.is-parked:not([data-public-card-journey-preserve-authentic-position="true"]){visibility:hidden!important}
 .public-card-display-journey.is-viewer-layout-pending .public-card-journey-card{visibility:hidden!important}
 .public-card-display-journey.is-exiting{animation:none;opacity:0;transition:opacity .18s ease}
 .public-card-display-journey-copy[data-public-card-announcement-positioned="true"]{height:auto}

@@ -23,7 +23,7 @@ import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSele
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus } from "../game/public-activity";
 import { CardFace } from "./card-face";
-import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
+import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
 import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, harvestNegationDecisionCopy, publicCardActionKey, publicCardAnnouncement, publicCardJourneyOwnershipIdentity, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
@@ -4414,6 +4414,30 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && (room.pendingTargetCard?.cardKind === "Steal" || room.pendingTargetCard?.cardKind === "Dismantle")
   );
   const pendingTargetCardActionName = room.pendingTargetCard ? targetCardActionName(room.pendingTargetCard.cardKind) : null;
+  const pendingTargetCardPublicSource = room.pendingTargetCard
+    ? room.players.find((player) => player.id === room.pendingTargetCard?.sourceId)
+    : null;
+  const pendingTargetCardPublicTarget = room.pendingTargetCard
+    ? room.players.find((player) => player.id === room.pendingTargetCard?.targetId)
+    : null;
+  const pendingTargetCardSpectatorPoolActive = Boolean(
+    room.status === "playing"
+    && room.phase === "response"
+    && room.pendingTargetCard
+    && (room.pendingTargetCard.cardKind === "Steal" || room.pendingTargetCard.cardKind === "Dismantle")
+    && room.pendingTargetCard.sourceId === room.pendingTargetCard.actorId
+    && room.pendingTargetCard.targetId !== room.pendingTargetCard.actorId
+    && room.pendingTargetCard.actorId !== room.meId
+    && pendingTargetCardPublicSource?.alive
+    && pendingTargetCardPublicTarget?.alive,
+  );
+  const pendingTargetCardPublicPool: PublicTargetPoolView | null = pendingTargetCardSpectatorPoolActive && pendingTargetCardPublicTarget
+    ? {
+      handCount: pendingTargetCardPublicTarget.handCount,
+      equipmentCards: pendingTargetCardPublicTarget.equipmentCards,
+      judgementCards: pendingTargetCardPublicTarget.judgementCards,
+    }
+    : null;
   const pendingTargetCardSelectedKey = targetCardZone === "hand" && targetCardIndex !== null
     ? `hand:${targetCardIndex}`
     : targetCardId;
@@ -8211,11 +8235,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const targetCardChoiceMergeMiss = Object.entries(targetCardChoiceMergeChecks).filter(([, matches]) => !matches).map(([key]) => key).join(",");
   const mergedTargetCardChoiceAnnouncement = mergeTargetCardChoiceCopy ? targetCardChoiceAnnouncement : null;
   const pendingTargetCardPoolPlacement = useBattlefieldChoicePlacement({
-    enabled: pendingTargetCardUsesUnifiedModal && pendingTargetCardPoolZones.length > 0,
+    enabled: (pendingTargetCardUsesUnifiedModal && pendingTargetCardPoolZones.length > 0)
+      || (pendingTargetCardSpectatorPoolActive && Boolean(pendingTargetCardPublicPool)),
     playerCount: room.players.length,
-    placementKey: [room.code, room.meId, room.actionRevision ?? "", pendingTargetCardSelectableSelection?.targetId ?? "", ...(pendingTargetCardSelectableSelection?.eligibleKeys ?? [])].join("\u001f"),
-    centralTargetLayout: mergeTargetCardChoiceCopy,
-    rootEventId: mergeTargetCardChoiceCopy ? publicCardDisplayAction?.rootEventId : undefined,
+    placementKey: pendingTargetCardUsesUnifiedModal
+      ? [room.code, room.meId, room.actionRevision ?? "", pendingTargetCardSelectableSelection?.targetId ?? "", ...(pendingTargetCardSelectableSelection?.eligibleKeys ?? [])].join("\u001f")
+      : [room.code, room.meId, room.pendingTargetCard?.sourceId ?? "", room.pendingTargetCard?.targetId ?? "", room.pendingTargetCard?.cardKind ?? "",
+        pendingTargetCardPublicPool?.handCount ?? 0,
+        ...(pendingTargetCardPublicPool?.equipmentCards.map((card) => card.id) ?? []),
+        ...(pendingTargetCardPublicPool?.judgementCards.map((card) => card.id) ?? [])].join("\u001f"),
+    centralTargetLayout: pendingTargetCardUsesUnifiedModal && mergeTargetCardChoiceCopy,
+    rootEventId: pendingTargetCardUsesUnifiedModal && mergeTargetCardChoiceCopy ? publicCardDisplayAction?.rootEventId : undefined,
   });
   const centralTargetCardLayout = Boolean(mergeTargetCardChoiceCopy && pendingTargetCardPoolPlacement.insets?.width);
   const targetCardChoiceMergeActive = Boolean(centralTargetCardLayout && pendingTargetCardPoolPlacement.ready);
@@ -9846,6 +9876,35 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           onToggle={togglePendingTargetCardSelection}
           onConfirm={() => submitPendingTargetCardPicker(pendingTargetCardSelectedKeys)}
           onInfo={(card, trigger) => openCardDetails(card, "public-zone", trigger)}
+        />
+      </BattlefieldChoiceStage>}
+      {pendingTargetCardSpectatorPoolActive && pendingTargetCardPublicPool && pendingTargetCardPublicSource && pendingTargetCardPublicTarget && room.pendingTargetCard && <BattlefieldChoiceStage
+        key={`${room.code}:${room.pendingTargetCard.sourceId}:${room.pendingTargetCard.targetId}:${room.pendingTargetCard.cardKind}:${room.actionRevision ?? ""}`}
+        ref={pendingTargetCardPoolPlacement.ref}
+        className="game-event-stage harvest-choice-stage card-pool-target-stage card-pool-target-stage--spectator"
+        mode="target-readonly"
+        accessibilityLabel={`${room.pendingTargetCard.cardKind === "Steal" ? "Steal" : "Burning Bridges"}: ${pendingTargetCardPublicSource.name} to ${pendingTargetCardPublicTarget.name}. ${pendingTargetCardPublicSource.name} is choosing a card from ${pendingTargetCardPublicTarget.name}. Public read-only card pool.`}
+        data-target-card-pool-readonly="true"
+        data-target-card-pool-kind={room.pendingTargetCard.cardKind}
+        data-target-card-pool-ready={pendingTargetCardPoolPlacement.ready ? "true" : "false"}
+        aria-hidden={pendingTargetCardPoolPlacement.ready ? undefined : true}
+        style={{
+          top: pendingTargetCardPoolPlacement.top === null ? undefined : `${pendingTargetCardPoolPlacement.top}px`,
+          left: pendingTargetCardPoolPlacement.insets ? `${pendingTargetCardPoolPlacement.insets.left}px` : undefined,
+          right: pendingTargetCardPoolPlacement.insets?.width
+            ? "auto"
+            : pendingTargetCardPoolPlacement.insets ? `${pendingTargetCardPoolPlacement.insets.right}px` : undefined,
+          width: pendingTargetCardPoolPlacement.insets?.width ? `${pendingTargetCardPoolPlacement.insets.width}px` : undefined,
+        }}
+      >
+        <CardPoolPanel
+          mode="target-readonly"
+          title={`${room.pendingTargetCard.cardKind === "Steal" ? "STEAL" : "BURNING BRIDGES"} · ${pendingTargetCardPublicSource.name} → ${pendingTargetCardPublicTarget.name}`}
+          instruction={room.pendingTargetCard.cardKind === "Steal"
+            ? `${pendingTargetCardPublicSource.name} is choosing a card from ${pendingTargetCardPublicTarget.name}`
+            : `${pendingTargetCardPublicSource.name} is choosing a card to discard from ${pendingTargetCardPublicTarget.name}`}
+          accessibilityLabel={`${pendingTargetCardPublicSource.name} is choosing a card ${room.pendingTargetCard.cardKind === "Steal" ? "from" : "to discard from"} ${pendingTargetCardPublicTarget.name}`}
+          publicTarget={pendingTargetCardPublicPool}
         />
       </BattlefieldChoiceStage>}
       {targetCardPickerInModal && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && <TargetCardPicker option={targetCardPickerOption} compact={targetCardPickerOption.effectId === "sima_yi_fankui"} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={triggerControlsDisabled} canDecline={Boolean(consoleDecision.authoritativeDecline)} showCancel={targetCardPickerOption.effectId !== "sima_yi_fankui" && (targetCardPickerUsesUnifiedModal || consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId))} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={submitTargetCardPicker} onCancel={cancelTargetCardPicker} onDecline={() => onAction("decline_trigger")} />}

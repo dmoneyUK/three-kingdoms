@@ -1,6 +1,7 @@
 "use client";
 
 import type { Card } from "../game/model";
+import { cardDefinition } from "../game/cards";
 import { CardFace } from "./card-face";
 
 /** A card face whose identity is already proven public by the caller's projection. */
@@ -89,7 +90,18 @@ type TargetSelectProps = SharedProps & {
   onInfo: (card: Card, trigger: HTMLButtonElement) => void;
 };
 
-export type CardPoolPanelProps = ReadOnlyProps | ActorSelectProps | TargetSelectProps;
+export type PublicTargetPoolView = {
+  handCount: number;
+  equipmentCards: readonly Card[];
+  judgementCards: readonly Card[];
+};
+
+type TargetReadOnlyProps = SharedProps & {
+  mode: "target-readonly";
+  publicTarget: PublicTargetPoolView;
+};
+
+export type CardPoolPanelProps = ReadOnlyProps | ActorSelectProps | TargetSelectProps | TargetReadOnlyProps;
 
 /**
  * Shared one-row public card pool and pinned action footer.
@@ -99,16 +111,22 @@ export type CardPoolPanelProps = ReadOnlyProps | ActorSelectProps | TargetSelect
 export function CardPoolPanel(props: CardPoolPanelProps) {
   const actorSelect = props.mode === "actor-select";
   const targetSelect = props.mode === "actor-target-select";
+  const targetReadOnly = props.mode === "target-readonly";
+  const targetReadOnlyHandCount = targetReadOnly && Number.isFinite(props.publicTarget.handCount)
+    ? Math.max(0, Math.floor(props.publicTarget.handCount))
+    : 0;
   return <section
     className={`card-pool-panel card-pool-panel--${props.mode} harvest-choice-panel${actorSelect || targetSelect ? " harvest-choice-panel--actor" : ""}`}
     data-choice-mode={props.mode}
+    data-target-card-pool-readonly={targetReadOnly ? "true" : undefined}
     aria-label={props.accessibilityLabel}
   >
     <header className="card-pool-panel__heading harvest-choice-heading">
       <b className="card-pool-panel__title">{props.title}</b>
       <span className="card-pool-panel__instruction">{props.instruction}</span>
+      {targetReadOnly && <small className="card-pool-panel__readonly-label">PUBLIC · READ ONLY</small>}
     </header>
-    {!targetSelect && <>
+    {!targetSelect && !targetReadOnly && <>
       <div
         className="card-pool-panel__row harvest-card-row"
         role="region"
@@ -195,5 +213,39 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
         {props.error && <p className="card-pool-panel__error error" role="alert">{props.error}</p>}
       </>;
     })()}
+    {targetReadOnly && <div className="card-pool-panel__target-public-zones" role="group" aria-label="Public target card zones">
+      <div
+        className="card-pool-panel__target-public-zone card-pool-panel__target-public-hand"
+        data-target-card-public-zone="hand"
+        aria-label={`Hand: ${targetReadOnlyHandCount} face-down cards`}
+      >
+        <b className="card-pool-panel__target-public-zone-title">HAND · {targetReadOnlyHandCount}</b>
+        {targetReadOnlyHandCount > 0
+          ? <span className="card-pool-panel__target-public-backs" aria-hidden="true">
+            {Array.from({ length: Math.min(targetReadOnlyHandCount, 5) }, (_, index) =>
+              <i className="card-pool-panel__target-public-back" key={index} />)}
+            {targetReadOnlyHandCount > 5 && <small>+{targetReadOnlyHandCount - 5}</small>}
+          </span>
+          : <span className="card-pool-panel__target-public-empty">0 cards</span>}
+      </div>
+      {([
+        { id: "equipment", title: "EQUIPMENT", cards: props.publicTarget.equipmentCards },
+        { id: "judgement", title: "JUDGEMENT", cards: props.publicTarget.judgementCards },
+      ] as const).filter((zone) => zone.cards.length > 0).map((zone) => <div
+        className="card-pool-panel__target-public-zone"
+        data-target-card-public-zone={zone.id}
+        aria-label={`${zone.title}: ${zone.cards.length} public cards`}
+        key={zone.id}
+      >
+        <b className="card-pool-panel__target-public-zone-title">{zone.title} · {zone.cards.length}</b>
+        <div className="card-pool-panel__target-public-faces">
+          {zone.cards.map((card) => <div
+            className="card-pool-panel__target-public-face"
+            aria-label={`Public ${zone.id}: ${cardDefinition(card.kind).name}`}
+            key={card.id}
+          ><CardFace card={card} /></div>)}
+        </div>
+      </div>)}
+    </div>}
   </section>;
 }
