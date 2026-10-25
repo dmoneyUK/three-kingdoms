@@ -1,6 +1,6 @@
 # Current Handover
 
-Target branch: `ux-v2`. Mobile-only. Latest design reviewed: `docs/UX2-refine.md` §10.9 at source `b9b207699e54c22f9f81af8d1658168ae29ec6d8`.
+Target branch: `ux-v2`. Mobile-only. Latest design reviewed: `docs/UX2-refine.md` §10.9 at source `34f89ec9bdaed5ed344cdebc0d0ab050ab48bd62`.
 
 ## Latest relevant result
 
@@ -8,6 +8,6 @@ Target branch: `ux-v2`. Mobile-only. Latest design reviewed: `docs/UX2-refine.md
 
 ## Exactly one current task
 
-**W5 — Rock Cleaving Axe two-card COST Frame.** Follow `docs/UX2-refine.md` §10.9.1, §10.9.3 and §10.9.4, plus the proof inventory. The server already provides `rock_cleaving_axe_attack_dodged` COST evidence for a committed two-card payment linked to the dodged Attack. Implement only a proof-gated shared W2 Frame for the two genuine cards and actual payer. Preserve the original Attack/Dodge, legal forced-damage continuation, private unspent Hand cards, real card identity/zone transitions, and the equipped Axe as the source of the ability; do not represent the two paid cards as separate Attacks or change game rules.
+**W5 — Rock Cleaving Axe two-card COST Frame. IMPLEMENTED LOCALLY; CI/DEPLOYMENT PENDING.** `app/page.tsx` now renders a shared W2 frame only when the raw event and public projection agree on the exact dodged Attack root, two genuine paid cards, activation owner, target, and Hand/Equipment→Discard transitions. The focused four-player 390×844 real-gameplay browser regression passed 1/1 across attacker, target and observer, including one matching public announcement, original Dodge/forced-hit resolution, equipped Axe retention and private Hand isolation. `npm run build` passed; targeted ESLint had zero errors and three Hook-dependency warnings; `git diff --check` passed. Next: commit and push this bounded slice, wait for exact-SHA required CI and Worker deployment, then record the actual evidence and select the next task from the latest design. Final status must remain **PENDING USER PHONE REVIEW**.
 
 Use one focused mobile real-gameplay regression and keep all local UI/browser testing under five minutes. After implementation, update design and roadmap with exact evidence, keep this file to one task, and verify exact-SHA Actions/deployment before starting the next slice. Final status is **PENDING USER PHONE REVIEW**, never accepted by the Agent.

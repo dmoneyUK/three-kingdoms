@@ -578,6 +578,133 @@ test("real Stauchness frames the two committed source cards for actor, payer and
   }
 });
 
+test("real Rock Cleaving Axe frames its two paid cards for attacker, target and observer on mobile", async ({ page, browser, request }) => {
+  test.setTimeout(90_000);
+  const attack = card("Attack", "real-axe-frame-attack", "♦");
+  const dodge = card("Dodge", "real-axe-frame-dodge", "♣");
+  const handCost = card("Peach", "real-axe-frame-peach", "♥");
+  const privateSourceCard = card("Dodge", "real-axe-frame-private-source");
+  const privateTargetCard = card("Peach", "real-axe-frame-private-target", "♦");
+  const axe = card("RockCleavingAxe", "real-axe-frame-weapon");
+  const armorCost = card("NioShield", "real-axe-frame-armor-cost");
+  const seedData = await seed(request, [
+    { name: "AXE USER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [attack, handCost, privateSourceCard], equipment: { weapon: axe, armor: armorCost } },
+    { name: "DODGE TARGET", role: "Loyalist", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [dodge, privateTargetCard] },
+    { name: "OBSERVER", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+    { name: "FOURTH", role: "Renegade", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
+  ]);
+  const opened = await request.post(`${API}/api/rooms`, {
+    data: { action: "play_card", code: seedData.code, token: seedData.players[0].token, cardId: attack.id, targetId: seedData.players[1].id },
+  });
+  expect(opened.ok()).toBeTruthy();
+  const dodged = await request.post(`${API}/api/rooms`, {
+    data: { action: "respond", code: seedData.code, token: seedData.players[1].token, providerId: "card", cardId: dodge.id },
+  });
+  expect(dodged.ok(), await dodged.text()).toBeTruthy();
+  const axeDecision = await view(request, seedData, 0);
+  expect(axeDecision.currentAction).toMatchObject({ kind: "trigger", actorId: seedData.players[0].id });
+  expect(axeDecision.currentAction.triggerOptions.map((option) => option.effectId)).toContain("rock_cleaving_axe_attack_dodged");
+
+  const targetPage = await browser.newPage();
+  const observerPage = await browser.newPage();
+  try {
+    await Promise.all([openPlayer(page, seedData, 0), openPlayer(targetPage, seedData, 1), openPlayer(observerPage, seedData, 2)]);
+    const viewers = [
+      { viewerPage: page, viewerId: seedData.players[0].id, privateHandCard: privateSourceCard },
+      { viewerPage: targetPage, viewerId: seedData.players[1].id, privateHandCard: privateTargetCard },
+      { viewerPage: observerPage, viewerId: seedData.players[2].id, privateHandCard: null },
+    ];
+    const frameEvidencePromise = Promise.all(viewers.map(async ({ viewerPage, viewerId }) => {
+      const handle = await viewerPage.waitForFunction(({ expectedViewerId, cardIds }) => {
+        const display = [...document.querySelectorAll(".public-card-display")]
+          .find((element) => element.dataset.publicCardViewerId === expectedViewerId);
+        const journey = [...(display?.querySelectorAll("[data-public-card-journey-event-id]") ?? [])]
+          .find((element) => element.dataset.publicCardJourneyCardIds === cardIds.join(",")
+            && ["reveal", "move", "parked"].includes(element.dataset.publicCardJourneyPhase));
+        const frame = journey?.querySelector('[data-public-card-frame-effect-id="rock_cleaving_axe_attack_dodged"]');
+        if (!display || !journey || !frame) return false;
+        return {
+          viewerId: display.dataset.publicCardViewerId,
+          eventId: journey.dataset.publicCardJourneyEventId,
+          phase: journey.dataset.publicCardJourneyPhase,
+          journeyActorId: journey.dataset.publicCardJourneyActorId,
+          frameCount: display.querySelectorAll('[data-public-card-frame-effect-id="rock_cleaving_axe_attack_dodged"]').length,
+          frameClass: frame.dataset.publicCardFrameClass,
+          frameOwnerId: frame.dataset.publicCardFrameActivationOwnerId,
+          frameMaterialOwnerIds: frame.dataset.publicCardFrameMaterialOwnerIds,
+          frameMaterialCardIds: frame.dataset.publicCardFrameMaterialCardIds,
+          frameFaces: [...frame.querySelectorAll("[data-public-card-effect-frame-card-id]")]
+            .map((face) => face.getAttribute("data-public-card-effect-frame-card-id")),
+          title: frame.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
+          announcementCount: display.querySelectorAll('[data-public-card-announcement="true"]').length,
+          announcement: display.querySelector('[data-public-card-announcement="true"]')?.textContent?.trim(),
+          viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
+        };
+      }, { expectedViewerId: viewerId, cardIds: [handCost.id, armorCost.id] }, { timeout: 8_000 });
+      return handle.jsonValue();
+    }));
+    const action = await request.post(`${API}/api/rooms`, {
+      data: {
+        action: "trigger", code: seedData.code, token: seedData.players[0].token,
+        providerId: "rock_cleaving_axe_attack_dodged", cardIds: [handCost.id, armorCost.id],
+      },
+    });
+    expect(action.ok()).toBeTruthy();
+    const publicRoom = await view(request, seedData, 2);
+    const costEvent = publicRoom.timeline.find((event) => event.type === "cards"
+      && event.action === "play" && event.cards.some((item) => item.id === handCost.id));
+    expect(costEvent).toBeTruthy();
+    expect(costEvent.cards.map((item) => item.id)).toEqual([handCost.id, armorCost.id]);
+    expect(costEvent.publicCardEffects).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        effectId: "rock_cleaving_axe_attack_dodged", effectClass: "COST",
+        activationOwnerId: seedData.players[0].id, targetId: seedData.players[1].id, outcome: "FORCED_HIT",
+        materials: [
+          { cardId: handCost.id, ownerId: seedData.players[0].id, fromZone: "HAND", toZone: "DISCARD" },
+          { cardId: armorCost.id, ownerId: seedData.players[0].id, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+        ],
+      }),
+    ]));
+    expect(costEvent.publicCardEffects[0].rootEventId).toBe(publicRoom.timeline.find((event) =>
+      event.type === "card" && event.card.id === attack.id)?.id);
+    expect(publicRoom.timeline.find((event) => event.type === "card" && event.card.id === dodge.id))
+      .toMatchObject({ action: "play", player: "DODGE TARGET" });
+    expect(publicRoom.players.find((player) => player.id === seedData.players[0].id).equipmentCards)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ id: axe.id, kind: "RockCleavingAxe" })]));
+    expect(publicRoom.players.find((player) => player.id === seedData.players[1].id).hp).toBe(3);
+
+    const frameEvidence = await frameEvidencePromise;
+    for (let index = 0; index < frameEvidence.length; index += 1) {
+      const evidence = frameEvidence[index];
+      const { viewerPage, viewerId, privateHandCard } = viewers[index];
+      expect(evidence).toMatchObject({
+        viewerId, eventId: costEvent.id, phase: expect.stringMatching(/^(reveal|move|parked)$/),
+        journeyActorId: seedData.players[0].id, frameCount: 1, frameClass: "COST",
+        frameOwnerId: seedData.players[0].id,
+        frameMaterialOwnerIds: `${seedData.players[0].id},${seedData.players[0].id}`,
+        frameMaterialCardIds: `${handCost.id},${armorCost.id}`,
+        frameFaces: [handCost.id, armorCost.id], title: "ROCK CLEAVING AXE · FORCE HIT",
+        announcementCount: 1,
+        viewport: { width: 390, height: 844, scrollWidth: 390 },
+      });
+      expect(evidence.announcement).toContain("AXE USER");
+      expect(evidence.announcement).toContain("DODGE TARGET");
+      if (privateHandCard) await expect(viewerPage.locator(`[data-hand-card-id="${privateHandCard.id}"]`)).toHaveCount(1);
+    }
+    expect(new Set(frameEvidence.map((evidence) => evidence.title)).size).toBe(1);
+    for (const { viewerPage, privateHandCard } of viewers) {
+      if (privateHandCard) continue;
+      await expect(viewerPage.locator(`[data-hand-card-id="${privateSourceCard.id}"]`)).toHaveCount(0);
+      await expect(viewerPage.locator(`[data-hand-card-id="${privateTargetCard.id}"]`)).toHaveCount(0);
+    }
+    expect(JSON.stringify(publicRoom)).not.toContain(privateSourceCard.id);
+    expect(JSON.stringify(publicRoom)).not.toContain(privateTargetCard.id);
+  } finally {
+    await targetPage.close();
+    await observerPage.close();
+  }
+});
+
 test("real Legacy activation reaches the private two-card distribution UI and submits exact recipients", async ({ page, request }) => {
   const attack = card("Attack", "real-legacy-attack");
   const seedData = await seed(request, [

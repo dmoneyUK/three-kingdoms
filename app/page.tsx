@@ -962,6 +962,82 @@ function verifiedStauchnessCostFrameForEvent(
     || costEvent.player !== materialOwner.name || costEvent.target !== materialOwner.name) return null;
   return { costEvent, effect, rootEvent, costCards: [costEvent.cards[0], costEvent.cards[1]], activationOwner, materialOwner };
 }
+type VerifiedRockCleavingAxeCostFrameProof = {
+  costEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  rootEvent: CardEvent | CardGroupEvent;
+  costCards: readonly [Card, Card];
+  activationOwner: Player;
+  target: Player;
+};
+function verifiedRockCleavingAxeCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedRockCleavingAxeCostFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const costEvent = eventMatches.length === 1 && eventMatches[0].type === "cards"
+    ? eventMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "play" || !costEvent.resolutionId || costEvent.cards.length !== 2
+    || new Set(costEvent.cards.map((card) => card.id)).size !== 2) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "rock_cleaving_axe_attack_dodged" && effect.effectClass === "COST");
+  const rawMatches = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "rock_cleaving_axe_attack_dodged" && effect.effectClass === "COST");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const rootEventId = effect.rootEventId;
+  const rootResolutionId = effect.rootResolutionId;
+  const targetId = effect.targetId;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== costEvent.id || rawEffect.eventId !== costEvent.id
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "FORCED_HIT" || rawEffect.outcome !== "FORCED_HIT"
+    || !rootEventId || rootEventId !== rawEffect.rootEventId || rootEventId === costEvent.id
+    || !rootResolutionId || rootResolutionId !== rawEffect.rootResolutionId
+    || effect.cards.length !== 2 || effect.materials.length !== 2 || rawEffect.materials.length !== 2) return null;
+
+  const materialsMatch = effect.materials.every((material, index) => {
+    const rawMaterial = rawEffect.materials[index];
+    const projectedCard = effect.cards[index];
+    const costCard = costEvent.cards[index];
+    return Boolean(rawMaterial && projectedCard && costCard
+      && material.cardId === costCard.id && rawMaterial.cardId === costCard.id
+      && projectedCard.id === costCard.id && projectedCard.kind === costCard.kind
+      && projectedCard.suit === costCard.suit && projectedCard.rank === costCard.rank
+      && material.ownerId === effect.activationOwnerId && rawMaterial.ownerId === effect.activationOwnerId
+      && (material.fromZone === "HAND" || material.fromZone === "EQUIPMENT")
+      && rawMaterial.fromZone === material.fromZone
+      && material.toZone === "DISCARD" && rawMaterial.toZone === "DISCARD");
+  });
+  if (!materialsMatch) return null;
+
+  const rootMatches = timeline.filter((event) => event.id === rootEventId);
+  const rootEvent = rootMatches.length === 1 && (rootMatches[0].type === "card" || rootMatches[0].type === "cards")
+    ? rootMatches[0] : null;
+  if (!rootEvent || rootEvent.presentation === false || rootEvent.privateToPlayerId
+    || !rootEvent.resolutionId || rootEvent.resolutionId !== rootResolutionId || rootEvent.action !== "play") return null;
+
+  const activationOwner = players.find((player) => player.id === effect.activationOwnerId);
+  const target = players.find((player) => player.id === targetId);
+  const isAttackRoot = rootEvent.type === "card"
+    ? rootEvent.card.kind === "Attack" || rootEvent.playedAs === "attack"
+    : rootEvent.playedAs === "attack" && rootEvent.cards.length === 2
+      && (rootEvent.publicCardEffects ?? []).some((rootEffect) => rootEffect.semantics === "PROVEN"
+        && rootEffect.effectId === "serpent_spear_attack" && rootEffect.effectClass === "CONVERSION"
+        && rootEffect.resultingCardKind === "Attack" && rootEffect.outcome === "AS_ATTACK"
+        && rootEffect.activationOwnerId === activationOwner?.id && rootEffect.targetId === target?.id);
+  if (!activationOwner?.name || !target?.name || activationOwner.id === target.id || !isAttackRoot
+    || rootEvent.player !== activationOwner.name || rootEvent.target !== target.name
+    || costEvent.player !== activationOwner.name || costEvent.target !== target.name) return null;
+  return { costEvent, effect, rootEvent, costCards: [costEvent.cards[0], costEvent.cards[1]], activationOwner, target };
+}
 function verifiedLustCostFrameForEvent(
   timeline: readonly GameEvent[],
   notices: readonly PresentationSnapshotDiaoChanSkillNotice[],
@@ -6716,10 +6792,44 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
+  const rockCleavingAxeCostFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "rock_cleaving_axe_attack_dodged"
+      && effect.effectClass === "COST")
+      .flatMap((effect) => {
+        const frame = verifiedRockCleavingAxeCostFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
+  })();
+  const rockCleavingAxeCostFrameAction: PublicCardDisplayAction | null = rockCleavingAxeCostFrameCandidate ? {
+    key: ["rock-cleaving-axe-cost", rockCleavingAxeCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: rockCleavingAxeCostFrameCandidate.costEvent.id,
+    sourceId: rockCleavingAxeCostFrameCandidate.activationOwner.id,
+    targetId: rockCleavingAxeCostFrameCandidate.target.id,
+    cardFace: rockCleavingAxeCostFrameCandidate.costCards[0],
+    cardLabel: "ROCK CLEAVING AXE · TWO CARD COST",
+    ariaLabel: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} used Rock Cleaving Axe, paying two real cards to force the original Attack through after Dodge against ${rockCleavingAxeCostFrameCandidate.target.name}.`,
+    publicNotice: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} paid two cards with Rock Cleaving Axe to force the Attack through after Dodge against ${rockCleavingAxeCostFrameCandidate.target.name}.`,
+    publicNoticeCompact: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} used Rock Cleaving Axe · FORCE HIT on ${rockCleavingAxeCostFrameCandidate.target.name}.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "rock_cleaving_axe_attack_dodged", rockCleavingAxeCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(rockCleavingAxeCostFrameCandidate.costEvent.id)
+        ? [] : [rockCleavingAxeCostFrameCandidate.costEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(rockCleavingAxeCostFrameCandidate.effect, {
+      title: "ROCK CLEAVING AXE · FORCE HIT",
+      accessibleLabel: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} paid exactly two of their own Hand or Equipment cards. The original Attack on ${rockCleavingAxeCostFrameCandidate.target.name} continued to damage resolution after Dodge.`,
+      activationOwnerName: rockCleavingAxeCostFrameCandidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
   const latestHeroPublicCardEffectFrameAction = [
     prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction,
     dauntlessEquipmentEffectFrameAction, betrothmentCostFrameAction,
-    equilibriumCostFrameAction, firstAidConversionFrameAction, necromancyJudgementFrameAction, stauchnessCostFrameAction,
+    equilibriumCostFrameAction, firstAidConversionFrameAction, necromancyJudgementFrameAction,
+    stauchnessCostFrameAction, rockCleavingAxeCostFrameAction,
   ].filter((action): action is PublicCardDisplayAction => action !== null
     && !(action.rootEventId === prodigalHealerCostFrameCandidate?.costEvent.id
       && prodigalHealerAnnouncementLifecycle.status === "superseded"))
