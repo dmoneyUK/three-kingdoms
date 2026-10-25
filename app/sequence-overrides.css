@@ -6334,6 +6334,46 @@
   }
 }
 
+/* H2-G3-F2: reserve a full-width public HP/Hand row before skills and
+   Judgement compete for the narrow 6/8-seat phone Inspector track. */
+@media (max-width: 520px) {
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-player-count="6"], > .player-board[data-player-count="8"]) .opponent-inspection-floating-shell .hero-focus-inspect-upper {
+    grid-template-areas: "stats stats" "skills judgement";
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: start;
+    column-gap: 4px;
+    row-gap: 4px;
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-player-count="6"], > .player-board[data-player-count="8"]) .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity,
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-player-count="6"], > .player-board[data-player-count="8"]) .opponent-inspection-floating-shell .hero-focus-inspect-profile {
+    display: contents;
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-player-count="6"], > .player-board[data-player-count="8"]) .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-line {
+    grid-area: stats;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-player-count="6"], > .player-board[data-player-count="8"]) .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-stats {
+    flex-wrap: wrap;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-player-count="6"], > .player-board[data-player-count="8"]) .opponent-inspection-floating-shell .hero-focus-inspect-public-skills {
+    grid-area: skills;
+    min-width: 0;
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-player-count="6"], > .player-board[data-player-count="8"]) .opponent-inspection-floating-shell .hero-focus-inspect-judgement {
+    grid-area: judgement;
+    align-self: start;
+  }
+}
+
 .opponent-inspection-floating-shell .hero-focus-inspect-public-skills > h3 {
   position: absolute;
   width: 1px;

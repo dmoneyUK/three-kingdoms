@@ -1564,6 +1564,85 @@ test("INS5-F1-R captures mobile Inspector width allocation across four, six, eig
   }
 });
 
+test("H2-G3-F2 separates phone Inspector stats from skills and Judgement for six and eight seats", async ({ browser }, testInfo) => {
+  test.setTimeout(90_000);
+  const scenarios = [
+    { count: 6, width: 390, height: 700, targetHero: "simayi" },
+    { count: 8, width: 390, height: 844, targetHero: "zhen-ji" },
+  ];
+  for (const scenario of scenarios) {
+    const context = await browser.newContext({ viewport: { width: scenario.width, height: scenario.height }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+    try {
+      const page = await context.newPage();
+      await loadFixture(page, { ...scenario, equipmentCase: "miniatureSet", judgementCase: "two" });
+      await page.locator('[data-player-anchor="p2"] .opponent-hero-target').tap();
+      const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+      await expect(inspect).toBeVisible();
+      await expect(inspect.locator("[data-public-hand-count]")).toHaveText("Hand · 2");
+      await expect(inspect.locator('[aria-label="Judgement Zone"] .opponent-inspection-card')).toHaveCount(2);
+      await expect(inspect.locator('[aria-label="Equipment"] .opponent-inspection-card')).toHaveCount(4);
+
+      const geometry = await inspect.evaluate((root) => {
+        const box = (element) => {
+          if (!element) return null;
+          const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+          return { left, top, right, bottom, width, height };
+        };
+        const main = root.querySelector(".hero-focus-inspect-main");
+        const upper = root.querySelector(".hero-focus-inspect-upper");
+        const statsRow = root.querySelector(".hero-focus-identity-line");
+        const stats = root.querySelector(".hero-focus-identity-stats");
+        const skills = root.querySelector(".hero-focus-inspect-public-skills");
+        const judgement = root.querySelector(".hero-focus-inspect-judgement");
+        const equipment = root.querySelector(".hero-focus-inspect-equipment");
+        return {
+          main: box(main),
+          upper: box(upper),
+          statsRow: box(statsRow),
+          stats: { ...box(stats), scrollWidth: stats?.scrollWidth, clientWidth: stats?.clientWidth },
+          statTexts: [...(stats?.querySelectorAll("small") ?? [])].map((element) => box(element)),
+          skills: box(skills),
+          judgement: box(judgement),
+          equipment: box(equipment),
+          grid: upper ? getComputedStyle(upper).gridTemplateAreas : null,
+        };
+      });
+      await testInfo.attach(`H2-G3-F2 ${scenario.count}-seat Inspector geometry`, {
+        body: JSON.stringify({ scenario, geometry }, null, 2),
+        contentType: "application/json",
+      });
+      await testInfo.attach(`H2-G3-F2 ${scenario.count}-seat Inspector screenshot`, {
+        body: await page.screenshot({ animations: "disabled" }),
+        contentType: "image/png",
+      });
+
+      expect(Math.abs(geometry.statsRow.left - geometry.main.left)).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.statsRow.right - geometry.main.right)).toBeLessThanOrEqual(1);
+      expect(geometry.statsRow.top).toBeGreaterThanOrEqual(geometry.upper.top);
+      expect(geometry.statsRow.bottom).toBeLessThanOrEqual(geometry.upper.bottom);
+      expect(geometry.stats.scrollWidth).toBeLessThanOrEqual(geometry.stats.clientWidth + 1);
+      for (const text of geometry.statTexts) {
+        expect(text.top).toBeGreaterThanOrEqual(geometry.statsRow.top);
+        expect(text.bottom).toBeLessThanOrEqual(geometry.statsRow.bottom);
+        expect(text.left).toBeGreaterThanOrEqual(geometry.statsRow.left);
+        expect(text.right).toBeLessThanOrEqual(geometry.statsRow.right - 1);
+      }
+      expect(geometry.skills.top).toBeGreaterThanOrEqual(geometry.statsRow.bottom + 2);
+      expect(geometry.skills.left).toBeGreaterThanOrEqual(geometry.main.left);
+      expect(geometry.skills.right).toBeLessThanOrEqual(geometry.main.right);
+      expect(geometry.judgement.top).toBeGreaterThanOrEqual(geometry.statsRow.bottom + 2);
+      expect(geometry.judgement.left).toBeGreaterThanOrEqual(geometry.main.left);
+      expect(geometry.judgement.right).toBeLessThanOrEqual(geometry.main.right);
+      expect(geometry.judgement.bottom).toBeLessThanOrEqual(geometry.upper.bottom);
+      expect(Math.min(geometry.skills.right, geometry.judgement.right) - Math.max(geometry.skills.left, geometry.judgement.left)).toBeLessThanOrEqual(0);
+      expect(geometry.equipment.top).toBeGreaterThanOrEqual(geometry.upper.bottom);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(scenario.width);
+    } finally {
+      await context.close();
+    }
+  }
+});
+
 test("INS5-F1-R long phone skill and card details scroll to their final sentence", async ({ browser }, testInfo) => {
   for (const viewport of [{ width: 390, height: 700 }, { width: 440, height: 766 }]) {
     const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
