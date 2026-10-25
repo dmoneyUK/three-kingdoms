@@ -1634,7 +1634,7 @@ test("W3: Divine Wisdom shows every proven Hand cost card to all phone viewers",
   }
 });
 
-test("W3: Dauntless shows Yue Jin's proven Basic Hand cost to every phone viewer", async ({ page, browser, request }, testInfo) => {
+test("W3/W4: Dauntless shows Yue Jin's cost and target-owned Equipment effect to every phone viewer", async ({ page, browser, request }, testInfo) => {
   test.setTimeout(120_000);
   const cost = card("Peach", "w3-dauntless-basic-cost", "♥");
   const ownerPrivate = card("Dodge", "w3-dauntless-yue-private");
@@ -1846,14 +1846,83 @@ test("W3: Dauntless shows Yue Jin's proven Basic Hand cost to every phone viewer
     const equipmentEvent = equipmentResolved.room.timeline.find((event) => (event.type === "card" && event.card.id === equipment.id)
       || (event.type === "cards" && event.cards.some((face) => face.id === equipment.id)));
     const equipmentEffect = equipmentResolved.room.presentationSnapshot.publicCardEffects.find((candidate) => candidate.eventId === equipmentEvent?.id);
+    expect(equipmentEvent?.id).not.toBe(costEvent.id);
     expect(equipmentEffect).toMatchObject({
       effectId: "yue_jin_dauntless", effectClass: "EFFECT", activationOwnerId: owner.id, targetId: target.id,
       outcome: "DAMAGE_PREVENTED",
       materials: [{ cardId: equipment.id, ownerId: target.id, fromZone: "EQUIPMENT", toZone: "DISCARD" }],
     });
+    expect(equipmentResolved.room.players.find((player) => player.id === target.id).hp).toBe(4);
+    const equipmentEffectFrameEvidence = await Promise.all(viewers.map(async ({ player, page: viewerPage }) => {
+      const frameHandle = await viewerPage.waitForFunction(({ expectedEventId, expectedCardId }) => {
+        const frame = [...document.querySelectorAll('[data-public-card-frame-effect-id="yue_jin_dauntless"]')]
+          .find((element) => element.dataset.publicCardFrameClass === "EFFECT"
+            && element.dataset.publicCardFrameEventId === expectedEventId
+            && element.dataset.publicCardFrameMaterialCardIds === expectedCardId);
+        const journey = frame?.closest("[data-public-card-journey-event-id]");
+        const display = journey?.closest(".public-card-display");
+        if (!frame || !journey || !display || display.dataset.publicCardLayoutPending !== "false") return false;
+        const frameRect = frame.getBoundingClientRect();
+        return {
+          eventId: frame.dataset.publicCardFrameEventId,
+          effectClass: frame.dataset.publicCardFrameClass,
+          effectId: frame.dataset.publicCardFrameEffectId,
+          activationOwnerId: frame.dataset.publicCardFrameActivationOwnerId,
+          materialOwnerIds: frame.dataset.publicCardFrameMaterialOwnerIds,
+          materialCardIds: frame.dataset.publicCardFrameMaterialCardIds,
+          title: frame.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
+          journeyEventId: journey.dataset.publicCardJourneyEventId,
+          journeyActorId: journey.dataset.publicCardJourneyActorId,
+          journeyCardIds: journey.dataset.publicCardJourneyCardIds,
+          phase: journey.dataset.publicCardJourneyPhase,
+          viewerId: display.dataset.publicCardViewerId,
+          frame: { left: frameRect.left, top: frameRect.top, width: frameRect.width, height: frameRect.height },
+          viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
+        };
+      }, { expectedEventId: equipmentEvent.id, expectedCardId: equipment.id }, { timeout: 10_000 });
+      const evidence = await frameHandle.jsonValue();
+      await waitForJourneyActorAnchor(viewerPage, player, target, equipmentEvent.id);
+      const parked = await viewerPage.locator('[data-public-card-journey-event-id="' + equipmentEvent.id + '"]').evaluate((journey) => {
+        const rect = journey.getBoundingClientRect();
+        return {
+          phase: journey.dataset.publicCardJourneyPhase,
+          actorId: journey.dataset.publicCardJourneyActorId,
+          cardIds: journey.dataset.publicCardJourneyCardIds,
+          actual: { left: rect.left, top: rect.top },
+          target: {
+            left: Number(journey.dataset.publicCardJourneyTargetLeft),
+            top: Number(journey.dataset.publicCardJourneyTargetTop),
+          },
+        };
+      });
+      return { evidence, parked };
+    }));
+    for (const [index, { player }] of viewers.entries()) {
+      const { evidence, parked } = equipmentEffectFrameEvidence[index];
+      expect(evidence).toMatchObject({
+        eventId: equipmentEvent.id, effectId: "yue_jin_dauntless", effectClass: "EFFECT",
+        activationOwnerId: owner.id, materialOwnerIds: target.id, materialCardIds: equipment.id,
+        title: "DAUNTLESS · EQUIPMENT EFFECT", journeyEventId: equipmentEvent.id,
+        journeyActorId: target.id, journeyCardIds: equipment.id, viewerId: player.id,
+        viewport: { width: 390, height: 844, scrollWidth: 390 },
+      });
+      expect(parked).toMatchObject({ phase: "parked", actorId: target.id, cardIds: equipment.id });
+      expect(Math.abs(parked.actual.left - parked.target.left)).toBeLessThan(1);
+      expect(Math.abs(parked.actual.top - parked.target.top)).toBeLessThan(1);
+    }
+    const effectProjections = await Promise.all(viewers.map(({ player }) => projectedRoom(request, seed, player)));
+    for (const [index, { player, page: viewerPage }] of viewers.entries()) {
+      const serialized = JSON.stringify(effectProjections[index]);
+      expect(serialized).toContain(equipment.id);
+      for (const { ownerId, card: privateCard } of privateCards) {
+        const isOwner = player.id === ownerId;
+        expect(serialized.includes(privateCard.id)).toBe(isOwner);
+        expect(await viewerPage.locator('[data-hand-card-id="' + privateCard.id + '"]').count()).toBe(isOwner ? 1 : 0);
+      }
+    }
     await attachJourneyJson(testInfo, "w3-dauntless-four-viewer-frame-evidence.json", {
       costEvent, effect, ownerId: owner.id, targetId: target.id, viewers: frameEvidence,
-      parkedEvidence, equipmentEvent, equipmentEffect,
+      parkedEvidence, equipmentEvent, equipmentEffect, equipmentEffectFrameEvidence,
       privacy: privateCards.map(({ ownerId, card: privateCard }) => ({ ownerId, cardId: privateCard.id })),
     });
   } finally {

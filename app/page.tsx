@@ -318,6 +318,63 @@ function verifiedDauntlessCostFrameForEvent(
   if (!owner?.name || !target?.name || owner.id === target.id) return null;
   return { costEvent, effect, costCard, owner, target };
 }
+type VerifiedDauntlessEquipmentEffectFrameProof = {
+  effectEvent: CardEvent | CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  equipmentCard: Card;
+  activationOwner: Player;
+  materialOwner: Player;
+};
+function verifiedDauntlessEquipmentEffectFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedDauntlessEquipmentEffectFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const effectEvent = eventMatches.length === 1
+    && (eventMatches[0].type === "card" || eventMatches[0].type === "cards") ? eventMatches[0] : null;
+  if (!effectEvent || effectEvent.presentation === false || effectEvent.privateToPlayerId
+    || effectEvent.action !== "discard" || !effectEvent.resolutionId) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === effectEvent.id
+    && effect.effectId === "yue_jin_dauntless" && effect.effectClass === "EFFECT");
+  const rawMatches = (effectEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "yue_jin_dauntless" && effect.effectClass === "EFFECT");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const cards = eventCards(effectEvent);
+  const [equipmentCard] = cards;
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const targetId = effect.targetId;
+  if (cards.length !== 1 || !equipmentCard || cardDefinition(equipmentCard.kind).category !== "equipment"
+    || !material || !rawMaterial || !projectedCard
+    || effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== effectEvent.id || rawEffect.eventId !== effectEvent.id
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.rootEventId !== undefined || rawEffect.rootEventId !== undefined
+    || effect.rootResolutionId !== undefined || rawEffect.rootResolutionId !== undefined
+    || effect.interactionId !== undefined || rawEffect.interactionId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "DAMAGE_PREVENTED" || rawEffect.outcome !== "DAMAGE_PREVENTED"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || material.cardId !== equipmentCard.id || rawMaterial.cardId !== equipmentCard.id || projectedCard.id !== equipmentCard.id
+    || material.ownerId !== targetId || rawMaterial.ownerId !== targetId
+    || material.fromZone !== "EQUIPMENT" || rawMaterial.fromZone !== "EQUIPMENT"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+    || projectedCard.kind !== equipmentCard.kind || projectedCard.suit !== equipmentCard.suit
+    || projectedCard.rank !== equipmentCard.rank) return null;
+
+  const activationOwner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "yue-jin");
+  const materialOwner = players.find((player) => player.id === targetId);
+  if (!activationOwner?.name || !materialOwner?.name || activationOwner.id === materialOwner.id
+    || effectEvent.player !== materialOwner.name || effectEvent.target !== materialOwner.name) return null;
+  return { effectEvent, effect, equipmentCard, activationOwner, materialOwner };
+}
 type VerifiedBetrothmentCostFrameProof = {
   costEvent: CardGroupEvent;
   effect: PresentationSnapshotPublicCardEffect;
@@ -6316,6 +6373,49 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
+  const dauntlessEquipmentEffectFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "yue_jin_dauntless"
+      && effect.effectClass === "EFFECT")
+      .flatMap((effect) => {
+        const frame = verifiedDauntlessEquipmentEffectFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.effectEvent) - room.timeline.indexOf(left.effectEvent))[0] ?? null;
+  })();
+  const dauntlessEquipmentEffectFrameAction: PublicCardDisplayAction | null = dauntlessEquipmentEffectFrameCandidate ? {
+    key: ["dauntless-equipment-effect", dauntlessEquipmentEffectFrameCandidate.effectEvent.id].join(":"),
+    rootEventId: dauntlessEquipmentEffectFrameCandidate.effectEvent.id,
+    sourceId: dauntlessEquipmentEffectFrameCandidate.materialOwner.id,
+    targetId: null,
+    cardFace: dauntlessEquipmentEffectFrameCandidate.equipmentCard,
+    cardLabel: "DAUNTLESS · EQUIPMENT EFFECT",
+    ariaLabel: dauntlessEquipmentEffectFrameCandidate.activationOwner.name + " used Dauntless on "
+      + dauntlessEquipmentEffectFrameCandidate.materialOwner.name + "; "
+      + dauntlessEquipmentEffectFrameCandidate.materialOwner.name + " discarded "
+      + cardDefinition(dauntlessEquipmentEffectFrameCandidate.equipmentCard.kind).name
+      + " from Equipment, preventing damage.",
+    publicNotice: dauntlessEquipmentEffectFrameCandidate.materialOwner.name + " discarded "
+      + cardDefinition(dauntlessEquipmentEffectFrameCandidate.equipmentCard.kind).name + " for "
+      + dauntlessEquipmentEffectFrameCandidate.activationOwner.name + "'s Dauntless; no damage was dealt.",
+    publicNoticeCompact: dauntlessEquipmentEffectFrameCandidate.materialOwner.name
+      + " discarded Equipment for Dauntless; damage prevented.",
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "yue_jin_dauntless-equipment-effect", dauntlessEquipmentEffectFrameCandidate.effectEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(dauntlessEquipmentEffectFrameCandidate.effectEvent.id)
+        ? [] : [dauntlessEquipmentEffectFrameCandidate.effectEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(dauntlessEquipmentEffectFrameCandidate.effect, {
+      title: "DAUNTLESS · EQUIPMENT EFFECT",
+      accessibleLabel: dauntlessEquipmentEffectFrameCandidate.activationOwner.name + " activated Dauntless. "
+        + dauntlessEquipmentEffectFrameCandidate.materialOwner.name + " discarded their "
+        + cardDefinition(dauntlessEquipmentEffectFrameCandidate.equipmentCard.kind).name
+        + " from Equipment, so no damage was dealt.",
+      activationOwnerName: dauntlessEquipmentEffectFrameCandidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
   const betrothmentCostFrameCandidate = (() => {
     const effects = room.presentationSnapshot?.publicCardEffects ?? [];
     const proved = effects.filter((effect) => effect.effectId === "sun_shangxiang_betrothment"
@@ -6418,7 +6518,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }) ?? undefined,
   } : null;
   const latestHeroPublicCardEffectFrameAction = [
-    prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction, betrothmentCostFrameAction,
+    prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction,
+    dauntlessEquipmentEffectFrameAction, betrothmentCostFrameAction,
     equilibriumCostFrameAction, firstAidConversionFrameAction,
   ].filter((action): action is PublicCardDisplayAction => action !== null
     && !(action.rootEventId === prodigalHealerCostFrameCandidate?.costEvent.id
