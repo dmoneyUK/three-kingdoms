@@ -960,3 +960,274 @@ test("Quick Test SWITCH hides an Attack journey until its current mobile author 
   });
   console.log(`[Q3 ATTACK-DODGE mobile resize] ${JSON.stringify(resizeEvidence)}`);
 });
+
+for (const kind of ["Steal", "Dismantle"]) {
+  const displayName = kind === "Dismantle" ? "Burning Bridges" : kind;
+  test(`W3-F2-R1 ${displayName} public announcement stays stable across TEST SWITCH and target choice`, async ({ page, request }, testInfo) => {
+    test.setTimeout(90_000);
+    const name = `W3 F2 R1 ${kind.toUpperCase()} ${Date.now().toString(36).toUpperCase()}`;
+    const createdResponse = await request.post(`${API}/api/rooms`, { data: { action: "create", name } });
+    const created = await createdResponse.json();
+    expect(createdResponse.status(), JSON.stringify(created)).toBe(201);
+    const { code, token } = { code: created.room.code, token: created.token };
+    const post = async (action, values = {}) => {
+      const response = await request.post(`${API}/api/rooms`, { data: { action, name, code, token, ...values } });
+      const body = await response.json();
+      expect(response.status(), `${action}: ${body.error ?? "unexpected response"}`).toBeLessThan(300);
+      return body.room;
+    };
+    const readView = async (viewerId) => {
+      const query = new URLSearchParams({ code, token, ...(viewerId ? { testViewerId: viewerId } : {}) });
+      const response = await request.get(`${API}/api/rooms?${query}`);
+      expect(response.ok(), `viewer projection ${viewerId ?? "current"}`).toBe(true);
+      return response.json();
+    };
+
+    let room = await post("add_test_players");
+    room = await post("enable_test_room");
+    const source = room.players.find((player) => player.isHost);
+    const target = room.players.find((player) => player.seat === 1);
+    const alternate = room.players.find((player) => player.seat === 2);
+    const fourth = room.players.find((player) => player.seat === 3);
+    expect(source && target && alternate && fourth).toBeTruthy();
+    room = await post("configure_test_hands", {
+      presetId: "custom",
+      expectedRevision: 0,
+      handsBySeat: Object.fromEntries(room.players.map((player) => [player.seat,
+        player.id === source.id ? [kind]
+          : player.id === target.id ? ["Negation", "Peach"]
+            : ["Dodge"],
+      ])),
+    });
+    room = await post("start");
+    const noAutomaticTurnPrompts = new Set([
+      "cao-cao", "xiahou-dun", "liu-bei", "guan-yu", "zhang-fei", "zhao-yun",
+      "sun-quan", "gan-ning", "huang-gai", "lu-xun", "huaxiong", "gongsun-zan",
+      "pan-feng", "ma-chao", "lü-bu", "simayi", "guo-jia",
+    ]);
+    while (room.status === "heroes") {
+      const hero = room.myHeroOptions.find((candidate) => noAutomaticTurnPrompts.has(candidate.id));
+      expect(hero, "the current controlled seat has a low-prompt Standard hero").toBeTruthy();
+      room = await post("choose_hero", { heroId: hero.id });
+    }
+    expect(room.status).toBe("playing");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(({ roomCode, sessionToken, playerName }) => {
+      localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name: playerName }));
+    }, { roomCode: code, sessionToken: token, playerName: name });
+    const pageErrors = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.goto(`${API}/`);
+    await expect(page.locator(".game-shell")).toBeVisible();
+
+    const controlledAction = async (action, values = {}) => {
+      const actorId = room.currentAction?.actorId ?? room.actionPlayerId;
+      const context = {
+        actionRevision: room.actionRevision,
+        meId: room.meId,
+        phase: room.phase,
+        pendingKind: room.pending?.kind ?? null,
+        actorId,
+      };
+      room = await post(action, { ...values, context });
+      return room;
+    };
+    let played = false;
+    for (let attempt = 0; attempt < room.players.length * 4 && !played; attempt++) {
+      const actorId = room.currentAction?.actorId ?? room.actionPlayerId;
+      if (actorId === source.id && room.phase?.startsWith("draw")) {
+        await controlledAction("draw");
+      } else if (actorId === source.id && room.phase?.startsWith("play")) {
+        const material = room.myHand.find((held) => held.kind === kind);
+        expect(material, `source holds the configured ${kind} card`).toBeTruthy();
+        await controlledAction("play_card", { cardId: material.id, targetId: target.id });
+        played = true;
+      } else if (room.phase?.startsWith("draw")) {
+        await controlledAction("draw");
+      } else if (room.phase?.startsWith("play")) {
+        await controlledAction("end_turn");
+      } else if (room.phase === "discard") {
+        const actor = room.players.find((player) => player.id === room.meId);
+        const required = Math.max(0, room.myHand.length - (actor?.hp ?? 0));
+        await controlledAction("discard_cards", { cardIds: room.myHand.slice(0, required).map((held) => held.id) });
+      } else {
+        throw new Error(`Unexpected ${room.phase} while preparing the ${kind} root.`);
+      }
+    }
+    expect(played).toBe(true);
+    const material = [...room.timeline].reverse().find((event) => event.type === "card"
+      && event.action === "play" && event.card?.kind === kind);
+    expect(material, `the real ${kind} root is present in the public timeline`).toBeTruthy();
+    const rootEventId = material.id;
+    const windowId = room.currentAction?.negationWindowId;
+    expect(windowId, "the committed root opens the shared Negation window").toBeTruthy();
+    const hold = await request.post(`${API}/__test/negation-window-clock`, { data: { code, windowId, mode: "hold" } });
+    expect(hold.ok()).toBe(true);
+    // The browser was opened before the API-driven turn setup so its seen-event
+    // store is clean. Refresh now to load the committed root and active window;
+    // the test Worker does not push external API mutations into an open page.
+    await page.reload();
+    await expect(page.locator(".game-shell")).toBeVisible();
+    expect(pageErrors).toEqual([]);
+
+    const rootDisplay = page.locator(`.public-card-display[data-public-card-root-event-id="${rootEventId}"]`);
+    await expect(rootDisplay).toHaveCount(1, { timeout: 12_000 });
+    await expect(rootDisplay.locator('[data-public-card-announcement="true"]')).toHaveCount(1);
+    await expect(rootDisplay.locator('[data-public-card-announcement="true"]')).toBeVisible({ timeout: 12_000 });
+    await page.evaluate((watchedRootEventId) => {
+      const trace = { active: true, lastVisible: null, transitions: [], states: [] };
+      const sample = () => {
+        if (!trace.active) return;
+        const display = document.querySelector(`.public-card-display[data-public-card-root-event-id="${watchedRootEventId}"]`);
+        const copy = display?.querySelector('[data-public-card-announcement="true"]') ?? null;
+        const style = copy ? getComputedStyle(copy) : null;
+        const rect = copy?.getBoundingClientRect() ?? null;
+        const localViewerId = document.querySelector(".local-player-dock")?.getAttribute("data-player-anchor") ?? null;
+        const viewerId = display?.getAttribute("data-public-card-viewer-id") ?? null;
+        const layoutViewerId = display?.getAttribute("data-public-card-layout-viewer-id") ?? null;
+        const visible = Boolean(copy && style && rect && copy.dataset.publicCardAnnouncementPositioned === "true"
+          && style.display !== "none" && style.visibility === "visible" && Number(style.opacity) > 0
+          && rect.width > 0 && rect.height > 0);
+        const state = {
+          at: performance.now(), visible, localViewerId, viewerId, layoutViewerId,
+          pending: display?.getAttribute("data-public-card-layout-pending") ?? null,
+          copyEventId: copy?.getAttribute("data-public-card-announcement-event-id") ?? null,
+          copyKey: copy?.getAttribute("data-public-card-announcement-copy-key") ?? null,
+          rect: rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null,
+        };
+        if (trace.lastVisible !== visible && trace.transitions.length < 120) trace.transitions.push(state);
+        trace.lastVisible = visible;
+        if (trace.states.length < 2400) trace.states.push(state);
+        window.requestAnimationFrame(sample);
+      };
+      trace.stop = () => { trace.active = false; };
+      trace.clearTransitions = () => { trace.transitions = []; };
+      window.__w3F2R1AnnouncementTrace = trace;
+      window.requestAnimationFrame(sample);
+    }, rootEventId);
+    await expect.poll(() => page.evaluate(() => window.__w3F2R1AnnouncementTrace.states.length > 10)).toBe(true);
+    await page.evaluate(() => window.__w3F2R1AnnouncementTrace.clearTransitions());
+
+    const switchTo = async (viewerId, phase = "negation") => {
+      const currentViewerId = await page.locator(".local-player-dock").getAttribute("data-player-anchor");
+      if (currentViewerId === viewerId) return;
+      const transitionStart = await page.evaluate(() => window.__w3F2R1AnnouncementTrace.transitions.length);
+      await page.getByTestId(`test-view-switch-${viewerId}`).click();
+      await expect(page.locator(`.local-player-dock[data-player-anchor="${viewerId}"]`)).toBeVisible({ timeout: 8_000 });
+      if (phase === "negation") {
+        await expect.poll(() => page.evaluate((expectedViewerId) => {
+        const display = [...document.querySelectorAll(".public-card-display[data-public-card-root-event-id]")]
+          .find((candidate) => candidate.getAttribute("data-public-card-root-event-id") === window.__w3F2R1RootEventId);
+        const copy = display?.querySelector('[data-public-card-announcement="true"]');
+        const style = copy ? getComputedStyle(copy) : null;
+        return Boolean(display?.getAttribute("data-public-card-viewer-id") === expectedViewerId
+          && display.getAttribute("data-public-card-layout-viewer-id") === expectedViewerId
+          && display.getAttribute("data-public-card-layout-pending") === "false"
+          && copy?.dataset.publicCardAnnouncementPositioned === "true"
+          && style?.visibility === "visible" && Number(style.opacity) > 0);
+        }, viewerId), { timeout: 8_000 }).toBe(true);
+        await page.waitForFunction(() => {
+          const trace = window.__w3F2R1AnnouncementTrace;
+          const tail = trace.states.slice(-10);
+          return tail.length === 10 && tail.every((state) => state.visible
+            && state.viewerId === state.localViewerId && state.layoutViewerId === state.localViewerId
+            && state.pending === "false");
+        }, undefined, { timeout: 3_000 });
+        const transitionEnd = await page.evaluate(() => window.__w3F2R1AnnouncementTrace.transitions.length);
+        const transitions = await page.evaluate(({ start, end }) => window.__w3F2R1AnnouncementTrace.transitions.slice(start, end), {
+          start: transitionStart, end: transitionEnd,
+        });
+        expect(transitions.length, JSON.stringify({ viewerId, transitions })).toBeLessThanOrEqual(2);
+        expect(transitions.filter((state) => state.visible).length, JSON.stringify({ viewerId, transitions })).toBeLessThanOrEqual(1);
+      } else {
+        await expect.poll(() => page.evaluate((expectedViewerId) => {
+          const display = [...document.querySelectorAll(".public-card-display[data-public-card-root-event-id]")]
+            .find((candidate) => candidate.getAttribute("data-public-card-root-event-id") === window.__w3F2R1RootEventId);
+          return Boolean(display?.getAttribute("data-public-card-viewer-id") === expectedViewerId
+            && display.getAttribute("data-public-card-layout-viewer-id") === expectedViewerId
+            && display.getAttribute("data-public-card-layout-pending") === "false");
+        }, viewerId), { timeout: 8_000 }).toBe(true);
+      }
+    };
+    await page.evaluate((id) => { window.__w3F2R1RootEventId = id; }, rootEventId);
+    const initialViewer = await page.locator(".local-player-dock").getAttribute("data-player-anchor");
+    await page.evaluate(() => window.__w3F2R1AnnouncementTrace.clearTransitions());
+    const negationSwitches = [target.id, alternate.id, fourth.id, source.id, alternate.id, source.id]
+      .filter((viewerId, index, ids) => viewerId !== (index === 0 ? initialViewer : ids[index - 1]));
+    for (const viewerId of negationSwitches) await switchTo(viewerId);
+    const negationTrace = await page.evaluate(() => ({ transitions: window.__w3F2R1AnnouncementTrace.transitions, states: window.__w3F2R1AnnouncementTrace.states }));
+    expect(negationTrace.states.some((state) => state.visible), JSON.stringify(negationTrace.states.slice(-100))).toBe(true);
+
+    let current = await readView(source.id);
+    for (const player of current.players.filter((candidate) => candidate.alive)) {
+      current = await readView(player.id);
+      if (current.currentAction?.negationWindowId !== windowId) break;
+      const response = await request.post(`${API}/api/rooms`, {
+        data: { action: "decline_response", name, code, token, context: {
+          actionRevision: current.actionRevision, meId: player.id, phase: "response", pendingKind: "response", windowId,
+        } },
+      });
+      const body = await response.json();
+      expect(response.status(), `Negation pass for ${player.name}: ${body.error ?? "unexpected response"}`).toBeLessThan(300);
+    }
+    current = await readView(source.id);
+    expect(current.currentAction).toMatchObject({ kind: "target_card", actorId: source.id });
+    const targetPrivateIds = (await readView(target.id)).myHand.map((held) => held.id);
+    await switchTo(source.id, "target-card");
+    const pool = page.locator(".card-pool-panel--actor-target-select");
+    await expect(pool).toBeVisible({ timeout: 8_000 });
+    const title = kind === "Steal" ? "Steal" : "Burning Bridge";
+    for (const viewerId of [target.id, source.id, alternate.id, source.id, fourth.id, source.id]) {
+      await switchTo(viewerId, "target-card");
+      if (viewerId === source.id) {
+        await expect(pool).toBeVisible();
+        await expect(page.locator(".public-card-display-journey-copy")).toHaveCount(0);
+        const sourceProjection = await readView(source.id);
+        const sourceMarkup = await page.locator("body").innerHTML();
+        for (const cardId of targetPrivateIds) {
+          expect(JSON.stringify(sourceProjection)).not.toContain(cardId);
+          expect(sourceMarkup).not.toContain(cardId);
+        }
+      } else {
+        await expect(pool).toHaveCount(0);
+        await expect(rootDisplay.locator('[data-public-card-announcement="true"]')).toHaveCount(1);
+        await expect(rootDisplay.locator('[data-public-card-announcement="true"]')).toBeVisible();
+        const viewerState = await readView(viewerId);
+        expect(viewerState.isMyAction).toBe(false);
+        expect(viewerState.currentAction?.targetCardSelection).toBeUndefined();
+        if (viewerId !== target.id) {
+          const serialized = JSON.stringify(viewerState);
+          const markup = await page.locator("body").innerHTML();
+          for (const cardId of targetPrivateIds) expect(serialized).not.toContain(cardId);
+          for (const cardId of targetPrivateIds) expect(markup).not.toContain(cardId);
+        }
+      }
+    }
+
+    const hiddenPosition = pool.getByRole("button", { name: "Choose hidden Hand position 1" });
+    await expect(hiddenPosition).toBeEnabled();
+    await hiddenPosition.click();
+    const submitPromise = page.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+      catch { return false; }
+    });
+    await pool.getByRole("button", { name: `Use ${title}` }).click();
+    const submitted = await submitPromise;
+    const responseText = await submitted.text();
+    expect(submitted.ok(), responseText).toBe(true);
+    expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
+      action: "choose_target_card", targetCardZone: "hand", targetCardIndex: 0,
+    });
+    const settled = JSON.parse(responseText);
+    expect(settled.room.currentAction?.kind).not.toBe("target_card");
+    const postSettle = await page.evaluate(() => {
+      window.__w3F2R1AnnouncementTrace.stop();
+      return window.__w3F2R1AnnouncementTrace.transitions;
+    });
+    await testInfo.attach(`w3-f2-r1-${kind.toLowerCase()}-announcement-trace.json`, {
+      body: JSON.stringify({ rootEventId, initialViewer, negationSwitches, transitions: postSettle }, null, 2),
+      contentType: "application/json",
+    });
+  });
+}

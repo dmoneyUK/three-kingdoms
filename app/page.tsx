@@ -4855,8 +4855,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || rootEvent.resolutionId !== links.root.resolutionId) return [];
     const rootSource = root.source.id ? room.players.find((player) => player.id === root.source.id) : undefined;
     const rootTarget = root.targets[0]?.id ? room.players.find((player) => player.id === root.targets[0]?.id) : undefined;
-    if (!rootSource?.name || !rootTarget?.name || rootEvent.player !== rootSource.name || !rootEvent.card.id
-      || room.timeline.filter((event) => event.type === "card" && event.card?.id === rootEvent.card.id).length !== 1) return [];
+    // Resolve this physical card through its committed public play event. The
+    // owner's viewer projection can also contain the same ID in the earlier
+    // private draw event, so timeline-wide card-ID uniqueness would make this
+    // public root appear only in some viewers' projections.
+    if (!rootSource?.name || !rootTarget?.name || rootEvent.player !== rootSource.name || !rootEvent.card.id) return [];
     const responseEventIds = new Set([rootEvent.id]);
     const responseCardIds = new Set([rootEvent.card.id]);
     const responseNodes = chain.negationNodes.flatMap((node, index) => {
