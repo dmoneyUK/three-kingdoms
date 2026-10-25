@@ -808,7 +808,6 @@ function attackHitSettlementProofFor(room: RoomRow, source: PlayerRow, target: P
     .some((card) => card.id === sequenceStartCardId));
   if (roots.length !== 1) return undefined;
   const root = roots[0];
-  const rootCards = root.type === "card" ? [root.card] : root.type === "cards" ? root.cards : [];
   const rootEffects = root.type === "cards" ? root.publicCardEffects ?? [] : [];
   const serpentProofs = rootEffects.filter((effect) => effect.effectId === "serpent_spear_attack"
     && effect.semantics === "PROVEN" && effect.effectClass === "CONVERSION"

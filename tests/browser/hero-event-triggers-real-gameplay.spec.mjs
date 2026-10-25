@@ -1168,7 +1168,7 @@ test("Serpent Spear presents two real cards as one Attack for actor, target and 
         title: frame?.querySelector(".public-card-effect-frame-title")?.textContent?.trim() ?? parkedTitle?.textContent?.trim(),
         ownerId: frame?.dataset.publicCardFrameActivationOwnerId ?? journey.dataset.publicCardJourneyActorId,
         materialOwnerIds: frame?.dataset.publicCardFrameMaterialOwnerIds
-          ?? expectedIds.map(() => journey.dataset.publicCardJourneyActorId).join(","),
+          ?? `${journey.dataset.publicCardJourneyActorId},${journey.dataset.publicCardJourneyActorId}`,
         materialCardIds: frame?.dataset.publicCardFrameMaterialCardIds ?? journey.dataset.publicCardJourneyCardIds,
         materialFaces: [...new Set([...journey.querySelectorAll("[data-public-card-effect-frame-card-id]")]
           .map((face) => face.getAttribute("data-public-card-effect-frame-card-id")))],
