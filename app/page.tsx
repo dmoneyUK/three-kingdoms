@@ -432,6 +432,60 @@ type VerifiedFirstAidConversionFrameProof = {
   owner: Player;
   target: Player;
 };
+type VerifiedGodOfWarConversionFrameProof = {
+  conversionEvent: CardEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  sourceCard: Card;
+  owner: Player;
+  target: Player;
+};
+function verifiedGodOfWarConversionFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedGodOfWarConversionFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const conversionEvent = eventMatches.length === 1 && eventMatches[0].type === "card" ? eventMatches[0] : null;
+  if (!conversionEvent || conversionEvent.action !== "play" || conversionEvent.presentation === false
+    || conversionEvent.privateToPlayerId || conversionEvent.playedAs !== "attack") return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === conversionEvent.id
+    && effect.effectId === "guan_yu_red_card_attack");
+  const rawMatches = (conversionEvent.publicCardEffects ?? []).filter((effect) => effect.effectId === "guan_yu_red_card_attack");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const sourceCard = conversionEvent.card;
+  const targetNames = conversionEvent.target.split(",").map((name) => name.trim()).filter(Boolean);
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.effectClass !== "CONVERSION" || rawEffect.effectClass !== "CONVERSION"
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.rootEventId !== undefined || rawEffect.rootEventId !== undefined
+    || effect.rootResolutionId !== undefined || rawEffect.rootResolutionId !== undefined
+    || effect.interactionId !== undefined || rawEffect.interactionId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.targetId !== rawEffect.targetId || !effect.targetId
+    || effect.resultingCardKind !== "Attack" || rawEffect.resultingCardKind !== "Attack"
+    || effect.outcome !== "AS_ATTACK" || rawEffect.outcome !== "AS_ATTACK"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || sourceCard.kind === "Attack" || (sourceCard.suit !== "♥" && sourceCard.suit !== "♦")
+    || sourceCard.id !== projectedCard.id || sourceCard.id !== material.cardId || sourceCard.id !== rawMaterial.cardId
+    || sourceCard.kind !== projectedCard.kind || sourceCard.suit !== projectedCard.suit || sourceCard.rank !== projectedCard.rank
+    || material.ownerId !== effect.activationOwnerId || rawMaterial.ownerId !== effect.activationOwnerId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD") return null;
+
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "guan-yu");
+  const target = players.find((player) => player.id === effect.targetId);
+  if (!owner?.name || !target?.name || owner.id === target.id
+    || conversionEvent.player !== owner.name || targetNames[0] !== target.name) return null;
+  return { conversionEvent, effect, sourceCard, owner, target };
+}
 function verifiedFirstAidConversionFrameForEvent(
   timeline: readonly GameEvent[],
   effects: readonly PresentationSnapshotPublicCardEffect[],
@@ -6586,8 +6640,37 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const selectedLustOrderOwnsActivityBand = Boolean(selectedPublicCardAction
     && (selectedPublicCardAction.motion?.type === "lust-cost" || selectedPublicCardAction.motion?.type === "lust-duel")
     && (publicActivityStatus.kind === "duel" || publicActivityStatus.kind === "resolving"));
+  const godOfWarConversionFrameCandidate = (() => {
+    if (!selectedPublicCardAction || selectedPublicCardAction.motion?.type !== "attack-dodge"
+      || selectedPublicCardAction.cardKind !== "Attack" || !selectedPublicCardAction.cardFace) return null;
+    const proof = verifiedGodOfWarConversionFrameForEvent(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      room.players,
+      selectedPublicCardAction.rootEventId,
+    );
+    if (!proof || selectedPublicCardAction.sourceId !== proof.owner.id
+      || selectedPublicCardAction.targetId !== proof.target.id
+      || selectedPublicCardAction.cardFace.id !== proof.sourceCard.id) return null;
+    const publicNotice = `${proof.owner.name} used God of War: ${cardDefinition(proof.sourceCard.kind).name} AS ATTACK, targeting ${proof.conversionEvent.target}.`;
+    const accessibleLabel = `${proof.owner.name} used God of War. ${cardDefinition(proof.sourceCard.kind).name}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Attack targeting ${proof.conversionEvent.target}.`;
+    const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
+      title: "GOD OF WAR · AS ATTACK",
+      accessibleLabel,
+      activationOwnerName: proof.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    });
+    return publicCardEffectFrame ? { proof, publicNotice, accessibleLabel, publicCardEffectFrame } : null;
+  })();
   const publicCardDisplayAction: PublicCardDisplayAction | null = selectedPublicCardAction ? {
     ...selectedPublicCardAction,
+    ...(godOfWarConversionFrameCandidate ? {
+      cardLabel: "GOD OF WAR · AS ATTACK",
+      ariaLabel: godOfWarConversionFrameCandidate.accessibleLabel,
+      publicNotice: godOfWarConversionFrameCandidate.publicNotice,
+      publicNoticeCompact: `${godOfWarConversionFrameCandidate.proof.owner.name} used God of War AS ATTACK.`,
+      publicCardEffectFrame: godOfWarConversionFrameCandidate.publicCardEffectFrame,
+    } : {}),
     publicActivityMessage: selectedLustOrderOwnsActivityBand
       ? publicActivityStatus.heading ?? publicActivityStatus.text : undefined,
     publicActivityAccessibleMessage: selectedLustOrderOwnsActivityBand

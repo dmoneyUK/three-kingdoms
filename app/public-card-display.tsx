@@ -2779,6 +2779,7 @@ function AttackDodgeCardJourney({
   const eventSignature = `${action.rootEventId}|${action.response?.eventId ?? ""}|${action.deflection?.eventId ?? ""}|${attackDodgeMotion?.rootFresh ? "new-root" : "parked-root"}|${attackDodgeMotion?.responseFresh ? "new-response" : "parked-response"}|${attackDodgeMotion?.deflectionFresh ? "new-deflection" : "parked-deflection"}`;
   const latestResponse = action.response ?? null;
   const latestDeflection = action.deflection ?? null;
+  const publicEffectFrameOwnsAnnouncementAnchor = action.publicCardEffectFrame?.eventId === action.rootEventId;
   const activeJourneyCard = journey.cards.find((card) => card.phase === "reveal")
     ?? [...journey.cards].reverse().find((card) => card.phase === "move")
     ?? [...journey.cards].reverse().find((card) => card.phase !== "queued")
@@ -2828,7 +2829,9 @@ function AttackDodgeCardJourney({
     const currentSourceName = sourceNameRef.current;
     const motion = currentAction.motion?.type === "attack-dodge" ? currentAction.motion : null;
     if (!enabled || !motion) return;
-    const center = battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
+    const center = currentAction.publicCardEffectFrame?.eventId === currentAction.rootEventId
+      ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame.materials.length)
+      : battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
     const previousState = journeyRef.current;
     const sameInteraction = previousState.scopeKey === scopeKey;
     const viewerChanged = sameInteraction && previousState.viewerId !== viewerId;
@@ -3309,7 +3312,9 @@ function AttackDodgeCardJourney({
     const reposition = () => {
       const currentAction = actionRef.current;
       const current = journeyRef.current;
-      const center = battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
+      const center = currentAction.publicCardEffectFrame?.eventId === currentAction.rootEventId
+        ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame.materials.length)
+        : battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
       const next = {
         ...current,
         center,
@@ -3475,11 +3480,16 @@ function AttackDodgeCardJourney({
       copyLifecycleStage={publicCardAnnouncementLifecycleStage(action)}
       placementKey={publicCardAnnouncementPlacementKey(action, roomCode)}
       viewerLayoutKey={viewerId}
-      phase={activeJourneyCard?.phase ?? "static"}
+      anchorEventId={publicEffectFrameOwnsAnnouncementAnchor ? null : activeEventId}
+      phase={publicEffectFrameOwnsAnnouncementAnchor ? "static" : activeJourneyCard?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
       accessibleLabel={announcementCopy.accessibleLabel}
-      fallbackCardRect={journey.center}
+      fallbackCardRect={publicEffectFrameOwnsAnnouncementAnchor && journey.center && action.publicCardEffectFrame
+        ? battlefieldPublicEffectFrame(journey.center, action.publicCardEffectFrame.materials.length) : journey.center}
+      keepCenterAnchorClear={publicEffectFrameOwnsAnnouncementAnchor}
+      stableCenterAnchor={publicEffectFrameOwnsAnnouncementAnchor}
+      preferredVerticalMode={publicEffectFrameOwnsAnnouncementAnchor ? "above" : undefined}
       phaseNotice={action.phaseNotice}
       outcome={action.settlement?.outcome}
       negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
