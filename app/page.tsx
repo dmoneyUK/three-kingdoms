@@ -1038,6 +1038,78 @@ function verifiedRockCleavingAxeCostFrameForEvent(
     || costEvent.player !== activationOwner.name || costEvent.target !== target.name) return null;
   return { costEvent, effect, rootEvent, costCards: [costEvent.cards[0], costEvent.cards[1]], activationOwner, target };
 }
+type VerifiedKirinBowEffectFrameProof = {
+  effectEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  rootEvent: CardEvent | CardGroupEvent;
+  mount: Card;
+  activationOwner: Player;
+  materialOwner: Player;
+};
+function verifiedKirinBowEffectFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedKirinBowEffectFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const effectEvent = eventMatches.length === 1 && eventMatches[0].type === "cards"
+    ? eventMatches[0] : null;
+  if (!effectEvent || effectEvent.presentation === false || effectEvent.privateToPlayerId
+    || effectEvent.action !== "discard" || !effectEvent.resolutionId || effectEvent.cards.length !== 1) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === effectEvent.id
+    && effect.effectId === "kirin_bow_damage_about_to_apply" && effect.effectClass === "EFFECT");
+  const rawMatches = (effectEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "kirin_bow_damage_about_to_apply" && effect.effectClass === "EFFECT");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const mount = effectEvent.cards[0];
+  const targetId = effect.targetId;
+  const rootEventId = effect.rootEventId;
+  const rootResolutionId = effect.rootResolutionId;
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const mountSlot = cardDefinition(mount.kind).equipmentSlot;
+  if ((mountSlot !== "offensiveHorse" && mountSlot !== "defensiveHorse")
+    || effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== effectEvent.id || rawEffect.eventId !== effectEvent.id
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "MOUNT_DISCARDED_DAMAGE_CONTINUES" || rawEffect.outcome !== "MOUNT_DISCARDED_DAMAGE_CONTINUES"
+    || !rootEventId || rootEventId !== rawEffect.rootEventId || rootEventId === effectEvent.id
+    || !rootResolutionId || rootResolutionId !== rawEffect.rootResolutionId
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || material.cardId !== mount.id || rawMaterial.cardId !== mount.id || projectedCard.id !== mount.id
+    || material.ownerId !== targetId || rawMaterial.ownerId !== targetId
+    || material.fromZone !== "EQUIPMENT" || rawMaterial.fromZone !== "EQUIPMENT"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+    || projectedCard.kind !== mount.kind || projectedCard.suit !== mount.suit || projectedCard.rank !== mount.rank) return null;
+
+  const rootMatches = timeline.filter((event) => event.id === rootEventId);
+  const rootEvent = rootMatches.length === 1 && (rootMatches[0].type === "card" || rootMatches[0].type === "cards")
+    ? rootMatches[0] : null;
+  if (!rootEvent || rootEvent.presentation === false || rootEvent.privateToPlayerId
+    || !rootEvent.resolutionId || rootEvent.resolutionId !== rootResolutionId || rootEvent.action !== "play") return null;
+
+  const activationOwner = players.find((player) => player.id === effect.activationOwnerId);
+  const materialOwner = players.find((player) => player.id === targetId);
+  const isAttackRoot = rootEvent.type === "card"
+    ? rootEvent.card.kind === "Attack" || rootEvent.playedAs === "attack"
+    : rootEvent.playedAs === "attack" && rootEvent.cards.length === 2
+      && (rootEvent.publicCardEffects ?? []).some((rootEffect) => rootEffect.semantics === "PROVEN"
+        && rootEffect.effectId === "serpent_spear_attack" && rootEffect.effectClass === "CONVERSION"
+        && rootEffect.resultingCardKind === "Attack" && rootEffect.outcome === "AS_ATTACK"
+        && rootEffect.activationOwnerId === activationOwner?.id && rootEffect.targetId === materialOwner?.id);
+  if (!activationOwner?.name || !materialOwner?.name || activationOwner.id === materialOwner.id || !isAttackRoot
+    || rootEvent.player !== activationOwner.name || rootEvent.target !== materialOwner.name
+    || effectEvent.player !== materialOwner.name || effectEvent.target !== materialOwner.name) return null;
+  return { effectEvent, effect, rootEvent, mount, activationOwner, materialOwner };
+}
 function verifiedLustCostFrameForEvent(
   timeline: readonly GameEvent[],
   notices: readonly PresentationSnapshotDiaoChanSkillNotice[],
@@ -6825,11 +6897,44 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
+  const kirinBowEffectFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "kirin_bow_damage_about_to_apply"
+      && effect.effectClass === "EFFECT")
+      .flatMap((effect) => {
+        const frame = verifiedKirinBowEffectFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.effectEvent) - room.timeline.indexOf(left.effectEvent))[0] ?? null;
+  })();
+  const kirinBowEffectFrameAction: PublicCardDisplayAction | null = kirinBowEffectFrameCandidate ? {
+    key: ["kirin-bow-effect", kirinBowEffectFrameCandidate.effectEvent.id].join(":"),
+    rootEventId: kirinBowEffectFrameCandidate.effectEvent.id,
+    sourceId: kirinBowEffectFrameCandidate.materialOwner.id,
+    targetId: null,
+    cardFace: kirinBowEffectFrameCandidate.mount,
+    cardLabel: "KIRIN BOW · MOUNT DISCARD",
+    ariaLabel: `${kirinBowEffectFrameCandidate.activationOwner.name} used Kirin Bow on ${kirinBowEffectFrameCandidate.materialOwner.name}. ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name} was discarded from the target's Equipment, and Attack damage continues.`,
+    publicNotice: `${kirinBowEffectFrameCandidate.activationOwner.name} used Kirin Bow to discard ${kirinBowEffectFrameCandidate.materialOwner.name}'s ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name}. Attack damage continues.`,
+    publicNoticeCompact: `Kirin Bow: ${kirinBowEffectFrameCandidate.materialOwner.name}'s Mount was discarded; Attack damage continues.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "kirin_bow_damage_about_to_apply", kirinBowEffectFrameCandidate.effectEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(kirinBowEffectFrameCandidate.effectEvent.id)
+        ? [] : [kirinBowEffectFrameCandidate.effectEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(kirinBowEffectFrameCandidate.effect, {
+      title: "KIRIN BOW · MOUNT EFFECT",
+      accessibleLabel: `${kirinBowEffectFrameCandidate.activationOwner.name} activated Kirin Bow. ${kirinBowEffectFrameCandidate.materialOwner.name}'s real equipped ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name} was discarded; Attack damage continues.`,
+      activationOwnerName: kirinBowEffectFrameCandidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
   const latestHeroPublicCardEffectFrameAction = [
     prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction,
     dauntlessEquipmentEffectFrameAction, betrothmentCostFrameAction,
     equilibriumCostFrameAction, firstAidConversionFrameAction, necromancyJudgementFrameAction,
-    stauchnessCostFrameAction, rockCleavingAxeCostFrameAction,
+    stauchnessCostFrameAction, rockCleavingAxeCostFrameAction, kirinBowEffectFrameAction,
   ].filter((action): action is PublicCardDisplayAction => action !== null
     && !(action.rootEventId === prodigalHealerCostFrameCandidate?.costEvent.id
       && prodigalHealerAnnouncementLifecycle.status === "superseded"))

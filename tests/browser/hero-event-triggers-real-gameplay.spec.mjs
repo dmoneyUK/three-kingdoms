@@ -705,6 +705,122 @@ test("real Rock Cleaving Axe frames its two paid cards for attacker, target and 
   }
 });
 
+test("real Kirin Bow frames the target's discarded Mount for attacker, target and observer on mobile", async ({ page, browser, request }) => {
+  test.setTimeout(90_000);
+  const attack = card("Attack", "real-kirin-frame-attack", "♦");
+  const privateSourceCard = card("Peach", "real-kirin-frame-private-source", "♥");
+  const privateTargetCard = card("Dodge", "real-kirin-frame-private-target", "♣");
+  const bow = card("KirinBow", "real-kirin-frame-weapon");
+  const mount = card("Shadowrunner", "real-kirin-frame-mount", "♦");
+  const seedData = await seed(request, [
+    { name: "KIRIN USER", role: "Lord", hero: "sun-quan", hp: 4, maxHp: 4, hand: [attack, privateSourceCard], equipment: { weapon: bow } },
+    { name: "MOUNT TARGET", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [privateTargetCard], equipment: { defensiveHorse: mount } },
+    { name: "OBSERVER", role: "Rebel", hero: "simayi", hp: 4, maxHp: 4, hand: [] },
+    { name: "FOURTH", role: "Renegade", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [] },
+  ]);
+  const opened = await request.post(`${API}/api/rooms`, {
+    data: { action: "play_card", code: seedData.code, token: seedData.players[0].token, cardId: attack.id, targetId: seedData.players[1].id },
+  });
+  expect(opened.ok(), await opened.text()).toBeTruthy();
+  const passed = await request.post(`${API}/api/rooms`, {
+    data: { action: "decline_response", code: seedData.code, token: seedData.players[1].token },
+  });
+  expect(passed.ok(), await passed.text()).toBeTruthy();
+  const triggerDecision = await view(request, seedData, 0);
+  expect(triggerDecision.currentAction).toMatchObject({ kind: "trigger", actorId: seedData.players[0].id });
+  expect(triggerDecision.currentAction.triggerOptions.map((option) => option.effectId)).toContain("kirin_bow_damage_about_to_apply");
+
+  const targetPage = await browser.newPage();
+  const observerPage = await browser.newPage();
+  try {
+    const viewers = [
+      { viewerPage: page, viewerId: seedData.players[0].id, privateHandCard: privateSourceCard },
+      { viewerPage: targetPage, viewerId: seedData.players[1].id, privateHandCard: privateTargetCard },
+      { viewerPage: observerPage, viewerId: seedData.players[2].id, privateHandCard: null },
+    ];
+    const activated = await request.post(`${API}/api/rooms`, {
+      data: {
+        action: "trigger", code: seedData.code, token: seedData.players[0].token,
+        providerId: "kirin_bow_damage_about_to_apply", cardKeys: [mount.id],
+      },
+    });
+    expect(activated.ok(), await activated.text()).toBeTruthy();
+    const publicRoom = await view(request, seedData, 2);
+    const effectEvent = publicRoom.timeline.find((event) => event.type === "cards"
+      && event.action === "discard" && event.cards.some((item) => item.id === mount.id));
+    expect(effectEvent).toBeTruthy();
+    expect(effectEvent.cards.map((item) => item.id)).toEqual([mount.id]);
+    expect(effectEvent.publicCardEffects).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        effectId: "kirin_bow_damage_about_to_apply", effectClass: "EFFECT",
+        activationOwnerId: seedData.players[0].id, targetId: seedData.players[1].id,
+        outcome: "MOUNT_DISCARDED_DAMAGE_CONTINUES",
+        materials: [{ cardId: mount.id, ownerId: seedData.players[1].id, fromZone: "EQUIPMENT", toZone: "DISCARD" }],
+      }),
+    ]));
+    const rootEvent = publicRoom.timeline.find((event) => event.type === "card" && event.card.id === attack.id);
+    expect(rootEvent).toMatchObject({ action: "play", player: "KIRIN USER", target: "MOUNT TARGET" });
+    expect(effectEvent.publicCardEffects[0].rootEventId).toBe(rootEvent.id);
+    expect(publicRoom.players.find((player) => player.id === seedData.players[1].id).equipmentCards)
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ id: mount.id, kind: "Shadowrunner" })]));
+    expect(publicRoom.players.find((player) => player.id === seedData.players[1].id).hp).toBe(3);
+
+    await Promise.all([openPlayer(page, seedData, 0), openPlayer(targetPage, seedData, 1), openPlayer(observerPage, seedData, 2)]);
+    const frameEvidence = await Promise.all(viewers.map(async ({ viewerPage, viewerId }) => {
+      const handle = await viewerPage.waitForFunction(({ expectedViewerId, cardId }) => {
+        const display = [...document.querySelectorAll(".public-card-display")]
+          .find((element) => element.dataset.publicCardViewerId === expectedViewerId);
+        const journey = [...(display?.querySelectorAll("[data-public-card-journey-event-id]") ?? [])]
+          .find((element) => element.dataset.publicCardJourneyCardIds === cardId
+            && ["reveal", "move", "parked"].includes(element.dataset.publicCardJourneyPhase));
+        if (!display || !journey || !journey.classList.contains("is-public-effect-frame")) return false;
+        return {
+          viewerId: display.dataset.publicCardViewerId,
+          eventId: journey.dataset.publicCardJourneyEventId,
+          phase: journey.dataset.publicCardJourneyPhase,
+          journeyActorId: journey.dataset.publicCardJourneyActorId,
+          frameCount: [...display.querySelectorAll(".public-card-journey-card.is-public-effect-frame")]
+            .filter((item) => item.dataset.publicCardJourneyCardIds === cardId).length,
+          frameClass: "EFFECT",
+          frameMaterialCardIds: journey.dataset.publicCardJourneyCardIds,
+          frameFaces: journey.dataset.publicCardJourneyCardIds.split(","),
+          frameTitle: journey.querySelector(".public-card-lust-cost-parked, .public-card-effect-frame-title")?.textContent?.trim(),
+          title: journey.getAttribute("aria-label"),
+          announcementCount: display.querySelectorAll('[data-public-card-announcement="true"]').length,
+          announcement: display.querySelector('[data-public-card-announcement="true"]')?.textContent?.trim(),
+          viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
+        };
+      }, { expectedViewerId: viewerId, cardId: mount.id }, { timeout: 8_000 });
+      return handle.jsonValue();
+    }));
+    for (let index = 0; index < frameEvidence.length; index += 1) {
+      const evidence = frameEvidence[index];
+      const { viewerPage, viewerId, privateHandCard } = viewers[index];
+      expect(evidence).toMatchObject({
+        viewerId, eventId: effectEvent.id, phase: expect.stringMatching(/^(reveal|move|parked)$/),
+        journeyActorId: seedData.players[1].id, frameCount: 1, frameClass: "EFFECT",
+        frameMaterialCardIds: mount.id, frameFaces: [mount.id], frameTitle: "KIRIN BOW · MOUNT EFFECT",
+        announcementCount: 1, viewport: { width: 390, height: 844, scrollWidth: 390 },
+      });
+      expect(evidence.title).toContain("KIRIN BOW · MOUNT EFFECT");
+      expect(evidence.title).toContain("KIRIN USER");
+      expect(evidence.title).toContain("MOUNT TARGET");
+      expect(evidence.announcement).toContain("damage continues");
+      if (privateHandCard) await expect(viewerPage.locator(`[data-hand-card-id="${privateHandCard.id}"]`)).toHaveCount(1);
+    }
+    for (const { viewerPage, privateHandCard } of viewers) {
+      if (privateHandCard) continue;
+      await expect(viewerPage.locator(`[data-hand-card-id="${privateSourceCard.id}"]`)).toHaveCount(0);
+      await expect(viewerPage.locator(`[data-hand-card-id="${privateTargetCard.id}"]`)).toHaveCount(0);
+    }
+    expect(JSON.stringify(publicRoom)).not.toContain(privateSourceCard.id);
+    expect(JSON.stringify(publicRoom)).not.toContain(privateTargetCard.id);
+  } finally {
+    await targetPage.close();
+    await observerPage.close();
+  }
+});
+
 test("real Legacy activation reaches the private two-card distribution UI and submits exact recipients", async ({ page, request }) => {
   const attack = card("Attack", "real-legacy-attack");
   const seedData = await seed(request, [
