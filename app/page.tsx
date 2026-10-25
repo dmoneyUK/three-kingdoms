@@ -456,6 +456,13 @@ type VerifiedBraveheartDodgeResponseFrameProof = {
   attackSource: Player;
 };
 type VerifiedEmpressDowagerDodgeResponseFrameProof = VerifiedBraveheartDodgeResponseFrameProof;
+type VerifiedAmbushmentConversionFrameProof = {
+  conversionEvent: CardEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  sourceCard: Card;
+  owner: Player;
+  target: Player;
+};
 function verifiedBraveheartDodgeResponseFrameForEvent(
   timeline: readonly GameEvent[],
   effects: readonly PresentationSnapshotPublicCardEffect[],
@@ -629,6 +636,49 @@ function verifiedAttackConversionFrameForEvent(
   if (!owner?.name || !target?.name || owner.id === target.id
     || conversionEvent.player !== owner.name || targetNames[0] !== target.name) return null;
   return { conversionEvent, effect, sourceCard, owner, target, spec };
+}
+function verifiedAmbushmentConversionFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+  expectedCardId: string,
+): VerifiedAmbushmentConversionFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const conversionEvent = eventMatches.length === 1 && eventMatches[0].type === "card" ? eventMatches[0] : null;
+  if (!conversionEvent || conversionEvent.action !== "play" || conversionEvent.presentation === false
+    || conversionEvent.playedAs !== undefined
+    || conversionEvent.privateToPlayerId || conversionEvent.card.id !== expectedCardId
+    || conversionEvent.card.suit !== "♣" && conversionEvent.card.suit !== "♠") return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === conversionEvent.id && effect.effectId === "gan_ning_qixi");
+  const rawMatches = (conversionEvent.publicCardEffects ?? []).filter((effect) => effect.effectId === "gan_ning_qixi");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const sourceCard = conversionEvent.card;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.effectClass !== "CONVERSION" || rawEffect.effectClass !== "CONVERSION"
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.targetId !== rawEffect.targetId || !effect.targetId
+    || effect.resultingCardKind !== "Dismantle" || rawEffect.resultingCardKind !== "Dismantle"
+    || effect.outcome !== "AS_DISMANTLE" || rawEffect.outcome !== "AS_DISMANTLE"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || sourceCard.id !== projectedCard.id || sourceCard.id !== material.cardId || sourceCard.id !== rawMaterial.cardId
+    || sourceCard.kind !== projectedCard.kind || sourceCard.suit !== projectedCard.suit || sourceCard.rank !== projectedCard.rank
+    || material.ownerId !== effect.activationOwnerId || rawMaterial.ownerId !== effect.activationOwnerId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD") return null;
+
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "gan-ning");
+  const target = players.find((player) => player.id === effect.targetId);
+  if (!owner?.name || !target?.name || owner.id === target.id
+    || conversionEvent.player !== owner.name || conversionEvent.target !== target.name) return null;
+  return { conversionEvent, effect, sourceCard, owner, target };
 }
 function verifiedFirstAidConversionFrameForEvent(
   timeline: readonly GameEvent[],
@@ -4850,8 +4900,20 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const rootEvents = room.timeline.filter((event) => event.id === links.root.eventId);
     if (rootEvents.length !== 1) return [];
     const rootEvent = rootEvents[0];
+    const ambushmentRootProof = root.cardKind === "Dismantle" && rootEvent.type === "card"
+      ? verifiedAmbushmentConversionFrameForEvent(
+        room.timeline,
+        room.presentationSnapshot?.publicCardEffects ?? [],
+        room.players,
+        rootEvent.id,
+        rootEvent.card.id,
+      )
+      : null;
+    const isProvenAmbushmentRoot = Boolean(ambushmentRootProof
+      && ambushmentRootProof.owner.id === root.source.id
+      && ambushmentRootProof.target.id === root.targets[0]?.id);
     if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
-      || rootEvent.playedAs !== undefined || rootEvent.card?.kind !== root.cardKind
+      || ((rootEvent.playedAs !== undefined || rootEvent.card?.kind !== root.cardKind) && !isProvenAmbushmentRoot)
       || rootEvent.resolutionId !== links.root.resolutionId) return [];
     const rootSource = root.source.id ? room.players.find((player) => player.id === root.source.id) : undefined;
     const rootTarget = root.targets[0]?.id ? room.players.find((player) => player.id === root.targets[0]?.id) : undefined;
@@ -4882,7 +4944,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       return [{ node, event: responseEvent, actor: responseActor }];
     });
     if (responseNodes.length !== chain.negationNodes.length) return [];
-    return [{ chain, root, rootEvent, responseNodes }];
+    return [{ chain, root, rootEvent, responseNodes, ambushmentRootProof }];
   })();
   const singleTargetNegationProofCandidate = singleTargetNegationProofCandidates.length === 1
     ? singleTargetNegationProofCandidates[0]
@@ -4911,12 +4973,19 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const sourceName = candidate.root.source.name?.trim();
     const targetName = candidate.root.targets[0]?.name?.trim();
     const rootLabel = cardDefinition(candidate.root.cardKind!).name;
+    const ambushmentProof = candidate.ambushmentRootProof;
     const rootEffectState = candidate.chain.rootEffectState;
     if (!sourceName || !targetName || (rootEffectState !== "ACTIVE" && rootEffectState !== "BLOCKED")) return null;
     const depth = candidate.responseNodes.length;
     const latest = candidate.responseNodes.at(-1);
-    let headline = `${sourceName} played ${rootLabel} on ${targetName}.`;
-    let compactHeadline = `${sourceName}: ${rootLabel} on ${targetName}`;
+    const rootHeadline = ambushmentProof
+      ? `${sourceName} used Ambushment AS BURNING BRIDGES on ${targetName}.`
+      : `${sourceName} played ${rootLabel} on ${targetName}.`;
+    const compactRootHeadline = ambushmentProof
+      ? `${sourceName}: Ambushment AS BURNING BRIDGES on ${targetName}`
+      : `${sourceName}: ${rootLabel} on ${targetName}`;
+    let headline = rootHeadline;
+    let compactHeadline = compactRootHeadline;
     let supportingMessage = rootLabel === "Duel"
       ? "Negation response open · Duel not yet resolved."
       : `${rootLabel} response open · Effect not yet resolved.`;
@@ -5715,11 +5784,25 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const rootActionEvents = rootAction ? room.timeline.filter((event) => event.id === rootAction.rootEventId) : [];
   const rootActionEvent = rootAction ? rootActionEvents.length === 1 ? rootActionEvents[0] : null
     : oathSimultaneousRootCandidate?.rootEvent ?? bumperHarvestRootCandidate?.rootEvent ?? halberdOrderedRootCandidate?.rootEvent ?? groupTargetBranchCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? dismantleSettlementCandidate?.rootEvent ?? stealSettlementCandidate?.rootEvent ?? attackHitSettlementCandidate?.rootEvent ?? duelExchangeDisplayCandidate?.rootEvent ?? attackDodgeDisplayCandidate?.rootEvent ?? singleTargetNegationProofCandidate?.rootEvent ?? groupSettlementCandidate?.rootEvent ?? null;
+  const rootActionAmbushmentProof = rootAction?.action === "STRATAGEM" && rootAction.cardKind === "Dismantle"
+    && rootActionEvent?.type === "card"
+    ? verifiedAmbushmentConversionFrameForEvent(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      room.players,
+      rootAction.rootEventId,
+      rootActionEvent.card.id,
+    )
+    : null;
+  const rootActionMatchesAmbushmentProof = Boolean(rootActionAmbushmentProof
+    && rootActionAmbushmentProof.owner.id === rootAction?.sourceId
+    && rootActionAmbushmentProof.target.id === rootAction?.targetId);
   const rootActionCardFace = rootAction && rootActionEvent?.type === "card"
     && rootActionEvent.id === rootAction.rootEventId && rootActionEvent.action === "play"
     && rootActionEvent.presentation !== false
-    && rootActionEvent.card.kind === (rootAction.action === "ATTACK" ? rootAction.physicalCardKind : rootAction.cardKind)
-    && rootActionEvent.playedAs === (rootAction.action === "ATTACK" ? rootAction.playedAs : undefined)
+    && ((rootActionEvent.card.kind === (rootAction.action === "ATTACK" ? rootAction.physicalCardKind : rootAction.cardKind)
+      && rootActionEvent.playedAs === (rootAction.action === "ATTACK" ? rootAction.playedAs : undefined))
+      || rootActionMatchesAmbushmentProof)
     ? rootActionEvent.card : null;
   const selfTargetCandidates = rootAction || oathSimultaneousRootCandidate || bumperHarvestRootCandidate || halberdOrderedRootCandidate || groupTargetBranchCandidate || skillEffectActionCandidate || skillEffectSettlementCandidate || dismantleSettlementCandidate || stealSettlementCandidate || attackHitSettlementCandidate || duelExchangeDisplayCandidate || attackDodgeDisplayCandidate || singleTargetNegationProofCandidate || groupSettlementCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
@@ -6821,6 +6904,28 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
     return publicCardEffectFrame ? { proof, spec, publicNotice, accessibleLabel, publicCardEffectFrame } : null;
   })();
+  const ambushmentConversionFrameCandidate = (() => {
+    if (!selectedPublicCardAction || selectedPublicCardAction.cardKind !== "Dismantle" || !selectedPublicCardAction.cardFace) return null;
+    const proof = verifiedAmbushmentConversionFrameForEvent(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      room.players,
+      selectedPublicCardAction.rootEventId,
+      selectedPublicCardAction.cardFace.id,
+    );
+    if (!proof || selectedPublicCardAction.sourceId !== proof.owner.id
+      || selectedPublicCardAction.targetId !== proof.target.id) return null;
+    const cardName = cardDefinition(proof.sourceCard.kind).name;
+    const publicNotice = `${proof.owner.name} used Ambushment AS BURNING BRIDGES on ${proof.target.name}.`;
+    const accessibleLabel = `${proof.owner.name} used Ambushment. ${cardName}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Burning Bridges targeting ${proof.target.name}.`;
+    const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
+      title: "AMBUSHMENT · AS BURNING BRIDGES",
+      accessibleLabel,
+      activationOwnerName: proof.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    });
+    return publicCardEffectFrame ? { proof, publicNotice, accessibleLabel, publicCardEffectFrame } : null;
+  })();
   const braveheartDodgeResponseFrameCandidate = (() => {
     const response = selectedPublicCardAction?.response;
     if (!selectedPublicCardAction || selectedPublicCardAction.motion?.type !== "attack-dodge"
@@ -6879,6 +6984,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       publicNotice: attackConversionFrameCandidate.publicNotice,
       publicNoticeCompact: `${attackConversionFrameCandidate.proof.owner.name} used ${attackConversionFrameCandidate.spec.skillName} AS ATTACK.`,
       publicCardEffectFrame: attackConversionFrameCandidate.publicCardEffectFrame,
+    } : {}),
+    ...(ambushmentConversionFrameCandidate ? {
+      cardLabel: "AMBUSHMENT · AS BURNING BRIDGES",
+      ariaLabel: ambushmentConversionFrameCandidate.accessibleLabel,
+      publicNotice: ambushmentConversionFrameCandidate.publicNotice,
+      publicNoticeCompact: `${ambushmentConversionFrameCandidate.proof.owner.name} used Ambushment AS BURNING BRIDGES on ${ambushmentConversionFrameCandidate.proof.target.name}.`,
+      publicCardEffectFrame: ambushmentConversionFrameCandidate.publicCardEffectFrame,
     } : {}),
     ...(braveheartDodgeResponseFrameCandidate && selectedPublicCardAction.response ? {
       response: {

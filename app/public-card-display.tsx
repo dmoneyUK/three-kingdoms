@@ -4510,6 +4510,7 @@ function SingleTargetCardJourney({
     : activeEventId;
   const publicEffectFrameOwnsAnnouncementAnchor = (action.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer"
     || action.publicCardEffectFrame?.effectId === "hua_tuo_first_aid"
+    || action.publicCardEffectFrame?.effectId === "gan_ning_qixi"
     || action.publicCardEffectFrame?.effectId === "yue_jin_dauntless"
     || action.publicCardEffectFrame?.effectId === "lady_gan_divine_wisdom"
     || action.publicCardEffectFrame?.effectId === "sun_quan_zhiheng"

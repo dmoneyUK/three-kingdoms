@@ -1971,6 +1971,47 @@ function reactionChainFor(
   const cardName = stringValue(continuation.cardName);
   const rootCardKind = continuation.rootCardKind;
   const expectedRootCardKind = effect && sourceId && targetId ? singleTargetNegationRootCardKind(effect, sourceId, targetId) : null;
+  const heldRootCardIds = Array.isArray(continuation.heldCards)
+    ? continuation.heldCards.flatMap((value) => {
+      const card = record(value);
+      const id = stringValue(card?.id);
+      return card?.kind === rootCardKind && id ? [id] : [];
+    })
+    : [];
+  const effectRootCardId = stringValue(effect?.cardId);
+  const rootPhysicalCardId = heldRootCardIds.length === 1
+    && (!effectRootCardId || effectRootCardId === heldRootCardIds[0])
+    ? heldRootCardIds[0]
+    : heldRootCardIds.length === 0 ? effectRootCardId : null;
+  const ambushmentConversionRootEvent = (() => {
+    if (expectedRootCardKind !== "Dismantle" || rootCardKind === expectedRootCardKind
+      || !sourceId || !targetId || !rootPhysicalCardId || heldRootCardIds.length !== 1) return null;
+    const matches = timeline.filter((candidate) => candidate.type === "card" && candidate.action === "play"
+      && candidate.presentation !== false && typeof candidate.privateToPlayerId !== "string"
+      && candidate.playedAs === undefined && candidate.card?.id === rootPhysicalCardId
+      && candidate.card.kind === rootCardKind
+      && (candidate.card.suit === "♣" || candidate.card.suit === "♠")
+      && typeof candidate.id === "string" && candidate.id.length > 0
+      && typeof candidate.resolutionId === "string" && candidate.resolutionId.length > 0);
+    if (matches.length !== 1 || timeline.filter((candidate) => candidate.id === matches[0].id).length !== 1) return null;
+    const event = matches[0];
+    const proofs = Array.isArray(event.publicCardEffects)
+      ? event.publicCardEffects.map(record).filter((proof) => proof?.effectId === "gan_ning_qixi")
+      : [];
+    if (proofs.length !== 1) return null;
+    const proof = proofs[0];
+    const materials = Array.isArray(proof?.materials) ? proof.materials.map(record) : [];
+    const [material] = materials;
+    return proof?.semantics === "PROVEN" && proof.eventId === event.id
+      && proof.effectClass === "CONVERSION" && proof.activationOwnerId === sourceId
+      && proof.targetId === targetId && proof.resultingCardKind === "Dismantle"
+      && proof.outcome === "AS_DISMANTLE" && materials.length === 1
+      && material?.cardId === rootPhysicalCardId && material.ownerId === sourceId
+      && material.fromZone === "HAND" && material.toZone === "DISCARD"
+      && (!stringValue(continuation.resolutionId) || event.resolutionId === continuation.resolutionId)
+      ? { eventId: event.id, resolutionId: event.resolutionId }
+      : null;
+  })();
   const duelPending = record(effect?.pending);
   const duelContinuation = record(duelPending?.continuation);
   const duelPendingCausal = record(duelPending?.causal);
@@ -2022,7 +2063,8 @@ function reactionChainFor(
     && scene.participantRoles.originalTargetIds[0] === targetId && scene.participantRoles.originalTargetIds[1] === sourceId
     && scene.participantRoles.currentParticipantId === targetId
     && scene.activeResolverId === item.actorId && scene.decisionActorId === item.actorId);
-  const isProvenSingleTargetRoot = Boolean(expectedRootCardKind && rootCardKind === expectedRootCardKind
+  const isProvenSingleTargetRoot = Boolean(expectedRootCardKind
+    && (rootCardKind === expectedRootCardKind || ambushmentConversionRootEvent !== null)
     && sourceId && targetId && (effect?.kind === "duel"
       ? isProvenDuelNegationRoot
       : scene.continuity.relation === "ROOT_FRAME"
@@ -2042,24 +2084,13 @@ function reactionChainFor(
         && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === targetId
         && scene.participantRoles.originalTargetIds.length === 1 && scene.participantRoles.originalTargetIds[0] === targetId
         && scene.activeResolverId === item.actorId && scene.decisionActorId === item.actorId));
-  const rootCard = isProvenSingleTargetRoot && sourceId && targetId && CARD_KINDS.includes(rootCardKind as CardKind)
-    ? { interactionId: scene.interactionId, frameId: frame.frameId, sourceId, targetId, cardKind: rootCardKind as CardKind }
+  const rootCard = isProvenSingleTargetRoot && sourceId && targetId && expectedRootCardKind
+    && CARD_KINDS.includes(expectedRootCardKind)
+    ? { interactionId: scene.interactionId, frameId: frame.frameId, sourceId, targetId, cardKind: expectedRootCardKind }
     : null;
-  const heldRootCardIds = Array.isArray(continuation.heldCards)
-    ? continuation.heldCards.flatMap((value) => {
-      const card = record(value);
-      const id = stringValue(card?.id);
-      return card?.kind === rootCardKind && id ? [id] : [];
-    })
-    : [];
-  const effectRootCardId = stringValue(effect?.cardId);
-  const rootPhysicalCardId = heldRootCardIds.length === 1
-    && (!effectRootCardId || effectRootCardId === heldRootCardIds[0])
-    ? heldRootCardIds[0]
-    : heldRootCardIds.length === 0 ? effectRootCardId : null;
   const rootEvent = rootCard && expectedRootCardKind
     ? effect?.kind === "duel" ? duelRootEvent
-    : rootPhysicalCardId ? publicCardEventFor(rootPhysicalCardId, expectedRootCardKind) : null
+    : ambushmentConversionRootEvent ?? (rootPhysicalCardId ? publicCardEventFor(rootPhysicalCardId, expectedRootCardKind) : null)
     : null;
   const linkedNodeEvents = nodeEventLinks.filter((link): link is NonNullable<typeof link> => link !== null);
   const publicNodeEventIds = linkedNodeEvents.map(({ eventId }) => eventId);

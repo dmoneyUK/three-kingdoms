@@ -789,6 +789,173 @@ test("real Ambushment uses only an eligible black Hand card and a legal target",
   await completeSkillSelection({ page, request, seed, skillName: "Ambushment", providerId: "gan_ning_qixi", cardIds: [black.id], targetIndexes: [1] });
 });
 
+test("W4: Ambushment frames the genuine black card as Burning Bridges for actor and observer", async ({ page, browser, request }) => {
+  test.setTimeout(60_000);
+  const black = card("Dodge", "w4-ambushment-black-dodge", "♣");
+  const privateGanNingCard = card("Peach", "w4-ambushment-private-gan-ning", "♥");
+  const targetNegation = card("Negation", "w4-ambushment-target-negation", "♠");
+  const privateTargetCard = card("Attack", "w4-ambushment-private-target", "♠");
+  const observerNegation = card("Negation", "w4-ambushment-observer-negation", "♠");
+  const seed = await seedSkillRoom(request, {
+    hero: "gan-ning", hand: [black, privateGanNingCard],
+    targets: [
+      { name: "TARGET", role: "Loyalist", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [targetNegation, privateTargetCard] },
+      { name: "OBSERVER", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [observerNegation] },
+    ],
+  });
+  const observerContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  try {
+    const actor = await openSkillUser(page, seed);
+    const observerPage = await observerContext.newPage();
+    const observer = await openSkillViewer(observerPage, seed, seed.players[2], { width: 390, height: 844 });
+    const watchFrame = (viewerPage) => viewerPage.evaluate(() => {
+      window.__w4AmbushmentFrameSeen = null;
+      const capture = () => {
+        if (window.__w4AmbushmentFrameSeen) return;
+        const root = [...document.querySelectorAll('[data-public-card-journey-event-id][data-public-card-journey-role="root"]')]
+          .find((element) => element.querySelector('[data-public-card-frame-effect-id="gan_ning_qixi"]'));
+        const frame = root?.querySelector('[data-public-card-frame-effect-id="gan_ning_qixi"]');
+        const display = root?.closest(".public-card-display");
+        const announcement = display?.querySelector('[data-public-card-announcement="true"]');
+        const style = announcement ? getComputedStyle(announcement) : null;
+        const frameRect = frame?.getBoundingClientRect();
+        const noticeRect = announcement?.getBoundingClientRect();
+        if (!root || !frame || !display || !announcement || !frameRect || !noticeRect
+          || !["reveal", "move"].includes(root.dataset.publicCardJourneyPhase)
+          || display.dataset.publicCardLayoutPending !== "false"
+          || announcement.dataset.publicCardAnnouncementPositioned !== "true"
+          || style?.visibility !== "visible" || style.display === "none" || Number(style.opacity) <= 0) return;
+        window.__w4AmbushmentFrameSeen = {
+          viewerId: display.dataset.publicCardViewerId,
+          rootEventId: root.dataset.publicCardJourneyEventId,
+          actorId: root.dataset.publicCardJourneyActorId,
+          phase: root.dataset.publicCardJourneyPhase,
+          effectId: frame.dataset.publicCardFrameEffectId,
+          frameEventId: frame.dataset.publicCardFrameEventId,
+          materialCardIds: frame.dataset.publicCardFrameMaterialCardIds,
+          title: frame.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
+          notice: announcement.textContent?.trim(),
+          overlap: noticeRect.left < frameRect.right && noticeRect.right > frameRect.left
+            && noticeRect.top < frameRect.bottom && noticeRect.bottom > frameRect.top,
+          viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
+        };
+      };
+      const observer = new MutationObserver(capture);
+      observer.observe(document.documentElement, { attributes: true, childList: true, subtree: true });
+      window.__w4AmbushmentFrameObserver = observer;
+      capture();
+    });
+    await Promise.all([watchFrame(page), watchFrame(observerPage)]);
+    await completeSkillSelection({ page, request, seed, skillName: "Ambushment", providerId: "gan_ning_qixi", cardIds: [black.id], targetIndexes: [1] });
+
+    const actorProjection = await projectedRoom(request, seed, actor);
+    const rootEvent = actorProjection.timeline.find((event) => event?.type === "card" && event.action === "play" && event.card?.id === black.id);
+    expect(rootEvent).toBeTruthy();
+    expect(JSON.stringify(actorProjection)).not.toContain(observerNegation.id);
+    expect(JSON.stringify(actorProjection)).not.toContain(targetNegation.id);
+    expect(rootEvent.publicCardEffects).toContainEqual(expect.objectContaining({
+      eventId: rootEvent.id, effectId: "gan_ning_qixi", effectClass: "CONVERSION",
+      activationOwnerId: actor.id, targetId: seed.players[1].id, resultingCardKind: "Dismantle", outcome: "AS_DISMANTLE",
+      materials: [{ cardId: black.id, ownerId: actor.id, fromZone: "HAND", toZone: "DISCARD" }],
+    }));
+    const targetProjection = await projectedRoom(request, seed, seed.players[1]);
+    expect(targetProjection.currentAction).toMatchObject({ kind: "response", requirement: "negate", actorId: seed.players[1].id });
+    expect(targetProjection.currentAction.legalActions).toContain("respond");
+    const windowId = targetProjection.currentAction.negationWindowId;
+    expect(windowId).toBeTruthy();
+
+    const viewers = [
+      { viewerPage: page, viewerId: actor.id },
+      { viewerPage: observerPage, viewerId: observer.id },
+    ];
+    const frameDetails = await Promise.all(viewers.map(async ({ viewerPage, viewerId }) => {
+      const evidence = await viewerPage.waitForFunction(() => window.__w4AmbushmentFrameSeen, null, { timeout: 8_000 });
+      const details = await evidence.jsonValue();
+      expect(details).toMatchObject({
+        viewerId, rootEventId: rootEvent.id, actorId: actor.id, phase: expect.stringMatching(/^(reveal|move)$/),
+        effectId: "gan_ning_qixi", frameEventId: rootEvent.id, materialCardIds: black.id,
+        title: "AMBUSHMENT · AS BURNING BRIDGES", viewport: { width: 390, height: 844, scrollWidth: 390 },
+      });
+      expect(details.notice).toMatch(/Ambushment.*AS BURNING BRIDGES/i);
+      expect(details.overlap, JSON.stringify(details)).toBe(false);
+      return details;
+    }));
+    expect(new Set(frameDetails.map((details) => details.title)).size).toBe(1);
+
+    const parkedGeometry = await Promise.all(viewers.map(async ({ viewerPage, viewerId }) => {
+      const evidence = await viewerPage.waitForFunction(({ eventId, actorId }) => {
+        const root = [...document.querySelectorAll('[data-public-card-journey-event-id][data-public-card-journey-role="root"]')]
+          .find((element) => element.dataset.publicCardJourneyEventId === eventId);
+        const anchor = [...document.querySelectorAll("[data-player-anchor]")]
+          .find((element) => element.dataset.playerAnchor === actorId && element.getBoundingClientRect().width > 0);
+        if (!root || !anchor || root.dataset.publicCardJourneyPhase !== "parked"
+          || root.dataset.publicCardJourneyLayoutPending !== "false"
+          || root.dataset.publicCardJourneyActorId !== actorId
+          || root.dataset.publicCardJourneyCardId !== "w4-ambushment-black-dodge") return false;
+        const target = {
+          left: Number(root.dataset.publicCardJourneyTargetLeft),
+          top: Number(root.dataset.publicCardJourneyTargetTop),
+          width: Number(root.dataset.publicCardJourneyTargetWidth),
+          height: Number(root.dataset.publicCardJourneyTargetHeight),
+        };
+        const bounds = anchor.getBoundingClientRect();
+        const dx = Math.max(bounds.left - target.left - target.width, target.left - bounds.right, 0);
+        const dy = Math.max(bounds.top - target.top - target.height, target.top - bounds.bottom, 0);
+        return {
+          viewerId: root.closest(".public-card-display")?.dataset.publicCardViewerId,
+          phase: root.dataset.publicCardJourneyPhase,
+          actorId: root.dataset.publicCardJourneyActorId,
+          cardId: root.dataset.publicCardJourneyCardId,
+          cardText: root.querySelector(".played-card")?.textContent?.trim(),
+          anchorId: anchor.dataset.playerAnchor,
+          anchorDistance: Math.hypot(dx, dy),
+          target,
+        };
+      }, { eventId: rootEvent.id, actorId: actor.id }, { timeout: 12_000 });
+      const details = await evidence.jsonValue();
+      expect(details).toMatchObject({ viewerId, phase: "parked", actorId: actor.id, cardId: black.id, anchorId: actor.id });
+      expect(details.cardText).toMatch(/Dodge/);
+      expect(details.anchorDistance, JSON.stringify(details)).toBeLessThanOrEqual(8);
+      return details;
+    }));
+    expect(new Set(parkedGeometry.map((details) => details.cardId)).size).toBe(1);
+
+    const observerProjection = await projectedRoom(request, seed, observer);
+    expect(JSON.stringify(observerProjection)).not.toContain(privateTargetCard.id);
+    expect(JSON.stringify(observerProjection)).not.toContain(targetNegation.id);
+    expect(JSON.stringify(observerProjection)).toContain(observerNegation.id);
+    await expect(observerPage.locator(`[data-hand-card-id="${privateTargetCard.id}"]`)).toHaveCount(0);
+
+    for (const player of seed.players) {
+      const passed = await request.post(`${API}/api/rooms`, {
+        data: { action: "decline_response", code: seed.code, token: player.token, context: { windowId } },
+      });
+      expect(passed.ok(), `${player.name} can pass the shared Negation window`).toBeTruthy();
+    }
+    const targetChoice = await projectedRoom(request, seed, actor);
+    expect(targetChoice.currentAction?.legalActions).toContain("choose_target_card");
+    expect(JSON.stringify(targetChoice)).not.toContain(privateTargetCard.id);
+    const picker = page.locator('.card-pool-panel[data-choice-mode="actor-target-select"]');
+    await expect(picker).toBeVisible();
+    await picker.getByRole("button", { name: "Choose hidden Hand position 2", exact: true }).click();
+    const chosen = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "choose_target_card");
+    await picker.locator(".card-pool-panel__confirm").click();
+    const submittedChoice = await chosen;
+    expect(submittedChoice.ok()).toBeTruthy();
+    expect(submittedChoice.request().postDataJSON()).toMatchObject({
+      action: "choose_target_card", targetCardZone: "hand", targetCardIndex: 1,
+    });
+    const settled = await projectedRoom(request, seed, observer);
+    expect(settled.timeline.some((event) => event.type === "card" && event.action === "discard" && event.card?.id === privateTargetCard.id)).toBe(true);
+  } finally {
+    await page.evaluate(() => window.__w4AmbushmentFrameObserver?.disconnect()).catch(() => {});
+    await observerContext.pages().at(0)?.evaluate(() => window.__w4AmbushmentFrameObserver?.disconnect()).catch(() => {});
+    await observerContext.close();
+  }
+});
+
 test("real Captivating submits the Diamond card and authoritative Overindulgence target", async ({ page, request }) => {
   const diamond = card("Peach", "real-captivating-diamond", "♦");
   const seed = await seedSkillRoom(request, {
