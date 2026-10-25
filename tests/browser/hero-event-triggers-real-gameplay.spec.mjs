@@ -381,6 +381,7 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
   expect((await view(request, seedData, 1)).currentAction.triggerOptions.map((option) => option.effectId)).toContain("xiahou_dun_ganglie");
   const xiahou = await activateDirectSkill({ page, request, seedData, playerIndex: 1, label: "Stauchness", providerId: "xiahou_dun_ganglie" });
   expect((await view(request, seedData, 0)).currentAction).toMatchObject({ kind: "trigger", actorId: seedData.players[0].id, triggerEvent: "damage_suffered" });
+  await expect(page.locator('[data-public-card-frame-effect-id="xiahou_dun_ganglie"]')).toHaveCount(0);
 
   const sourcePage = await browser.newPage();
   try {
@@ -430,9 +431,150 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
     expect(submitted.ok()).toBeTruthy();
     expect(submitted.request().postDataJSON()).toMatchObject({ action: "trigger", providerId: "xiahou_dun_ganglie", choice: "take_damage" });
     expect((await submitted.json()).room.players.find((player) => player.id === seedData.players[0].id).hp).toBe(3);
+    await expect(page.locator('[data-public-card-frame-effect-id="xiahou_dun_ganglie"]')).toHaveCount(0);
+    await expect(sourcePage.locator('[data-public-card-frame-effect-id="xiahou_dun_ganglie"]')).toHaveCount(0);
     await expect(xiahou.duplicate).toHaveCount(0);
   } finally {
     await sourcePage.close();
+  }
+});
+
+test("real Stauchness frames the two committed source cards for actor, payer and observer on mobile", async ({ page, browser, request }) => {
+  const attack = card("Attack", "real-ganglie-discard-attack");
+  const paidCards = [card("Peach", "real-ganglie-paid-peach", "♥"), card("Dodge", "real-ganglie-paid-dodge", "♣")];
+  const privateCard = card("Attack", "real-ganglie-private-hand");
+  const seedData = await seed(request, [
+    { name: "SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [attack, ...paidCards, privateCard] },
+    { name: "XIAHOU DUN", role: "Loyalist", hero: "xiahou-dun", hp: 4, maxHp: 4, hand: [] },
+    { name: "OBSERVER", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+    { name: "FOURTH", role: "Renegade", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
+  ], [card("Dodge", "real-ganglie-discard-judgement", "♠")]);
+  const opened = await request.post(`${API}/api/rooms`, {
+    data: { action: "play_card", code: seedData.code, token: seedData.players[0].token, cardId: attack.id, targetId: seedData.players[1].id },
+  });
+  expect(opened.ok()).toBeTruthy();
+  const hit = await request.post(`${API}/api/rooms`, { data: { action: "decline_response", code: seedData.code, token: seedData.players[1].token } });
+  expect(hit.ok()).toBeTruthy();
+  const xiahou = await activateDirectSkill({ page, request, seedData, playerIndex: 1, label: "Stauchness", providerId: "xiahou_dun_ganglie" });
+  expect((await view(request, seedData, 0)).currentAction).toMatchObject({ kind: "trigger", actorId: seedData.players[0].id, triggerEvent: "damage_suffered" });
+
+  const sourcePage = await browser.newPage();
+  const observerPage = await browser.newPage();
+  try {
+    await Promise.all([openPlayer(sourcePage, seedData, 0), openPlayer(observerPage, seedData, 2)]);
+    const dialog = sourcePage.getByRole("dialog", { name: "Stauchness decision" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Discard exactly 2 cards from your hand", exact: true }).click();
+    await dialog.getByRole("button", { name: "Peach 7♥", exact: true }).click();
+    await dialog.getByRole("button", { name: "Dodge 7♣", exact: true }).click();
+    const readFrame = async (viewerPage, viewerId) => {
+      try {
+        const handle = await viewerPage.waitForFunction(({ expectedViewerId, cardIds }) => {
+          const display = [...document.querySelectorAll(".public-card-display")]
+            .find((element) => element.dataset.publicCardViewerId === expectedViewerId);
+          const journey = [...(display?.querySelectorAll("[data-public-card-journey-event-id]") ?? [])]
+            .find((element) => element.dataset.publicCardJourneyCardIds === cardIds.join(",")
+              && ["reveal", "move"].includes(element.dataset.publicCardJourneyPhase));
+          const frame = journey?.querySelector('[data-public-card-frame-effect-id="xiahou_dun_ganglie"]');
+          if (!display || !journey || !frame) return false;
+          return {
+            viewerId: display.dataset.publicCardViewerId,
+            eventId: journey.dataset.publicCardJourneyEventId,
+            phase: journey.dataset.publicCardJourneyPhase,
+            journeyActorId: journey.dataset.publicCardJourneyActorId,
+            frameCount: display.querySelectorAll('[data-public-card-frame-effect-id="xiahou_dun_ganglie"]').length,
+            frameClass: frame.dataset.publicCardFrameClass,
+            frameOwnerId: frame.dataset.publicCardFrameActivationOwnerId,
+            frameMaterialOwnerIds: frame.dataset.publicCardFrameMaterialOwnerIds,
+            frameMaterialCardIds: frame.dataset.publicCardFrameMaterialCardIds,
+            frameFaces: [...frame.querySelectorAll("[data-public-card-effect-frame-card-id]")]
+              .map((face) => face.getAttribute("data-public-card-effect-frame-card-id")),
+            title: frame.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
+            announcementCount: display.querySelectorAll('[data-public-card-announcement="true"]').length,
+            announcement: display.querySelector('[data-public-card-announcement="true"]')?.textContent?.trim(),
+            viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
+          };
+        }, { expectedViewerId: viewerId, cardIds: paidCards.map((paid) => paid.id) }, { timeout: 8_000 });
+        return handle.jsonValue();
+      } catch (error) {
+        const state = await viewerPage.evaluate((expectedViewerId) => ({
+          viewerId: expectedViewerId,
+          displays: [...document.querySelectorAll(".public-card-display")].map((display) => ({
+            viewerId: display.dataset.publicCardViewerId,
+            rootEventId: display.dataset.publicCardRootEventId,
+            activeEventId: display.dataset.publicCardEventId,
+            journeys: [...display.querySelectorAll("[data-public-card-journey-event-id]")].map((journey) => ({
+              eventId: journey.dataset.publicCardJourneyEventId,
+              cards: journey.dataset.publicCardJourneyCardIds,
+              phase: journey.dataset.publicCardJourneyPhase,
+              actorId: journey.dataset.publicCardJourneyActorId,
+              frame: journey.querySelector("[data-public-card-frame-effect-id]")?.getAttribute("data-public-card-frame-effect-id") ?? null,
+            })),
+          })),
+        }), viewerId);
+        throw new Error(`${error instanceof Error ? error.message : String(error)}; state=${JSON.stringify(state)}`);
+      }
+    };
+    const frameEvidencePromise = Promise.all([
+      readFrame(page, seedData.players[1].id),
+      readFrame(sourcePage, seedData.players[0].id),
+      readFrame(observerPage, seedData.players[2].id),
+    ]);
+    const submission = sourcePage.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "trigger"
+      && response.request().postDataJSON()?.providerId === "xiahou_dun_ganglie");
+    await dialog.getByRole("button", { name: "Confirm choice", exact: true }).click();
+    const submitted = await submission;
+    expect(submitted.ok()).toBeTruthy();
+    expect(submitted.request().postDataJSON()).toMatchObject({
+      action: "trigger", providerId: "xiahou_dun_ganglie", choice: "discard_two", cardKeys: ["hand:0", "hand:1"],
+    });
+
+    const frameEvidence = await frameEvidencePromise;
+    const projected = await view(request, seedData, 2);
+    expect(JSON.stringify(projected)).not.toContain(privateCard.id);
+    const costEvent = projected.timeline.find((event) => event.type === "cards" && event.action === "discard"
+      && paidCards.every((paid) => event.cards.some((revealed) => revealed.id === paid.id)));
+    expect(costEvent).toBeTruthy();
+    expect(costEvent.publicCardEffects).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        effectId: "xiahou_dun_ganglie", effectClass: "COST", activationOwnerId: seedData.players[1].id,
+        targetId: seedData.players[0].id, outcome: "SOURCE_DISCARDED_TWO",
+      }),
+    ]));
+    expect(projected.presentationSnapshot.publicCardEffects).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        eventId: costEvent.id, effectId: "xiahou_dun_ganglie", effectClass: "COST",
+        activationOwnerId: seedData.players[1].id, targetId: seedData.players[0].id,
+        outcome: "SOURCE_DISCARDED_TWO", cards: paidCards,
+      }),
+    ]));
+    for (let index = 0; index < frameEvidence.length; index += 1) {
+      expect(frameEvidence[index]).toMatchObject({
+        viewerId: seedData.players[[1, 0, 2][index]].id,
+        eventId: costEvent.id,
+        phase: expect.stringMatching(/^(reveal|move)$/),
+        journeyActorId: seedData.players[0].id,
+        frameCount: 1,
+        frameClass: "COST",
+        frameOwnerId: seedData.players[1].id,
+        frameMaterialOwnerIds: `${seedData.players[0].id},${seedData.players[0].id}`,
+        frameMaterialCardIds: paidCards.map((paid) => paid.id).join(","),
+        frameFaces: paidCards.map((paid) => paid.id),
+        title: "STAUCHNESS",
+        announcementCount: 1,
+        viewport: { width: 390, height: 844, scrollWidth: 390 },
+      });
+      expect(frameEvidence[index].announcement).toContain("XIAHOU DUN used Stauchness");
+      expect(frameEvidence[index].announcement).toContain("SOURCE, the damage source, discarded exactly two Hand cards");
+    }
+    await expect(observerPage.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(0);
+    await expect(sourcePage.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(1);
+    await expect(xiahou.duplicate).toHaveCount(0);
+  } finally {
+    await sourcePage.close();
+    await observerPage.close();
   }
 });
 

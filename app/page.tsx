@@ -894,6 +894,74 @@ function verifiedNecromancyJudgementFrameForEvent(
     || replacementEvent.target !== target.name) return null;
   return { replacementEvent, originalEvent, effect, replacementCard, owner, target };
 }
+type VerifiedStauchnessCostFrameProof = {
+  costEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  rootEvent: CardEvent | CardGroupEvent;
+  costCards: readonly [Card, Card];
+  activationOwner: Player;
+  materialOwner: Player;
+};
+function verifiedStauchnessCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedStauchnessCostFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const costEvent = eventMatches.length === 1 && eventMatches[0].type === "cards"
+    ? eventMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "discard" || !costEvent.resolutionId || costEvent.cards.length !== 2
+    || new Set(costEvent.cards.map((card) => card.id)).size !== 2) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "xiahou_dun_ganglie" && effect.effectClass === "COST");
+  const rawMatches = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "xiahou_dun_ganglie" && effect.effectClass === "COST");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const rootEventId = effect.rootEventId;
+  const rootResolutionId = effect.rootResolutionId;
+  const targetId = effect.targetId;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== costEvent.id || rawEffect.eventId !== costEvent.id
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "SOURCE_DISCARDED_TWO" || rawEffect.outcome !== "SOURCE_DISCARDED_TWO"
+    || !rootEventId || rootEventId !== rawEffect.rootEventId || rootEventId === costEvent.id
+    || !rootResolutionId || rootResolutionId !== rawEffect.rootResolutionId
+    || effect.cards.length !== 2 || effect.materials.length !== 2
+    || rawEffect.materials.length !== 2) return null;
+
+  const materialsMatch = effect.materials.every((material, index) => {
+    const rawMaterial = rawEffect.materials[index];
+    const projectedCard = effect.cards[index];
+    const costCard = costEvent.cards[index];
+    return Boolean(rawMaterial && projectedCard && costCard
+      && material.cardId === costCard.id && rawMaterial.cardId === costCard.id
+      && projectedCard.id === costCard.id && projectedCard.kind === costCard.kind
+      && projectedCard.suit === costCard.suit && projectedCard.rank === costCard.rank
+      && material.ownerId === targetId && rawMaterial.ownerId === targetId
+      && material.fromZone === "HAND" && rawMaterial.fromZone === "HAND"
+      && material.toZone === "DISCARD" && rawMaterial.toZone === "DISCARD");
+  });
+  if (!materialsMatch) return null;
+
+  const rootMatches = timeline.filter((event) => event.id === rootEventId);
+  const rootEvent = rootMatches.length === 1 && (rootMatches[0].type === "card" || rootMatches[0].type === "cards")
+    ? rootMatches[0] : null;
+  if (!rootEvent || rootEvent.presentation === false || rootEvent.privateToPlayerId
+    || !rootEvent.resolutionId || rootEvent.resolutionId !== rootResolutionId) return null;
+
+  const activationOwner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "xiahou-dun");
+  const materialOwner = players.find((player) => player.id === targetId);
+  if (!activationOwner?.name || !materialOwner?.name || activationOwner.id === materialOwner.id
+    || costEvent.player !== materialOwner.name || costEvent.target !== materialOwner.name) return null;
+  return { costEvent, effect, rootEvent, costCards: [costEvent.cards[0], costEvent.cards[1]], activationOwner, materialOwner };
+}
 function verifiedLustCostFrameForEvent(
   timeline: readonly GameEvent[],
   notices: readonly PresentationSnapshotDiaoChanSkillNotice[],
@@ -6615,10 +6683,43 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
+  const stauchnessCostFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "xiahou_dun_ganglie"
+      && effect.effectClass === "COST")
+      .flatMap((effect) => {
+        const frame = verifiedStauchnessCostFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
+  })();
+  const stauchnessCostFrameAction: PublicCardDisplayAction | null = stauchnessCostFrameCandidate ? {
+    key: ["stauchness-cost", stauchnessCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: stauchnessCostFrameCandidate.costEvent.id,
+    sourceId: stauchnessCostFrameCandidate.activationOwner.id,
+    targetId: stauchnessCostFrameCandidate.materialOwner.id,
+    cardFace: stauchnessCostFrameCandidate.costCards[0],
+    cardLabel: "STAUCHNESS · TWO HAND CARDS",
+    ariaLabel: `${stauchnessCostFrameCandidate.activationOwner.name} used Stauchness. ${stauchnessCostFrameCandidate.materialOwner.name}, the damage source, discarded exactly two Hand cards.`,
+    publicNotice: `${stauchnessCostFrameCandidate.activationOwner.name} used Stauchness. ${stauchnessCostFrameCandidate.materialOwner.name}, the damage source, discarded exactly two Hand cards.`,
+    publicNoticeCompact: `Stauchness: ${stauchnessCostFrameCandidate.activationOwner.name}; ${stauchnessCostFrameCandidate.materialOwner.name} discarded 2 Hand cards.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "xiahou_dun_ganglie", stauchnessCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(stauchnessCostFrameCandidate.costEvent.id)
+        ? [] : [stauchnessCostFrameCandidate.costEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(stauchnessCostFrameCandidate.effect, {
+      title: "STAUCHNESS",
+      accessibleLabel: `${stauchnessCostFrameCandidate.activationOwner.name} resolved Stauchness. ${stauchnessCostFrameCandidate.materialOwner.name}, the damage source, discarded exactly two Hand cards.`,
+      activationOwnerName: stauchnessCostFrameCandidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
   const latestHeroPublicCardEffectFrameAction = [
     prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction,
     dauntlessEquipmentEffectFrameAction, betrothmentCostFrameAction,
-    equilibriumCostFrameAction, firstAidConversionFrameAction, necromancyJudgementFrameAction,
+    equilibriumCostFrameAction, firstAidConversionFrameAction, necromancyJudgementFrameAction, stauchnessCostFrameAction,
   ].filter((action): action is PublicCardDisplayAction => action !== null
     && !(action.rootEventId === prodigalHealerCostFrameCandidate?.costEvent.id
       && prodigalHealerAnnouncementLifecycle.status === "superseded"))
