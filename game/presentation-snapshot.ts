@@ -1484,6 +1484,10 @@ function rootActionFor(
     sourceId: action.sourceId,
     targetId: action.targetId,
   };
+  if (action.action === "ATTACK" && "conversionId" in action && action.conversionId === "serpent_spear_attack") return {
+    ...common, action: "ATTACK", cardKind: "Attack", conversionId: "serpent_spear_attack",
+    materialCardIds: [...action.materialCardIds] as [string, string], playedAs: "attack",
+  };
   if (action.action === "ATTACK" && action.physicalCardKind === "Attack") return {
     ...common, action: "ATTACK", cardKind: "Attack", physicalCardKind: "Attack",
   };

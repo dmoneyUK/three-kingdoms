@@ -471,11 +471,13 @@ test("Green Dragon Blade and Attack-use-limit rules preserve normal Attack flow"
 
 test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
-  const [host, alice, bob] = game.members; const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = game.room.players;
+  const [host, alice, bob, carol] = game.members; const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = game.room.players;
   sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(hostPlayer.id)}`);
   setEquipment(hostPlayer.id);
-  setHand(hostPlayer.id, [card("SerpentSpear", "human"), card("Peach", "serpent-one"), card("Dodge", "serpent-two")], 4, 4);
-  setHand(alicePlayer.id, [], 4, 4); setHand(bobPlayer.id, [card("Dodge", "serpent-answer")], 4, 4); setHand(carolPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const privateSerpentHand = card("Attack", "serpent-private-source-hand");
+  const privateObserverHand = card("Peach", "serpent-private-observer-hand");
+  setHand(hostPlayer.id, [card("SerpentSpear", "human"), card("Peach", "serpent-one"), card("Dodge", "serpent-two"), privateSerpentHand], 4, 4);
+  setHand(alicePlayer.id, [], 4, 4); setHand(bobPlayer.id, [card("Dodge", "serpent-answer")], 4, 4); setHand(carolPlayer.id, [privateObserverHand], 4, 4); setTurn(game.code, hostPlayer.seat);
   sql(`UPDATE rooms SET discard_json='[]' WHERE code=${quote(game.code)}`);
 
   const equipped = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "serpentspear-human" });
@@ -500,8 +502,34 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
     targetId: bobPlayer.id, resultingCardKind: "Attack", outcome: "AS_ATTACK",
   }, "the two real cards form one server-authored Attack without a fabricated Attack face");
   const serpentDecision = await state(game.code, bob.token); assert.equal(serpentDecision.data.currentAction.kind, "response"); assert.equal(serpentDecision.data.currentAction.requirement, "dodge"); assert.ok(serpentDecision.data.currentAction.options.some((option) => option.providerId === "card"));
+  const [sourceDuringResponse, targetDuringResponse, observerDuringResponse] = await Promise.all([
+    state(game.code, host.token), state(game.code, bob.token), state(game.code, carol.token),
+  ]).then((views) => views.map((view) => view.data));
+  for (const view of [sourceDuringResponse, targetDuringResponse, observerDuringResponse]) {
+    assert.deepEqual(view.presentationSnapshot.rootAction, view.presentationV2.rootAction,
+      "the shared public snapshot carries the same proof-backed Serpent Spear Attack root for each viewer");
+    assert.equal(view.presentationSnapshot.rootAction.conversionId, "serpent_spear_attack");
+    assert.equal(view.presentationSnapshot.rootAction.playedAs, "attack");
+    assert.deepEqual(view.presentationSnapshot.rootAction.materialCardIds, ["peach-serpent-one", "dodge-serpent-two"]);
+    assert.equal(view.presentationSnapshot.rootAction.physicalCardKind, undefined, "the semantic Attack never invents a physical Attack card");
+  }
+  assert.deepEqual(targetDuringResponse.currentAction.options.find((option) => option.providerId === "card")?.selection.eligibleCardIds, ["dodge-serpent-answer"],
+    "the target retains the real server-authorized Dodge option");
+  assert.equal(JSON.stringify(observerDuringResponse).includes(privateSerpentHand.id), false, "the observer cannot see the source's remaining Hand");
+  assert.equal(JSON.stringify(sourceDuringResponse).includes(privateObserverHand.id), false, "the actor cannot see the observer's private Hand");
+  assert.equal(JSON.stringify(targetDuringResponse).includes(privateObserverHand.id), false, "the target cannot see the observer's private Hand");
   const dodged = await requestAndSettle("respond", { code: game.code, token: bob.token, providerId: "card", cardId: "dodge-serpent-answer" });
   assert.equal(dodged.status, 200); assert.equal(dodged.data.room.phase, "play-struck"); assert.ok(discardIds(game.code).includes("peach-serpent-one"));
+  const [sourceAfterDodge, targetAfterDodge, observerAfterDodge] = await Promise.all([
+    state(game.code, host.token), state(game.code, bob.token), state(game.code, carol.token),
+  ]).then((views) => views.map((view) => view.data));
+  const dodgeProof = sourceAfterDodge.presentationSnapshot.attackDodgeResponses[0];
+  assert.ok(dodgeProof, "the real submitted Dodge remains linked to the Serpent Spear root");
+  assert.equal(dodgeProof.rootEventId, formedEvent.id);
+  assert.deepEqual(targetAfterDodge.presentationSnapshot.attackDodgeResponses, [dodgeProof]);
+  assert.deepEqual(observerAfterDodge.presentationSnapshot.attackDodgeResponses, [dodgeProof]);
+  assert.equal(sourceAfterDodge.timeline.find((event) => event.id === formedEvent.id)?.type, "cards");
+  assert.equal(JSON.stringify(observerAfterDodge).includes(privateSerpentHand.id), false, "the committed public frame does not expose remaining source Hand identities");
 
   setEquipment(alicePlayer.id, { weapon: card("SerpentSpear", "duel") });
   setHand(hostPlayer.id, [card("Duel", "serpent")], 4, 4); setHand(alicePlayer.id, [card("Peach", "duel-one"), card("Dodge", "duel-two")], 4, 4); setTurn(game.code, hostPlayer.seat);

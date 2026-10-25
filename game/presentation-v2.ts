@@ -489,6 +489,14 @@ type PresentationRootActionBase = {
 export type PresentationRootAction =
   | (PresentationRootActionBase & {
     action: "ATTACK";
+    cardKind: "Attack";
+    /** Two public Hand cards combine into one virtual Attack; neither is an Attack card. */
+    conversionId: "serpent_spear_attack";
+    materialCardIds: readonly [string, string];
+    playedAs: "attack";
+  })
+  | (PresentationRootActionBase & {
+    action: "ATTACK";
     /** Semantic root action; distinct from the physical card used to play it. */
     cardKind: "Attack";
     physicalCardKind: "Attack";
@@ -568,6 +576,15 @@ export function isProvenRootActionCardProof(value: unknown): value is Presentati
   if (!action) return false;
   if (action.action === "ATTACK") {
     if (action.cardKind !== "Attack") return false;
+    if (action.conversionId !== undefined) {
+      const materialCardIds = action.materialCardIds;
+      return action.conversionId === "serpent_spear_attack"
+        && action.physicalCardKind === undefined && action.playedAs === "attack"
+        && Array.isArray(materialCardIds) && materialCardIds.length === 2
+        && materialCardIds.every((cardId) => typeof cardId === "string" && cardId.length > 0)
+        && materialCardIds[0] !== materialCardIds[1];
+    }
+    if (action.materialCardIds !== undefined) return false;
     if (action.physicalCardKind === "Attack") return action.playedAs === undefined;
     return typeof action.physicalCardKind === "string"
       && CARD_KINDS.includes(action.physicalCardKind as CardKind)
@@ -2343,6 +2360,32 @@ function uniqueTimelineEventById(eventId: string | null, timeline: readonly Pres
   return matches.length === 1 ? matches[0] : null;
 }
 
+function serpentSpearAttackRootMaterials(
+  rootEvent: PresentationV2Event | null,
+  sourceId: string | null,
+  targetId: string | null,
+): [string, string] | null {
+  if (!rootEvent || rootEvent.type !== "cards" || rootEvent.action !== "play"
+    || rootEvent.playedAs !== "attack" || rootEvent.presentation === false || rootEvent.privateToPlayerId
+    || !sourceId || !targetId) return null;
+  const effects = Array.isArray(rootEvent.publicCardEffects)
+    ? rootEvent.publicCardEffects.map(record).filter((proof): proof is RecordLike => Boolean(proof)) : [];
+  const matchingEffects = effects.filter((proof) => proof.effectId === "serpent_spear_attack");
+  if (matchingEffects.length !== 1) return null;
+  const proof = matchingEffects[0];
+  const cards = Array.isArray(rootEvent.cards) ? rootEvent.cards.map(record).filter((entry): entry is RecordLike => Boolean(entry)) : [];
+  const materials = Array.isArray(proof.materials) ? proof.materials.map(record).filter((entry): entry is RecordLike => Boolean(entry)) : [];
+  const cardIds = cards.map((entry) => stringValue(entry.id));
+  if (proof.semantics !== "PROVEN" || proof.eventId !== rootEvent.id || proof.effectClass !== "CONVERSION"
+    || proof.activationOwnerId !== sourceId || proof.targetId !== targetId
+    || proof.resultingCardKind !== "Attack" || proof.outcome !== "AS_ATTACK"
+    || cards.length !== 2 || cardIds.some((cardId) => typeof cardId !== "string" || cardId.length === 0)
+    || new Set(cardIds).size !== 2 || materials.length !== 2
+    || materials.some((material, index) => material.cardId !== cardIds[index]
+      || material.ownerId !== sourceId || material.fromZone !== "HAND" || material.toZone !== "DISCARD")) return null;
+  return cardIds as [string, string];
+}
+
 function singleTargetAttackRootActionEvaluationFor(
   envelope: CausalEnvelope | null,
   scene: PresentationInteractionScene | null,
@@ -2375,6 +2418,7 @@ function singleTargetAttackRootActionEvaluationFor(
     : physicalCardKind && physicalCardKind !== "Attack" && rootEvent?.playedAs === "attack"
       ? { physicalCardKind, playedAs: "attack" as const }
       : null;
+  const serpentSpearMaterialCardIds = serpentSpearAttackRootMaterials(rootEvent, sourceId, targetId);
 
   const checks: Record<string, boolean> = {
     pendingIsAuthorizedAttackStage: isAttackResponse || isAttackTargetTrigger,
@@ -2433,9 +2477,11 @@ function singleTargetAttackRootActionEvaluationFor(
     readyAfterEventPresent: Boolean(readyAfterEventId),
     rootEventIdentityPresent: Boolean(expectedRootEventId),
     rootEventMatchesExpectedIdentity: rootEvent?.id === expectedRootEventId,
-    rootEventIsPublicCardPlay: rootEvent?.type === "card" && rootEvent.presentation !== false && rootEvent.action === "play",
-    rootEventCardMatchesSequenceStart: Boolean(card && card.id === sequenceStartCardId),
-    rootEventHasPhysicalAttackProof: Boolean(physicalCardProof),
+    rootEventIsPublicCardPlay: (rootEvent?.type === "card" || rootEvent?.type === "cards")
+      && rootEvent.presentation !== false && rootEvent.action === "play" && !rootEvent.privateToPlayerId,
+    rootEventCardMatchesSequenceStart: Boolean(card && card.id === sequenceStartCardId
+      || serpentSpearMaterialCardIds?.includes(sequenceStartCardId ?? "")),
+    rootEventHasPhysicalAttackProof: Boolean(physicalCardProof || serpentSpearMaterialCardIds),
   };
   const rejectionReasons = Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name);
   const diagnostics: AttackRootProjectionDiagnostics = {
@@ -2458,7 +2504,8 @@ function singleTargetAttackRootActionEvaluationFor(
       rootEventCardKind: stringValue(card?.kind),
     },
   };
-  if (rejectionReasons.length > 0 || !envelope || !frame || !rootEvent || !sourceId || !targetId || !physicalCardProof) {
+  if (rejectionReasons.length > 0 || !envelope || !frame || !rootEvent || !sourceId || !targetId
+    || !physicalCardProof && !serpentSpearMaterialCardIds) {
     return { rootAction: null, diagnostics };
   }
 
@@ -2474,7 +2521,9 @@ function singleTargetAttackRootActionEvaluationFor(
     sourceId,
     targetId,
     cardKind: "Attack",
-    ...physicalCardProof,
+    ...(serpentSpearMaterialCardIds
+      ? { conversionId: "serpent_spear_attack" as const, materialCardIds: serpentSpearMaterialCardIds, playedAs: "attack" as const }
+      : physicalCardProof),
   }, diagnostics };
 }
 
@@ -2942,10 +2991,14 @@ function attackHitSettlementsFor(timeline: readonly PresentationV2Event[]): Pres
     const roots = timeline.filter((candidate) => candidate.id === rootEventId);
     const rootEvent = roots.length === 1 ? roots[0] : null;
     const rootCard = record(rootEvent?.card);
-    if (!rootEvent || rootEvent.type !== "card" || rootEvent.presentation === false
-      || rootEvent.action !== "play" || rootEvent.playedAs !== undefined
-      || rootEvent.resolutionId !== rootResolutionId
-      || rootCard?.kind !== "Attack" || !stringValue(rootCard.id)) return [];
+    const serpentMaterials = serpentSpearAttackRootMaterials(rootEvent, sourceId, targetId);
+    const ordinaryAttackRoot = rootEvent?.type === "card" && rootEvent.playedAs === undefined
+      && rootCard?.kind === "Attack" && Boolean(stringValue(rootCard.id));
+    const serpentAttackRoot = rootEvent?.type === "cards" && Boolean(serpentMaterials);
+    if (!rootEvent || rootEvent.presentation === false || rootEvent.action !== "play"
+      || rootEvent.resolutionId !== rootResolutionId || !(ordinaryAttackRoot || serpentAttackRoot)
+      || rootEvent.type === "card" && rootEvent.playedAs !== undefined
+      || rootEvent.type === "cards" && rootEvent.playedAs !== "attack") return [];
 
     return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "ATTACK_DAMAGE_APPLIED" }];
   });
@@ -3328,17 +3381,21 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
     const rootCard = record(rootEvent?.card);
     const responseCard = record(event.card);
     const rootCardId = stringValue(rootCard?.id);
+    const serpentMaterialIds = serpentSpearAttackRootMaterials(rootEvent, rootSourceId, targetId);
     const responseCardId = stringValue(responseCard?.id);
+    const physicalAttackRoot = rootEvent.type === "card" && Boolean(rootCardId)
+      && cardIdCounts.get(rootCardId!) === 1
+      && (rootEvent.playedAs === undefined
+        ? rootCard?.kind === "Attack"
+        : rootEvent.playedAs === "attack" && typeof rootCard?.kind === "string" && rootCard.kind !== "Attack"
+          && CARD_KINDS.includes(rootCard.kind as CardKind));
+    const serpentSpearAttackRoot = Boolean(serpentMaterialIds?.every((cardId) => cardIdCounts.get(cardId) === 1));
     if (!eventId || eventCounts.get(eventId) !== 1 || !responseResolutionId
       || event.type !== "card" || event.presentation === false || event.action !== "play"
       || !attackDodgeResponseEventMatchesProof(proof, event) || !responseCardId || cardIdCounts.get(responseCardId) !== 1
       || proof.semantics !== "PROVEN" || proof.counterRelation !== "BLOCKS_TARGET_EFFECT"
-      || rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play"
-      || !rootCardId || cardIdCounts.get(rootCardId) !== 1
-      || (rootEvent.playedAs === undefined
-        ? rootCard?.kind !== "Attack"
-        : rootEvent.playedAs !== "attack" || typeof rootCard?.kind !== "string" || rootCard.kind === "Attack"
-          || !CARD_KINDS.includes(rootCard.kind as CardKind))
+      || rootEvent.presentation === false || rootEvent.privateToPlayerId || rootEvent.action !== "play"
+      || !(physicalAttackRoot || serpentSpearAttackRoot)
       || rootEvent.resolutionId !== rootResolutionId || responseResolutionId !== rootResolutionId
       || rootEventId === eventId || !rootResolutionId || !interactionId || !rootFrameId
       || !rootSourceId || !targetId || rootSourceId === targetId || responseActorId !== targetId

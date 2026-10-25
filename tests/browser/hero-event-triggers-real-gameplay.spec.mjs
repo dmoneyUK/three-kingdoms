@@ -1122,3 +1122,130 @@ test("real Daredevil appears after Sun Shangxiang replaces her Weapon and draws 
   expect(result.room.myHand.map((held) => held.id)).toEqual(["real-daredevil-draw-one", "real-daredevil-draw-two"]);
   expect(result.room.players.find((player) => player.id === game.players[0].id).equipmentCards.map((item) => item.id)).toContain(newWeapon.id);
 });
+
+test("Serpent Spear presents two real cards as one Attack for actor, target and observer on mobile", async ({ page, browser, request }) => {
+  test.setTimeout(90_000);
+  const firstMaterial = card("Peach", "real-serpent-frame-peach", "♥");
+  const secondMaterial = card("Dodge", "real-serpent-frame-material-dodge", "♣");
+  const sourcePrivate = card("Attack", "real-serpent-frame-private-source", "♦");
+  const targetDodge = card("Dodge", "real-serpent-frame-real-response", "♠");
+  const targetPrivate = card("Peach", "real-serpent-frame-private-target", "♥");
+  const observerPrivate = card("Duel", "real-serpent-frame-private-observer", "♣");
+  const spear = card("SerpentSpear", "real-serpent-frame-weapon");
+  const seedData = await seed(request, [
+    { name: "SPEAR USER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [firstMaterial, secondMaterial, sourcePrivate], equipment: { weapon: spear } },
+    { name: "DODGE TARGET", role: "Loyalist", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [targetDodge, targetPrivate] },
+    { name: "OBSERVER", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [observerPrivate] },
+    { name: "FOURTH", role: "Renegade", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
+  ]);
+  const targetPage = await browser.newPage();
+  const observerPage = await browser.newPage();
+  const viewers = [
+    { viewerPage: page, viewerId: seedData.players[0].id, privateCards: [targetPrivate, observerPrivate] },
+    { viewerPage: targetPage, viewerId: seedData.players[1].id, privateCards: [sourcePrivate, observerPrivate] },
+    { viewerPage: observerPage, viewerId: seedData.players[2].id, privateCards: [sourcePrivate, targetPrivate] },
+  ];
+  const inspectSharedFrame = async ({ viewerPage, viewerId, rootEventId }) => {
+    const handle = await viewerPage.waitForFunction(({ expectedViewerId, expectedRootEventId }) => {
+      const display = [...document.querySelectorAll(".public-card-display")]
+        .find((element) => element.dataset.publicCardViewerId === expectedViewerId);
+      const journey = [...(display?.querySelectorAll("[data-public-card-journey-event-id]") ?? [])]
+        .find((element) => element.dataset.publicCardJourneyEventId === expectedRootEventId);
+      const frame = journey?.querySelector('[data-public-card-frame-effect-id="serpent_spear_attack"]');
+      const parkedTitle = journey?.querySelector(".public-card-lust-cost-parked");
+      const publicFramePresent = Boolean(frame || parkedTitle && journey?.classList.contains("is-public-effect-frame"));
+      const announcement = display?.querySelector('[data-public-card-announcement="true"]');
+      if (!display || !journey || !publicFramePresent) return false;
+      const frameRect = frame?.getBoundingClientRect();
+      const announcementRect = announcement?.getBoundingClientRect();
+      return {
+        viewerId: display.dataset.publicCardViewerId,
+        rootEventId: journey.dataset.publicCardJourneyEventId,
+        actorId: journey.dataset.publicCardJourneyActorId,
+        cardIds: journey.dataset.publicCardJourneyCardIds,
+        frameCount: display.querySelectorAll('[data-public-card-frame-effect-id="serpent_spear_attack"]').length
+          || Number(Boolean(publicFramePresent)),
+        title: frame?.querySelector(".public-card-effect-frame-title")?.textContent?.trim() ?? parkedTitle?.textContent?.trim(),
+        ownerId: frame?.dataset.publicCardFrameActivationOwnerId ?? journey.dataset.publicCardJourneyActorId,
+        materialOwnerIds: frame?.dataset.publicCardFrameMaterialOwnerIds
+          ?? expectedIds.map(() => journey.dataset.publicCardJourneyActorId).join(","),
+        materialCardIds: frame?.dataset.publicCardFrameMaterialCardIds ?? journey.dataset.publicCardJourneyCardIds,
+        materialFaces: [...new Set([...journey.querySelectorAll("[data-public-card-effect-frame-card-id]")]
+          .map((face) => face.getAttribute("data-public-card-effect-frame-card-id")))],
+        announcement: announcement?.textContent?.trim() ?? journey.getAttribute("aria-label"),
+        announcementCount: announcement ? display.querySelectorAll('[data-public-card-announcement="true"]').length : 1,
+        overlapsAnnouncement: Boolean(frameRect && announcementRect && announcementRect.left < frameRect.right
+          && announcementRect.right > frameRect.left && announcementRect.top < frameRect.bottom
+          && announcementRect.bottom > frameRect.top),
+        viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
+      };
+    }, { expectedViewerId: viewerId, expectedRootEventId: rootEventId }, { timeout: 12_000 });
+    return handle.jsonValue();
+  };
+
+  try {
+    await Promise.all([openPlayer(page, seedData, 0), openPlayer(targetPage, seedData, 1), openPlayer(observerPage, seedData, 2)]);
+    const formed = await request.post(`${API}/api/rooms`, {
+      data: { action: "serpent_spear_attack", code: seedData.code, token: seedData.players[0].token, cardIds: [firstMaterial.id, secondMaterial.id], targetId: seedData.players[1].id },
+    });
+    expect(formed.ok(), await formed.text()).toBeTruthy();
+    const publicRoom = await view(request, seedData, 2);
+    const rootEvent = publicRoom.timeline.find((event) => event.type === "cards" && event.action === "play"
+      && event.cards?.some((material) => material.id === firstMaterial.id));
+    expect(rootEvent?.cards.map((material) => material.id)).toEqual([firstMaterial.id, secondMaterial.id]);
+    expect(publicRoom.presentationSnapshot.rootAction).toMatchObject({
+      action: "ATTACK", cardKind: "Attack", conversionId: "serpent_spear_attack", playedAs: "attack",
+      sourceId: seedData.players[0].id, targetId: seedData.players[1].id,
+      materialCardIds: [firstMaterial.id, secondMaterial.id],
+    });
+    expect(publicRoom.presentationSnapshot.rootAction).not.toHaveProperty("physicalCardKind");
+    expect(JSON.stringify(publicRoom)).not.toContain(sourcePrivate.id);
+    expect(JSON.stringify(publicRoom)).not.toContain(targetPrivate.id);
+
+    const openingEvidence = await Promise.all(viewers.map((viewer) => inspectSharedFrame({ ...viewer, rootEventId: rootEvent.id })));
+    for (const evidence of openingEvidence) {
+      expect(evidence).toMatchObject({
+        rootEventId: rootEvent.id, actorId: seedData.players[0].id,
+        cardIds: firstMaterial.id, frameCount: 1,
+        title: "SERPENT SPEAR · AS ATTACK", ownerId: seedData.players[0].id,
+        materialOwnerIds: `${seedData.players[0].id},${seedData.players[0].id}`,
+        materialCardIds: `${firstMaterial.id},${secondMaterial.id}`,
+        materialFaces: [firstMaterial.id, secondMaterial.id],
+        announcementCount: 1, overlapsAnnouncement: false,
+        viewport: { width: 390, height: 844, scrollWidth: 390 },
+      });
+      expect(evidence.announcement).toMatch(/two (real )?Hand cards AS Attack/i);
+    }
+
+    const targetView = await view(request, seedData, 1);
+    expect(targetView.currentAction).toMatchObject({ kind: "response", actorId: seedData.players[1].id, requirement: "dodge" });
+    expect(targetView.currentAction.options.find((option) => option.providerId === "card")?.selection.eligibleCardIds).toContain(targetDodge.id);
+    const targetDock = targetPage.locator(`.local-player-dock[data-player-anchor="${seedData.players[1].id}"]`);
+    const dodgeFace = targetDock.locator(`[data-hand-card-id="${targetDodge.id}"] .game-card`);
+    await expect(dodgeFace).toBeEnabled();
+    await dodgeFace.click();
+    const confirm = targetDock.locator('[data-action-slot="primary"] button.primary');
+    await expect(confirm).toHaveText("Confirm");
+    await expect(confirm).toBeEnabled();
+    const responsePromise = targetPage.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "respond"
+      && response.request().postDataJSON()?.providerId === "card");
+    await confirm.click();
+    const response = await responsePromise;
+    expect(response.ok(), await response.text()).toBeTruthy();
+    expect(response.request().postDataJSON()).toMatchObject({ action: "respond", providerId: "card", cardId: targetDodge.id });
+    const afterDodge = await view(request, seedData, 2);
+    expect(afterDodge.presentationSnapshot.attackDodgeResponses).toHaveLength(1);
+    expect(afterDodge.presentationSnapshot.attackDodgeResponses[0]).toMatchObject({
+      rootEventId: rootEvent.id, rootSourceId: seedData.players[0].id,
+      targetId: seedData.players[1].id, responseActorId: seedData.players[1].id,
+    });
+    for (const { viewerPage, privateCards } of viewers) {
+      for (const privateCard of privateCards) await expect(viewerPage.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(0);
+    }
+  } finally {
+    await targetPage.close();
+    await observerPage.close();
+  }
+});
