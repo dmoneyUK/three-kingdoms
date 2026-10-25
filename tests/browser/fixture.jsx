@@ -1033,7 +1033,22 @@ const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false
     renderFixture();
   }
   return true;
-}} onLeave={() => { window.__browserLeaves += 1; }} />);
+}} onLeave={() => { window.__browserLeaves += 1; }} onSwitchTestViewer={async (playerId) => {
+  if (!fixtureRoom.isTestController || !fixtureRoom.players.some((player) => player.id === playerId)) {
+    throw new Error("TEST SWITCH requires a known player in this fixture.");
+  }
+  const selectedViewer = fixtureRoom.players.find((player) => player.id === playerId);
+  fixtureRoom = {
+    ...fixtureRoom,
+    meId: playerId,
+    myRole: selectedViewer?.role ?? null,
+    myHand: [],
+    isMyTurn: selectedViewer?.seat === fixtureRoom.turnSeat,
+    isMyAction: fixtureRoom.currentAction?.actorId === playerId,
+  };
+  window.__browserRoom = fixtureRoom;
+  renderFixture();
+}} />);
 window.__updateBrowserRoom = (update) => {
   fixtureRoom = typeof update === "function" ? update(fixtureRoom) : update;
   window.__browserRoom = fixtureRoom;

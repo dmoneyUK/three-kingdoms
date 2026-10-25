@@ -25,6 +25,8 @@ async function readLayout(page) {
     const table = board.closest(".play-table");
     const tableRect = bounds(table);
     const localPlayerId = document.querySelector(".local-player-dock")?.getAttribute("data-player-anchor") ?? null;
+    const seatRing = [...(window.__browserRoom?.players ?? [])].sort((left, right) => left.seat - right.seat);
+    const viewerRingIndex = seatRing.findIndex((player) => player.id === localPlayerId);
     const safeZone = table.querySelector(":scope > .interaction-safe-zone");
     const stage = safeZone.querySelector(":scope > .interaction-stage");
     const systemCluster = safeZone.querySelector(":scope > .stage-system-cluster");
@@ -54,10 +56,11 @@ async function readLayout(page) {
         && focalPoint.y >= equipmentBox.y && focalPoint.y <= equipmentBox.bottom);
       return {
         id: seat.dataset.playerAnchor,
-        relativeIndex: localPlayerId && /^p\d+$/.test(localPlayerId) && /^p\d+$/.test(seat.dataset.playerAnchor)
-          ? (Number(seat.dataset.playerAnchor.slice(1)) - Number(localPlayerId.slice(1)) + 5) % 5
+        relativeIndex: viewerRingIndex >= 0
+          ? (seatRing.findIndex((player) => player.id === seat.dataset.playerAnchor) - viewerRingIndex + seatRing.length) % seatRing.length
           : null,
         side: seat.dataset.sideColumn,
+        topIndex: seat.dataset.topSeatIndex === undefined ? null : Number(seat.dataset.topSeatIndex),
         seat: bounds(seat),
         row: Number(seat.dataset.sideRow),
         target: targetBounds,
@@ -83,6 +86,7 @@ async function readLayout(page) {
       localPlayerId,
       pageWidth: document.documentElement.scrollWidth,
       board: bounds(board),
+      topCapacity: Number(board.dataset.mobileTopCapacity ?? 0),
       table: tableRect,
       outerGutters: { left: leftMost - tableRect.x, right: tableRect.right - rightMost },
       sideSafeEdge: getComputedStyle(table).getPropertyValue("--side-safe-edge").trim(),
@@ -242,7 +246,7 @@ for (const viewport of [{ width: 390, height: 700 }, { width: 440, height: 766 }
 }
 
 for (const width of [390, 480]) {
-  test(`ST5-1 five-seat-only grid rule leaves eight-player phone rows unchanged at ${width}px`, async ({ browser }) => {
+  test(`H2-G3-F1-R2 eight-player phone ring uses the measured top-first layout at ${width}px`, async ({ browser }) => {
     const context = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     const page = await context.newPage();
     try {
@@ -250,12 +254,16 @@ for (const width of [390, 480]) {
       const result = await readLayout(page);
       expect(result.seats).toHaveLength(7);
       expect(result.pageWidth).toBeLessThanOrEqual(width);
-      expect(result.boardStyle.alignContent).toBe("normal");
-      expect(result.boardStyle.alignItems).toBe("center");
-      expect(result.boardStyle.gridTemplateRows.trim().split(/\s+/)).toHaveLength(4);
+      expect(result.topCapacity).toBe(5);
+      expect(result.seats.filter((seat) => seat.side === "top")).toHaveLength(5);
+      expect(result.seats.filter((seat) => seat.side === "left" || seat.side === "right")).toHaveLength(2);
+      expect(result.boardStyle.alignContent).toBe("start");
+      expect(result.boardStyle.alignItems).toBe("start");
+      expect(result.boardStyle.gridTemplateRows.trim().split(/\s+/)).toHaveLength(1);
       for (const seat of result.seats) {
         expect(seat.seat.height).toBe(108);
         expect(seat.hitSafe).toBe(true);
+        expect(seat.seat.bottom).toBeLessThanOrEqual(result.dock.y - 6);
       }
     } finally {
       await context.close();
@@ -304,16 +312,20 @@ for (const width of VIEWPORTS) {
         expect(seat.focalEquipment, `${seat.id} equipment does not cover the Hero focal point`).toBe(false);
         expect(seat.seat.bottom, `${seat.id} remains above the Local Player Dock`).toBeLessThanOrEqual(result.dock.y - 6);
 
-        const safeGap = seat.side === "left"
-          ? result.safeZone.x - seat.seat.right
-          : seat.seat.x - result.safeZone.right;
+        const safeGap = seat.side === "top"
+          ? result.safeZone.y - seat.seat.bottom
+          : seat.side === "left"
+            ? result.safeZone.x - seat.seat.right
+            : seat.seat.x - result.safeZone.right;
         expect(safeGap, `${seat.id} remains outside the Interaction Safe Zone`).toBeGreaterThanOrEqual(7.9);
 
         for (const stageElement of result.stage) {
           if (!overlaps(seat.seat, stageElement)) continue;
-          const clearance = seat.side === "left"
-            ? stageElement.x - seat.seat.right
-            : seat.seat.x - stageElement.right;
+          const clearance = seat.side === "top"
+            ? stageElement.y - seat.seat.bottom
+            : seat.side === "left"
+              ? stageElement.x - seat.seat.right
+              : seat.seat.x - stageElement.right;
           expect(clearance, `${stageElement.x} Stage content clears ${seat.id}`).toBeGreaterThanOrEqual(6);
         }
 

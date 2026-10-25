@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, FormEvent, PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Component, CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { cardDefinition, isAttackCard } from "../game/cards";
 import type { Card, CardKind } from "../game/model";
 import { STANDARD_PRESET_CARD_KINDS, TEST_HAND_PRESET_OPTIONS, testHandPresetCompatibilityError, testHandPresetFor, type TestHandPreset, type TestHandPresetId } from "../game/test-hand-presets";
@@ -2204,6 +2204,7 @@ type OpponentPlayerCardProps = {
   viewerId: string;
   playerHero: Hero | null;
   relativeIndex: number;
+  mobileSeatRing: { enabled: boolean; topCapacity: number; boardWidth: number; seatWidth: number; seatHeight: number; gap: number };
   isTurn: boolean;
   isSelectedTarget: boolean;
   isGroupPreview: boolean;
@@ -2239,18 +2240,36 @@ const getPhoneViewportSnapshot = () => typeof window !== "undefined"
   && typeof window.matchMedia === "function"
   && window.matchMedia("(max-width: 520px)").matches;
 
-export function projectSideColumnSeat(totalPlayers: number, relativeIndex: number): { side: "left" | "right"; row: number; rowCount: number } | null {
+export function projectSideColumnSeat(totalPlayers: number, relativeIndex: number, options: { topCapacity?: number; topFirstRing?: boolean } = {}): { side: "left" | "right" | "top"; row: number; rowCount: number; topIndex?: number; topCount?: number } | null {
   if (!Number.isInteger(totalPlayers) || !Number.isInteger(relativeIndex) || totalPlayers < 5 || totalPlayers > 10 || relativeIndex < 1 || relativeIndex >= totalPlayers) return null;
   const opponentCount = totalPlayers - 1;
+  const topCount = totalPlayers === 6 || totalPlayers === 8
+    ? Math.max(0, Math.min(opponentCount - 2, Math.trunc(options.topCapacity ?? 0)))
+    : 0;
+  if (topCount > 0) {
+    const sideCount = opponentCount - topCount;
+    // Keep the final relative seat (the local player's left neighbour) at the
+    // lower end of the left edge as the ring continues from top to bottom.
+    const rightCount = Math.floor(sideCount / 2);
+    const leftCount = sideCount - rightCount;
+    const sideRowCount = Math.max(rightCount, leftCount);
+    if (relativeIndex <= rightCount) {
+      return { side: "right", row: rightCount - relativeIndex + 1, rowCount: sideRowCount };
+    }
+    if (relativeIndex <= rightCount + topCount) {
+      return { side: "top", row: 0, rowCount: 0, topIndex: relativeIndex - rightCount - 1, topCount };
+    }
+    return { side: "left", row: relativeIndex - rightCount - topCount, rowCount: sideRowCount };
+  }
   const rightCount = Math.ceil(opponentCount / 2);
   const leftCount = opponentCount - rightCount;
   if (relativeIndex <= rightCount) {
     return { side: "right", row: rightCount - relativeIndex + 1, rowCount: rightCount };
   }
-  // ST5-1 corrects the five-seat ring only: relative Seat 3 starts at the
-  // upper-left row, and relative Seat 4 is the bottom-left neighbour. Keep
-  // the established 6–10-player projection unchanged.
-  const row = totalPlayers === 5
+  // Preserve ST5-1 and use the same clockwise left-edge order for the
+  // corrected six/eight-player ring: the first left Seat is highest, and the
+  // final seat remains the viewer's true left-side neighbour.
+  const row = totalPlayers === 5 || options.topFirstRing && (totalPlayers === 6 || totalPlayers === 8)
     ? relativeIndex - rightCount
     : leftCount - (relativeIndex - rightCount) + 1;
   return { side: "left", row, rowCount: rightCount };
@@ -2268,8 +2287,27 @@ function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
   return <span className="opponent-equipment-horse-mark" aria-hidden="true">{slot === "defensiveHorse" ? "+1" : "−1"}</span>;
 }
 
-function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, showSeparateInspectAffordance, targetAttemptEnabled, targetAttemptDescription, isInspected, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
-  const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex);
+function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, mobileSeatRing, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, showSeparateInspectAffordance, targetAttemptEnabled, targetAttemptDescription, isInspected, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
+  const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex, {
+    topCapacity: mobileSeatRing.enabled ? mobileSeatRing.topCapacity : 0,
+    topFirstRing: mobileSeatRing.enabled,
+  });
+  const topSeatOffset = sideColumnSeat?.side === "top"
+    ? ((sideColumnSeat.topCount ?? 0) - 1) / 2 - (sideColumnSeat.topIndex ?? 0)
+    : 0;
+  const seatPlacementStyle: CSSProperties | undefined = sideColumnSeat
+    ? sideColumnSeat.side === "top"
+      ? {
+        left: `calc(50% + ${topSeatOffset * (mobileSeatRing.seatWidth + mobileSeatRing.gap)}px)`,
+        top: `-${mobileSeatRing.seatHeight + mobileSeatRing.gap}px`,
+        width: mobileSeatRing.seatWidth,
+        height: mobileSeatRing.seatHeight,
+        gridRow: "1",
+        gridColumn: "1 / -1",
+        transform: "translateX(-50%)",
+      }
+      : { gridRow: sideColumnSeat.row }
+    : undefined;
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
   for (const equipment of player.equipmentCards) {
     const slot = cardDefinition(equipment.kind).equipmentSlot;
@@ -2297,7 +2335,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
       : `${player.name}, not an eligible Deflection target`
     : `${targetSelectionActive ? "Select" : "Inspect"} ${player.name}`;
   const interactionRoleNames = Object.entries(interactionRoles).filter(([, active]) => active).map(([role]) => role.replace(/^is/, "").replace(/([A-Z])/g, "-$1").toLowerCase()).join(" ");
-  return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${targetSelectionActive && targetablePlayer && player.alive ? "targetable-target" : ""} ${isGroupPreview ? "local-group-preview" : ""} ${interactionRoles.isInteractionSource ? "interaction-seat-source" : ""} ${interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : ""} ${interactionRoles.isActiveTarget ? "interaction-seat-active-target" : ""} ${interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : ""} ${interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : ""} ${interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : ""} ${interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : ""} ${!player.alive ? "defeated-square" : ""}`} data-side-column={sideColumnSeat?.side} data-side-row={sideColumnSeat?.row} style={sideColumnSeat ? { gridRow: sideColumnSeat.row } : undefined} data-player-anchor={player.id} data-target-selectable={targetSelectionActive && targetablePlayer && player.alive ? "true" : undefined} data-deflection-targetable={deflectionTargetSelectable ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined}>
+  return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${targetSelectionActive && targetablePlayer && player.alive ? "targetable-target" : ""} ${isGroupPreview ? "local-group-preview" : ""} ${interactionRoles.isInteractionSource ? "interaction-seat-source" : ""} ${interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : ""} ${interactionRoles.isActiveTarget ? "interaction-seat-active-target" : ""} ${interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : ""} ${interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : ""} ${interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : ""} ${interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : ""} ${!player.alive ? "defeated-square" : ""}`} data-side-column={sideColumnSeat?.side} data-side-row={sideColumnSeat?.row} data-top-seat-index={sideColumnSeat?.topIndex} data-top-seat-count={sideColumnSeat?.topCount} style={seatPlacementStyle} data-player-anchor={player.id} data-target-selectable={targetSelectionActive && targetablePlayer && player.alive ? "true" : undefined} data-deflection-targetable={deflectionTargetSelectable ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined}>
       <div className="opponent-public-zones">
       <div className={`player-hero-card opponent-hero-card${seatInspectorActive ? " is-targeting-with-seat-inspector" : ""}`}>
         {playerHero && <span className="player-square-portrait opponent-hero-portrait" data-hero-id={playerHero.id} aria-hidden="true"><HeroPortrait hero={playerHero} /></span>}
@@ -3417,6 +3455,53 @@ function captureHandViewportSnapshot(rail: HTMLElement, viewerId: string | null)
 
 export function GameRoom({ room, presentationView, busy, busyAction = null, error, onAction, onLeave, onPublicCounterReadVisible, onSwitchTestViewer = async () => undefined }: { room: Room; presentationView?: PresentationClientView; busy: boolean; busyAction?: string | null; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void; onSwitchTestViewer?: (playerId: string) => Promise<void> }) {
   const isPhoneViewport = useSyncExternalStore(subscribeToPhoneViewport, getPhoneViewportSnapshot, () => false);
+  const playerBoardRef = useRef<HTMLDivElement | null>(null);
+  const [mobileSeatRingMetrics, setMobileSeatRingMetrics] = useState({ topCapacity: 0, boardWidth: 0, boardTopInset: 0, seatWidth: 0, seatHeight: 0, gap: 0 });
+  useLayoutEffect(() => {
+    const totalPlayers = room.players.length;
+    const supportedMobileRing = isPhoneViewport && (totalPlayers === 6 || totalPlayers === 8);
+    const resetMetrics = () => setMobileSeatRingMetrics((current) => Object.values(current).every((value) => value === 0)
+      ? current
+      : { topCapacity: 0, boardWidth: 0, boardTopInset: 0, seatWidth: 0, seatHeight: 0, gap: 0 });
+    if (!supportedMobileRing) {
+      resetMetrics();
+      return;
+    }
+    const board = playerBoardRef.current;
+    if (!board) return;
+    const measure = () => {
+      const firstSeat = board.querySelector<HTMLElement>(".opponent-player-card");
+      const table = board.closest<HTMLElement>(".play-table");
+      if (!firstSeat || !table) return;
+      const boardRect = board.getBoundingClientRect();
+      const seatRect = firstSeat.getBoundingClientRect();
+      const gap = Number.parseFloat(getComputedStyle(board).rowGap) || 0;
+      const seatWidth = seatRect.width;
+      const seatHeight = seatRect.height;
+      if (boardRect.width <= 0 || seatWidth <= 0 || seatHeight <= 0) return;
+      const topCapacity = Math.max(0, Math.min(totalPlayers - 3, Math.floor((boardRect.width + gap) / (seatWidth + gap))));
+      const tableTopInset = boardRect.top - table.getBoundingClientRect().top;
+      const next = {
+        topCapacity,
+        boardWidth: Math.round(boardRect.width * 4) / 4,
+        boardTopInset: Math.round(tableTopInset * 4) / 4,
+        seatWidth: Math.round(seatWidth * 4) / 4,
+        seatHeight: Math.round(seatHeight * 4) / 4,
+        gap: Math.round(gap * 4) / 4,
+      };
+      setMobileSeatRingMetrics((current) => Object.keys(next).every((key) => current[key] === next[key]) ? current : next);
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(board);
+    const firstSeat = board.querySelector<HTMLElement>(".opponent-player-card");
+    if (firstSeat) observer?.observe(firstSeat);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [isPhoneViewport, room.meId, room.players.length]);
   const initialPendingSequence = pendingTimelineSequence(room);
   const clientPresentation = useMemo(() => presentationView ?? buildPresentationClientView(room.presentationSnapshot ?? null, room.meId), [presentationView, room.presentationSnapshot, room.meId]);
   const skillEffectSettlements = clientPresentation.skillEffectSettlements ?? NO_SKILL_EFFECT_SETTLEMENTS;
@@ -3713,7 +3798,27 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [processedTimelineKey, setProcessedTimelineKey] = useState(() => room.timeline.map((event) => event.id).join("|"));
   const card = room.myHand.find((item) => item.id === selected); const current = room.players.find((player) => player.seat === room.turnSeat); const me = room.players.find((player) => player.id === room.meId); const localHero = heroDefinition(me?.hero); const targetPlayer = room.players.find((player) => player.id === target); const pendingTargetPlayer = room.players.find((player) => player.id === room.pendingTargetCard?.targetId); const pickerTarget = pendingTargetPlayer ?? targetPlayer;
   const excessCards = Math.max(0, room.myHand.length - (me?.hp ?? 0));
-  const myTableIndex = Math.max(0, room.players.findIndex((player) => player.id === room.meId));
+  const seatRelativeIndices = useMemo(() => {
+    const seatRing = [...room.players].sort((left, right) => left.seat - right.seat || left.id.localeCompare(right.id));
+    const viewerRingIndex = seatRing.findIndex((player) => player.id === room.meId);
+    return new Map(seatRing.map((player, index) => [player.id, (index - viewerRingIndex + seatRing.length) % seatRing.length]));
+  }, [room.meId, room.players]);
+  const mobileSeatRingEnabled = isPhoneViewport && (room.players.length === 6 || room.players.length === 8);
+  const mobileSeatTopCount = mobileSeatRingEnabled ? mobileSeatRingMetrics.topCapacity : 0;
+  const mobileSideSeatCount = room.players.length - 1 - mobileSeatTopCount;
+  const mobileSideRowCount = Math.max(1, Math.ceil(mobileSideSeatCount / 2));
+  const mobileSeatRingLayoutStyle: CSSProperties | undefined = mobileSeatRingEnabled ? {
+    "--mobile-seat-width": mobileSeatRingMetrics.seatWidth + "px",
+    "--mobile-seat-height": mobileSeatRingMetrics.seatHeight + "px",
+    "--mobile-seat-gap": mobileSeatRingMetrics.gap + "px",
+    "--mobile-seat-top-inset": mobileSeatRingMetrics.boardTopInset + "px",
+    "--mobile-seat-row-start-height": (mobileSeatRingMetrics.seatHeight + mobileSeatRingMetrics.gap) + "px",
+    "--mobile-seat-top-band-height": (mobileSeatRingMetrics.boardTopInset + mobileSeatRingMetrics.seatHeight + mobileSeatRingMetrics.gap) + "px",
+  } as CSSProperties : undefined;
+  const playerBoardStyle: CSSProperties | undefined = mobileSeatRingEnabled ? {
+    "--seat-row-count": String(mobileSideRowCount),
+    ...mobileSeatRingLayoutStyle,
+  } as CSSProperties : undefined;
   const canPlay = room.phase?.startsWith("play") && room.status === "playing";
   const ordinaryTurnPlayAuthorized = Boolean(
     canPlay
@@ -9655,7 +9760,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   })() : null;
   return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
-    <section className={`play-table ${displayedSequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-public-card-journey-ownership-ready={publicCardJourneyOwnershipReady ? "true" : "false"} data-public-card-owned-history-count={publicDisplayOwnedResponseHistory.length}>
+    <section className={`play-table ${displayedSequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-public-card-journey-ownership-ready={publicCardJourneyOwnershipReady ? "true" : "false"} data-public-card-owned-history-count={publicDisplayOwnedResponseHistory.length} style={mobileSeatRingLayoutStyle}>
       <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} inspectPlayer={opponentInspectionPresentation} judgementInFlight={judgementInFlight} equipmentArrivalPendingIds={pendingEquipmentArrivalCardIds} nestedCardDetailDismissRef={nestedInspectorCardDetailDismissRef} /><StageSystemCluster
         publicResponseTimerPending={seatCountdown?.kind === "response"}
         responseTimer={seatCountdown?.kind === "response"
@@ -9744,10 +9849,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {triggerResponse && responseDecisionReady && choiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={choiceTriggerOption} selection={choiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={triggerControlsDisabled} error={error} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => { const validKeys = triggerSelectedKeys.filter((selectedKey) => choiceTriggerOption.selection?.type === "choice" && choiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = choiceTriggerOption.selection?.type === "choice" ? choiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; setTriggerSelectedKeys(validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys); }} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: choiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}
       {groupScopePreview.active && <p className="group-scope-preview-label" data-group-scope-preview={groupScopePreview.cardKind ?? undefined} role="status">PREVIEW · {groupScopePreview.label}</p>}
-      <div className="player-board" aria-label="Players" data-player-count={room.players.length} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}>
+      <div ref={playerBoardRef} className="player-board" aria-label="Players" data-player-count={room.players.length} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-mobile-top-ring={mobileSeatRingEnabled ? "true" : undefined} data-mobile-top-capacity={mobileSeatRingEnabled ? mobileSeatRingMetrics.topCapacity : undefined} data-measured-board-width={mobileSeatRingEnabled ? mobileSeatRingMetrics.boardWidth : undefined} style={playerBoardStyle}>
         {room.players.filter((player) => player.id !== room.meId).map((player) => {
-          const index = room.players.findIndex((candidate) => candidate.id === player.id);
-          const relativeIndex = (index - myTableIndex + room.players.length) % room.players.length;
+          const relativeIndex = seatRelativeIndices.get(player.id) ?? 0;
           const playTargetRejection = currentPlayTargetEligibility?.rejections.find((entry) => entry.targetId === player.id);
           const selectedPlayKind = serpentMode ? "Attack" : selectedCanPlayAsAttack ? "Attack" : card?.kind ?? "Attack";
           const targetablePlayer = Boolean(
@@ -9769,6 +9873,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             viewerId={room.meId}
             playerHero={heroDefinition(player.hero)}
             relativeIndex={relativeIndex}
+            mobileSeatRing={{ enabled: mobileSeatRingEnabled, topCapacity: mobileSeatTopCount, boardWidth: mobileSeatRingMetrics.boardWidth, seatWidth: mobileSeatRingMetrics.seatWidth, seatHeight: mobileSeatRingMetrics.seatHeight, gap: mobileSeatRingMetrics.gap }}
             isTurn={player.seat === room.turnSeat}
             isSelectedTarget={borrowedSwordTargetId === player.id || (daqiaoDeflectionSelectionActive ? activeSkillSelectedTargetIds.includes(player.id) : targetIds.includes(player.id) && (!normalTargetSelectionActive || playTargetEligibleIds.has(player.id)))}
             isGroupPreview={groupScopePreview.affectedPlayerIds.includes(player.id)}

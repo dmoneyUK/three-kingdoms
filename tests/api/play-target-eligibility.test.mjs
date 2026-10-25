@@ -1,7 +1,8 @@
 import test from "node:test";
 import {
-  assert, card, seedPlayingGame, setEquipment, setHand, setJudgement, setTurn, state, request,
+  assert, card, quote, seedPlayingGame, setEquipment, setHand, setJudgement, setTurn, sql, state, request,
 } from "./test-support.mjs";
+import { distanceBetween, effectiveDistanceBetween } from "../../game/rules.ts";
 
 function targetEntry(currentAction, cardId, effectiveKind) {
   return currentAction.playTargetEligibility?.find((entry) => entry.mode === "card" && entry.cardId === cardId && entry.effectiveKind === effectiveKind);
@@ -84,6 +85,30 @@ test("play target CurrentAction is actor-private and shares live server verdicts
   assert.equal(rejectedConversion.status, 409, JSON.stringify(rejectedConversion.data));
   assert.ok((await state(game.code, sourceMember.token)).data.myHand.some((held) => held.id === attack.id));
   assert.ok((await state(game.code, sourceMember.token)).data.myHand.some((held) => held.id === redPeach.id));
+
+  setEquipment(source.id, { offensiveHorse: card("RedHare", "eligibility-source-horse") });
+  setEquipment(zhangLiao.id, { defensiveHorse: card("Shadowrunner", "eligibility-target-horse") });
+  const horseView = (await state(game.code, sourceMember.token)).data;
+  const horseStealTargets = targetEntry(horseView.currentAction, steal.id, "Steal");
+  const serverHorseDistance = reason(horseStealTargets, zhangLiao.id);
+  const publicDistancePlayers = horseView.players;
+  const localRawDistance = distanceBetween(publicDistancePlayers, source.id, zhangLiao.id);
+  const localEffectiveDistance = effectiveDistanceBetween(publicDistancePlayers, source.id, zhangLiao.id,
+    (player) => player.equipmentCards);
+  assert.equal(localRawDistance, 2, "the visible seat ring keeps Zhang Liao at raw distance two");
+  assert.equal(localEffectiveDistance, 2, "Red Hare and Shadowrunner compose to effective distance two");
+  assert.deepEqual(serverHorseDistance, { targetId: zhangLiao.id, code: "OUT_OF_RANGE", distance: localEffectiveDistance, range: 1 },
+    "the actor-private server Steal verdict agrees with the public seat ring plus authoritative mounts");
+  assert.ok(horseStealTargets.eligibleTargetIds.includes(simaYi.id), "Red Hare makes the two-seat Sima Yi distance one for Steal");
+
+  sql(`UPDATE players SET alive=0, hp=0 WHERE id=${quote(zhangLiao.id)}`);
+  const defeatedView = (await state(game.code, sourceMember.token)).data;
+  const defeatedStealTargets = targetEntry(defeatedView.currentAction, steal.id, "Steal");
+  assert.deepEqual(reason(defeatedStealTargets, zhangLiao.id), { targetId: zhangLiao.id, code: "NOT_ELIGIBLE" },
+    "a defeated player's former visual seat never grants a Steal target");
+  const rejectedDeadSteal = await request("play_card", { code: game.code, token: sourceMember.token, cardId: steal.id, targetId: zhangLiao.id });
+  assert.equal(rejectedDeadSteal.status, 400, JSON.stringify(rejectedDeadSteal.data));
+  assert.match(rejectedDeadSteal.data.error, /living opponent/);
 });
 
 test("virtual Serpent Spear target projection and submit validation use the same effective Attack range", { timeout: 60_000 }, async () => {

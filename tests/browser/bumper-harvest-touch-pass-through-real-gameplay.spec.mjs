@@ -1940,7 +1940,9 @@ test("Bumper Harvest root and Negation park beside their own side-seat authors o
     { seats: 5, viewport: { width: 390, height: 700 } },
     { seats: 6, viewport: { width: 390, height: 844 } },
     { seats: 8, viewport: { width: 440, height: 894 } },
-  ].filter((scenario) => process.env.ST5_PHONE_ONLY !== "1" || scenario.seats === 5);
+  ].filter((scenario) => process.env.H2_G3_RING_ONLY === "1"
+    ? scenario.seats === 6 || scenario.seats === 8
+    : process.env.ST5_PHONE_ONLY !== "1" || scenario.seats === 5);
   for (const scenario of scenarios) {
     const negationId = `harvest-side-negation-${scenario.seats}`;
     const seed = await seedHarvestPool(request, scenario.seats, scenario.seats, {

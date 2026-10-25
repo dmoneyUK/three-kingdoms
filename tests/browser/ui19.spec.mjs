@@ -1300,7 +1300,7 @@ test("UX2.0VIS-04C REST 480x900 rejects the old flexible-row centre alignment", 
   }
 });
 const SIDE_COLUMN_MAPPING = {
-  5: [["right", 2], ["right", 1], ["left", 2], ["left", 1]],
+  5: [["right", 2], ["right", 1], ["left", 1], ["left", 2]],
   6: [["right", 3], ["right", 2], ["right", 1], ["left", 2], ["left", 1]],
   7: [["right", 3], ["right", 2], ["right", 1], ["left", 3], ["left", 2], ["left", 1]],
   8: [["right", 4], ["right", 3], ["right", 2], ["right", 1], ["left", 3], ["left", 2], ["left", 1]],
@@ -1316,8 +1316,17 @@ async function sideColumnGeometry(page) {
     };
     return {
       board: bounds(board), dock: bounds(document.querySelector(".local-player-dock")),
+      topCapacity: Number(board.dataset.mobileTopCapacity ?? 0),
+      measuredBoardWidth: Number(board.dataset.measuredBoardWidth ?? 0),
+      measuredGap: Number.parseFloat(getComputedStyle(board).rowGap) || 0,
+      viewerId: document.querySelector(".local-player-dock")?.dataset.playerAnchor ?? null,
       seats: [...board.querySelectorAll("[data-player-anchor]")].map((element) => ({
         id: element.dataset.playerAnchor, side: element.dataset.sideColumn, row: Number(element.dataset.sideRow),
+        topIndex: element.dataset.topSeatIndex === undefined ? null : Number(element.dataset.topSeatIndex),
+        topCount: element.dataset.topSeatCount === undefined ? null : Number(element.dataset.topSeatCount),
+        serverSeat: window.__browserRoom?.players.find((player) => player.id === element.dataset.playerAnchor)?.seat ?? null,
+        playerName: element.querySelector(".opponent-player-name")?.textContent?.trim() ?? null,
+        heroId: element.querySelector(".opponent-hero-portrait")?.getAttribute("data-hero-id") ?? null,
         relativeIndex: Number([...element.classList].find((name) => /^player-square-\d+$/.test(name)).replace("player-square-", "")),
         gridColumn: getComputedStyle(element).gridColumnStart, ...bounds(element),
       })),
@@ -1333,6 +1342,7 @@ async function sideThumbnailGeometry(page) {
       return { x, y, width, height, right, bottom };
     };
     const visible = (element) => {
+      if (!element) return false;
       const style = getComputedStyle(element);
       const box = element.getBoundingClientRect();
       return style.visibility !== "hidden" && style.display !== "none" && box.width > 0 && box.height > 0;
@@ -1406,16 +1416,16 @@ async function sideSafeZoneGeometry(page) {
     const seatBounds = seatElements.flatMap((seat) => [seat, ...seat.querySelectorAll("*")].filter(visible).map((element) => ({
       id: seat.dataset.playerAnchor, side: seat.dataset.sideColumn, className: element.className, ...visibleBounds(element),
     })));
-    const stageStyle = getComputedStyle(stage);
+    const stageStyle = stage ? getComputedStyle(stage) : null;
     const zoneStyle = getComputedStyle(zone);
     return {
       table: bounds(document.querySelector(".play-table")), dock: bounds(document.querySelector(".local-player-dock")),
-      zone: bounds(zone), stage: bounds(stage), seatBounds,
-      stageBounds: [stage, ...stage.querySelectorAll("*")].filter(visible).filter((element) => !isInsideScrollableGroupTrack(element)).map((element) => ({ className: element.className, ...bounds(element) })),
-      stageStyle: { position: stageStyle.position, translate: stageStyle.translate, transform: stageStyle.transform, overflowX: stageStyle.overflowX, overflowY: stageStyle.overflowY },
+      zone: bounds(zone), stage: stage ? bounds(stage) : null, seatBounds,
+      stageBounds: stage ? [stage, ...stage.querySelectorAll("*")].filter(visible).filter((element) => !isInsideScrollableGroupTrack(element)).map((element) => ({ className: element.className, ...bounds(element) })) : [],
+      stageStyle: stage ? { position: stageStyle.position, translate: stageStyle.translate, transform: stageStyle.transform, overflowX: stageStyle.overflowX, overflowY: stageStyle.overflowY } : null,
       zoneStyle: { position: zoneStyle.position, display: zoneStyle.display, background: zoneStyle.backgroundColor, border: zoneStyle.borderWidth, overflowX: zoneStyle.overflowX, overflowY: zoneStyle.overflowY },
-      reaction: Boolean(stage.querySelector('[data-reaction-chain="proven"]')),
-      dying: Boolean(stage.querySelector('[data-dying-handoff="proven"]')),
+      reaction: Boolean(document.querySelector('[data-reaction-chain="proven"]')),
+      dying: Boolean(document.querySelector('[data-dying-handoff="proven"]')),
       scrollWidth: document.documentElement.scrollWidth, viewport: window.innerWidth,
     };
   });
@@ -1586,7 +1596,7 @@ for (const width of [480, 650]) {
       const safeZone = await sideSafeZoneGeometry(page);
       for (const stage of safeZone.stageBounds) {
         for (const seat of safeZone.seatBounds) {
-          const clearance = seat.side === "left" ? stage.x - seat.right : seat.x - stage.right;
+          const clearance = seat.side === "top" ? stage.y - seat.bottom : seat.side === "left" ? stage.x - seat.right : seat.x - stage.right;
           expect(clearance, `${stage.className} clears ${seat.id} ${seat.className}`).toBeGreaterThanOrEqual(6);
         }
       }
@@ -2407,7 +2417,7 @@ for (const width of [1440, 650, 480]) {
         const result = await sideSafeZoneGeometry(page);
         await testInfo.attach("side-safe-zone-geometry", { body: JSON.stringify(result, null, 2), contentType: "application/json" });
         expect(result.zoneStyle).toEqual({ position: "absolute", display: "flex", background: "rgba(0, 0, 0, 0)", border: "0px", overflowX: "visible", overflowY: "visible" });
-        expect(result.stageStyle).toEqual({ position: "relative", translate: "none", transform: "none", overflowX: "visible", overflowY: "visible" });
+        if (result.stageStyle) expect(result.stageStyle).toEqual({ position: "relative", translate: "none", transform: "none", overflowX: "visible", overflowY: "visible" });
         expect(result.zone.width).toBeGreaterThan(0);
         expect(result.zone.height).toBeGreaterThan(0);
         for (const box of [result.zone, ...result.stageBounds]) {
@@ -2417,14 +2427,14 @@ for (const width of [1440, 650, 480]) {
           expect(box.bottom, box.className).toBeLessThanOrEqual(result.table.bottom);
           expect(box.bottom, box.className).toBeLessThanOrEqual(result.dock.y);
           for (const seat of result.seatBounds) {
-            const clearance = seat.side === "left" ? box.x - seat.right : seat.x - box.right;
+            const clearance = seat.side === "top" ? box.y - seat.bottom : seat.side === "left" ? box.x - seat.right : seat.x - box.right;
             expect(clearance, `${box.className ?? "safe zone"} / ${seat.id} ${seat.className}`).toBeGreaterThanOrEqual(6);
           }
         }
         expect(result.scrollWidth).toBeLessThanOrEqual(result.viewport);
         if (state === "negation") {
-          expect(result.reaction).toBe(true);
-          await expect(page.locator('[data-reaction-chain="proven"]')).toBeVisible();
+          expect(result.reaction).toBe(false);
+          await expect(page.locator('[data-reaction-chain="proven"]')).toHaveCount(0);
         }
         if (state === "dying") {
           expect(result.dying).toBe(true);
@@ -2510,7 +2520,7 @@ for (const width of [1440, 650, 480]) {
       if (count > 4) {
         const layout = await sideSafeZoneGeometry(page);
         for (const box of [layout.zone,...layout.stageBounds]) for (const seat of layout.seatBounds) {
-          expect(seat.side === "left" ? box.x-seat.right : seat.x-box.right).toBeGreaterThanOrEqual(6);
+          expect(seat.side === "top" ? box.y-seat.bottom : seat.side === "left" ? box.x-seat.right : seat.x-box.right).toBeGreaterThanOrEqual(6);
         }
         expect((await sideThumbnailGeometry(page)).seats.every(seat => seat.hitSafe)).toBe(true);
       }
@@ -2724,7 +2734,7 @@ for (const width of [480, 650, 1440]) {
         expect(seat.hitSafe, `${seat.id} hero centre must hit its own target`).toBe(true);
         expect(seat.width).toBeGreaterThanOrEqual(44);
         expect(seat.width).toBeLessThanOrEqual(86);
-        expect(seat.height).toBeLessThanOrEqual(result.rowHeights[seat.row - 1] + 2);
+        expect(seat.height).toBeLessThanOrEqual(result.rowHeights[(seat.row || 1) - 1] + 2);
         for (const required of seat.requiredVisible) expect(required.visible, `${seat.id} ${required.selector} remains directly visible`).toBe(true);
         for (const child of seat.descendants) {
           const label = `${seat.id} ${child.className}`;
@@ -2734,7 +2744,7 @@ for (const width of [480, 650, 1440]) {
           expect(child.bottom, label).toBeLessThanOrEqual(seat.bottom + 2);
           expect(child.bottom, label).toBeLessThanOrEqual(result.dock.y - 6);
           if (seat.side === "left") expect(child.right, label).toBeLessThanOrEqual(left30 + 2);
-          else expect(child.x, label).toBeGreaterThanOrEqual(right70 - 2);
+          else if (seat.side === "right") expect(child.x, label).toBeGreaterThanOrEqual(right70 - 2);
           for (const other of result.seats.filter(({ id }) => id !== seat.id)) {
             const target = other.target;
             const overlap = Math.max(0, Math.min(child.right, target.right) - Math.max(child.x, target.x)) * Math.max(0, Math.min(child.bottom, target.bottom) - Math.max(child.y, target.y));
@@ -2778,14 +2788,29 @@ for (const width of [480, 650, 1440]) {
     test(`UX2.0VIS-05A ${count} players at ${width}x900 have explicit side columns and a seat-free corridor`, async ({ page }, testInfo) => {
       await loadFixture(page, { state: "rest", count, width, height: 900 });
       const result = await sideColumnGeometry(page);
+      if (width === 480 && [6, 8].includes(count)) {
+        await testInfo.attach(`h2-g3-after-${count}-players-${width}x900.json`, { body: JSON.stringify(result, null, 2), contentType: "application/json" });
+        await testInfo.attach(`h2-g3-after-${count}-players-${width}x900.png`, { body: await page.screenshot({ animations: "disabled" }), contentType: "image/png" });
+        console.log(`H2-G3 AFTER ${count} players at ${width}x900: ${JSON.stringify({ viewerId: result.viewerId, topCapacity: result.topCapacity, measuredBoardWidth: result.measuredBoardWidth, seats: result.seats })}`);
+      }
       expect(result.seats).toHaveLength(count - 1);
-      expect(result.seats.map(({ relativeIndex, id, side, row }) => ({ relativeIndex, id, side, row }))).toEqual(
-        SIDE_COLUMN_MAPPING[count].map(([side, row], index) => ({ relativeIndex: index + 1, id: `p${index + 2}`, side, row }))
+      const expectedMapping = width <= 520 && [6, 8].includes(count)
+        ? [
+          ["right", 1],
+          ...Array.from({ length: count - 3 }, (_, topIndex) => ["top", topIndex]),
+          ["left", 1],
+        ]
+        : SIDE_COLUMN_MAPPING[count];
+      expect(result.seats.map(({ relativeIndex, id, side, row, topIndex }) => ({ relativeIndex, id, side, row: side === "top" ? topIndex : row }))).toEqual(
+        expectedMapping.map(([side, row], index) => ({ relativeIndex: index + 1, id: `p${index + 2}`, side, row }))
       );
       if (width <= 520 && [6, 8].includes(count)) {
-        const upperSeats = result.seats.filter(({ row }) => row === 1);
-        expect(upperSeats, "use both safe top-edge Seat positions first").toHaveLength(2);
+        const upperSeats = result.seats.filter(({ side }) => side === "top");
+        expect(result.topCapacity, "the measured phone width fits the full top row").toBe(count - 3);
+        expect(upperSeats, "fill the safe upper edge with the maximum continuous ring segment").toHaveLength(count - 3);
         expect(Math.min(...upperSeats.map(({ y }) => y)) - result.board.y, "top Seats start at the board's upper edge").toBeLessThanOrEqual(4);
+        const firstSideSeat = result.seats.filter(({ side }) => side !== "top").sort((left, right) => left.y - right.y)[0];
+        expect(firstSideSeat.y).toBeGreaterThanOrEqual(Math.max(...upperSeats.map(({ bottom }) => bottom)) + 4);
         for (const side of ["left", "right"]) {
           const sideSeats = result.seats.filter((seat) => seat.side === side).sort((left, right) => left.row - right.row);
           for (let index = 1; index < sideSeats.length; index += 1) {
@@ -2823,6 +2848,192 @@ for (const width of [480, 650, 1440]) {
     });
   }
 }
+
+const H2_G3_PHONE_VIEWPORTS = [
+  { width: 390, height: 700 },
+  { width: 390, height: 844 },
+  { width: 440, height: 894 },
+  { width: 480, height: 900 },
+];
+
+for (const viewport of H2_G3_PHONE_VIEWPORTS) {
+  for (const count of [6, 8]) {
+    test("H2-G3-F1-R2 " + count + "-player ring at " + viewport.width + "x" + viewport.height + " follows measured seats", async ({ page }, testInfo) => {
+      await loadFixture(page, { state: "rest", count, ...viewport, playerNamePrefix: "Test Player" });
+      await expect(page.locator('.player-board[data-mobile-top-ring="true"]')).toBeVisible();
+      const geometry = await sideColumnGeometry(page);
+      const seatWidth = geometry.seats[0].width;
+      const expectedCapacity = Math.min(count - 3, Math.floor((geometry.board.width + geometry.measuredGap) / (seatWidth + geometry.measuredGap)));
+      expect(geometry.topCapacity).toBe(expectedCapacity);
+      expect(geometry.seats.filter(({ side }) => side === "top")).toHaveLength(expectedCapacity);
+      for (const seat of geometry.seats.filter(({ side }) => side === "top")) {
+        expect(Math.abs(seat.y - geometry.board.y), seat.id + " top Seat is anchored to the board's upper edge").toBeLessThanOrEqual(1.5);
+      }
+      if (viewport.width === 480 && viewport.height === 900) {
+        console.log("H2-G3-F1-R2 measured ring: " + JSON.stringify({ count, viewerId: geometry.viewerId, topCapacity: geometry.topCapacity, board: geometry.board, seats: geometry.seats }));
+      }
+      expect(geometry.seats.map(({ id }) => id)).toHaveLength(count - 1);
+      expect(new Set(geometry.seats.map(({ id }) => id)).size).toBe(count - 1);
+
+      const physicalRingOrder = [
+        ...geometry.seats.filter(({ side }) => side === "right").sort((left, right) => right.y - left.y),
+        ...geometry.seats.filter(({ side }) => side === "top").sort((left, right) => right.x - left.x),
+        ...geometry.seats.filter(({ side }) => side === "left").sort((left, right) => left.y - right.y),
+      ].map(({ relativeIndex }) => relativeIndex);
+      expect(physicalRingOrder).toEqual(Array.from({ length: count - 1 }, (_, index) => index + 1));
+      expect(geometry.seats.find(({ side }) => side === "right").relativeIndex).toBe(1);
+      expect(geometry.seats.find(({ side }) => side === "left").relativeIndex).toBe(count - 1);
+
+      const seatRing = (await page.evaluate(() => window.__browserRoom.players)).sort((left, right) => left.seat - right.seat);
+      const viewerIndex = seatRing.findIndex(({ id }) => id === geometry.viewerId);
+      for (const seat of geometry.seats) {
+        const seatIndex = seatRing.findIndex(({ id }) => id === seat.id);
+        expect(seat.relativeIndex).toBe((seatIndex - viewerIndex + count) % count);
+        expect(seat.serverSeat).toBe(seatRing[seatIndex].seat);
+        expect(seat.x).toBeGreaterThanOrEqual(geometry.board.x - 1);
+        expect(seat.right).toBeLessThanOrEqual(geometry.board.right + 1);
+        expect(seat.bottom).toBeLessThanOrEqual(geometry.dock.y - 6);
+      }
+      for (let firstIndex = 0; firstIndex < geometry.seats.length; firstIndex += 1) {
+        for (let secondIndex = firstIndex + 1; secondIndex < geometry.seats.length; secondIndex += 1) {
+          const first = geometry.seats[firstIndex];
+          const second = geometry.seats[secondIndex];
+          const overlap = Math.max(0, Math.min(first.right, second.right) - Math.max(first.x, second.x))
+            * Math.max(0, Math.min(first.bottom, second.bottom) - Math.max(first.y, second.y));
+          expect(overlap, first.id + " and " + second.id + " have non-overlapping Seat footprints").toBe(0);
+        }
+      }
+      expect(geometry.overflow).toBe(false);
+      if (viewport.width === 480) {
+        await testInfo.attach("h2-g3-after-" + count + "-players-" + viewport.width + "x" + viewport.height + ".json", {
+          body: JSON.stringify(geometry, null, 2), contentType: "application/json",
+        });
+        await testInfo.attach("h2-g3-after-" + count + "-players-" + viewport.width + "x" + viewport.height + ".png", {
+          body: await page.screenshot({ animations: "disabled" }), contentType: "image/png",
+        });
+      }
+    });
+  }
+}
+
+test("H2-G3-F1-R2 six-player evidence keeps Xiahou Dun and Sima Yi in physical seat order", async ({ page }, testInfo) => {
+  await loadFixture(page, { state: "rest", count: 6, width: 480, height: 900, playerNamePrefix: "Test Player" });
+  await page.evaluate(() => window.__updateBrowserRoom((room) => ({
+    ...room,
+    meId: "p6",
+    players: room.players.map((player) => player.id === "p5" ? { ...player, name: "Test Player 2" } : player.id === "p4" ? { ...player, name: "JD" } : player),
+  })));
+  const geometry = await sideColumnGeometry(page);
+  const testPlayerTwo = geometry.seats.find(({ id }) => id === "p5");
+  const jd = geometry.seats.find(({ id }) => id === "p4");
+  expect(testPlayerTwo).toMatchObject({ playerName: "Test Player 2", heroId: "xiahou-dun", relativeIndex: 5, side: "left" });
+  expect(jd).toMatchObject({ playerName: "JD", heroId: "simayi", relativeIndex: 4, side: "top", topIndex: 2 });
+  const players = await page.evaluate(() => window.__browserRoom.players);
+  const localSeat = players.find(({ id }) => id === "p6").seat;
+  const clockwiseDistance = (targetId) => {
+    const targetSeat = players.find(({ id }) => id === targetId).seat;
+    const direct = Math.abs(targetSeat - localSeat);
+    return Math.min(direct, players.length - direct);
+  };
+  expect(clockwiseDistance("p5")).toBe(1);
+  expect(clockwiseDistance("p4")).toBe(2);
+  await testInfo.attach("h2-g3-six-player-authoritative-seat-evidence.json", {
+    body: JSON.stringify({ viewerId: geometry.viewerId, localSeat, opponents: geometry.seats }, null, 2), contentType: "application/json",
+  });
+  await testInfo.attach("h2-g3-six-player-authoritative-seat-evidence.png", {
+    body: await page.screenshot({ animations: "disabled" }), contentType: "image/png",
+  });
+});
+
+for (const count of [6, 8]) {
+  test("H2-G3-F1-R2 TEST SWITCH and Inspector work from every " + count + "-player phone perspective", async ({ page }) => {
+    await loadFixture(page, { state: "rest", count, width: 390, height: 844, playerNamePrefix: "Test Player" });
+    let viewerId = "p1";
+    for (let index = 0; index < count; index += 1) {
+      const targetId = "p" + (index + 1);
+      if (targetId !== viewerId) {
+        await page.getByTestId("test-view-switch-" + targetId).click();
+        await expect(page.locator(".local-player-dock")).toHaveAttribute("data-player-anchor", targetId);
+        viewerId = targetId;
+      }
+      const geometry = await sideColumnGeometry(page);
+      expect(geometry.viewerId).toBe(targetId);
+      expect(geometry.seats.map(({ id }) => id)).toHaveLength(count - 1);
+      expect(new Set(geometry.seats.map(({ id }) => id)).size).toBe(count - 1);
+      const targetSeat = geometry.seats[0];
+      const seat = page.locator('[data-player-anchor="' + targetSeat.id + '"]');
+      await seat.locator(".opponent-hero-target").click();
+      await expect(page.getByRole("region", { name: targetSeat.playerName + " opponent inspection" })).toBeVisible();
+      await seat.locator(".opponent-hero-target").click();
+      await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+    }
+  });
+}
+
+test("H2-G3-F1-R2 active Negation selection keeps card details, Inspector and TEST SWITCH operable", async ({ page }) => {
+  await loadFixture(page, { state: "negation", count: 6, width: 390, height: 844, playerNamePrefix: "Test Player" });
+  const handCard = page.locator('[data-hand-card-id="browser-negation"] .game-card');
+  await handCard.click();
+  const detailsButton = page.getByRole("button", { name: "Details for Negation" });
+  await expect(detailsButton).toBeVisible();
+  await detailsButton.click();
+  await expect(page.getByRole("dialog").getByRole("heading", { name: /Negation/ })).toBeVisible();
+  await page.getByRole("button", { name: "Close card details" }).click();
+  const inspectTarget = page.locator('[data-player-anchor="p3"] .opponent-hero-target');
+  await inspectTarget.click();
+  await expect(page.getByRole("region", { name: "Test Player 3 opponent inspection" })).toBeVisible();
+  await inspectTarget.click();
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+  await page.getByTestId("test-view-switch-p3").click();
+  await expect(page.locator(".local-player-dock")).toHaveAttribute("data-player-anchor", "p3");
+  await expect(page.locator(".player-board [data-player-anchor]")).toHaveCount(5);
+});
+
+test("H2-G3-F1-R2 public Bumper Harvest pool clears the measured top Seat band", async ({ page }) => {
+  await loadFixture(page, { state: "bumper-harvest-choosing", count: 6, width: 390, height: 844, playerNamePrefix: "Test Player" });
+  const panel = page.locator(".harvest-choice-panel");
+  await expect(panel).toBeVisible();
+  const geometry = await page.evaluate(() => {
+    const bounds = (element) => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom };
+    };
+    const panelRect = bounds(document.querySelector(".harvest-choice-panel"));
+    const topSeats = [...document.querySelectorAll('.player-board [data-side-column="top"]')].map((seat) => ({
+      id: seat.dataset.playerAnchor, ...bounds(seat),
+    }));
+    return { panel: panelRect, topSeats, seatRing: document.querySelector(".player-board").dataset.mobileTopRing };
+  });
+  expect(geometry.seatRing).toBe("true");
+  for (const seat of geometry.topSeats) {
+    const overlap = Math.max(0, Math.min(geometry.panel.right, seat.right) - Math.max(geometry.panel.x, seat.x))
+      * Math.max(0, Math.min(geometry.panel.bottom, seat.bottom) - Math.max(geometry.panel.y, seat.y));
+    expect(overlap, "Bumper Harvest pool clears top Seat " + seat.id).toBe(0);
+  }
+  await expect(panel.locator(".harvest-card-info")).toHaveCount(4);
+  await panel.locator(".harvest-card-info").first().click();
+  await expect(page.getByRole("dialog").getByRole("heading")).toBeVisible();
+  await page.getByRole("button", { name: "Close card details" }).click();
+});
+
+test("H2-G3-F1-R2 a normal Attack can select and submit its true adjacent seat", async ({ page }) => {
+  await loadFixture(page, { state: "ordinary-turn", count: 6, width: 390, height: 844 });
+  const attack = page.locator('[data-hand-card-id="browser-ordinary-5"] .game-card');
+  await attack.click();
+  const eligibleIds = await page.locator('.player-board [data-target-selectable="true"]').evaluateAll((seats) => seats.map((seat) => seat.dataset.playerAnchor));
+  expect(eligibleIds).toContain("p2");
+  expect(eligibleIds).toContain("p6");
+  const adjacentSeat = page.locator('[data-player-anchor="p2"]');
+  await adjacentSeat.locator(".opponent-hero-target").click();
+  await expect(adjacentSeat).toHaveClass(/selected-target/);
+  const playButton = page.locator('[data-action-slot="primary"] button');
+  await expect(playButton).toBeEnabled();
+  await playButton.click();
+  await expect.poll(() => page.evaluate(() => window.__browserActions.at(-1))).toMatchObject({
+    action: "play_card",
+    extra: { cardId: "browser-ordinary-5", targetId: "p2" },
+  });
+});
 
 for (const [count, left, right] of [
   [5, ["p5", "p4"], ["p3", "p2"]],

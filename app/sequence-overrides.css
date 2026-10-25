@@ -6477,6 +6477,39 @@
     align-self: start;
   }
 
+  /* H2-G3-F1-R2: on six/eight-player phones, reserve the measured full Seat
+     footprint at the upper edge, then continue the same relative ring down
+     the side tracks. Top Seats remain real player anchors. */
+  .game-shell .player-board[data-mobile-top-ring="true"] {
+    box-sizing: border-box;
+    padding-top: var(--mobile-seat-row-start-height, 0px);
+    grid-template-rows: repeat(var(--seat-row-count), max-content);
+    row-gap: var(--mobile-seat-gap, clamp(4px, 1.2vw, 8px));
+    align-content: start;
+    align-items: start;
+  }
+
+  .game-shell .player-board[data-mobile-top-ring="true"] > .opponent-player-card {
+    height: 108px;
+  }
+
+  .game-shell .player-board[data-mobile-top-ring="true"] > [data-side-column="top"] {
+    position: absolute;
+    z-index: 5;
+    width: var(--mobile-seat-width);
+    height: var(--mobile-seat-height);
+    max-width: none;
+    min-height: 0;
+    aspect-ratio: auto;
+    margin: 0;
+    align-self: auto;
+    justify-self: auto;
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-mobile-top-ring="true"]) > .interaction-safe-zone {
+    top: calc(var(--mobile-seat-top-band-height, 0px) + 8px);
+  }
+
   .game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] {
     grid-template-rows: repeat(2, max-content);
     align-content: start;
