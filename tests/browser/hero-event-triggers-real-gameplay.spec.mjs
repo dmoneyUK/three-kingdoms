@@ -193,6 +193,154 @@ test("real Necromancy replaces a revealed Delayed Stratagem Judgement from the S
   expect((await submitted.json()).room.currentAction.actorId).toBe(sima.id);
 });
 
+test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple phone viewers", async ({ page, browser, request }) => {
+  test.setTimeout(90_000);
+  const attack = card("Attack", "w4-f8-eight-trigrams-attack");
+  const armor = card("EightTrigrams", "w4-f8-eight-trigrams-armor");
+  const replacement = card("Peach", "w4-f8-replacement", "♥");
+  const privateCard = card("Dodge", "w4-f8-private-card", "♠");
+  const original = card("Dodge", "w4-f8-original-judgement", "♣");
+  const seedResponse = await request.post(`${API}/__test/seed-playing-game`, { data: {
+    phase: "play", turnSeat: 0,
+    players: [
+      { name: "ATTACKER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [attack] },
+      { name: "TARGET", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [], equipment: { armor } },
+      { name: "SIMA YI", role: "Rebel", hero: "simayi", hp: 4, maxHp: 4, hand: [replacement, privateCard] },
+      { name: "OBSERVER", role: "Renegade", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+    ],
+    deck: [original],
+  } });
+  expect(seedResponse.ok()).toBeTruthy();
+  const game = await seedResponse.json();
+  const observerPage = await browser.newPage();
+  try {
+    const sima = await openPlayer(page, game, 2);
+    const observer = await openPlayer(observerPage, game, 3);
+    const openedAttack = await request.post(`${API}/api/rooms`, {
+      data: { action: "play_card", code: game.code, token: game.players[0].token, cardId: attack.id, targetId: game.players[1].id },
+    });
+    expect(openedAttack.ok(), await openedAttack.text()).toBeTruthy();
+    let projected = await view(request, game, 1);
+    expect(projected.currentAction).toMatchObject({ kind: "response", actorId: game.players[1].id, requirement: "dodge" });
+    expect(projected.currentAction.options.map((option) => option.providerId)).toContain("eight_trigrams_dodge");
+    const openedJudgement = await request.post(`${API}/api/rooms`, {
+      data: { action: "respond", code: game.code, token: game.players[1].token, providerId: "eight_trigrams_dodge" },
+    });
+    expect(openedJudgement.ok(), await openedJudgement.text()).toBeTruthy();
+    projected = await view(request, game, 2);
+    expect(projected.currentAction).toMatchObject({ kind: "trigger", actorId: sima.id, triggerEvent: "judgement_revealed" });
+
+    const dock = page.locator(`.local-player-dock[data-player-anchor="${sima.id}"]`);
+    const skill = dock.locator(".local-hero-skills").getByRole("button", { name: "Necromancy", exact: true });
+    await expect(skill).toBeEnabled();
+    await skill.click();
+    const selectedCard = dock.locator(`[data-hand-card-id="${replacement.id}"] .game-card`);
+    await expect(selectedCard).toBeEnabled();
+    await selectedCard.click();
+    const confirm = dock.locator('[data-action-slot="primary"] button.primary');
+    await expect(confirm).toHaveText("Confirm");
+    const submittedPromise = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "trigger"
+      && response.request().postDataJSON()?.providerId === "sima_yi_guicai");
+    await confirm.click();
+    const submitted = await submittedPromise;
+    expect(submitted.ok()).toBeTruthy();
+    expect(submitted.request().postDataJSON()).toMatchObject({
+      action: "trigger", code: game.code, token: sima.token,
+      providerId: "sima_yi_guicai", cardIds: [replacement.id],
+    });
+    expect(submitted.request().postDataJSON()).not.toHaveProperty("cardId");
+    const result = await submitted.json();
+    const replacementEvent = result.room.timeline.find((event) => event.type === "card" && event.card?.id === replacement.id);
+    const originalEvent = result.room.timeline.find((event) => event.type === "card" && event.card?.id === original.id);
+    expect(originalEvent).toBeTruthy();
+    expect(replacementEvent).toMatchObject({ action: "reveal", judgement: true, player: sima.name, target: game.players[1].name });
+    expect(result.room.timeline.filter((event) => event.type === "card" && [original.id, replacement.id].includes(event.card?.id))).toHaveLength(2);
+    expect(replacementEvent.publicCardEffects).toContainEqual(expect.objectContaining({
+      effectId: "sima_yi_guicai", effectClass: "JUDGEMENT", activationOwnerId: sima.id,
+      targetId: game.players[1].id, rootEventId: originalEvent.id, rootResolutionId: originalEvent.resolutionId,
+      outcome: "REPLACED_JUDGEMENT",
+      materials: [{ cardId: replacement.id, ownerId: sima.id, fromZone: "HAND", toZone: "JUDGEMENT" }],
+    }));
+    const projectedEffect = result.room.presentationSnapshot?.publicCardEffects?.find((effect) => effect.eventId === replacementEvent.id);
+    expect(projectedEffect).toMatchObject({ eventId: replacementEvent.id, effectId: "sima_yi_guicai", effectClass: "JUDGEMENT" });
+    const viewers = [{ player: sima, page }, { player: observer, page: observerPage }];
+    const frameEvidence = await Promise.all(viewers.map(async ({ player, page: viewerPage }) => {
+      const frameSnapshot = ({ viewerId, eventId, cardId }) => {
+        const journey = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
+          .find((element) => element.dataset.publicCardJourneyEventId === eventId);
+        const display = journey?.closest(".public-card-display");
+        const frame = journey?.querySelector('[data-public-card-frame-effect-id="sima_yi_guicai"]');
+        const phase = journey?.dataset.publicCardJourneyPhase;
+        if (!journey || display?.dataset.publicCardViewerId !== viewerId || !frame
+          || !["reveal", "move"].includes(phase)
+          || journey.dataset.publicCardJourneyCardIds !== cardId) return false;
+        const faces = [...frame.querySelectorAll("[data-public-card-effect-frame-card-id]")]
+          .map((face) => face.getAttribute("data-public-card-effect-frame-card-id"));
+        return {
+          viewerId: display.dataset.publicCardViewerId,
+          eventId: journey.dataset.publicCardJourneyEventId,
+          phase,
+          frameCount: display.querySelectorAll('[data-public-card-frame-effect-id="sima_yi_guicai"]').length,
+          frameClass: frame.getAttribute("data-public-card-frame-class"),
+          frameOwnerId: frame.getAttribute("data-public-card-frame-activation-owner-id"),
+          frameMaterialOwnerIds: frame.getAttribute("data-public-card-frame-material-owner-ids"),
+          frameMaterialCardIds: frame.getAttribute("data-public-card-frame-material-card-ids"),
+          frameFaces: faces,
+          frameTitle: frame.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
+          announcementCount: display.querySelectorAll('[data-public-card-announcement="true"]').length,
+          announcement: display.querySelector('[data-public-card-announcement="true"]')?.textContent?.trim(),
+          viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
+        };
+      };
+      let handle;
+      try {
+        handle = await viewerPage.waitForFunction(frameSnapshot, { viewerId: player.id, eventId: replacementEvent.id, cardId: replacement.id }, { timeout: 12_000 });
+      } catch (error) {
+        const snapshot = await viewerPage.evaluate(frameSnapshot, { viewerId: player.id, eventId: replacementEvent.id, cardId: replacement.id });
+        const activeDisplays = await viewerPage.locator(".public-card-display").evaluateAll((elements) => elements.map((element) => ({
+          key: element.getAttribute("data-public-card-action-key"),
+          rootEventId: element.getAttribute("data-public-card-root-event-id"),
+          eventId: element.getAttribute("data-public-card-event-id"),
+          motion: element.getAttribute("data-public-card-motion"),
+          cards: [...element.querySelectorAll("[data-public-card-journey-event-id]")].map((card) => ({
+            eventId: card.getAttribute("data-public-card-journey-event-id"),
+            cardId: card.getAttribute("data-public-card-id"),
+            phase: card.getAttribute("data-public-card-journey-phase"),
+            frame: card.querySelector("[data-public-card-frame-effect-id]")?.getAttribute("data-public-card-frame-effect-id") ?? null,
+          })),
+          announcement: element.querySelector('[data-public-card-announcement="true"]')?.textContent?.trim(),
+        })));
+        throw new Error(`${error instanceof Error ? error.message : String(error)}; frame=${JSON.stringify(snapshot)}; displays=${JSON.stringify(activeDisplays)}; replacement=${replacementEvent.id}; original=${originalEvent.id}`);
+      }
+      return handle.jsonValue();
+    }));
+    expect(frameEvidence[0]).toMatchObject({
+      viewerId: sima.id, eventId: replacementEvent.id, frameCount: 1, frameClass: "JUDGEMENT",
+      frameOwnerId: sima.id, frameMaterialOwnerIds: sima.id, frameMaterialCardIds: replacement.id,
+      frameFaces: [replacement.id], frameTitle: "NECROMANCY · JUDGEMENT REPLACEMENT",
+      announcementCount: 1, viewport: { width: 390, height: 844, scrollWidth: 390 },
+    });
+    expect(frameEvidence[1]).toMatchObject({
+      viewerId: observer.id, eventId: replacementEvent.id, frameCount: 1, frameClass: "JUDGEMENT",
+      frameOwnerId: sima.id, frameMaterialOwnerIds: sima.id, frameMaterialCardIds: replacement.id,
+      frameFaces: [replacement.id], frameTitle: "NECROMANCY · JUDGEMENT REPLACEMENT",
+      announcementCount: 1, viewport: { width: 390, height: 844, scrollWidth: 390 },
+    });
+    for (const evidence of frameEvidence) {
+      expect(evidence.phase).toMatch(/^(reveal|move)$/);
+      expect(evidence.announcement).toContain("replace");
+      expect(evidence.announcement).toContain("Judgement");
+    }
+    expect(await view(request, game, 3).then((projection) => JSON.stringify(projection))).not.toContain(privateCard.id);
+    await expect(observerPage.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(0);
+    await expect(page.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(1);
+  } finally {
+    await observerPage.close();
+  }
+});
+
 test("real Jealousy of God obtains the effective delayed-Judgement card through Skills", async ({ page, request }) => {
   const delayed = card("Overindulgence", "real-jealousy-delayed");
   const judged = card("Dodge", "real-jealousy-effective", "♠");
