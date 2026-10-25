@@ -33,6 +33,7 @@ import { BUILD_LABEL, BUILD_SHA } from "./build-info";
 import { equipmentArrivalIdentity, pendingEquipmentArrivalIdentities as derivePendingEquipmentArrivalIdentities } from "../game/equipment-arrival.js";
 import { compactLustDuelOrderMessage, compactLustDuelResultMessage } from "./lust-public-copy";
 import { publicHeroCostAnnouncementLifecycle } from "../game/public-hero-cost-lifecycle";
+import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate } from "../game/public-announcement";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -2800,28 +2801,44 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     roomCode: string;
     viewerId: string;
     actionKey: string;
+    scopeGeneration: string;
     ready: boolean;
     eventIds: Set<string>;
     cardIds: Set<string>;
-  }>({ roomCode: "", viewerId: "", actionKey: "", ready: false, eventIds: new Set(), cardIds: new Set() });
+  }>({ roomCode: "", viewerId: "", actionKey: "", scopeGeneration: "", ready: false, eventIds: new Set(), cardIds: new Set() });
+  const publicCardOwnershipViewerRef = useRef({ roomCode: room.code, viewerId: room.meId });
+  publicCardOwnershipViewerRef.current = { roomCode: room.code, viewerId: room.meId };
+  const expectedPublicCardOwnershipRef = useRef({ roomCode: "", viewerId: "", actionKey: "", scopeGeneration: "" });
   const reportPublicCardJourneyOwnership = useCallback((
     ownerRoomCode: string,
     actionKey: string,
     viewerId: string,
+    scopeGeneration: string,
     ready: boolean,
     cards: readonly { eventId: string; cardIds: readonly string[] }[],
   ) => {
-    if (ownerRoomCode !== room.code || viewerId !== room.meId) return;
+    const currentViewer = publicCardOwnershipViewerRef.current;
+    if (ownerRoomCode !== currentViewer.roomCode || viewerId !== currentViewer.viewerId) return;
+    const expected = expectedPublicCardOwnershipRef.current;
+    if (ready && (expected.roomCode !== ownerRoomCode || expected.viewerId !== viewerId
+      || expected.actionKey !== actionKey || expected.scopeGeneration !== scopeGeneration)) return;
     const eventIds = new Set(cards.map(({ eventId }) => eventId));
     const cardIds = new Set(cards.flatMap(({ cardIds: ids }) => ids));
     setPublicCardJourneyOwnership((current) => {
-      const matches = current.roomCode === room.code && current.viewerId === viewerId && current.actionKey === actionKey;
-      if (!ready && !matches) return current;
+      const matches = current.roomCode === ownerRoomCode && current.actionKey === actionKey
+        && current.scopeGeneration === scopeGeneration;
+      if (!ready && !canClearPublicJourneyOwnership(current, {
+        roomCode: ownerRoomCode,
+        viewerId,
+        actionKey,
+        scopeGeneration,
+      })) return current;
       const sameSet = (left: Set<string>, right: Set<string>) => left.size === right.size && [...left].every((value) => right.has(value));
-      if (matches && current.ready === ready && sameSet(current.eventIds, eventIds) && sameSet(current.cardIds, cardIds)) return current;
-      return { roomCode: room.code, viewerId, actionKey, ready, eventIds, cardIds };
+      if (matches && current.viewerId === viewerId && current.ready === ready
+        && sameSet(current.eventIds, eventIds) && sameSet(current.cardIds, cardIds)) return current;
+      return { roomCode: ownerRoomCode, viewerId, actionKey, scopeGeneration, ready, eventIds, cardIds };
     });
-  }, [room.code, room.meId]);
+  }, []);
   if (publicCardJourneySeen.roomCode !== room.code) {
     setPublicCardJourneySeen({ roomCode: room.code, eventIds: new Set((room.timeline ?? []).map((event) => event.id)) });
   }
@@ -6108,14 +6125,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   } : null;
   const singleTargetNegationOwnsRoot = Boolean(singleTargetNegationUsesJourney && singleTargetNegationProofCandidate
     && (!rootAction || rootAction.rootEventId === singleTargetNegationProofCandidate.rootEvent.id));
-  const livePublicCardAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
+  const nonHeroLivePublicCardAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
     ? heldPublicNegationReadAction
     : lustDuelPublicAction
     ? lustDuelPublicAction
     : lustCostFrameAction
     ? lustCostFrameAction
-    : latestHeroPublicCardEffectFrameAction
-    ? latestHeroPublicCardEffectFrameAction
     : groupSettlementCandidate
     ? {
       key: ["group", groupSettlementCandidate.settlement.interactionId, groupSettlementCandidate.settlement.groupFrameId, groupSettlementCandidate.rootEvent.id].join(":"),
@@ -6483,6 +6498,33 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ariaLabel: `${selfTargetCandidate.source.name} used Peach on self`,
       }
       : null;
+  const publicCardActionCheckpointEventId = (action: PublicCardDisplayAction) =>
+    action.publicNegationNarration?.latestCommittedEventId
+    ?? action.settlement?.eventId
+    ?? action.responses?.at(-1)?.eventId
+    ?? action.response?.eventId
+    ?? action.publicCardEffectFrame?.eventId
+    ?? action.rootEventId;
+  const laterPublicCardPlayEventIds = room.timeline.flatMap((event) =>
+    event.type === "card" && event.action === "play" && event.presentation !== false && !event.privateToPlayerId
+      ? [event.id]
+      : []);
+  const livePublicCardAction = selectPublicAnnouncementCandidate([
+    ...(nonHeroLivePublicCardAction ? [{
+      value: nonHeroLivePublicCardAction,
+      rootEventId: nonHeroLivePublicCardAction.rootEventId,
+      checkpointEventId: publicCardActionCheckpointEventId(nonHeroLivePublicCardAction),
+      priority: 2,
+    }] : []),
+    ...(latestHeroPublicCardEffectFrameAction ? [{
+      value: latestHeroPublicCardEffectFrameAction,
+      rootEventId: latestHeroPublicCardEffectFrameAction.rootEventId,
+      checkpointEventId: publicCardActionCheckpointEventId(latestHeroPublicCardEffectFrameAction),
+      priority: 1,
+      active: latestHeroPublicCardEffectFrameAction.suppressAnnouncement !== true,
+      supersedeOnNewerPublicPlay: true,
+    }] : []),
+  ], room.timeline.filter((event) => event.presentation !== false && !event.privateToPlayerId).map((event) => event.id), laterPublicCardPlayEventIds);
   const heldAttackDodgeReadAction = visibleActiveAttackDodgeSettlement
     && visibleActiveAttackDodgeSettlement.phase !== "complete"
     && visibleActiveAttackDodgeSettlement.action.settlement?.eventId === visibleActiveAttackDodgeSettlement.eventId
@@ -6559,8 +6601,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     deflection: activeDeflectionAction ?? undefined,
   } : null;
   const publicCardDisplayOwnershipIdentity = publicCardDisplayAction
-    ? publicCardJourneyOwnershipIdentity(publicCardDisplayAction, room.code, room.meId)
+    ? publicCardJourneyOwnershipIdentity(publicCardDisplayAction, room.code)
     : "";
+  const publicCardDisplayOwnershipScopeGeneration = publicCardDisplayAction
+    ? [publicCardDisplayOwnershipIdentity, publicCardDisplayAction.motion?.scopeKey ?? publicCardDisplayAction.rootEventId, room.meId].join("\u001f")
+    : "";
+  expectedPublicCardOwnershipRef.current = publicCardDisplayOwnershipIdentity
+    ? { roomCode: room.code, viewerId: room.meId, actionKey: publicCardDisplayOwnershipIdentity, scopeGeneration: publicCardDisplayOwnershipScopeGeneration }
+    : { roomCode: room.code, viewerId: room.meId, actionKey: "", scopeGeneration: "" };
   const markPublicCardDisplayEventParked = useCallback((eventId: string) => {
     markPublicCardJourneyEventParked(eventId);
     if (publicCardDisplayAction?.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer"
@@ -6707,7 +6755,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const publicCardJourneyOwnershipReady = Boolean(publicCardDisplayAction
     && publicCardJourneyOwnership.ready
     && publicCardJourneyOwnership.roomCode === room.code
-    && publicCardJourneyOwnership.viewerId === room.meId
     && publicCardJourneyOwnership.actionKey === publicCardDisplayOwnershipIdentity);
   const publicDisplayOwnedResponseHistory = publicCardJourneyOwnershipReady && publicCardDisplayAction
     ? (publicCardDisplayAction.responseHistory ?? []).filter((response) => {

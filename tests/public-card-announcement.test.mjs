@@ -3,6 +3,13 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
 import {
+  canClearPublicJourneyOwnership,
+  publicAnnouncementEventCopyKey,
+  publicAnnouncementGeometryKey,
+  selectPublicAnnouncementCandidate,
+  transitionPublicAnnouncementCopyLifecycle,
+} from "../game/public-announcement.ts";
+import {
   compactLustDuelAttackMessage,
   compactLustDuelOrderMessage,
   compactLustDuelResultMessage,
@@ -16,6 +23,65 @@ const action = (overrides = {}) => ({
   cardLabel: "ATTACK",
   ariaLabel: "Source played Attack targeting Target",
   ...overrides,
+});
+
+test("public announcement arbitration uses unique committed checkpoints and retires older Hero copy", () => {
+  const attack = { id: "attack-root", name: "Attack" };
+  const oldHero = { id: "hero-cost", name: "Hero cost" };
+  const nonHero = { id: "active-response", name: "Current response" };
+  const timeline = ["hero-cost", "attack-root", "active-response"];
+
+  assert.equal(selectPublicAnnouncementCandidate([
+    { value: oldHero, rootEventId: "hero-cost", checkpointEventId: "hero-cost", priority: 1, supersedeOnNewerPublicPlay: true },
+    { value: attack, rootEventId: "attack-root", checkpointEventId: "attack-root", priority: 2 },
+  ], timeline, ["attack-root"]), attack);
+
+  assert.equal(selectPublicAnnouncementCandidate([
+    { value: oldHero, rootEventId: "hero-cost", checkpointEventId: "hero-cost", priority: 1, supersedeOnNewerPublicPlay: true },
+  ], timeline, ["attack-root"]), null);
+
+  assert.equal(selectPublicAnnouncementCandidate([
+    { value: nonHero, rootEventId: "attack-root", checkpointEventId: "active-response", priority: 2 },
+    { value: attack, rootEventId: "attack-root", checkpointEventId: "attack-root", priority: 9 },
+  ], timeline), nonHero);
+
+  assert.equal(selectPublicAnnouncementCandidate([
+    { value: attack, rootEventId: "missing-root", checkpointEventId: "attack-root", priority: 1 },
+    { value: oldHero, rootEventId: "hero-cost", checkpointEventId: "hero-cost", priority: 1 },
+  ], [...timeline, "hero-cost"]), null);
+});
+
+test("announcement copy identity is viewer-independent while geometry identity is viewer-scoped", () => {
+  const identity = {
+    roomCode: "ROOM",
+    rootEventId: "root",
+    checkpointEventId: "response-1",
+    proofEventId: "response-1",
+    actorId: "player-2",
+    actionClass: "single-target",
+  };
+  assert.equal(publicAnnouncementEventCopyKey(identity), publicAnnouncementEventCopyKey(identity));
+  assert.notEqual(publicAnnouncementGeometryKey("ROOM", "player-1"), publicAnnouncementGeometryKey("ROOM", "player-2"));
+  assert.notEqual(publicAnnouncementEventCopyKey(identity), publicAnnouncementEventCopyKey({ ...identity, checkpointEventId: "response-2", proofEventId: "response-2" }));
+});
+
+test("announcement copy lifecycle advances UNSEEN to ACTIVE to READING to RETIRED without regression", () => {
+  let state = { eventCopyKey: "", stage: "UNSEEN" };
+  state = transitionPublicAnnouncementCopyLifecycle(state, { eventCopyKey: "root:response-1", stage: "ACTIVE" });
+  assert.deepEqual(state, { eventCopyKey: "root:response-1", stage: "ACTIVE" });
+  state = transitionPublicAnnouncementCopyLifecycle(state, { eventCopyKey: "root:response-1", stage: "READING" });
+  assert.deepEqual(state, { eventCopyKey: "root:response-1", stage: "READING" });
+  state = transitionPublicAnnouncementCopyLifecycle(state, { eventCopyKey: "root:response-1", stage: "ACTIVE" });
+  assert.deepEqual(state, { eventCopyKey: "root:response-1", stage: "READING" });
+  state = transitionPublicAnnouncementCopyLifecycle(state, null);
+  assert.deepEqual(state, { eventCopyKey: "root:response-1", stage: "RETIRED" });
+});
+
+test("stale ownership cleanup cannot clear a newer viewer or scope generation", () => {
+  const current = { roomCode: "ROOM", viewerId: "viewer-2", actionKey: "root", scopeGeneration: "root:viewer-2" };
+  assert.equal(canClearPublicJourneyOwnership(current, { ...current, viewerId: "viewer-1", scopeGeneration: "root:viewer-1" }), false);
+  assert.equal(canClearPublicJourneyOwnership(current, { ...current, scopeGeneration: "older-generation" }), false);
+  assert.equal(canClearPublicJourneyOwnership(current, current), true);
 });
 
 test("T3 single-target root ownership survives Negation, target choice, and settlement wrappers", () => {
@@ -32,12 +98,11 @@ test("T3 single-target root ownership survives Negation, target choice, and sett
     settlement: { eventId: "settlement-event", outcome: "STEAL_RESOLVED", exiting: false },
   };
 
-  const owner = publicCardJourneyOwnershipIdentity(root, "ROOM", "viewer");
-  assert.equal(publicCardJourneyOwnershipIdentity(settlement, "ROOM", "viewer"), owner);
-  assert.notEqual(publicCardJourneyOwnershipIdentity(settlement, "ROOM", "other-viewer"), owner);
-  assert.notEqual(publicCardJourneyOwnershipIdentity({ ...settlement, rootEventId: "next-root" }, "ROOM", "viewer"), owner);
-  assert.notEqual(publicCardJourneyOwnershipIdentity({ ...settlement, cardFace: { ...root.cardFace, id: "other-physical-card" } }, "ROOM", "viewer"), owner);
-  assert.notEqual(publicCardJourneyOwnershipIdentity({ ...settlement, sourceId: "other-author" }, "ROOM", "viewer"), owner);
+  const owner = publicCardJourneyOwnershipIdentity(root, "ROOM");
+  assert.equal(publicCardJourneyOwnershipIdentity(settlement, "ROOM"), owner);
+  assert.notEqual(publicCardJourneyOwnershipIdentity({ ...settlement, rootEventId: "next-root" }, "ROOM"), owner);
+  assert.notEqual(publicCardJourneyOwnershipIdentity({ ...settlement, cardFace: { ...root.cardFace, id: "other-physical-card" } }, "ROOM"), owner);
+  assert.notEqual(publicCardJourneyOwnershipIdentity({ ...settlement, sourceId: "other-author" }, "ROOM"), owner);
 });
 
 test("LUST compact copy preserves full player identities and follows the proven actor id", () => {
