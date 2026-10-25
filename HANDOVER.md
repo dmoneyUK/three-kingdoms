@@ -2,14 +2,16 @@
 
 Target branch: `ux-v2` (working branch: `codex/quick-test-modes`). Phone-only.
 
-## Latest result
+## Latest relevant result
 
-**W4-F3 — Braveheart Attack AS DODGE in an Attack response — IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW.** Source SHA `5967adb3e8808f189bd5caaf56f42671009bedcb`; exact-SHA [Actions `40150717558`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40150717558) passed API, lint/fast, browser startup/room smoke, D1 migration, Worker deployment and production smoke. Worker `c48a01ed-934d-4070-b567-49f832cb706d`; production `/` and `/api/health` returned HTTP 200 and health returned `{"ok":true,"worker":"available"}`. Focused authenticated mobile browser proof passed 1/1 at 390×844 for Zhao Yun and an independent observer; build and diff check passed. No owner acceptance is inferred.
+**W4-F3 — Braveheart Attack AS DODGE:** source `5967adb3e8808f189bd5caaf56f42671009bedcb`; exact-SHA [Actions `40150717558`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40150717558) passed and deployed Worker `c48a01ed-934d-4070-b567-49f832cb706d`. Pending user phone re-review; no acceptance inferred.
 
-Latest design reviewed: `docs/UX2-refine.md` §§10.9.1–10.9.4, revision `5967adb3e8808f189bd5caaf56f42671009bedcb`.
+Latest design reviewed: `docs/UX2-refine.md` §§10.9.1–10.9.4 at `178a3cfcd4d8387fce30accf666aedd2c172b7f`.
 
 ## Exactly one current bounded task
 
-**W4-F4 — Zhen Ji Empress Dowager black card AS DODGE while answering an Attack.** Reuse the shared W2 Frame and current Attack/Dodge journey. Show the Frame only for the exact committed response when server proof ties (1) the genuine black physical response card and `zhen_ji_black_card_dodge` conversion, (2) Zhen Ji as responder/target, and (3) the response to the exact Attack root/target. Preserve the original physical CardFace, current legal response, public/private projection boundaries and turn flow. Extend only the server-authored response proof/projection if needed to prove this already-authorized response; do not alter gameplay rules, permissions or protocol behavior.
+**W4-F4 — Zhen Ji Empress Dowager black card AS DODGE while answering an Attack.** Implementation is complete locally and ready to commit. The server now publishes the exact committed black physical card, Empress Dowager conversion and Attack-root/target relation; both actor and observer render the genuine CardFace in the shared Frame with explicit `AS DODGE` narration. Legal response, gameplay rules, permissions, privacy and protocol are unchanged.
 
-Acceptance: one focused authenticated 390×844 phone-sized regression with Zhen Ji and an independent viewer; verify identical proof-backed Frame/CardFace/narration and Attack linkage, successful legal Dodge settlement, no unspent Hand leak and no overlap. Keep combined local UI/browser testing within five minutes. Run focused validation, then exact-SHA required CI/deployment checks. Final status must be **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**.
+Focused validation: `npm run build` passed; `tests/api/equipment.test.mjs` passed 20/20; the real-click authenticated mobile regression passed 1/1 at 390×844 for Zhen Ji and an independent observer, including public proof/card identity, Attack linkage, successful Dodge settlement, private Hand protection and non-overlap; `git diff --check` passed. One earlier browser attempt exposed an invalid optional-proof-key shape; it was corrected and the focused regression then passed.
+
+Resume point: commit the six W4-F4 source/test files and this handover; then require exact-SHA GitHub Actions, Worker deployment and production health verification. Final status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. Do not start another task until that delivery is verified.

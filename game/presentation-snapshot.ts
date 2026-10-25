@@ -657,6 +657,9 @@ export function provenAttackDodgeResponses(value: unknown): PresentationSnapshot
     responseCardKind: "Dodge",
     responseEventId: response.responseEventId,
     responseResolutionId: response.responseResolutionId,
+    ...(response.responseConversionEffectId === "zhen_ji_black_card_dodge"
+      ? { responsePhysicalCardKind: response.responsePhysicalCardKind, responseConversionEffectId: "zhen_ji_black_card_dodge" as const }
+      : {}),
     ...(response.responsePhysicalCardKind === "Attack" && response.responsePlayedAs === "dodge"
       ? { responsePhysicalCardKind: "Attack" as const, responsePlayedAs: "dodge" as const }
       : {}),

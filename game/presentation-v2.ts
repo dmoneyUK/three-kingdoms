@@ -11,7 +11,7 @@ export type PresentationV2Event = {
   type: "message" | "card" | "cards" | string;
   player?: string;
   target?: string;
-  card?: { id?: string; kind?: string };
+  card?: { id?: string; kind?: string; suit?: string; rank?: string };
   cards?: readonly { id?: string; kind?: string }[];
   message?: string;
   action?: string;
@@ -599,8 +599,9 @@ type PresentationAttackDodgeResponseProofBase = {
 };
 
 export type PresentationAttackDodgeResponseProof = PresentationAttackDodgeResponseProofBase & (
-  | { responsePhysicalCardKind?: never; responsePlayedAs?: never }
-  | { responsePhysicalCardKind: "Attack"; responsePlayedAs: "dodge" }
+  | { responsePhysicalCardKind?: never; responsePlayedAs?: never; responseConversionEffectId?: never }
+  | { responsePhysicalCardKind: "Attack"; responsePlayedAs: "dodge"; responseConversionEffectId?: never }
+  | { responsePhysicalCardKind: Card["kind"]; responsePlayedAs?: never; responseConversionEffectId: "zhen_ji_black_card_dodge" }
 );
 
 export type PresentationAttackDodgeResponse = PresentationAttackDodgeResponseProof & {
@@ -614,6 +615,10 @@ export function isSupportedAttackDodgeResponseProof(value: unknown): value is Pr
   if (!proof) return false;
   const hasPhysicalKind = Object.prototype.hasOwnProperty.call(proof, "responsePhysicalCardKind");
   const hasPlayedAs = Object.prototype.hasOwnProperty.call(proof, "responsePlayedAs");
+  const hasConversionEffect = Object.prototype.hasOwnProperty.call(proof, "responseConversionEffectId");
+  if (hasConversionEffect) return proof.responseConversionEffectId === "zhen_ji_black_card_dodge"
+    && hasPhysicalKind && !hasPlayedAs && typeof proof.responsePhysicalCardKind === "string"
+    && CARD_KINDS.includes(proof.responsePhysicalCardKind as CardKind);
   if (!hasPhysicalKind && !hasPlayedAs) return true;
   return hasPhysicalKind && hasPlayedAs
     && proof.responsePhysicalCardKind === "Attack" && proof.responsePlayedAs === "dodge";
@@ -622,9 +627,28 @@ export function isSupportedAttackDodgeResponseProof(value: unknown): value is Pr
 /** Cross-checks a typed server proof against the exact public physical response event. */
 export function attackDodgeResponseEventMatchesProof(
   value: unknown,
-  event: Pick<PresentationV2Event, "card" | "playedAs">,
+  event: Pick<PresentationV2Event, "id" | "card" | "playedAs" | "publicCardEffects">,
 ): boolean {
   if (!isSupportedAttackDodgeResponseProof(value)) return false;
+  if (value.responseConversionEffectId === "zhen_ji_black_card_dodge") {
+    const card = event.card;
+    if (!card?.id || card.kind !== value.responsePhysicalCardKind
+      || (card.suit !== "♠" && card.suit !== "♣")
+      || event.playedAs !== undefined) return false;
+    const effects = Array.isArray(event.publicCardEffects) ? event.publicCardEffects.map(record).filter((effect) => effect !== null) : [];
+    const matchingEffects = effects.filter((effect) => effect.effectId === value.responseConversionEffectId);
+    if (matchingEffects.length !== 1) return false;
+    const effect = matchingEffects[0];
+    const materials = Array.isArray(effect.materials) ? effect.materials.map(record).filter((candidate) => candidate !== null) : [];
+    const [material] = materials;
+    return effect.semantics === "PROVEN" && effect.eventId === event.id && effect.effectClass === "CONVERSION"
+      && effect.activationOwnerId === value.responseActorId && effect.rootEventId === value.rootEventId
+      && effect.rootResolutionId === value.rootResolutionId && effect.targetId === value.targetId
+      && effect.resultingCardKind === "Dodge" && effect.outcome === "AS_DODGE"
+      && materials.length === 1
+      && material?.cardId === card.id && material.ownerId === value.responseActorId
+      && material.fromZone === "HAND" && material.toZone === "DISCARD";
+  }
   if (value.responsePhysicalCardKind === "Attack") {
     return event.card?.kind === "Attack" && event.playedAs === "dodge";
   }
@@ -3273,6 +3297,10 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
       responseCardKind: "Dodge",
       responseEventId: eventId,
       responseResolutionId,
+      ...(proof.responseConversionEffectId === "zhen_ji_black_card_dodge"
+        && typeof proof.responsePhysicalCardKind === "string"
+        ? { responsePhysicalCardKind: proof.responsePhysicalCardKind as Card["kind"], responseConversionEffectId: "zhen_ji_black_card_dodge" as const }
+        : {}),
       ...(proof.responsePhysicalCardKind === "Attack" && proof.responsePlayedAs === "dodge"
         ? { responsePhysicalCardKind: "Attack" as const, responsePlayedAs: "dodge" as const }
         : {}),

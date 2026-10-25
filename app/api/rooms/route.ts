@@ -1121,8 +1121,13 @@ function attackDodgeResponseProof(
     authoritativeLongdanAttackAsDodge: responderHero === "zhao-yun" && responseCard?.kind === "Attack"
       && responseExecution?.status === "satisfied" && responseExecution.providerId === "zhao_yun_attack_as_dodge"
       && responseExecution.satisfies === "dodge" && responseExecution.playedAs === "dodge",
+    authoritativeEmpressDowagerBlackCardAsDodge: responderHero === "zhen-ji"
+      && (responseCard?.suit === "♠" || responseCard?.suit === "♣")
+      && responseExecution?.status === "satisfied" && responseExecution.providerId === "zhen_ji_black_card_dodge"
+      && responseExecution.satisfies === "dodge" && responseExecution.playedAs === undefined,
   };
-  const supportedDodgeResponse = baseChecks.ordinaryPhysicalDodge || baseChecks.authoritativeLongdanAttackAsDodge;
+  const supportedDodgeResponse = baseChecks.ordinaryPhysicalDodge || baseChecks.authoritativeLongdanAttackAsDodge
+    || baseChecks.authoritativeEmpressDowagerBlackCardAsDodge;
   const failedGate = [
     [baseChecks.originIsCard, "attack-origin-is-not-card"],
     [baseChecks.requiredDodgeCountIsOne, "required-dodge-count-is-not-one"],
@@ -1195,6 +1200,9 @@ function attackDodgeResponseProof(
     responseCardKind: "Dodge",
     ...(baseChecks.authoritativeLongdanAttackAsDodge
       ? { responsePhysicalCardKind: "Attack" as const, responsePlayedAs: "dodge" as const }
+      : {}),
+    ...(baseChecks.authoritativeEmpressDowagerBlackCardAsDodge && responseCard
+      ? { responsePhysicalCardKind: responseCard.kind, responseConversionEffectId: "zhen_ji_black_card_dodge" as const }
       : {}),
     ...(Number.isInteger(turnSeatAtCommit) && turnSeatAtCommit !== null ? { turnSeatAtCommit } : {}),
   };

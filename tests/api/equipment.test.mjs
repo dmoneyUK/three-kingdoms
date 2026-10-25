@@ -911,6 +911,22 @@ test("generic response executes Zhen Ji's black-card Dodge without a physical Do
   const qingguoEvent = resolved.data.room.timeline.find((event) => event.type === "card" && event.card?.id === blackPeach.id);
   assert.equal(qingguoEvent.publicCardEffects?.[0]?.effectId, "zhen_ji_black_card_dodge");
   assert.deepEqual(qingguoEvent.publicCardEffects?.[0]?.materials, [{ cardId: blackPeach.id, ownerId: alicePlayer.id, fromZone: "HAND", toZone: "DISCARD" }]);
+  assert.deepEqual(qingguoEvent.attackDodgeResponse && {
+    responsePhysicalCardKind: qingguoEvent.attackDodgeResponse.responsePhysicalCardKind,
+    responseConversionEffectId: qingguoEvent.attackDodgeResponse.responseConversionEffectId,
+    responseActorId: qingguoEvent.attackDodgeResponse.responseActorId,
+    targetId: qingguoEvent.attackDodgeResponse.targetId,
+  }, {
+    responsePhysicalCardKind: "Peach", responseConversionEffectId: "zhen_ji_black_card_dodge",
+    responseActorId: alicePlayer.id, targetId: alicePlayer.id,
+  }, "the exact server-authorized black card is linked to its Attack target as an Empress Dowager Dodge");
+  const hostView = await state(game.code, host.token);
+  assert.deepEqual(hostView.data.presentationSnapshot.attackDodgeResponses, resolved.data.room.presentationSnapshot.attackDodgeResponses,
+    "the typed Empress Dowager Dodge relation is public and viewer-equal");
+  assert.ok(hostView.data.presentationSnapshot.attackDodgeResponses?.length,
+    JSON.stringify({ event: qingguoEvent, presentationV2: hostView.data.presentationV2, snapshot: hostView.data.presentationSnapshot }));
+  assert.equal(hostView.data.presentationSnapshot.attackDodgeResponses[0].responsePhysicalCardKind, "Peach");
+  assert.equal(hostView.data.presentationSnapshot.attackDodgeResponses[0].responseConversionEffectId, "zhen_ji_black_card_dodge");
   assert.ok(discardIds(game.code).includes(blackPeach.id));
 });
 
