@@ -3798,6 +3798,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [processedTimelineKey, setProcessedTimelineKey] = useState(() => room.timeline.map((event) => event.id).join("|"));
   const card = room.myHand.find((item) => item.id === selected); const current = room.players.find((player) => player.seat === room.turnSeat); const me = room.players.find((player) => player.id === room.meId); const localHero = heroDefinition(me?.hero); const targetPlayer = room.players.find((player) => player.id === target); const pendingTargetPlayer = room.players.find((player) => player.id === room.pendingTargetCard?.targetId); const pickerTarget = pendingTargetPlayer ?? targetPlayer;
   const excessCards = Math.max(0, room.myHand.length - (me?.hp ?? 0));
+  // TableResolutionSequence still indexes the server-ordered player snapshot.
+  // Keep that contract separate from the seat-sorted mobile projection below.
+  const myTableIndex = Math.max(0, room.players.findIndex((player) => player.id === room.meId));
   const seatRelativeIndices = useMemo(() => {
     const seatRing = [...room.players].sort((left, right) => left.seat - right.seat || left.id.localeCompare(right.id));
     const viewerRingIndex = seatRing.findIndex((player) => player.id === room.meId);
