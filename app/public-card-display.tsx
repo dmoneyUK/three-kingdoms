@@ -2779,7 +2779,8 @@ function AttackDodgeCardJourney({
   const eventSignature = `${action.rootEventId}|${action.response?.eventId ?? ""}|${action.deflection?.eventId ?? ""}|${attackDodgeMotion?.rootFresh ? "new-root" : "parked-root"}|${attackDodgeMotion?.responseFresh ? "new-response" : "parked-response"}|${attackDodgeMotion?.deflectionFresh ? "new-deflection" : "parked-deflection"}`;
   const latestResponse = action.response ?? null;
   const latestDeflection = action.deflection ?? null;
-  const publicEffectFrameOwnsAnnouncementAnchor = action.publicCardEffectFrame?.eventId === action.rootEventId;
+  const publicEffectFrameOwnsAnnouncementAnchor = Boolean(action.publicCardEffectFrame
+    && [action.rootEventId, action.response?.eventId].includes(action.publicCardEffectFrame.eventId));
   const activeJourneyCard = journey.cards.find((card) => card.phase === "reveal")
     ?? [...journey.cards].reverse().find((card) => card.phase === "move")
     ?? [...journey.cards].reverse().find((card) => card.phase !== "queued")
@@ -2829,7 +2830,8 @@ function AttackDodgeCardJourney({
     const currentSourceName = sourceNameRef.current;
     const motion = currentAction.motion?.type === "attack-dodge" ? currentAction.motion : null;
     if (!enabled || !motion) return;
-    const center = currentAction.publicCardEffectFrame?.eventId === currentAction.rootEventId
+    const publicFrameJourneyEventIds = [currentAction.rootEventId, currentAction.response?.eventId].filter(Boolean);
+    const center = currentAction.publicCardEffectFrame && publicFrameJourneyEventIds.includes(currentAction.publicCardEffectFrame.eventId)
       ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame.materials.length)
       : battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
     const previousState = journeyRef.current;
@@ -3469,7 +3471,7 @@ function AttackDodgeCardJourney({
         size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
         className={`${isCurrent ? "is-current" : ""} ${isHistorical ? "is-prior" : ""} ${card.role === "deflection" ? "is-deflection" : ""}`}
         primary={isCurrent}
-        publicCardEffectFrame={card.role === "root" && card.eventId === action.publicCardEffectFrame?.eventId
+        publicCardEffectFrame={card.eventId === action.publicCardEffectFrame?.eventId
           ? action.publicCardEffectFrame : undefined}
       />;
     })}

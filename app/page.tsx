@@ -447,6 +447,77 @@ type VerifiedAttackConversionFrameProof = {
   target: Player;
   spec: AttackConversionFrameSpec;
 };
+type VerifiedBraveheartDodgeResponseFrameProof = {
+  responseEvent: CardEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  sourceCard: Card;
+  owner: Player;
+  target: Player;
+  attackSource: Player;
+};
+function verifiedBraveheartDodgeResponseFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  responseProofs: readonly PresentationAttackDodgeResponse[],
+  players: readonly Player[],
+  rootEventId: string,
+  responseEventId: string,
+  expectedCardId: string,
+): VerifiedBraveheartDodgeResponseFrameProof | null {
+  const proofMatches = responseProofs.filter((proof) => proof.rootEventId === rootEventId
+    && proof.responseEventId === responseEventId
+    && proof.responsePhysicalCardKind === "Attack" && proof.responsePlayedAs === "dodge"
+    && proof.responseCardKind === "Dodge" && proof.responseActorId === proof.targetId);
+  if (proofMatches.length !== 1) return null;
+  const proof = proofMatches[0];
+  const rootMatches = timeline.filter((event) => event.id === proof.rootEventId);
+  const responseMatches = timeline.filter((event) => event.id === proof.responseEventId);
+  const rootEvent = rootMatches.length === 1 && rootMatches[0].type === "card" ? rootMatches[0] : null;
+  const responseEvent = responseMatches.length === 1 && responseMatches[0].type === "card" ? responseMatches[0] : null;
+  const rootIsAttack = rootEvent && (rootEvent.playedAs === undefined
+    ? rootEvent.card.kind === "Attack"
+    : rootEvent.playedAs === "attack" && rootEvent.card.kind !== "Attack");
+  if (!rootEvent || !responseEvent || rootEvent.action !== "play" || rootEvent.presentation === false
+    || rootEvent.privateToPlayerId || rootEvent.resolutionId !== proof.rootResolutionId || !rootIsAttack
+    || responseEvent.action !== "play" || responseEvent.presentation === false || responseEvent.privateToPlayerId
+    || responseEvent.playedAs !== "dodge" || responseEvent.card.kind !== "Attack"
+    || responseEvent.card.id !== expectedCardId || responseEvent.resolutionId !== proof.responseResolutionId
+    || !attackDodgeResponseEventMatchesProof(proof, responseEvent)) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === responseEvent.id && effect.effectId === "zhao_yun_attack_as_dodge");
+  const rawMatches = (responseEvent.publicCardEffects ?? []).filter((effect) => effect.effectId === "zhao_yun_attack_as_dodge");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const sourceCard = responseEvent.card;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.effectClass !== "CONVERSION" || rawEffect.effectClass !== "CONVERSION"
+    || effect.activationOwnerId !== proof.responseActorId || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.rootEventId !== proof.rootEventId || rawEffect.rootEventId !== proof.rootEventId
+    || effect.rootResolutionId !== proof.rootResolutionId || rawEffect.rootResolutionId !== proof.rootResolutionId
+    || effect.targetId !== proof.targetId || rawEffect.targetId !== proof.targetId
+    || effect.resultingCardKind !== "Dodge" || rawEffect.resultingCardKind !== "Dodge"
+    || effect.outcome !== "AS_DODGE" || rawEffect.outcome !== "AS_DODGE"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || sourceCard.id !== projectedCard.id || sourceCard.id !== material.cardId || sourceCard.id !== rawMaterial.cardId
+    || sourceCard.kind !== projectedCard.kind
+    || sourceCard.suit !== projectedCard.suit || sourceCard.rank !== projectedCard.rank
+    || material.ownerId !== proof.responseActorId || rawMaterial.ownerId !== proof.responseActorId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD") return null;
+
+  const owner = players.find((player) => player.id === proof.responseActorId && player.hero === "zhao-yun");
+  const target = players.find((player) => player.id === proof.targetId);
+  const attackSource = players.find((player) => player.id === proof.rootSourceId);
+  if (!owner?.name || !target?.name || !attackSource?.name || owner.id !== target.id
+    || attackSource.id === target.id || responseEvent.player !== owner.name || responseEvent.target !== attackSource.name
+    || rootEvent.player !== attackSource.name) return null;
+  return { responseEvent, effect, sourceCard, owner, target, attackSource };
+}
 function verifiedAttackConversionFrameForEvent(
   timeline: readonly GameEvent[],
   effects: readonly PresentationSnapshotPublicCardEffect[],
@@ -6682,6 +6753,31 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
     return publicCardEffectFrame ? { proof, spec, publicNotice, accessibleLabel, publicCardEffectFrame } : null;
   })();
+  const braveheartDodgeResponseFrameCandidate = (() => {
+    const response = selectedPublicCardAction?.response;
+    if (!selectedPublicCardAction || selectedPublicCardAction.motion?.type !== "attack-dodge"
+      || !response?.cardFace) return null;
+    const proof = verifiedBraveheartDodgeResponseFrameForEvent(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      clientPresentation.attackDodgeResponses ?? [],
+      room.players,
+      selectedPublicCardAction.rootEventId,
+      response.eventId,
+      response.cardFace.id,
+    );
+    if (!proof || selectedPublicCardAction.sourceId !== proof.attackSource.id
+      || selectedPublicCardAction.targetId !== proof.target.id || response.actorId !== proof.owner.id) return null;
+    const publicNotice = `${proof.owner.name} used Braveheart: Attack AS DODGE against ${proof.attackSource.name}'s Attack.`;
+    const accessibleLabel = `${proof.owner.name} used Braveheart. Attack, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Dodge against ${proof.attackSource.name}'s Attack on ${proof.target.name}.`;
+    const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
+      title: "BRAVEHEART · ATTACK AS DODGE",
+      accessibleLabel,
+      activationOwnerName: proof.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    });
+    return publicCardEffectFrame ? { proof, publicNotice, accessibleLabel, publicCardEffectFrame } : null;
+  })();
   const publicCardDisplayAction: PublicCardDisplayAction | null = selectedPublicCardAction ? {
     ...selectedPublicCardAction,
     ...(attackConversionFrameCandidate ? {
@@ -6690,6 +6786,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       publicNotice: attackConversionFrameCandidate.publicNotice,
       publicNoticeCompact: `${attackConversionFrameCandidate.proof.owner.name} used ${attackConversionFrameCandidate.spec.skillName} AS ATTACK.`,
       publicCardEffectFrame: attackConversionFrameCandidate.publicCardEffectFrame,
+    } : {}),
+    ...(braveheartDodgeResponseFrameCandidate && selectedPublicCardAction.response ? {
+      response: {
+        ...selectedPublicCardAction.response,
+        ariaLabel: braveheartDodgeResponseFrameCandidate.accessibleLabel,
+        semanticLabel: "ATTACK AS DODGE",
+      },
+      publicNotice: braveheartDodgeResponseFrameCandidate.publicNotice,
+      publicNoticeCompact: `${braveheartDodgeResponseFrameCandidate.proof.owner.name} used Braveheart · ATTACK AS DODGE.`,
+      publicCardEffectFrame: braveheartDodgeResponseFrameCandidate.publicCardEffectFrame,
     } : {}),
     publicActivityMessage: selectedLustOrderOwnsActivityBand
       ? publicActivityStatus.heading ?? publicActivityStatus.text : undefined,
