@@ -1124,7 +1124,7 @@ for (const kind of ["Steal", "Dismantle"]) {
       await page.getByTestId(`test-view-switch-${viewerId}`).click();
       await expect(page.locator(`.local-player-dock[data-player-anchor="${viewerId}"]`)).toBeVisible({ timeout: 8_000 });
       if (phase === "negation") {
-        const readViewerLayout = () => page.evaluate((expectedViewerId) => {
+        const readViewerLayout = () => page.evaluate(() => {
           const display = [...document.querySelectorAll(".public-card-display[data-public-card-root-event-id]")]
             .find((candidate) => candidate.getAttribute("data-public-card-root-event-id") === window.__w3F2R1RootEventId);
           const copy = display?.querySelector('[data-public-card-announcement="true"]');
