@@ -174,6 +174,9 @@ test("Captivating enters the ordinary Overindulgence Negation lifecycle", async 
   assert.equal(pending.pendingNegation.cardName, "Overindulgence");
   assert.equal(pending.players.find((player) => player.id === opened.target.id).judgementCards.length, 0);
   const pendingCaptivating = pending.timeline.find((event) => event.type === "card" && event.card?.id === opened.diamond.id);
+  assert.equal(pending.presentationSnapshot.reactionChain?.publicEventLinks?.root?.eventId, pendingCaptivating.id,
+    "the semantic Overindulgence Negation chain links to Captivating's real Diamond play event");
+  assert.equal(pending.presentationSnapshot.reactionChain?.rootCard?.cardKind, "Overindulgence");
   assert.equal(pendingCaptivating.publicCardEffects?.[0]?.materials[0]?.toZone, "PUBLIC_PLAY",
     "the committed card remains in its public resolution stage while Negation is open");
   assert.equal(pending.presentationSnapshot.publicCardEffects.find((proof) => proof.effectId === "daqiao_captivating")?.materials[0]?.toZone, "PUBLIC_PLAY",

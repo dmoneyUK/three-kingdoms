@@ -2012,6 +2012,34 @@ function reactionChainFor(
       ? { eventId: event.id, resolutionId: event.resolutionId }
       : null;
   })();
+  const captivatingConversionRootEvent = (() => {
+    if (expectedRootCardKind !== "Overindulgence" || !sourceId || !targetId || !rootPhysicalCardId) return null;
+    const matches = timeline.filter((candidate) => candidate.type === "card" && candidate.action === "play"
+      && candidate.presentation !== false && typeof candidate.privateToPlayerId !== "string"
+      && candidate.playedAs === undefined && candidate.card?.id === rootPhysicalCardId
+      && candidate.card.kind !== expectedRootCardKind && candidate.card.suit === "♦"
+      && typeof candidate.id === "string" && candidate.id.length > 0
+      && typeof candidate.resolutionId === "string" && candidate.resolutionId.length > 0
+      && (!stringValue(continuation.resolutionId) || candidate.resolutionId === continuation.resolutionId));
+    if (matches.length !== 1 || timeline.filter((candidate) => candidate.id === matches[0].id).length !== 1) return null;
+    const event = matches[0];
+    const proofs = Array.isArray(event.publicCardEffects)
+      ? event.publicCardEffects.map(record).filter((proof) => proof?.effectId === "daqiao_captivating")
+      : [];
+    if (proofs.length !== 1) return null;
+    const proof = proofs[0];
+    const materials = Array.isArray(proof?.materials) ? proof.materials.map(record) : [];
+    const [material] = materials;
+    return proof?.semantics === "PROVEN" && proof.eventId === event.id
+      && proof.effectClass === "CONVERSION" && proof.activationOwnerId === sourceId
+      && proof.targetId === targetId && proof.resultingCardKind === "Overindulgence"
+      && proof.outcome === "AS_OVERINDULGENCE" && materials.length === 1
+      && material?.cardId === rootPhysicalCardId && material.ownerId === sourceId
+      && material.fromZone === "HAND" && material.toZone === "PUBLIC_PLAY"
+      && (!stringValue(continuation.resolutionId) || event.resolutionId === continuation.resolutionId)
+      ? { eventId: event.id, resolutionId: event.resolutionId }
+      : null;
+  })();
   const duelPending = record(effect?.pending);
   const duelContinuation = record(duelPending?.continuation);
   const duelPendingCausal = record(duelPending?.causal);
@@ -2064,7 +2092,7 @@ function reactionChainFor(
     && scene.participantRoles.currentParticipantId === targetId
     && scene.activeResolverId === item.actorId && scene.decisionActorId === item.actorId);
   const isProvenSingleTargetRoot = Boolean(expectedRootCardKind
-    && (rootCardKind === expectedRootCardKind || ambushmentConversionRootEvent !== null)
+    && (rootCardKind === expectedRootCardKind || ambushmentConversionRootEvent !== null || captivatingConversionRootEvent !== null)
     && sourceId && targetId && (effect?.kind === "duel"
       ? isProvenDuelNegationRoot
       : scene.continuity.relation === "ROOT_FRAME"
@@ -2090,7 +2118,8 @@ function reactionChainFor(
     : null;
   const rootEvent = rootCard && expectedRootCardKind
     ? effect?.kind === "duel" ? duelRootEvent
-    : ambushmentConversionRootEvent ?? (rootPhysicalCardId ? publicCardEventFor(rootPhysicalCardId, expectedRootCardKind) : null)
+    : ambushmentConversionRootEvent ?? captivatingConversionRootEvent
+      ?? (rootPhysicalCardId ? publicCardEventFor(rootPhysicalCardId, expectedRootCardKind) : null)
     : null;
   const linkedNodeEvents = nodeEventLinks.filter((link): link is NonNullable<typeof link> => link !== null);
   const publicNodeEventIds = linkedNodeEvents.map(({ eventId }) => eventId);

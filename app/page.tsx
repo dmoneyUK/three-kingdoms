@@ -463,6 +463,7 @@ type VerifiedAmbushmentConversionFrameProof = {
   owner: Player;
   target: Player;
 };
+type VerifiedCaptivatingConversionFrameProof = VerifiedAmbushmentConversionFrameProof;
 function verifiedBraveheartDodgeResponseFrameForEvent(
   timeline: readonly GameEvent[],
   effects: readonly PresentationSnapshotPublicCardEffect[],
@@ -675,6 +676,56 @@ function verifiedAmbushmentConversionFrameForEvent(
     || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD") return null;
 
   const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "gan-ning");
+  const target = players.find((player) => player.id === effect.targetId);
+  if (!owner?.name || !target?.name || owner.id === target.id
+    || conversionEvent.player !== owner.name || conversionEvent.target !== target.name) return null;
+  return { conversionEvent, effect, sourceCard, owner, target };
+}
+function verifiedCaptivatingConversionFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+  expectedCardId: string,
+): VerifiedCaptivatingConversionFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const conversionEvent = eventMatches.length === 1 && eventMatches[0].type === "card" ? eventMatches[0] : null;
+  if (!conversionEvent || conversionEvent.action !== "play" || conversionEvent.presentation === false
+    || conversionEvent.playedAs !== undefined || conversionEvent.privateToPlayerId
+    || conversionEvent.card.id !== expectedCardId || conversionEvent.card.suit !== "♦"
+    || !conversionEvent.resolutionId) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === conversionEvent.id && effect.effectId === "daqiao_captivating");
+  const rawMatches = (conversionEvent.publicCardEffects ?? []).filter((effect) => effect.effectId === "daqiao_captivating");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const sourceCard = conversionEvent.card;
+  const validDestination = material?.toZone === "PUBLIC_PLAY" || material?.toZone === "JUDGEMENT" || material?.toZone === "DISCARD";
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== conversionEvent.id || rawEffect.eventId !== conversionEvent.id
+    || effect.effectClass !== "CONVERSION" || rawEffect.effectClass !== "CONVERSION"
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.targetId !== rawEffect.targetId || !effect.targetId
+    || effect.resultingCardKind !== "Overindulgence" || rawEffect.resultingCardKind !== "Overindulgence"
+    || effect.outcome !== "AS_OVERINDULGENCE" || rawEffect.outcome !== "AS_OVERINDULGENCE"
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.rootEventId !== undefined || rawEffect.rootEventId !== undefined
+    || effect.rootResolutionId !== undefined || rawEffect.rootResolutionId !== undefined
+    || effect.interactionId !== undefined || rawEffect.interactionId !== undefined
+    || effect.rootFrameId !== undefined || rawEffect.rootFrameId !== undefined
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard || !validDestination
+    || rawMaterial.toZone !== material.toZone
+    || sourceCard.id !== projectedCard.id || sourceCard.id !== material.cardId || sourceCard.id !== rawMaterial.cardId
+    || sourceCard.kind !== projectedCard.kind || sourceCard.suit !== projectedCard.suit || sourceCard.rank !== projectedCard.rank
+    || material.ownerId !== effect.activationOwnerId || rawMaterial.ownerId !== effect.activationOwnerId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND") return null;
+
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "daqiao");
   const target = players.find((player) => player.id === effect.targetId);
   if (!owner?.name || !target?.name || owner.id === target.id
     || conversionEvent.player !== owner.name || conversionEvent.target !== target.name) return null;
@@ -4909,11 +4960,24 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         rootEvent.card.id,
       )
       : null;
+    const captivatingRootProof = root.cardKind === "Overindulgence" && rootEvent.type === "card"
+      ? verifiedCaptivatingConversionFrameForEvent(
+        room.timeline,
+        room.presentationSnapshot?.publicCardEffects ?? [],
+        room.players,
+        rootEvent.id,
+        rootEvent.card.id,
+      )
+      : null;
     const isProvenAmbushmentRoot = Boolean(ambushmentRootProof
       && ambushmentRootProof.owner.id === root.source.id
       && ambushmentRootProof.target.id === root.targets[0]?.id);
+    const isProvenCaptivatingRoot = Boolean(captivatingRootProof
+      && captivatingRootProof.owner.id === root.source.id
+      && captivatingRootProof.target.id === root.targets[0]?.id);
     if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
-      || ((rootEvent.playedAs !== undefined || rootEvent.card?.kind !== root.cardKind) && !isProvenAmbushmentRoot)
+      || ((rootEvent.playedAs !== undefined || rootEvent.card?.kind !== root.cardKind)
+        && !isProvenAmbushmentRoot && !isProvenCaptivatingRoot)
       || rootEvent.resolutionId !== links.root.resolutionId) return [];
     const rootSource = root.source.id ? room.players.find((player) => player.id === root.source.id) : undefined;
     const rootTarget = root.targets[0]?.id ? room.players.find((player) => player.id === root.targets[0]?.id) : undefined;
@@ -4944,7 +5008,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       return [{ node, event: responseEvent, actor: responseActor }];
     });
     if (responseNodes.length !== chain.negationNodes.length) return [];
-    return [{ chain, root, rootEvent, responseNodes, ambushmentRootProof }];
+    return [{ chain, root, rootEvent, responseNodes, ambushmentRootProof, captivatingRootProof }];
   })();
   const singleTargetNegationProofCandidate = singleTargetNegationProofCandidates.length === 1
     ? singleTargetNegationProofCandidates[0]
@@ -4974,15 +5038,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const targetName = candidate.root.targets[0]?.name?.trim();
     const rootLabel = cardDefinition(candidate.root.cardKind!).name;
     const ambushmentProof = candidate.ambushmentRootProof;
+    const captivatingProof = candidate.captivatingRootProof;
+    const rootCounterLabel = captivatingProof ? "Captivating AS Overindulgence" : rootLabel;
     const rootEffectState = candidate.chain.rootEffectState;
     if (!sourceName || !targetName || (rootEffectState !== "ACTIVE" && rootEffectState !== "BLOCKED")) return null;
     const depth = candidate.responseNodes.length;
     const latest = candidate.responseNodes.at(-1);
     const rootHeadline = ambushmentProof
       ? `${sourceName} used Ambushment AS BURNING BRIDGES on ${targetName}.`
+      : captivatingProof
+        ? `${sourceName} used Captivating AS OVERINDULGENCE on ${targetName}.`
       : `${sourceName} played ${rootLabel} on ${targetName}.`;
     const compactRootHeadline = ambushmentProof
       ? `${sourceName}: Ambushment AS BURNING BRIDGES on ${targetName}`
+      : captivatingProof
+        ? `${sourceName}: Captivating AS OVERINDULGENCE on ${targetName}`
       : `${sourceName}: ${rootLabel} on ${targetName}`;
     let headline = rootHeadline;
     let compactHeadline = compactRootHeadline;
@@ -4999,10 +5069,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       const actorName = latest.actor.name?.trim();
       if (!actorName || !targetActorName) return null;
       headline = depth === 1
-        ? `${actorName}'s Negation counters ${sourceName}'s ${rootLabel}.`
+        ? `${actorName}'s Negation counters ${sourceName}'s ${rootCounterLabel}.`
         : `${actorName} counters ${targetActorName}'s Negation.`;
       compactHeadline = depth === 1
-        ? `${actorName} counters ${sourceName}'s ${rootLabel}`
+        ? `${actorName} counters ${sourceName}'s ${rootCounterLabel}`
         : `${actorName} counters ${targetActorName}'s Negation`;
       const nextCounterLabel = depth === 1 ? "Counter-Negation still possible" : "Another Negation is possible";
       supportingMessage = `${rootLabel} currently ${rootEffectState} · ${nextCounterLabel}.`;
@@ -5794,15 +5864,28 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       rootActionEvent.card.id,
     )
     : null;
+  const rootActionCaptivatingProof = rootAction?.action === "STRATAGEM" && rootAction.cardKind === "Overindulgence"
+    && rootActionEvent?.type === "card"
+    ? verifiedCaptivatingConversionFrameForEvent(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      room.players,
+      rootAction.rootEventId,
+      rootActionEvent.card.id,
+    )
+    : null;
   const rootActionMatchesAmbushmentProof = Boolean(rootActionAmbushmentProof
     && rootActionAmbushmentProof.owner.id === rootAction?.sourceId
     && rootActionAmbushmentProof.target.id === rootAction?.targetId);
+  const rootActionMatchesCaptivatingProof = Boolean(rootActionCaptivatingProof
+    && rootActionCaptivatingProof.owner.id === rootAction?.sourceId
+    && rootActionCaptivatingProof.target.id === rootAction?.targetId);
   const rootActionCardFace = rootAction && rootActionEvent?.type === "card"
     && rootActionEvent.id === rootAction.rootEventId && rootActionEvent.action === "play"
     && rootActionEvent.presentation !== false
     && ((rootActionEvent.card.kind === (rootAction.action === "ATTACK" ? rootAction.physicalCardKind : rootAction.cardKind)
       && rootActionEvent.playedAs === (rootAction.action === "ATTACK" ? rootAction.playedAs : undefined))
-      || rootActionMatchesAmbushmentProof)
+      || rootActionMatchesAmbushmentProof || rootActionMatchesCaptivatingProof)
     ? rootActionEvent.card : null;
   const selfTargetCandidates = rootAction || oathSimultaneousRootCandidate || bumperHarvestRootCandidate || halberdOrderedRootCandidate || groupTargetBranchCandidate || skillEffectActionCandidate || skillEffectSettlementCandidate || dismantleSettlementCandidate || stealSettlementCandidate || attackHitSettlementCandidate || duelExchangeDisplayCandidate || attackDodgeDisplayCandidate || singleTargetNegationProofCandidate || groupSettlementCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
@@ -5958,8 +6041,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const rootEvent = rootEvents[0];
     const event = settlementEvents[0];
     const eventProof = event.type === "message" ? event.negationSettlement : undefined;
+    const rootIsProvenCaptivating = Boolean(candidate.captivatingRootProof
+      && candidate.captivatingRootProof.conversionEvent.id === rootEvent.id
+      && candidate.captivatingRootProof.owner.id === proof.sourceId
+      && candidate.captivatingRootProof.target.id === proof.targetId);
     if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
-      || rootEvent.playedAs !== undefined || rootEvent.card?.kind !== proof.rootCardKind
+      || (rootEvent.playedAs !== undefined && !rootIsProvenCaptivating)
+      || (rootEvent.card?.kind !== proof.rootCardKind && !rootIsProvenCaptivating)
       || rootEvent.resolutionId !== proof.resolutionId
       || event.type !== "message" || event.presentation === false || event.importance !== "essential"
       || event.finalResult !== true || event.resolutionId !== proof.resolutionId
@@ -6926,6 +7014,29 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
     return publicCardEffectFrame ? { proof, publicNotice, accessibleLabel, publicCardEffectFrame } : null;
   })();
+  const captivatingConversionFrameCandidate = (() => {
+    if (!selectedPublicCardAction || selectedPublicCardAction.cardKind !== "Overindulgence"
+      || !selectedPublicCardAction.cardFace) return null;
+    const proof = verifiedCaptivatingConversionFrameForEvent(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      room.players,
+      selectedPublicCardAction.rootEventId,
+      selectedPublicCardAction.cardFace.id,
+    );
+    if (!proof || selectedPublicCardAction.sourceId !== proof.owner.id
+      || selectedPublicCardAction.targetId !== proof.target.id) return null;
+    const cardName = cardDefinition(proof.sourceCard.kind).name;
+    const publicNotice = `${proof.owner.name} used Captivating: ${cardName} ${proof.sourceCard.rank}${proof.sourceCard.suit} AS OVERINDULGENCE on ${proof.target.name}.`;
+    const accessibleLabel = `${proof.owner.name} used Captivating. ${cardName}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Overindulgence targeting ${proof.target.name}.`;
+    const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
+      title: "CAPTIVATING · AS OVERINDULGENCE",
+      accessibleLabel,
+      activationOwnerName: proof.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    });
+    return publicCardEffectFrame ? { proof, publicNotice, accessibleLabel, publicCardEffectFrame } : null;
+  })();
   const braveheartDodgeResponseFrameCandidate = (() => {
     const response = selectedPublicCardAction?.response;
     if (!selectedPublicCardAction || selectedPublicCardAction.motion?.type !== "attack-dodge"
@@ -6991,6 +7102,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       publicNotice: ambushmentConversionFrameCandidate.publicNotice,
       publicNoticeCompact: `${ambushmentConversionFrameCandidate.proof.owner.name} used Ambushment AS BURNING BRIDGES on ${ambushmentConversionFrameCandidate.proof.target.name}.`,
       publicCardEffectFrame: ambushmentConversionFrameCandidate.publicCardEffectFrame,
+    } : {}),
+    ...(captivatingConversionFrameCandidate ? {
+      cardLabel: "CAPTIVATING · AS OVERINDULGENCE",
+      ariaLabel: captivatingConversionFrameCandidate.accessibleLabel,
+      publicNotice: captivatingConversionFrameCandidate.publicNotice,
+      publicNoticeCompact: `${captivatingConversionFrameCandidate.proof.owner.name} used Captivating AS OVERINDULGENCE on ${captivatingConversionFrameCandidate.proof.target.name}.`,
+      publicCardEffectFrame: captivatingConversionFrameCandidate.publicCardEffectFrame,
     } : {}),
     ...(braveheartDodgeResponseFrameCandidate && selectedPublicCardAction.response ? {
       response: {

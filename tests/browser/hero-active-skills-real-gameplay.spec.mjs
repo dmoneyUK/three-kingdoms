@@ -956,14 +956,90 @@ test("W4: Ambushment frames the genuine black card as Burning Bridges for actor 
   }
 });
 
-test("real Captivating submits the Diamond card and authoritative Overindulgence target", async ({ page, request }) => {
+test("W4: Captivating frames its real Diamond AS Overindulgence for every Negation viewer", async ({ page, browser, request }) => {
+  test.setTimeout(60_000);
   const diamond = card("Peach", "real-captivating-diamond", "♦");
+  const privateDaqiaoCard = card("Dodge", "real-captivating-private-daqiao", "♠");
+  const privateTargetCard = card("Attack", "real-captivating-private-target", "♥");
+  const observerNegation = card("Negation", "real-captivating-observer-negation", "♣");
+  const privateObserverCard = card("Peach", "real-captivating-private-observer", "♥");
   const seed = await seedSkillRoom(request, {
-    hero: "daqiao", hand: [diamond],
-    targets: [{ name: "TARGET", role: "Loyalist", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [] }],
+    hero: "daqiao", hand: [diamond, privateDaqiaoCard],
+    targets: [
+      { name: "TARGET", role: "Loyalist", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [privateTargetCard] },
+      { name: "OBSERVER", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [observerNegation, privateObserverCard] },
+    ],
   });
-  await openSkillUser(page, seed);
-  await completeSkillSelection({ page, request, seed, skillName: "Captivating", providerId: "daqiao_captivating", cardIds: [diamond.id], targetIndexes: [1] });
+  const targetContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const observerContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  try {
+    const actor = await openSkillUser(page, seed, { width: 390, height: 844 });
+    const targetPage = await targetContext.newPage();
+    const target = await openSkillViewer(targetPage, seed, seed.players[1], { width: 390, height: 844 });
+    const observerPage = await observerContext.newPage();
+    const observer = await openSkillViewer(observerPage, seed, seed.players[2], { width: 390, height: 844 });
+
+    await completeSkillSelection({ page, request, seed, skillName: "Captivating", providerId: "daqiao_captivating", cardIds: [diamond.id], targetIndexes: [1] });
+
+    const viewers = [
+      { page, player: actor },
+      { page: targetPage, player: target },
+      { page: observerPage, player: observer },
+    ];
+    const renderedFrames = await Promise.all(viewers.map(async ({ page: viewerPage, player }) => {
+      const root = viewerPage.locator('[data-public-card-journey-role="root"]').filter({
+        has: viewerPage.locator('[data-public-card-frame-effect-id="daqiao_captivating"]'),
+      });
+      const frame = root.locator('[data-public-card-frame-effect-id="daqiao_captivating"]');
+      const display = viewerPage.locator(".public-card-display").filter({ has: frame });
+      await expect(root).toHaveCount(1);
+      await expect(frame).toHaveAttribute("data-public-card-frame-material-card-ids", diamond.id);
+      await expect(frame.locator(".public-card-effect-frame-title")).toHaveText("CAPTIVATING · AS OVERINDULGENCE");
+      const notice = display.locator('[data-public-card-announcement="true"]');
+      await expect(notice).toContainText(/Captivating.*AS OVERINDULGENCE.*TARGET/);
+      const eventId = await root.getAttribute("data-public-card-journey-event-id");
+      const cardId = await root.getAttribute("data-public-card-journey-card-id");
+      expect(cardId).toBe(diamond.id);
+      return { viewerId: player.id, eventId, cardId };
+    }));
+    expect(new Set(renderedFrames.map(({ eventId }) => eventId)).size).toBe(1);
+
+    const [actorProjection, targetProjection, observerProjection] = await Promise.all([
+      projectedRoom(request, seed, actor), projectedRoom(request, seed, target), projectedRoom(request, seed, observer),
+    ]);
+    for (const projection of [actorProjection, targetProjection, observerProjection]) {
+      const proofs = projection.presentationSnapshot.publicCardEffects.filter((proof) => proof.effectId === "daqiao_captivating");
+      expect(proofs).toHaveLength(1);
+      expect(proofs[0]).toMatchObject({
+        eventId: renderedFrames[0].eventId,
+        activationOwnerId: actor.id,
+        targetId: target.id,
+        resultingCardKind: "Overindulgence",
+        outcome: "AS_OVERINDULGENCE",
+        materials: [{ cardId: diamond.id, ownerId: actor.id, fromZone: "HAND", toZone: "PUBLIC_PLAY" }],
+      });
+      expect(projection.presentationSnapshot.reactionChain).toMatchObject({
+        rootCard: { cardKind: "Overindulgence", sourceId: actor.id, targetId: target.id },
+        publicEventLinks: { root: { eventId: renderedFrames[0].eventId }, nodes: [] },
+        rootEffectState: "ACTIVE",
+      });
+    }
+    const privateCardIds = [privateDaqiaoCard.id, privateTargetCard.id, observerNegation.id, privateObserverCard.id];
+    for (const projection of [actorProjection, targetProjection, observerProjection]) {
+      const publicPresentationJson = JSON.stringify(projection.presentationSnapshot);
+      for (const cardId of privateCardIds) expect(publicPresentationJson).not.toContain(cardId);
+    }
+    for (const projection of [actorProjection, targetProjection]) {
+      const viewerJson = JSON.stringify(projection);
+      expect(viewerJson).not.toContain(observerNegation.id);
+      expect(viewerJson).not.toContain(privateObserverCard.id);
+    }
+    expect(observerProjection.currentAction?.options?.flatMap((option) => option.selection?.eligibleCardIds ?? []))
+      .toContain(observerNegation.id);
+  } finally {
+    await targetContext.close();
+    await observerContext.close();
+  }
 });
 
 test("real Betrothment requires two cards and an injured male target", async ({ page, request }) => {
