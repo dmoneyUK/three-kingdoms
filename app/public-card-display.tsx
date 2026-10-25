@@ -1861,6 +1861,7 @@ function PublicCardAnnouncement({
   keepCenterAnchorClear = false,
   stableHarvestAnchor = false,
   ignoreJourneyLayoutPending = false,
+  viewerGeometryReady = true,
   preferredVerticalMode,
   privateDrawAware = false,
 }: {
@@ -1887,6 +1888,7 @@ function PublicCardAnnouncement({
   keepCenterAnchorClear?: boolean;
   stableHarvestAnchor?: boolean;
   ignoreJourneyLayoutPending?: boolean;
+  viewerGeometryReady?: boolean;
   preferredVerticalMode?: "above" | "below";
   privateDrawAware?: boolean;
 }) {
@@ -1934,7 +1936,7 @@ function PublicCardAnnouncement({
     phase, heading, message, compactMessage, accessibleLabel, supportingMessage, compactSupportingMessage,
     negationNarration, fallbackCardRect: stableFallbackCardRect, phaseNotice, outcome, negationWaiting,
     stableCenterAnchor, keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending,
-    preferredVerticalMode, privateDrawAware,
+    viewerGeometryReady, preferredVerticalMode, privateDrawAware,
   };
   const latestInputsRef = useRef(latestInputs);
   const placementInputKey = JSON.stringify(latestInputs);
@@ -2032,7 +2034,7 @@ function PublicCardAnnouncement({
         eventId, geometryKey, placementKey, viewerLayoutKey, phase, message, compactMessage,
         accessibleLabel, supportingMessage, compactSupportingMessage, negationNarration,
         fallbackCardRect: currentFallbackCardRect, outcome, negationWaiting, stableCenterAnchor,
-        keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, preferredVerticalMode,
+        keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, viewerGeometryReady, preferredVerticalMode,
         privateDrawAware,
       } = latestInputsRef.current;
       const hasNegationNarration = Boolean(negationNarration);
@@ -2153,6 +2155,11 @@ function PublicCardAnnouncement({
       });
       setData("data-public-card-announcement-geometry-key", currentGeometryIdentity);
       const bandKey = `${currentGeometryIdentity}:${viewerLayoutKey}:${placementKey}:${layoutEpoch}`;
+      if (!viewerGeometryReady) {
+        if (copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
+        setData("data-public-card-announcement-stability", "waiting-current-viewer-geometry");
+        return;
+      }
       if (!ignoreJourneyLayoutPending && display.dataset.publicCardLayoutPending === "true") {
         if (!retainLastValidPlacement(layoutEpoch) && copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
         return;
@@ -4413,6 +4420,9 @@ function SingleTargetCardJourney({
   // measured the new author's anchor. Never paint a previous viewer's card
   // coordinates against the new roster, even for one rendered frame.
   const viewerLayoutPending = journey.scopeKey === scopeKey && journey.viewerId !== viewerId;
+  const publicCopyViewerGeometryReady = journey.scopeKey === scopeKey
+    && journey.viewerId === viewerId
+    && journey.center !== null;
   useLayoutEffect(() => {
     const historyCards = [...document.querySelectorAll<HTMLElement>(".public-card-display-journey.is-harvest-history-passive [data-public-card-harvest-history-parked='true']")];
     for (const card of historyCards) {
@@ -4736,10 +4746,10 @@ function SingleTargetCardJourney({
       stableCenterAnchor={motion?.type === "lust-cost"}
       keepCenterAnchorClear={publicEffectFrameOwnsAnnouncementAnchor}
       stableHarvestAnchor={harvestPoolVisible}
-      // Public Negation narration has its own safe-positioning pass and is
-      // backed by a committed event. A missing thumbnail parking slot must not
-      // suppress that independent public explanation.
-      ignoreJourneyLayoutPending={harvestPoolVisible || Boolean(negationNarration)}
+      // The banner validates current-viewer geometry independently; thumbnail
+      // parking must not hide this separately placeable public announcement.
+      ignoreJourneyLayoutPending
+      viewerGeometryReady={publicCopyViewerGeometryReady}
       preferredVerticalMode={harvestPoolVisible || publicEffectFrameOwnsAnnouncementAnchor ? "above" : motion?.type === "lust-cost" ? "below" : undefined}
     />}
   </section>;
