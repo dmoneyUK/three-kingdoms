@@ -1179,6 +1179,86 @@ function verifiedKirinBowEffectFrameForEvent(
     || effectEvent.player !== materialOwner.name || effectEvent.target !== materialOwner.name) return null;
   return { effectEvent, effect, rootEvent, mount, activationOwner, materialOwner };
 }
+type VerifiedFrostSwordEffectFrameProof = {
+  effectEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  rootEvent: CardEvent | CardGroupEvent;
+  discardedCards: readonly [Card, Card];
+  activationOwner: Player;
+  materialOwner: Player;
+};
+function verifiedFrostSwordEffectFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedFrostSwordEffectFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const effectEvent = eventMatches.length === 1 && eventMatches[0].type === "cards"
+    ? eventMatches[0] : null;
+  if (!effectEvent || effectEvent.presentation === false || effectEvent.privateToPlayerId
+    || effectEvent.action !== "discard" || !effectEvent.resolutionId || effectEvent.cards.length !== 2
+    || new Set(effectEvent.cards.map((card) => card.id)).size !== 2) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === effectEvent.id
+    && effect.effectId === "frost_sword_damage_about_to_apply" && effect.effectClass === "EFFECT");
+  const rawMatches = (effectEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "frost_sword_damage_about_to_apply" && effect.effectClass === "EFFECT");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const targetId = effect.targetId;
+  const rootEventId = effect.rootEventId;
+  const rootResolutionId = effect.rootResolutionId;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== effectEvent.id || rawEffect.eventId !== effectEvent.id
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "DAMAGE_PREVENTED" || rawEffect.outcome !== "DAMAGE_PREVENTED"
+    || !rootEventId || rootEventId !== rawEffect.rootEventId || rootEventId === effectEvent.id
+    || !rootResolutionId || rootResolutionId !== rawEffect.rootResolutionId
+    || effect.cards.length !== 2 || effect.materials.length !== 2 || rawEffect.materials.length !== 2) return null;
+
+  const materialsMatch = effect.materials.every((material, index) => {
+    const rawMaterial = rawEffect.materials[index];
+    const projectedCard = effect.cards[index];
+    const discardedCard = effectEvent.cards[index];
+    return Boolean(rawMaterial && projectedCard && discardedCard
+      && material.cardId === discardedCard.id && rawMaterial.cardId === discardedCard.id
+      && projectedCard.id === discardedCard.id && projectedCard.kind === discardedCard.kind
+      && projectedCard.suit === discardedCard.suit && projectedCard.rank === discardedCard.rank
+      && material.ownerId === targetId && rawMaterial.ownerId === targetId
+      && (material.fromZone === "HAND" || material.fromZone === "EQUIPMENT")
+      && rawMaterial.fromZone === material.fromZone
+      && material.toZone === "DISCARD" && rawMaterial.toZone === "DISCARD");
+  });
+  if (!materialsMatch) return null;
+
+  const rootMatches = timeline.filter((event) => event.id === rootEventId);
+  const rootEvent = rootMatches.length === 1 && (rootMatches[0].type === "card" || rootMatches[0].type === "cards")
+    ? rootMatches[0] : null;
+  if (!rootEvent || rootEvent.presentation === false || rootEvent.privateToPlayerId
+    || !rootEvent.resolutionId || rootEvent.resolutionId !== rootResolutionId || rootEvent.action !== "play") return null;
+
+  const activationOwner = players.find((player) => player.id === effect.activationOwnerId);
+  const materialOwner = players.find((player) => player.id === targetId);
+  const isAttackRoot = rootEvent.type === "card"
+    ? rootEvent.card.kind === "Attack" || rootEvent.playedAs === "attack"
+    : rootEvent.playedAs === "attack" && rootEvent.cards.length === 2
+      && (rootEvent.publicCardEffects ?? []).some((rootEffect) => rootEffect.semantics === "PROVEN"
+        && rootEffect.effectId === "serpent_spear_attack" && rootEffect.effectClass === "CONVERSION"
+        && rootEffect.resultingCardKind === "Attack" && rootEffect.outcome === "AS_ATTACK"
+        && rootEffect.activationOwnerId === activationOwner?.id && rootEffect.targetId === materialOwner?.id);
+  if (!activationOwner?.name || !materialOwner?.name || activationOwner.id === materialOwner.id || !isAttackRoot
+    || rootEvent.player !== activationOwner.name || rootEvent.target !== materialOwner.name
+    || effectEvent.player !== materialOwner.name || effectEvent.target !== materialOwner.name) return null;
+  return {
+    effectEvent, effect, rootEvent,
+    discardedCards: [effectEvent.cards[0], effectEvent.cards[1]],
+    activationOwner, materialOwner,
+  };
+}
 type VerifiedYinYangSwordsEffectFrameProof = {
   effectEvent: CardEvent;
   effect: PresentationSnapshotPublicCardEffect;
@@ -7120,6 +7200,39 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
+  const frostSwordEffectFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "frost_sword_damage_about_to_apply"
+      && effect.effectClass === "EFFECT")
+      .flatMap((effect) => {
+        const frame = verifiedFrostSwordEffectFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.effectEvent) - room.timeline.indexOf(left.effectEvent))[0] ?? null;
+  })();
+  const frostSwordEffectFrameAction: PublicCardDisplayAction | null = frostSwordEffectFrameCandidate ? {
+    key: ["frost-sword-effect", frostSwordEffectFrameCandidate.effectEvent.id].join(":"),
+    rootEventId: frostSwordEffectFrameCandidate.effectEvent.id,
+    sourceId: frostSwordEffectFrameCandidate.materialOwner.id,
+    targetId: null,
+    cardFace: frostSwordEffectFrameCandidate.discardedCards[0],
+    cardLabel: "FROST SWORD · TWO CARD DISCARD",
+    ariaLabel: `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword against ${frostSwordEffectFrameCandidate.materialOwner.name}. The target's two real cards were discarded and the Attack damage was prevented.`,
+    publicNotice: `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword. ${frostSwordEffectFrameCandidate.materialOwner.name} discarded two cards; Attack damage was prevented.`,
+    publicNoticeCompact: `Frost Sword: ${frostSwordEffectFrameCandidate.materialOwner.name} discarded two cards; damage prevented.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "frost_sword_damage_about_to_apply", frostSwordEffectFrameCandidate.effectEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(frostSwordEffectFrameCandidate.effectEvent.id)
+        ? [] : [frostSwordEffectFrameCandidate.effectEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(frostSwordEffectFrameCandidate.effect, {
+      title: "FROST SWORD · DAMAGE PREVENTED",
+      accessibleLabel: `${frostSwordEffectFrameCandidate.activationOwner.name} activated Frost Sword against ${frostSwordEffectFrameCandidate.materialOwner.name}. The target's committed cards, ${frostSwordEffectFrameCandidate.discardedCards.map((discardedCard) => `${cardDefinition(discardedCard.kind).name}, ${discardedCard.rank}${discardedCard.suit}`).join(" and ")}, were discarded; Attack damage was prevented.`,
+      activationOwnerName: frostSwordEffectFrameCandidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
   const yinYangSwordsEffectFrameCandidate = (() => {
     const effects = room.presentationSnapshot?.publicCardEffects ?? [];
     const proved = effects.filter((effect) => effect.effectId === "yin_yang_swords_attack_targeted"
@@ -7167,6 +7280,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     dauntlessEquipmentEffectFrameAction, betrothmentCostFrameAction,
     equilibriumCostFrameAction, firstAidConversionFrameAction, necromancyJudgementFrameAction,
     stauchnessCostFrameAction, rockCleavingAxeCostFrameAction, kirinBowEffectFrameAction,
+    frostSwordEffectFrameAction,
     yinYangSwordsEffectFrameAction,
   ].filter((action): action is PublicCardDisplayAction => action !== null
     && !(action.rootEventId === prodigalHealerCostFrameCandidate?.costEvent.id

@@ -821,6 +821,136 @@ test("real Kirin Bow frames the target's discarded Mount for attacker, target an
   }
 });
 
+test("real Frost Sword frames the target's two discarded cards and prevents damage for all viewers on mobile", async ({ page, browser, request }) => {
+  test.setTimeout(90_000);
+  const attack = card("Attack", "real-frost-frame-attack", "♦");
+  const privateSourceCard = card("Peach", "real-frost-frame-private-source", "♥");
+  const handMaterial = card("Dodge", "real-frost-frame-hand-material", "♣");
+  const privateTargetCard = card("Attack", "real-frost-frame-private-target", "♠");
+  const sword = card("FrostSword", "real-frost-frame-weapon");
+  const equipmentMaterial = card("NioShield", "real-frost-frame-equipment-material", "♠");
+  const seedData = await seed(request, [
+    { name: "FROST USER", role: "Lord", hero: "sun-quan", hp: 4, maxHp: 4, hand: [attack, privateSourceCard], equipment: { weapon: sword } },
+    { name: "FROST TARGET", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [handMaterial, privateTargetCard], equipment: { armor: equipmentMaterial } },
+    { name: "OBSERVER", role: "Rebel", hero: "simayi", hp: 4, maxHp: 4, hand: [] },
+    { name: "FOURTH", role: "Renegade", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
+  ]);
+  const opened = await request.post(`${API}/api/rooms`, {
+    data: { action: "play_card", code: seedData.code, token: seedData.players[0].token, cardId: attack.id, targetId: seedData.players[1].id },
+  });
+  expect(opened.ok(), await opened.text()).toBeTruthy();
+  const declined = await request.post(`${API}/api/rooms`, {
+    data: { action: "decline_response", code: seedData.code, token: seedData.players[1].token },
+  });
+  expect(declined.ok(), await declined.text()).toBeTruthy();
+  const triggerDecision = await view(request, seedData, 0);
+  expect(triggerDecision.currentAction).toMatchObject({ kind: "trigger", actorId: seedData.players[0].id });
+  const frostOption = triggerDecision.currentAction.triggerOptions.find((option) => option.effectId === "frost_sword_damage_about_to_apply");
+  expect(frostOption).toBeTruthy();
+  expect(frostOption.selection.eligibleKeys).toContain(equipmentMaterial.id);
+  const observerBeforeCommit = await view(request, seedData, 2);
+  expect(JSON.stringify(observerBeforeCommit)).not.toContain(handMaterial.id);
+  expect(JSON.stringify(observerBeforeCommit)).not.toContain(privateTargetCard.id);
+  expect(JSON.stringify(observerBeforeCommit)).not.toContain(privateSourceCard.id);
+
+  const targetPage = await browser.newPage();
+  const observerPage = await browser.newPage();
+  try {
+    const viewers = [
+      { viewerPage: page, viewerId: seedData.players[0].id, privateHandCard: privateSourceCard },
+      { viewerPage: targetPage, viewerId: seedData.players[1].id, privateHandCard: privateTargetCard },
+      { viewerPage: observerPage, viewerId: seedData.players[2].id, privateHandCard: null },
+    ];
+    const activated = await request.post(`${API}/api/rooms`, {
+      data: {
+        action: "trigger", code: seedData.code, token: seedData.players[0].token,
+        providerId: "frost_sword_damage_about_to_apply", cardKeys: ["hand:0", equipmentMaterial.id],
+      },
+    });
+    expect(activated.ok(), await activated.text()).toBeTruthy();
+    const publicRoom = await view(request, seedData, 2);
+    const effectEvent = publicRoom.timeline.find((event) => event.type === "cards"
+      && event.action === "discard" && event.cards.some((item) => item.id === handMaterial.id));
+    expect(effectEvent).toBeTruthy();
+    expect(effectEvent.cards.map((item) => item.id)).toEqual([handMaterial.id, equipmentMaterial.id]);
+    const proof = effectEvent.publicCardEffects?.find((item) => item.effectId === "frost_sword_damage_about_to_apply");
+    expect(proof).toMatchObject({
+      semantics: "PROVEN", eventId: effectEvent.id, effectClass: "EFFECT",
+      activationOwnerId: seedData.players[0].id, targetId: seedData.players[1].id,
+      outcome: "DAMAGE_PREVENTED",
+      materials: [
+        { cardId: handMaterial.id, ownerId: seedData.players[1].id, fromZone: "HAND", toZone: "DISCARD" },
+        { cardId: equipmentMaterial.id, ownerId: seedData.players[1].id, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+      ],
+    });
+    const rootEvent = publicRoom.timeline.find((event) => event.type === "card" && event.card?.id === attack.id);
+    expect(rootEvent).toMatchObject({ action: "play", player: "FROST USER", target: "FROST TARGET" });
+    expect(proof.rootEventId).toBe(rootEvent.id);
+    expect(proof.rootResolutionId).toBe(rootEvent.resolutionId);
+    expect(publicRoom.presentationSnapshot.publicCardEffects).toEqual(expect.arrayContaining([
+      expect.objectContaining({ eventId: effectEvent.id, rootEventId: rootEvent.id, cards: effectEvent.cards }),
+    ]));
+    expect(publicRoom.players.find((player) => player.id === seedData.players[1].id).hp).toBe(4);
+    expect(publicRoom.players.find((player) => player.id === seedData.players[1].id).handCount).toBe(1);
+    expect(JSON.stringify(publicRoom)).not.toContain(privateSourceCard.id);
+    expect(JSON.stringify(publicRoom)).not.toContain(privateTargetCard.id);
+
+    await Promise.all([openPlayer(page, seedData, 0), openPlayer(targetPage, seedData, 1), openPlayer(observerPage, seedData, 2)]);
+    const frameEvidence = await Promise.all(viewers.map(async ({ viewerPage, viewerId }) => {
+      const handle = await viewerPage.waitForFunction(({ expectedViewerId, expectedEventId, cardIds }) => {
+        const display = [...document.querySelectorAll(".public-card-display")]
+          .find((element) => element.dataset.publicCardViewerId === expectedViewerId);
+        const journey = [...(display?.querySelectorAll("[data-public-card-journey-event-id]") ?? [])]
+          .find((element) => element.dataset.publicCardJourneyEventId === expectedEventId
+            && element.dataset.publicCardJourneyCardIds === cardIds.join(",")
+            && ["reveal", "move", "parked"].includes(element.dataset.publicCardJourneyPhase));
+        if (!display || !journey || !journey.classList.contains("is-public-effect-frame")) return false;
+        const frameTitle = journey.querySelector(".public-card-effect-frame-title, .public-card-lust-cost-parked")?.textContent?.trim();
+        return {
+          viewerId: display.dataset.publicCardViewerId,
+          eventId: journey.dataset.publicCardJourneyEventId,
+          phase: journey.dataset.publicCardJourneyPhase,
+          journeyActorId: journey.dataset.publicCardJourneyActorId,
+          frameCount: [...display.querySelectorAll(".public-card-journey-card.is-public-effect-frame")]
+            .filter((item) => item.dataset.publicCardJourneyEventId === expectedEventId).length,
+          materialCardIds: journey.dataset.publicCardJourneyCardIds,
+          cardFaces: [...journey.querySelectorAll("[data-public-card-effect-frame-card-id]")]
+            .map((face) => face.getAttribute("data-public-card-effect-frame-card-id")),
+          title: frameTitle,
+          accessibleLabel: journey.getAttribute("aria-label"),
+          announcement: display.querySelector('[data-public-card-announcement="true"]')?.textContent?.trim(),
+          viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
+        };
+      }, { expectedViewerId: viewerId, expectedEventId: effectEvent.id, cardIds: [handMaterial.id, equipmentMaterial.id] }, { timeout: 8_000 });
+      return handle.jsonValue();
+    }));
+    for (let index = 0; index < frameEvidence.length; index += 1) {
+      const evidence = frameEvidence[index];
+      const { viewerPage, viewerId, privateHandCard } = viewers[index];
+      expect(evidence).toMatchObject({
+        viewerId, eventId: effectEvent.id, phase: expect.stringMatching(/^(reveal|move|parked)$/),
+        journeyActorId: seedData.players[1].id, frameCount: 1,
+        materialCardIds: `${handMaterial.id},${equipmentMaterial.id}`,
+        cardFaces: [handMaterial.id, equipmentMaterial.id],
+        title: "FROST SWORD · DAMAGE PREVENTED",
+        viewport: { width: 390, height: 844, scrollWidth: 390 },
+      });
+      expect(evidence.accessibleLabel).toContain("FROST USER");
+      expect(evidence.accessibleLabel).toContain("FROST TARGET");
+      expect(evidence.announcement).toContain("Attack damage was prevented");
+      if (privateHandCard) await expect(viewerPage.locator(`[data-hand-card-id="${privateHandCard.id}"]`)).toHaveCount(1);
+    }
+    for (const { viewerPage, privateHandCard } of viewers) {
+      if (privateHandCard) continue;
+      await expect(viewerPage.locator(`[data-hand-card-id="${privateSourceCard.id}"]`)).toHaveCount(0);
+      await expect(viewerPage.locator(`[data-hand-card-id="${privateTargetCard.id}"]`)).toHaveCount(0);
+    }
+  } finally {
+    await targetPage.close();
+    await observerPage.close();
+  }
+});
+
 test("real Yin-Yang Swords frames only the committed target discard for attacker, target and observer on mobile", async ({ page, browser, request }) => {
   test.setTimeout(90_000);
   const attack = card("Attack", "real-yin-yang-frame-attack", "♦");
