@@ -230,6 +230,10 @@ export function getAttackDodgeUxTraceId(): string | null {
   return trace?.activeSession?.traceId ?? trace?.traceId ?? null;
 }
 
+export function hasAttackDodgeUxTrace(): boolean {
+  return readDocument() !== null;
+}
+
 export function recordAttackDodgeUxTrace(stage: string, data: Record<string, unknown>) {
   if (!isAttackDodgeUxTraceActive()) return;
   const trace = readDocument();

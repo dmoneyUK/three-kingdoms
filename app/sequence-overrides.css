@@ -3117,6 +3117,25 @@
   overflow-wrap: anywhere;
 }
 .stage-system-diagnostics-status { color: #e6cc8c; }
+.stage-system-diagnostics-fallback { text-decoration: none; }
+.trace-download-entry {
+  margin-top: 12px;
+  padding-top: 9px;
+  border-top: 1px solid #51482f;
+}
+.trace-download-entry > small {
+  display: block;
+  color: #c6b88e;
+  font: 9px/1.35 Arial, sans-serif;
+}
+.trace-download-landing {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 6px;
+  text-align: center;
+}
+.trace-download-fallback { text-decoration: none; }
 .stage-system-exit {
   width: 100%;
   min-height: 36px;

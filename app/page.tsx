@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Component, CSSProperties, FormEvent, KeyboardEventHandler, PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { cardDefinition, isAttackCard } from "../game/cards";
 import type { Card, CardKind } from "../game/model";
 import { STANDARD_PRESET_CARD_KINDS, TEST_HAND_PRESET_OPTIONS, testHandPresetCompatibilityError, testHandPresetFor, type TestHandPreset, type TestHandPresetId } from "../game/test-hand-presets";
@@ -28,7 +28,7 @@ import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlef
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
 import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, harvestNegationDecisionCopy, publicCardActionKey, publicCardAnnouncement, publicCardJourneyOwnershipIdentity, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
-import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
+import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, hasAttackDodgeUxTrace, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
 import { equipmentArrivalIdentity, pendingEquipmentArrivalIdentities as derivePendingEquipmentArrivalIdentities } from "../game/equipment-arrival.js";
 import { compactLustDuelOrderMessage, compactLustDuelResultMessage } from "./lust-public-copy";
@@ -1556,6 +1556,11 @@ async function readApiJson<T>(response: Response): Promise<T> {
   }
 }
 
+function clearSavedGameSession() {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.removeItem("three-realms-session"); } catch { /* A blocked storage API must not prevent leaving the room. */ }
+}
+
 export default function Home() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -1564,6 +1569,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [traceAvailable, setTraceAvailable] = useState(false);
   const [pageVisible, setPageVisible] = useState(true);
   const [publicCounterReadUntil, setPublicCounterReadUntil] = useState(0);
   const stateEpoch = useRef(0);
@@ -1576,6 +1582,8 @@ export default function Home() {
   const pendingTestViewerFocusIdRef = useRef<string | null>(null);
   const harvestCompletionWatcherRef = useRef<{ key: string; attempt: number; timer: number | null } | null>(null);
   const harvestCompletionRequestInFlightRef = useRef(false);
+
+  useEffect(() => { setTraceAvailable(hasAttackDodgeUxTrace()); }, []);
 
   const fetchRoom = useCallback(async function fetchRoomRequest(roomCode: string, playerToken: string, quiet = false, requestedViewerId?: string) {
     if (testViewerRoomCodeRef.current !== roomCode) {
@@ -1644,12 +1652,21 @@ export default function Home() {
       return nextRoom as Room;
     } catch (cause) {
       if (uxTraceId) recordAttackDodgeUxTrace("room-poll-failure", { traceId: uxTraceId, kind: cause instanceof Error ? cause.name : "unknown" });
-      if (cause instanceof Error && /Previous game data|no longer available|session is no longer valid/.test(cause.message)) {
+      const sessionUnavailable = cause instanceof Error
+        && /Previous game data|no longer available|session is no longer valid/.test(cause.message);
+      if (sessionUnavailable && epoch === stateEpoch.current) {
         stopAttackDodgeUxTrace("room-session-unavailable");
-        localStorage.removeItem("three-realms-session");
-        if (epoch === stateEpoch.current) { setRoom(null); setCode(""); setToken(""); }
+        clearSavedGameSession();
+        setRoom(null);
+        setCode("");
+        setToken("");
+        setTraceAvailable(hasAttackDodgeUxTrace());
+        setError(cause.message === "Room is no longer available."
+          ? "This game has expired or is no longer available. Start or join another game below."
+          : "This player session is no longer valid. Start or join another game below.");
+      } else if (!quiet && epoch === stateEpoch.current) {
+        setError(cause instanceof Error ? cause.message : "Could not reach the room.");
       }
-      if (!quiet) setError(cause instanceof Error ? cause.message : "Could not reach the room.");
       return false;
     }
   }, []);
@@ -1922,10 +1939,12 @@ export default function Home() {
 
   function leave() {
     stopAttackDodgeUxTrace("player-left-game");
+    clearSavedGameSession();
+    setTraceAvailable(hasAttackDodgeUxTrace());
     testViewerIdRef.current = null;
     testViewerRoomCodeRef.current = null;
     testViewerRevisionRef.current += 1;
-    stateEpoch.current += 1; setRoom(null); setError(""); setPublicCounterReadUntil(0); lastPublicCounterReadIdentity.current = null;
+    stateEpoch.current += 1; setRoom(null); setCode(""); setToken(""); setError(""); setPublicCounterReadUntil(0); lastPublicCounterReadIdentity.current = null;
   }
 
   const presentationView = room ? buildPresentationClientView(room.presentationSnapshot, room.meId) : null;
@@ -1955,6 +1974,7 @@ export default function Home() {
             <button className="outline-button" disabled={busy || name.trim().length < 2 || code.length !== 5}>Join Game</button>
           </form>
           {error && <p className="error" role="alert">{error}</p>}
+          {traceAvailable && <div className="trace-download-entry"><small>A game UX trace is available in this tab.</small><TraceDownloadControl buttonClassName="outline-button trace-download-landing" fallbackClassName="outline-button trace-download-landing trace-download-fallback" /></div>}
           <small className="privacy-note">Your secret role and player key stay private on this device.</small>
         </div>
       </section>
@@ -3079,13 +3099,13 @@ export class GameRoomErrorBoundary extends Component<{ room: Room; onRecover: ()
   }
 
   recover = () => {
-    localStorage.removeItem("three-realms-session");
+    clearSavedGameSession();
     this.props.onRecover();
   };
 
   render() {
     if (!this.state.failed) return this.props.children;
-    return <main className="landing-shell"><section className="entry-card recovery-card"><span className="eyebrow">GAME SCREEN ERROR</span><h1>The game screen encountered an error.</h1><p>Your room is protected. Start a new game to continue.</p><button className="gold-button" onClick={this.recover}>Start a new game</button></section></main>;
+    return <main className="landing-shell"><section className="entry-card recovery-card"><span className="eyebrow">GAME SCREEN ERROR</span><h1>The game screen encountered an error.</h1><p>Your room is protected. Return to the start screen to continue.</p><TraceDownloadControl buttonClassName="outline-button trace-download-landing" fallbackClassName="outline-button trace-download-landing trace-download-fallback" /><button className="gold-button" onClick={this.recover}>Return to start screen</button></section></main>;
   }
 }
 
@@ -3109,6 +3129,42 @@ function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuin
   </div>;
 }
 
+function TraceDownloadControl({ buttonClassName, fallbackClassName, onKeyDown }: {
+  buttonClassName: string;
+  fallbackClassName: string;
+  onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
+}) {
+  const [preparedFile, setPreparedFile] = useState<{ url: string; name: string } | null>(null);
+  const [traceNotice, setTraceNotice] = useState("");
+  useEffect(() => {
+    if (!preparedFile) return;
+    return () => URL.revokeObjectURL(preparedFile.url);
+  }, [preparedFile]);
+
+  const downloadTrace = () => {
+    try {
+      const name = `wtk-game-ux-trace-${new Date().toISOString().replaceAll(":", "-")}.json`;
+      const url = URL.createObjectURL(new Blob([exportAttackDodgeUxTrace()], { type: "application/json" }));
+      setPreparedFile({ url, name });
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTraceNotice("Download requested. If it did not appear, tap Save trace file below.");
+    } catch {
+      setTraceNotice("Could not prepare the UX trace in this browser.");
+    }
+  };
+
+  return <>
+    <button type="button" className={buttonClassName} onClick={downloadTrace} onKeyDown={onKeyDown}>Download UX trace</button>
+    {preparedFile && <a className={fallbackClassName} href={preparedFile.url} download={preparedFile.name}>Save trace file</a>}
+    {traceNotice && <small className="stage-system-diagnostics-status" role="status">{traceNotice}</small>}
+  </>;
+}
+
 function GameSystemMenu({ onLeave, messages, messagesCollapsed, onToggleMessages }: {
   onLeave: () => void;
   messages: readonly { id: string; message: string }[];
@@ -3116,7 +3172,6 @@ function GameSystemMenu({ onLeave, messages, messagesCollapsed, onToggleMessages
   onToggleMessages: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [traceNotice, setTraceNotice] = useState("");
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const confirmExit = () => {
     if (window.confirm("Exit this game?")) onLeave();
@@ -3128,20 +3183,6 @@ function GameSystemMenu({ onLeave, messages, messagesCollapsed, onToggleMessages
       menuButtonRef.current?.focus();
     }
   };
-  const downloadTrace = () => {
-    const blob = new Blob([exportAttackDodgeUxTrace()], { type: "application/json" });
-    const objectUrl = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = objectUrl;
-    link.download = `wtk-game-ux-trace-${new Date().toISOString().replaceAll(":", "-")}.json`;
-    link.style.display = "none";
-    document.body.append(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
-    setTraceNotice("Complete game UX trace downloaded to this device.");
-  };
-
   return <div className="stage-system-menu" data-system-menu-placement="guidance">
     <div id="stage-system-menu-actions" className="stage-system-menu-actions" role="group" aria-label="System menu actions" hidden={!menuOpen}>
       <small className="stage-system-build-sha" data-build-sha={BUILD_SHA}><span>BUILD {BUILD_LABEL}</span><code>GitHub Actions SHA · {BUILD_SHA}</code></small>
@@ -3151,8 +3192,7 @@ function GameSystemMenu({ onLeave, messages, messagesCollapsed, onToggleMessages
         </button></header>
         {!messagesCollapsed && <div id="stage-system-game-messages-list" className="stage-system-game-messages-list" aria-live="polite">{messages.length ? messages.map((entry, index) => <p className={index === messages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}
       </aside>
-      <button type="button" className="stage-system-diagnostics" onClick={downloadTrace} onKeyDown={closeMenuOnEscape}>Download UX trace</button>
-      {traceNotice && <small className="stage-system-diagnostics-status" role="status">{traceNotice}</small>}
+      <TraceDownloadControl buttonClassName="stage-system-diagnostics" fallbackClassName="stage-system-diagnostics stage-system-diagnostics-fallback" onKeyDown={closeMenuOnEscape} />
       <button type="button" className="stage-system-exit" onClick={confirmExit} onKeyDown={closeMenuOnEscape}>Exit Game</button>
     </div>
     <button ref={menuButtonRef} type="button" className="stage-system-menu-trigger" aria-label="System menu" aria-expanded={menuOpen} aria-controls="stage-system-menu-actions" onClick={() => setMenuOpen((open) => !open)} onKeyDown={closeMenuOnEscape}><span aria-hidden="true">⚙︎</span></button>
