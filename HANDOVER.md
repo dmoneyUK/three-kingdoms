@@ -1,29 +1,39 @@
 # Current Handover
 
-Target branch: `ux-v2`. Phone-only. Current design: `docs/UX2-refine.md` §5.3, including this task's expired-session/trace recovery requirement.
+Branch: `ux-v2`. Work from a clean, updated `origin/ux-v2` checkout; protect all unrelated changes. Latest reviewed approved design: `docs/UX2-refine.md` §10.10.3.1 **"2026-10-26 21:18 UTC — LATEST OWNER DESIGN DECISION"**, committed in `e4ea84a02cccc97ed99c43df59992ca6ca12b7bd`. **Read that full latest paragraph before editing**, because older R3/R4 text below it is historical and is superseded where it requests a spectator pool.
 
-## Current task — Exit expired games and retain trace download access
+## Latest relevant result (NOT a current coding task)
 
-**Status: IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE REVIEW.**
+**Expired-session exit and trace recovery: IMPLEMENTED / DEPLOYED, OWNER PHONE REVIEW PENDING.** Source `485caf7a880489244d4f16faca9f0c3a36522610`; exact-SHA [Actions 40332537139](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40332537139) passed existing required checks and Worker deployment/health. Exit clears the saved session; expired games return to entry with an explanation; trace file access remains available. Do not reopen or declare owner-accepted. This is the previous result, retained concisely rather than as an active task.
 
-### Result
+**Original T3-F1 phone review (2026-10-26): PARTIALLY ACCEPTED, remains OPEN.** Steal/Burning Bridges physical-card root/author-mini continuity passed the reviewed cases; actor card pool and Inspector overlay passed except **parked mini may still push actor pool down**. User now explicitly cancels spectator target pool and remote cursor/selection synchronization. Preserve accepted actor UI and root. Do not declare final owner acceptance from CI.
 
-The current polling path cleared an expired room and removed its in-game System Menu while suppressing the reason on quiet polls. Manual `leave()` cleared React state but left `three-realms-session`, so reload could restore the departed room. The UX trace itself remained in tab `sessionStorage`.
+## Exactly ONE next bounded task — T3-F1 R4 follow-up A: spectator waiting text + stable actor pool
 
-The fix clears the saved session on explicit exit and current-session expiry, returns expired/invalid sessions to the entry page with an explanation, and keeps trace export available on the entry and render-error recovery screens. Export controls now include a visible `Save trace file` fallback if the browser does not start the download automatically. Existing privacy-filtered JSON export and server/game rules remain unchanged.
+**Status: PLANNED / NOT IMPLEMENTED.** This handoff is a coding instruction for **stage A only**; a separate stage B for chosen-card + settlement-text **~3 seconds of actual visible read time** is already specified in the authoritative design, but **MUST NOT** be bundled into stage A. At the next safe planning boundary, finish A, record exact-SHA evidence, then stage B can be picked up as a separately bounded task. No new ticket or new gameplay feature.
 
-Source SHA `485caf7a880489244d4f16faca9f0c3a36522610`. Exact-SHA [Actions 40332537139](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40332537139) passed Lint/fast, API, browser startup/room smoke, D1 migrations, Worker deployment and production smoke. Worker version `6a427408-ad87-4961-a49e-dd26381aadd7`. Direct production checks: `/` returned HTTP 200; `/api/health` returned HTTP 200 and `{"ok":true,"worker":"available"}`.
+### A1. Remove spectator choice surface; retain public waiting state
 
-### Validation and execution record (UTC)
+- Scope ONLY authentic `Steal` (顺手牵羊) and `Dismantle` (过河拆桥) when `room.pendingTargetCard` is active. The **authorized actor** continues to render exactly the existing `CardPoolPanel(mode="actor-target-select")` with public Hand/Equipment/Judgement zones, private eligible positions and local ✓, and existing legal submission. Do not modify server chooser rules.
+- In `app/page.tsx`, eliminate the **non-actor** `pendingTargetCardSpectatorPoolActive` / `BattlefieldChoiceStage(mode="target-readonly")` rendered subtree and unneeded spectator placement activation. Keep the existing public `pendingTargetCard` DTO (required for other public behavior) and existing shared `CardPoolPanel` functionality for other users/features; only prune orphaned spectator-specific CSS if proven unused.
+- Reuse `game/public-activity.ts` → `derivePublicActivityStatus` + existing `PublicActivityChip`. Non-actor viewer, **including victim**, sees a compact truthful waiting indicator, with authoritative source/target identities:
+  * `Waiting for [Actor] to choose a card to take from [Target].` (Steal);
+  * `Waiting for [Actor] to choose a card to discard from [Target].` (Burning Bridges).
+  It must appear while the server's pending target choice is live and go away when that pending stage ends. No spectator pool, no mirrored selected-card index, no click/POST. Do not change unrelated public Negation response-window copy. Preserve real public root card and author mini without hiding them behind a new global banner.
 
-- 2026-10-26 13:36 — inspected primary checkout and worktrees. Primary checkout contained unrelated uncommitted UX changes and was 264 commits behind; it was left untouched. Reused the clean worktree based on current `origin/ux-v2`.
-- 2026-10-26 13:36 — reviewed the current handoff, autonomous workflow, and §5.3 design. The existing design already required the System Menu to expose trace download and Exit Game.
-- 2026-10-26 13:37 — edited `app/page.tsx`, `app/attack-dodge-ux-trace.ts`, and `app/sequence-overrides.css`. No gameplay/server permission or privacy changes.
-- 2026-10-26 13:38 — `npm run build` passed with existing chunk-size and Vinext route-classification notices; targeted ESLint passed with 3 existing Hook dependency warnings; `git diff --check` passed. No local test suite or browser/player test was run.
-- 2026-10-26 13:39 — pushed source SHA `485caf7a880489244d4f16faca9f0c3a36522610` to `ux-v2`.
-- 2026-10-26 13:41 — exact-SHA Actions browser startup/room smoke passed.
-- 2026-10-26 13:42 — exact-SHA Actions Lint/fast, API, D1 migrations, Worker deploy and production smoke passed; deployment reported Worker `6a427408-ad87-4961-a49e-dd26381aadd7`.
-- 2026-10-26 13:43 — direct production checks confirmed `/` HTTP 200 and `/api/health` HTTP 200 with `{"ok":true,"worker":"available"}`. Added the behavior to §5.3 and recorded this implementation in the design review table as pending owner phone review.
-- 2026-10-26 13:44 — `git diff --check` passed for the final HANDOVER and design update. Both changed files are Markdown-only and excluded from the deploy workflow's path trigger.
+### A2. Parked thumbnail may be covered; actor pool must not jump
 
-Owner phone review remains pending. Do not mark USER-ACCEPTED.
+- In `app/battlefield-choice-stage.tsx` `useBattlefieldChoicePlacement()`, restrict the correction to the **actor-target-select Steal/Dismantle stage**. The current `protectedSelectors` adds `.public-card-journey-card` and `data-public-card-journey-author-reservation`; and the placement observer recomputes `top` in response to those rects. Do not let a **parked author 48×72 mini** or its reservation displace the existing valid actor pool after target-choice handoff. Owner permits the pool to overlay the parked mini.
+- Still protect players/seats/dock, mandatory controls, viewport bounds and actual **still-revealing / centre-moving** root when feasible; maintain an initially valid stable `top/insets` until a real viewport/seat topology change. Keep Inspector above actor pool and excluded from target pool collision/reflow. Do not break genuine card parking/ownership/viewer guards, create extra root DOM, globally disable collision logic or rewrite other layout modes.
+- Keep `CardPoolPanel` actor interaction and action revision safety unchanged. If an unreproducible intermittent root issue is observed, report it separately without looping an expensive browser harness or claiming it fixed.
+
+### A3. Minimal tests and delivery gates
+
+- **ONE** narrow authenticated **4-player 390×844** browser scenario (Steal actor + one independent spectator is enough); second Dismantle subcase in same scenario only if cheap. Assert: actor has functioning pool and legal action; spectator sees waiting **take/discard** copy and **no** `target-readonly` or interactive target pool; mini appearance/Inspector open-close does not change actor pool `top`/insets (tolerance ≤2px absent legitimate viewport geometry change). No hidden card face/key in spectator projection; no affected-card result before server selection.
+- **Budget:** maximum **five minutes total locally launched UI/browser work for stage A**, including at most one targeted retry; do not create 4/6/8 × viewport × viewers matrices. Reuse lightweight existing unit/API/privacy checks. Existing required lint/build/fast/API/CI/deploy/production health still apply; the five-minute budget DOES NOT bypass them.
+- Record actual files changed, focused test results or `NOT REPRODUCED`, exact pushed SHA, required CI jobs/deploy state and remaining risks in a **short rewritten `HANDOVER.md`**, retaining exactly one next task; never label technical passing as owner iPhone acceptance. Only user can close T3-F1.
+
+### Explicit exclusions / stage boundary
+
+**DO NOT** implement remote view mirroring, pending highlight broadcast, WebSocket, new API actions/D1 tables, global announcement refactor, Negation copy, unrelated cards or server game rules. **DO NOT implement stage B's public chosen-card spotlight or the 3-second hold yet** in this bounded task. Stage B must instead use existing `publicDismantleSettlement` / `publicStealSettlement` proof and guarantee a separately legible chosen-card face/back plus corresponding result message for ~3 visible seconds; details and privacy distinctions are fully documented in the latest §10.10.3.1 design. Keep that future scope **separate**, do not conflate original Steal/Dismantle root card with the selected victim card.
+
