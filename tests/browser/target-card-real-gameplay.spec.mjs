@@ -425,24 +425,29 @@ async function expectNegationJourneyCardParkedByAuthor(page, { eventId, cardId, 
   expect(geometry.gap, JSON.stringify(geometry)).toBeLessThanOrEqual(14);
 }
 
-async function expectRootJourneyHiddenWhileAuthorAnchorIsUnavailable(page, eventId) {
+async function expectRootJourneyVisibleWhileAuthorAnchorIsUnavailable(page, eventId) {
   const root = page.locator(`[data-public-card-journey-event-id="${eventId}"][data-public-card-journey-role="root"]`);
-  await expect(root).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 10_000 });
   await expect(root).toHaveAttribute("data-public-card-journey-layout-pending", "true", { timeout: 10_000 });
   const state = await root.evaluate((element) => ({
+    phase: element.getAttribute("data-public-card-journey-phase"),
+    rect: (() => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    })(),
     visibility: getComputedStyle(element).visibility,
     pointerEvents: getComputedStyle(element).pointerEvents,
     ariaHidden: element.getAttribute("aria-hidden"),
     targetLeft: element.getAttribute("data-public-card-journey-target-left"),
     targetTop: element.getAttribute("data-public-card-journey-target-top"),
   }));
-  expect(state).toEqual({
-    visibility: "hidden",
-    pointerEvents: "none",
-    ariaHidden: "true",
-    targetLeft: null,
-    targetTop: null,
-  });
+  expect(state.phase).toMatch(/^(reveal|parked)$/);
+  expect(state.rect.width, JSON.stringify(state)).toBeGreaterThan(0);
+  expect(state.rect.height, JSON.stringify(state)).toBeGreaterThan(0);
+  expect(state.visibility, JSON.stringify(state)).not.toBe("hidden");
+  expect(state.pointerEvents).toBe("none");
+  expect(state.ariaHidden).not.toBe("true");
+  expect(state.targetLeft).toBeNull();
+  expect(state.targetTop).toBeNull();
 }
 
 async function openRealTargetCardDecision({ page, request, kind, viewport, handCount = 4, equipment = true, judgement = true, seatCount = 4 }) {
@@ -1142,7 +1147,7 @@ test("T3-F1 keeps the authentic Steal and Burning Bridges root at its author acr
       const revealWait = Math.max(...revealStates.map(({ revealStartedAt }) => 4600 - (Date.now() - Date.parse(revealStartedAt))));
       if (revealWait > 0) await new Promise((resolve) => setTimeout(resolve, revealWait));
       if (temporarilyHideAnchor) {
-        await Promise.all(pages.map((page) => expectRootJourneyHiddenWhileAuthorAnchorIsUnavailable(page, rootEvent.id)));
+        await Promise.all(pages.map((page) => expectRootJourneyVisibleWhileAuthorAnchorIsUnavailable(page, rootEvent.id)));
         await Promise.all(pages.map((page, index) => page.evaluate(({ id, display }) => {
           const anchor = [...document.querySelectorAll("[data-player-anchor]")]
             .find((candidate) => candidate.getAttribute("data-player-anchor") === id);
@@ -1197,12 +1202,22 @@ test("T3-F1 keeps the authentic Steal and Burning Bridges root at its author acr
   }
 });
 
-test("T3-F1 R3-A keeps the local Steal root visible through actor-pool handoff and settlement", async ({ browser, request }) => {
+test("T3-F1 R4-A keeps a remote Steal root visible through Negation and target-pool handoff", async ({ browser, request }) => {
   test.setTimeout(120_000);
-  const steal = card("Steal", "t3-r2-local-steal-root");
-  const hidden = card("Peach", "t3-r2-hidden-hand", "♥", "4");
-  const seed = await seedGame(request, fourPlayers({ hand: [steal] }, { hand: [hidden] }));
-  const contexts = await Promise.all([0, 1].map(() => browser.newContext({
+  const steal = card("Steal", "t3-r4-remote-steal-root");
+  const hidden = card("Peach", "t3-r4-hidden-hand", "♥", "4");
+  const sourceSeat = 1;
+  const targetSeat = 0;
+  const seed = await seedGame(request, responsivePlayers(4, {
+    sourceName: "SOURCE",
+    targetName: "TARGET",
+    sourceHand: [steal],
+    targetHand: [hidden],
+    sourceSeat,
+    targetSeat,
+  }), sourceSeat);
+  const viewerSeats = [sourceSeat, targetSeat];
+  const contexts = await Promise.all(viewerSeats.map(() => browser.newContext({
     viewport: { width: 390, height: 844 },
     isMobile: true,
     hasTouch: true,
@@ -1211,23 +1226,65 @@ test("T3-F1 R3-A keeps the local Steal root visible through actor-pool handoff a
   const pages = await Promise.all(contexts.map((context) => context.newPage()));
 
   try {
-    await Promise.all(pages.map((page, index) => openGame(page, seed, index, { width: 390, height: 844 })));
+    await Promise.all(pages.map((page, index) => openGame(page, seed, viewerSeats[index], { width: 390, height: 844 })));
+    // Observe the genuine root before it is played so the short move phase
+    // cannot finish before the test attaches its lifecycle recorder.
+    await Promise.all(pages.map((page) => page.evaluate(() => {
+      window.__t3MovePhases = [];
+      const rootSelector = '[data-public-card-journey-role="root"]';
+      const observedRoots = new WeakSet();
+      const phaseObserver = new MutationObserver((records) => {
+        for (const record of records) {
+          const root = record.target;
+          const phase = root.getAttribute("data-public-card-journey-phase");
+          if (!phase) continue;
+          window.__t3MovePhases.push({
+            eventId: root.getAttribute("data-public-card-journey-event-id"),
+            phase,
+            transitionDuration: getComputedStyle(root).transitionDuration.split(",")[0].trim(),
+          });
+        }
+      });
+      const observeRoots = (node) => {
+        if (!(node instanceof Element)) return;
+        const candidates = [
+          ...(node.matches(rootSelector) ? [node] : []),
+          ...node.querySelectorAll(rootSelector),
+        ];
+        for (const root of candidates) {
+          if (observedRoots.has(root)) continue;
+          observedRoots.add(root);
+          phaseObserver.observe(root, { attributes: true, attributeFilter: ["data-public-card-journey-phase"] });
+          const phase = root.getAttribute("data-public-card-journey-phase");
+          if (phase) window.__t3MovePhases.push({
+            eventId: root.getAttribute("data-public-card-journey-event-id"),
+            phase,
+            transitionDuration: getComputedStyle(root).transitionDuration.split(",")[0].trim(),
+          });
+        }
+      };
+      const treeObserver = new MutationObserver((records) => {
+        for (const record of records) for (const node of record.addedNodes) observeRoots(node);
+      });
+      treeObserver.observe(document.body, { childList: true, subtree: true });
+      observeRoots(document.body);
+      window.__t3RootTreeObserver = treeObserver;
+      window.__t3RootPhaseObserver = phaseObserver;
+    })));
     await playCardThroughPage(pages[0], steal.id, "TARGET");
-    const actorView = await roomView(request, seed, 0);
+    const actorView = await roomView(request, seed, sourceSeat);
     const rootEvent = actorView.timeline.find((event) => event?.type === "card" && event.action === "play" && event.card?.id === steal.id);
     expect(rootEvent).toBeTruthy();
-    const authorId = seed.players[0].id;
+    const authorId = seed.players[sourceSeat].id;
     const reveal = await Promise.all(pages.map((page) => expectRootJourneyReveal(page, {
       eventId: rootEvent.id,
       cardId: steal.id,
       actorId: authorId,
     })));
     const initialActionKey = await pages[0].locator('[data-public-card-display="true"]').getAttribute("data-public-card-action-key");
-    await pages[0].evaluate((eventId) => {
+    await Promise.all(pages.map((page) => page.evaluate((eventId) => {
       const root = document.querySelector(`[data-public-card-journey-event-id="${eventId}"][data-public-card-journey-role="root"]`);
       if (!root) throw new Error("T3-F1 root must be mounted before monitoring its move.");
-      window.__t3MovePhases = [];
-      window.__t3MoveResizeSample = null;
       window.__t3HandoffMonitor = {
         startedAt: performance.now(),
         frames: 0,
@@ -1251,10 +1308,16 @@ test("T3-F1 R3-A keeps the local Steal root visible through actor-pool handoff a
             opacity: style?.opacity ?? null,
             layoutPending: currentRoot?.getAttribute("data-public-card-journey-layout-pending") ?? null,
             rect: rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null,
+            renderer: document.querySelector('[data-public-card-display="true"]')?.getAttribute("data-public-card-renderer-kind") ?? null,
+            displays: [...document.querySelectorAll('[data-public-card-display="true"]')].map((display) => ({
+              rootEventId: display.getAttribute("data-public-card-root-event-id"),
+              sourceId: display.getAttribute("data-public-card-source-id"),
+              actionKey: display.getAttribute("data-public-card-action-key"),
+            })),
           };
         }
-        const readyStage = document.querySelector('.card-pool-target-stage[data-target-card-pool-layout="central"][data-target-card-pool-ready="true"]');
-        const pool = readyStage?.querySelector(".card-pool-panel--actor-target-select");
+        const readyStage = document.querySelector('.card-pool-target-stage[data-target-card-pool-ready="true"]');
+        const pool = readyStage?.querySelector(".card-pool-panel--actor-target-select, .card-pool-panel--target-readonly");
         const poolStyle = pool ? getComputedStyle(pool) : null;
         if (pool && poolStyle?.display !== "none" && poolStyle.visibility !== "hidden" && pool.getBoundingClientRect().width > 0) {
           monitor.readyAt = performance.now();
@@ -1267,81 +1330,98 @@ test("T3-F1 R3-A keeps the local Steal root visible through actor-pool handoff a
         requestAnimationFrame(sampleHandoff);
       };
       requestAnimationFrame(sampleHandoff);
-      const observer = new MutationObserver(() => {
-        const phase = root.getAttribute("data-public-card-journey-phase");
-        if (!phase) return;
-        window.__t3MovePhases.push({ phase, at: performance.now() });
-        if (phase !== "move" || window.__t3MoveResizeStarted) return;
-        window.__t3MoveResizeStarted = true;
-        const before = root.getBoundingClientRect();
-        const transitionDuration = getComputedStyle(root).transitionDuration.split(",")[0].trim();
-        window.dispatchEvent(new Event("resize"));
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-          const after = root.getBoundingClientRect();
-          window.__t3MoveResizeSample = {
-            phase: root.getAttribute("data-public-card-journey-phase"),
-            transitionDuration,
-            before: { left: before.left, top: before.top },
-            after: { left: after.left, top: after.top },
-          target: {
-            left: Number(root.getAttribute("data-public-card-journey-target-left")),
-            top: Number(root.getAttribute("data-public-card-journey-target-top")),
-          },
-          };
-        }));
-      });
-      window.__t3MoveResizeStarted = false;
-      observer.observe(root, { attributes: true, attributeFilter: ["data-public-card-journey-phase"] });
-    }, rootEvent.id);
+    }, rootEvent.id)));
 
-    await passEmptyResponses(request, seed);
-    const choiceProjection = await roomView(request, seed, 0);
-    expect(choiceProjection.currentAction).toMatchObject({ kind: "target_card", actorId: authorId });
-    expect(choiceProjection.pendingTargetCard).toMatchObject({ kind: "target_card", actorId: authorId, sourceId: authorId });
-    await pages[0].evaluate(() => { window.__t3ChoiceProjectionConfirmedAt = performance.now(); });
-    const waitingPool = await expectTargetPool(pages[0], "Steal", "Choose 1 card to obtain", "Use Steal");
-    await expect(pages[0].locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
-    await expect(pages[0].locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
-    await pages[0].waitForFunction(() => window.__t3HandoffMonitor?.readyAt !== null, null, { timeout: 1_000 });
-    const handoffEvidence = await pages[0].evaluate(() => {
-      const monitor = window.__t3HandoffMonitor;
-      const confirmedAt = window.__t3ChoiceProjectionConfirmedAt;
+    const parkedBeforeAnchorLoss = await Promise.all(pages.map((page, index) => expectRootJourneyParkedByAuthor(page, {
+      eventId: rootEvent.id,
+      cardId: steal.id,
+      actorId: authorId,
+      revealStartedAt: reveal[index].revealStartedAt,
+    })));
+    const originalAnchorDisplay = await pages[1].evaluate((id) => {
+      const anchor = [...document.querySelectorAll("[data-player-anchor]")]
+        .find((candidate) => candidate.getAttribute("data-player-anchor") === id);
+      if (!anchor) throw new Error("the genuine remote author anchor is present before the temporary layout loss");
+      const display = anchor.style.display;
+      anchor.style.display = "none";
+      return display;
+    }, authorId);
+    const retainedRoot = pages[1].locator(`[data-public-card-journey-event-id="${rootEvent.id}"][data-public-card-journey-role="root"]`);
+    await expect(retainedRoot).toHaveAttribute("data-public-card-journey-layout-pending", "true");
+    const retainedGeometry = await retainedRoot.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
       return {
-        frames: monitor?.frames ?? 0,
-        firstFailure: monitor?.firstFailure ?? null,
-        timedOut: monitor?.timedOut ?? false,
-        readyLatencyMs: monitor?.readyAt === null || confirmedAt === undefined
-          ? null
-          : Math.max(0, monitor.readyAt - confirmedAt),
+        visible: getComputedStyle(element).visibility !== "hidden" && element.getAttribute("aria-hidden") !== "true",
+        phase: element.getAttribute("data-public-card-journey-phase"),
+        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
       };
     });
-    expect(handoffEvidence.frames).toBeGreaterThan(0);
-    expect(handoffEvidence.firstFailure, JSON.stringify(handoffEvidence)).toBeNull();
-    expect(handoffEvidence.timedOut, JSON.stringify(handoffEvidence)).toBe(false);
-    expect(handoffEvidence.readyLatencyMs, JSON.stringify(handoffEvidence)).not.toBeNull();
-    expect(handoffEvidence.readyLatencyMs, JSON.stringify(handoffEvidence)).toBeLessThan(5_000);
+    expect(retainedGeometry.visible, JSON.stringify(retainedGeometry)).toBe(true);
+    expect(retainedGeometry.phase).toBe("parked");
+    expect(retainedGeometry.rect.left).toBeCloseTo(parkedBeforeAnchorLoss[1].geometry.left, 0);
+    expect(retainedGeometry.rect.top).toBeCloseTo(parkedBeforeAnchorLoss[1].geometry.top, 0);
+    await pages[1].evaluate(({ id, display }) => {
+      const anchor = [...document.querySelectorAll("[data-player-anchor]")]
+        .find((candidate) => candidate.getAttribute("data-player-anchor") === id);
+      if (anchor) anchor.style.display = display;
+    }, { id: authorId, display: originalAnchorDisplay });
+    await expectRootJourneyParkedByAuthor(pages[1], {
+      eventId: rootEvent.id,
+      cardId: steal.id,
+      actorId: authorId,
+      revealStartedAt: reveal[1].revealStartedAt,
+    });
+
+    await passEmptyResponses(request, seed);
+    const choiceProjection = await roomView(request, seed, sourceSeat);
+    expect(choiceProjection.currentAction).toMatchObject({ kind: "target_card", actorId: authorId });
+    expect(choiceProjection.pendingTargetCard).toMatchObject({ kind: "target_card", actorId: authorId, sourceId: authorId });
+    await Promise.all(pages.map((page) => page.evaluate(() => { window.__t3ChoiceProjectionConfirmedAt = performance.now(); })));
+    const waitingPool = await expectTargetPool(pages[0], "Steal", "Choose 1 card to obtain", "Use Steal");
+    const spectatorPool = pages[1].locator(".card-pool-panel--target-readonly");
+    await expect(pages[1].locator(".card-pool-target-stage--spectator")).toHaveAttribute("data-target-card-pool-ready", "true");
+    await expect(spectatorPool).toBeVisible();
+    await expect(pages[0].locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
+    await expect(pages[0].locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
+    const handoffEvidence = await Promise.all(pages.map(async (page) => {
+      await page.waitForFunction(() => window.__t3HandoffMonitor?.readyAt !== null, null, { timeout: 1_000 });
+      return page.evaluate(() => {
+        const monitor = window.__t3HandoffMonitor;
+        const confirmedAt = window.__t3ChoiceProjectionConfirmedAt;
+        return {
+          viewerId: document.querySelector('[data-public-card-display="true"]')?.getAttribute("data-public-card-viewer-id"),
+          frames: monitor?.frames ?? 0,
+          firstFailure: monitor?.firstFailure ?? null,
+          timedOut: monitor?.timedOut ?? false,
+          readyLatencyMs: monitor?.readyAt === null || confirmedAt === undefined
+            ? null
+            : Math.max(0, monitor.readyAt - confirmedAt),
+        };
+      });
+    }));
+    for (const evidence of handoffEvidence) {
+      expect(evidence.frames, JSON.stringify(evidence)).toBeGreaterThan(0);
+      expect(evidence.firstFailure, JSON.stringify(evidence)).toBeNull();
+      expect(evidence.timedOut, JSON.stringify(evidence)).toBe(false);
+      expect(evidence.readyLatencyMs, JSON.stringify(evidence)).not.toBeNull();
+      expect(evidence.readyLatencyMs, JSON.stringify(evidence)).toBeLessThan(5_000);
+    }
     await expect(waitingPool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true })).toBeEnabled();
-    await pages[0].waitForFunction(() => Boolean(window.__t3MoveResizeSample), null, { timeout: 8_000 });
-    const moveEvidence = await pages[0].evaluate(() => window.__t3MoveResizeSample);
-    expect(moveEvidence.phase).toBe("move");
-    expect(["0.38s", "380ms"]).toContain(moveEvidence.transitionDuration);
-    const pathX = moveEvidence.target.left - moveEvidence.before.left;
-    const pathY = moveEvidence.target.top - moveEvidence.before.top;
-    const pathLengthSquared = pathX ** 2 + pathY ** 2;
-    const progress = ((moveEvidence.after.left - moveEvidence.before.left) * pathX
-      + (moveEvidence.after.top - moveEvidence.before.top) * pathY) / pathLengthSquared;
-    expect(progress).toBeGreaterThan(0);
-    expect(progress).toBeLessThan(0.5);
-    await pages[0].waitForFunction(() => window.__t3MovePhases?.some(({ phase }) => phase === "parked"), null, { timeout: 3_000 });
-    const phases = await pages[0].evaluate(() => window.__t3MovePhases.map(({ phase }) => phase));
-    expect(phases.indexOf("move")).toBeGreaterThanOrEqual(0);
-    expect(phases.indexOf("parked")).toBeGreaterThan(phases.indexOf("move"));
+    const phaseEvidence = await pages[0].evaluate((eventId) => window.__t3MovePhases.filter((entry) => entry.eventId === eventId), rootEvent.id);
+    const phaseNames = phaseEvidence.map(({ phase }) => phase);
+    expect(phaseNames.indexOf("reveal")).toBeGreaterThanOrEqual(0);
+    expect(phaseNames.indexOf("move")).toBeGreaterThan(phaseNames.indexOf("reveal"));
+    expect(phaseNames.indexOf("parked")).toBeGreaterThan(phaseNames.indexOf("move"));
+    expect(["0.38s", "380ms"]).toContain(phaseEvidence[phaseNames.indexOf("move")].transitionDuration);
 
     for (const [index, page] of pages.entries()) {
       await expect(page.locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
       await expect(page.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`)).toHaveCount(1);
       await expect(page.locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
-      if (index === 1) await expect(page.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
+      if (index === 1) {
+        await expect(page.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
+        await expect(page.locator(".card-pool-panel--target-readonly")).toBeVisible();
+      }
     }
     await Promise.all(pages.map((page, index) => expectRootJourneyParkedByAuthor(page, {
       eventId: rootEvent.id,
@@ -1371,7 +1451,7 @@ test("T3-F1 R3-A keeps the local Steal root visible through actor-pool handoff a
     }
     const settledActionKey = await pages[0].locator('[data-public-card-display="true"]').getAttribute("data-public-card-action-key");
     expect(settledActionKey).not.toBe(initialActionKey);
-    expect(JSON.stringify(await roomView(request, seed, 1))).not.toContain(hidden.id);
+    expect(JSON.stringify(await roomView(request, seed, targetSeat))).not.toContain(hidden.id);
   } finally {
     await Promise.all(contexts.map((context) => context.close()));
   }
