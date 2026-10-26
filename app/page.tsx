@@ -5084,7 +5084,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // A response may advance to another decision without changing the turn,
   // phase, or acting seat. The authoritative revision identifies that new
   // decision and prevents a previous provider/cost from leaking into it.
-  useEffect(() => { const timer = setTimeout(() => { setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setResponseProviderId(""); setSelected(""); setTargetIds([]); setBorrowedSwordTargetId(""); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setPendingTargetCardActiveZone("hand"); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); targetCardSubmissionRef.current = ""; targetCardPickerSubmissionRef.current = ""; }, 0); return () => clearTimeout(timer); }, [room.actionRevision]);
+  useEffect(() => { const timer = setTimeout(() => { setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setResponseProviderId(""); setSelected(""); setTargetIds([]); setBorrowedSwordTargetId(""); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); targetCardSubmissionRef.current = ""; targetCardPickerSubmissionRef.current = ""; }, 0); return () => clearTimeout(timer); }, [room.actionRevision]);
   useEffect(() => {
     const nextIdentity = { roomCode: room.code, viewerId: room.meId, actionRevision: room.actionRevision ?? "" };
     const previousIdentity = targetActionIdentityRef.current;
