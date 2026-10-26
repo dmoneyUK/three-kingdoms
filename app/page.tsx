@@ -1522,9 +1522,9 @@ const UI_TIMING = {
   sequenceDiscard: 700,
   interactionSettlement: 600,
   interactionSettlementReduced: 120,
-  // Cross-seat target-card results must outlast at least one mobile poll even
-  // when reduced motion removes the exit animation.
-  publicTargetCardSettlementRead: 2_400,
+  // The selected-card result and its settlement copy need three full seconds
+  // of actual visible reading time, independent of polling and reduced motion.
+  publicTargetCardSettlementRead: 3_000,
   // Group outcomes are public to every seat; keep the shared result visible
   // across the active-game polling interval so remote viewers can read it.
   groupSettlementRead: 2400,
@@ -3698,8 +3698,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const pendingGroupSettlementEventIds = useRef(new Set<string>());
   const seenDiaoChanNoticeEventIds = useRef(new Set((room.presentationSnapshot?.diaoChanSkillNotices ?? []).map((notice) => notice.eventId)));
   const [activeSkillEffectSettlement, setActiveSkillEffectSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
-  const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{ eventId: string; exiting: boolean; journeySettled: boolean } | null>(null);
-  const [activeStealSettlement, setActiveStealSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
+  const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{ eventId: string; roomCode: string; viewerId: string; exiting: boolean; journeySettled: boolean; resultVisibleSinceMs: number | null } | null>(null);
+  const [activeStealSettlement, setActiveStealSettlement] = useState<{ eventId: string; roomCode: string; viewerId: string; exiting: boolean; journeySettled: boolean; resultVisibleSinceMs: number | null } | null>(null);
   const [activeAttackHitSettlement, setActiveAttackHitSettlement] = useState<{ eventId: string; exiting: boolean; firstRenderedAt: number | null; lifecycle: AttackHitSettlementHoldIdentity } | null>(null);
   const [activeGroupSettlement, setActiveGroupSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeBumperHarvestSettlement, setActiveBumperHarvestSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
@@ -4847,7 +4847,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ? [proof]
         : [];
     });
-    if (freshDismantleSettlements.length === 1) setActiveDismantleSettlement({ eventId: freshDismantleSettlements[0].eventId, exiting: false, journeySettled: false });
+    if (freshDismantleSettlements.length === 1) setActiveDismantleSettlement({ eventId: freshDismantleSettlements[0].eventId, roomCode: room.code, viewerId: room.meId, exiting: false, journeySettled: false, resultVisibleSinceMs: null });
     const freshStealSettlements = fresh.flatMap((event) => {
       if (event.type !== "message") return [];
       const proofs = stealSettlements.filter((proof) => proof.eventId === event.id);
@@ -4860,7 +4860,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ? [proof]
         : [];
     });
-    if (freshStealSettlements.length === 1) setActiveStealSettlement({ eventId: freshStealSettlements[0].eventId, exiting: false });
+    if (freshStealSettlements.length === 1) setActiveStealSettlement({ eventId: freshStealSettlements[0].eventId, roomCode: room.code, viewerId: room.meId, exiting: false, journeySettled: false, resultVisibleSinceMs: null });
     const freshAttackHitSettlements = fresh.flatMap((event) => {
       if (event.type !== "message") return [];
       const proofs = attackHitSettlements.filter((proof) => proof.eventId === event.id);
@@ -6499,7 +6499,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const source = room.players.find((player) => player.id === settlement.sourceId);
     const target = room.players.find((player) => player.id === settlement.targetId);
     if (!source?.name || !target?.name || source.id === target.id) return null;
-    return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeDismantleSettlement?.exiting === true };
+    return {
+      action: settlement, rootEvent, settlementEvent, source, target,
+      exiting: activeDismantleSettlement?.exiting === true,
+      journeySettled: activeDismantleSettlement?.journeySettled === true,
+      resultVisibleSinceMs: activeDismantleSettlement?.resultVisibleSinceMs ?? null,
+    };
   })();
   const stealSettlementCandidate = (() => {
     const settlement = stealSettlements.find((candidate) => candidate.eventId === activeStealSettlement?.eventId);
@@ -6531,7 +6536,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const source = room.players.find((player) => player.id === settlement.sourceId);
     const target = room.players.find((player) => player.id === settlement.targetId);
     if (!source?.name || !target?.name || source.id === target.id) return null;
-    return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeStealSettlement?.exiting === true };
+    return {
+      action: settlement, rootEvent, settlementEvent, source, target,
+      exiting: activeStealSettlement?.exiting === true,
+      journeySettled: activeStealSettlement?.journeySettled === true,
+      resultVisibleSinceMs: activeStealSettlement?.resultVisibleSinceMs ?? null,
+    };
   })();
   const attackHitSettlementRetirementReason = activeAttackHitSettlement
     ? attackHitSettlementSupersessionReason(activeAttackHitSettlement.lifecycle, {
@@ -7690,6 +7700,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         eventId: dismantleSettlementCandidate.action.eventId,
         outcome: dismantleSettlementCandidate.action.outcome,
         exiting: dismantleSettlementCandidate.exiting,
+        targetCardResultActive: dismantleSettlementCandidate.journeySettled,
+        targetCardResultReadStartedAtMs: dismantleSettlementCandidate.resultVisibleSinceMs ?? undefined,
         targetCardMovement: {
           sourceZone: dismantleSettlementCandidate.action.sourceZone,
           affectedCardOwnerId: dismantleSettlementCandidate.action.affectedCardOwnerId,
@@ -7720,6 +7732,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         eventId: stealSettlementCandidate.action.eventId,
         outcome: stealSettlementCandidate.action.outcome,
         exiting: stealSettlementCandidate.exiting,
+        targetCardResultActive: stealSettlementCandidate.journeySettled,
+        targetCardResultReadStartedAtMs: stealSettlementCandidate.resultVisibleSinceMs ?? undefined,
         targetCardMovement: {
           sourceZone: stealSettlementCandidate.action.sourceZone,
           affectedCardOwnerId: stealSettlementCandidate.action.affectedCardOwnerId,
@@ -8505,51 +8519,133 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const timer = window.setTimeout(() => setActiveSkillEffectSettlement((current) => current?.eventId === activePublicCardSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
   }, [activePublicCardSettlementEventId, activePublicCardSettlementExiting, activeSkillEffectSettlement?.eventId]);
-  const activeDismantleSettlementEventId = publicCardDisplayAction?.settlement?.outcome === "DISMANTLE_RESOLVED"
-    ? publicCardDisplayAction.settlement.eventId
+  const activeTargetCardSettlementOutcome = publicCardDisplayAction?.settlement?.outcome === "DISMANTLE_RESOLVED"
+    || publicCardDisplayAction?.settlement?.outcome === "STEAL_RESOLVED"
+    ? publicCardDisplayAction.settlement.outcome
     : null;
-  const activeDismantleSettlementExiting = publicCardDisplayAction?.settlement?.outcome === "DISMANTLE_RESOLVED"
-    && publicCardDisplayAction.settlement.exiting;
+  const activeTargetCardSettlementEventId = activeTargetCardSettlementOutcome ? publicCardDisplayAction?.settlement?.eventId ?? null : null;
+  const activeTargetCardSettlement = activeTargetCardSettlementOutcome === "DISMANTLE_RESOLVED"
+    ? activeDismantleSettlement
+    : activeTargetCardSettlementOutcome === "STEAL_RESOLVED" ? activeStealSettlement : null;
+  const activeTargetCardSettlementJourneySettled = Boolean(activeTargetCardSettlement?.eventId === activeTargetCardSettlementEventId
+    && activeTargetCardSettlement.journeySettled);
+  const activeTargetCardSettlementExiting = Boolean(activeTargetCardSettlement?.eventId === activeTargetCardSettlementEventId
+    && activeTargetCardSettlement.exiting);
   useEffect(() => {
-    if (!activeDismantleSettlementEventId || !publicCardDisplayReady || !activeDismantleSettlement
-      || activeDismantleSettlement.eventId !== activeDismantleSettlementEventId
-      || !activeDismantleSettlement.journeySettled || activeDismantleSettlement.exiting) return;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const timer = window.setTimeout(() => {
-      setActiveDismantleSettlement((current) => current?.eventId === activeDismantleSettlementEventId
-        ? reducedMotion ? null : { ...current, exiting: true }
-        : current);
-    }, UI_TIMING.publicTargetCardSettlementRead - (reducedMotion ? 0 : UI_TIMING.interactionSettlementFade));
-    return () => window.clearTimeout(timer);
-  }, [activeDismantleSettlement?.eventId, activeDismantleSettlement?.exiting, activeDismantleSettlement?.journeySettled, activeDismantleSettlementEventId, publicCardDisplayReady]);
+    const updateScope = (current: { eventId: string; roomCode: string; viewerId: string; exiting: boolean; journeySettled: boolean; resultVisibleSinceMs: number | null } | null) => {
+      if (!current) return null;
+      if (current.roomCode !== room.code) return null;
+      if (current.viewerId === room.meId) return current;
+      return { ...current, viewerId: room.meId, exiting: false, resultVisibleSinceMs: null };
+    };
+    setActiveDismantleSettlement(updateScope);
+    setActiveStealSettlement(updateScope);
+  }, [room.code, room.meId]);
   useEffect(() => {
-    if (!activeDismantleSettlementExiting || !activeDismantleSettlementEventId
-      || activeDismantleSettlement?.eventId !== activeDismantleSettlementEventId) return;
-    const timer = window.setTimeout(() => setActiveDismantleSettlement((current) => current?.eventId === activeDismantleSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
-    return () => window.clearTimeout(timer);
-  }, [activeDismantleSettlement?.eventId, activeDismantleSettlementExiting, activeDismantleSettlementEventId]);
-  const activeStealSettlementEventId = publicCardDisplayAction?.settlement?.outcome === "STEAL_RESOLVED"
-    ? publicCardDisplayAction.settlement.eventId
-    : null;
-  const activeStealSettlementExiting = publicCardDisplayAction?.settlement?.outcome === "STEAL_RESOLVED"
-    && publicCardDisplayAction.settlement.exiting;
+    if (!activeTargetCardSettlementEventId || !activeTargetCardSettlementJourneySettled
+      || !publicCardDisplayReady || activeTargetCardSettlementExiting
+      || activeTargetCardSettlement?.roomCode !== room.code || activeTargetCardSettlement.viewerId !== room.meId) return;
+    const eventId = activeTargetCardSettlementEventId;
+    const outcome = activeTargetCardSettlementOutcome;
+    let visibleSinceMs = activeTargetCardSettlement.resultVisibleSinceMs;
+    let visibleFrames = visibleSinceMs === null ? 0 : 2;
+    let frameId = 0;
+    const updateVisibleSince = (next: number | null) => {
+      if (outcome === "DISMANTLE_RESOLVED") {
+        setActiveDismantleSettlement((current) => current?.eventId === eventId && current.resultVisibleSinceMs !== next
+          ? { ...current, resultVisibleSinceMs: next }
+          : current);
+      } else {
+        setActiveStealSettlement((current) => current?.eventId === eventId && current.resultVisibleSinceMs !== next
+          ? { ...current, resultVisibleSinceMs: next }
+          : current);
+      }
+    };
+    const resetVisibleReadWhenHidden = () => {
+      if (document.visibilityState === "visible") return;
+      visibleSinceMs = null;
+      visibleFrames = 0;
+      updateVisibleSince(null);
+    };
+    const isVisibleInViewport = (element: HTMLElement | null | undefined) => {
+      if (!element || !element.isConnected || document.visibilityState !== "visible") return false;
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) <= 0.01
+        || rect.width <= 0 || rect.height <= 0 || rect.left < 0 || rect.top < 0
+        || rect.right > window.innerWidth || rect.bottom > window.innerHeight) return false;
+      for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+        const parentStyle = window.getComputedStyle(parent);
+        if (parentStyle.display === "none" || parentStyle.visibility === "hidden" || Number(parentStyle.opacity) <= 0.01) return false;
+        if (parent.matches('[data-public-card-display="true"]')) break;
+      }
+      return true;
+    };
+    const hasReadableResult = () => {
+      const display = [...document.querySelectorAll<HTMLElement>('[data-public-card-display="true"]')]
+        .find((element) => element.dataset.publicCardSettlementEventId === eventId);
+      const card = display?.querySelector<HTMLElement>(`[data-public-card-target-result-card-event-id="${CSS.escape(eventId)}"]`);
+      const copy = display?.querySelector<HTMLElement>(`[data-public-card-target-result-copy-event-id="${CSS.escape(eventId)}"]`);
+      if (!display || display.dataset.publicCardTargetResultActive !== "true"
+        || display.dataset.publicCardReady !== "true" || !isVisibleInViewport(card) || !isVisibleInViewport(copy)) return false;
+      const cardRect = card!.getBoundingClientRect();
+      const copyRect = copy!.getBoundingClientRect();
+      const blockingOverlay = [...document.querySelectorAll<HTMLElement>(
+        ".opponent-inspection-floating-shell, .card-details-panel, .hero-details-panel, .card-pool-target-stage",
+      )].some((overlay) => {
+        const rect = overlay.getBoundingClientRect();
+        const style = window.getComputedStyle(overlay);
+        if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) <= 0.01 || rect.width <= 0 || rect.height <= 0) return false;
+        return [cardRect, copyRect].some((content) => content.left < rect.right && content.right > rect.left
+          && content.top < rect.bottom && content.bottom > rect.top);
+      });
+      return !blockingOverlay;
+    };
+    const sampleVisibleRead = (now: number) => {
+      if (!hasReadableResult()) {
+        visibleSinceMs = null;
+        visibleFrames = 0;
+        if (activeTargetCardSettlement.resultVisibleSinceMs !== null) updateVisibleSince(null);
+        frameId = window.requestAnimationFrame(sampleVisibleRead);
+        return;
+      }
+      visibleFrames += 1;
+      if (visibleSinceMs === null && visibleFrames >= 2) {
+        visibleSinceMs = now;
+        updateVisibleSince(now);
+      }
+      if (visibleSinceMs !== null && now - visibleSinceMs >= UI_TIMING.publicTargetCardSettlementRead) {
+        if (outcome === "DISMANTLE_RESOLVED") {
+          setActiveDismantleSettlement((current) => current?.eventId === eventId ? { ...current, exiting: true } : current);
+        } else {
+          setActiveStealSettlement((current) => current?.eventId === eventId ? { ...current, exiting: true } : current);
+        }
+        return;
+      }
+      frameId = window.requestAnimationFrame(sampleVisibleRead);
+    };
+    document.addEventListener("visibilitychange", resetVisibleReadWhenHidden);
+    frameId = window.requestAnimationFrame(sampleVisibleRead);
+    return () => {
+      document.removeEventListener("visibilitychange", resetVisibleReadWhenHidden);
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [activeTargetCardSettlement?.eventId, activeTargetCardSettlement?.exiting, activeTargetCardSettlement?.journeySettled,
+    activeTargetCardSettlement?.resultVisibleSinceMs, activeTargetCardSettlement?.roomCode, activeTargetCardSettlement?.viewerId,
+    activeTargetCardSettlementEventId, activeTargetCardSettlementExiting, activeTargetCardSettlementJourneySettled,
+    activeTargetCardSettlementOutcome, publicCardDisplayReady, room.code, room.meId]);
   useEffect(() => {
-    if (!activeStealSettlementEventId || !publicCardDisplayReady
-      || activeStealSettlement?.eventId !== activeStealSettlementEventId || activeStealSettlement.exiting) return;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const timer = window.setTimeout(() => {
-      setActiveStealSettlement((current) => current?.eventId === activeStealSettlementEventId
-        ? reducedMotion ? null : { ...current, exiting: true }
-        : current);
-    }, UI_TIMING.publicTargetCardSettlementRead - (reducedMotion ? 0 : UI_TIMING.interactionSettlementFade));
+    if (!activeDismantleSettlement?.exiting) return;
+    const eventId = activeDismantleSettlement.eventId;
+    const timer = window.setTimeout(() => setActiveDismantleSettlement((current) => current?.eventId === eventId ? null : current), UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
-  }, [activeStealSettlement?.eventId, activeStealSettlement?.exiting, activeStealSettlementEventId, publicCardDisplayReady]);
+  }, [activeDismantleSettlement?.eventId, activeDismantleSettlement?.exiting]);
   useEffect(() => {
-    if (!activeStealSettlementExiting || !activeStealSettlementEventId
-      || activeStealSettlement?.eventId !== activeStealSettlementEventId) return;
-    const timer = window.setTimeout(() => setActiveStealSettlement((current) => current?.eventId === activeStealSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
+    if (!activeStealSettlement?.exiting) return;
+    const eventId = activeStealSettlement.eventId;
+    const timer = window.setTimeout(() => setActiveStealSettlement((current) => current?.eventId === eventId ? null : current), UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
-  }, [activeStealSettlement?.eventId, activeStealSettlementExiting, activeStealSettlementEventId]);
+  }, [activeStealSettlement?.eventId, activeStealSettlement?.exiting]);
   const activeAttackHitSettlementEventId = publicCardDisplayAction?.settlement?.outcome === "ATTACK_DAMAGE_APPLIED"
     ? publicCardDisplayAction.settlement.eventId
     : null;
@@ -9985,6 +10081,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
       <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} suppressAnnouncement={targetCardChoiceMergeActive} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} responseHistoryOwnership={publicDisplayOwnedResponseHistory.map((response) => ({ eventId: response.eventId, cardIds: (response.cardFaces ?? [response.cardFace]).map((card) => card.id) }))} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardDisplayEventParked} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
         setActiveDismantleSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
+          ? { ...current, journeySettled: true }
+          : current);
+        setActiveStealSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
           ? { ...current, journeySettled: true }
           : current);
       }} />

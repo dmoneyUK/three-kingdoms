@@ -108,8 +108,12 @@ export type PublicCardDisplayAction = {
     eventId: string;
     outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "GROUP_RESOLVED" | "BUMPER_HARVEST_RESOLVED" | "ROOT_CANCELLED" | "ROOT_RESTORED" | "LUST_DUEL_DAMAGE_APPLIED" | "LUST_DUEL_DAMAGE_PREVENTED";
     exiting: boolean;
-    /** Server-derived remaining portion of the short post-settlement history read. */
+    /** Server-derived remaining portion of a proof-backed public-card read, when supplied. */
     readRemainingMs?: number;
+    /** Show the proven selected-card result only after its root journey has parked. */
+    targetCardResultActive?: boolean;
+    /** Per-viewer performance time when the selected card and result copy became readable. */
+    targetCardResultReadStartedAtMs?: number;
     /** Validated source/destination facts for Steal and Burning Bridges. */
     targetCardMovement?: PresentationTargetCardSettlementMovement;
   };
@@ -4630,6 +4634,23 @@ function SingleTargetCardJourney({
   const compactAnnouncement = negationNarration?.compactHeadline ?? ((announcementCopy.compactMessage || (!action.settlement && !harvestNegationPresentation && action.phaseNotice?.includes("NEGATION")))
     ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, announcementPhaseNotice, true)
     : undefined);
+  const targetCardMovement = action.settlement?.targetCardMovement;
+  const targetCardResultFace = targetCardMovement?.affectedCardFace;
+  const targetCardResultProofValid = action.settlement?.outcome === "DISMANTLE_RESOLVED"
+    ? targetCardMovement?.destinationZone === "discard" && Boolean(targetCardResultFace)
+    : action.settlement?.outcome === "STEAL_RESOLVED"
+      && targetCardMovement?.destinationZone === "hand"
+      && targetCardMovement.destinationOwnerId === action.sourceId
+      && action.targetId !== null
+      && (targetCardMovement.sourceZone === "hand"
+        ? !targetCardResultFace && targetCardMovement.affectedCardOwnerId === action.targetId
+        : (targetCardMovement.sourceZone === "equipment" || targetCardMovement.sourceZone === "judgement")
+          && Boolean(targetCardResultFace)
+          && (targetCardMovement.sourceZone === "judgement"
+            ? targetCardMovement.affectedCardOwnerId === null
+            : targetCardMovement.affectedCardOwnerId === action.targetId));
+  const targetCardResultActive = Boolean(action.settlement?.targetCardResultActive
+    && targetCardResultProofValid && allParked && !viewerLayoutPending);
   useEffect(() => {
     const settlementEventId = action.settlement?.eventId;
     if (!journeyEnabled || journey.scopeKey !== scopeKey || !allParked || !settlementEventId
@@ -4637,10 +4658,15 @@ function SingleTargetCardJourney({
     notifiedSettlementEventIdRef.current = settlementEventId;
     onJourneySettled?.(settlementEventId);
   }, [action.settlement?.eventId, allParked, journeyEnabled, journey.scopeKey, onJourneySettled, scopeKey]);
-  const ownershipCards = journey.cards.filter((card) => card.phase !== "queued").map((card) => ({
+  const ownershipCards = [
+    ...journey.cards.filter((card) => card.phase !== "queued").map((card) => ({
     eventId: card.eventId,
     cardIds: (card.cardFaces ?? [card.cardFace]).map((face) => face.id).sort(),
-  })).sort((left, right) => left.eventId.localeCompare(right.eventId));
+    })),
+    ...(targetCardResultActive && targetCardResultFace && action.settlement?.eventId
+      ? [{ eventId: action.settlement.eventId, cardIds: [targetCardResultFace.id] }]
+      : []),
+  ].sort((left, right) => left.eventId.localeCompare(right.eventId));
   const ownershipCardsSignature = JSON.stringify(ownershipCards);
   const ownershipScopeKey = Boolean(sourceName) && journey.scopeKey === scopeKey
     && ownershipCards.length > 0
@@ -4693,6 +4719,8 @@ function SingleTargetCardJourney({
     data-public-card-settlement-affected-card-owner-id={allParked ? action.settlement?.targetCardMovement?.affectedCardOwnerId ?? "none" : undefined}
     data-public-card-settlement-destination-owner-id={allParked ? action.settlement?.targetCardMovement?.destinationOwnerId ?? "none" : undefined}
     data-public-card-settlement-card-id={allParked ? action.settlement?.targetCardMovement?.affectedCardFace?.id : undefined}
+    data-public-card-target-result-active={targetCardResultActive ? "true" : undefined}
+    data-public-card-target-result-read-started-at-ms={targetCardResultActive ? action.settlement?.targetCardResultReadStartedAtMs : undefined}
     data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
     {journey.cards.filter((card) => card.phase !== "queued").map((card) => {
@@ -4745,7 +4773,33 @@ function SingleTargetCardJourney({
           : isBumperHarvest ? `Public card event ${event.globalOrdinal}: ${event.ariaLabel}` : event.ariaLabel}
       </li>)}
     </ol>
-    {!historyOnly && !suppressAnnouncement && <PublicCardAnnouncement
+    {targetCardResultActive && action.settlement?.eventId && <div
+      className="public-target-card-result"
+      role="status"
+      aria-live="polite"
+      aria-label={announcementCopy.message}
+      data-public-card-target-result="true"
+      style={{
+        left: `${journey.center.left + journey.center.width / 2}px`,
+        top: `${journey.center.top}px`,
+      }}
+    >
+      <div
+        className="public-target-card-result__card"
+        data-public-card-target-result-card-event-id={action.settlement.eventId}
+        data-public-card-target-result-card-id={targetCardResultFace?.id}
+        aria-hidden={targetCardResultFace ? undefined : true}
+      >
+        {targetCardResultFace
+          ? <CardFace card={targetCardResultFace} settlementCardId={targetCardResultFace.id} />
+          : <span className="public-target-card-result__back" />}
+      </div>
+      <p
+        className="public-target-card-result__copy"
+        data-public-card-target-result-copy-event-id={action.settlement.eventId}
+      >{announcementCopy.message}</p>
+    </div>}
+    {!historyOnly && !suppressAnnouncement && !targetCardResultActive && <PublicCardAnnouncement
       eventId={negationNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId)}
       eventCopyKey={publicCardAnnouncementCopyKey(
         action,

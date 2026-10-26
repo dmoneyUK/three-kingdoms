@@ -1227,7 +1227,7 @@ test("T3-F1 keeps the authentic Steal and Burning Bridges root at its author acr
   }
 });
 
-test("T3-F1 R4-A keeps a remote Steal root visible through Negation and target-pool handoff", async ({ browser, request }) => {
+test("T3-F1 R4 preserves the Steal root, hides spectator pools, and reads the proven result", async ({ browser, request }) => {
   test.setTimeout(120_000);
   const steal = card("Steal", "t3-r4-remote-steal-root");
   const hidden = card("Peach", "t3-r4-hidden-hand", "♥", "4");
@@ -1307,7 +1307,7 @@ test("T3-F1 R4-A keeps a remote Steal root visible through Negation and target-p
       actorId: authorId,
     })));
     const initialActionKey = await pages[0].locator('[data-public-card-display="true"]').getAttribute("data-public-card-action-key");
-    await Promise.all(pages.map((page) => page.evaluate((eventId) => {
+    await Promise.all(pages.map((page, index) => page.evaluate(({ eventId, actor }) => {
       const root = document.querySelector(`[data-public-card-journey-event-id="${eventId}"][data-public-card-journey-role="root"]`);
       if (!root) throw new Error("T3-F1 root must be mounted before monitoring its move.");
       window.__t3HandoffMonitor = {
@@ -1342,9 +1342,12 @@ test("T3-F1 R4-A keeps a remote Steal root visible through Negation and target-p
           };
         }
         const readyStage = document.querySelector('.card-pool-target-stage[data-target-card-pool-ready="true"]');
-        const pool = readyStage?.querySelector(".card-pool-panel--actor-target-select, .card-pool-panel--target-readonly");
-        const poolStyle = pool ? getComputedStyle(pool) : null;
-        if (pool && poolStyle?.display !== "none" && poolStyle.visibility !== "hidden" && pool.getBoundingClientRect().width > 0) {
+        const actorPool = readyStage?.querySelector(".card-pool-panel--actor-target-select");
+        const spectatorStatus = document.querySelector('.public-activity-chip[data-public-activity-kind="target-card-choice"]');
+        const visibleHandoff = actor ? actorPool : spectatorStatus;
+        const handoffStyle = visibleHandoff ? getComputedStyle(visibleHandoff) : null;
+        if (visibleHandoff && handoffStyle?.display !== "none" && handoffStyle.visibility !== "hidden"
+          && visibleHandoff.getBoundingClientRect().width > 0) {
           monitor.readyAt = performance.now();
           return;
         }
@@ -1355,7 +1358,7 @@ test("T3-F1 R4-A keeps a remote Steal root visible through Negation and target-p
         requestAnimationFrame(sampleHandoff);
       };
       requestAnimationFrame(sampleHandoff);
-    }, rootEvent.id)));
+    }, { eventId: rootEvent.id, actor: index === 0 })));
 
     const parkedBeforeAnchorLoss = await Promise.all(pages.map((page, index) => expectRootJourneyParkedByAuthor(page, {
       eventId: rootEvent.id,
@@ -1410,7 +1413,7 @@ test("T3-F1 R4-A keeps a remote Steal root visible through Negation and target-p
     await expect(pages[0].locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
     await expect(pages[0].locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
     const handoffEvidence = await Promise.all(pages.map(async (page) => {
-      await page.waitForFunction(() => window.__t3HandoffMonitor?.readyAt !== null, null, { timeout: 1_000 });
+      await page.waitForFunction(() => window.__t3HandoffMonitor?.readyAt !== null, null, { timeout: 5_000 });
       return page.evaluate(() => {
         const monitor = window.__t3HandoffMonitor;
         const confirmedAt = window.__t3ChoiceProjectionConfirmedAt;
@@ -1465,8 +1468,13 @@ test("T3-F1 R4-A keeps a remote Steal root visible through Negation and target-p
     });
     await tapMobile(pages[0], waitingPool.getByRole("button", { name: "Use Steal", exact: true }));
     expect((await submit).ok()).toBe(true);
+    const settledProjection = await roomView(request, seed, sourceSeat);
+    const settlement = settledProjection.presentationSnapshot.stealSettlements.find((proof) => proof.rootEventId === rootEvent.id);
+    expect(settlement).toMatchObject({ semantics: "PROVEN", outcome: "STEAL_RESOLVED", sourceZone: "hand" });
+    expect(settlement).not.toHaveProperty("affectedCardFace");
 
-    for (const page of pages) {
+    let settledActionKey = null;
+    for (const [index, page] of pages.entries()) {
       const display = page.locator('[data-public-card-display="true"]');
       await expect(display).toHaveAttribute("data-public-card-motion", "single-target");
       await expect(display).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
@@ -1474,8 +1482,24 @@ test("T3-F1 R4-A keeps a remote Steal root visible through Negation and target-p
       await expect(page.locator(`[data-public-card-journey-event-id="${rootEvent.id}"][data-public-card-journey-role="root"]`)).toHaveCount(1);
       await expect(page.locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
       await expect(display).toHaveAttribute("data-public-card-settlement-outcome", "STEAL_RESOLVED", { timeout: 15_000 });
+      const resultCard = page.locator(`[data-public-card-target-result-card-event-id="${settlement.eventId}"]`);
+      const resultCopy = page.locator(`[data-public-card-target-result-copy-event-id="${settlement.eventId}"]`);
+      await expect(resultCard).toBeVisible();
+      await expect(resultCopy).toBeVisible();
+      await expect(resultCopy).toHaveText("SOURCE took one card from TARGET.");
+      await expect(resultCard).not.toHaveAttribute("data-public-card-target-result-card-id");
+      await expect(resultCard.locator(".public-target-card-result__back")).toBeVisible();
+      expect(await resultCard.innerHTML()).not.toContain(hidden.id);
+      expect(await resultCopy.innerHTML()).not.toContain(hidden.id);
+      if (index === 0) settledActionKey = await display.getAttribute("data-public-card-action-key");
     }
-    const settledActionKey = await pages[0].locator('[data-public-card-display="true"]').getAttribute("data-public-card-action-key");
+    const observerDisplay = pages[1].locator(`[data-public-card-settlement-event-id="${settlement.eventId}"]`);
+    await expect(observerDisplay).toHaveAttribute("data-public-card-target-result-read-started-at-ms", /\d+/);
+    const readStartedAt = Number(await observerDisplay.getAttribute("data-public-card-target-result-read-started-at-ms"));
+    await pages[1].waitForFunction((startedAt) => performance.now() - startedAt >= 2_850, readStartedAt, { timeout: 4_000 });
+    await expect(pages[1].locator(`[data-public-card-target-result-copy-event-id="${settlement.eventId}"]`)).toBeVisible();
+    await expect(pages[1].locator(`[data-public-card-target-result-copy-event-id="${settlement.eventId}"]`)).toBeHidden({ timeout: 1_000 });
+    expect(await pages[1].evaluate((startedAt) => performance.now() - startedAt, readStartedAt)).toBeGreaterThanOrEqual(3_000);
     expect(settledActionKey).not.toBe(initialActionKey);
     expect(JSON.stringify(await roomView(request, seed, targetSeat))).not.toContain(hidden.id);
   } finally {
