@@ -563,7 +563,7 @@ for (const cardKind of ["Steal", "Dismantle"]) {
 test(`${cardKind} pending card choice uses the nonmodal shared pool without Cancel or duplicate Local Dock controls`, async () => {
     const room = pendingTargetCardRoom("target-card-focus", { cardKind, withFocusProjection: true });
     const actionName = cardKind === "Dismantle" ? "Burning Bridge" : cardKind;
-    const title = actionName;
+    const title = cardKind === "Dismantle" ? "BURNING BRIDGES · SOURCE → TARGET" : "STEAL · SOURCE → TARGET";
     const instruction = cardKind === "Dismantle" ? "Choose 1 card to discard" : "Choose 1 card to obtain";
     const useLabel = `Use ${actionName}`;
     const actionCalls = [];

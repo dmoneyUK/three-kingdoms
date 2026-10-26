@@ -118,6 +118,10 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
   const activeTargetZone = actorTargetProps?.zones.find((zone) => zone.id === activeTargetZoneId)
     ?? actorTargetProps?.zones[0]
     ?? null;
+  const selectedTargetZone = actorTargetProps?.zones.find((zone) => zone.choices.some((choice) => choice.state === "selected")) ?? null;
+  const selectedZoneMessage = selectedTargetZone && selectedTargetZone.id !== activeTargetZone?.id
+    ? `Selection retained · ${selectedTargetZone.title}`
+    : null;
   const focusTargetZone = (zone: TargetCardPoolZone) => {
     setActiveTargetZoneId(zone.id);
     const row = targetPublicZonesRef.current;
@@ -294,6 +298,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
           onClick={() => focusTargetZone(zone)}
         >{zone.title}</button>)}
       </div>}
+      {selectedZoneMessage && <p className="card-pool-panel__selected-zone" role="status">{selectedZoneMessage}</p>}
       {actorTargetProps && <>
         <footer className="card-pool-panel__footer harvest-confirm-row">
           <span className="card-pool-panel__selection-count harvest-selection-count" aria-live="polite">{actorTargetProps.selectionCount}</span>
