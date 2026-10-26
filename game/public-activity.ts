@@ -84,14 +84,13 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
     && interaction?.stage !== "NEGATION") {
     const actor = playerName(input, targetCard.actorId);
     const target = playerName(input, targetCard.targetId);
-    const effect = targetCard.cardKind === "Steal" ? "Steal"
-      : targetCard.cardKind === "Dismantle" ? "Burning Bridges"
+    const action = targetCard.cardKind === "Steal" ? "take"
+      : targetCard.cardKind === "Dismantle" ? "discard"
         : null;
-    if (actor && target && effect) {
+    if (actor && target && action) {
       return {
         kind: "target-card-choice",
-        text: `${actor} is choosing one card from ${target} · ${effect}`,
-        heading: `Choosing ${target}'s card`,
+        text: `Waiting for ${actor} to choose a card to ${action} from ${target}.`,
         anchorPlayerId: targetCard.targetId,
       };
     }

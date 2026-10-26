@@ -106,6 +106,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
     const targetCardSelect = stage.dataset.choiceMode === "actor-target-select";
     const targetCardReadOnly = stage.dataset.choiceMode === "target-readonly";
     const authorReservationSelector = ".public-card-journey-card[data-public-card-journey-author-reservation='true']";
+    let stableTargetPlacementGeometry: string | null = null;
     const targetWidthProbe = centralTargetLayout ? document.createElement("div") : null;
     if (targetWidthProbe) {
       targetWidthProbe.style.cssText = "position:absolute;left:-10000px;top:0;height:0;visibility:hidden;pointer-events:none;contain:layout;";
@@ -114,10 +115,14 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
     const protectedSelectors = [
       ".player-board > .opponent-player-card",
       ".public-card-display-journey-copy",
-      ...(targetCardSelect || targetCardReadOnly ? [
-        centralTargetLayout ? ".public-card-journey-card" : ".public-card-journey-card.is-current",
-        authorReservationSelector,
-      ] : []),
+      ...(targetCardSelect
+        ? [centralTargetLayout
+          ? ".public-card-journey-card[data-public-card-journey-role='root']:not(.is-parked)"
+          : ".public-card-journey-card.is-current:not(.is-parked)"]
+        : targetCardReadOnly ? [
+          centralTargetLayout ? ".public-card-journey-card" : ".public-card-journey-card.is-current",
+          authorReservationSelector,
+        ] : []),
       ".public-activity-chip",
       "[data-public-activity-chip]",
       ".visible-countdown",
@@ -137,7 +142,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
         if (panelRect.width <= 0 || panelRect.height <= 0) return;
 
         const margin = 6;
-        const measureAuthorReservationRects = () => [...table.querySelectorAll<HTMLElement>(authorReservationSelector)]
+        const measureAuthorReservationRects = () => (targetCardSelect ? [] : [...table.querySelectorAll<HTMLElement>(authorReservationSelector)])
           .map((element) => {
             const left = Number(element.dataset.publicCardJourneyAuthorReservationLeft);
             const top = Number(element.dataset.publicCardJourneyAuthorReservationTop);
@@ -193,8 +198,33 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
             return;
           }
 
+          const visualViewport = window.visualViewport;
+          const playerSeatGeometry = [...table.querySelectorAll<HTMLElement>(".player-board > .opponent-player-card")]
+            .map((seat) => seat.getBoundingClientRect())
+            .filter((rect) => rect.width > 0 && rect.height > 0)
+            .flatMap((rect) => [rect.left, rect.top, rect.width, rect.height]);
+          const geometrySignature = [
+            tableRect.left, tableRect.top, tableRect.width, tableRect.height,
+            window.innerWidth, window.innerHeight,
+            visualViewport?.offsetTop ?? 0, visualViewport?.height ?? window.innerHeight,
+            panelRect.width, panelRect.height,
+            nextInsets.left, nextInsets.right, nextInsets.width ?? 0,
+            ...playerSeatGeometry,
+            ...leftSeats.flatMap((rect) => [rect.left, rect.top, rect.width, rect.height]),
+            ...rightSeats.flatMap((rect) => [rect.left, rect.top, rect.width, rect.height]),
+          ].map((value) => Math.round(value * 2) / 2).join("|");
+          if (targetCardSelect && stableTargetPlacementGeometry === geometrySignature) {
+            setReady(true);
+            return;
+          }
+          if (targetCardSelect) stableTargetPlacementGeometry = null;
+
           const obstacles = [...new Set(protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]))]
             .filter((element) => element !== stage && !stage.contains(element))
+            .filter((element) => !targetCardSelect
+              || !element.matches(".public-card-journey-card")
+              || !rootEventId
+              || element.dataset.publicCardJourneyEventId === rootEventId)
             .filter((element) => !element.matches(".public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip]"))
             .map((element) => ({ element, rect: element.getBoundingClientRect() }))
             .filter(({ element, rect }) => {
@@ -202,12 +232,10 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
               return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
                 && panelRect.left < rect.right + margin && panelRect.right > rect.left - margin;
             });
-          // A moving root may still be at centre. Reserve its measured final
-          // author mini as well, so the pool can use the remaining lane without
-          // asking the author-placement solver to dodge the pool in return.
+          // A moving root may still be at centre, so keep its real current rect
+          // protected. The actor pool may cover the later parked author mini.
           const authorReservationRects = measureAuthorReservationRects();
           const obstacleRects = [...obstacles.map(({ rect }) => rect), ...authorReservationRects];
-          const visualViewport = window.visualViewport;
           const viewportBottom = Math.min(window.innerHeight, (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight));
           const safePlacement = {
             table: tableRect,
@@ -242,6 +270,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
           setTop((current) => current === resolvedTop ? current : resolvedTop);
           setReady(resolvedTop !== null);
           setRootCardOverlap(overlapsRootCard);
+          if (targetCardSelect && resolvedTop !== null) stableTargetPlacementGeometry = geometrySignature;
           return;
         }
 
@@ -314,7 +343,21 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
         observer?.observe(node);
       }
     };
-    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    const isParkedJourneyElement = (element: Element) => Boolean(targetCardSelect && element.closest(".public-card-journey-card.is-parked"));
+    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver((entries) => {
+      if (targetCardSelect && entries.length > 0 && entries.every(({ target }) => isParkedJourneyElement(target))) return;
+      measure();
+    });
+    const parkedCardMutation = (record: MutationRecord) => {
+      if (!targetCardSelect) return false;
+      const target = record.target instanceof Element ? record.target : record.target.parentElement;
+      const journeyCard = target?.closest<HTMLElement>(".public-card-journey-card");
+      if (!journeyCard) return false;
+      if (record.type === "attributes" && record.attributeName?.startsWith("data-public-card-journey-author-reservation")) return true;
+      const wasParked = record.type === "attributes" && record.attributeName === "class"
+        && (record.oldValue ?? "").split(/\s+/).includes("is-parked");
+      return journeyCard.classList.contains("is-parked") || wasParked;
+    };
     const inspectorOnlyMutation = (record: MutationRecord) => {
       if (!(targetCardSelect || targetCardReadOnly)) return false;
       const target = record.target instanceof Element ? record.target : record.target.parentElement;
@@ -331,22 +374,26 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
       return false;
     };
     const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
-      if ((targetCardSelect || targetCardReadOnly) && records.every(inspectorOnlyMutation)) return;
+      if ((targetCardSelect || targetCardReadOnly) && records.every((record) => inspectorOnlyMutation(record) || parkedCardMutation(record))) return;
       observeLayout();
       measure();
     });
+    const onTableMotionEnd = (event: Event) => {
+      if (targetCardSelect && event.target instanceof Element && isParkedJourneyElement(event.target)) return;
+      measure();
+    };
     observeLayout();
     measure();
     window.addEventListener("resize", measure);
     window.visualViewport?.addEventListener("resize", measure);
-    table.addEventListener("transitionend", measure);
-    table.addEventListener("animationend", measure);
+    table.addEventListener("transitionend", onTableMotionEnd);
+    table.addEventListener("animationend", onTableMotionEnd);
     mutationObserver?.observe(table, { attributes: true, attributeOldValue: true, childList: true, subtree: true, characterData: true });
     return () => {
       window.removeEventListener("resize", measure);
       window.visualViewport?.removeEventListener("resize", measure);
-      table.removeEventListener("transitionend", measure);
-      table.removeEventListener("animationend", measure);
+      table.removeEventListener("transitionend", onTableMotionEnd);
+      table.removeEventListener("animationend", onTableMotionEnd);
       observer?.disconnect();
       mutationObserver?.disconnect();
       cancelFrame(frame);

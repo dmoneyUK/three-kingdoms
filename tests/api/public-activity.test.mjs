@@ -57,11 +57,10 @@ test("target-card choice progress is identical across viewers and exposes no sel
       meId: `p${viewerIndex + 1}`,
       isMyAction: viewerIndex === 0,
     })));
-    const effect = cardKind === "Steal" ? "Steal" : "Burning Bridges";
+    const action = cardKind === "Steal" ? "take" : "discard";
     const expected = {
       kind: "target-card-choice",
-      text: `Test Player 1 is choosing one card from Test Player 2 · ${effect}`,
-      heading: "Choosing Test Player 2's card",
+      text: `Waiting for Test Player 1 to choose a card to ${action} from Test Player 2.`,
       anchorPlayerId: "p2",
     };
     for (const view of views) {

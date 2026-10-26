@@ -274,7 +274,11 @@ async function expectTargetChoiceCue(page, { actor = false, sourceName = "SOURCE
     await expect(pool).toHaveAccessibleName(`${sourceName} played ${action === "Dismantle" ? "Burning Bridge" : action} on ${targetName}. ${instruction}.`);
     return null;
   }
+  const verb = action === "Steal" ? "take" : "discard";
+  const expected = `Waiting for ${sourceName} to choose a card to ${verb} from ${targetName}.`;
   await expect(activityCue).toBeVisible();
+  await expect(activityCue).toHaveAttribute("aria-label", expected);
+  await expect(activityCue.locator("strong")).toHaveText(expected);
   return activityCue;
 }
 
@@ -714,153 +718,97 @@ for (const kind of ["Steal", "Dismantle"]) {
   });
 }
 
-test("T3-F1 R4-B shares the public target pool while keeping selection private and Inspector floating", async ({ browser, request }) => {
-  test.setTimeout(180_000);
-  for (const kind of ["Steal", "Dismantle"]) {
-    const prefix = `t3-r3-spectator-${kind.toLowerCase()}-${Date.now().toString(36)}`;
-    const material = card(kind, `${prefix}-root`);
-    const hidden = [card("Peach", `${prefix}-hidden-a`), card("Dodge", `${prefix}-hidden-b`)];
-    const shield = card("NioShield", `${prefix}-shield`);
-    const delayed = card("Lightning", `${prefix}-judgement`);
-    const seed = await seedGame(request, fourPlayers(
-      { hand: [material] },
-      { hand: hidden, equipment: { armor: shield }, judgement: [delayed] },
-    ));
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
-    const actorPage = await context.newPage();
-    const spectatorPage = await context.newPage();
-    try {
-      await openGame(actorPage, seed, 0, { width: 390, height: 844 });
-      await playCardThroughPage(actorPage, material.id, "TARGET");
-      await passEmptyResponses(request, seed);
+test("T3-F1 R4-A hides spectator target pools and keeps the actor pool position stable", async ({ browser, request }) => {
+  test.setTimeout(120_000);
+  const prefix = `t3-r4-stage-a-${Date.now().toString(36)}`;
+  const material = card("Steal", `${prefix}-root`);
+  const hidden = [card("Peach", `${prefix}-hidden-a`), card("Dodge", `${prefix}-hidden-b`)];
+  const shield = card("NioShield", `${prefix}-shield`);
+  const delayed = card("Lightning", `${prefix}-judgement`);
+  const seed = await seedGame(request, fourPlayers(
+    { hand: [material] },
+    { hand: hidden, equipment: { armor: shield }, judgement: [delayed] },
+  ));
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const actorPage = await context.newPage();
+  const spectatorPage = await context.newPage();
+  try {
+    await openGame(actorPage, seed, 0, { width: 390, height: 844 });
+    await playCardThroughPage(actorPage, material.id, "TARGET");
+    await passEmptyResponses(request, seed);
 
-      const actorView = await roomView(request, seed, 0);
-      expect(actorView.currentAction).toMatchObject({ kind: "target_card", actorId: seed.players[0].id });
-      expect(actorView.currentAction.legalActions).toContain("choose_target_card");
-      expect(actorView.currentAction.targetCardSelection.targetId).toBe(seed.players[1].id);
-      const actorStage = actorPage.locator(".card-pool-target-stage[data-target-card-choice-actor]");
-      await expect(actorStage).toHaveAttribute("data-target-card-pool-revision", String(actorView.actionRevision));
-      const actorTitle = kind === "Steal" ? "Steal" : "Burning Bridge";
-      const actorInstruction = kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
-      const actorPool = await expectTargetPool(actorPage, actorTitle, actorInstruction, `Use ${actorTitle}`);
-      await expect(actorPool.getByRole("tablist", { name: "Eligible card zones" }).getByRole("tab")).toHaveCount(3);
-      await openGame(spectatorPage, seed, 2, { width: 390, height: 844 });
+    const actorView = await roomView(request, seed, 0);
+    expect(actorView.currentAction).toMatchObject({ kind: "target_card", actorId: seed.players[0].id });
+    expect(actorView.currentAction.legalActions).toContain("choose_target_card");
+    expect(actorView.currentAction.targetCardSelection.targetId).toBe(seed.players[1].id);
+    const actorStage = actorPage.locator(".card-pool-target-stage[data-target-card-choice-actor]");
+    await expect(actorStage).toHaveAttribute("data-target-card-pool-revision", String(actorView.actionRevision));
+    const actorPool = await expectTargetPool(actorPage, "Steal", "Choose 1 card to obtain", "Use Steal");
+    await expect(actorPool.getByRole("tablist", { name: "Eligible card zones" }).getByRole("tab")).toHaveCount(3);
 
-      const spectatorPool = spectatorPage.locator(".card-pool-panel--target-readonly");
-      const spectatorStage = spectatorPage.locator(".card-pool-target-stage--spectator");
-      await expect(spectatorPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
-      await expect(spectatorPool).toBeVisible({ timeout: 8_000 });
-      const spectatorView = await roomView(request, seed, 2);
-      expect(spectatorView.actionRevision).toBe(actorView.actionRevision);
-      await expect(spectatorStage).toHaveAttribute("data-target-card-pool-revision", String(actorView.actionRevision));
-      await expect(spectatorPool).toHaveAttribute("data-target-card-pool-readonly", "true");
-      await expect(spectatorPool.getByRole("tablist")).toHaveCount(0);
-      await expect(spectatorPool.locator(".card-pool-panel__title")).toHaveText(await actorPool.locator(".card-pool-panel__title").innerText());
-      await expect(spectatorPool.locator(".card-pool-panel__instruction")).toHaveText(kind === "Steal"
-        ? "SOURCE is choosing a card from TARGET"
-        : "SOURCE is choosing a card to discard from TARGET");
-      await expect(spectatorPool.locator('[data-target-card-public-zone="hand"]')).toContainText("HAND · 2");
-      await expect(spectatorPool.locator('[data-target-card-public-zone="hand"] .card-pool-panel__target-public-back')).toHaveCount(2);
-      await expect(spectatorPool.locator('[data-target-card-public-zone="equipment"]')).toContainText("Nio Shield");
-      await expect(spectatorPool.locator('[data-target-card-public-zone="judgement"]')).toContainText("Lightning");
-      await expect(spectatorPool.locator("button, [tabindex]")).toHaveCount(0);
-      expect(await spectatorPage.locator(".card-pool-target-stage--spectator").evaluate((stage) => getComputedStyle(stage).pointerEvents)).toBe("none");
-
-      expect(spectatorView.currentAction?.targetCardSelection).toBeUndefined();
-      const spectatorMarkup = await spectatorPage.locator("body").innerHTML();
-      for (const concealed of hidden) {
-        expect(JSON.stringify(spectatorView)).not.toContain(concealed.id);
-        expect(spectatorMarkup).not.toContain(concealed.id);
-      }
-      expect(spectatorMarkup).not.toMatch(/hand:[0-9]+|eligibleKeys|opaqueKey/i);
-      const publicPoolShape = (pool) => pool.locator(".card-pool-panel__target-public-zones").evaluate((zones) => {
-        const rect = zones.getBoundingClientRect();
-        return {
-          width: rect.width,
-          height: rect.height,
-          zones: [...zones.querySelectorAll(":scope > [data-target-card-public-zone]")].map((zone) => {
-            const zoneRect = zone.getBoundingClientRect();
-            return {
-              id: zone.dataset.targetCardPublicZone,
-              label: zone.querySelector(".card-pool-panel__target-public-zone-title")?.textContent?.trim(),
-              left: zoneRect.left - rect.left,
-              width: zoneRect.width,
-              height: zoneRect.height,
-              backs: [...zone.querySelectorAll(".card-pool-panel__target-public-back")].map((back) => {
-                const backRect = back.getBoundingClientRect();
-                return { left: backRect.left - zoneRect.left, width: backRect.width, height: backRect.height };
-              }),
-              faces: [...zone.querySelectorAll(".card-pool-panel__target-public-face")].map((face) => {
-                const faceRect = face.getBoundingClientRect();
-                return { label: face.getAttribute("aria-label"), left: faceRect.left - zoneRect.left, width: faceRect.width, height: faceRect.height };
-              }),
-            };
-          }),
-        };
-      });
-      const actorPublicShape = await publicPoolShape(actorPool);
-      const spectatorPublicShape = await publicPoolShape(spectatorPool);
-      expect(Math.abs(actorPublicShape.width - spectatorPublicShape.width)).toBeLessThanOrEqual(5);
-      expect(actorPublicShape.height).toBe(spectatorPublicShape.height);
-      expect(actorPublicShape.zones).toEqual(spectatorPublicShape.zones);
-      expect(actorPublicShape.zones.map(({ id }) => id)).toEqual(["hand", "equipment", "judgement"]);
-
-      const hiddenChoice = actorPool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
-      await tapMobile(actorPage, hiddenChoice);
-      await expect(hiddenChoice).toHaveAttribute("aria-pressed", "true");
-      await expect(spectatorPool.locator(".is-selected, .pending-choice, [aria-pressed='true']")).toHaveCount(0);
-
-      if (kind === "Steal") {
-        const poolGeometry = async () => spectatorStage.evaluate((stage) => {
-          const rect = stage.getBoundingClientRect();
-          const zones = stage.querySelector(".card-pool-panel__target-public-zones").getBoundingClientRect();
-          return [rect.left, rect.top, rect.width, rect.height, zones.left, zones.top, zones.width, zones.height];
-        });
-        const beforeInspector = await poolGeometry();
-        const inspectOpener = spectatorPage.locator(`[data-player-anchor="${seed.players[1].id}"] .opponent-hero-target`);
-        await tapMobile(spectatorPage, inspectOpener);
-        const inspector = spectatorPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${seed.players[1].id}"]`);
-        await expect(inspector).toBeVisible();
-        const duringInspector = await poolGeometry();
-        duringInspector.forEach((value, index) => expect(Math.abs(value - beforeInspector[index])).toBeLessThanOrEqual(0.5));
-        const overlayOrder = await spectatorStage.evaluate((stage) => {
-          const table = stage.closest(".play-table");
-          const safeZone = table?.querySelector(":scope > .interaction-safe-zone");
-          const inspectorShell = table?.querySelector(".opponent-inspection-floating-shell");
-          const pool = stage.getBoundingClientRect();
-          const inspect = inspectorShell?.getBoundingClientRect();
-          const overlap = Boolean(inspect && pool.left < inspect.right && pool.right > inspect.left && pool.top < inspect.bottom && pool.bottom > inspect.top);
-          const point = inspect && overlap ? { x: Math.max(pool.left, inspect.left) + 2, y: Math.max(pool.top, inspect.top) + 2 } : null;
-          const hit = point ? document.elementFromPoint(point.x, point.y) : null;
-          return {
-            poolZ: Number.parseInt(getComputedStyle(stage).zIndex, 10),
-            inspectorLayerZ: Number.parseInt(getComputedStyle(safeZone).zIndex, 10),
-            overlap,
-            hitInspector: Boolean(hit?.closest(".opponent-inspection-floating-shell")),
-          };
-        });
-        expect(overlayOrder.inspectorLayerZ).toBeGreaterThan(overlayOrder.poolZ);
-        expect(overlayOrder.overlap).toBe(true);
-        expect(overlayOrder.hitInspector).toBe(true);
-        await tapMobile(spectatorPage, inspectOpener);
-        await expect(inspector).toHaveCount(0);
-        const afterInspector = await poolGeometry();
-        afterInspector.forEach((value, index) => expect(Math.abs(value - beforeInspector[index])).toBeLessThanOrEqual(0.5));
-        await expect(hiddenChoice).toHaveAttribute("aria-pressed", "true");
-      }
-
-      const submit = actorPage.waitForResponse((response) => {
-        if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
-        try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
-        catch { return false; }
-      });
-      await tapMobile(actorPage, actorPool.getByRole("button", { name: `Use ${actorTitle}`, exact: true }));
-      expect((await submit).ok()).toBe(true);
-      await expect(spectatorPage.locator(".card-pool-panel--target-readonly")).toHaveCount(0, { timeout: 8_000 });
-      expect((await roomView(request, seed, 2)).pendingTargetCard).toBeNull();
-    } finally {
-      await context.close();
+    await openGame(spectatorPage, seed, 2, { width: 390, height: 844 });
+    const spectatorView = await roomView(request, seed, 2);
+    expect(spectatorView.actionRevision).toBe(actorView.actionRevision);
+    expect(spectatorView.currentAction?.targetCardSelection).toBeUndefined();
+    const waiting = spectatorPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]');
+    const expectedWaiting = `Waiting for ${seed.players[0].name} to choose a card to take from ${seed.players[1].name}.`;
+    await expect(waiting).toBeVisible();
+    await expect(waiting).toHaveAttribute("aria-label", expectedWaiting);
+    await expect(waiting.locator("strong")).toHaveText(expectedWaiting);
+    await expect(spectatorPage.locator(".card-pool-target-stage, .card-pool-panel--target-readonly, .card-pool-panel--actor-target-select")).toHaveCount(0);
+    const spectatorMarkup = await spectatorPage.locator("body").innerHTML();
+    for (const concealed of hidden) {
+      expect(JSON.stringify(spectatorView)).not.toContain(concealed.id);
+      expect(spectatorMarkup).not.toContain(concealed.id);
     }
+    expect(spectatorMarkup).not.toMatch(/hand:[0-9]+|eligibleKeys|opaqueKey/i);
+
+    const hiddenChoice = actorPool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
+    await tapMobile(actorPage, hiddenChoice);
+    await expect(hiddenChoice).toHaveAttribute("aria-pressed", "true");
+    const poolGeometry = () => actorStage.evaluate((stage) => {
+      const rect = stage.getBoundingClientRect();
+      const panel = stage.querySelector(".card-pool-panel").getBoundingClientRect();
+      return [rect.left, rect.top, rect.width, rect.height, panel.left, panel.top, panel.width, panel.height];
+    });
+    const beforePark = await poolGeometry();
+    const rootMini = actorPage.locator(`[data-public-card-journey-card-id="${material.id}"]`);
+    await expect(rootMini).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 10_000 });
+    const afterPark = await poolGeometry();
+    afterPark.forEach((value, index) => expect(Math.abs(value - beforePark[index])).toBeLessThanOrEqual(2));
+
+    const inspectOpener = actorPage.locator(`[data-player-anchor="${seed.players[1].id}"] .opponent-hero-target`);
+    await tapMobile(actorPage, inspectOpener);
+    const inspector = actorPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${seed.players[1].id}"]`);
+    await expect(inspector).toBeVisible();
+    const duringInspector = await poolGeometry();
+    duringInspector.forEach((value, index) => expect(Math.abs(value - beforePark[index])).toBeLessThanOrEqual(2));
+    const overlayOrder = await actorStage.evaluate((stage) => {
+      const table = stage.closest(".play-table");
+      const safeZone = table?.querySelector(":scope > .interaction-safe-zone");
+      return {
+        poolZ: Number.parseInt(getComputedStyle(stage).zIndex, 10),
+        inspectorLayerZ: Number.parseInt(getComputedStyle(safeZone).zIndex, 10),
+      };
+    });
+    expect(overlayOrder.inspectorLayerZ).toBeGreaterThan(overlayOrder.poolZ);
+    await tapMobile(actorPage, inspectOpener);
+    await expect(inspector).toHaveCount(0);
+    const afterInspector = await poolGeometry();
+    afterInspector.forEach((value, index) => expect(Math.abs(value - beforePark[index])).toBeLessThanOrEqual(2));
+    await expect(hiddenChoice).toHaveAttribute("aria-pressed", "true");
+
+    const submit = actorPage.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+      catch { return false; }
+    });
+    await tapMobile(actorPage, actorPool.getByRole("button", { name: "Use Steal", exact: true }));
+    expect((await submit).ok()).toBe(true);
+    await expect(waiting).toHaveCount(0, { timeout: 8_000 });
+    expect((await roomView(request, seed, 2)).pendingTargetCard).toBeNull();
+  } finally {
+    await context.close();
   }
 });
 
@@ -917,9 +865,8 @@ for (const kind of ["Steal", "Dismantle"]) {
       // projection before checking its rendered presentation.
       await Promise.all(pages.map((viewerPage, index) => openGame(viewerPage, seed, index, { width: 390, height: 844 })));
 
-      const effectName = kind === "Steal" ? "Steal" : "Burning Bridges";
       const modalTitle = kind === "Steal" ? "Steal" : "Burning Bridge";
-      const sharedLabel = `SOURCE is choosing one card from TARGET · ${effectName}`;
+    const sharedLabel = `Waiting for SOURCE to choose a card to ${kind === "Steal" ? "take" : "discard"} from TARGET.`;
       for (let index = 0; index < pages.length; index++) {
         const viewerPage = pages[index];
         const chip = viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]');
@@ -935,7 +882,7 @@ for (const kind of ["Steal", "Dismantle"]) {
           await expect(chip).toHaveAttribute("data-public-activity-kind", "target-card-choice", { timeout: 15_000 });
           await expect(chip).toBeVisible();
           await expect(chip).toHaveAttribute("aria-label", sharedLabel);
-          await expect(chip.locator("strong")).toHaveText("Choosing TARGET's card");
+          await expect(chip.locator("strong")).toHaveText(sharedLabel);
           await expect(viewerPage.locator(".public-card-display-journey-copy")).toContainText(`SOURCE played ${modalTitle} on TARGET.`);
         }
         const chipRect = actorMergesCopy ? null : await chip.boundingBox();
@@ -1456,9 +1403,10 @@ test("T3-F1 R4-A keeps a remote Steal root visible through Negation and target-p
     expect(choiceProjection.pendingTargetCard).toMatchObject({ kind: "target_card", actorId: authorId, sourceId: authorId });
     await Promise.all(pages.map((page) => page.evaluate(() => { window.__t3ChoiceProjectionConfirmedAt = performance.now(); })));
     const waitingPool = await expectTargetPool(pages[0], "Steal", "Choose 1 card to obtain", "Use Steal");
-    const spectatorPool = pages[1].locator(".card-pool-panel--target-readonly");
-    await expect(pages[1].locator(".card-pool-target-stage--spectator")).toHaveAttribute("data-target-card-pool-ready", "true");
-    await expect(spectatorPool).toBeVisible();
+    const spectatorActivity = pages[1].locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]');
+    await expect(pages[1].locator(".card-pool-target-stage--spectator, .card-pool-panel--target-readonly")).toHaveCount(0);
+    await expect(spectatorActivity).toBeVisible();
+    await expect(spectatorActivity.locator("strong")).toHaveText("Waiting for SOURCE to choose a card to take from TARGET.");
     await expect(pages[0].locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
     await expect(pages[0].locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
     const handoffEvidence = await Promise.all(pages.map(async (page) => {
@@ -1498,7 +1446,7 @@ test("T3-F1 R4-A keeps a remote Steal root visible through Negation and target-p
       await expect(page.locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
       if (index === 1) {
         await expect(page.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
-        await expect(page.locator(".card-pool-panel--target-readonly")).toBeVisible();
+        await expect(page.locator(".card-pool-panel--target-readonly")).toHaveCount(0);
       }
     }
     await Promise.all(pages.map((page, index) => expectRootJourneyParkedByAuthor(page, {
@@ -1651,8 +1599,10 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
           throw error;
         });
         if (choiceCue) {
-          await expect(choiceCue).toHaveAttribute("aria-label", `${sourceName} is choosing one card from ${targetName} · ${scenario.effect === "Dismantle" ? "Burning Bridges" : scenario.effect}`);
-          await expect(choiceCue.locator("strong")).toContainText(`Choosing ${targetName}'s card`);
+          const verb = scenario.effect === "Steal" ? "take" : "discard";
+          const expectedWaiting = `Waiting for ${sourceName} to choose a card to ${verb} from ${targetName}.`;
+          await expect(choiceCue).toHaveAttribute("aria-label", expectedWaiting);
+          await expect(choiceCue.locator("strong")).toHaveText(expectedWaiting);
           const cueGeometry = await choiceCue.evaluate((element) => {
             const rect = element.getBoundingClientRect();
             return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height, viewportWidth: innerWidth, viewportHeight: innerHeight };
@@ -1661,7 +1611,7 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
           expect(cueGeometry.top).toBeGreaterThanOrEqual(0);
           expect(cueGeometry.right).toBeLessThanOrEqual(cueGeometry.viewportWidth);
           expect(cueGeometry.bottom).toBeLessThanOrEqual(cueGeometry.viewportHeight);
-          expect(cueGeometry.width).toBeLessThanOrEqual(156);
+          expect(cueGeometry.width).toBeLessThanOrEqual(250);
           const cueRect = await choiceCue.boundingBox();
           for (const obstacle of await viewerPage.locator(
             ".card-pool-panel--actor-target-select, .public-card-display-journey-copy, .public-card-journey-card, .player-square, .visible-countdown",

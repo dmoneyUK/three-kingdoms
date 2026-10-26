@@ -4459,17 +4459,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const pendingTargetCardPublicTarget = room.pendingTargetCard
     ? room.players.find((player) => player.id === room.pendingTargetCard?.targetId)
     : null;
-  const pendingTargetCardSpectatorPoolActive = Boolean(
-    room.status === "playing"
-    && room.phase === "response"
-    && room.pendingTargetCard
-    && (room.pendingTargetCard.cardKind === "Steal" || room.pendingTargetCard.cardKind === "Dismantle")
-    && room.pendingTargetCard.sourceId === room.pendingTargetCard.actorId
-    && room.pendingTargetCard.targetId !== room.pendingTargetCard.actorId
-    && room.pendingTargetCard.actorId !== room.meId
-    && pendingTargetCardPublicSource?.alive
-    && pendingTargetCardPublicTarget?.alive,
-  );
   const pendingTargetCardPublicPool: PublicTargetPoolView | null = room.pendingTargetCard && pendingTargetCardPublicTarget
     ? {
       handCount: pendingTargetCardPublicTarget.handCount,
@@ -8274,15 +8263,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && targetCardChoiceAnnouncement,
   );
   const pendingTargetCardPoolPlacement = useBattlefieldChoicePlacement({
-    enabled: (pendingTargetCardUsesUnifiedModal && pendingTargetCardPoolZones.length > 0)
-      || (pendingTargetCardSpectatorPoolActive && Boolean(pendingTargetCardPublicPool)),
+    enabled: pendingTargetCardUsesUnifiedModal && pendingTargetCardPoolZones.length > 0,
     playerCount: room.players.length,
-    placementKey: pendingTargetCardUsesUnifiedModal
-      ? [room.code, room.meId, room.actionRevision ?? "", pendingTargetCardSelectableSelection?.targetId ?? "", ...(pendingTargetCardSelectableSelection?.eligibleKeys ?? [])].join("\u001f")
-      : [room.code, room.meId, room.pendingTargetCard?.sourceId ?? "", room.pendingTargetCard?.targetId ?? "", room.pendingTargetCard?.cardKind ?? "",
-        pendingTargetCardPublicPool?.handCount ?? 0,
-        ...(pendingTargetCardPublicPool?.equipmentCards.map((card) => card.id) ?? []),
-        ...(pendingTargetCardPublicPool?.judgementCards.map((card) => card.id) ?? [])].join("\u001f"),
+    placementKey: [room.code, room.meId, room.actionRevision ?? "", pendingTargetCardSelectableSelection?.targetId ?? "", ...(pendingTargetCardSelectableSelection?.eligibleKeys ?? [])].join("\u001f"),
     centralTargetLayout: targetCardChoiceSharedCopyReady,
     rootEventId: targetCardChoiceSharedCopyReady ? publicCardDisplayAction?.rootEventId : undefined,
   });
@@ -9921,36 +9904,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           onInfo={(card, trigger) => openCardDetails(card, "public-zone", trigger)}
         />
       </BattlefieldChoiceStage>}
-      {pendingTargetCardSpectatorPoolActive && pendingTargetCardPublicPool && pendingTargetCardPublicSource && pendingTargetCardPublicTarget && room.pendingTargetCard && <BattlefieldChoiceStage
-        key={`${room.code}:${room.pendingTargetCard.sourceId}:${room.pendingTargetCard.targetId}:${room.pendingTargetCard.cardKind}:${room.actionRevision ?? ""}`}
-        ref={pendingTargetCardPoolPlacement.ref}
-        className="game-event-stage harvest-choice-stage card-pool-target-stage card-pool-target-stage--spectator"
-        mode="target-readonly"
-        accessibilityLabel={`${room.pendingTargetCard.cardKind === "Steal" ? "Steal" : "Burning Bridges"}: ${pendingTargetCardPublicSource.name} to ${pendingTargetCardPublicTarget.name}. ${pendingTargetCardPublicSource.name} is choosing a card from ${pendingTargetCardPublicTarget.name}. Public read-only card pool.`}
-        data-target-card-pool-readonly="true"
-        data-target-card-pool-kind={room.pendingTargetCard.cardKind}
-        data-target-card-pool-revision={room.actionRevision ?? undefined}
-        data-target-card-pool-ready={pendingTargetCardPoolPlacement.ready ? "true" : "false"}
-        aria-hidden={pendingTargetCardPoolPlacement.ready ? undefined : true}
-        style={{
-          top: pendingTargetCardPoolPlacement.top === null ? undefined : `${pendingTargetCardPoolPlacement.top}px`,
-          left: pendingTargetCardPoolPlacement.insets ? `${pendingTargetCardPoolPlacement.insets.left}px` : undefined,
-          right: pendingTargetCardPoolPlacement.insets?.width
-            ? "auto"
-            : pendingTargetCardPoolPlacement.insets ? `${pendingTargetCardPoolPlacement.insets.right}px` : undefined,
-          width: pendingTargetCardPoolPlacement.insets?.width ? `${pendingTargetCardPoolPlacement.insets.width}px` : undefined,
-        }}
-      >
-        <CardPoolPanel
-          mode="target-readonly"
-          title={targetCardChoiceStageTitle}
-          instruction={room.pendingTargetCard.cardKind === "Steal"
-            ? `${pendingTargetCardPublicSource.name} is choosing a card from ${pendingTargetCardPublicTarget.name}`
-            : `${pendingTargetCardPublicSource.name} is choosing a card to discard from ${pendingTargetCardPublicTarget.name}`}
-          accessibilityLabel={`${pendingTargetCardPublicSource.name} is choosing a card ${room.pendingTargetCard.cardKind === "Steal" ? "from" : "to discard from"} ${pendingTargetCardPublicTarget.name}`}
-          publicTarget={pendingTargetCardPublicPool}
-        />
-      </BattlefieldChoiceStage>}
       {targetCardPickerInModal && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && <TargetCardPicker option={targetCardPickerOption} compact={targetCardPickerOption.effectId === "sima_yi_fankui"} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={triggerControlsDisabled} canDecline={Boolean(consoleDecision.authoritativeDecline)} showCancel={targetCardPickerOption.effectId !== "sima_yi_fankui" && (targetCardPickerUsesUnifiedModal || consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId))} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={submitTargetCardPicker} onCancel={cancelTargetCardPicker} onDecline={() => onAction("decline_trigger")} />}
       {triggerResponse && responseDecisionReady && choiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={choiceTriggerOption} selection={choiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={triggerControlsDisabled} error={error} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => { const validKeys = triggerSelectedKeys.filter((selectedKey) => choiceTriggerOption.selection?.type === "choice" && choiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = choiceTriggerOption.selection?.type === "choice" ? choiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; setTriggerSelectedKeys(validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys); }} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: choiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}
@@ -10040,7 +9993,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         roomCode={room.code}
         viewerId={room.meId}
       />}
-      {!targetCardChoiceMergeActive && !lustOrderOwnsActivityBand && <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey} harvestPoolReadOnly={harvestReadOnlyDuringNegation} />}
+      {!targetCardChoiceMergeActive
+        && !(publicActivityStatus.kind === "target-card-choice" && room.pendingTargetCard?.actorId === room.meId)
+        && !lustOrderOwnsActivityBand
+        && <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey} harvestPoolReadOnly={harvestReadOnlyDuringNegation} />}
       {visibleInfoCard && <CardDetailsPreview card={visibleInfoCard} context={infoCardContext} onClose={closeCardDetails} returnFocusTo={cardInfoReturnFocusRef.current} />}
       {infoHero && me && <HeroDetailsPreview hero={infoHero} onClose={closeHeroDetails} returnFocusTo={heroInfoReturnFocusRef.current} />}
     </section>
