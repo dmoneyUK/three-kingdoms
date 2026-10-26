@@ -6562,16 +6562,12 @@
   z-index: 26;
 }
 
-.game-shell .card-pool-panel--actor-target-select.harvest-choice-panel {
-  box-sizing: border-box;
-  align-items: flex-start;
-  width: max-content;
-  min-width: 0;
-  max-width: min(calc(100vw - 16px), 520px);
-  padding: 6px;
-  gap: 5px;
+.game-shell .play-table:has(> .card-pool-target-stage[data-choice-mode="actor-target-select"]) > .interaction-safe-zone:has(> .interaction-stage-inspect-only),
+.game-shell .play-table:has(> .card-pool-target-stage[data-choice-mode="target-readonly"]) > .interaction-safe-zone:has(> .interaction-stage-inspect-only) {
+  z-index: 40;
 }
 
+.game-shell .card-pool-panel--actor-target-select.harvest-choice-panel,
 .game-shell .card-pool-panel--target-readonly.harvest-choice-panel {
   box-sizing: border-box;
   align-items: stretch;
@@ -6625,13 +6621,18 @@
 .game-shell .card-pool-panel__target-public-zones {
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 6px;
   width: 100%;
   min-width: 0;
-  overflow: hidden;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
   pointer-events: none;
+  touch-action: pan-x;
 }
+
+.game-shell .card-pool-panel__target-public-zones::-webkit-scrollbar { display: none; }
 
 .game-shell .card-pool-panel__target-public-zone {
   display: flex;
@@ -6652,7 +6653,7 @@
 }
 
 .game-shell .card-pool-panel__target-public-hand {
-  min-width: 76px;
+  min-width: 0;
   align-items: flex-start;
 }
 
@@ -6661,26 +6662,41 @@
 }
 
 .game-shell .card-pool-panel__target-public-backs {
+  position: relative;
   display: flex;
   align-items: center;
-  min-height: 48px;
-  padding-left: 3px;
+  gap: 3px;
+  min-height: 54px;
+  padding: 0;
+}
+
+.game-shell .card-pool-panel__target-public-position {
+  position: relative;
+  display: block;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 66px;
 }
 
 .game-shell .card-pool-panel__target-public-back {
   box-sizing: border-box;
   display: block;
-  flex: 0 0 30px;
-  width: 30px;
-  height: 45px;
-  margin-left: -17px;
+  width: 100%;
+  height: 100%;
   border: 1px solid #c6a45c;
   border-radius: 4px;
   background: repeating-linear-gradient(45deg, #242b21, #242b21 5px, #171b15 5px, #171b15 10px);
   box-shadow: 0 2px 4px #0009;
 }
 
-.game-shell .card-pool-panel__target-public-back:first-child { margin-left: 0; }
+.game-shell .card-pool-panel__target-public-position.pending-choice .card-pool-panel__target-public-back,
+.game-shell .card-pool-panel__target-public-backs.pending-choice .card-pool-panel__target-public-back,
+.game-shell .card-pool-panel__target-public-face.pending-choice {
+  border: 2px solid #f2ca65;
+  box-shadow: 0 0 0 2px #f2ca6555;
+}
+
+.game-shell .card-pool-panel__target-public-select { z-index: 3; }
 
 .game-shell .card-pool-panel__target-public-backs > small,
 .game-shell .card-pool-panel__target-public-empty {
@@ -6695,6 +6711,8 @@
 }
 
 .game-shell .card-pool-panel__target-public-face {
+  position: relative;
+  box-sizing: border-box;
   flex: 0 0 50px;
   width: 50px;
   height: 75px;
@@ -6718,9 +6736,10 @@
 .game-shell .card-pool-panel__target-public-face > .played-card .card-name-mark { font-size: 7px; }
 .game-shell .card-pool-panel__target-public-face > .played-card > strong { font-size: 4px; }
 
-.game-shell .play-table[data-seat-topology="side-column"] .card-pool-panel--actor-target-select.harvest-choice-panel {
-  width: max-content;
-  max-width: 100%;
+.game-shell .play-table[data-seat-topology="side-column"] .card-pool-panel--actor-target-select.harvest-choice-panel,
+.game-shell .play-table[data-seat-topology="side-column"] .card-pool-panel--target-readonly.harvest-choice-panel {
+  width: min(100%, 440px);
+  max-width: min(calc(100vw - 16px), 440px);
 }
 
 .game-shell .card-pool-panel__tabs {
@@ -6873,7 +6892,8 @@
 }
 
 @media (max-width: 360px) {
-  .game-shell .card-pool-panel--actor-target-select { padding: 4px; }
+  .game-shell .card-pool-panel--actor-target-select,
+  .game-shell .card-pool-panel--target-readonly { padding: 4px; }
   .game-shell .card-pool-panel__tab { min-width: 66px; padding-inline: 5px; }
   .game-shell .card-pool-panel__target-row { gap: 3px; padding-inline: 0; }
 }
@@ -6894,7 +6914,8 @@
        stage above the root so selection controls remain usable. */
     z-index: 35;
   }
-  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--actor-target-select.harvest-choice-panel {
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--actor-target-select.harvest-choice-panel,
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--target-readonly.harvest-choice-panel {
     box-sizing: border-box;
     align-items: stretch;
     width: 100%;
@@ -6909,6 +6930,7 @@
   .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__tabs,
   .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__tabpanel,
   .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-row,
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-zones,
   .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__footer {
     box-sizing: border-box;
     width: 100%;

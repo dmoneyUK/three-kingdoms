@@ -214,12 +214,12 @@ async function expectTargetPool(page, title, instruction, cta) {
         return { width: rect.width, height: rect.height };
       }),
       targetRow: (() => {
-        const row = element.querySelector(".card-pool-panel__target-row");
+        const row = element.querySelector(".card-pool-panel__target-public-zones");
         if (!row) return null;
         const rowRect = row.getBoundingClientRect();
         return {
           left: rowRect.left, right: rowRect.right, clientWidth: row.clientWidth, scrollWidth: row.scrollWidth,
-          cards: [...row.querySelectorAll(".card-pool-panel__target-choice")].map((choice) => {
+          cards: [...row.querySelectorAll(".card-pool-panel__target-public-position, .card-pool-panel__target-public-face")].map((choice) => {
             const rect = choice.getBoundingClientRect();
             return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
           }),
@@ -714,7 +714,7 @@ for (const kind of ["Steal", "Dismantle"]) {
   });
 }
 
-test("T3-F1 R3-B gives the actor an interactive pool and spectators a public read-only pool", async ({ browser, request }) => {
+test("T3-F1 R4-B shares the public target pool while keeping selection private and Inspector floating", async ({ browser, request }) => {
   test.setTimeout(180_000);
   for (const kind of ["Steal", "Dismantle"]) {
     const prefix = `t3-r3-spectator-${kind.toLowerCase()}-${Date.now().toString(36)}`;
@@ -738,16 +738,24 @@ test("T3-F1 R3-B gives the actor an interactive pool and spectators a public rea
       expect(actorView.currentAction).toMatchObject({ kind: "target_card", actorId: seed.players[0].id });
       expect(actorView.currentAction.legalActions).toContain("choose_target_card");
       expect(actorView.currentAction.targetCardSelection.targetId).toBe(seed.players[1].id);
+      const actorStage = actorPage.locator(".card-pool-target-stage[data-target-card-choice-actor]");
+      await expect(actorStage).toHaveAttribute("data-target-card-pool-revision", String(actorView.actionRevision));
       const actorTitle = kind === "Steal" ? "Steal" : "Burning Bridge";
       const actorInstruction = kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
       const actorPool = await expectTargetPool(actorPage, actorTitle, actorInstruction, `Use ${actorTitle}`);
+      await expect(actorPool.getByRole("tablist", { name: "Eligible card zones" }).getByRole("tab")).toHaveCount(3);
       await openGame(spectatorPage, seed, 2, { width: 390, height: 844 });
 
       const spectatorPool = spectatorPage.locator(".card-pool-panel--target-readonly");
+      const spectatorStage = spectatorPage.locator(".card-pool-target-stage--spectator");
       await expect(spectatorPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
       await expect(spectatorPool).toBeVisible({ timeout: 8_000 });
+      const spectatorView = await roomView(request, seed, 2);
+      expect(spectatorView.actionRevision).toBe(actorView.actionRevision);
+      await expect(spectatorStage).toHaveAttribute("data-target-card-pool-revision", String(actorView.actionRevision));
       await expect(spectatorPool).toHaveAttribute("data-target-card-pool-readonly", "true");
-      await expect(spectatorPool.locator(".card-pool-panel__title")).toContainText(kind === "Steal" ? "STEAL · SOURCE → TARGET" : "BURNING BRIDGES · SOURCE → TARGET");
+      await expect(spectatorPool.getByRole("tablist")).toHaveCount(0);
+      await expect(spectatorPool.locator(".card-pool-panel__title")).toHaveText(await actorPool.locator(".card-pool-panel__title").innerText());
       await expect(spectatorPool.locator(".card-pool-panel__instruction")).toHaveText(kind === "Steal"
         ? "SOURCE is choosing a card from TARGET"
         : "SOURCE is choosing a card to discard from TARGET");
@@ -758,7 +766,6 @@ test("T3-F1 R3-B gives the actor an interactive pool and spectators a public rea
       await expect(spectatorPool.locator("button, [tabindex]")).toHaveCount(0);
       expect(await spectatorPage.locator(".card-pool-target-stage--spectator").evaluate((stage) => getComputedStyle(stage).pointerEvents)).toBe("none");
 
-      const spectatorView = await roomView(request, seed, 2);
       expect(spectatorView.currentAction?.targetCardSelection).toBeUndefined();
       const spectatorMarkup = await spectatorPage.locator("body").innerHTML();
       for (const concealed of hidden) {
@@ -766,11 +773,82 @@ test("T3-F1 R3-B gives the actor an interactive pool and spectators a public rea
         expect(spectatorMarkup).not.toContain(concealed.id);
       }
       expect(spectatorMarkup).not.toMatch(/hand:[0-9]+|eligibleKeys|opaqueKey/i);
+      const publicPoolShape = (pool) => pool.locator(".card-pool-panel__target-public-zones").evaluate((zones) => {
+        const rect = zones.getBoundingClientRect();
+        return {
+          width: rect.width,
+          height: rect.height,
+          zones: [...zones.querySelectorAll(":scope > [data-target-card-public-zone]")].map((zone) => {
+            const zoneRect = zone.getBoundingClientRect();
+            return {
+              id: zone.dataset.targetCardPublicZone,
+              label: zone.querySelector(".card-pool-panel__target-public-zone-title")?.textContent?.trim(),
+              left: zoneRect.left - rect.left,
+              width: zoneRect.width,
+              height: zoneRect.height,
+              backs: [...zone.querySelectorAll(".card-pool-panel__target-public-back")].map((back) => {
+                const backRect = back.getBoundingClientRect();
+                return { left: backRect.left - zoneRect.left, width: backRect.width, height: backRect.height };
+              }),
+              faces: [...zone.querySelectorAll(".card-pool-panel__target-public-face")].map((face) => {
+                const faceRect = face.getBoundingClientRect();
+                return { label: face.getAttribute("aria-label"), left: faceRect.left - zoneRect.left, width: faceRect.width, height: faceRect.height };
+              }),
+            };
+          }),
+        };
+      });
+      const actorPublicShape = await publicPoolShape(actorPool);
+      const spectatorPublicShape = await publicPoolShape(spectatorPool);
+      expect(Math.abs(actorPublicShape.width - spectatorPublicShape.width)).toBeLessThanOrEqual(5);
+      expect(actorPublicShape.height).toBe(spectatorPublicShape.height);
+      expect(actorPublicShape.zones).toEqual(spectatorPublicShape.zones);
+      expect(actorPublicShape.zones.map(({ id }) => id)).toEqual(["hand", "equipment", "judgement"]);
 
       const hiddenChoice = actorPool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
       await tapMobile(actorPage, hiddenChoice);
       await expect(hiddenChoice).toHaveAttribute("aria-pressed", "true");
       await expect(spectatorPool.locator(".is-selected, .pending-choice, [aria-pressed='true']")).toHaveCount(0);
+
+      if (kind === "Steal") {
+        const poolGeometry = async () => spectatorStage.evaluate((stage) => {
+          const rect = stage.getBoundingClientRect();
+          const zones = stage.querySelector(".card-pool-panel__target-public-zones").getBoundingClientRect();
+          return [rect.left, rect.top, rect.width, rect.height, zones.left, zones.top, zones.width, zones.height];
+        });
+        const beforeInspector = await poolGeometry();
+        const inspectOpener = spectatorPage.locator(`[data-player-anchor="${seed.players[1].id}"] .opponent-hero-target`);
+        await tapMobile(spectatorPage, inspectOpener);
+        const inspector = spectatorPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${seed.players[1].id}"]`);
+        await expect(inspector).toBeVisible();
+        const duringInspector = await poolGeometry();
+        duringInspector.forEach((value, index) => expect(Math.abs(value - beforeInspector[index])).toBeLessThanOrEqual(0.5));
+        const overlayOrder = await spectatorStage.evaluate((stage) => {
+          const table = stage.closest(".play-table");
+          const safeZone = table?.querySelector(":scope > .interaction-safe-zone");
+          const inspectorShell = table?.querySelector(".opponent-inspection-floating-shell");
+          const pool = stage.getBoundingClientRect();
+          const inspect = inspectorShell?.getBoundingClientRect();
+          const overlap = Boolean(inspect && pool.left < inspect.right && pool.right > inspect.left && pool.top < inspect.bottom && pool.bottom > inspect.top);
+          const point = inspect && overlap ? { x: Math.max(pool.left, inspect.left) + 2, y: Math.max(pool.top, inspect.top) + 2 } : null;
+          const hit = point ? document.elementFromPoint(point.x, point.y) : null;
+          return {
+            poolZ: Number.parseInt(getComputedStyle(stage).zIndex, 10),
+            inspectorLayerZ: Number.parseInt(getComputedStyle(safeZone).zIndex, 10),
+            overlap,
+            hitInspector: Boolean(hit?.closest(".opponent-inspection-floating-shell")),
+          };
+        });
+        expect(overlayOrder.inspectorLayerZ).toBeGreaterThan(overlayOrder.poolZ);
+        expect(overlayOrder.overlap).toBe(true);
+        expect(overlayOrder.hitInspector).toBe(true);
+        await tapMobile(spectatorPage, inspectOpener);
+        await expect(inspector).toHaveCount(0);
+        const afterInspector = await poolGeometry();
+        afterInspector.forEach((value, index) => expect(Math.abs(value - beforeInspector[index])).toBeLessThanOrEqual(0.5));
+        await expect(hiddenChoice).toHaveAttribute("aria-pressed", "true");
+      }
+
       const submit = actorPage.waitForResponse((response) => {
         if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
         try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }

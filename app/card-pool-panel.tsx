@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import type { Card } from "../game/model";
 import { cardDefinition } from "../game/cards";
 import { CardFace } from "./card-face";
@@ -76,11 +77,9 @@ export type TargetCardPoolZone = {
 
 type TargetSelectProps = SharedProps & {
   mode: "actor-target-select";
+  publicTarget: PublicTargetPoolView;
   zones: readonly TargetCardPoolZone[];
-  activeZone: TargetCardPoolZone["id"];
-  onActiveZoneChange: (zone: TargetCardPoolZone["id"]) => void;
   selectionCount: string;
-  selectedZoneMessage?: string;
   actionLabel: string;
   disabled: boolean;
   confirmDisabled: boolean;
@@ -111,9 +110,37 @@ export type CardPoolPanelProps = ReadOnlyProps | ActorSelectProps | TargetSelect
 export function CardPoolPanel(props: CardPoolPanelProps) {
   const actorSelect = props.mode === "actor-select";
   const targetSelect = props.mode === "actor-target-select";
+  const actorTargetProps = props.mode === "actor-target-select" ? props : null;
   const targetReadOnly = props.mode === "target-readonly";
-  const targetReadOnlyHandCount = targetReadOnly && Number.isFinite(props.publicTarget.handCount)
-    ? Math.max(0, Math.floor(props.publicTarget.handCount))
+  const targetPublicZonesRef = useRef<HTMLDivElement | null>(null);
+  const [activeTargetZoneId, setActiveTargetZoneId] = useState<TargetCardPoolZone["id"]>("hand");
+  const targetPublicProps = actorTargetProps ?? (targetReadOnly ? props : null);
+  const activeTargetZone = actorTargetProps?.zones.find((zone) => zone.id === activeTargetZoneId)
+    ?? actorTargetProps?.zones[0]
+    ?? null;
+  const focusTargetZone = (zone: TargetCardPoolZone) => {
+    setActiveTargetZoneId(zone.id);
+    const row = targetPublicZonesRef.current;
+    const target = row?.querySelector<HTMLElement>(`[data-target-card-public-zone="${zone.id}"]`);
+    if (!row || !target) return;
+    const rowRect = row.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    row.scrollTo({
+      left: row.scrollLeft + targetRect.left - rowRect.left,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+  };
+  const targetChoices = actorTargetProps?.zones.flatMap((zone) => zone.choices) ?? [];
+  const handChoicesByPosition = new Map(targetChoices.flatMap((choice) => choice.type === "concealed-position"
+    ? [[choice.position, choice] as const]
+    : []));
+  const randomHandChoice = targetChoices.find((choice) => choice.type === "random-hand-zone");
+  const randomHandSelected = randomHandChoice?.state === "selected";
+  const publicChoicesById = new Map(targetChoices.flatMap((choice) => choice.type === "public-card"
+    ? [[choice.eligibleKey, choice] as const]
+    : []));
+  const targetPublicHandCount = targetPublicProps && Number.isFinite(targetPublicProps.publicTarget.handCount)
+    ? Math.max(0, Math.floor(targetPublicProps.publicTarget.handCount))
     : 0;
   return <section
     className={`card-pool-panel card-pool-panel--${props.mode} harvest-choice-panel${actorSelect || targetSelect ? " harvest-choice-panel--actor" : ""}`}
@@ -165,72 +192,56 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
         <button type="button" className="primary card-pool-panel__confirm" disabled={props.confirmDisabled} onClick={props.onConfirm}>Confirm choice</button>
       </footer>}
     </>}
-    {targetSelect && (() => {
-      const activeZone = props.zones.find((zone) => zone.id === props.activeZone) ?? props.zones[0];
-      if (!activeZone) return null;
-      const selectedZone = props.zones.find((zone) => zone.choices.some((choice) => choice.state === "selected"));
-      return <>
-        {props.zones.length > 1 && <div className="card-pool-panel__tabs" role="tablist" aria-label="Eligible card zones">
-          {props.zones.map((zone) => <button
-            key={zone.id}
-            id={`card-pool-tab-${zone.id}`}
-            type="button"
-            role="tab"
-            aria-selected={zone.id === activeZone.id}
-            aria-controls="card-pool-target-row"
-            className="card-pool-panel__tab"
-            onClick={() => props.onActiveZoneChange(zone.id)}
-          >{zone.title}</button>)}
-        </div>}
-        {selectedZone && selectedZone.id !== activeZone.id && props.selectedZoneMessage && <p className="card-pool-panel__selected-zone" role="status">{props.selectedZoneMessage}</p>}
-        <div id="card-pool-target-row" className="card-pool-panel__tabpanel" role="tabpanel" aria-label={activeZone.accessibleName}>
-          <div className="card-pool-panel__target-row harvest-card-row" role="region" aria-label={`Eligible ${activeZone.accessibleName}`} tabIndex={activeZone.choices.length > 1 ? 0 : undefined}>
-            {activeZone.choices.map((choice) => {
-              const key = choice.type === "public-card" ? choice.eligibleKey : choice.opaqueKey;
-              const selected = choice.state === "selected";
-              const disabled = props.disabled || Boolean(choice.selectDisabled);
-              return <div className={`card-pool-panel__target-choice harvest-card-choice${selected ? " pending-choice" : ""}`} data-choice-key-type={choice.type} key={key}>
-                {choice.type === "public-card" && <CardFace card={choice.publicCardFace} harvestChoice />}
-                {choice.type === "concealed-position" && <span className="card-pool-panel__concealed" aria-hidden="true"><b>?</b><small>HAND {choice.position + 1}</small></span>}
-                {choice.type === "random-hand-zone" && <span className="card-pool-panel__random-hand" aria-hidden="true"><b>?</b><small>Random card</small><small>Hand ×{choice.totalPublicHandCount}</small></span>}
-                <button type="button" className="card-pool-panel__target-select harvest-card-select" disabled={disabled} aria-pressed={selected} aria-label={choice.accessibleLabel} onClick={() => props.onToggle(key)} />
-                {selected && <span className="card-pool-panel__target-selected" aria-hidden="true">✓</span>}
-                {choice.type === "public-card" && <button
-                  type="button"
-                  className="card-pool-panel__target-info harvest-card-info"
-                  aria-label={`Card details: ${choice.accessibleLabel}`}
-                  title={`Card details: ${choice.accessibleLabel}`}
-                  onClick={(event) => { event.stopPropagation(); props.onInfo(choice.publicCardFace, event.currentTarget); }}
-                >i</button>}
-              </div>;
-            })}
-          </div>
-        </div>
-        <footer className="card-pool-panel__footer harvest-confirm-row">
-          <span className="card-pool-panel__selection-count harvest-selection-count" aria-live="polite">{props.selectionCount}</span>
-          <button type="button" className="primary card-pool-panel__confirm" disabled={props.confirmDisabled} onClick={props.onConfirm}>{props.actionLabel}</button>
-        </footer>
-        {props.error && <p className="card-pool-panel__error error" role="alert">{props.error}</p>}
-      </>;
-    })()}
-    {targetReadOnly && <div className="card-pool-panel__target-public-zones" role="group" aria-label="Public target card zones">
+    {targetPublicProps && <>
+    <div
+      ref={targetPublicZonesRef}
+      id="card-pool-target-public-zones"
+      className="card-pool-panel__target-public-zones"
+      role={actorTargetProps ? "tabpanel" : "group"}
+      aria-label="Public target card zones"
+      aria-labelledby={activeTargetZone ? `card-pool-target-tab-${activeTargetZone.id}` : undefined}
+      data-target-card-public-zones="true"
+    >
       <div
         className="card-pool-panel__target-public-zone card-pool-panel__target-public-hand"
         data-target-card-public-zone="hand"
-        aria-label={`Hand: ${targetReadOnlyHandCount} face-down cards`}
+        aria-label={`Hand: ${targetPublicHandCount} face-down cards`}
       >
-        <b className="card-pool-panel__target-public-zone-title">HAND · {targetReadOnlyHandCount}</b>
-        {targetReadOnlyHandCount > 0
-          ? <span className="card-pool-panel__target-public-backs" aria-hidden="true">
-            {Array.from({ length: Math.min(targetReadOnlyHandCount, 5) }, (_, index) =>
-              <i className="card-pool-panel__target-public-back" key={index} />)}
-            {targetReadOnlyHandCount > 5 && <small>+{targetReadOnlyHandCount - 5}</small>}
+        <b className="card-pool-panel__target-public-zone-title">HAND · {targetPublicHandCount}</b>
+        {targetPublicHandCount > 0
+          ? <span className={`card-pool-panel__target-public-backs${randomHandSelected ? " pending-choice" : ""}`}>
+            {Array.from({ length: targetPublicHandCount }, (_, index) => {
+              const choice = handChoicesByPosition.get(index);
+              const selected = choice?.state === "selected";
+              const choiceKey = choice?.type === "concealed-position" ? choice.opaqueKey : null;
+              return <span className={`card-pool-panel__target-public-position${selected ? " pending-choice" : ""}`} key={index}>
+                <i className="card-pool-panel__target-public-back" aria-hidden="true" />
+                {actorTargetProps && choice && choiceKey && <button
+                  type="button"
+                  className="card-pool-panel__target-select card-pool-panel__target-public-select harvest-card-select"
+                  disabled={props.disabled || Boolean(choice.selectDisabled)}
+                  aria-pressed={selected}
+                  aria-label={choice.accessibleLabel}
+                  onClick={() => actorTargetProps.onToggle(choiceKey)}
+                />}
+                {actorTargetProps && selected && <span className="card-pool-panel__target-selected" aria-hidden="true">✓</span>}
+              </span>;
+            })}
+            {actorTargetProps && randomHandChoice && <button
+              type="button"
+              className="card-pool-panel__target-select card-pool-panel__target-public-select card-pool-panel__target-public-random-select harvest-card-select"
+              disabled={props.disabled || Boolean(randomHandChoice.selectDisabled)}
+              aria-pressed={randomHandSelected}
+              aria-label={randomHandChoice.accessibleLabel}
+              onClick={() => actorTargetProps.onToggle(randomHandChoice.opaqueKey)}
+            />}
+            {actorTargetProps && randomHandSelected && <span className="card-pool-panel__target-selected" aria-hidden="true">✓</span>}
           </span>
           : <span className="card-pool-panel__target-public-empty">0 cards</span>}
       </div>
       {([
-        { id: "equipment", title: "EQUIPMENT", cards: props.publicTarget.equipmentCards },
-        { id: "judgement", title: "JUDGEMENT", cards: props.publicTarget.judgementCards },
+        { id: "equipment", title: "EQUIPMENT", cards: targetPublicProps.publicTarget.equipmentCards },
+        { id: "judgement", title: "JUDGEMENT", cards: targetPublicProps.publicTarget.judgementCards },
       ] as const).filter((zone) => zone.cards.length > 0).map((zone) => <div
         className="card-pool-panel__target-public-zone"
         data-target-card-public-zone={zone.id}
@@ -239,13 +250,57 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
       >
         <b className="card-pool-panel__target-public-zone-title">{zone.title} · {zone.cards.length}</b>
         <div className="card-pool-panel__target-public-faces">
-          {zone.cards.map((card) => <div
-            className="card-pool-panel__target-public-face"
+          {zone.cards.map((card) => {
+            const choice = publicChoicesById.get(card.id);
+            const selected = choice?.state === "selected";
+            return <div
+            className={`card-pool-panel__target-public-face${selected ? " pending-choice" : ""}`}
             aria-label={`Public ${zone.id}: ${cardDefinition(card.kind).name}`}
             key={card.id}
-          ><CardFace card={card} /></div>)}
+          >
+            <CardFace card={card} />
+            {actorTargetProps && choice && <>
+              <button
+                type="button"
+                className="card-pool-panel__target-select card-pool-panel__target-public-select harvest-card-select"
+                disabled={props.disabled || Boolean(choice.selectDisabled)}
+                aria-pressed={selected}
+                aria-label={choice.accessibleLabel}
+                onClick={() => actorTargetProps.onToggle(choice.eligibleKey)}
+              />
+              {selected && <span className="card-pool-panel__target-selected" aria-hidden="true">✓</span>}
+              <button
+                type="button"
+                className="card-pool-panel__target-info harvest-card-info"
+                aria-label={`Card details: ${choice.accessibleLabel}`}
+                title={`Card details: ${choice.accessibleLabel}`}
+                onClick={(event) => { event.stopPropagation(); actorTargetProps.onInfo(choice.publicCardFace, event.currentTarget); }}
+              >i</button>
+            </>}
+          </div>;
+          })}
         </div>
       </div>)}
-    </div>}
+    </div>
+      {actorTargetProps && actorTargetProps.zones.length > 1 && <div className="card-pool-panel__tabs" role="tablist" aria-label="Eligible card zones">
+        {actorTargetProps.zones.map((zone) => <button
+          key={zone.id}
+          id={`card-pool-target-tab-${zone.id}`}
+          type="button"
+          role="tab"
+          aria-selected={zone.id === activeTargetZone?.id}
+          aria-controls="card-pool-target-public-zones"
+          className="card-pool-panel__tab"
+          onClick={() => focusTargetZone(zone)}
+        >{zone.title}</button>)}
+      </div>}
+      {actorTargetProps && <>
+        <footer className="card-pool-panel__footer harvest-confirm-row">
+          <span className="card-pool-panel__selection-count harvest-selection-count" aria-live="polite">{actorTargetProps.selectionCount}</span>
+          <button type="button" className="primary card-pool-panel__confirm" disabled={actorTargetProps.confirmDisabled} onClick={actorTargetProps.onConfirm}>{actorTargetProps.actionLabel}</button>
+        </footer>
+        {actorTargetProps.error && <p className="card-pool-panel__error error" role="alert">{actorTargetProps.error}</p>}
+      </>}
+    </>}
   </section>;
 }

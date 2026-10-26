@@ -114,15 +114,15 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
     const protectedSelectors = [
       ".player-board > .opponent-player-card",
       ".public-card-display-journey-copy",
-      ...(targetCardSelect ? [
+      ...(targetCardSelect || targetCardReadOnly ? [
         centralTargetLayout ? ".public-card-journey-card" : ".public-card-journey-card.is-current",
         authorReservationSelector,
-      ] : targetCardReadOnly ? [".public-card-journey-card.is-current", authorReservationSelector] : []),
+      ] : []),
       ".public-activity-chip",
       "[data-public-activity-chip]",
       ".visible-countdown",
       ".stage-system-cluster",
-      ".opponent-inspection-floating-shell",
+      ...(!(targetCardSelect || targetCardReadOnly) ? [".opponent-inspection-floating-shell"] : []),
       ".local-player-dock",
       ".local-hand-section",
       ".turn-controls",
@@ -148,7 +148,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
               : null;
           })
           .filter((rect): rect is DOMRect => Boolean(rect));
-        const mobileCentralTarget = centralTargetLayout && targetCardSelect && window.matchMedia("(max-width: 520px)").matches;
+        const mobileCentralTarget = centralTargetLayout && (targetCardSelect || targetCardReadOnly) && window.matchMedia("(max-width: 520px)").matches;
         if (mobileCentralTarget) {
           const board = table.querySelector<HTMLElement>(".player-board");
           const leftSeats = [...(board?.querySelectorAll<HTMLElement>(":scope > [data-side-column='left']") ?? [])]
@@ -315,7 +315,23 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
       }
     };
     observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
+    const inspectorOnlyMutation = (record: MutationRecord) => {
+      if (!(targetCardSelect || targetCardReadOnly)) return false;
+      const target = record.target instanceof Element ? record.target : record.target.parentElement;
+      if (target?.closest(".interaction-stage-inspect-only, .opponent-inspection-floating-shell")) return true;
+      if (record.type === "childList" && target?.classList.contains("interaction-safe-zone")) {
+        const changedElements = [...record.addedNodes, ...record.removedNodes].filter((node): node is Element => node instanceof Element);
+        if (changedElements.length > 0 && changedElements.every((node) => node.matches(".interaction-stage-inspect-only"))) return true;
+      }
+      if (record.type === "attributes" && record.attributeName === "aria-pressed" && target?.matches(".opponent-seat-inspect-button")) return true;
+      if (record.type === "attributes" && record.attributeName === "class" && target?.matches(".opponent-player-card")) {
+        const withoutInspectorState = (value: string) => value.split(/\s+/).filter((token) => token && token !== "is-inspected").sort().join(" ");
+        return withoutInspectorState(record.oldValue ?? "") === withoutInspectorState(target.className);
+      }
+      return false;
+    };
+    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
+      if ((targetCardSelect || targetCardReadOnly) && records.every(inspectorOnlyMutation)) return;
       observeLayout();
       measure();
     });
@@ -325,7 +341,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
     window.visualViewport?.addEventListener("resize", measure);
     table.addEventListener("transitionend", measure);
     table.addEventListener("animationend", measure);
-    mutationObserver?.observe(table, { attributes: true, childList: true, subtree: true, characterData: true });
+    mutationObserver?.observe(table, { attributes: true, attributeOldValue: true, childList: true, subtree: true, characterData: true });
     return () => {
       window.removeEventListener("resize", measure);
       window.visualViewport?.removeEventListener("resize", measure);
