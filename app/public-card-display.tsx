@@ -1535,7 +1535,18 @@ function rectsOverlap(a: CardRect, b: CardRect | DOMRect, gap = 0) {
     && a.top < b.top + b.height + gap && a.top + a.height > b.top - gap;
 }
 
-type TargetCardResultPlacement = { eventId: string; left: number; top: number; limited: boolean };
+type TargetCardResultPlacementDiagnostic = {
+  result: { left: number; top: number; width: number; height: number };
+  blockers: Array<{ selector: string; left: number; top: number; width: number; height: number }>;
+};
+type TargetCardResultPlacement = {
+  eventId: string;
+  left: number;
+  top: number;
+  limited: boolean;
+  limitationReason?: string;
+  diagnostic?: TargetCardResultPlacementDiagnostic;
+};
 
 function measureTargetCardResultPlacement(element: HTMLElement, center: CardRect): Omit<TargetCardResultPlacement, "eventId"> {
   const result = element.getBoundingClientRect();
@@ -1545,16 +1556,44 @@ function measureTargetCardResultPlacement(element: HTMLElement, center: CardRect
   const resultWidth = result.width || Math.min(window.innerWidth * 0.9, 360);
   const resultHeight = result.height || 220;
   const mobile = window.innerWidth <= 480;
+  const protectedSelectors = [
+    ".player-board [data-player-anchor]",
+    ".visible-countdown",
+    ".stage-system-cluster",
+    ".public-activity-chip",
+    ".public-card-journey-card",
+    ".card-pool-target-stage",
+    ".opponent-inspection-floating-shell",
+    ".card-details-panel",
+    ".hero-details-panel",
+    ".local-player-dock",
+  ];
+  const diagnosticRect = (rect: DOMRect | CardRect) => ({
+    left: Math.round(rect.left * 10) / 10,
+    top: Math.round(rect.top * 10) / 10,
+    width: Math.round(rect.width * 10) / 10,
+    height: Math.round(rect.height * 10) / 10,
+  });
   const preferredTop = mobile
     ? center.top - Math.min(70, Math.max(40, Math.round(window.innerHeight * 0.065)))
     : center.top;
   const minLeft = Math.max(8, tableBounds.left + 8);
   const maxLeft = Math.min(window.innerWidth - resultWidth - 8, tableBounds.right - resultWidth - 8);
   const centeredLeft = center.left + center.width / 2 - resultWidth / 2;
-  const left = maxLeft >= minLeft
+  const hasHorizontalSpace = maxLeft >= minLeft;
+  const viewportMaxLeft = Math.max(8, window.innerWidth - resultWidth - 8);
+  const left = hasHorizontalSpace
     ? Math.max(minLeft, Math.min(maxLeft, centeredLeft))
-    : Math.max(8, Math.min(window.innerWidth - resultWidth - 8, centeredLeft));
-  if (!mobile) return { left, top: center.top, limited: false };
+    : Math.max(8, Math.min(viewportMaxLeft, centeredLeft));
+  if (!mobile) return {
+    left,
+    top: center.top,
+    limited: !hasHorizontalSpace,
+    ...(hasHorizontalSpace ? {} : {
+      limitationReason: "no-horizontal-safe-corridor",
+      diagnostic: { result: diagnosticRect({ left, top: center.top, width: resultWidth, height: resultHeight }), blockers: [] },
+    }),
+  };
 
   const dockTop = dock?.getBoundingClientRect().top ?? window.innerHeight;
   const minTop = Math.max(8, tableBounds.top + 8);
@@ -1572,13 +1611,16 @@ function measureTargetCardResultPlacement(element: HTMLElement, center: CardRect
   const candidates = new Set<number>([low, high, clampedPreferred]);
   for (let top = low; top <= high; top += 8) candidates.add(top);
 
-  const obstacles = table
-    ? [...table.querySelectorAll<HTMLElement>(
-      ".player-board [data-player-anchor], .visible-countdown, .stage-system-cluster, .public-activity-chip, .public-card-journey-card",
-    )].map((obstacle) => obstacle.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0)
-    : [];
+  const obstacles = [...document.querySelectorAll<HTMLElement>(protectedSelectors.join(","))].flatMap((element) => {
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) <= 0.01
+      || rect.width <= 0 || rect.height <= 0) return [];
+    const selector = protectedSelectors.find((candidate) => element.matches(candidate)) ?? "protected-surface";
+    return [{ selector, rect }];
+  });
   for (const obstacle of obstacles) {
-    for (const edge of [obstacle.bottom + 12, obstacle.top - resultHeight - 12]) {
+    for (const edge of [obstacle.rect.bottom + 12, obstacle.rect.top - resultHeight - 12]) {
       if (edge >= low && edge <= high) candidates.add(edge);
     }
   }
@@ -1586,15 +1628,30 @@ function measureTargetCardResultPlacement(element: HTMLElement, center: CardRect
   const ranked = [...candidates].map((top) => ({
     top,
     rect: { left, top, width: resultWidth, height: resultHeight },
-    overlapCount: obstacles.reduce((count, obstacle) => count + (rectsOverlap({ left, top, width: resultWidth, height: resultHeight }, obstacle, 12) ? 1 : 0), 0),
+    overlapCount: obstacles.reduce((count, obstacle) => count + (rectsOverlap({ left, top, width: resultWidth, height: resultHeight }, obstacle.rect, 12) ? 1 : 0), 0),
     distance: Math.abs(top - preferredTop),
   })).sort((a, b) => a.overlapCount - b.overlapCount || a.distance - b.distance);
   const clear = ranked.find((candidate) => candidate.overlapCount === 0);
   const selected = clear ?? ranked[0];
+  const selectedTop = selected?.top ?? clampedPreferred;
+  const selectedRect = { left, top: selectedTop, width: resultWidth, height: resultHeight };
+  const blockingRects = obstacles
+    .filter((obstacle) => rectsOverlap(selectedRect, obstacle.rect, 12))
+    .map((obstacle) => ({ selector: obstacle.selector, ...diagnosticRect(obstacle.rect) }));
+  const limitationReasons = [
+    !hasHorizontalSpace ? "no-horizontal-safe-corridor" : null,
+    !hasVerticalSpace ? "no-vertical-safe-corridor" : null,
+    !clear ? "protected-surface-overlap" : null,
+  ].filter((reason): reason is string => Boolean(reason));
+  const limited = limitationReasons.length > 0;
   return {
     left,
-    top: selected?.top ?? clampedPreferred,
-    limited: !hasVerticalSpace || !clear,
+    top: selectedTop,
+    limited,
+    ...(limited ? {
+      limitationReason: limitationReasons.join(","),
+      diagnostic: { result: diagnosticRect(selectedRect), blockers: blockingRects },
+    } : {}),
   };
 }
 
@@ -4778,44 +4835,89 @@ function SingleTargetCardJourney({
   const fallbackResultLift = typeof window !== "undefined" && window.innerWidth <= 480
     ? Math.min(70, Math.max(40, Math.round(window.innerHeight * 0.065)))
     : 0;
+  const resultViewportWidth = typeof window === "undefined" ? 360 : window.innerWidth;
+  const fallbackResultWidth = Math.min(resultViewportWidth * 0.9, 360);
+  const fallbackResultLeft = targetCardResultCenter
+    ? Math.max(8, Math.min(resultViewportWidth - fallbackResultWidth - 8,
+      targetCardResultCenter.left + targetCardResultCenter.width / 2 - fallbackResultWidth / 2))
+    : 8;
   useLayoutEffect(() => {
     if (!targetCardResultActive || !targetCardResultEventId || !targetCardResultCenter) return;
     const element = targetCardResultRef.current;
     if (!element) return;
     let frame = 0;
+    const protectedSelector = [
+      ".player-board [data-player-anchor]",
+      ".visible-countdown",
+      ".stage-system-cluster",
+      ".public-activity-chip",
+      ".public-card-journey-card",
+      ".card-pool-target-stage",
+      ".opponent-inspection-floating-shell",
+      ".card-details-panel",
+      ".hero-details-panel",
+      ".local-player-dock",
+    ].join(",");
+    let observer: ResizeObserver | null = null;
+    const observeProtectedSurfaces = () => {
+      document.querySelectorAll<HTMLElement>(protectedSelector).forEach((target) => observer?.observe(target));
+    };
     const measure = () => {
       if (frame) window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
         frame = 0;
+        observeProtectedSurfaces();
         const next = measureTargetCardResultPlacement(element, targetCardResultCenter);
         setTargetCardResultPlacement((current) => current?.eventId === targetCardResultEventId
           && Math.abs(current.left - next.left) < 0.5
           && Math.abs(current.top - next.top) < 0.5
           && current.limited === next.limited
+          && current.limitationReason === next.limitationReason
+          && JSON.stringify(current.diagnostic) === JSON.stringify(next.diagnostic)
           ? current
           : { ...next, eventId: targetCardResultEventId });
       });
     };
-    measure();
+    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     const table = document.querySelector<HTMLElement>(".play-table");
     const dock = document.querySelector<HTMLElement>(".local-player-dock");
     const board = table?.querySelector<HTMLElement>(".player-board");
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     [element, table, dock, table?.querySelector<HTMLElement>(".stage-system-cluster"), table?.querySelector<HTMLElement>(".public-activity-chip")]
       .filter((target): target is HTMLElement => Boolean(target))
       .forEach((target) => observer?.observe(target));
+    observeProtectedSurfaces();
     const boardObserver = typeof MutationObserver === "undefined" || !board
       ? null
       : new MutationObserver(measure);
     boardObserver?.observe(board!, { attributes: true, childList: true, subtree: true, attributeFilter: ["class", "style", "data-player-anchor"] });
+    const overlayObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
+      const changedProtectedSurface = records.some((record) => {
+        if (record.type === "attributes" && record.target instanceof HTMLElement) {
+          return record.target.matches(protectedSelector) || Boolean(record.target.closest(protectedSelector));
+        }
+        return [...record.addedNodes, ...record.removedNodes].some((node) => node instanceof HTMLElement
+          && (node.matches(protectedSelector) || Boolean(node.querySelector(protectedSelector))));
+      });
+      if (changedProtectedSurface) measure();
+    });
+    overlayObserver?.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["class", "style", "aria-hidden", "hidden"],
+      childList: true,
+      subtree: true,
+    });
+    measure();
     window.addEventListener("resize", measure);
     window.visualViewport?.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("scroll", measure);
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
       observer?.disconnect();
       boardObserver?.disconnect();
+      overlayObserver?.disconnect();
       window.removeEventListener("resize", measure);
       window.visualViewport?.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("scroll", measure);
     };
   }, [targetCardResultActive, targetCardResultCenter, targetCardResultEventId]);
   useEffect(() => {
@@ -4947,12 +5049,18 @@ function SingleTargetCardJourney({
       aria-live="polite"
       aria-label={announcementCopy.accessibleLabel ?? announcementCopy.message}
       data-public-card-target-result="true"
+      data-public-card-target-result-event-id={action.settlement.eventId}
+      data-public-card-target-result-placement-ready={currentTargetCardResultPlacement ? "true" : "false"}
       data-public-card-target-result-placement-limited={currentTargetCardResultPlacement?.limited ? "true" : undefined}
+      data-public-card-target-result-placement-reason={currentTargetCardResultPlacement?.limitationReason}
+      data-public-card-target-result-placement-geometry={currentTargetCardResultPlacement?.diagnostic
+        ? JSON.stringify(currentTargetCardResultPlacement.diagnostic)
+        : undefined}
       data-public-card-target-result-placement-offset-px={targetCardResultCenter
         ? Math.round((currentTargetCardResultPlacement?.top ?? targetCardResultCenter.top - fallbackResultLift) - targetCardResultCenter.top)
         : undefined}
       style={{
-        left: `${currentTargetCardResultPlacement?.left ?? journey.center.left + journey.center.width / 2}px`,
+        left: `${currentTargetCardResultPlacement?.left ?? fallbackResultLeft}px`,
         top: `${currentTargetCardResultPlacement?.top ?? journey.center.top - fallbackResultLift}px`,
       }}
     >

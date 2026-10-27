@@ -1501,6 +1501,8 @@ test("T3-F1 R4 preserves the Steal root, hides spectator pools, and reads the pr
       await expect(resultCopy).toBeVisible();
       await expect(resultCopy).toHaveText("SOURCE took 1 hidden card from TARGET (Hand).");
       await expect(resultGroup).toHaveAttribute("aria-label", "SOURCE took one concealed card from TARGET's Hand into SOURCE's Hand. The stolen card identity is not public.");
+      await expect(resultGroup).toHaveAttribute("data-public-card-target-result-event-id", settlement.eventId);
+      await expect(resultGroup).toHaveAttribute("data-public-card-target-result-placement-ready", "true");
       const resultOffset = Number(await resultGroup.getAttribute("data-public-card-target-result-placement-offset-px"));
       expect(resultOffset).toBeGreaterThanOrEqual(-70);
       expect(resultOffset).toBeLessThanOrEqual(-40);
@@ -1511,11 +1513,33 @@ test("T3-F1 R4 preserves the Steal root, hides spectator pools, and reads the pr
           .map((seat) => seat.getBoundingClientRect().bottom);
         const card = element.querySelector(".public-target-card-result__card")?.getBoundingClientRect();
         const copy = element.querySelector(".public-target-card-result__copy")?.getBoundingClientRect();
-        return { top: rect.top, bottom: rect.bottom, dockTop: dock?.top ?? innerHeight, maxSeatBottom: Math.max(0, ...seatBottoms), cardBottom: card?.bottom ?? 0, copyTop: copy?.top ?? 0 };
+        return {
+          left: rect.left,
+          right: rect.right,
+          styleLeft: Number.parseFloat(element.style.left),
+          transform: getComputedStyle(element).transform,
+          top: rect.top,
+          bottom: rect.bottom,
+          dockTop: dock?.top ?? innerHeight,
+          maxSeatBottom: Math.max(0, ...seatBottoms),
+          cardBottom: card?.bottom ?? 0,
+          copyTop: copy?.top ?? 0,
+          placementLimited: element.dataset.publicCardTargetResultPlacementLimited === "true",
+          limitationReason: element.dataset.publicCardTargetResultPlacementReason ?? null,
+          placementGeometry: element.dataset.publicCardTargetResultPlacementGeometry ?? null,
+        };
       });
+      expect(resultGeometry.left).toBeGreaterThanOrEqual(0);
+      expect(resultGeometry.right).toBeLessThanOrEqual(390);
+      expect(Math.abs(resultGeometry.left - resultGeometry.styleLeft)).toBeLessThan(1);
+      expect(resultGeometry.transform).toBe("none");
       expect(resultGeometry.top).toBeGreaterThanOrEqual(resultGeometry.maxSeatBottom + 10);
       expect(resultGeometry.bottom).toBeLessThanOrEqual(resultGeometry.dockTop - 10);
       expect(resultGeometry.copyTop).toBeGreaterThanOrEqual(resultGeometry.cardBottom);
+      if (resultGeometry.placementLimited) {
+        expect(resultGeometry.limitationReason).toBeTruthy();
+        expect(JSON.parse(resultGeometry.placementGeometry)).toMatchObject({ result: { left: resultGeometry.left, top: resultGeometry.top } });
+      }
       await expect(resultCard).not.toHaveAttribute("data-public-card-target-result-card-id");
       await expect(resultCard.locator(".public-target-card-result__back")).toBeVisible();
       expect(await resultCard.innerHTML()).not.toContain(hidden.id);

@@ -6497,6 +6497,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const dismantleSettlementCandidate = (() => {
     const settlement = dismantleSettlements.find((candidate) => candidate.eventId === activeDismantleSettlement?.eventId);
     if (!settlement || settlement.semantics !== "PROVEN" || settlement.outcome !== "DISMANTLE_RESOLVED") return null;
+    const liveRootEventId = clientPresentation.rootAction?.rootEventId;
+    if (liveRootEventId && liveRootEventId !== settlement.rootEventId) return null;
     const rootEvents = room.timeline.filter((event) => event.id === settlement.rootEventId);
     const settlementEvents = room.timeline.filter((event) => event.id === settlement.eventId);
     if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
@@ -6538,6 +6540,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const stealSettlementCandidate = (() => {
     const settlement = stealSettlements.find((candidate) => candidate.eventId === activeStealSettlement?.eventId);
     if (!settlement || settlement.semantics !== "PROVEN" || settlement.outcome !== "STEAL_RESOLVED") return null;
+    const liveRootEventId = clientPresentation.rootAction?.rootEventId;
+    if (liveRootEventId && liveRootEventId !== settlement.rootEventId) return null;
     const rootEvents = room.timeline.filter((event) => event.id === settlement.rootEventId);
     const settlementEvents = room.timeline.filter((event) => event.id === settlement.eventId);
     if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
@@ -8559,6 +8563,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && activeTargetCardSettlement.journeySettled);
   const activeTargetCardSettlementExiting = Boolean(activeTargetCardSettlement?.eventId === activeTargetCardSettlementEventId
     && activeTargetCardSettlement.exiting);
+  const activeDismantleSettlementEventKey = activeDismantleSettlement?.eventId ?? null;
+  const activeStealSettlementEventKey = activeStealSettlement?.eventId ?? null;
   useEffect(() => {
     const updateScope = (current: { eventId: string; roomCode: string; viewerId: string; exiting: boolean; journeySettled: boolean; resultVisibleSinceMs: number | null } | null) => {
       if (!current) return null;
@@ -8569,6 +8575,25 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     setActiveDismantleSettlement(updateScope);
     setActiveStealSettlement(updateScope);
   }, [room.code, room.meId]);
+  useEffect(() => {
+    const liveRootEventId = clientPresentation.rootAction?.rootEventId;
+    if (!liveRootEventId) return;
+    const supersededDismantleEventId = activeDismantleSettlementEventKey
+      && dismantleSettlements.find((proof) => proof.eventId === activeDismantleSettlementEventKey)?.rootEventId !== liveRootEventId
+      ? activeDismantleSettlementEventKey
+      : null;
+    const supersededStealEventId = activeStealSettlementEventKey
+      && stealSettlements.find((proof) => proof.eventId === activeStealSettlementEventKey)?.rootEventId !== liveRootEventId
+      ? activeStealSettlementEventKey
+      : null;
+    if (supersededDismantleEventId) {
+      setActiveDismantleSettlement((current) => current?.eventId === supersededDismantleEventId ? null : current);
+    }
+    if (supersededStealEventId) {
+      setActiveStealSettlement((current) => current?.eventId === supersededStealEventId ? null : current);
+    }
+  }, [activeDismantleSettlementEventKey, activeStealSettlementEventKey, clientPresentation.rootAction?.rootEventId,
+    dismantleSettlements, stealSettlements]);
   useEffect(() => {
     if (!activeTargetCardSettlementEventId || !activeTargetCardSettlementJourneySettled
       || !publicCardDisplayReady || activeTargetCardSettlementExiting
@@ -8612,10 +8637,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const hasReadableResult = () => {
       const display = [...document.querySelectorAll<HTMLElement>('[data-public-card-display="true"]')]
         .find((element) => element.dataset.publicCardSettlementEventId === eventId);
+      const group = display?.querySelector<HTMLElement>(`[data-public-card-target-result-event-id="${CSS.escape(eventId)}"]`);
       const card = display?.querySelector<HTMLElement>(`[data-public-card-target-result-card-event-id="${CSS.escape(eventId)}"]`);
       const copy = display?.querySelector<HTMLElement>(`[data-public-card-target-result-copy-event-id="${CSS.escape(eventId)}"]`);
       if (!display || display.dataset.publicCardTargetResultActive !== "true"
-        || display.dataset.publicCardReady !== "true" || !isVisibleInViewport(card) || !isVisibleInViewport(copy)) return false;
+        || display.dataset.publicCardReady !== "true"
+        || group?.dataset.publicCardTargetResultPlacementReady !== "true"
+        || !isVisibleInViewport(group) || !isVisibleInViewport(card) || !isVisibleInViewport(copy)) return false;
+      const groupRect = group!.getBoundingClientRect();
       const cardRect = card!.getBoundingClientRect();
       const copyRect = copy!.getBoundingClientRect();
       const blockingOverlay = [...document.querySelectorAll<HTMLElement>(
@@ -8627,7 +8656,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         return [cardRect, copyRect].some((content) => content.left < rect.right && content.right > rect.left
           && content.top < rect.bottom && content.bottom > rect.top);
       });
-      return !blockingOverlay;
+      return group!.dataset.publicCardTargetResultEventId === eventId && !blockingOverlay
+        && groupRect.left >= 0 && groupRect.right <= window.innerWidth
+        && groupRect.top >= 0 && groupRect.bottom <= window.innerHeight;
     };
     const sampleVisibleRead = (now: number) => {
       if (!hasReadableResult()) {
