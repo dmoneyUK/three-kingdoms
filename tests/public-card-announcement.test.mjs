@@ -185,7 +185,7 @@ test("public battle announcements keep proof-backed event meaning in concise cop
       targetCardMovement: { sourceZone: "hand", affectedCardOwnerId: "target", destinationZone: "hand", destinationOwnerId: "source" },
     } }),
     "Source played Steal targeting Target", "Source", "Source", "Target",
-  ), "Source took one card from Target.");
+  ), "Source took 1 hidden card from Target (Hand).");
 
   assert.equal(publicCardAnnouncement(
     action({ cardLabel: "STEAL", settlement: {
@@ -196,7 +196,7 @@ test("public battle announcements keep proof-backed event meaning in concise cop
       },
     } }),
     "Source played Steal targeting Target", "Source", "Source", "Target",
-  ), "Source took Zhuge Crossbow (A♦) from Target.");
+  ), "Source took Zhuge Crossbow from Target (Equipment).");
 
   assert.equal(publicCardAnnouncement(
     action({ cardLabel: "STEAL", settlement: {
@@ -207,7 +207,7 @@ test("public battle announcements keep proof-backed event meaning in concise cop
       },
     } }),
     "Source played Steal targeting Target", "Source", "Source", "Target",
-  ), "Source took Lightning (K♣) from Target.");
+  ), "Source took Lightning from Target (Judgement).");
 
   assert.equal(publicCardAnnouncement(
     action({ cardLabel: "STEAL", settlement: {
@@ -245,7 +245,23 @@ test("public battle announcements keep proof-backed event meaning in concise cop
       },
     } }),
     "Source played Burning Bridge targeting Target", "Source", "Source", "Target",
-  ), "Source discarded Peach (3♥) from Target's Hand to the discard pile.");
+  ), "Source discarded Peach from Target (Hand).");
+
+  for (const [zone, cardFace, ownerId] of [
+    ["equipment", { id: "discarded-equipment", kind: "NioShield", suit: "♠", rank: "2" }, "target"],
+    ["judgement", { id: "discarded-judgement", kind: "Lightning", suit: "♦", rank: "A" }, null],
+  ]) {
+    assert.equal(publicCardAnnouncement(
+      action({ cardLabel: "BURNING BRIDGE", settlement: {
+        eventId: `dismantle-${zone}`, outcome: "DISMANTLE_RESOLVED", exiting: false,
+        targetCardMovement: {
+          sourceZone: zone, affectedCardOwnerId: ownerId, destinationZone: "discard", destinationOwnerId: null,
+          affectedCardFace: cardFace,
+        },
+      } }),
+      "Source played Burning Bridge targeting Target", "Source", "Source", "Target",
+    ), `Source discarded ${zone === "equipment" ? "Nio Shield" : "Lightning"} from Target (${zone === "judgement" ? "Judgement" : "Equipment"}).`);
+  }
 
   assert.equal(publicCardAnnouncement(
     action({ cardLabel: "RAINING ARROWS", ariaLabel: "Source played Raining Arrows. 4 targets resolved.", settlement: { eventId: "settlement", outcome: "GROUP_RESOLVED", exiting: false } }),

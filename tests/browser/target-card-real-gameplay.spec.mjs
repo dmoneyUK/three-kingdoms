@@ -159,10 +159,9 @@ async function expectTargetPool(page, title, instruction, cta) {
   const instructionNode = pool.locator(".card-pool-panel__instruction");
   if (mergedPhoneSelection) {
     const mergedTitle = (await titleNode.innerText()).replace(/\s+/g, " ").trim();
-    expect(mergedTitle).toMatch(new RegExp(`^.+ played ${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} on .+\\.$`));
-    const action = title === "Steal" ? "obtain" : "discard";
-    await expect(instructionNode).toHaveText(`You are choosing one card to ${action}`);
-    await expect(pool).toHaveAccessibleName(`${mergedTitle} You are choosing one card to ${action}.`);
+    expect(mergedTitle).toMatch(/^.+ choosing a card to (take|discard) from .+\.$/);
+    await expect(instructionNode).toHaveText("Choose one card");
+    await expect(pool).toHaveAccessibleName(`${mergedTitle} Choose one card.`);
     await expect(page.locator(".public-card-display-journey-copy")).toHaveCount(0);
     await expect(page.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toHaveCount(0);
   } else {
@@ -259,6 +258,19 @@ async function expectTargetPool(page, title, instruction, cta) {
     }
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(geometry.viewportWidth);
+  const miniBadges = pool.locator('[data-target-card-public-zone="equipment"] .card-pool-panel__target-public-face > .played-card > i, [data-target-card-public-zone="judgement"] .card-pool-panel__target-public-face > .played-card > i');
+  for (const badge of await miniBadges.all()) {
+    const badgeGeometry = await badge.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const secondary = element.querySelector("small");
+      return {
+        width: style.width, height: style.minHeight, left: style.left, top: style.top, fontSize: style.fontSize,
+        secondaryFontSize: secondary ? getComputedStyle(secondary).fontSize : null,
+      };
+    });
+    expect(badgeGeometry).toMatchObject({ width: "12px", height: "16px", left: "2px", top: "2px", fontSize: "6.5px" });
+    if (badgeGeometry.secondaryFontSize) expect(badgeGeometry.secondaryFontSize).toBe("5.5px");
+  }
   return pool;
 }
 
@@ -270,8 +282,8 @@ async function expectTargetChoiceCue(page, { actor = false, sourceName = "SOURCE
     && await stage.getAttribute("data-target-card-pool-layout") === "central";
   if (merged) {
     await expect(activityCue).toHaveCount(0);
-    const instruction = action === "Steal" ? "You are choosing one card to obtain" : "You are choosing one card to discard";
-    await expect(pool).toHaveAccessibleName(`${sourceName} played ${action === "Dismantle" ? "Burning Bridge" : action} on ${targetName}. ${instruction}.`);
+    const verb = action === "Steal" ? "take" : "discard";
+    await expect(pool).toHaveAccessibleName(`${sourceName} choosing a card to ${verb} from ${targetName}. Choose one card.`);
     return null;
   }
   const verb = action === "Steal" ? "take" : "discard";
@@ -485,7 +497,7 @@ async function openRealTargetCardDecision({ page, request, kind, viewport, handC
   for (const concealed of hidden) expect(JSON.stringify(actorView.currentAction)).not.toContain(concealed.id);
 
   const title = kind === "Dismantle" ? "Burning Bridge" : "Steal";
-  const instruction = kind === "Dismantle" ? "Choose 1 card to discard" : "Choose 1 card to obtain";
+  const instruction = "Choose one card";
   const dialog = await expectTargetPool(page, title, instruction, `Use ${title}`);
   return { seed, actorView, dialog, hidden, weapon, armor, delayed, title };
 }
@@ -577,7 +589,7 @@ test("mandatory target-card picker keeps actor inspection and TEST SWITCH toucha
       localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name: playerName }));
     }, { roomCode: code, sessionToken: token, playerName: name });
     await page.goto(`${API}/`);
-    const dialog = await expectTargetPool(page, "Steal", "Choose 1 card to obtain", "Use Steal");
+    const dialog = await expectTargetPool(page, "Steal", "Choose one card", "Use Steal");
     const hidden = dialog.getByRole("button", { name: "Choose hidden Hand position 1" });
     await expect(hidden).toBeEnabled({ timeout: 15_000 });
     await tapMobile(page, hidden);
@@ -660,7 +672,7 @@ for (const kind of ["Steal", "Dismantle"]) {
     expect(JSON.stringify(actorView.currentAction)).not.toContain(hidden[1].id);
 
     const action = kind === "Steal" ? "Steal" : "Burning Bridge";
-    const instruction = kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
+    const instruction = "Choose one card";
     const dialog = await expectTargetPool(page, action, instruction, `Use ${action}`);
     if (kind === "Dismantle" && await page.evaluate(() => innerWidth) <= 520) {
       await expect(page.locator('[data-public-card-display="true"] [data-public-card-announcement="true"]')).toHaveCount(0);
@@ -743,7 +755,7 @@ test("T3-F1 R4-A hides spectator target pools and keeps the actor pool position 
     expect(actorView.currentAction.targetCardSelection.targetId).toBe(seed.players[1].id);
     const actorStage = actorPage.locator(".card-pool-target-stage[data-target-card-choice-actor]");
     await expect(actorStage).toHaveAttribute("data-target-card-pool-revision", String(actorView.actionRevision));
-    const actorPool = await expectTargetPool(actorPage, "Steal", "Choose 1 card to obtain", "Use Steal");
+    const actorPool = await expectTargetPool(actorPage, "Steal", "Choose one card", "Use Steal");
     await expect(actorPool.getByRole("tablist", { name: "Eligible card zones" }).getByRole("tab")).toHaveCount(3);
 
     await openGame(spectatorPage, seed, 2, { width: 390, height: 844 });
@@ -876,8 +888,9 @@ for (const kind of ["Steal", "Dismantle"]) {
           await expect(actorStage).toHaveAttribute("data-target-card-pool-ready", "true", { timeout: 12_000 });
           await expect(chip).toHaveCount(0);
           await expect(viewerPage.locator(".public-card-display-journey-copy")).toHaveCount(0);
-          await expect(viewerPage.locator(".card-pool-panel__title")).toContainText(new RegExp(`played ${modalTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} on TARGET\\.`));
-          await expect(viewerPage.locator(".card-pool-panel__instruction")).toContainText("You are choosing one card");
+          const verb = kind === "Steal" ? "take" : "discard";
+          await expect(viewerPage.locator(".card-pool-panel__title")).toContainText(`choosing a card to ${verb} from TARGET.`);
+          await expect(viewerPage.locator(".card-pool-panel__instruction")).toHaveText("Choose one card");
         } else {
           await expect(chip).toHaveAttribute("data-public-activity-kind", "target-card-choice", { timeout: 15_000 });
           await expect(chip).toBeVisible();
@@ -928,7 +941,7 @@ for (const kind of ["Steal", "Dismantle"]) {
         await testInfo.attach(`${kind.toLowerCase()}-public-choice-view-${index + 1}-390x844`, { path, contentType: "image/png" });
       }
 
-      const instruction = kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
+      const instruction = "Choose one card";
       const dialog = await expectTargetPool(actorPage, modalTitle, instruction, `Use ${modalTitle}`);
       const hiddenCard = dialog.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
       await hiddenCard.click();
@@ -994,7 +1007,7 @@ test("settled Steal and Burning Bridges share proven source-to-destination outco
       await passEmptyResponses(request, seed);
 
       const kindTitle = kind === "Steal" ? "Steal" : "Burning Bridge";
-      const instruction = kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
+      const instruction = "Choose one card";
       const dialog = await expectTargetPool(pages[0], kindTitle, instruction, `Use ${kindTitle}`);
       if (zone === "equipment") await dialog.getByRole("tab", { name: "EQUIPMENT 1" }).click();
       if (zone === "judgement") await dialog.getByRole("tab", { name: "JUDGEMENT 1" }).click();
@@ -1051,12 +1064,11 @@ test("settled Steal and Burning Bridges share proven source-to-destination outco
 
       const expectedOutcome = effect === "Steal" ? "STEAL_RESOLVED" : "DISMANTLE_RESOLVED";
       const expectedFaceId = publiclyIdentified ? affected.id : null;
-      const expectedName = publiclyIdentified
-        ? `${zone === "hand" ? "Peach" : zone === "equipment" ? "Nio Shield" : "Lightning"} (${affected.rank}${affected.suit})`
-        : "one card";
+      const expectedName = publiclyIdentified ? zone === "hand" ? "Peach" : zone === "equipment" ? "Nio Shield" : "Lightning" : null;
+      const zoneName = zone[0].toUpperCase() + zone.slice(1);
       const expectedCopy = effect === "Steal"
-        ? `SOURCE took ${zone === "hand" ? "one card" : expectedName} from TARGET.`
-        : `SOURCE discarded ${expectedName} from TARGET's ${zone[0].toUpperCase()}${zone.slice(1)} to the discard pile.`;
+        ? zone === "hand" ? "SOURCE took 1 hidden card from TARGET (Hand)." : `SOURCE took ${expectedName} from TARGET (${zoneName}).`
+        : `SOURCE discarded ${expectedName} from TARGET (${zoneName}).`;
 
       await Promise.all(pages.map(async (viewerPage, index) => {
         const journey = viewerPage.locator('[data-public-card-display="true"]');
@@ -1405,7 +1417,7 @@ test("T3-F1 R4 preserves the Steal root, hides spectator pools, and reads the pr
     expect(choiceProjection.currentAction).toMatchObject({ kind: "target_card", actorId: authorId });
     expect(choiceProjection.pendingTargetCard).toMatchObject({ kind: "target_card", actorId: authorId, sourceId: authorId });
     await Promise.all(pages.map((page) => page.evaluate(() => { window.__t3ChoiceProjectionConfirmedAt = performance.now(); })));
-    const waitingPool = await expectTargetPool(pages[0], "Steal", "Choose 1 card to obtain", "Use Steal");
+    const waitingPool = await expectTargetPool(pages[0], "Steal", "Choose one card", "Use Steal");
     const spectatorActivity = pages[1].locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]');
     await expect(pages[1].locator(".card-pool-target-stage--spectator, .card-pool-panel--target-readonly")).toHaveCount(0);
     await expect(spectatorActivity).toBeVisible();
@@ -1484,9 +1496,26 @@ test("T3-F1 R4 preserves the Steal root, hides spectator pools, and reads the pr
       await expect(display).toHaveAttribute("data-public-card-settlement-outcome", "STEAL_RESOLVED", { timeout: 15_000 });
       const resultCard = page.locator(`[data-public-card-target-result-card-event-id="${settlement.eventId}"]`);
       const resultCopy = page.locator(`[data-public-card-target-result-copy-event-id="${settlement.eventId}"]`);
+      const resultGroup = page.locator('[data-public-card-target-result="true"]');
       await expect(resultCard).toBeVisible();
       await expect(resultCopy).toBeVisible();
-      await expect(resultCopy).toHaveText("SOURCE took one card from TARGET.");
+      await expect(resultCopy).toHaveText("SOURCE took 1 hidden card from TARGET (Hand).");
+      await expect(resultGroup).toHaveAttribute("aria-label", "SOURCE took one concealed card from TARGET's Hand into SOURCE's Hand. The stolen card identity is not public.");
+      const resultOffset = Number(await resultGroup.getAttribute("data-public-card-target-result-placement-offset-px"));
+      expect(resultOffset).toBeGreaterThanOrEqual(-70);
+      expect(resultOffset).toBeLessThanOrEqual(-40);
+      const resultGeometry = await resultGroup.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const dock = document.querySelector(".local-player-dock")?.getBoundingClientRect();
+        const seatBottoms = [...document.querySelectorAll(".play-table .player-board [data-player-anchor]")]
+          .map((seat) => seat.getBoundingClientRect().bottom);
+        const card = element.querySelector(".public-target-card-result__card")?.getBoundingClientRect();
+        const copy = element.querySelector(".public-target-card-result__copy")?.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom, dockTop: dock?.top ?? innerHeight, maxSeatBottom: Math.max(0, ...seatBottoms), cardBottom: card?.bottom ?? 0, copyTop: copy?.top ?? 0 };
+      });
+      expect(resultGeometry.top).toBeGreaterThanOrEqual(resultGeometry.maxSeatBottom + 10);
+      expect(resultGeometry.bottom).toBeLessThanOrEqual(resultGeometry.dockTop - 10);
+      expect(resultGeometry.copyTop).toBeGreaterThanOrEqual(resultGeometry.cardBottom);
       await expect(resultCard).not.toHaveAttribute("data-public-card-target-result-card-id");
       await expect(resultCard.locator(".public-target-card-result__back")).toBeVisible();
       expect(await resultCard.innerHTML()).not.toContain(hidden.id);
@@ -1711,7 +1740,7 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
       }
 
       const modalTitle = scenario.kind === "Steal" ? "Steal" : "Burning Bridge";
-      const instruction = scenario.kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
+      const instruction = "Choose one card";
       const dialog = await expectTargetPool(pages[0], modalTitle, instruction, `Use ${modalTitle}`);
       const populatedZoneCount = [hiddenHand.length > 0, Boolean(equipment), judgement.length > 0].filter(Boolean).length;
       if (populatedZoneCount > 1) {
@@ -1757,11 +1786,15 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
         : scenario.zone === "equipment" ? equipment.armor : judgement[0];
       const faceIsPublic = scenario.kind === "Dismantle" || scenario.zone !== "hand";
       const outcome = scenario.kind === "Steal" ? "STEAL_RESOLVED" : "DISMANTLE_RESOLVED";
-      const cardLabel = faceIsPublic ? `${scenario.zone === "equipment" ? "Nio Shield" : scenario.zone === "judgement" ? "Lightning" : "Peach"} (${affected.rank}${affected.suit})` : "one card";
+      const cardLabel = faceIsPublic ? scenario.zone === "equipment" ? "Nio Shield" : scenario.zone === "judgement" ? "Lightning" : "Peach" : null;
       const sourceZoneLabel = scenario.zone[0].toUpperCase() + scenario.zone.slice(1);
+      const visibleSourceName = scenario.seats === 8 ? "Cao Cao" : sourceName;
+      const visibleTargetName = scenario.seats === 8 ? "Simayi" : targetName;
       const expectedCopy = scenario.kind === "Steal"
-        ? `${sourceName} took ${cardLabel} from ${targetName}'s ${sourceZoneLabel} into ${sourceName}'s Hand.`
-        : `${sourceName} discarded ${cardLabel} from ${targetName}'s ${sourceZoneLabel} to the discard pile.`;
+        ? scenario.zone === "hand"
+          ? `${visibleSourceName} took 1 hidden card from ${visibleTargetName} (Hand).`
+          : `${visibleSourceName} took ${cardLabel} from ${visibleTargetName} (${sourceZoneLabel}).`
+        : `${visibleSourceName} discarded ${cardLabel} from ${visibleTargetName} (${sourceZoneLabel}).`;
       await Promise.all(pages.map(async (viewerPage, index) => {
         const display = viewerPage.locator('[data-public-card-display="true"]');
         await expect(display).toHaveCount(1);
@@ -1770,15 +1803,7 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
         await expect(display).toHaveAttribute("data-public-card-settlement-source-zone", scenario.zone, { timeout: 15_000 });
         await expect(display).toHaveAttribute("data-public-card-settlement-destination-zone", scenario.kind === "Steal" ? "hand" : "discard", { timeout: 15_000 });
         const announcement = viewerPage.locator('[data-public-card-announcement="true"]');
-        if (scenario.longNames) {
-          await expect(announcement).toContainText(`${cardLabel} from`);
-          await expect(announcement).toContainText(`${sourceZoneLabel} to the discard pile.`);
-          await expect(announcement).toContainText("discarded");
-        } else if (scenario.seats === 8) {
-          await expect(announcement).toContainText(`Cao Cao took ${cardLabel} from Simayi's ${sourceZoneLabel} into Cao Cao's Hand.`);
-        } else {
-          await expect(announcement).toContainText(expectedCopy);
-        }
+        await expect(announcement).toHaveText(expectedCopy);
         const copyGeometry = await announcement.evaluate((element) => {
           const rect = element.getBoundingClientRect();
           return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth, clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, viewportWidth: innerWidth, viewportHeight: innerHeight };
@@ -1838,7 +1863,7 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
           await expect(viewerPage.locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-root-event-id", nextRootEvent.id);
           await expect(viewerPage.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`)).toHaveCount(0);
         }
-        const nextDialog = await expectTargetPool(pages[0], "Burning Bridge", "Choose 1 card to discard", "Use Burning Bridge");
+        const nextDialog = await expectTargetPool(pages[0], "Burning Bridge", "Choose one card", "Use Burning Bridge");
         await nextDialog.getByRole("tab", { name: "EQUIPMENT 1" }).click();
         const armorChoice = nextDialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true });
         await expect(armorChoice).toBeEnabled();
@@ -1972,7 +1997,7 @@ test("T3 counter-Negation keeps Steal private until the restored root opens its 
       else await expect(viewerPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
       if (index !== 0) expect(JSON.stringify(states[index].presentationSnapshot)).not.toContain(hidden.id);
     }
-    const dialog = await expectTargetPool(pages[0], "Steal", "Choose 1 card to obtain", "Use Steal");
+    const dialog = await expectTargetPool(pages[0], "Steal", "Choose one card", "Use Steal");
     const hiddenChoice = dialog.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
     await expect(hiddenChoice, "the legal target-card choice stays touchable after counter-Negation restores Steal").toBeEnabled();
     await tapMobile(pages[0], hiddenChoice);
@@ -2400,7 +2425,7 @@ test("real Steal and Burning Bridge pools stay centred inside 5/6/8-seat phone l
     for (const scenario of scenarios) {
       await page.setViewportSize(scenario.viewport);
       const { title } = await openRealTargetCardDecision({ ...scenario, page, request });
-      const instruction = scenario.kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
+      const instruction = "Choose one card";
       const pool = await expectTargetPool(page, title, instruction, `Use ${title}`);
       const geometry = await pool.evaluate((element) => {
         const panel = element.getBoundingClientRect();
@@ -2561,21 +2586,51 @@ test("real Burning Bridge equipment-only choice omits empty zones and submits th
 });
 
 test("real Burning Bridge Hand-only pool scrolls horizontally without page overflow", async ({ browser, request }, testInfo) => {
+  test.setTimeout(60_000);
   const viewport = { width: 390, height: 844 };
   const page = await browser.newPage({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   const { dialog: pool, actorView } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 10, equipment: false, judgement: false });
-  const row = pool.locator(".card-pool-panel__target-row");
-  const positions = pool.locator('.card-pool-panel__target-choice[data-choice-key-type="concealed-position"]');
+  const row = pool.locator(".card-pool-panel__target-public-zones");
+  const positions = pool.locator(".card-pool-panel__target-public-position");
+  const choices = positions.locator(".card-pool-panel__target-public-select");
   const geometry = await row.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
   expect(actorView.currentAction.targetCardSelection.eligibleKeys).toEqual(Array.from({ length: 10 }, (_, index) => `hand:${index}`));
   await expect(positions).toHaveCount(10);
   expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+
+  const dockGuidance = page.locator(".local-player-dock .decision-status");
+  await expect(dockGuidance).toContainText("Choose one card to discard from TARGET");
+  const firstChoice = await choices.first().boundingBox();
+  const scrollBox = await row.boundingBox();
+  expect(firstChoice && scrollBox).toBeTruthy();
+  const startX = firstChoice.x + firstChoice.width / 2;
+  const startY = firstChoice.y + firstChoice.height / 2;
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (x, y) => ({ id: 1, x: Math.round(x), y: Math.round(y), radiusX: 1, radiusY: 1, force: 1 });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [touch(startX, startY)] });
+  for (const fraction of [0.75, 0.5, 0.25, 0]) {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [touch(startX - scrollBox.width * fraction, startY)] });
+  }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await cdp.detach();
+  await expect.poll(() => row.evaluate((element) => element.scrollLeft), { timeout: 3_000 }).toBeGreaterThan(0);
+  await expect(choices.first()).toHaveAttribute("aria-pressed", "false");
+
   const lastPosition = positions.last();
-  await lastPosition.scrollIntoViewIfNeeded();
   const [lastBox, rowBox] = await Promise.all([lastPosition.boundingBox(), row.boundingBox()]);
   expect(lastBox.x).toBeGreaterThanOrEqual(rowBox.x - 1);
   expect(lastBox.x + lastBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
-  await expect(pool.getByRole("button", { name: "Use Burning Bridge", exact: true })).toBeDisabled();
+  await tapMobile(page, choices.last());
+  await expect(choices.last()).toHaveAttribute("aria-pressed", "true");
+  const submittedPromise = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+    catch { return false; }
+  });
+  await tapMobile(page, pool.getByRole("button", { name: "Use Burning Bridge", exact: true }));
+  const submitted = await submittedPromise;
+  expect(submitted.ok()).toBe(true);
+  expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({ action: "choose_target_card", targetCardZone: "hand", targetCardIndex: 9 });
   await attachScreenshot(testInfo, "burning-bridge-large-hand-contained-overflow-390", page);
 });

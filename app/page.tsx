@@ -26,7 +26,7 @@ import { CardFace } from "./card-face";
 import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
-import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, harvestNegationDecisionCopy, publicCardActionKey, publicCardAnnouncement, publicCardJourneyOwnershipIdentity, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
+import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, harvestNegationDecisionCopy, publicCardActionKey, publicCardJourneyOwnershipIdentity, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, hasAttackDodgeUxTrace, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
@@ -3044,7 +3044,36 @@ function buildPresentationDecisionPresentation(
  * This deliberately does not inspect cards, heroes, or client selections to
  * decide legality; controls continue to use the projected capabilities below.
  */
-export function buildDecisionPresentation(room: Pick<Room, "players" | "meId" | "turnSeat" | "phase" | "status" | "actionPlayerId" | "actionReason" | "isMyAction" | "currentAction">, presentationView?: PresentationClientView): DecisionPresentation {
+export function buildDecisionPresentation(room: Pick<Room, "players" | "meId" | "turnSeat" | "phase" | "status" | "actionPlayerId" | "actionReason" | "isMyAction" | "currentAction" | "pendingTargetCard">, presentationView?: PresentationClientView): DecisionPresentation {
+  const pendingTargetCard = room.pendingTargetCard;
+  const activeTargetCardChoice = pendingTargetCard !== undefined
+    && pendingTargetCard !== null
+    && pendingTargetCard.actorId === room.meId
+    && pendingTargetCard.sourceId === room.meId
+    && pendingTargetCard.targetId !== room.meId
+    && room.currentAction?.kind === "target_card"
+    && room.currentAction.actorId === room.meId
+    && room.currentAction.legalActions.includes("choose_target_card");
+  if (activeTargetCardChoice && pendingTargetCard) {
+    const target = projectedPlayerName(room, pendingTargetCard.targetId, "the target");
+    const operation = pendingTargetCard.cardKind === "Steal" ? "take" : "discard";
+    const guidance = `Choose one card to ${operation} from ${target}`;
+    const semantic = presentationView?.hasInteraction
+      ? buildPresentationDecisionPresentation(room, presentationView)
+      : null;
+    return {
+      phaseLabel: semantic?.phaseLabel ?? phaseName(room.phase) ?? "Response Phase",
+      turnOwner: semantic?.turnOwner ?? projectedPlayerName(room, room.players.find((player) => player.seat === room.turnSeat)?.id, "The current player"),
+      actionOwner: projectedPlayerName(room, room.currentAction.actorId, "You"),
+      primaryStatus: guidance,
+      supportingInstruction: guidance,
+      isViewerRequiredActor: true,
+      isWaiting: false,
+      isResolving: false,
+      isDecision: true,
+      interaction: semantic?.interaction,
+    };
+  }
   if (presentationView?.hasInteraction) return buildPresentationDecisionPresentation(room, presentationView);
   const turnOwner = projectedPlayerName(room, room.players.find((player) => player.seat === room.turnSeat)?.id, "The current player");
   const action = room.currentAction;
@@ -8240,13 +8269,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const publicCardDisplayReady = publicCardDisplayEnabled;
   const targetCardChoiceAnnouncement = publicCardDisplayAction && room.pendingTargetCard
     && rootActionSource?.name && rootActionTarget?.name
-    ? publicCardAnnouncement(
-      publicCardDisplayAction,
-      publicCardDisplayAction.publicNotice ?? publicCardDisplayAction.ariaLabel,
-      rootActionSource.name,
-      rootActionSource.name,
-      rootActionTarget.name,
-    )
+    && room.pendingTargetCard.actorId === room.meId
+    && room.currentAction?.kind === "target_card"
+    && room.currentAction.actorId === room.meId
+    && canUseAction(room.currentAction, "choose_target_card")
+    && publicCardDisplayAction.sourceId === room.pendingTargetCard.sourceId
+    && publicCardDisplayAction.targetId === room.pendingTargetCard.targetId
+    && publicCardDisplayAction.cardKind === room.pendingTargetCard.cardKind
+    ? `${rootActionSource.name} choosing a card to ${room.pendingTargetCard.cardKind === "Steal" ? "take" : "discard"} from ${rootActionTarget.name}.`
     : null;
   const targetCardChoiceMergeChecks = {
     unified: pendingTargetCardUsesUnifiedModal,
@@ -8290,11 +8320,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : room.pendingTargetCard && pendingTargetCardPublicSource && pendingTargetCardPublicTarget
       ? `${room.pendingTargetCard.cardKind === "Steal" ? "STEAL" : "BURNING BRIDGES"} · ${pendingTargetCardPublicSource.name} → ${pendingTargetCardPublicTarget.name}`
       : pendingTargetCardActionName ?? "Target card";
-  const targetCardChoiceInstruction = room.pendingTargetCard?.cardKind === "Steal"
-    ? centralTargetCardLayout ? "You are choosing one card to obtain" : "Choose 1 card to obtain"
-    : centralTargetCardLayout ? "You are choosing one card to discard" : "Choose 1 card to discard";
+  const targetCardChoiceInstruction = room.pendingTargetCard ? "Choose one card" : "Choose a target card";
   const targetCardChoicePanelLabel = centralTargetCardLayout && targetCardChoiceAnnouncement
-    ? `${targetCardChoiceAnnouncement} You are choosing one card to ${room.pendingTargetCard?.cardKind === "Steal" ? "obtain" : "discard"}.`
+    ? `${targetCardChoiceAnnouncement} Choose one card.`
     : `${pendingTargetCardActionName ?? "Target card"} target card selection`;
   const activePublicEffectFrameAction = publicCardDisplayReady && publicCardDisplayAction?.publicCardEffectFrame
     ? publicCardDisplayAction : null;

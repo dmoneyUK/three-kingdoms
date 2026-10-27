@@ -6650,6 +6650,17 @@
   touch-action: pan-x;
 }
 
+/* The actor's public zone strip is both the native mobile scroller and the
+   hit-test surface beneath the positioned choice buttons. Spectator/read-only
+   zones remain touch-through. */
+.game-shell .card-pool-panel--actor-target-select .card-pool-panel__target-public-zones {
+  pointer-events: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.game-shell .card-pool-panel--actor-target-select .card-pool-panel__target-public-select {
+  pointer-events: auto;
+}
+
 .game-shell .card-pool-panel__target-public-zones::-webkit-scrollbar { display: none; }
 
 .game-shell .card-pool-panel__target-public-zone {
@@ -6751,6 +6762,21 @@
 
 .game-shell .card-pool-panel__target-public-face > .played-card > i { left: 3px; top: 2px; font-size: 8px; }
 .game-shell .card-pool-panel__target-public-face > .played-card > i small { font-size: 7px; }
+.game-shell .card-pool-panel--actor-target-select [data-target-card-public-zone="equipment"] .card-pool-panel__target-public-face > .played-card > i,
+.game-shell .card-pool-panel--actor-target-select [data-target-card-public-zone="judgement"] .card-pool-panel__target-public-face > .played-card > i {
+  box-sizing: border-box;
+  left: 2px;
+  top: 2px;
+  width: 12px;
+  min-height: 16px;
+  padding: 1px 1px 2px;
+  border-width: 1px;
+  border-radius: 0 0 4px 0;
+  font-size: 6.5px;
+  line-height: .95;
+}
+.game-shell .card-pool-panel--actor-target-select [data-target-card-public-zone="equipment"] .card-pool-panel__target-public-face > .played-card > i small,
+.game-shell .card-pool-panel--actor-target-select [data-target-card-public-zone="judgement"] .card-pool-panel__target-public-face > .played-card > i small { font-size: 5.5px; line-height: 1; }
 .game-shell .card-pool-panel__target-public-face > .played-card .card-name-mark { font-size: 7px; }
 .game-shell .card-pool-panel__target-public-face > .played-card > strong { font-size: 4px; }
 

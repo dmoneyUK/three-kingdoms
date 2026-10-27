@@ -61,6 +61,7 @@ const presentationPlayers = [
 const presentationRoom = (overrides = {}) => ({
   players: presentationPlayers, meId: "p1", turnSeat: 0, phase: "play", status: "playing",
   actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
+  pendingTargetCard: null,
   currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"] },
   ...overrides,
 });
@@ -233,6 +234,35 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.doesNotMatch(restHtml, /data-interaction-(?:roles|source|original-target|active-target|current-participant|decision-actor|active-resolver|viewer-decision)=/, "REST local surface has no semantic role data");
   const localDock = (markup) => markup.match(/<section class="local-player-dock[^>]*data-player-anchor="p1"[^>]*>/)?.[0] ?? "";
   assert.equal(localDock(legacyMismatchHtml), localDock(html), "legacy room fields cannot change local semantic roles");
+});
+
+test("authorized Steal and Burning Bridges choices override stale Settlement wording only for their actor", () => {
+  const staleSettlementView = {
+    hasInteraction: true, stage: "SETTLEMENT", stableKind: "SETTLEMENT", sourceId: "p1",
+    currentParticipantId: null, decisionActorId: null, activeResolverId: null,
+    isLocalDecisionActor: false, hasLocalControl: false,
+  };
+  for (const [cardKind, operation] of [["Steal", "take"], ["Dismantle", "discard"]]) {
+    const currentAction = { version: 3, kind: "target_card", actorId: "p1", deadline: 0, reason: "Choose one current card", legalActions: ["choose_target_card"] };
+    const pendingTargetCard = { sourceId: "p1", actorId: "p1", targetId: "p2", cardKind };
+    const actor = buildDecisionPresentation(presentationRoom({ phase: "response", isMyAction: false, currentAction, pendingTargetCard }), staleSettlementView);
+    assert.equal(actor.primaryStatus, `Choose one card to ${operation} from Zhao Yun`);
+    assert.equal(actor.supportingInstruction, `Choose one card to ${operation} from Zhao Yun`);
+    assert.equal(actor.isViewerRequiredActor, true);
+    assert.equal(actor.isWaiting, false);
+
+    const spectator = buildDecisionPresentation(presentationRoom({
+      meId: "p2", isMyAction: false, actionPlayerId: "p1", phase: "response", currentAction, pendingTargetCard,
+    }), staleSettlementView);
+    assert.equal(spectator.primaryStatus, "Settlement");
+    assert.equal(spectator.isViewerRequiredActor, false);
+  }
+  const unauthorized = buildDecisionPresentation(presentationRoom({
+    phase: "response",
+    currentAction: { version: 3, kind: "target_card", actorId: "p1", deadline: 0, reason: "Choose one current card", legalActions: [] },
+    pendingTargetCard: { sourceId: "p1", actorId: "p1", targetId: "p2", cardKind: "Steal" },
+  }), staleSettlementView);
+  assert.equal(unauthorized.primaryStatus, "Settlement");
 });
 
 test("local operation console composes one authority-first decision display", () => {
