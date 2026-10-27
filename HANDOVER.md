@@ -2,8 +2,8 @@
 
 Repository: `dmoneyUK/three-kingdoms`
 Target branch: `ux-v2`; worktree branch: `codex/t3-f1-r3`
-Latest source SHA: `2c10361e987d0cf68171aa2dd8c01f4b9fc648bd`
-Latest design reviewed: `docs/UX2-refine.md` §10.10.3.1 at `f57dd156e02d24e3da6848195a10d813c13e8216` (2026-10-27).
+Latest source SHA: `520c8001420e291cf7dc1030246aa87c0a9dbc3e`
+Latest design reviewed: `docs/UX2-refine.md` §10.10.3.1 at `9b729a322ea4d34bec3e56c98b0180d2b912fb52` (2026-10-27).
 
 ## Latest relevant delivery
 
@@ -26,6 +26,11 @@ Acceptance: accessible `Hand (N)`, `Equipment (N)`, `Judgement (N)` selectors in
 - 19:04 — The one authorized focused retry failed when the test center-tapped the Nio Shield. Static geometry showed the inherited 44×44 Details hit target covers the public card's centre and blocks the selection button there. This is a real mobile hit-target overlap, not a server-authority or selection-state defect. The 390×844 UI budget is exhausted; no more local UI tests will run.
 - 19:06 — Narrowly reduced only the actor target picker's public-card Details hit box to 32×32 while preserving its visible 20px icon; expanded the existing focused regression to assert the separate Details action and that selection survives opening/closing it. No gameplay, permission or privacy code changed.
 - 19:06 — Post-fix `node --check`, `git diff --check`, targeted ESLint and `npm run build` all passed. ESLint reported 0 errors and the same two Hook dependency warnings in `app/page.tsx`; build passed with existing chunk-size/static-route warnings. UI remains unverified after the hit-target correction because the 5-minute budget is exhausted.
-- Next — Check whether `origin/ux-v2` advanced from the exact base before committing. If unchanged, commit/push only R5-C source and its focused regression, then verify exact-SHA Actions, Worker deployment and production health. Do not launch more UI tests; owner phone review remains pending.
+- 19:07 — Confirmed `origin/ux-v2` still equaled the local base `2c10361e987d0cf68171aa2dd8c01f4b9fc648bd`; committed and pushed R5-C as `520c8001420e291cf7dc1030246aa87c0a9dbc3e`. Exact-SHA Actions run `40566223477` started.
+- 19:09 — Exact-SHA CI: ESLint/build and browser startup smoke passed; `test:fast` failed 3/310 tests because existing `active-skill-interactions.test.mjs` assertions still searched for old child labels `JUDGEMENT 1`/`HAND 2`/`EQUIPMENT 1`, while the approved selectors now expose accessible names `Judgement (1)`/`Hand (2)`/`Equipment (1)`. No implementation assertion failed. Updated those three existing test cases to query approved accessible names; no test was added. API job was still running at inspection.
+- 19:10 — An initial direct `node --test` invocation failed because the `.tsx` import hook was omitted; reran the affected file with the repository's `--import tsx` loader and all 33 subtests passed. This was a non-UI fast test; no browser UI was launched.
+- 19:11 — Push of the CI expectation correction was rejected because `ux-v2` had advanced to `9b729a322ea4d34bec3e56c98b0180d2b912fb52`, a documentation-only owner approval for R5-A-F1. Reviewed the new §10.10.3.1 requirements and confirmed they do not alter the in-flight R5-C selector contract. Fetched the remote change and cleanly rebased the still-unpushed test/handover correction on top; the already-pushed R5-C source commit remains an ancestor.
+- 19:11 — Exact-SHA Actions `40566223477` completed: API and browser startup smoke passed; Lint/fast failed only those 3 stale tab-label assertions, so deployment was skipped. No Worker version was deployed for R5-C.
+- Next — Push the rebased corrected test expectations and current handoff, then wait for exact-SHA Actions, Worker deployment and production health. Do not launch more UI tests; owner phone review remains pending. After this in-flight CI repair is safely closed, take up R5-A-F1 as the next task per the latest design revision.
 
 This handover is local to the Coding Agent worktree. Keep exactly this one current task; replace its progress with the actual result at each major step.
