@@ -362,7 +362,7 @@ async function expectRootJourneyParkedByAuthor(page, { eventId, cardId, actorId,
   await expect(root).toHaveAttribute("data-public-card-journey-card-id", cardId);
   await expect(root).toHaveAttribute("data-public-card-journey-layout-pending", "false", { timeout: 15_000 });
   await expect(root).toHaveAttribute("data-public-card-journey-actor-id", actorId);
-  await expect(root).toHaveAttribute("data-public-card-journey-reveal-started-at", revealStartedAt);
+  if (revealStartedAt) await expect(root).toHaveAttribute("data-public-card-journey-reveal-started-at", revealStartedAt);
   const geometry = await root.evaluate((element) => {
     const card = element.getBoundingClientRect();
     const actor = [...document.querySelectorAll("[data-player-anchor]")]
@@ -1239,17 +1239,20 @@ test("T3-F1 keeps the authentic Steal and Burning Bridges root at its author acr
   }
 });
 
-test("T3-F1 R4 preserves the Steal root, hides spectator pools, and reads the proven result", async ({ browser, request }) => {
+test("T3-F1 R5-B preserves the Steal root through settlement and a second root", async ({ browser, request }, testInfo) => {
   test.setTimeout(120_000);
-  const steal = card("Steal", "t3-r4-remote-steal-root");
-  const hidden = card("Peach", "t3-r4-hidden-hand", "♥", "4");
+  const steal = card("Steal", "t3-r5-b-steal-root");
+  const nextRoot = card("Dismantle", "t3-r5-b-second-root", "♦", "8");
+  const hidden = card("Peach", "t3-r5-b-hidden-hand", "♥", "4");
+  const armor = card("NioShield", "t3-r5-b-target-armor", "♦", "A");
   const sourceSeat = 1;
   const targetSeat = 0;
   const seed = await seedGame(request, responsivePlayers(4, {
     sourceName: "SOURCE",
     targetName: "TARGET",
-    sourceHand: [steal],
+    sourceHand: [steal, nextRoot],
     targetHand: [hidden],
+    equipment: { armor },
     sourceSeat,
     targetSeat,
   }), sourceSeat);
@@ -1546,6 +1549,31 @@ test("T3-F1 R4 preserves the Steal root, hides spectator pools, and reads the pr
       expect(await resultCopy.innerHTML()).not.toContain(hidden.id);
       if (index === 0) settledActionKey = await display.getAttribute("data-public-card-action-key");
     }
+    const parkedAfterSettlement = await Promise.all(pages.map((page) => expectRootJourneyParkedByAuthor(page, {
+      eventId: rootEvent.id,
+      cardId: steal.id,
+      actorId: authorId,
+    })));
+    await testInfo.attach("r5-b-steal-root-after-settlement.json", {
+      body: Buffer.from(JSON.stringify({
+        eventId: rootEvent.id,
+        cardId: steal.id,
+        actorId: authorId,
+        viewers: parkedAfterSettlement.map(({ geometry }, index) => ({
+          viewerId: viewerSeats[index] === sourceSeat ? authorId : seed.players[viewerSeats[index]].id,
+          phase: "parked",
+          layoutPending: false,
+          layoutReason: geometry.layoutReason,
+          authorAnchorType: geometry.authorAnchorKind,
+          authorAnchor: geometry.authorAnchor,
+          authorRect: geometry.authorRect,
+          renderedMiniRect: { left: geometry.left, top: geometry.top, width: geometry.width, height: geometry.height },
+          authorAnchorGap: geometry.authorAnchorGap,
+        })),
+        sourceRerender: "proven Steal settlement before the next separate root",
+      }, null, 2)),
+      contentType: "application/json",
+    });
     const observerDisplay = pages[1].locator(`[data-public-card-settlement-event-id="${settlement.eventId}"]`);
     await expect(observerDisplay).toHaveAttribute("data-public-card-target-result-read-started-at-ms", /\d+/);
     const readStartedAt = Number(await observerDisplay.getAttribute("data-public-card-target-result-read-started-at-ms"));
@@ -1555,6 +1583,20 @@ test("T3-F1 R4 preserves the Steal root, hides spectator pools, and reads the pr
     expect(await pages[1].evaluate((startedAt) => performance.now() - startedAt, readStartedAt)).toBeGreaterThanOrEqual(3_000);
     expect(settledActionKey).not.toBe(initialActionKey);
     expect(JSON.stringify(await roomView(request, seed, targetSeat))).not.toContain(hidden.id);
+
+    await playCardThroughPage(pages[0], nextRoot.id, "TARGET");
+    await passEmptyResponses(request, seed);
+    const nextRootState = await roomView(request, seed, sourceSeat);
+    const nextRootEvent = nextRootState.timeline.find((event) => event?.type === "card" && event.action === "play" && event.card?.id === nextRoot.id);
+    expect(nextRootEvent).toBeTruthy();
+    expect(nextRootEvent.id).not.toBe(rootEvent.id);
+    for (const page of pages) {
+      const display = page.locator('[data-public-card-display="true"]');
+      await expect(display).toHaveAttribute("data-public-card-root-event-id", nextRootEvent.id);
+      await expect(page.locator(`[data-public-card-journey-event-id="${nextRootEvent.id}"][data-public-card-journey-role="root"]`)).toHaveCount(1);
+      await expect(page.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`)).toHaveCount(0);
+      await expect(page.locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
+    }
   } finally {
     await Promise.all(contexts.map((context) => context.close()));
   }
