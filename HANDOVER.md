@@ -4,25 +4,25 @@ Repository: `dmoneyUK/three-kingdoms`
 
 Target: `origin/ux-v2`; worktree branch: `codex/t3-f1-r5-a-f1`
 
-Base SHA: `b4e2ef86bcd14fa614a2bac7f3244a5c6e356370`
+Latest source SHA: `0928d169d4d38bc9e019c439c53823c8a15d5eb4`
 
-Source SHA: `0928d169d4d38bc9e019c439c53823c8a15d5eb4` (pushed to `origin/ux-v2`)
+Latest design reviewed: `docs/UX2-refine.md` §10.10.3.1 at `b4e2ef86bcd14fa614a2bac7f3244a5c6e356370`.
 
-Design reviewed: `docs/UX2-refine.md` §10.10.3.1 at `b4e2ef86bcd14fa614a2bac7f3244a5c6e356370`.
+## Latest result
 
-## Current result
+**T3-F1 R5-A-F1 — IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW.** The validated Steal `rootResolutionId` now reaches the typed display settlement, allowing the existing strict actor-private proof match to reveal the exact stolen Hand face only to the authenticated actor. Public target movement, victim/observer backs, backend proof semantics, and all other game behavior remain unchanged. The focused regression asserts the actor's Peach face/name/rank/suit and root proof, while retaining back-only/no-identity assertions for the other three viewers.
 
-**T3-F1 R5-A-F1 — IMPLEMENTATION PUSHED; EXACT-SHA CI/DEPLOYMENT PENDING; NOT ACCEPTED.** Prior deployment `55a46f6bf6441395bdea50c7267578764a06a0d0` / [Actions 40572207968](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40572207968) passed, but owner phone review found the Steal actor still sees a back. Latest design confirms the frontend omitted `rootResolutionId` when constructing the Steal settlement action, making its existing strict private-proof match fail. Current code source `0928d169d4d38bc9e019c439c53823c8a15d5eb4` is pushed; exact-SHA [Actions 40581216924](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40581216924) was observed **IN_PROGRESS at 20:47:52 UTC**. Worker deployment and production health are pending.
+Source commit `0928d169d4d38bc9e019c439c53823c8a15d5eb4` passed exact-SHA [Actions 40581216924](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40581216924): browser startup/room smoke, lint/fast, API, D1 migration, Worker deployment, and production smoke all succeeded. Worker version: `cbf5d147-2448-4200-97f1-1d298250ca52`. Production `/` and `/api/health` returned HTTP 200; health body was `{"ok":true,"worker":"available"}`. Local build and diff check passed; targeted ESLint had 0 errors and 15 warnings.
 
 ## Execution log — 2026-10-27 UTC
 
-- 20:40 — Reviewed latest design and source. Confirmed `SingleTargetCardJourney` already enforces the correct event/root/viewer/private proof; only typed `rootResolutionId` plumbing was missing. Latest push-triggered CI for `origin/ux-v2` code SHA `55a46f6` was green.
-- 20:43 — Added optional `settlement.rootResolutionId`, passed the already validated Steal candidate value, and strengthened the existing four-viewer phone scenario to assert the actor's Peach identity/name/rank/suit plus private-proof root ID. Other viewers retain back-only and no-identity assertions.
+- 20:43 — Corrected the missing typed `rootResolutionId` plumbing and strengthened the existing four-viewer 390×844 browser regression.
 - 20:43 — `npm run build` passed.
-- 20:44 — One filtered four-player 390×844 browser run started; local Wrangler Worker exited with a ProxyWorker error (`browser-worker.log`, 20:44:54 UTC). The run was interrupted without a behavioral result; no retry or broader UI test will be started.
-- 20:47 — Targeted ESLint completed with 0 errors and 15 React-hook warnings; `git diff --check` passed.
-- 20:47 — Committed as `0928d169d4d38bc9e019c439c53823c8a15d5eb4` and pushed to `origin/ux-v2`; exact-SHA Actions run `40581216924` is in progress.
+- 20:44:54 — The single filtered local mobile browser attempt had no behavioral result: the local Wrangler Worker exited with a ProxyWorker error (`.wrangler/browser-worker.log`). It was interrupted without retry; CI's separate browser startup/room smoke passed.
+- 20:47 — Targeted ESLint: 0 errors, 15 warnings. `git diff --check` passed.
+- 20:47:52 — Source commit `0928d169d4d38bc9e019c439c53823c8a15d5eb4` pushed to `origin/ux-v2`; exact-SHA Actions started.
+- 20:51:15 — Actions 40581216924 completed successfully, including Worker deployment and production smoke. Direct production checks also returned HTTP 200.
 
 ## Current bounded task
 
-Finish only T3-F1 R5-A-F1: preserve the strict actor-private proof match while passing the validated root-resolution ID through the Steal action. Do not change backend proof semantics, public target-card movement, layout, timing, or other R5 work. Source and focused regression are pushed; the local mobile browser attempt has no result because the Wrangler Worker exited, and no local UI retry will be made. Wait for exact-SHA Actions/deployment and production health, then record actual results here. Final status must be **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**.
+Owner real-iPhone re-review of deployed R5-A-F1: confirm the Steal actor sees the authentic stolen-card face (#1/#3), victim and observers see only a back (#2), and view switching preserves privacy (#4). The second-Steal/game continuation check (#5) remains owner-not-tested. The focused local face-rendering browser scenario was not validated due to the local Worker exit; do not describe CI's room-startup smoke as proof of that specific behavior. No other task is active; do not mark USER-ACCEPTED without the owner's verdict.
