@@ -6654,11 +6654,25 @@
    hit-test surface beneath the positioned choice buttons. Spectator/read-only
    zones remain touch-through. */
 .game-shell .card-pool-panel--actor-target-select .card-pool-panel__target-public-zones {
+  box-sizing: border-box;
+  align-items: flex-start;
+  min-height: 86px;
   pointer-events: auto;
   -webkit-overflow-scrolling: touch;
 }
+.game-shell .card-pool-panel--actor-target-select .card-pool-panel__target-public-zone {
+  min-width: 100%;
+  align-items: flex-start;
+}
+.game-shell .card-pool-panel--actor-target-select .card-pool-panel__target-public-zone-title {
+  align-self: flex-start;
+}
 .game-shell .card-pool-panel--actor-target-select .card-pool-panel__target-public-select {
   pointer-events: auto;
+}
+.game-shell .card-pool-panel--actor-target-select .card-pool-panel__target-public-face > .card-pool-panel__target-info {
+  width: 32px;
+  height: 32px;
 }
 
 .game-shell .card-pool-panel__target-public-zones::-webkit-scrollbar { display: none; }
@@ -6908,6 +6922,7 @@
 
 .game-shell .card-pool-panel__selected-zone {
   flex: 0 0 auto;
+  min-height: 10px;
   margin: 0;
   color: #e9d08f;
   font: 600 8px/1.2 Arial, sans-serif;

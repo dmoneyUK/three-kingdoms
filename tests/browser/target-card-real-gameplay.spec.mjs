@@ -730,11 +730,11 @@ for (const kind of ["Steal", "Dismantle"]) {
   });
 }
 
-test("T3-F1 R4-A hides spectator target pools and keeps the actor pool position stable", async ({ browser, request }) => {
+test("T3-F1 R5-C keeps one compact actor zone and preserves choice through park and Inspector", async ({ browser, request }) => {
   test.setTimeout(120_000);
-  const prefix = `t3-r4-stage-a-${Date.now().toString(36)}`;
+  const prefix = `t3-r5c-${Date.now().toString(36)}`;
   const material = card("Steal", `${prefix}-root`);
-  const hidden = [card("Peach", `${prefix}-hidden-a`), card("Dodge", `${prefix}-hidden-b`)];
+  const hidden = Array.from({ length: 8 }, (_, index) => card(index % 2 ? "Dodge" : "Peach", `${prefix}-hidden-${index}`));
   const shield = card("NioShield", `${prefix}-shield`);
   const delayed = card("Lightning", `${prefix}-judgement`);
   const seed = await seedGame(request, fourPlayers(
@@ -753,10 +753,49 @@ test("T3-F1 R4-A hides spectator target pools and keeps the actor pool position 
     expect(actorView.currentAction).toMatchObject({ kind: "target_card", actorId: seed.players[0].id });
     expect(actorView.currentAction.legalActions).toContain("choose_target_card");
     expect(actorView.currentAction.targetCardSelection.targetId).toBe(seed.players[1].id);
+    expect(actorView.currentAction.targetCardSelection.eligibleKeys).toEqual([
+      ...hidden.map((_, index) => `hand:${index}`), shield.id, delayed.id,
+    ]);
     const actorStage = actorPage.locator(".card-pool-target-stage[data-target-card-choice-actor]");
     await expect(actorStage).toHaveAttribute("data-target-card-pool-revision", String(actorView.actionRevision));
     const actorPool = await expectTargetPool(actorPage, "Steal", "Choose one card", "Use Steal");
-    await expect(actorPool.getByRole("tablist", { name: "Eligible card zones" }).getByRole("tab")).toHaveCount(3);
+    const tabs = actorPool.getByRole("tablist", { name: "Target card zones" }).getByRole("tab");
+    await expect(tabs).toHaveCount(3);
+    await expect(tabs.nth(0)).toHaveAccessibleName("Hand (8)");
+    await expect(tabs.nth(1)).toHaveAccessibleName("Equipment (1)");
+    await expect(tabs.nth(2)).toHaveAccessibleName("Judgement (1)");
+    await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
+    await expect(actorPool.locator(".card-pool-panel__target-public-zones")).toHaveAttribute("data-active-zone", "hand");
+    await expect(actorPool.locator(".card-pool-panel__target-public-zone")).toHaveCount(1);
+    await expect(actorPool.locator('[data-target-card-public-zone="hand"] .card-pool-panel__target-public-position')).toHaveCount(8);
+    await expect(actorPool.locator('[data-target-card-public-zone="equipment"], [data-target-card-public-zone="judgement"]')).toHaveCount(0);
+    await expect(actorStage).toHaveAttribute("data-target-card-pool-layout", "central");
+    await expect(actorStage).toHaveAttribute("data-target-card-pool-ready", "true");
+
+    await tapMobile(actorPage, tabs.nth(1));
+    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+    await expect(actorPool.locator(".card-pool-panel__target-public-zone")).toHaveCount(1);
+    await expect(actorPool.locator(".card-pool-panel__target-public-zones")).toHaveAttribute("data-active-zone", "equipment");
+    const shieldChoice = actorPool.getByRole("button", { name: "Equipment: Nio Shield", exact: true });
+    await expect(shieldChoice).toBeVisible();
+    const shieldDetails = actorPool.getByRole("button", { name: "Card details: Equipment: Nio Shield", exact: true });
+    await expect(shieldDetails).toBeVisible();
+    const shieldDetailsBounds = await shieldDetails.boundingBox();
+    expect(shieldDetailsBounds).toMatchObject({ width: 32, height: 32 });
+    await tapMobile(actorPage, shieldChoice);
+    await expect(shieldChoice).toHaveAttribute("aria-pressed", "true");
+    await expect(actorPool.getByRole("button", { name: "Use Steal", exact: true })).toBeEnabled();
+    await tapMobile(actorPage, shieldDetails);
+    const cardDetails = actorPage.locator('.card-details-panel[data-card-details-context="public-zone"]');
+    await expect(cardDetails).toBeVisible();
+    await tapMobile(actorPage, actorPage.getByRole("button", { name: "Close card details" }));
+    await expect(cardDetails).toHaveCount(0);
+    await expect(shieldChoice).toHaveAttribute("aria-pressed", "true");
+    await tapMobile(actorPage, tabs.nth(2));
+    await expect(actorPool.locator(".card-pool-panel__target-public-zones")).toHaveAttribute("data-active-zone", "judgement");
+    await expect(actorPool.locator(".card-pool-panel__target-public-zone")).toHaveCount(1);
+    await expect(actorPool.getByRole("status")).toContainText("Selection retained · EQUIPMENT 1");
+    await expect(actorPool.getByRole("button", { name: "Use Steal", exact: true })).toBeEnabled();
 
     await openGame(spectatorPage, seed, 2, { width: 390, height: 844 });
     const spectatorView = await roomView(request, seed, 2);
@@ -775,9 +814,6 @@ test("T3-F1 R4-A hides spectator target pools and keeps the actor pool position 
     }
     expect(spectatorMarkup).not.toMatch(/hand:[0-9]+|eligibleKeys|opaqueKey/i);
 
-    const hiddenChoice = actorPool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
-    await tapMobile(actorPage, hiddenChoice);
-    await expect(hiddenChoice).toHaveAttribute("aria-pressed", "true");
     const poolGeometry = () => actorStage.evaluate((stage) => {
       const rect = stage.getBoundingClientRect();
       const panel = stage.querySelector(".card-pool-panel").getBoundingClientRect();
@@ -808,15 +844,64 @@ test("T3-F1 R4-A hides spectator target pools and keeps the actor pool position 
     await expect(inspector).toHaveCount(0);
     const afterInspector = await poolGeometry();
     afterInspector.forEach((value, index) => expect(Math.abs(value - beforePark[index])).toBeLessThanOrEqual(2));
-    await expect(hiddenChoice).toHaveAttribute("aria-pressed", "true");
+    await expect(actorPool.getByRole("button", { name: "Use Steal", exact: true })).toBeEnabled();
+    await expect(actorPool.getByRole("status")).toContainText("Selection retained · EQUIPMENT 1");
+
+    await tapMobile(actorPage, tabs.nth(1));
+    await expect(shieldChoice).toHaveAttribute("aria-pressed", "true");
+    await tapMobile(actorPage, shieldChoice);
+    await expect(shieldChoice).toHaveAttribute("aria-pressed", "false");
+    const useSteal = actorPool.getByRole("button", { name: "Use Steal", exact: true });
+    await expect(useSteal).toBeDisabled();
+    await tapMobile(actorPage, tabs.nth(0));
+    const handRow = actorPool.locator(".card-pool-panel__target-public-zones");
+    const handChoices = actorPool.locator('[data-target-card-public-zone="hand"] .card-pool-panel__target-public-select');
+    const handScroll = await handRow.evaluate((row) => ({ clientWidth: row.clientWidth, scrollWidth: row.scrollWidth }));
+    expect(handScroll.scrollWidth).toBeGreaterThan(handScroll.clientWidth);
+    await expect(handChoices).toHaveCount(8);
+    const handScrollBox = await handRow.boundingBox();
+    expect(handScrollBox).toBeTruthy();
+    const touchStart = await handRow.evaluate((row) => {
+      const bounds = row.getBoundingClientRect();
+      const lastVisibleChoice = [...row.querySelectorAll(".card-pool-panel__target-public-select")]
+        .map((choice) => choice.getBoundingClientRect())
+        .filter((rect) => rect.left < bounds.right && rect.right > bounds.left)
+        .at(-1);
+      return lastVisibleChoice ? {
+        x: Math.min(lastVisibleChoice.left + lastVisibleChoice.width / 2, bounds.right - 4),
+        y: lastVisibleChoice.top + lastVisibleChoice.height / 2,
+      } : null;
+    });
+    expect(touchStart).toBeTruthy();
+    const cdp = await actorPage.context().newCDPSession(actorPage);
+    const touch = (x, y) => ({ id: 1, x: Math.round(x), y: Math.round(y), radiusX: 1, radiusY: 1, force: 1 });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [touch(touchStart.x, touchStart.y)] });
+    for (const delta of [25, 50, 75, 100]) {
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [touch(touchStart.x - delta, touchStart.y)] });
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await cdp.detach();
+    await expect.poll(() => handRow.evaluate((row) => row.scrollLeft), { timeout: 3_000 }).toBeGreaterThan(0);
+    const lastHandChoice = handChoices.last();
+    const [lastHandBox, handRowBox] = await Promise.all([lastHandChoice.boundingBox(), handRow.boundingBox()]);
+    expect(lastHandBox && handRowBox).toBeTruthy();
+    expect(lastHandBox.x).toBeGreaterThanOrEqual(handRowBox.x - 1);
+    expect(lastHandBox.x + lastHandBox.width).toBeLessThanOrEqual(handRowBox.x + handRowBox.width + 1);
+    await tapMobile(actorPage, lastHandChoice);
+    await expect(lastHandChoice).toHaveAttribute("aria-pressed", "true");
+    await expect(useSteal).toBeEnabled();
 
     const submit = actorPage.waitForResponse((response) => {
       if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
       try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
       catch { return false; }
     });
-    await tapMobile(actorPage, actorPool.getByRole("button", { name: "Use Steal", exact: true }));
-    expect((await submit).ok()).toBe(true);
+    await tapMobile(actorPage, useSteal);
+    const submitted = await submit;
+    expect(submitted.ok()).toBe(true);
+    expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
+      action: "choose_target_card", targetCardZone: "hand", targetCardIndex: 7,
+    });
     await expect(waiting).toHaveCount(0, { timeout: 8_000 });
     expect((await roomView(request, seed, 2)).pendingTargetCard).toBeNull();
   } finally {

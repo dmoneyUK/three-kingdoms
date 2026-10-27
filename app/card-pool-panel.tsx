@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import type { Card } from "../game/model";
 import { cardDefinition } from "../game/cards";
 import { CardFace } from "./card-face";
@@ -112,27 +112,48 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
   const targetSelect = props.mode === "actor-target-select";
   const actorTargetProps = props.mode === "actor-target-select" ? props : null;
   const targetReadOnly = props.mode === "target-readonly";
-  const targetPublicZonesRef = useRef<HTMLDivElement | null>(null);
-  const [activeTargetZoneId, setActiveTargetZoneId] = useState<TargetCardPoolZone["id"]>("hand");
   const targetPublicProps = actorTargetProps ?? (targetReadOnly ? props : null);
-  const activeTargetZone = actorTargetProps?.zones.find((zone) => zone.id === activeTargetZoneId)
-    ?? actorTargetProps?.zones[0]
-    ?? null;
+  const targetPublicHandCount = targetPublicProps && Number.isFinite(targetPublicProps.publicTarget.handCount)
+    ? Math.max(0, Math.floor(targetPublicProps.publicTarget.handCount))
+    : 0;
+  const targetZoneTabs: Array<{ id: TargetCardPoolZone["id"]; label: string; count: number }> = targetPublicProps
+    ? [
+      { id: "hand", label: "Hand", count: targetPublicHandCount },
+      { id: "equipment", label: "Equipment", count: targetPublicProps.publicTarget.equipmentCards.length },
+      { id: "judgement", label: "Judgement", count: targetPublicProps.publicTarget.judgementCards.length },
+    ]
+    : [];
+  const firstPopulatedTargetZoneId = targetZoneTabs.find((zone) => zone.count > 0)?.id ?? "hand";
+  const [activeTargetZoneId, setActiveTargetZoneId] = useState<TargetCardPoolZone["id"]>(firstPopulatedTargetZoneId);
+  const activeTargetZoneTab = targetZoneTabs.find((zone) => zone.id === activeTargetZoneId && zone.count > 0)
+    ?? targetZoneTabs.find((zone) => zone.count > 0)
+    ?? targetZoneTabs[0]
+    ?? { id: "hand" as const, label: "Hand", count: 0 };
+  const activeTargetZone = actorTargetProps?.zones.find((zone) => zone.id === activeTargetZoneTab.id) ?? null;
   const selectedTargetZone = actorTargetProps?.zones.find((zone) => zone.choices.some((choice) => choice.state === "selected")) ?? null;
   const selectedZoneMessage = selectedTargetZone && selectedTargetZone.id !== activeTargetZone?.id
     ? `Selection retained · ${selectedTargetZone.title}`
     : null;
-  const focusTargetZone = (zone: TargetCardPoolZone) => {
-    setActiveTargetZoneId(zone.id);
-    const row = targetPublicZonesRef.current;
-    const target = row?.querySelector<HTMLElement>(`[data-target-card-public-zone="${zone.id}"]`);
-    if (!row || !target) return;
-    const rowRect = row.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    row.scrollTo({
-      left: row.scrollLeft + targetRect.left - rowRect.left,
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-    });
+  const focusTargetZone = (zoneId: TargetCardPoolZone["id"], tablist?: HTMLDivElement) => {
+    setActiveTargetZoneId(zoneId);
+    tablist?.querySelector<HTMLButtonElement>(`#card-pool-target-tab-${zoneId}`)?.focus();
+  };
+  const handleTargetZoneTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const availableZones = targetZoneTabs.filter((zone) => zone.count > 0);
+    if (availableZones.length === 0) return;
+    const currentIndex = Math.max(0, availableZones.findIndex((zone) => zone.id === activeTargetZoneTab.id));
+    const nextIndex = event.key === "ArrowRight"
+      ? (currentIndex + 1) % availableZones.length
+      : event.key === "ArrowLeft"
+        ? (currentIndex - 1 + availableZones.length) % availableZones.length
+        : event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? availableZones.length - 1
+            : -1;
+    if (nextIndex < 0) return;
+    event.preventDefault();
+    focusTargetZone(availableZones[nextIndex].id, event.currentTarget);
   };
   const targetChoices = actorTargetProps?.zones.flatMap((zone) => zone.choices) ?? [];
   const handChoicesByPosition = new Map(targetChoices.flatMap((choice) => choice.type === "concealed-position"
@@ -143,9 +164,10 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
   const publicChoicesById = new Map(targetChoices.flatMap((choice) => choice.type === "public-card"
     ? [[choice.eligibleKey, choice] as const]
     : []));
-  const targetPublicHandCount = targetPublicProps && Number.isFinite(targetPublicProps.publicTarget.handCount)
-    ? Math.max(0, Math.floor(targetPublicProps.publicTarget.handCount))
-    : 0;
+  const publicZonesToRender = targetPublicProps ? [
+    { id: "equipment" as const, label: "EQUIPMENT", cards: targetPublicProps.publicTarget.equipmentCards },
+    { id: "judgement" as const, label: "JUDGEMENT", cards: targetPublicProps.publicTarget.judgementCards },
+  ].filter((zone) => targetReadOnly ? zone.cards.length > 0 : zone.id === activeTargetZoneTab.id) : [];
   return <section
     className={`card-pool-panel card-pool-panel--${props.mode} harvest-choice-panel${actorSelect || targetSelect ? " harvest-choice-panel--actor" : ""}`}
     data-choice-mode={props.mode}
@@ -197,16 +219,31 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
       </footer>}
     </>}
     {targetPublicProps && <>
+    {actorTargetProps && <div className="card-pool-panel__tabs" role="tablist" aria-label="Target card zones" tabIndex={-1} onKeyDown={handleTargetZoneTabKeyDown}>
+      {targetZoneTabs.map((zone) => <button
+        key={zone.id}
+        id={`card-pool-target-tab-${zone.id}`}
+        type="button"
+        role="tab"
+        aria-label={`${zone.label} (${zone.count})`}
+        aria-selected={zone.id === activeTargetZoneTab.id}
+        aria-controls="card-pool-target-public-zones"
+        tabIndex={zone.count > 0 && zone.id === activeTargetZoneTab.id ? 0 : -1}
+        disabled={zone.count === 0}
+        className="card-pool-panel__tab"
+        onClick={() => focusTargetZone(zone.id)}
+      >{zone.label} ({zone.count})</button>)}
+    </div>}
     <div
-      ref={targetPublicZonesRef}
       id="card-pool-target-public-zones"
       className="card-pool-panel__target-public-zones"
       role={actorTargetProps ? "tabpanel" : "group"}
-      aria-label="Public target card zones"
-      aria-labelledby={activeTargetZone ? `card-pool-target-tab-${activeTargetZone.id}` : undefined}
+      aria-label={actorTargetProps ? `${activeTargetZoneTab.label}: ${activeTargetZoneTab.count} cards` : "Public target card zones"}
+      aria-labelledby={actorTargetProps ? `card-pool-target-tab-${activeTargetZoneTab.id}` : undefined}
       data-target-card-public-zones="true"
+      data-active-zone={actorTargetProps ? activeTargetZoneTab.id : undefined}
     >
-      <div
+      {(!actorTargetProps || activeTargetZoneTab.id === "hand") && <div
         className="card-pool-panel__target-public-zone card-pool-panel__target-public-hand"
         data-target-card-public-zone="hand"
         aria-label={`Hand: ${targetPublicHandCount} face-down cards`}
@@ -242,18 +279,15 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
             {actorTargetProps && randomHandSelected && <span className="card-pool-panel__target-selected" aria-hidden="true">✓</span>}
           </span>
           : <span className="card-pool-panel__target-public-empty">0 cards</span>}
-      </div>
-      {([
-        { id: "equipment", title: "EQUIPMENT", cards: targetPublicProps.publicTarget.equipmentCards },
-        { id: "judgement", title: "JUDGEMENT", cards: targetPublicProps.publicTarget.judgementCards },
-      ] as const).filter((zone) => zone.cards.length > 0).map((zone) => <div
+      </div>}
+      {publicZonesToRender.map((zone) => <div
         className="card-pool-panel__target-public-zone"
         data-target-card-public-zone={zone.id}
-        aria-label={`${zone.title}: ${zone.cards.length} public cards`}
+        aria-label={`${zone.label}: ${zone.cards.length} public cards`}
         key={zone.id}
       >
-        <b className="card-pool-panel__target-public-zone-title">{zone.title} · {zone.cards.length}</b>
-        <div className="card-pool-panel__target-public-faces">
+        <b className="card-pool-panel__target-public-zone-title">{zone.label} · {zone.cards.length}</b>
+        {zone.cards.length > 0 ? <div className="card-pool-panel__target-public-faces">
           {zone.cards.map((card) => {
             const choice = publicChoicesById.get(card.id);
             const selected = choice?.state === "selected";
@@ -283,22 +317,10 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
             </>}
           </div>;
           })}
-        </div>
+        </div> : <span className="card-pool-panel__target-public-empty">0 cards</span>}
       </div>)}
     </div>
-      {actorTargetProps && actorTargetProps.zones.length > 1 && <div className="card-pool-panel__tabs" role="tablist" aria-label="Eligible card zones">
-        {actorTargetProps.zones.map((zone) => <button
-          key={zone.id}
-          id={`card-pool-target-tab-${zone.id}`}
-          type="button"
-          role="tab"
-          aria-selected={zone.id === activeTargetZone?.id}
-          aria-controls="card-pool-target-public-zones"
-          className="card-pool-panel__tab"
-          onClick={() => focusTargetZone(zone)}
-        >{zone.title}</button>)}
-      </div>}
-      {selectedZoneMessage && <p className="card-pool-panel__selected-zone" role="status">{selectedZoneMessage}</p>}
+      {actorTargetProps && <p className="card-pool-panel__selected-zone" role="status" aria-hidden={selectedZoneMessage ? undefined : "true"}>{selectedZoneMessage ?? ""}</p>}
       {actorTargetProps && <>
         <footer className="card-pool-panel__footer harvest-confirm-row">
           <span className="card-pool-panel__selection-count harvest-selection-count" aria-live="polite">{actorTargetProps.selectionCount}</span>

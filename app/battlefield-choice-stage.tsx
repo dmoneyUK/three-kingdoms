@@ -65,10 +65,15 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
   const [ready, setReady] = useState(false);
   const [rootCardOverlap, setRootCardOverlap] = useState(false);
   const insetsRef = useRef<BattlefieldChoiceInsets | null>(null);
+  const rootEventIdRef = useRef(rootEventId);
 
   useLayoutEffect(() => {
     insetsRef.current = insets;
   }, [insets]);
+
+  useLayoutEffect(() => {
+    rootEventIdRef.current = rootEventId;
+  }, [rootEventId]);
 
   useLayoutEffect(() => {
     const scheduleFrame = (callback: FrameRequestCallback): ScheduledBattlefieldFrame => typeof window.requestAnimationFrame === "function"
@@ -136,6 +141,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
       cancelFrame(frame);
       frame = scheduleFrame(() => {
         const tableRect = table.getBoundingClientRect();
+        const measuredRootEventId = rootEventIdRef.current;
         const panel = stage.querySelector<HTMLElement>(".card-pool-panel, .harvest-choice-panel");
         if (!panel || tableRect.width <= 0 || tableRect.height <= 0) return;
         const panelRect = panel.getBoundingClientRect();
@@ -223,8 +229,8 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
             .filter((element) => element !== stage && !stage.contains(element))
             .filter((element) => !targetCardSelect
               || !element.matches(".public-card-journey-card")
-              || !rootEventId
-              || element.dataset.publicCardJourneyEventId === rootEventId)
+              || !measuredRootEventId
+              || element.dataset.publicCardJourneyEventId === measuredRootEventId)
             .filter((element) => !element.matches(".public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip]"))
             .map((element) => ({ element, rect: element.getBoundingClientRect() }))
             .filter(({ element, rect }) => {
@@ -250,18 +256,18 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
               ...safePlacement,
               obstacles: [
                 ...obstacles.filter(({ element }) => !(
-                rootEventId
+                measuredRootEventId
                 && element.matches(".public-card-journey-card[data-public-card-journey-role='root']")
-                && element.dataset.publicCardJourneyEventId === rootEventId
+                && element.dataset.publicCardJourneyEventId === measuredRootEventId
                 )).map(({ rect }) => rect),
                 ...authorReservationRects,
               ],
             })
             : null;
           const resolvedTop = safeTop ?? mergedCopyFallbackTop;
-          const rootCard = rootEventId
+          const rootCard = measuredRootEventId
             ? obstacles.find(({ element }) => element.matches(".public-card-journey-card[data-public-card-journey-role='root']")
-              && element.dataset.publicCardJourneyEventId === rootEventId)
+              && element.dataset.publicCardJourneyEventId === measuredRootEventId)
             : undefined;
           const resolvedPanelTop = resolvedTop === null ? null : tableRect.top + resolvedTop;
           const overlapsRootCard = Boolean(rootCard && resolvedPanelTop !== null
@@ -400,7 +406,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
       cancelFrame(resetFrame);
       targetWidthProbe?.remove();
     };
-  }, [centralTargetLayout, enabled, playerCount, placementKey, rootEventId]);
+  }, [centralTargetLayout, enabled, playerCount, placementKey]);
 
   return { ref, top, insets, ready, rootCardOverlap };
 }
