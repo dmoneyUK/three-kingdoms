@@ -3,7 +3,7 @@
 Repository: `dmoneyUK/three-kingdoms`
 Target branch: `ux-v2`; worktree branch: `codex/t3-f1-r3`
 Latest source SHA: `634bd35268bff32cd551206519a230c7109b6c62`
-Latest design reviewed: `docs/UX2-refine.md` §10.10.3.1 at `9b729a322ea4d34bec3e56c98b0180d2b912fb52` (2026-10-27).
+Latest design reviewed: `docs/UX2-refine.md` §10.10.3.1 at `c2cd6be09a3a78bfa1368613e7131c13ec731495` (2026-10-27). The new R5-B phone-review record does not change the approved R5-A-F1 scope.
 
 ## Latest relevant result
 
@@ -21,4 +21,7 @@ Acceptance: one focused authenticated Worker/D1 four-player mobile scenario at 3
 
 - 19:23 — R5-C exact-SHA Actions completed successfully, including deploy. Worker version and production health were verified; R5-C is closed technically, pending owner phone re-review.
 - 19:24 — At the safe task boundary, reviewed the latest remote §10.10.3.1 and autonomous workflow. Selected the already owner-approved R5-A-F1 as the sole next bounded task; no implementation changes for it yet.
-- Resume point — inspect the current `choose_target_card` success/projection path and existing authenticated per-viewer room-state plumbing before choosing the smallest event-bound private proof.
+- 19:31 — Inspected `choose_target_card`, authenticated `roomState`, room normalization and the existing Steal result path. Implemented an actor-private event tied to the exact public settlement event/root, filtered it out before timeline/presentation projection, added a viewer-scoped normalized DTO and gated the result CardFace on authenticated `room.meId` plus matching room/event/root/source/target. Expanded the existing API privacy case to four seats and a two-card Hand.
+- 19:32 — A direct `node --import tsx --test --test-name-pattern=... tests/api/stratagems.test.mjs` attempt exited before assertions with `ECONNREFUSED localhost:3137` because the test Worker was not started. This is a harness invocation failure, not a product test result. `npm run build` passed with the existing chunk-size/static-classification warnings; `git diff --check` passed.
+- 19:34 — Fetched and fast-forwarded the task branch to `origin/ux-v2` at `c2cd6be`; reviewed the new §10.10.3.1 R5-B phone-review addition and confirmed it does not change the active R5-A-F1 plan. This HANDOVER progress update is being committed separately; implementation remains uncommitted and API/UI validation remains incomplete.
+- Resume point — select the narrowest existing API runner that starts the Worker/D1 harness for the updated Steal privacy case; avoid running the whole API suite if the harness cannot isolate it. Then perform at most one focused 390×844 browser scenario within the five-minute local UI cap.
