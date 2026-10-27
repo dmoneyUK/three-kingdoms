@@ -740,10 +740,11 @@ test("committed Steal exposes a root-linked public settlement without revealing 
   const game = await createHumanGame();
   const [sourceMember, targetMember, observerMember] = game.members;
   const [source, target] = game.room.players;
+  const otherHiddenCard = card("Dodge", "steal-settlement-other-private-hand-card", "♣", "4");
   const hiddenCard = card("Peach", "steal-settlement-private-hand-card");
   const stealCard = card("Steal", "steal-settlement-root-card");
   setHand(source.id, [stealCard], 4, 4);
-  setHand(target.id, [hiddenCard], 4, 4);
+  setHand(target.id, [otherHiddenCard, hiddenCard], 4, 4);
   for (const player of game.room.players.slice(2)) setHand(player.id, [], 4, 4);
   setTurn(game.code, source.seat);
 
@@ -754,13 +755,30 @@ test("committed Steal exposes a root-linked public settlement without revealing 
   const rootEvent = pendingView.timeline.find((event) => event.id === root.rootEventId);
   assert.equal(root?.cardKind, "Steal");
   assert.equal(typeof rootEvent?.resolutionId, "string");
-  const committed = await requestAndSettle("choose_target_card", { code: game.code, token: sourceMember.token, targetCardZone: "hand", targetCardIndex: 0 });
+  assert.equal(pendingView.privateStealResult, null, "the chosen Hand face is not available before a successful choice");
+  const committed = await requestAndSettle("choose_target_card", { code: game.code, token: sourceMember.token, targetCardZone: "hand", targetCardIndex: 1 });
   assert.equal(committed.status, 200, JSON.stringify(committed.data));
 
   const settledView = (await state(game.code, sourceMember.token)).data;
+  const targetView = (await state(game.code, targetMember.token)).data;
   const observerView = (await state(game.code, observerMember.token)).data;
   assert.equal(settledView.myHand.some((held) => held.id === hiddenCard.id), true, "the acquired physical card belongs to the Steal actor");
-  assert.equal(settledView.players.find((player) => player.id === target.id).handCount, 0);
+  assert.deepEqual(settledView.privateStealResult, {
+    semantics: "PRIVATE_PROVEN",
+    roomCode: game.code,
+    eventId: settledView.presentationV2.stealSettlements[0].eventId,
+    rootEventId: root.rootEventId,
+    rootResolutionId: rootEvent.resolutionId,
+    sourceId: source.id,
+    targetId: target.id,
+    sourceZone: "hand",
+    card: hiddenCard,
+  }, "the authenticated Steal actor receives the exact committed Hand card bound to the settlement");
+  assert.equal(targetView.privateStealResult, null, "the victim receives no private Steal result face");
+  assert.equal(observerView.privateStealResult, null, "other viewers receive no private Steal result face");
+  assert.equal(JSON.stringify(targetView).includes(hiddenCard.id), false, "the victim response omits the stolen card identity");
+  assert.equal(JSON.stringify(observerView).includes(hiddenCard.id), false, "observer response omits the stolen card identity");
+  assert.equal(settledView.players.find((player) => player.id === target.id).handCount, 1, "the victim retains the other concealed Hand card");
   assert.deepEqual(settledView.presentationV2.stealSettlements, [{
     semantics: "PROVEN",
     eventId: settledView.timeline.find((event) => event.publicStealSettlement)?.id,

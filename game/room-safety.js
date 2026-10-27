@@ -24,6 +24,28 @@ function normalizePhysicalCard(value) {
   return { id: card.id, kind: card.kind, suit: card.suit, rank: card.rank };
 }
 
+function normalizePrivateStealResult(value, roomCode, viewerId) {
+  if (!isRecord(value) || value.semantics !== "PRIVATE_PROVEN" || value.roomCode !== roomCode
+    || typeof viewerId !== "string" || value.sourceId !== viewerId
+    || typeof value.eventId !== "string" || !value.eventId
+    || typeof value.rootEventId !== "string" || !value.rootEventId
+    || typeof value.rootResolutionId !== "string" || !value.rootResolutionId
+    || typeof value.targetId !== "string" || !value.targetId || value.targetId === viewerId
+    || value.sourceZone !== "hand") return null;
+  const card = normalizePhysicalCard(value.card);
+  return card ? {
+    semantics: "PRIVATE_PROVEN",
+    roomCode,
+    eventId: value.eventId,
+    rootEventId: value.rootEventId,
+    rootResolutionId: value.rootResolutionId,
+    sourceId: viewerId,
+    targetId: value.targetId,
+    sourceZone: "hand",
+    card,
+  } : null;
+}
+
 function normalizeTargetCardMovement(proof, event, effect) {
   if (!isRecord(proof) || (proof.sourceZone !== "hand" && proof.sourceZone !== "equipment" && proof.sourceZone !== "judgement")
     || typeof proof.targetId !== "string" || typeof proof.sourceId !== "string") return null;
@@ -368,6 +390,7 @@ export function normalizeRoomData(value) {
     players: normalizePlayers(value.players),
     myHand: normalizeCards(value.myHand),
     timeline: normalizeTimeline(value.timeline),
+    privateStealResult: normalizePrivateStealResult(value.privateStealResult, value.code, value.meId),
     publicHarvestPool: normalizePublicHarvestPool(value.publicHarvestPool),
     log: Array.isArray(value.log) ? value.log.filter((entry) => typeof entry === "string") : [],
     myHeroOptions: normalizeHeroes(value.myHeroOptions),

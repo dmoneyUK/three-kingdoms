@@ -1953,7 +1953,20 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
         await expect(display).toHaveAttribute("data-public-card-settlement-outcome", outcome, { timeout: 15_000 });
         await expect(display).toHaveAttribute("data-public-card-settlement-source-zone", scenario.zone, { timeout: 15_000 });
         await expect(display).toHaveAttribute("data-public-card-settlement-destination-zone", scenario.kind === "Steal" ? "hand" : "discard", { timeout: 15_000 });
-        const announcement = viewerPage.locator('[data-public-card-announcement="true"]');
+        if (scenario.kind === "Steal" && scenario.zone === "hand") {
+          const result = viewerPage.locator('[data-public-card-target-result="true"]');
+          const resultCard = result.locator(".public-target-card-result__card");
+          await expect(result).toBeVisible({ timeout: 15_000 });
+          if (index === 0) {
+            await expect(resultCard).toHaveAttribute("data-public-card-target-result-card-id", affected.id);
+          } else {
+            await expect(resultCard).not.toHaveAttribute("data-public-card-target-result-card-id");
+            expect(await viewerPage.locator("body").innerHTML()).not.toContain(affected.id);
+          }
+        }
+        const announcement = scenario.kind === "Steal" && scenario.zone === "hand"
+          ? viewerPage.locator(".public-target-card-result__copy")
+          : viewerPage.locator('[data-public-card-announcement="true"]');
         await expect(announcement).toHaveText(expectedCopy);
         const copyGeometry = await announcement.evaluate((element) => {
           const rect = element.getBoundingClientRect();
@@ -1984,6 +1997,21 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
       for (const [index, view] of settledViews.entries()) {
         expect(view.pendingTargetCard).toBeNull();
         expect(view.currentAction?.targetCardSelection).toBeUndefined();
+        if (scenario.kind === "Steal" && scenario.zone === "hand") {
+          if (index === 0) {
+            expect(view.privateStealResult).toMatchObject({
+              semantics: "PRIVATE_PROVEN",
+              eventId: proof.eventId,
+              rootEventId: rootEvent.id,
+              sourceId: seed.players[0].id,
+              targetId: seed.players[1].id,
+              sourceZone: "hand",
+              card: affected,
+            });
+          } else {
+            expect(view.privateStealResult).toBeNull();
+          }
+        }
         expect(view.presentationSnapshot[publicField].find((entry) => entry.rootEventId === rootEvent.id)).toEqual(proof);
         expect(view.timeline.filter((event) => event?.id === rootEvent.id)).toHaveLength(1);
         const publicWire = JSON.stringify({ presentationV2: view.presentationV2, presentationSnapshot: view.presentationSnapshot, timeline: view.timeline, log: view.log });

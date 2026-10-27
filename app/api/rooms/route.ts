@@ -970,6 +970,20 @@ function addFinalResult(log: string[], message: string, drawPlayerId?: string, r
 function addHistory(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) { return [...log.slice(-199), `@history:${JSON.stringify({ id: crypto.randomUUID(), message, presentation: false, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`]; }
 function addCardEvent(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" = "play", presentation = true, meta?: PresentationMeta, eventId = crypto.randomUUID()) { return [...log.slice(-199), `@card:${JSON.stringify({ id: eventId, player, target, card, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential") })}`]; }
 function addPrivateDrawEvent(log: string[], player: PlayerRow, card: Card, initialDeal = false) { return [...log.slice(-199), `@card:${JSON.stringify({ id: crypto.randomUUID(), player: player.name, target: player.name, card, action: "draw", presentation: false, privateToPlayerId: player.id, drawPlayerId: player.id, ...presentationMeta(log, initialDeal ? { initialDeal: true } : undefined, "informational") })}`]; }
+function addPrivateStealResultEvent(log: string[], source: PlayerRow, roomCode: string, settlementEventId: string, proof: PresentationStealSettlementProof, card: Card) {
+  if (proof.sourceZone !== "hand" || proof.sourceId !== source.id || !settlementEventId) return log;
+  const privateResult = {
+    semantics: "PRIVATE_PROVEN",
+    roomCode,
+    settlementEventId,
+    rootEventId: proof.rootEventId,
+    rootResolutionId: proof.rootResolutionId,
+    sourceId: proof.sourceId,
+    targetId: proof.targetId,
+    sourceZone: proof.sourceZone,
+  };
+  return [...log.slice(-199), `@card:${JSON.stringify({ id: crypto.randomUUID(), player: source.name, target: source.name, card, action: "gain", presentation: false, privateToPlayerId: source.id, drawPlayerId: source.id, privateStealResult: privateResult })}`];
+}
 function addCardEventWithId(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" = "play", presentation = true, meta?: PresentationMeta) {
   const eventId = crypto.randomUUID();
   return { log: addCardEvent(log, player, card, target, action, presentation, meta, eventId), eventId };
@@ -2165,6 +2179,32 @@ function gameTimeline(entries: string[], viewerPlayerId?: string) {
     if (event.type === "cards") return Array.isArray(event.cards) && event.cards.length > 0 && event.cards.every((card) => Boolean(card && typeof card === "object" && typeof (card as { id?: unknown }).id === "string" && typeof (card as { kind?: unknown }).kind === "string"));
     return false;
   });
+}
+function privateStealResultForEvent(event: Record<string, unknown>, roomCode: string, viewerId: string) {
+  const proof = record(event.privateStealResult);
+  const card = record(event.card);
+  if (event.type !== "card" || event.action !== "gain" || event.presentation !== false
+    || event.privateToPlayerId !== viewerId || event.drawPlayerId !== viewerId
+    || proof?.semantics !== "PRIVATE_PROVEN" || proof.roomCode !== roomCode
+    || proof.sourceId !== viewerId || proof.sourceZone !== "hand"
+    || typeof proof.settlementEventId !== "string" || !proof.settlementEventId
+    || typeof proof.rootEventId !== "string" || !proof.rootEventId
+    || typeof proof.rootResolutionId !== "string" || !proof.rootResolutionId
+    || typeof proof.targetId !== "string" || !proof.targetId || proof.targetId === viewerId
+    || typeof card?.id !== "string" || !card.id
+    || typeof card.kind !== "string" || !CARD_KINDS.includes(card.kind as Card["kind"])
+    || typeof card.suit !== "string" || typeof card.rank !== "string") return null;
+  return {
+    semantics: "PRIVATE_PROVEN" as const,
+    roomCode,
+    eventId: proof.settlementEventId,
+    rootEventId: proof.rootEventId,
+    rootResolutionId: proof.rootResolutionId,
+    sourceId: viewerId,
+    targetId: proof.targetId,
+    sourceZone: "hand" as const,
+    card: card as unknown as Card,
+  };
 }
 async function claimTurnAction(roomId: string, seat: number, phase: string) {
   const result = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND status = 'playing' AND turn_seat = ? AND phase = ?").bind(roomId, seat, phase).run();
@@ -5635,7 +5675,9 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     ...(deckReorderPending && me?.id === deckReorderPending.actorId ? { deckReorder: { cards: deckReorderPending.cards, minTop: deckReorderPending.minTop, maxTop: deckReorderPending.maxTop } } : {}),
     ...(!concealPrivateTriggerDecision && presentation ? { presentation } : {}),
   };
-  const projectedTimeline = gameTimeline(rawLog, me?.id);
+  const viewerTimeline = gameTimeline(rawLog, me?.id);
+  const privateStealResultEvents = viewerTimeline.filter((event) => event.privateStealResult !== undefined);
+  const projectedTimeline = viewerTimeline.filter((event) => event.privateStealResult === undefined);
   const presentationInput = {
     pending: negationWindow ? {
       kind: "response",
@@ -5656,6 +5698,20 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     oathRecipientIds: oathRecipientIds(players.map((player) => ({ id: player.id, alive: Boolean(player.alive), hp: player.hp, maxHp: player.max_hp }))),
   };
   const presentationV2 = projectPresentationV2(presentationInput);
+  const latestStealSettlement = presentationV2.stealSettlements.at(-1);
+  const privateStealResultCandidates = me && latestStealSettlement?.sourceZone === "hand" && latestStealSettlement.sourceId === me.id
+    ? privateStealResultEvents.flatMap((event) => {
+      const proof = privateStealResultForEvent(event, room.code, me.id);
+      return proof && proof.eventId === latestStealSettlement.eventId
+        && proof.rootEventId === latestStealSettlement.rootEventId
+        && proof.rootResolutionId === latestStealSettlement.rootResolutionId
+        && proof.sourceId === latestStealSettlement.sourceId
+        && proof.targetId === latestStealSettlement.targetId
+        ? [proof]
+        : [];
+    })
+    : [];
+  const privateStealResult = privateStealResultCandidates.length === 1 ? privateStealResultCandidates[0] : null;
   const publicHarvestPool = publicHarvestPoolDuringNegation(negationWindow, presentationV2, projectedTimeline, players);
   const attackDodgeProjectionDiagnostics = includeAttackDodgeDiagnostics
     ? attackRootProjectionDiagnosticsFor(presentationInput)
@@ -5669,7 +5725,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     myHeroOptions,
     turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null,
     log: rawLog.flatMap((entry, index) => { if (entry.startsWith("@card:") || entry.startsWith("@cards:")) return []; if (entry.startsWith("@history:")) { try { return [(JSON.parse(entry.slice(9)) as { message: string }).message]; } catch { return []; } } const event = messageEvent(entry, index); return event ? [event.message] : []; }),
-    timeline: projectedTimeline, presentationV2, myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && me?.seat === room.turn_seat, actionPlayerId: concealPrivateTriggerDecision ? null : actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && (negationWindow ? Boolean(sharedWindowResponse) : me?.id === actualActionPlayerId),
+    timeline: projectedTimeline, presentationV2, privateStealResult, myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && me?.seat === room.turn_seat, actionPlayerId: concealPrivateTriggerDecision ? null : actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && (negationWindow ? Boolean(sharedWindowResponse) : me?.id === actualActionPlayerId),
     pendingAttack,
     // Compatibility projection for old clients/tests; canonical damage
     // reactions are persisted as TriggerPending and submitted via trigger or
@@ -7737,12 +7793,14 @@ export async function POST(request: Request) {
       sourceHand = [...sourceHand, chosen];
       const message = `${me.name} uses Steal to obtain one ${zone === "hand" ? "hidden hand" : zone} card from ${target.name}.`;
       if (settlementProof) {
-        log = addLogWithId(log, message, undefined, {
+        const settlementEvent = addLogWithId(log, message, undefined, {
           resolutionId: settlementProof.rootResolutionId,
           importance: "essential",
           finalResult: true,
           publicStealSettlement: settlementProof,
-        }).log;
+        });
+        log = settlementEvent.log;
+        if (zone === "hand") log = addPrivateStealResultEvent(log, me, room.code, settlementEvent.eventId, settlementProof, chosen);
       } else {
         log = addHistory(log, message);
       }
