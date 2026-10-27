@@ -7778,6 +7778,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       },
       settlement: {
         eventId: stealSettlementCandidate.action.eventId,
+        rootResolutionId: stealSettlementCandidate.action.rootResolutionId,
         outcome: stealSettlementCandidate.action.outcome,
         exiting: stealSettlementCandidate.exiting,
         targetCardResultActive: stealSettlementCandidate.journeySettled,

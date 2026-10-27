@@ -106,6 +106,8 @@ export type PublicCardDisplayAction = {
   motion?: PublicCardDisplayMotion;
   settlement?: {
     eventId: string;
+    /** Authenticated root proof used to match an actor-private Steal result. */
+    rootResolutionId?: string;
     outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "GROUP_RESOLVED" | "BUMPER_HARVEST_RESOLVED" | "ROOT_CANCELLED" | "ROOT_RESTORED" | "LUST_DUEL_DAMAGE_APPLIED" | "LUST_DUEL_DAMAGE_PREVENTED";
     exiting: boolean;
     /** Server-derived remaining portion of a proof-backed public-card read, when supplied. */

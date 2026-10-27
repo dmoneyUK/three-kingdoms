@@ -1,16 +1,25 @@
 # Current Handover
 
 Repository: `dmoneyUK/three-kingdoms`
-Target branch: `ux-v2`; worktree branch: `codex/t3-f1-r3`
-Latest source SHA: `55a46f6bf6441395bdea50c7267578764a06a0d0`
-Latest design reviewed: `docs/UX2-refine.md` at `c2cd6be09a3a78bfa1368613e7131c13ec731495` (2026-10-27).
 
-## Latest relevant result
+Target: `origin/ux-v2`; worktree branch: `codex/t3-f1-r5-a-f1`
 
-**T3-F1 R5-A-F1 — IMPLEMENTED / DEPLOYED — PENDING OWNER REAL-iPHONE REVIEW.** Source `55a46f6bf6441395bdea50c7267578764a06a0d0`; exact-SHA [Actions `40572207968`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40572207968) passed API, lint/fast, browser startup/room smoke, D1 migration, Worker deployment and production smoke. Worker version `2485eff3-c793-4a90-9285-13e23bf5fe9c`; direct production `/` and `/api/health` both returned HTTP 200, health `{"ok":true,"worker":"available"}`. Focused API privacy regression passed 1/1; local build and `git diff --check` passed. The focused mobile browser check was **SKIPPED — exceeded the five-minute combined local UI-test cap**; exact actor-only face rendering remains for owner iPhone re-review. No user acceptance is inferred.
+Base/source SHA: `b4e2ef86bcd14fa614a2bac7f3244a5c6e356370`
 
-## Current bounded task — §10.9 W5 Green Dragon Blade
+Design reviewed: `docs/UX2-refine.md` §10.10.3.1 at `b4e2ef86bcd14fa614a2bac7f3244a5c6e356370`.
 
-Implement the **Green Dragon Blade AS ATTACK follow-up Frame** only, following `docs/UX2-refine.md` §10.9. The frame must show the real Green Dragon Blade ability and exactly the newly committed Attack CardFace after the original Attack is dodged. Preserve the same source, target and root; do not show the original Attack as a second physical card, treat the follow-up as a cost, or obscure/alter the target's ordinary Dodge decision. Use only server-authored committed proof; preserve legal responses and private Hands.
+## Current result
 
-Acceptance: one focused authenticated four-player mobile scenario at 390×844 verifies the same true follow-up Attack and attribution for source, target and observer, keeps the new Dodge response usable, and reveals no unowned Hand identities. Run only focused fast validation and one local browser scenario capped at five minutes; if it exceeds the limit, stop and record it as skipped. Then run exact-SHA Actions, deployment and production health checks. Final status: **IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE REVIEW**, never USER-ACCEPTED.
+**T3-F1 R5-A-F1 — IN PROGRESS; NOT ACCEPTED.** Prior deployment `55a46f6bf6441395bdea50c7267578764a06a0d0` / [Actions 40572207968](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40572207968) passed, but owner phone review found the Steal actor still sees a back. Latest design confirms the frontend omitted `rootResolutionId` when constructing the Steal settlement action, making its existing strict private-proof match fail.
+
+## Execution log — 2026-10-27 UTC
+
+- 20:40 — Reviewed latest design and source. Confirmed `SingleTargetCardJourney` already enforces the correct event/root/viewer/private proof; only typed `rootResolutionId` plumbing was missing. Latest push-triggered CI for `origin/ux-v2` code SHA `55a46f6` was green.
+- 20:43 — Added optional `settlement.rootResolutionId`, passed the already validated Steal candidate value, and strengthened the existing four-viewer phone scenario to assert the actor's Peach identity/name/rank/suit plus private-proof root ID. Other viewers retain back-only and no-identity assertions.
+- 20:43 — `npm run build` passed.
+- 20:44 — One filtered four-player 390×844 browser run started; local Wrangler Worker exited with a ProxyWorker error (`browser-worker.log`, 20:44:54 UTC). The run was interrupted without a behavioral result; no retry or broader UI test will be started.
+- 20:47 — Targeted ESLint completed with 0 errors and 15 React-hook warnings; `git diff --check` passed.
+
+## Current bounded task
+
+Finish only T3-F1 R5-A-F1: preserve the strict actor-private proof match while passing the validated root-resolution ID through the Steal action. Do not change backend proof semantics, public target-card movement, layout, timing, or other R5 work. The source and focused regression edits are uncommitted in this isolated worktree. Run no further local UI tests. Before commit, recheck the latest relevant CI run; then commit and push to `ux-v2`, wait for exact-SHA Actions/deployment and production health, and record actual results here. Final status must be **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**.

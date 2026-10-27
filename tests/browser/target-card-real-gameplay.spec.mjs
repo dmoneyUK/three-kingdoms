@@ -1959,6 +1959,10 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
           await expect(result).toBeVisible({ timeout: 15_000 });
           if (index === 0) {
             await expect(resultCard).toHaveAttribute("data-public-card-target-result-card-id", affected.id);
+            const face = resultCard.locator(".played-card");
+            await expect(face).toHaveClass(/peach/);
+            await expect(face.locator(".card-name-mark")).toHaveText("Peach");
+            await expect(face.locator("i")).toHaveText("7♥");
           } else {
             await expect(resultCard).not.toHaveAttribute("data-public-card-target-result-card-id");
             expect(await viewerPage.locator("body").innerHTML()).not.toContain(affected.id);
@@ -2003,6 +2007,7 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
               semantics: "PRIVATE_PROVEN",
               eventId: proof.eventId,
               rootEventId: rootEvent.id,
+              rootResolutionId: proof.rootResolutionId,
               sourceId: seed.players[0].id,
               targetId: seed.players[1].id,
               sourceZone: "hand",
