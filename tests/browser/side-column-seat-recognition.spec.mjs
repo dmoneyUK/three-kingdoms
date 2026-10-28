@@ -44,6 +44,7 @@ async function readLayout(page) {
       );
       const portrait = seat.querySelector(".opponent-hero-portrait");
       const image = portrait.querySelector(".hero-art-image");
+      const imageStyle = image ? getComputedStyle(image) : null;
       const art = bounds(portrait);
       const focalPoint = { x: art.x + art.width * 0.45, y: art.y + art.height * 0.42 };
       const focalText = [...seat.querySelectorAll(".opponent-player-name, .opponent-hero-name, .player-hp, .player-hearts")]
@@ -67,7 +68,10 @@ async function readLayout(page) {
         seat: bounds(seat),
         row: Number(seat.dataset.sideRow),
         image: image ? bounds(image) : null,
-        imageObjectFit: image ? getComputedStyle(image).objectFit : null,
+        imageObjectFit: imageStyle?.objectFit ?? null,
+        imageLeft: imageStyle?.left ?? null,
+        imageTransform: imageStyle?.transform ?? null,
+        imageTranslate: imageStyle?.translate ?? null,
         target: targetBounds,
         switch: (() => {
           const button = seat.querySelector(".test-view-switch-button");
@@ -192,7 +196,7 @@ test("H2-G3 F1-R3 projection preserves the accepted ring and caps eight players 
   expect([1, 2, 3].map((relativeIndex) => project(4, relativeIndex))).toEqual([null, null, null]);
 });
 
-test("H2-G3 F1-R4 at 390px keeps fixed Seat frames, edge alignment, and TEST SWITCH", async ({ browser }, testInfo) => {
+test("H2-G3 F1-R4/R5 at 390px keeps Seat geometry, art fill, and TEST SWITCH", async ({ browser }, testInfo) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   const assertPhoneRing = async (count, { state = "rest", topCount, leftRelative, rightRelative } = {}) => {
@@ -237,6 +241,23 @@ test("H2-G3 F1-R4 at 390px keeps fixed Seat frames, edge alignment, and TEST SWI
 
     const six = await assertPhoneRing(6, { topCount: 5 });
     expect(six.sideCount).toBe(0);
+    const sixArtEvidence = six.topSeats.map((seat) => ({
+      id: seat.id,
+      seat: seat.seat,
+      portrait: seat.art,
+      image: seat.image,
+      objectFit: seat.imageObjectFit,
+      left: seat.imageLeft,
+      transform: seat.imageTransform,
+      translate: seat.imageTranslate,
+    }));
+    console.info(`[H2-G3 F1-R5 after 390x844 six-player TOP5] ${JSON.stringify(sixArtEvidence)}`);
+    await testInfo.attach("h2-g3-f1-r5-after-390px-six-player-top5-domrects.json", {
+      body: JSON.stringify(sixArtEvidence, null, 2),
+      contentType: "application/json",
+    });
+    await captureF1Screenshot(page, testInfo, "h2-g3-f1-r5-after-390px-six-player-top5");
+    assertTopPortraitFill(six, "390px six-player TOP5");
     const referenceWidth = six.topSeats[0].seat.width;
     expect(five.topSeats.every((seat) => Math.abs(seat.seat.width - referenceWidth) <= 1), "four-player top row keeps the same viewport reference width").toBe(true);
     expect(Math.max(...six.topSeats.map((seat) => seat.seat.width)) - Math.min(...six.topSeats.map((seat) => seat.seat.width))).toBeLessThanOrEqual(1);
@@ -244,6 +265,7 @@ test("H2-G3 F1-R4 at 390px keeps fixed Seat frames, edge alignment, and TEST SWI
     expect(Math.abs(six.topMargins.left - six.topMargins.right)).toBeLessThanOrEqual(4);
 
     const seven = await assertPhoneRing(7, { state: "bumper-harvest-choosing", topCount: 4, leftRelative: 1, rightRelative: 6 });
+    assertTopPortraitFill(seven, "390px seven-player TOP4");
     reportF1Geometry("390x844 seven-player", seven);
     expect(seven.topSeats.every((seat) => Math.abs(seat.seat.width - referenceWidth) <= 1), "four top Seats retain the five-seat reference width").toBe(true);
     expect(Math.max(...seven.topGaps) - Math.min(...seven.topGaps)).toBeLessThanOrEqual(2);
@@ -274,6 +296,7 @@ test("H2-G3 F1-R4 at 390px keeps fixed Seat frames, edge alignment, and TEST SWI
     for (const seat of switchedSeven.seats) expect(seat.relativeIndex).toBe((switchedSevenRing.indexOf(seat.id) - switchedSevenViewer + switchedSevenRing.length) % switchedSevenRing.length);
 
     const eight = await assertPhoneRing(8, { state: "rest", topCount: 5, leftRelative: 1, rightRelative: 7 });
+    assertTopPortraitFill(eight, "390px eight-player TOP5");
     reportF1Geometry("390x844 eight-player", eight);
     expect(eight.sideCount).toBe(2);
     expect(eight.topSeats.every((seat) => Math.abs(seat.seat.width - referenceWidth) <= 1), "eight-player top row uses the same five-seat reference width").toBe(true);
@@ -353,6 +376,21 @@ function assertSidePortraitFill(layout, label) {
     expect(Math.abs(seat.image.x - seat.art.x), `${label} ${seat.side} artwork starts at the portrait edge`).toBeLessThanOrEqual(1);
     expect(Math.abs(seat.image.width - seat.art.width), `${label} ${seat.side} artwork fills the portrait width`).toBeLessThanOrEqual(1);
     expect(seat.imageObjectFit, `${label} ${seat.side} artwork keeps its proportions`).toBe("cover");
+  }
+}
+
+function assertTopPortraitFill(layout, label) {
+  const topSeats = layout.seats.filter((entry) => entry.side === "top").sort((left, right) => left.topIndex - right.topIndex);
+  expect(topSeats.length, `${label} keeps its real top Seat count`).toBeGreaterThan(0);
+  for (const seat of topSeats) {
+    expect(seat.image, `${label} ${seat.id} has genuine Hero artwork`).toBeTruthy();
+    expect(seat.imageLoaded, `${label} ${seat.id} Hero artwork is loaded`).toBe(true);
+    expect(Math.abs(seat.image.x - seat.art.x), `${label} ${seat.id} artwork starts at portrait left`).toBeLessThanOrEqual(1);
+    expect(seat.image.width, `${label} ${seat.id} artwork covers portrait content width`).toBeGreaterThanOrEqual(seat.art.width - 1);
+    expect(seat.imageObjectFit, `${label} ${seat.id} artwork stays proportional`).toBe("cover");
+    expect(seat.imageLeft, `${label} ${seat.id} artwork is positioned from the portrait left`).toBe("0px");
+    expect(seat.imageTranslate, `${label} ${seat.id} artwork has no horizontal centering translation`).toBe("none");
+    expect(seat.imageTransform, `${label} ${seat.id} artwork has no added transform`).toBe("none");
   }
 }
 

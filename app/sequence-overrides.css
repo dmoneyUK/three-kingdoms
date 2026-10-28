@@ -7385,6 +7385,14 @@
     translate: none;
   }
 
+  /* H2-G3 F1-R5: fill only the existing TOP portrait width. Preserve the
+     vertical crop and proportional cover behavior; do not change Seat boxes. */
+  .game-shell .player-board[data-seat-topology="side-column"][data-mobile-top-ring="true"] > .opponent-player-card[data-side-column="top"] .opponent-hero-portrait > .hero-art-image {
+    left: 0;
+    width: 100%;
+    translate: none;
+  }
+
   .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-mobile-top-ring="true"]) > .interaction-safe-zone {
     top: calc(var(--mobile-seat-top-band-height, 0px) + 8px);
   }
