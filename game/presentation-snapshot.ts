@@ -731,6 +731,40 @@ export function provenDuelExchange(
     });
   }
 
+  let negationResponses: PresentationSnapshotDuelExchange["negationResponses"];
+  if (exchange.negationResponses !== undefined) {
+    if (!Array.isArray(exchange.negationResponses)) return null;
+    const responseCardIds = new Set<string>();
+    const validatedNegations: NonNullable<PresentationSnapshotDuelExchange["negationResponses"]>[number][] = [];
+    for (const [index, candidate] of exchange.negationResponses.entries()) {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+      const response = candidate as Record<string, unknown>;
+      if (response.semantics !== "PROVEN" || response.relation !== "DUEL_NEGATION"
+        || response.interactionId !== exchange.interactionId || response.rootFrameId !== exchange.rootFrameId
+        || response.rootEventId !== root.eventId || response.rootResolutionId !== root.resolutionId
+        || response.ordinal !== index + 1 || !nonEmptyString(response.responseEventId)
+        || !nonEmptyString(response.responseResolutionId) || !nonEmptyString(response.responseActorId)
+        || !nonEmptyString(response.responseCardId)
+        || eventIds.has(response.responseEventId as string) || responseCardIds.has(response.responseCardId as string)) return null;
+      eventIds.add(response.responseEventId as string);
+      responseCardIds.add(response.responseCardId as string);
+      validatedNegations.push({
+        semantics: "PROVEN",
+        relation: "DUEL_NEGATION",
+        interactionId: exchange.interactionId as string,
+        rootFrameId: exchange.rootFrameId as string,
+        rootEventId: root.eventId as string,
+        rootResolutionId: root.resolutionId as string,
+        ordinal: index + 1,
+        responseActorId: response.responseActorId as string,
+        responseCardId: response.responseCardId as string,
+        responseEventId: response.responseEventId as string,
+        responseResolutionId: response.responseResolutionId as string,
+      });
+    }
+    negationResponses = validatedNegations;
+  }
+
   if (scene !== undefined || identity !== undefined || stable !== undefined) {
     if (!scene || !identity || !stable || scene.semantics !== "PROVEN"
       || scene.stage !== "DUEL_EXCHANGE" || stable.kind !== "CHOICE"
@@ -756,6 +790,7 @@ export function provenDuelExchange(
     root: { eventId: root.eventId as string, resolutionId: root.resolutionId as string, sourceId: root.sourceId as string, targetId: root.targetId as string, cardKind: "Duel" },
     responseCount: responseCount as number,
     responses,
+    ...(negationResponses ? { negationResponses } : {}),
     currentParticipantId: exchange.currentParticipantId as string,
     decisionActorId: exchange.decisionActorId as string | null,
   };

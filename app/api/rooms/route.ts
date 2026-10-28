@@ -3725,7 +3725,21 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
     await beginDelayedJudgement(judgementEnvelope ? { ...resumedRoom, causal_envelope_json: JSON.stringify(judgementEnvelope) } : resumedRoom, target, players, selected.delayed, selected.remaining, deck, discard, log, pending.resumePhase, [db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(selected.remaining), target.id)], judgementEnvelope && pending.causal ? { context: pending.causal, envelope: judgementEnvelope } : undefined);
     return [];
   } else if (pending.effect.kind === "duel") {
-    const moved = await causalRoomStateWrite(roomId, { phase: "response", pending: { ...pending.effect.pending, deadline: nextResponseDeadline(players.find((player) => player.id === pending.effect.pending.actorId)) }, log, causalEnvelope: resumedEnvelope }, expectedPendingJson).run();
+    const duelPending = pending.effect.pending;
+    const duelCausal = duelPending.continuation.causal;
+    const committedNegationHistory = pending.rootCardKind === "Duel"
+      && pending.negationHistory?.length
+      && pending.negationHistory.every((entry) => Boolean(entry.publicEventId)
+        && entry.interactionId === pending.causal?.interactionId
+        && entry.frameId === pending.causal?.frameId
+        && entry.interactionId === duelCausal?.interactionId
+        && entry.frameId === duelCausal?.frameId)
+      ? pending.negationHistory
+      : undefined;
+    const resumedDuelPending = committedNegationHistory?.length
+      ? { ...duelPending, continuation: { ...duelPending.continuation, negationHistory: committedNegationHistory } }
+      : duelPending;
+    const moved = await causalRoomStateWrite(roomId, { phase: "response", pending: { ...resumedDuelPending, deadline: nextResponseDeadline(players.find((player) => player.id === resumedDuelPending.actorId)) }, log, causalEnvelope: resumedEnvelope }, expectedPendingJson).run();
     if ((moved.meta.changes ?? 0) > 0) await advanceDuel(roomId);
     return [];
   } else if (pending.effect.kind === "group") {
@@ -3974,7 +3988,12 @@ async function settleNegationWindow(room: RoomRow, window: NegationWindowPending
   }
   const nextHand = handBefore.filter((card) => !winner.cardIds.includes(card.id));
   let log = parse<string[]>(room.log_json, []);
-  if (consumed.length === 1) log = addCardEventWithId(log, actor.name, consumed[0], actor.name).log;
+  let committedNegationEventId: string | undefined;
+  if (consumed.length === 1) {
+    const publicCardEvent = addCardEventWithId(log, actor.name, consumed[0], actor.name);
+    log = publicCardEvent.log;
+    if (consumed[0].kind === "Negation") committedNegationEventId = publicCardEvent.eventId;
+  }
   else if (consumed.length > 1) log = addCardGroupEvent(log, actor.name, consumed, "play", true, actor.name);
   const negationAction = winner.execution.providerId === "negation_card" ? "plays Negation" : `uses ${winner.execution.providerId}`;
   log = addLog(log, `${actor.name} ${negationAction} ${window.continuation.negated ? "to restore" : "to cancel"} ${window.continuation.cardName}'s effect.`);
@@ -3987,7 +4006,7 @@ async function settleNegationWindow(room: RoomRow, window: NegationWindowPending
     })
     : envelope;
   const transitioned = retainHarvestNegationPublicResponses(
-    applySuccessfulNegation(window.continuation, actor, consumed, winnerEnvelope),
+    applySuccessfulNegation(window.continuation, actor, consumed, winnerEnvelope, committedNegationEventId),
     log,
     players,
   );
@@ -7687,13 +7706,18 @@ export async function POST(request: Request) {
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Negation decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
     if (canonicalRespond) {
       hand = hand.filter((card) => !consumedIds.includes(card.id)); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
-      if (consumedCards.length === 1) log = addCardEvent(log, me.name, consumedCards[0], me.name);
+      let committedNegationEventId: string | undefined;
+      if (consumedCards.length === 1) {
+        const publicCardEvent = addCardEventWithId(log, me.name, consumedCards[0], me.name);
+        log = publicCardEvent.log;
+        if (consumedCards[0].kind === "Negation") committedNegationEventId = publicCardEvent.eventId;
+      }
       else if (consumedCards.length > 1) log = addCardGroupEvent(log, me.name, consumedCards, "play", true, me.name);
       const negationAction = responseExecution?.providerId === "negation_card" ? "plays Negation" : `uses ${responseExecution?.providerId ?? "a Negation provider"}`;
       log = addLog(log, `${me.name} ${negationAction} ${continuation.negated ? "to restore" : "to cancel"} ${continuation.cardName}'s effect.`);
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const updatedPlayers = (rows.results ?? []).map((player) => player.id === me.id ? { ...player, hand_json: JSON.stringify(hand) } : player);
       const storedEnvelope = parseCausalEnvelope(liveRoom.causal_envelope_json);
-      const transitioned = applySuccessfulNegation(continuation, me, consumedCards, storedEnvelope);
+      const transitioned = applySuccessfulNegation(continuation, me, consumedCards, storedEnvelope, committedNegationEventId);
       const candidateIds = playersInNegationOrder(updatedPlayers, nextAliveSeat(updatedPlayers, me.seat)).map((player) => player.id);
       const next = nextEligibleNegationResponder(updatedPlayers, candidateIds, transitioned);
       const nextActor = next.actor ?? me;

@@ -5547,6 +5547,22 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const source = room.players.find((player) => player.id === exchange.root.sourceId);
     const target = room.players.find((player) => player.id === exchange.root.targetId);
     if (!source?.name || !target?.name) return null;
+    const negationResponses = (exchange.negationResponses ?? []).flatMap((response, index) => {
+      if (response.ordinal !== index + 1 || response.relation !== "DUEL_NEGATION"
+        || response.interactionId !== exchange.interactionId || response.rootFrameId !== exchange.rootFrameId
+        || response.rootEventId !== exchange.root.eventId || response.rootResolutionId !== exchange.root.resolutionId) return [];
+      const responseMatches = room.timeline.filter((event) => event.id === response.responseEventId);
+      if (responseMatches.length !== 1) return [];
+      const responseEvent = responseMatches[0];
+      const responseActor = room.players.find((player) => player.id === response.responseActorId);
+      if (responseEvent.type !== "card" || responseEvent.action !== "play" || responseEvent.presentation === false
+        || typeof responseEvent.privateToPlayerId === "string" || responseEvent.playedAs !== undefined
+        || responseEvent.card.kind !== "Negation" || responseEvent.card.id !== response.responseCardId
+        || responseEvent.resolutionId !== response.responseResolutionId
+        || !responseActor?.name || responseEvent.player !== responseActor.name) return [];
+      return [{ response, responseEvent, responseActor }];
+    });
+    if (negationResponses.length !== (exchange.negationResponses?.length ?? 0)) return null;
     const responses = exchange.responses.flatMap((response, index) => {
       if (response.ordinal !== index + 1 || response.relation !== "DUEL_EXCHANGE"
         || response.rootEventId !== exchange.root.eventId || response.rootResolutionId !== exchange.root.resolutionId
@@ -5580,7 +5596,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (responses.length !== exchange.responseCount) return null;
     const latest = responses.at(-1) ?? null;
     return {
-      exchange, rootEvent, source, target, responses,
+      exchange, rootEvent, source, target, negationResponses, responses,
       response: latest?.response ?? null,
       responseEvent: latest?.responseEvent ?? null,
       responseActor: latest?.responseActor ?? null,
@@ -6875,8 +6891,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       targetId: duelExchangeDisplayCandidate.exchange.root.targetId,
       currentParticipantId: duelExchangeDisplayCandidate.exchange.currentParticipantId,
       decisionActorId: duelExchangeDisplayCandidate.exchange.decisionActorId,
-      responseEventIds: duelExchangeDisplayCandidate.exchange.responses.map(({ response }) => response.responseEventId),
-      responseActorIds: duelExchangeDisplayCandidate.exchange.responses.map(({ response }) => response.responseActorId),
+      responseEventIds: duelExchangeDisplayCandidate.exchange.responses.map((response) => response.responseEventId),
+      responseActorIds: duelExchangeDisplayCandidate.exchange.responses.map((response) => response.responseActorId),
     } : null,
   });
   const activeDuelReadIdentityMatches = Boolean(activePublicNegationRead
@@ -7948,21 +7964,32 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         scopeKey: [room.code, duelExchangeDisplayCandidate.exchange.interactionId, duelExchangeDisplayCandidate.exchange.rootFrameId, duelExchangeDisplayCandidate.exchange.root.eventId].join(":"),
         freshEventIds: [
           duelExchangeDisplayCandidate.exchange.root.eventId,
+          ...duelExchangeDisplayCandidate.negationResponses.map(({ response }) => response.responseEventId),
           ...duelExchangeDisplayCandidate.responses.map(({ response }) => response.responseEventId),
         ].filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
       },
-      ...(duelExchangeDisplayCandidate.responses.length ? {
-        responses: duelExchangeDisplayCandidate.responses.map(({ response, responseEvent, responseActor, responseTarget }) => ({
-          eventId: response.responseEventId,
-          ordinal: response.ordinal,
-          actorId: response.responseActorId,
-          actorName: responseActor.name,
-          cardFace: responseEvent.card,
-          ...(responseEvent.card.kind !== "Attack" && responseEvent.playedAs?.toLowerCase() === "attack"
-            ? { semanticLabel: "AS ATTACK" }
-            : {}),
-          ariaLabel: `${responseActor.name} played Attack targeting ${responseTarget.name}`,
-        })),
+      ...(duelExchangeDisplayCandidate.negationResponses.length || duelExchangeDisplayCandidate.responses.length ? {
+        responses: [
+          ...duelExchangeDisplayCandidate.negationResponses.map(({ response, responseEvent, responseActor }) => ({
+            eventId: response.responseEventId,
+            ordinal: response.ordinal,
+            actorId: response.responseActorId,
+            actorName: responseActor.name,
+            cardFace: responseEvent.card,
+            ariaLabel: `${responseActor.name} played Negation during ${duelExchangeDisplayCandidate.source.name}'s Duel.`,
+          })),
+          ...duelExchangeDisplayCandidate.responses.map(({ response, responseEvent, responseActor, responseTarget }) => ({
+            eventId: response.responseEventId,
+            ordinal: duelExchangeDisplayCandidate.negationResponses.length + response.ordinal,
+            actorId: response.responseActorId,
+            actorName: responseActor.name,
+            cardFace: responseEvent.card,
+            ...(responseEvent.card.kind !== "Attack" && responseEvent.playedAs?.toLowerCase() === "attack"
+              ? { semanticLabel: "AS ATTACK" }
+              : {}),
+            ariaLabel: `${responseActor.name} played Attack targeting ${responseTarget.name}`,
+          })),
+        ],
       } : {}),
     }
     : singleTargetNegationOwnsRoot

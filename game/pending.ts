@@ -99,7 +99,7 @@ export function isGroupParticipantProgressOutcomeAllowed(
   if (outcome === "DEFEATED") return cardKind === "RainingArrows" || cardKind === "BarbarianInvasion";
   return false;
 }
-export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; /** Count of server-accepted Attack responses; absent on legacy persisted Duels. */ attackResponseCount?: number; wushuangPlayerId?: string; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } & CausalFields;
+export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; /** Count of server-accepted Attack responses; absent on legacy persisted Duels. */ attackResponseCount?: number; /** Exact, committed Negation card history carried from the same printed Duel root. */ negationHistory?: NegationHistoryRecord[]; wushuangPlayerId?: string; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } & CausalFields;
 export type NegationHistoryRecord = {
   nodeId: string;
   interactionId: string;
@@ -107,6 +107,8 @@ export type NegationHistoryRecord = {
   causedByNodeId: string | null;
   actorId: string;
   physicalCardId: string;
+  /** Public play event for a physical Negation card, when its commit has a direct event identity. */
+  publicEventId?: string;
   kind: "NEGATION_CARD";
 };
 export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; /** Public root identity from the actual server-owned effective Stratagem card; legacy continuations may omit it. */ rootCardKind?: CardKind; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string; negationHistory?: NegationHistoryRecord[] } & CausalFields;

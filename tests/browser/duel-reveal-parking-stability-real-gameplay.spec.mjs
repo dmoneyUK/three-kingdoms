@@ -21,7 +21,7 @@ async function seed(request) {
   return response.json();
 }
 
-async function seedDuelNegationHistory(request, playerCount) {
+async function seedDuelNegationHistory(request, playerCount, extraHandsBySeat = {}) {
   const prefix = `duel-negation-history-${playerCount}`;
   const heroes = ["cao-cao", "liu-bei", "sun-quan", "simayi", "xiahou-dun", "zhang-liao", "guo-jia", "huang-gai"];
   const rolesByCount = {
@@ -34,20 +34,23 @@ async function seedDuelNegationHistory(request, playerCount) {
   const targetNegationIds = [`${prefix}-target-negation-1`, `${prefix}-target-negation-3`];
   const sideNegationId = `${prefix}-side-negation-2`;
   const losingNegationId = `${prefix}-private-losing-negation`;
-  const players = Array.from({ length: playerCount }, (_, index) => ({
-    name: `N2 PLAYER ${index + 1}`,
-    role: roles[index],
-    hero: heroes[index],
-    hp: 4,
-    maxHp: 4,
-    hand: index === 0
+  const players = Array.from({ length: playerCount }, (_, index) => {
+    const baseHand = index === 0
       ? [card("Duel", `${prefix}-root`)]
       : index === 1
         ? targetNegationIds.map((id) => card("Negation", id, "♥"))
         : index === playerCount - 1
           ? [card("Negation", sideNegationId, "♣")]
-          : index === 2 ? [card("Negation", losingNegationId, "♠")] : [],
-  }));
+          : index === 2 ? [card("Negation", losingNegationId, "♠")] : [];
+    return {
+      name: `N2 PLAYER ${index + 1}`,
+      role: roles[index],
+      hero: heroes[index],
+      hp: 4,
+      maxHp: 4,
+      hand: [...baseHand, ...(extraHandsBySeat[index] ?? [])],
+    };
+  });
   const response = await request.post(`${API}/__test/seed-playing-game`, {
     data: { phase: "play", turnSeat: 0, players },
   });
@@ -334,6 +337,50 @@ async function playHandAttack(page, room, player, cardId) {
   const result = await submitted;
   expect(result.ok()).toBeTruthy();
   expect(result.request().postDataJSON()).toMatchObject({ action: "respond", code: room.code, token: player.token, providerId: "card", cardId });
+}
+
+async function publicPhysicalCardInstances(page, identities) {
+  return page.evaluate((expected) => {
+    const expectedKeys = new Set(expected.map(({ eventId, cardId }) => `${eventId}\u001f${cardId}`));
+    const elements = [...document.querySelectorAll([
+      "[data-public-card-journey-event-id]",
+      "[data-public-card-static-event-id]",
+      ".active-table-reveal [data-settlement-card-id]",
+      ".table-played-card[data-settlement-card-id]",
+    ].join(","))];
+    return elements.flatMap((element) => {
+      const eventId = element.getAttribute("data-public-card-journey-event-id")
+        ?? element.getAttribute("data-public-card-static-event-id")
+        ?? element.getAttribute("data-settlement-event-id")
+        ?? element.closest(".active-table-reveal")?.getAttribute("data-settlement-event-id")
+        ?? null;
+      const cardId = element.getAttribute("data-public-card-journey-card-id")
+        ?? element.getAttribute("data-public-card-static-card-id")
+        ?? element.getAttribute("data-settlement-card-id")
+        ?? null;
+      if (!eventId || !cardId || !expectedKeys.has(`${eventId}\u001f${cardId}`)) return [];
+      const face = element.matches(".played-card") ? element : element.querySelector(".played-card") ?? element;
+      const rect = face.getBoundingClientRect();
+      const style = getComputedStyle(face);
+      const display = element.closest("[data-public-card-display]");
+      const settled = element.closest(".table-played-card");
+      const active = element.closest(".active-table-reveal");
+      const settlementOwner = element.closest("[data-player-settlement-id]");
+      return [{
+        eventId,
+        cardId,
+        actorId: element.getAttribute("data-public-card-journey-actor-id")
+          ?? display?.getAttribute("data-public-card-source-id")
+          ?? settlementOwner?.getAttribute("data-player-settlement-id")
+          ?? null,
+        rendererKind: display?.getAttribute("data-public-card-renderer-kind")
+          ?? (settled ? "table-resolution-settled" : active ? "table-resolution-active" : "static"),
+        visible: style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0
+          && rect.width > 0 && rect.height > 0,
+        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+      }];
+    });
+  }, identities);
 }
 
 test("server-backed Duel cards reveal at full size for four seconds, then park by seat orientation", async ({ page, browser, request }, testInfo) => {
@@ -983,6 +1030,139 @@ test("Duel counter narration retires at exchange while preserving physical histo
     await screenshot(page, testInfo, "duel-negation-even-chain-exchange-retires-h4-at-390x844");
   } finally {
     await viewerContext.close();
+  }
+});
+
+test("Duel physical cards keep one public owner through Cao Cao's Treachery skip", async ({ page, browser, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const viewport = { width: 440, height: 766 };
+  const attackId = "duel-negation-treachery-target-attack";
+  const room = await seedDuelNegationHistory(request, 4, { 1: [card("Attack", attackId, "♦")] });
+  const context = await browser.newContext({ viewport });
+  const targetPage = await context.newPage();
+  try {
+    await openPlayer(page, room, 0, { viewport });
+    await openPlayer(targetPage, room, 1, { viewport });
+
+    const rootCardId = `${room.prefix}-root`;
+    const started = await request.post(`${API}/api/rooms`, {
+      data: { action: "play_card", code: room.code, token: room.players[0].token, cardId: rootCardId, targetId: room.players[1].id },
+    });
+    expect(started.ok()).toBeTruthy();
+    const rootOpened = await view(request, room, 0);
+    const rootEvent = rootOpened.timeline.find((event) => event.type === "card" && event.card?.id === rootCardId);
+    expect(rootEvent).toBeTruthy();
+    await adjustNegationClock(request, room, rootOpened.currentAction.negationWindowId, "hold");
+
+    const first = await submitEarlyNegationWinner(request, room, 1, room.targetNegationIds[0]);
+    const second = await submitEarlyNegationWinner(request, room, 3, room.sideNegationId);
+    const exchange = await explicitlyPassNegationWindow(request, room);
+    expect(exchange.presentationSnapshot?.interaction).toMatchObject({ semantics: "PROVEN", stage: "DUEL_EXCHANGE" });
+    expect(exchange.presentationSnapshot?.duelExchange).toMatchObject({ semantics: "PROVEN", root: { eventId: rootEvent.id } });
+    expect(exchange.presentationSnapshot?.duelExchange?.negationResponses?.map(({ responseEventId, responseCardId, responseActorId }) => ({
+      responseEventId, responseCardId, responseActorId,
+    }))).toEqual([
+      { responseEventId: first.event.id, responseCardId: room.targetNegationIds[0], responseActorId: room.players[1].id },
+      { responseEventId: second.event.id, responseCardId: room.sideNegationId, responseActorId: room.players[3].id },
+    ]);
+    expect(exchange.currentAction?.actorId).toBe(room.players[1].id);
+    await restoreViewer(page, room, 0);
+    const exchangeIdentities = [
+      { eventId: rootEvent.id, cardId: rootCardId, actorId: room.players[0].id },
+      { eventId: first.event.id, cardId: room.targetNegationIds[0], actorId: room.players[1].id },
+      { eventId: second.event.id, cardId: room.sideNegationId, actorId: room.players[3].id },
+    ];
+    await expect.poll(async () => (await publicPhysicalCardInstances(page, exchangeIdentities)).filter((instance) => instance.visible).length,
+      { timeout: 10_000 }).toBe(exchangeIdentities.length);
+    const exchangeEvidence = await publicPhysicalCardInstances(page, exchangeIdentities);
+    await testInfo.attach("f1-r4-exchange-ownership.json", {
+      body: JSON.stringify({
+        proof: {
+          identity: exchange.presentationSnapshot?.identity,
+          stable: exchange.presentationSnapshot?.stable,
+          interaction: exchange.presentationSnapshot?.interaction,
+          reactionChain: exchange.presentationSnapshot?.reactionChain,
+          duelExchange: exchange.presentationSnapshot?.duelExchange,
+          actorId: exchange.currentAction?.actorId,
+          actionRevision: exchange.actionRevision,
+        },
+        expected: exchangeIdentities,
+        instances: exchangeEvidence,
+      }, null, 2),
+      contentType: "application/json",
+    });
+    expect(exchangeEvidence.filter((instance) => instance.visible)).toHaveLength(exchangeIdentities.length);
+    for (const identity of exchangeIdentities) {
+      expect(exchangeEvidence.filter((instance) => instance.visible
+        && instance.eventId === identity.eventId && instance.cardId === identity.cardId)).toHaveLength(1);
+    }
+    expect(exchangeEvidence.filter((instance) => instance.rendererKind === "duel-journey" && instance.visible)).toHaveLength(3);
+
+    await restoreViewer(targetPage, room, 1);
+    await playHandAttack(targetPage, room, room.players[1], attackId);
+    const attackProjection = await view(request, room, 1);
+    expect(attackProjection.currentAction?.actorId).toBe(room.players[0].id);
+    expect(attackProjection.presentationSnapshot?.interaction).toMatchObject({ semantics: "PROVEN", stage: "DUEL_EXCHANGE" });
+    const attackEvent = attackProjection.timeline.find((event) => event.type === "card" && event.card?.id === attackId);
+    expect(attackEvent).toBeTruthy();
+    await restoreViewer(page, room, 0);
+    const sourceDecline = page.locator(`.local-player-dock[data-player-anchor="${room.players[0].id}"] [data-action-slot="decline"] button`);
+    await expect(sourceDecline).toBeEnabled({ timeout: 15_000 });
+    const damageSubmission = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "decline_response");
+    await sourceDecline.click();
+    expect((await damageSubmission).ok()).toBeTruthy();
+
+    await expect.poll(async () => {
+      const projection = await view(request, room, 0);
+      return projection.currentAction?.triggerOptions?.some((option) => option.effectId === "cao_cao_jianxiong") === true
+        && projection.currentAction?.legalActions?.includes("decline_trigger") === true;
+    }, { timeout: 12_000 }).toBe(true);
+    const treachery = await view(request, room, 0);
+    await restoreViewer(page, room, 0);
+    expect(treachery.players.find((player) => player.id === room.players[0].id)?.hp).toBe(3);
+    expect(treachery.currentAction?.actorId).toBe(room.players[0].id);
+    expect(treachery.currentAction?.deadline).toBeGreaterThan(Date.now());
+    const skip = page.locator(`.local-player-dock[data-player-anchor="${room.players[0].id}"] [data-action-slot="decline"] button`);
+    await expect(skip).toHaveText("Skip", { timeout: 12_000 });
+    await expect(skip).toBeEnabled();
+
+    const publicIdentities = [...exchangeIdentities, { eventId: attackEvent.id, cardId: attackId, actorId: room.players[1].id }];
+    await restoreViewer(targetPage, room, 2);
+    await page.waitForTimeout(2_100);
+    const treacheryEvidence = await publicPhysicalCardInstances(page, publicIdentities);
+    const switchedViewerEvidence = await publicPhysicalCardInstances(targetPage, publicIdentities);
+    await testInfo.attach("f1-r4-treachery-ownership.json", {
+      body: JSON.stringify({
+        proof: {
+          identity: treachery.presentationSnapshot?.identity,
+          stable: treachery.presentationSnapshot?.stable,
+          interaction: treachery.presentationSnapshot?.interaction,
+          duelExchange: treachery.presentationSnapshot?.duelExchange,
+          actorId: treachery.currentAction?.actorId,
+          actionRevision: treachery.actionRevision,
+          deadline: treachery.currentAction?.deadline,
+        },
+        expected: publicIdentities,
+        treacheryInstances: treacheryEvidence,
+        switchedViewerInstances: switchedViewerEvidence,
+      }, null, 2),
+      contentType: "application/json",
+    });
+    for (const identity of publicIdentities) {
+      expect(treacheryEvidence.filter((instance) => instance.eventId === identity.eventId && instance.cardId === identity.cardId)).toHaveLength(0);
+      expect(switchedViewerEvidence.filter((instance) => instance.eventId === identity.eventId && instance.cardId === identity.cardId)).toHaveLength(0);
+    }
+    expect(treacheryEvidence.filter((instance) => instance.visible && instance.rendererKind === "table-resolution-settled")).toEqual([]);
+    await expect(skip).toBeEnabled();
+    const skipSubmission = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "decline_trigger");
+    await skip.click();
+    expect((await skipSubmission).ok()).toBeTruthy();
+  } finally {
+    await context.close();
   }
 });
 

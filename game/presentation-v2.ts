@@ -696,6 +696,20 @@ export type PresentationDuelAttackResponse = PresentationDuelAttackResponseProof
   responseResolutionId: string;
 };
 
+export type PresentationDuelNegationResponse = {
+  semantics: "PROVEN";
+  relation: "DUEL_NEGATION";
+  interactionId: string;
+  rootFrameId: string;
+  rootEventId: string;
+  rootResolutionId: string;
+  ordinal: number;
+  responseActorId: string;
+  responseCardId: string;
+  responseEventId: string;
+  responseResolutionId: string;
+};
+
 export type PresentationDuelExchange = {
   semantics: "PROVEN";
   interactionId: string;
@@ -703,6 +717,8 @@ export type PresentationDuelExchange = {
   checkpointId: string;
   presentationRevision: number;
   root: { eventId: string; resolutionId: string; sourceId: string; targetId: string; cardKind: "Duel" };
+  /** Committed physical Negations linked to this printed Duel before exchange resumed. */
+  negationResponses?: readonly PresentationDuelNegationResponse[];
   responseCount: number;
   responses: readonly PresentationDuelAttackResponse[];
   currentParticipantId: string;
@@ -3505,6 +3521,55 @@ function duelExchangeFor(
     const eventId = stringValue(event.id);
     if (eventId) eventIdCounts.set(eventId, (eventIdCounts.get(eventId) ?? 0) + 1);
   }
+  const negationResponses = (() => {
+    const history = continuation?.negationHistory;
+    if (!Array.isArray(history) || history.length === 0) return undefined;
+    const nodeIds = new Set<string>();
+    const responseEventIds = new Set<string>([rootEvent.id]);
+    const responseCardIds = new Set<string>([rootCardId]);
+    const responses: PresentationDuelNegationResponse[] = [];
+    let previousNodeId: string | null = null;
+    for (const [index, rawNode] of history.entries()) {
+      const node = record(rawNode);
+      const nodeId = stringValue(node?.nodeId);
+      const nodeInteractionId = stringValue(node?.interactionId);
+      const nodeFrameId = stringValue(node?.frameId);
+      const actorId = stringValue(node?.actorId);
+      const cardId = stringValue(node?.physicalCardId);
+      const responseEventId = stringValue(node?.publicEventId);
+      const causedByNodeId = node?.causedByNodeId === null ? null : stringValue(node?.causedByNodeId);
+      const matches = responseEventId ? timeline.filter((event) => event.id === responseEventId) : [];
+      const responseEvent = matches.length === 1 ? matches[0] : null;
+      const responseCard = responseEvent?.type === "card" ? responseEvent.card : null;
+      const responseResolutionId = stringValue(responseEvent?.resolutionId);
+      if (!nodeId || !nodeInteractionId || !nodeFrameId || !actorId || !cardId || !responseEventId
+        || node.kind !== "NEGATION_CARD" || nodeInteractionId !== envelope.interactionId || nodeFrameId !== frame.frameId
+        || causedByNodeId !== previousNodeId || nodeIds.has(nodeId)
+        || !responseEvent || eventIdCounts.get(responseEventId) !== 1
+        || responseEvent.type !== "card" || responseEvent.action !== "play" || responseEvent.presentation === false
+        || typeof responseEvent.privateToPlayerId === "string" || responseEvent.playedAs !== undefined
+        || !responseCard || responseCard.kind !== "Negation" || responseCard.id !== cardId
+        || !responseResolutionId || responseEventIds.has(responseEventId) || responseCardIds.has(cardId)) return undefined;
+      nodeIds.add(nodeId);
+      responseEventIds.add(responseEventId);
+      responseCardIds.add(cardId);
+      previousNodeId = nodeId;
+      responses.push({
+        semantics: "PROVEN",
+        relation: "DUEL_NEGATION",
+        interactionId: envelope.interactionId,
+        rootFrameId: frame.frameId,
+        rootEventId: rootEvent.id,
+        rootResolutionId,
+        ordinal: index + 1,
+        responseActorId: actorId,
+        responseCardId: cardId,
+        responseEventId,
+        responseResolutionId,
+      });
+    }
+    return responses;
+  })();
   const candidateResponses = timeline.flatMap((event) => {
     const proof = record(event.duelAttackResponse);
     return proof && (proof.interactionId === envelope.interactionId || proof.rootEventId === rootEvent.id)
@@ -3582,6 +3647,7 @@ function duelExchangeFor(
     checkpointId: envelope.checkpoint.checkpointId,
     presentationRevision: envelope.presentationRevision,
     root: { eventId: rootEvent.id, resolutionId: rootResolutionId, sourceId, targetId, cardKind: "Duel" },
+    ...(negationResponses?.length ? { negationResponses } : {}),
     responseCount: responseCount as number,
     responses,
     currentParticipantId: scene.currentParticipantId,
