@@ -146,7 +146,6 @@ test("ST-RING-DIR-1 projection contract uses the unified clockwise ring", () => 
     for (const topCapacity of new Set([0, 3, 4, 5, opponents])) {
       const topCount = Math.min(opponents, topCapacity, players === 7 ? 4 : opponents);
       const sideCount = opponents - topCount;
-      const leftCount = Math.floor(sideCount / 2);
       const rowCount = Math.ceil(sideCount / 2);
       const seats = Array.from({ length: opponents }, (_, index) => ({
         relativeIndex: index + 1,
