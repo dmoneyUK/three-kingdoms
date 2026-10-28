@@ -13,7 +13,9 @@ type SnapshotInteraction = {
   presentationRevision: number | null;
   stage: string | null;
   sourceId: string | null;
+  targetIds: readonly string[];
   currentParticipantId: string | null;
+  decisionActorId: string | null;
   participantIds: readonly string[];
 } | null;
 
@@ -73,6 +75,48 @@ export type DuelPublicStageOwner = {
   stageOwner: "NEGATION" | "NEGATION_SETTLEMENT" | "DUEL_EXCHANGE" | null;
   announcement: "NEGATION_OPEN" | "NEGATION_FINAL" | null;
   semanticCopyIdentity: string | null;
+};
+
+export type DuelExchangeAttackNarrationInput = {
+  stageOwner: DuelPublicStageOwner["stageOwner"];
+  identity: SnapshotIdentity;
+  interaction: SnapshotInteraction;
+  rootEventId: string | null;
+  exchange: {
+    semantics: "PROVEN";
+    interactionId: string;
+    rootFrameId: string;
+    rootEventId: string;
+    rootResolutionId: string;
+    sourceId: string;
+    targetId: string;
+    checkpointId: string;
+    presentationRevision: number;
+    responseCount: number;
+    currentParticipantId: string;
+    decisionActorId: string | null;
+    responses: readonly {
+      semantics: "PROVEN";
+      relation: "DUEL_EXCHANGE";
+      interactionId: string;
+      rootFrameId: string;
+      rootEventId: string;
+      responseEventId: string;
+      sourceId: string;
+      targetId: string;
+      decisionActorId: string;
+      responseActorId: string;
+      responseCardKind: "Attack";
+    }[];
+  } | null;
+  players: readonly { id: string; name: string }[];
+};
+
+export type DuelExchangeAttackNarration = {
+  eventId: string;
+  actorId: string;
+  message: string;
+  compactMessage: string;
 };
 
 const none: DuelPublicStageOwner = { stageOwner: null, announcement: null, semanticCopyIdentity: null };
@@ -171,4 +215,57 @@ export function selectDuelPublicStageOwner(input: DuelPublicStageOwnerInput): Du
   }
 
   return none;
+}
+
+/**
+ * Describes one newly committed Attack only when its responder and the next
+ * decision actor are both bound to the same authoritative exchange checkpoint.
+ */
+export function duelExchangeAttackNarration(
+  input: DuelExchangeAttackNarrationInput,
+): DuelExchangeAttackNarration | null {
+  const { identity, interaction, exchange, rootEventId } = input;
+  if (input.stageOwner !== "DUEL_EXCHANGE" || !identity || !interaction || !exchange
+    || interaction.semantics !== "PROVEN" || interaction.stage !== "DUEL_EXCHANGE"
+    || !isId(identity.interactionId) || !isId(identity.checkpointId) || !isRevision(identity.presentationRevision)
+    || identity.interactionId !== interaction.interactionId
+    || identity.checkpointId !== interaction.checkpointId
+    || identity.presentationRevision !== interaction.presentationRevision
+    || !isId(interaction.rootFrameId) || interaction.activeFrameId !== interaction.rootFrameId
+    || !isId(rootEventId) || exchange.rootEventId !== rootEventId
+    || exchange.semantics !== "PROVEN"
+    || exchange.interactionId !== identity.interactionId || exchange.rootFrameId !== interaction.rootFrameId
+    || exchange.checkpointId !== identity.checkpointId || exchange.presentationRevision !== identity.presentationRevision
+    || exchange.sourceId !== interaction.sourceId || exchange.sourceId === exchange.targetId
+    || interaction.currentParticipantId !== exchange.currentParticipantId
+    || !isId(exchange.currentParticipantId) || exchange.decisionActorId !== exchange.currentParticipantId
+    || interaction.decisionActorId !== exchange.currentParticipantId
+    || !Number.isSafeInteger(exchange.responseCount) || exchange.responseCount < 1
+    || exchange.responseCount !== exchange.responses.length) return null;
+
+  // DUEL_EXCHANGE intentionally publishes participantIds as empty in the
+  // current snapshot shape. The same proven interaction still carries its
+  // public source and targetIds, while the exchange proof supplies the
+  // immutable root endpoints. Use those server-owned identities instead of
+  // treating the empty convenience list as evidence that no response exists.
+  if (!Array.isArray(interaction.targetIds)) return null;
+  const participants = new Set([interaction.sourceId, ...interaction.targetIds].filter(isId));
+  if (!participants.has(exchange.sourceId) || !participants.has(exchange.targetId)) return null;
+  const response = exchange.responses.at(-1);
+  if (!response || response.semantics !== "PROVEN" || response.relation !== "DUEL_EXCHANGE"
+    || response.interactionId !== exchange.interactionId || response.rootFrameId !== exchange.rootFrameId
+    || response.rootEventId !== exchange.rootEventId || !isId(response.responseEventId)
+    || response.sourceId !== response.decisionActorId || response.targetId !== exchange.currentParticipantId
+    || !participants.has(response.sourceId) || !participants.has(response.targetId)
+    || !participants.has(response.responseActorId) || response.responseCardKind !== "Attack") return null;
+
+  const responder = input.players.find((player) => player.id === response.responseActorId)?.name.trim();
+  const nextResponder = input.players.find((player) => player.id === exchange.currentParticipantId)?.name.trim();
+  if (!responder || !nextResponder) return null;
+  return {
+    eventId: response.responseEventId,
+    actorId: response.responseActorId,
+    message: `${responder} answered the Duel with Attack. ${nextResponder} must answer with Attack.`,
+    compactMessage: `${responder} answered Duel; ${nextResponder} must answer with Attack.`,
+  };
 }

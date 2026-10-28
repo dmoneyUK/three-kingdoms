@@ -35,7 +35,7 @@ import { compactLustDuelOrderMessage, compactLustDuelResultMessage } from "./lus
 import { publicHeroCostAnnouncementLifecycle } from "../game/public-hero-cost-lifecycle";
 import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate } from "../game/public-announcement";
 import { duelNegationFinalCopy, negationEffectCopy } from "./negation-effect-copy";
-import { selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
+import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -6701,7 +6701,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const source = room.players.find((player) => player.id === settlement.sourceId);
     const target = room.players.find((player) => player.id === settlement.targetId);
     if (!source?.name || !target?.name || source.id === target.id) return null;
-    return { action: settlement, rootEvent, settlementEvent, source, target, serpentSpearProof: serpentAttackRoot ? serpentSpearProof : null, exiting: activeAttackHitSettlement?.exiting === true };
+    return {
+      action: settlement, rootEvent, settlementEvent, source, target,
+      serpentSpearProof: serpentAttackRoot ? serpentSpearProof : null,
+      exiting: activeAttackHitSettlement?.exiting === true,
+    };
   })();
   const rootActionEvents = rootAction ? room.timeline.filter((event) => event.id === rootAction.rootEventId) : [];
   const rootActionEvent = rootAction ? rootActionEvents.length === 1 ? rootActionEvents[0] : null
@@ -6895,6 +6899,30 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       responseActorIds: duelExchangeDisplayCandidate.exchange.responses.map((response) => response.responseActorId),
     } : null,
   });
+  const duelExchangeAttackCopy = duelExchangeDisplayCandidate && duelPublicStageOwner.stageOwner === "DUEL_EXCHANGE"
+    ? duelExchangeAttackNarration({
+      stageOwner: duelPublicStageOwner.stageOwner,
+      identity: room.presentationSnapshot?.identity ?? null,
+      interaction: room.presentationSnapshot?.interaction ?? null,
+      rootEventId: duelExchangeDisplayCandidate.exchange.root.eventId,
+      exchange: {
+        semantics: "PROVEN",
+        interactionId: duelExchangeDisplayCandidate.exchange.interactionId,
+        rootFrameId: duelExchangeDisplayCandidate.exchange.rootFrameId,
+        rootEventId: duelExchangeDisplayCandidate.exchange.root.eventId,
+        rootResolutionId: duelExchangeDisplayCandidate.exchange.root.resolutionId,
+        sourceId: duelExchangeDisplayCandidate.exchange.root.sourceId,
+        targetId: duelExchangeDisplayCandidate.exchange.root.targetId,
+        checkpointId: duelExchangeDisplayCandidate.exchange.checkpointId,
+        presentationRevision: duelExchangeDisplayCandidate.exchange.presentationRevision,
+        responseCount: duelExchangeDisplayCandidate.exchange.responseCount,
+        currentParticipantId: duelExchangeDisplayCandidate.exchange.currentParticipantId,
+        decisionActorId: duelExchangeDisplayCandidate.exchange.decisionActorId,
+        responses: duelExchangeDisplayCandidate.exchange.responses,
+      },
+      players: room.players.map(({ id, name }) => ({ id, name })),
+    })
+    : null;
   const activeDuelReadIdentityMatches = Boolean(activePublicNegationRead
     && (duelPublicStageOwner.announcement === "NEGATION_OPEN"
       ? activePublicNegationRead.action.interactionId === room.presentationSnapshot?.identity?.interactionId
@@ -7951,6 +7979,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       key: ["duel", duelExchangeDisplayCandidate.exchange.interactionId, duelExchangeDisplayCandidate.exchange.rootFrameId, duelExchangeDisplayCandidate.exchange.root.eventId, duelExchangeDisplayCandidate.exchange.root.sourceId, duelExchangeDisplayCandidate.exchange.root.targetId].join(":"),
       interactionId: duelExchangeDisplayCandidate.exchange.interactionId,
       rootFrameId: duelExchangeDisplayCandidate.exchange.rootFrameId,
+      checkpointId: duelExchangeDisplayCandidate.exchange.checkpointId,
+      presentationRevision: duelExchangeDisplayCandidate.exchange.presentationRevision,
       rootEventId: duelExchangeDisplayCandidate.exchange.root.eventId,
       sourceId: duelExchangeDisplayCandidate.exchange.root.sourceId,
       targetId: duelExchangeDisplayCandidate.exchange.root.targetId,
@@ -7958,7 +7988,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: duelExchangeDisplayCandidate.rootEvent.card,
       cardLabel: "DUEL",
       ariaLabel: `${duelExchangeDisplayCandidate.source.name} played Duel targeting ${duelExchangeDisplayCandidate.target.name}`,
-      suppressAnnouncement: true,
+      suppressAnnouncement: !duelExchangeAttackCopy,
+      ...(duelExchangeAttackCopy ? {
+        publicNotice: duelExchangeAttackCopy.message,
+        publicNoticeCompact: duelExchangeAttackCopy.compactMessage,
+        publicNoticeEventId: duelExchangeAttackCopy.eventId,
+      } : {}),
       motion: {
         type: "duel",
         scopeKey: [room.code, duelExchangeDisplayCandidate.exchange.interactionId, duelExchangeDisplayCandidate.exchange.rootFrameId, duelExchangeDisplayCandidate.exchange.root.eventId].join(":"),

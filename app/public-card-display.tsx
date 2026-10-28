@@ -105,6 +105,7 @@ export type PublicCardDisplayAction = {
   ariaLabel: string;
   publicNotice?: string;
   publicNoticeCompact?: string;
+  publicNoticeEventId?: string;
   /** Keep a proved historical CardFace while retiring its active announcement. */
   suppressAnnouncement?: boolean;
   /** True only when this action was built from the fully validated public Negation-chain proof. */
@@ -1943,6 +1944,13 @@ function publicCardAnnouncementCopy(
     const compactMessage = bumperHarvestNegationCopy(action);
     return { message, compactMessage: compactMessage === message ? undefined : compactMessage };
   }
+  if (action.motion?.type === "duel" && action.publicNotice) {
+    return {
+      message: action.publicNotice,
+      compactMessage: action.publicNoticeCompact,
+      accessibleLabel: action.publicNotice,
+    };
+  }
   if (action.publicCardEffectFrame && action.publicNotice) {
     const compactMessage = action.publicNoticeCompact?.trim();
     return {
@@ -2095,6 +2103,7 @@ function PublicCardAnnouncement({
   keepCenterAnchorClear = false,
   stableHarvestAnchor = false,
   ignoreJourneyLayoutPending = false,
+  clearCenterAnchorWhenParked = false,
   viewerGeometryReady = true,
   preferredVerticalMode,
   privateDrawAware = false,
@@ -2123,6 +2132,7 @@ function PublicCardAnnouncement({
   keepCenterAnchorClear?: boolean;
   stableHarvestAnchor?: boolean;
   ignoreJourneyLayoutPending?: boolean;
+  clearCenterAnchorWhenParked?: boolean;
   viewerGeometryReady?: boolean;
   preferredVerticalMode?: "above" | "below";
   privateDrawAware?: boolean;
@@ -2176,7 +2186,7 @@ function PublicCardAnnouncement({
     eventId, anchorEventId, eventCopyKey, announcementIdentity, geometryKey, copyLifecycleStage, placementKey, viewerLayoutKey,
     phase, heading, message, compactMessage, accessibleLabel, supportingMessage, compactSupportingMessage,
     negationNarration, fallbackCardRect: stableFallbackCardRect, phaseNotice, outcome, negationWaiting,
-    stableCenterAnchor, keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending,
+    stableCenterAnchor, keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, clearCenterAnchorWhenParked,
     viewerGeometryReady, preferredVerticalMode, privateDrawAware,
   };
   const latestInputsRef = useRef(latestInputs);
@@ -2319,7 +2329,7 @@ function PublicCardAnnouncement({
       if (placementGeneration !== placementGenerationRef.current) return;
       const {
         eventId, eventCopyKey, geometryKey, placementKey, viewerLayoutKey, phase, message, compactMessage,
-        heading,
+        heading, clearCenterAnchorWhenParked: clearCenterAnchorForParkedNotice,
         accessibleLabel, supportingMessage, compactSupportingMessage, negationNarration,
         fallbackCardRect: currentFallbackCardRect, outcome, negationWaiting, stableCenterAnchor,
         keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, viewerGeometryReady, preferredVerticalMode,
@@ -2410,7 +2420,8 @@ function PublicCardAnnouncement({
         width: Number(anchor.dataset.publicCardJourneyTargetWidth),
         height: Number(anchor.dataset.publicCardJourneyTargetHeight),
       } : null;
-      if (!isLargeRevealAnchor && anchorTarget && Object.values(anchorTarget).every(Number.isFinite)
+      const releaseParkedCenterAnchor = clearCenterAnchorForParkedNotice && phase === "parked";
+      if (!isLargeRevealAnchor && !releaseParkedCenterAnchor && anchorTarget && Object.values(anchorTarget).every(Number.isFinite)
         && anchorTarget.width > 0 && anchorTarget.height > 0) {
         obstacles.push({
           element: null,
@@ -2520,7 +2531,7 @@ function PublicCardAnnouncement({
       // parked by its real seat and independently reserved as an obstacle.
       const terminalLustStageCleared = terminalLustResult
         && !display.querySelector('[data-public-card-journey-phase="reveal"], [data-public-card-journey-phase="move"]');
-      const centerCardStillOccupiesStage = centerCardRect.height > 0 && !terminalLustStageCleared;
+      const centerCardStillOccupiesStage = centerCardRect.height > 0 && !terminalLustStageCleared && !releaseParkedCenterAnchor;
 
       const gap = PUBLIC_CARD_ANNOUNCEMENT_GAP;
       const obstacleClearance = (element: HTMLElement | null) => privateDrawAware && element?.matches(".private-draw-content")
@@ -5465,6 +5476,7 @@ function withFirstQueuedDuelReveal(cards: DuelJourneyCard[], center: CardRect, r
 function DuelCardJourney({
   action,
   enabled,
+  suppressAnnouncement = false,
   retainHistoryDuringInspection = false,
   sourceName,
   targetName,
@@ -5478,6 +5490,7 @@ function DuelCardJourney({
 }: {
   action: PublicCardDisplayAction;
   enabled: boolean;
+  suppressAnnouncement?: boolean;
   retainHistoryDuringInspection?: boolean;
   sourceName: string | null;
   targetName: string | null;
@@ -6069,6 +6082,7 @@ function DuelCardJourney({
     ?? journey.cards.find((card) => card.eventId === action.rootEventId)
     ?? null;
   const activeEventId = activeEvent?.eventId ?? action.rootEventId;
+  const announcementEventId = action.publicNoticeEventId ?? activeEventId;
   const currentPublicCard = activeEvent?.cardFace ?? latestResponse?.cardFace ?? action.cardFace ?? null;
   const activeActorId = activeEvent?.actorId ?? latestResponse?.actorId ?? action.sourceId;
   const activeMessage = activeEvent?.ariaLabel ?? latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
@@ -6237,13 +6251,13 @@ function DuelCardJourney({
         Duel event {event.globalOrdinal}: {event.ariaLabel}
       </li>)}
     </ol>
-    <PublicCardAnnouncement
-      eventId={negationNarration?.eventId ?? (action.motion?.type === "lust-duel" && activeEventId === action.rootEventId && activeCard?.role === "root" && action.lustCostFrame
-        ? action.lustCostFrame.activationEventId : activeEventId)}
+    {!suppressAnnouncement && !action.suppressAnnouncement && <PublicCardAnnouncement
+      eventId={negationNarration?.eventId ?? (action.motion?.type === "lust-duel" && announcementEventId === action.rootEventId && activeCard?.role === "root" && action.lustCostFrame
+        ? action.lustCostFrame.activationEventId : announcementEventId)}
       eventCopyKey={publicCardAnnouncementCopyKey(
         action,
-        negationNarration?.eventId ?? (action.motion?.type === "lust-duel" && activeEventId === action.rootEventId && activeCard?.role === "root" && action.lustCostFrame
-          ? action.lustCostFrame.activationEventId : activeEventId),
+        negationNarration?.eventId ?? (action.motion?.type === "lust-duel" && announcementEventId === action.rootEventId && activeCard?.role === "root" && action.lustCostFrame
+          ? action.lustCostFrame.activationEventId : announcementEventId),
         activeActorId,
         roomCode,
       )}
@@ -6255,7 +6269,7 @@ function DuelCardJourney({
       // newly centred card and hide it on short phones.
       placementKey={`${publicCardAnnouncementPlacementKey(action)}${action.motion?.type === "lust-duel" ? `:${activeEventId}` : ""}`}
       viewerLayoutKey={viewerId}
-      anchorEventId={activeEventId}
+      anchorEventId={announcementEventId}
       phase={activeEvent?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
@@ -6274,7 +6288,8 @@ function DuelCardJourney({
       stableCenterAnchor={action.motion?.type === "lust-duel"}
       preferredVerticalMode={action.motion?.type === "lust-duel" ? "below" : undefined}
       ignoreJourneyLayoutPending={Boolean(negationNarration)}
-    />
+      clearCenterAnchorWhenParked={action.motion?.type === "duel" && action.publicNoticeEventId !== undefined}
+    />}
   </section>;
 }
 
@@ -6341,7 +6356,7 @@ export function PublicCardDisplay({
     return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHarvestHistory={retainHarvestHistory} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} privateStealResult={privateStealResult} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
   }
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {
-    return <DuelCardJourney action={action} enabled={enabled} retainHistoryDuringInspection={retainDuelHistoryDuringInspection} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
+    return <DuelCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHistoryDuringInspection={retainDuelHistoryDuringInspection} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (!enabled || !sourceName) return null;
   const latestResponse = action.response ?? action.responses?.at(-1) ?? null;

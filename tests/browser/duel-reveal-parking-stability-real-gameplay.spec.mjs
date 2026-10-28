@@ -1097,6 +1097,7 @@ test("Duel physical cards keep one public owner through Cao Cao's Treachery skip
         && instance.eventId === identity.eventId && instance.cardId === identity.cardId)).toHaveLength(1);
     }
     expect(exchangeEvidence.filter((instance) => instance.rendererKind === "duel-journey" && instance.visible)).toHaveLength(3);
+    await expect(page.locator("[data-public-card-announcement='true']:visible")).toHaveCount(0);
 
     await restoreViewer(targetPage, room, 1);
     await playHandAttack(targetPage, room, room.players[1], attackId);
@@ -1106,6 +1107,10 @@ test("Duel physical cards keep one public owner through Cao Cao's Treachery skip
     const attackEvent = attackProjection.timeline.find((event) => event.type === "card" && event.card?.id === attackId);
     expect(attackEvent).toBeTruthy();
     await restoreViewer(page, room, 0);
+    const expectedExchangeCopy = `${room.players[1].name} answered the Duel with Attack. ${room.players[0].name} must answer with Attack.`;
+    await expect.poll(async () => Promise.all([page, targetPage].map(async (viewer) =>
+      viewer.locator("[data-public-card-announcement='true']:visible b").allTextContents())), { timeout: 8_000 })
+      .toEqual([[expectedExchangeCopy], [expectedExchangeCopy]]);
     const sourceDecline = page.locator(`.local-player-dock[data-player-anchor="${room.players[0].id}"] [data-action-slot="decline"] button`);
     await expect(sourceDecline).toBeEnabled({ timeout: 15_000 });
     const damageSubmission = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
@@ -1113,6 +1118,9 @@ test("Duel physical cards keep one public owner through Cao Cao's Treachery skip
       && response.request().postDataJSON()?.action === "decline_response");
     await sourceDecline.click();
     expect((await damageSubmission).ok()).toBeTruthy();
+    await expect.poll(async () => Promise.all([page, targetPage].map(async (viewer) =>
+      viewer.locator("[data-public-card-announcement='true']:visible b").allTextContents())), { timeout: 5_000 })
+      .toEqual([[], []]);
 
     await expect.poll(async () => {
       const projection = await view(request, room, 0);
@@ -1133,6 +1141,8 @@ test("Duel physical cards keep one public owner through Cao Cao's Treachery skip
     await page.waitForTimeout(2_100);
     const treacheryEvidence = await publicPhysicalCardInstances(page, publicIdentities);
     const switchedViewerEvidence = await publicPhysicalCardInstances(targetPage, publicIdentities);
+    await expect(page.locator("[data-public-card-announcement='true']:visible")).toHaveCount(0);
+    await expect(targetPage.locator("[data-public-card-announcement='true']:visible")).toHaveCount(0);
     await testInfo.attach("f1-r4-treachery-ownership.json", {
       body: JSON.stringify({
         proof: {

@@ -11,7 +11,7 @@ import {
   selectPublicAnnouncementCandidate,
   transitionPublicAnnouncementCopyLifecycle,
 } from "../game/public-announcement.ts";
-import { selectDuelPublicStageOwner } from "../game/duel-public-stage-owner.ts";
+import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game/duel-public-stage-owner.ts";
 import {
   compactLustDuelAttackMessage,
   compactLustDuelOrderMessage,
@@ -35,7 +35,8 @@ function duelStageFacts({ stage = "NEGATION", revision = 6, checkpointId = "nega
   const identity = { interactionId: "duel-i1", checkpointId, presentationRevision: revision };
   const interaction = {
     semantics: "PROVEN", interactionId: identity.interactionId, rootFrameId: "duel-frame", activeFrameId: "duel-frame",
-    checkpointId, presentationRevision: revision, stage, sourceId: "p1", currentParticipantId: "p2", participantIds: ["p1", "p2"],
+    checkpointId, presentationRevision: revision, stage, sourceId: "p1", targetIds: ["p1", "p2"],
+    currentParticipantId: "p2", participantIds: ["p1", "p2"],
   };
   const negationProof = stage === "NEGATION" ? {
     semantics: "PROVEN", interactionId: identity.interactionId, rootFrameId: "duel-frame", checkpointId,
@@ -123,6 +124,54 @@ test("proven Duel settlement may own final copy, but proven exchange retires H4"
     ...exchangeState,
     settlementProof: { ...settlementProof, outcome: "ROOT_CANCELLED" },
   }).stageOwner, null);
+});
+
+test("Duel Attack narration requires the latest response and next actor on the same proven checkpoint", () => {
+  const identity = { interactionId: "duel-i1", checkpointId: "exchange-8", presentationRevision: 8 };
+  const interaction = {
+    semantics: "PROVEN", interactionId: "duel-i1", rootFrameId: "duel-frame", activeFrameId: "duel-frame",
+    checkpointId: "exchange-8", presentationRevision: 8, stage: "DUEL_EXCHANGE", sourceId: "p1",
+    currentParticipantId: "p1", decisionActorId: "p1", targetIds: ["p1", "p2"], participantIds: [],
+  };
+  const response = {
+    semantics: "PROVEN", relation: "DUEL_EXCHANGE", interactionId: "duel-i1", rootFrameId: "duel-frame",
+    rootEventId: "duel-root", responseEventId: "attack-1", sourceId: "p2", targetId: "p1",
+    decisionActorId: "p2", responseActorId: "p2", responseCardKind: "Attack",
+  };
+  const exchange = {
+    semantics: "PROVEN", interactionId: "duel-i1", rootFrameId: "duel-frame", rootEventId: "duel-root",
+    rootResolutionId: "resolution-1", sourceId: "p1", targetId: "p2", checkpointId: "exchange-8",
+    presentationRevision: 8, responseCount: 1, currentParticipantId: "p1", decisionActorId: "p1", responses: [response],
+  };
+  const input = {
+    stageOwner: "DUEL_EXCHANGE", identity, interaction, rootEventId: "duel-root", exchange,
+    players: [{ id: "p1", name: "Test Player 1" }, { id: "p2", name: "Test Player 2" }],
+  };
+
+  assert.deepEqual(duelExchangeAttackNarration(input), {
+    eventId: "attack-1", actorId: "p2",
+    message: "Test Player 2 answered the Duel with Attack. Test Player 1 must answer with Attack.",
+    compactMessage: "Test Player 2 answered Duel; Test Player 1 must answer with Attack.",
+  });
+  assert.equal(duelExchangeAttackNarration({
+    ...input,
+    interaction: { ...interaction, targetIds: ["p1"] },
+  }), null);
+  assert.equal(duelExchangeAttackNarration({ ...input, exchange: { ...exchange, responses: [], responseCount: 0 } }), null);
+  assert.equal(duelExchangeAttackNarration({
+    ...input,
+    identity: { ...identity, checkpointId: "exchange-9", presentationRevision: 9 },
+    interaction: { ...interaction, checkpointId: "exchange-9", presentationRevision: 9 },
+  }), null);
+  assert.equal(duelExchangeAttackNarration({
+    ...input,
+    interaction: { ...interaction, currentParticipantId: "p2", decisionActorId: "p2" },
+  }), null);
+  assert.equal(duelExchangeAttackNarration({ ...input, stageOwner: null }), null);
+  assert.equal(duelExchangeAttackNarration({
+    ...input,
+    players: [{ id: "p1", name: "Test Player 1" }],
+  }), null);
 });
 
 test("public announcement arbitration uses unique committed checkpoints and retires older Hero copy", () => {
