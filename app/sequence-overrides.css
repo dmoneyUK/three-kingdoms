@@ -1598,7 +1598,7 @@
     width: 21px;
     min-height: 29px;
     padding: 1px 1px 5px;
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .target-card-picker-card .played-card > i small {
@@ -1699,7 +1699,7 @@
 .hero-focus-inspect-close { flex: none; width: 22px; height: 22px; padding: 0; border: 1px solid #a58e5d; border-radius: 50%; background: #11140f; color: #f0d28c; font: 16px/18px Arial, sans-serif; cursor: pointer; pointer-events: auto; }
 .hero-focus-inspect-details { grid-area: context; grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 5px; min-width: 0; min-height: 0; overflow: auto; padding: 0 2px 2px 0; pointer-events: auto; }
 .hero-focus-inspect .hero-focus-inspect-public-skills { margin-top: 0; padding: 4px 5px; }
-.hero-focus-inspect-public-zones { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 5px; }
+.hero-focus-inspect-public-zones { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 4fr); align-items: stretch; gap: 5px; }
 .hero-focus-inspect-public-zones .opponent-inspection-zone { min-width: 0; padding: 4px 5px; }
 .hero-focus-inspect-public-zones .opponent-inspection-zone h3,
 .hero-focus-inspect .hero-focus-inspect-public-skills h3 { margin-bottom: 4px; font-size: 7px; }
@@ -5926,7 +5926,7 @@
 .opponent-inspection-floating-shell .hero-focus-inspect-main {
   grid-area: main;
   display: grid;
-  grid-template-areas: "upper" "equipment";
+  grid-template-areas: "upper" "public-zones";
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto;
   gap: 4px;
@@ -5937,8 +5937,8 @@
 .opponent-inspection-floating-shell .hero-focus-inspect-upper {
   grid-area: upper;
   display: grid;
-  grid-template-areas: "identity judgement";
-  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-areas: "identity";
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
   gap: 4px;
   min-width: 0;
@@ -6019,11 +6019,17 @@
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-judgement {
-  grid-area: judgement;
+  grid-area: auto;
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-equipment {
-  grid-area: equipment;
+  grid-area: auto;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-public-zones {
+  grid-area: public-zones;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 4fr);
+  align-items: stretch;
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-judgement h3,
@@ -7040,43 +7046,61 @@
   }
 }
 
-/* H2-G3 F2-R2: keep the approved 6/8-player phone Inspector footprint while
-   moving identity/skills beside a taller portrait and sharing one six-slot
-   lower strip. This is independent of seat projection and order. */
+/* H2-G3 F2-R3: one fixed-footprint Inspector structure across phone layouts. */
 @media (max-width: 520px) {
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-player-count="6"] {
+  .game-shell .play-table .opponent-inspection-floating-shell {
+    --inspector-slot-width: calc((var(--inspector-portrait-width, 64px) + 3px + var(--inspector-main-width, 154px) - 19px) / 6);
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell {
+    --inspector-main-width: calc(clamp(28px, 7vw, 32px) * 4 + 10px);
+    --inspector-slot-width: calc((var(--inspector-portrait-width, 64px) + 3px + var(--inspector-main-width, 154px) - 19px) / 6);
+  }
+
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] {
     --inspector-upper-height: 85.5px;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-player-count="8"] {
+  .game-shell .play-table[data-seat-topology="top-row"] .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] {
+    --inspector-upper-height: 76px;
+  }
+
+  .game-shell .play-table[data-seat-topology="top-row"] .opponent-inspection-floating-shell {
+    --inspector-upper-height: 74px;
+    --inspector-portrait-width: 60px;
+    --inspector-slot-width: 30px;
+    --inspector-main-width: calc(var(--inspector-slot-width) * 4 + 52px);
+  }
+
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-player-count="8"] {
     --inspector-upper-height: 97.5px;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-body {
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-body {
     box-sizing: border-box;
     display: grid;
-    grid-template-columns: 33.333333% calc(66.666667% - 2px);
+    grid-template-columns: var(--inspector-portrait-width, 64px) minmax(0, 1fr);
     grid-template-rows: var(--inspector-upper-height) auto;
-    grid-template-areas: "portrait main" "judgement equipment";
+    grid-template-areas: "portrait upper" "zones zones";
     align-items: stretch;
-    column-gap: 2px;
+    column-gap: 3px;
     row-gap: 1px;
     width: calc(var(--inspector-portrait-width, 64px) + 3px + var(--inspector-main-width, 154px));
     max-width: 100%;
     min-height: 0;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-portrait-column {
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-portrait-column {
     grid-area: portrait;
-    align-self: stretch;
     display: block;
+    align-self: stretch;
     width: 100%;
     height: 100%;
     min-height: 0;
     overflow: hidden;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-portrait-column > .hero-focus-portrait {
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-portrait-column > .hero-focus-portrait {
     box-sizing: border-box;
     width: 100%;
     height: 100%;
@@ -7084,34 +7108,41 @@
     aspect-ratio: auto;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-main,
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-upper {
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-main {
     display: contents;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-identity {
-    grid-area: main;
-    display: flex;
-    flex-direction: column;
-    align-self: stretch;
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-upper {
+    grid-area: upper;
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-identity {
+    display: block;
     width: 100%;
     height: 100%;
     min-width: 0;
     min-height: 0;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-profile {
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-profile {
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     align-content: stretch;
     gap: 2px;
     width: 100%;
     height: 100%;
     min-width: 0;
     min-height: 0;
+    overflow: hidden;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-identity-caption {
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-identity-caption {
     display: grid;
     gap: 1px;
     width: 100%;
@@ -7121,31 +7152,46 @@
     text-align: left;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-identity-caption .hero-focus-identity-hero,
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-identity-caption .hero-focus-identity-player {
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-identity-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: baseline;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-identity-name {
     display: block;
+    min-width: 0;
     overflow: visible;
-    -webkit-box-orient: initial;
-    -webkit-line-clamp: unset;
-    overflow-wrap: normal;
+    overflow-wrap: anywhere;
     word-break: normal;
     line-height: 1.1;
     text-overflow: clip;
     white-space: normal;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-identity-line {
-    flex: none;
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-identity-stat {
     min-width: 0;
+    margin: 0;
+    font-size: 10px;
+    line-height: 1.1;
+    text-align: right;
+    white-space: nowrap;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-identity-stats {
-    flex-wrap: wrap;
-    min-width: 0;
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-identity-hero {
+    color: #f0d28c;
+    font-size: 10px;
+    font-weight: 700;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-public-skills {
-    grid-area: auto;
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-identity-player {
+    color: #d9d0bb;
+    font: 700 8px/1.1 Arial, sans-serif;
+  }
+
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-public-skills {
     display: grid;
     grid-template-rows: minmax(0, 1fr);
     min-width: 0;
@@ -7155,82 +7201,124 @@
     overflow: hidden;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-skills {
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-skills {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: nowrap;
     width: 100%;
+    min-width: 0;
     min-height: 0;
     max-height: 100%;
+    gap: 2px;
     overflow-x: hidden;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-skill {
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-skill {
+    box-sizing: border-box;
     width: 100%;
     min-width: 0;
     min-height: 20px;
     height: auto;
+    flex: 0 0 auto;
+    padding: 2px 4px;
     overflow: visible;
     overflow-wrap: normal;
     word-break: normal;
     text-overflow: clip;
+    font-size: 10px;
+    line-height: 1.15;
+    text-align: left;
     white-space: normal;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-judgement {
-    grid-area: judgement;
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-public-zones {
+    grid-area: zones;
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 4fr);
+    align-items: stretch;
+    gap: 2px;
+    width: 100%;
+    min-width: 0;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-equipment {
-    grid-area: equipment;
-  }
-
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-judgement,
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-equipment {
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-public-zones > .opponent-inspection-zone {
+    position: relative;
     box-sizing: border-box;
+    display: grid;
+    grid-template-rows: 9px minmax(0, 1fr);
+    align-content: stretch;
     align-self: stretch;
+    gap: 2px;
     width: 100%;
     height: 100%;
     min-width: 0;
     min-height: 0;
-    padding: 1px;
-    gap: 2px;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    padding: 2px 1px;
     overflow: visible;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-judgement .opponent-inspection-slot-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    justify-content: stretch;
-    width: 100%;
-    gap: 2px;
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-public-zones > .hero-focus-inspect-judgement,
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-public-zones > .hero-focus-inspect-equipment {
+    grid-area: auto;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-equipment .opponent-inspection-slot-row {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    justify-content: stretch;
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-public-zones > .opponent-inspection-zone h3 {
+    display: block;
     width: 100%;
-    gap: 2px;
+    min-width: 0;
+    margin: 0;
+    padding-right: 0;
+    overflow: visible;
+    font-size: 7px;
+    line-height: 9px;
+    letter-spacing: -.06em;
+    text-overflow: clip;
+    white-space: nowrap;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-judgement .opponent-inspection-card,
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-judgement .opponent-inspection-empty-slot,
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-equipment .opponent-inspection-card,
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-equipment .opponent-inspection-empty-slot {
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-public-zones .opponent-inspection-slot-row {
+    display: grid;
+    align-self: stretch;
+    width: max-content;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    gap: 1px;
+    justify-content: center;
+    margin-inline: auto;
+    max-width: 100%;
+  }
+
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-judgement .opponent-inspection-slot-row {
+    grid-template-columns: repeat(2, var(--inspector-slot-width));
+  }
+
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-equipment .opponent-inspection-slot-row {
+    grid-template-columns: repeat(4, var(--inspector-slot-width));
+  }
+
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-public-zones .opponent-inspection-card,
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-public-zones .opponent-inspection-empty-slot {
     box-sizing: border-box;
     justify-self: stretch;
+    align-self: start;
     width: 100%;
     max-width: 100%;
     height: auto;
     aspect-ratio: 2 / 3;
   }
 
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-judgement > .opponent-inspection-overflow,
-  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell > .hero-focus-inspect:is([data-inspector-player-count="6"], [data-inspector-player-count="8"]) .hero-focus-inspect-equipment > .opponent-inspection-overflow {
+  .game-shell .play-table .opponent-inspection-floating-shell > .hero-focus-inspect[data-inspector-layout="content-wrapped"] .hero-focus-inspect-public-zones .opponent-inspection-overflow {
     position: absolute;
-    top: 1px;
+    top: 2px;
     right: 2px;
     z-index: 1;
-    justify-self: end;
   }
+
 }
 
 /* ST-RING-DIR-1: on phones, every 5–10 player opponent Seat uses the same

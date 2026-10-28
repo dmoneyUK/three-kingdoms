@@ -2770,25 +2770,26 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
     const arrivalPending = equipmentMiniature && Boolean(equipmentArrivalPendingIds?.has(card.id));
     return <button key={card.id} type="button" className={`opponent-inspection-card${equipmentMiniature ? " opponent-inspection-equipment-card" : ""}${arrivalPending ? " equipment-arrival-pending" : ""}`} data-inspector-slot={inspectionSlot} data-equipment-arrival-pending={arrivalPending ? "true" : undefined} style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} aria-controls={detailsId} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); openCardDetail(card, event.currentTarget); }}><CardFace card={card} /></button>;
   };
-  const compactMultiSeatInspector = playerCount === 6 || playerCount === 8;
   const identityCaption = <div className="hero-focus-inspect-identity-caption">
-    <span className="hero-focus-identity-hero" aria-label={hero?.name ?? "Unknown Hero"} title={hero?.name ?? "Unknown Hero"}>{hero?.name ?? "Unknown Hero"}</span>
-    <span className="hero-focus-identity-player" aria-label={player.name} title={player.name}>{player.name}</span>
+    <div className="hero-focus-identity-row">
+      <span className="hero-focus-identity-name hero-focus-identity-hero" aria-label={hero?.name ?? "Unknown Hero"} title={hero?.name ?? "Unknown Hero"}>{hero?.name ?? "Unknown Hero"}</span>
+      <small className="hero-focus-identity-stat">HP {player.hp ?? "?"}/{player.maxHp ?? "?"}</small>
+    </div>
+    <div className="hero-focus-identity-row">
+      <span className="hero-focus-identity-name hero-focus-identity-player" aria-label={player.name} title={player.name}>{player.name}</span>
+      <small className="hero-focus-identity-stat" data-public-hand-count={player.handCount}>Hand · {player.handCount}</small>
+    </div>
   </div>;
   return <section ref={inspectorRef} key={player.id} id={baseId} className="hero-focus hero-focus-inspect opponent-inspection-panel" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id} data-inspector-layout="content-wrapped" data-inspector-player-count={playerCount}>
     <div className="hero-focus-body">
       <div className="hero-focus-inspect-portrait-column">
         <span className={hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={hero?.id}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
-        {!compactMultiSeatInspector && identityCaption}
       </div>
       <div className="hero-focus-inspect-main">
         <div className="hero-focus-inspect-upper">
           <div className="hero-focus-identity">
             <div className="hero-focus-inspect-profile">
-              {compactMultiSeatInspector && identityCaption}
-              <div className="hero-focus-identity-line">
-                <div className="hero-focus-identity-stats"><small>HP {player.hp ?? "?"}/{player.maxHp ?? "?"}</small><small data-public-hand-count={player.handCount}>Hand · {player.handCount}</small></div>
-              </div>
+              {identityCaption}
               <section className="opponent-inspection-zone hero-focus-inspect-public-skills" aria-label="Public Skills">
                 <h3>Public Skills</h3>
                 <div className="hero-focus-inspect-skills">{skills.length ? skills.map((skill) => {
@@ -2809,6 +2810,8 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
               </section>
             </div>
           </div>
+        </div>
+        <div className="hero-focus-inspect-public-zones">
           <section className="opponent-inspection-zone hero-focus-inspect-judgement" aria-label="Judgement Zone">
             <h3>Judgement</h3>
             <div className="opponent-inspection-card-row opponent-inspection-slot-row opponent-inspection-judgement-slots">
@@ -2826,24 +2829,24 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
               </div>
             </details>}
           </section>
-        </div>
-        <section className="opponent-inspection-zone hero-focus-inspect-equipment" aria-label="Equipment">
-          <h3>Equipment</h3>
-          <div className="opponent-inspection-card-row opponent-inspection-slot-row opponent-inspection-equipment-slots">
-            {inspectionEquipmentSlots.map(({ slot, label }) => {
-              const card = inspectionEquipmentBySlot.get(slot);
-              return card
-                ? renderInspectionCard(card, { equipmentMiniature: true, inspectionSlot: slot })
-                : <span key={`equipment-empty-${slot}`} className="opponent-inspection-empty-slot" data-inspector-slot={slot} role="img" aria-label={`Empty ${label} slot`} />;
-            })}
-          </div>
-          {extraEquipmentCards.length > 0 && <details className="opponent-inspection-overflow">
-            <summary aria-label={`Show ${extraEquipmentCards.length} more Equipment cards`}>+{extraEquipmentCards.length}</summary>
-            <div className="opponent-inspection-overflow-row">
-              {extraEquipmentCards.map((card) => renderInspectionCard(card, { equipmentMiniature: true }))}
+          <section className="opponent-inspection-zone hero-focus-inspect-equipment" aria-label="Equipment">
+            <h3>Equipment</h3>
+            <div className="opponent-inspection-card-row opponent-inspection-slot-row opponent-inspection-equipment-slots">
+              {inspectionEquipmentSlots.map(({ slot, label }) => {
+                const card = inspectionEquipmentBySlot.get(slot);
+                return card
+                  ? renderInspectionCard(card, { equipmentMiniature: true, inspectionSlot: slot })
+                  : <span key={`equipment-empty-${slot}`} className="opponent-inspection-empty-slot" data-inspector-slot={slot} role="img" aria-label={`Empty ${label} slot`} />;
+              })}
             </div>
-          </details>}
-        </section>
+            {extraEquipmentCards.length > 0 && <details className="opponent-inspection-overflow">
+              <summary aria-label={`Show ${extraEquipmentCards.length} more Equipment cards`}>+{extraEquipmentCards.length}</summary>
+              <div className="opponent-inspection-overflow-row">
+                {extraEquipmentCards.map((card) => renderInspectionCard(card, { equipmentMiniature: true }))}
+              </div>
+            </details>}
+          </section>
+        </div>
       </div>
     </div>
     <div ref={inspectDetailsRef} id={detailsId} className="hero-focus-inspect-details hero-focus-context">
