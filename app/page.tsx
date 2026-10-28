@@ -1330,6 +1330,81 @@ function verifiedYinYangSwordsEffectFrameForEvent(
     || effectEvent.player !== materialOwner.name || effectEvent.target !== materialOwner.name) return null;
   return { effectEvent, effect, rootEvent, discardedCard, activationOwner, materialOwner };
 }
+type VerifiedGreenDragonBladeEffectFrameProof = {
+  effectEvent: CardEvent & { type: "card" };
+  effect: PresentationSnapshotPublicCardEffect;
+  rootEvent: CardEvent | CardGroupEvent;
+  followUpAttack: Card;
+  activationOwner: Player;
+  target: Player;
+};
+function verifiedGreenDragonBladeEffectFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedGreenDragonBladeEffectFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const effectEvent = eventMatches.length === 1 && eventMatches[0].type === "card"
+    ? eventMatches[0] : null;
+  if (!effectEvent || effectEvent.presentation === false || effectEvent.privateToPlayerId
+    || effectEvent.action !== "play" || !effectEvent.resolutionId
+    || effectEvent.card.kind !== "Attack" || (effectEvent.playedAs && effectEvent.playedAs !== "attack")) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === effectEvent.id
+    && effect.effectId === "green_dragon_blade_attack_dodged" && effect.effectClass === "EFFECT");
+  const rawMatches = (effectEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "green_dragon_blade_attack_dodged" && effect.effectClass === "EFFECT");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const followUpAttack = effectEvent.card;
+  const rootEventId = effect.rootEventId;
+  const rootResolutionId = effect.rootResolutionId;
+  const targetId = effect.targetId;
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== effectEvent.id || rawEffect.eventId !== effectEvent.id
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "FOLLOW_UP_ATTACK_PLAYED" || rawEffect.outcome !== "FOLLOW_UP_ATTACK_PLAYED"
+    || !rootEventId || rootEventId !== rawEffect.rootEventId || rootEventId === effectEvent.id
+    || !rootResolutionId || rootResolutionId !== rawEffect.rootResolutionId
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || material.cardId !== followUpAttack.id || rawMaterial.cardId !== followUpAttack.id || projectedCard.id !== followUpAttack.id
+    || projectedCard.kind !== followUpAttack.kind || projectedCard.suit !== followUpAttack.suit || projectedCard.rank !== followUpAttack.rank
+    || material.ownerId !== effect.activationOwnerId || rawMaterial.ownerId !== effect.activationOwnerId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD") return null;
+
+  const rootMatches = timeline.filter((event) => event.id === rootEventId);
+  const rootEvent = rootMatches.length === 1 && (rootMatches[0].type === "card" || rootMatches[0].type === "cards")
+    ? rootMatches[0] : null;
+  if (!rootEvent || rootEvent.presentation === false || rootEvent.privateToPlayerId
+    || !rootEvent.resolutionId || rootEvent.resolutionId !== rootResolutionId
+    || rootEvent.action !== "play" || timeline.indexOf(rootEvent) >= timeline.indexOf(effectEvent)) return null;
+
+  const activationOwner = players.find((player) => player.id === effect.activationOwnerId);
+  const target = players.find((player) => player.id === targetId);
+  const rootIsAttack = rootEvent.type === "card"
+    ? rootEvent.playedAs === "attack" || rootEvent.card.kind === "Attack" && rootEvent.playedAs === undefined
+    : rootEvent.playedAs === "attack" && rootEvent.cards.length === 2
+      && new Set(rootEvent.cards.map((card) => card.id)).size === 2
+      && (rootEvent.publicCardEffects ?? []).filter((rootEffect) => rootEffect.semantics === "PROVEN"
+        && rootEffect.effectId === "serpent_spear_attack" && rootEffect.effectClass === "CONVERSION"
+        && rootEffect.resultingCardKind === "Attack" && rootEffect.outcome === "AS_ATTACK"
+        && rootEffect.activationOwnerId === activationOwner?.id && rootEffect.targetId === target?.id).length === 1;
+  if (!activationOwner?.name || !target?.name || activationOwner.id === target.id || !rootIsAttack
+    || rootEvent.player !== activationOwner.name || rootEvent.target !== target.name
+    || rootEvent.actorId && rootEvent.actorId !== activationOwner.id
+    || effectEvent.player !== activationOwner.name || effectEvent.target !== target.name
+    || effectEvent.actorId && effectEvent.actorId !== activationOwner.id) return null;
+  return { effectEvent, effect, rootEvent, followUpAttack, activationOwner, target };
+}
 function verifiedLustCostFrameForEvent(
   timeline: readonly GameEvent[],
   notices: readonly PresentationSnapshotDiaoChanSkillNotice[],
@@ -7641,6 +7716,39 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
+  const greenDragonBladeEffectFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "green_dragon_blade_attack_dodged"
+      && effect.effectClass === "EFFECT")
+      .flatMap((effect) => {
+        const frame = verifiedGreenDragonBladeEffectFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.effectEvent) - room.timeline.indexOf(left.effectEvent))[0] ?? null;
+  })();
+  const greenDragonBladeEffectFrameAction: PublicCardDisplayAction | null = greenDragonBladeEffectFrameCandidate ? {
+    key: ["green-dragon-blade-follow-up", greenDragonBladeEffectFrameCandidate.effectEvent.id].join(":"),
+    rootEventId: greenDragonBladeEffectFrameCandidate.effectEvent.id,
+    sourceId: greenDragonBladeEffectFrameCandidate.activationOwner.id,
+    targetId: greenDragonBladeEffectFrameCandidate.target.id,
+    cardFace: greenDragonBladeEffectFrameCandidate.followUpAttack,
+    cardLabel: "GREEN DRAGON BLADE · FOLLOW-UP ATTACK",
+    ariaLabel: `${greenDragonBladeEffectFrameCandidate.activationOwner.name} used Green Dragon Blade after ${greenDragonBladeEffectFrameCandidate.target.name} dodged the original Attack. The real ${greenDragonBladeEffectFrameCandidate.followUpAttack.rank}${greenDragonBladeEffectFrameCandidate.followUpAttack.suit} Attack is a new follow-up, not a cost, and keeps its ordinary Dodge response.`,
+    publicNotice: `${greenDragonBladeEffectFrameCandidate.activationOwner.name} used Green Dragon Blade to play a new Attack on ${greenDragonBladeEffectFrameCandidate.target.name} after the original Attack was dodged.`,
+    publicNoticeCompact: `Green Dragon Blade: ${greenDragonBladeEffectFrameCandidate.activationOwner.name} played a new Attack on ${greenDragonBladeEffectFrameCandidate.target.name}.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "green_dragon_blade_attack_dodged", greenDragonBladeEffectFrameCandidate.effectEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(greenDragonBladeEffectFrameCandidate.effectEvent.id)
+        ? [] : [greenDragonBladeEffectFrameCandidate.effectEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(greenDragonBladeEffectFrameCandidate.effect, {
+      title: "GREEN DRAGON BLADE · FOLLOW-UP ATTACK",
+      accessibleLabel: `${greenDragonBladeEffectFrameCandidate.activationOwner.name} used Green Dragon Blade after ${greenDragonBladeEffectFrameCandidate.target.name} dodged the original Attack. This is a new physical Attack card, not a weapon cost; it keeps its ordinary Dodge response.`,
+      activationOwnerName: greenDragonBladeEffectFrameCandidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
   const latestHeroPublicCardEffectFrameAction = [
     prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction,
     dauntlessEquipmentEffectFrameAction, betrothmentCostFrameAction,
@@ -7648,6 +7756,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     stauchnessCostFrameAction, rockCleavingAxeCostFrameAction, kirinBowEffectFrameAction,
     frostSwordEffectFrameAction,
     yinYangSwordsEffectFrameAction,
+    greenDragonBladeEffectFrameAction,
   ].filter((action): action is PublicCardDisplayAction => action !== null
     && !(action.rootEventId === prodigalHealerCostFrameCandidate?.costEvent.id
       && prodigalHealerAnnouncementLifecycle.status === "superseded"))
