@@ -412,8 +412,7 @@ test("server-backed Duel cards reveal at full size for four seconds, then park b
 
     const waitingCopy = page.locator('.public-card-display-journey-copy[data-public-negation-phase="WINDOW_OPEN"]');
     await expect(waitingCopy).toBeVisible();
-    await expect(waitingCopy).toContainText("Negation response open");
-    await expect(waitingCopy).toContainText("Duel not yet resolved");
+    await expect(waitingCopy).toContainText("Negation can cancel the Duel.");
     const pass = page.getByRole("button", { name: /^(?:Skip|Pass)$/ });
     await expect(pass).toBeEnabled();
     await screenshot(page, testInfo, "duel-negation-waiting-controls-live-440x894");
@@ -689,8 +688,8 @@ test("server-proven Duel Negation counters retain their ordered author-seat hist
     expect(rootAnnouncement.headline).toContain(target.name);
     expect(rootAnnouncement.headline).toContain("Duel");
     expect(rootAnnouncement.supporting).toContain("Duel");
-    expect(rootAnnouncement.supporting).toMatch(/response open|Negation open/i);
-    expect(rootAnnouncement.accessibleLabel).toContain("CURRENT, response still open.");
+    expect(rootAnnouncement.supporting).toBe("Negation can cancel the Duel.");
+    expect(rootAnnouncement.accessibleLabel).toContain("Negation can cancel the Duel.");
     expect(rootAnnouncement.supportingHeight).toBeGreaterThan(0);
     expect(rootAnnouncement.lines).toBeGreaterThanOrEqual(2);
     expect(rootAnnouncement.lines).toBeLessThanOrEqual(3);
@@ -746,12 +745,11 @@ test("server-proven Duel Negation counters retain their ordered author-seat hist
       expect(narration.effectState).toBe(index % 2 === 0 ? "BLOCKED" : "ACTIVE");
       expect(narration.headline).toContain(winner.name);
       expect(narration.headline).toContain(counteredActor.name);
-      expect(narration.headline.toLowerCase()).toContain("counter");
+      expect(narration.headline.toLowerCase()).toContain(index === 0 ? "cancels" : "counter");
       expect(narration.headline).toContain(index === 0 ? "Duel" : "Negation");
       const expectedEffectState = index % 2 === 0 ? "BLOCKED" : "ACTIVE";
-      expect(narration.supporting).toMatch(new RegExp(`Duel (?:currently )?${expectedEffectState}`));
-      expect(narration.supporting).toMatch(/Negation open|possible/i);
-      expect(narration.accessibleLabel).toContain("CURRENT, response still open.");
+      expect(narration.supporting).toBe(`Another Negation can ${expectedEffectState === "BLOCKED" ? "restore" : "cancel"} the Duel.`);
+      expect(narration.accessibleLabel).toContain(narration.supporting);
       expect(narration.supportingHeight).toBeGreaterThan(0);
       expect(narration.lines).toBeGreaterThanOrEqual(2);
       expect(narration.lines).toBeLessThanOrEqual(3);
@@ -769,7 +767,7 @@ test("server-proven Duel Negation counters retain their ordered author-seat hist
       expect(otherViewerNarration.headline).toContain(winner.name);
       expect(otherViewerNarration.headline).toContain(counteredActor.name);
       expect(otherViewerNarration.headline).toContain(index === 0 ? "Duel" : "Negation");
-      expect(otherViewerNarration.supporting).toMatch(new RegExp(`Duel (?:currently )?${expectedEffectState}`));
+      expect(otherViewerNarration.supporting).toBe(narration.supporting);
       const visibleHistory = page.locator('[data-public-card-motion="duel"] .public-card-journey-card');
       await expect(visibleHistory).toHaveCount(committedHistory.length);
       const earlyCheckpoint = index === 0;
@@ -885,9 +883,10 @@ test("server-proven Duel Negation counters retain their ordered author-seat hist
     expect(finalNarration.latestCommittedEventId).toBe(committedHistory.at(-1).event.id);
     expect(finalNarration.phase).toBe("FINAL");
     expect(finalNarration.effectState).toBe("BLOCKED");
-    expect(finalNarration.supporting).toMatch(/^FINAL · Duel cancelled(?: — no Duel Attack exchange\.)?$/);
+    expect(finalNarration.headline).toBe("The Duel is cancelled.");
+    expect(finalNarration.supporting).toBe("");
     expect(finalNarration.announcementCount).toBe(1);
-    expect(finalNarration.accessibleLabel).toContain("FINAL.");
+    expect(finalNarration.accessibleLabel).toBe("The Duel is cancelled.");
     expect(finalNarration.overlaps).toEqual([]);
     await expect(viewerPage.locator(`[data-public-card-root-event-id="${rootEvent.id}"] [data-public-negation-phase="FINAL"]`))
       .toBeVisible({ timeout: 20_000 });
@@ -964,7 +963,8 @@ test("Duel counter narration advances during an active card reveal and confirms 
     const finalNarration = await duelAnnouncementSnapshot(page, rootEvent.id, second.event.id);
     expect(finalNarration.phase).toBe("FINAL");
     expect(finalNarration.effectState).toBe("ACTIVE");
-    expect(finalNarration.supporting).toBe("FINAL · Duel takes effect.");
+    expect(finalNarration.headline).toBe("The Duel takes effect.");
+    expect(finalNarration.supporting).toBe("");
     await expect(page.locator('[data-public-card-motion="duel"] .public-card-journey-card')).toHaveCount(3);
     const finalHistory = await page.locator('[data-public-card-motion="duel"] .public-card-journey-card').evaluateAll((elements) => elements.map((element) => ({
       actorId: element.getAttribute("data-public-card-journey-actor-id"),
@@ -975,7 +975,7 @@ test("Duel counter narration advances during an active card reveal and confirms 
     await expect(viewerPage.locator(`[data-public-card-root-event-id="${rootEvent.id}"] [data-public-negation-phase="FINAL"]`)).toBeVisible({ timeout: 15_000 });
     const observerFinal = await duelAnnouncementSnapshot(viewerPage, rootEvent.id, second.event.id);
     expect(observerFinal.text).toBe(finalNarration.text);
-    expect(observerFinal.accessibleLabel).toContain("FINAL.");
+    expect(observerFinal.accessibleLabel).toBe("The Duel takes effect.");
     await screenshot(page, testInfo, "duel-negation-even-chain-final-restored-at-390x844");
   } finally {
     await viewerContext.close();

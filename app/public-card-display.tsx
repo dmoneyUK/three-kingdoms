@@ -1730,23 +1730,15 @@ export function harvestNegationTarget(action: PublicCardDisplayAction): HarvestN
 /** Local response wording for the same public counter-target model as H4. */
 export function harvestNegationDecisionCopy(action: PublicCardDisplayAction) {
   const target = harvestNegationTarget(action);
-  if (!target) return "Negation response open · Play / Pass";
+  if (!target) return "Play Negation or Pass";
+  if (action.publicNegationNarration?.supportingMessage) return `${action.publicNegationNarration.supportingMessage} Play / Pass`;
   return target.kind === "harvest-effect"
-    ? `Cancel Harvest for ${target.recipientName} · Negation / Pass`
+    ? `Negation can prevent ${target.recipientName} from picking · Play / Pass`
     : `Counter ${target.actorName}'s Negation · Play / Pass`;
 }
 
-function bumperHarvestNegationCopy(
-  action: PublicCardDisplayAction,
-  compact = false,
-) {
-  const responses = action.responses ?? [];
-  const target = harvestNegationTarget(action);
-  if (!target) return responses.length > 0 ? "Negation response open." : "Negation available.";
-  if (target.kind === "harvest-effect") return compact
-    ? `Cancel Harvest for ${target.recipientName}?`
-    : `Negation: Cancel Harvest for ${target.recipientName}?`;
-  return `Counter ${target.actorName}'s Negation?`;
+function bumperHarvestNegationCopy(action: PublicCardDisplayAction) {
+  return action.publicNegationNarration?.headline ?? ((action.responses?.length ?? 0) > 0 ? "Negation was played." : "Negation may be played.");
 }
 
 export function publicCardAnnouncement(
@@ -1816,8 +1808,10 @@ export function publicCardAnnouncement(
       }
       return `${source} resolved ${cardName} on ${target}.`;
     case "ROOT_CANCELLED":
+      if (action.cardFace?.kind === "BumperHarvest") return "Bumper Harvest response resolved.";
       return `${actor}'s Negation cancelled ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
     case "ROOT_RESTORED":
+      if (action.cardFace?.kind === "BumperHarvest") return "Bumper Harvest response resolved.";
       return `${actor}'s Negation restored ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
     default:
       return settlementLabel(action, targetName) ?? compactPublicNotice(notice, actorName);
@@ -1932,7 +1926,7 @@ function publicCardAnnouncementCopy(
   }
   if (isHarvestNegationPresentation(action)) {
     const message = bumperHarvestNegationCopy(action);
-    const compactMessage = bumperHarvestNegationCopy(action, true);
+    const compactMessage = bumperHarvestNegationCopy(action);
     return { message, compactMessage: compactMessage === message ? undefined : compactMessage };
   }
   if (action.publicCardEffectFrame && action.publicNotice) {
@@ -4814,12 +4808,15 @@ function SingleTargetCardJourney({
     compactPlayerNamesById,
   );
   const harvestNegationPresentation = isHarvestNegationPresentation(action);
-  const negationNarration = harvestNegationPresentation ? undefined : action.publicNegationNarration;
-  const announcementPhaseNotice = action.settlement || harvestNegationPresentation
+  const harvestRootCard = isBumperHarvest ? journey.cards.find((card) => card.eventId === action.rootEventId && card.role === "root") : undefined;
+  const showHarvestRootNotice = isBumperHarvest && !(action.responses?.length)
+    && (!harvestPoolVisible || !harvestRootCard || harvestRootCard.phase !== "parked");
+  const negationNarration = showHarvestRootNotice ? undefined : action.publicNegationNarration;
+  const announcementPhaseNotice = action.settlement || isBumperHarvest
     ? undefined
     : action.phaseNotice;
-  const announcement = negationNarration?.headline ?? withPublicCardPhaseNotice(announcementCopy.message, announcementPhaseNotice);
-  const compactAnnouncement = negationNarration?.compactHeadline ?? ((announcementCopy.compactMessage || (!action.settlement && !harvestNegationPresentation && action.phaseNotice?.includes("NEGATION")))
+  const announcement = showHarvestRootNotice ? action.ariaLabel : negationNarration?.headline ?? withPublicCardPhaseNotice(announcementCopy.message, announcementPhaseNotice);
+  const compactAnnouncement = showHarvestRootNotice ? action.ariaLabel : negationNarration?.compactHeadline ?? ((announcementCopy.compactMessage || (!action.settlement && !harvestNegationPresentation && action.phaseNotice?.includes("NEGATION")))
     ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, announcementPhaseNotice, true)
     : undefined);
   const targetCardMovement = action.settlement?.targetCardMovement;
@@ -5126,7 +5123,7 @@ function SingleTargetCardJourney({
       phase={harvestPoolVisible || publicEffectFrameOwnsAnnouncementAnchor ? "static" : announcementAnchorCard?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
-      accessibleLabel={action.publicActivityMessage && motion?.type === "lust-cost"
+      accessibleLabel={showHarvestRootNotice ? action.ariaLabel : action.publicActivityMessage && motion?.type === "lust-cost"
         ? appendAnnouncementContext(announcementCopy.accessibleLabel ?? announcementCopy.message,
           action.publicActivityAccessibleMessage ?? action.publicActivityMessage)
         : announcementCopy.accessibleLabel}
@@ -5140,7 +5137,7 @@ function SingleTargetCardJourney({
         : publicEffectFrameOwnsAnnouncementAnchor && journey.center && action.publicCardEffectFrame
           ? battlefieldPublicEffectFrame(journey.center, action.publicCardEffectFrame.materials.length)
         : motion?.type === "group-root" && !groupRootCenterIsStillOccupied ? undefined : journey.center}
-      phaseNotice={negationNarration ? undefined : action.phaseNotice}
+      phaseNotice={negationNarration || isBumperHarvest ? undefined : action.phaseNotice}
       outcome={allParked ? action.settlement?.outcome : undefined}
       negationWaiting={Boolean(negationNarration || action.phaseNotice?.includes("NEGATION"))}
       stableCenterAnchor={motion?.type === "lust-cost"}
