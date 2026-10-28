@@ -902,7 +902,7 @@ test("server-proven Duel Negation counters retain their ordered author-seat hist
   }
 });
 
-test("Duel counter narration advances during an active card reveal and confirms even-chain restoration to both viewers", async ({ page, browser, request }, testInfo) => {
+test("Duel counter narration retires at exchange while preserving physical history for both viewers", async ({ page, browser, request }, testInfo) => {
   test.setTimeout(90_000);
   const room = await seedDuelNegationHistory(request, 4);
   const viewerContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -959,24 +959,28 @@ test("Duel counter narration advances during an active card reveal and confirms 
     });
     const finalEvent = retired.timeline.find((event) => event.id === retired.presentationSnapshot.settlement.eventId);
     expect(finalEvent?.finalResult).toBe(true);
-    await expect(page.locator(`[data-public-card-root-event-id="${rootEvent.id}"] [data-public-negation-phase="FINAL"]`)).toBeVisible({ timeout: 15_000 });
-    const finalNarration = await duelAnnouncementSnapshot(page, rootEvent.id, second.event.id);
-    expect(finalNarration.phase).toBe("FINAL");
-    expect(finalNarration.effectState).toBe("ACTIVE");
-    expect(finalNarration.headline).toBe("The Duel takes effect.");
-    expect(finalNarration.supporting).toBe("");
+    expect(retired.presentationSnapshot.interaction).toMatchObject({ semantics: "PROVEN", stage: "DUEL_EXCHANGE" });
+    expect(retired.presentationSnapshot.duelExchange).toMatchObject({
+      semantics: "PROVEN",
+      root: { eventId: rootEvent.id },
+    });
+    const duelRoot = page.locator('[data-public-card-root-event-id="' + rootEvent.id + '"]');
+    await expect(duelRoot.locator("[data-public-negation-phase]")).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByText("The Duel takes effect.")).toHaveCount(0);
     await expect(page.locator('[data-public-card-motion="duel"] .public-card-journey-card')).toHaveCount(3);
     const finalHistory = await page.locator('[data-public-card-motion="duel"] .public-card-journey-card').evaluateAll((elements) => elements.map((element) => ({
+      eventId: element.getAttribute("data-public-card-journey-event-id"),
       actorId: element.getAttribute("data-public-card-journey-actor-id"),
+      cardId: element.getAttribute("data-public-card-journey-card-id"),
       ordinal: Number(element.getAttribute("data-public-card-journey-ordinal")),
     })));
+    expect(finalHistory.map(({ eventId }) => eventId)).toEqual([rootEvent.id, first.event.id, second.event.id]);
     expect(finalHistory.map(({ actorId }) => actorId)).toEqual([room.players[0].id, room.players[1].id, room.players[3].id]);
+    expect(finalHistory.map(({ cardId }) => cardId)).toEqual([rootCardId, room.targetNegationIds[0], room.sideNegationId]);
     expect(finalHistory.map(({ ordinal }) => ordinal)).toEqual([1, 2, 3]);
-    await expect(viewerPage.locator(`[data-public-card-root-event-id="${rootEvent.id}"] [data-public-negation-phase="FINAL"]`)).toBeVisible({ timeout: 15_000 });
-    const observerFinal = await duelAnnouncementSnapshot(viewerPage, rootEvent.id, second.event.id);
-    expect(observerFinal.text).toBe(finalNarration.text);
-    expect(observerFinal.accessibleLabel).toBe("The Duel takes effect.");
-    await screenshot(page, testInfo, "duel-negation-even-chain-final-restored-at-390x844");
+    await expect(viewerPage.locator('[data-public-card-root-event-id="' + rootEvent.id + '"] [data-public-negation-phase]')).toHaveCount(0, { timeout: 15_000 });
+    await expect(viewerPage.locator('[data-public-card-motion="duel"] .public-card-journey-card')).toHaveCount(3);
+    await screenshot(page, testInfo, "duel-negation-even-chain-exchange-retires-h4-at-390x844");
   } finally {
     await viewerContext.close();
   }

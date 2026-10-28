@@ -11,6 +11,7 @@ import {
   selectPublicAnnouncementCandidate,
   transitionPublicAnnouncementCopyLifecycle,
 } from "../game/public-announcement.ts";
+import { selectDuelPublicStageOwner } from "../game/duel-public-stage-owner.ts";
 import {
   compactLustDuelAttackMessage,
   compactLustDuelOrderMessage,
@@ -25,6 +26,103 @@ const action = (overrides = {}) => ({
   cardLabel: "ATTACK",
   ariaLabel: "Source played Attack targeting Target",
   ...overrides,
+});
+
+function duelStageFacts({ stage = "NEGATION", revision = 6, checkpointId = "negation-6", responseCount = 0 } = {}) {
+  const responseEventIds = Array.from({ length: responseCount }, (_, index) => "negation-" + (index + 1));
+  const responseActorIds = Array.from({ length: responseCount }, (_, index) => index % 2 === 0 ? "p2" : "p1");
+  const rootEventId = "duel-root";
+  const identity = { interactionId: "duel-i1", checkpointId, presentationRevision: revision };
+  const interaction = {
+    semantics: "PROVEN", interactionId: identity.interactionId, rootFrameId: "duel-frame", activeFrameId: "duel-frame",
+    checkpointId, presentationRevision: revision, stage, sourceId: "p1", currentParticipantId: "p2", participantIds: ["p1", "p2"],
+  };
+  const negationProof = stage === "NEGATION" ? {
+    semantics: "PROVEN", interactionId: identity.interactionId, rootFrameId: "duel-frame", checkpointId,
+    presentationRevision: revision, rootEventId, publicEventId: responseEventIds.at(-1) ?? rootEventId,
+    sourceId: "p1", targetId: "p2", responseEventIds, responseActorIds,
+  } : null;
+  return { identity, interaction, rootEventId, negationProof, settlementProof: null, exchangeProof: null };
+}
+
+test("Duel H4 owner follows the proven stage across root and linked Negation responses", () => {
+  for (const responseCount of [0, 1, 2, 3]) {
+    const selected = selectDuelPublicStageOwner(duelStageFacts({ responseCount }));
+    assert.equal(selected.stageOwner, "NEGATION");
+    assert.equal(selected.announcement, "NEGATION_OPEN");
+    assert.equal(selected.semanticCopyIdentity, [
+      "duel-i1", "duel-frame", "negation-6", "6", "NEGATION",
+      responseCount ? "negation-" + responseCount : "duel-root",
+    ].join(":"));
+  }
+});
+
+test("Duel H4 stage ownership is viewer-independent and rejects stale or unrelated Negation proof", () => {
+  const current = duelStageFacts({ responseCount: 2 });
+  const selected = selectDuelPublicStageOwner(current);
+  assert.deepEqual(selectDuelPublicStageOwner({ ...current }), selected);
+
+  assert.equal(selectDuelPublicStageOwner({
+    ...current,
+    identity: { ...current.identity, checkpointId: "negation-7", presentationRevision: 7 },
+    interaction: { ...current.interaction, checkpointId: "negation-7", presentationRevision: 7 },
+  }).stageOwner, null);
+  assert.equal(selectDuelPublicStageOwner({ ...current, negationProof: null }).stageOwner, null);
+  assert.equal(selectDuelPublicStageOwner({
+    ...current,
+    negationProof: { ...current.negationProof, rootEventId: "unrelated-duel" },
+  }).stageOwner, null);
+  assert.equal(selectDuelPublicStageOwner({
+    ...current,
+    negationProof: { ...current.negationProof, responseActorIds: ["p9", "p1"] },
+  }).stageOwner, null);
+  assert.equal(selectDuelPublicStageOwner({
+    ...current,
+    settlementProof: {
+      semantics: "PROVEN", outcome: "ROOT_CANCELLED", interactionId: "duel-i1", rootFrameId: "duel-frame",
+      checkpointId: "negation-6", presentationRevision: 6, eventId: "cancel-event", rootEventId: "duel-root",
+      rootCardKind: "Duel", sourceId: "p1", targetId: "p2",
+    },
+  }).stageOwner, null);
+});
+
+test("proven Duel settlement may own final copy, but proven exchange retires H4", () => {
+  const exchange = {
+    semantics: "PROVEN", interactionId: "duel-i1", rootFrameId: "duel-frame", checkpointId: "exchange-7",
+    presentationRevision: 7, rootEventId: "duel-root", sourceId: "p1", targetId: "p2", currentParticipantId: "p1",
+    decisionActorId: "p1", responseEventIds: ["attack-1"], responseActorIds: ["p1"],
+  };
+  const settlementProof = {
+    semantics: "PROVEN", outcome: "ROOT_RESTORED", interactionId: "duel-i1", rootFrameId: "duel-frame",
+    checkpointId: "negation-6", presentationRevision: 6, eventId: "settled-6", rootEventId: "duel-root",
+    rootCardKind: "Duel", sourceId: "p1", targetId: "p2",
+  };
+  const settlementBase = duelStageFacts({ stage: "SETTLEMENT", revision: 7, checkpointId: "settlement-7" });
+  const settlementState = {
+    ...settlementBase,
+    interaction: { ...settlementBase.interaction, currentParticipantId: null },
+    settlementProof,
+  };
+  const finalOwner = selectDuelPublicStageOwner(settlementState);
+  assert.equal(finalOwner.stageOwner, "NEGATION_SETTLEMENT");
+  assert.equal(finalOwner.announcement, "NEGATION_FINAL");
+
+  const exchangeBase = duelStageFacts({ stage: "DUEL_EXCHANGE", revision: 7, checkpointId: "exchange-7" });
+  const exchangeState = {
+    ...exchangeBase,
+    interaction: { ...exchangeBase.interaction, currentParticipantId: "p1" },
+    settlementProof,
+    exchangeProof: exchange,
+  };
+  const exchangeOwner = selectDuelPublicStageOwner(exchangeState);
+  assert.equal(exchangeOwner.stageOwner, "DUEL_EXCHANGE");
+  assert.equal(exchangeOwner.announcement, null);
+  assert.match(exchangeOwner.semanticCopyIdentity, /DUEL_EXCHANGE:attack-1$/);
+  assert.equal(selectDuelPublicStageOwner({ ...exchangeState, settlementProof: null }).announcement, null);
+  assert.equal(selectDuelPublicStageOwner({
+    ...exchangeState,
+    settlementProof: { ...settlementProof, outcome: "ROOT_CANCELLED" },
+  }).stageOwner, null);
 });
 
 test("public announcement arbitration uses unique committed checkpoints and retires older Hero copy", () => {

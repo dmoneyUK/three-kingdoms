@@ -35,6 +35,7 @@ import { compactLustDuelOrderMessage, compactLustDuelResultMessage } from "./lus
 import { publicHeroCostAnnouncementLifecycle } from "../game/public-hero-cost-lifecycle";
 import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate } from "../game/public-announcement";
 import { duelNegationFinalCopy, negationEffectCopy } from "./negation-effect-copy";
+import { selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -6790,11 +6791,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       && event.finalResult === true && event.negationSettlement?.outcome === publicNegationSettlementProof.outcome)
     && room.timeline.some((event) => event.id === activePublicNegationRead.action.rootEventId
       && event.type === "card" && event.resolutionId === publicNegationSettlementProof.resolutionId));
-  const activeNegationReadIdentityMatches = Boolean(activePublicNegationRead
-    && (activeReadMatchesFinalNegation
-      || (!clientPresentation.interactionId || clientPresentation.interactionId === activePublicNegationRead.action.interactionId)
-        && (!clientPresentation.rootFrameId || clientPresentation.rootFrameId === activePublicNegationRead.action.rootFrameId)
-        && (!rootAction || rootAction.rootEventId === activePublicNegationRead.action.rootEventId)));
   const activeNegationReadSettled = Boolean(activePublicNegationRead
     && room.presentationSnapshot?.interaction?.stage !== "NEGATION"
     && publicNegationSettlementProof?.semantics === "PROVEN"
@@ -6842,6 +6838,62 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
     return null;
   })();
+  const duelPublicStageOwner = selectDuelPublicStageOwner({
+    identity: room.presentationSnapshot?.identity ?? null,
+    interaction: room.presentationSnapshot?.interaction ?? null,
+    rootEventId: duelExchangeDisplayCandidate?.exchange.root.eventId
+      ?? duelNegationProofCandidate?.rootEvent.id
+      ?? provenDuelNegationSettlement?.rootEvent.id
+      ?? (activePublicNegationRead?.action.cardKind === "Duel" ? activePublicNegationRead.action.rootEventId : null),
+    negationProof: duelNegationProofCandidate ? {
+      semantics: "PROVEN",
+      interactionId: duelNegationProofCandidate.chain.interactionId!,
+      rootFrameId: clientPresentation.rootFrameId!,
+      checkpointId: clientPresentation.checkpointId!,
+      presentationRevision: clientPresentation.presentationRevision!,
+      rootEventId: duelNegationProofCandidate.rootEvent.id,
+      publicEventId: duelNegationProofCandidate.responseNodes.at(-1)?.event.id ?? duelNegationProofCandidate.rootEvent.id,
+      sourceId: duelNegationProofCandidate.root.source.id!,
+      targetId: duelNegationProofCandidate.root.targets[0]!.id!,
+      responseEventIds: duelNegationProofCandidate.responseNodes.map(({ event }) => event.id),
+      responseActorIds: duelNegationProofCandidate.responseNodes.map(({ actor }) => actor.id!),
+    } : null,
+    settlementProof: provenDuelNegationSettlement ? {
+      ...provenDuelNegationSettlement.proof,
+      rootEventId: provenDuelNegationSettlement.rootEvent.id,
+      rootCardKind: "Duel",
+      eventId: provenDuelNegationSettlement.settlementEvent.id,
+    } : null,
+    exchangeProof: duelExchangeDisplayCandidate ? {
+      semantics: "PROVEN",
+      interactionId: duelExchangeDisplayCandidate.exchange.interactionId,
+      rootFrameId: duelExchangeDisplayCandidate.exchange.rootFrameId,
+      checkpointId: duelExchangeDisplayCandidate.exchange.checkpointId,
+      presentationRevision: duelExchangeDisplayCandidate.exchange.presentationRevision,
+      rootEventId: duelExchangeDisplayCandidate.exchange.root.eventId,
+      sourceId: duelExchangeDisplayCandidate.exchange.root.sourceId,
+      targetId: duelExchangeDisplayCandidate.exchange.root.targetId,
+      currentParticipantId: duelExchangeDisplayCandidate.exchange.currentParticipantId,
+      decisionActorId: duelExchangeDisplayCandidate.exchange.decisionActorId,
+      responseEventIds: duelExchangeDisplayCandidate.exchange.responses.map(({ response }) => response.responseEventId),
+      responseActorIds: duelExchangeDisplayCandidate.exchange.responses.map(({ response }) => response.responseActorId),
+    } : null,
+  });
+  const activeDuelReadIdentityMatches = Boolean(activePublicNegationRead
+    && (duelPublicStageOwner.announcement === "NEGATION_OPEN"
+      ? activePublicNegationRead.action.interactionId === room.presentationSnapshot?.identity?.interactionId
+        && activePublicNegationRead.action.rootFrameId === room.presentationSnapshot?.interaction?.rootFrameId
+        && activePublicNegationRead.action.checkpointId === room.presentationSnapshot?.identity?.checkpointId
+        && activePublicNegationRead.action.presentationRevision === room.presentationSnapshot?.identity?.presentationRevision
+        && activePublicNegationRead.action.rootEventId === duelNegationProofCandidate?.rootEvent.id
+      : duelPublicStageOwner.announcement === "NEGATION_FINAL" && activeReadMatchesFinalNegation));
+  const activeNegationReadIdentityMatches = Boolean(activePublicNegationRead
+    && (activePublicNegationRead.action.cardKind === "Duel"
+      ? activeDuelReadIdentityMatches
+      : activeReadMatchesFinalNegation
+        || (!clientPresentation.interactionId || clientPresentation.interactionId === activePublicNegationRead.action.interactionId)
+          && (!clientPresentation.rootFrameId || clientPresentation.rootFrameId === activePublicNegationRead.action.rootFrameId)
+          && (!rootAction || rootAction.rootEventId === activePublicNegationRead.action.rootEventId)));
   const activeNegationReadStillLive = Boolean(activePublicNegationRead
     && room.presentationSnapshot?.interaction?.semantics === "PROVEN"
     && room.presentationSnapshot.interaction.stage === "NEGATION"
@@ -6858,6 +6910,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const heldHarvestEffectRecipient = heldHarvestRootMatches ? harvestEffectRecipient : null;
   const heldPublicNegationReadAction = activeNegationReadIdentityMatches && activePublicNegationRead
     && (activeNegationReadStillLive || activeNegationReadSettled)
+    && (activePublicNegationRead.action.cardKind !== "Duel"
+      || duelPublicStageOwner.announcement === "NEGATION_OPEN"
+      || duelPublicStageOwner.announcement === "NEGATION_FINAL" && activeReadMatchesFinalNegation)
     && !(activePublicNegationRead.action.cardKind === "Duel"
       && (duelNegationProofCandidate || duelExchangeDisplayCandidate && !activeReadMatchesFinalNegation))
     && (!singleTargetNegationActionKey || singleTargetNegationActionKey === activePublicNegationRead.key
@@ -6998,7 +7053,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       } : {}),
     }
     : null;
-  const duelNegationPublicAction: PublicCardDisplayAction | null = duelNegationProofCandidate
+  const duelNegationPublicAction: PublicCardDisplayAction | null = duelPublicStageOwner.announcement === "NEGATION_OPEN" && duelNegationProofCandidate
     ? {
       key: ["duel", duelNegationProofCandidate.chain.interactionId, clientPresentation.rootFrameId!,
         duelNegationProofCandidate.rootEvent.id, duelNegationProofCandidate.root.source.id!, duelNegationProofCandidate.root.targets[0]!.id!].join(":"),
@@ -7875,7 +7930,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
     : duelNegationPublicAction && !duelExchangeDisplayCandidate
     ? duelNegationPublicAction
-    : duelExchangeDisplayCandidate
+    : duelExchangeDisplayCandidate && duelPublicStageOwner.stageOwner === "DUEL_EXCHANGE"
     ? {
       key: ["duel", duelExchangeDisplayCandidate.exchange.interactionId, duelExchangeDisplayCandidate.exchange.rootFrameId, duelExchangeDisplayCandidate.exchange.root.eventId, duelExchangeDisplayCandidate.exchange.root.sourceId, duelExchangeDisplayCandidate.exchange.root.targetId].join(":"),
       interactionId: duelExchangeDisplayCandidate.exchange.interactionId,
@@ -7887,21 +7942,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: duelExchangeDisplayCandidate.rootEvent.card,
       cardLabel: "DUEL",
       ariaLabel: `${duelExchangeDisplayCandidate.source.name} played Duel targeting ${duelExchangeDisplayCandidate.target.name}`,
-      ...(provenDuelNegationSettlement?.proof.outcome === "ROOT_RESTORED"
-        && provenDuelNegationSettlement.rootEvent.id === duelExchangeDisplayCandidate.exchange.root.eventId ? {
-        publicNegationNarration: finalizePublicNegationNarration({
-          rootLabel: "Duel",
-          eventId: duelExchangeDisplayCandidate.exchange.root.eventId,
-          latestCommittedEventId: duelExchangeDisplayCandidate.exchange.root.eventId,
-          phase: "WINDOW_OPEN",
-          rootEffectState: provenDuelNegationSettlement.proof.outcome === "ROOT_CANCELLED" ? "BLOCKED" : "ACTIVE",
-          headline: `${duelExchangeDisplayCandidate.source.name} played Duel on ${duelExchangeDisplayCandidate.target.name}.`,
-          compactHeadline: `${duelExchangeDisplayCandidate.source.name} played Duel on ${duelExchangeDisplayCandidate.target.name}.`,
-          supportingMessage: "Duel effect status awaiting server settlement.",
-          compactSupportingMessage: "Duel status pending",
-          accessibleLabel: "CURRENT. Duel effect status awaiting server settlement.",
-        }, provenDuelNegationSettlement.proof.outcome, provenDuelNegationSettlement.settlementEvent.id),
-      } : {}),
+      suppressAnnouncement: true,
       motion: {
         type: "duel",
         scopeKey: [room.code, duelExchangeDisplayCandidate.exchange.interactionId, duelExchangeDisplayCandidate.exchange.rootFrameId, duelExchangeDisplayCandidate.exchange.root.eventId].join(":"),
