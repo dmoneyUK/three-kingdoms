@@ -61,6 +61,33 @@ test("Negation kit follows four current seat numbers and stays editable if the l
   assert.deepEqual(Object.keys(stored.preset.handsBySeat), seats.map(String));
 });
 
+test("Duel test preset gives the first three seats Duel and all four seats Negation", () => {
+  const seats = [0, 1, 2, 3];
+  const preset = testHandPresetFor("duel_chain");
+  assert.deepEqual(preset.handsBySeat, {
+    0: ["Duel", "Negation", "Attack", "Dodge"],
+    1: ["Duel", "Negation", "Attack", "Dodge"],
+    2: ["Duel", "Negation", "Attack", "Dodge"],
+    3: ["Negation", "Attack", "Attack", "Dodge"],
+  });
+  const allKinds = Object.values(preset.handsBySeat).flat();
+  assert.equal(allKinds.filter((kind) => kind === "Duel").length, 3);
+  assert.equal(allKinds.filter((kind) => kind === "Negation").length, 4);
+  assert.ok(Object.values(preset.handsBySeat).every((hand) => hand.includes("Attack") && hand.includes("Dodge")));
+  assert.equal(validateTestHandPreset(preset, new Set(seats)).error, null, "the assignments use the real Standard deck copies");
+  assert.equal(testHandPresetCompatibilityError(preset.id, new Set(seats)), null);
+  assert.match(testHandPresetCompatibilityError(preset.id, new Set([0, 1, 2, 3, 4])), /exactly four players/);
+  assert.match(validateTestHandPreset(preset, new Set([0, 1, 2, 3, 4])).error, /exactly four players/);
+
+  const sparseSeats = [1, 2, 5, 7];
+  const sparsePreset = testHandPresetFor("duel_chain", sparseSeats);
+  assert.deepEqual(Object.keys(sparsePreset.handsBySeat), sparseSeats.map(String));
+  assert.deepEqual(Object.values(sparsePreset.handsBySeat), Object.values(preset.handsBySeat));
+  const stored = validateStoredTestHandPreset(sparsePreset, new Set(sparseSeats));
+  assert.equal(stored.error, null);
+  assert.deepEqual(stored.preset, sparsePreset);
+});
+
 test("persisted removed presets safely fall back to random hands", () => {
   for (const id of ["attack_dodge", "attack_negation"]) {
     const result = validateStoredTestHandPreset({ id, handsBySeat: { 0: ["Attack", "Dodge"] } }, new Set([0, 1, 2, 3]));

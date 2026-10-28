@@ -5,7 +5,7 @@ export const TEST_HAND_PRESET_OPTIONS = [
   { id: "random", name: "Random Hands (Default)" },
   { id: "dismantle_steal", name: "Dismantle / Steal + Weapon & Delayed Stratagem" },
   { id: "steal_dismantle_negation", name: "Steal / Dismantle + Negation Kit (4 players)" },
-  { id: "duel_chain", name: "Duel / Attack Test" },
+  { id: "duel_chain", name: "Duel / Negation Counter Chain (4 players)" },
   { id: "custom", name: "Custom Hands" },
 ] as const;
 
@@ -33,20 +33,20 @@ const PRESET_HANDS: Record<Exclude<TestHandPresetId, "custom">, Record<number, C
     2: ["Dismantle", "Negation", "BlueSteelSword", "Overindulgence"],
     3: ["Steal", "Negation", "YinYangSwords", "Lightning"],
   },
-  // Use real Standard copies only. Generated seats receive Duel and Attack;
-  // Dodge fills the remaining slots so this preset isolates Duel testing
-  // without requiring Negation cards in the controlled hands.
+  // Use real Standard copies only. The first three seats can initiate Duels,
+  // and all four seats can counter with Negation. Keep Attack and Dodge in each
+  // hand so existing Duel/response test flows remain usable.
   duel_chain: {
-    0: ["Attack", "Attack", "Attack", "Dodge"],
-    1: ["Duel", "Attack", "Attack", "Dodge"],
-    2: ["Duel", "Attack", "Attack", "Dodge"],
-    3: ["Duel", "Attack", "Attack", "Dodge"],
+    0: ["Duel", "Negation", "Attack", "Dodge"],
+    1: ["Duel", "Negation", "Attack", "Dodge"],
+    2: ["Duel", "Negation", "Attack", "Dodge"],
+    3: ["Negation", "Attack", "Attack", "Dodge"],
   },
 };
 
 export function testHandPresetFor(id: Exclude<TestHandPresetId, "custom">, seatOrder?: readonly number[]): TestHandPreset {
   const presetHands = PRESET_HANDS[id];
-  if (id === "steal_dismantle_negation" && seatOrder) {
+  if ((id === "steal_dismantle_negation" || id === "duel_chain") && seatOrder) {
     const seats = [...new Set(seatOrder)].sort((left, right) => left - right).slice(0, 4);
     return {
       id,
@@ -57,7 +57,7 @@ export function testHandPresetFor(id: Exclude<TestHandPresetId, "custom">, seatO
 }
 
 export function testHandPresetCompatibilityError(id: TestHandPresetId, availableSeats?: ReadonlySet<number>): string | null {
-  if (id !== "steal_dismantle_negation" || !availableSeats || availableSeats.size === 4) return null;
+  if ((id !== "steal_dismantle_negation" && id !== "duel_chain") || !availableSeats || availableSeats.size === 4) return null;
   return "This scenario uses all four Standard Negation cards, so it requires exactly four players.";
 }
 
@@ -115,7 +115,7 @@ export function validateStoredTestHandPreset(
   const storedId = value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>).id
     : null;
-  if (storedId === "steal_dismantle_negation") {
+  if (storedId === "steal_dismantle_negation" || storedId === "duel_chain") {
     const currentSeats = availableSeats ? [...availableSeats] : undefined;
     // A lobby may gain or lose seats after saving. Rebuild this server-owned
     // preset for its current roster so the host can still change the preset;
