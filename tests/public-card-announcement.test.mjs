@@ -163,6 +163,32 @@ test("announcement copy identity is viewer-independent while geometry identity i
   assert.equal(publicAnnouncementEventCopyKey(identity), publicAnnouncementEventCopyKey(identity));
   assert.notEqual(publicAnnouncementGeometryKey("ROOM", "player-1"), publicAnnouncementGeometryKey("ROOM", "player-2"));
   assert.notEqual(publicAnnouncementEventCopyKey(identity), publicAnnouncementEventCopyKey({ ...identity, checkpointEventId: "response-2", proofEventId: "response-2" }));
+
+  const authoritativeNegation = {
+    ...identity,
+    presentationStage: "NEGATION",
+    serverRevision: 6,
+    semanticOwner: "NEGATION",
+    interactionId: "duel-interaction",
+    rootFrameId: "duel-frame",
+    authoritativeCheckpointId: "negation-checkpoint-6",
+    latestPublicEventId: "negation-response-2",
+  };
+  assert.notEqual(publicAnnouncementEventCopyKey(authoritativeNegation), publicAnnouncementEventCopyKey({
+    ...authoritativeNegation,
+    presentationStage: "DUEL_EXCHANGE",
+    semanticOwner: "DUEL_EXCHANGE",
+  }));
+  assert.notEqual(publicAnnouncementEventCopyKey(authoritativeNegation), publicAnnouncementEventCopyKey({
+    ...authoritativeNegation,
+    serverRevision: 7,
+    authoritativeCheckpointId: "duel-exchange-checkpoint-7",
+    latestPublicEventId: "duel-attack-1",
+  }));
+  assert.notEqual(publicAnnouncementEventCopyKey(authoritativeNegation), publicAnnouncementEventCopyKey({
+    ...authoritativeNegation,
+    latestPublicEventId: "negation-settlement-final",
+  }));
 });
 
 test("measured announcement geometry identity is stable per viewer and invalidates on layout changes", () => {

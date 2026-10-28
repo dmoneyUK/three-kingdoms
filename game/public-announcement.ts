@@ -57,6 +57,13 @@ export function publicAnnouncementEventCopyKey(input: {
   actorId: string;
   actionClass: string;
   presentationRevision?: number | string;
+  presentationStage?: string | null;
+  serverRevision?: number | string | null;
+  semanticOwner?: string | null;
+  interactionId?: string | null;
+  rootFrameId?: string | null;
+  authoritativeCheckpointId?: string | null;
+  latestPublicEventId?: string | null;
 }): string {
   if ([input.roomCode, input.rootEventId, input.checkpointEventId, input.proofEventId, input.actorId, input.actionClass]
     .some((value) => !value.trim())) return "";
@@ -68,6 +75,13 @@ export function publicAnnouncementEventCopyKey(input: {
     input.actorId,
     input.actionClass,
     input.presentationRevision ?? "",
+    input.presentationStage ?? "",
+    input.serverRevision ?? "",
+    input.semanticOwner ?? "",
+    input.interactionId ?? "",
+    input.rootFrameId ?? "",
+    input.authoritativeCheckpointId ?? "",
+    input.latestPublicEventId ?? "",
   ]);
 }
 

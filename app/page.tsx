@@ -8286,8 +8286,49 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
     return publicCardEffectFrame ? { proof, publicNotice, accessibleLabel, publicCardEffectFrame } : null;
   })();
+  const publicAnnouncementIdentity = selectedPublicCardAction ? (() => {
+    const identity = room.presentationSnapshot?.identity;
+    const interaction = room.presentationSnapshot?.interaction;
+    if (!identity || !interaction || interaction.semantics !== "PROVEN"
+      || !interaction.stage || !interaction.interactionId || !interaction.rootFrameId
+      || identity.interactionId !== interaction.interactionId
+      || identity.checkpointId !== interaction.checkpointId
+      || identity.presentationRevision !== interaction.presentationRevision
+      || selectedPublicCardAction.interactionId !== interaction.interactionId
+      || selectedPublicCardAction.rootFrameId !== interaction.rootFrameId) return undefined;
+    const narration = selectedPublicCardAction.publicNegationNarration;
+    const latestPublicEventId = narration?.phase === "FINAL"
+      ? narration.eventId
+      : narration?.latestCommittedEventId
+        ?? narration?.eventId
+        ?? selectedPublicCardAction.response?.eventId
+        ?? selectedPublicCardAction.responses?.at(-1)?.eventId
+        ?? selectedPublicCardAction.responseHistory?.at(-1)?.eventId
+        ?? selectedPublicCardAction.settlement?.eventId
+        ?? selectedPublicCardAction.rootEventId;
+    const latestPublicActorId = [
+      ...(selectedPublicCardAction.response ? [selectedPublicCardAction.response] : []),
+      ...(selectedPublicCardAction.responses ?? []),
+      ...(selectedPublicCardAction.responseHistory ?? []),
+    ].find((response) => response.eventId === latestPublicEventId)?.actorId
+      ?? selectedPublicCardAction.sourceId;
+    return {
+      presentationStage: interaction.stage,
+      serverRevision: identity.presentationRevision,
+      selectedPresenterRevision: selectedPublicCardAction.presentationRevision ?? null,
+      semanticOwner: selectedPublicCardAction.cardKind === "Duel"
+        ? duelPublicStageOwner.stageOwner ?? interaction.stage
+        : interaction.stage,
+      interactionId: interaction.interactionId,
+      rootFrameId: interaction.rootFrameId,
+      checkpointId: identity.checkpointId,
+      latestPublicEventId,
+      latestPublicActorId,
+    };
+  })() : undefined;
   const publicCardDisplayAction: PublicCardDisplayAction | null = selectedPublicCardAction ? {
     ...selectedPublicCardAction,
+    publicAnnouncementIdentity,
     ...(attackConversionFrameCandidate ? {
       cardLabel: attackConversionFrameCandidate.spec.title,
       ariaLabel: attackConversionFrameCandidate.accessibleLabel,

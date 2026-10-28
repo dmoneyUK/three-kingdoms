@@ -632,6 +632,10 @@ async function installSampler(page, rootEventId) {
         interactionId: display.dataset.publicCardInteractionId ?? null,
         rootEventId: display.dataset.publicCardRootEventId ?? null,
         eventId: activeEventId ?? null,
+        copyKey: announcement.dataset.publicCardAnnouncementCopyKey ?? null,
+        width: announcementRect.width,
+        compact: announcement.dataset.publicCardAnnouncementCompact === "true",
+        stability: announcement.dataset.publicCardAnnouncementStability ?? null,
         cardId: activeCard.dataset.publicCardJourneyCardId ?? null,
         actorId: activeCard.dataset.publicCardJourneyActorId ?? null,
         phase: activeCard.dataset.publicCardJourneyPhase ?? null,
@@ -801,7 +805,7 @@ test("H4 keeps the announcement in one safe center band through a four-Negation 
   const room = await seedRoom(request);
   const viewports = [
     { width: 390, height: 844 },
-    { width: 440, height: 894 },
+    { width: 440, height: 766 },
     { width: 480, height: 900 },
     { width: 390, height: 700 },
   ];
@@ -874,6 +878,10 @@ test("H4 keeps the announcement in one safe center band through a four-Negation 
       viewport,
       samples: frames.length,
       events: [...new Set(frames.map(({ eventId }) => eventId))],
+      widths: [...new Set(frames.map(({ width }) => Math.round(width)))],
+      widthTransitions: frames.slice(1).filter((frame, index) => Math.round(frame.width) !== Math.round(frames[index].width)).length,
+      compactModes: [...new Set(frames.map(({ compact }) => compact))],
+      copyKeys: [...new Set(frames.map(({ copyKey }) => copyKey))],
       topRange: frames.length ? [Math.min(...frames.map(({ announcement }) => announcement.top)), Math.max(...frames.map(({ announcement }) => announcement.top))] : [],
       invalidFrames: frames.filter(({ fallback, lines, fontSize, placement, protectedRects }) => fallback || lines < 1 || lines > 2 || fontSize < 14 || !placement || protectedRects.length)
         .filter((frame, index, invalid) => invalid.findIndex(({ eventId, phase }) => eventId === frame.eventId && phase === frame.phase) === index)
