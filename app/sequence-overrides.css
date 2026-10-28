@@ -7328,10 +7328,21 @@
   .game-shell .player-board[data-seat-topology="side-column"][data-mobile-top-ring="true"] {
     box-sizing: border-box;
     padding-top: 0;
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
     grid-template-rows: var(--mobile-seat-grid-rows, none);
     align-content: start;
     align-items: start;
     row-gap: var(--mobile-seat-gap, 4px);
+  }
+
+  /* H2-G3 F1-R3: fixed-width top Seats spread by independent x positions;
+     side Seat outer edges share the same safe content edges. */
+  .game-shell .player-board[data-seat-topology="side-column"][data-mobile-top-ring="true"] > [data-side-column="left"] {
+    justify-self: start;
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"][data-mobile-top-ring="true"] > [data-side-column="right"] {
+    justify-self: end;
   }
 
   .game-shell .player-board[data-seat-topology="side-column"][data-mobile-top-ring="true"] > .opponent-player-card {

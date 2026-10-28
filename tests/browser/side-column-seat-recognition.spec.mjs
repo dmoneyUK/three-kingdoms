@@ -84,6 +84,11 @@ async function readLayout(page) {
         equipment: [...seat.querySelectorAll(".opponent-equipment-indicator")].map(bounds),
       };
     });
+    const topSeats = seats.filter((seat) => seat.side === "top").sort((left, right) => left.topIndex - right.topIndex);
+    const leftTop = topSeats[0]?.seat ?? null;
+    const rightTop = topSeats.at(-1)?.seat ?? null;
+    const leftSide = seats.filter((seat) => seat.side === "left").sort((left, right) => left.seat.x - right.seat.x)[0]?.seat ?? null;
+    const rightSide = seats.filter((seat) => seat.side === "right").sort((left, right) => right.seat.right - left.seat.right)[0]?.seat ?? null;
     const leftMost = Math.min(...seats.filter((seat) => seat.side === "left").map((seat) => seat.seat.x));
     const rightMost = Math.max(...seats.filter((seat) => seat.side === "right").map((seat) => seat.seat.right));
     return {
@@ -93,6 +98,12 @@ async function readLayout(page) {
       board: bounds(board),
       topCapacity: Number(board.dataset.mobileTopCapacity ?? 0),
       sideCount: Number(board.dataset.mobileSideCount ?? -1),
+      topSeats,
+      topGaps: topSeats.slice(1).map((seat, index) => seat.seat.x - topSeats[index].seat.right),
+      topMargins: leftTop && rightTop ? { left: leftTop.x - bounds(board).x, right: bounds(board).right - rightTop.right } : null,
+      sideAlignment: leftTop && rightTop && leftSide && rightSide
+        ? { left: leftSide.x - leftTop.x, right: rightSide.right - rightTop.right }
+        : null,
       table: tableRect,
       outerGutters: { left: leftMost - tableRect.x, right: tableRect.right - rightMost },
       sideSafeEdge: getComputedStyle(table).getPropertyValue("--side-safe-edge").trim(),
@@ -139,12 +150,12 @@ function loadSeatProjector() {
   return sandbox.projectSideColumnSeat;
 }
 
-test("ST-RING-DIR-1 projection contract uses the unified clockwise ring", () => {
+test("H2-G3 F1-R3 projection preserves the accepted ring and caps eight players at five top Seats", () => {
   const project = loadSeatProjector();
   for (const players of [5, 6, 7, 8, 9, 10]) {
     const opponents = players - 1;
     for (const topCapacity of new Set([0, 3, 4, 5, opponents])) {
-      const topCount = Math.min(opponents, topCapacity, players === 7 ? 4 : opponents);
+      const topCount = Math.min(opponents, topCapacity, players === 7 ? 4 : players === 8 ? 5 : opponents);
       const sideCount = opponents - topCount;
       const rowCount = Math.ceil(sideCount / 2);
       const seats = Array.from({ length: opponents }, (_, index) => ({
@@ -173,19 +184,20 @@ test("ST-RING-DIR-1 projection contract uses the unified clockwise ring", () => 
   }
 
   expect(project(7, 1, { topCapacity: 5 })).toMatchObject({ side: "left", row: 1, rowCount: 1 });
-  expect(project(8, 1, { topCapacity: 7 })).toMatchObject({ side: "top", topIndex: 0, topCount: 7, rowCount: 0 });
+  expect(project(8, 1, { topCapacity: 7 })).toMatchObject({ side: "left", row: 1, rowCount: 1, topCount: 5 });
+  expect(project(8, 7, { topCapacity: 7 })).toMatchObject({ side: "right", row: 1, rowCount: 1, topCount: 5 });
   expect(project(10, 1, { topCapacity: Number.NaN })).toMatchObject({ side: "left" });
   expect([1, 2, 3].map((relativeIndex) => project(4, relativeIndex))).toEqual([null, null, null]);
 });
 
-test("ST-RING-DIR-1 phone 5/6/7 top-first geometry preserves TEST SWITCH and public choices", async ({ browser }) => {
+test("H2-G3 F1-R3 at 390px keeps fixed top Seat widths, edge alignment, and TEST SWITCH", async ({ browser }, testInfo) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   const assertPhoneRing = async (count, { state = "rest", topCount, leftRelative, rightRelative } = {}) => {
     await loadFixture(page, { width: 390, height: 844, count, state, playerNamePrefix: "Test Player" });
     await expect.poll(async () => (await readLayout(page)).topCapacity).toBeGreaterThan(0);
     const layout = await readLayout(page);
-    const expectedTopCount = Math.min(count - 1, layout.topCapacity, count === 7 ? 4 : count - 1);
+    const expectedTopCount = Math.min(count - 1, layout.topCapacity, count === 7 ? 4 : count === 8 ? 5 : count - 1);
     const topSeats = layout.seats.filter((seat) => seat.side === "top").sort((a, b) => a.topIndex - b.topIndex);
     expect(layout.seats).toHaveLength(count - 1);
     expect(new Set(layout.seats.map((seat) => seat.id)).size).toBe(count - 1);
@@ -223,8 +235,24 @@ test("ST-RING-DIR-1 phone 5/6/7 top-first geometry preserves TEST SWITCH and pub
 
     const six = await assertPhoneRing(6, { topCount: 5 });
     expect(six.sideCount).toBe(0);
+    const referenceWidth = six.topSeats[0].seat.width;
+    expect(five.topSeats.every((seat) => Math.abs(seat.seat.width - referenceWidth) <= 1), "four-player top row keeps the same viewport reference width").toBe(true);
+    expect(Math.max(...six.topSeats.map((seat) => seat.seat.width)) - Math.min(...six.topSeats.map((seat) => seat.seat.width))).toBeLessThanOrEqual(1);
+    expect(Math.max(...six.topGaps) - Math.min(...six.topGaps)).toBeLessThanOrEqual(2);
+    expect(Math.abs(six.topMargins.left - six.topMargins.right)).toBeLessThanOrEqual(4);
 
     const seven = await assertPhoneRing(7, { state: "bumper-harvest-choosing", topCount: 4, leftRelative: 1, rightRelative: 6 });
+    reportF1Geometry("390x844 seven-player", seven);
+    expect(seven.topSeats.every((seat) => Math.abs(seat.seat.width - referenceWidth) <= 1), "four top Seats retain the five-seat reference width").toBe(true);
+    expect(Math.max(...seven.topGaps) - Math.min(...seven.topGaps)).toBeLessThanOrEqual(2);
+    expect(Math.abs(seven.topMargins.left - seven.topMargins.right)).toBeLessThanOrEqual(4);
+    expect(Math.abs(seven.sideAlignment.left)).toBeLessThanOrEqual(2);
+    expect(Math.abs(seven.sideAlignment.right)).toBeLessThanOrEqual(2);
+    await testInfo.attach("h2-g3-f1-r3-390px-seven-player-domrects.json", {
+      body: JSON.stringify({ board: seven.board, topSeats: seven.topSeats.map((seat) => seat.seat), topGaps: seven.topGaps, topMargins: seven.topMargins, sideAlignment: seven.sideAlignment, sideSeats: seven.seats.filter((seat) => seat.side !== "top").map((seat) => ({ id: seat.id, side: seat.side, rect: seat.seat })) }, null, 2),
+      contentType: "application/json",
+    });
+    await captureF1Screenshot(page, testInfo, "h2-g3-f1-r3-390px-seven-player");
     expect(seven.harvestPools).toHaveLength(1);
     for (const seat of seven.seats) {
       for (const obstacle of [...seven.harvestPools, ...seven.announcements, ...seven.timers, seven.dock, seven.menu]) {
@@ -240,18 +268,31 @@ test("ST-RING-DIR-1 phone 5/6/7 top-first geometry preserves TEST SWITCH and pub
     const switchedSevenRing = [...switchedSevenRoom].sort((a, b) => a.seat - b.seat).map((player) => player.id);
     const switchedSevenViewer = switchedSevenRing.indexOf("p3");
     for (const seat of switchedSeven.seats) expect(seat.relativeIndex).toBe((switchedSevenRing.indexOf(seat.id) - switchedSevenViewer + switchedSevenRing.length) % switchedSevenRing.length);
+
+    const eight = await assertPhoneRing(8, { state: "rest", topCount: 5, leftRelative: 1, rightRelative: 7 });
+    reportF1Geometry("390x844 eight-player", eight);
+    expect(eight.sideCount).toBe(2);
+    expect(eight.topSeats.every((seat) => Math.abs(seat.seat.width - referenceWidth) <= 1), "eight-player top row uses the same five-seat reference width").toBe(true);
+    expect(Math.abs(eight.sideAlignment.left)).toBeLessThanOrEqual(2);
+    expect(Math.abs(eight.sideAlignment.right)).toBeLessThanOrEqual(2);
+    await testInfo.attach("h2-g3-f1-r3-390px-eight-player-domrects.json", {
+      body: JSON.stringify({ board: eight.board, topSeats: eight.topSeats.map((seat) => seat.seat), topGaps: eight.topGaps, topMargins: eight.topMargins, sideAlignment: eight.sideAlignment, sideSeats: eight.seats.filter((seat) => seat.side !== "top").map((seat) => ({ id: seat.id, side: seat.side, rect: seat.seat })) }, null, 2),
+      contentType: "application/json",
+    });
+    await captureF1Screenshot(page, testInfo, "h2-g3-f1-r3-390px-eight-player");
   } finally {
     await context.close();
   }
 });
 
-test("ST-RING-DIR-1 eight-player phone ring keeps measured top order and overflow anchors", async ({ browser }) => {
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+test("H2-G3 F1-R3 at 440px keeps eight-player TOP5+SIDE2 and aligns outer edges", async ({ browser }, testInfo) => {
+  const context = await browser.newContext({ viewport: { width: 440, height: 766 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   try {
-    await loadFixture(page, { width: 390, height: 844, count: 8, state: "rest", playerNamePrefix: "Test Player" });
+    await loadFixture(page, { width: 440, height: 766, count: 8, state: "rest", playerNamePrefix: "Test Player" });
     const result = await readLayout(page);
-    const topCount = Math.min(7, result.topCapacity);
+    reportF1Geometry("440x766 eight-player", result);
+    const topCount = Math.min(5, result.topCapacity);
     const sideCount = 7 - topCount;
     const leftCount = Math.floor(sideCount / 2);
     const topSeats = result.seats.filter((seat) => seat.side === "top").sort((left, right) => left.topIndex - right.topIndex);
@@ -259,9 +300,15 @@ test("ST-RING-DIR-1 eight-player phone ring keeps measured top order and overflo
     expect(result.sideCount).toBe(sideCount);
     expect(topSeats).toHaveLength(topCount);
     expect(topSeats.map((seat) => seat.relativeIndex)).toEqual(Array.from({ length: topCount }, (_, index) => leftCount + index + 1));
-    expect(result.pageWidth).toBeLessThanOrEqual(390);
+    expect(result.pageWidth).toBeLessThanOrEqual(440);
     expect(result.boardStyle.alignContent).toBe("start");
     expect(result.boardStyle.alignItems).toBe("start");
+    expect(Math.max(...topSeats.map((seat) => seat.seat.width)) - Math.min(...topSeats.map((seat) => seat.seat.width))).toBeLessThanOrEqual(1);
+    expect(Math.max(...result.topGaps) - Math.min(...result.topGaps)).toBeLessThanOrEqual(2);
+    expect(Math.abs(result.topMargins.left - result.topMargins.right)).toBeLessThanOrEqual(4);
+    expect(Math.abs(result.sideAlignment.left)).toBeLessThanOrEqual(2);
+    expect(Math.abs(result.sideAlignment.right)).toBeLessThanOrEqual(2);
+    expect(topSeats.every((seat) => Math.abs(seat.seat.width - result.topSeats[0].seat.width) <= 1)).toBe(true);
     for (let index = 1; index < topSeats.length; index += 1) expect(topSeats[index].seat.x).toBeGreaterThan(topSeats[index - 1].seat.x);
     for (const seat of result.seats) {
       expect(seat.seat.height).toBe(108);
@@ -269,6 +316,11 @@ test("ST-RING-DIR-1 eight-player phone ring keeps measured top order and overflo
       expect(seat.switch?.hitSafe).toBe(true);
       expect(seat.seat.bottom).toBeLessThanOrEqual(result.dock.y - 6);
     }
+    await testInfo.attach("h2-g3-f1-r3-440px-eight-player-domrects.json", {
+      body: JSON.stringify({ board: result.board, topSeats: topSeats.map((seat) => seat.seat), topGaps: result.topGaps, topMargins: result.topMargins, sideAlignment: result.sideAlignment, sideSeats: result.seats.filter((seat) => seat.side !== "top").map((seat) => ({ id: seat.id, side: seat.side, rect: seat.seat })) }, null, 2),
+      contentType: "application/json",
+    });
+    await captureF1Screenshot(page, testInfo, "h2-g3-f1-r3-440px-eight-player");
   } finally {
     await context.close();
   }
@@ -276,6 +328,23 @@ test("ST-RING-DIR-1 eight-player phone ring keeps measured top order and overflo
 
 function overlaps(left, right) {
   return left.x < right.right && left.right > right.x && left.y < right.bottom && left.bottom > right.y;
+}
+
+function reportF1Geometry(label, layout) {
+  console.info(`[H2-G3 F1-R3 ${label}] ${JSON.stringify({
+    board: layout.board,
+    topSeats: layout.topSeats.map((seat) => seat.seat),
+    topGaps: layout.topGaps,
+    topMargins: layout.topMargins,
+    sideAlignment: layout.sideAlignment,
+    sideSeats: layout.seats.filter((seat) => seat.side !== "top").map((seat) => ({ side: seat.side, rect: seat.seat })),
+  })}`);
+}
+
+async function captureF1Screenshot(page, testInfo, label) {
+  const path = testInfo.outputPath(`${label}.png`);
+  await page.screenshot({ path, animations: "disabled" });
+  await testInfo.attach(label, { path, contentType: "image/png" });
 }
 
 for (const width of VIEWPORTS) {

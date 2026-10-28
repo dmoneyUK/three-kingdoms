@@ -2225,7 +2225,7 @@ type OpponentPlayerCardProps = {
   viewerId: string;
   playerHero: Hero | null;
   relativeIndex: number;
-  mobileSeatRing: { enabled: boolean; topCapacity: number; boardWidth: number; seatWidth: number; seatHeight: number; gap: number };
+  mobileSeatRing: { enabled: boolean; topCapacity: number; boardWidth: number; seatWidth: number; seatHeight: number; gap: number; leftInset: number; topStep: number };
   isTurn: boolean;
   isSelectedTarget: boolean;
   isGroupPreview: boolean;
@@ -2265,7 +2265,7 @@ export function projectSideColumnSeat(totalPlayers: number, relativeIndex: numbe
   if (!Number.isInteger(totalPlayers) || !Number.isInteger(relativeIndex) || totalPlayers < 5 || totalPlayers > 10 || relativeIndex < 1 || relativeIndex >= totalPlayers) return null;
   const opponentCount = totalPlayers - 1;
   const requestedTopCapacity = Number.isFinite(options.topCapacity) ? Math.trunc(options.topCapacity ?? 0) : 0;
-  const topCount = Math.max(0, Math.min(opponentCount, totalPlayers === 7 ? 4 : opponentCount, requestedTopCapacity));
+  const topCount = Math.max(0, Math.min(opponentCount, totalPlayers === 7 ? 4 : totalPlayers === 8 ? 5 : opponentCount, requestedTopCapacity));
   const sideCount = opponentCount - topCount;
   const leftCount = Math.floor(sideCount / 2);
   const rightCount = sideCount - leftCount;
@@ -2298,19 +2298,16 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, m
   const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex, {
     topCapacity: mobileSeatRing.enabled ? mobileSeatRing.topCapacity : 0,
   });
-  const topSeatOffset = sideColumnSeat?.side === "top"
-    ? (sideColumnSeat.topIndex ?? 0) - ((sideColumnSeat.topCount ?? 0) - 1) / 2
-    : 0;
   const seatPlacementStyle: CSSProperties | undefined = sideColumnSeat
     ? sideColumnSeat.side === "top"
       ? {
-        left: `calc(50% + ${topSeatOffset * (mobileSeatRing.seatWidth + mobileSeatRing.gap)}px)`,
+        left: `${mobileSeatRing.leftInset + (sideColumnSeat.topIndex ?? 0) * mobileSeatRing.topStep}px`,
         top: "0px",
         width: mobileSeatRing.seatWidth,
         height: mobileSeatRing.seatHeight,
         gridRow: "1",
         gridColumn: "1 / -1",
-        transform: "translateX(-50%)",
+        transform: "none",
       }
       : { gridRow: sideColumnSeat.row + (mobileSeatRing.enabled && (sideColumnSeat.topCount ?? 0) > 0 ? 1 : 0) }
     : undefined;
@@ -3519,13 +3516,13 @@ function captureHandViewportSnapshot(rail: HTMLElement, viewerId: string | null)
 export function GameRoom({ room, presentationView, busy, busyAction = null, error, onAction, onLeave, onPublicCounterReadVisible, onSwitchTestViewer = async () => undefined }: { room: Room; presentationView?: PresentationClientView; busy: boolean; busyAction?: string | null; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void; onSwitchTestViewer?: (playerId: string) => Promise<void> }) {
   const isPhoneViewport = useSyncExternalStore(subscribeToPhoneViewport, getPhoneViewportSnapshot, () => false);
   const playerBoardRef = useRef<HTMLDivElement | null>(null);
-  const [mobileSeatRingMetrics, setMobileSeatRingMetrics] = useState({ topCapacity: 0, boardWidth: 0, boardTopInset: 0, seatWidth: 0, seatHeight: 0, gap: 0 });
+  const [mobileSeatRingMetrics, setMobileSeatRingMetrics] = useState({ topCapacity: 0, boardWidth: 0, boardTopInset: 0, seatWidth: 0, seatHeight: 0, gap: 0, leftInset: 0, topStep: 0 });
   useLayoutEffect(() => {
     const totalPlayers = room.players.length;
     const supportedMobileRing = isPhoneViewport && totalPlayers >= 5 && totalPlayers <= 10;
     const resetMetrics = () => setMobileSeatRingMetrics((current) => Object.values(current).every((value) => value === 0)
       ? current
-      : { topCapacity: 0, boardWidth: 0, boardTopInset: 0, seatWidth: 0, seatHeight: 0, gap: 0 });
+      : { topCapacity: 0, boardWidth: 0, boardTopInset: 0, seatWidth: 0, seatHeight: 0, gap: 0, leftInset: 0, topStep: 0 });
     if (!supportedMobileRing) {
       resetMetrics();
       return;
@@ -3541,18 +3538,22 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       const boardStyle = getComputedStyle(board);
       const gap = Math.min(12, Math.max(4, Number.parseFloat(boardStyle.rowGap) || 4));
       const seatHeight = seatRect.height;
-      const horizontalBoxSpace = [boardStyle.borderLeftWidth, boardStyle.borderRightWidth, boardStyle.paddingLeft, boardStyle.paddingRight]
-        .reduce((total, value) => total + (Number.parseFloat(value) || 0), 0);
+      const borderLeft = Number.parseFloat(boardStyle.borderLeftWidth) || 0;
+      const borderRight = Number.parseFloat(boardStyle.borderRightWidth) || 0;
+      const paddingLeft = Number.parseFloat(boardStyle.paddingLeft) || 0;
+      const paddingRight = Number.parseFloat(boardStyle.paddingRight) || 0;
+      const horizontalBoxSpace = borderLeft + borderRight + paddingLeft + paddingRight;
       const usableTopWidth = Math.max(0, boardRect.width - horizontalBoxSpace);
       const minSafeSeatWidth = Math.max(56, Math.min(74, window.innerWidth * 0.155));
       if (usableTopWidth <= 0 || seatHeight <= 0) return;
       const opponentCount = totalPlayers - 1;
       const topCapacity = Math.max(0, Math.min(opponentCount, Math.floor((usableTopWidth + gap) / (minSafeSeatWidth + gap))));
-      const topCount = Math.min(opponentCount, topCapacity, totalPlayers === 7 ? 4 : opponentCount);
+      const topCount = Math.min(opponentCount, topCapacity, totalPlayers === 7 ? 4 : totalPlayers === 8 ? 5 : opponentCount);
       const maxTopSeatWidth = Math.min(112, Math.max(88, window.innerWidth * 0.25));
-      const seatWidth = topCount > 0
-        ? Math.min(maxTopSeatWidth, Math.max(minSafeSeatWidth, (usableTopWidth - gap * (topCount - 1)) / topCount))
-        : minSafeSeatWidth;
+      const referenceTopCount = totalPlayers >= 5 && totalPlayers <= 8 ? 5 : Math.max(1, topCount);
+      const seatWidth = Math.min(maxTopSeatWidth, Math.max(minSafeSeatWidth, (usableTopWidth - gap * (referenceTopCount - 1)) / referenceTopCount));
+      const leftInset = paddingLeft + (topCount === 1 ? (usableTopWidth - seatWidth) / 2 : 0);
+      const topStep = topCount > 1 ? (usableTopWidth - seatWidth) / (topCount - 1) : 0;
       const tableTopInset = Math.max(0, boardRect.top - table.getBoundingClientRect().top);
       const next = {
         topCapacity,
@@ -3561,6 +3562,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         seatWidth: Math.round(seatWidth * 4) / 4,
         seatHeight: Math.round(seatHeight * 4) / 4,
         gap: Math.round(gap * 4) / 4,
+        leftInset: Math.round(leftInset * 4) / 4,
+        topStep: Math.round(topStep * 4) / 4,
       };
       setMobileSeatRingMetrics((current) => Object.keys(next).every((key) => current[key] === next[key]) ? current : next);
     };
@@ -3880,7 +3883,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   }, [room.meId, room.players]);
   const mobileSeatRingEnabled = isPhoneViewport && room.players.length >= 5 && room.players.length <= 10;
   const mobileSeatTopCount = mobileSeatRingEnabled ? mobileSeatRingMetrics.topCapacity : 0;
-  const mobileSeatRenderedTopCount = mobileSeatRingEnabled ? Math.min(mobileSeatTopCount, room.players.length === 7 ? 4 : room.players.length - 1) : 0;
+  const mobileSeatRenderedTopCount = mobileSeatRingEnabled ? Math.min(mobileSeatTopCount, room.players.length === 7 ? 4 : room.players.length === 8 ? 5 : room.players.length - 1) : 0;
   const mobileSideSeatCount = mobileSeatRingEnabled ? Math.max(0, room.players.length - 1 - mobileSeatRenderedTopCount) : 0;
   const mobileSideRowCount = Math.ceil(mobileSideSeatCount / 2);
   const mobileSeatRingLayoutStyle: CSSProperties | undefined = mobileSeatRingEnabled ? {
@@ -10110,7 +10113,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             viewerId={room.meId}
             playerHero={heroDefinition(player.hero)}
             relativeIndex={relativeIndex}
-            mobileSeatRing={{ enabled: mobileSeatRingEnabled, topCapacity: mobileSeatTopCount, boardWidth: mobileSeatRingMetrics.boardWidth, seatWidth: mobileSeatRingMetrics.seatWidth, seatHeight: mobileSeatRingMetrics.seatHeight, gap: mobileSeatRingMetrics.gap }}
+            mobileSeatRing={{ enabled: mobileSeatRingEnabled, topCapacity: mobileSeatTopCount, boardWidth: mobileSeatRingMetrics.boardWidth, seatWidth: mobileSeatRingMetrics.seatWidth, seatHeight: mobileSeatRingMetrics.seatHeight, gap: mobileSeatRingMetrics.gap, leftInset: mobileSeatRingMetrics.leftInset, topStep: mobileSeatRingMetrics.topStep }}
             isTurn={player.seat === room.turnSeat}
             isSelectedTarget={borrowedSwordTargetId === player.id || (daqiaoDeflectionSelectionActive ? activeSkillSelectedTargetIds.includes(player.id) : targetIds.includes(player.id) && (!normalTargetSelectionActive || playTargetEligibleIds.has(player.id)))}
             isGroupPreview={groupScopePreview.affectedPlayerIds.includes(player.id)}
