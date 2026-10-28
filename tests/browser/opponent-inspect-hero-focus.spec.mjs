@@ -803,7 +803,7 @@ for (const viewport of ins5Viewports) {
   });
 }
 
-test("INS5-F1 keeps full accessible names and wraps long labels in the compact phone Inspector", async ({ page }, testInfo) => {
+test("H2-G3 F2-R2 keeps full names and wraps long labels in the compact phone Inspector", async ({ page }, testInfo) => {
   const viewport = { width: 390, height: 700 };
   await loadFixture(page, {
     ...viewport,
@@ -862,7 +862,9 @@ test("INS5-F1 keeps full accessible names and wraps long labels in the compact p
   expect(skillGeometry.lines).toBeGreaterThan(1);
   expect(skillGeometry.scrollWidth).toBeLessThanOrEqual(skillGeometry.clientWidth + 1);
   expect(skillGeometry.textBottom).toBeLessThanOrEqual(skillGeometry.boxBottom + 1);
-  expect(captionBox.y).toBeGreaterThanOrEqual(portraitBox.y + portraitBox.height - 1);
+  expect(captionBox.x).toBeGreaterThanOrEqual(portraitBox.x + portraitBox.width);
+  expect(captionBox.x + captionBox.width).toBeLessThanOrEqual(bodyBox.x + bodyBox.width);
+  expect(captionBox.y).toBeLessThan(portraitBox.y + portraitBox.height);
   expect(panelBox).not.toBeNull();
   expect(panelBox.x).toBeGreaterThanOrEqual(0);
   expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(viewport.width);
@@ -1564,7 +1566,7 @@ test("INS5-F1-R captures mobile Inspector width allocation across four, six, eig
   }
 });
 
-test("H2-G3-F2 separates phone Inspector stats from skills and Judgement for six and eight seats", async ({ browser }, testInfo) => {
+test("H2-G3-F2 keeps the phone Inspector size and aligns six equal public slots for six and eight seats", async ({ browser }, testInfo) => {
   test.setTimeout(90_000);
   const scenarios = [
     { count: 6, width: 390, height: 700, targetHero: "simayi" },
@@ -1588,23 +1590,54 @@ test("H2-G3-F2 separates phone Inspector stats from skills and Judgement for six
           const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
           return { left, top, right, bottom, width, height };
         };
-        const main = root.querySelector(".hero-focus-inspect-main");
-        const upper = root.querySelector(".hero-focus-inspect-upper");
+        const shell = root.closest(".opponent-inspection-floating-shell");
+        const portraitColumn = root.querySelector(".hero-focus-inspect-portrait-column");
+        const portrait = root.querySelector(".hero-focus-inspect-portrait-column > .hero-focus-portrait");
+        const caption = root.querySelector(".hero-focus-inspect-identity-caption");
+        const identity = root.querySelector(".hero-focus-identity");
         const statsRow = root.querySelector(".hero-focus-identity-line");
         const stats = root.querySelector(".hero-focus-identity-stats");
-        const skills = root.querySelector(".hero-focus-inspect-public-skills");
+        const skillPanel = root.querySelector(".hero-focus-inspect-public-skills");
+        const skills = root.querySelector(".hero-focus-inspect-skills");
         const judgement = root.querySelector(".hero-focus-inspect-judgement");
         const equipment = root.querySelector(".hero-focus-inspect-equipment");
+        const paragraphBox = (element) => ({
+          ...box(element),
+          scrollWidth: element?.scrollWidth ?? null,
+          clientWidth: element?.clientWidth ?? null,
+        });
         return {
-          main: box(main),
-          upper: box(upper),
+          shell: box(shell),
+          inspector: box(root),
+          body: box(root.querySelector(".hero-focus-body")),
+          portraitColumn: box(portraitColumn),
+          portrait: box(portrait),
+          caption: box(caption),
+          captionInPortrait: Boolean(portraitColumn?.contains(caption)),
+          heroNameCount: root.querySelectorAll(".hero-focus-inspect-identity-caption .hero-focus-identity-hero").length,
+          playerNameCount: root.querySelectorAll(".hero-focus-inspect-identity-caption .hero-focus-identity-player").length,
+          details: box(root.querySelector(".hero-focus-inspect-details")),
+          identity: box(identity),
           statsRow: box(statsRow),
-          stats: { ...box(stats), scrollWidth: stats?.scrollWidth, clientWidth: stats?.clientWidth },
+          stats: paragraphBox(stats),
           statTexts: [...(stats?.querySelectorAll("small") ?? [])].map((element) => box(element)),
-          skills: box(skills),
+          skillPanel: box(skillPanel),
+          skills: {
+            ...paragraphBox(skills),
+            overflowY: skills ? getComputedStyle(skills).overflowY : null,
+            buttons: [...(skills?.querySelectorAll("button") ?? [])].map((button) => ({
+              text: button.textContent?.trim() ?? "",
+              ...paragraphBox(button),
+              overflowWrap: getComputedStyle(button).overflowWrap,
+              wordBreak: getComputedStyle(button).wordBreak,
+            })),
+          },
           judgement: box(judgement),
           equipment: box(equipment),
-          grid: upper ? getComputedStyle(upper).gridTemplateAreas : null,
+          slots: [...root.querySelectorAll("[data-inspector-slot]")].map((slot) => ({
+            id: slot.dataset.inspectorSlot,
+            ...box(slot),
+          })),
         };
       });
       await testInfo.attach(`H2-G3-F2 ${scenario.count}-seat Inspector geometry`, {
@@ -1616,10 +1649,22 @@ test("H2-G3-F2 separates phone Inspector stats from skills and Judgement for six
         contentType: "image/png",
       });
 
-      expect(Math.abs(geometry.statsRow.left - geometry.main.left)).toBeLessThanOrEqual(1);
-      expect(Math.abs(geometry.statsRow.right - geometry.main.right)).toBeLessThanOrEqual(1);
-      expect(geometry.statsRow.top).toBeGreaterThanOrEqual(geometry.upper.top);
-      expect(geometry.statsRow.bottom).toBeLessThanOrEqual(geometry.upper.bottom);
+      const baseline = scenario.count === 6
+        ? { width: 176.46875, height: 146.546875 }
+        : { width: 176.46875, height: 158.546875 };
+      expect(Math.abs(geometry.inspector.width - baseline.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.inspector.height - baseline.height), JSON.stringify({ scenario, geometry, baseline })).toBeLessThanOrEqual(1);
+      expect(geometry.inspector.left).toBeGreaterThanOrEqual(0);
+      expect(geometry.inspector.right).toBeLessThanOrEqual(scenario.width);
+      expect(geometry.captionInPortrait).toBe(false);
+      expect(geometry.heroNameCount).toBe(1);
+      expect(geometry.playerNameCount).toBe(1);
+      expect(geometry.caption.left).toBeGreaterThan(geometry.portrait.right);
+      expect(geometry.caption.right).toBeLessThanOrEqual(geometry.inspector.right);
+      expect(geometry.portrait.height).toBeGreaterThanOrEqual(geometry.portraitColumn.height - 1);
+      expect(geometry.portrait.height).toBeGreaterThan(75);
+      expect(geometry.statsRow.left).toBeGreaterThanOrEqual(geometry.portrait.right);
+      expect(geometry.statsRow.right).toBeLessThanOrEqual(geometry.inspector.right);
       expect(geometry.stats.scrollWidth).toBeLessThanOrEqual(geometry.stats.clientWidth + 1);
       for (const text of geometry.statTexts) {
         expect(text.top).toBeGreaterThanOrEqual(geometry.statsRow.top);
@@ -1627,15 +1672,25 @@ test("H2-G3-F2 separates phone Inspector stats from skills and Judgement for six
         expect(text.left).toBeGreaterThanOrEqual(geometry.statsRow.left);
         expect(text.right).toBeLessThanOrEqual(geometry.statsRow.right - 1);
       }
-      expect(geometry.skills.top).toBeGreaterThanOrEqual(geometry.statsRow.bottom + 2);
-      expect(geometry.skills.left).toBeGreaterThanOrEqual(geometry.main.left);
-      expect(geometry.skills.right).toBeLessThanOrEqual(geometry.main.right);
-      expect(geometry.judgement.top).toBeGreaterThanOrEqual(geometry.statsRow.bottom + 2);
-      expect(geometry.judgement.left).toBeGreaterThanOrEqual(geometry.main.left);
-      expect(geometry.judgement.right).toBeLessThanOrEqual(geometry.main.right);
-      expect(geometry.judgement.bottom).toBeLessThanOrEqual(geometry.upper.bottom);
-      expect(Math.min(geometry.skills.right, geometry.judgement.right) - Math.max(geometry.skills.left, geometry.judgement.left)).toBeLessThanOrEqual(0);
-      expect(geometry.equipment.top).toBeGreaterThanOrEqual(geometry.upper.bottom);
+      expect(geometry.skills.overflowY).toBe("auto");
+      expect(geometry.skillPanel.top).toBeGreaterThanOrEqual(geometry.statsRow.bottom);
+      expect(geometry.skillPanel.left).toBeGreaterThanOrEqual(geometry.portrait.right);
+      expect(geometry.skillPanel.right).toBeLessThanOrEqual(geometry.inspector.right);
+      for (const skill of geometry.skills.buttons) {
+        expect(skill.scrollWidth).toBeLessThanOrEqual(skill.clientWidth + 1);
+        expect(skill.overflowWrap).toBe("normal");
+        expect(skill.wordBreak).toBe("normal");
+      }
+      expect(geometry.judgement.top).toBeGreaterThanOrEqual(geometry.portraitColumn.bottom - 1);
+      expect(geometry.judgement.left).toBeLessThan(geometry.equipment.left);
+      expect(geometry.equipment.right).toBeLessThanOrEqual(geometry.body.right);
+      expect(Math.abs(geometry.judgement.height - geometry.equipment.height)).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.judgement.top - geometry.equipment.top)).toBeLessThanOrEqual(1);
+      expect(geometry.slots).toHaveLength(6);
+      for (const slot of geometry.slots) {
+        expect(Math.abs(slot.width - geometry.slots[0].width)).toBeLessThanOrEqual(1);
+        expect(Math.abs(slot.height - geometry.slots[0].height)).toBeLessThanOrEqual(1);
+      }
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(scenario.width);
     } finally {
       await context.close();

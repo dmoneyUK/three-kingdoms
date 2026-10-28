@@ -2449,7 +2449,7 @@ function supportsLocalEquipmentTargetSelection(selection: PublicTargetCardSelect
   return selection.eligibleKeys.length >= selection.min && selection.eligibleKeys.every((key) => equipmentIds.has(key));
 }
 
-function OpponentPublicInspector({ player, judgementInFlight, equipmentArrivalPendingIds, nestedCardDetailDismissRef }: { player: LocalOpponentInspectionPresentation; judgementInFlight?: ReadonlySet<string>; equipmentArrivalPendingIds?: ReadonlySet<string>; nestedCardDetailDismissRef?: InspectorCardDetailDismissRef }) {
+function OpponentPublicInspector({ player, playerCount, judgementInFlight, equipmentArrivalPendingIds, nestedCardDetailDismissRef }: { player: LocalOpponentInspectionPresentation; playerCount: number; judgementInFlight?: ReadonlySet<string>; equipmentArrivalPendingIds?: ReadonlySet<string>; nestedCardDetailDismissRef?: InspectorCardDetailDismissRef }) {
   const [expandedSkillName, setExpandedSkillName] = useState<string | null>(null);
   const [selectedCardDetail, setSelectedCardDetail] = useState<Card | null>(null);
   const [skillDescriptionScrollable, setSkillDescriptionScrollable] = useState(false);
@@ -2785,19 +2785,22 @@ function OpponentPublicInspector({ player, judgementInFlight, equipmentArrivalPe
     const arrivalPending = equipmentMiniature && Boolean(equipmentArrivalPendingIds?.has(card.id));
     return <button key={card.id} type="button" className={`opponent-inspection-card${equipmentMiniature ? " opponent-inspection-equipment-card" : ""}${arrivalPending ? " equipment-arrival-pending" : ""}`} data-inspector-slot={inspectionSlot} data-equipment-arrival-pending={arrivalPending ? "true" : undefined} style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} aria-controls={detailsId} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); openCardDetail(card, event.currentTarget); }}><CardFace card={card} /></button>;
   };
-  return <section ref={inspectorRef} key={player.id} id={baseId} className="hero-focus hero-focus-inspect opponent-inspection-panel" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id} data-inspector-layout="content-wrapped">
+  const compactMultiSeatInspector = playerCount === 6 || playerCount === 8;
+  const identityCaption = <div className="hero-focus-inspect-identity-caption">
+    <span className="hero-focus-identity-hero" aria-label={hero?.name ?? "Unknown Hero"} title={hero?.name ?? "Unknown Hero"}>{hero?.name ?? "Unknown Hero"}</span>
+    <span className="hero-focus-identity-player" aria-label={player.name} title={player.name}>{player.name}</span>
+  </div>;
+  return <section ref={inspectorRef} key={player.id} id={baseId} className="hero-focus hero-focus-inspect opponent-inspection-panel" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id} data-inspector-layout="content-wrapped" data-inspector-player-count={playerCount}>
     <div className="hero-focus-body">
       <div className="hero-focus-inspect-portrait-column">
         <span className={hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={hero?.id}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
-        <div className="hero-focus-inspect-identity-caption">
-          <span className="hero-focus-identity-hero" aria-label={hero?.name ?? "Unknown Hero"} title={hero?.name ?? "Unknown Hero"}>{hero?.name ?? "Unknown Hero"}</span>
-          <span className="hero-focus-identity-player" aria-label={player.name} title={player.name}>{player.name}</span>
-        </div>
+        {!compactMultiSeatInspector && identityCaption}
       </div>
       <div className="hero-focus-inspect-main">
         <div className="hero-focus-inspect-upper">
           <div className="hero-focus-identity">
             <div className="hero-focus-inspect-profile">
+              {compactMultiSeatInspector && identityCaption}
               <div className="hero-focus-identity-line">
                 <div className="hero-focus-identity-stats"><small>HP {player.hp ?? "?"}/{player.maxHp ?? "?"}</small><small data-public-hand-count={player.handCount}>Hand · {player.handCount}</small></div>
               </div>
@@ -2884,6 +2887,7 @@ export function InteractionStage({
   transitionKind = "NONE",
   resolvePlayerName,
   inspectPlayer = null,
+  inspectPlayerCount = 0,
   judgementInFlight,
   equipmentArrivalPendingIds,
   nestedCardDetailDismissRef,
@@ -2892,6 +2896,7 @@ export function InteractionStage({
   transitionKind?: PresentationTransitionKind;
   resolvePlayerName: (playerId: string) => string | null | undefined;
   inspectPlayer?: LocalOpponentInspectionPresentation | null;
+  inspectPlayerCount?: number;
   judgementInFlight?: ReadonlySet<string>;
   equipmentArrivalPendingIds?: ReadonlySet<string>;
   nestedCardDetailDismissRef?: InspectorCardDetailDismissRef;
@@ -2901,7 +2906,7 @@ export function InteractionStage({
       <div className="opponent-inspection-layer">
         <div className="opponent-inspection-backdrop" aria-hidden="true" />
         <div className="opponent-inspection-floating-shell">
-        <OpponentPublicInspector key={inspectPlayer.id} player={inspectPlayer} judgementInFlight={judgementInFlight} equipmentArrivalPendingIds={equipmentArrivalPendingIds} nestedCardDetailDismissRef={nestedCardDetailDismissRef} />
+        <OpponentPublicInspector key={inspectPlayer.id} player={inspectPlayer} playerCount={inspectPlayerCount} judgementInFlight={judgementInFlight} equipmentArrivalPendingIds={equipmentArrivalPendingIds} nestedCardDetailDismissRef={nestedCardDetailDismissRef} />
         </div>
       </div>
     </section>;
@@ -9992,7 +9997,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
     <section className={`play-table ${displayedSequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-public-card-journey-ownership-ready={publicCardJourneyOwnershipReady ? "true" : "false"} data-public-card-owned-history-count={publicDisplayOwnedResponseHistory.length} style={mobileSeatRingLayoutStyle}>
-      <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} inspectPlayer={opponentInspectionPresentation} judgementInFlight={judgementInFlight} equipmentArrivalPendingIds={pendingEquipmentArrivalCardIds} nestedCardDetailDismissRef={nestedInspectorCardDetailDismissRef} /><StageSystemCluster
+      <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} inspectPlayer={opponentInspectionPresentation} inspectPlayerCount={room.players.length} judgementInFlight={judgementInFlight} equipmentArrivalPendingIds={pendingEquipmentArrivalCardIds} nestedCardDetailDismissRef={nestedInspectorCardDetailDismissRef} /><StageSystemCluster
         publicResponseTimerPending={seatCountdown?.kind === "response"}
         responseTimer={seatCountdown?.kind === "response"
           ? <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} responseTimer />
