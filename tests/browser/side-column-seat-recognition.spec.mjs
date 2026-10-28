@@ -66,6 +66,8 @@ async function readLayout(page) {
         topIndex: seat.dataset.topSeatIndex === undefined ? null : Number(seat.dataset.topSeatIndex),
         seat: bounds(seat),
         row: Number(seat.dataset.sideRow),
+        image: image ? bounds(image) : null,
+        imageObjectFit: image ? getComputedStyle(image).objectFit : null,
         target: targetBounds,
         switch: (() => {
           const button = seat.querySelector(".test-view-switch-button");
@@ -249,6 +251,7 @@ test("H2-G3 F1-R4 at 390px keeps fixed Seat frames, edge alignment, and TEST SWI
     expect(Math.abs(seven.sideAlignment.left)).toBeLessThanOrEqual(2);
     expect(Math.abs(seven.sideAlignment.right)).toBeLessThanOrEqual(2);
     assertSideSeatFrameParity(seven, "390px seven-player");
+    assertSidePortraitFill(seven, "390px seven-player");
     await testInfo.attach("h2-g3-f1-r4-390px-seven-player-domrects.json", {
       body: JSON.stringify({ board: seven.board, topSeats: seven.topSeats.map((seat) => seat.seat), topGaps: seven.topGaps, topMargins: seven.topMargins, sideAlignment: seven.sideAlignment, sideSeats: seven.seats.filter((seat) => seat.side !== "top").map((seat) => ({ id: seat.id, side: seat.side, rect: seat.seat })) }, null, 2),
       contentType: "application/json",
@@ -277,6 +280,7 @@ test("H2-G3 F1-R4 at 390px keeps fixed Seat frames, edge alignment, and TEST SWI
     expect(Math.abs(eight.sideAlignment.left)).toBeLessThanOrEqual(2);
     expect(Math.abs(eight.sideAlignment.right)).toBeLessThanOrEqual(2);
     assertSideSeatFrameParity(eight, "390px eight-player");
+    assertSidePortraitFill(eight, "390px eight-player");
     await testInfo.attach("h2-g3-f1-r4-390px-eight-player-domrects.json", {
       body: JSON.stringify({ board: eight.board, topSeats: eight.topSeats.map((seat) => seat.seat), topGaps: eight.topGaps, topMargins: eight.topMargins, sideAlignment: eight.sideAlignment, sideSeats: eight.seats.filter((seat) => seat.side !== "top").map((seat) => ({ id: seat.id, side: seat.side, rect: seat.seat })) }, null, 2),
       contentType: "application/json",
@@ -311,6 +315,7 @@ test("H2-G3 F1-R4 at 440px keeps eight-player TOP5+SIDE2 with matching Seat fram
     expect(Math.abs(result.sideAlignment.left)).toBeLessThanOrEqual(2);
     expect(Math.abs(result.sideAlignment.right)).toBeLessThanOrEqual(2);
     assertSideSeatFrameParity(result, "440px eight-player");
+    assertSidePortraitFill(result, "440px eight-player");
     expect(topSeats.every((seat) => Math.abs(seat.seat.width - result.topSeats[0].seat.width) <= 1)).toBe(true);
     for (let index = 1; index < topSeats.length; index += 1) expect(topSeats[index].seat.x).toBeGreaterThan(topSeats[index - 1].seat.x);
     for (const seat of result.seats) {
@@ -339,6 +344,15 @@ function assertSideSeatFrameParity(layout, label) {
   for (const seat of layout.seats.filter((entry) => entry.side === "left" || entry.side === "right")) {
     expect(Math.abs(seat.seat.width - reference.width), `${label} ${seat.side} outer frame width matches top`).toBeLessThanOrEqual(1);
     expect(Math.abs(seat.seat.height - reference.height), `${label} ${seat.side} outer frame height matches top`).toBeLessThanOrEqual(1);
+  }
+}
+
+function assertSidePortraitFill(layout, label) {
+  for (const seat of layout.seats.filter((entry) => entry.side === "left" || entry.side === "right")) {
+    expect(seat.image, `${label} ${seat.side} Hero artwork is present`).toBeTruthy();
+    expect(Math.abs(seat.image.x - seat.art.x), `${label} ${seat.side} artwork starts at the portrait edge`).toBeLessThanOrEqual(1);
+    expect(Math.abs(seat.image.width - seat.art.width), `${label} ${seat.side} artwork fills the portrait width`).toBeLessThanOrEqual(1);
+    expect(seat.imageObjectFit, `${label} ${seat.side} artwork keeps its proportions`).toBe("cover");
   }
 }
 

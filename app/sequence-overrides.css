@@ -7376,6 +7376,15 @@
     aspect-ratio: auto;
   }
 
+  /* F1-R4 follow-up: fill the measured SIDE portrait width. Keep the existing
+     vertical crop, and let object-fit cover preserve each Hero image's ratio. */
+  .game-shell .player-board[data-seat-topology="side-column"][data-mobile-top-ring="true"] > .opponent-player-card[data-side-column="left"] .opponent-hero-portrait > .hero-art-image,
+  .game-shell .player-board[data-seat-topology="side-column"][data-mobile-top-ring="true"] > .opponent-player-card[data-side-column="right"] .opponent-hero-portrait > .hero-art-image {
+    left: 0;
+    width: 100%;
+    translate: none;
+  }
+
   .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-mobile-top-ring="true"]) > .interaction-safe-zone {
     top: calc(var(--mobile-seat-top-band-height, 0px) + 8px);
   }
