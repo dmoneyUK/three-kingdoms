@@ -77,6 +77,8 @@ async function readLayout(page) {
         art,
         imageLoaded: Boolean(image?.naturalWidth),
         hitSafe: Boolean(hit && target.contains(hit)),
+        hitTarget: hit ? `${hit.tagName.toLowerCase()}.${String(hit.className?.baseVal ?? hit.className ?? "").trim().replace(/\s+/g, ".")}` : null,
+        hitPlayerId: hit?.closest?.("[data-player-anchor]")?.getAttribute("data-player-anchor") ?? null,
         focalText,
         focalEquipment,
         equipment: [...seat.querySelectorAll(".opponent-equipment-indicator")].map(bounds),
@@ -90,6 +92,7 @@ async function readLayout(page) {
       pageWidth: document.documentElement.scrollWidth,
       board: bounds(board),
       topCapacity: Number(board.dataset.mobileTopCapacity ?? 0),
+      sideCount: Number(board.dataset.mobileSideCount ?? -1),
       table: tableRect,
       outerGutters: { left: leftMost - tableRect.x, right: tableRect.right - rightMost },
       sideSafeEdge: getComputedStyle(table).getPropertyValue("--side-safe-edge").trim(),
@@ -122,25 +125,6 @@ async function readLayout(page) {
   });
 }
 
-const FIVE_PLAYER_PHONE_VIEWPORTS = [
-  { width: 390, height: 700 },
-  { width: 390, height: 844 },
-  { width: 440, height: 766 },
-  { width: 440, height: 894 },
-  { width: 480, height: 900 },
-];
-
-function expectFivePlayerRelativeMapping(seats) {
-  const expected = new Map([
-    [1, { side: "left", row: 2 }],
-    [2, { side: "left", row: 1 }],
-    [3, { side: "right", row: 1 }],
-    [4, { side: "right", row: 2 }],
-  ]);
-  for (const seat of seats) expect({ side: seat.side, row: seat.row }).toEqual(expected.get(seat.relativeIndex));
-  expect(new Set(seats.map((seat) => `${seat.side}:${seat.row}`)).size).toBe(4);
-}
-
 function loadSeatProjector() {
   const source = readFileSync(new URL("../../app/page.tsx", import.meta.url), "utf8");
   const sourceFile = ts.createSourceFile("app/page.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -157,199 +141,139 @@ function loadSeatProjector() {
 
 test("ST-RING-DIR-1 projection contract uses the unified clockwise ring", () => {
   const project = loadSeatProjector();
-  const cases = [
-    { players: 5, topCapacity: 0, expected: ["L2", "L1", "R1", "R2"] },
-    { players: 6, topCapacity: 0, expected: ["L3", "L2", "R1", "R2", "R3"] },
-    { players: 6, topCapacity: 1, expected: ["L2", "L1", "T1", "R1", "R2"] },
-    { players: 6, topCapacity: 3, expected: ["L1", "T1", "T2", "T3", "R1"] },
-    { players: 7, topCapacity: 0, expected: ["L3", "L2", "L1", "R1", "R2", "R3"] },
-    { players: 8, topCapacity: 0, expected: ["L4", "L3", "L2", "R1", "R2", "R3", "R4"] },
-    { players: 8, topCapacity: 2, expected: ["L3", "L2", "T1", "T2", "R1", "R2", "R3"] },
-    { players: 8, topCapacity: 5, expected: ["L1", "T1", "T2", "T3", "T4", "T5", "R1"] },
-    { players: 9, topCapacity: 0, expected: ["L4", "L3", "L2", "L1", "R1", "R2", "R3", "R4"] },
-    { players: 10, topCapacity: 0, expected: ["L5", "L4", "L3", "L2", "R1", "R2", "R3", "R4", "R5"] },
-  ];
+  for (const players of [5, 6, 7, 8, 9, 10]) {
+    const opponents = players - 1;
+    for (const topCapacity of new Set([0, 3, 4, 5, opponents])) {
+      const topCount = Math.min(opponents, topCapacity, players === 7 ? 4 : opponents);
+      const sideCount = opponents - topCount;
+      const leftCount = Math.floor(sideCount / 2);
+      const rowCount = Math.ceil(sideCount / 2);
+      const seats = Array.from({ length: opponents }, (_, index) => ({
+        relativeIndex: index + 1,
+        ...project(players, index + 1, { topCapacity }),
+      }));
+      const physicalOrder = [
+        ...seats.filter((seat) => seat.side === "left").sort((a, b) => b.row - a.row),
+        ...seats.filter((seat) => seat.side === "top").sort((a, b) => a.topIndex - b.topIndex),
+        ...seats.filter((seat) => seat.side === "right").sort((a, b) => a.row - b.row),
+      ].map((seat) => seat.relativeIndex);
+      const positions = seats.map((seat) => seat.side === "top" ? `top:${seat.topIndex}` : `${seat.side}:${seat.row}`);
+      const topSeats = seats.filter((seat) => seat.side === "top").sort((a, b) => a.topIndex - b.topIndex);
 
-  for (const { players, topCapacity, expected } of cases) {
-    const seats = Array.from({ length: players - 1 }, (_, index) => ({
-      relativeIndex: index + 1,
-      ...project(players, index + 1, { topCapacity }),
-    }));
-    const physicalOrder = [
-      ...seats.filter((seat) => seat.side === "left").sort((a, b) => b.row - a.row),
-      ...seats.filter((seat) => seat.side === "top").sort((a, b) => a.topIndex - b.topIndex),
-      ...seats.filter((seat) => seat.side === "right").sort((a, b) => a.row - b.row),
-    ].map((seat) => seat.relativeIndex);
-    const labels = seats.map((seat) => seat.side === "top" ? `T${seat.topIndex + 1}` : `${seat.side === "left" ? "L" : "R"}${seat.row}`);
-    expect(labels, `${players} players / top capacity ${topCapacity}`).toEqual(expected);
-    expect(new Set(seats.map((seat) => seat.side === "top" ? `top:${seat.topIndex}` : `${seat.side}:${seat.row}`)).size).toBe(players - 1);
-    expect(physicalOrder).toEqual(Array.from({ length: players - 1 }, (_, index) => index + 1));
+      expect(topSeats, `${players} players / capacity ${topCapacity}`).toHaveLength(topCount);
+      expect(new Set(positions).size, `${players} players / capacity ${topCapacity} has unique cells`).toBe(opponents);
+      expect(physicalOrder, `${players} players / capacity ${topCapacity} follows the clockwise ring`).toEqual(Array.from({ length: opponents }, (_, index) => index + 1));
+      expect(topSeats.map((seat) => seat.topIndex)).toEqual(Array.from({ length: topCount }, (_, index) => index));
+      expect(seats.filter((seat) => seat.side !== "top").every((seat) => seat.rowCount === rowCount), `${players} players / capacity ${topCapacity} has the correct side row count`).toBe(true);
+      expect(topSeats.every((seat) => seat.rowCount === 0), `${players} players / capacity ${topCapacity} has no synthetic side rows on top seats`).toBe(true);
+      if (players === 7 && topCapacity >= 4) {
+        expect(seats.map((seat) => seat.side === "top" ? `T${seat.topIndex + 1}` : `${seat.side === "left" ? "L" : "R"}${seat.row}`))
+          .toEqual(["L1", "T1", "T2", "T3", "T4", "R1"]);
+      }
+    }
   }
 
+  expect(project(7, 1, { topCapacity: 5 })).toMatchObject({ side: "left", row: 1, rowCount: 1 });
+  expect(project(8, 1, { topCapacity: 7 })).toMatchObject({ side: "top", topIndex: 0, topCount: 7, rowCount: 0 });
+  expect(project(10, 1, { topCapacity: Number.NaN })).toMatchObject({ side: "left" });
   expect([1, 2, 3].map((relativeIndex) => project(4, relativeIndex))).toEqual([null, null, null]);
 });
 
-test("ST-RING-DIR-1 TEST SWITCH rebases the phone ring to the new viewer", async ({ page }) => {
-  await loadFixture(page, { width: 390, height: 844, count: 5, state: "rest", playerNamePrefix: "Test Player" });
-  await page.getByTestId("test-view-switch-p3").click();
-  await expect(page.locator(".local-player-dock")).toHaveAttribute("data-player-anchor", "p3");
+test("ST-RING-DIR-1 phone 5/6/7 top-first geometry preserves TEST SWITCH and public choices", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const assertPhoneRing = async (count, { state = "rest", topCount, leftRelative, rightRelative } = {}) => {
+    await loadFixture(page, { width: 390, height: 844, count, state, playerNamePrefix: "Test Player" });
+    await expect.poll(async () => (await readLayout(page)).topCapacity).toBeGreaterThan(0);
+    const layout = await readLayout(page);
+    const expectedTopCount = Math.min(count - 1, layout.topCapacity, count === 7 ? 4 : count - 1);
+    const topSeats = layout.seats.filter((seat) => seat.side === "top").sort((a, b) => a.topIndex - b.topIndex);
+    expect(layout.seats).toHaveLength(count - 1);
+    expect(new Set(layout.seats.map((seat) => seat.id)).size).toBe(count - 1);
+    expect(layout.sideCount).toBe(count - 1 - expectedTopCount);
+    expect(topSeats).toHaveLength(topCount ?? expectedTopCount);
+    expect(topSeats.map((seat) => seat.relativeIndex)).toEqual(Array.from({ length: expectedTopCount }, (_, index) => index + Math.floor((count - 1 - expectedTopCount) / 2) + 1));
+    expect(layout.pageWidth).toBeLessThanOrEqual(390);
+    for (let index = 1; index < topSeats.length; index += 1) expect(topSeats[index].seat.x).toBeGreaterThan(topSeats[index - 1].seat.x);
+    for (const seat of layout.seats) {
+      expect(seat.seat.x).toBeGreaterThanOrEqual(0);
+      expect(seat.seat.right).toBeLessThanOrEqual(390);
+      expect(seat.hitSafe, `${seat.id} Hero/Inspector target remains hittable: ${JSON.stringify({ side: seat.side, topIndex: seat.topIndex, seat: seat.seat, hitPlayerId: seat.hitPlayerId })}`).toBe(true);
+      expect(seat.switch?.hitSafe, `${seat.id} TEST SWITCH remains hittable`).toBe(true);
+    }
+    if (leftRelative !== undefined) expect(layout.seats.find((seat) => seat.relativeIndex === leftRelative)).toMatchObject({ side: "left", row: 1 });
+    if (rightRelative !== undefined) expect(layout.seats.find((seat) => seat.relativeIndex === rightRelative)).toMatchObject({ side: "right", row: 1 });
+    return layout;
+  };
 
-  const result = await readLayout(page);
-  expect(result.localPlayerId).toBe("p3");
-  expect(result.seats).toHaveLength(4);
-  expect(new Set(result.seats.map((seat) => seat.id)).size).toBe(4);
-  expectFivePlayerRelativeMapping(result.seats);
-  const roomPlayers = await page.evaluate(() => window.__browserRoom.players);
-  const ring = [...roomPlayers].sort((left, right) => left.seat - right.seat).map((player) => player.id);
-  const viewerIndex = ring.indexOf("p3");
-  for (const seat of result.seats) {
-    expect(seat.relativeIndex).toBe((ring.indexOf(seat.id) - viewerIndex + ring.length) % ring.length);
-  }
+  try {
+    const five = await assertPhoneRing(5, { topCount: 4 });
+    expect(five.sideCount).toBe(0);
+    const firstOpponent = five.seats.find((seat) => seat.relativeIndex === 1);
+    const hero = page.locator(`.opponent-player-card[data-player-anchor="${firstOpponent.id}"] .opponent-hero-target`);
+    await hero.tap();
+    await expect(page.locator(`.opponent-inspection-panel[data-inspect-player-id="${firstOpponent.id}"]`)).toBeVisible();
+    await page.getByTestId("test-view-switch-p4").tap();
+    await expect(page.locator(".local-player-dock")).toHaveAttribute("data-player-anchor", "p4");
+    const switchedFive = await readLayout(page);
+    expect(new Set(switchedFive.seats.map((seat) => seat.id)).size).toBe(4);
+    const switchedRoom = await page.evaluate(() => window.__browserRoom.players);
+    const seatRing = [...switchedRoom].sort((a, b) => a.seat - b.seat).map((player) => player.id);
+    const viewerIndex = seatRing.indexOf("p4");
+    for (const seat of switchedFive.seats) expect(seat.relativeIndex).toBe((seatRing.indexOf(seat.id) - viewerIndex + seatRing.length) % seatRing.length);
 
-  await loadFixture(page, { width: 390, height: 844, count: 8, state: "rest", playerNamePrefix: "Test Player" });
-  const eightPlayerLayout = await readLayout(page);
-  const topSeats = eightPlayerLayout.seats.filter((seat) => seat.side === "top").sort((left, right) => left.topIndex - right.topIndex);
-  expect(eightPlayerLayout.topCapacity).toBe(5);
-  expect(topSeats.map((seat) => seat.relativeIndex)).toEqual([2, 3, 4, 5, 6]);
-  expect(eightPlayerLayout.seats.find((seat) => seat.relativeIndex === 1)).toMatchObject({ side: "left", row: 1 });
-  expect(eightPlayerLayout.seats.find((seat) => seat.relativeIndex === 7)).toMatchObject({ side: "right", row: 1 });
-  for (let index = 1; index < topSeats.length; index += 1) {
-    expect(topSeats[index].seat.x).toBeGreaterThan(topSeats[index - 1].seat.x);
+    const six = await assertPhoneRing(6, { topCount: 5 });
+    expect(six.sideCount).toBe(0);
+
+    const seven = await assertPhoneRing(7, { state: "bumper-harvest-choosing", topCount: 4, leftRelative: 1, rightRelative: 6 });
+    expect(seven.harvestPools).toHaveLength(1);
+    for (const seat of seven.seats) {
+      for (const obstacle of [...seven.harvestPools, ...seven.announcements, ...seven.timers, seven.dock, seven.menu]) {
+        expect(overlaps(seat.seat, obstacle), `${seat.id} remains clear of public/local controls`).toBe(false);
+      }
+    }
+    await page.getByTestId("test-view-switch-p3").tap();
+    await expect(page.locator(".local-player-dock")).toHaveAttribute("data-player-anchor", "p3");
+    const switchedSeven = await readLayout(page);
+    expect(switchedSeven.seats).toHaveLength(6);
+    expect(new Set(switchedSeven.seats.map((seat) => seat.id)).size).toBe(6);
+    const switchedSevenRoom = await page.evaluate(() => window.__browserRoom.players);
+    const switchedSevenRing = [...switchedSevenRoom].sort((a, b) => a.seat - b.seat).map((player) => player.id);
+    const switchedSevenViewer = switchedSevenRing.indexOf("p3");
+    for (const seat of switchedSeven.seats) expect(seat.relativeIndex).toBe((switchedSevenRing.indexOf(seat.id) - switchedSevenViewer + switchedSevenRing.length) % switchedSevenRing.length);
+  } finally {
+    await context.close();
   }
 });
 
-for (const viewport of FIVE_PLAYER_PHONE_VIEWPORTS) {
-  test(`ST5-1 five-player opponent rows are compact at ${viewport.width}x${viewport.height}`, async ({ browser }, testInfo) => {
-    const context = await browser.newContext({ viewport, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
-    const page = await context.newPage();
-    try {
-      await loadFixture(page, { ...viewport, count: 5, playerNamePrefix: "Five-seat" });
-      const result = await readLayout(page);
-      const rowOne = result.seats.filter((seat) => seat.row === 1);
-      const rowTwo = result.seats.filter((seat) => seat.row === 2);
-      const rowGap = Math.min(...rowTwo.map((seat) => seat.seat.y)) - Math.max(...rowOne.map((seat) => seat.seat.bottom));
-      const geometry = { ...result, rowGap };
-      console.log(`ST5-1 MOBILE GEOMETRY ${viewport.width}x${viewport.height}: ${JSON.stringify({ table: result.table, board: result.board, columns: result.boardStyle.gridTemplateColumns, outerGutters: result.outerGutters, sideSafeEdge: result.sideSafeEdge, safeZone: result.safeZone, rowGap, seats: result.seats.map(({ id, relativeIndex, side, row, seat, switch: switchRect }) => ({ id, relativeIndex, side, row, seat, switch: switchRect })) })}`);
-
-      await testInfo.attach(`st5-1-after-${viewport.width}x${viewport.height}.json`, {
-        body: Buffer.from(JSON.stringify(geometry, null, 2)),
-        contentType: "application/json",
-      });
-      await testInfo.attach(`st5-1-after-${viewport.width}x${viewport.height}.png`, {
-        body: await page.screenshot({ animations: "disabled" }),
-        contentType: "image/png",
-      });
-
-      expect(result.seats).toHaveLength(4);
-      expect(result.pageWidth, "five-player mobile layout stays within the viewport").toBeLessThanOrEqual(viewport.width);
-      expect(result.outerGutters.left).toBeGreaterThanOrEqual(6);
-      expect(result.outerGutters.left).toBeLessThanOrEqual(10);
-      expect(result.outerGutters.right).toBeGreaterThanOrEqual(6);
-      expect(result.outerGutters.right).toBeLessThanOrEqual(10);
-      expect(rowOne).toHaveLength(2);
-      expect(rowTwo).toHaveLength(2);
-      expectFivePlayerRelativeMapping(result.seats);
-      expect(result.boardStyle.alignContent).toBe("start");
-      expect(result.boardStyle.alignItems).toBe("start");
-      expect(rowGap).toBeGreaterThanOrEqual(8);
-      expect(rowGap).toBeLessThanOrEqual(16);
-      expect(Math.abs(Math.min(...rowOne.map((seat) => seat.seat.y)) - result.board.y)).toBeLessThanOrEqual(1);
-      const leftSeatInnerEdge = Math.max(...result.seats.filter((seat) => seat.side === "left").map((seat) => seat.seat.right));
-      const rightSeatInnerEdge = Math.min(...result.seats.filter((seat) => seat.side === "right").map((seat) => seat.seat.x));
-      expect(result.safeZone.x - leftSeatInnerEdge).toBeGreaterThanOrEqual(6);
-      expect(result.safeZone.x - leftSeatInnerEdge).toBeLessThanOrEqual(8);
-      expect(rightSeatInnerEdge - result.safeZone.right).toBeGreaterThanOrEqual(6);
-      expect(rightSeatInnerEdge - result.safeZone.right).toBeLessThanOrEqual(8);
-      for (const seat of result.seats) expect(seat.seat.height).toBe(108);
-      for (const seat of result.seats) {
-        expect(seat.hitSafe, `${seat.id} Hero/Inspect target remains clickable`).toBe(true);
-        expect(seat.switch?.hitSafe, `${seat.id} TEST SWITCH remains clickable`).toBe(true);
-      }
-
-      for (const seat of result.seats) {
-        const hero = page.locator(`.opponent-player-card[data-player-anchor="${seat.id}"] .opponent-hero-target`);
-        await hero.tap();
-        await expect(page.locator(`.opponent-inspection-panel[data-inspect-player-id="${seat.id}"]`)).toBeVisible();
-        await hero.tap();
-        await expect(page.locator(`.opponent-inspection-panel[data-inspect-player-id="${seat.id}"]`)).toHaveCount(0);
-      }
-
-      console.log(`ST5-1 ${viewport.width}x${viewport.height}: ${JSON.stringify({ rowGap, board: result.board, boardStyle: result.boardStyle, seats: result.seats.map(({ id, side, row, seat, switch: switchRect }) => ({ id, side, row, seat, switch: switchRect })) })}`);
-    } finally {
-      await context.close();
+test("ST-RING-DIR-1 eight-player phone ring keeps measured top order and overflow anchors", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    await loadFixture(page, { width: 390, height: 844, count: 8, state: "rest", playerNamePrefix: "Test Player" });
+    const result = await readLayout(page);
+    const topCount = Math.min(7, result.topCapacity);
+    const sideCount = 7 - topCount;
+    const leftCount = Math.floor(sideCount / 2);
+    const topSeats = result.seats.filter((seat) => seat.side === "top").sort((left, right) => left.topIndex - right.topIndex);
+    expect(result.seats).toHaveLength(7);
+    expect(result.sideCount).toBe(sideCount);
+    expect(topSeats).toHaveLength(topCount);
+    expect(topSeats.map((seat) => seat.relativeIndex)).toEqual(Array.from({ length: topCount }, (_, index) => leftCount + index + 1));
+    expect(result.pageWidth).toBeLessThanOrEqual(390);
+    expect(result.boardStyle.alignContent).toBe("start");
+    expect(result.boardStyle.alignItems).toBe("start");
+    for (let index = 1; index < topSeats.length; index += 1) expect(topSeats[index].seat.x).toBeGreaterThan(topSeats[index - 1].seat.x);
+    for (const seat of result.seats) {
+      expect(seat.seat.height).toBe(108);
+      expect(seat.hitSafe).toBe(true);
+      expect(seat.switch?.hitSafe).toBe(true);
+      expect(seat.seat.bottom).toBeLessThanOrEqual(result.dock.y - 6);
     }
-  });
-}
-
-for (const viewport of [{ width: 390, height: 700 }, { width: 440, height: 766 }]) {
-  test(`ST5-1 grouped five-player seats clear public Harvest at ${viewport.width}x${viewport.height}`, async ({ browser }, testInfo) => {
-    const context = await browser.newContext({ viewport, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
-    const page = await context.newPage();
-    try {
-      await loadFixture(page, { ...viewport, count: 5, state: "bumper-harvest-choosing", playerNamePrefix: "Five-seat" });
-      const result = await readLayout(page);
-      const rowOne = result.seats.filter((seat) => seat.row === 1);
-      const rowTwo = result.seats.filter((seat) => seat.row === 2);
-      const rowGap = Math.min(...rowTwo.map((seat) => seat.seat.y)) - Math.max(...rowOne.map((seat) => seat.seat.bottom));
-      const geometry = { ...result, rowGap };
-      await testInfo.attach(`st5-1-harvest-${viewport.width}x${viewport.height}.json`, {
-        body: Buffer.from(JSON.stringify(geometry, null, 2)),
-        contentType: "application/json",
-      });
-      await testInfo.attach(`st5-1-harvest-${viewport.width}x${viewport.height}.png`, {
-        body: await page.screenshot({ animations: "disabled" }),
-        contentType: "image/png",
-      });
-      expect(result.seats).toHaveLength(4);
-      expect(result.harvestPools, "the public Harvest pool remains rendered").toHaveLength(1);
-      expect(result.pageWidth).toBeLessThanOrEqual(viewport.width);
-      expect(result.outerGutters.left).toBeGreaterThanOrEqual(6);
-      expect(result.outerGutters.left).toBeLessThanOrEqual(10);
-      expect(result.outerGutters.right).toBeGreaterThanOrEqual(6);
-      expect(result.outerGutters.right).toBeLessThanOrEqual(10);
-      expectFivePlayerRelativeMapping(result.seats);
-      expect(rowGap).toBeGreaterThanOrEqual(8);
-      expect(rowGap).toBeLessThanOrEqual(16);
-      expect(Math.min(...rowOne.map((seat) => seat.seat.y))).toBeCloseTo(result.board.y, 0);
-      for (const seat of result.seats) {
-        expect(seat.seat.height).toBe(108);
-        for (const obstacle of [...result.harvestPools, ...result.announcements, ...result.timers, result.dock, result.menu]) {
-          expect(overlaps(seat.seat, obstacle), `${seat.id} does not cover a public or local control`).toBe(false);
-        }
-        expect(seat.switch?.hitSafe, `${seat.id} TEST SWITCH remains hittable during Harvest choice`).toBe(true);
-      }
-      console.log(`ST5-1 Harvest ${viewport.width}x${viewport.height}: ${JSON.stringify({ rowGap, publicCards: result.publicCards, announcements: result.announcements, timers: result.timers, harvestPools: result.harvestPools, seats: result.seats.map(({ id, side, row, seat }) => ({ id, side, row, seat })) })}`);
-    } finally {
-      await context.close();
-    }
-  });
-}
-
-for (const width of [390, 480]) {
-  test(`H2-G3-F1-R2 eight-player phone ring uses the measured top-first layout at ${width}px`, async ({ browser }) => {
-    const context = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
-    const page = await context.newPage();
-    try {
-      await loadFixture(page, { width, height: 844, count: 8 });
-      const result = await readLayout(page);
-      expect(result.seats).toHaveLength(7);
-      expect(result.pageWidth).toBeLessThanOrEqual(width);
-      expect(result.topCapacity).toBe(5);
-      expect(result.seats.filter((seat) => seat.side === "top")).toHaveLength(5);
-      expect(result.seats.filter((seat) => seat.side === "left" || seat.side === "right")).toHaveLength(2);
-      expect(result.boardStyle.alignContent).toBe("start");
-      expect(result.boardStyle.alignItems).toBe("start");
-      expect(result.boardStyle.gridTemplateRows.trim().split(/\s+/)).toHaveLength(1);
-      for (const seat of result.seats) {
-        expect(seat.seat.height).toBe(108);
-        expect(seat.hitSafe).toBe(true);
-        expect(seat.seat.bottom).toBeLessThanOrEqual(result.dock.y - 6);
-      }
-    } finally {
-      await context.close();
-    }
-  });
-}
+  } finally {
+    await context.close();
+  }
+});
 
 function overlaps(left, right) {
   return left.x < right.right && left.right > right.x && left.y < right.bottom && left.bottom > right.y;

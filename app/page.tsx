@@ -2264,23 +2264,22 @@ const getPhoneViewportSnapshot = () => typeof window !== "undefined"
 export function projectSideColumnSeat(totalPlayers: number, relativeIndex: number, options: { topCapacity?: number } = {}): { side: "left" | "right" | "top"; row: number; rowCount: number; topIndex?: number; topCount?: number } | null {
   if (!Number.isInteger(totalPlayers) || !Number.isInteger(relativeIndex) || totalPlayers < 5 || totalPlayers > 10 || relativeIndex < 1 || relativeIndex >= totalPlayers) return null;
   const opponentCount = totalPlayers - 1;
-  const topCount = totalPlayers === 6 || totalPlayers === 8
-    ? Math.max(0, Math.min(opponentCount - 2, Math.trunc(options.topCapacity ?? 0)))
-    : 0;
+  const requestedTopCapacity = Number.isFinite(options.topCapacity) ? Math.trunc(options.topCapacity ?? 0) : 0;
+  const topCount = Math.max(0, Math.min(opponentCount, totalPlayers === 7 ? 4 : opponentCount, requestedTopCapacity));
   const sideCount = opponentCount - topCount;
   const leftCount = Math.floor(sideCount / 2);
-  const rightCount = Math.ceil(sideCount / 2);
-  const rowCount = rightCount;
+  const rightCount = sideCount - leftCount;
+  const rowCount = Math.max(leftCount, rightCount);
 
   // Walk the visual ring from the local viewer: left-bottom upward, across
   // the top from left to right, then down the right edge toward the viewer.
   if (relativeIndex <= leftCount) {
-    return { side: "left", row: rowCount - relativeIndex + 1, rowCount };
+    return { side: "left", row: rowCount - relativeIndex + 1, rowCount, topCount };
   }
   if (relativeIndex <= leftCount + topCount) {
     return { side: "top", row: 0, rowCount: 0, topIndex: relativeIndex - leftCount - 1, topCount };
   }
-  return { side: "right", row: relativeIndex - leftCount - topCount, rowCount };
+  return { side: "right", row: relativeIndex - leftCount - topCount, rowCount, topCount };
 }
 
 function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
@@ -2306,14 +2305,14 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, m
     ? sideColumnSeat.side === "top"
       ? {
         left: `calc(50% + ${topSeatOffset * (mobileSeatRing.seatWidth + mobileSeatRing.gap)}px)`,
-        top: `-${mobileSeatRing.seatHeight + mobileSeatRing.gap}px`,
+        top: "0px",
         width: mobileSeatRing.seatWidth,
         height: mobileSeatRing.seatHeight,
         gridRow: "1",
         gridColumn: "1 / -1",
         transform: "translateX(-50%)",
       }
-      : { gridRow: sideColumnSeat.row }
+      : { gridRow: sideColumnSeat.row + (mobileSeatRing.enabled && (sideColumnSeat.topCount ?? 0) > 0 ? 1 : 0) }
     : undefined;
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
   for (const equipment of player.equipmentCards) {
@@ -3520,7 +3519,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [mobileSeatRingMetrics, setMobileSeatRingMetrics] = useState({ topCapacity: 0, boardWidth: 0, boardTopInset: 0, seatWidth: 0, seatHeight: 0, gap: 0 });
   useLayoutEffect(() => {
     const totalPlayers = room.players.length;
-    const supportedMobileRing = isPhoneViewport && (totalPlayers === 6 || totalPlayers === 8);
+    const supportedMobileRing = isPhoneViewport && totalPlayers >= 5 && totalPlayers <= 10;
     const resetMetrics = () => setMobileSeatRingMetrics((current) => Object.values(current).every((value) => value === 0)
       ? current
       : { topCapacity: 0, boardWidth: 0, boardTopInset: 0, seatWidth: 0, seatHeight: 0, gap: 0 });
@@ -3536,12 +3535,22 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       if (!firstSeat || !table) return;
       const boardRect = board.getBoundingClientRect();
       const seatRect = firstSeat.getBoundingClientRect();
-      const gap = Number.parseFloat(getComputedStyle(board).rowGap) || 0;
-      const seatWidth = seatRect.width;
+      const boardStyle = getComputedStyle(board);
+      const gap = Math.min(12, Math.max(4, Number.parseFloat(boardStyle.rowGap) || 4));
       const seatHeight = seatRect.height;
-      if (boardRect.width <= 0 || seatWidth <= 0 || seatHeight <= 0) return;
-      const topCapacity = Math.max(0, Math.min(totalPlayers - 3, Math.floor((boardRect.width + gap) / (seatWidth + gap))));
-      const tableTopInset = boardRect.top - table.getBoundingClientRect().top;
+      const horizontalBoxSpace = [boardStyle.borderLeftWidth, boardStyle.borderRightWidth, boardStyle.paddingLeft, boardStyle.paddingRight]
+        .reduce((total, value) => total + (Number.parseFloat(value) || 0), 0);
+      const usableTopWidth = Math.max(0, boardRect.width - horizontalBoxSpace);
+      const minSafeSeatWidth = Math.max(56, Math.min(74, window.innerWidth * 0.155));
+      if (usableTopWidth <= 0 || seatHeight <= 0) return;
+      const opponentCount = totalPlayers - 1;
+      const topCapacity = Math.max(0, Math.min(opponentCount, Math.floor((usableTopWidth + gap) / (minSafeSeatWidth + gap))));
+      const topCount = Math.min(opponentCount, topCapacity, totalPlayers === 7 ? 4 : opponentCount);
+      const maxTopSeatWidth = Math.min(112, Math.max(88, window.innerWidth * 0.25));
+      const seatWidth = topCount > 0
+        ? Math.min(maxTopSeatWidth, Math.max(minSafeSeatWidth, (usableTopWidth - gap * (topCount - 1)) / topCount))
+        : minSafeSeatWidth;
+      const tableTopInset = Math.max(0, boardRect.top - table.getBoundingClientRect().top);
       const next = {
         topCapacity,
         boardWidth: Math.round(boardRect.width * 4) / 4,
@@ -3866,10 +3875,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const viewerRingIndex = seatRing.findIndex((player) => player.id === room.meId);
     return new Map(seatRing.map((player, index) => [player.id, (index - viewerRingIndex + seatRing.length) % seatRing.length]));
   }, [room.meId, room.players]);
-  const mobileSeatRingEnabled = isPhoneViewport && (room.players.length === 6 || room.players.length === 8);
+  const mobileSeatRingEnabled = isPhoneViewport && room.players.length >= 5 && room.players.length <= 10;
   const mobileSeatTopCount = mobileSeatRingEnabled ? mobileSeatRingMetrics.topCapacity : 0;
-  const mobileSideSeatCount = room.players.length - 1 - mobileSeatTopCount;
-  const mobileSideRowCount = Math.max(1, Math.ceil(mobileSideSeatCount / 2));
+  const mobileSeatRenderedTopCount = mobileSeatRingEnabled ? Math.min(mobileSeatTopCount, room.players.length === 7 ? 4 : room.players.length - 1) : 0;
+  const mobileSideSeatCount = mobileSeatRingEnabled ? Math.max(0, room.players.length - 1 - mobileSeatRenderedTopCount) : 0;
+  const mobileSideRowCount = Math.ceil(mobileSideSeatCount / 2);
   const mobileSeatRingLayoutStyle: CSSProperties | undefined = mobileSeatRingEnabled ? {
     "--mobile-seat-width": mobileSeatRingMetrics.seatWidth + "px",
     "--mobile-seat-height": mobileSeatRingMetrics.seatHeight + "px",
@@ -3877,6 +3887,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     "--mobile-seat-top-inset": mobileSeatRingMetrics.boardTopInset + "px",
     "--mobile-seat-row-start-height": (mobileSeatRingMetrics.seatHeight + mobileSeatRingMetrics.gap) + "px",
     "--mobile-seat-top-band-height": (mobileSeatRingMetrics.boardTopInset + mobileSeatRingMetrics.seatHeight + mobileSeatRingMetrics.gap) + "px",
+    "--mobile-seat-grid-rows": mobileSideRowCount > 0
+      ? `${mobileSeatRenderedTopCount > 0 ? "var(--mobile-seat-height) " : ""}repeat(${mobileSideRowCount}, max-content)`
+      : "none",
   } as CSSProperties : undefined;
   const playerBoardStyle: CSSProperties | undefined = mobileSeatRingEnabled ? {
     "--seat-row-count": String(mobileSideRowCount),
@@ -10070,7 +10083,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {triggerResponse && responseDecisionReady && choiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={choiceTriggerOption} selection={choiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={triggerControlsDisabled} error={error} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => { const validKeys = triggerSelectedKeys.filter((selectedKey) => choiceTriggerOption.selection?.type === "choice" && choiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = choiceTriggerOption.selection?.type === "choice" ? choiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; setTriggerSelectedKeys(validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys); }} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: choiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}
       {groupScopePreview.active && <p className="group-scope-preview-label" data-group-scope-preview={groupScopePreview.cardKind ?? undefined} role="status">PREVIEW · {groupScopePreview.label}</p>}
-      <div ref={playerBoardRef} className="player-board" aria-label="Players" data-player-count={room.players.length} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-mobile-top-ring={mobileSeatRingEnabled ? "true" : undefined} data-mobile-top-capacity={mobileSeatRingEnabled ? mobileSeatRingMetrics.topCapacity : undefined} data-measured-board-width={mobileSeatRingEnabled ? mobileSeatRingMetrics.boardWidth : undefined} style={playerBoardStyle}>
+      <div ref={playerBoardRef} className="player-board" aria-label="Players" data-player-count={room.players.length} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-mobile-top-ring={mobileSeatRingEnabled ? "true" : undefined} data-mobile-top-capacity={mobileSeatRingEnabled ? mobileSeatRingMetrics.topCapacity : undefined} data-mobile-side-count={mobileSeatRingEnabled ? mobileSideSeatCount : undefined} data-measured-board-width={mobileSeatRingEnabled ? mobileSeatRingMetrics.boardWidth : undefined} style={playerBoardStyle}>
         {room.players.filter((player) => player.id !== room.meId).map((player) => {
           const relativeIndex = seatRelativeIndices.get(player.id) ?? 0;
           const playTargetRejection = currentPlayTargetEligibility?.rejections.find((entry) => entry.targetId === player.id);

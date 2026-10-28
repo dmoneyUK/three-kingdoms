@@ -7232,3 +7232,50 @@
     justify-self: end;
   }
 }
+
+/* ST-RING-DIR-1: on phones, every 5–10 player opponent Seat uses the same
+   viewer-relative top-first ring. Top seats occupy the board's measured upper
+   band; side overflow starts immediately below that band. */
+@media (max-width: 520px) {
+  .game-shell .player-board[data-seat-topology="side-column"][data-mobile-top-ring="true"] {
+    box-sizing: border-box;
+    padding-top: 0;
+    grid-template-rows: var(--mobile-seat-grid-rows, none);
+    align-content: start;
+    align-items: start;
+    row-gap: var(--mobile-seat-gap, 4px);
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"][data-mobile-top-ring="true"] > .opponent-player-card {
+    height: 108px;
+    align-self: start;
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"][data-mobile-top-ring="true"] > [data-side-column="top"] {
+    position: absolute;
+    z-index: 5;
+    width: var(--mobile-seat-width);
+    height: var(--mobile-seat-height);
+    max-width: none;
+    min-height: 0;
+    aspect-ratio: auto;
+    margin: 0;
+    align-self: auto;
+    justify-self: auto;
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-mobile-top-ring="true"]) > .interaction-safe-zone {
+    top: calc(var(--mobile-seat-top-band-height, 0px) + 8px);
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-mobile-top-ring="true"][data-mobile-side-count="0"]) {
+    --side-safe-edge: 8px;
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"][data-mobile-top-ring="true"][data-mobile-side-count="0"] {
+    grid-template-columns: none;
+    grid-template-rows: none;
+    column-gap: 0;
+    row-gap: 0;
+  }
+}
