@@ -7363,12 +7363,29 @@
     justify-self: auto;
   }
 
+  /* H2-G3 F1-R4: side Seat outer frames use the measured top Seat footprint.
+     Keep their accepted outer-edge alignment; the extra width extends inward. */
+  .game-shell .player-board[data-seat-topology="side-column"][data-mobile-top-ring="true"] > .opponent-player-card[data-side-column="left"],
+  .game-shell .player-board[data-seat-topology="side-column"][data-mobile-top-ring="true"] > .opponent-player-card[data-side-column="right"] {
+    box-sizing: border-box;
+    width: var(--mobile-seat-width);
+    height: max(108px, var(--mobile-seat-height));
+    max-width: none;
+    min-width: 0;
+    min-height: 0;
+    aspect-ratio: auto;
+  }
+
   .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-mobile-top-ring="true"]) > .interaction-safe-zone {
     top: calc(var(--mobile-seat-top-band-height, 0px) + 8px);
   }
 
   .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-mobile-top-ring="true"][data-mobile-side-count="0"]) {
     --side-safe-edge: 8px;
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-mobile-top-ring="true"]:not([data-mobile-side-count="0"])) {
+    --side-safe-thumb-width: var(--mobile-seat-width);
   }
 
   .game-shell .player-board[data-seat-topology="side-column"][data-mobile-top-ring="true"][data-mobile-side-count="0"] {

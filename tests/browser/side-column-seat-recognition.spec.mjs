@@ -190,7 +190,7 @@ test("H2-G3 F1-R3 projection preserves the accepted ring and caps eight players 
   expect([1, 2, 3].map((relativeIndex) => project(4, relativeIndex))).toEqual([null, null, null]);
 });
 
-test("H2-G3 F1-R3 at 390px keeps fixed top Seat widths, edge alignment, and TEST SWITCH", async ({ browser }, testInfo) => {
+test("H2-G3 F1-R4 at 390px keeps fixed Seat frames, edge alignment, and TEST SWITCH", async ({ browser }, testInfo) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   const assertPhoneRing = async (count, { state = "rest", topCount, leftRelative, rightRelative } = {}) => {
@@ -248,11 +248,12 @@ test("H2-G3 F1-R3 at 390px keeps fixed top Seat widths, edge alignment, and TEST
     expect(Math.abs(seven.topMargins.left - seven.topMargins.right)).toBeLessThanOrEqual(4);
     expect(Math.abs(seven.sideAlignment.left)).toBeLessThanOrEqual(2);
     expect(Math.abs(seven.sideAlignment.right)).toBeLessThanOrEqual(2);
-    await testInfo.attach("h2-g3-f1-r3-390px-seven-player-domrects.json", {
+    assertSideSeatFrameParity(seven, "390px seven-player");
+    await testInfo.attach("h2-g3-f1-r4-390px-seven-player-domrects.json", {
       body: JSON.stringify({ board: seven.board, topSeats: seven.topSeats.map((seat) => seat.seat), topGaps: seven.topGaps, topMargins: seven.topMargins, sideAlignment: seven.sideAlignment, sideSeats: seven.seats.filter((seat) => seat.side !== "top").map((seat) => ({ id: seat.id, side: seat.side, rect: seat.seat })) }, null, 2),
       contentType: "application/json",
     });
-    await captureF1Screenshot(page, testInfo, "h2-g3-f1-r3-390px-seven-player");
+    await captureF1Screenshot(page, testInfo, "h2-g3-f1-r4-390px-seven-player");
     expect(seven.harvestPools).toHaveLength(1);
     for (const seat of seven.seats) {
       for (const obstacle of [...seven.harvestPools, ...seven.announcements, ...seven.timers, seven.dock, seven.menu]) {
@@ -275,17 +276,18 @@ test("H2-G3 F1-R3 at 390px keeps fixed top Seat widths, edge alignment, and TEST
     expect(eight.topSeats.every((seat) => Math.abs(seat.seat.width - referenceWidth) <= 1), "eight-player top row uses the same five-seat reference width").toBe(true);
     expect(Math.abs(eight.sideAlignment.left)).toBeLessThanOrEqual(2);
     expect(Math.abs(eight.sideAlignment.right)).toBeLessThanOrEqual(2);
-    await testInfo.attach("h2-g3-f1-r3-390px-eight-player-domrects.json", {
+    assertSideSeatFrameParity(eight, "390px eight-player");
+    await testInfo.attach("h2-g3-f1-r4-390px-eight-player-domrects.json", {
       body: JSON.stringify({ board: eight.board, topSeats: eight.topSeats.map((seat) => seat.seat), topGaps: eight.topGaps, topMargins: eight.topMargins, sideAlignment: eight.sideAlignment, sideSeats: eight.seats.filter((seat) => seat.side !== "top").map((seat) => ({ id: seat.id, side: seat.side, rect: seat.seat })) }, null, 2),
       contentType: "application/json",
     });
-    await captureF1Screenshot(page, testInfo, "h2-g3-f1-r3-390px-eight-player");
+    await captureF1Screenshot(page, testInfo, "h2-g3-f1-r4-390px-eight-player");
   } finally {
     await context.close();
   }
 });
 
-test("H2-G3 F1-R3 at 440px keeps eight-player TOP5+SIDE2 and aligns outer edges", async ({ browser }, testInfo) => {
+test("H2-G3 F1-R4 at 440px keeps eight-player TOP5+SIDE2 with matching Seat frames", async ({ browser }, testInfo) => {
   const context = await browser.newContext({ viewport: { width: 440, height: 766 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   try {
@@ -308,6 +310,7 @@ test("H2-G3 F1-R3 at 440px keeps eight-player TOP5+SIDE2 and aligns outer edges"
     expect(Math.abs(result.topMargins.left - result.topMargins.right)).toBeLessThanOrEqual(4);
     expect(Math.abs(result.sideAlignment.left)).toBeLessThanOrEqual(2);
     expect(Math.abs(result.sideAlignment.right)).toBeLessThanOrEqual(2);
+    assertSideSeatFrameParity(result, "440px eight-player");
     expect(topSeats.every((seat) => Math.abs(seat.seat.width - result.topSeats[0].seat.width) <= 1)).toBe(true);
     for (let index = 1; index < topSeats.length; index += 1) expect(topSeats[index].seat.x).toBeGreaterThan(topSeats[index - 1].seat.x);
     for (const seat of result.seats) {
@@ -316,11 +319,11 @@ test("H2-G3 F1-R3 at 440px keeps eight-player TOP5+SIDE2 and aligns outer edges"
       expect(seat.switch?.hitSafe).toBe(true);
       expect(seat.seat.bottom).toBeLessThanOrEqual(result.dock.y - 6);
     }
-    await testInfo.attach("h2-g3-f1-r3-440px-eight-player-domrects.json", {
+    await testInfo.attach("h2-g3-f1-r4-440px-eight-player-domrects.json", {
       body: JSON.stringify({ board: result.board, topSeats: topSeats.map((seat) => seat.seat), topGaps: result.topGaps, topMargins: result.topMargins, sideAlignment: result.sideAlignment, sideSeats: result.seats.filter((seat) => seat.side !== "top").map((seat) => ({ id: seat.id, side: seat.side, rect: seat.seat })) }, null, 2),
       contentType: "application/json",
     });
-    await captureF1Screenshot(page, testInfo, "h2-g3-f1-r3-440px-eight-player");
+    await captureF1Screenshot(page, testInfo, "h2-g3-f1-r4-440px-eight-player");
   } finally {
     await context.close();
   }
@@ -330,8 +333,17 @@ function overlaps(left, right) {
   return left.x < right.right && left.right > right.x && left.y < right.bottom && left.bottom > right.y;
 }
 
+function assertSideSeatFrameParity(layout, label) {
+  const reference = layout.topSeats[0]?.seat;
+  expect(reference, `${label} has a top Seat reference`).toBeTruthy();
+  for (const seat of layout.seats.filter((entry) => entry.side === "left" || entry.side === "right")) {
+    expect(Math.abs(seat.seat.width - reference.width), `${label} ${seat.side} outer frame width matches top`).toBeLessThanOrEqual(1);
+    expect(Math.abs(seat.seat.height - reference.height), `${label} ${seat.side} outer frame height matches top`).toBeLessThanOrEqual(1);
+  }
+}
+
 function reportF1Geometry(label, layout) {
-  console.info(`[H2-G3 F1-R3 ${label}] ${JSON.stringify({
+  console.info(`[H2-G3 F1-R4 ${label}] ${JSON.stringify({
     board: layout.board,
     topSeats: layout.topSeats.map((seat) => seat.seat),
     topGaps: layout.topGaps,
