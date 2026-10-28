@@ -2261,39 +2261,26 @@ const getPhoneViewportSnapshot = () => typeof window !== "undefined"
   && typeof window.matchMedia === "function"
   && window.matchMedia("(max-width: 520px)").matches;
 
-export function projectSideColumnSeat(totalPlayers: number, relativeIndex: number, options: { topCapacity?: number; topFirstRing?: boolean } = {}): { side: "left" | "right" | "top"; row: number; rowCount: number; topIndex?: number; topCount?: number } | null {
+export function projectSideColumnSeat(totalPlayers: number, relativeIndex: number, options: { topCapacity?: number } = {}): { side: "left" | "right" | "top"; row: number; rowCount: number; topIndex?: number; topCount?: number } | null {
   if (!Number.isInteger(totalPlayers) || !Number.isInteger(relativeIndex) || totalPlayers < 5 || totalPlayers > 10 || relativeIndex < 1 || relativeIndex >= totalPlayers) return null;
   const opponentCount = totalPlayers - 1;
   const topCount = totalPlayers === 6 || totalPlayers === 8
     ? Math.max(0, Math.min(opponentCount - 2, Math.trunc(options.topCapacity ?? 0)))
     : 0;
-  if (topCount > 0) {
-    const sideCount = opponentCount - topCount;
-    // Keep the final relative seat (the local player's left neighbour) at the
-    // lower end of the left edge as the ring continues from top to bottom.
-    const rightCount = Math.floor(sideCount / 2);
-    const leftCount = sideCount - rightCount;
-    const sideRowCount = Math.max(rightCount, leftCount);
-    if (relativeIndex <= rightCount) {
-      return { side: "right", row: rightCount - relativeIndex + 1, rowCount: sideRowCount };
-    }
-    if (relativeIndex <= rightCount + topCount) {
-      return { side: "top", row: 0, rowCount: 0, topIndex: relativeIndex - rightCount - 1, topCount };
-    }
-    return { side: "left", row: relativeIndex - rightCount - topCount, rowCount: sideRowCount };
+  const sideCount = opponentCount - topCount;
+  const leftCount = Math.floor(sideCount / 2);
+  const rightCount = Math.ceil(sideCount / 2);
+  const rowCount = rightCount;
+
+  // Walk the visual ring from the local viewer: left-bottom upward, across
+  // the top from left to right, then down the right edge toward the viewer.
+  if (relativeIndex <= leftCount) {
+    return { side: "left", row: rowCount - relativeIndex + 1, rowCount };
   }
-  const rightCount = Math.ceil(opponentCount / 2);
-  const leftCount = opponentCount - rightCount;
-  if (relativeIndex <= rightCount) {
-    return { side: "right", row: rightCount - relativeIndex + 1, rowCount: rightCount };
+  if (relativeIndex <= leftCount + topCount) {
+    return { side: "top", row: 0, rowCount: 0, topIndex: relativeIndex - leftCount - 1, topCount };
   }
-  // Preserve ST5-1 and use the same clockwise left-edge order for the
-  // corrected six/eight-player ring: the first left Seat is highest, and the
-  // final seat remains the viewer's true left-side neighbour.
-  const row = totalPlayers === 5 || options.topFirstRing && (totalPlayers === 6 || totalPlayers === 8)
-    ? relativeIndex - rightCount
-    : leftCount - (relativeIndex - rightCount) + 1;
-  return { side: "left", row, rowCount: rightCount };
+  return { side: "right", row: relativeIndex - leftCount - topCount, rowCount };
 }
 
 function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
@@ -2311,10 +2298,9 @@ function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
 function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, mobileSeatRing, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, showSeparateInspectAffordance, targetAttemptEnabled, targetAttemptDescription, isInspected, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
   const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex, {
     topCapacity: mobileSeatRing.enabled ? mobileSeatRing.topCapacity : 0,
-    topFirstRing: mobileSeatRing.enabled,
   });
   const topSeatOffset = sideColumnSeat?.side === "top"
-    ? ((sideColumnSeat.topCount ?? 0) - 1) / 2 - (sideColumnSeat.topIndex ?? 0)
+    ? (sideColumnSeat.topIndex ?? 0) - ((sideColumnSeat.topCount ?? 0) - 1) / 2
     : 0;
   const seatPlacementStyle: CSSProperties | undefined = sideColumnSeat
     ? sideColumnSeat.side === "top"

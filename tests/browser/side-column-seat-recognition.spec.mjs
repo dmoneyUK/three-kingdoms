@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
+import * as ts from "typescript";
 
 const VIEWPORTS = [320, 390, 480, 610, 620, 650];
 const PLAYER_COUNTS = [6, 10];
@@ -129,14 +132,91 @@ const FIVE_PLAYER_PHONE_VIEWPORTS = [
 
 function expectFivePlayerRelativeMapping(seats) {
   const expected = new Map([
-    [1, { side: "right", row: 2 }],
-    [2, { side: "right", row: 1 }],
-    [3, { side: "left", row: 1 }],
-    [4, { side: "left", row: 2 }],
+    [1, { side: "left", row: 2 }],
+    [2, { side: "left", row: 1 }],
+    [3, { side: "right", row: 1 }],
+    [4, { side: "right", row: 2 }],
   ]);
   for (const seat of seats) expect({ side: seat.side, row: seat.row }).toEqual(expected.get(seat.relativeIndex));
   expect(new Set(seats.map((seat) => `${seat.side}:${seat.row}`)).size).toBe(4);
 }
+
+function loadSeatProjector() {
+  const source = readFileSync(new URL("../../app/page.tsx", import.meta.url), "utf8");
+  const sourceFile = ts.createSourceFile("app/page.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const declaration = sourceFile.statements.find((statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "projectSideColumnSeat");
+  expect(declaration, "the app exports the production seat projection function").toBeTruthy();
+  const implementation = source.slice(declaration.getStart(sourceFile), declaration.end).replace(/^export\s+/, "");
+  const compiled = ts.transpileModule(implementation, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
+  }).outputText;
+  const sandbox = {};
+  runInNewContext(compiled, sandbox);
+  return sandbox.projectSideColumnSeat;
+}
+
+test("ST-RING-DIR-1 projection contract uses the unified clockwise ring", () => {
+  const project = loadSeatProjector();
+  const cases = [
+    { players: 5, topCapacity: 0, expected: ["L2", "L1", "R1", "R2"] },
+    { players: 6, topCapacity: 0, expected: ["L3", "L2", "R1", "R2", "R3"] },
+    { players: 6, topCapacity: 1, expected: ["L2", "L1", "T1", "R1", "R2"] },
+    { players: 6, topCapacity: 3, expected: ["L1", "T1", "T2", "T3", "R1"] },
+    { players: 7, topCapacity: 0, expected: ["L3", "L2", "L1", "R1", "R2", "R3"] },
+    { players: 8, topCapacity: 0, expected: ["L4", "L3", "L2", "R1", "R2", "R3", "R4"] },
+    { players: 8, topCapacity: 2, expected: ["L3", "L2", "T1", "T2", "R1", "R2", "R3"] },
+    { players: 8, topCapacity: 5, expected: ["L1", "T1", "T2", "T3", "T4", "T5", "R1"] },
+    { players: 9, topCapacity: 0, expected: ["L4", "L3", "L2", "L1", "R1", "R2", "R3", "R4"] },
+    { players: 10, topCapacity: 0, expected: ["L5", "L4", "L3", "L2", "R1", "R2", "R3", "R4", "R5"] },
+  ];
+
+  for (const { players, topCapacity, expected } of cases) {
+    const seats = Array.from({ length: players - 1 }, (_, index) => ({
+      relativeIndex: index + 1,
+      ...project(players, index + 1, { topCapacity }),
+    }));
+    const physicalOrder = [
+      ...seats.filter((seat) => seat.side === "left").sort((a, b) => b.row - a.row),
+      ...seats.filter((seat) => seat.side === "top").sort((a, b) => a.topIndex - b.topIndex),
+      ...seats.filter((seat) => seat.side === "right").sort((a, b) => a.row - b.row),
+    ].map((seat) => seat.relativeIndex);
+    const labels = seats.map((seat) => seat.side === "top" ? `T${seat.topIndex + 1}` : `${seat.side === "left" ? "L" : "R"}${seat.row}`);
+    expect(labels, `${players} players / top capacity ${topCapacity}`).toEqual(expected);
+    expect(new Set(seats.map((seat) => seat.side === "top" ? `top:${seat.topIndex}` : `${seat.side}:${seat.row}`)).size).toBe(players - 1);
+    expect(physicalOrder).toEqual(Array.from({ length: players - 1 }, (_, index) => index + 1));
+  }
+
+  expect([1, 2, 3].map((relativeIndex) => project(4, relativeIndex))).toEqual([null, null, null]);
+});
+
+test("ST-RING-DIR-1 TEST SWITCH rebases the phone ring to the new viewer", async ({ page }) => {
+  await loadFixture(page, { width: 390, height: 844, count: 5, state: "rest", playerNamePrefix: "Test Player" });
+  await page.getByTestId("test-view-switch-p3").click();
+  await expect(page.locator(".local-player-dock")).toHaveAttribute("data-player-anchor", "p3");
+
+  const result = await readLayout(page);
+  expect(result.localPlayerId).toBe("p3");
+  expect(result.seats).toHaveLength(4);
+  expect(new Set(result.seats.map((seat) => seat.id)).size).toBe(4);
+  expectFivePlayerRelativeMapping(result.seats);
+  const roomPlayers = await page.evaluate(() => window.__browserRoom.players);
+  const ring = [...roomPlayers].sort((left, right) => left.seat - right.seat).map((player) => player.id);
+  const viewerIndex = ring.indexOf("p3");
+  for (const seat of result.seats) {
+    expect(seat.relativeIndex).toBe((ring.indexOf(seat.id) - viewerIndex + ring.length) % ring.length);
+  }
+
+  await loadFixture(page, { width: 390, height: 844, count: 8, state: "rest", playerNamePrefix: "Test Player" });
+  const eightPlayerLayout = await readLayout(page);
+  const topSeats = eightPlayerLayout.seats.filter((seat) => seat.side === "top").sort((left, right) => left.topIndex - right.topIndex);
+  expect(eightPlayerLayout.topCapacity).toBe(5);
+  expect(topSeats.map((seat) => seat.relativeIndex)).toEqual([2, 3, 4, 5, 6]);
+  expect(eightPlayerLayout.seats.find((seat) => seat.relativeIndex === 1)).toMatchObject({ side: "left", row: 1 });
+  expect(eightPlayerLayout.seats.find((seat) => seat.relativeIndex === 7)).toMatchObject({ side: "right", row: 1 });
+  for (let index = 1; index < topSeats.length; index += 1) {
+    expect(topSeats[index].seat.x).toBeGreaterThan(topSeats[index - 1].seat.x);
+  }
+});
 
 for (const viewport of FIVE_PLAYER_PHONE_VIEWPORTS) {
   test(`ST5-1 five-player opponent rows are compact at ${viewport.width}x${viewport.height}`, async ({ browser }, testInfo) => {
