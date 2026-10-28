@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef } from "react";
 import type { PublicActivityStatus } from "../game/public-activity";
+import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 
 const SAFE_OBSTACLES = [
   ".opponent-player-card[data-player-anchor]",
@@ -29,10 +30,27 @@ const SAFE_OBSTACLES = [
   ".victory-banner",
   ".table-resolution-layer .played-card",
   "[data-public-frame]",
+  ".local-player-dock",
+  ".local-hand-rail",
+  ".local-hand",
+  ".console-guidance",
+  "[data-public-activity-hit-target='true']",
 ].join(",");
+const EXTERNAL_ACTION_OBSTACLES = ".local-player-dock, .local-hand-rail, .local-hand, .console-guidance, [data-public-activity-hit-target='true']";
 
 type Rect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
-type ProtectedRect = Rect & { sources: string[] };
+type ProtectedRect = Rect & { sources: string[]; ids: string[] };
+type PlacementMemory = {
+  inputKey: string;
+  reuseKey: string;
+  geometryEpoch: number;
+  rect: Rect | null;
+  visible: boolean;
+  layout: string;
+  reason: string;
+  traceCount: number;
+  lastTraceSignature: string;
+};
 
 const COLLISION_GAP = 6;
 const ACTIVITY_CHIP_GAP = 2;
@@ -66,15 +84,18 @@ function protectedRects(table: HTMLElement): ProtectedRect[] {
     };
     const rounded = (value: number) => Math.round(value * 2) / 2;
     const key = [normalized.left, normalized.top, normalized.right, normalized.bottom].map(rounded).join(":");
+    const id = `${source}@${key}`;
     const existing = rectsByGeometry.get(key);
     if (existing) {
       if (!existing.sources.includes(source)) existing.sources.push(source);
+      if (!existing.ids.includes(id)) existing.ids.push(id);
       return;
     }
-    rectsByGeometry.set(key, { ...normalized, sources: [source] });
+    rectsByGeometry.set(key, { ...normalized, sources: [source], ids: [id] });
   };
   for (const element of elements) {
-    if (table.contains(element) === false && element.closest(".play-table") !== table) continue;
+    const insideTable = table.contains(element) || element.closest(".play-table") === table;
+    if (!insideTable && !element.matches(EXTERNAL_ACTION_OBSTACLES)) continue;
     const rect = visibleRect(element);
     if (rect && rect.right > tableRect.left && rect.left < tableRect.right
       && rect.bottom > tableRect.top && rect.top < tableRect.bottom) {
@@ -148,7 +169,37 @@ function placeNearPlayerSeat(chip: HTMLElement, table: HTMLElement, playerId: st
   return false;
 }
 
-function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: boolean, anchorPlayerId?: string, allowUpperSafeBand = false): void {
+function rectSummary(rect: Rect | DOMRect | null | undefined): Rect | null {
+  if (!rect) return null;
+  const round = (value: number) => Math.round(value * 10) / 10;
+  return {
+    left: round(rect.left),
+    top: round(rect.top),
+    right: round(rect.right),
+    bottom: round(rect.bottom),
+    width: round(rect.width),
+    height: round(rect.height),
+  };
+}
+
+function sameRect(left: Rect | null, right: Rect | null): boolean {
+  if (!left || !right) return left === right;
+  return [left.left - right.left, left.top - right.top, left.right - right.right, left.bottom - right.bottom]
+    .every((difference) => Math.abs(difference) <= 0.5);
+}
+
+function placeChip(
+  chip: HTMLElement,
+  table: HTMLElement,
+  harvestPoolReadOnly: boolean,
+  anchorPlayerId: string | undefined,
+  allowUpperSafeBand: boolean,
+  statusKind: PublicActivityStatus["kind"],
+  statusStage: string | undefined,
+  viewerId: string,
+  seatLayoutKey: string,
+  previousMemory: PlacementMemory | null,
+): PlacementMemory {
   const tableRect = table.getBoundingClientRect();
   const width = chip.offsetWidth;
   const height = chip.offsetHeight;
@@ -161,20 +212,131 @@ function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: b
   const bottom = Math.min(tableRect.bottom - 8, viewportBottom - 8);
   const firstTop = bottom - height;
   const obstacles = protectedRects(table);
-  const trace = new URLSearchParams(window.location.search).get("publicActivityChipDiagnostics") === "1"
+  const candidateRegion = {
+    left: leftBound,
+    top: lowerBandTop,
+    right: rightBound,
+    bottom,
+    width: Math.max(0, rightBound - leftBound),
+    height: Math.max(0, bottom - lowerBandTop),
+  };
+  const relevantObstacles = allowUpperSafeBand || anchorPlayerId || harvestPoolReadOnly
+    ? obstacles
+    : obstacles.filter((obstacle) => intersects(obstacle, candidateRegion, ACTIVITY_CHIP_GAP));
+  const placementContext = {
+    table: rectSummary(tableRect),
+    viewport: { width: window.innerWidth, height: window.innerHeight, top: viewportTop, bottom: viewportBottom },
+    chip: { width, height },
+    statusKind,
+    statusStage: statusStage ?? null,
+    anchorPlayerId: anchorPlayerId ?? null,
+    harvestPoolReadOnly,
+    allowUpperSafeBand,
+    viewerId,
+    seatLayoutKey,
+  };
+  const obstacleSignature = relevantObstacles.map(({ left, top, right, bottom: obstacleBottom, ids }) => ({
+      rect: [left, top, right, obstacleBottom].map((value) => Math.round(value * 2) / 2),
+      ids: [...ids].sort(),
+    })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  const inputKey = JSON.stringify({ ...placementContext, obstacles: obstacleSignature });
+  const preferredCenter = tableRect.left + tableRect.width / 2;
+  const centeredCandidate = width > 0 && height > 0
+    ? {
+      left: preferredCenter - width / 2,
+      top: firstTop,
+      right: preferredCenter + width / 2,
+      bottom: firstTop + height,
+      width,
+      height,
+    }
+    : null;
+  const centerCollisionIds = centeredCandidate
+    ? obstacles.filter((obstacle) => intersects(centeredCandidate, obstacle, ACTIVITY_CHIP_GAP)).flatMap(({ ids }) => ids).sort()
+    : [];
+  const previousPlacementCollisionIds = previousMemory?.rect
+    ? obstacles.filter((obstacle) => intersects(previousMemory.rect!, obstacle, ACTIVITY_CHIP_GAP)).flatMap(({ ids }) => ids).sort()
+    : [];
+  const reuseKey = JSON.stringify({ placementContext, centerCollisionIds, previousPlacementCollisionIds });
+  const geometryEpoch = !previousMemory ? 1
+    : previousMemory.reuseKey === reuseKey ? previousMemory.geometryEpoch : previousMemory.geometryEpoch + 1;
+  const diagnosticsEnabled = new URLSearchParams(window.location.search).get("publicActivityChipDiagnostics") === "1";
+  const traceEnabled = diagnosticsEnabled || isAttackDodgeUxTraceActive();
+  const trace = traceEnabled
     ? {
       measuredAt: performance.now(),
-      table: { left: tableRect.left, top: tableRect.top, right: tableRect.right, bottom: tableRect.bottom, width: tableRect.width, height: tableRect.height },
+      table: rectSummary(tableRect),
       chip: { width, height },
       activityChipGap: ACTIVITY_CHIP_GAP,
       safeBounds: { left: leftBound, right: rightBound, lowerBandTop, bottom },
-      obstacles: obstacles.map(({ sources, ...rect }) => ({ ...rect, sources })),
+      obstacles: obstacles.slice(0, 64).map(({ sources, ids, ...rect }) => ({ ...rect, sources, ids })),
       candidates: [] as Array<Record<string, unknown>>,
     }
     : null;
-  const finishTrace = (outcome: string, chosen?: Record<string, unknown>) => {
-    if (trace) console.info("[U13-B-G activity-chip placement]", { ...trace, outcome, chosen });
+  const finishTrace = (outcome: string, chosen?: Record<string, unknown>, reason = outcome): PlacementMemory => {
+    const visible = Boolean(visibleRect(chip));
+    const chosenRect = rectSummary(visibleRect(chip));
+    const chosenCollisionIds = chosenRect
+      ? obstacles.filter((obstacle) => intersects(chosenRect, obstacle, ACTIVITY_CHIP_GAP)).flatMap(({ ids }) => ids).sort()
+      : [];
+    const reused = outcome === "reused" || outcome === "reused:hidden";
+    const decision = reused ? "reuse" : visible ? "reflow" : "hide";
+    let nextMemory: PlacementMemory = {
+      inputKey,
+      reuseKey,
+      geometryEpoch,
+      rect: chosenRect,
+      visible,
+      layout: chip.dataset.publicActivityLayout ?? (visible ? "placed" : "hidden"),
+      reason,
+      traceCount: previousMemory?.traceCount ?? 0,
+      lastTraceSignature: previousMemory?.lastTraceSignature ?? "",
+    };
+    if (trace) {
+      const data = {
+        ...trace,
+        outcome,
+        chosen,
+        statusKind,
+        decision,
+        placementReason: reason,
+        geometryEpoch,
+        previousRect: previousMemory?.rect ?? null,
+        centeredCandidateRect: rectSummary(centeredCandidate),
+        chosenRect,
+        actualObstacleIds: obstacles.flatMap((obstacle) => obstacle.ids.filter((id) => id.startsWith("actual:"))).sort().slice(0, 64),
+        projectedObstacleIds: obstacles.flatMap((obstacle) => obstacle.ids.filter((id) => id.startsWith("projected-final:"))).sort().slice(0, 64),
+        centerCollisionIds: centeredCandidate
+          ? obstacles.filter((obstacle) => intersects(centeredCandidate, obstacle, ACTIVITY_CHIP_GAP)).flatMap(({ ids }) => ids).sort()
+          : [],
+        chosenCollisionIds,
+        rejectedCandidates: trace.candidates.filter((candidate) => candidate.accepted === false).slice(0, 20),
+        visibility: visible ? "visible" : "hidden",
+      };
+      const signature = JSON.stringify({ ...data, measuredAt: 0 });
+      const withinTraceLimit = nextMemory.traceCount < 32;
+      if (withinTraceLimit && signature !== nextMemory.lastTraceSignature) {
+        if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("public-activity-chip-placement", data);
+        if (diagnosticsEnabled) console.info("[U13-B-G activity-chip placement]", data);
+        nextMemory = { ...nextMemory, traceCount: nextMemory.traceCount + 1, lastTraceSignature: signature };
+      }
+    }
+    return nextMemory;
   };
+
+  const currentRect = rectSummary(visibleRect(chip));
+  const currentMinTop = allowUpperSafeBand || anchorPlayerId || harvestPoolReadOnly ? tableRect.top + 4 : lowerBandTop;
+  const currentIsSafe = currentRect && currentRect.left >= leftBound && currentRect.right <= rightBound
+    && currentRect.top >= currentMinTop && currentRect.bottom <= bottom
+    && !obstacles.some((obstacle) => intersects(currentRect, obstacle, ACTIVITY_CHIP_GAP));
+  if (previousMemory?.reuseKey === reuseKey) {
+    if (previousMemory.visible && currentIsSafe && sameRect(previousMemory.rect, currentRect)) {
+      return finishTrace("reused", { rect: currentRect, horizontalOffset: Math.round((currentRect.left + currentRect.width / 2 - preferredCenter) * 10) / 10 }, "same-inputs-still-safe");
+    }
+    if (!previousMemory.visible && !currentRect && chip.style.visibility === "hidden") {
+      return finishTrace("reused:hidden", undefined, "same-inputs-still-no-safe-location");
+    }
+  }
 
   if (harvestPoolReadOnly) {
     const root = table.querySelector<HTMLElement>("[data-harvest-root-parked='true']");
@@ -201,25 +363,24 @@ function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: b
       chip.style.top = `${candidate.top - tableRect.top}px`;
       chip.style.visibility = "visible";
       chip.dataset.publicActivityLayout = "harvest-root-rail";
-      finishTrace("placed:harvest-root-rail", {
+      return finishTrace("placed:harvest-root-rail", {
         rect: candidate,
         root: { left: rootRect.left, top: rootRect.top, right: rootRect.right, bottom: rootRect.bottom },
         timer: timerRect ? { left: timerRect.left, top: timerRect.top, right: timerRect.right, bottom: timerRect.bottom } : null,
-      });
-      return;
+      }, "safe-harvest-root-rail");
     }
   }
 
-  if (anchorPlayerId && placeNearPlayerSeat(chip, table, anchorPlayerId)) return;
+  if (anchorPlayerId && placeNearPlayerSeat(chip, table, anchorPlayerId)) {
+    return finishTrace("placed:target-seat-adjacent", { rect: rectSummary(visibleRect(chip)) }, "safe-target-seat-anchor");
+  }
 
   if (width <= 0 || height <= 0 || rightBound - leftBound < width || firstTop < lowerBandTop) {
     chip.style.visibility = "hidden";
     chip.dataset.publicActivityLayout = "hidden";
-    finishTrace("hidden:insufficient-safe-area");
-    return;
+    return finishTrace("hidden:insufficient-safe-area", undefined, "safe-area-too-small");
   }
 
-  const preferredCenter = tableRect.left + tableRect.width / 2;
   const regularVerticalSteps = [0, height + 8, (height + 8) * 2];
   const obstacleEdgeTops = obstacles.flatMap((obstacle) => [
     obstacle.top - height - ACTIVITY_CHIP_GAP - CANDIDATE_EPSILON,
@@ -283,21 +444,23 @@ function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: b
       horizontalOffset,
       rect: candidate,
       accepted: collisions.length === 0,
-      rejectedBy: collisions.map(({ sources, ...rect }) => ({ ...rect, sources })),
+      collisionIds: collisions.flatMap(({ ids }) => ids).sort(),
+      rejectedBy: collisions.map(({ sources, ids, ...rect }) => ({ ...rect, sources, ids })),
     };
-    trace?.candidates.push(candidateRecord);
+    if (trace && trace.candidates.length < 64) trace.candidates.push(candidateRecord);
     if (collisions.length > 0) continue;
     chip.style.left = `${candidate.left - tableRect.left}px`;
     chip.style.top = `${candidate.top - tableRect.top}px`;
     chip.style.visibility = "visible";
     chip.dataset.publicActivityLayout = `${verticalStep === 0 ? "bottom" : "lower-band"}-${horizontalOffset === 0 ? "center" : horizontalOffset < 0 ? "left" : "right"}`;
-    finishTrace("placed", candidateRecord);
-    return;
+    return finishTrace("placed", candidateRecord, verticalStep === 0 && horizontalOffset === 0
+      ? "centered-slot-safe"
+      : "center-blocked-minimal-translation-safe");
   }
 
   chip.style.visibility = "hidden";
   chip.dataset.publicActivityLayout = "hidden";
-  finishTrace("hidden:no-safe-candidate");
+  return finishTrace("hidden:no-safe-candidate", undefined, "no-collision-free-candidate");
 }
 
 export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoolReadOnly = false }: {
@@ -307,6 +470,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
   harvestPoolReadOnly?: boolean;
 }) {
   const chipRef = useRef<HTMLDivElement>(null);
+  const placementMemoryRef = useRef<PlacementMemory | null>(null);
 
   useLayoutEffect(() => {
     const chip = chipRef.current;
@@ -315,13 +479,20 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
     let frame = 0;
     const schedule = () => {
       window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => placeChip(
-        chip,
-        table,
-        harvestPoolReadOnly,
-        status.anchorPlayerId,
-        status.kind === "target-card-choice",
-      ));
+      frame = window.requestAnimationFrame(() => {
+        placementMemoryRef.current = placeChip(
+          chip,
+          table,
+          harvestPoolReadOnly,
+          status.anchorPlayerId,
+          status.kind === "target-card-choice",
+          status.kind,
+          status.stage,
+          viewerId,
+          seatLayoutKey,
+          placementMemoryRef.current,
+        );
+      });
     };
     const relevantMutation = (node: Node): boolean => {
       const element = node instanceof HTMLElement ? node : node.parentElement;
@@ -338,7 +509,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
         return [...record.addedNodes, ...record.removedNodes].some(relevantMutation);
       })) schedule();
     });
-    mutationObserver.observe(table, {
+    const mutationObserverOptions: MutationObserverInit = {
       subtree: true,
       childList: true,
       attributes: true,
@@ -352,8 +523,12 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
         "data-public-card-journey-target-left",
         "data-public-card-journey-target-top",
         "data-public-card-layout-pending",
+        "data-public-activity-hit-target",
       ],
-    });
+    };
+    mutationObserver.observe(table, mutationObserverOptions);
+    const externalObstacles = [...document.querySelectorAll<HTMLElement>(EXTERNAL_ACTION_OBSTACLES)];
+    for (const obstacle of externalObstacles) mutationObserver.observe(obstacle, mutationObserverOptions);
     const harvestStage = table.querySelector<HTMLElement>(".harvest-choice-stage");
     const harvestPanel = harvestStage?.querySelector<HTMLElement>(".harvest-choice-panel");
     const harvestLayoutObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
@@ -362,6 +537,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
     const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
     resizeObserver?.observe(table);
     resizeObserver?.observe(chip);
+    for (const obstacle of externalObstacles) resizeObserver?.observe(obstacle);
     if (harvestPanel) resizeObserver?.observe(harvestPanel);
     window.addEventListener("resize", schedule);
     window.visualViewport?.addEventListener("resize", schedule);
@@ -375,7 +551,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
       window.removeEventListener("resize", schedule);
       window.visualViewport?.removeEventListener("resize", schedule);
     };
-  }, [harvestPoolReadOnly, status.anchorPlayerId, status.kind, status.text, viewerId, seatLayoutKey]);
+  }, [harvestPoolReadOnly, status.anchorPlayerId, status.kind, status.stage, status.text, viewerId, seatLayoutKey]);
 
   return <div
     ref={chipRef}

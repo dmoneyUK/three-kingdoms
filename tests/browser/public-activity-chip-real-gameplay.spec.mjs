@@ -258,6 +258,16 @@ test("U13-B-G keeps the activity plaque near center through parked Duel Attack h
     await openPlayer(page, room, 1, { width: 440, height: 766 }, true);
     await openPlayer(observerPage, room, 3, { width: 440, height: 766 });
 
+    const beforeBenignMutation = await geometry(page);
+    assertGeometry(beforeBenignMutation);
+    await page.locator(".play-table").evaluate((table) => table.classList.add("u13bg-neutral-layout-probe"));
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const afterBenignMutation = await geometry(page);
+    assertGeometry(afterBenignMutation);
+    expect(Math.abs(afterBenignMutation.chip.left - beforeBenignMutation.chip.left)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(afterBenignMutation.chip.top - beforeBenignMutation.chip.top)).toBeLessThanOrEqual(0.5);
+    await page.locator(".play-table").evaluate((table) => table.classList.remove("u13bg-neutral-layout-probe"));
+
     const declared = await action(request, room, 0, "play_card", {
       cardId: "u13bg-duel-root",
       targetId: localViewer.id,
@@ -324,6 +334,16 @@ test("U13-B-G keeps the activity plaque near center through parked Duel Attack h
     const matchingTrace = [...placementTraces].reverse().find((trace) => trace.outcome === "placed"
       && trace.obstacles.some(({ sources }) => sources.some((source) => source.startsWith("projected-final:") && source.includes("public-card-journey-card"))));
     expect(matchingTrace, `expected an opt-in candidate trace for the real Duel journey; captured ${JSON.stringify(placementTraces)}`).toBeTruthy();
+    expect(matchingTrace).toMatchObject({ decision: "reflow", visibility: "visible" });
+    expect(matchingTrace.geometryEpoch).toBeGreaterThan(0);
+    expect(matchingTrace.placementReason).toBe("center-blocked-minimal-translation-safe");
+    expect(matchingTrace.centeredCandidateRect).toBeTruthy();
+    expect(matchingTrace.chosenRect).toBeTruthy();
+    expect(matchingTrace.actualObstacleIds).toEqual(expect.any(Array));
+    expect(matchingTrace.projectedObstacleIds.some((id) => id.includes("public-card-journey-card"))).toBe(true);
+    expect(matchingTrace.rejectedCandidates.length).toBeGreaterThan(0);
+    expect(matchingTrace).not.toHaveProperty("statusText");
+    expect(matchingTrace).not.toHaveProperty("privateHand");
     const rejectedCenter = matchingTrace.candidates.find((candidate) => Math.abs(candidate.horizontalOffset) < 0.1);
     expect(rejectedCenter?.accepted).toBe(false);
     expect(rejectedCenter?.rejectedBy.some(({ sources }) => sources.some((source) => source.includes("public-card-journey-card")))).toBe(true);
