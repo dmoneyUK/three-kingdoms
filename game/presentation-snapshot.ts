@@ -1577,7 +1577,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
   } : null;
   const semantic = projectPublicPresentationSemantics({
     identity: semanticIdentity,
-    events: authority ? input.presentationV2.publicEventFacts.map((fact) => ({ ...fact, identity: semanticIdentity })) : [],
+    events: authority ? (input.presentationV2.publicEventFacts ?? []).map((fact) => ({ ...fact, identity: semanticIdentity })) : [],
     nextDecision: authority && (authority.stable.kind === "CHOICE" || authority.stable.kind === "SPECIAL")
       ? input.publicNextDecision : null,
     viewerNegationChoice: input.viewerNegationChoice,
