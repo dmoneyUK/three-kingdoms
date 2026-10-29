@@ -1,5 +1,6 @@
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
+import { collectPublicPresentationEventFacts, type PublicPresentationEventFactDraft } from "./presentation-semantics";
 import { CARD_DEFINITIONS } from "./cards";
 import { CARD_KINDS, type Card, type CardKind } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestNegationResponseRecord, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type NegationHistoryRecord } from "./pending";
@@ -8,6 +9,8 @@ const LUST_DUEL_SETTLEMENT_PROJECTION_RETENTION_MS = 8_000;
 
 export type PresentationV2Event = {
   id: string;
+  /** Source append order in the retained room log; id remains the durable identity. */
+  appendOrder?: number;
   type: "message" | "card" | "cards" | string;
   player?: string;
   target?: string;
@@ -41,6 +44,7 @@ export type PresentationV2Event = {
   /** Legacy persisted Raining Arrows metadata; normalized into groupSettlement. */
   publicRainingArrowsSettlement?: unknown;
   bumperHarvestRoot?: { semantics?: unknown; sourceId?: unknown; cardId?: unknown; interactionId?: unknown; rootFrameId?: unknown };
+  publicFact?: PublicPresentationEventFactDraft;
 };
 
 export type PresentationPublicCardEffectId =
@@ -318,6 +322,8 @@ export type PresentationV2Input = {
   currentAction: Pick<CurrentAction, "kind" | "actorId" | "reason" | "deadline" | "declineAction" | "presentation"> | null;
   actionRevision: string;
   timeline: readonly PresentationV2Event[];
+  /** Viewer-independent public events from the same persisted log append stream. */
+  publicTimeline?: readonly PresentationV2Event[];
   /** Engine-derived public Oath recipients; never reconstructed from client state. */
   oathRecipientIds?: readonly string[] | null;
   /** The parsed server-owned causal envelope; never reconstructed by this projector. */
@@ -890,6 +896,7 @@ export type PresentationV2 = {
   decision: { kind: CurrentAction["kind"] | null; actorId: string | null; actionRevision: string; resolutionId: string | null; readyAfterEventId: string | null; deadline: number } | null;
   settlement: { eventId: string; resolutionId: string | null } | null;
   transitionEvents: readonly { eventId: string; type: string; resolutionId: string | null }[];
+  publicEventFacts: readonly PublicPresentationEventFactDraft[];
   stableBoundary: PresentationStableBoundary;
 };
 
@@ -3973,6 +3980,17 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const groupCardKind = group ? firstString(group.cardKind, group.kind === "group" ? "group" : null) : null;
   const groupValues = groupProjectionValues(envelope, input.pending, group);
   const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
+  const factIdentity = interactionScene?.semantics === "PROVEN" && interactionScene.interactionId && interactionScene.rootFrameId
+    && interactionScene.checkpointId && Number.isSafeInteger(interactionScene.presentationRevision)
+    ? { interactionId: interactionScene.interactionId, rootFrameId: interactionScene.rootFrameId,
+      checkpointId: interactionScene.checkpointId, presentationRevision: interactionScene.presentationRevision }
+    : null;
+  const publicEventFacts = factIdentity ? collectPublicPresentationEventFacts({
+    timeline: input.publicTimeline ?? input.timeline,
+    identity: factIdentity,
+    frames: envelope?.frames ?? [],
+    rootEventId: rootEvent?.id ?? null,
+  }) : [];
   const rootAction = attackRootProjectionEvaluationFor(input).rootAction
     ?? singleTargetTargetCardRootActionFor(envelope, interactionScene, input.pending, input.timeline, "Dismantle")
     ?? singleTargetTargetCardRootActionFor(envelope, interactionScene, input.pending, input.timeline, "Steal");
@@ -4047,6 +4065,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     decision: input.currentAction ? { kind: input.currentAction.kind, actorId: isBumperHarvestNegationPending(input.pending) ? null : input.currentAction.actorId, actionRevision: input.actionRevision, resolutionId: input.currentAction.presentation?.resolutionId ?? null, readyAfterEventId: barrierId, deadline: input.currentAction.deadline } : null,
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,
     transitionEvents: input.timeline.filter((event) => event.presentation !== false && relevantIds.includes(event.id)).map((event) => ({ eventId: event.id, type: event.type, resolutionId: event.resolutionId ?? null })),
+    publicEventFacts,
     stableBoundary: stableBoundaryFor(interactionScene, input.pending, projectedBumperHarvestProgress),
   };
 }

@@ -27,6 +27,7 @@ import { resolveDamageModifiers, type DamageCause } from "../../../game/capabili
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
 import { attackRootProjectionDiagnosticsFor, projectPresentationV2, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
+import type { PublicPresentationDecision, PublicPresentationEventFactDraft, ViewerNegationChoice } from "../../../game/presentation-semantics";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
 import { childCausalFrame, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
@@ -36,7 +37,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; actorId?: string; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; actorId?: string; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicFact?: PublicPresentationEventFactDraft; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type AttackDodgeProofDiagnostic = {
   result: "PROVEN" | "REJECTED" | "NOT_ATTEMPTED";
   reason: string;
@@ -721,7 +722,95 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
+}
+function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "amount" | "effect">> = {}): PublicPresentationEventFactDraft | undefined {
+  if (!causal?.interactionId || !causal.frameId) return undefined;
+  return {
+    semantics: "PROVEN", visibility: "PUBLIC", interactionId: causal.interactionId,
+    frameId: causal.frameId, ...(causal.parentFrameId ? { parentFrameId: causal.parentFrameId } : {}),
+    category, ...fields,
+  };
+}
+function publicTriggerFactFor(trigger: TriggerPending, players: PlayerRow[], effectId: string, outcome: { kind: string }): PublicPresentationEventFactDraft | undefined {
+  const context = triggerContextFor(trigger, players);
+  if (!context || triggerAvailability(effectId, context) !== "public") return undefined;
+  const continuation = trigger.continuation as unknown as Record<string, unknown>;
+  const rootEventId = typeof continuation.rootEventId === "string" ? continuation.rootEventId : undefined;
+  const actorId = triggerActorId(effectId, context) ?? trigger.actorId;
+  return publicFactFor(trigger.causal, "SKILL_USED", {
+    actorId, ...(rootEventId ? { rootEventId } : {}), effect: { kind: outcome.kind },
+  });
+}
+function genericStageLabel(stage: string) {
+  return stage.toLowerCase().split("_").map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part).join(" ");
+}
+function publicNextDecisionFor(presentation: PresentationV2, pending: Pending | null, triggerContext: ReturnType<typeof triggerContextFor>, triggerOptions: ReturnType<typeof triggerOptionsFor>): PublicPresentationDecision | null {
+  const scene = presentation.interactionScene;
+  const stable = presentation.stableBoundary;
+  if (scene?.semantics !== "PROVEN" || !scene.interactionId || !scene.rootFrameId || !scene.checkpointId
+    || !scene.stage || typeof scene.presentationRevision !== "number"
+    || !Number.isSafeInteger(scene.presentationRevision)
+    || stable.interactionId !== scene.interactionId || stable.checkpointId !== scene.checkpointId
+    || stable.presentationRevision !== scene.presentationRevision) return null;
+  const identity = {
+    interactionId: scene.interactionId, rootFrameId: scene.rootFrameId,
+    checkpointId: scene.checkpointId, presentationRevision: scene.presentationRevision,
+  };
+  const trigger = asTriggerPending(pending);
+  const negation = pending?.kind === "negation_window" ? pending.continuation
+    : pending?.kind === "response" && pending.continuation.kind === "negation" ? pending.continuation : null;
+  const negationDecision = scene.stage === "NEGATION" && Boolean(negation);
+  const triggerDecision = Boolean(trigger && triggerContext
+    && trigger.causal?.interactionId === scene.interactionId
+    && trigger.causal.frameId === scene.activeFrameId);
+  const choiceBoundary = stable.kind === "CHOICE"
+    && Boolean(scene.decisionActorId)
+    && stable.decisionActorId === scene.decisionActorId;
+  const specialDecision = stable.kind === "SPECIAL" && stable.decisionActorId === null
+    && (negationDecision || triggerDecision);
+  if (!choiceBoundary && !specialDecision) return null;
+
+  let actorIds: string[] = [];
+  let actionLabels: string[] = [];
+  let stageLabel = genericStageLabel(scene.stage);
+  let nextEffect: PublicPresentationDecision["nextEffect"];
+  let visibility: PublicPresentationDecision["visibility"] = "PUBLIC";
+  let responseWindowOpen: boolean | null = Boolean(pending);
+  if (negationDecision && negation) {
+    stageLabel = "Negation";
+    actionLabels = ["Negation"];
+    nextEffect = {
+      kind: negation.negated ? "restore_effect" : "cancel_effect",
+      ...(scene.effect && scene.effect.length <= 160 ? { label: scene.effect } : {}),
+    };
+    if (pending?.kind === "negation_window") responseWindowOpen = !pending.settlement;
+  } else if (trigger && triggerContext) {
+    const privateOpportunity = privateOpportunityWindowEffectIds(triggerContext, trigger.resolvedEffectIds ?? []).length > 0;
+    const publicOptions = triggerOptions.filter((option) => triggerAvailability(option.effectId, triggerContext) === "public");
+    const actorIsPublic = scene.decisionActorId === trigger.actorId
+      || publicOptions.length > 0 && !privateOpportunity;
+    if (privateOpportunity || !actorIsPublic) {
+      visibility = "REDACTED";
+      stageLabel = "Resolving…";
+      responseWindowOpen = null;
+    } else {
+      actorIds = [scene.decisionActorId ?? trigger.actorId];
+      actionLabels = publicOptions.map((option) => option.label).filter((label) => label.trim().length > 0 && label.length <= 160);
+      if (publicOptions.some(triggerAllowsDecline)) actionLabels.push("Skip");
+      if (publicOptions.length) stageLabel = "Skill decision";
+    }
+  } else if (scene.decisionActorId && scene.participantRoles.decisionActorId === scene.decisionActorId) {
+    actorIds = [scene.decisionActorId];
+    if (pending?.kind === "response") actionLabels = ["Respond"];
+  }
+  return {
+    semantics: "PROVEN", visibility, identity,
+    decisionId: `${identity.interactionId}:${identity.checkpointId}:${identity.presentationRevision}`,
+    stage: scene.stage, stageLabel, actorIds, actionLabels,
+    ...(nextEffect ? { nextEffect } : {}),
+    responseWindowOpen,
+  };
 }
 function dismantleSettlementProofFor(room: RoomRow, pending: TargetCardPending, zone: TargetCardZone, chosen: Card, log: string[]): PresentationDismantleSettlementProof | undefined {
   if (pending.cardKind !== "Dismantle") return undefined;
@@ -913,8 +1002,9 @@ function attachAttackHitSettlement(log: string[], proof: PresentationAttackHitSe
     return [...log.slice(0, index), `@event:${JSON.stringify({ ...event, resolutionId: proof.rootResolutionId, importance: "essential", finalResult: true, publicAttackHitSettlement: proof })}`];
   } catch { return log; }
 }
-function addTriggeredEffectNotice(log: string[], actor: string, label: string) {
-  return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined, { effectNotice: true });
+function addTriggeredEffectNotice(log: string[], actor: string, label: string, publicFact?: PublicPresentationEventFactDraft) {
+  return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined,
+    { effectNotice: true, ...(publicFact ? { publicFact } : {}) });
 }
 function addLog(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) { return [...log.slice(-199), `@event:${JSON.stringify({ id: crypto.randomUUID(), message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`]; }
 function addLogWithId(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta, eventId = crypto.randomUUID()) {
@@ -2155,21 +2245,21 @@ function gameTimeline(entries: string[], viewerPlayerId?: string) {
   for (let index = 0; index < entries.length; index++) {
     const entry = entries[index];
     if (entry.startsWith("@history:")) {
-      try { events.push({ type: "message", presentation: false, ...JSON.parse(entry.slice(9)) as { id: string; message: string } }); } catch { /* Ignore malformed historical events. */ }
+      try { events.push({ type: "message", presentation: false, ...JSON.parse(entry.slice(9)) as { id: string; message: string }, appendOrder: index }); } catch { /* Ignore malformed historical events. */ }
       continue;
     }
     if (entry.startsWith("@cards:")) {
-      try { events.push({ type: "cards", ...JSON.parse(entry.slice(7)) as Record<string, unknown> }); } catch { /* Ignore malformed grouped-card events. */ }
+      try { events.push({ type: "cards", ...JSON.parse(entry.slice(7)) as Record<string, unknown>, appendOrder: index }); } catch { /* Ignore malformed grouped-card events. */ }
       continue;
     }
     if (!entry.startsWith("@card:")) {
-      const event = messageEvent(entry, index); if (event) events.push(event);
+      const event = messageEvent(entry, index); if (event) events.push({ ...event, appendOrder: index });
       continue;
     }
     try {
       const card = JSON.parse(entry.slice(6)) as Record<string, unknown>;
       if (typeof card.privateToPlayerId === "string" && card.privateToPlayerId !== viewerPlayerId) continue;
-      events.push({ type: "card", ...card });
+      events.push({ type: "card", ...card, appendOrder: index });
     } catch { /* Ignore malformed historical events. */ }
   }
   return events.filter((event) => {
@@ -3989,14 +4079,24 @@ async function settleNegationWindow(room: RoomRow, window: NegationWindowPending
   const nextHand = handBefore.filter((card) => !winner.cardIds.includes(card.id));
   let log = parse<string[]>(room.log_json, []);
   let committedNegationEventId: string | undefined;
+  const causal = window.continuation.causal;
+  const committedPlayFact = publicFactFor(causal, "CARD_PLAYED", { actorId: actor.id, affectedPlayerIds: [actor.id] });
   if (consumed.length === 1) {
-    const publicCardEvent = addCardEventWithId(log, actor.name, consumed[0], actor.name);
+    const publicCardEvent = addCardEventWithId(log, actor.name, consumed[0], actor.name, "play", true,
+      committedPlayFact ? { actorId: actor.id, publicFact: committedPlayFact } : { actorId: actor.id });
     log = publicCardEvent.log;
     if (consumed[0].kind === "Negation") committedNegationEventId = publicCardEvent.eventId;
   }
-  else if (consumed.length > 1) log = addCardGroupEvent(log, actor.name, consumed, "play", true, actor.name);
+  else if (consumed.length > 1) log = addCardGroupEvent(log, actor.name, consumed, "play", true, actor.name, undefined,
+    committedPlayFact ? { actorId: actor.id, publicFact: committedPlayFact } : { actorId: actor.id });
   const negationAction = winner.execution.providerId === "negation_card" ? "plays Negation" : `uses ${winner.execution.providerId}`;
-  log = addLog(log, `${actor.name} ${negationAction} ${window.continuation.negated ? "to restore" : "to cancel"} ${window.continuation.cardName}'s effect.`);
+  const counterCategory = window.continuation.negated ? "EFFECT_RESTORED" : "EFFECT_CANCELLED";
+  const counterFact = publicFactFor(causal, counterCategory, {
+    actorId: actor.id, affectedPlayerIds: [window.continuation.effectTargetId],
+    effect: { kind: "negated_effect" },
+  });
+  log = addLog(log, `${actor.name} ${negationAction} ${window.continuation.negated ? "to restore" : "to cancel"} ${window.continuation.cardName}'s effect.`, undefined,
+    counterFact ? { actorId: actor.id, publicFact: counterFact } : undefined);
   const winnerEnvelope = window.continuation.causal && envelope
     && envelope.interactionId === window.continuation.causal.interactionId
     && envelope.activeFrameId === window.continuation.causal.frameId
@@ -4475,7 +4575,12 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
   const playPhase = resumePhase.startsWith("play");
   const hp = applyDamage(target.hp ?? 1, finalAmount);
   const description = typeof damageDescription === "function" ? damageDescription(finalAmount) : damageDescription ?? `${target.name} takes ${finalAmount} damage${label !== "Attack" && label ? ` from ${label}` : ""}`;
-  const unfinalizedDamageLog = addLog(log, `${description}${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`);
+  const damageFact = amount > 0 ? publicFactFor(inheritedCausal, finalAmount > 0 ? "DAMAGE_APPLIED" : "DAMAGE_PREVENTED", {
+    ...(rootEventId ? { rootEventId } : {}), ...(source ? { actorId: source.id } : {}),
+    affectedPlayerIds: [target.id], amount: finalAmount,
+  }) : undefined;
+  const unfinalizedDamageLog = addLog(log, `${description}${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`, undefined,
+    damageFact ? { ...(source ? { actorId: source.id } : {}), publicFact: damageFact } : undefined);
   const damageLog = finalizeDamageLog ? finalizeDamageLog(unfinalizedDamageLog, finalAmount) : unfinalizedDamageLog;
   const damageContinuation: DamageSufferedTriggerContinuation = {
     kind: "damage_suffered_event",
@@ -5584,7 +5689,13 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const ownWindowSubmission = negationWindow && me
     ? await db.prepare("SELECT submission_json FROM negation_window_submissions WHERE room_id = ? AND window_id = ? AND player_id = ?").bind(room.id, negationWindow.windowId, me.id).first<{ submission_json: string }>()
     : null;
+  const ownWindowChoice = ownWindowSubmission ? parseNegationWindowSubmission(ownWindowSubmission.submission_json) : null;
   const negationWindowSubmitted = Boolean(ownWindowSubmission);
+  const viewerNegationChoice: ViewerNegationChoice | null = negationWindow ? {
+    windowId: negationWindow.windowId,
+    locked: negationWindowSubmitted,
+    choice: ownWindowChoice?.kind === "pass" ? "pass" : ownWindowChoice?.kind === "intent" ? "negation_intent" : null,
+  } : null;
   const sharedWindowResponse = room.phase === "response" && negationWindow && !negationWindow.settlement && me?.alive && !negationWindowSubmitted ? responseForNegationWindow(negationWindow, me) : null;
   const decisionResponsePending = responsePending ?? sharedWindowResponse;
   const negationWaitingForOther = responseContinuation?.kind === "negation" && me?.id !== actualActionPlayerId;
@@ -5697,6 +5808,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const viewerTimeline = gameTimeline(rawLog, me?.id);
   const privateStealResultEvents = viewerTimeline.filter((event) => event.privateStealResult !== undefined);
   const projectedTimeline = viewerTimeline.filter((event) => event.privateStealResult === undefined);
+  const publicTimeline = gameTimeline(rawLog).filter((event) => event.presentation !== false && typeof event.privateToPlayerId !== "string");
   const presentationInput = {
     pending: negationWindow ? {
       kind: "response",
@@ -5713,10 +5825,12 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     currentAction,
     actionRevision,
     timeline: projectedTimeline,
+    publicTimeline,
     causalEnvelope,
     oathRecipientIds: oathRecipientIds(players.map((player) => ({ id: player.id, alive: Boolean(player.alive), hp: player.hp, maxHp: player.max_hp }))),
   };
   const presentationV2 = projectPresentationV2(presentationInput);
+  const publicNextDecision = publicNextDecisionFor(presentationV2, pending, currentTriggerContext, currentTriggerOptions);
   const latestStealSettlement = presentationV2.stealSettlements.at(-1);
   const privateStealResultCandidates = me && latestStealSettlement?.sourceZone === "hand" && latestStealSettlement.sourceId === me.id
     ? privateStealResultEvents.flatMap((event) => {
@@ -5735,7 +5849,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const attackDodgeProjectionDiagnostics = includeAttackDodgeDiagnostics
     ? attackRootProjectionDiagnosticsFor(presentationInput)
     : null;
-  const presentationSnapshot = composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null });
+  const presentationSnapshot = composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null, publicNextDecision, viewerNegationChoice });
   return {
     ...(attackDodgeProjectionDiagnostics ? { attackDodgeProjectionDiagnostics } : {}),
     code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, isTestRoom: Boolean(room.test_room), testHandPreset: hostTestHandPreset, responseCountdownVisibleAt: concealPrivateTriggerDecision ? 0 : responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending && !concealPrivateTriggerDecision ? { kind: responsePending || negationWindow ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,
@@ -5854,6 +5968,7 @@ export async function POST(request: Request) {
   let action = String(body.action ?? "");
   let responseExecution: ResponseExecution | null = null;
   let triggerExecution: ReturnType<typeof resolveTriggeredEffect> = null;
+  let triggerPublicFact: PublicPresentationEventFactDraft | undefined;
   let canonicalResponseSatisfied = false;
   let canonicalResponseDeclined = false;
   let canonicalResponseKind: string | null = null;
@@ -6535,6 +6650,9 @@ export async function POST(request: Request) {
       if (triggerExecution) {
         const selectedOption = available.find((option) => option.effectId === triggerId);
         triggerExecution = { ...triggerExecution, presentation: selectedOption ? { label: selectedOption.label } : undefined };
+        if (triggerExecution.outcome.kind !== "continue_event") {
+          triggerPublicFact = publicTriggerFactFor(trigger, allRoomPlayers, triggerId, triggerExecution.outcome);
+        }
       }
       if (action === "trigger" && !triggerExecution) return json({ error: "That trigger option is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       if (triggerExecution?.outcome.kind === "force_damage") { body.cardIds = triggerExecution.outcome.consumeCardIds; body.cardId = triggerExecution.outcome.consumeCardIds[0]; }
@@ -6612,7 +6730,7 @@ export async function POST(request: Request) {
         const draw = drawCards(deck, discard, amount, log);
         deck = draw.deck;
         discard = draw.discard;
-        let nextLog = addTriggeredEffectNotice(draw.log, recoveredPlayer.name, triggerExecution?.presentation?.label ?? "Prudence").log;
+        let nextLog = addTriggeredEffectNotice(draw.log, recoveredPlayer.name, triggerExecution?.presentation?.label ?? "Prudence", triggerPublicFact).log;
         for (const drawn of draw.drawn) nextLog = addPrivateDrawEvent(nextLog, target, drawn);
         log = addHistory(nextLog, `${target.name} draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"} with Prudence.`, target.id);
         await db.batch([
@@ -6650,7 +6768,7 @@ export async function POST(request: Request) {
         deck = draw.deck;
         discard = draw.discard;
         const nextHand = [...parse<Card[]>(owner.hand_json, []), ...draw.drawn];
-        log = addTriggeredEffectNotice(draw.log, owner.name, triggerExecution?.presentation?.label ?? "Daredevil").log;
+        log = addTriggeredEffectNotice(draw.log, owner.name, triggerExecution?.presentation?.label ?? "Daredevil", triggerPublicFact).log;
         for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, owner, drawn);
         log = addHistory(log, `${owner.name} draws ${draw.drawn.length} cards with Daredevil.`, owner.id);
         await db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), owner.id).run();
@@ -6802,7 +6920,7 @@ export async function POST(request: Request) {
           materials, targetId: endingPlayer.id, outcome: "ACTIVATION_COST",
         }).log
         : addDiscardEvent(log, source.name, [cost]);
-      log = addTriggeredEffectNotice(log, source.name, "Dauntless").log;
+      log = addTriggeredEffectNotice(log, source.name, "Dauntless", triggerPublicFact).log;
       const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), "yue_jin_dauntless"])], sourceId: source.id, targetId: endingPlayer.id } satisfies TurnEndTriggerContinuation;
       if (equipmentCards(endingPlayer).length > 0) {
         const presentation = addLogWithId(log, `${endingPlayer.name} must choose 1 Equipment card to discard for Dauntless.`);
@@ -6849,7 +6967,7 @@ export async function POST(request: Request) {
       const hand = parse<Card[]>(player.hand_json, []);
       let log = parse<string[]>(liveRoom.log_json, []);
       if (action === "apply_trigger") {
-        log = addTriggeredEffectNotice(log, player.name, "Composure").log;
+        log = addTriggeredEffectNotice(log, player.name, "Composure", triggerPublicFact).log;
       } else {
         log = addLog(log, `${player.name} declines Composure; normal Discard Phase processing continues.`);
       }
@@ -6906,7 +7024,7 @@ export async function POST(request: Request) {
         if (execution?.outcome.kind !== "fanjian_guess") return json({ error: "That Sowing Distrust suit choice is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Fanjian choice has already resolved.", stale: true, room: await roomState(code, token) }, 409);
-        const log = addTriggeredEffectNotice(parse<string[]>(liveRoom.log_json, []), target.name, "Sowing Distrust — choose a suit").log;
+        const log = addTriggeredEffectNotice(parse<string[]>(liveRoom.log_json, []), target.name, "Sowing Distrust — choose a suit", triggerPublicFact).log;
         const presentation = addLogWithId(log, `${target.name} chooses ${execution.outcome.guess}. ${target.name} now chooses one hidden card from ${source.name}'s hand.`);
         const next: TriggerPending = {
           ...trigger,
@@ -6928,7 +7046,7 @@ export async function POST(request: Request) {
       const targetHand = [...parse<Card[]>(target.hand_json, []), card];
       const updatedSource = { ...source, hand_json: JSON.stringify(sourceHandAfter) } satisfies PlayerRow;
       const updatedTarget = { ...target, hand_json: JSON.stringify(targetHand) } satisfies PlayerRow;
-      let log = addTriggeredEffectNotice(parse<string[]>(liveRoom.log_json, []), target.name, "Sowing Distrust — choose a hidden card").log;
+      let log = addTriggeredEffectNotice(parse<string[]>(liveRoom.log_json, []), target.name, "Sowing Distrust — choose a hidden card", triggerPublicFact).log;
       const presentation = addCardEventWithId(log, source.name, card, target.name, "reveal");
       const outcome = continuation.guess === card.suit ? "SUITS_MATCHED" : "SUITS_DIFFERED";
       const settlementProof = fanjianSettlementProofFor(presentation.log, continuation, outcome);
@@ -7001,7 +7119,7 @@ export async function POST(request: Request) {
       const obtained = action === "apply_trigger";
       if (obtained) {
         const hand = [...parse<Card[]>(actor.hand_json, []), finalCard];
-        log = addTriggeredEffectNotice(log, actor.name, "Jealousy of God").log;
+        log = addTriggeredEffectNotice(log, actor.name, "Jealousy of God", triggerPublicFact).log;
         log = addFinalResult(log, `${actor.name} activates Jealousy of God and obtains ${finalCard.rank}${finalCard.suit}.`, undefined, continuation.judgement.resolutionId);
         await db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id).run();
         await resolveJudgementContinuation(liveRoom, continuation.judgement, finalCard, players.map((player) => player.id === actor.id ? { ...player, hand_json: JSON.stringify(hand) } : player), parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log, [], trigger.readyAfterEventId ?? continuation.judgement.revealedEventId, true, true);
@@ -7030,7 +7148,7 @@ export async function POST(request: Request) {
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Draw Phase decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
       let log = parse<string[]>(liveRoom.log_json, []);
       const optionLabel = triggerExecution?.presentation?.label ?? triggerOptionsFor(trigger, players)[0]?.label ?? "Draw Phase effect";
-      if (action === "apply_trigger") log = addTriggeredEffectNotice(log, player.name, optionLabel).log;
+      if (action === "apply_trigger") log = addTriggeredEffectNotice(log, player.name, optionLabel, triggerPublicFact).log;
       else log = addLog(log, `${player.name} declines ${optionLabel}; normal Draw Phase draw continues.`);
       if (replacementTargets) {
         const transferred = await resolveDrawPhaseReplacement(liveRoom, player, replacementTargets, continuation.resumePhase, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log);
@@ -7150,7 +7268,7 @@ export async function POST(request: Request) {
         : undefined;
       // The dedicated public cost-card journey and verified main sentence fully
       // explain a proven Deflection. Keep the generic toast when proof is absent.
-      if (execution && !deflectionProof) log = addTriggeredEffectNotice(log, me.name, triggerExecution.presentation?.label ?? "an optional effect").log;
+      if (execution && !deflectionProof) log = addTriggeredEffectNotice(log, me.name, triggerExecution.presentation?.label ?? "an optional effect", triggerPublicFact).log;
       if (redirect && redirectTarget && redirectCost) {
         const nextTargetHand = targetHand.filter((card) => card.id !== redirectCost.id);
         const nextTargetEquipment = Object.fromEntries(Object.entries(targetEquipment).filter(([, card]) => !card || card.id !== redirectCost.id)) as EquipmentZone;
@@ -7244,7 +7362,7 @@ export async function POST(request: Request) {
       const discard = parse<Card[]>(liveRoom.discard_json, []);
       let log = parse<string[]>(liveRoom.log_json, []);
       if (!source || !target) return json({ error: "That damage reaction is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-      if (action === "apply_trigger" && triggerExecution) log = addTriggeredEffectNotice(log, me.name, triggerExecution.presentation?.label ?? "an optional effect").log;
+      if (action === "apply_trigger" && triggerExecution) log = addTriggeredEffectNotice(log, me.name, triggerExecution.presentation?.label ?? "an optional effect", triggerPublicFact).log;
       if (action === "apply_trigger" && triggerExecution?.outcome.kind === "target_discard") {
         const mount = equipmentCards(target).find((card) => card.id === triggerExecution.outcome.targetCardId);
         if (!mount) return json({ error: "The selected Mount is no longer available.", stale: true, room: await roomState(code, token) }, 409);
@@ -7355,7 +7473,7 @@ export async function POST(request: Request) {
           return json({ room: await roomState(code, token) });
         }
         if (triggerExecution?.outcome.kind === "legacy_distribution") {
-          log = addTriggeredEffectNotice(log, target.name, triggerExecution.presentation?.label ?? "Legacy").log;
+          log = addTriggeredEffectNotice(log, target.name, triggerExecution.presentation?.label ?? "Legacy", triggerPublicFact).log;
           await beginLegacyDistribution(liveRoom, continuation, target, players, parse<Card[]>(liveRoom.deck_json, []), discard, log);
           return json({ room: await roomState(code, token) });
         }
@@ -7407,7 +7525,7 @@ export async function POST(request: Request) {
           await continueAfterDying(room.id, continuation.resumePlayerId ?? continuation.sourceId);
           return json({ room: await roomState(code, token) });
         }
-        log = addTriggeredEffectNotice(log, target.name, triggerExecution?.presentation?.label ?? "Stauchness").log;
+        log = addTriggeredEffectNotice(log, target.name, triggerExecution?.presentation?.label ?? "Stauchness", triggerPublicFact).log;
         const presentation = addCardEventWithId(log, target.name, draw.card, target.name, "reveal", true, { judgement: true });
         const judgement: JudgementContinuation = {
           targetId: target.id,
@@ -7514,7 +7632,7 @@ export async function POST(request: Request) {
         if (!attack) return json({ error: "The selected reaction no longer has its required card.", stale: true, room: await roomState(code, token) }, 409);
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That trigger decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
-        log = addTriggeredEffectNotice(log, source.name, triggerExecution.presentation?.label ?? "an optional effect").log;
+        log = addTriggeredEffectNotice(log, source.name, triggerExecution.presentation?.label ?? "an optional effect", triggerPublicFact).log;
         await applyFollowUpAttackOutcome(liveRoom, continuation, source, target, players, attack, hand, discard, log, triggerExecution.presentation?.label, triggerExecution.effectId);
         return json({ room: await roomState(code, token) });
       }
@@ -7524,7 +7642,7 @@ export async function POST(request: Request) {
         if (materials.length !== triggerExecution.outcome.consumeCardIds.length || materials.length === 0) return json({ error: "The selected reaction no longer has its required costs.", stale: true, room: await roomState(code, token) }, 409);
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That trigger decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
-        log = addTriggeredEffectNotice(log, source.name, triggerExecution.presentation?.label ?? "an optional effect").log;
+        log = addTriggeredEffectNotice(log, source.name, triggerExecution.presentation?.label ?? "an optional effect", triggerPublicFact).log;
         await applyForcedDamageOutcome(liveRoom, continuation, source, target, players, materials, hand, discard, log, triggerExecution.outcome.amount, triggerExecution.presentation?.label, triggerExecution.effectId);
         return json({ room: await roomState(code, token) });
       }

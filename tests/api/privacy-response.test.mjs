@@ -301,6 +301,11 @@ test("shared Negation keeps three human submissions private and rejects conflict
     assert.equal(view.actionPlayerId, null);
     assert.equal(view.pendingNegation.actorId, null);
     assert.equal(view.pendingNegation.submitted, false);
+    assert.deepEqual(view.presentationSnapshot.viewerNegationChoice, {
+      windowId: firstWindowId,
+      locked: false,
+      choice: null,
+    }, "the current viewer starts with an unlocked private choice for this exact window");
     assert.equal("seatOrderPlayerIds" in view.pendingNegation, false);
     const options = view.currentAction.options ?? [];
     if (index === 0) assert.equal(options.some(({ providerId }) => providerId === "negation_card"), false);
@@ -333,6 +338,15 @@ test("shared Negation keeps three human submissions private and rejects conflict
     assert.equal(view.currentAction.deadline, sharedDeadline, "submissions do not shorten or restart the shared deadline");
     assert.equal(view.responseCountdownVisibleAt, sharedVisibleAt);
     assert.equal(view.pendingNegation.submitted, [false, true, true, true, false][index], "submission status is visible only to its owner");
+    const privateChoice = [null, "negation_intent", "pass", "negation_intent", null][index];
+    assert.deepEqual(view.presentationSnapshot.viewerNegationChoice, {
+      windowId: firstWindowId,
+      locked: privateChoice !== null,
+      choice: privateChoice,
+    }, "only the authenticated viewer's own locked choice category is projected");
+    assert.equal(view.presentationSnapshot.publicEventFacts.some((fact) =>
+      fact.category === "CARD_PLAYED" && [seatTwo.id, seatThree.id, seatFour.id].includes(fact.actorId)), false,
+    "uncommitted Negation intents never become public card-play facts");
     const serialized = JSON.stringify(view);
     for (const hiddenCardId of secretCardIds) {
       if (hiddenCardId !== secretCardIds[index - 1]) assert.equal(serialized.includes(hiddenCardId), false, `seat ${index + 1} cannot see another private intent or card ID`);

@@ -33,6 +33,7 @@ import type {
   PresentationV2,
 } from "./presentation-v2";
 import { isProvenGroupRootCardProof, isSupportedAttackDodgeResponseProof } from "./presentation-v2";
+import { projectPublicPresentationSemantics, type PublicPresentationDecision, type PublicPresentationEvent, type ViewerNegationChoice } from "./presentation-semantics";
 
 /** The only public identity a future presentation client may use. */
 export type PresentationSnapshotIdentity = {
@@ -125,6 +126,12 @@ export type PresentationSnapshot = {
   localControl: PresentationSnapshotLocalControl;
   /** Explicit public Negation disposition; legacy final-result hints never populate it. */
   settlement: PresentationNegationSettlement | null;
+  /** Server-committed public event facts; private room facts are never admitted. */
+  publicEventFacts: readonly PublicPresentationEvent[];
+  /** Server-authored current public decision; never reconstructed from viewer CurrentAction. */
+  publicNextDecision: PublicPresentationDecision | null;
+  /** Current viewer's private Negation choice category only. */
+  viewerNegationChoice: ViewerNegationChoice | null;
   /** Reserved until durable public transition occurrences are accepted. */
   transitionEvents: readonly [];
 };
@@ -134,6 +141,8 @@ export type PresentationSnapshotInput = {
   currentAction: Pick<CurrentAction, "kind" | "actorId"> | null;
   actionRevision: string | null;
   viewerId?: string | null;
+  publicNextDecision?: unknown;
+  viewerNegationChoice?: unknown;
 };
 
 const REST_BOUNDARY: PresentationStableBoundary = {
@@ -1562,6 +1571,19 @@ function coherentPublicAuthority(presentationV2: PresentationV2): PublicAuthorit
  */
 export function composePresentationSnapshot(input: PresentationSnapshotInput): PresentationSnapshot {
   const authority = coherentPublicAuthority(input.presentationV2);
+  const semanticIdentity = authority ? {
+    ...authority.identity,
+    rootFrameId: authority.scene.rootFrameId as string,
+  } : null;
+  const semantic = projectPublicPresentationSemantics({
+    identity: semanticIdentity,
+    events: authority ? input.presentationV2.publicEventFacts.map((fact) => ({ ...fact, identity: semanticIdentity })) : [],
+    nextDecision: authority && (authority.stable.kind === "CHOICE" || authority.stable.kind === "SPECIAL")
+      ? input.publicNextDecision : null,
+    viewerNegationChoice: input.viewerNegationChoice,
+  });
+  const acceptedViewerNegationChoice = semantic.nextDecision?.stage === "NEGATION"
+    && semantic.nextDecision.responseWindowOpen ? semantic.viewerNegationChoice : null;
   const publicCardEffects = provenPublicCardEffects(input.presentationV2.publicCardEffects);
   const groupParticipantProgress = authority
     ? groupParticipantProgressFor(input.presentationV2, authority.scene, authority.identity, authority.stable)
@@ -1604,6 +1626,9 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
       entitled: Boolean(input.viewerId && input.currentAction?.actorId === input.viewerId),
     },
     settlement: provenNegationSettlement(input.presentationV2.negationSettlement),
+    publicEventFacts: semantic.events,
+    publicNextDecision: semantic.nextDecision,
+    viewerNegationChoice: acceptedViewerNegationChoice,
     transitionEvents: [],
   };
 }
