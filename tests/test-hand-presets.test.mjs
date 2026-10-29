@@ -10,7 +10,7 @@ import {
 } from "../game/test-hand-presets.ts";
 
 test("test-hand options remove Attack presets and include Dismantle/Steal", () => {
-  assert.deepEqual(TEST_HAND_PRESET_OPTIONS.map(({ id }) => id), ["random", "dismantle_steal", "steal_dismantle_negation", "duel_chain", "custom"]);
+  assert.deepEqual(TEST_HAND_PRESET_OPTIONS.map(({ id }) => id), ["random", "dismantle_steal", "steal_dismantle_negation", "duel_chain", "group_stratagem_negation", "harvest_negation_chain", "custom"]);
   assert.equal(isTestHandPresetId("attack_dodge"), false);
   assert.equal(isTestHandPresetId("attack_negation"), false);
   assert.equal(isTestHandPresetId("steal_dismantle_negation"), true);
@@ -86,6 +86,41 @@ test("Duel test preset gives the first three seats Duel and all four seats Negat
   const stored = validateStoredTestHandPreset(sparsePreset, new Set(sparseSeats));
   assert.equal(stored.error, null);
   assert.deepEqual(stored.preset, sparsePreset);
+});
+
+test("group and Harvest scenarios provide distinct Stratagem roots with all four real Negations", () => {
+  const scenarios = [
+    {
+      id: "group_stratagem_negation",
+      roots: ["BarbarianInvasion", "RainingArrows"],
+    },
+    {
+      id: "harvest_negation_chain",
+      roots: ["BumperHarvest", "Dismantle", "Steal", "Duel"],
+    },
+  ];
+  const seats = [0, 1, 2, 3];
+
+  for (const { id, roots } of scenarios) {
+    const preset = testHandPresetFor(id);
+    const allKinds = Object.values(preset.handsBySeat).flat();
+    assert.equal(allKinds.filter((kind) => kind === "Negation").length, 4, `${id} assigns all four Standard Negations`);
+    assert.deepEqual(Object.values(preset.handsBySeat).map((hand) => hand.filter((kind) => kind === "Negation").length), [1, 1, 1, 1]);
+    for (const root of roots) assert.ok(allKinds.includes(root), `${id} includes ${root}`);
+    assert.ok(Object.values(preset.handsBySeat).every((hand) => hand.length === 4));
+    assert.equal(validateTestHandPreset(preset, new Set(seats)).error, null, `${id} uses only available Standard copies`);
+    assert.equal(testHandPresetCompatibilityError(id, new Set(seats)), null);
+    assert.match(testHandPresetCompatibilityError(id, new Set([0, 1, 2, 3, 4])), /exactly four players/);
+    assert.match(validateTestHandPreset(preset, new Set([0, 1, 2, 3, 4])).error, /exactly four players/);
+
+    const sparseSeats = [1, 2, 5, 7];
+    const sparsePreset = testHandPresetFor(id, sparseSeats);
+    assert.deepEqual(Object.keys(sparsePreset.handsBySeat), sparseSeats.map(String));
+    assert.deepEqual(Object.values(sparsePreset.handsBySeat), Object.values(preset.handsBySeat));
+    const stored = validateStoredTestHandPreset(sparsePreset, new Set([1, 2, 5, 7, 8]));
+    assert.equal(stored.error, null);
+    assert.deepEqual(stored.preset, sparsePreset, `${id} remains editable when the lobby roster changes`);
+  }
 });
 
 test("persisted removed presets safely fall back to random hands", () => {

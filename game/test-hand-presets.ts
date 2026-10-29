@@ -6,6 +6,8 @@ export const TEST_HAND_PRESET_OPTIONS = [
   { id: "dismantle_steal", name: "Dismantle / Steal + Weapon & Delayed Stratagem" },
   { id: "steal_dismantle_negation", name: "Steal / Dismantle + Negation Kit (4 players)" },
   { id: "duel_chain", name: "Duel / Negation Counter Chain (4 players)" },
+  { id: "group_stratagem_negation", name: "Barbarian Invasion / Raining Arrows + Negation (4 players)" },
+  { id: "harvest_negation_chain", name: "Bumper Harvest + Negation Counter Chain (4 players)" },
   { id: "custom", name: "Custom Hands" },
 ] as const;
 
@@ -14,6 +16,13 @@ export type TestHandPreset = {
   id: TestHandPresetId;
   handsBySeat: Record<number, CardKind[]>;
 };
+
+const FOUR_PLAYER_NEGATION_PRESET_IDS = new Set<TestHandPresetId>([
+  "steal_dismantle_negation",
+  "duel_chain",
+  "group_stratagem_negation",
+  "harvest_negation_chain",
+]);
 
 export const STANDARD_PRESET_CARD_KINDS = Object.keys(STANDARD_DECK_COUNTS)
   .filter((kind) => (STANDARD_DECK_COUNTS[kind as CardKind] ?? 0) > 0) as CardKind[];
@@ -42,11 +51,27 @@ const PRESET_HANDS: Record<Exclude<TestHandPresetId, "custom">, Record<number, C
     2: ["Duel", "Negation", "Attack", "Dodge"],
     3: ["Negation", "Attack", "Attack", "Dodge"],
   },
+  // Give the first two seats different group Stratagem roots. Every seat has
+  // one real Negation and the appropriate Attack/Dodge response cards.
+  group_stratagem_negation: {
+    0: ["BarbarianInvasion", "Negation", "Attack", "Dodge"],
+    1: ["RainingArrows", "Negation", "Attack", "Dodge"],
+    2: ["Negation", "Attack", "Dodge", "Peach"],
+    3: ["Negation", "Attack", "Dodge", "Peach"],
+  },
+  // The Harvest root can be tested alongside single-target and Duel roots;
+  // all four physical Negation copies are assigned for counter chains.
+  harvest_negation_chain: {
+    0: ["BumperHarvest", "Negation", "Attack", "Dodge"],
+    1: ["Dismantle", "Negation", "Attack", "Dodge"],
+    2: ["Steal", "Negation", "Attack", "Dodge"],
+    3: ["Duel", "Negation", "Attack", "Dodge"],
+  },
 };
 
 export function testHandPresetFor(id: Exclude<TestHandPresetId, "custom">, seatOrder?: readonly number[]): TestHandPreset {
   const presetHands = PRESET_HANDS[id];
-  if ((id === "steal_dismantle_negation" || id === "duel_chain") && seatOrder) {
+  if (FOUR_PLAYER_NEGATION_PRESET_IDS.has(id) && seatOrder) {
     const seats = [...new Set(seatOrder)].sort((left, right) => left - right).slice(0, 4);
     return {
       id,
@@ -57,7 +82,7 @@ export function testHandPresetFor(id: Exclude<TestHandPresetId, "custom">, seatO
 }
 
 export function testHandPresetCompatibilityError(id: TestHandPresetId, availableSeats?: ReadonlySet<number>): string | null {
-  if ((id !== "steal_dismantle_negation" && id !== "duel_chain") || !availableSeats || availableSeats.size === 4) return null;
+  if (!FOUR_PLAYER_NEGATION_PRESET_IDS.has(id) || !availableSeats || availableSeats.size === 4) return null;
   return "This scenario uses all four Standard Negation cards, so it requires exactly four players.";
 }
 
@@ -115,7 +140,7 @@ export function validateStoredTestHandPreset(
   const storedId = value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>).id
     : null;
-  if (storedId === "steal_dismantle_negation" || storedId === "duel_chain") {
+  if (isTestHandPresetId(storedId) && FOUR_PLAYER_NEGATION_PRESET_IDS.has(storedId)) {
     const currentSeats = availableSeats ? [...availableSeats] : undefined;
     // A lobby may gain or lose seats after saving. Rebuild this server-owned
     // preset for its current roster so the host can still change the preset;
