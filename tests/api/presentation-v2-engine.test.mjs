@@ -51,7 +51,26 @@ function assertProjectionMatchesEngine(code, token) {
       oathRecipientIds: oathRecipientIds(view.players.map((player) => ({ id: player.id, alive: player.alive, hp: player.hp, maxHp: player.maxHp }))),
     });
     assert.deepEqual(view.presentationV2, expected, "route presentationV2 is projected from the persisted engine state");
-    const expectedSnapshot = composePresentationSnapshot({ presentationV2: view.presentationV2, currentAction: view.currentAction, actionRevision: view.actionRevision, viewerId: view.meId });
+    const serverDecision = view.presentationSnapshot.publicNextDecision;
+    if (serverDecision) {
+      const scene = view.presentationV2.interactionScene;
+      assert.ok(scene, "a public next decision is bound to a proven server interaction");
+      assert.deepEqual(serverDecision.identity, {
+        interactionId: scene.interactionId,
+        rootFrameId: scene.rootFrameId,
+        checkpointId: scene.checkpointId,
+        presentationRevision: scene.presentationRevision,
+      });
+      assert.equal(serverDecision.stage, scene.stage, "the public decision follows the current server stage");
+    }
+    const expectedSnapshot = composePresentationSnapshot({
+      presentationV2: view.presentationV2,
+      currentAction: view.currentAction,
+      actionRevision: view.actionRevision,
+      viewerId: view.meId,
+      publicNextDecision: serverDecision,
+      viewerNegationChoice: view.presentationSnapshot.viewerNegationChoice,
+    });
     assert.deepEqual(view.presentationSnapshot, expectedSnapshot, "route PresentationSnapshot is composed from the persisted engine projection");
     assert.deepEqual(view.presentationSnapshot.identity, expectedSnapshot.identity, "snapshot identity follows the atomic public authority gate");
     if (view.presentationV2.stableBoundary.kind === "CHOICE") {
@@ -67,6 +86,7 @@ function assertProjectionMatchesEngine(code, token) {
 function publicSnapshot(snapshot) {
   const publicPart = { ...snapshot };
   delete publicPart.localControl;
+  delete publicPart.viewerNegationChoice;
   return publicPart;
 }
 
