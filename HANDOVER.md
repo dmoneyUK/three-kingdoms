@@ -2,24 +2,20 @@
 
 Repository: `dmoneyUK/three-kingdoms`; target branch: `ux-v2`.
 Worktree: `/Users/jingedai/.codex/worktrees/h2-g3-f1-r5/WTK`; working branch: `codex/quick-test-negation-duel`.
-Latest design reviewed: `docs/UX2-refine.md`, revision `2026-10-28`, design-file commit `b8b4a4bd9f54f225f5aed58ef1d2912eae46b1ad`. Quick Test preset behavior follows the direct owner request; no gameplay rule change is authorized.
+Latest design reviewed: `docs/UX2-refine.md`, revision `2026-10-28`, design-file commit `b8b4a4bd9f54f225f5aed58ef1d2912eae46b1ad`. Its Table A has no active implementation task; Table B entries are owner reviews. Do not invent a UX2 task from historical appendices.
 
-## Latest baseline
+## Latest result — IMPLEMENTED / DEPLOYED; PENDING OWNER GAMEPLAY REVIEW
 
-- Source baseline `69264bd40d359331f2b04452db2cac598019769a` passed exact-SHA [Actions 40788517893](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40788517893), including deployment. Worker `6dd767bd-f85a-4a3e-9b39-76859978ce2c`; latest production health check recorded HTTP 200.
-- Remote `ux-v2` was fetched before edits and matched the local base `eb75d8a7808b9fa195eb1b0e6ec3248b1957e94b`.
+**QUICK-TEST-NEGATION-COMBINATIONS** is delivered at source commit `79ca1bab9efedf98f5467b03e9b965429663fb9f` on `ux-v2`. The exact-SHA [Actions run 40796753524](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40796753524) passed lint/fast, API tests, browser startup/room smoke, deploy and production smoke. Cloudflare Worker version: `83858970-08cd-433a-9714-f16ed5664f68`. A direct production `/api/health` check at 2026-10-29 01:10 UTC returned HTTP 200 and `{"ok":true,"worker":"available"}`.
 
-## Current bounded task — IMPLEMENTED LOCALLY; CI / DEPLOYMENT PENDING
+Added two host-selectable four-player scenarios: group Stratagem roots Barbarian Invasion and Raining Arrows, and Bumper Harvest alongside Dismantle, Steal and Duel. Existing Duel and Dismantle/Steal Negation presets remain. Each scenario uses only actual Standard-deck copies, assigns one of the four physical Negation cards to each seat, maps to current sparse seat IDs, and rejects rosters other than four players. Gameplay rules, authority and private-hand behavior are unchanged.
 
-**QUICK-TEST-NEGATION-COMBINATIONS — add multiple four-player Quick Test starting-hand scenarios that combine Stratagems with Negation counter chains.** Keep the existing Duel and targeted Dismantle/Steal presets. Add a group-Stratagem scenario (Barbarian Invasion / Raining Arrows) and a Bumper Harvest scenario. Use only physical copies in the Standard deck; require exactly four players where all four Negation cards are assigned. Preserve server validation, private hands, and all gameplay behavior.
+Focused `tests/test-hand-presets.test.mjs`: **7/7 passed**. `git diff --check`: **passed**. No local UI/browser campaign or full suite was run. CI's required browser smoke passed; no end-to-end Negation counter chain was played as part of this task.
 
-### Acceptance and validation
+## Current / next bounded task — OWNER GAMEPLAY REVIEW
 
-- Preset picker exposes both new scenarios and previews their server-defined hands. The first new scenario offers Barbarian Invasion and Raining Arrows; the second offers Bumper Harvest plus Dismantle, Steal and Duel roots.
-- The helper maps each four-player Negation scenario to the current four seat IDs and rebuilds stored scenarios if the lobby roster changes. All four Standard Negation copies are assigned once; compatibility rejects other player counts.
-- Focused test `node --import tsx --test tests/test-hand-presets.test.mjs`: **7/7 passed**. `git diff --check`: **passed**. No local UI/browser test or full local suite was run.
-- At 2026-10-29 00:51 UTC, the latest relevant remote CI was green: [Actions 40788517893](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40788517893), source SHA `69264bd40d359331f2b04452db2cac598019769a`. Recheck this gate before commit, then commit/push to `ux-v2`, verify the new exact-SHA run and deployment, and replace this pending status with observed results.
+Use the deployed four-player Quick Test presets to manually exercise the group-Stratagem and Bumper Harvest Negation chains, including a Negation countering another Negation and the root effect resolving or being cancelled. Report any incorrect state, prompt or card parking with a phone trace/screenshot. No implementation work is active until that review identifies a concrete issue or a new task is authorized.
 
 ### Resume point
 
-Implementation is in `game/test-hand-presets.ts`; focused coverage is in `tests/test-hand-presets.test.mjs`. Local changes remain uncommitted in these files and `HANDOVER.md`. Next step: recheck remote CI status, commit only these three task files, and push the source commit to `ux-v2`. Latest handoff update: 2026-10-29 00:51 UTC.
+The preset implementation is already pushed and deployed. The user can select `Barbarian Invasion / Raining Arrows + Negation` or `Bumper Harvest + Negation Counter Chain` in the host Test Game's **Starting-hand scenario** menu. Keep this as the only handoff item; do not copy historical or pending unrelated review tasks here.
