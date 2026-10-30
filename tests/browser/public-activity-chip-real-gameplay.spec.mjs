@@ -191,6 +191,7 @@ test("four authenticated viewers share the same public turn, Negation, and Duel 
 
     const initialViews = await Promise.all(room.players.map((_, index) => state(request, room, index)));
     expect(initialViews.map((view) => view.turnSeat)).toEqual([0, 0, 0, 0]);
+    const initialWidths = await Promise.all(pages.map(async (page) => (await page.locator(".public-activity-chip").boundingBox()).width));
     const initialLabels = await Promise.all(pages.map(readChip));
     expect(initialLabels).toEqual(Array(4).fill("Test Player 1's turn"));
 
@@ -200,14 +201,20 @@ test("four authenticated viewers share the same public turn, Negation, and Duel 
     const hold = await request.post(`${API}/__test/negation-window-clock`, { data: { code: room.code, windowId, mode: "hold" } });
     expect(hold.ok()).toBeTruthy();
     const sharedNegationCopy = "Waiting for counter responses Negation can cancel the duel effect on Test Player 2.";
+    for (const [index, page] of pages.entries()) expect((await page.locator(".public-activity-chip").boundingBox()).width).toBeCloseTo(initialWidths[index], 0);
     await expect.poll(async () => Promise.all(pages.map(readChip))).toEqual(Array(4).fill(sharedNegationCopy));
 
+    const h4Before = pages[0].locator(".public-card-display-journey-copy").first();
+    await expect(h4Before).toBeVisible();
+    const h4WidthBeforePass = (await h4Before.boundingBox()).width;
     const pacWidthBeforePass = (await pages[0].locator(".public-activity-chip").boundingBox()).width;
     const beforePass = await Promise.all(room.players.map((_, index) => state(request, room, index)));
     expect(new Set(beforePass.map((view) => view.presentationSnapshot.interaction.interactionId)).size).toBe(1);
     await action(request, room, 0, "decline_response", { windowId });
     const afterOnePass = await Promise.all(room.players.map((_, index) => state(request, room, index)));
     expect((await pages[0].locator(".public-activity-chip").boundingBox()).width).toBeCloseTo(pacWidthBeforePass, 0);
+    await expect(h4Before).toBeVisible();
+    expect((await h4Before.boundingBox()).width).toBeCloseTo(h4WidthBeforePass, 0);
     expect(afterOnePass.map((view) => view.pendingNegation.submitted)).toEqual([true, false, false, false]);
     await expect.poll(async () => Promise.all(pages.map(readChip))).toEqual(Array(4).fill(sharedNegationCopy));
     await expect(pages[0].locator(".decision-status strong").first()).toHaveText("You passed. Waiting for the other players.");

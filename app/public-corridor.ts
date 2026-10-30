@@ -1,6 +1,6 @@
 type HorizontalRect = { left: number; right: number; width: number };
 
-/** Equal gutters based on the measured side-seat and countdown footprints. */
+/** Equal gutters based on measured side-seat and stable countdown footprints. */
 export function measuredPublicCorridorWidth(bounds: HorizontalRect, sides: readonly HorizontalRect[], timer: HorizontalRect | null, cap = 340): number {
   const center = bounds.left + bounds.width / 2;
   let half = Math.max(0, bounds.width / 2 - 8);
@@ -12,12 +12,19 @@ export function measuredPublicCorridorWidth(bounds: HorizontalRect, sides: reado
   return Math.max(1, Math.min(cap, Math.floor(half * 2)));
 }
 
-/** Stable width derived from the actual side seats and timer, independent of copy. */
+/** Reserve the CSS maximum timer footprint even before a countdown mounts. */
 export function publicCorridorWidth(table: HTMLElement, cap = 340): number {
   const bounds = table.getBoundingClientRect();
   const sides = [...table.querySelectorAll<HTMLElement>('[data-side-column="left"], [data-side-column="right"]')]
     .filter((side) => getComputedStyle(side).visibility !== "hidden")
     .map((side) => side.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
-  const timer = table.querySelector<HTMLElement>(".visible-countdown, .stage-system-cluster")?.getBoundingClientRect() ?? null;
-  return measuredPublicCorridorWidth(bounds, sides, timer, cap);
+  const safeZone = table.querySelector<HTMLElement>(":scope > .interaction-safe-zone");
+  const cluster = safeZone?.querySelector<HTMLElement>(":scope > .stage-system-cluster");
+  const safeRight = safeZone?.getBoundingClientRect().right ?? bounds.right;
+  const inset = cluster ? Number.parseFloat(getComputedStyle(cluster).right) : 14;
+  // Matches the 68px max-width of the response/event countdown CSS.
+  const timerMaxWidth = 68;
+  const right = safeRight - (Number.isFinite(inset) ? inset : 14);
+  const reserved = { left: right - timerMaxWidth, right, width: timerMaxWidth };
+  return measuredPublicCorridorWidth(bounds, sides, reserved, cap);
 }

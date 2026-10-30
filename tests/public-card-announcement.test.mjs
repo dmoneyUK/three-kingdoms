@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { measuredPublicCorridorWidth } from "../app/public-corridor.ts";
+import { measuredPublicCorridorWidth, publicCorridorWidth } from "../app/public-corridor.ts";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
@@ -25,6 +25,20 @@ test("public width uses equal gutters for two seats on each side", () => {
   const sides = [{ left: 8, right: 82, width: 74 }, { left: 10, right: 86, width: 76 }, { left: 306, right: 382, width: 76 }, { left: 304, right: 380, width: 76 }];
   assert.equal(measuredPublicCorridorWidth(table, sides, { left: 320, right: 382, width: 62 }), 206);
   assert.equal(measuredPublicCorridorWidth(table, [], null), 340);
+});
+
+test("countdown presence does not change the caption width", () => {
+  const prior = globalThis.getComputedStyle;
+  globalThis.getComputedStyle = () => ({ right: "14px", visibility: "visible" });
+  const cluster = {};
+  const zone = { getBoundingClientRect: () => ({ right: 437 }), querySelector: () => cluster };
+  const table = { getBoundingClientRect: () => ({ left: 0, right: 440, width: 440 }), querySelectorAll: () => [], querySelector: () => zone };
+  try {
+    const absent = publicCorridorWidth(table);
+    cluster.countdownMounted = true;
+    assert.equal(publicCorridorWidth(table), absent);
+    assert.equal(absent, 258);
+  } finally { globalThis.getComputedStyle = prior; }
 });
 
 const action = (overrides = {}) => ({
