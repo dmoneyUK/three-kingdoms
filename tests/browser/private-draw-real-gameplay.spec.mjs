@@ -155,8 +155,7 @@ test("real draw-phase gameplay shows private cards and the compact timer without
   const cluster = page.locator(".stage-system-cluster");
   const timer = cluster.locator(":scope > .visible-countdown-event");
   await expect(eventStage).toBeVisible();
-  await expect(eventStage.locator(".card-action-title")).toContainText("PRIVATE DRAW");
-  await expect(eventStage.locator(".card-action-title")).toContainText("Only you can see these cards");
+  await expect(eventStage.locator(".card-action-title")).toHaveCount(0);
   await expect(eventStage.locator(".private-draw-row > .played-card")).toHaveCount(2);
   await expect(timer).toHaveAttribute("role", "timer");
   await expect(timer).toHaveAttribute("aria-label", "Cards close in 3 seconds");
@@ -195,8 +194,7 @@ test("real draw-phase gameplay shows private cards and the compact timer without
     expect(geometry.cluster.bottom, context).toBeLessThanOrEqual(geometry.guidance.top);
     expect(geometry.guidance.top - geometry.cluster.bottom, context).toBeGreaterThanOrEqual(8);
     expect(geometry.guidance.top - geometry.cluster.bottom, context).toBeLessThanOrEqual(12);
-    expect(geometry.title.left, context).toBeGreaterThanOrEqual(geometry.table.left - 1);
-    expect(geometry.title.right, context).toBeLessThanOrEqual(geometry.table.right + 1);
+    expect(geometry.title, context).toBeNull();
     expect(geometry.row.bottom, context).toBeLessThanOrEqual(geometry.table.bottom + 1);
     expect(geometry.row.bottom, context).toBeLessThanOrEqual(geometry.cluster.top - 16);
     expect(geometry.cards, context).toHaveLength(2);
@@ -336,4 +334,48 @@ test("real multi-card Equilibrium draw keeps every private card reachable in the
   const observerProjection = JSON.stringify(observer);
   for (const card of replacementDeck) expect(observerProjection).not.toContain(card.id);
   expect(observer.myHand).toEqual([]);
+});
+
+test("QA-03 phone private draw retains cards without a visible title", async ({ page, request, browser }) => {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  const seeded = await request.post(`${API}/__test/seed-playing-game`, { data: {
+    phase: "draw", turnSeat: 0, deck,
+    players: [
+      { name: "DRAWER", role: "Lord", hero: "guan-yu", hp: 4, maxHp: 4, hand: [] },
+      { name: "OBSERVER", role: "Loyalist", hero: "simayi", hp: 4, maxHp: 4, hand: [] },
+      { name: "THIRD", role: "Rebel", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [] },
+      { name: "FOURTH", role: "Renegade", hero: "xiahou-dun", hp: 4, maxHp: 4, hand: [] },
+    ],
+  } });
+  expect(seeded.ok()).toBeTruthy();
+  const seed = await seeded.json();
+  let release, intercepted;
+  const paused = new Promise((resolve) => { release = resolve; });
+  const requestReady = new Promise((resolve) => { intercepted = resolve; });
+  await page.route(`${API}/api/rooms`, async (route) => {
+    if (route.request().method() === "POST" && route.request().postDataJSON()?.action === "draw") {
+      intercepted(); await paused;
+    }
+    await route.continue();
+  });
+  await openPlayer(page, seed, 0, { width: 440, height: 766 }, 30_000);
+  await requestReady;
+  await page.clock.pauseAt(await page.evaluate(() => new Date(Date.now() + 10_000)));
+  const response = page.waitForResponse((result) => result.url() === `${API}/api/rooms` && result.request().method() === "POST" && result.request().postDataJSON()?.action === "draw");
+  release(); expect((await response).ok()).toBeTruthy();
+  const stage = page.locator(".private-draw-stage");
+  await expect(stage).toBeVisible();
+  await expect(stage.locator(".card-action-title")).toHaveCount(0);
+  await expect(stage.locator(".private-draw-row > .played-card")).toHaveCount(2);
+  await expect(stage.locator(".private-draw-row")).toHaveAttribute("aria-label", "Private drawn cards; scroll horizontally to view all");
+  const own = await roomView(request, seed, 0);
+  const other = await roomView(request, seed, 1);
+  expect(own.myHand.map((item) => item.id)).toEqual(deck.slice(0, 2).map((item) => item.id));
+  expect(JSON.stringify(other)).not.toContain(deck[0].id);
+  const context = await browser.newContext({ viewport: { width: 440, height: 766 } });
+  try {
+    const observer = await context.newPage();
+    await openPlayer(observer, seed, 1, { width: 440, height: 766 });
+    await expect(observer.locator(".private-draw-stage")).toHaveCount(0);
+  } finally { await context.close(); }
 });

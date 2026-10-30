@@ -2224,7 +2224,7 @@ function PublicCardAnnouncement({
     let frame = 0;
     let placementFailureTimer: number | null = null;
     let currentGeometryIdentity = "";
-    const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-content"] : [])].join(", ");
+    const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-row"] : [])].join(", ");
     const setData = (name: string, value: string | undefined) => {
       const current = copy.getAttribute(name);
       if (value === undefined) {
@@ -2368,7 +2368,7 @@ function PublicCardAnnouncement({
       const isLargeRevealAnchor = phase === "reveal" && !stableCenterAnchor
         && actualRect && actualRect.width > 0 && actualRect.height > 0;
       const obstacles: Array<{ element: HTMLElement | null; rect: DOMRect }> = [...document.querySelectorAll<HTMLElement>(
-        [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(stableHarvestAnchor ? [] : ["[data-public-card-copy-anchor-event-id]"]), ...(privateDrawAware ? [".private-draw-content"] : [])].join(", "),
+        [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(stableHarvestAnchor ? [] : ["[data-public-card-copy-anchor-event-id]"]), ...(privateDrawAware ? [".private-draw-row"] : [])].join(", "),
       )].flatMap((element) => {
         const parked = element.closest<HTMLElement>('[data-public-card-journey-phase="parked"], .table-played-card.settled');
         const parkedBounds = parked?.getBoundingClientRect();
@@ -2503,14 +2503,14 @@ function PublicCardAnnouncement({
       const centerCardStillOccupiesStage = centerCardRect.height > 0 && !terminalLustStageCleared && !releaseParkedCenterAnchor;
 
       const gap = PUBLIC_CARD_ANNOUNCEMENT_GAP;
-      const obstacleClearance = (element: HTMLElement | null) => privateDrawAware && element?.matches(".private-draw-content")
+      const obstacleClearance = (element: HTMLElement | null) => privateDrawAware && element?.matches(".private-draw-row")
         ? 10
         : compactMobileLustFrame && element?.matches(".public-activity-chip") ? 6
           : element?.matches(".opponent-player-card, .player-square") ? 0 : 2;
       const overlapsObstacle = (rect: DOMRect, element: HTMLElement | null, obstacleRect: DOMRect) =>
         rectsOverlap(toCardRect(rect), obstacleRect, obstacleClearance(element));
       const privateDrawObstacle = privateDrawAware
-        ? obstacles.find(({ element }) => element?.matches(".private-draw-content")) ?? null
+        ? obstacles.find(({ element }) => element?.matches(".private-draw-row")) ?? null
         : null;
       const staysAbovePrivateDraw = (top: number, height: number) => !privateDrawObstacle
         || top + height + 10 <= privateDrawObstacle.rect.top;
@@ -3056,12 +3056,12 @@ function PublicCardAnnouncement({
         const affectsPrivateDraw = records.some((record) => {
           const target = record.target instanceof Element ? record.target : record.target.parentElement;
           if (target?.closest(".public-skill-event-announcement")) return false;
-          if (target?.closest(".private-draw-content")) return true;
+          if (target?.closest(".private-draw-row")) return true;
           return [...record.addedNodes, ...record.removedNodes].some((node) => node instanceof Element
-            && (node.matches(".private-draw-content") || Boolean(node.querySelector(".private-draw-content"))));
+            && (node.matches(".private-draw-row") || Boolean(node.querySelector(".private-draw-row"))));
         });
         if (!affectsPrivateDraw) return;
-        for (const element of document.querySelectorAll<HTMLElement>(".private-draw-content")) resizeObserver?.observe(element);
+        for (const element of document.querySelectorAll<HTMLElement>(".private-draw-row")) resizeObserver?.observe(element);
         schedule();
       });
       // Observe only actual private-draw changes; rewriting this live region's
