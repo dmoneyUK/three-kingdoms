@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { measuredPublicCorridorWidth } from "../app/public-corridor.ts";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
@@ -18,6 +19,13 @@ import {
   compactLustDuelOrderMessage,
   compactLustDuelResultMessage,
 } from "../app/lust-public-copy.ts";
+
+test("public width uses equal gutters for two seats on each side", () => {
+  const table = { left: 0, right: 390, width: 390 };
+  const sides = [{ left: 8, right: 82, width: 74 }, { left: 10, right: 86, width: 76 }, { left: 306, right: 382, width: 76 }, { left: 304, right: 380, width: 76 }];
+  assert.equal(measuredPublicCorridorWidth(table, sides, { left: 320, right: 382, width: 62 }), 206);
+  assert.equal(measuredPublicCorridorWidth(table, [], null), 340);
+});
 
 const action = (overrides = {}) => ({
   key: "test-action",
@@ -50,7 +58,7 @@ function duelStageFacts({ stage = "NEGATION", revision = 6, checkpointId = "nega
   const identity = { interactionId: "duel-i1", checkpointId, presentationRevision: revision };
   const interaction = {
     semantics: "PROVEN", interactionId: identity.interactionId, rootFrameId: "duel-frame", activeFrameId: "duel-frame",
-    checkpointId, presentationRevision: revision, stage, sourceId: "p1", targetIds: ["p1", "p2"],
+    checkpointId, presentationRevision: revision, stage, sourceId: "p1", targetIds: ["p2", "p1"],
     currentParticipantId: "p2", participantIds: ["p1", "p2"],
   };
   const negationProof = stage === "NEGATION" ? {
@@ -58,7 +66,7 @@ function duelStageFacts({ stage = "NEGATION", revision = 6, checkpointId = "nega
     presentationRevision: revision, rootEventId, publicEventId: responseEventIds.at(-1) ?? rootEventId,
     sourceId: "p1", targetId: "p2", responseEventIds, responseActorIds,
   } : null;
-  return { identity, interaction, rootEventId, negationProof, settlementProof: null, exchangeProof: null };
+  return { identity, interaction, rootEventId, knownPlayerIds: ["p1", "p2", "p3"], negationProof, settlementProof: null, exchangeProof: null };
 }
 
 test("Duel H4 owner follows the proven stage across root and linked Negation responses", () => {
@@ -71,6 +79,14 @@ test("Duel H4 owner follows the proven stage across root and linked Negation res
       responseCount ? "negation-" + responseCount : "duel-root",
     ].join(":"));
   }
+});
+
+test("Duel uses proven original targets when group participants are empty", () => {
+  const base = duelStageFacts({ responseCount: 1 });
+  const current = { ...base, interaction: { ...base.interaction, participantIds: [] }, negationProof: { ...base.negationProof, responseActorIds: ["p3"] } };
+  assert.equal(selectDuelPublicStageOwner(current).stageOwner, "NEGATION");
+  assert.equal(selectDuelPublicStageOwner({ ...current, negationProof: { ...current.negationProof, responseActorIds: ["unknown"] } }).stageOwner, null);
+  assert.equal(selectDuelPublicStageOwner({ ...current, interaction: { ...current.interaction, targetIds: ["p1"] } }).stageOwner, null);
 });
 
 test("Duel H4 stage ownership is viewer-independent and rejects stale or unrelated Negation proof", () => {

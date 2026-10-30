@@ -4394,13 +4394,13 @@
   align-items: center;
   justify-content: center;
   gap: 1px;
-  width: max-content;
+  width: min(340px, calc(100% - 16px));
   max-width: calc(100% - 16px);
   min-height: 44px;
   padding: 6px 12px;
   border: 1px solid #c5a766;
   border-radius: 8px;
-  background: linear-gradient(180deg, rgb(20 23 16 / 96%), rgb(10 13 10 / 94%));
+  background: linear-gradient(180deg, rgb(20 23 16 / 86%), rgb(10 13 10 / 84%));
   box-shadow: 0 4px 14px #000a, inset 0 0 0 1px #d0b67522;
   text-align: center;
   overflow-wrap: anywhere;
@@ -4434,7 +4434,6 @@
 
 @media (max-width: 520px) {
   .game-shell .play-table > .public-activity-chip[data-public-activity-kind="target-card-choice"] {
-    width: min(250px, calc(100% - 16px));
     min-height: 34px;
     padding: 4px 6px;
   }
@@ -4454,7 +4453,6 @@
 
 @media (max-width: 420px) {
   .game-shell:has(.player-board[data-player-count="5"]) .play-table > .public-activity-chip {
-    max-width: min(220px, calc(100% - 16px));
     min-height: 36px;
     padding: 2px 8px;
   }

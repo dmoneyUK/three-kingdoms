@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef } from "react";
+import { publicCorridorWidth } from "./public-corridor";
 import type { PublicActivityStatus } from "../game/public-activity";
 import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 
@@ -130,6 +131,7 @@ function placeNearPlayerSeat(chip: HTMLElement, table: HTMLElement, playerId: st
   if (!seatRect) return false;
 
   const tableRect = table.getBoundingClientRect();
+  chip.style.width = `${publicCorridorWidth(table)}px`;
   const width = chip.offsetWidth;
   const height = chip.offsetHeight;
   const visualViewport = window.visualViewport;
@@ -204,6 +206,7 @@ function placeChip(
   previousMemory: PlacementMemory | null,
 ): PlacementMemory {
   const tableRect = table.getBoundingClientRect();
+  chip.style.width = `${publicCorridorWidth(table)}px`;
   const width = chip.offsetWidth;
   const height = chip.offsetHeight;
   const visualViewport = window.visualViewport;

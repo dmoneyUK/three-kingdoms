@@ -6844,6 +6844,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     return null;
   })();
   const duelPublicStageOwner = selectDuelPublicStageOwner({
+    knownPlayerIds: room.players.map((player) => player.id),
     identity: room.presentationSnapshot?.identity ?? null,
     interaction: room.presentationSnapshot?.interaction ?? null,
     rootEventId: duelExchangeDisplayCandidate?.exchange.root.eventId

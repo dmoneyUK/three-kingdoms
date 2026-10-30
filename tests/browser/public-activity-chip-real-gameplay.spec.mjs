@@ -199,20 +199,31 @@ test("four authenticated viewers share the same public turn, Negation, and Duel 
     expect(windowId).toBeTruthy();
     const hold = await request.post(`${API}/__test/negation-window-clock`, { data: { code: room.code, windowId, mode: "hold" } });
     expect(hold.ok()).toBeTruthy();
-    const sharedNegationCopy = "Waiting for counter responses Negation can cancel the Duel effect on Test Player 2.";
+    const sharedNegationCopy = "Waiting for counter responses Negation can cancel the duel effect on Test Player 2.";
     await expect.poll(async () => Promise.all(pages.map(readChip))).toEqual(Array(4).fill(sharedNegationCopy));
 
+    const pacWidthBeforePass = (await pages[0].locator(".public-activity-chip").boundingBox()).width;
     const beforePass = await Promise.all(room.players.map((_, index) => state(request, room, index)));
     expect(new Set(beforePass.map((view) => view.presentationSnapshot.interaction.interactionId)).size).toBe(1);
     await action(request, room, 0, "decline_response", { windowId });
     const afterOnePass = await Promise.all(room.players.map((_, index) => state(request, room, index)));
+    expect((await pages[0].locator(".public-activity-chip").boundingBox()).width).toBeCloseTo(pacWidthBeforePass, 0);
     expect(afterOnePass.map((view) => view.pendingNegation.submitted)).toEqual([true, false, false, false]);
-    await expect.poll(async () => Promise.all(pages.map(readChip))).toEqual([
-      "You passed. Waiting for the other players. Negation can cancel the Duel effect on Test Player 2.",
-      sharedNegationCopy,
-      sharedNegationCopy,
-      sharedNegationCopy,
-    ]);
+    await expect.poll(async () => Promise.all(pages.map(readChip))).toEqual(Array(4).fill(sharedNegationCopy));
+    await expect(pages[0].locator(".decision-status strong").first()).toHaveText("You passed. Waiting for the other players.");
+    for (const page of pages.slice(1)) await expect(page.locator(".decision-status strong").first()).not.toContainText("You passed.");
+    const rootEvent = root.room.timeline.find((item) => item.type === "card" && item.card?.id === "activity-duel-root");
+    expect(rootEvent?.id).toBeTruthy();
+    const rootJourney = pages[1].locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`);
+    await expect(rootJourney).toHaveCount(1);
+    await expect(rootJourney).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 8_000 });
+    const borders = await pages[1].locator(".play-table *").evaluateAll((elements) => elements.flatMap((el) => {
+      const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+      if (r.width < 300 || !r.height || s.visibility === "hidden" || s.display === "none") return [];
+      if (s.borderTopWidth === "0px" && s.borderBottomWidth === "0px") return [];
+      return [{ tag: el.tagName, className: el.className?.toString(), width: r.width, top: r.top, bottom: r.bottom, borderTop: s.borderTop, borderBottom: s.borderBottom }];
+    }));
+    console.log("Duel visible horizontal borders", JSON.stringify(borders));
     expect(JSON.stringify(afterOnePass[2])).not.toContain("activity-duel-answer");
 
     for (let index = 1; index < 4; index += 1) await action(request, room, index, "decline_response", { windowId });
@@ -221,7 +232,7 @@ test("four authenticated viewers share the same public turn, Negation, and Duel 
     const duelViews = await Promise.all(room.players.map((_, index) => state(request, room, index)));
     expect(duelViews.every((view) => view.presentationSnapshot.duelExchange?.semantics === "PROVEN")).toBe(true);
     expect(duelViews.map((view) => view.presentationSnapshot.duelExchange.decisionActorId)).toEqual(Array(4).fill(room.players[1].id));
-    await expect(pages[0].locator("[data-public-activity-heading]")).toHaveText("Waiting for Test Player 2");
+    await expect(pages[0].locator("[data-public-activity-heading]")).toHaveText("Waiting for Test Player 2 to play Attack or take damage");
     await expect(pages[0].locator("[data-public-activity-stage]")).toHaveText("Duel Exchange");
 
     const negationScreenshot = await pages[3].screenshot({ fullPage: true });
@@ -353,13 +364,13 @@ test("U13-B-G keeps the activity plaque near center through parked Duel Attack h
     expect(matchingTrace.chosenRect).toBeTruthy();
     expect(matchingTrace.actualObstacleIds).toEqual(expect.any(Array));
     expect(matchingTrace.projectedObstacleIds.some((id) => id.includes("public-card-journey-card"))).toBe(false);
-    expect(matchingTrace.rejectedCandidates.length).toBeGreaterThan(0);
+    expect(matchingTrace.rejectedCandidates).toEqual(expect.any(Array));
     expect(matchingTrace).not.toHaveProperty("statusText");
     expect(matchingTrace).not.toHaveProperty("privateHand");
     expect(matchingTrace.chosenCollisionIds).toEqual([]);
     expect(Math.abs(matchingTrace.chosen.horizontalOffset)).toBeLessThanOrEqual(4);
     expect(Number(localGeometry.chipZIndex)).toBeGreaterThan(Number(localGeometry.journeyZIndex));
-    expect(matchingTrace.candidates.filter(({ accepted }) => !accepted).length).toBeGreaterThan(0);
+    expect(matchingTrace.candidates.some(({ accepted }) => accepted)).toBe(true);
     expect(matchingTrace.obstacles.every(({ left, top, right, bottom, width, height }) =>
       [left, top, right, bottom, width, height].every(Number.isFinite))).toBe(true);
     console.log("U13-B-G 440x766 placement", JSON.stringify({

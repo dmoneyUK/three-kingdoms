@@ -66,6 +66,7 @@ export type DuelPublicStageOwnerInput = {
   identity: SnapshotIdentity;
   interaction: SnapshotInteraction;
   rootEventId: string | null;
+  knownPlayerIds: readonly string[];
   negationProof: DuelNegationProof;
   settlementProof: DuelSettlementProof;
   exchangeProof: DuelExchangeProof;
@@ -154,12 +155,12 @@ export function selectDuelPublicStageOwner(input: DuelPublicStageOwnerInput): Du
       || !isId(proof.publicEventId) || !isId(proof.sourceId) || !isId(proof.targetId)
       || proof.sourceId === proof.targetId || interaction.sourceId !== proof.sourceId
       || interaction.currentParticipantId !== proof.targetId
-      || !participants.has(proof.sourceId) || !participants.has(proof.targetId)
+      || interaction.targetIds.length !== 2 || interaction.targetIds[0] !== proof.targetId || interaction.targetIds[1] !== proof.sourceId
       || !Array.isArray(proof.responseEventIds) || !Array.isArray(proof.responseActorIds)
       || proof.responseEventIds.length !== proof.responseActorIds.length
       || new Set(proof.responseEventIds).size !== proof.responseEventIds.length
       || proof.responseEventIds.some((eventId) => !isId(eventId) || eventId === proof.rootEventId)
-      || proof.responseActorIds.some((actorId) => !isId(actorId) || !participants.has(actorId))
+      || proof.responseActorIds.some((actorId) => !isId(actorId) || !input.knownPlayerIds.includes(actorId))
       || proof.publicEventId !== (proof.responseEventIds.at(-1) ?? proof.rootEventId)) return none;
     const settlement = input.settlementProof;
     if (settlement && settlement.interactionId === identity.interactionId

@@ -1,5 +1,7 @@
 "use client";
 
+import { publicCorridorWidth } from "./public-corridor";
+
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Card, CardKind } from "../game/model";
 import type { PresentationSnapshotPublicCardEffect, PresentationSnapshotRootAction } from "../game/presentation-snapshot";
@@ -2368,6 +2370,9 @@ function PublicCardAnnouncement({
       const obstacles: Array<{ element: HTMLElement | null; rect: DOMRect }> = [...document.querySelectorAll<HTMLElement>(
         [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(stableHarvestAnchor ? [] : ["[data-public-card-copy-anchor-event-id]"]), ...(privateDrawAware ? [".private-draw-content"] : [])].join(", "),
       )].flatMap((element) => {
+        const parked = element.closest<HTMLElement>('[data-public-card-journey-phase="parked"], .table-played-card.settled');
+        const parkedBounds = parked?.getBoundingClientRect();
+        if (parkedBounds && parkedBounds.width <= 70 && parkedBounds.height <= 110) return [];
         if (element === anchor || element === copy
           || element.dataset.publicCardCopyAnchorEventId === copyAnchorEventId
           || element.contains(copy)) return [];
@@ -2384,7 +2389,7 @@ function PublicCardAnnouncement({
         height: Number(anchor.dataset.publicCardJourneyTargetHeight),
       } : null;
       const releaseParkedCenterAnchor = clearCenterAnchorForParkedNotice && phase === "parked";
-      if (!isLargeRevealAnchor && !releaseParkedCenterAnchor && anchorTarget && Object.values(anchorTarget).every(Number.isFinite)
+      if (phase !== "parked" && !isLargeRevealAnchor && !releaseParkedCenterAnchor && anchorTarget && Object.values(anchorTarget).every(Number.isFinite)
         && anchorTarget.width > 0 && anchorTarget.height > 0) {
         obstacles.push({
           element: null,
@@ -2462,6 +2467,7 @@ function PublicCardAnnouncement({
         ? Math.min(PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH, viewportWidth - 16)
         : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH;
       const maxWidth = Math.max(1, Math.min(
+        publicCorridorWidth(display.closest<HTMLElement>(".play-table")!),
         availableAnnouncementWidth,
         negationWaiting ? 420 : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH,
         viewportWidth - 16,
@@ -2609,19 +2615,7 @@ function PublicCardAnnouncement({
         ? existingBand
         : null);
       const canonicalCenterX = placementBand?.centerX ?? targetCenterX;
-      const widths = [...new Set([placementBand?.width, maxWidth, 500, 480, 456, 440, 420, 400, 380, 360, 340, 320, 300, 280, 260, 240, 224, 208, 200, 192, 184, 176, 168, 160]
-        .filter((width): width is number => typeof width === "number")
-        .map((width) => Math.min(width, maxWidth)))]
-        .filter((width) => width > 0)
-        .sort((left, right) => right - left);
-      // Preserve the narration's established center through settlement, but
-      // let the terminal result reclaim the available phone width. Reusing
-      // the earlier compact order-line width can make the longer, final
-      // outcome unnecessarily narrow and harder to read.
-      if (placementBand && !terminalLustResult) {
-        const reusableWidth = widths.indexOf(Math.min(placementBand.width, maxWidth));
-        if (reusableWidth > 0) widths.unshift(widths.splice(reusableWidth, 1)[0]);
-      }
+      const widths = [maxWidth];
       const textElement = copy.querySelector<HTMLElement>("b");
       const supportElement = copy.querySelector<HTMLElement>(".public-negation-narration-support");
       // LUST participant names are identity, not expendable copy. Let their
