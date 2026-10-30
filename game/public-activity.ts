@@ -310,21 +310,9 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
   const nextDecision = publicDecisionFromPresentationSnapshot(snapshot);
 
   if (input.status === "playing" && input.phase === "response" && nextDecision?.stageLabel === "Negation") {
-    const viewerChoice = snapshot?.viewerNegationChoice;
-    const choiceMatchesCurrentWindow = Boolean(input.currentViewerNegationWindowId
-      && viewerChoice?.windowId === input.currentViewerNegationWindowId
-      && viewerChoice.locked === true
-      && (viewerChoice.choice === "pass" || viewerChoice.choice === "negation_intent")
-      && nextDecision.visibility === "PUBLIC"
-      && nextDecision.responseWindowOpen === true);
-    const localAcknowledgement = choiceMatchesCurrentWindow
-      ? viewerChoice?.choice === "negation_intent"
-        ? "You chose to play Negation. Waiting for the other players."
-        : "You passed. Waiting for the other players."
-      : null;
     return {
       kind: "negation",
-      text: localAcknowledgement ?? "Waiting for counter responses",
+      text: "Waiting for counter responses",
       stage: publicNegationEffectCopy(input, nextDecision),
     };
   }

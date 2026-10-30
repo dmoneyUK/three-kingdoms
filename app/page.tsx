@@ -19,7 +19,7 @@ import { attackDodgePublicActionEvents, attackDodgeSettlementSupersessionReason,
 import { buildDyingHandoffView, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildPresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
-import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
+import { buildConsoleDecisionDisplay, triggerDecisionInstruction, viewerNegationAcknowledgement, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration } from "../game/public-activity";
 import { CardFace } from "./card-face";
@@ -3051,7 +3051,7 @@ function decisionLabel(action: CurrentAction, reason: string) {
 function decisionInstruction(action: CurrentAction, reason: string) {
   if (action.kind === "trigger") {
     const option = action.triggerOptions?.[0];
-    if (option) return `Your action · Use ${option.label}${option.description ? `: ${option.description.replace(/[.!?]\s*$/, "")}` : ""}${action.declineAction === "decline_trigger" || action.legalActions.includes("decline_trigger") ? ", or skip" : ""}`;
+    if (option) return triggerDecisionInstruction(option.label, option.description, action.declineAction === "decline_trigger" || action.legalActions.includes("decline_trigger"));
   }
   return reason || "Make the required choice.";
 }
@@ -10155,7 +10155,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && publicActivityStatus.kind !== "turn"
     && publicActivityStatus.kind !== "finished";
   const consoleAuthoritativeDecision = Boolean(room.currentAction && room.currentAction.kind !== "none" && (consoleIsDecisionActor || room.isMyTurn && room.currentAction.kind === "turn" && currentActionOwnedByViewer));
-  const consoleInstruction = localWaitAlreadyPublic
+  const privateNegationAcknowledgement = viewerNegationAcknowledgement(room.presentationSnapshot, room.currentAction?.negationWindowId, room.phase);
+  const consoleInstruction = privateNegationAcknowledgement ?? (localWaitAlreadyPublic
     ? "No action needed."
     : lustLocalSelectionActive && activeSkillSelection
     ? `Select ${activeSkillSelection.min} card${activeSkillSelection.min === 1 ? "" : "s"} and ${activeSkillTargetMin} Duel participant${activeSkillTargetMin === 1 ? "" : "s"}.`
@@ -10169,7 +10170,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? room.currentAction?.kind === "trigger" ? decisionInstruction(room.currentAction, room.currentAction.reason) : decisionPresentation.primaryStatus
     : decisionPresentation.isWaiting
       ? decisionPresentation.supportingInstruction
-      : room.currentAction?.reason || decisionPresentation.supportingInstruction;
+      : room.currentAction?.reason || decisionPresentation.supportingInstruction);
   const consoleDecline = responseDamageAction || triggerDeclineAction ? { label: responseDamageAction === "decline_response" ? responseDeclineLabel : "Skip", enabled: true } : null;
   const canClearTargetCardPickerSelection = Boolean(
     targetCardPickerOption
@@ -10493,7 +10494,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               aria-live="polite"
               aria-atomic="true"
             >
-              {!lustLocalSelectionActive && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "WAITING FOR OTHERS" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
+              {!lustLocalSelectionActive && !privateNegationAcknowledgement && !localWaitAlreadyPublic && !(consoleIsDecisionActor && room.currentAction?.kind === "trigger") && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "WAITING FOR OTHERS" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
               <strong>{activeLocalPlayTargetNotice?.message ?? consoleDecision.instruction}</strong>
               {lustTargetOrder && <em className="lust-order-guidance" data-testid="lust-order-guidance">
                 Attack order: <strong>{lustTargetOrder.firstName}</strong> first → <span className="lust-second-actor">{lustTargetOrder.secondName}</span> second.

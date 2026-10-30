@@ -1,4 +1,5 @@
 import test from "node:test";
+import { viewerNegationAcknowledgement, triggerDecisionInstruction } from "../../game/console-decision.ts";
 import assert from "node:assert/strict";
 import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration } from "../../game/public-activity.ts";
 
@@ -90,10 +91,16 @@ test("local Negation Pass and intent acknowledgements are current-window and vie
 
   const intentView = { ...publicSnapshot, viewerNegationChoice: { windowId: "window-1", locked: true, choice: "negation_intent" } };
   const passView = { ...publicSnapshot, viewerNegationChoice: { windowId: "window-1", locked: true, choice: "pass" } };
-  assert.equal(derivePublicActivityStatus({ ...common, presentationSnapshot: intentView }).text,
-    "You chose to play Negation. Waiting for the other players.");
-  assert.equal(derivePublicActivityStatus({ ...common, presentationSnapshot: passView }).text,
-    "You passed. Waiting for the other players.");
+  assert.equal(derivePublicActivityStatus({ ...common, presentationSnapshot: intentView }).text, "Waiting for counter responses");
+  assert.equal(viewerNegationAcknowledgement(intentView, "window-1", "response"), "You chose to play Negation. Waiting for the other players.");
+  assert.equal(derivePublicActivityStatus({ ...common, presentationSnapshot: passView }).text, "Waiting for counter responses");
+  assert.equal(viewerNegationAcknowledgement(passView, "window-1", "response"), "You passed. Waiting for the other players.");
+  assert.equal(viewerNegationAcknowledgement(publicSnapshot, "window-1", "response"), null);
+  assert.equal(viewerNegationAcknowledgement(intentView, "window-2", "response"), null);
+  assert.equal(viewerNegationAcknowledgement(intentView, "window-1", "play"), null);
+  assert.equal(viewerNegationAcknowledgement({ ...intentView, identity: { ...intentView.identity, checkpointId: "stale" } }, "window-1", "response"), null);
+  assert.equal(triggerDecisionInstruction("Treachery", "Obtain the card that caused the damage, if it is still available.", true), "Use Treachery to obtain the card that caused the damage, or Skip.");
+  assert.match(triggerDecisionInstruction("Unknown skill", "Select two cards.", true), /Select two cards, or Skip/);
 
   const staleIntent = { ...intentView, viewerNegationChoice: { ...intentView.viewerNegationChoice, windowId: "old-window" } };
   assert.equal(derivePublicActivityStatus({ ...common, presentationSnapshot: staleIntent }).text, "Waiting for counter responses");
