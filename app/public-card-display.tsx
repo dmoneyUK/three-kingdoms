@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { Card, CardKind } from "../game/model";
 import type { PresentationSnapshotPublicCardEffect, PresentationSnapshotRootAction } from "../game/presentation-snapshot";
 import type { PresentationTargetCardSettlementMovement } from "../game/presentation-v2";
+import type { PublicInteractionNarration } from "../game/public-activity";
 import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
 import { cardDefinition } from "../game/cards";
 import { publicAnnouncementEventCopyKey as buildPublicAnnouncementEventCopyKey, publicAnnouncementGeometryIdentity, publicAnnouncementGeometryKey, transitionPublicAnnouncementCopyLifecycle, type PublicAnnouncementCopyLifecycle, type PublicAnnouncementProtectedGeometry, type PublicAnnouncementSeatGeometry } from "../game/public-announcement";
@@ -112,6 +113,8 @@ export type PublicCardDisplayAction = {
   showNegationChainOrdinals?: boolean;
   /** Shared, read-only H4 explanation derived only from a proven public reaction chain. */
   publicNegationNarration?: PublicNegationNarration;
+  /** Shared H4 copy for the latest committed event in the current interaction. */
+  publicInteractionNarration?: PublicInteractionNarration;
   /** Shared waiting label derived from the proven public LUST Duel actor. */
   publicActivityMessage?: string;
   /** Full accessible activity copy when a short stage label is shown visually. */
@@ -1865,6 +1868,13 @@ function publicCardAnnouncementCopy(
   compactPlayerNamesById: CompactPublicPlayerNames,
   eventId?: string,
 ): PublicCardAnnouncementCopy {
+  if (action.publicInteractionNarration) {
+    return {
+      message: action.publicInteractionNarration.headline,
+      compactMessage: action.publicInteractionNarration.compactHeadline,
+      accessibleLabel: action.publicInteractionNarration.accessibleLabel,
+    };
+  }
   if ((action.motion?.type === "lust-cost" || action.motion?.type === "lust-duel") && action.lustCostFrame) {
     if (action.motion.type === "lust-duel" && action.settlement) {
       const message = action.publicNotice ?? action.ariaLabel;
@@ -2044,6 +2054,7 @@ function PublicCardAnnouncement({
   accessibleLabel,
   supportingMessage,
   compactSupportingMessage,
+  presentationNarration,
   negationNarration,
   fallbackCardRect,
   phaseNotice,
@@ -2073,6 +2084,7 @@ function PublicCardAnnouncement({
   accessibleLabel?: string;
   supportingMessage?: string;
   compactSupportingMessage?: string;
+  presentationNarration?: PublicNegationNarration | PublicInteractionNarration;
   negationNarration?: PublicNegationNarration;
   fallbackCardRect: CardRect | null;
   phaseNotice?: string;
@@ -2110,14 +2122,14 @@ function PublicCardAnnouncement({
   const copyLifecycleRef = useRef<PublicAnnouncementCopyLifecycle>({ eventCopyKey: "", stage: "UNSEEN" });
   const lastGeometryKeyRef = useRef("");
   const [displayedCopy, setDisplayedCopy] = useState<DisplayedPublicCardAnnouncement>(() => ({
-    message: negationNarration?.headline ?? message,
-    supporting: negationNarration?.supportingMessage ?? supportingMessage ?? "",
-    eventId: negationNarration?.eventId ?? eventId,
-    latestCommittedEventId: negationNarration?.latestCommittedEventId,
-    checkpointId: negationNarration?.checkpointId,
-    phase: negationNarration?.phase,
-    rootEffectState: negationNarration?.rootEffectState,
-    accessibleLabel: accessibleLabel ?? negationNarration?.accessibleLabel,
+    message: presentationNarration?.headline ?? negationNarration?.headline ?? message,
+    supporting: presentationNarration?.supportingMessage ?? negationNarration?.supportingMessage ?? supportingMessage ?? "",
+    eventId: presentationNarration?.eventId ?? negationNarration?.eventId ?? eventId,
+    latestCommittedEventId: presentationNarration?.latestCommittedEventId ?? negationNarration?.latestCommittedEventId,
+    checkpointId: presentationNarration?.checkpointId ?? negationNarration?.checkpointId,
+    phase: presentationNarration?.phase ?? negationNarration?.phase,
+    rootEffectState: presentationNarration?.rootEffectState ?? negationNarration?.rootEffectState,
+    accessibleLabel: accessibleLabel ?? presentationNarration?.accessibleLabel ?? negationNarration?.accessibleLabel,
   }));
   const displayedCopyRef = useRef(displayedCopy);
   useLayoutEffect(() => () => {
@@ -2135,7 +2147,7 @@ function PublicCardAnnouncement({
   const latestInputs = {
     eventId, anchorEventId, eventCopyKey, announcementIdentity, geometryKey, copyLifecycleStage, placementKey, viewerLayoutKey,
     phase, heading, message, compactMessage, accessibleLabel, supportingMessage, compactSupportingMessage,
-    negationNarration, fallbackCardRect: stableFallbackCardRect, phaseNotice, outcome, negationWaiting,
+    presentationNarration, negationNarration, fallbackCardRect: stableFallbackCardRect, phaseNotice, outcome, negationWaiting,
     stableCenterAnchor, keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, clearCenterAnchorWhenParked,
     viewerGeometryReady, preferredVerticalMode, privateDrawAware,
   };
@@ -2155,7 +2167,7 @@ function PublicCardAnnouncement({
     if (!isAttackDodgeUxTraceActive()) return;
     const current = latestInputsRef.current;
     const identity = current.announcementIdentity;
-    const narration = current.negationNarration;
+    const narration = current.presentationNarration ?? current.negationNarration;
     const isH4 = Boolean(narration || current.negationWaiting
       || current.phaseNotice?.toUpperCase().includes("NEGATION")
       || ["NEGATION", "NEGATION_SETTLEMENT", "DUEL_EXCHANGE"].includes(identity?.semanticOwner ?? ""));
@@ -2280,7 +2292,7 @@ function PublicCardAnnouncement({
       const {
         eventId, eventCopyKey, geometryKey, placementKey, viewerLayoutKey, phase, message, compactMessage,
         heading, clearCenterAnchorWhenParked: clearCenterAnchorForParkedNotice,
-        accessibleLabel, supportingMessage, compactSupportingMessage, negationNarration,
+        accessibleLabel, supportingMessage, compactSupportingMessage, presentationNarration, negationNarration,
         fallbackCardRect: currentFallbackCardRect, outcome, negationWaiting, stableCenterAnchor,
         keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, viewerGeometryReady, preferredVerticalMode,
         privateDrawAware,
@@ -2288,16 +2300,17 @@ function PublicCardAnnouncement({
       const copySignature = JSON.stringify([
         eventCopyKey, heading, message, compactMessage, accessibleLabel, supportingMessage, compactSupportingMessage,
       ]);
+      const narration = presentationNarration ?? negationNarration;
       const hasNegationNarration = Boolean(negationNarration);
-      const narrationEventId = negationNarration?.eventId;
-      const narrationLatestCommittedEventId = negationNarration?.latestCommittedEventId;
-      const narrationCheckpointId = negationNarration?.checkpointId;
-      const narrationPhase = negationNarration?.phase;
-      const narrationRootEffectState = negationNarration?.rootEffectState;
-      const narrationAccessibleLabel = accessibleLabel ?? negationNarration?.accessibleLabel;
+      const narrationEventId = narration?.eventId;
+      const narrationLatestCommittedEventId = narration?.latestCommittedEventId;
+      const narrationCheckpointId = narration?.checkpointId;
+      const narrationPhase = narration?.phase;
+      const narrationRootEffectState = narration?.rootEffectState;
+      const narrationAccessibleLabel = accessibleLabel ?? narration?.accessibleLabel;
       const incomingDisplayedCopy: DisplayedPublicCardAnnouncement = {
-        message: negationNarration?.headline ?? message,
-        supporting: negationNarration?.supportingMessage ?? supportingMessage ?? "",
+        message: narration?.headline ?? message,
+        supporting: narration?.supportingMessage ?? supportingMessage ?? "",
         eventId: narrationEventId ?? eventId,
         latestCommittedEventId: narrationLatestCommittedEventId,
         checkpointId: narrationCheckpointId,
@@ -3165,6 +3178,38 @@ export function PublicSkillEventAnnouncementLayer({
   </section>;
 }
 
+/** H4 for a proven outcome whose originating physical-card journey has ended. */
+export function PublicInteractionAnnouncementLayer({ narration, roomCode, viewerId }: {
+  narration: PublicInteractionNarration;
+  roomCode: string;
+  viewerId: string;
+}) {
+  return <section className="public-card-display public-card-display-journey public-interaction-event-announcement"
+    data-public-interaction-event-id={narration.eventId} data-public-event-root-id={narration.rootEventId}>
+    <PublicCardAnnouncement
+      eventId={narration.eventId}
+      anchorEventId={null}
+      eventCopyKey={buildPublicAnnouncementEventCopyKey({
+        roomCode, rootEventId: narration.rootEventId, checkpointEventId: narration.eventId,
+        proofEventId: narration.eventId, actorId: narration.actorId ?? "public", actionClass: "interaction-outcome",
+        interactionId: narration.interactionId, rootFrameId: narration.rootFrameId,
+      })}
+      geometryKey={publicAnnouncementGeometryKey(roomCode, viewerId)}
+      copyLifecycleStage="ACTIVE"
+      placementKey={`${roomCode}:public-interaction-event-band`}
+      viewerLayoutKey={viewerId}
+      phase="static"
+      message={narration.headline}
+      compactMessage={narration.compactHeadline}
+      accessibleLabel={narration.accessibleLabel}
+      presentationNarration={narration}
+      fallbackCardRect={null}
+      stableCenterAnchor
+      ignoreJourneyLayoutPending
+    />
+  </section>;
+}
+
 function AttackDodgeCardJourney({
   action,
   enabled,
@@ -3219,9 +3264,10 @@ function AttackDodgeCardJourney({
   const activeRevealStartedAtMs = activeJourneyCard?.revealStartedAtMs ?? null;
   const activeRevealRemainingMs = activeJourneyCard?.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS;
   const announcementCopy = publicCardAnnouncementCopy(action, activeNotice, activeActorName, activeActorId, sourceName, targetName, compactPlayerNamesById, activeEventId);
-  const announcement = withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
-  const compactAnnouncement = announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION"))
-    ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, action.settlement ? undefined : action.phaseNotice, true)
+  const announcementPhaseNotice = action.settlement || action.publicInteractionNarration ? undefined : action.phaseNotice;
+  const announcement = withPublicCardPhaseNotice(announcementCopy.message, announcementPhaseNotice);
+  const compactAnnouncement = announcementCopy.compactMessage || announcementPhaseNotice?.includes("NEGATION")
+    ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, announcementPhaseNotice, true)
     : undefined;
 
   useLayoutEffect(() => {
@@ -3901,8 +3947,8 @@ function AttackDodgeCardJourney({
       />;
     })}
     <PublicCardAnnouncement
-      eventId={activeEventId}
-      eventCopyKey={publicCardAnnouncementCopyKey(action, activeEventId, activeActorId, roomCode)}
+      eventId={action.publicInteractionNarration?.eventId ?? activeEventId}
+      eventCopyKey={publicCardAnnouncementCopyKey(action, action.publicInteractionNarration?.eventId ?? activeEventId, action.publicInteractionNarration?.actorId ?? activeActorId, roomCode)}
       announcementIdentity={action.publicAnnouncementIdentity}
       geometryKey={publicAnnouncementGeometryKey(roomCode, viewerId)}
       copyLifecycleStage={publicCardAnnouncementLifecycleStage(action)}
@@ -3913,14 +3959,15 @@ function AttackDodgeCardJourney({
       message={announcement}
       compactMessage={compactAnnouncement}
       accessibleLabel={announcementCopy.accessibleLabel}
+      presentationNarration={action.publicInteractionNarration}
       fallbackCardRect={publicEffectFrameOwnsAnnouncementAnchor && journey.center && action.publicCardEffectFrame
         ? battlefieldPublicEffectFrame(journey.center, action.publicCardEffectFrame.materials.length) : journey.center}
       keepCenterAnchorClear={publicEffectFrameOwnsAnnouncementAnchor}
       stableCenterAnchor={publicEffectFrameOwnsAnnouncementAnchor}
       preferredVerticalMode={publicEffectFrameOwnsAnnouncementAnchor ? "above" : undefined}
-      phaseNotice={action.phaseNotice}
+      phaseNotice={announcementPhaseNotice}
       outcome={action.settlement?.outcome}
-      negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
+      negationWaiting={Boolean(announcementPhaseNotice?.includes("NEGATION"))}
     />
   </section>;
 }
@@ -4970,7 +5017,7 @@ function SingleTargetCardJourney({
     compactPlayerNamesById,
   );
   const negationNarration = action.publicNegationNarration;
-  const announcementPhaseNotice = action.settlement || isBumperHarvest
+  const announcementPhaseNotice = action.settlement || isBumperHarvest || action.publicInteractionNarration
     ? undefined
     : action.phaseNotice;
   const announcement = negationNarration?.headline ?? withPublicCardPhaseNotice(announcementCopy.message, announcementPhaseNotice);
@@ -5266,11 +5313,11 @@ function SingleTargetCardJourney({
       >{announcementCopy.message}</p>
     </div>}
     {!historyOnly && !suppressAnnouncement && !targetCardResultActive && <PublicCardAnnouncement
-      eventId={negationNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId)}
+      eventId={action.publicInteractionNarration?.eventId ?? negationNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId)}
       eventCopyKey={publicCardAnnouncementCopyKey(
         action,
-        negationNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId),
-        groupRootStageOwnsCopy ? action.sourceId : currentCard?.actorId ?? action.sourceId,
+        action.publicInteractionNarration?.eventId ?? negationNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId),
+        action.publicInteractionNarration?.actorId ?? (groupRootStageOwnsCopy ? action.sourceId : currentCard?.actorId ?? action.sourceId),
         roomCode,
       )}
       announcementIdentity={action.publicAnnouncementIdentity}
@@ -5288,6 +5335,7 @@ function SingleTargetCardJourney({
         : announcementCopy.accessibleLabel}
       supportingMessage={negationNarration?.supportingMessage ?? (motion?.type === "lust-cost" ? action.publicActivityMessage : undefined)}
       compactSupportingMessage={negationNarration?.compactSupportingMessage ?? (motion?.type === "lust-cost" ? action.publicActivityMessage : undefined)}
+      presentationNarration={action.publicInteractionNarration}
       negationNarration={negationNarration}
       fallbackCardRect={harvestPoolVisible
         ? journey.center
@@ -5296,9 +5344,9 @@ function SingleTargetCardJourney({
         : publicEffectFrameOwnsAnnouncementAnchor && journey.center && action.publicCardEffectFrame
           ? battlefieldPublicEffectFrame(journey.center, action.publicCardEffectFrame.materials.length)
         : motion?.type === "group-root" && !groupRootCenterIsStillOccupied ? undefined : journey.center}
-      phaseNotice={negationNarration ? undefined : action.phaseNotice}
+      phaseNotice={negationNarration || action.publicInteractionNarration ? undefined : action.phaseNotice}
       outcome={allParked ? action.settlement?.outcome : undefined}
-      negationWaiting={Boolean(negationNarration || action.phaseNotice?.includes("NEGATION"))}
+      negationWaiting={Boolean(negationNarration || !action.publicInteractionNarration && action.phaseNotice?.includes("NEGATION"))}
       stableCenterAnchor={motion?.type === "lust-cost"}
       keepCenterAnchorClear={publicEffectFrameOwnsAnnouncementAnchor}
       stableHarvestAnchor={harvestPoolVisible}
@@ -6034,9 +6082,10 @@ function DuelCardJourney({
   const activeMessage = activeEvent?.ariaLabel ?? latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
   const announcementCopy = publicCardAnnouncementCopy(action, activeMessage, activeEvent?.actorName ?? latestResponse?.actorName ?? sourceName, activeActorId, sourceName, targetName, compactPlayerNamesById, activeEventId);
   const negationNarration = action.publicNegationNarration;
-  const announcement = negationNarration?.headline ?? withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
-  const compactAnnouncement = negationNarration?.compactHeadline ?? ((announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION")))
-    ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, action.settlement ? undefined : action.phaseNotice, true)
+  const announcementPhaseNotice = action.settlement || action.publicInteractionNarration ? undefined : action.phaseNotice;
+  const announcement = negationNarration?.headline ?? withPublicCardPhaseNotice(announcementCopy.message, announcementPhaseNotice);
+  const compactAnnouncement = negationNarration?.compactHeadline ?? ((announcementCopy.compactMessage || announcementPhaseNotice?.includes("NEGATION"))
+    ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, announcementPhaseNotice, true)
     : undefined);
   const parkedHistoryCards = journey.cards.filter((card) => card.phase === "parked");
   const viewerLayoutPending = journey.scopeKey === scopeKey && journey.viewerId !== viewerId;
@@ -6198,13 +6247,13 @@ function DuelCardJourney({
       </li>)}
     </ol>
     {!suppressAnnouncement && !action.suppressAnnouncement && <PublicCardAnnouncement
-      eventId={negationNarration?.eventId ?? (action.motion?.type === "lust-duel" && announcementEventId === action.rootEventId && activeCard?.role === "root" && action.lustCostFrame
+      eventId={action.publicInteractionNarration?.eventId ?? negationNarration?.eventId ?? (action.motion?.type === "lust-duel" && announcementEventId === action.rootEventId && activeCard?.role === "root" && action.lustCostFrame
         ? action.lustCostFrame.activationEventId : announcementEventId)}
       eventCopyKey={publicCardAnnouncementCopyKey(
         action,
-        negationNarration?.eventId ?? (action.motion?.type === "lust-duel" && announcementEventId === action.rootEventId && activeCard?.role === "root" && action.lustCostFrame
+        action.publicInteractionNarration?.eventId ?? negationNarration?.eventId ?? (action.motion?.type === "lust-duel" && announcementEventId === action.rootEventId && activeCard?.role === "root" && action.lustCostFrame
           ? action.lustCostFrame.activationEventId : announcementEventId),
-        activeActorId,
+        action.publicInteractionNarration?.actorId ?? activeActorId,
         roomCode,
       )}
       announcementIdentity={action.publicAnnouncementIdentity}
@@ -6225,12 +6274,13 @@ function DuelCardJourney({
         : announcementCopy.accessibleLabel}
       supportingMessage={negationNarration?.supportingMessage ?? (action.motion?.type === "lust-duel" ? action.publicActivityMessage : undefined)}
       compactSupportingMessage={negationNarration?.compactSupportingMessage ?? (action.motion?.type === "lust-duel" ? action.publicActivityMessage : undefined)}
+      presentationNarration={action.publicInteractionNarration}
       negationNarration={negationNarration}
       fallbackCardRect={action.motion?.type === "lust-duel" && action.lustCostFrame
         ? battlefieldLustDuelAnnouncementAnchor(journey.center) : journey.center}
-      phaseNotice={negationNarration ? undefined : action.phaseNotice}
+      phaseNotice={negationNarration || action.publicInteractionNarration ? undefined : action.phaseNotice}
       outcome={action.settlement?.outcome}
-      negationWaiting={Boolean(negationNarration || action.phaseNotice?.includes("NEGATION"))}
+      negationWaiting={Boolean(negationNarration || !action.publicInteractionNarration && action.phaseNotice?.includes("NEGATION"))}
       stableCenterAnchor={action.motion?.type === "lust-duel"}
       preferredVerticalMode={action.motion?.type === "lust-duel" ? "below" : undefined}
       ignoreJourneyLayoutPending={Boolean(negationNarration)}
@@ -6311,9 +6361,10 @@ export function PublicCardDisplay({
   const actorId = latestResponse?.actorId ?? action.sourceId;
   const notice = latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
   const announcementCopy = publicCardAnnouncementCopy(action, notice, latestResponse?.actorName ?? sourceName, actorId, sourceName, targetName, compactPlayerNamesById, eventId);
-  const announcement = withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
-  const compactAnnouncement = announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION"))
-    ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, action.settlement ? undefined : action.phaseNotice, true)
+  const announcementPhaseNotice = action.settlement || action.publicInteractionNarration ? undefined : action.phaseNotice;
+  const announcement = withPublicCardPhaseNotice(announcementCopy.message, announcementPhaseNotice);
+  const compactAnnouncement = announcementCopy.compactMessage || announcementPhaseNotice?.includes("NEGATION")
+    ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, announcementPhaseNotice, true)
     : undefined;
   const harvestRootParked = harvestChoiceActive && card?.kind === "BumperHarvest";
   return <section
@@ -6347,8 +6398,8 @@ export function PublicCardDisplay({
   >
     {card && <div className="public-card-display-static-card" data-public-card-copy-anchor-event-id={eventId} data-public-card-static-event-id={eventId} data-public-card-static-card-id={card.id} data-harvest-root-parked={harvestRootParked ? "true" : undefined}><CardFace card={card} /></div>}
     {!suppressAnnouncement && !action.suppressAnnouncement && <PublicCardAnnouncement
-      eventId={eventId}
-      eventCopyKey={publicCardAnnouncementCopyKey(action, eventId, actorId, roomCode)}
+      eventId={action.publicInteractionNarration?.eventId ?? eventId}
+      eventCopyKey={publicCardAnnouncementCopyKey(action, action.publicInteractionNarration?.eventId ?? eventId, action.publicInteractionNarration?.actorId ?? actorId, roomCode)}
       announcementIdentity={action.publicAnnouncementIdentity}
       geometryKey={publicAnnouncementGeometryKey(roomCode, viewerId)}
       copyLifecycleStage={publicCardAnnouncementLifecycleStage(action)}
@@ -6358,10 +6409,11 @@ export function PublicCardDisplay({
       message={announcement}
       compactMessage={compactAnnouncement}
       accessibleLabel={announcementCopy.accessibleLabel}
+      presentationNarration={action.publicInteractionNarration}
       fallbackCardRect={null}
-      phaseNotice={action.phaseNotice}
+      phaseNotice={announcementPhaseNotice}
       outcome={action.settlement?.outcome}
-      negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
+      negationWaiting={Boolean(announcementPhaseNotice?.includes("NEGATION"))}
     />}
   </section>;
 }

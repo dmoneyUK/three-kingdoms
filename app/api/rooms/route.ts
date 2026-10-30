@@ -726,23 +726,71 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
   return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
-function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "amount" | "effect">> = {}): PublicPresentationEventFactDraft | undefined {
+function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "amount" | "effect">> = {}, envelope?: CausalEnvelope | null): PublicPresentationEventFactDraft | undefined {
   if (!causal?.interactionId || !causal.frameId) return undefined;
+  const roots = envelope?.frames.filter((frame) => !frame.parentFrameId) ?? [];
+  const frame = envelope?.frames.find((candidate) => candidate.frameId === causal.frameId);
+  const committedIdentity = envelope && envelope.interactionId === causal.interactionId && roots.length === 1
+    && frame && (frame.parentFrameId ?? undefined) === (causal.parentFrameId ?? undefined)
+    ? { interactionId: envelope.interactionId, rootFrameId: roots[0].frameId,
+      checkpointId: envelope.checkpoint.checkpointId, presentationRevision: envelope.presentationRevision }
+    : undefined;
   return {
     semantics: "PROVEN", visibility: "PUBLIC", interactionId: causal.interactionId,
     frameId: causal.frameId, ...(causal.parentFrameId ? { parentFrameId: causal.parentFrameId } : {}),
-    category, ...fields,
+    category, ...fields, ...(committedIdentity ? { committedIdentity } : {}),
   };
 }
-function publicTriggerFactFor(trigger: TriggerPending, players: PlayerRow[], effectId: string, outcome: { kind: string }): PublicPresentationEventFactDraft | undefined {
+type PublicTriggerOutcomeSummary = { affectedPlayerIds?: string[]; amount?: number; outcomeLabel: string };
+
+function publicTriggerOutcomeSummary(outcome: { kind: string }): PublicTriggerOutcomeSummary {
+  const details = outcome as unknown as Record<string, unknown>;
+  const ids = (...values: unknown[]) => [...new Set(values.filter((value): value is string => typeof value === "string" && value.length > 0))];
+  const count = (value: unknown) => Array.isArray(value) ? value.length : null;
+  switch (outcome.kind) {
+    case "gain_target_card": return { affectedPlayerIds: ids(details.sourceId), outcomeLabel: "obtained one card" };
+    case "gain_damage_cards": {
+      const gained = count(details.cardIds);
+      return { affectedPlayerIds: ids(details.targetId), ...(gained !== null ? { amount: gained } : {}), outcomeLabel: gained === 1 ? "obtained the card that caused the damage" : "obtained the cards that caused the damage" };
+    }
+    case "legacy_distribution": return { affectedPlayerIds: ids(details.playerId), outcomeLabel: "began a card distribution" };
+    // These provider outcomes describe requested operations. The server may
+    // cap recovery at max HP or draw fewer cards when the deck is short, so
+    // report the committed amount at the common outcome branch instead.
+    case "recover_player": return { affectedPlayerIds: ids(details.playerId), outcomeLabel: "resolved a recovery effect" };
+    case "draw_cards": return { outcomeLabel: "resolved a draw effect" };
+    case "obtain_judgement_card": return { affectedPlayerIds: ids(details.playerId), outcomeLabel: "obtained the final Judgement card" };
+    case "damage_player": return { affectedPlayerIds: ids(details.targetId), outcomeLabel: "resolved a damage effect" };
+    case "force_damage": return { outcomeLabel: "resolved a damage effect" };
+    case "prevent_damage": return { outcomeLabel: "prevented the damage" };
+    case "target_discard": return { outcomeLabel: "discarded one selected card" };
+    case "discard_cards": {
+      const discarded = count(details.targetCardIds);
+      return { affectedPlayerIds: ids(details.targetId), ...(discarded !== null ? { amount: discarded } : {}), outcomeLabel: `discarded ${discarded ?? 1} card${(discarded ?? 1) === 1 ? "" : "s"}` };
+    }
+    case "judgement": return { outcomeLabel: "started a Judgement" };
+    case "attacker_draw": return { outcomeLabel: "allowed the attacker to draw a card" };
+    case "follow_up_attack": return { outcomeLabel: "prepared a follow-up Attack" };
+    default: return { outcomeLabel: "resolved its effect" };
+  }
+}
+
+function publicTriggerFactFor(trigger: TriggerPending, players: PlayerRow[], effectId: string, outcome: { kind: string }, envelope: CausalEnvelope | null): PublicPresentationEventFactDraft | undefined {
   const context = triggerContextFor(trigger, players);
   if (!context || triggerAvailability(effectId, context) !== "public") return undefined;
   const continuation = trigger.continuation as unknown as Record<string, unknown>;
   const rootEventId = typeof continuation.rootEventId === "string" ? continuation.rootEventId : undefined;
   const actorId = triggerActorId(effectId, context) ?? trigger.actorId;
+  const option = triggerOptionsFor(trigger, players).find((candidate) => candidate.effectId === effectId);
+  const summary = publicTriggerOutcomeSummary(outcome);
   return publicFactFor(trigger.causal, "SKILL_USED", {
-    actorId, ...(rootEventId ? { rootEventId } : {}), effect: { kind: outcome.kind },
-  });
+    actorId, ...(rootEventId ? { rootEventId } : {}),
+    ...(summary.affectedPlayerIds?.length ? { affectedPlayerIds: summary.affectedPlayerIds } : {}),
+    ...(option?.label ? { label: option.label } : {}),
+    ...(summary.outcomeLabel ? { outcomeLabel: summary.outcomeLabel } : {}),
+    ...(summary.amount !== undefined ? { amount: summary.amount } : {}),
+    effect: { kind: outcome.kind },
+  }, envelope);
 }
 function genericStageLabel(stage: string) {
   return stage.toLowerCase().split("_").map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part).join(" ");
@@ -1863,14 +1911,16 @@ function legacyRecipients(players: PlayerRow[]) {
   return players.filter((player) => player.alive).map((player) => player.id);
 }
 
-async function beginLegacyDistribution(room: RoomRow, continuation: DamageSufferedTriggerContinuation, actor: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[]) {
+async function beginLegacyDistribution(room: RoomRow, continuation: DamageSufferedTriggerContinuation, actor: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], publicFact?: PublicPresentationEventFactDraft) {
   const draw = drawCards(deck, discard, 2, log);
   if (draw.drawn.length !== 2) {
     const resolved = { ...continuation, resolvedDamagePointEffectIds: [...new Set([...(continuation.resolvedDamagePointEffectIds ?? []), "guo_jia_legacy"])], stage: "reaction" as const, judgementCard: undefined, secondaryEffectId: undefined } satisfies DamageSufferedTriggerContinuation;
     await continueDamageSufferedEvent(room, resolved, players, draw.deck, draw.discard, addLog(draw.log, `${actor.name} cannot inspect two cards; Legacy ends without a distribution.`));
     return;
   }
-  const presentation = addLogWithId(draw.log, `${actor.name} activates Legacy and looks at the top 2 cards of the deck.` , actor.id, { importance: "essential", finalResult: true });
+  const presentation = addLogWithId(draw.log, `${actor.name} activates Legacy and looks at the top 2 cards of the deck.` , actor.id, {
+    importance: "essential", finalResult: true, ...(publicFact ? { publicFact } : {}),
+  });
   const pending: CardDistributionPending = {
     kind: "card_distribution",
     actorId: actor.id,
@@ -4119,7 +4169,7 @@ async function settleNegationWindow(room: RoomRow, window: NegationWindowPending
   const committedPlayFact = publicFactFor(causal, "CARD_PLAYED", {
     ...(window.continuation.rootEventId ? { rootEventId: window.continuation.rootEventId } : {}),
     actorId: actor.id, affectedPlayerIds: [actor.id], label: "Negation", effect: { kind: "card_play", label: "Negation" },
-  });
+  }, envelope);
   if (consumed.length === 1) {
     const publicCardEvent = addCardEventWithId(log, actor.name, consumed[0], actor.name, "play", true,
       committedPlayFact ? { actorId: actor.id, publicFact: committedPlayFact } : { actorId: actor.id });
@@ -4135,7 +4185,7 @@ async function settleNegationWindow(room: RoomRow, window: NegationWindowPending
     actorId: actor.id, affectedPlayerIds: [window.continuation.effectTargetId],
     label: "Negation",
     effect: { kind: window.continuation.negated ? "restore_effect" : "cancel_effect", label: window.continuation.cardName },
-  });
+  }, envelope);
   log = addLog(log, `${actor.name} ${negationAction} ${window.continuation.negated ? "to restore" : "to cancel"} ${window.continuation.cardName}'s effect.`, undefined,
     counterFact ? { actorId: actor.id, publicFact: counterFact } : undefined);
   const winnerEnvelope = window.continuation.causal && envelope
@@ -4628,7 +4678,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
   const damageFact = amount > 0 ? publicFactFor(inheritedCausal, finalAmount > 0 ? "DAMAGE_APPLIED" : "DAMAGE_PREVENTED", {
     ...(rootEventId ? { rootEventId } : {}), ...(source ? { actorId: source.id } : {}),
     affectedPlayerIds: [target.id], amount: finalAmount,
-  }) : undefined;
+  }, parseCausalEnvelope(room.causal_envelope_json)) : undefined;
   const unfinalizedDamageLog = addLog(log, `${description}${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`, undefined,
     damageFact ? { ...(source ? { actorId: source.id } : {}), publicFact: damageFact } : undefined);
   const damageLog = finalizeDamageLog ? finalizeDamageLog(unfinalizedDamageLog, finalAmount) : unfinalizedDamageLog;
@@ -5879,6 +5929,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     timeline: projectedTimeline,
     publicTimeline,
     causalEnvelope,
+    retainPublicEventAtRest: room.status === "playing" && !pending && !causalEnvelope && currentAction?.kind === "turn",
     oathRecipientIds: oathRecipientIds(players.map((player) => ({ id: player.id, alive: Boolean(player.alive), hp: player.hp, maxHp: player.max_hp }))),
   };
   const presentationV2 = projectPresentationV2(presentationInput);
@@ -6703,7 +6754,7 @@ export async function POST(request: Request) {
         const selectedOption = available.find((option) => option.effectId === triggerId);
         triggerExecution = { ...triggerExecution, presentation: selectedOption ? { label: selectedOption.label } : undefined };
         if (triggerExecution.outcome.kind !== "continue_event") {
-          triggerPublicFact = publicTriggerFactFor(trigger, allRoomPlayers, triggerId, triggerExecution.outcome);
+          triggerPublicFact = publicTriggerFactFor(trigger, allRoomPlayers, triggerId, triggerExecution.outcome, parseCausalEnvelope(room.causal_envelope_json));
         }
       }
       if (action === "trigger" && !triggerExecution) return json({ error: "That trigger option is no longer available.", stale: true, room: await roomState(code, token) }, 409);
@@ -7503,6 +7554,12 @@ export async function POST(request: Request) {
             const maxHp = sourcePlayer.max_hp ?? beforeHp;
             const amountRecovered = recoveredAmount(beforeHp, maxHp, triggerExecution.outcome.amount);
             const nextHp = applyRecovery(beforeHp, amountRecovered, maxHp);
+            const committedFact = triggerPublicFact ? {
+              ...triggerPublicFact,
+              ...(amountRecovered > 0 ? { amount: amountRecovered, outcomeLabel: `recovered ${amountRecovered} HP` }
+                : { amount: 0, outcomeLabel: "used a recovery effect; HP did not change" }),
+            } : undefined;
+            log = addTriggeredEffectNotice(log, sourcePlayer.name, triggerExecution.presentation?.label ?? "an optional effect", committedFact).log;
             log = addLog(log, `${sourcePlayer.name} chooses Triumphant and recovers ${amountRecovered} HP.`);
             await db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(nextHp, sourcePlayer.id).run();
             await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(log), room.id).run();
@@ -7513,7 +7570,15 @@ export async function POST(request: Request) {
             deck = draw.deck;
             discard = draw.discard;
             const nextHand = [...parse<Card[]>(sourcePlayer.hand_json, []), ...draw.drawn];
-            log = addHistory(draw.log, `${sourcePlayer.name} chooses Triumphant and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, sourcePlayer.id);
+            const committedFact = triggerPublicFact ? {
+              ...triggerPublicFact,
+              amount: draw.drawn.length,
+              outcomeLabel: draw.drawn.length > 0
+                ? `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`
+                : "used a draw effect; no cards were drawn",
+            } : undefined;
+            log = addTriggeredEffectNotice(draw.log, sourcePlayer.name, triggerExecution.presentation?.label ?? "an optional effect", committedFact).log;
+            log = addHistory(log, `${sourcePlayer.name} chooses Triumphant and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, sourcePlayer.id);
             for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, sourcePlayer, drawn);
             const updatedPlayers = players.map((player) => player.id === sourcePlayer.id ? { ...player, hand_json: JSON.stringify(nextHand) } : player);
             await db.batch([
@@ -7525,8 +7590,7 @@ export async function POST(request: Request) {
           return json({ room: await roomState(code, token) });
         }
         if (triggerExecution?.outcome.kind === "legacy_distribution") {
-          log = addTriggeredEffectNotice(log, target.name, triggerExecution.presentation?.label ?? "Legacy", triggerPublicFact).log;
-          await beginLegacyDistribution(liveRoom, continuation, target, players, parse<Card[]>(liveRoom.deck_json, []), discard, log);
+          await beginLegacyDistribution(liveRoom, continuation, target, players, parse<Card[]>(liveRoom.deck_json, []), discard, log, triggerPublicFact);
           return json({ room: await roomState(code, token) });
         }
         if (triggerExecution?.outcome.kind === "gain_damage_cards") {
@@ -7534,7 +7598,14 @@ export async function POST(request: Request) {
           const available = gained.cards;
           discard = gained.discard;
           const hand = [...parse<Card[]>(target.hand_json, []), ...available];
-          log = addCardGroupEvent(log, target.name, available, "play", true, target.name, `${target.name} obtains the damage card with Treachery.`);
+          const committedFact = triggerPublicFact ? {
+            ...triggerPublicFact,
+            amount: available.length,
+            outcomeLabel: available.length === 1
+              ? "obtained the card that caused the damage"
+              : `obtained ${available.length} cards that caused the damage`,
+          } : undefined;
+          log = addCardGroupEvent(log, target.name, available, "play", true, target.name, `${target.name} obtains the damage card with Treachery.`, committedFact ? { publicFact: committedFact } : undefined);
           log = addLog(log, `${target.name} obtains the card that caused the damage with Treachery.`);
           const nextContinuation = { ...gained.continuation, resolvedEffectIds: [...new Set([...(gained.continuation.resolvedEffectIds ?? []), triggerExecution.effectId])] } satisfies DamageSufferedTriggerContinuation;
           await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), target.id)]);
@@ -7551,7 +7622,17 @@ export async function POST(request: Request) {
           const lostEquipment = Object.values(sourceEquipment).some((card) => card?.id === selected.id) ? [selected] : [];
           const targetHand = [...parse<Card[]>(target.hand_json, []), selected];
           let gainLog = handIndex >= 0 ? addPrivateDrawEvent(log, target, selected) : addCardEvent(log, target.name, selected, target.name, "gain", true);
-          gainLog = addLogWithId(gainLog, `${target.name} obtains a card from ${sourcePlayer.name} with Retaliation.`, undefined, { effectNotice: true }).log;
+          const committedFact = triggerPublicFact ? {
+            ...triggerPublicFact,
+            outcomeLabel: "obtained one card",
+            effect: {
+              kind: "gain_target_card",
+              ...(handIndex < 0 ? { label: cardDefinition(selected.kind).name } : {}),
+            },
+          } : undefined;
+          gainLog = addLogWithId(gainLog, `${target.name} obtains a card from ${sourcePlayer.name} with Retaliation.`, undefined, {
+            effectNotice: true, ...(committedFact ? { publicFact: committedFact } : {}),
+          }).log;
           await db.batch([
             db.prepare("UPDATE players SET hand_json = ?, equipment_json = ?, judgement_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), JSON.stringify(nextEquipment), JSON.stringify(nextJudgement), sourcePlayer.id),
             db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id),
@@ -8205,17 +8286,22 @@ export async function POST(request: Request) {
       const lustDuelProof = responseOrdinal === null
         ? undefined
         : lustDuelAttackResponseProof(log, pending.response, me.id, opponent.id, semanticActor.id, responseOrdinal, attackCards);
-      const responseMeta: PresentationMeta = {
-        ...(responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : {}),
-        ...(duelProof ? { resolutionId: duelProof.rootResolutionId, duelAttackResponse: duelProof } : {}),
-        ...(lustDuelProof ? { resolutionId: lustDuelProof.activationResolutionId, lustDuelAttackResponse: lustDuelProof } : {}),
-      };
-      const conversion = publicConversionDraft(responseExecution.providerId, me.id, attackCards, { playerId: me.id, hand: handBeforeDuel, equipment: equipmentCards(me) }, opponent.id, "Attack");
       const responseRoot = duelProof?.rootEventId && duelProof.rootResolutionId
         ? { rootEventId: duelProof.rootEventId, rootResolutionId: duelProof.rootResolutionId }
         : lustDuelProof
           ? { rootEventId: lustDuelProof.activationEventId, rootResolutionId: lustDuelProof.activationResolutionId }
           : null;
+      const responseFact = responseRoot && attackCards.length ? publicFactFor(pending.response.causal, "CARD_PLAYED", {
+        rootEventId: responseRoot.rootEventId, actorId: me.id, affectedPlayerIds: [opponent.id],
+        label: "Attack", effect: { kind: "card_play", label: "Attack" },
+      }, parseCausalEnvelope(liveRoom.causal_envelope_json)) : undefined;
+      const responseMeta: PresentationMeta = {
+        ...(responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : {}),
+        ...(duelProof ? { resolutionId: duelProof.rootResolutionId, duelAttackResponse: duelProof } : {}),
+        ...(lustDuelProof ? { resolutionId: lustDuelProof.activationResolutionId, lustDuelAttackResponse: lustDuelProof } : {}),
+        ...(responseFact ? { publicFact: responseFact } : {}),
+      };
+      const conversion = publicConversionDraft(responseExecution.providerId, me.id, attackCards, { playerId: me.id, hand: handBeforeDuel, equipment: equipmentCards(me) }, opponent.id, "Attack");
       const provenConversion = conversion ? { ...conversion, ...(responseRoot ?? {}) } : null;
       const presentation = attackCards.length === 1
         ? provenConversion

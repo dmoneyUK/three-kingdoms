@@ -21,12 +21,12 @@ import { buildPresentationTransition, type PresentationTransitionKind } from "..
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
-import { derivePublicActivityStatus, derivePublicNegationNarration } from "../game/public-activity";
+import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration } from "../game/public-activity";
 import { CardFace } from "./card-face";
 import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
-import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, publicCardActionKey, publicCardJourneyOwnershipIdentity, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
+import { PublicCardDisplay, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, publicCardActionKey, publicCardJourneyOwnershipIdentity, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, hasAttackDodgeUxTrace, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
@@ -8203,6 +8203,24 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       rootEventId: selectedPublicCardAction.rootEventId,
     })
     : null;
+  const currentInteractionFact = room.presentationSnapshot?.interaction?.stage !== "NEGATION"
+    ? [...(room.presentationSnapshot?.publicEventFacts ?? [])]
+      .filter((fact) => fact.rootEventId && ["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED"].includes(fact.category))
+      .sort((left, right) => left.order - right.order).at(-1) ?? room.presentationSnapshot?.retainedPublicEvent
+    : null;
+  const publicInteractionNarration = currentInteractionFact?.rootEventId
+    ? derivePublicInteractionNarration({
+      snapshot: room.presentationSnapshot,
+      players: room.players,
+      rootEventId: currentInteractionFact.rootEventId,
+      interactionId: currentInteractionFact.identity.interactionId,
+      rootFrameId: currentInteractionFact.identity.rootFrameId,
+    })
+    : null;
+  const interactionNarrationBelongsToAction = Boolean(publicInteractionNarration && selectedPublicCardAction
+    && selectedPublicCardAction.rootEventId === publicInteractionNarration.rootEventId
+    && selectedPublicCardAction.interactionId === publicInteractionNarration.interactionId
+    && selectedPublicCardAction.rootFrameId === publicInteractionNarration.rootFrameId);
   const selectedActionOwnsCurrentNegationDecision = Boolean(selectedPublicCardAction
     && room.presentationSnapshot?.identity
     && room.presentationSnapshot.interaction?.semantics === "PROVEN"
@@ -8400,7 +8418,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || identity.presentationRevision !== interaction.presentationRevision
       || selectedPublicCardAction.interactionId !== interaction.interactionId
       || selectedPublicCardAction.rootFrameId !== interaction.rootFrameId) return undefined;
-    const narration = genericPublicFactNarration ?? selectedPublicCardAction.publicNegationNarration;
+    const narration = (interactionNarrationBelongsToAction ? publicInteractionNarration : null) ?? genericPublicFactNarration ?? selectedPublicCardAction.publicNegationNarration;
     const latestPublicEventId = narration?.phase === "FINAL"
       ? narration.eventId
       : narration?.latestCommittedEventId
@@ -8410,7 +8428,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ?? selectedPublicCardAction.responseHistory?.at(-1)?.eventId
         ?? selectedPublicCardAction.settlement?.eventId
         ?? selectedPublicCardAction.rootEventId;
-    const latestPublicActorId = [
+    const latestPublicActorId = (interactionNarrationBelongsToAction ? publicInteractionNarration?.actorId : undefined) ?? [
       ...(selectedPublicCardAction.response ? [selectedPublicCardAction.response] : []),
       ...(selectedPublicCardAction.responses ?? []),
       ...(selectedPublicCardAction.responseHistory ?? []),
@@ -8431,6 +8449,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const publicCardDisplayAction: PublicCardDisplayAction | null = selectedPublicCardAction ? {
     ...selectedPublicCardAction,
     publicAnnouncementIdentity,
+    ...(interactionNarrationBelongsToAction && publicInteractionNarration ? { publicInteractionNarration, suppressAnnouncement: false }
+      : publicInteractionNarration ? { suppressAnnouncement: true } : {}),
     ...(genericPublicFactNarration ? { publicNegationNarration: genericPublicFactNarration }
       : selectedActionOwnsCurrentNegationDecision ? { publicNegationNarration: undefined, suppressAnnouncement: true } : {}),
     ...(attackConversionFrameCandidate ? {
@@ -9319,16 +9339,31 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : []);
   const sequenceOwnerEventIds = publicCardDisplayOwnsPresentation ? new Set(publicDisplayOwnedEventIds) : completedAttackDodgeEventIds;
   const sequenceOwnerCardIds = publicCardDisplayOwnsPresentation ? publicDisplayOwnedPhysicalCardIds : completedAttackDodgeCardIds;
+  const postDamageHistoryEventIds = new Set(publicInteractionNarration ? [
+    publicInteractionNarration.rootEventId,
+    ...[...(room.presentationSnapshot?.publicEventFacts ?? []), ...(room.presentationSnapshot?.retainedPublicEventFacts ?? [])]
+      .filter((fact) => fact.category === "CARD_PLAYED"
+        && fact.rootEventId === publicInteractionNarration.rootEventId
+        && fact.identity.interactionId === publicInteractionNarration.interactionId
+        && fact.identity.rootFrameId === publicInteractionNarration.rootFrameId)
+      .map((fact) => fact.eventId),
+  ] : []);
+  const postDamageHistoryCardIds = new Set(room.timeline.filter((event) => postDamageHistoryEventIds.has(event.id))
+    .flatMap(eventCards).map((card) => card.id));
   const displayedSequenceEvents = sequenceEventsWithoutRetiredAttackDodge.filter((event) =>
     !sequenceOwnerEventIds.has(event.id)
-    && !eventCards(event).some((card) => sequenceOwnerCardIds.has(card.id)));
+    && !postDamageHistoryEventIds.has(event.id)
+    && !eventCards(event).some((card) => sequenceOwnerCardIds.has(card.id) || postDamageHistoryCardIds.has(card.id)));
   const displayedEventOwnedByPublicCard = Boolean(publicCardDisplayOwnsPresentation && displayedEvent
     && (sequenceOwnerEventIds.has(displayedEvent.id)
       || eventCards(displayedEvent).some((card) => sequenceOwnerCardIds.has(card.id))));
   const displayedEventIsRetiredAttackDodge = Boolean(displayedEvent
     && (retiredAttackDodgeEvents.has(displayedEvent.id)
       || eventCards(displayedEvent).some((card) => retiredAttackDodgeCards.has(card.id))));
-  const displayedTableEvent = displayedEventOwnedByPublicCard || displayedEventIsRetiredAttackDodge ? null : displayedEvent;
+  const displayedEventIsRetiredPostDamageHistory = Boolean(displayedEvent
+    && (postDamageHistoryEventIds.has(displayedEvent.id)
+      || eventCards(displayedEvent).some((card) => postDamageHistoryCardIds.has(card.id))));
+  const displayedTableEvent = displayedEventOwnedByPublicCard || displayedEventIsRetiredAttackDodge || displayedEventIsRetiredPostDamageHistory ? null : displayedEvent;
   const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(displayedTableEvent && eventCards(displayedTableEvent).length);
   const attackDodgeTraceSeat = (playerId: string | null | undefined) => playerId
     ? room.players.find((player) => player.id === playerId)?.seat ?? null
@@ -10397,7 +10432,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           ? { ...current, journeySettled: true }
           : current);
       }} />
-      {visibleBeautyAnnouncement && <PublicSkillEventAnnouncementLayer
+      {publicInteractionNarration && (!interactionNarrationBelongsToAction || !publicCardDisplayEnabled) && <PublicInteractionAnnouncementLayer
+        narration={publicInteractionNarration} roomCode={room.code} viewerId={room.meId}
+      />}
+      {visibleBeautyAnnouncement && !publicInteractionNarration && <PublicSkillEventAnnouncementLayer
         announcement={visibleBeautyAnnouncement}
         roomCode={room.code}
         viewerId={room.meId}

@@ -1,6 +1,6 @@
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
-import { collectPublicPresentationEventFacts, type PublicPresentationEventFactDraft } from "./presentation-semantics";
+import { collectPublicPresentationEventFacts, retainedPublicEventFromTimeline, type PublicPresentationEvent, type PublicPresentationEventFactDraft } from "./presentation-semantics";
 import { CARD_DEFINITIONS } from "./cards";
 import { CARD_KINDS, type Card, type CardKind } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestNegationResponseRecord, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type NegationHistoryRecord } from "./pending";
@@ -330,6 +330,8 @@ export type PresentationV2Input = {
   oathRecipientIds?: readonly string[] | null;
   /** The parsed server-owned causal envelope; never reconstructed by this projector. */
   causalEnvelope?: CausalEnvelope | null;
+  /** Server permits the last committed outcome only at a proven idle boundary. */
+  retainPublicEventAtRest?: boolean;
 };
 
 export type AttackRootProjectionDiagnostics = {
@@ -899,6 +901,8 @@ export type PresentationV2 = {
   settlement: { eventId: string; resolutionId: string | null } | null;
   transitionEvents: readonly { eventId: string; type: string; resolutionId: string | null }[];
   publicEventFacts: readonly PublicPresentationEventFactDraft[];
+  retainedPublicEvent?: PublicPresentationEvent | null;
+  retainedPublicEventFacts?: readonly PublicPresentationEvent[];
   stableBoundary: PresentationStableBoundary;
 };
 
@@ -3993,6 +3997,14 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     frames: envelope?.frames ?? [],
     rootEventId: rootEvent?.id ?? null,
   }) : [];
+  const retainedCandidate = input.retainPublicEventAtRest || envelope
+    ? retainedPublicEventFromTimeline(input.publicTimeline ?? input.timeline) : null;
+  const retainedMatchesEnvelope = Boolean(retainedCandidate && envelope && causalRootFrame
+    && retainedCandidate.event.identity.interactionId === envelope.interactionId
+    && retainedCandidate.event.identity.rootFrameId === causalRootFrame.frameId
+    && retainedCandidate.event.identity.presentationRevision <= envelope.presentationRevision);
+  const retainedPublicEvent = retainedCandidate && (input.retainPublicEventAtRest || retainedMatchesEnvelope)
+    ? retainedCandidate : null;
   const rootAction = attackRootProjectionEvaluationFor(input).rootAction
     ?? singleTargetTargetCardRootActionFor(envelope, interactionScene, input.pending, input.timeline, "Dismantle")
     ?? singleTargetTargetCardRootActionFor(envelope, interactionScene, input.pending, input.timeline, "Steal");
@@ -4068,6 +4080,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,
     transitionEvents: input.timeline.filter((event) => event.presentation !== false && relevantIds.includes(event.id)).map((event) => ({ eventId: event.id, type: event.type, resolutionId: event.resolutionId ?? null })),
     publicEventFacts,
+    ...(retainedPublicEvent ? { retainedPublicEvent: retainedPublicEvent.event, retainedPublicEventFacts: retainedPublicEvent.facts } : {}),
     stableBoundary: stableBoundaryFor(interactionScene, input.pending, projectedBumperHarvestProgress),
   };
 }

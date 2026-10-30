@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectPublicPresentationEventFacts, projectPublicPresentationSemantics, publicDecisionFromPresentationSnapshot } from "../../game/presentation-semantics.ts";
+import { collectPublicPresentationEventFacts, projectPublicPresentationSemantics, publicDecisionFromPresentationSnapshot, retainedPublicEventFromTimeline } from "../../game/presentation-semantics.ts";
 import { appendSequencedLogRecord, publicEventSequencesFromLog } from "../../game/public-log-sequence.ts";
 
 const identity = (revision = 1, checkpointId = `checkpoint-${revision}`) => ({
@@ -33,6 +33,24 @@ const decision = (checkpoint = identity()) => ({
   actorIds: ["player-2"],
   actionLabels: ["Play a counter", "Pass"],
   responseWindowOpen: true,
+});
+
+test("idle retention uses committed causal facts and stops at a later public action", () => {
+  const checkpoint = identity(3);
+  const committed = (id, order, category, extra = {}) => ({
+    id, type: "message", presentation: true, publicSequence: order,
+    publicFact: { semantics: "PROVEN", visibility: "PUBLIC", interactionId: checkpoint.interactionId,
+      frameId: checkpoint.rootFrameId, committedIdentity: checkpoint, rootEventId: "root-card",
+      category, actorId: "player-2", affectedPlayerIds: [], ...extra },
+  });
+  const damage = committed("damage", 10, "DAMAGE_APPLIED", { amount: 1 });
+  const skill = committed("skill", 11, "SKILL_USED", { label: "Public skill", effect: { kind: "generic" } });
+  const privateEvent = { ...committed("private", 12, "SKILL_USED"), presentation: false, privateToPlayerId: "player-2" };
+  const retained = retainedPublicEventFromTimeline([damage, skill, privateEvent]);
+  assert.equal(retained?.event.eventId, "skill");
+  assert.deepEqual(retained?.facts.map((fact) => fact.eventId), ["damage", "skill"]);
+  assert.equal(retainedPublicEventFromTimeline([damage, skill, { id: "new-action", type: "card", action: "play", presentation: true, publicSequence: 13 }]), null);
+  assert.equal(retainedPublicEventFromTimeline([damage, { ...skill, publicFact: { ...skill.publicFact, committedIdentity: undefined } }]), null);
 });
 
 test("public semantic projection fails closed for empty, stale, private, and unproven facts", () => {

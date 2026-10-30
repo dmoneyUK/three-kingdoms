@@ -98,6 +98,119 @@ export type PublicNegationNarration = {
   accessibleLabel: string;
 };
 
+export type PublicInteractionNarration = {
+  eventId: string;
+  rootEventId: string;
+  interactionId: string;
+  rootFrameId: string;
+  actorId?: string;
+  headline: string;
+  compactHeadline: string;
+  accessibleLabel: string;
+  supportingMessage?: string;
+  compactSupportingMessage?: string;
+  latestCommittedEventId?: string;
+  checkpointId?: string;
+  phase?: "WINDOW_OPEN" | "FINAL";
+  rootEffectState?: "ACTIVE" | "BLOCKED";
+};
+
+function narrationPlayerName(input: Pick<PublicActivityInput, "players">, playerId: string | undefined): string | null {
+  if (!playerId) return null;
+  return input.players.find((candidate) => candidate.id === playerId)?.name.trim() || null;
+}
+
+/**
+ * Formats the latest committed damage/skill outcome linked to this public
+ * interaction. A missing or retired fact leaves the existing H4 copy alone.
+ */
+export function derivePublicInteractionNarration(input: {
+  snapshot: PresentationSnapshot | null;
+  players: readonly PublicActivityPlayer[];
+  rootEventId: string;
+  interactionId: string;
+  rootFrameId: string;
+}): PublicInteractionNarration | null {
+  const snapshot = input.snapshot;
+  const identity = snapshot?.identity;
+  const interaction = snapshot?.interaction;
+  if (!snapshot || !input.rootEventId) return null;
+  let latest: PresentationSnapshot["publicEventFacts"][number] | undefined;
+  if (identity && interaction?.semantics === "PROVEN"
+    && interaction.interactionId === identity.interactionId
+    && interaction.checkpointId === identity.checkpointId
+    && interaction.presentationRevision === identity.presentationRevision
+    && interaction.interactionId === input.interactionId && interaction.rootFrameId === input.rootFrameId) {
+    const facts = snapshot.publicEventFacts.filter((fact) =>
+      fact.identity.interactionId === identity.interactionId
+        && fact.identity.rootFrameId === interaction.rootFrameId
+        && fact.rootEventId === input.rootEventId,
+    ).sort((left, right) => left.order - right.order);
+    if (!facts.some((fact) => fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED")) return null;
+    const rootOrder = facts.find((fact) => fact.eventId === input.rootEventId)?.order ?? -1;
+    latest = facts.filter((fact) => fact.order > rootOrder).at(-1);
+  } else if (!identity && !interaction && snapshot.stable.kind === "REST"
+    && snapshot.retainedPublicEvent?.identity.interactionId === input.interactionId
+    && snapshot.retainedPublicEvent.identity.rootFrameId === input.rootFrameId
+    && snapshot.retainedPublicEvent.rootEventId === input.rootEventId
+    && snapshot.retainedPublicEventFacts?.some((fact) => fact.rootEventId === input.rootEventId
+      && fact.identity.interactionId === input.interactionId && fact.identity.rootFrameId === input.rootFrameId
+      && (fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED"))) {
+    latest = snapshot.retainedPublicEvent;
+  }
+  if (!latest) return null;
+
+  const actor = narrationPlayerName(input, latest.actorId ?? undefined);
+  const affected = latest.affectedPlayerIds.map((playerId) => narrationPlayerName(input, playerId)).filter((name): name is string => Boolean(name));
+  const target = affected.length === 1 ? affected[0] : null;
+  const amount = Number.isSafeInteger(latest.amount) && (latest.amount ?? 0) > 0 ? latest.amount : null;
+  let headline: string;
+
+  if (latest.category === "DAMAGE_APPLIED") {
+    const damage = amount === null ? "damage" : `${amount} damage`;
+    headline = actor && target ? `${actor} dealt ${damage} to ${target}.`
+      : target ? `${target} took ${damage}.`
+        : actor ? `${actor} dealt ${damage}.` : `Damage was applied${amount ? ` (${amount})` : ""}.`;
+  } else if (latest.category === "DAMAGE_PREVENTED") {
+    headline = actor ? `${actor} prevented damage${target ? ` to ${target}` : ""}.` : "Damage was prevented.";
+  } else if (latest.category === "SKILL_USED") {
+    const skill = latest.label?.trim().replace(/^Use\s+/i, "") || "a skill";
+    const effectKind = latest.effect?.kind;
+    const publicCardName = latest.effect?.label?.trim();
+    const defaultOutcome = effectKind === "gain_target_card" ? (publicCardName ? `obtained ${publicCardName}` : "obtained one card")
+      : effectKind === "gain_damage_cards" ? "obtained the card that caused the damage"
+        : effectKind === "legacy_distribution" ? "began a card distribution"
+          : null;
+    let outcome = latest.outcomeLabel?.trim() || defaultOutcome;
+    if (effectKind === "gain_target_card" && outcome && publicCardName) outcome = `obtained ${publicCardName}`;
+    if (effectKind === "gain_target_card" && target && outcome) outcome = `${outcome} from ${target}`;
+    headline = `${actor ? `${actor} used` : "A player used"} ${skill}${outcome ? ` and ${outcome}` : ""}.`;
+  } else if (latest.category === "CARD_OBTAINED" || latest.category === "CARD_TRANSFERRED") {
+    headline = `${actor ?? "A player"} obtained a card${target ? ` from ${target}` : ""}.`;
+  } else if (latest.category === "EFFECT_CANCELLED" || latest.category === "EFFECT_RESTORED") {
+    const effect = effectLabel(latest.effect?.label) ?? "an effect";
+    headline = `${actor ?? "A player"} ${latest.category === "EFFECT_RESTORED" ? "restored" : "cancelled"} ${effect}.`;
+  } else if (latest.category === "EFFECT_APPLIED") {
+    headline = latest.outcomeLabel?.trim()
+      ? `${actor ? `${actor} ` : ""}${latest.outcomeLabel.trim().replace(/[.!?]+$/, "")}.`
+      : `${actor ?? "A player"} resolved an effect.`;
+  } else {
+    return null;
+  }
+
+  return {
+    eventId: latest.eventId,
+    rootEventId: input.rootEventId,
+    interactionId: input.interactionId,
+    rootFrameId: input.rootFrameId,
+    ...(latest.actorId ? { actorId: latest.actorId } : {}),
+    headline,
+    compactHeadline: headline,
+    accessibleLabel: headline,
+    checkpointId: latest.identity.checkpointId,
+  };
+}
+
 /** Formats only the latest committed, current-interaction public Negation fact. */
 export function derivePublicNegationNarration(input: {
   snapshot: PresentationSnapshot | null;

@@ -33,7 +33,7 @@ import type {
   PresentationV2,
 } from "./presentation-v2";
 import { isProvenGroupRootCardProof, isSupportedAttackDodgeResponseProof } from "./presentation-v2";
-import { projectPublicPresentationSemantics, type PublicPresentationDecision, type PublicPresentationEvent, type ViewerNegationChoice } from "./presentation-semantics";
+import { projectPublicPresentationSemantics, validateRetainedPublicEvent, type PublicPresentationDecision, type PublicPresentationEvent, type ViewerNegationChoice } from "./presentation-semantics";
 
 /** The only public identity a future presentation client may use. */
 export type PresentationSnapshotIdentity = {
@@ -128,6 +128,8 @@ export type PresentationSnapshot = {
   settlement: PresentationNegationSettlement | null;
   /** Server-committed public event facts; private room facts are never admitted. */
   publicEventFacts: readonly PublicPresentationEvent[];
+  retainedPublicEvent?: PublicPresentationEvent;
+  retainedPublicEventFacts?: readonly PublicPresentationEvent[];
   /** Server-authored current public decision; never reconstructed from viewer CurrentAction. */
   publicNextDecision: PublicPresentationDecision | null;
   /** Current viewer's private Negation choice category only. */
@@ -1575,9 +1577,18 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     ...authority.identity,
     rootFrameId: authority.scene.rootFrameId as string,
   } : null;
+  const activeFacts = authority ? (input.presentationV2.publicEventFacts ?? []).map((fact) => ({ ...fact, identity: semanticIdentity })) : [];
+  const activeFactIds = new Set(activeFacts.map((fact) => fact.eventId));
+  const continuedFacts = semanticIdentity ? (input.presentationV2.retainedPublicEventFacts ?? [])
+    .map(validateRetainedPublicEvent)
+    .filter((fact): fact is PublicPresentationEvent => Boolean(fact
+      && fact.identity.interactionId === semanticIdentity.interactionId
+      && fact.identity.rootFrameId === semanticIdentity.rootFrameId
+      && fact.identity.presentationRevision <= semanticIdentity.presentationRevision
+      && !activeFactIds.has(fact.eventId))) : [];
   const semantic = projectPublicPresentationSemantics({
     identity: semanticIdentity,
-    events: authority ? (input.presentationV2.publicEventFacts ?? []).map((fact) => ({ ...fact, identity: semanticIdentity })) : [],
+    events: [...continuedFacts, ...activeFacts],
     nextDecision: authority && (authority.stable.kind === "CHOICE" || authority.stable.kind === "SPECIAL")
       ? input.publicNextDecision : null,
     viewerNegationChoice: input.viewerNegationChoice,
@@ -1627,6 +1638,11 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     },
     settlement: provenNegationSettlement(input.presentationV2.negationSettlement),
     publicEventFacts: semantic.events,
+    ...(!authority && input.presentationV2.retainedPublicEvent
+      && validateRetainedPublicEvent(input.presentationV2.retainedPublicEvent)
+      ? { retainedPublicEvent: validateRetainedPublicEvent(input.presentationV2.retainedPublicEvent)!,
+        retainedPublicEventFacts: (input.presentationV2.retainedPublicEventFacts ?? [])
+          .map(validateRetainedPublicEvent).filter((fact): fact is PublicPresentationEvent => Boolean(fact)) } : {}),
     publicNextDecision: semantic.nextDecision,
     viewerNegationChoice: acceptedViewerNegationChoice,
     transitionEvents: [],

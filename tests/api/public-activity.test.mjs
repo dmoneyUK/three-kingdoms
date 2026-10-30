@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { derivePublicActivityStatus, derivePublicNegationNarration } from "../../game/public-activity.ts";
+import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration } from "../../game/public-activity.ts";
 
 const players = [
   { id: "p1", name: "Test Player 1", seat: 0, alive: true },
@@ -285,4 +285,35 @@ test("settling phases do not reuse a stale publicly proven actor", () => {
 
 test("finished room never retains a stale public player turn", () => {
   assert.deepEqual(derivePublicActivityStatus(room({ status: "finished", phase: "finished", turnSeat: 0 })), { kind: "finished", text: "Match complete" });
+});
+
+test("generic H4 retains damage through Skip and formats committed public or hidden skill outcomes", () => {
+  const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
+  const fact = (eventId, order, category, extra = {}) => ({
+    semantics: "PROVEN", visibility: "PUBLIC", identity, eventId, order, rootEventId: "root-event",
+    category, affectedPlayerIds: [], ...extra,
+  });
+  const root = fact("root-event", 1, "CARD_PLAYED", { actorId: "p1" });
+  const damage = fact("damage", 2, "DAMAGE_APPLIED", { actorId: "p1", affectedPlayerIds: ["p2"], amount: 1 });
+  const input = (facts) => ({ snapshot: snapshot({ stage: "DAMAGE", actorId: "p2", publicEventFacts: facts }),
+    players, rootEventId: "root-event", interactionId: "interaction-1", rootFrameId: "root-1" });
+  assert.equal(derivePublicInteractionNarration(input([root, damage]))?.headline, "Test Player 1 dealt 1 damage to Test Player 2.");
+  // A Skip adds no skill fact, including when a later decision uses the same causal root.
+  assert.equal(derivePublicInteractionNarration(input([root, damage]))?.eventId, "damage");
+  const hidden = fact("hidden", 3, "SKILL_USED", { actorId: "p2", affectedPlayerIds: ["p1"], label: "Retaliation", outcomeLabel: "obtained one card", effect: { kind: "gain_target_card" } });
+  assert.equal(derivePublicInteractionNarration(input([root, damage, hidden]))?.headline,
+    "Test Player 2 used Retaliation and obtained one card from Test Player 1.");
+  const visible = { ...hidden, eventId: "visible", effect: { kind: "gain_target_card", label: "Nio Shield" } };
+  assert.equal(derivePublicInteractionNarration(input([root, damage, visible]))?.headline,
+    "Test Player 2 used Retaliation and obtained Nio Shield from Test Player 1.");
+  for (const [label, outcome] of [["Legacy", "began a card distribution"], ["Synthetic provider", "resolved a public effect"]]) {
+    const skill = fact(`skill-${label}`, 4, "SKILL_USED", { actorId: "p2", label, outcomeLabel: outcome, effect: { kind: "generic_effect" } });
+    assert.equal(derivePublicInteractionNarration(input([root, damage, hidden, skill]))?.headline,
+      `Test Player 2 used ${label} and ${outcome}.`);
+  }
+  const rest = { ...snapshot({ stage: "DAMAGE" }), identity: null, interaction: null, stable: { kind: "REST" },
+    retainedPublicEvent: visible, retainedPublicEventFacts: [damage, visible] };
+  assert.equal(derivePublicInteractionNarration({ ...input([]), snapshot: rest })?.eventId, "visible");
+  assert.equal(derivePublicInteractionNarration({ ...input([]), snapshot: rest, interactionId: "new-interaction" }), null);
+  assert.equal(derivePublicInteractionNarration(input([root, hidden])), null, "an unrelated skill fact does not create a damage announcement");
 });

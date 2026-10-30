@@ -163,6 +163,8 @@ test("host test flow projects Stauchness privately through the generic currentAc
   assert.equal(started.data.room.currentAction.actorId, target.id);
   const accepted = await requestAndSettle("trigger", { code: room.code, token, providerId: "xiahou_dun_ganglie" });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const committedFacts = [...accepted.data.room.presentationSnapshot.publicEventFacts, ...(accepted.data.room.presentationSnapshot.retainedPublicEventFacts ?? [])];
+  assert.ok(committedFacts.some((fact) => fact.category === "SKILL_USED" && fact.label?.includes("Stauchness")), "committed Judgement start has a generic public skill fact");
   assert.equal(accepted.data.room.currentAction.actorId, source.id);
   assert.equal(accepted.data.room.currentAction.triggerEvent, "damage_suffered");
   assert.ok(accepted.data.room.currentAction.presentation?.readyAfterEventId);
@@ -196,6 +198,14 @@ test("Sima Yi Retaliation uses the generic target-card picker with privacy and e
   const obtained = await requestAndSettle("trigger", { code: game.code, token: game.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand:1"] });
   assert.equal(obtained.status, 200, JSON.stringify(obtained.data));
   assert.equal(obtained.data.room.phase, "play-struck");
+  const publicOutcome = obtained.data.room.presentationSnapshot.retainedPublicEvent;
+  assert.equal(publicOutcome?.category, "SKILL_USED");
+  assert.equal(publicOutcome?.label, "Retaliation");
+  assert.equal(publicOutcome?.effect?.label, undefined, "a hidden Hand card has no public face label");
+  assert.equal(JSON.stringify(publicOutcome).includes("fankui-source-hidden-b"), false);
+  assert.ok(obtained.data.room.presentationSnapshot.retainedPublicEventFacts?.some((fact) => fact.category === "DAMAGE_APPLIED"), "the committed damage remains linked to the skill outcome");
+  const observerOutcome = (await state(game.code, game.members[2].token)).data.presentationSnapshot.retainedPublicEvent;
+  assert.deepEqual(observerOutcome, publicOutcome, "the committed public outcome is identical for another viewer");
   const obtainedId = obtained.data.room.myHand[0]?.id;
   assert.equal(obtainedId, "dodge-fankui-source-hidden-b", "hand:1 obtains the exact card occupying that position");
   const remainingSourceIds = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(game.source.id)}`)).map((held) => held.id);
@@ -246,6 +256,7 @@ test("Retaliation can obtain an eligible public Equipment or Judgement card and 
   assert.deepEqual(equipmentState.currentAction.triggerOptions[0].selection.eligibleKeys, [shield.id]);
   const tookEquipment = await requestAndSettle("trigger", { code: equipmentGame.code, token: equipmentGame.targetMember.token, providerId: "sima_yi_fankui", cardKeys: [shield.id] });
   assert.equal(tookEquipment.status, 200, JSON.stringify(tookEquipment.data));
+  assert.equal(tookEquipment.data.room.presentationSnapshot.retainedPublicEvent?.effect?.label, "Nio Shield", "face-up Equipment may be named in the public outcome");
   assert.deepEqual(tookEquipment.data.room.myHand.map((held) => held.id), [shield.id]);
   assert.deepEqual(tookEquipment.data.room.players.find((player) => player.id === equipmentGame.source.id).equipmentCards, []);
 

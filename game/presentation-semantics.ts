@@ -63,6 +63,8 @@ export type PublicPresentationEventFactDraft = {
   outcomeLabel?: string;
   amount?: number;
   effect?: PublicEffectDescriptor;
+  /** Causal checkpoint captured by the server at the committed event. */
+  committedIdentity?: PresentationSemanticIdentity;
 };
 
 /** Reads only structured, committed public log records; never inspects message text. */
@@ -259,6 +261,53 @@ function publicEvent(value: unknown, current: PresentationSemanticIdentity): Pub
       ...(typeof record(item.effect)!.label === "string" ? { label: record(item.effect)!.label as string } : {}),
     } } : {}),
   };
+}
+
+/** Retains only an independently committed, causal public outcome at rest. */
+export function retainedPublicEventFromTimeline(timeline: readonly unknown[]): { event: PublicPresentationEvent; facts: PublicPresentationEvent[] } | null {
+  const events = timeline.map(record).filter((event): event is Record<string, unknown> => Boolean(event))
+    .filter((event) => event.presentation !== false && typeof event.privateToPlayerId !== "string"
+      && nonEmptyString(event.id) && Number.isSafeInteger(event.publicSequence) && (event.publicSequence as number) >= 0)
+    .sort((left, right) => (left.publicSequence as number) - (right.publicSequence as number));
+  if (new Set(events.map((event) => event.id)).size !== events.length
+    || new Set(events.map((event) => event.publicSequence)).size !== events.length) return null;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    const fact = record(event.publicFact);
+    if (fact) {
+      const committedIdentity = identity(fact.committedIdentity);
+      if (!committedIdentity || fact.interactionId !== committedIdentity.interactionId || !nonEmptyString(fact.rootEventId)
+        || !["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED"].includes(String(fact.category))) return null;
+      const latest = publicEvent({ ...fact, identity: committedIdentity, eventId: event.id,
+        order: event.publicSequence, affectedPlayerIds: fact.affectedPlayerIds ?? [],
+        ...(typeof event.resolutionId === "string" ? { resolutionId: event.resolutionId } : {}),
+      }, committedIdentity);
+      if (!latest) return null;
+      const facts = events.slice(0, index + 1).flatMap((candidate) => {
+        const raw = record(candidate.publicFact);
+        const candidateIdentity = identity(raw?.committedIdentity);
+        if (!raw || !candidateIdentity || !sameInteraction(candidateIdentity, committedIdentity)
+          || raw.interactionId !== committedIdentity.interactionId || raw.rootEventId !== latest.rootEventId
+          || candidateIdentity.presentationRevision > committedIdentity.presentationRevision) return [];
+        const accepted = publicEvent({ ...raw, identity: candidateIdentity, eventId: candidate.id,
+          order: candidate.publicSequence, affectedPlayerIds: raw.affectedPlayerIds ?? [],
+          ...(typeof candidate.resolutionId === "string" ? { resolutionId: candidate.resolutionId } : {}),
+        }, committedIdentity);
+        return accepted ? [accepted] : [];
+      });
+      return { event: latest, facts };
+    }
+    // A newer committed card action supersedes an earlier result. Do not
+    // reconstruct its meaning from a message or from the displayed CardFace.
+    if ((event.type === "card" || event.type === "cards")
+      && (event.action === "play" || event.action === "equip" || event.action === "activate")) return null;
+  }
+  return null;
+}
+
+export function validateRetainedPublicEvent(value: unknown): PublicPresentationEvent | null {
+  const eventIdentity = identity(record(value)?.identity);
+  return eventIdentity ? publicEvent(value, eventIdentity) : null;
 }
 
 function nextDecision(value: unknown, current: PresentationSemanticIdentity): PublicPresentationDecision | null {

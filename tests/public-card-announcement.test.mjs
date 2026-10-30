@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
 import {
   canClearPublicJourneyOwnership,
   publicAnnouncementEventCopyKey,
@@ -25,6 +27,20 @@ const action = (overrides = {}) => ({
   cardLabel: "ATTACK",
   ariaLabel: "Source played Attack targeting Target",
   ...overrides,
+});
+
+test("committed outcomes from existing and synthetic providers use the same H4 layer", () => {
+  for (const [eventId, headline] of [
+    ["retaliation", "Test Player 2 used Retaliation and obtained one card."],
+    ["stauchness", "Test Player 2 used Stauchness and started a Judgement."],
+    ["synthetic", "Test Player 2 used a new skill and resolved a public effect."],
+  ]) {
+    const narration = { eventId, rootEventId: "root", interactionId: "interaction", rootFrameId: "frame",
+      actorId: "p2", headline, compactHeadline: headline, accessibleLabel: headline };
+    const html = renderToStaticMarkup(React.createElement(PublicInteractionAnnouncementLayer, { narration, roomCode: "ROOM", viewerId: "p1" }));
+    assert.match(html, new RegExp(`data-public-interaction-event-id="${eventId}"`));
+    assert.ok(html.includes(headline));
+  }
 });
 
 function duelStageFacts({ stage = "NEGATION", revision = 6, checkpointId = "negation-6", responseCount = 0 } = {}) {
