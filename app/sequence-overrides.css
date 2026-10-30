@@ -4410,6 +4410,15 @@
   visibility: hidden;
 }
 
+/* The public status can cover a parked miniature; active cards and H4 remain
+   protected by measured placement. Keep an open Inspector above the status. */
+.game-shell .play-table:has(.public-card-journey-card[data-public-card-journey-phase="parked"]) > .public-activity-chip {
+  z-index: 35;
+}
+.game-shell .play-table:has(> .public-activity-chip) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+  z-index: 40;
+}
+
 .game-shell .play-table > .public-activity-chip > strong {
   max-width: 100%;
   color: #f2e3bd;

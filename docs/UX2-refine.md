@@ -3854,6 +3854,8 @@ The local draft adds a provider-neutral semantic validator/test model, routes PA
 - Use generic provider outcomes and existing causal continuation fields. Public facts are emitted only alongside committed outcomes; a skipped skill adds no public skill fact; nested decisions retain their proven root/frame. Hidden gained cards remain private. No rules, actions, permissions, response order or timers change.
 - Required R6A proof: retained damage through child choice; committed skill fact superseding it; Skip retaining the prior fact; nested second decision retaining its causal root; Pass/intent privacy; no public fact for a losing intent; viewer-independent public checkpoints; and a synthetic new provider without shared display routing changes. Stop if the necessary committed proof is unavailable.
 
+**Coding Agent correction — 2026-10-30:** The deployed R6C omitted the committed root event identity for ordinary Duel damage. The R6D delivery carries that server-owned identity through the existing Duel continuation; owner phone review remains pending.
+
 **R6A code boundary:** this authorization is limited to the typed projections and focused proof/privacy tests. UI copy/layout responsibilities remain in R6B–R6D; do not redesign the approved UX or add provider-specific presentation branches.
 
 #### Coding Agent checkpoint — 2026-10-29 23:08 UTC (R6A IN PROGRESS / NOT DEPLOYED)

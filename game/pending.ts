@@ -99,7 +99,7 @@ export function isGroupParticipantProgressOutcomeAllowed(
   if (outcome === "DEFEATED") return cardKind === "RainingArrows" || cardKind === "BarbarianInvasion";
   return false;
 }
-export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; /** Count of server-accepted Attack responses; absent on legacy persisted Duels. */ attackResponseCount?: number; /** Exact, committed Negation card history carried from the same printed Duel root. */ negationHistory?: NegationHistoryRecord[]; wushuangPlayerId?: string; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } & CausalFields;
+export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; /** Committed originating event, when known. */ rootEventId?: string; damageCards?: Card[]; requiredAttackCount?: number; /** Count of server-accepted Attack responses; absent on legacy persisted Duels. */ attackResponseCount?: number; /** Exact, committed Negation card history carried from the same printed Duel root. */ negationHistory?: NegationHistoryRecord[]; wushuangPlayerId?: string; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } & CausalFields;
 export type NegationHistoryRecord = {
   nodeId: string;
   interactionId: string;

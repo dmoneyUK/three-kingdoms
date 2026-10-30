@@ -97,22 +97,25 @@ function protectedRects(table: HTMLElement): ProtectedRect[] {
     const insideTable = table.contains(element) || element.closest(".play-table") === table;
     if (!insideTable && !element.matches(EXTERNAL_ACTION_OBSTACLES)) continue;
     const rect = visibleRect(element);
-    if (rect && rect.right > tableRect.left && rect.left < tableRect.right
+    const parked = element.closest<HTMLElement>('[data-public-card-journey-phase="parked"], .table-played-card.settled');
+    const parkedRect = parked ? visibleRect(parked) : null;
+    const parkedThumbnail = Boolean(parkedRect && parkedRect.width <= 70 && parkedRect.height <= 110);
+    if (!parkedThumbnail && rect && rect.right > tableRect.left && rect.left < tableRect.right
       && rect.bottom > tableRect.top && rect.top < tableRect.bottom) {
       const classNames = typeof element.className === "string" ? element.className.trim().replace(/\s+/g, ".") : "";
       add(rect, `actual:${element.tagName.toLowerCase()}${classNames ? `.${classNames}` : ""}`);
     }
 
-    // Public journey cards expose their server-derived final owner anchor.
-    // Reserve it as soon as the card is mounted so the chip will not jump as
-    // that genuine card moves from its centre reveal to the Seat/Dock.
+    // A projected owner anchor is a parked thumbnail, which may sit beneath
+    // PAC. Still protect an unexpectedly full-sized projected destination.
     const target = {
       left: Number(element.dataset.publicCardJourneyTargetLeft),
       top: Number(element.dataset.publicCardJourneyTargetTop),
       width: Number(element.dataset.publicCardJourneyTargetWidth),
       height: Number(element.dataset.publicCardJourneyTargetHeight),
     };
-    if (Object.values(target).every(Number.isFinite) && target.width > 0 && target.height > 0) {
+    if (Object.values(target).every(Number.isFinite) && target.width > 0 && target.height > 0
+      && (target.width > 70 || target.height > 110)) {
       const classNames = typeof element.className === "string" ? element.className.trim().replace(/\s+/g, ".") : "";
       add({ ...target, right: target.left + target.width, bottom: target.top + target.height }, `projected-final:${element.tagName.toLowerCase()}${classNames ? `.${classNames}` : ""}`);
     }
@@ -208,6 +211,7 @@ function placeChip(
   const viewportBottom = Math.min(window.innerHeight, (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight));
   const leftBound = Math.max(tableRect.left + 8, 8);
   const rightBound = Math.min(tableRect.right - 8, window.innerWidth - 8);
+  const upperBandTop = Math.max(tableRect.top + 8, viewportTop + 8);
   const lowerBandTop = Math.max(tableRect.top + (allowUpperSafeBand ? 8 : tableRect.height * 0.58), viewportTop + 8);
   const bottom = Math.min(tableRect.bottom - 8, viewportBottom - 8);
   const firstTop = bottom - height;
@@ -325,7 +329,8 @@ function placeChip(
   };
 
   const currentRect = rectSummary(visibleRect(chip));
-  const currentMinTop = allowUpperSafeBand || anchorPlayerId || harvestPoolReadOnly ? tableRect.top + 4 : lowerBandTop;
+  const currentMinTop = allowUpperSafeBand || anchorPlayerId || harvestPoolReadOnly || previousMemory?.layout.startsWith("upper-band")
+    ? upperBandTop : lowerBandTop;
   const currentIsSafe = currentRect && currentRect.left >= leftBound && currentRect.right <= rightBound
     && currentRect.top >= currentMinTop && currentRect.bottom <= bottom
     && !obstacles.some((obstacle) => intersects(currentRect, obstacle, ACTIVITY_CHIP_GAP));
@@ -375,7 +380,7 @@ function placeChip(
     return finishTrace("placed:target-seat-adjacent", { rect: rectSummary(visibleRect(chip)) }, "safe-target-seat-anchor");
   }
 
-  if (width <= 0 || height <= 0 || rightBound - leftBound < width || firstTop < lowerBandTop) {
+  if (width <= 0 || height <= 0 || rightBound - leftBound < width || firstTop < upperBandTop) {
     chip.style.visibility = "hidden";
     chip.dataset.publicActivityLayout = "hidden";
     return finishTrace("hidden:insufficient-safe-area", undefined, "safe-area-too-small");
@@ -389,11 +394,12 @@ function placeChip(
   const verticalSteps = [...new Set([
     ...regularVerticalSteps,
     firstTop - lowerBandTop,
+    firstTop - upperBandTop,
     ...obstacleEdgeTops.map((top) => firstTop - top),
   ].map((step) => Math.round(step * 100) / 100))]
     .filter((step) => {
       const top = firstTop - step;
-      return top >= lowerBandTop && top + height <= bottom;
+      return top >= upperBandTop && top + height <= bottom;
     });
   const minCenter = leftBound + width / 2;
   const maxCenter = rightBound - width / 2;
@@ -419,11 +425,9 @@ function placeChip(
   placements.sort((left, right) => {
     const leftOffset = left.center - preferredCenter;
     const rightOffset = right.center - preferredCenter;
-    const leftDistance = Math.hypot(leftOffset, left.verticalStep);
-    const rightDistance = Math.hypot(rightOffset, right.verticalStep);
-    return leftDistance - rightDistance
-      || left.verticalStep - right.verticalStep
+    return Number(left.top < lowerBandTop) - Number(right.top < lowerBandTop)
       || Math.abs(leftOffset) - Math.abs(rightOffset)
+      || left.verticalStep - right.verticalStep
       || left.center - right.center;
   });
 
@@ -452,8 +456,8 @@ function placeChip(
     chip.style.left = `${candidate.left - tableRect.left}px`;
     chip.style.top = `${candidate.top - tableRect.top}px`;
     chip.style.visibility = "visible";
-    chip.dataset.publicActivityLayout = `${verticalStep === 0 ? "bottom" : "lower-band"}-${horizontalOffset === 0 ? "center" : horizontalOffset < 0 ? "left" : "right"}`;
-    return finishTrace("placed", candidateRecord, verticalStep === 0 && horizontalOffset === 0
+    chip.dataset.publicActivityLayout = `${top < lowerBandTop ? "upper-band" : verticalStep === 0 ? "bottom" : "lower-band"}-${horizontalOffset === 0 ? "center" : horizontalOffset < 0 ? "left" : "right"}`;
+    return finishTrace("placed", candidateRecord, horizontalOffset === 0
       ? "centered-slot-safe"
       : "center-blocked-minimal-translation-safe");
   }

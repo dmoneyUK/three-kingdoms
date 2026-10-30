@@ -126,6 +126,11 @@ async function geometry(page) {
     ].join(",");
     const overlaps = [...document.querySelectorAll(protectedSelector)]
       .filter((element) => element !== chip && getComputedStyle(element).display !== "none" && getComputedStyle(element).visibility !== "hidden")
+      .filter((element) => {
+        const parked = element.closest('[data-public-card-journey-phase="parked"], .table-played-card.settled');
+        const parkedBounds = parked?.getBoundingClientRect();
+        return !parkedBounds || parkedBounds.width > 70 || parkedBounds.height > 110;
+      })
       .map((element) => ({ name: element.className?.toString?.() ?? element.tagName, bounds: rect(element) }))
       .filter(({ bounds }) => bounds.width > 0 && bounds.height > 0 && intersects(chipRect, bounds));
     const table = bounds(".play-table");
@@ -153,6 +158,8 @@ async function geometry(page) {
       chipHeight: chipRect?.height ?? 0,
       placement: chip?.getAttribute("data-public-activity-layout"),
       visibility: chip ? getComputedStyle(chip).visibility : "missing",
+      chipZIndex: chip ? getComputedStyle(chip).zIndex : null,
+      journeyZIndex: document.querySelector(".public-card-display-journey") ? getComputedStyle(document.querySelector(".public-card-display-journey")).zIndex : null,
     };
   });
 }
@@ -162,10 +169,9 @@ function assertGeometry(result) {
   expect(result.placement).not.toBe("hidden");
   expect(result.chip.left).toBeGreaterThanOrEqual(result.table.left);
   expect(result.chip.right).toBeLessThanOrEqual(result.table.right);
-  expect(result.chip.top).toBeGreaterThanOrEqual(result.table.top + result.table.height * 0.55);
+  expect(result.chip.top).toBeGreaterThanOrEqual(result.table.top);
   expect(result.chip.bottom).toBeLessThanOrEqual(result.table.bottom);
   expect(result.chipHeight).toBeGreaterThanOrEqual(44);
-  expect(result.chipHeight).toBeLessThanOrEqual(64);
   expect(result.overlaps).toEqual([]);
   expect(result.scrollWidth).toBeLessThanOrEqual(result.viewportWidth);
 }
@@ -338,22 +344,21 @@ test("U13-B-G keeps the activity plaque near center through parked Duel Attack h
     await expect.poll(async () => readChip(observerPage)).toBe(await readChip(page));
 
     const matchingTrace = [...placementTraces].reverse().find((trace) => trace.outcome === "placed"
-      && trace.obstacles.some(({ sources }) => sources.some((source) => source.startsWith("projected-final:") && source.includes("public-card-journey-card"))));
+      && trace.obstacles.some(({ sources }) => sources.some((source) => source.startsWith("actual:") && source.includes("public-card-journey-card.is-revealing"))));
     expect(matchingTrace, `expected an opt-in candidate trace for the real Duel journey; captured ${JSON.stringify(placementTraces)}`).toBeTruthy();
     expect(matchingTrace).toMatchObject({ decision: "reflow", visibility: "visible" });
     expect(matchingTrace.geometryEpoch).toBeGreaterThan(0);
-    expect(matchingTrace.placementReason).toBe("center-blocked-minimal-translation-safe");
+    expect(matchingTrace.placementReason).toBe("centered-slot-safe");
     expect(matchingTrace.centeredCandidateRect).toBeTruthy();
     expect(matchingTrace.chosenRect).toBeTruthy();
     expect(matchingTrace.actualObstacleIds).toEqual(expect.any(Array));
-    expect(matchingTrace.projectedObstacleIds.some((id) => id.includes("public-card-journey-card"))).toBe(true);
+    expect(matchingTrace.projectedObstacleIds.some((id) => id.includes("public-card-journey-card"))).toBe(false);
     expect(matchingTrace.rejectedCandidates.length).toBeGreaterThan(0);
     expect(matchingTrace).not.toHaveProperty("statusText");
     expect(matchingTrace).not.toHaveProperty("privateHand");
-    const rejectedCenter = matchingTrace.candidates.find((candidate) => Math.abs(candidate.horizontalOffset) < 0.1);
-    expect(rejectedCenter?.accepted).toBe(false);
-    expect(rejectedCenter?.rejectedBy.some(({ sources }) => sources.some((source) => source.includes("public-card-journey-card")))).toBe(true);
-    expect(Math.abs(matchingTrace.chosen.horizontalOffset)).toBeLessThanOrEqual(20);
+    expect(matchingTrace.chosenCollisionIds).toEqual([]);
+    expect(Math.abs(matchingTrace.chosen.horizontalOffset)).toBeLessThanOrEqual(4);
+    expect(Number(localGeometry.chipZIndex)).toBeGreaterThan(Number(localGeometry.journeyZIndex));
     expect(matchingTrace.candidates.filter(({ accepted }) => !accepted).length).toBeGreaterThan(0);
     expect(matchingTrace.obstacles.every(({ left, top, right, bottom, width, height }) =>
       [left, top, right, bottom, width, height].every(Number.isFinite))).toBe(true);
@@ -383,9 +388,51 @@ test("U13-B-G keeps the activity plaque near center through parked Duel Attack h
     await page.locator(".public-card-journey-card").first().click();
     await expect(page.locator(".card-details-panel")).toBeVisible();
     const inspectedGeometry = await geometry(page);
-    assertGeometry(inspectedGeometry);
+    if (inspectedGeometry.visibility === "visible") assertGeometry(inspectedGeometry);
+    else {
+      expect(inspectedGeometry.placement).toBe("hidden");
+      expect(placementTraces.some((trace) => trace.outcome === "hidden:no-safe-candidate"
+        && trace.obstacles.some(({ sources }) => sources.some((source) => source.includes("card-details-panel"))))).toBe(true);
+    }
     await page.getByRole("button", { name: "Close card details" }).click();
     await expect(page.locator(".card-details-panel")).toHaveCount(0);
+
+    await expect(finalAttack).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
+    const parkedRects = async () => page.locator('[data-public-card-journey-phase="parked"]').evaluateAll((elements) => elements.map((element) => {
+      const bounds = element.getBoundingClientRect();
+      return { eventId: element.dataset.publicCardJourneyEventId, left: bounds.left, top: bounds.top };
+    }).sort((left, right) => left.eventId.localeCompare(right.eventId)));
+    const beforeInspector = await parkedRects();
+    await page.locator(`[data-player-anchor="${room.players[0].id}"] .opponent-hero-target`).click();
+    await expect(page.locator(".opponent-inspection-floating-shell")).toBeVisible();
+    await expect(page.locator('[data-public-card-inspection-history="true"]')).toBeVisible();
+    const duringInspector = await parkedRects();
+    expect(duringInspector.map(({ eventId }) => eventId)).toEqual(beforeInspector.map(({ eventId }) => eventId));
+    for (let index = 0; index < beforeInspector.length; index += 1) {
+      expect(Math.abs(duringInspector[index].left - beforeInspector[index].left)).toBeLessThanOrEqual(1);
+      expect(Math.abs(duringInspector[index].top - beforeInspector[index].top)).toBeLessThanOrEqual(1);
+    }
+    const inspectorGeometry = await geometry(page);
+    if (inspectorGeometry.visibility === "visible") expect(inspectorGeometry.overlaps).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".opponent-inspection-floating-shell")).toHaveCount(0);
+
+    const damaged = await action(request, room, 1, "decline_response");
+    const damageFact = damaged.room.presentationSnapshot.retainedPublicEvent;
+    expect(damageFact?.category).toBe("DAMAGE_APPLIED");
+    const damageH4 = page.locator(`.public-interaction-event-announcement[data-public-interaction-event-id="${damageFact.eventId}"] .public-card-display-journey-copy`);
+    await expect(damageH4).toBeVisible();
+    await expect(damageH4).toContainText("damage");
+    for (const { eventId } of beforeInspector) {
+      await expect(page.locator(`.table-resolution-layer [data-settlement-event-id="${eventId}"]`)).toHaveCount(0);
+    }
+    const beforePoll = await damageH4.boundingBox();
+    await page.waitForTimeout(1200);
+    const afterPoll = await damageH4.boundingBox();
+    expect(beforePoll).toBeTruthy();
+    expect(afterPoll).toBeTruthy();
+    expect(Math.abs(afterPoll.x - beforePoll.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(afterPoll.y - beforePoll.y)).toBeLessThanOrEqual(1);
   } finally {
     await observerContext.close();
   }

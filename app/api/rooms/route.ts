@@ -3148,11 +3148,11 @@ function groupResolutionEnvelopeForParticipant(envelope: CausalEnvelope | null, 
   });
 }
 
-function duelResponseDecision(sourceId: string, targetId: string, opponentId: string, resumePhase: string, reason: string, deadline: number, damageCards?: Card[], wushuangPlayerId?: string, resumePlayerId?: string, lust?: NonNullable<DuelContinuation["lust"]>): CausalCreation<ResponsePending> {
+function duelResponseDecision(sourceId: string, targetId: string, opponentId: string, resumePhase: string, reason: string, deadline: number, damageCards?: Card[], wushuangPlayerId?: string, resumePlayerId?: string, lust?: NonNullable<DuelContinuation["lust"]>, rootEventId?: string): CausalCreation<ResponsePending> {
   const requiredAttackCount = wushuangPlayerId && targetId !== wushuangPlayerId ? 2 : 1;
   const root = createCausalRoot({ stage: "DUEL_EXCHANGE", origin: { originSourceId: sourceId, originEffect: "duel", originalTargetIds: [targetId, opponentId] }, current: { currentSourceId: sourceId, currentEffect: "duel", currentTargetIds: [targetId, opponentId], resolvingPlayerId: targetId } });
   const causal = root.context;
-  return { value: { kind: "response", actorId: targetId, causal, requirement: { kind: "attack", sourceId, actorId: targetId, count: requiredAttackCount, context: "duel" }, reason, deadline, continuation: { kind: "duel", sourceId, targetId, opponentId, resumePhase, causal, attackResponseCount: 0, ...(resumePlayerId ? { resumePlayerId } : {}), requiredAttackCount, ...(wushuangPlayerId ? { wushuangPlayerId } : {}), ...(damageCards ? { damageCards } : {}), ...(lust ? { lust } : {}) } }, createdEnvelope: root.envelope };
+  return { value: { kind: "response", actorId: targetId, causal, requirement: { kind: "attack", sourceId, actorId: targetId, count: requiredAttackCount, context: "duel" }, reason, deadline, continuation: { kind: "duel", sourceId, targetId, opponentId, resumePhase, causal, attackResponseCount: 0, ...(resumePlayerId ? { resumePlayerId } : {}), ...(rootEventId ? { rootEventId } : {}), requiredAttackCount, ...(wushuangPlayerId ? { wushuangPlayerId } : {}), ...(damageCards ? { damageCards } : {}), ...(lust ? { lust } : {}) } }, createdEnvelope: root.envelope };
 }
 
 /** Starts Lust after its cost and any Equipment-loss reactions have settled. */
@@ -3166,7 +3166,7 @@ async function beginLustDuel(room: RoomRow, owner: PlayerRow, first: PlayerRow, 
     secondParticipantId: second.id,
     firstActorId: first.id,
   } : undefined;
-  const pendingResult = duelResponseDecision(first.id, first.id, second.id, "play", "Respond to Lust Duel: select Attack or take 1 damage", nextResponseDeadline(first), [], wushuangPlayerId, owner.id, lust);
+  const pendingResult = duelResponseDecision(first.id, first.id, second.id, "play", "Respond to Lust Duel: select Attack or take 1 damage", nextResponseDeadline(first), [], wushuangPlayerId, owner.id, lust, rootEventId);
   const pending = rootEventId ? withPresentationBarrier(pendingResult.value, log, rootEventId) : pendingResult.value;
   await db().batch([
     db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving'")
@@ -3533,6 +3533,7 @@ async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePendi
     resumePlayerId: resume.id,
     sequenceStartCardId: "",
     damageCards: pending.continuation.damageCards,
+    rootEventId: pending.continuation.rootEventId,
     causal: child?.context ?? pending.response.causal,
     resumeChildCausal: child?.context,
     cause: "duel",
@@ -8853,7 +8854,7 @@ export async function POST(request: Request) {
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
         const presentation = addCardEventWithId(log, me.name, card, target.name); log = addLog(presentation.log, `${me.name} starts a Duel with ${target.name}.`);
         const wushuangPlayerId = me.hero === "lü-bu" ? me.id : target.hero === "lü-bu" ? target.id : undefined;
-        const duelCreation = duelResponseDecision(me.id, target.id, me.id, liveRoom.phase, "Respond to Duel: select Attack or take 1 damage", nextResponseDeadline(target), [card], wushuangPlayerId);
+        const duelCreation = duelResponseDecision(me.id, target.id, me.id, liveRoom.phase, "Respond to Duel: select Attack or take 1 damage", nextResponseDeadline(target), [card], wushuangPlayerId, undefined, undefined, presentation.eventId);
         const pending = withPresentationBarrier(duelCreation.value, log, presentation.eventId);
         await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "duel", pending }, hand, deck, discard, log, duelCreation.createdEnvelope);
       } else if (playableAttack) {
