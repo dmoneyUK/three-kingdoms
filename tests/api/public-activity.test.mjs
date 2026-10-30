@@ -312,7 +312,7 @@ test("generic H4 retains damage through Skip and formats committed public or hid
     "Test Player 2 used Retaliation and obtained one card from Test Player 1.");
   const visible = { ...hidden, eventId: "visible", effect: { kind: "gain_target_card", label: "Nio Shield" } };
   assert.equal(derivePublicInteractionNarration(input([root, damage, visible]))?.headline,
-    "Test Player 2 used Retaliation and obtained Nio Shield from Test Player 1.");
+    "Test Player 2 used Retaliation and obtained one card from Test Player 1.");
   for (const [label, outcome] of [["Legacy", "began a card distribution"], ["Synthetic provider", "resolved a public effect"]]) {
     const skill = fact(`skill-${label}`, 4, "SKILL_USED", { actorId: "p2", label, outcomeLabel: outcome, effect: { kind: "generic_effect" } });
     assert.equal(derivePublicInteractionNarration(input([root, damage, hidden, skill]))?.headline,
@@ -322,5 +322,9 @@ test("generic H4 retains damage through Skip and formats committed public or hid
     retainedPublicEvent: visible, retainedPublicEventFacts: [damage, visible] };
   assert.equal(derivePublicInteractionNarration({ ...input([]), snapshot: rest })?.eventId, "visible");
   assert.equal(derivePublicInteractionNarration({ ...input([]), snapshot: rest, interactionId: "new-interaction" }), null);
-  assert.equal(derivePublicInteractionNarration(input([root, hidden])), null, "an unrelated skill fact does not create a damage announcement");
+  assert.equal(derivePublicInteractionNarration(input([root, hidden]))?.headline, "Test Player 2 used Retaliation and obtained one card from Test Player 1.");
+  const generic = fact("generic", 4, "SKILL_USED", { actorId: "p2", label: "New ability", outcomeLabel: "resolved a public effect", effect: { kind: "generic_effect" } });
+  assert.equal(derivePublicInteractionNarration(input([root, generic]))?.headline, "Test Player 2 used New ability and resolved a public effect.");
+  const noDamageRest = { ...rest, retainedPublicEvent: generic, retainedPublicEventFacts: [generic] };
+  assert.equal(derivePublicInteractionNarration({ ...input([]), snapshot: noDamageRest })?.eventId, "generic");
 });

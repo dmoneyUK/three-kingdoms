@@ -146,16 +146,16 @@ export function derivePublicInteractionNarration(input: {
         && fact.identity.rootFrameId === interaction.rootFrameId
         && fact.rootEventId === input.rootEventId,
     ).sort((left, right) => left.order - right.order);
-    if (!facts.some((fact) => fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED")) return null;
     const rootOrder = facts.find((fact) => fact.eventId === input.rootEventId)?.order ?? -1;
-    latest = facts.filter((fact) => fact.order > rootOrder).at(-1);
+    const hasDamage = facts.some((fact) => fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED");
+    latest = facts.filter((fact) => fact.order > rootOrder && (hasDamage || fact.category === "SKILL_USED")).at(-1);
   } else if (!identity && !interaction && snapshot.stable.kind === "REST"
     && snapshot.retainedPublicEvent?.identity.interactionId === input.interactionId
     && snapshot.retainedPublicEvent.identity.rootFrameId === input.rootFrameId
     && snapshot.retainedPublicEvent.rootEventId === input.rootEventId
     && snapshot.retainedPublicEventFacts?.some((fact) => fact.rootEventId === input.rootEventId
       && fact.identity.interactionId === input.interactionId && fact.identity.rootFrameId === input.rootFrameId
-      && (fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED"))) {
+      && (fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED" || fact.category === "SKILL_USED"))) {
     latest = snapshot.retainedPublicEvent;
   }
   if (!latest) return null;
@@ -176,13 +176,11 @@ export function derivePublicInteractionNarration(input: {
   } else if (latest.category === "SKILL_USED") {
     const skill = latest.label?.trim().replace(/^Use\s+/i, "") || "a skill";
     const effectKind = latest.effect?.kind;
-    const publicCardName = latest.effect?.label?.trim();
-    const defaultOutcome = effectKind === "gain_target_card" ? (publicCardName ? `obtained ${publicCardName}` : "obtained one card")
+    const defaultOutcome = effectKind === "gain_target_card" ? "obtained one card"
       : effectKind === "gain_damage_cards" ? "obtained the card that caused the damage"
         : effectKind === "legacy_distribution" ? "began a card distribution"
           : null;
     let outcome = latest.outcomeLabel?.trim() || defaultOutcome;
-    if (effectKind === "gain_target_card" && outcome && publicCardName) outcome = `obtained ${publicCardName}`;
     if (effectKind === "gain_target_card" && target && outcome) outcome = `${outcome} from ${target}`;
     headline = `${actor ? `${actor} used` : "A player used"} ${skill}${outcome ? ` and ${outcome}` : ""}.`;
   } else if (latest.category === "CARD_OBTAINED" || latest.category === "CARD_TRANSFERRED") {

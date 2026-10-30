@@ -69,6 +69,8 @@ test("real Treachery reaches Skills after Cao Cao takes Attack damage and obtain
 
   const { result, duplicate } = await activateDirectSkill({ page, request, seedData, playerIndex: 1, label: "Treachery", providerId: "cao_cao_jianxiong" });
   expect(result.room.myHand.map((held) => held.id)).toContain(attack.id);
+  await expect(page.locator(".public-interaction-event-announcement .public-card-display-journey-copy")).toContainText("CAO CAO used Treachery and obtained the card that caused the damage.");
+  await expect(page.locator(".effect-notice")).toHaveCount(0);
   await expect(duplicate).toHaveCount(0);
 });
 
@@ -1377,5 +1379,41 @@ test("Serpent Spear presents two real cards as one Attack for actor, target and 
   } finally {
     await targetPage.close();
     await observerPage.close();
+  }
+});
+
+test("QA-02 Retaliation has one public H4 and a private gained card", async ({ browser, request }) => {
+  const attack = card("Attack", "qa02-attack");
+  const secret = card("Dodge", "qa02-hidden-hand");
+  const room = await seed(request, [
+    { name: "SOURCE", role: "Rebel", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [attack, secret] },
+    { name: "SIMA", role: "Lord", hero: "simayi", hp: 4, maxHp: 4, hand: [] },
+    { name: "ALLY", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
+    { name: "FOURTH", role: "Renegade", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+  ]);
+  const contexts = await Promise.all(room.players.map(() => browser.newContext({ viewport: { width: 440, height: 766 } })));
+  try {
+    const pages = await Promise.all(contexts.map((context) => context.newPage()));
+    await Promise.all(pages.map((page, index) => openPlayer(page, room, index)));
+    const post = async (index, action, extra = {}) => {
+      const response = await request.post(`${API}/api/rooms`, { data: { code: room.code, token: room.players[index].token, action, ...extra } });
+      expect(response.ok(), await response.text()).toBeTruthy();
+      return response.json();
+    };
+    await post(0, "play_card", { cardId: attack.id, targetId: room.players[1].id });
+    await post(1, "decline_response");
+    await post(1, "trigger", { providerId: "sima_yi_fankui", cardKeys: ["hand:0"] });
+    const views = await Promise.all(room.players.map((_, index) => view(request, room, index)));
+    expect(views[1].myHand.map((item) => item.id)).toContain(secret.id);
+    expect(JSON.stringify(views[2])).not.toContain(secret.id);
+    for (const page of pages) {
+      const h4 = page.locator(".public-interaction-event-announcement .public-card-display-journey-copy");
+      await expect(h4).toHaveCount(1, { timeout: 10_000 });
+      await expect(h4).toContainText("SIMA used Retaliation and obtained one card from SOURCE.");
+      await expect(page.locator(".effect-notice")).toHaveCount(0);
+    }
+    expect(await pages[2].locator("body").innerText()).not.toContain("qa02-hidden-hand");
+  } finally {
+    await Promise.all(contexts.map((context) => context.close()));
   }
 });

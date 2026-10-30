@@ -8613,7 +8613,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     activePublicEffectFrameAction?.settlement?.eventId,
   ].filter((eventId): eventId is string => Boolean(eventId)));
   const effectNoticeOwnedByPublicCardFrame = Boolean(effectNotice
-    && activePublicEffectFrameEventIds.has(effectNotice.eventId));
+    && (activePublicEffectFrameEventIds.has(effectNotice.eventId)
+      || publicInteractionNarration?.eventId === effectNotice.eventId));
   const publicCardDisplayOwnsPresentation = Boolean(publicCardDisplayReady
     || publicCardDisplayAction?.motion?.type === "attack-dodge"
       && rootActionSource?.name
