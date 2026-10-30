@@ -81,8 +81,8 @@ export function collectPublicPresentationEventFacts(input: {
   input.timeline.forEach((candidate) => {
     const event = record(candidate);
     if (!event || !nonEmptyString(event.id) || event.presentation === false || typeof event.privateToPlayerId === "string"
-      || !Number.isSafeInteger(event.appendOrder) || (event.appendOrder as number) < 0) return;
-    const order = event.appendOrder as number;
+      || !Number.isSafeInteger(event.publicSequence) || (event.publicSequence as number) < 0) return;
+    const order = event.publicSequence as number;
     const raw = record(event.publicFact);
     if (raw) {
       if (raw.semantics !== "PROVEN" || raw.visibility !== "PUBLIC"

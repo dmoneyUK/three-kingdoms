@@ -108,6 +108,32 @@ test("shared Negation settles early after explicit responses from all seats in 4
     assert.equal(roomCardCount(game.code, root.id), 1);
     assert.equal(query(`SELECT COUNT(*) FROM negation_window_submissions WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)}) AND window_id=${quote(windowId)}`), "0", "private submissions are retired after the once-only settlement");
     assert.equal(JSON.stringify(settled).includes("submission_json"), false);
+    if (seatCount === 4) {
+      const observer = (await state(game.code, game.members[1].token)).data;
+      const publicOrder = (view) => view.timeline.filter((event) => Number.isSafeInteger(event.publicSequence))
+        .map(({ id, publicSequence }) => [id, publicSequence]);
+      assert.deepEqual(publicOrder(settled), publicOrder(observer), "identical committed checkpoints expose the same public event order to each viewer");
+      assert.equal(JSON.stringify(settled).includes("publicSequenceWatermark"), false, "the internal private-log watermark stays server-side");
+
+      const persistedLog = JSON.parse(query(`SELECT log_json FROM rooms WHERE code=${quote(game.code)}`));
+      const structured = persistedLog.flatMap((entry) => {
+        const prefix = ["@event:", "@card:", "@cards:", "@history:"].find((candidate) => entry.startsWith(candidate));
+        return prefix ? [{ prefix, value: JSON.parse(entry.slice(prefix.length)) }] : [];
+      });
+      let previousWatermark = null;
+      const publicOrdinals = [];
+      for (const { prefix, value } of structured) {
+        assert.ok(Number.isSafeInteger(value.publicSequenceWatermark), "every structured D1 record carries the sequence watermark");
+        const isPublic = prefix !== "@history:" && value.presentation !== false && typeof value.privateToPlayerId !== "string";
+        if (previousWatermark !== null) assert.equal(value.publicSequenceWatermark, previousWatermark + Number(isPublic), "private records preserve the watermark and public commits advance it once");
+        if (isPublic) {
+          assert.equal(value.publicSequence, value.publicSequenceWatermark);
+          publicOrdinals.push(value.publicSequence);
+        } else assert.equal(Object.hasOwn(value, "publicSequence"), false);
+        previousWatermark = value.publicSequenceWatermark;
+      }
+      assert.deepEqual(publicOrdinals, [...new Set(publicOrdinals)], "concurrent Worker/D1 settlement leaves no duplicate public ordinal");
+    }
   }
 });
 

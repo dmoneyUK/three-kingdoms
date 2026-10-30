@@ -32,6 +32,7 @@ import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
 import { childCausalFrame, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
 import { advanceCausalSemanticCheckpoint } from "../causal-envelope";
+import { appendSequencedLogRecord, publicEventSequencesFromLog } from "../../../game/public-log-sequence";
 
 export const runtime = "edge";
 
@@ -111,9 +112,10 @@ async function recordAuditAction(room: RoomRow, actor: PlayerRow | null, actorNa
 }
 
 async function expireInactiveRoom(room: RoomRow) {
-  if (room.status !== "playing" || Date.now() - (room.last_activity_at ?? room.created_at) < ROOM_IDLE_TIMEOUT_MS) return false;
+  if (room.status !== "playing" || room.phase === "resolving" || Date.now() - (room.last_activity_at ?? room.created_at) < ROOM_IDLE_TIMEOUT_MS) return false;
   const log = addHistory(parse<string[]>(room.log_json, []), "This game closes after five minutes with no game events.");
-  const closed = await env.DB.prepare("UPDATE rooms SET status = 'finished', phase = 'finished', pending_json = NULL, log_json = ? WHERE id = ? AND status = 'playing' AND last_activity_at <= ?").bind(JSON.stringify(log), room.id, Date.now() - ROOM_IDLE_TIMEOUT_MS).run();
+  const closed = await env.DB.prepare("UPDATE rooms SET status = 'finished', phase = 'finished', pending_json = NULL, log_json = ? WHERE id = ? AND status = 'playing' AND last_activity_at <= ? AND phase IS ? AND (phase IS NULL OR phase <> 'resolving') AND pending_json IS ? AND log_json IS ?")
+    .bind(JSON.stringify(log), room.id, Date.now() - ROOM_IDLE_TIMEOUT_MS, room.phase, room.pending_json, room.log_json).run();
   return (closed.meta.changes ?? 0) > 0;
 }
 
@@ -1012,10 +1014,12 @@ function addTriggeredEffectNotice(log: string[], actor: string, label: string, p
   return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined,
     { effectNotice: true, ...(publicFact ? { publicFact } : {}) });
 }
-function addLog(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) { return [...log.slice(-199), `@event:${JSON.stringify({ id: crypto.randomUUID(), message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`]; }
+function addLog(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) {
+  return appendSequencedLogRecord(log, "@event:", { id: crypto.randomUUID(), message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) });
+}
 function addLogWithId(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta, eventId = crypto.randomUUID()) {
   const id = eventId;
-  return { log: [...log.slice(-199), `@event:${JSON.stringify({ id, message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`], eventId: id };
+  return { log: appendSequencedLogRecord(log, "@event:", { id, message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) }), eventId: id };
 }
 function attachDiaoChanNotice(log: string[], proof: DiaoChanSkillNoticeProof): string[] {
   const index = log.length - 1;
@@ -1063,9 +1067,15 @@ function attachFanjianSettlement(log: string[], eventId: string, proof: Presenta
   return matches === 1 ? next : log;
 }
 function addFinalResult(log: string[], message: string, drawPlayerId?: string, resolutionId?: string) { return addLog(log, message, drawPlayerId, { resolutionId, importance: "essential", finalResult: true }); }
-function addHistory(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) { return [...log.slice(-199), `@history:${JSON.stringify({ id: crypto.randomUUID(), message, presentation: false, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`]; }
-function addCardEvent(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" = "play", presentation = true, meta?: PresentationMeta, eventId = crypto.randomUUID()) { return [...log.slice(-199), `@card:${JSON.stringify({ id: eventId, player, target, card, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential") })}`]; }
-function addPrivateDrawEvent(log: string[], player: PlayerRow, card: Card, initialDeal = false) { return [...log.slice(-199), `@card:${JSON.stringify({ id: crypto.randomUUID(), player: player.name, target: player.name, card, action: "draw", presentation: false, privateToPlayerId: player.id, drawPlayerId: player.id, ...presentationMeta(log, initialDeal ? { initialDeal: true } : undefined, "informational") })}`]; }
+function addHistory(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) {
+  return appendSequencedLogRecord(log, "@history:", { id: crypto.randomUUID(), message, presentation: false, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) });
+}
+function addCardEvent(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" = "play", presentation = true, meta?: PresentationMeta, eventId = crypto.randomUUID()) {
+  return appendSequencedLogRecord(log, "@card:", { id: eventId, player, target, card, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential") });
+}
+function addPrivateDrawEvent(log: string[], player: PlayerRow, card: Card, initialDeal = false) {
+  return appendSequencedLogRecord(log, "@card:", { id: crypto.randomUUID(), player: player.name, target: player.name, card, action: "draw", presentation: false, privateToPlayerId: player.id, drawPlayerId: player.id, ...presentationMeta(log, initialDeal ? { initialDeal: true } : undefined, "informational") });
+}
 function addPrivateStealResultEvent(log: string[], source: PlayerRow, roomCode: string, settlementEventId: string, proof: PresentationStealSettlementProof, card: Card) {
   if (proof.sourceZone !== "hand" || proof.sourceId !== source.id || !settlementEventId) return log;
   const privateResult = {
@@ -1078,7 +1088,7 @@ function addPrivateStealResultEvent(log: string[], source: PlayerRow, roomCode: 
     targetId: proof.targetId,
     sourceZone: proof.sourceZone,
   };
-  return [...log.slice(-199), `@card:${JSON.stringify({ id: crypto.randomUUID(), player: source.name, target: source.name, card, action: "gain", presentation: false, privateToPlayerId: source.id, drawPlayerId: source.id, privateStealResult: privateResult })}`];
+  return appendSequencedLogRecord(log, "@card:", { id: crypto.randomUUID(), player: source.name, target: source.name, card, action: "gain", presentation: false, privateToPlayerId: source.id, drawPlayerId: source.id, privateStealResult: privateResult });
 }
 function addCardEventWithId(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" = "play", presentation = true, meta?: PresentationMeta) {
   const eventId = crypto.randomUUID();
@@ -1511,9 +1521,11 @@ function lustDuelAttackResponseProof(
     responseCardKind: "Attack",
   };
 }
-function addCardGroupEvent(log: string[], player: string, cards: Card[], action: "discard" | "reveal" | "play", presentation = true, target = player, message?: string, meta?: PresentationMeta) { return cards.length ? [...log.slice(-199), `@cards:${JSON.stringify({ id: crypto.randomUUID(), player, target, cards, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential"), ...(message ? { message } : {}) })}`] : log; }
+function addCardGroupEvent(log: string[], player: string, cards: Card[], action: "discard" | "reveal" | "play", presentation = true, target = player, message?: string, meta?: PresentationMeta) {
+  return cards.length ? appendSequencedLogRecord(log, "@cards:", { id: crypto.randomUUID(), player, target, cards, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential"), ...(message ? { message } : {}) }) : log;
+}
 function addCardGroupEventWithId(log: string[], player: string, cards: Card[], action: "discard" | "reveal" | "play", presentation = true, target = player, message?: string, meta?: PresentationMeta, eventId = crypto.randomUUID()) {
-  return { log: cards.length ? [...log.slice(-199), `@cards:${JSON.stringify({ id: eventId, player, target, cards, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential"), ...(message ? { message } : {}) })}`] : log, eventId };
+  return { log: cards.length ? appendSequencedLogRecord(log, "@cards:", { id: eventId, player, target, cards, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential"), ...(message ? { message } : {}) }) : log, eventId };
 }
 
 function singleTargetNegationRootKind(pending: NegationContinuation): Card["kind"] | null {
@@ -2246,26 +2258,44 @@ function messageEvent(entry: string, index: number) {
   if (!entry.startsWith("@event:")) return { type: "message" as const, id: `legacy-${index}-${entry}`, message: entry };
   try { return { type: "message" as const, ...JSON.parse(entry.slice(7)) as { id: string; message: string } }; } catch { return null; }
 }
+function timelineRecordFields(value: Record<string, unknown>, publicSequences: ReadonlyMap<string, number> | null) {
+  const fields = { ...value };
+  delete fields.publicSequenceWatermark;
+  delete fields.publicSequence;
+  const sequence = typeof value.id === "string" ? publicSequences?.get(value.id) : undefined;
+  return { ...fields, ...(sequence !== undefined ? { publicSequence: sequence } : {}) };
+}
 function gameTimeline(entries: string[], viewerPlayerId?: string) {
   const events: Array<Record<string, unknown>> = [];
+  const publicSequences = publicEventSequencesFromLog(entries);
   for (let index = 0; index < entries.length; index++) {
     const entry = entries[index];
     if (entry.startsWith("@history:")) {
-      try { events.push({ type: "message", presentation: false, ...JSON.parse(entry.slice(9)) as { id: string; message: string }, appendOrder: index }); } catch { /* Ignore malformed historical events. */ }
+      try {
+        const value = JSON.parse(entry.slice(9)) as Record<string, unknown>;
+        events.push({ type: "message", presentation: false, ...timelineRecordFields(value, publicSequences), appendOrder: index });
+      } catch { /* Ignore malformed historical events. */ }
       continue;
     }
     if (entry.startsWith("@cards:")) {
-      try { events.push({ type: "cards", ...JSON.parse(entry.slice(7)) as Record<string, unknown>, appendOrder: index }); } catch { /* Ignore malformed grouped-card events. */ }
+      try {
+        const value = JSON.parse(entry.slice(7)) as Record<string, unknown>;
+        events.push({ type: "cards", ...timelineRecordFields(value, publicSequences), appendOrder: index });
+      } catch { /* Ignore malformed grouped-card events. */ }
       continue;
     }
     if (!entry.startsWith("@card:")) {
-      const event = messageEvent(entry, index); if (event) events.push({ ...event, appendOrder: index });
+      const event = messageEvent(entry, index);
+      if (event) {
+        const fields = timelineRecordFields(event, publicSequences);
+        events.push({ ...fields, appendOrder: index });
+      }
       continue;
     }
     try {
       const card = JSON.parse(entry.slice(6)) as Record<string, unknown>;
       if (typeof card.privateToPlayerId === "string" && card.privateToPlayerId !== viewerPlayerId) continue;
-      events.push({ type: "card", ...card, appendOrder: index });
+      events.push({ type: "card", ...timelineRecordFields(card, publicSequences), appendOrder: index });
     } catch { /* Ignore malformed historical events. */ }
   }
   return events.filter((event) => {

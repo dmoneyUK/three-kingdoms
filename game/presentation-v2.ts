@@ -11,6 +11,8 @@ export type PresentationV2Event = {
   id: string;
   /** Source append order in the retained room log; id remains the durable identity. */
   appendOrder?: number;
+  /** Persisted public-event chronology, independent of rolling room-log indexes. */
+  publicSequence?: number;
   type: "message" | "card" | "cards" | string;
   player?: string;
   target?: string;

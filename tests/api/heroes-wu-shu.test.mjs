@@ -300,6 +300,19 @@ test("an inactive active room is closed after five minutes without a game event"
   assert.ok(closed.data.room.log.some((message) => /five minutes with no game events/.test(message)));
 });
 
+test("inactive-room expiry cannot overwrite a room transition already claimed for resolution", async () => {
+  const created = await createTestGame();
+  const { code } = created.data.room;
+  const { token } = created.data;
+  sql(`UPDATE rooms SET last_activity_at=${Date.now() - 5 * 60_000 - 1}, phase='resolving' WHERE code=${quote(code)}`);
+  const beforeLog = query(`SELECT log_json FROM rooms WHERE code=${quote(code)}`);
+  const expiry = await requestAndSettle("expire_inactive_room", { code, token });
+  assert.equal(expiry.status, 200);
+  assert.equal(expiry.data.room.status, "playing", "expiry must leave an in-flight room claim available to finish");
+  assert.equal(expiry.data.room.phase, "resolving");
+  assert.equal(query(`SELECT log_json FROM rooms WHERE code=${quote(code)}`), beforeLog, "a stale terminal history write cannot replace the active log watermark");
+});
+
 test("Attack response windows are public while Dodge options remain private", { timeout: 30_000 }, async () => {
   async function open(targetCards, suffix) {
     const game = await createHumanGame();

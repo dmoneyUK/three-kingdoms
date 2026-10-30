@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { collectPublicPresentationEventFacts, projectPublicPresentationSemantics, publicDecisionFromPresentationSnapshot } from "../../game/presentation-semantics.ts";
+import { appendSequencedLogRecord, publicEventSequencesFromLog } from "../../game/public-log-sequence.ts";
 
 const identity = (revision = 1, checkpointId = `checkpoint-${revision}`) => ({
   interactionId: "interaction-1",
@@ -101,8 +102,8 @@ test("committed damage survives a child decision and a committed skill fact repl
     { frameId: "child-1", parentFrameId: "root-1", origin: { originSourceId: "player-1", originalTargetIds: ["player-2"] } },
   ];
   const timeline = [
-    { id: "root-card", type: "card", action: "play", presentation: true, appendOrder: 10, card: { id: "physical-card", kind: "Attack" } },
-    { id: "damage", type: "message", presentation: true, appendOrder: 20, publicFact: {
+    { id: "root-card", type: "card", action: "play", presentation: true, appendOrder: 10, publicSequence: 10, card: { id: "physical-card", kind: "Attack" } },
+    { id: "damage", type: "message", presentation: true, appendOrder: 20, publicSequence: 20, publicFact: {
       semantics: "PROVEN", visibility: "PUBLIC", interactionId: current.interactionId,
       frameId: "root-1", category: "DAMAGE_APPLIED", actorId: "player-1", affectedPlayerIds: ["player-2"], amount: 1,
     } },
@@ -110,7 +111,7 @@ test("committed damage survives a child decision and a committed skill fact repl
       semantics: "PROVEN", visibility: "PUBLIC", interactionId: current.interactionId,
       frameId: "child-1", category: "SKILL_USED",
     } },
-    { id: "skill", type: "message", presentation: true, appendOrder: 30, publicFact: {
+    { id: "skill", type: "message", presentation: true, appendOrder: 30, publicSequence: 30, publicFact: {
       semantics: "PROVEN", visibility: "PUBLIC", interactionId: current.interactionId,
       frameId: "child-1", parentFrameId: "root-1", rootEventId: "root-card",
       category: "SKILL_USED", actorId: "player-2", affectedPlayerIds: ["player-2"],
@@ -133,11 +134,11 @@ test("committed damage survives a child decision and a committed skill fact repl
   assert.equal(projected.event?.effect?.kind, "recover");
 });
 
-test("public event fact ordering requires the server append order", () => {
+test("public event fact ordering requires a persisted public ordinal, not a rolling append index", () => {
   const current = identity();
   const frames = [{ frameId: "root-1", parentFrameId: null, origin: { originSourceId: "player-1", originalTargetIds: [] } }];
   const timeline = [
-    { id: "ordered", type: "message", appendOrder: 5, publicFact: {
+    { id: "ordered", type: "message", appendOrder: 500, publicSequence: 5, publicFact: {
       semantics: "PROVEN", visibility: "PUBLIC", interactionId: current.interactionId,
       frameId: "root-1", category: "DAMAGE_APPLIED", affectedPlayerIds: [],
     } },
@@ -148,6 +149,116 @@ test("public event fact ordering requires the server append order", () => {
   ];
   const facts = collectPublicPresentationEventFacts({ timeline, identity: current, frames, rootEventId: null });
   assert.deepEqual(facts.map(({ eventId, order }) => [eventId, order]), [["ordered", 5]]);
+});
+
+test("durable public ordinals keep retained event order stable across the 200-record rolling window", () => {
+  const current = identity();
+  const frames = [{ frameId: "root-1", parentFrameId: null, origin: { originSourceId: "player-1", originalTargetIds: [] } }];
+  const entries = Array.from({ length: 220 }, (_, index) => {
+    const publicSequence = index + 1;
+    return `@event:${JSON.stringify({
+      id: `public-${publicSequence}`,
+      message: "A committed public event.",
+      presentation: true,
+      publicSequence,
+      publicSequenceWatermark: publicSequence,
+      publicFact: {
+        semantics: "PROVEN", visibility: "PUBLIC", interactionId: current.interactionId,
+        frameId: "root-1", category: "DAMAGE_APPLIED", actorId: "player-1", affectedPlayerIds: [],
+      },
+    })}`;
+  });
+  const factsFor = (log) => {
+    const publicSequences = publicEventSequencesFromLog(log);
+    const timeline = log.map((entry, appendOrder) => {
+      const fields = JSON.parse(entry.slice("@event:".length));
+      delete fields.publicSequence;
+      delete fields.publicSequenceWatermark;
+      const publicSequence = publicSequences?.get(fields.id);
+      return { ...fields, type: "message", appendOrder, ...(publicSequence !== undefined ? { publicSequence } : {}) };
+    });
+    return collectPublicPresentationEventFacts({
+      timeline,
+      identity: current,
+      frames,
+      rootEventId: null,
+    });
+  };
+  const beforeTrim = factsFor(entries);
+  const afterTrim = factsFor(entries.slice(-200));
+  const retainedIds = ["public-30", "public-180", "public-220"];
+  const orderById = (facts) => Object.fromEntries(facts.filter((fact) => retainedIds.includes(fact.eventId)).map(({ eventId, order }) => [eventId, order]));
+
+  assert.deepEqual(orderById(beforeTrim), { "public-30": 30, "public-180": 180, "public-220": 220 });
+  assert.deepEqual(orderById(afterTrim), orderById(beforeTrim));
+  assert.equal(afterTrim.at(-1)?.eventId, "public-220");
+});
+
+test("structured log appends carry a private watermark without counting private records", () => {
+  let log = appendSequencedLogRecord([], "@event:", { id: "public-first", message: "First.", presentation: true });
+  for (let index = 0; index < 205; index++) {
+    log = index % 2 === 0
+      ? appendSequencedLogRecord(log, "@history:", { id: `history-${index}`, message: "Private history is not a public event." })
+      : appendSequencedLogRecord(log, "@card:", { id: `private-${index}`, presentation: false, privateToPlayerId: "viewer-1", card: { id: `card-${index}` } });
+  }
+  const retainedPrivateRecords = log.flatMap((entry) => {
+    const prefix = ["@event:", "@card:", "@cards:", "@history:"].find((candidate) => entry.startsWith(candidate));
+    return prefix ? [{ prefix, ...JSON.parse(entry.slice(prefix.length)) }] : [];
+  });
+  assert.equal(log.length, 200);
+  assert.ok(retainedPrivateRecords.every((entry) => entry.publicSequenceWatermark === 1));
+  assert.ok(retainedPrivateRecords.every((entry) => !Object.hasOwn(entry, "publicSequence")));
+
+  log = appendSequencedLogRecord(log, "@event:", { id: "public-second", message: "Second.", presentation: true });
+  const sequences = publicEventSequencesFromLog(log);
+  assert.equal(sequences?.get("public-second"), 2, "205 private/history records do not advance the public ordinal");
+  assert.equal(sequences?.has("private-1"), false, "private event identities never enter the public order projection");
+});
+
+test("legacy structured records bootstrap additively and mixed sequence metadata fails closed", () => {
+  const legacyValues = Array.from({ length: 200 }, (_, index) => {
+    if (index === 0 || index % 50 === 0 || index === 199) {
+      return { prefix: "@event:", value: { id: `legacy-public-${index}`, message: `Keep public text ${index}.`, resolutionId: `resolution-${index}`, presentation: true } };
+    }
+    if (index === 1) {
+      return { prefix: "@card:", value: { id: "legacy-private", action: "draw", presentation: false, privateToPlayerId: "viewer-1", card: { id: "secret-card" } } };
+    }
+    return { prefix: "@history:", value: { id: `legacy-history-${index}`, message: `Keep history ${index}.`, presentation: false } };
+  });
+  const legacy = legacyValues.map(({ prefix, value }) => `${prefix}${JSON.stringify(value)}`);
+  const bootstrapped = appendSequencedLogRecord(legacy, "@history:", { id: "new-history", message: "New history." });
+  const read = (entry) => {
+    const prefix = ["@event:", "@card:", "@cards:", "@history:"].find((candidate) => entry.startsWith(candidate));
+    return { prefix, value: JSON.parse(entry.slice(prefix.length)) };
+  };
+  for (const original of legacyValues.slice(1)) {
+    const retained = bootstrapped.map(read).find((entry) => entry.value.id === original.value.id);
+    assert.ok(retained, `retained legacy record ${original.value.id} remains present`);
+    const originalFields = { ...retained.value };
+    delete originalFields.publicSequenceWatermark;
+    delete originalFields.publicSequence;
+    assert.deepEqual(originalFields, original.value, "bootstrap changes only additive sequence metadata");
+  }
+  const bootstrappedSequences = publicEventSequencesFromLog(bootstrapped);
+  assert.equal(bootstrappedSequences?.get("legacy-public-50"), 2);
+  assert.equal(bootstrappedSequences?.get("legacy-public-199"), 5);
+  const retainedPrivateCard = bootstrapped.map(read).find((entry) => entry.value.id === "legacy-private");
+  assert.ok(retainedPrivateCard);
+  assert.equal(Object.hasOwn(retainedPrivateCard.value, "publicSequence"), false, "private cards do not receive public ordinals");
+
+  const trimmed = appendSequencedLogRecord(bootstrapped, "@event:", { id: "new-public", message: "Next event.", presentation: true });
+  const trimmedSequences = publicEventSequencesFromLog(trimmed);
+  for (const id of ["legacy-public-50", "legacy-public-100", "legacy-public-150", "legacy-public-199"]) {
+    assert.equal(trimmedSequences?.get(id), bootstrappedSequences?.get(id), `${id} keeps its public order after a later trim`);
+  }
+  assert.equal(trimmedSequences?.get("new-public"), 6);
+
+  const partial = [
+    `@event:${JSON.stringify({ id: "sequenced", presentation: true, publicSequence: 1, publicSequenceWatermark: 1 })}`,
+    legacy[2],
+  ];
+  assert.equal(publicEventSequencesFromLog(partial), null);
+  assert.throws(() => appendSequencedLogRecord(partial, "@event:", { id: "next", presentation: true }), /ROOM_LOG_PUBLIC_SEQUENCE_INVALID/);
 });
 
 test("Skip adds no public skill event and keeps the prior damage event", () => {
@@ -171,12 +282,12 @@ test("a second nested skill decision advances its actor without losing the root 
     { frameId: "skill-2", parentFrameId: "damage-1", origin: { originSourceId: "player-1", originalTargetIds: ["player-2"] } },
   ];
   const timeline = [
-    { id: "damage", type: "message", appendOrder: 10, publicFact: {
+    { id: "damage", type: "message", appendOrder: 10, publicSequence: 10, publicFact: {
       semantics: "PROVEN", visibility: "PUBLIC", interactionId: firstStage.interactionId,
       frameId: "damage-1", parentFrameId: "root-1", rootEventId: "root-card",
       category: "DAMAGE_APPLIED", actorId: "player-1", affectedPlayerIds: ["player-2"], amount: 1,
     } },
-    { id: "first-skill", type: "message", appendOrder: 20, publicFact: {
+    { id: "first-skill", type: "message", appendOrder: 20, publicSequence: 20, publicFact: {
       semantics: "PROVEN", visibility: "PUBLIC", interactionId: firstStage.interactionId,
       frameId: "skill-2", parentFrameId: "damage-1", rootEventId: "root-card",
       category: "SKILL_USED", actorId: "player-2", affectedPlayerIds: ["player-2"], effect: { kind: "recover" },
