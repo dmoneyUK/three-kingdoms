@@ -61,3 +61,10 @@ The core public chain, damage, skill and turn continuation observed on this run 
 **Agent final delivery:** Small focused commits for P1/P2 and tests; exact-SHA CI (Lint/Fast, API, Browser startup/room smoke, migrations, Worker deploy, production health); report each source SHA, actual changed files, known/unverified behavior, real Worker version and any environment failure. The Coding Agent owns `HANDOVER.md`. The Planner does not edit Agent code or HANDOVER. When technically deployed, ask for **one short owner iPhone re-review** covering: neutral PAC vs private Console, fixed translucent PAC/H4 and genuine card parking, no lines, concise Console and generic gained-card result. **Only the owner can then explicitly close original NEG-COPY-1 F1-R6.**
 
 **Design authority and discoverability:** This file is a later, user-approved **§10.25.3 supplement**. If a future agent must choose between a former “private PAC” example or the “obtained Duel” example and the later user's decisions, **this document wins** for those precise conflicts; do not reinterpret it as a separate feature backlog.
+
+
+## Coding Agent implementation checkpoint — 2026-10-30
+
+P1 source `094343d868a68993d2b371541ff0f9fb1516dd32` plus test correction `a0c61ae06a6f2e367be32f5407232fc52f7e4bb7` passed [Actions 41115648253](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41115648253). P2 source `b86c7a781468094fc844fe67b4ffda4e5b9a8d36` passed [Actions 41116446969](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41116446969) and deployed Worker `83132cad-9d56-4290-8689-f81b26fc501f`; production health returned HTTP 200. Focused 440×766 and four-viewer Duel/Negation browser cases passed; local browser work stayed below five minutes.
+
+**Final polish remains pending:** the decorative line owner was not proven and no borders were removed; eight-seat width was checked using simulated rectangle inputs, not a live eight-seat DOM; one earlier browser attempt recorded a transient PAC/timer overlap although two subsequent runs passed. Do not claim those issues fixed or owner acceptance. Generic gained-card wording was preserved.
