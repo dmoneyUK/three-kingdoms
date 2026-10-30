@@ -828,6 +828,11 @@ test("Nio Shield occupies the Armor slot and prevents black Attack before Dodge 
   assert.equal(blackAttack.data.room.phase, "play-struck", "the black Attack finishes without opening a Dodge response");
   assert.equal(blackAttack.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "Nio Shield prevents the black Attack's damage");
   assert.ok(blackAttack.data.room.timeline.some((event) => event.type === "message" && event.effectNotice && /Nio Shield blocks .*black Attack/.test(event.message)), "Nio Shield shows an Effect Triggered notice when it blocks a black Attack");
+  const preventionFact = blackAttack.data.room.presentationSnapshot.retainedPublicEvent;
+  assert.equal(preventionFact?.category, "SKILL_USED");
+  assert.equal(preventionFact?.actorId, alicePlayer.id);
+  assert.equal(preventionFact?.outcomeLabel, "blocked the Attack");
+  assert.equal(preventionFact?.label, "Nio Shield");
 
   const redAttack = { ...card("Attack", "red"), suit: "♥" };
   setHand(hostPlayer.id, [redAttack], 4, 4); setTurn(game.code, hostPlayer.seat);

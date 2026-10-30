@@ -596,11 +596,16 @@ function hasBlueSteelSword(player?: PlayerRow | null) { return equipmentZone(pla
 function passiveAttackPrevention(target?: PlayerRow | null, attack?: Card | null, source?: PlayerRow | null) {
   return target ? resolvePassiveAttackModifiers({ targetEquipment: equipmentCards(target), sourceEquipment: equipmentCards(source), attack }) : null;
 }
-function addPassiveAttackPreventionNotice(log: string[], source: PlayerRow, target: PlayerRow, attack?: Card | null) {
+function addPassiveAttackPreventionNotice(log: string[], source: PlayerRow, target: PlayerRow, attack?: Card | null, causal?: CausalContext, rootEventId?: string, envelope?: CausalEnvelope | null) {
   const prevention = passiveAttackPrevention(target, attack, source);
   if (!prevention?.prevented) return null;
   const attackLabel = attack && (attack.suit === "♠" || attack.suit === "♣") ? "black Attack" : "Attack";
-  return { log: addLogWithId(log, `${target.name}'s ${prevention.reason} blocks ${source.name}'s ${attackLabel}. No damage is dealt.`, undefined, { effectNotice: true }).log };
+  const eventId = crypto.randomUUID();
+  const fact = publicFactFor(causal, "SKILL_USED", { rootEventId: rootEventId ?? eventId,
+    actorId: target.id, affectedPlayerIds: [source.id], label: prevention.reason,
+    outcomeLabel: "blocked the Attack", effect: { kind: "block_attack" } }, envelope);
+  return { log: addLogWithId(log, `${target.name}'s ${prevention.reason} blocks ${source.name}'s ${attackLabel}. No damage is dealt.`, undefined,
+    { effectNotice: true, ...(fact?.committedIdentity ? { publicFact: fact } : {}) }, eventId).log };
 }
 function attackDeclaration(source: PlayerRow, target: PlayerRow, origin: AttackOrigin, physicalCards: Card[], resumePhase: string, attackCard?: Card, causal?: CausalContext, rootEventId?: string): CausalCreation<AttackDeclaration> {
   const root = causal ? null : createCausalRoot({
@@ -1990,9 +1995,9 @@ async function resolveAutomaticDamageSufferedTrigger(room: RoomRow, continuation
   let nextLog = notice.log;
   const context = damageSufferedTriggerContext(source, target, continuation.amount, undefined, continuation.damageCards ?? [], continuation.damageCause ?? "other", continuation.physicalSuit, state, continuation.resumePhase.startsWith("play"));
   const committedFact = (outcomeLabel: string, amount: number) => {
-    if (!continuation.rootEventId || triggerAvailability(execution.effectId, context) !== "public") return undefined;
+    if (triggerAvailability(execution.effectId, context) !== "public") return undefined;
     return publicFactFor(continuation.causal, "SKILL_USED", {
-      rootEventId: continuation.rootEventId,
+      rootEventId: continuation.rootEventId ?? notice.eventId,
       actorId: triggerActorId(execution.effectId, context) ?? source?.id ?? target.id,
       label: execution.presentation?.label?.split(" — ")[0] ?? "a skill",
       outcomeLabel, amount, effect: { kind: execution.outcome.kind },
@@ -4993,7 +4998,7 @@ async function resumeCanonicalTriggerContinuation(room: RoomRow, continuation: A
       return;
     }
     let nextLog = addLog(log, `${source.name}'s Attack target decision is complete. The Attack continues.`);
-    const prevention = addPassiveAttackPreventionNotice(nextLog, source, target, attackPhysicalCard(declaration));
+    const prevention = addPassiveAttackPreventionNotice(nextLog, source, target, attackPhysicalCard(declaration), declaration.causal, declaration.rootEventId, parseCausalEnvelope(room.causal_envelope_json));
     if (prevention) {
       nextLog = prevention.log;
       if (continuation.group) {
@@ -5089,7 +5094,7 @@ async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDod
     await beginAttackTargeted(room, declaration, source, target, discard, targetedPresentation.log, targetedPresentation.eventId, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id), turnHistoryAttackWrite(room, source)]);
     return;
   }
-  const prevention = addPassiveAttackPreventionNotice(log, source, target, attackPhysicalCard(declaration));
+  const prevention = addPassiveAttackPreventionNotice(log, source, target, attackPhysicalCard(declaration), declaration.causal, declaration.rootEventId, exactCausalEnvelope(room, declarationResult.createdEnvelope));
   if (prevention) {
     log = prevention.log;
     await db().batch([
@@ -5152,7 +5157,7 @@ async function beginGroupTarget(room: RoomRow, response: ResponsePending, contin
       await beginAttackTargeted(groupRoom, declaration, source, actor, discard, presentation.log, presentation.eventId, writes, [], activeResponse);
       return;
     }
-    const prevention = addPassiveAttackPreventionNotice(log, source, actor, attack);
+    const prevention = addPassiveAttackPreventionNotice(log, source, actor, attack, activeContinuation.causal, activeContinuation.rootEventId, groupEnvelope);
     if (prevention) {
       log = prevention.log;
       await finishGroupStep(groupRoom, activeResponse, activeContinuation, players, discard, log, writes);
@@ -8266,7 +8271,7 @@ export async function POST(request: Request) {
       await maybeOpenHandLossTrigger(room.id, costActorId, costHandBefore);
       return json({ room: await roomState(code, token) });
     }
-    const prevention = addPassiveAttackPreventionNotice(presentation.log, holder, target, attack);
+    const prevention = addPassiveAttackPreventionNotice(presentation.log, holder, target, attack, declaration.causal, declaration.rootEventId, exactCausalEnvelope(liveRoom, declarationResult.createdEnvelope));
     if (prevention) {
       await db.batch([
         db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
@@ -8460,7 +8465,7 @@ export async function POST(request: Request) {
       const presentation = addLogWithId(log, `${source.name}'s Attack affects ${target.name}; ${target.name} chooses how to resolve it.`);
       await beginAttackTargeted(liveRoom, declaration, source, target, discard, presentation.log, presentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source)], [], undefined, createdEnvelope);
     } else {
-      const prevention = addPassiveAttackPreventionNotice(log, source, target, attackCard);
+      const prevention = addPassiveAttackPreventionNotice(log, source, target, attackCard, declaration.causal, declaration.rootEventId, exactCausalEnvelope(liveRoom, createdEnvelope));
       if (prevention) {
         await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source), db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(phaseAfterAttack(source), JSON.stringify(discard), JSON.stringify(prevention.log), room.id)]);
       } else {
@@ -8945,7 +8950,7 @@ export async function POST(request: Request) {
           await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
           return playCardRoomResponse(code, token, uxTraceId);
         }
-        const prevention = addPassiveAttackPreventionNotice(log, me, target, attackPhysicalCard(declaration));
+        const prevention = addPassiveAttackPreventionNotice(log, me, target, attackPhysicalCard(declaration), declaration.causal, declaration.rootEventId, exactCausalEnvelope(liveRoom, createdEnvelope));
         if (prevention) {
           log = prevention.log;
           await db.batch([

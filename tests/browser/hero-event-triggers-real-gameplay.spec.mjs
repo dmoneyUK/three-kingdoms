@@ -1439,3 +1439,20 @@ test("QA-02 automatic public outcome uses H4 without revealing drawn cards", asy
   const observer = await view(request, room, 1);
   expect(JSON.stringify(observer)).not.toContain(secret.id);
 });
+
+test("QA-02 passive equipment prevention has one public H4", async ({ page, request }) => {
+  const attack = card("Attack", "qa02-shield-attack");
+  const room = await seed(request, [
+    { name: "SOURCE", role: "Lord", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [attack] },
+    { name: "TARGET", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [], equipment: { armor: card("NioShield", "qa02-shield") } },
+    { name: "ALLY", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
+    { name: "FOURTH", role: "Renegade", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
+  ]);
+  await openPlayer(page, room, 1);
+  const play = await request.post(`${API}/api/rooms`, { data: { action: "play_card", code: room.code, token: room.players[0].token, cardId: attack.id, targetId: room.players[1].id } });
+  expect(play.ok()).toBeTruthy();
+  const h4 = page.locator(".public-interaction-event-announcement .public-card-display-journey-copy");
+  await expect(h4).toHaveCount(1, { timeout: 10_000 });
+  await expect(h4).toContainText("TARGET used Nio Shield and blocked the Attack.");
+  await expect(page.locator(".effect-notice")).toHaveCount(0);
+});

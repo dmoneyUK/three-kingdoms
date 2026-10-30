@@ -5046,8 +5046,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         : [];
     });
     if (freshBumperHarvestSettlements.length === 1) setActiveBumperHarvestSettlement({ eventId: freshBumperHarvestSettlements[0].eventId, exiting: false });
-    const effect = fresh.filter((event) => event.type === "message" && event.effectNotice === true
-      && Boolean(event.id.trim()) && room.timeline.filter((candidate) => candidate.id === event.id).length === 1).at(-1);
     const projectedDiaoChanNotices = room.presentationSnapshot?.diaoChanSkillNotices ?? [];
     const queuedNotices = room.timeline.flatMap((event) => {
       if (event.type !== "message" || !event.id.trim()
@@ -5095,7 +5093,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           }];
         }
       }
-      return effect?.id === event.id ? [{ roomCode: room.code, viewerId: room.meId, eventId: event.id, heading: "EFFECT TRIGGERED", message: event.message, exiting: false }] : [];
+      return [];
     });
     if (queuedNotices.length) setEffectNotices((current) => mergeEffectNoticeQueue(current, queuedNotices));
     const immediatelyPresented = new Set<string>();
