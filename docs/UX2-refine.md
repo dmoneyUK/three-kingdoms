@@ -23,7 +23,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 | Single work identity | Outstanding scope | Do not duplicate |
 | --- | --- | --- |
 
-| **NEG-COPY-1 §10.25 / F1-R6C IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW; F1-R6D ACTIVE** | The owner failed the 2026-10-29 real-iPhone review on build `79ca1ba`; previous F1-R1–R5 are historical delivery, not acceptance. R6C source `e88cce82` and CI correction `449279de` passed exact-SHA Actions `41034693344` and deployed Worker `d964660a-15fa-4a58-b12a-6575ccd76e18`. The parent verdict remains NOT ACCEPTED until owner phone review. | Continue the separately bounded R6D PAC/H4/Inspector layout work in §10.25.3; preserve the approved UX and server-owned rules. |
+| **NEG-COPY-1 §10.25 / F1-R6C IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW; F1-R6D IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW** | The owner failed the 2026-10-29 real-iPhone review on build `79ca1ba`; previous F1-R1–R5 are historical delivery, not acceptance. R6C source `e88cce82` and CI correction `449279de` passed exact-SHA Actions `41034693344` and deployed Worker `d964660a-15fa-4a58-b12a-6575ccd76e18`. The parent verdict remains NOT ACCEPTED until owner phone review. | R6D and the Duel provenance correction were deployed on source `e750088e`; owner iPhone review remains pending. |
 
 
 **Agent ownership:** This is a design index, not an Agent task dispatch. Autonomous Agent must check latest live branch, read this document at its own safe boundary and reconcile its own `HANDOVER.md`; Planner does not edit or supersede that handoff. W2 last technical source `2b99e7b4e05dc41b86c81185b83ca6e22e76fdad` was deployed with successful [Actions 40080892236](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40080892236); it is **not** an implementation task.
@@ -3855,6 +3855,8 @@ The local draft adds a provider-neutral semantic validator/test model, routes PA
 - Required R6A proof: retained damage through child choice; committed skill fact superseding it; Skip retaining the prior fact; nested second decision retaining its causal root; Pass/intent privacy; no public fact for a losing intent; viewer-independent public checkpoints; and a synthetic new provider without shared display routing changes. Stop if the necessary committed proof is unavailable.
 
 **Coding Agent correction — 2026-10-30:** The deployed R6C omitted the committed root event identity for ordinary Duel damage. The R6D delivery carries that server-owned identity through the existing Duel continuation; owner phone review remains pending.
+
+**Coding Agent delivery — 2026-10-30: F1-R6D IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW.** Source `e750088ef07f31d4ecc1d79fdf4e244de1dace22` corrects PAC placement and carries the committed Duel root identity into damage. Focused 440×766 gameplay case, build, scoped lint and diff checks passed; local browser work total approximately 90 seconds. [Actions 41036323457](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41036323457) passed on rerun after an initial test Worker connection failure; Worker `569aaf21-5ee8-4115-b389-7b32cf88bf6d` deployed and production health returned HTTP 200. If Card Details leaves no safe placement, PAC is hidden. Parent acceptance remains with the owner.
 
 **R6A code boundary:** this authorization is limited to the typed projections and focused proof/privacy tests. UI copy/layout responsibilities remain in R6B–R6D; do not redesign the approved UX or add provider-specific presentation branches.
 
