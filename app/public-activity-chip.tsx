@@ -562,7 +562,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
     role="status"
     aria-live="polite"
     aria-atomic="true"
-    aria-label={status.text}
+    aria-label={[status.text, status.stage].filter(Boolean).join(" ")}
     style={{ visibility: "hidden" }}
   >
     <strong data-public-activity-heading="true">{status.heading ?? status.text}</strong>

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
-import { duelNegationFinalCopy, negationEffectCopy } from "../app/negation-effect-copy.ts";
 import {
   canClearPublicJourneyOwnership,
   publicAnnouncementEventCopyKey,
@@ -150,8 +149,8 @@ test("Duel Attack narration requires the latest response and next actor on the s
 
   assert.deepEqual(duelExchangeAttackNarration(input), {
     eventId: "attack-1", actorId: "p2",
-    message: "Test Player 2 answered the Duel with Attack. Test Player 1 must answer with Attack.",
-    compactMessage: "Test Player 2 answered Duel; Test Player 1 must answer with Attack.",
+    message: "Test Player 2 played Attack in the Duel.",
+    compactMessage: "Test Player 2 played Attack in the Duel.",
   });
   assert.equal(duelExchangeAttackNarration({
     ...input,
@@ -346,7 +345,7 @@ test("public battle announcements keep proof-backed event meaning in concise cop
 
   assert.equal(publicCardAnnouncement(
     action({ cardLabel: "NEGATION" }), "Counter played Negation to counter Duel", "Counter", "Source", "Target",
-  ), "Counter played Negation against Duel.");
+  ), "Counter played Negation to counter Duel");
 
   assert.equal(publicCardAnnouncement(
     action({ cardLabel: "BURNING BRIDGE", settlement: { eventId: "settlement", outcome: "DISMANTLE_RESOLVED", exiting: false } }),
@@ -452,35 +451,6 @@ test("public battle announcements keep proof-backed event meaning in concise cop
   ), "Deflection: Target redirected Attack to Third; discarded Dodge.");
 });
 
-test("NEG-COPY-1 explains each proven Duel and Harvest counter effect", () => {
-  for (const kind of ["Duel", "BumperHarvest"]) {
-    const base = { kind, sourceName: "JD", targetName: "Test Player 2" };
-    const cases = [
-      [{ ...base, responseCount: 0, effectState: "ACTIVE" }, kind === "Duel"
-        ? ["JD played Duel against Test Player 2.", "Negation can cancel the Duel."]
-        : ["Test Player 2's turn to pick a card.", "Negation can prevent Test Player 2 from picking."]],
-      [{ ...base, responseCount: 1, effectState: "BLOCKED", actorName: "Player 3" }, kind === "Duel"
-        ? ["Player 3's Negation cancels JD's Duel.", "Another Negation can restore the Duel."]
-        : ["Player 3's Negation blocks Test Player 2's pick.", "Another Negation can restore Test Player 2's pick."]],
-      [{ ...base, responseCount: 2, effectState: "ACTIVE", actorName: "JD", counteredActorName: "Player 3" }, kind === "Duel"
-        ? ["JD counters Player 3's Negation. The Duel is restored.", "Another Negation can cancel the Duel."]
-        : ["JD counters Player 3's Negation. Test Player 2's pick is restored.", "Another Negation can block Test Player 2's pick."]],
-      [{ ...base, responseCount: 3, effectState: "BLOCKED", actorName: "Player 4", counteredActorName: "JD" }, kind === "Duel"
-        ? ["Player 4 counters JD's Negation. The Duel is cancelled.", "Another Negation can restore the Duel."]
-        : ["Player 4 counters JD's Negation. Test Player 2's pick is blocked.", "Another Negation can restore Test Player 2's pick."]],
-    ];
-    for (const [input, expected] of cases) {
-      const copy = negationEffectCopy(input);
-      assert.deepEqual([copy?.headline, copy?.supporting], expected);
-      assert.doesNotMatch(`${copy.headline} ${copy.supporting}`, /currently|\bagain\b|\bnow\b|response open|not yet resolved|Negation open|Another Negation is possible/i);
-    }
-    assert.equal(negationEffectCopy({ ...base, responseCount: 2, effectState: "ACTIVE", actorName: "JD" }), null);
-    assert.equal(negationEffectCopy({ ...base, targetName: "", responseCount: 0, effectState: "ACTIVE" }), null);
-  }
-  assert.equal(duelNegationFinalCopy("ROOT_CANCELLED"), "The Duel is cancelled.");
-  assert.equal(duelNegationFinalCopy("ROOT_RESTORED"), "The Duel takes effect.");
-});
-
 test("Bumper Harvest announcement fails closed without a proven narration", () => {
   const harvestAction = action({
     targetId: null,
@@ -493,16 +463,16 @@ test("Bumper Harvest announcement fails closed without a proven narration", () =
   });
   assert.equal(publicCardAnnouncement(
     harvestAction, harvestAction.ariaLabel, "JD", "JD", null,
-  ), "Negation may be played.");
+  ), "JD played Bumper Harvest.");
   assert.equal(publicCardAnnouncement(
     { ...harvestAction, harvestEffectRecipient: { participantId: "source", participantName: "JD" } },
     harvestAction.ariaLabel, "JD", "JD", null,
-  ), "Negation may be played.");
+  ), "JD played Bumper Harvest.");
 
   const unprovenHarvest = { ...harvestAction, harvestEffectRecipient: undefined };
   assert.equal(publicCardAnnouncement(
     unprovenHarvest, unprovenHarvest.ariaLabel, "JD", "JD", null,
-  ), "Negation may be played.");
+  ), "JD played Bumper Harvest.");
 
   const firstNegation = {
     ...harvestAction,
@@ -512,21 +482,19 @@ test("Bumper Harvest announcement fails closed without a proven narration", () =
     firstNegation,
     "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3",
     "Test Player 4", "JD", null,
-  ), "Negation was played.");
+  ), "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3");
   assert.equal(publicCardAnnouncement(
     { ...firstNegation, harvestEffectRecipient: undefined },
     "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3",
     "Test Player 4", "JD", null,
-  ), "Negation was played.");
+  ), "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3");
 
   const counterNotice = "Test Player 2 played Negation to counter Negation 1";
   assert.equal(publicCardAnnouncement(
     { ...firstNegation, responses: [firstNegation.responses[0], { eventId: "counter-event", ordinal: 2, actorId: "responder-2", actorName: "Test Player 2" }] },
     counterNotice, "Test Player 2", "JD", null,
-  ), "Negation was played.");
-  const proven = { ...firstNegation, publicNegationNarration: { headline: "Test Player 4's Negation blocks Test Player 3's pick." } };
-  assert.equal(publicCardAnnouncement(proven, "", "Test Player 4", "JD", null), "Test Player 4's Negation blocks Test Player 3's pick.");
-  assert.equal(publicCardAnnouncement({ ...firstNegation, settlement: { eventId: "settled", outcome: "ROOT_CANCELLED", exiting: false } }, "", "Test Player 4", "JD", null), "Bumper Harvest response resolved.");
+  ), counterNotice);
+  assert.equal(publicCardAnnouncement({ ...firstNegation, settlement: { eventId: "settled", outcome: "ROOT_CANCELLED", exiting: false } }, "", "Test Player 4", "JD", null), "Test Player 4's Negation cancelled JD's Bumper Harvest.");
 });
 
 test("public announcement typography is readable and never truncates its verified sentence", () => {

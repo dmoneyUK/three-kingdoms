@@ -25,7 +25,7 @@ for (const viewport of [
     expect(publicScene.currentParticipantId).toBe("p1");
 
     await expect(guidance.locator("small")).toHaveText("YOUR RESPONSE");
-    await expect(guidance.locator("strong")).toHaveText("Play Negation or Pass");
+    await expect(guidance.locator("strong")).toHaveText("Play Negation to cancel Dismantle's effect on Test Player 1, or Pass.");
     await expect(guidance.locator("em")).toHaveCount(0);
     await expect(primary).toHaveText("Confirm");
     await expect(primary).toBeDisabled();
@@ -35,7 +35,7 @@ for (const viewport of [
     await page.locator('[data-hand-card-id="browser-negation"] .game-card').click();
     await expect(primary).toBeEnabled();
     await expect(pass).toBeVisible();
-    await expect(guidance.locator("strong")).toHaveText("Play Negation or Pass");
+    await expect(guidance.locator("strong")).toHaveText("Play Negation to cancel Dismantle's effect on Test Player 1, or Pass.");
     await expect(guidance.locator("em")).toHaveCount(0);
   });
 }
@@ -71,7 +71,7 @@ for (const { authority, hasResponseHeading } of [
     const guidance = page.locator(".console-guidance .decision-status");
     if (hasResponseHeading) await expect(guidance.locator("small")).toHaveText("YOUR RESPONSE");
     else await expect(guidance.locator("small")).not.toHaveText("YOUR RESPONSE");
-    await expect(guidance.locator("strong")).not.toHaveText("Play Negation or Pass");
+    await expect(guidance.locator("strong")).not.toHaveText("Play Negation to cancel Dismantle's effect on Test Player 1, or Pass.");
   });
 }
 
@@ -85,8 +85,8 @@ test("a submitted shared Negation intent shows only the viewer's waiting state a
   expect(currentAction.negationWindowId).toBe("browser-shared-negation-window");
   expect(currentAction.legalActions).toEqual([]);
   expect(currentAction.options).toEqual([]);
-  await expect(guidance.locator("small")).toHaveText("RESPONSE SUBMITTED");
-  await expect(guidance.locator("strong")).toHaveText("Response submitted — waiting");
+  await expect(guidance.locator("small")).toHaveText("WAITING FOR OTHERS");
+  await expect(guidance.locator("strong")).toHaveText("Waiting for the other players.");
   await expect(page.locator('[data-action-slot="primary"] button, [data-action-slot="decline"] button')).toHaveCount(0);
   await expect(page.locator('.interaction-stage[data-stage="NEGATION"]')).toHaveCount(0);
 });

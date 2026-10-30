@@ -33,7 +33,8 @@ test("shared Negation windows keep submissions private and expose only each view
 
   const target = await openWithNegation(1); const targetView = (await state(target.game.code, target.holderMember.token)).data; const publicTargetView = (await state(target.game.code, target.sourceMember.token)).data; const targetOtherView = (await state(target.game.code, target.otherMember.token)).data;
   assert.equal(targetView.currentAction.requirement, "negate"); assert.ok(targetView.currentAction.options.some((option) => option.providerId === "negation_card")); assert.equal(targetView.isMyAction, true);
-  assert.equal(targetView.actionReason, "Play Negation or Pass");
+  const affectedPlayer = target.game.room.players.find((player) => player.id === targetView.pendingNegation.effectTargetId);
+  assert.equal(targetView.actionReason, `Play Negation to cancel ${targetView.pendingNegation.cardName}'s effect on ${affectedPlayer?.name}, or Pass.`);
   assert.equal(publicTargetView.actionPlayerId, null); assert.equal(publicTargetView.pendingNegation.actorId, null); assert.equal(publicTargetView.actionReason, "No Negation available. Pass."); assert.equal(publicTargetView.currentAction.options?.length ?? 0, 0);
   assert.equal(targetOtherView.actionPlayerId, null); assert.equal(targetOtherView.pendingNegation.actorId, null); assert.equal(targetOtherView.actionReason, "No Negation available. Pass.");
   const targetWindowId = targetView.currentAction.negationWindowId;

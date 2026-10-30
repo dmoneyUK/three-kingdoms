@@ -25,8 +25,8 @@ Acceptance boundaries:
 
 ### Current R6B worktree state
 
-Uncommitted draft files were preserved while R6A ran. Review them against the approved R6B contract before relying on them; do not stage unrelated work. Draft touches: `app/api/rooms/route.ts`, `app/page.tsx`, `app/public-activity-chip.tsx`, `game/duel-public-stage-owner.ts`, `game/public-activity.ts`, `tests/api/public-activity.test.mjs`, `tests/public-card-announcement.test.mjs`, and related browser fixtures/specs. No R6B validation has been performed at this task boundary.
+The preserved R6B draft has been reviewed against §10.25.3 and updated to use committed public event facts for H4, server-proven next decisions for shared PAC, and authenticated viewer-only Negation-choice acknowledgements and Console guidance. No gameplay, timer, response-order, legal-action or privacy rule was changed. R6A-O1 remains deliberately separate for the next safe boundary.
 
 ### Timestamped R6B progress
 
-- **2026-10-29 23:29 UTC:** reviewed the current R6B plan after R6A exact-SHA CI/deployment completed. Confirmed the preserved local draft is still unstaged; began this bounded task from that draft. Next: audit the current diff against the acceptance bullets, make only R6B corrections, run focused checks, commit/push only R6B files, and verify exact-SHA CI/deployment. Keep NEG-COPY-1 **PENDING OWNER iPHONE REVIEW**.
+- **2026-10-30 00:18 UTC:** `node --import tsx --test --test-concurrency=1 tests/api/public-activity.test.mjs tests/public-card-announcement.test.mjs` passed **27/27**; `GAME_TEST_FILES=tests/api/privacy-response.test.mjs node tests/run-tests.mjs` passed **23/23** on the Worker/D1 harness; `npm run build` passed; scoped ESLint passed with **0 errors** and existing React hook warnings; `git diff --check` passed. Local UI/browser testing was not run. Latest `origin/ux-v2` push-triggered Actions for HEAD `5bc6d69` was green before this task commit. R6B commit, exact-SHA Actions and deployment are pending.

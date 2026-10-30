@@ -1,3 +1,5 @@
+import { CARD_DEFINITIONS } from "./cards";
+
 /** Stable public identity shared by the public event and the current decision. */
 export type PresentationSemanticIdentity = {
   interactionId: string;
@@ -119,6 +121,10 @@ export function collectPublicPresentationEventFacts(input: {
     if (typeof rootFrameId !== "string") return;
     const rootFrame = frameRows.find((frame) => frame.frameId === rootFrameId);
     const rootOrigin = record(rootFrame?.origin);
+    const rootCard = record(event.card);
+    const rootCardLabel = category === "CARD_PLAYED" && typeof rootCard?.kind === "string"
+      ? CARD_DEFINITIONS[rootCard.kind as keyof typeof CARD_DEFINITIONS]?.name
+      : undefined;
     const rootTargets = Array.isArray(rootOrigin?.originalTargetIds)
       ? rootOrigin.originalTargetIds.filter((playerId): playerId is string => nonEmptyString(playerId))
       : [];
@@ -131,10 +137,11 @@ export function collectPublicPresentationEventFacts(input: {
       ...(typeof rootOrigin?.originSourceId === "string" ? { actorId: rootOrigin.originSourceId }
         : typeof event.actorId === "string" ? { actorId: event.actorId } : {}),
       affectedPlayerIds: rootTargets,
-      label: category === "CARD_PLAYED" ? "A card was played."
+      label: category === "CARD_PLAYED" ? rootCardLabel ?? "A card was played."
         : category === "CARD_DISCARDED" ? "A card was discarded."
           : category === "CARD_OBTAINED" ? "A card was obtained."
             : category === "SKILL_USED" ? "A card ability was used." : "A card was revealed.",
+      ...(rootCardLabel ? { effect: { kind: "card_play", label: rootCardLabel } } : {}),
     });
   });
   return facts;

@@ -111,7 +111,7 @@ export type NegationHistoryRecord = {
   publicEventId?: string;
   kind: "NEGATION_CARD";
 };
-export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; /** Public root identity from the actual server-owned effective Stratagem card; legacy continuations may omit it. */ rootCardKind?: CardKind; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string; negationHistory?: NegationHistoryRecord[] } & CausalFields;
+export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; /** Public root identity from the actual server-owned effective Stratagem card; legacy continuations may omit it. */ rootCardKind?: CardKind; /** Exact committed event that opened this effect's Negation chain. */ rootEventId?: string; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string; negationHistory?: NegationHistoryRecord[] } & CausalFields;
 /** One durable, shared Negation window. Private submissions live in D1 rows keyed by window/player, never in public Pending. */
 export type NegationWindowPending = CausalFields & {
   kind: "negation_window";

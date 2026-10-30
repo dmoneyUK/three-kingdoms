@@ -802,7 +802,13 @@ function publicNextDecisionFor(presentation: PresentationV2, pending: Pending | 
     }
   } else if (scene.decisionActorId && scene.participantRoles.decisionActorId === scene.decisionActorId) {
     actorIds = [scene.decisionActorId];
-    if (pending?.kind === "response") actionLabels = ["Respond"];
+    if (pending?.kind === "response") {
+      const requiredAction = pending.requirement.kind === "attack" ? "Attack"
+        : pending.requirement.kind === "dodge" ? "Dodge"
+          : pending.requirement.kind === "peach" ? "Peach" : "Respond";
+      const declineOutcome = pending.requirement.kind === "peach" ? "skip rescue" : "take damage";
+      actionLabels = [requiredAction, declineOutcome];
+    }
   }
   return {
     semantics: "PROVEN", visibility, identity,
@@ -3577,7 +3583,7 @@ async function startJudgementNegation(room: RoomRow, target: PlayerRow, players:
   const presentation = addCardEventWithId(log, target.name, delayed, target.name, "activate");
   log = presentation.log;
   const cardName = cardDefinition(delayed.kind).name;
-  const eligibility = { kind: "negation" as const, sourceId: target.id, negated: false, cardName, effectTargetId: target.id, resumePhase: room.phase?.startsWith("draw") ? room.phase : "draw", effect: { kind: "judgement" as const, targetId: target.id, cardId: delayed.id, causalResume: { kind: "root" } }, responseTarget: `${cardName}'s effect on ${target.name}`, chainDepth: 0, remainingIds: [] } satisfies NegationContinuation;
+  const eligibility = { kind: "negation" as const, sourceId: target.id, negated: false, cardName, effectTargetId: target.id, resumePhase: room.phase?.startsWith("draw") ? room.phase : "draw", effect: { kind: "judgement" as const, targetId: target.id, cardId: delayed.id, causalResume: { kind: "root" } }, responseTarget: `${cardName}'s effect on ${target.name}`, chainDepth: 0, remainingIds: [], rootEventId: presentation.eventId } satisfies NegationContinuation;
   const activationRoot = createCausalRoot({ stage: "JUDGEMENT", origin: { originSourceId: target.id, originEffect: cardName, originalTargetIds: [target.id] }, current: { currentSourceId: target.id, currentEffect: cardName, currentTargetIds: [target.id], resolvingPlayerId: null } });
   const causalEnvelope = advanceCausalSemanticCheckpoint(activationRoot.envelope, activationRoot.context.frameId, { stage: "NEGATION", current: { currentSourceId: target.id, currentEffect: cardName, currentTargetIds: [target.id], resolvingPlayerId: null } });
   const causal = activationRoot.context;
@@ -4080,7 +4086,10 @@ async function settleNegationWindow(room: RoomRow, window: NegationWindowPending
   let log = parse<string[]>(room.log_json, []);
   let committedNegationEventId: string | undefined;
   const causal = window.continuation.causal;
-  const committedPlayFact = publicFactFor(causal, "CARD_PLAYED", { actorId: actor.id, affectedPlayerIds: [actor.id] });
+  const committedPlayFact = publicFactFor(causal, "CARD_PLAYED", {
+    ...(window.continuation.rootEventId ? { rootEventId: window.continuation.rootEventId } : {}),
+    actorId: actor.id, affectedPlayerIds: [actor.id], label: "Negation", effect: { kind: "card_play", label: "Negation" },
+  });
   if (consumed.length === 1) {
     const publicCardEvent = addCardEventWithId(log, actor.name, consumed[0], actor.name, "play", true,
       committedPlayFact ? { actorId: actor.id, publicFact: committedPlayFact } : { actorId: actor.id });
@@ -4092,8 +4101,10 @@ async function settleNegationWindow(room: RoomRow, window: NegationWindowPending
   const negationAction = winner.execution.providerId === "negation_card" ? "plays Negation" : `uses ${winner.execution.providerId}`;
   const counterCategory = window.continuation.negated ? "EFFECT_RESTORED" : "EFFECT_CANCELLED";
   const counterFact = publicFactFor(causal, counterCategory, {
+    ...(window.continuation.rootEventId ? { rootEventId: window.continuation.rootEventId } : {}),
     actorId: actor.id, affectedPlayerIds: [window.continuation.effectTargetId],
-    effect: { kind: "negated_effect" },
+    label: "Negation",
+    effect: { kind: window.continuation.negated ? "restore_effect" : "cancel_effect", label: window.continuation.cardName },
   });
   log = addLog(log, `${actor.name} ${negationAction} ${window.continuation.negated ? "to restore" : "to cancel"} ${window.continuation.cardName}'s effect.`, undefined,
     counterFact ? { actorId: actor.id, publicFact: counterFact } : undefined);
@@ -4135,7 +4146,16 @@ async function startNegation(room: RoomRow, source: PlayerRow, players: PlayerRo
   const holdUntilTargetedEffectFinishes = effect.kind === "dismantle" || effect.kind === "steal";
   const sequenceDiscard = holdUntilTargetedEffectFinishes ? discard.filter((discarded) => discarded.id !== card.id) : discard;
   const effectCardName = effect.kind === "dismantle" ? "Burning Bridges" : cardDefinition(card.kind).name;
-  const base = { sourceId: source.id, negated: false, cardName: effectCardName, effectTargetId, resumePhase: room.phase ?? "play", effect, rootCardKind: card.kind, responseTarget: `${effectCardName}'s effect on ${targetName}`, chainDepth: 0, resolutionId: latestResolutionId(log), ...(holdUntilTargetedEffectFinishes ? { heldCards: [card] } : {}) } satisfies Omit<NegationContinuation, "kind" | "remainingIds" | "causal">;
+  const resolutionId = latestResolutionId(log);
+  const committedRootEvents = gameTimeline(log).filter((event) => event.presentation !== false
+    && event.resolutionId === resolutionId
+    && (event.type === "card" || event.type === "cards")
+    && (event.action === "play" || event.action === "activate"));
+  const matchingRootEvents = committedRootEvents.filter((event) => event.type === "card"
+    ? event.card.id === card.id
+    : event.cards.some((candidate) => candidate.id === card.id));
+  const rootEventId = matchingRootEvents.length === 1 ? matchingRootEvents[0]!.id : undefined;
+  const base = { sourceId: source.id, negated: false, cardName: effectCardName, effectTargetId, resumePhase: room.phase ?? "play", effect, rootCardKind: card.kind, ...(rootEventId ? { rootEventId } : {}), responseTarget: `${effectCardName}'s effect on ${targetName}`, chainDepth: 0, resolutionId, ...(holdUntilTargetedEffectFinishes ? { heldCards: [card] } : {}) } satisfies Omit<NegationContinuation, "kind" | "remainingIds" | "causal">;
   const inheritedEnvelope = createdEnvelope ?? parseCausalEnvelope(room.causal_envelope_json);
   const canReuseInheritedFrame = Boolean(
     inheritedCausal && inheritedEnvelope
@@ -5740,13 +5760,15 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     : [];
   const privateActionReason = decisionResponsePending?.delegation
     ? delegatedResponseReason(decisionResponsePending, me, players)
-    : pending && "reason" in pending ? pending.reason : (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
+    : pending && "reason" in pending ? pending.reason : (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
   const sharedWindowDecision = negationWindow && sharedWindowResponse && me
     ? responseDecisionFor(sharedWindowResponse, responseContext(me, players, room.turn_seat))
     : null;
   const actionReason = negationWaitingForOther
     ? "Waiting for Negation..."
-    : negationWindow ? negationWindowSubmitted ? "Response submitted — waiting" : sharedWindowDecision?.options.length ? "Play Negation or Pass" : "No Negation available. Pass."
+    : negationWindow ? negationWindowSubmitted ? "Waiting for the other players." : sharedWindowDecision?.options.length
+      ? `Play Negation to ${negationWindow.continuation.negated ? "restore" : "cancel"} ${negationWindow.continuation.cardName}'s effect on ${players.find((player) => player.id === negationWindow.continuation.effectTargetId)?.name ?? "the target"}, or Pass.`
+      : "No Negation available. Pass."
     : concealPrivateTriggerDecision ? "Resolving…"
     : room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
   const responseDecision = negationWindow ? sharedWindowDecision

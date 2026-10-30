@@ -710,7 +710,7 @@ test("U13-F styles shared Group announcements through Negation across four mobil
     const displaySelector = `.public-card-display[data-public-card-root-event-id="${rootEvent.id}"]`;
     const journeySelector = `${displaySelector} [data-public-card-journey-event-id="${rootEvent.id}"]`;
     await Promise.all(viewers.map(({ page }) => expect(page.locator(displaySelector)).toHaveCount(1)));
-    await expectSharedPublicActivity(viewers, { kind: "negation", text: "Waiting for Negation responses" });
+    await expectSharedPublicActivity(viewers, { kind: "negation", text: "Waiting for counter responses Negation can cancel the Raining Arrows effect." });
     const announcements = await waitForSharedAnnouncement(viewers, rootEvent.id);
     expect(new Set(announcements.map((items) => items[0].text)).size).toBe(1);
     expect(announcements.every((items) => items[0].text.includes("Raining Arrows"))).toBe(true);
@@ -1013,7 +1013,7 @@ for (const { cardKind, responseKind, viewports } of [
       // At the short 440×766 viewport the bottom plaque correctly yields to
       // the full-size reveal card; once the authentic root is parked, the
       // plaque must be visible again on all four clients.
-      await expectSharedPublicActivity(viewers, { kind: "negation", text: "Waiting for Negation responses" });
+      await expectSharedPublicActivity(viewers, { kind: "negation", text: `Waiting for counter responses Negation can cancel the ${cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows"} effect.` });
 
       const committed = [{ event: rootEvent, cardId: room.cards.root, actorId: room.players[0].id }];
       const h4CaptionEventIds = new Set([rootEvent.id]);

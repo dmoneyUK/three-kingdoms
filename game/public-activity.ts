@@ -1,4 +1,6 @@
 import type { PresentationSnapshot } from "./presentation-snapshot";
+import { publicDecisionFromPresentationSnapshot } from "./presentation-semantics.ts";
+import { CARD_DEFINITIONS } from "./cards";
 
 export type PublicActivityPlayer = {
   id: string;
@@ -22,10 +24,12 @@ export type PublicActivityInput = {
   players: readonly PublicActivityPlayer[];
   presentationSnapshot: PresentationSnapshot | null;
   pendingTargetCard?: PublicPendingTargetCard | null;
+  /** Viewer-local server identity for the currently open Negation window. */
+  currentViewerNegationWindowId?: string | null;
 };
 
 export type PublicActivityStatus = {
-  kind: "turn" | "duel" | "response" | "negation" | "target-card-choice" | "resolving" | "finished";
+  kind: "turn" | "response" | "negation" | "target-card-choice" | "resolving" | "finished";
   text: string;
   heading?: string;
   stage?: string;
@@ -40,23 +44,142 @@ function playerName(input: PublicActivityInput, playerId: string | null | undefi
   return player?.name.trim() || null;
 }
 
-function responseLabel(stage: string | null, effect: string | null): string | null {
-  if (stage === "ATTACK_RESPONSE") return "Attack";
-  if (stage === "DUEL_EXCHANGE") return "Duel";
-  if (stage === "DYING") return "Rescue";
-  if (stage === "JUDGEMENT") return "Judgement";
+function effectLabel(value: string | undefined): string | null {
+  const label = value?.trim();
+  if (!label) return null;
+  return CARD_DEFINITIONS[label as keyof typeof CARD_DEFINITIONS]?.name ?? label;
+}
 
-  const normalized = effect?.replace(/[^a-z]/gi, "").toLowerCase();
-  switch (normalized) {
-    case "attack": return "Attack";
-    case "duel": return "Duel";
-    case "barbarianinvasion": return "Barbarian Invasion";
-    case "rainingarrows": return "Raining Arrows";
-    case "skypiercinghalberdattack": return "Sky Piercing Halberd";
-    case "borrowedsword": return "Borrowed Sword";
-    case "bumperharvest": return "Bumper Harvest";
-    default: return null;
+function currentPublicRootEventId(snapshot: PresentationSnapshot | null | undefined): string | null {
+  return snapshot?.bumperHarvestProgress?.rootEventId
+    ?? snapshot?.reactionChain?.publicEventLinks?.root.eventId
+    ?? snapshot?.rootAction?.rootEventId
+    ?? null;
+}
+
+function publicNegationEffectCopy(input: PublicActivityInput, decision: NonNullable<ReturnType<typeof publicDecisionFromPresentationSnapshot>>): string {
+  const effect = effectLabel(decision.nextEffect?.label);
+  const direction = decision.nextEffect?.kind === "restore_effect" ? "restore"
+    : decision.nextEffect?.kind === "cancel_effect" ? "cancel" : null;
+  if (!direction) return "A Negation response is available.";
+  const interaction = input.presentationSnapshot?.interaction;
+  const activeTargetId = interaction?.activeTargetIds.length === 1 ? interaction.activeTargetIds[0] : null;
+  const target = activeTargetId ? playerName(input, activeTargetId) : null;
+  const rootEventId = currentPublicRootEventId(input.presentationSnapshot);
+  const hasCommittedCounter = direction === "restore"
+    || Boolean(activeTargetId && rootEventId && input.presentationSnapshot?.publicEventFacts.some((fact) =>
+      fact.identity.interactionId === decision.identity.interactionId
+        && fact.identity.rootFrameId === decision.identity.rootFrameId
+        && fact.rootEventId === rootEventId
+        && fact.affectedPlayerIds.includes(activeTargetId)
+        && (fact.category === "EFFECT_CANCELLED" || fact.category === "EFFECT_RESTORED"),
+    ));
+  const effectText = effect ? `the ${effect} effect` : "the current effect";
+  return `${hasCommittedCounter ? "Another Negation" : "Negation"} can ${direction} ${effectText}${target ? ` on ${target}` : ""}.`;
+}
+
+function actionList(labels: readonly string[]): string {
+  const unique = [...new Set(labels.map((label) => label.trim()).filter(Boolean))];
+  if (unique.length < 2) return unique[0] ?? "";
+  return `${unique.slice(0, -1).join(", ")} or ${unique.at(-1)}`;
+}
+
+export type PublicNegationNarration = {
+  rootLabel: string;
+  eventId: string;
+  latestCommittedEventId?: string;
+  checkpointId?: string;
+  phase: "WINDOW_OPEN" | "FINAL";
+  rootEffectState: "ACTIVE" | "BLOCKED";
+  headline: string;
+  compactHeadline: string;
+  supportingMessage: string;
+  compactSupportingMessage: string;
+  accessibleLabel: string;
+};
+
+/** Formats only the latest committed, current-interaction public Negation fact. */
+export function derivePublicNegationNarration(input: {
+  snapshot: PresentationSnapshot | null;
+  players: readonly PublicActivityPlayer[];
+  rootEventId: string;
+}): PublicNegationNarration | null {
+  const snapshot = input.snapshot;
+  const decision = publicDecisionFromPresentationSnapshot(snapshot);
+  const interaction = snapshot?.interaction;
+  const identity = snapshot?.identity;
+  if (!snapshot || !identity || !interaction || interaction.semantics !== "PROVEN"
+    || interaction.interactionId !== identity.interactionId
+    || decision && (decision.identity.interactionId !== identity.interactionId
+      || decision.identity.rootFrameId !== interaction.rootFrameId
+      || decision.identity.checkpointId !== identity.checkpointId
+      || decision.identity.presentationRevision !== identity.presentationRevision)) return null;
+
+  const linkedFacts = snapshot.publicEventFacts.filter((fact) =>
+    fact.identity.interactionId === identity.interactionId
+      && fact.identity.rootFrameId === interaction.rootFrameId
+      && (fact.eventId === input.rootEventId && fact.rootEventId === input.rootEventId
+        || fact.rootEventId === input.rootEventId),
+  ).sort((left, right) => left.order - right.order);
+  const roots = linkedFacts.filter((fact) => fact.eventId === input.rootEventId
+    && fact.rootEventId === input.rootEventId && fact.category === "CARD_PLAYED");
+  if (roots.length !== 1) return null;
+  const root = roots[0]!;
+  const latestLinkedFact = linkedFacts.at(-1);
+  if (!latestLinkedFact || latestLinkedFact.category !== "CARD_PLAYED"
+    && latestLinkedFact.category !== "EFFECT_CANCELLED" && latestLinkedFact.category !== "EFFECT_RESTORED") return null;
+  const activeTargetId = interaction.activeTargetIds.length === 1 ? interaction.activeTargetIds[0] : null;
+  const effects = linkedFacts.filter((fact) =>
+    (fact.category === "EFFECT_CANCELLED" || fact.category === "EFFECT_RESTORED")
+      && (!activeTargetId || fact.affectedPlayerIds.includes(activeTargetId)),
+  );
+  const latest = effects.at(-1) ?? root;
+  const rootLabel = effectLabel(root.label) ?? "a card";
+  const narratedEffectName = latest.category === "CARD_PLAYED"
+    ? rootLabel
+    : effectLabel(latest.effect?.label) ?? effectLabel(decision?.nextEffect?.label) ?? rootLabel;
+  const rootActor = root.actorId ? input.players.find((player) => player.id === root.actorId)?.name.trim() : null;
+  const actor = latest.actorId ? input.players.find((player) => player.id === latest.actorId)?.name.trim() : null;
+  if (!actor) return null;
+
+  let headline: string;
+  if (latest.category === "CARD_PLAYED") {
+    const targetName = root.affectedPlayerIds.length === 1
+      ? input.players.find((player) => player.id === root.affectedPlayerIds[0])?.name.trim()
+      : null;
+    headline = `${actor} played ${rootLabel}${targetName ? ` targeting ${targetName}` : ""}.`;
+  } else {
+    const targetName = latest.affectedPlayerIds.length === 1
+      ? input.players.find((player) => player.id === latest.affectedPlayerIds[0])?.name.trim()
+      : null;
+    const restored = latest.category === "EFFECT_RESTORED";
+    const disposition = restored ? "restored" : "cancelled";
+    const priorEffect = effects.length > 1 ? effects.at(-2) : null;
+    const priorActor = priorEffect?.actorId ? input.players.find((player) => player.id === priorEffect.actorId)?.name.trim() : null;
+    const effectDescription = `${narratedEffectName} effect${targetName ? ` on ${targetName}` : ""}`;
+    if (priorActor) {
+      headline = `${actor} counters ${priorActor}'s Negation. The ${effectDescription} is ${disposition}.`;
+    } else if (rootActor && rootActor !== actor) {
+      headline = `${actor}'s Negation ${restored ? "restores" : "cancels"} ${rootActor}'s ${effectDescription}.`;
+    } else {
+      headline = `${actor}'s Negation ${restored ? "restores" : "cancels"} ${effectDescription}.`;
+    }
   }
+  const phase = decision?.stageLabel === "Negation" && decision.responseWindowOpen === true ? "WINDOW_OPEN" : "FINAL";
+  const rootEffectState = latest.category === "EFFECT_RESTORED" ? "ACTIVE" : effects.length ? "BLOCKED" : "ACTIVE";
+  return {
+    rootLabel: narratedEffectName,
+    eventId: latest.eventId,
+    latestCommittedEventId: latest.eventId,
+    checkpointId: identity.checkpointId,
+    phase,
+    rootEffectState,
+    headline,
+    compactHeadline: headline,
+    supportingMessage: "",
+    compactSupportingMessage: "",
+    accessibleLabel: headline,
+  };
 }
 
 /**
@@ -71,11 +194,26 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
 
   const snapshot = input.presentationSnapshot;
   const interaction = snapshot?.interaction;
-  const stable = snapshot?.stable;
+  const nextDecision = publicDecisionFromPresentationSnapshot(snapshot);
 
-  if (input.status === "playing" && interaction?.semantics === "PROVEN" && stable?.kind === "SPECIAL"
-    && interaction.stage === "NEGATION" && interaction.decisionActorId === null && stable.decisionActorId === null) {
-    return { kind: "negation", text: "Waiting for Negation responses" };
+  if (input.status === "playing" && input.phase === "response" && nextDecision?.stageLabel === "Negation") {
+    const viewerChoice = snapshot?.viewerNegationChoice;
+    const choiceMatchesCurrentWindow = Boolean(input.currentViewerNegationWindowId
+      && viewerChoice?.windowId === input.currentViewerNegationWindowId
+      && viewerChoice.locked === true
+      && (viewerChoice.choice === "pass" || viewerChoice.choice === "negation_intent")
+      && nextDecision.visibility === "PUBLIC"
+      && nextDecision.responseWindowOpen === true);
+    const localAcknowledgement = choiceMatchesCurrentWindow
+      ? viewerChoice?.choice === "negation_intent"
+        ? "You chose to play Negation. Waiting for the other players."
+        : "You passed. Waiting for the other players."
+      : null;
+    return {
+      kind: "negation",
+      text: localAcknowledgement ?? "Waiting for counter responses",
+      stage: publicNegationEffectCopy(input, nextDecision),
+    };
   }
 
   const targetCard = input.pendingTargetCard;
@@ -84,48 +222,27 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
     && interaction?.stage !== "NEGATION") {
     const actor = playerName(input, targetCard.actorId);
     const target = playerName(input, targetCard.targetId);
-    const action = targetCard.cardKind === "Steal" ? "take"
-      : targetCard.cardKind === "Dismantle" ? "discard"
-        : null;
-    if (actor && target && action) {
+    if (actor && target) {
       return {
         kind: "target-card-choice",
-        text: `Waiting for ${actor} to choose a card to ${action} from ${target}.`,
+        text: `Waiting for ${actor} to choose a card from ${target}.`,
         anchorPlayerId: targetCard.targetId,
       };
     }
   }
 
-  if (input.status === "playing" && input.phase === "response" && interaction?.semantics === "PROVEN"
-    && stable?.kind === "CHOICE" && interaction.stage !== "NEGATION"
-    && interaction.decisionActorId && stable.decisionActorId === interaction.decisionActorId) {
-    const actor = playerName(input, interaction.decisionActorId);
-    const action = responseLabel(interaction.stage, interaction.effect);
-    if (actor && action) {
-      const duel = snapshot?.duelExchange;
-      const printedDuelIsCurrent = duel?.semantics === "PROVEN"
-        && duel.decisionActorId === interaction.decisionActorId
-        && duel.currentParticipantId === interaction.decisionActorId;
-      const generatedDuel = snapshot?.lustDuelExchange;
-      const generatedDuelIsCurrent = Boolean(generatedDuel?.semantics === "PROVEN"
-        && interaction.effect?.toLowerCase() === "duel"
-        && snapshot?.identity?.interactionId === interaction.interactionId
-        && snapshot?.identity?.checkpointId === interaction.checkpointId
-        && snapshot?.identity?.presentationRevision === interaction.presentationRevision
-        && stable.interactionId === generatedDuel.interactionId
-        && stable.checkpointId === generatedDuel.checkpointId
-        && stable.presentationRevision === generatedDuel.presentationRevision
-        && generatedDuel.interactionId === interaction.interactionId
-        && generatedDuel.rootFrameId === interaction.rootFrameId
-        && generatedDuel.checkpointId === interaction.checkpointId
-        && generatedDuel.presentationRevision === interaction.presentationRevision
-        && generatedDuel.currentParticipantId === interaction.currentParticipantId
-        && generatedDuel.currentParticipantId === interaction.decisionActorId
-        && generatedDuel.decisionActorId === interaction.decisionActorId);
-      if (action === "Duel" && (printedDuelIsCurrent || generatedDuelIsCurrent)) {
-        return { kind: "duel", text: `Waiting for ${actor} · Duel`, heading: `Waiting for ${actor}`, stage: "Duel Exchange" };
-      }
-      if (action !== "Duel") return { kind: "response", text: `Waiting for ${actor} · ${action}`, heading: `Waiting for ${actor}`, stage: action };
+  if (input.status === "playing" && input.phase === "response" && nextDecision?.actorIds.length === 1) {
+    const actor = playerName(input, nextDecision.actorIds[0]);
+    if (actor) {
+      const labels = nextDecision.actionLabels.filter((label) => label !== "Respond")
+        .map((label) => label.replace(/^Use\s+/i, ""));
+      const actionCopy = labels.length
+        ? nextDecision.stageLabel === "Skill decision"
+          ? ` to use ${actionList(labels)}`
+          : ` to play ${actionList(labels)}`
+        : "";
+      const waiting = `Waiting for ${actor}${actionCopy}`;
+      return { kind: "response", text: waiting, heading: waiting, stage: nextDecision.stageLabel };
     }
   }
 

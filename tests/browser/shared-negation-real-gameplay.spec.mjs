@@ -146,7 +146,7 @@ test("real shared Negation keeps intent private until expiry and renders only th
     const passResponse = await passSubmission;
     expect(passResponse.ok()).toBeTruthy();
     expect(passResponse.request().postDataJSON()).toMatchObject({ action: "decline_response", code: seedData.code, token: passPlayer.token });
-    await expect(localGuidance.locator("small")).toHaveText("RESPONSE SUBMITTED");
+    await expect(localGuidance.locator("small")).toHaveText("WAITING FOR OTHERS");
     const passAfter = await view(request, seedData, 2);
     expect(passAfter.pendingNegation.submitted).toBe(true);
     expect(passAfter.currentAction.options ?? []).toEqual([]);

@@ -459,7 +459,7 @@ test("server-backed Duel cards reveal at full size for four seconds, then park b
 
     const waitingCopy = page.locator('.public-card-display-journey-copy[data-public-negation-phase="WINDOW_OPEN"]');
     await expect(waitingCopy).toBeVisible();
-    await expect(waitingCopy).toContainText("Negation can cancel the Duel.");
+    await expect(waitingCopy).toContainText(`${initiator.name} played Duel against ${target.name}.`);
     const pass = page.getByRole("button", { name: /^(?:Skip|Pass)$/ });
     await expect(pass).toBeEnabled();
     await screenshot(page, testInfo, "duel-negation-waiting-controls-live-440x894");
@@ -1107,7 +1107,7 @@ test("Duel physical cards keep one public owner through Cao Cao's Treachery skip
     const attackEvent = attackProjection.timeline.find((event) => event.type === "card" && event.card?.id === attackId);
     expect(attackEvent).toBeTruthy();
     await restoreViewer(page, room, 0);
-    const expectedExchangeCopy = `${room.players[1].name} answered the Duel with Attack. ${room.players[0].name} must answer with Attack.`;
+    const expectedExchangeCopy = `${room.players[1].name} played Attack in the Duel.`;
     await expect.poll(async () => Promise.all([page, targetPage].map(async (viewer) =>
       viewer.locator("[data-public-card-announcement='true']:visible b").allTextContents())), { timeout: 8_000 })
       .toEqual([[expectedExchangeCopy], [expectedExchangeCopy]]);

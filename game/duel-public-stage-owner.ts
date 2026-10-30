@@ -260,12 +260,11 @@ export function duelExchangeAttackNarration(
     || !participants.has(response.responseActorId) || response.responseCardKind !== "Attack") return null;
 
   const responder = input.players.find((player) => player.id === response.responseActorId)?.name.trim();
-  const nextResponder = input.players.find((player) => player.id === exchange.currentParticipantId)?.name.trim();
-  if (!responder || !nextResponder) return null;
+  if (!responder) return null;
   return {
     eventId: response.responseEventId,
     actorId: response.responseActorId,
-    message: `${responder} answered the Duel with Attack. ${nextResponder} must answer with Attack.`,
-    compactMessage: `${responder} answered Duel; ${nextResponder} must answer with Attack.`,
+    message: `${responder} played Attack in the Duel.`,
+    compactMessage: `${responder} played Attack in the Duel.`,
   };
 }

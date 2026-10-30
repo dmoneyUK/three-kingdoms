@@ -286,8 +286,7 @@ async function expectTargetChoiceCue(page, { actor = false, sourceName = "SOURCE
     await expect(pool).toHaveAccessibleName(`${sourceName} choosing a card to ${verb} from ${targetName}. Choose one card.`);
     return null;
   }
-  const verb = action === "Steal" ? "take" : "discard";
-  const expected = `Waiting for ${sourceName} to choose a card to ${verb} from ${targetName}.`;
+  const expected = `Waiting for ${sourceName} to choose a card from ${targetName}.`;
   await expect(activityCue).toBeVisible();
   await expect(activityCue).toHaveAttribute("aria-label", expected);
   await expect(activityCue.locator("strong")).toHaveText(expected);
@@ -802,7 +801,7 @@ test("T3-F1 R5-C keeps one compact actor zone and preserves choice through park 
     expect(spectatorView.actionRevision).toBe(actorView.actionRevision);
     expect(spectatorView.currentAction?.targetCardSelection).toBeUndefined();
     const waiting = spectatorPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]');
-    const expectedWaiting = `Waiting for ${seed.players[0].name} to choose a card to take from ${seed.players[1].name}.`;
+    const expectedWaiting = `Waiting for ${seed.players[0].name} to choose a card from ${seed.players[1].name}.`;
     await expect(waiting).toBeVisible();
     await expect(waiting).toHaveAttribute("aria-label", expectedWaiting);
     await expect(waiting.locator("strong")).toHaveText(expectedWaiting);
@@ -963,7 +962,7 @@ for (const kind of ["Steal", "Dismantle"]) {
       await Promise.all(pages.map((viewerPage, index) => openGame(viewerPage, seed, index, { width: 390, height: 844 })));
 
       const modalTitle = kind === "Steal" ? "Steal" : "Burning Bridge";
-    const sharedLabel = `Waiting for SOURCE to choose a card to ${kind === "Steal" ? "take" : "discard"} from TARGET.`;
+      const sharedLabel = "Waiting for SOURCE to choose a card from TARGET.";
       for (let index = 0; index < pages.length; index++) {
         const viewerPage = pages[index];
         const chip = viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]');
@@ -1509,7 +1508,7 @@ test("T3-F1 R5-B preserves the Steal root through settlement and a second root",
     const spectatorActivity = pages[1].locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]');
     await expect(pages[1].locator(".card-pool-target-stage--spectator, .card-pool-panel--target-readonly")).toHaveCount(0);
     await expect(spectatorActivity).toBeVisible();
-    await expect(spectatorActivity.locator("strong")).toHaveText("Waiting for SOURCE to choose a card to take from TARGET.");
+    await expect(spectatorActivity.locator("strong")).toHaveText("Waiting for SOURCE to choose a card from TARGET.");
     await expect(pages[0].locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
     await expect(pages[0].locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
     const handoffEvidence = await Promise.all(pages.map(async (page) => {
@@ -1803,8 +1802,7 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
           throw error;
         });
         if (choiceCue) {
-          const verb = scenario.effect === "Steal" ? "take" : "discard";
-          const expectedWaiting = `Waiting for ${sourceName} to choose a card to ${verb} from ${targetName}.`;
+          const expectedWaiting = `Waiting for ${sourceName} to choose a card from ${targetName}.`;
           await expect(choiceCue).toHaveAttribute("aria-label", expectedWaiting);
           await expect(choiceCue.locator("strong")).toHaveText(expectedWaiting);
           const cueGeometry = await choiceCue.evaluate((element) => {

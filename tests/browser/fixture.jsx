@@ -722,12 +722,12 @@ function browserRoom({ state, count, handSize, handKind, targetHandCount, target
     ? {
       ...resolvedCurrentAction,
       reason: privateNegationSubmitted
-        ? "Response submitted — waiting"
+        ? "Waiting for the other players."
         : negationAuthority === "missing-provider"
           ? "No Negation available. Pass."
           : negationAuthority === "missing-response" || negationAuthority === "missing-decline"
             ? "Negation response window"
-            : "Play Negation or Pass",
+        : "Play Negation to cancel Dismantle's effect on Test Player 1, or Pass.",
       ...(privateNegationSubmitted ? { negationWindowId: "browser-shared-negation-window", legalActions: [], options: [] } : { negationWindowId: "browser-shared-negation-window" }),
       presentation: { resolutionId: "browser-shared-negation-resolution", readyAfterEventId: "browser-unpresented-negation-root" },
       ...(negationAuthority === "missing-response" ? { legalActions: ["decline_response"] } : {}),

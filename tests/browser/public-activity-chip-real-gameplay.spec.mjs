@@ -193,19 +193,25 @@ test("four authenticated viewers share the same public turn, Negation, and Duel 
     expect(windowId).toBeTruthy();
     const hold = await request.post(`${API}/__test/negation-window-clock`, { data: { code: room.code, windowId, mode: "hold" } });
     expect(hold.ok()).toBeTruthy();
-    await expect.poll(async () => Promise.all(pages.map(readChip))).toEqual(Array(4).fill("Waiting for Negation responses"));
+    const sharedNegationCopy = "Waiting for counter responses Negation can cancel the Duel effect on Test Player 2.";
+    await expect.poll(async () => Promise.all(pages.map(readChip))).toEqual(Array(4).fill(sharedNegationCopy));
 
     const beforePass = await Promise.all(room.players.map((_, index) => state(request, room, index)));
     expect(new Set(beforePass.map((view) => view.presentationSnapshot.interaction.interactionId)).size).toBe(1);
     await action(request, room, 0, "decline_response", { windowId });
     const afterOnePass = await Promise.all(room.players.map((_, index) => state(request, room, index)));
     expect(afterOnePass.map((view) => view.pendingNegation.submitted)).toEqual([true, false, false, false]);
-    expect(await Promise.all(pages.map(readChip))).toEqual(Array(4).fill("Waiting for Negation responses"));
+    await expect.poll(async () => Promise.all(pages.map(readChip))).toEqual([
+      "You passed. Waiting for the other players. Negation can cancel the Duel effect on Test Player 2.",
+      sharedNegationCopy,
+      sharedNegationCopy,
+      sharedNegationCopy,
+    ]);
     expect(JSON.stringify(afterOnePass[2])).not.toContain("activity-duel-answer");
 
     for (let index = 1; index < 4; index += 1) await action(request, room, index, "decline_response", { windowId });
     await expect.poll(async () => Promise.all(pages.map(readChip)), { timeout: 12_000 })
-      .toEqual(Array(4).fill("Waiting for Test Player 2 · Duel"));
+      .toEqual(Array(4).fill("Waiting for Test Player 2 to play Attack or take damage Duel Exchange"));
     const duelViews = await Promise.all(room.players.map((_, index) => state(request, room, index)));
     expect(duelViews.every((view) => view.presentationSnapshot.duelExchange?.semantics === "PROVEN")).toBe(true);
     expect(duelViews.map((view) => view.presentationSnapshot.duelExchange.decisionActorId)).toEqual(Array(4).fill(room.players[1].id));
@@ -221,7 +227,7 @@ test("four authenticated viewers share the same public turn, Negation, and Duel 
     const attackEvent = attackResponse.room.timeline.find((event) => event.type === "card" && event.card?.id === "activity-duel-answer");
     expect(attackEvent?.id).toBeTruthy();
     await expect.poll(async () => Promise.all(pages.map(readChip)), { timeout: 8_000 })
-      .toEqual(Array(4).fill("Waiting for Test Player 1 · Duel"));
+      .toEqual(Array(4).fill("Waiting for Test Player 1 to play Attack or take damage Duel Exchange"));
     const revealGeometry = await geometry(pages[1]);
     assertGeometry(revealGeometry);
     expect(Math.abs(revealGeometry.chip.left - beforeAttackGeometry.chip.left)).toBeLessThanOrEqual(2);

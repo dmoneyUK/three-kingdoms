@@ -21,12 +21,12 @@ import { buildPresentationTransition, type PresentationTransitionKind } from "..
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
-import { derivePublicActivityStatus } from "../game/public-activity";
+import { derivePublicActivityStatus, derivePublicNegationNarration } from "../game/public-activity";
 import { CardFace } from "./card-face";
 import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
-import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, harvestNegationDecisionCopy, publicCardActionKey, publicCardJourneyOwnershipIdentity, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
+import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, publicCardActionKey, publicCardJourneyOwnershipIdentity, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, hasAttackDodgeUxTrace, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
@@ -34,7 +34,6 @@ import { equipmentArrivalIdentity, pendingEquipmentArrivalIdentities as derivePe
 import { compactLustDuelOrderMessage, compactLustDuelResultMessage } from "./lust-public-copy";
 import { publicHeroCostAnnouncementLifecycle } from "../game/public-hero-cost-lifecycle";
 import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate } from "../game/public-announcement";
-import { duelNegationFinalCopy, negationEffectCopy } from "./negation-effect-copy";
 import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
@@ -58,16 +57,8 @@ function finalizePublicNegationNarration(
   settlementEventId: string,
 ): PublicNegationNarration {
   const rootEffectState = outcome === "ROOT_CANCELLED" ? "BLOCKED" : "ACTIVE";
-  if (narration.rootLabel === "Duel") {
-    const headline = duelNegationFinalCopy(outcome);
-    return { ...narration, eventId: settlementEventId, phase: "FINAL", rootEffectState, headline, compactHeadline: headline, supportingMessage: "", compactSupportingMessage: "", accessibleLabel: headline };
-  }
-  const supportingMessage = rootEffectState === "BLOCKED"
-    ? `FINAL · ${narration.rootLabel} cancelled.`
-    : `FINAL · ${narration.rootLabel} takes effect.`;
-  const compactSupportingMessage = supportingMessage;
-  const publicHeadline = narration.compactHeadline;
-  const publicSupportingMessage = compactSupportingMessage;
+  const disposition = outcome === "ROOT_CANCELLED" ? "cancelled" : "restored";
+  const publicHeadline = `The ${narration.rootLabel} is ${disposition}.`;
   return {
     ...narration,
     eventId: settlementEventId,
@@ -75,9 +66,9 @@ function finalizePublicNegationNarration(
     rootEffectState,
     headline: publicHeadline,
     compactHeadline: publicHeadline,
-    supportingMessage: publicSupportingMessage,
-    compactSupportingMessage: publicSupportingMessage,
-    accessibleLabel: `FINAL. ${publicHeadline} ${publicSupportingMessage}`,
+    supportingMessage: "",
+    compactSupportingMessage: "",
+    accessibleLabel: publicHeadline,
   };
 }
 
@@ -5406,7 +5397,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
   };
   const decisionPresentation = buildDecisionPresentation(room, clientPresentation);
-  const publicActivityStatus = derivePublicActivityStatus(room);
+  const publicActivityStatus = derivePublicActivityStatus({
+    status: room.status,
+    phase: room.phase,
+    turnSeat: room.turnSeat,
+    players: room.players,
+    presentationSnapshot: room.presentationSnapshot,
+    pendingTargetCard: room.pendingTargetCard,
+    currentViewerNegationWindowId: room.currentAction?.negationWindowId ?? null,
+  });
   const publicActivitySeatLayoutKey = room.players.map((player) => `${player.id}:${player.seat}`).join("|");
   const currentActionOwnedByViewer = Boolean(room.currentAction?.actorId === room.meId && room.isMyAction && room.currentAction.kind !== "none");
   const targetCardPickerSelectedKeys = targetCardPickerSelection
@@ -5884,82 +5883,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && singleTargetNegationProofCandidate.chain.publicEventLinks?.root.eventId === singleTargetNegationProofCandidate.rootEvent.id
     ? singleTargetNegationProofCandidate
     : null;
-  const deriveSingleTargetNegationNarration = (candidate: NonNullable<typeof singleTargetNegationProofCandidate>): PublicNegationNarration | null => {
-    const sourceName = candidate.root.source.name?.trim();
-    const targetName = candidate.root.targets[0]?.name?.trim();
-    const rootLabel = cardDefinition(candidate.root.cardKind!).name;
-    const ambushmentProof = candidate.ambushmentRootProof;
-    const captivatingProof = candidate.captivatingRootProof;
-    const rootCounterLabel = captivatingProof ? "Captivating AS Overindulgence" : rootLabel;
-    const rootEffectState = candidate.chain.rootEffectState;
-    if (!sourceName || !targetName || (rootEffectState !== "ACTIVE" && rootEffectState !== "BLOCKED")) return null;
-    const depth = candidate.responseNodes.length;
-    const latest = candidate.responseNodes.at(-1);
-    if (rootLabel === "Duel") {
-      const copy = negationEffectCopy({
-        kind: "Duel", sourceName, targetName, effectState: rootEffectState,
-        responseCount: depth, actorName: latest?.actor.name,
-        counteredActorName: depth > 1 ? candidate.responseNodes[depth - 2]?.actor.name : undefined,
-      });
-      if (!copy) return null;
-      return {
-        rootLabel, eventId: latest?.event.id ?? candidate.rootEvent.id,
-        latestCommittedEventId: latest?.event.id ?? candidate.rootEvent.id,
-        phase: "WINDOW_OPEN", rootEffectState,
-        headline: copy.headline, compactHeadline: copy.headline,
-        supportingMessage: copy.supporting, compactSupportingMessage: copy.supporting,
-        accessibleLabel: `${copy.headline} ${copy.supporting}`,
-      };
-    }
-    const rootHeadline = ambushmentProof
-      ? `${sourceName} used Ambushment AS BURNING BRIDGES on ${targetName}.`
-      : captivatingProof
-        ? `${sourceName} used Captivating AS OVERINDULGENCE on ${targetName}.`
-      : `${sourceName} played ${rootLabel} on ${targetName}.`;
-    const compactRootHeadline = ambushmentProof
-      ? `${sourceName}: Ambushment AS BURNING BRIDGES on ${targetName}`
-      : captivatingProof
-        ? `${sourceName}: Captivating AS OVERINDULGENCE on ${targetName}`
-      : `${sourceName}: ${rootLabel} on ${targetName}`;
-    let headline = rootHeadline;
-    let compactHeadline = compactRootHeadline;
-    let supportingMessage = rootLabel === "Duel"
-      ? "Negation response open · Duel not yet resolved."
-      : `${rootLabel} response open · Effect not yet resolved.`;
-    let compactSupportingMessage = `${rootLabel} · Negation open`;
-    if (depth > 0 && latest) {
-      const targetActorName = latest.node.counterTarget?.kind === "ROOT"
-        ? sourceName
-        : latest.node.counterTarget?.kind === "NEGATION_NODE" && latest.node.counterTarget.index === depth - 2
-          ? candidate.responseNodes[depth - 2]?.actor.name?.trim()
-          : null;
-      const actorName = latest.actor.name?.trim();
-      if (!actorName || !targetActorName) return null;
-      headline = depth === 1
-        ? `${actorName}'s Negation counters ${sourceName}'s ${rootCounterLabel}.`
-        : `${actorName} counters ${targetActorName}'s Negation.`;
-      compactHeadline = depth === 1
-        ? `${actorName} counters ${sourceName}'s ${rootCounterLabel}`
-        : `${actorName} counters ${targetActorName}'s Negation`;
-      const nextCounterLabel = depth === 1 ? "Counter-Negation still possible" : "Another Negation is possible";
-      supportingMessage = `${rootLabel} currently ${rootEffectState} · ${nextCounterLabel}.`;
-      compactSupportingMessage = `${rootLabel} ${rootEffectState} · Negation open`;
-    }
-    return {
-      rootLabel,
-      eventId: latest?.event.id ?? candidate.rootEvent.id,
-      latestCommittedEventId: latest?.event.id ?? candidate.rootEvent.id,
-      phase: "WINDOW_OPEN",
-      rootEffectState,
-      headline,
-      compactHeadline,
-      supportingMessage,
-      compactSupportingMessage,
-      accessibleLabel: `CURRENT, response still open. ${headline} ${supportingMessage}`,
-    };
-  };
   const singleTargetNegationNarration = singleTargetNegationProofCandidate
-    ? deriveSingleTargetNegationNarration(singleTargetNegationProofCandidate)
+    ? derivePublicNegationNarration({
+      snapshot: room.presentationSnapshot,
+      players: room.players,
+      rootEventId: singleTargetNegationProofCandidate.rootEvent.id,
+    })
     : null;
   const oathSimultaneousRootCandidate = (() => {
     const scope = clientPresentation.oathRecipientScope;
@@ -6206,32 +6135,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         : null;
     })()
     : null;
-  const harvestPublicNarration: PublicNegationNarration | null = (() => {
-    const candidate = bumperHarvestRootCandidate;
-    if (!candidate?.currentParticipantIsProven || !candidate.progress.currentParticipantId) return null;
-    const participant = candidate.targets.find((target) => target.playerId === candidate.progress.currentParticipantId && target.status === "CURRENT");
-    if (!participant) return null;
-    if (!candidate.isNegationScene) {
-      if (clientPresentation.decisionActorId !== participant.playerId) return null;
-      const headline = `${participant.playerName} can pick a card.`;
-      return { rootLabel: "Bumper Harvest", eventId: candidate.rootEvent.id, checkpointId: candidate.progress.checkpointId, phase: "FINAL", rootEffectState: "ACTIVE", headline, compactHeadline: headline, supportingMessage: "", compactSupportingMessage: "", accessibleLabel: headline };
-    }
-    const effectState = candidate.progress.currentEffectState;
-    if (!candidate.negationProofIsValid || !harvestEffectRecipient || (effectState !== "ACTIVE" && effectState !== "BLOCKED")) return null;
-    const settlement = clientPresentation.negationSettlement;
-    if (settlement?.semantics === "PROVEN" && settlement.rootCardKind === "BumperHarvest"
-      && settlement.interactionId === candidate.progress.interactionId && settlement.rootFrameId === candidate.progress.rootFrameId
-      && settlement.checkpointId === candidate.progress.checkpointId && settlement.presentationRevision === candidate.progress.presentationRevision) return null;
-    const latest = candidate.responses.at(-1);
-    const copy = negationEffectCopy({
-      kind: "BumperHarvest", sourceName: candidate.source.name, targetName: participant.playerName,
-      effectState, responseCount: candidate.responses.length, actorName: latest?.actorName,
-      counteredActorName: candidate.responses.length > 1 ? candidate.responses.at(-2)?.actorName : undefined,
-    });
-    if (!copy) return null;
-    const eventId = latest?.eventId ?? candidate.rootEvent.id;
-    return { rootLabel: "Bumper Harvest", eventId, latestCommittedEventId: eventId, checkpointId: candidate.progress.checkpointId, phase: "WINDOW_OPEN", rootEffectState: effectState, headline: copy.headline, compactHeadline: copy.headline, supportingMessage: copy.supporting, compactSupportingMessage: copy.supporting, accessibleLabel: `${copy.headline} ${copy.supporting}` };
-  })();
+  const harvestPublicNarration: PublicNegationNarration | null = bumperHarvestRootCandidate
+    ? derivePublicNegationNarration({
+      snapshot: room.presentationSnapshot,
+      players: room.players,
+      rootEventId: bumperHarvestRootCandidate.rootEvent.id,
+    })
+    : null;
   const halberdOrderedRootCandidate = (() => {
     const group = clientPresentation.groupResolution;
     const rootProof = group?.orderedAttackRoot;
@@ -8283,6 +8193,29 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const selectedPublicCardAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
     ?? heldAttackDodgeReadAction
     ?? livePublicCardAction;
+  const selectedActionIsNegationPresentation = Boolean(selectedPublicCardAction
+    && (selectedPublicCardAction.motion?.type === "negation"
+      || room.presentationSnapshot?.interaction?.stage === "NEGATION"));
+  const genericPublicFactNarration = selectedPublicCardAction && selectedActionIsNegationPresentation
+    ? derivePublicNegationNarration({
+      snapshot: room.presentationSnapshot,
+      players: room.players,
+      rootEventId: selectedPublicCardAction.rootEventId,
+    })
+    : null;
+  const selectedActionOwnsCurrentNegationDecision = Boolean(selectedPublicCardAction
+    && room.presentationSnapshot?.identity
+    && room.presentationSnapshot.interaction?.semantics === "PROVEN"
+    && room.presentationSnapshot.publicNextDecision?.semantics === "PROVEN"
+    && room.presentationSnapshot.publicNextDecision.visibility === "PUBLIC"
+    && room.presentationSnapshot.publicNextDecision.stageLabel === "Negation"
+    && room.presentationSnapshot.publicNextDecision.responseWindowOpen === true
+    && room.presentationSnapshot.publicNextDecision.identity.interactionId === room.presentationSnapshot.identity.interactionId
+    && room.presentationSnapshot.publicNextDecision.identity.rootFrameId === room.presentationSnapshot.interaction.rootFrameId
+    && room.presentationSnapshot.publicNextDecision.identity.checkpointId === room.presentationSnapshot.identity.checkpointId
+    && room.presentationSnapshot.publicNextDecision.identity.presentationRevision === room.presentationSnapshot.identity.presentationRevision
+    && selectedPublicCardAction.interactionId === room.presentationSnapshot.identity.interactionId
+    && selectedPublicCardAction.rootFrameId === room.presentationSnapshot.interaction.rootFrameId);
   const deflectionForPublicAction = (action: PublicCardDisplayAction | null) => {
     if (!action || action.cardKind !== "Attack" || action.motion?.type !== "attack-dodge" || !action.targetId) return null;
     const proofs = clientPresentation.deflectionActions.filter((proof) => proof.semantics === "PROVEN"
@@ -8328,7 +8261,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeDeflectionAction = deflectionForPublicAction(selectedPublicCardAction);
   const selectedLustOrderOwnsActivityBand = Boolean(selectedPublicCardAction
     && (selectedPublicCardAction.motion?.type === "lust-cost" || selectedPublicCardAction.motion?.type === "lust-duel")
-    && (publicActivityStatus.kind === "duel" || publicActivityStatus.kind === "resolving"));
+    && (publicActivityStatus.kind === "response" || publicActivityStatus.kind === "resolving"));
   const attackConversionFrameCandidate = (() => {
     if (!selectedPublicCardAction || selectedPublicCardAction.motion?.type !== "attack-dodge"
       || selectedPublicCardAction.cardKind !== "Attack" || !selectedPublicCardAction.cardFace) return null;
@@ -8467,7 +8400,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || identity.presentationRevision !== interaction.presentationRevision
       || selectedPublicCardAction.interactionId !== interaction.interactionId
       || selectedPublicCardAction.rootFrameId !== interaction.rootFrameId) return undefined;
-    const narration = selectedPublicCardAction.publicNegationNarration;
+    const narration = genericPublicFactNarration ?? selectedPublicCardAction.publicNegationNarration;
     const latestPublicEventId = narration?.phase === "FINAL"
       ? narration.eventId
       : narration?.latestCommittedEventId
@@ -8487,9 +8420,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       presentationStage: interaction.stage,
       serverRevision: identity.presentationRevision,
       selectedPresenterRevision: selectedPublicCardAction.presentationRevision ?? null,
-      semanticOwner: selectedPublicCardAction.cardKind === "Duel"
-        ? duelPublicStageOwner.stageOwner ?? interaction.stage
-        : interaction.stage,
+      semanticOwner: interaction.stage,
       interactionId: interaction.interactionId,
       rootFrameId: interaction.rootFrameId,
       checkpointId: identity.checkpointId,
@@ -8500,6 +8431,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const publicCardDisplayAction: PublicCardDisplayAction | null = selectedPublicCardAction ? {
     ...selectedPublicCardAction,
     publicAnnouncementIdentity,
+    ...(genericPublicFactNarration ? { publicNegationNarration: genericPublicFactNarration }
+      : selectedActionOwnsCurrentNegationDecision ? { publicNegationNarration: undefined, suppressAnnouncement: true } : {}),
     ...(attackConversionFrameCandidate ? {
       cardLabel: attackConversionFrameCandidate.spec.title,
       ariaLabel: attackConversionFrameCandidate.accessibleLabel,
@@ -10192,12 +10125,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : lustLocalSelectionActive && activeSkillSelection
     ? `Select ${activeSkillSelection.min} card${activeSkillSelection.min === 1 ? "" : "s"} and ${activeSkillTargetMin} Duel participant${activeSkillTargetMin === 1 ? "" : "s"}.`
     : sharedNegationWindow
-    ? negationResponseGuidance
-      && publicCardDisplayAction?.cardFace?.kind === "BumperHarvest"
-      && publicCardDisplayAction.motion?.type === "negation"
-      && !publicCardDisplayAction.settlement
-      ? harvestNegationDecisionCopy(publicCardDisplayAction)
-      : room.currentAction?.reason || "Negation response window"
+    ? room.currentAction?.reason || "Negation response window"
     : negationResponseGuidance
       ? "Play Negation or Skip."
     : rainingArrowsDamageDecline
@@ -10527,7 +10455,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               aria-live="polite"
               aria-atomic="true"
             >
-              {!lustLocalSelectionActive && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "RESPONSE SUBMITTED" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
+              {!lustLocalSelectionActive && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "WAITING FOR OTHERS" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
               <strong>{activeLocalPlayTargetNotice?.message ?? consoleDecision.instruction}</strong>
               {lustTargetOrder && <em className="lust-order-guidance" data-testid="lust-order-guidance">
                 Attack order: <strong>{lustTargetOrder.firstName}</strong> first → <span className="lust-second-actor">{lustTargetOrder.secondName}</span> second.
