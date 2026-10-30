@@ -36,6 +36,13 @@ test("Axe of Insanity uses post-damage HP and draws exactly two private cards", 
   const view = await resolveAttack(game, setup, attack);
   assert.equal(view.players.find((player) => player.id === setup.target.id).hp, 2);
   assert.deepEqual(view.myHand.map((item) => item.id), [firstDraw.id, secondDraw.id]);
+  const publicFact = view.presentationSnapshot.retainedPublicEvent;
+  assert.equal(publicFact?.category, "SKILL_USED");
+  assert.equal(publicFact?.actorId, setup.source.id);
+  assert.equal(publicFact?.outcomeLabel, "drew 2 cards");
+  const observer = (await state(game.code, setup.targetMember.token)).data;
+  assert.deepEqual(observer.presentationSnapshot.retainedPublicEvent, publicFact);
+  assert.equal(JSON.stringify(publicFact).includes(firstDraw.id), false);
   assert.equal(JSON.parse(query(`SELECT skill_state_json FROM rooms WHERE code=${quote(game.code)}`)).axeOfInsanityUsed, true);
   assert.equal((await state(game.code, setup.targetMember.token)).data.myHand.some((item) => item.id === firstDraw.id), false);
   assert.equal(roomCardCount(game.code, firstDraw.id), 1);

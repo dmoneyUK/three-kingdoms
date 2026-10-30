@@ -327,4 +327,6 @@ test("generic H4 retains damage through Skip and formats committed public or hid
   assert.equal(derivePublicInteractionNarration(input([root, generic]))?.headline, "Test Player 2 used New ability and resolved a public effect.");
   const noDamageRest = { ...rest, retainedPublicEvent: generic, retainedPublicEventFacts: [generic] };
   assert.equal(derivePublicInteractionNarration({ ...input([]), snapshot: noDamageRest })?.eventId, "generic");
+  const independent = { ...generic, eventId: "standalone", rootEventId: "standalone" };
+  assert.equal(derivePublicInteractionNarration({ ...input([independent]), rootEventId: "standalone" })?.eventId, "standalone");
 });

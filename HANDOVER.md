@@ -1,12 +1,14 @@
 # HANDOVER — Current Task Only
 
 Repository: `dmoneyUK/three-kingdoms` · Target: `ux-v2`
-Latest design reviewed: `docs/UX2-refine.md` §10.25.3, R6-QA-01, 2026-10-30 23:12 UTC.
+Latest design reviewed: `docs/UX2-refine.md` §10.25.3 R6-QA-02, 2026-10-30 23:12 UTC.
 
-## Current task — NEG-COPY-1 R6-QA-01
+## Current task — NEG-COPY-1 R6-QA-02, remaining server proof
 
-**2026-10-30 23:21 UTC:** QA-03 source `ab40d149259f5d9bce6b5ca68ec99a5d518c8f44` pushed; exact-SHA CI [41143946009](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41143946009) is pending. QA-02 partial and its missing server proof remain documented in `docs/UX2-refine.md` and prior commit `05be8d57`.
+**2026-10-30 23:26 UTC:** QA-01 source `9c9e03df436ad5e07a512d57c52b21c76e2bbd49` pushed; CI [41144126109](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41144126109) pending. QA-03 source `ab40d149259f5d9bce6b5ca68ec99a5d518c8f44` passed [41143946009](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41143946009), Worker `9d6ad2c6-3785-41b3-9a1c-99453ec42632`. Both await owner phone review.
 
-**2026-10-30 23:21 UTC:** Source review found `publicCorridorWidth` only reserved the measured countdown when mounted, so both captions changed width at timer appearance. Reserve the existing CSS maximum timer footprint from the stable safe-zone geometry at all times; retain actual obstacle avoidance. Verify a focused mobile scenario and stable width across countdown appearance; no claim of iPhone acceptance.
+**2026-10-30 23:26 UTC:** Continue QA-02: automatic damage-triggered outcomes lack public event facts. Add public-safe semantic facts only at actually committed outcomes with existing causal/root identity and provider visibility; never infer from log text. Other unproven routes remain fail-closed and must be recorded precisely. Keep the server's rules and private cards unchanged.
 
-**2026-10-30 23:22 UTC:** Source inspection and 440px phone test confirmed width depended on countdown mount. Reserved the CSS maximum timer footprint using the always-present safe-zone geometry. Focused mobile Duel case passed twice (19.7s and 19.8s); second run checked stable PAC before/after countdown and H4 across private Pass. Pure layout/announcement tests 18/18, build and diff check passed. Actual 8-seat geometry and iPhone review remain unverified.
+**2026-10-30 23:27 UTC:** Added actual committed public facts to automatic post-damage draw/HP-loss outcomes only when provider visibility and causal/root identity are proven. A rootless but committed standalone skill fact uses its own genuine event as its presentation root; an inert generic continuation now remains informational. Focused Pan Feng API 8/8, public narration 14/14, build, scoped ESLint and diff check passed; 390×844 real automatic-outcome browser case passed in 8.9s with no hidden-card ID disclosed.
+
+**Remaining QA-02 scope:** passive Attack prevention still emits an untyped `effectNotice` at `addPassiveAttackPreventionNotice`; some other outcomes may lack causal/root proof. Do not claim universal consolidation until their actual committed semantic facts and cross-view behavior are verified. QA-01 exact-SHA CI is running.

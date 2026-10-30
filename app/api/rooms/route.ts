@@ -1059,8 +1059,13 @@ function attachAttackHitSettlement(log: string[], proof: PresentationAttackHitSe
   } catch { return log; }
 }
 function addTriggeredEffectNotice(log: string[], actor: string, label: string, publicFact?: PublicPresentationEventFactDraft) {
+  const eventId = crypto.randomUUID();
+  // A standalone committed outcome is its own public root when no earlier
+  // root event is proven. This never fabricates a card or damage source.
+  const fact = publicFact?.committedIdentity && !publicFact.rootEventId
+    ? { ...publicFact, rootEventId: eventId } : publicFact;
   return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined,
-    { effectNotice: true, ...(publicFact ? { publicFact } : {}) });
+    { effectNotice: true, ...(fact ? { publicFact: fact } : {}) }, eventId);
 }
 function addLog(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) {
   return appendSequencedLogRecord(log, "@event:", { id: crypto.randomUUID(), message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) });
@@ -1981,13 +1986,34 @@ async function resolveAutomaticDamageSufferedTrigger(room: RoomRow, continuation
   const state = parse<KingSkillState>(room.skill_state_json, {});
   const nextState = execution.stateUpdate ? { ...state, [execution.stateUpdate.key]: execution.stateUpdate.value } : state;
   const nextContinuation = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), execution.effectId])], stage: "reaction" as const, secondaryEffectId: undefined, judgementCard: undefined };
-  let nextLog = addTriggeredEffectNotice(log, source?.name ?? target.name, execution.presentation?.label ?? "a passive post-damage effect").log;
+  const notice = addTriggeredEffectNotice(log, source?.name ?? target.name, execution.presentation?.label ?? "a passive post-damage effect");
+  let nextLog = notice.log;
+  const context = damageSufferedTriggerContext(source, target, continuation.amount, undefined, continuation.damageCards ?? [], continuation.damageCause ?? "other", continuation.physicalSuit, state, continuation.resumePhase.startsWith("play"));
+  const committedFact = (outcomeLabel: string, amount: number) => {
+    if (!continuation.rootEventId || triggerAvailability(execution.effectId, context) !== "public") return undefined;
+    return publicFactFor(continuation.causal, "SKILL_USED", {
+      rootEventId: continuation.rootEventId,
+      actorId: triggerActorId(execution.effectId, context) ?? source?.id ?? target.id,
+      label: execution.presentation?.label?.split(" — ")[0] ?? "a skill",
+      outcomeLabel, amount, effect: { kind: execution.outcome.kind },
+    }, parseCausalEnvelope(room.causal_envelope_json));
+  };
+  const attachNoticeFact = (entries: string[], fact: PublicPresentationEventFactDraft | undefined) => {
+    if (!fact?.committedIdentity) return entries;
+    return entries.map((entry) => {
+      if (!entry.startsWith("@event:")) return entry;
+      try {
+        const event = JSON.parse(entry.slice(7)) as Record<string, unknown>;
+        return event.id === notice.eventId ? `@event:${JSON.stringify({ ...event, publicFact: fact })}` : entry;
+      } catch { return entry; }
+    });
+  };
 
   if (execution.outcome.kind === "draw_cards") {
     if (!source || execution.outcome.amount <= 0) return continueDamageSufferedEvent(room, nextContinuation, players, deck, discard, addLog(nextLog, "The passive post-damage effect has no valid source and ends."));
     const draw = drawCards(deck, discard, execution.outcome.amount, nextLog);
     const nextHand = [...parse<Card[]>(source.hand_json, []), ...draw.drawn];
-    nextLog = draw.log;
+    nextLog = attachNoticeFact(draw.log, committedFact(`drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`, draw.drawn.length));
     for (const drawn of draw.drawn) nextLog = addPrivateDrawEvent(nextLog, source, drawn);
     nextLog = addHistory(nextLog, `${source.name} activates Axe of Insanity and draws ${draw.drawn.length} cards.`, source.id);
     const updatedPlayers = players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(nextHand) } : player);
@@ -2005,6 +2031,7 @@ async function resolveAutomaticDamageSufferedTrigger(room: RoomRow, continuation
     // This is explicit HP loss, not sourced damage: do not route it through
     // resolveSourcedDamage or emit another damage_suffered event.
     const hp = Math.max(0, (source.hp ?? 0) - execution.outcome.amount);
+    nextLog = attachNoticeFact(nextLog, committedFact("lost 1 HP", 1));
     nextLog = addLog(nextLog, `${source.name} loses 1 HP from Axe of Insanity${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`);
     const updatedSource = { ...source, hp } satisfies PlayerRow;
     if (isDying(hp)) {
@@ -6787,7 +6814,9 @@ export async function POST(request: Request) {
     const remaining = triggerOptionsFor(next, players);
     const resumed = resumeTriggerContinuation(trigger, triggerExecution, remaining.length > 0, nextResponseDeadline(players.find((player) => player.id === trigger.actorId)));
     if (!resumed) return json({ error: "That triggered effect cannot continue this event.", stale: true, room: await roomState(code, token) }, 409);
-    const effectNotice = addTriggeredEffectNotice(parse<string[]>(liveRoom.log_json, []), me.name, triggerExecution.presentation?.label ?? "an optional effect");
+    // The generic continue outcome reports no committed effect; preserve the
+    // informational event without claiming an actual skill result.
+    const effectNotice = addLogWithId(parse<string[]>(liveRoom.log_json, []), `${me.name} continues an optional reaction.`);
     const presentation = addLogWithId(effectNotice.log, `${remaining.length ? "Another reaction remains available." : "No further reactions remain."}`);
     if (remaining.length) {
       const reopened = resumed.kind === "reopen" ? resumed.pending : next;

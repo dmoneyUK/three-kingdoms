@@ -1417,3 +1417,25 @@ test("QA-02 Retaliation has one public H4 and a private gained card", async ({ b
     await Promise.all(contexts.map((context) => context.close()));
   }
 });
+
+test("QA-02 automatic public outcome uses H4 without revealing drawn cards", async ({ page, request }) => {
+  const attack = card("Attack", "qa02-auto-attack");
+  const secret = card("Dodge", "qa02-auto-hidden");
+  const room = await seed(request, [
+    { name: "SOURCE", role: "Lord", hero: "pan-feng", hp: 4, maxHp: 4, hand: [attack] },
+    { name: "TARGET", role: "Rebel", hero: "zhao-yun", hp: 3, maxHp: 4, hand: [] },
+    { name: "ALLY", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
+    { name: "FOURTH", role: "Renegade", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+  ], [secret, card("Peach", "qa02-auto-hidden-2")]);
+  await openPlayer(page, room, 1);
+  const play = await request.post(`${API}/api/rooms`, { data: { action: "play_card", code: room.code, token: room.players[0].token, cardId: attack.id, targetId: room.players[1].id } });
+  expect(play.ok()).toBeTruthy();
+  const hit = await request.post(`${API}/api/rooms`, { data: { action: "decline_response", code: room.code, token: room.players[1].token } });
+  expect(hit.ok()).toBeTruthy();
+  const h4 = page.locator(".public-interaction-event-announcement .public-card-display-journey-copy");
+  await expect(h4).toHaveCount(1, { timeout: 10_000 });
+  await expect(h4).toContainText("SOURCE used Axe of Insanity and drew 2 cards.");
+  await expect(page.locator(".effect-notice")).toHaveCount(0);
+  const observer = await view(request, room, 1);
+  expect(JSON.stringify(observer)).not.toContain(secret.id);
+});
