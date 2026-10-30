@@ -1,23 +1,25 @@
 # HANDOVER — Current Task Only
 
 Repository: `dmoneyUK/three-kingdoms`
-Target: `ux-v2`
-Worktree branch: `codex/quick-test-negation-duel` (target branch: `ux-v2`)
-Latest design reviewed: `docs/UX2-refine.md` §10.25.3 and its 2026-10-29 22:47 UTC Planner technical ruling.
+Target branch: `ux-v2`
+Worktree branch: `codex/quick-test-negation-duel`
+Latest design reviewed: `docs/UX2-refine.md` §10.25.3, including F1-R6A-O1 and R6C.
 
-## Latest relevant result — NEG-COPY-1 F1-R6B
+## Latest result — NEG-COPY-1 F1-R6A-O1
 
-**IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW.** Source SHA `98c7fc85c5b1b5472c925160a569844db403ef4e`; exact-SHA [Actions 40978932493](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40978932493) passed Lint/fast, API, Browser startup smoke, deploy and production smoke. Cloudflare Worker version: `fa7d4411-e6f0-4b07-95f1-e1394b26efb0`; direct production `GET /api/health` returned HTTP 200 with `{"ok":true,"worker":"available"}`. Focused local semantic/announcement tests passed 27/27, Worker/D1 privacy API test passed 23/23, build and scoped ESLint passed; no local UI/browser test was run. This does not accept NEG-COPY-1; the owner iPhone verdict remains pending/correction required.
+**TECHNICALLY VERIFIED / DEPLOYED — PENDING OWNER iPHONE REVIEW.** Source commit `bedc49d29d40b5166c4a13e20852fb8b43d1d896`; exact-SHA [Actions 40980908457](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40980908457) passed Lint/fast, API, browser startup/room smoke, D1 migration, Worker deploy, and production smoke. Worker version `ebea9cce-1ed5-4a6b-8502-073b0e992470`; direct production `GET /api/health` returned HTTP 200 with `{"ok":true,"worker":"available"}`.
 
-## NEG-COPY-1 F1-R6A-O1 — CURRENT TASK
+O1 persists a validated monotonic public ordinal and internal watermark in existing structured `rooms.log_json` records, preserves max-200 retention and legacy `appendOrder`, safely bootstraps retained legacy records, and fails closed for inconsistent metadata. Private/history records carry the watermark without receiving a public ordinal. Existing conditional claims prevent stale responses from committing duplicate/rewound sequence state; idle expiry now also compares the room snapshot and skips resolving rooms. No gameplay rules, timers, privacy semantics or H4/PAC/Console copy/layout changed.
 
-Complete the bounded P0 durable public-event ordering correction required by §10.25.3 before R6C. Persist a monotonic public ordinal in existing structured `rooms.log_json` records, preserve the current 200-record retention and legacy append-order consumers, and use only the durable validated ordinal for `PublicPresentationEvent.order`. Preserve R6B copy behavior and all game/privacy semantics. Do not change H4/PAC/Console wording or layout.
+The captured pre-fix rolling-index reproduction changed retained IDs `public-30/public-180/public-220` from orders `29/179/219` to `9/159/199` after trimming to 200 records. O1 keeps them at `30/180/220` before and after trim. Tests also verified a 200-entry legacy bootstrap remains stable across subsequent trim and that 205 private/history appends advance the next public ordinal from 1 to 2. Focused local semantic tests passed **15/15**; Worker/D1 API tests passed **37/37**, including competing final Negation Passes, once-only settlement, and cross-viewer public-order parity. Scoped ESLint, build and `git diff --check` passed. Local UI/browser testing: **0 minutes**. NEG-COPY-1 remains **OWNER NOT ACCEPTED / CORRECTION REQUIRED**; no phone acceptance is inferred.
 
-Acceptance boundaries: sequence every structured append path, including private/history records that carry the unchanged watermark; public presentational records increment exactly once; private or nonpresentational records do not increment. Bootstrap unsequenced retained legacy records in existing order without rewriting IDs/text/privacy. Reject inconsistent partial sequences. Ensure committed D1 order cannot duplicate/rewind under competing writes using the existing claim/CAS paths; stop with the exact SQL proof gap if the current protocol cannot guarantee it. No new event store, schema migration, gameplay change, UI/browser testing or inferred historical facts.
+### Timestamped O1 execution
 
-### Timestamped O1 progress
+- **2026-10-30 00:23 UTC:** R6B had reached its separate deployed boundary. Re-read §10.25.3 O1 and confirmed the P0 ordering correction must close before R6C.
+- **2026-10-30 00:37 UTC:** Completed the central structured-log ordinal helper, route projection and D1 stale-expiry protection; the captured before-fix orders demonstrated the 200-record index shift. Semantic 15/15, Worker/D1 37/37, scoped ESLint and diff checks passed; the build had passed earlier on the same source changes.
+- **2026-10-30 00:38–00:41 UTC:** Pushed source SHA `bedc49d2`; exact-SHA Actions 40980908457 passed all required jobs, including production deployment/smoke.
+- **2026-10-30 00:41 UTC:** Verified deployed Worker `ebea9cce-1ed5-4a6b-8502-073b0e992470` and production `/api/health` HTTP 200.
 
-- **2026-10-30 00:23 UTC:** R6B reached its separate safe delivery boundary: pushed and deployed at `98c7fc8`; all exact-SHA Actions jobs passed. Re-read the latest §10.25.3 O1 specification at origin HEAD `98c7fc85`; began with the failing truncation-order reproduction and audited structured append and D1 claim/write paths. R6A remains technically incomplete until O1 delivery is verified; NEG-COPY-1 remains **OWNER NOT ACCEPTED / CORRECTION REQUIRED**.
-- **2026-10-30 00:37 UTC:** Implemented the central `rooms.log_json` ordinal/watermark helper, routed all structured append helpers through it, projected only validated public ordinals, and preserved rolling `appendOrder` for existing consumers. Added a resolving-phase/room-state compare-and-swap guard to idle expiry so stale expiry cannot overwrite a claimed action log. No gameplay rules, H4/PAC copy/layout, timer, or private-view behavior changed.
-- **2026-10-30 00:37 UTC:** Captured pre-fix rolling-index mismatch: `public-30/public-180/public-220` changed from orders `29/179/219` to `9/159/199` across the 200-record trim. The durable result remains `30/180/220` before and after trim. The focused semantic suite passed **15/15**, including 220-record trim, 205 private/history appends, 200-record legacy bootstrap and subsequent trim, nested-skill order, privacy parity and synthetic provider. Focused Worker/D1 suites passed **37/37**, including concurrent final Negation Pass settlement, identical public ordinals across viewers, and no duplicate/rewound stored ordinals. Scoped ESLint and `git diff --check` passed. `npm run build` passed earlier in this same O1 implementation; no UI/browser tests were run.
-- **Current delivery state:** Local implementation and focused validation are complete. Commit, push, exact-SHA GitHub Actions, Worker deployment and production health verification remain pending. Do not begin R6C until this bounded O1 release is green. Keep owner phone review pending.
+## Next task — NEG-COPY-1 F1-R6C (NOT STARTED)
+
+At the next authorized task boundary, implement only the generic damage → triggered choice → committed effect or Skip → next action presentation proof from §10.25.3. Preserve the approved copy/layout and server-owned rules/privacy. Verify at least two existing Hero providers and one synthetic provider through the same shared path; do not add named card/Hero/skill branches. Re-read current §10.25.3 before implementation. Parent status remains pending owner real-iPhone review.
