@@ -48,6 +48,7 @@ function assertProjectionMatchesEngine(code, token) {
       actionRevision: view.actionRevision,
       timeline: view.timeline,
       causalEnvelope: view.causalEnvelope,
+      retainPublicEventAtRest: view.status === "playing" && !storedPending && !view.causalEnvelope && view.currentAction?.kind === "turn",
       oathRecipientIds: oathRecipientIds(view.players.map((player) => ({ id: player.id, alive: player.alive, hp: player.hp, maxHp: player.maxHp }))),
     });
     assert.deepEqual(view.presentationV2, expected, "route presentationV2 is projected from the persisted engine state");

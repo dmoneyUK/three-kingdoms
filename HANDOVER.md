@@ -32,3 +32,11 @@ Implement the §10.25.3 generic damage → triggered choice → committed effect
 **2026-10-30 09:32 UTC:** Rebuild passed and the focused Judgement Worker/D1 file passed 12/12, including Stauchness and Retaliation plus hidden/public card identity. The continuation projector now also retains matching committed facts when a child frame finishes and the same interaction advances. Next: run the focused semantic checks for that continuation, then the normal CI gate. UI/browser testing remains 0 minutes.
 
 **2026-10-30 09:32 UTC:** Semantic/snapshot checks passed 53/53; the shared H4 render checks passed 15/15; scoped projection lint and `git diff --check` passed. Two additional observer/causal assertions were added after the 12/12 API run and await CI. Fetched remote again: `origin/ux-v2` remains `ccade36e`; the latest code-changing push `bedc49d2` passed Actions 40980908457, and the intervening commit changes only Markdown, which the workflow ignores. Next: commit and push the R6C source and handoff, then verify its exact-SHA Actions and deployment before R6D.
+
+**2026-10-30 09:33 UTC:** Committed and pushed R6C source as `e88cce82c9e4d106cfce42e16f4b455530c0d8c5`. Exact-SHA [Actions 41034263684](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41034263684) is queued; deployment is not yet verified. This status update is local until the CI gate completes.
+
+**2026-10-30 09:35 UTC:** Actions 41034263684 failed its API job; lint/fast and browser startup smoke passed, deployment was skipped. Inspect the failed API assertions, apply only the necessary correction, and do not start R6D until a new exact-SHA run and deployment pass.
+
+**2026-10-30 09:35 UTC:** The single CI failure was the existing engine recomposition helper omitting the new server idle-boundary flag; the server's committed damage fact was present, and 149/150 cases in that shard passed. Updated the helper to derive the same flag from persisted pending/envelope and current action. Run that API file once before pushing the CI repair.
+
+**2026-10-30 09:36 UTC:** Rebuild and the focused engine projection API file passed 45/45. The repair changes the existing recomposition helper to mirror the server's new explicit idle condition; no assertion or check was disabled. Commit and push this CI correction, then wait for its exact-SHA workflow before R6D.
