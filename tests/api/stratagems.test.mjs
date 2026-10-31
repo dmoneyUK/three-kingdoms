@@ -181,6 +181,7 @@ test("Something Out of Nothing preserves Play Phase and reveals the stratagem wi
 
   const result = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "drawtwo-tactic" });
   assert.equal(result.status, 200);
+  assert.ok(Number.isFinite(result.data.room.serverNow), "the private arrival window is evaluated against the server clock");
   assert.equal(result.data.room.phase, "play");
   assert.equal(result.data.drawnCards.length, 2);
   assert.equal(result.data.room.myHand.length, 2);
@@ -192,9 +193,16 @@ test("Something Out of Nothing preserves Play Phase and reveals the stratagem wi
   assert.equal(publicPlay.target, "Host");
   const drawHistory = result.data.room.timeline.find((event) => /plays Something Out of Nothing and draws 2 cards/.test(event.message ?? ""));
   assert.equal(drawHistory.presentation, false);
+  const arrivals = result.data.room.timeline.filter((event) => event.type === "card" && event.privateHandTransfer);
+  assert.equal(arrivals.length, 2, "each committed draw has one private physical-card receipt");
+  assert.ok(arrivals.every((event) => event.privateHandTransfer.recipientId === hostPlayer.id
+    && event.privateHandTransfer.sourceZone === "deck"
+    && result.data.room.myHand.some((held) => held.id === event.card.id)));
   const opponentView = await state(game.code, game.members[1].token);
   assert.equal(opponentView.data.players.find((player) => player.id === hostPlayer.id).handCount, 2);
   assert.equal(opponentView.data.myHand.some((held) => result.data.drawnCards.some((drawn) => drawn.id === held.id)), false);
+  assert.equal(opponentView.data.timeline.some((event) => event.privateHandTransfer), false);
+  assert.ok(arrivals.every((event) => !JSON.stringify(opponentView.data).includes(event.card.id)));
 });
 
 test("Negating Something Out of Nothing consumes the committed cards without drawing", { timeout: 30_000 }, async () => {
@@ -476,6 +484,23 @@ test("Barbarian Invasion continues after Cao Cao obtains the staged AOE card wit
   const gained = await requestAndSettle("trigger", { code: game.code, token: caoMember.token, providerId: "cao_cao_jianxiong" });
   assert.equal(gained.status, 200, JSON.stringify(gained.data));
   assert.ok(gained.data.room.myHand.some((held) => held.id === invasion.id), "Treachery transfers the physical AOE card to Cao Cao");
+  const treacheryArrival = gained.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === invasion.id);
+  assert.equal(treacheryArrival?.privateHandTransfer?.sourceZone, "damage_cards");
+  assert.equal(treacheryArrival?.privateHandTransfer?.recipientId, cao.id);
+  assert.equal(treacheryArrival?.privateHandTransfer?.rootEventId, gained.data.room.timeline.find((event) => event.type === "card" && event.action === "play" && event.card?.id === invasion.id)?.id,
+    "the private transfer remains linked to the original public AOE root");
+  const treacheryOutcome = gained.data.room.timeline.find((event) => event.type === "message" && event.effectNotice
+    && event.publicFact?.effect?.kind === "gain_damage_cards");
+  assert.ok(treacheryOutcome, "the committed public outcome records Treachery without replaying the physical AOE as a new play");
+  assert.equal(treacheryOutcome.publicFact.amount, 1);
+  assert.equal(treacheryOutcome.publicFact.outcomeLabel, "obtained one damage card");
+  assert.equal(JSON.stringify(treacheryOutcome).includes(invasion.id), false, "generic public gain narration carries no card identity");
+  const publicTreacheryView = (await state(game.code, finalMember.token)).data;
+  assert.equal(publicTreacheryView.timeline.some((event) => event.privateHandTransfer), false, "the recipient-only arrival descriptor is hidden from other seats");
+  assert.deepEqual(publicTreacheryView.timeline.find((event) => event.id === treacheryOutcome.id)?.publicFact, treacheryOutcome.publicFact,
+    "the committed generic outcome is identical in the recipient and observer timelines");
+  assert.equal(publicTreacheryView.timeline.filter((event) => event.type === "card" && event.action === "play" && event.card?.id === invasion.id).length, 1,
+    "Treachery preserves the original public play without creating a second public play");
   assert.equal(gained.data.room.myHand.some((held) => held.id === firstAttack.id), false, "Treachery does not obtain an earlier response");
   assert.equal(gained.data.room.currentAction.actorId, final.id, "the AOE advances immediately after Treachery");
   assert.equal((await state(game.code, finalMember.token)).data.currentAction.requirement, "attack");
@@ -774,6 +799,12 @@ test("committed Steal exposes a root-linked public settlement without revealing 
     sourceZone: "hand",
     card: hiddenCard,
   }, "the authenticated Steal actor receives the exact committed Hand card bound to the settlement");
+  const privateArrival = settledView.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === hiddenCard.id);
+  assert.equal(privateArrival?.privateHandTransfer?.sourceZone, "hand");
+  assert.equal(privateArrival?.privateHandTransfer?.sourcePlayerId, target.id);
+  assert.equal(privateArrival?.privateHandTransfer?.recipientId, source.id);
+  assert.equal(targetView.timeline.some((event) => event.privateHandTransfer), false);
+  assert.equal(observerView.timeline.some((event) => event.privateHandTransfer), false);
   assert.equal(targetView.privateStealResult, null, "the victim receives no private Steal result face");
   assert.equal(observerView.privateStealResult, null, "other viewers receive no private Steal result face");
   assert.equal(JSON.stringify(targetView).includes(hiddenCard.id), false, "the victim response omits the stolen card identity");
@@ -900,11 +931,17 @@ test("Steal and Burning Bridges publish authoritative destination proofs for Han
         pendingTargetCard: view.pendingTargetCard,
         presentationV2: view.presentationV2,
         presentationSnapshot: view.presentationSnapshot,
-        timeline: view.timeline,
         log: view.log,
         players: view.players,
       });
       assert.equal(publicPayload.includes(handCard.id), effect === "Dismantle" && zone === "hand", "only committed Dismantle-to-Discard may reveal a Hand card face");
+      const privateArrivals = view.timeline.filter((event) => event.type === "card" && event.privateHandTransfer);
+      assert.equal(privateArrivals.length, effect === "Steal" && view.meId === source.id ? 1 : 0,
+        `${effect}/${zone} arrival receipt is private to the Steal recipient`);
+      if (privateArrivals.length) {
+        assert.equal(privateArrivals[0].privateHandTransfer.sourceZone, zone);
+        assert.equal(privateArrivals[0].privateHandTransfer.sourcePlayerId, target.id);
+      }
     }
 
     const sourceAfter = sourceView.players.find((player) => player.id === source.id);
@@ -1272,6 +1309,12 @@ test("Luoshen repeats real Judgements before delayed-card Judgements and preserv
   const luoshenRoot = first.data.room.causalEnvelope;
   assert.ok(luoshenRoot, "the first Luo River Judgement creates an authoritative root");
   assert.deepEqual(first.data.room.myHand.map((held) => held.id), [sevenSpades.id]);
+  const firstArrival = first.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === sevenSpades.id);
+  assert.equal(firstArrival?.privateHandTransfer?.sourceZone, "judgement");
+  assert.equal(firstArrival?.privateHandTransfer?.recipientId, sequence.zhen.id);
+  assert.equal(firstArrival?.privateHandTransfer?.rootResolutionId, luoshenRoot.resolutionId);
+  const otherViewer = (await state(sequence.code, sequence.token, false, sequence.sima.id)).data;
+  assert.equal(otherViewer.timeline.some((event) => event.privateHandTransfer?.cardId === sevenSpades.id), false, "the private arrival receipt is owner-only even though the judgement face was public");
   assert.equal(first.data.room.currentAction.triggerEvent, "turn_start");
   assert.equal(first.data.room.deckCount, 5);
 
@@ -1448,7 +1491,11 @@ test("Overindulgence uses the Judgement Zone and skips only a failed target's Pl
   assert.equal(judgementCancelled.data.causalEnvelope, null, "successful Negation settles the completed delayed Judgement root");
   assert.equal(judgementCancelled.data.log.filter((entry) => /Overindulgence's effect on Alice is cancelled by Negation\./.test(entry)).length, 2, "each negated Overindulgence records one cancellation");
   const afterJudgementNegation = await requestAndSettle("draw", { code: game.code, token: alice.token });
-  assert.equal(afterJudgementNegation.status, 200); assert.equal(afterJudgementNegation.data.room.phase, "play"); assert.equal(afterJudgementNegation.data.room.timeline.some((event) => event.card?.id === "dodge-unused-judgement"), false, "Negation cancels the delayed effect before a judgement card is drawn");
+  assert.equal(afterJudgementNegation.status, 200); assert.equal(afterJudgementNegation.data.room.phase, "play");
+  const cancelledOverindulgenceCard = afterJudgementNegation.data.room.timeline.filter((event) => event.card?.id === "dodge-unused-judgement");
+  assert.equal(cancelledOverindulgenceCard.some((event) => event.action === "reveal"), false, "Negation cancels the delayed effect before a judgement card is revealed");
+  assert.equal(cancelledOverindulgenceCard.find((event) => event.privateHandTransfer)?.privateHandTransfer?.sourceZone, "deck", "the same card may arrive through the later ordinary Draw Phase");
+  assert.ok(afterJudgementNegation.data.room.myHand.some((held) => held.id === "dodge-unused-judgement"));
 
 
 });
@@ -1778,7 +1825,10 @@ test("Rations Depleted targets at distance 1 and skips only a failed target's Dr
   const cancelled = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-rations-judgement-window" });
   assert.equal(cancelled.status, 200); assert.equal(cancelled.data.room.phase, "draw");
   const afterNegation = await requestAndSettle("draw", { code: game.code, token: alice.token });
-  assert.equal(afterNegation.status, 200); assert.equal(afterNegation.data.drawnCards.length, 2); assert.equal(afterNegation.data.room.timeline.some((event) => event.card?.id === "dodge-unused-rations-judge"), false);
+  assert.equal(afterNegation.status, 200); assert.equal(afterNegation.data.drawnCards.length, 2);
+  const cancelledRationsCard = afterNegation.data.room.timeline.filter((event) => event.card?.id === "dodge-unused-rations-judge");
+  assert.equal(cancelledRationsCard.some((event) => event.action === "reveal"), false, "Negation cancels Rations Depleted before a judgement reveal");
+  assert.equal(cancelledRationsCard.find((event) => event.privateHandTransfer)?.privateHandTransfer?.sourceZone, "deck", "the card is later drawn normally");
 
 
 });

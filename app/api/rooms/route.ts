@@ -33,6 +33,7 @@ import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presenta
 import { childCausalFrame, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
 import { advanceCausalSemanticCheckpoint } from "../causal-envelope";
 import { appendSequencedLogRecord, publicEventSequencesFromLog } from "../../../game/public-log-sequence";
+import { PRIVATE_HAND_REVEAL_DURATION_MS } from "../../../game/private-hand.js";
 
 export const runtime = "edge";
 
@@ -1132,7 +1133,52 @@ function addCardEvent(log: string[], player: string, card: Card, target = player
   return appendSequencedLogRecord(log, "@card:", { id: eventId, player, target, card, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential") });
 }
 function addPrivateDrawEvent(log: string[], player: PlayerRow, card: Card, initialDeal = false) {
-  return appendSequencedLogRecord(log, "@card:", { id: crypto.randomUUID(), player: player.name, target: player.name, card, action: "draw", presentation: false, privateToPlayerId: player.id, drawPlayerId: player.id, ...presentationMeta(log, initialDeal ? { initialDeal: true } : undefined, "informational") });
+  return addPrivateHandArrivalEvent(log, player, card, { sourceZone: "deck" }, { action: "draw", initialDeal });
+}
+type PrivateHandTransferSource = {
+  sourceZone: "deck" | "hand" | "equipment" | "judgement" | "harvest_pool" | "damage_cards" | "distribution";
+  sourcePlayerId?: string;
+  rootEventId?: string;
+  rootResolutionId?: string;
+  interactionId?: string;
+  frameId?: string;
+};
+function addPrivateHandArrivalEvent(
+  log: string[],
+  player: PlayerRow,
+  card: Card,
+  source: PrivateHandTransferSource,
+  options: { action?: "draw" | "gain"; initialDeal?: boolean; privateStealResult?: Record<string, unknown> } = {},
+) {
+  const eventId = crypto.randomUUID();
+  const committedAt = Date.now();
+  const privateHandTransfer = {
+    semantics: "PRIVATE_PROVEN",
+    transferId: eventId,
+    cardId: card.id,
+    recipientId: player.id,
+    sourceZone: source.sourceZone,
+    ...(source.sourcePlayerId ? { sourcePlayerId: source.sourcePlayerId } : {}),
+    destinationZone: "hand",
+    committedAt,
+    revealUntil: committedAt + PRIVATE_HAND_REVEAL_DURATION_MS,
+    ...(source.rootEventId ? { rootEventId: source.rootEventId } : {}),
+    ...(source.rootResolutionId ? { rootResolutionId: source.rootResolutionId } : {}),
+    ...(source.interactionId ? { interactionId: source.interactionId } : {}),
+    ...(source.frameId ? { frameId: source.frameId } : {}),
+  };
+  return appendSequencedLogRecord(log, "@card:", {
+    id: eventId,
+    player: player.name,
+    target: player.name,
+    card,
+    action: options.action ?? "gain",
+    presentation: false,
+    privateToPlayerId: player.id,
+    ...(options.action === "draw" ? { drawPlayerId: player.id, ...presentationMeta(log, options.initialDeal ? { initialDeal: true } : undefined, "informational") } : {}),
+    privateHandTransfer,
+    ...(options.privateStealResult ? { privateStealResult: options.privateStealResult } : {}),
+  });
 }
 function addPrivateStealResultEvent(log: string[], source: PlayerRow, roomCode: string, settlementEventId: string, proof: PresentationStealSettlementProof, card: Card) {
   if (proof.sourceZone !== "hand" || proof.sourceId !== source.id || !settlementEventId) return log;
@@ -1146,7 +1192,10 @@ function addPrivateStealResultEvent(log: string[], source: PlayerRow, roomCode: 
     targetId: proof.targetId,
     sourceZone: proof.sourceZone,
   };
-  return appendSequencedLogRecord(log, "@card:", { id: crypto.randomUUID(), player: source.name, target: source.name, card, action: "gain", presentation: false, privateToPlayerId: source.id, drawPlayerId: source.id, privateStealResult: privateResult });
+  return addPrivateHandArrivalEvent(log, source, card, {
+    sourceZone: "hand", sourcePlayerId: proof.targetId,
+    rootEventId: proof.rootEventId, rootResolutionId: proof.rootResolutionId,
+  }, { action: "gain", privateStealResult: privateResult });
 }
 function addCardEventWithId(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" = "play", presentation = true, meta?: PresentationMeta) {
   const eventId = crypto.randomUUID();
@@ -1759,6 +1808,7 @@ async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePh
     discard = draw.discard;
     drawnCards = draw.drawn;
     log = addHistory(draw.log, `${target.name} draws ${draw.drawn.length} cards.`, target.id);
+    for (const drawn of drawnCards) log = addPrivateDrawEvent(log, target, drawn);
     const hand = [...parse<Card[]>(target.hand_json, []), ...draw.drawn];
     writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), target.id));
   }
@@ -1774,6 +1824,7 @@ async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePh
 async function resolveDrawPhaseReplacement(room: RoomRow, target: PlayerRow, targets: PlayerRow[], resumePhase: string, deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = []) {
   let targetHand = parse<Card[]>(target.hand_json, []);
   const transferred: Card[] = [];
+  const transferSourceIds: string[] = [];
   for (const source of targets) {
     const sourceHand = parse<Card[]>(source.hand_json, []);
     if (!sourceHand.length) return null;
@@ -1782,10 +1833,13 @@ async function resolveDrawPhaseReplacement(room: RoomRow, target: PlayerRow, tar
     if (!obtained) return null;
     targetHand = [...targetHand, obtained];
     transferred.push(obtained);
+    transferSourceIds.push(source.id);
     writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id));
   }
   const sourceNames = targets.map((source) => source.name);
-  for (const obtained of transferred) log = addPrivateDrawEvent(log, target, obtained);
+  for (const [index, obtained] of transferred.entries()) {
+    log = addPrivateHandArrivalEvent(log, target, obtained, { sourceZone: "hand", sourcePlayerId: transferSourceIds[index] });
+  }
   log = addHistory(log, `${target.name} uses Assault and obtains 1 hand card from ${sourceNames.join(" and ")}.`, target.id);
   const flags = drawPhaseFlags(resumePhase);
   writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id));
@@ -2167,6 +2221,14 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
     if (result.status === "satisfied") {
       const hand = [...parse<Card[]>(target.hand_json, []), finalCard];
       let nextLog = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} with Godess of Luo River and obtains it.`, undefined, judgement.resolutionId);
+      nextLog = addPrivateHandArrivalEvent(nextLog, target, finalCard, {
+        sourceZone: "judgement",
+        sourcePlayerId: target.id,
+        ...(finalEventId ? { rootEventId: finalEventId } : {}),
+        rootResolutionId: judgement.resolutionId,
+        ...(judgement.causal?.interactionId ? { interactionId: judgement.causal.interactionId } : {}),
+        ...(judgement.causal?.frameId ? { frameId: judgement.causal.frameId } : {}),
+      });
       nextLog = addLog(nextLog, `${target.name} may use Godess of Luo River again.`);
       const turnStartContinuation: TurnStartTriggerContinuation = { kind: "turn_start_event", playerId: target.id, ...(judgement.causal ? { causal: judgement.causal } : {}) };
       const pending: TriggerPending = withPresentationBarrier({
@@ -2390,9 +2452,13 @@ function gameTimeline(entries: string[], viewerPlayerId?: string) {
 }
 function privateStealResultForEvent(event: Record<string, unknown>, roomCode: string, viewerId: string) {
   const proof = record(event.privateStealResult);
+  const transfer = record(event.privateHandTransfer);
   const card = record(event.card);
   if (event.type !== "card" || event.action !== "gain" || event.presentation !== false
-    || event.privateToPlayerId !== viewerId || event.drawPlayerId !== viewerId
+    || event.privateToPlayerId !== viewerId
+    || transfer?.semantics !== "PRIVATE_PROVEN" || transfer.recipientId !== viewerId
+    || transfer.destinationZone !== "hand" || transfer.sourceZone !== "hand"
+    || transfer.cardId !== card?.id || transfer.transferId !== event.id
     || proof?.semantics !== "PRIVATE_PROVEN" || proof.roomCode !== roomCode
     || proof.sourceId !== viewerId || proof.sourceZone !== "hand"
     || typeof proof.settlementEventId !== "string" || !proof.settlementEventId
@@ -2676,7 +2742,8 @@ async function settleBorrowedSwordNoAttackTarget(input: {
       return;
     }
     const sourceHand = [...sourceHandBefore, weapon];
-    const log = addLog(input.log, `${source.name} obtains ${cardDefinition(weapon.kind).name} from ${holder.name} because no legal forced Attack target is available.`);
+    let log = addLog(input.log, `${source.name} obtains ${cardDefinition(weapon.kind).name} from ${holder.name} because no legal forced Attack target is available.`);
+    log = addPrivateHandArrivalEvent(log, source, weapon, { sourceZone: "equipment", sourcePlayerId: holder.id });
     const writes = await db().batch([
       db().prepare("UPDATE players SET equipment_json = CASE WHEN id = ? THEN ? ELSE equipment_json END, hand_json = CASE WHEN id = ? THEN ? ELSE hand_json END WHERE id IN (?, ?) AND EXISTS (SELECT 1 FROM players WHERE id = ? AND equipment_json = ?) AND EXISTS (SELECT 1 FROM players WHERE id = ? AND hand_json = ?) AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND phase = 'resolving' AND pending_json = ?)")
         .bind(holder.id, JSON.stringify(equipment), source.id, JSON.stringify(sourceHand), holder.id, source.id, holder.id, holder.equipment_json, source.id, source.hand_json, input.roomId, expectedPendingJson),
@@ -3409,6 +3476,7 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
   const writes = [env.DB.prepare("UPDATE players SET hp = 0, alive = 0, hand_json = '[]', judgement_json = '[]', equipment_json = '{}' WHERE id = ?").bind(pending.targetId)];
   if (target?.role === "Rebel" && source?.alive) {
     const reward = drawCards(deck, discard, 3, log); deck = reward.deck; discard = reward.discard; log = reward.log;
+    for (const drawn of reward.drawn) log = addPrivateDrawEvent(log, source, drawn);
     const sourceHand = [...parse<Card[]>(source.hand_json, []), ...reward.drawn];
     writes.push(env.DB.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id));
     log = addLog(log, `${source.name} defeated Rebel ${target.name} and draws ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}.`, source.id);
@@ -3814,6 +3882,7 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
   if (pending.effect.kind === "draw_two") {
     const playedIndex = discard.findIndex((card) => card.id === pending.effect.cardId); const played = playedIndex >= 0 ? discard.splice(playedIndex, 1)[0] : null;
     const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; if (played) discard.push(played); log = addHistory(draw.log, `${source.name} plays Something Out of Nothing and draws ${draw.drawn.length} cards.`, source.id);
+    for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, source, drawn);
     const hand = [...parse<Card[]>(source.hand_json, []), ...draw.drawn];
     const settled = await db().batch([
       expectedPendingJson
@@ -5590,7 +5659,15 @@ async function beginHarvestTarget(room: RoomRow, pending: HarvestPending, player
 async function resolveHarvestChoice(room: RoomRow, pending: HarvestPending, actor: PlayerRow, players: PlayerRow[], chosen: Card) {
   const hand = [...parse<Card[]>(actor.hand_json, []), chosen];
   let log = parse<string[]>(room.log_json, []);
-  log = addCardEvent(log, actor.name, chosen, actor.name, "gain", false);
+  const progress = pending.participantProgress;
+  log = addPrivateHandArrivalEvent(log, actor, chosen, {
+    sourceZone: "harvest_pool",
+    sourcePlayerId: pending.sourceId,
+    ...(progress?.rootEventId ? { rootEventId: progress.rootEventId } : {}),
+    ...(progress?.rootResolutionId ? { rootResolutionId: progress.rootResolutionId } : {}),
+    ...(pending.causal?.interactionId ? { interactionId: pending.causal.interactionId } : {}),
+    ...(pending.causal?.frameId ? { frameId: pending.causal.frameId } : {}),
+  });
   log = addHistory(log, `${actor.name} chooses ${chosen.rank}${chosen.suit} ${cardDefinition(chosen.kind).name} from Bumper Harvest.`);
   let remainingPending: HarvestPending = {
     ...pending,
@@ -5942,7 +6019,11 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   };
   const viewerTimeline = gameTimeline(rawLog, me?.id);
   const privateStealResultEvents = viewerTimeline.filter((event) => event.privateStealResult !== undefined);
-  const projectedTimeline = viewerTimeline.filter((event) => event.privateStealResult === undefined);
+  const projectedTimeline = viewerTimeline.map((event) => {
+    if (event.privateStealResult === undefined) return event;
+    const { privateStealResult, ...transferEvent } = event;
+    return privateStealResult === undefined ? event : transferEvent;
+  });
   const publicTimeline = gameTimeline(rawLog).filter((event) => event.presentation !== false && typeof event.privateToPlayerId !== "string");
   const presentationInput = {
     pending: negationWindow ? {
@@ -5988,6 +6069,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const presentationSnapshot = composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null, publicNextDecision, viewerNegationChoice });
   return {
     ...(attackDodgeProjectionDiagnostics ? { attackDodgeProjectionDiagnostics } : {}),
+    serverNow: Date.now(),
     code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, isTestRoom: Boolean(room.test_room), testHandPreset: hostTestHandPreset, responseCountdownVisibleAt: concealPrivateTriggerDecision ? 0 : responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending && !concealPrivateTriggerDecision ? { kind: responsePending || negationWindow ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,
     isHost: isRoomHost, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
@@ -6455,7 +6537,14 @@ export async function POST(request: Request) {
         const gained = byRecipient.get(player.id) ?? [];
         if (!gained.length) return player;
         let nextLog = log;
-        for (const card of gained) nextLog = addPrivateDrawEvent(nextLog, player, card);
+        for (const card of gained) nextLog = addPrivateHandArrivalEvent(nextLog, player, card, {
+          sourceZone: "distribution",
+          sourcePlayerId: distribution.actorId,
+          ...(distribution.resumeDamageSuffered.rootEventId ? { rootEventId: distribution.resumeDamageSuffered.rootEventId } : {}),
+          ...(distribution.resumeDamageSuffered.resolutionId ? { rootResolutionId: distribution.resumeDamageSuffered.resolutionId } : {}),
+          ...(distribution.resumeDamageSuffered.interactionId ? { interactionId: distribution.resumeDamageSuffered.interactionId } : {}),
+          ...(distribution.resumeDamageSuffered.frameId ? { frameId: distribution.resumeDamageSuffered.frameId } : {}),
+        });
         log = nextLog;
         const hand = [...parse<Card[]>(player.hand_json, []), ...gained];
         return { ...player, hand_json: JSON.stringify(hand) };
@@ -6685,6 +6774,10 @@ export async function POST(request: Request) {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive);
         if (!target) return json({ error: "The Benevolence target is no longer available.", stale: true, room: await roomState(code, token) }, 409);
         const targetHand = [...parse<Card[]>(target.hand_json, []), ...selected];
+        let transferLog = addLog(log, `${liveMe.name} gives ${selected.length} card${selected.length === 1 ? "" : "s"} to ${target.name} with Benevolence.`);
+        for (const card of selected) {
+          transferLog = addPrivateHandArrivalEvent(transferLog, target, card, { sourceZone: "hand", sourcePlayerId: liveMe.id });
+        }
         const given = (skillState.rendeGiven ?? 0) + selected.length;
         const recoveryReached = !skillState.rendeRecovered && given >= 2;
         const beforeHp = liveMe.hp ?? 0;
@@ -6692,8 +6785,7 @@ export async function POST(request: Request) {
         const amountRecovered = recoveredAmount(beforeHp, maxHp, recoveryReached ? 1 : 0);
         const shouldRecover = amountRecovered > 0;
         const nextState = { ...skillState, turnPlayerId: liveMe.id, rendeGiven: given, rendeRecovered: Boolean(skillState.rendeRecovered) || recoveryReached };
-        log = addCardGroupEvent(log, liveMe.name, selected, "play", true, target.name, `${liveMe.name} gives cards to ${target.name} with Benevolence.`);
-        log = addLog(log, shouldRecover ? `${liveMe.name} recovers 1 HP from Benevolence.` : recoveryReached ? `${liveMe.name} reaches Benevolence's recovery threshold but is already at full HP.` : `${liveMe.name} uses Benevolence on ${target.name}.`);
+        log = addLog(transferLog, shouldRecover ? `${liveMe.name} recovers 1 HP from Benevolence.` : recoveryReached ? `${liveMe.name} reaches Benevolence's recovery threshold but is already at full HP.` : `${liveMe.name} uses Benevolence on ${target.name}.`);
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), applyRecovery(beforeHp, amountRecovered, maxHp), liveMe.id),
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id),
@@ -6937,12 +7029,13 @@ export async function POST(request: Request) {
         const draw = drawCards(deck, discard, 1, log);
         deck = draw.deck;
         discard = draw.discard;
+        log = draw.log;
         let nextHand = parse<Card[]>(source.hand_json, []);
         if (draw.drawn.length) {
           nextHand = [...nextHand, ...draw.drawn];
           for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, source, drawn);
         }
-        log = addHistory(draw.log, `${source.name} uses Cultivation and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, source.id);
+        log = addHistory(log, `${source.name} uses Cultivation and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, source.id);
         nextPlayers = players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(nextHand) } : player);
       } else {
         log = addLog(log, `${source.name} declines Cultivation; the Stratagem continues.`);
@@ -7190,6 +7283,12 @@ export async function POST(request: Request) {
       const settlementProof = fanjianSettlementProofFor(presentation.log, continuation, outcome);
       const result = addLogWithId(presentation.log, `${target.name} chooses ${card.rank}${card.suit}. ${outcome === "SUITS_MATCHED" ? "The suits match; no damage is dealt." : `${target.name} takes 1 damage from Sowing Distrust.`}`, undefined, { importance: "essential", finalResult: true });
       log = result.log;
+      log = addPrivateHandArrivalEvent(log, target, card, {
+        sourceZone: "hand",
+        sourcePlayerId: source.id,
+        rootEventId: presentation.eventId,
+        rootResolutionId: latestResolutionId(presentation.log),
+      });
       if (continuation.guess === card.suit) {
         if (settlementProof) log = attachFanjianSettlement(log, result.eventId, settlementProof);
         await db.batch([
@@ -7259,6 +7358,12 @@ export async function POST(request: Request) {
         const hand = [...parse<Card[]>(actor.hand_json, []), finalCard];
         log = addTriggeredEffectNotice(log, actor.name, "Jealousy of God", triggerPublicFact).log;
         log = addFinalResult(log, `${actor.name} activates Jealousy of God and obtains ${finalCard.rank}${finalCard.suit}.`, undefined, continuation.judgement.resolutionId);
+        log = addPrivateHandArrivalEvent(log, actor, finalCard, {
+          sourceZone: "judgement",
+          sourcePlayerId: actor.id,
+          rootEventId: trigger.readyAfterEventId ?? continuation.judgement.revealedEventId,
+          rootResolutionId: continuation.judgement.resolutionId,
+        });
         await db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id).run();
         await resolveJudgementContinuation(liveRoom, continuation.judgement, finalCard, players.map((player) => player.id === actor.id ? { ...player, hand_json: JSON.stringify(hand) } : player), parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log, [], trigger.readyAfterEventId ?? continuation.judgement.revealedEventId, true, true);
       } else {
@@ -7637,11 +7742,21 @@ export async function POST(request: Request) {
             ...triggerPublicFact,
             amount: available.length,
             outcomeLabel: available.length === 1
-              ? "obtained the card that caused the damage"
-              : `obtained ${available.length} cards that caused the damage`,
+              ? "obtained one damage card"
+              : `obtained ${available.length} damage cards`,
           } : undefined;
-          log = addCardGroupEvent(log, target.name, available, "play", true, target.name, `${target.name} obtains the damage card with Treachery.`, committedFact ? { publicFact: committedFact } : undefined);
-          log = addLog(log, `${target.name} obtains the card that caused the damage with Treachery.`);
+          log = addTriggeredEffectNotice(log, target.name, triggerExecution.presentation?.label ?? "Treachery", committedFact).log;
+          for (const card of available) {
+            log = addPrivateHandArrivalEvent(log, target, card, {
+              sourceZone: "damage_cards",
+              ...(continuation.sourceId ? { sourcePlayerId: continuation.sourceId } : {}),
+              ...(continuation.rootEventId ? { rootEventId: continuation.rootEventId } : {}),
+              ...(continuation.resolutionId ? { rootResolutionId: continuation.resolutionId } : {}),
+              ...(continuation.interactionId ? { interactionId: continuation.interactionId } : {}),
+              ...(continuation.frameId ? { frameId: continuation.frameId } : {}),
+            });
+          }
+          log = addLog(log, `${target.name} obtains ${available.length} damage card${available.length === 1 ? "" : "s"} with Treachery.`);
           const nextContinuation = { ...gained.continuation, resolvedEffectIds: [...new Set([...(gained.continuation.resolvedEffectIds ?? []), triggerExecution.effectId])] } satisfies DamageSufferedTriggerContinuation;
           await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), target.id)]);
           await continueDamageSufferedEvent(liveRoom, nextContinuation, players.map((player) => player.id === target.id ? { ...player, hand_json: JSON.stringify(hand) } : player), parse<Card[]>(liveRoom.deck_json, []), discard, log);
@@ -7656,7 +7771,17 @@ export async function POST(request: Request) {
           const nextJudgement = sourceJudgement.filter((card) => card.id !== selected.id);
           const lostEquipment = Object.values(sourceEquipment).some((card) => card?.id === selected.id) ? [selected] : [];
           const targetHand = [...parse<Card[]>(target.hand_json, []), selected];
-          let gainLog = handIndex >= 0 ? addPrivateDrawEvent(log, target, selected) : addCardEvent(log, target.name, selected, target.name, "gain", true);
+          const sourceZone: PrivateHandTransferSource["sourceZone"] = handIndex >= 0
+            ? "hand"
+            : Object.values(sourceEquipment).some((card) => card?.id === selected.id) ? "equipment" : "judgement";
+          let gainLog = addPrivateHandArrivalEvent(log, target, selected, {
+            sourceZone,
+            sourcePlayerId: sourcePlayer.id,
+            ...(continuation.rootEventId ? { rootEventId: continuation.rootEventId } : {}),
+            ...(continuation.resolutionId ? { rootResolutionId: continuation.resolutionId } : {}),
+            ...(continuation.interactionId ? { interactionId: continuation.interactionId } : {}),
+            ...(continuation.frameId ? { frameId: continuation.frameId } : {}),
+          });
           const committedFact = triggerPublicFact ? {
             ...triggerPublicFact,
             outcomeLabel: "obtained one card",
@@ -8114,6 +8239,14 @@ export async function POST(request: Request) {
       } else {
         log = addHistory(log, message);
       }
+      if (!(settlementProof && zone === "hand")) {
+        log = addPrivateHandArrivalEvent(log, me, chosen, {
+          sourceZone: zone,
+          sourcePlayerId: target.id,
+          ...(settlementProof?.rootEventId ? { rootEventId: settlementProof.rootEventId } : {}),
+          ...(settlementProof?.rootResolutionId ? { rootResolutionId: settlementProof.rootResolutionId } : {}),
+        });
+      }
     }
     await db.batch([
       db.prepare("UPDATE players SET hand_json = ?, judgement_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), JSON.stringify(targetJudgement), JSON.stringify(targetEquipment), target.id),
@@ -8230,7 +8363,13 @@ export async function POST(request: Request) {
       }
       const equipment = equipmentZone(currentHolder); delete equipment.weapon;
       const sourceHand = [...parse<Card[]>(currentSource.hand_json, []), weapon];
-      const log = addLog(logBase, `${source.name} obtains ${cardDefinition(weapon.kind).name} from ${currentHolder.name} after the forced Attack fails.`);
+      let log = addLog(logBase, `${source.name} obtains ${cardDefinition(weapon.kind).name} from ${currentHolder.name} after the forced Attack fails.`);
+      log = addPrivateHandArrivalEvent(log, currentSource, weapon, {
+        sourceZone: "equipment",
+        sourcePlayerId: currentHolder.id,
+        ...(continuation.causal?.interactionId ? { interactionId: continuation.causal.interactionId } : {}),
+        ...(continuation.causal?.frameId ? { frameId: continuation.causal.frameId } : {}),
+      });
       await db.batch([
         db.prepare("UPDATE players SET equipment_json = ? WHERE id = ?").bind(JSON.stringify(equipment), currentHolder.id),
         db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), currentSource.id),

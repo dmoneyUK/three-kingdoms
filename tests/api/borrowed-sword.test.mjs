@@ -146,6 +146,10 @@ test("Borrowed Sword transfers its Weapon when Empty Fortress leaves no legal fo
   assert.equal(resolved.data.room.pendingBorrowedSword, null);
   assert.equal(resolved.data.room.players.find((player) => player.id === holder.id).equipmentCards.some((item) => item.id === weapon.id), false);
   assert.equal((await state(game.code, host.token)).data.myHand.some((item) => item.id === weapon.id), true, "the source obtains the exact Weapon when no Attack target exists");
+  const transferReceipt = resolved.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === weapon.id);
+  assert.equal(transferReceipt?.privateHandTransfer?.sourceZone, "equipment");
+  assert.equal(transferReceipt?.privateHandTransfer?.sourcePlayerId, holder.id);
+  assert.equal((await state(game.code, game.members[1].token)).data.timeline.some((event) => event.privateHandTransfer), false);
   assert.equal(discardIds(game.code).filter((id) => id === borrowed.id).length, 1);
   assert.equal(roomCardCount(game.code, borrowed.id), 1);
   assert.equal(roomCardCount(game.code, weapon.id), 1);
@@ -180,7 +184,12 @@ test("Borrowed Sword transfers the exact Weapon when all forced Attack targets d
   assert.equal(passed.data.room.currentAction.triggerEvent, "equipment_lost");
   assert.ok(passed.data.room.currentAction.triggerOptions.some((option) => option.effectId === "sun_shangxiang_daredevil"));
   assert.equal(passed.data.room.players.find((player) => player.id === holder.id).equipmentCards.some((item) => item.id === weapon.id), false);
-  assert.equal((await state(game.code, host.token)).data.myHand.some((item) => item.id === weapon.id), true);
+  const sourceView = (await state(game.code, host.token)).data;
+  assert.equal(sourceView.myHand.some((item) => item.id === weapon.id), true);
+  const privateTransfer = sourceView.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === weapon.id);
+  assert.equal(privateTransfer?.privateHandTransfer?.sourceZone, "equipment");
+  assert.equal(privateTransfer?.privateHandTransfer?.sourcePlayerId, holder.id);
+  assert.equal((await state(game.code, alice.token)).data.timeline.some((event) => event.privateHandTransfer?.cardId === weapon.id), false, "the forced Attacker does not see the recipient's private receipt");
   assert.equal(discardIds(game.code).filter((id) => id === borrowed.id).length, 1);
   assert.ok(passed.data.room.log.some((entry) => entry.includes("no legal forced Attack target is available")));
   assert.equal(roomCardCount(game.code, borrowed.id), 1);

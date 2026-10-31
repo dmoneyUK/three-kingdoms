@@ -339,6 +339,11 @@ test("Guo Jia Jealousy of God waits for the final Judgment card and handles Necr
   const acceptedResult = await requestAndSettle("trigger", { code: accepted.game.code, token: accepted.guoMember.token, providerId: "guo_jia_jealousy_of_god" });
   assert.equal(acceptedResult.status, 200, JSON.stringify(acceptedResult.data));
   assert.ok(acceptedResult.data.room.myHand.some((held) => held.id === replacement.id), "the replacement Judgment card enters Guo Jia's hand");
+  const jealousyArrival = acceptedResult.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === replacement.id);
+  assert.equal(jealousyArrival?.privateHandTransfer?.sourceZone, "judgement");
+  assert.equal(jealousyArrival?.privateHandTransfer?.recipientId, accepted.guo.id);
+  const jealousyObserver = (await state(accepted.game.code, accepted.simaMember.token)).data;
+  assert.equal(jealousyObserver.timeline.some((event) => event.privateHandTransfer), false, "only Guo Jia receives the private Hand arrival receipt");
   assert.equal(roomCardCount(accepted.game.code, original.id), 1, "the original revealed card remains exactly once after normal discard/reshuffle processing");
   assert.equal(roomCardCount(accepted.game.code, replacement.id), 1, "the obtained replacement remains exactly once");
   assert.equal(JSON.parse(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(accepted.sima.id)} AND json_extract(value,'$.id')=${quote(replacement.id)}`)), 0, "Necromancy removes the replacement from Sima Yi");
@@ -522,6 +527,14 @@ test("Legacy privately distributes top two cards and repeats once per damage poi
   assert.equal(settled.room.players.find((player) => player.id === one.guo.id).hp, 3);
   assert.equal(settled.room.causalEnvelope, null);
   assert.deepEqual(settled.room.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
+  const legacyOwner = (await state(one.game.code, one.guoMember.token)).data;
+  const legacyObserver = (await state(one.game.code, one.game.members[2].token)).data;
+  const legacyArrivals = legacyOwner.timeline.filter((event) => event.type === "card" && event.privateHandTransfer);
+  assert.deepEqual(legacyArrivals.map((event) => event.privateHandTransfer.cardId), [firstCards[0].id, firstCards[1].id]);
+  assert.ok(legacyArrivals.every((event) => event.privateHandTransfer.sourceZone === "distribution"
+    && event.privateHandTransfer.recipientId === one.guo.id));
+  assert.equal(legacyObserver.timeline.some((event) => event.privateHandTransfer), false);
+  assert.equal(JSON.stringify(legacyObserver).includes(firstCards[0].id), false);
   assert.equal((await requestAndSettle("trigger", { code: one.game.code, token: one.guoMember.token, providerId: "private_card_distribution", assignments: [] })).status, 409, "stale distribution cannot replay cards");
   assert.ok(privateView.currentAction.triggerOptions.every((option) => option.effectId === "guo_jia_legacy"));
   void otherView;

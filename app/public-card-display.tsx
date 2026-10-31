@@ -173,18 +173,6 @@ export type PublicCardDisplayAction = {
   responses?: readonly PublicCardDisplayResponseNode[];
 };
 
-type ViewerPrivateStealResult = {
-  semantics: "PRIVATE_PROVEN";
-  roomCode: string;
-  eventId: string;
-  rootEventId: string;
-  rootResolutionId: string;
-  sourceId: string;
-  targetId: string;
-  sourceZone: "hand";
-  card: Card;
-};
-
 /**
  * Keeps the renderer owner stable while a proven Steal/Dismantle root moves
  * through Negation, target choice, and settlement presentation wrappers.
@@ -4074,7 +4062,6 @@ function SingleTargetCardJourney({
   compactPlayerNamesById,
   roomCode,
   viewerId,
-  privateStealResult,
   resultReadRemainingMs,
   onInspectCard,
   onJourneySettled,
@@ -4093,7 +4080,6 @@ function SingleTargetCardJourney({
   compactPlayerNamesById: CompactPublicPlayerNames;
   roomCode: string;
   viewerId: string;
-  privateStealResult?: ViewerPrivateStealResult | null;
   resultReadRemainingMs: number | null;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneySettled?: (settlementEventId: string) => void;
@@ -5001,21 +4987,7 @@ function SingleTargetCardJourney({
     : undefined);
   const targetCardMovement = action.settlement?.targetCardMovement;
   const publicTargetCardResultFace = targetCardMovement?.affectedCardFace;
-  const privateTargetCardResultFace = action.settlement?.outcome === "STEAL_RESOLVED"
-    && targetCardMovement?.sourceZone === "hand"
-    && privateStealResult?.semantics === "PRIVATE_PROVEN"
-    && privateStealResult.roomCode === roomCode
-    && privateStealResult.eventId === action.settlement.eventId
-    && privateStealResult.rootEventId === action.rootEventId
-    && privateStealResult.rootResolutionId === action.settlement.rootResolutionId
-    && privateStealResult.sourceId === action.sourceId
-    && action.targetId !== null
-    && privateStealResult.targetId === action.targetId
-    && privateStealResult.sourceZone === "hand"
-    && viewerId === action.sourceId
-    ? privateStealResult.card
-    : undefined;
-  const targetCardResultFace = publicTargetCardResultFace ?? privateTargetCardResultFace;
+  const targetCardResultFace = publicTargetCardResultFace;
   const targetCardResultProofValid = action.settlement?.outcome === "DISMANTLE_RESOLVED"
     ? targetCardMovement?.destinationZone === "discard"
       && targetCardMovement.destinationOwnerId === null
@@ -6282,7 +6254,6 @@ export function PublicCardDisplay({
   roomCode,
   viewerId,
   viewerSeat,
-  privateStealResult,
   resultReadRemainingMs = null,
   responseHistoryOwnership = [],
   onInspectCard,
@@ -6303,7 +6274,6 @@ export function PublicCardDisplay({
   roomCode: string;
   viewerId: string;
   viewerSeat: number | null;
-  privateStealResult?: ViewerPrivateStealResult | null;
   resultReadRemainingMs?: number | null;
   responseHistoryOwnership?: readonly { eventId: string; cardIds: readonly string[] }[];
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
@@ -6324,7 +6294,7 @@ export function PublicCardDisplay({
   }
   if (action.motion?.type === "single-target" || action.motion?.type === "negation"
     || action.motion?.type === "group-root" || action.motion?.type === "lust-cost") {
-    return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHarvestHistory={retainHarvestHistory} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} privateStealResult={privateStealResult} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
+    return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHarvestHistory={retainHarvestHistory} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
   }
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {
     return <DuelCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHistoryDuringInspection={retainDuelHistoryDuringInspection} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;

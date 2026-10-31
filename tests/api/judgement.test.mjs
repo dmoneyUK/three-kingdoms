@@ -204,8 +204,19 @@ test("Sima Yi Retaliation uses the generic target-card picker with privacy and e
   assert.equal(publicOutcome?.effect?.label, undefined, "a hidden Hand card has no public face label");
   assert.equal(JSON.stringify(publicOutcome).includes("fankui-source-hidden-b"), false);
   assert.ok(obtained.data.room.presentationSnapshot.retainedPublicEventFacts?.some((fact) => fact.category === "DAMAGE_APPLIED"), "the committed damage remains linked to the skill outcome");
+  const privateArrival = obtained.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === "dodge-fankui-source-hidden-b");
+  assert.equal(privateArrival?.privateHandTransfer?.semantics, "PRIVATE_PROVEN");
+  assert.equal(privateArrival?.privateHandTransfer?.sourceZone, "hand");
+  assert.equal(privateArrival?.privateHandTransfer?.sourcePlayerId, game.source.id);
+  assert.equal(privateArrival?.privateHandTransfer?.recipientId, game.target.id);
+  assert.equal(privateArrival?.privateHandTransfer?.destinationZone, "hand");
+  assert.equal(privateArrival?.privateHandTransfer?.transferId, privateArrival?.id);
+  assert.ok(privateArrival?.privateHandTransfer?.revealUntil > privateArrival?.privateHandTransfer?.committedAt);
   const observerOutcome = (await state(game.code, game.members[2].token)).data.presentationSnapshot.retainedPublicEvent;
   assert.deepEqual(observerOutcome, publicOutcome, "the committed public outcome is identical for another viewer");
+  const observerAfterTransfer = (await state(game.code, game.members[2].token)).data;
+  assert.equal(observerAfterTransfer.timeline.some((event) => event.privateHandTransfer), false, "the private transfer receipt is absent from observer timelines");
+  assert.equal(JSON.stringify(observerAfterTransfer).includes("dodge-fankui-source-hidden-b"), false, "observer payload does not expose the transferred hidden card identity");
   const obtainedId = obtained.data.room.myHand[0]?.id;
   assert.equal(obtainedId, "dodge-fankui-source-hidden-b", "hand:1 obtains the exact card occupying that position");
   const remainingSourceIds = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(game.source.id)}`)).map((held) => held.id);
@@ -258,6 +269,8 @@ test("Retaliation can obtain an eligible public Equipment or Judgement card and 
   assert.equal(tookEquipment.status, 200, JSON.stringify(tookEquipment.data));
   assert.equal(tookEquipment.data.room.presentationSnapshot.retainedPublicEvent?.effect?.label, "Nio Shield", "face-up Equipment may be named in the public outcome");
   assert.deepEqual(tookEquipment.data.room.myHand.map((held) => held.id), [shield.id]);
+  assert.equal(tookEquipment.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer)?.privateHandTransfer?.sourceZone, "equipment");
+  assert.equal((await state(equipmentGame.code, equipmentGame.members[2].token)).data.timeline.some((event) => event.privateHandTransfer), false);
   assert.deepEqual(tookEquipment.data.room.players.find((player) => player.id === equipmentGame.source.id).equipmentCards, []);
 
   const delayed = card("Lightning", "fankui-public-judgement");
@@ -267,6 +280,7 @@ test("Retaliation can obtain an eligible public Equipment or Judgement card and 
   const tookJudgement = await requestAndSettle("trigger", { code: judgementGame.code, token: judgementGame.targetMember.token, providerId: "sima_yi_fankui", cardKeys: [delayed.id] });
   assert.equal(tookJudgement.status, 200, JSON.stringify(tookJudgement.data));
   assert.deepEqual(tookJudgement.data.room.myHand.map((held) => held.id), [delayed.id]);
+  assert.equal(tookJudgement.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer)?.privateHandTransfer?.sourceZone, "judgement");
   assert.deepEqual(tookJudgement.data.room.players.find((player) => player.id === judgementGame.source.id).judgementCards, []);
 
   const emptyGame = await openFankuiAttack({ sourceCards: [card("Attack", "fankui-empty-source")], expectReaction: false });
@@ -374,6 +388,16 @@ test("turn engine completes repeated rounds, rejects duplicate actions, and skip
       assert.equal(before.data.turnSeat, current.player.seat, `round ${round + 1} starts ${current.player.name}'s turn`); assert.equal(before.data.phase, "draw");
       const drawn = await requestAndSettle("draw", { code: game.code, token: current.member.token });
       assert.equal(drawn.status, 200); assert.equal(drawn.data.room.phase, "play"); assert.equal(drawn.data.drawnCards.length, 2);
+      if (round === 0 && index === 0) {
+        const receipts = drawn.data.room.timeline.filter((event) => event.type === "card" && event.privateHandTransfer && !event.initialDeal);
+        assert.equal(receipts.length, 2, "a normal multi-card draw has one committed private receipt per physical card");
+        assert.ok(receipts.every((event) => event.privateHandTransfer.sourceZone === "deck"
+          && event.privateHandTransfer.recipientId === current.player.id
+          && event.privateHandTransfer.cardId === event.card.id));
+        const observer = (await state(game.code, next.member.token)).data;
+        assert.equal(observer.timeline.some((event) => event.privateHandTransfer), false, "observers cannot see private draw receipts");
+        assert.ok(receipts.every((event) => !JSON.stringify(observer).includes(event.card.id)));
+      }
       assert.equal((await requestAndSettle("draw", { code: game.code, token: current.member.token })).status, 409, "a player cannot draw twice");
       assert.equal((await requestAndSettle("end_turn", { code: game.code, token: next.member.token })).status, 409, "the next player cannot act early");
       const ended = await requestAndSettle("end_turn", { code: game.code, token: current.member.token });

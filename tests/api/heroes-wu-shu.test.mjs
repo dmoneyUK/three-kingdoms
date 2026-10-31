@@ -17,7 +17,12 @@ test("Fanjian validates target ownership, empty hands, matching suits, once-per-
   await requestAndSettle("trigger", { code: matchGame.code, token: matchGame.members[0].token, providerId: "zhou_yu_fanjian", targetId: matchTarget.id });
   await requestAndSettle("trigger", { code: matchGame.code, token: matchGame.members[1].token, providerId: "zhou_yu_fanjian_choice", choice: "♥" });
   const matched = await requestAndSettle("trigger", { code: matchGame.code, token: matchGame.members[1].token, providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:0"] });
-  assert.equal(matched.status, 200, JSON.stringify(matched.data)); assert.equal(matched.data.room.players.find((player) => player.id === matchTarget.id).hp, 4); assert.equal((await requestAndSettle("trigger", { code: matchGame.code, token: matchGame.members[0].token, providerId: "zhou_yu_fanjian", targetId: matchTarget.id })).status, 409, "Fanjian cannot be used twice in one Play Phase");
+  assert.equal(matched.status, 200, JSON.stringify(matched.data)); assert.equal(matched.data.room.players.find((player) => player.id === matchTarget.id).hp, 4);
+  const fanjianArrival = matched.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === matchCard.id);
+  assert.equal(fanjianArrival?.privateHandTransfer?.sourcePlayerId, matchSource.id);
+  assert.equal(fanjianArrival?.privateHandTransfer?.recipientId, matchTarget.id);
+  assert.equal((await state(matchGame.code, matchGame.members[2].token)).data.timeline.some((event) => event.privateHandTransfer), false, "the transfer receipt remains private although Fanjian reveals the selected face");
+  assert.equal((await requestAndSettle("trigger", { code: matchGame.code, token: matchGame.members[0].token, providerId: "zhou_yu_fanjian", targetId: matchTarget.id })).status, 409, "Fanjian cannot be used twice in one Play Phase");
   for (const player of matchGame.room.players.slice(2)) setHand(player.id, [], 4, 4);
   assert.equal((await requestAndSettle("end_turn", { code: matchGame.code, token: matchGame.members[0].token })).status, 200);
   for (const index of [1, 2, 3]) {
@@ -76,17 +81,29 @@ test("Zhang Liao Assault replaces normal Draw Phase cards with private hand tran
   const oneBefore = new Set([hidden.id, ...oneDeck.map((held) => held.id)]);
   const obtained = await requestAndSettle("trigger", { code: one.code, token: one.members[0].token, providerId: "zhang_liao_assault", targetIds: [target.id] });
   assert.equal(obtained.status, 200, JSON.stringify(obtained.data)); assert.equal(obtained.data.room.phase, "play"); assert.equal(obtained.data.room.deckCount, 2, "Assault does not consume deck cards"); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(target.id)}`)), []); assert.deepEqual(obtained.data.room.myHand.map((held) => held.id), [hidden.id]); assert.deepEqual(new Set([...obtained.data.room.myHand.map((held) => held.id), ...JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(one.code)}`)).map((held) => held.id)]), oneBefore); const publicTimeline = (await state(one.code, one.members[1].token)).data.timeline; assert.equal(publicTimeline.some((entry) => [hidden.id].some((value) => JSON.stringify(entry).includes(value))), false, "public history does not reveal transferred card details");
+  const assaultArrival = obtained.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === hidden.id);
+  assert.equal(assaultArrival?.privateHandTransfer?.sourceZone, "hand");
+  assert.equal(assaultArrival?.privateHandTransfer?.sourcePlayerId, target.id);
+  assert.equal(publicTimeline.some((event) => event.privateHandTransfer), false);
 
   const two = await createHumanGame(); const twoSource = two.room.players[0]; const twoA = two.room.players[1]; const twoB = two.room.players[2]; const twoCardA = card("Peach", "assault-two-a", "♣"); const twoCardB = card("Dodge", "assault-two-b", "♠"); const twoDeck = [card("Attack", "assault-two-deck-a"), card("Attack", "assault-two-deck-b")];
   sql(`UPDATE players SET hero='zhang-liao' WHERE id=${quote(twoSource.id)}`); setHand(twoSource.id, [], 4, 4); setHand(twoA.id, [twoCardA], 4, 4); setHand(twoB.id, [twoCardB], 4, 4); setHand(two.room.players[3].id, [], 4, 4); setDeck(two.code, twoDeck); setTurn(two.code, twoSource.seat, "draw");
   await requestAndSettle("draw", { code: two.code, token: two.members[0].token }); const twoResolved = await requestAndSettle("trigger", { code: two.code, token: two.members[0].token, providerId: "zhang_liao_assault", targetIds: [twoA.id, twoB.id] });
   assert.equal(twoResolved.status, 200, JSON.stringify(twoResolved.data)); assert.equal(twoResolved.data.room.myHand.length, 2); assert.equal(twoResolved.data.room.deckCount, 2); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(twoA.id)}`)), []); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(twoB.id)}`)), []); assert.deepEqual(new Set(twoResolved.data.room.myHand.map((held) => held.id)), new Set([twoCardA.id, twoCardB.id]));
+  assert.equal(twoResolved.data.room.timeline.filter((event) => event.type === "card" && event.privateHandTransfer).length, 2,
+    "each physical Hand transfer has a distinct recipient-only CardFace receipt");
 
   const invalid = await createHumanGame(); const invalidSource = invalid.room.players[0]; const invalidA = invalid.room.players[1]; const invalidB = invalid.room.players[2]; const invalidCard = card("Peach", "assault-invalid", "♥");
   sql(`UPDATE players SET hero='zhang-liao' WHERE id=${quote(invalidSource.id)}`); setHand(invalidSource.id, [card("Dodge", "assault-self")], 4, 4); setHand(invalidA.id, [invalidCard], 4, 4); setHand(invalidB.id, [card("Attack", "assault-invalid-b")], 4, 4); setHand(invalid.room.players[3].id, [], 4, 4); setDeck(invalid.code, [card("Attack", "assault-invalid-deck-a"), card("Dodge", "assault-invalid-deck-b")]); setTurn(invalid.code, invalidSource.seat, "draw");
-  await requestAndSettle("draw", { code: invalid.code, token: invalid.members[0].token }); const invalidBefore = JSON.stringify(await state(invalid.code, invalid.members[0].token));
+  await requestAndSettle("draw", { code: invalid.code, token: invalid.members[0].token });
+  const invalidState = async () => {
+    const snapshot = await state(invalid.code, invalid.members[0].token);
+    const { serverNow: _serverNow, ...stableData } = snapshot.data;
+    return JSON.stringify({ ...snapshot, data: stableData });
+  };
+  const invalidBefore = await invalidState();
   for (const targetIds of [[invalidA.id, invalidB.id, invalid.room.players[3].id], [invalidA.id, invalidA.id], [invalidSource.id], [invalid.room.players[3].id]]) {
-    const rejected = await requestAndSettle("trigger", { code: invalid.code, token: invalid.members[0].token, providerId: "zhang_liao_assault", targetIds }); assert.equal(rejected.status, 409); assert.equal(JSON.stringify(await state(invalid.code, invalid.members[0].token)), invalidBefore, "invalid Assault selection leaves state unchanged");
+    const rejected = await requestAndSettle("trigger", { code: invalid.code, token: invalid.members[0].token, providerId: "zhang_liao_assault", targetIds }); assert.equal(rejected.status, 409); assert.equal(await invalidState(), invalidBefore, "invalid Assault selection leaves game state unchanged");
   }
   const staleContext = (await state(invalid.code, invalid.members[0].token)).data; const declinedInvalid = await requestAndSettle("decline_trigger", { code: invalid.code, token: invalid.members[0].token }); assert.equal(declinedInvalid.status, 200); const stale = await requestAndSettle("trigger", { code: invalid.code, token: invalid.members[0].token, providerId: "zhang_liao_assault", targetIds: [invalidA.id], context: { actionRevision: staleContext.actionRevision, meId: invalidSource.id, phase: "response", pendingKind: "trigger", actorId: invalidSource.id } }); assert.equal(stale.status, 409); assert.equal(stale.data.stale, true);
 

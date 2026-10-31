@@ -668,7 +668,21 @@ test("Benevolence counts exact physical cards cumulatively and spends its thresh
   const twoResult = await requestAndSettle("trigger", { code: two.game.code, token: two.game.members[0].token, providerId: "liu_bei_rende", cardIds: ["attack-rende-two-a", "dodge-rende-two-b"], targetId: two.target.id });
   assert.equal(twoResult.status, 200, JSON.stringify(twoResult.data)); assert.equal(twoResult.data.room.players.find((player) => player.id === two.source.id).hp, 4, "two cards recover once when Liu Bei is eligible");
   assert.deepEqual(discardIds(two.game.code), [], "Benevolence transfers cards without touching discard");
-  assert.deepEqual((await state(two.game.code, two.game.members[1].token)).data.myHand.map((held) => held.id), ["attack-rende-two-a", "dodge-rende-two-b"]);
+  const benevolenceRecipient = (await state(two.game.code, two.game.members[1].token)).data;
+  assert.deepEqual(benevolenceRecipient.myHand.map((held) => held.id), ["attack-rende-two-a", "dodge-rende-two-b"]);
+  const benevolenceArrivals = benevolenceRecipient.timeline.filter((event) => event.type === "card" && event.privateHandTransfer);
+  assert.deepEqual(benevolenceArrivals.map((event) => event.privateHandTransfer.cardId), ["attack-rende-two-a", "dodge-rende-two-b"]);
+  assert.ok(benevolenceArrivals.every((event) => event.privateHandTransfer.sourceZone === "hand"
+    && event.privateHandTransfer.sourcePlayerId === two.source.id
+    && event.privateHandTransfer.recipientId === two.target.id));
+  const benevolenceObserver = (await state(two.game.code, two.game.members[2].token)).data;
+  assert.equal(benevolenceObserver.timeline.some((event) => event.privateHandTransfer), false, "other seats do not receive private transfer receipts");
+  const serializedObserver = JSON.stringify(benevolenceObserver);
+  assert.equal(serializedObserver.includes("attack-rende-two-a"), false, "a transferred hidden card ID is not disclosed to observers");
+  assert.equal(serializedObserver.includes("dodge-rende-two-b"), false, "the second transferred hidden card ID is not disclosed to observers");
+  assert.equal(benevolenceRecipient.timeline.some((event) => event.type === "cards" && event.action === "play"
+    && event.cards.some((held) => held.id === "attack-rende-two-a" || held.id === "dodge-rende-two-b")), false,
+  "a hand transfer is not represented as a public card play");
 
   const split = await open([card("Attack", "rende-split-a"), card("Dodge", "rende-split-b")]);
   setHand(split.game.room.players[2].id, [], 4, 4);
