@@ -22,22 +22,49 @@ import {
 
 test("public width uses equal gutters for two seats on each side", () => {
   const table = { left: 0, right: 390, width: 390 };
-  const sides = [{ left: 8, right: 82, width: 74 }, { left: 10, right: 86, width: 76 }, { left: 306, right: 382, width: 76 }, { left: 304, right: 380, width: 76 }];
-  assert.equal(measuredPublicCorridorWidth(table, sides, { left: 320, right: 382, width: 62 }), 206);
-  assert.equal(measuredPublicCorridorWidth(table, [], null), 340);
+  const band = { top: 200, bottom: 280 };
+  const sides = [
+    { left: 8, right: 82, width: 74, top: 210, bottom: 260 },
+    { left: 10, right: 86, width: 76, top: 265, bottom: 310 },
+    { left: 306, right: 382, width: 76, top: 210, bottom: 260 },
+    { left: 304, right: 380, width: 76, top: 265, bottom: 310 },
+  ];
+  assert.equal(measuredPublicCorridorWidth(table, sides, { left: 320, right: 382, width: 62, top: 210, bottom: 250 }, 340, band), 206);
+  assert.equal(measuredPublicCorridorWidth(table, sides, null, 340, { top: 100, bottom: 150 }), 340);
 });
 
-test("countdown presence does not change the caption width", () => {
+test("6/8-seat side-column footprints constrain only their intersecting caption band", () => {
+  const table = { left: 0, right: 440, width: 440 };
+  const band = { top: 240, bottom: 330 };
+  const sixSeatSides = [
+    { left: 10, right: 86, width: 76, top: 245, bottom: 320 },
+    { left: 354, right: 430, width: 76, top: 245, bottom: 320 },
+  ];
+  const eightSeatSides = [
+    { left: 10, right: 86, width: 76, top: 245, bottom: 285 },
+    { left: 18, right: 94, width: 76, top: 270, bottom: 310 },
+    { left: 26, right: 102, width: 76, top: 295, bottom: 335 },
+    { left: 338, right: 414, width: 76, top: 245, bottom: 285 },
+    { left: 346, right: 422, width: 76, top: 270, bottom: 310 },
+    { left: 354, right: 430, width: 76, top: 295, bottom: 335 },
+  ];
+  assert.equal(measuredPublicCorridorWidth(table, sixSeatSides, null, 340, band), 256);
+  assert.equal(measuredPublicCorridorWidth(table, eightSeatSides, null, 340, band), 224);
+});
+
+test("H4 width ignores a right timer outside its fixed stage band and reserves its width when intersecting", () => {
   const prior = globalThis.getComputedStyle;
   globalThis.getComputedStyle = () => ({ right: "14px", visibility: "visible" });
-  const cluster = {};
+  const cluster = { getBoundingClientRect: () => ({ top: 620, bottom: 680, height: 60 }) };
   const zone = { getBoundingClientRect: () => ({ right: 437 }), querySelector: () => cluster };
   const table = { getBoundingClientRect: () => ({ left: 0, right: 440, width: 440 }), querySelectorAll: () => [], querySelector: () => zone };
   try {
-    const absent = publicCorridorWidth(table);
-    cluster.countdownMounted = true;
-    assert.equal(publicCorridorWidth(table), absent);
-    assert.equal(absent, 258);
+    const h4Band = { top: 300, bottom: 390 };
+    const widthWithoutTimer = publicCorridorWidth({ ...table, querySelector: () => ({ ...zone, querySelector: () => null }) }, h4Band);
+    const widthWithReservedTimer = publicCorridorWidth(table, h4Band);
+    assert.equal(widthWithoutTimer, 340);
+    assert.equal(widthWithReservedTimer, widthWithoutTimer);
+    assert.equal(publicCorridorWidth(table, { top: 630, bottom: 670 }), 258);
   } finally { globalThis.getComputedStyle = prior; }
 });
 
@@ -61,6 +88,7 @@ test("committed outcomes from existing and synthetic providers use the same H4 l
       actorId: "p2", headline, compactHeadline: headline, accessibleLabel: headline };
     const html = renderToStaticMarkup(React.createElement(PublicInteractionAnnouncementLayer, { narration, roomCode: "ROOM", viewerId: "p1" }));
     assert.match(html, new RegExp(`data-public-interaction-event-id="${eventId}"`));
+    assert.match(html, /data-public-card-announcement-delivery="COMMITTED"/);
     assert.ok(html.includes(headline));
   }
 });
@@ -545,13 +573,17 @@ test("Bumper Harvest announcement fails closed without a proven narration", () =
 
 test("public announcement typography is readable and never truncates its verified sentence", () => {
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  const overrides = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
   const announcement = css.match(/\.public-card-display-journey-copy\{([^}]+)\}/)?.[1] ?? "";
   const text = css.match(/^\.public-card-display-journey-copy>b\{([^}]+)\}/m)?.[1] ?? "";
   assert.match(announcement, /520px/);
+  assert.match(announcement, /z-index:38/);
   assert.match(text, /font:600 15px\/1\.2 Arial,sans-serif/);
   assert.match(text, /letter-spacing:\.01em/);
   assert.doesNotMatch(text, /line-clamp|overflow:hidden/);
   assert.match(css, /\.public-card-display-journey\[data-public-card-motion="lust-cost"\]>.public-card-display-journey-copy>b,\.public-card-display-journey\[data-public-card-motion="lust-duel"\]>.public-card-display-journey-copy>b\{white-space:pre-line\}/);
   assert.match(css, /\.public-card-display-journey\[data-public-card-motion="lust-cost"\][^}]*overflow:visible[^}]*-webkit-line-clamp:unset/);
+  assert.doesNotMatch(css, /data-public-card-announcement-long-names/);
+  assert.match(overrides, /\.game-shell \.public-card-display-journey\.is-harvest-pool-active > \.public-card-display-journey-copy \{\s*z-index: 38;/);
   assert.doesNotMatch(css, /public-card-display-journey-copy\.is-condensed/);
 });

@@ -120,7 +120,7 @@ test("H4 reproduces announcement placement through a real observer Attack-to-Dod
         const table = document.querySelector(".play-table");
         const tableRect = table ? rect(table) : null;
         const protectedRects = [...document.querySelectorAll(
-          ".opponent-player-card, .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .public-activity-chip, .local-player-dock, .local-hand-rail, .console-guidance, [data-public-card-copy-anchor-event-id]",
+          ".opponent-player-card, .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .public-activity-chip, .local-player-dock, .local-hand-rail, .console-guidance",
         )].filter((element) => element !== cardElement && element !== announcement
           && element.dataset.publicCardCopyAnchorEventId !== anchorEventId)
           .map((element) => ({
@@ -143,6 +143,10 @@ test("H4 reproduces announcement placement through a real observer Attack-to-Dod
           phase: cardElement.dataset.publicCardJourneyPhase,
           announcement: announcementRect,
           card: cardRect,
+          announcementZIndex: Number.parseInt(getComputedStyle(announcement).zIndex, 10),
+          cardZIndex: Number.parseInt(getComputedStyle(cardElement).zIndex, 10),
+          announcementVisibility: getComputedStyle(announcement).visibility,
+          announcementPointerEvents: getComputedStyle(announcement).pointerEvents,
           activeCardOverlap,
           protectedRects,
           table: tableRect,
@@ -194,10 +198,12 @@ test("H4 reproduces announcement placement through a real observer Attack-to-Dod
 
     const frames = await observerPage.evaluate(() => window.__h4Frames);
     const dodgeFrames = frames.filter((row) => row.cardId === room.dodge.id);
+    const visibleDodgeFrames = dodgeFrames.filter((row) => row.announcementVisibility === "visible");
     const phases = Object.fromEntries(["reveal", "move", "parked"].map((phase) => [
-      phase, dodgeFrames.find((row) => row.phase === phase) ?? null,
+      phase, dodgeFrames.find((row) => row.phase === phase && row.announcementVisibility === "visible")
+        ?? dodgeFrames.find((row) => row.phase === phase) ?? null,
     ]));
-      const result = {
+    const result = {
       roomCode: room.code,
       observerId: observer.id,
       attackerId: attacker.id,
@@ -224,14 +230,20 @@ test("H4 reproduces announcement placement through a real observer Attack-to-Dod
     expect(phases.move?.cardId).toBe(room.dodge.id);
     expect(dodgeFrames.some((row) => row.anchorEventId !== row.activeEventId)).toBe(false);
     expect(new Set(dodgeFrames.map((row) => row.interactionId)).size).toBe(1);
-    expect(dodgeFrames.every((row) => Math.abs(row.centerOffset ?? Infinity) <= 12)).toBe(true);
-    expect(Math.max(...dodgeFrames.map((row) => row.announcement.top))
-      - Math.min(...dodgeFrames.map((row) => row.announcement.top))).toBeLessThanOrEqual(16);
-    expect(dodgeFrames.every((row) => !row.fallback && row.lines >= 1 && row.lines <= 2 && row.fontSize >= 14)).toBe(true);
-    expect(dodgeFrames.every((row) => row.protectedRects.length === 0)).toBe(true);
-    expect(phases.reveal.announcement.bottom).toBeLessThanOrEqual(phases.reveal.card.top);
-    expect(phases.parked.activeCardOverlap).toBe(false);
-    expect(parkedRoot.activeCardOverlap).toBe(false);
+    expect(visibleDodgeFrames.length).toBeGreaterThan(0);
+    expect(visibleDodgeFrames.every((row) => Math.abs(row.centerOffset ?? Infinity) <= 4)).toBe(true);
+    expect(Math.max(...visibleDodgeFrames.map((row) => row.announcement.top))
+      - Math.min(...visibleDodgeFrames.map((row) => row.announcement.top))).toBeLessThanOrEqual(16);
+    expect(visibleDodgeFrames.every((row) => !row.fallback && row.lines >= 1 && row.fontSize >= 14
+      && row.announcement.width >= 320 && row.announcement.width <= 340
+      && row.announcementVisibility === "visible" && row.announcementPointerEvents === "none"
+      && row.announcementZIndex > row.cardZIndex)).toBe(true);
+    expect(visibleDodgeFrames.every((row) => row.protectedRects.length === 0)).toBe(true);
+    expect(phases.reveal.announcementZIndex).toBeGreaterThan(phases.reveal.cardZIndex);
+    expect(phases.parked.announcementZIndex).toBeGreaterThan(phases.parked.cardZIndex);
+    expect(parkedRoot.announcementZIndex).toBeGreaterThan(parkedRoot.cardZIndex);
+    expect(parkedRoot.announcement.left).toBeCloseTo(phases.reveal.announcement.left, 1);
+    expect(parkedRoot.announcement.width).toBe(phases.reveal.announcement.width);
     await expect(observerPage.getByText("GAME SCREEN ERROR")).toHaveCount(0);
   } finally {
     await Promise.all([attackerPage.close(), defenderPage.close(), observerPage.close()]);

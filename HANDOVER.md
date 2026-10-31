@@ -1,26 +1,31 @@
 # HANDOVER — Current Task Only
 
 Repository: `dmoneyUK/three-kingdoms` · Target: `ux-v2`
-Latest design reviewed: `docs/UX2-refine.md` §10.25.3, owner correction dated 2026-10-30 23:12 UTC; delivery status updated 2026-10-31 00:39 UTC.
+Latest design reviewed: `docs/UX2-refine.md` §10.25.3, owner-approved R6-ARCH-01 plan dated 2026-10-31 01:42 UTC.
 
-## Current / next bounded task — NEG-COPY-1 R6-QA-01/02/03 owner iPhone review
+## Current bounded task — R6-ARCH-01 shared H4/PAC correction
 
-**Agent implementation: complete and deployed. Status: PENDING OWNER iPHONE REVIEW; not USER-ACCEPTED.** QA-01 stabilizes H4/PAC width as the response countdown appears; QA-03 removes only the decorative PRIVATE DRAW heading and retains the genuine owner-only card; QA-02 routes proven committed public skill outcomes through one canonical H4 and suppresses duplicate outcome toasts.
+**Status: IN PROGRESS — NOT ACCEPTED.** Implement the approved H4/PAC corridor, fixed H4 horizontal position and adaptive height, pending-to-visible delivery, scoped paint order, and proof-backed committed Negation H4. Do not start R6-ARCH-02.
 
-### Delivery evidence
+### Start record — 2026-10-31 01:48 UTC
 
-- QA-01 source `9c9e03df436ad5e07a512d57c52b21c76e2bbd49`: exact-SHA [Actions 41144126109](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41144126109) passed; its deployment Worker was `d90e5d5a-1319-45db-a327-2fda41a01c90`.
-- QA-03 source `ab40d149259f5d9bce6b5ca68ec99a5d518c8f44`: exact-SHA [Actions 41143946009](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41143946009) passed.
-- QA-02 final code source `aca08617cd48eeadd40c05ec7d405b2914c4795c`: exact-SHA [Actions 41150863342](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41150863342) passed lint/fast tests, API tests, browser startup/room smoke, D1 migration, Worker deployment and production smoke. Current Worker version: `88187185-3ad1-4544-b5f2-d879d6c6efec`. Direct production `/api/health` check at 2026-10-31 00:38 UTC returned `{"ok":true,"worker":"available"}`.
-- Focused cases passed for four-viewer Retaliation privacy, Treachery, automatic Pan Feng outcome, Nio Shield prevention, private draw and stable timer/H4 geometry. `tests/api/concurrency.test.mjs` passed 16/16 after restoring the existing informational log wording. These cases do not prove every skill provider; missing causal proof remains fail-closed.
+- Synced the clean isolated worktree by fast-forward to `origin/ux-v2` at `d6efcde1928843ea9eb9e15125a83f80c644fce0`; the user's primary checkout remains untouched with its existing uncommitted files.
+- Pre-change `ux-v2` Actions: exact source SHA `aca08617cd48eeadd40c05ec7d405b2914c4795c`, run [41150863342](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41150863342), conclusion `success`; newer remote commits were documentation-only.
+- Scope: only shared corridor/presentation, scoped CSS, directly relevant focused tests, and this handoff. Preserve gameplay, CurrentAction, Negation timing, privacy, card identity/author and prior accepted features.
+- Validation limits: focused pure/API tests and relevant checks; optional local UI/browser work combined ≤5 minutes. At the cap, stop and record SKIPPED. Exact-SHA CI, Worker deployment and health/smoke remain required.
 
-### QA-02 correction log
+### Progress log
 
-- **2026-10-30 23:32 UTC:** CI [41144630955](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41144630955) failed four existing concurrency assertions after a generic continuation's informational log wording changed. The same assertions failed in [41144926949](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41144926949); browser smoke and lint passed, deployment was skipped. Restored the previous log wording without restoring an unproven visual toast; rebuilt and the focused concurrency suite passed 16/16.
-- **2026-10-31 00:34 UTC:** Committed and pushed the narrow correction as `aca08617cd48eeadd40c05ec7d405b2914c4795c` to `ux-v2`.
-- **2026-10-31 00:38 UTC:** Exact-SHA CI passed all required jobs and deployed Worker `88187185-3ad1-4544-b5f2-d879d6c6efec`; production smoke and direct `/api/health` passed.
-- **2026-10-31 00:39 UTC:** Updated `docs/UX2-refine.md` with QA-01/02/03 delivery evidence and the remaining owner review boundary. Final `git diff --check` passed at 2026-10-31 00:41 UTC after the design and handoff edits.
+- **2026-10-31 01:48 UTC:** Took ownership after reviewing latest §10.25.3, current remote HANDOVER, worktree state and recent CI. No source changes or new tests have been run yet.
+- **2026-10-31 01:55 UTC:** Implemented vertical-band corridor measurement, fixed H4 center/width and natural-height placement, pending/visible delivery state, scoped H4 stacking, and proof-backed Negation narration that is independent of private Pass/intent and stale PAC checkpoint metadata. Added focused corridor, semantic and render assertions. Validation not run yet.
+- **2026-10-31 01:55 UTC:** First focused-test command used bare `node --test`; both files failed to load repository TypeScript/TSX imports (`ERR_MODULE_NOT_FOUND` / `ERR_UNKNOWN_FILE_EXTENSION`), so this was a runner invocation error, not an assertion failure. Re-ran with the repository's required `--import tsx` loader at 01:55 UTC; both focused files passed, 33/33.
+- **2026-10-31 01:57 UTC:** `npm run build` passed. Focused ESLint initially found four unused locals after the placement simplification; removed those locals and reran focused ESLint, which exited 0 with 15 hook-dependency warnings and no errors. Proceeding to one focused 440px browser scenario; total UI/browser cap remains five minutes.
+- **2026-10-31 01:58 UTC:** First 440px H4 browser run finished in 53s and failed one updated assertion: H4 was still hidden during the REVEAL phase while card layout was pending, then appeared at MOVE; its first hidden frame also had unmeasured x geometry. H4 no longer depends on card-layout settlement for placement, so enabled the already existing `ignoreJourneyLayoutPending` path for Attack/Dodge and Duel presentations. Updated the focused fixture to select the first visible frame per phase. One bounded rerun will check this correction; total UI/browser time so far is 53s.
+- **2026-10-31 01:59 UTC:** A further browser run had been launched before context compaction, but its output was not retained; when checked at 01:59 UTC, no Playwright process remained. No result is claimed for that run. A captured 440px rerun took 19s and confirmed H4 visible/stable in REVEAL, MOVE and PARKED (340px wide, centered at x=220 with 0px offset, above the card; pointer events disabled and no protected-control overlap). Its assertion failure came from also measuring pre-placement hidden setup frames. Restricted layout assertions to visible frames; the next captured run is the final bounded verification.
+- **2026-10-31 02:01 UTC:** Final focused 440px browser verification passed in 19s. The rendered H4 stayed at x=50..390 (340px) and y=246.9..294.9 with 0px horizontal centre offset through REVEAL/MOVE/PARKED; it remained visible at 15px, two lines, z-index 38 above the revealed/parked card, pointer-events none, and with no protected-rectangle collision. Known browser time is 91s plus the earlier uncaptured run (bounded by the period before process check), under the five-minute total cap. No further local UI/browser run is planned.
+- **2026-10-31 02:01 UTC:** Latest `npm run build` passed on the final application source. The only output was the repository's existing large-chunk and route-classification warnings.
+- **2026-10-31 02:03 UTC:** Added focused 6/8-seat corridor assertions and committed long Treachery/synthetic-skill headline coverage. `node --import tsx --test tests/public-card-announcement.test.mjs tests/api/public-activity.test.mjs` passed 34/34; focused ESLint passed with zero errors (the broader source-file run had 15 existing Hook dependency warnings); `git diff --check` passed. No further local UI tests were run.
 
-### Owner review boundary
+### Required completion record
 
-Review the deployed game on iPhone for the combined R6 flow in §10.25.3, including timer-stable H4/PAC width, private draw visibility after TEST SWITCH, and one identical H4/no duplicate outcome toast across authenticated viewers. Check the eight-seat corridor if available; unobserved cases remain NOT TESTED. No owner phone re-review occurred in this execution, so keep NEG-COPY-1 open and do not mark USER-ACCEPTED.
+Record changed files, focused checks and outcomes, browser duration or SKIPPED status, `git diff --check`, commit SHA, exact-SHA Actions URL/conclusion, deployed Worker version, production health/smoke and remaining owner iPhone review. Final technical status: **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**. Do not claim user acceptance or close parent R6.

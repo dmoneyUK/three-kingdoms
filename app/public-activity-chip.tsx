@@ -131,7 +131,7 @@ function placeNearPlayerSeat(chip: HTMLElement, table: HTMLElement, playerId: st
   if (!seatRect) return false;
 
   const tableRect = table.getBoundingClientRect();
-  chip.style.width = `${publicCorridorWidth(table)}px`;
+  chip.style.width = `${publicCorridorWidth(table, { top: seatRect.top, bottom: seatRect.bottom + 64 })}px`;
   const width = chip.offsetWidth;
   const height = chip.offsetHeight;
   const visualViewport = window.visualViewport;
@@ -206,9 +206,6 @@ function placeChip(
   previousMemory: PlacementMemory | null,
 ): PlacementMemory {
   const tableRect = table.getBoundingClientRect();
-  chip.style.width = `${publicCorridorWidth(table)}px`;
-  const width = chip.offsetWidth;
-  const height = chip.offsetHeight;
   const visualViewport = window.visualViewport;
   const viewportTop = Math.max(0, visualViewport?.offsetTop ?? 0);
   const viewportBottom = Math.min(window.innerHeight, (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight));
@@ -217,6 +214,9 @@ function placeChip(
   const upperBandTop = Math.max(tableRect.top + 8, viewportTop + 8);
   const lowerBandTop = Math.max(tableRect.top + (allowUpperSafeBand ? 8 : tableRect.height * 0.58), viewportTop + 8);
   const bottom = Math.min(tableRect.bottom - 8, viewportBottom - 8);
+  chip.style.width = `${publicCorridorWidth(table, { top: allowUpperSafeBand ? upperBandTop : lowerBandTop, bottom })}px`;
+  const width = chip.offsetWidth;
+  const height = chip.offsetHeight;
   const firstTop = bottom - height;
   const obstacles = protectedRects(table);
   const candidateRegion = {

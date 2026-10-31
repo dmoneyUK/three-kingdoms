@@ -5222,7 +5222,7 @@
   z-index: 36;
 }
 .game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-display-journey-copy {
-  z-index: 36;
+  z-index: 38;
 }
 .game-shell .play-table[data-seat-topology="side-column"] > .battlefield-choice-stage {
   right: clamp(88px, calc(25vw + 4px), 120px);

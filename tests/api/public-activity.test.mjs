@@ -143,6 +143,42 @@ test("H4 follows only the committed current-root Negation fact chain", () => {
     "Test Player 1 played Duel targeting Test Player 2.");
 });
 
+test("H4 keeps a proven committed Negation when PAC advances and ignores private viewer choice", () => {
+  const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "fact-checkpoint", presentationRevision: 4 };
+  const root = {
+    semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "root-event", rootEventId: "root-event", order: 1,
+    category: "CARD_PLAYED", actorId: "p1", affectedPlayerIds: ["p2"], label: "Duel",
+    effect: { kind: "card_play", label: "Duel" },
+  };
+  const cancelled = {
+    semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "cancel-event", rootEventId: "root-event", order: 2,
+    category: "EFFECT_CANCELLED", actorId: "p3", affectedPlayerIds: ["p2"], label: "Negation",
+    effect: { kind: "cancel_effect", label: "Duel" },
+  };
+  const base = snapshot({ stage: "NEGATION", publicEventFacts: [root, cancelled] });
+  const advancedPac = {
+    ...base,
+    publicNextDecision: {
+      ...base.publicNextDecision,
+      identity: { ...base.publicNextDecision.identity, checkpointId: "later-decision", presentationRevision: 5 },
+    },
+  };
+  const pass = { ...advancedPac, viewerNegationChoice: { windowId: "window-1", locked: true, choice: "pass" } };
+  const intent = { ...advancedPac, viewerNegationChoice: { windowId: "window-1", locked: true, choice: "negation_intent" } };
+  const expected = "Test Player 3's Negation cancels Test Player 1's Duel effect on Test Player 2.";
+  for (const view of [advancedPac, pass, intent]) {
+    const narration = derivePublicNegationNarration({ snapshot: view, players, rootEventId: "root-event" });
+    assert.equal(narration?.headline, expected);
+    assert.equal(narration?.eventId, "cancel-event");
+    assert.equal(narration?.checkpointId, "fact-checkpoint");
+  }
+  assert.equal(derivePublicNegationNarration({
+    snapshot: { ...base, publicEventFacts: [root, { ...cancelled, visibility: "PRIVATE" }] },
+    players,
+    rootEventId: "root-event",
+  })?.headline, "Test Player 1 played Duel targeting Test Player 2.");
+});
+
 test("target-card choice progress is identical across viewers and exposes no selection details", () => {
   for (const cardKind of ["Steal", "Dismantle"]) {
     const pendingTargetCard = {
@@ -313,6 +349,18 @@ test("generic H4 retains damage through Skip and formats committed public or hid
   const visible = { ...hidden, eventId: "visible", effect: { kind: "gain_target_card", label: "Nio Shield" } };
   assert.equal(derivePublicInteractionNarration(input([root, damage, visible]))?.headline,
     "Test Player 2 used Retaliation and obtained one card from Test Player 1.");
+  const treachery = fact("treachery-result", 4, "SKILL_USED", {
+    actorId: "p2", label: "Treachery", effect: { kind: "gain_damage_cards" },
+  });
+  assert.equal(derivePublicInteractionNarration(input([root, damage, treachery]))?.headline,
+    "Test Player 2 used Treachery and obtained the card that caused the damage.");
+  const longSkillResult = fact("long-skill-result", 4, "SKILL_USED", {
+    actorId: "p2", label: "Shielding Formation",
+    outcomeLabel: "prevented damage to Test Player 1 after the public judgement resolved",
+    effect: { kind: "generic_effect" },
+  });
+  assert.equal(derivePublicInteractionNarration(input([root, damage, longSkillResult]))?.headline,
+    "Test Player 2 used Shielding Formation and prevented damage to Test Player 1 after the public judgement resolved.");
   for (const [label, outcome] of [["Legacy", "began a card distribution"], ["Synthetic provider", "resolved a public effect"]]) {
     const skill = fact(`skill-${label}`, 4, "SKILL_USED", { actorId: "p2", label, outcomeLabel: outcome, effect: { kind: "generic_effect" } });
     assert.equal(derivePublicInteractionNarration(input([root, damage, hidden, skill]))?.headline,

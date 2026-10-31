@@ -217,18 +217,15 @@ export function derivePublicNegationNarration(input: {
   rootEventId: string;
 }): PublicNegationNarration | null {
   const snapshot = input.snapshot;
-  const decision = publicDecisionFromPresentationSnapshot(snapshot);
   const interaction = snapshot?.interaction;
   const identity = snapshot?.identity;
   if (!snapshot || !identity || !interaction || interaction.semantics !== "PROVEN"
     || interaction.interactionId !== identity.interactionId
-    || decision && (decision.identity.interactionId !== identity.interactionId
-      || decision.identity.rootFrameId !== interaction.rootFrameId
-      || decision.identity.checkpointId !== identity.checkpointId
-      || decision.identity.presentationRevision !== identity.presentationRevision)) return null;
+    || !interaction.rootFrameId) return null;
 
   const linkedFacts = snapshot.publicEventFacts.filter((fact) =>
-    fact.identity.interactionId === identity.interactionId
+    fact.semantics === "PROVEN" && fact.visibility === "PUBLIC"
+      && fact.identity.interactionId === identity.interactionId
       && fact.identity.rootFrameId === interaction.rootFrameId
       && (fact.eventId === input.rootEventId && fact.rootEventId === input.rootEventId
         || fact.rootEventId === input.rootEventId),
@@ -237,11 +234,10 @@ export function derivePublicNegationNarration(input: {
     && fact.rootEventId === input.rootEventId && fact.category === "CARD_PLAYED");
   if (roots.length !== 1) return null;
   const root = roots[0]!;
-  const latestLinkedFact = linkedFacts.at(-1);
-  if (!latestLinkedFact || latestLinkedFact.category !== "CARD_PLAYED"
-    && latestLinkedFact.category !== "EFFECT_CANCELLED" && latestLinkedFact.category !== "EFFECT_RESTORED") return null;
+  const relevantFacts = linkedFacts.filter((fact) => fact.eventId === root.eventId
+    || fact.order > root.order && (fact.category === "EFFECT_CANCELLED" || fact.category === "EFFECT_RESTORED"));
   const activeTargetId = interaction.activeTargetIds.length === 1 ? interaction.activeTargetIds[0] : null;
-  const effects = linkedFacts.filter((fact) =>
+  const effects = relevantFacts.filter((fact) =>
     (fact.category === "EFFECT_CANCELLED" || fact.category === "EFFECT_RESTORED")
       && (!activeTargetId || fact.affectedPlayerIds.includes(activeTargetId)),
   );
@@ -249,7 +245,7 @@ export function derivePublicNegationNarration(input: {
   const rootLabel = effectLabel(root.label) ?? "a card";
   const narratedEffectName = latest.category === "CARD_PLAYED"
     ? rootLabel
-    : effectLabel(latest.effect?.label) ?? effectLabel(decision?.nextEffect?.label) ?? rootLabel;
+    : effectLabel(latest.effect?.label) ?? rootLabel;
   const rootActor = root.actorId ? input.players.find((player) => player.id === root.actorId)?.name.trim() : null;
   const actor = latest.actorId ? input.players.find((player) => player.id === latest.actorId)?.name.trim() : null;
   if (!actor) return null;
@@ -277,13 +273,13 @@ export function derivePublicNegationNarration(input: {
       headline = `${actor}'s Negation ${restored ? "restores" : "cancels"} ${effectDescription}.`;
     }
   }
-  const phase = decision?.stageLabel === "Negation" && decision.responseWindowOpen === true ? "WINDOW_OPEN" : "FINAL";
+  const phase = interaction.stage === "NEGATION" ? "WINDOW_OPEN" : "FINAL";
   const rootEffectState = latest.category === "EFFECT_RESTORED" ? "ACTIVE" : effects.length ? "BLOCKED" : "ACTIVE";
   return {
     rootLabel: narratedEffectName,
     eventId: latest.eventId,
     latestCommittedEventId: latest.eventId,
-    checkpointId: identity.checkpointId,
+    checkpointId: latest.identity.checkpointId,
     phase,
     rootEffectState,
     headline,

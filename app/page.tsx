@@ -8220,19 +8220,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && selectedPublicCardAction.rootEventId === publicInteractionNarration.rootEventId
     && selectedPublicCardAction.interactionId === publicInteractionNarration.interactionId
     && selectedPublicCardAction.rootFrameId === publicInteractionNarration.rootFrameId);
-  const selectedActionOwnsCurrentNegationDecision = Boolean(selectedPublicCardAction
-    && room.presentationSnapshot?.identity
-    && room.presentationSnapshot.interaction?.semantics === "PROVEN"
-    && room.presentationSnapshot.publicNextDecision?.semantics === "PROVEN"
-    && room.presentationSnapshot.publicNextDecision.visibility === "PUBLIC"
-    && room.presentationSnapshot.publicNextDecision.stageLabel === "Negation"
-    && room.presentationSnapshot.publicNextDecision.responseWindowOpen === true
-    && room.presentationSnapshot.publicNextDecision.identity.interactionId === room.presentationSnapshot.identity.interactionId
-    && room.presentationSnapshot.publicNextDecision.identity.rootFrameId === room.presentationSnapshot.interaction.rootFrameId
-    && room.presentationSnapshot.publicNextDecision.identity.checkpointId === room.presentationSnapshot.identity.checkpointId
-    && room.presentationSnapshot.publicNextDecision.identity.presentationRevision === room.presentationSnapshot.identity.presentationRevision
-    && selectedPublicCardAction.interactionId === room.presentationSnapshot.identity.interactionId
-    && selectedPublicCardAction.rootFrameId === room.presentationSnapshot.interaction.rootFrameId);
   const deflectionForPublicAction = (action: PublicCardDisplayAction | null) => {
     if (!action || action.cardKind !== "Attack" || action.motion?.type !== "attack-dodge" || !action.targetId) return null;
     const proofs = clientPresentation.deflectionActions.filter((proof) => proof.semantics === "PROVEN"
@@ -8450,8 +8437,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     publicAnnouncementIdentity,
     ...(interactionNarrationBelongsToAction && publicInteractionNarration ? { publicInteractionNarration, suppressAnnouncement: false }
       : publicInteractionNarration ? { suppressAnnouncement: true } : {}),
-    ...(genericPublicFactNarration ? { publicNegationNarration: genericPublicFactNarration }
-      : selectedActionOwnsCurrentNegationDecision ? { publicNegationNarration: undefined, suppressAnnouncement: true } : {}),
+    ...(genericPublicFactNarration ? { publicNegationNarration: genericPublicFactNarration, suppressAnnouncement: false } : {}),
     ...(attackConversionFrameCandidate ? {
       cardLabel: attackConversionFrameCandidate.spec.title,
       ariaLabel: attackConversionFrameCandidate.accessibleLabel,
