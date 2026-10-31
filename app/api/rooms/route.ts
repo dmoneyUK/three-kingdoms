@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { cardDefinition, effectivePhysicalSuit, isAttackCard, makeDeck, shuffle } from "../../../game/cards";
 import { CARD_KINDS, type Card, type EquipmentZone } from "../../../game/model";
+import { MAX_AVAILABLE_CLASSIC_PLAYERS, MIN_CLASSIC_PLAYERS, roomAvailabilityLimit } from "../../../game/room-availability";
 import { testHandPresetCompatibilityError, testHandPresetFor, validateStoredTestHandPreset, validateTestHandPreset } from "../../../game/test-hand-presets";
 import { canDeclareAttack as canDeclareAttackFor, effectiveDistanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithNegation, getAttackCardProvider, getPlayPhaseActions, type ResponseExecution } from "../../../game/responses";
@@ -206,7 +207,7 @@ async function beginStandardHeroSelection(roomId: string, players: PlayerRow[], 
   const assigned = players.map((player, index) => ({ player, role: roles[index], options: optionsByPlayerId.get(player.id) ?? [] }));
   const claim = `hero-selection:${crypto.randomUUID()}`;
   const result = await db().batch([
-    db().prepare("UPDATE rooms SET status = 'heroes', turn_seat = NULL, phase = ?, pending_json = NULL WHERE id = ? AND status = 'lobby'").bind(claim, roomId),
+    db().prepare("UPDATE rooms SET status = 'heroes', turn_seat = NULL, phase = ?, pending_json = NULL WHERE id = ? AND status = 'lobby' AND (SELECT COUNT(*) FROM players WHERE room_id = rooms.id) = ? AND (SELECT COUNT(*) FROM players WHERE room_id = rooms.id) <= MIN(max_players, ?)").bind(claim, roomId, players.length, MAX_AVAILABLE_CLASSIC_PLAYERS),
     ...assigned.map(({ player, role, options }) => db().prepare("UPDATE players SET role = ?, hero = NULL, hp = NULL, max_hp = NULL, hero_options_json = ? WHERE id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'heroes' AND phase = ?)").bind(role, JSON.stringify(options), player.id, roomId, claim)),
     db().prepare("UPDATE rooms SET phase = NULL WHERE id = ? AND status = 'heroes' AND phase = ?").bind(roomId, claim),
   ]);
@@ -6213,7 +6214,7 @@ export async function POST(request: Request) {
     const roomId = crypto.randomUUID(); const playerId = crypto.randomUUID(); const token = newToken(); const tokenHash = await hash(token); let code = randomCode();
     for (let attempt = 0; attempt < 4; attempt++) { const exists = await db.prepare("SELECT 1 FROM rooms WHERE code = ?").bind(code).first(); if (!exists) break; code = randomCode(); }
     const inserts = [
-      db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at) VALUES (?, ?, ?, 'lobby', 8, ?)").bind(roomId, code, playerId, Date.now()),
+      db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at) VALUES (?, ?, ?, 'lobby', ?, ?)").bind(roomId, code, playerId, MAX_AVAILABLE_CLASSIC_PLAYERS, Date.now()),
       db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, 0, ?)").bind(playerId, roomId, name, tokenHash, Date.now()),
     ];
     await db.batch(inserts);
@@ -6232,13 +6233,15 @@ export async function POST(request: Request) {
     if (name.length < 2) return json({ error: "Enter a name with at least 2 characters." }, 400);
     if (room.status !== "lobby") return json({ error: "This match has already started." }, 409);
     if (room.test_room) return json({ error: "Test games are limited to the host and host-controlled Test Players." }, 409);
+    const effectiveMaxPlayers = roomAvailabilityLimit(room.max_players);
     const count = await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ?").bind(room.id).first<{ count: number }>();
-    if ((count?.count ?? 0) >= room.max_players) return json({ error: "This room is full." }, 409);
+    if ((count?.count ?? 0) >= effectiveMaxPlayers) return json({ error: `This room has reached the current ${effectiveMaxPlayers}-player limit.` }, 409);
     const used = await db.prepare("SELECT seat FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<{ seat: number }>();
-    const seats = new Set((used.results ?? []).map((row) => row.seat)); let seat = 0; while (seats.has(seat)) seat++;
+    const seats = new Set((used.results ?? []).map((row) => row.seat)); let seat = 0; while (seat < effectiveMaxPlayers && seats.has(seat)) seat++;
+    if (seat >= effectiveMaxPlayers) return json({ error: `This room has reached the current ${effectiveMaxPlayers}-player limit.` }, 409);
     const playerId = crypto.randomUUID(); const playerToken = newToken();
-    const joined = await db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'lobby' AND test_room = 0)").bind(playerId, room.id, name, await hash(playerToken), seat, Date.now(), room.id).run();
-    if ((joined.meta.changes ?? 0) <= 0) return json({ error: "This room is no longer accepting independent players." }, 409);
+    const joined = await db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'lobby' AND test_room = 0 AND (SELECT COUNT(*) FROM players WHERE room_id = rooms.id) < MIN(rooms.max_players, ?)) AND NOT EXISTS (SELECT 1 FROM players WHERE room_id = ? AND seat = ?)").bind(playerId, room.id, name, await hash(playerToken), seat, Date.now(), room.id, MAX_AVAILABLE_CLASSIC_PLAYERS, room.id, seat).run();
+    if ((joined.meta.changes ?? 0) <= 0) return json({ error: `This room changed or has reached the current ${effectiveMaxPlayers}-player limit. Refresh and try again.` }, 409);
     return json({ token: playerToken, room: await roomState(code, playerToken) }, 201);
   }
 
@@ -7988,16 +7991,27 @@ export async function POST(request: Request) {
     const result = await db.prepare("SELECT seat FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<{ seat: number }>();
     const seats = new Set((result.results ?? []).map((row) => row.seat));
     const needed = requestedCount === undefined ? Math.max(0, 4 - seats.size) : requestedCount;
-    const availableSeats = Math.max(0, room.max_players - seats.size);
+    const effectiveMaxPlayers = roomAvailabilityLimit(room.max_players);
+    const availableSeats = Math.max(0, effectiveMaxPlayers - seats.size);
     if (needed > availableSeats) return json({ error: "There are not enough open seats for that many test players." }, 409);
-    const inserts = [];
+    const requestedSeats = [];
     for (let index = 0; index < needed; index++) {
-      let seat = 0; while (seat < room.max_players && seats.has(seat)) seat++;
-      if (seat >= room.max_players) return json({ error: "There are no open seats for another test player." }, 409);
+      let seat = 0; while (seat < effectiveMaxPlayers && seats.has(seat)) seat++;
+      if (seat >= effectiveMaxPlayers) return json({ error: "There are no open seats within the current six-player limit." }, 409);
       seats.add(seat);
-      inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, ready, connected_at, is_test_player) VALUES (?, ?, ?, ?, ?, 1, ?, 1)").bind(crypto.randomUUID(), room.id, `Test Player ${seat + 1}`, tokenHash, seat, Date.now()));
+      requestedSeats.push({ id: crypto.randomUUID(), name: `Test Player ${seat + 1}`, seat });
     }
-    if (inserts.length) await db.batch(inserts);
+    if (requestedSeats.length) {
+      const valuePlaceholders = requestedSeats.map(() => "(?, ?, ?)").join(", ");
+      const query = `WITH requested(id, name, seat) AS (VALUES ${valuePlaceholders}), gate AS (SELECT rooms.id FROM rooms WHERE rooms.id = ? AND rooms.status = 'lobby' AND rooms.host_player_id = ? AND (SELECT COUNT(*) FROM players WHERE room_id = rooms.id) + ? <= MIN(rooms.max_players, ?) AND NOT EXISTS (SELECT 1 FROM requested AS candidate WHERE EXISTS (SELECT 1 FROM players WHERE room_id = rooms.id AND seat = candidate.seat))) INSERT INTO players (id, room_id, name, token_hash, seat, ready, connected_at, is_test_player) SELECT requested.id, gate.id, requested.name, ?, requested.seat, 1, ?, 1 FROM requested CROSS JOIN gate`;
+      const bindings = [
+        ...requestedSeats.flatMap(({ id, name, seat }) => [id, name, seat]),
+        room.id, room.host_player_id, requestedSeats.length, MAX_AVAILABLE_CLASSIC_PLAYERS,
+        tokenHash, Date.now(),
+      ];
+      const inserted = await db.prepare(query).bind(...bindings).run();
+      if ((inserted.meta.changes ?? 0) !== requestedSeats.length) return json({ error: "The lobby changed before those Test Players could be added. Refresh and choose again." }, 409);
+    }
     return json({ room: await roomState(code, token) });
   }
 
@@ -8006,8 +8020,8 @@ export async function POST(request: Request) {
     if (room.status !== "lobby") return json({ error: "Test mode can only be enabled before the match starts." }, 409);
     if (room.test_room) return json({ error: "This room is already designated as a test game." }, 409);
     const defaultPreset = testHandPresetFor("random");
-    const enabled = await db.prepare("UPDATE rooms SET test_room = 1, test_hand_preset_json = ?, test_hand_config_revision = 0 WHERE id = ? AND status = 'lobby' AND test_room = 0 AND (SELECT COUNT(*) FROM players WHERE room_id = rooms.id) >= 4 AND NOT EXISTS (SELECT 1 FROM players AS participant WHERE participant.room_id = rooms.id AND participant.id <> rooms.host_player_id AND (participant.is_test_player <> 1 OR participant.token_hash <> ?))")
-      .bind(JSON.stringify(defaultPreset), room.id, tokenHash).run();
+    const enabled = await db.prepare("UPDATE rooms SET test_room = 1, test_hand_preset_json = ?, test_hand_config_revision = 0 WHERE id = ? AND status = 'lobby' AND test_room = 0 AND (SELECT COUNT(*) FROM players WHERE room_id = rooms.id) >= ? AND (SELECT COUNT(*) FROM players WHERE room_id = rooms.id) <= MIN(max_players, ?) AND NOT EXISTS (SELECT 1 FROM players AS participant WHERE participant.room_id = rooms.id AND participant.id <> rooms.host_player_id AND (participant.is_test_player <> 1 OR participant.token_hash <> ?))")
+      .bind(JSON.stringify(defaultPreset), room.id, MIN_CLASSIC_PLAYERS, MAX_AVAILABLE_CLASSIC_PLAYERS, tokenHash).run();
     if ((enabled.meta.changes ?? 0) <= 0) {
       return json({ error: "Add host-controlled Test Players first. A test game cannot include independent human participants." }, 409);
     }
@@ -8042,7 +8056,7 @@ export async function POST(request: Request) {
     if (!me || me.id !== room.host_player_id) return json({ error: "Only the host can start the match." }, 403);
     const result = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
     const players = result.results ?? [];
-    if (players.length < 4 || players.length > room.max_players) return json({ error: "Classic mode needs 4–8 players." }, 409);
+    if (players.length < MIN_CLASSIC_PLAYERS || players.length > roomAvailabilityLimit(room.max_players)) return json({ error: "Classic mode needs 4–6 players." }, 409);
     if (room.test_room) {
       if (!hostControlledTestRoster(room, players, tokenHash)) return json({ error: "A test game may contain only the host and host-controlled Test Players." }, 409);
       const seatSet = new Set(players.map((player) => player.seat));

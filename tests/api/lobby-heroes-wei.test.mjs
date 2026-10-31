@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
 import {
-  assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
+  assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
 
 test("test controller accepts displayed Lord and non-first candidates through the normal selection flow", async () => {
@@ -743,25 +743,29 @@ test("host test seats remain controllable without exposing a mixed human seat", 
   assert.equal(aliceTurnHostView.isMyTurn, false);
 });
 
-test("normal role allocation preserves the exact Standard sets for four through eight players", async () => {
+test("ROOM-6P-GATE-01 new rooms start with the exact Standard role sets for four through six players", async () => {
   const expected = {
     4: { Lord: 1, Loyalist: 1, Rebel: 1, Spy: 1 },
     5: { Lord: 1, Loyalist: 1, Rebel: 2, Spy: 1 },
     6: { Lord: 1, Loyalist: 1, Rebel: 3, Spy: 1 },
-    7: { Lord: 1, Loyalist: 2, Rebel: 3, Spy: 1 },
-    8: { Lord: 1, Loyalist: 2, Rebel: 4, Spy: 1 },
   };
   let hostWasNotLord = false;
-  for (const count of [4, 5, 6, 7, 8]) {
-    const created = await requestAndSettle("create", { name: `Host${count}` });
+  for (const count of [4, 5, 6]) {
+    const created = await requestAndSettle("create", { name: `Host${count}`, maxPlayers: 10 });
     assert.equal(created.status, 201);
+    assert.equal(created.data.room.maxPlayers, 6, "new rooms enforce the current availability cap, ignoring client capacity values");
     const members = [{ name: `Host${count}`, token: created.data.token }];
     for (let seat = 1; seat < count; seat++) {
       const joined = await requestAndSettle("join", { code: created.data.room.code, name: `Player${count}-${seat}` });
       assert.equal(joined.status, 201);
       members.push({ name: `Player${count}-${seat}`, token: joined.data.token });
     }
-    if (count === 8) assert.equal((await requestAndSettle("join", { code: created.data.room.code, name: "TooMany" })).status, 409, "room maximum remains eight");
+    if (count === 6) {
+      const rejected = await requestAndSettle("join", { code: created.data.room.code, name: "Seventh Player" });
+      assert.equal(rejected.status, 409, "the seventh independent player is rejected");
+      assert.match(rejected.data.error, /6-player limit/);
+      assert.equal((await state(created.data.room.code, members[0].token)).data.players.length, 6, "the room stays at six players after a rejected join");
+    }
     const started = await requestAndSettle("start", { code: created.data.room.code, token: members[0].token });
     assert.equal(started.status, 200, JSON.stringify(started.data));
     const views = await Promise.all(members.map((member) => state(created.data.room.code, member.token)));
@@ -777,6 +781,59 @@ test("normal role allocation preserves the exact Standard sets for four through 
     if (views[0].data.myRole !== "Lord") hostWasNotLord = true;
   }
   assert.equal(hostWasNotLord, true, "the host is not forced to be Lord");
+});
+
+test("ROOM-6P-GATE-01 concurrent joins cannot use the last seat twice", async () => {
+  const created = await requestAndSettle("create", { name: "Concurrent Gate Host" });
+  for (let seat = 1; seat < 5; seat++) {
+    const joined = await requestAndSettle("join", { code: created.data.room.code, name: `Concurrent Player ${seat}` });
+    assert.equal(joined.status, 201);
+  }
+  const finalJoins = await Promise.all([
+    requestAndSettle("join", { code: created.data.room.code, name: "Concurrent Player A" }),
+    requestAndSettle("join", { code: created.data.room.code, name: "Concurrent Player B" }),
+  ]);
+  assert.deepEqual(finalJoins.map(({ status }) => status).sort(), [201, 409]);
+  assert.equal((await state(created.data.room.code, created.data.token)).data.players.length, 6);
+});
+
+test("ROOM-6P-GATE-01 test seats stop at six, legacy oversized lobbies cannot start, and started eight-player games remain playable", async () => {
+  const testRoom = await requestAndSettle("create", { name: "Six Seat Host", maxPlayers: 8 });
+  assert.equal(testRoom.data.room.maxPlayers, 6);
+  const sixSeats = await requestAndSettle("add_test_players", { code: testRoom.data.room.code, token: testRoom.data.token, count: 5 });
+  assert.equal(sixSeats.status, 200, JSON.stringify(sixSeats.data));
+  assert.equal(sixSeats.data.room.players.length, 6);
+  const seventhTestSeat = await requestAndSettle("add_test_players", { code: testRoom.data.room.code, token: testRoom.data.token, count: 1 });
+  assert.equal(seventhTestSeat.status, 409);
+  assert.equal((await state(testRoom.data.room.code, testRoom.data.token)).data.players.length, 6, "a rejected test-seat request does not partially add players");
+
+  for (const count of [7, 8]) {
+    const legacy = await requestAndSettle("create", { name: `Legacy ${count}` });
+    const roomId = query(`SELECT id FROM rooms WHERE code=${quote(legacy.data.room.code)}`);
+    sql(`UPDATE rooms SET max_players=8 WHERE id=${quote(roomId)}`);
+    for (let seat = 1; seat < count; seat++) {
+      const playerId = `legacy-${legacy.data.room.code}-${seat}`;
+      sql(`INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (${quote(playerId)}, ${quote(roomId)}, ${quote(`Legacy Player ${seat + 1}`)}, ${quote(`legacy-token-${seat}`)}, ${seat}, ${Date.now()})`);
+    }
+    const lobby = await state(legacy.data.room.code, legacy.data.token);
+    assert.equal(lobby.data.players.length, count, "legacy participants remain visible");
+    const rejectedStart = await requestAndSettle("start", { code: legacy.data.room.code, token: legacy.data.token });
+    assert.equal(rejectedStart.status, 409);
+    assert.match(rejectedStart.data.error, /4–6 players/);
+    const rejectedJoin = await requestAndSettle("join", { code: legacy.data.room.code, name: "Blocked New Join" });
+    assert.equal(rejectedJoin.status, 409, "legacy rooms do not admit another participant after the six-player cap");
+  }
+
+  const roles = ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"];
+  const heroes = ["guan-yu", "simayi", "zhao-yun", "xiahou-dun", "zhang-liao", "cao-cao", "zhen-ji", "xu-chu"];
+  const startedLegacy = await seedPlayingGame({ players: roles.map((role, index) => ({ role, hero: heroes[index] })) });
+  assert.equal(startedLegacy.room.players.length, 8);
+  const stillReadable = await state(startedLegacy.code, startedLegacy.members[0].token);
+  assert.equal(stillReadable.data.status, "playing");
+  assert.equal(stillReadable.data.players.length, 8);
+  const action = await requestAndSettle("end_turn", { code: startedLegacy.code, token: startedLegacy.members[0].token });
+  assert.equal(action.status, 200, JSON.stringify(action.data));
+  assert.equal(action.data.room.status, "playing", "the cap does not gate already-started legacy gameplay");
 });
 
 test("Wu hero skills complete through the normal semantic API", async () => {

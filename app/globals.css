@@ -1379,3 +1379,4 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .dying-handoff-compact span{color:#e3b565;font-weight:700}
 .dying-handoff-compact small{color:#b8aa91;font-size:7px}
 .preset-summary-warning{margin:10px 0 0;padding:9px 11px;border-left:2px solid #d1ad63;background:#292519;color:#e3cb94;font:11px/1.45 Arial}
+.room-cap-notice{max-width:900px;margin:0 auto 16px;padding:10px 14px;border-left:3px solid #d1ad63;background:#292519;color:#e3cb94;font:12px/1.45 Arial;text-align:center}

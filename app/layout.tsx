@@ -19,13 +19,13 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://three-realms-table.dai-jinge.chatgpt.site"),
   openGraph: {
     title: "Three Kingdoms",
-    description: "Gather 4–8 friends for a classic hidden-role strategy game.",
+    description: "Gather 4–6 friends for a classic hidden-role strategy game.",
     images: [{ url: "/og.png", width: 1536, height: 1024, alt: "Three Kingdoms game table" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Three Kingdoms",
-    description: "Gather 4–8 friends for a classic hidden-role strategy game.",
+    description: "Gather 4–6 friends for a classic hidden-role strategy game.",
     images: ["/og.png"],
   },
   icons: {

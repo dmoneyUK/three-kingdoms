@@ -386,6 +386,22 @@ test("waiting room starts without lobby readiness controls", () => {
   assert.doesNotMatch(gameRoomSource, /set_ready/);
 });
 
+test("waiting room preserves every existing player in an over-capacity legacy lobby and disables starting", () => {
+  const room = normalizeRoomData({
+    code: "LEGAC6", status: "lobby", maxPlayers: 8, isHost: true, meId: "legacy-0",
+    players: Array.from({ length: 7 }, (_, seat) => ({
+      id: `legacy-${seat}`, name: `Legacy Player ${seat + 1}`, seat, isHost: seat === 0, isTestPlayer: false,
+    })),
+  });
+  const html = renderToStaticMarkup(React.createElement(WaitingRoom, { room, busy: false, error: "", onStart: () => {}, onAddTestPlayers: () => {}, onEnableTestRoom: () => {}, onConfigureTestHands: () => {}, onLeave: () => {} }));
+  assert.match(html, /4–6 players have joined/);
+  assert.match(html, /This legacy lobby has more than six players/);
+  assert.match(html, /7 \/ 6 players/);
+  assert.equal((html.match(/class="seat filled"/g) ?? []).length, 7, "every actual legacy participant remains visible");
+  assert.doesNotMatch(html, /Open seat/, "the disabled 7th/8th availability is not presented as an open choice");
+  assert.match(html, /<button class="gold-button" disabled="">Start game<\/button>/);
+});
+
 test("hero selection shows the effective viewer's private role", () => {
   const room = {
     code: "ROLE1", isTestController: true, meId: "p2", myRole: "Rebel", myHeroOptions: STANDARD_HEROES.slice(0, 3),

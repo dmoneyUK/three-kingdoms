@@ -1,23 +1,24 @@
 # HANDOVER — Current Task Only
 
-Repository: `dmoneyUK/three-kingdoms` · target: `ux-v2`
-Design authority: `docs/UX2-refine.md` §10.10.1, reviewed at revision `79dd8e56d809a576932cc21c323b5f5f86c5eb72`.
+Repository: `dmoneyUK/three-kingdoms` · branch: `ux-v2`
 
-## Latest relevant result
+Task: `ROOM-6P-GATE-01`
 
-ST-DM-NEG-UX-01 is pushed to `ux-v2` as `9278cb2677c2abf547a98527137193979f129dae`. Exact-SHA Actions run [41197784356](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41197784356) passed lint/fast, API, browser-smoke and deploy. Cloudflare Worker version: `654c6add-f53b-4bff-8fe8-bcf274f77641`. Workflow smoke and direct production health check passed (`{"ok":true,"worker":"available"}`).
+Design authority reviewed: `docs/UX2-refine.md` §10.24.1 at `origin/ux-v2` `dc12e4d88b52e1d28c98621dc831b3885d744e96`; current design editorial revision: 2026-10-31 19:49 UTC.
 
-## Current bounded task — ST-DM-NEG-UX-01
+## Current status
 
-**Status: IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE REVIEW.** Steal passed the earlier owner phone review; Dismantle is **NOT PHONE TESTED**. Do not mark accepted.
+**IMPLEMENTED — RELEASE VALIDATION PENDING — OWNER iPHONE REVIEW REQUIRED.** Do not mark owner-accepted. Stop after exact-SHA Actions, deployment, and health verification; §10.24.1 requires owner phone review.
 
-Scope remains limited to the approved shared Steal/Dismantle presentation: stable lower-centred PAC; remove duplicate result-card transport while preserving genuine root/committed Negation cards, privacy, legal picker, zones and card conservation; proof-backed H4; author-seat parking. No game rules or permissions changed.
+New and pre-start Classic rooms offer 4–6 players, enforced by the server on create, join, Test Player addition, Test mode enablement, and start. Legacy oversized lobbies retain every participant and cannot admit more players or start. Already-started legacy games remain playable. The underlying game rules and accepted 7/8-player designs are unchanged.
 
-### Current execution and validation
+## Execution record
 
-- **2026-10-31 11:15–11:28 UTC:** Implemented the shared PAC/H4 and duplicate-result cleanup, preserving genuine root/Negation cards, public discard proof, actual zones and private Steal receipt. Base code commit `60dbd8a` was pushed; build, targeted lint, 36 announcement/activity tests and 29 stratagem API tests passed.
-- **2026-10-31 11:31–11:39 UTC:** A focused 440×894 run exposed `reveal` cards also carrying `is-parked`, which hid the committed root while layout was pending. Changed the shared class mapping so `reveal`, `move` and `parked` are mutually exclusive. After rebuilding `dist`, the root became visible and parked at its real source anchor. A post-settlement screenshot showed the 48×72 mini beside its source Dock; DOM preserved its previously measured author reservation while a fresh layout pass remained pending. The focused assertion now checks exact reservation geometry in that state.
-- **2026-10-31 11:37–11:39 UTC:** The final bounded mobile run exceeded its 90-second cap and did not complete; no more local UI/browser tests were run. `npm run build` and `git diff --check` passed. Do not report a final pass for the focused flow.
-- **2026-10-31 11:39–11:44 UTC:** Follow-up commit `9278cb2` was pushed. Exact-SHA Actions run `41197784356` passed all required jobs; Cloudflare deployed Worker `654c6add-f53b-4bff-8fe8-bcf274f77641`; production health returned `{"ok":true,"worker":"available"}`.
+- **2026-10-31 19:52 UTC:** Confirmed isolated task worktree is based on current `origin/ux-v2` `dc12e4d8`; the main checkout’s unrelated dirty work remains untouched. Latest observed Actions run before this change: `41209570493` for `b515ccf4`, success.
+- **Before 19:52 UTC (individual command start times were not captured):** Focused API tests passed 26/26, including capacity, concurrent last-seat joins, atomic Test Player limit, oversized legacy lobby, and started eight-player legacy gameplay. Focused mobile room-creation browser smoke passed 1/1 at 390×844. Legacy-lobby server-render test passed 1/1. `npm run build` passed. Targeted ESLint passed with two existing `app/page.tsx` hook-dependency warnings. `git diff --check` passed.
+- **Initial validation attempt:** API test command could not load `tsx` because this isolated worktree had no installed dependencies. Reused the existing local `node_modules` via an ignored worktree symlink; the focused API run then passed. No broad test campaign was run.
+- **2026-10-31 19:52 UTC:** Replaced stale handoff with this single-task status. Commit, push, exact-SHA CI, deployment and production health check are still pending.
 
-Stop for owner iPhone review. Do not claim Dismantle phone acceptance.
+## Resume point and acceptance boundary
+
+Review task-scoped diff, commit and push to `ux-v2`, then verify every required exact-SHA Actions job, Cloudflare Worker deployment and production `/api/health`. Record actual SHA/run/Worker/health results here. Final status must be **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**. Do not start another task.
