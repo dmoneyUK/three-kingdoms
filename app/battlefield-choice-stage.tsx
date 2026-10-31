@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useLayoutEffect, useRef, useState, type ComponentPropsWithoutRef, type CSSProperties, type ReactNode } from "react";
+import { forwardRef, useCallback, useLayoutEffect, useRef, useState, type ComponentPropsWithoutRef, type CSSProperties, type ReactNode } from "react";
 
 export type BattlefieldChoiceRect = Pick<DOMRect, "left" | "top" | "right" | "bottom" | "width" | "height">;
 
@@ -62,7 +62,9 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
   const ref = useRef<HTMLDivElement | null>(null);
   const [top, setTop] = useState<number | null>(null);
   const [insets, setInsets] = useState<BattlefieldChoiceInsets | null>(null);
-  const [ready, setReady] = useState(false);
+  const [readiness, setReadiness] = useState<{ placementKey: string; ready: boolean }>(() => ({ placementKey, ready: false }));
+  const ready = readiness.placementKey === placementKey && readiness.ready;
+  const setReady = useCallback((nextReady: boolean) => setReadiness({ placementKey, ready: nextReady }), [placementKey]);
   const [rootCardOverlap, setRootCardOverlap] = useState(false);
   const insetsRef = useRef<BattlefieldChoiceInsets | null>(null);
   const rootEventIdRef = useRef(rootEventId);
@@ -406,7 +408,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
       cancelFrame(resetFrame);
       targetWidthProbe?.remove();
     };
-  }, [centralTargetLayout, enabled, playerCount, placementKey]);
+  }, [centralTargetLayout, enabled, playerCount, placementKey, setReady]);
 
   return { ref, top, insets, ready, rootCardOverlap };
 }

@@ -251,6 +251,36 @@ export type PublicSkillEventAnnouncement = {
 };
 
 type CardRect = { left: number; top: number; width: number; height: number };
+type PublicBattlefieldBounds = { left: number; top: number; right: number; bottom: number };
+
+export function centerRevealCardInSafeBattlefield(input: {
+  table: PublicBattlefieldBounds;
+  viewport: PublicBattlefieldBounds;
+  size: { width: number; height: number };
+  topSeatBottom?: number;
+  leftSideSeatRights?: readonly number[];
+  rightSideSeatLefts?: readonly number[];
+  lowerBoundary?: number;
+  gap?: number;
+}): CardRect | null {
+  const gap = input.gap ?? 8;
+  const left = Math.max(input.table.left + gap, input.viewport.left + gap,
+    ...(input.leftSideSeatRights ?? []).map((right) => right + gap));
+  const right = Math.min(input.table.right - gap, input.viewport.right - gap,
+    ...(input.rightSideSeatLefts ?? []).map((seatLeft) => seatLeft - gap));
+  const top = Math.max(input.table.top + gap, input.viewport.top + gap,
+    (input.topSeatBottom ?? Number.NEGATIVE_INFINITY) + gap);
+  const bottom = Math.min(input.table.bottom - gap, input.viewport.bottom - gap,
+    (input.lowerBoundary ?? Number.POSITIVE_INFINITY) - gap);
+  if (right - left < input.size.width || bottom - top < input.size.height) return null;
+  return {
+    left: left + (right - left - input.size.width) / 2,
+    top: top + (bottom - top - input.size.height) / 2,
+    width: input.size.width,
+    height: input.size.height,
+  };
+}
+
 type JourneyCard = {
   eventId: string;
   actorId: string;
@@ -633,6 +663,60 @@ function battlefieldCenterCard(
       && fitsFullWidthAnnouncement(candidate, COMPACT_PUBLIC_CARD_ANNOUNCEMENT_HEIGHT))
     ?? candidates.find(cardFits);
   return safe ?? boundCardRect(preferredLeft, preferredTop, size.width, size.height);
+}
+
+function singleTargetBattlefieldRevealCard(size: { width: number; height: number }): CardRect | null {
+  const table = document.querySelector<HTMLElement>(".play-table");
+  if (!table) return null;
+  const tableRect = table.getBoundingClientRect();
+  const visualViewport = window.visualViewport;
+  const viewportTop = visualViewport?.offsetTop ?? 0;
+  const viewportLeft = visualViewport?.offsetLeft ?? 0;
+  const viewportRight = viewportLeft + (visualViewport?.width ?? window.innerWidth);
+  const viewportBottom = Math.min(window.innerHeight, viewportTop + (visualViewport?.height ?? window.innerHeight));
+  const visibleSeats = [...table.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor]")]
+    .flatMap((seat) => {
+      const rect = seat.getBoundingClientRect();
+      const style = window.getComputedStyle(seat);
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
+        ? [{ side: seat.dataset.sideColumn, rect }]
+        : [];
+    });
+  const topSeatBottom = Math.max(...visibleSeats.filter((seat) => !seat.side).map((seat) => seat.rect.bottom));
+  const leftSideSeatRights = visibleSeats.filter((seat) => seat.side === "left").map((seat) => seat.rect.right);
+  const rightSideSeatLefts = visibleSeats.filter((seat) => seat.side === "right").map((seat) => seat.rect.left);
+  const pac = table.querySelector<HTMLElement>("[data-public-activity-chip='true']");
+  const pacStyle = pac ? window.getComputedStyle(pac) : null;
+  const pacRect = pac?.getBoundingClientRect();
+  const lowerBoundary = pacRect && pacStyle?.display !== "none" && pacStyle?.visibility !== "hidden"
+    && pacRect.width > 0 && pacRect.height > 0
+    && pacRect.top > tableRect.top && pacRect.top < tableRect.bottom
+    ? pacRect.top
+    : tableRect.bottom;
+  const candidate = centerRevealCardInSafeBattlefield({
+    table: { left: tableRect.left, top: tableRect.top, right: tableRect.right, bottom: tableRect.bottom },
+    viewport: { left: viewportLeft, top: viewportTop, right: viewportRight, bottom: viewportBottom },
+    size,
+    topSeatBottom,
+    leftSideSeatRights,
+    rightSideSeatLefts,
+    lowerBoundary,
+  });
+  if (!candidate) return null;
+  const protectedSelectors = [
+    ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster",
+    ".opponent-inspection-floating-shell", ".card-details-panel", ".hero-details-panel",
+    ".interaction-stage-dying", ".dying-handoff-compact", ".card-pool-target-stage",
+    ".battlefield-choice-stage", ".local-player-dock", ".local-hand-rail", ".local-hand",
+    ".console-guidance", "[data-public-activity-hit-target='true']",
+  ].join(", ");
+  const overlapsProtectedControl = [...document.querySelectorAll<HTMLElement>(protectedSelectors)].some((element) => {
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
+      && rectsOverlap(candidate, rect, 4);
+  });
+  return overlapsProtectedControl ? null : candidate;
 }
 
 function battlefieldPublicEffectFrameCard(materialCount = 1): CardRect {
@@ -1604,6 +1688,7 @@ export function publicCardAnnouncement(
   const targetCardName = targetCardFace
     ? cardDefinition(targetCardFace.kind).name
     : "one card";
+  const dismantleFaceCopy = publicDismantleCardFaceCopy(action, sourceName, targetName, action.settlement?.eventId);
 
   switch (outcome) {
     case "ATTACK_DAMAGE_APPLIED":
@@ -1623,15 +1708,7 @@ export function publicCardAnnouncement(
         : compactPublicNotice(action.ariaLabel, actorName);
     }
     case "DISMANTLE_RESOLVED":
-      if (targetCardMovement?.destinationZone === "discard"
-        && targetCardMovement.destinationOwnerId === null
-        && targetCardSourceZone
-        && action.targetId !== null
-        && targetCardMovement.affectedCardOwnerId === (targetCardMovement.sourceZone === "judgement" ? null : action.targetId)
-        && targetCardFace) {
-        return `${source} discarded ${targetCardName} from ${target} (${targetCardSourceZone}).`;
-      }
-      return `${source} resolved ${cardName} on ${target}.`;
+      return dismantleFaceCopy?.message ?? `${source} resolved ${cardName} on ${target}.`;
     case "STEAL_RESOLVED":
       if (targetCardMovement?.destinationZone === "hand"
         && targetCardMovement.destinationOwnerId === action.sourceId
@@ -1673,10 +1750,14 @@ function publicTargetCardSettlementAccessibleLabel(
 
   if (action.settlement?.outcome === "DISMANTLE_RESOLVED"
     && action.targetId !== null
+    && action.settlement.eventId
+    && (!action.publicNoticeEventId || action.publicNoticeEventId === action.settlement.eventId)
     && zone
     && movement?.destinationZone === "discard"
     && movement.destinationOwnerId === null
     && movement.affectedCardOwnerId === (movement.sourceZone === "judgement" ? null : action.targetId)
+    && face?.id
+    && (face.suit === "♠" || face.suit === "♥" || face.suit === "♦" || face.suit === "♣")
     && faceDescription) {
     return `${source} discarded ${faceDescription} from ${target}'s ${zone} to the discard pile.`;
   }
@@ -1708,13 +1789,75 @@ type DisplayedPublicCardAnnouncement = {
   phase?: PublicNegationNarration["phase"];
   rootEffectState?: PublicNegationNarration["rootEffectState"];
   accessibleLabel?: string;
+  dismantleCardFace?: PublicDismantleCardFaceCopy;
+};
+
+type PublicDismantleCardFaceCopy = {
+  settlementEventId: string;
+  cardId: string;
+  message: string;
+  prefix: string;
+  suit: string;
+  rank?: string;
+  name: string;
+  suffix: string;
 };
 
 type PublicCardAnnouncementCopy = {
   message: string;
   compactMessage?: string;
   accessibleLabel?: string;
+  dismantleCardFace?: PublicDismantleCardFaceCopy;
 };
+
+function publicDismantleCardFaceCopy(
+  action: PublicCardDisplayAction,
+  sourceName: string | null,
+  targetName: string | null,
+  eventId?: string,
+): PublicDismantleCardFaceCopy | undefined {
+  const settlement = action.settlement;
+  const movement = settlement?.targetCardMovement;
+  const face = movement?.affectedCardFace;
+  const validZones = movement?.sourceZone === "hand" || movement?.sourceZone === "equipment" || movement?.sourceZone === "judgement";
+  const validSuit = face?.suit === "♠" || face?.suit === "♥" || face?.suit === "♦" || face?.suit === "♣";
+  if (action.cardKind !== "Dismantle"
+    || settlement?.outcome !== "DISMANTLE_RESOLVED"
+    || !settlement.eventId
+    || eventId !== settlement.eventId
+    || action.publicNoticeEventId && action.publicNoticeEventId !== settlement.eventId
+    || action.targetId === null
+    || !validZones
+    || movement?.destinationZone !== "discard"
+    || movement.destinationOwnerId !== null
+    || movement.affectedCardOwnerId !== (movement.sourceZone === "judgement" ? null : action.targetId)
+    || !face?.id
+    || !validSuit) return undefined;
+  const rank = typeof face.rank === "string" && face.rank.trim() ? face.rank.trim() : undefined;
+  const name = cardDefinition(face.kind).name;
+  const source = sourceName ?? "A player";
+  const target = targetName ?? "the target";
+  const zone = movement.sourceZone === "hand" ? "Hand" : movement.sourceZone === "equipment" ? "Equipment" : "Judgement";
+  const prefix = `${source} discarded `;
+  const suffix = ` from ${target} (${zone}).`;
+  const message = `${prefix}${face.suit}${rank ?? ""} ${name}${suffix}`;
+  return {
+    settlementEventId: settlement.eventId,
+    cardId: face.id,
+    message,
+    prefix,
+    suit: face.suit,
+    ...(rank ? { rank } : {}),
+    name,
+    suffix,
+  };
+}
+
+function publicSettlementCardFaceId(action: PublicCardDisplayAction, dismantleFaceCopy?: PublicDismantleCardFaceCopy) {
+  if (action.settlement?.outcome === "DISMANTLE_RESOLVED") return dismantleFaceCopy?.cardId;
+  if (action.settlement?.outcome === "STEAL_RESOLVED" && action.settlement.targetCardMovement?.sourceZone === "hand") return undefined;
+  return action.settlement?.targetCardMovement?.affectedCardFace?.id;
+}
 
 function publicCardAnnouncementCopy(
   action: PublicCardDisplayAction,
@@ -1726,6 +1869,14 @@ function publicCardAnnouncementCopy(
   compactPlayerNamesById: CompactPublicPlayerNames,
   eventId?: string,
 ): PublicCardAnnouncementCopy {
+  const dismantleFace = publicDismantleCardFaceCopy(action, sourceName, targetName, eventId);
+  if (dismantleFace) {
+    return {
+      message: dismantleFace.message,
+      accessibleLabel: publicTargetCardSettlementAccessibleLabel(action, sourceName, targetName),
+      dismantleCardFace: dismantleFace,
+    };
+  }
   if (action.publicInteractionNarration) {
     return {
       message: action.publicInteractionNarration.headline,
@@ -1804,7 +1955,7 @@ export function publicCardCommittedFactCopy(
     .replace(/\.\s+Play Dodge or Skip\.$/i, ".")
     .replace(/\.\s+(Resolved:)/i, "; $1")
     .replace(/\.\s+(\d+\s+(?:targets|choices) resolved\.)/i, "; $1");
-  return narration ? {
+  return narration && !copy.dismantleCardFace ? {
     message: narration.headline,
     compactMessage: narration.compactHeadline,
     accessibleLabel: narration.accessibleLabel,
@@ -1826,6 +1977,30 @@ type PublicCardAnnouncementBand = {
 };
 
 const publicCardAnnouncementBands = new Map<string, PublicCardAnnouncementBand>();
+
+function setAnnouncementMessageText(
+  element: HTMLElement,
+  message: string,
+  dismantleCardFace?: PublicDismantleCardFaceCopy,
+) {
+  if (!dismantleCardFace || dismantleCardFace.message !== message) {
+    if (element.textContent !== message) element.textContent = message;
+    return;
+  }
+  const face = document.createElement("span");
+  face.className = "public-dismantle-card-face";
+  face.dataset.settlementEventId = dismantleCardFace.settlementEventId;
+  face.dataset.cardId = dismantleCardFace.cardId;
+  face.setAttribute("aria-hidden", "true");
+  const suitRank = document.createElement("span");
+  suitRank.className = `public-dismantle-card-suit-rank ${dismantleCardFace.suit === "♥" || dismantleCardFace.suit === "♦" ? "is-red" : "is-black"}`;
+  suitRank.textContent = `${dismantleCardFace.suit}${dismantleCardFace.rank ?? ""}`;
+  const name = document.createElement("strong");
+  name.className = "public-dismantle-card-name";
+  name.textContent = dismantleCardFace.name;
+  face.append(suitRank, name);
+  element.replaceChildren(document.createTextNode(dismantleCardFace.prefix), face, document.createTextNode(dismantleCardFace.suffix));
+}
 
 function rememberPublicCardAnnouncementBand(key: string, band: PublicCardAnnouncementBand) {
   publicCardAnnouncementBands.delete(key);
@@ -1906,6 +2081,7 @@ function PublicCardAnnouncement({
   message,
   compactMessage,
   accessibleLabel,
+  dismantleCardFace,
   supportingMessage,
   compactSupportingMessage,
   presentationNarration,
@@ -1936,6 +2112,7 @@ function PublicCardAnnouncement({
   message: string;
   compactMessage?: string;
   accessibleLabel?: string;
+  dismantleCardFace?: PublicDismantleCardFaceCopy;
   supportingMessage?: string;
   compactSupportingMessage?: string;
   presentationNarration?: PublicNegationNarration | PublicInteractionNarration;
@@ -1988,6 +2165,7 @@ function PublicCardAnnouncement({
     phase: presentationNarration?.phase ?? negationNarration?.phase,
     rootEffectState: presentationNarration?.rootEffectState ?? negationNarration?.rootEffectState,
     accessibleLabel: accessibleLabel ?? presentationNarration?.accessibleLabel ?? negationNarration?.accessibleLabel,
+    dismantleCardFace,
   }));
   const displayedCopyRef = useRef(displayedCopy);
   useLayoutEffect(() => () => {
@@ -2006,7 +2184,7 @@ function PublicCardAnnouncement({
   [fallbackHeight, fallbackLeft, fallbackTop, fallbackWidth]);
   const latestInputs = {
     eventId, anchorEventId, eventCopyKey, announcementIdentity, geometryKey, copyLifecycleStage, placementKey, viewerLayoutKey,
-    phase, heading, message, compactMessage, accessibleLabel, supportingMessage, compactSupportingMessage,
+    phase, heading, message, compactMessage, accessibleLabel, dismantleCardFace, supportingMessage, compactSupportingMessage,
     presentationNarration, negationNarration, fallbackCardRect: stableFallbackCardRect, phaseNotice, outcome, negationWaiting,
     stableCenterAnchor, keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, clearCenterAnchorWhenParked,
     viewerGeometryReady, preferredVerticalMode, privateDrawAware,
@@ -2110,7 +2288,8 @@ function PublicCardAnnouncement({
         && previous.checkpointId === next.checkpointId
         && previous.phase === next.phase
         && previous.rootEffectState === next.rootEffectState
-        && previous.accessibleLabel === next.accessibleLabel) return;
+        && previous.accessibleLabel === next.accessibleLabel
+        && JSON.stringify(previous.dismantleCardFace) === JSON.stringify(next.dismantleCardFace)) return;
       displayedCopyRef.current = next;
       setDisplayedCopy(next);
     };
@@ -2168,10 +2347,10 @@ function PublicCardAnnouncement({
         accessibleLabel, supportingMessage, compactSupportingMessage, presentationNarration, negationNarration,
         fallbackCardRect: currentFallbackCardRect, outcome, stableCenterAnchor,
         keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, viewerGeometryReady, preferredVerticalMode,
-        privateDrawAware,
+        privateDrawAware, dismantleCardFace,
       } = latestInputsRef.current;
       const copySignature = JSON.stringify([
-        eventCopyKey, heading, message, compactMessage, accessibleLabel, supportingMessage, compactSupportingMessage,
+        eventCopyKey, heading, message, compactMessage, accessibleLabel, dismantleCardFace, supportingMessage, compactSupportingMessage,
       ]);
       const narration = presentationNarration ?? negationNarration;
       const hasNegationNarration = Boolean(negationNarration);
@@ -2190,6 +2369,7 @@ function PublicCardAnnouncement({
         phase: narrationPhase,
         rootEffectState: narrationRootEffectState,
         accessibleLabel: narrationAccessibleLabel,
+        dismantleCardFace,
       };
       commitDisplayedCopy(incomingDisplayedCopy);
       const anchor = getAnchor();
@@ -2401,7 +2581,9 @@ function PublicCardAnnouncement({
       if (sameCopyAndGeometry && previousPlacement) {
         const textElement = copy.querySelector<HTMLElement>("b");
         const supportElement = copy.querySelector<HTMLElement>(".public-negation-narration-support");
-        if (textElement && textElement.textContent !== previousPlacement.message) textElement.textContent = previousPlacement.message;
+        if (textElement && textElement.textContent !== previousPlacement.message) {
+          setAnnouncementMessageText(textElement, previousPlacement.message, incomingDisplayedCopy.dismantleCardFace);
+        }
         if (supportElement && supportElement.textContent !== previousPlacement.supporting) supportElement.textContent = previousPlacement.supporting;
         const measuredHeight = copy.getBoundingClientRect().height;
         const previousRect = new DOMRect(previousPlacement.left, previousPlacement.top, previousPlacement.width, measuredHeight);
@@ -2556,7 +2738,7 @@ function PublicCardAnnouncement({
         // H4 caption to jump above a revealed card and below its parked mini.
         for (const offset of topOffsets) {
           for (const option of announcementOptions) {
-            if (textElement) textElement.textContent = option.message;
+            if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace);
             if (supportElement) supportElement.textContent = option.supporting;
             for (const width of widths) {
               setAnnouncementMeasureMode(option.compact, width);
@@ -2574,7 +2756,7 @@ function PublicCardAnnouncement({
         }
       } else {
         for (const option of announcementOptions) {
-          if (textElement) textElement.textContent = option.message;
+          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace);
           if (supportElement) supportElement.textContent = option.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(option.compact, width);
@@ -2607,7 +2789,7 @@ function PublicCardAnnouncement({
         // search the current viewer's safe area on both sides of the center
         // card. Protected Seat, Dock, Hand and control rects still apply.
         for (const option of announcementOptions) {
-          if (textElement) textElement.textContent = option.message;
+          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace);
           if (supportElement) supportElement.textContent = option.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(option.compact, width);
@@ -2652,7 +2834,7 @@ function PublicCardAnnouncement({
         // below the reveal card. Skip every real or projected owner-card slot.
         const compactOption = announcementOptions.find((option) => option.compact) ?? announcementOptions[0];
         if (compactOption) {
-          if (textElement) textElement.textContent = compactOption.message;
+          if (textElement) setAnnouncementMessageText(textElement, compactOption.message, incomingDisplayedCopy.dismantleCardFace);
           if (supportElement) supportElement.textContent = compactOption.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(compactOption.compact, width);
@@ -2690,7 +2872,7 @@ function PublicCardAnnouncement({
 
       if (!selected) {
         for (const option of announcementOptions) {
-          if (textElement) textElement.textContent = option.message;
+          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace);
           if (supportElement) supportElement.textContent = option.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(option.compact, width);
@@ -2747,7 +2929,9 @@ function PublicCardAnnouncement({
       if (!selected) {
         const textElement = copy.querySelector<HTMLElement>("b");
         const supportElement = copy.querySelector<HTMLElement>(".public-negation-narration-support");
-        if (textElement && textElement.textContent !== incomingDisplayedCopy.message) textElement.textContent = incomingDisplayedCopy.message;
+        if (textElement && textElement.textContent !== incomingDisplayedCopy.message) {
+          setAnnouncementMessageText(textElement, incomingDisplayedCopy.message, incomingDisplayedCopy.dismantleCardFace);
+        }
         if (supportElement && supportElement.textContent !== incomingDisplayedCopy.supporting) supportElement.textContent = incomingDisplayedCopy.supporting;
         const previous = lastValidPlacementRef.current;
         if (previous?.geometryIdentity === currentGeometryIdentity) setPx("width", previous.width);
@@ -2808,6 +2992,7 @@ function PublicCardAnnouncement({
         phase: narrationPhase,
         rootEffectState: narrationRootEffectState,
         accessibleLabel: narrationAccessibleLabel,
+        dismantleCardFace: incomingDisplayedCopy.dismantleCardFace,
       };
       commitDisplayedCopy(nextDisplayedCopy);
       const previous = lastValidPlacementRef.current;
@@ -2954,7 +3139,25 @@ function PublicCardAnnouncement({
     style={{ top: 0, left: 0, visibility: "hidden" }}
   >
     {heading && <span className="public-event-announcement-heading">{heading}</span>}
-    <b aria-label={displayedCopy.accessibleLabel ?? displayedCopy.message}>{displayedCopy.message}</b>
+    <b aria-label={displayedCopy.accessibleLabel ?? displayedCopy.message}>
+      {displayedCopy.dismantleCardFace && displayedCopy.dismantleCardFace.message === displayedCopy.message
+        ? <>
+          {displayedCopy.dismantleCardFace.prefix}
+          <span
+            className="public-dismantle-card-face"
+            data-settlement-event-id={displayedCopy.dismantleCardFace.settlementEventId}
+            data-card-id={displayedCopy.dismantleCardFace.cardId}
+            aria-hidden="true"
+          >
+            <span className={`public-dismantle-card-suit-rank ${displayedCopy.dismantleCardFace.suit === "♥" || displayedCopy.dismantleCardFace.suit === "♦" ? "is-red" : "is-black"}`}>
+              {displayedCopy.dismantleCardFace.suit}{displayedCopy.dismantleCardFace.rank}
+            </span>
+            <strong className="public-dismantle-card-name">{displayedCopy.dismantleCardFace.name}</strong>
+          </span>
+          {displayedCopy.dismantleCardFace.suffix}
+        </>
+        : displayedCopy.message}
+    </b>
     {displayedCopy.supporting && <span className="public-card-announcement-support public-negation-narration-support" aria-hidden="true">{displayedCopy.supporting}</span>}
   </div>;
 }
@@ -4048,11 +4251,15 @@ function SingleTargetCardJourney({
     const currentMotion = singleTargetJourneyMotion(currentAction.motion);
     const currentSourceName = sourceNameRef.current;
     if (!journeyEnabled || !currentMotion || !currentSourceName) return;
+    const singleTargetReveal = (currentMotion.type === "single-target" || currentMotion.type === "negation")
+      && (currentAction.cardKind === "Steal" || currentAction.cardKind === "Dismantle")
+      ? singleTargetBattlefieldRevealCard(REVEAL_CARD)
+      : null;
     const center = currentAction.publicCardEffectFrame
       ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame.materials.length)
       : currentMotion.type === "lust-cost" && currentAction.lustCostFrame
         ? battlefieldLustCostCard()
-      : battlefieldCenterCard(REVEAL_CARD, currentAction.showNegationChainOrdinals === true
+      : singleTargetReveal ?? battlefieldCenterCard(REVEAL_CARD, currentAction.showNegationChainOrdinals === true
         || currentMotion.type === "negation" || currentMotion.type === "group-root"
         ? { reserveSeatHistoryDepth: 2 }
         : { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
@@ -4497,11 +4704,15 @@ function SingleTargetCardJourney({
         if (current.scopeKey !== scopeKey) return;
         const currentAction = actionRef.current;
         const currentMotion = singleTargetJourneyMotion(currentAction.motion);
+        const singleTargetReveal = (currentMotion?.type === "single-target" || currentMotion?.type === "negation")
+          && (currentAction.cardKind === "Steal" || currentAction.cardKind === "Dismantle")
+          ? singleTargetBattlefieldRevealCard(REVEAL_CARD)
+          : null;
         const center = currentAction.publicCardEffectFrame
           ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame.materials.length)
           : currentMotion?.type === "lust-cost" && currentAction.lustCostFrame
             ? battlefieldLustCostCard()
-            : battlefieldCenterCard(REVEAL_CARD, currentAction.showNegationChainOrdinals === true
+            : singleTargetReveal ?? battlefieldCenterCard(REVEAL_CARD, currentAction.showNegationChainOrdinals === true
               || currentMotion?.type === "negation" || currentMotion?.type === "group-root"
             ? { reserveSeatHistoryDepth: 2 }
             : { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
@@ -4834,9 +5045,13 @@ function SingleTargetCardJourney({
     sourceName,
     targetName,
     compactPlayerNamesById,
+    action.settlement?.eventId,
   );
   const negationNarration = action.publicNegationNarration;
   const committedFactCopy = publicCardCommittedFactCopy(action, announcementCopy);
+  const dismantleFaceCopy = committedFactCopy.dismantleCardFace;
+  const displayedAnnouncementEventId = dismantleFaceCopy?.settlementEventId
+    ?? negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? announcementEventId;
   const announcement = committedFactCopy.message;
   const compactAnnouncement = committedFactCopy.compactMessage;
   useEffect(() => {
@@ -4884,6 +5099,7 @@ function SingleTargetCardJourney({
     data-public-card-ready="true"
     data-public-card-action-key={action.key}
     data-public-card-motion={motion?.type ?? "single-target"}
+    data-public-card-kind={action.cardKind}
     data-public-card-viewer-id={viewerId}
     data-public-card-layout-pending={journey.layoutPending || viewerLayoutPending ? "true" : "false"}
     data-public-card-layout-viewer-id={journey.viewerId || undefined}
@@ -4903,7 +5119,7 @@ function SingleTargetCardJourney({
     data-public-card-settlement-destination-zone={allParked ? action.settlement?.targetCardMovement?.destinationZone : undefined}
     data-public-card-settlement-affected-card-owner-id={allParked ? action.settlement?.targetCardMovement?.affectedCardOwnerId ?? "none" : undefined}
     data-public-card-settlement-destination-owner-id={allParked ? action.settlement?.targetCardMovement?.destinationOwnerId ?? "none" : undefined}
-    data-public-card-settlement-card-id={allParked ? action.settlement?.targetCardMovement?.affectedCardFace?.id : undefined}
+    data-public-card-settlement-card-id={allParked ? publicSettlementCardFaceId(action, dismantleFaceCopy) : undefined}
   >
     {journey.cards.filter((card) => card.phase !== "queued").map((card) => {
       const isCurrent = card.eventId === activeEventId;
@@ -4956,10 +5172,10 @@ function SingleTargetCardJourney({
       </li>)}
     </ol>
     {!historyOnly && !suppressAnnouncement && <PublicCardAnnouncement
-      eventId={negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId)}
+      eventId={dismantleFaceCopy?.settlementEventId ?? negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId)}
       eventCopyKey={publicCardAnnouncementCopyKey(
         action,
-        negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId),
+        displayedAnnouncementEventId,
         negationNarration?.actorId ?? action.publicInteractionNarration?.actorId ?? (groupRootStageOwnsCopy ? action.sourceId : currentCard?.actorId ?? action.sourceId),
         roomCode,
       )}
@@ -4973,10 +5189,11 @@ function SingleTargetCardJourney({
       message={announcement}
       compactMessage={compactAnnouncement}
       accessibleLabel={committedFactCopy.accessibleLabel}
-      supportingMessage={negationNarration?.supportingMessage}
-      compactSupportingMessage={negationNarration?.compactSupportingMessage}
-      presentationNarration={negationNarration ? undefined : action.publicInteractionNarration}
-      negationNarration={negationNarration}
+      dismantleCardFace={dismantleFaceCopy}
+      supportingMessage={dismantleFaceCopy ? undefined : negationNarration?.supportingMessage}
+      compactSupportingMessage={dismantleFaceCopy ? undefined : negationNarration?.compactSupportingMessage}
+      presentationNarration={dismantleFaceCopy || negationNarration ? undefined : action.publicInteractionNarration}
+      negationNarration={dismantleFaceCopy ? undefined : negationNarration}
       fallbackCardRect={harvestPoolVisible
         ? journey.center
       : motion?.type === "lust-cost" && journey.center
@@ -4986,7 +5203,7 @@ function SingleTargetCardJourney({
         : motion?.type === "group-root" && !groupRootCenterIsStillOccupied ? undefined : journey.center}
       phaseNotice={negationNarration || action.publicInteractionNarration ? undefined : action.phaseNotice}
       outcome={allParked ? action.settlement?.outcome : undefined}
-      negationWaiting={Boolean(negationNarration || !action.publicInteractionNarration && action.phaseNotice?.includes("NEGATION"))}
+      negationWaiting={Boolean(!dismantleFaceCopy && (negationNarration || !action.publicInteractionNarration && action.phaseNotice?.includes("NEGATION")))}
       stableCenterAnchor={motion?.type === "lust-cost"}
       keepCenterAnchorClear={publicEffectFrameOwnsAnnouncementAnchor}
       stableHarvestAnchor={harvestPoolVisible}
@@ -5993,8 +6210,9 @@ export function PublicCardDisplay({
   const eventId = latestResponse?.eventId ?? action.rootEventId;
   const actorId = latestResponse?.actorId ?? action.sourceId;
   const notice = latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
-  const announcementCopy = publicCardAnnouncementCopy(action, notice, latestResponse?.actorName ?? sourceName, actorId, sourceName, targetName, compactPlayerNamesById, eventId);
+  const announcementCopy = publicCardAnnouncementCopy(action, notice, latestResponse?.actorName ?? sourceName, actorId, sourceName, targetName, compactPlayerNamesById, action.settlement?.eventId ?? eventId);
   const committedFactCopy = publicCardCommittedFactCopy(action, announcementCopy);
+  const dismantleFaceCopy = committedFactCopy.dismantleCardFace;
   const negationNarration = action.publicNegationNarration;
   const announcementPhaseNotice = action.settlement || action.publicInteractionNarration || negationNarration ? undefined : action.phaseNotice;
   const announcement = committedFactCopy.message;
@@ -6026,12 +6244,12 @@ export function PublicCardDisplay({
     data-public-card-settlement-destination-zone={action.settlement?.targetCardMovement?.destinationZone}
     data-public-card-settlement-affected-card-owner-id={action.settlement?.targetCardMovement ? action.settlement.targetCardMovement.affectedCardOwnerId ?? "none" : undefined}
     data-public-card-settlement-destination-owner-id={action.settlement?.targetCardMovement ? action.settlement.targetCardMovement.destinationOwnerId ?? "none" : undefined}
-    data-public-card-settlement-card-id={action.settlement?.targetCardMovement?.affectedCardFace?.id}
+    data-public-card-settlement-card-id={publicSettlementCardFaceId(action, dismantleFaceCopy)}
   >
     {card && <div className="public-card-display-static-card" data-public-card-copy-anchor-event-id={eventId} data-public-card-static-event-id={eventId} data-public-card-static-card-id={card.id} data-harvest-root-parked={harvestRootParked ? "true" : undefined}><CardFace card={card} /></div>}
     {!suppressAnnouncement && !action.suppressAnnouncement && <PublicCardAnnouncement
-      eventId={negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? eventId}
-      eventCopyKey={publicCardAnnouncementCopyKey(action, negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? eventId, negationNarration?.actorId ?? action.publicInteractionNarration?.actorId ?? actorId, roomCode)}
+      eventId={dismantleFaceCopy?.settlementEventId ?? negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? eventId}
+      eventCopyKey={publicCardAnnouncementCopyKey(action, dismantleFaceCopy?.settlementEventId ?? negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? eventId, negationNarration?.actorId ?? action.publicInteractionNarration?.actorId ?? actorId, roomCode)}
       announcementIdentity={action.publicAnnouncementIdentity}
       geometryKey={publicAnnouncementGeometryKey(roomCode, viewerId)}
       copyLifecycleStage={publicCardAnnouncementLifecycleStage(action)}
@@ -6041,12 +6259,13 @@ export function PublicCardDisplay({
       message={announcement}
       compactMessage={compactAnnouncement}
       accessibleLabel={committedFactCopy.accessibleLabel}
-      presentationNarration={negationNarration ? undefined : action.publicInteractionNarration}
-      negationNarration={negationNarration}
+      dismantleCardFace={dismantleFaceCopy}
+      presentationNarration={dismantleFaceCopy || negationNarration ? undefined : action.publicInteractionNarration}
+      negationNarration={dismantleFaceCopy ? undefined : negationNarration}
       fallbackCardRect={null}
       phaseNotice={announcementPhaseNotice}
       outcome={action.settlement?.outcome}
-      negationWaiting={Boolean(negationNarration || announcementPhaseNotice?.includes("NEGATION"))}
+      negationWaiting={Boolean(!dismantleFaceCopy && (negationNarration || announcementPhaseNotice?.includes("NEGATION")))}
     />}
   </section>;
 }

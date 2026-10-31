@@ -10328,12 +10328,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         data-target-card-choice-action-revision={room.actionRevision ?? undefined}
         data-target-card-pool-revision={room.actionRevision ?? undefined}
         data-target-card-pool-top={pendingTargetCardPoolPlacement.top ?? undefined}
-        data-target-card-pool-layout={targetCardPoolCompactLayout ? "central" : undefined}
+        data-target-card-pool-layout="central"
         data-target-card-pool-root-overlap={pendingTargetCardPoolPlacement.rootCardOverlap ? "true" : undefined}
         data-target-card-pool-root-event-id={targetCardChoiceSharedCopyReady ? publicCardDisplayAction?.rootEventId : undefined}
         data-target-card-pool-merge-miss={targetCardPoolCompactLayout ? undefined : targetCardChoiceMergeMiss}
         data-target-card-pool-ready={pendingTargetCardPoolPlacement.ready ? "true" : "false"}
-        aria-hidden={targetCardPoolCompactLayout ? !pendingTargetCardPoolPlacement.ready : undefined}
+        aria-hidden={!pendingTargetCardPoolPlacement.ready}
         style={{
           top: pendingTargetCardPoolPlacement.top === null ? undefined : `${pendingTargetCardPoolPlacement.top}px`,
           left: pendingTargetCardPoolPlacement.insets ? `${pendingTargetCardPoolPlacement.insets.left}px` : undefined,

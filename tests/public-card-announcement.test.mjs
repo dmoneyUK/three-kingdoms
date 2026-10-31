@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { measuredPublicCorridorWidth, publicCorridorWidth } from "../app/public-corridor.ts";
+import { fixedLowerActivityEdge } from "../app/public-activity-chip.tsx";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { publicCardCommittedFactCopy, PublicCardDisplay, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
+import { centerRevealCardInSafeBattlefield, publicCardCommittedFactCopy, PublicCardDisplay, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
 import {
   canClearPublicJourneyOwnership,
   publicAnnouncementEventCopyKey,
@@ -85,6 +86,39 @@ test("440px centered PAC fits beside a compact far-right countdown", () => {
   assert.match(css, /data-seat-topology="side-column"[\s\S]*?bottom: 82px;/);
   assert.match(css, /\.game-shell \.play-table > \.public-activity-chip \{[\s\S]*?width: min\(340px, calc\(100% - 16px\)\);/);
   assert.match(css, /\.game-shell \.play-table > \.public-activity-chip > strong \{\s*max-width: 100%;/);
+});
+
+test("Steal/Dismantle PAC lower edge follows the table while the measured timer stays in its side lane", () => {
+  assert.equal(fixedLowerActivityEdge(474, 894), 466);
+  assert.equal(fixedLowerActivityEdge(474, 450), 442);
+});
+
+test("Steal/Dismantle genuine reveal is centred inside measured Seat-to-PAC battlefield bounds", () => {
+  const reveal = centerRevealCardInSafeBattlefield({
+    table: { left: 0, top: 0, right: 440, bottom: 474 },
+    viewport: { left: 0, top: 0, right: 440, bottom: 894 },
+    size: { width: 90, height: 135 },
+    topSeatBottom: 125,
+    lowerBoundary: 425,
+  });
+  assert.deepEqual(reveal, { left: 175, top: 207.5, width: 90, height: 135 });
+  const constrained = centerRevealCardInSafeBattlefield({
+    table: { left: 0, top: 0, right: 440, bottom: 474 },
+    viewport: { left: 0, top: 0, right: 440, bottom: 894 },
+    size: { width: 90, height: 135 },
+    topSeatBottom: 125,
+    leftSideSeatRights: [100],
+    rightSideSeatLefts: [340],
+    lowerBoundary: 425,
+  });
+  assert.deepEqual(constrained, { left: 175, top: 207.5, width: 90, height: 135 });
+  assert.equal(centerRevealCardInSafeBattlefield({
+    table: { left: 0, top: 0, right: 440, bottom: 474 },
+    viewport: { left: 0, top: 0, right: 440, bottom: 894 },
+    size: { width: 90, height: 135 },
+    topSeatBottom: 300,
+    lowerBoundary: 425,
+  }), null, "insufficient usable battlefield fails closed");
 });
 
 const action = (overrides = {}) => ({
@@ -503,7 +537,7 @@ test("public battle announcements keep proof-backed event meaning in concise cop
   ), "Counter's Negation cancelled Source's Steal on Target.");
 
   assert.equal(publicCardAnnouncement(
-    action({ cardLabel: "BURNING BRIDGE", settlement: {
+    action({ cardKind: "Dismantle", cardLabel: "BURNING BRIDGE", settlement: {
       eventId: "dismantle-hand", outcome: "DISMANTLE_RESOLVED", exiting: false,
       targetCardMovement: {
         sourceZone: "hand", affectedCardOwnerId: "target", destinationZone: "discard", destinationOwnerId: null,
@@ -511,14 +545,14 @@ test("public battle announcements keep proof-backed event meaning in concise cop
       },
     } }),
     "Source played Burning Bridge targeting Target", "Source", "Source", "Target",
-  ), "Source discarded Peach from Target (Hand).");
+  ), "Source discarded ♥3 Peach from Target (Hand).");
 
   for (const [zone, cardFace, ownerId] of [
     ["equipment", { id: "discarded-equipment", kind: "NioShield", suit: "♠", rank: "2" }, "target"],
     ["judgement", { id: "discarded-judgement", kind: "Lightning", suit: "♦", rank: "A" }, null],
   ]) {
     assert.equal(publicCardAnnouncement(
-      action({ cardLabel: "BURNING BRIDGE", settlement: {
+      action({ cardKind: "Dismantle", cardLabel: "BURNING BRIDGE", settlement: {
         eventId: `dismantle-${zone}`, outcome: "DISMANTLE_RESOLVED", exiting: false,
         targetCardMovement: {
           sourceZone: zone, affectedCardOwnerId: ownerId, destinationZone: "discard", destinationOwnerId: null,
@@ -526,7 +560,7 @@ test("public battle announcements keep proof-backed event meaning in concise cop
         },
       } }),
       "Source played Burning Bridge targeting Target", "Source", "Source", "Target",
-    ), `Source discarded ${zone === "equipment" ? "Nio Shield" : "Lightning"} from Target (${zone === "judgement" ? "Judgement" : "Equipment"}).`);
+    ), `Source discarded ${zone === "equipment" ? "♠2 Nio Shield" : "♦A Lightning"} from Target (${zone === "judgement" ? "Judgement" : "Equipment"}).`);
   }
 
   assert.equal(publicCardAnnouncement(
@@ -652,9 +686,76 @@ test("Duel and static H4 copy contains committed facts only", () => {
   assert.doesNotMatch(staticMarkup, /a Negation response is open|Negation open/);
 });
 
+test("Dismantle H4 shows only event-matched public discard face proof; hidden Steal Hand identity stays private", () => {
+  const render = (overrides = {}) => renderToStaticMarkup(React.createElement(PublicCardDisplay, {
+    action: action({
+      cardKind: "Dismantle",
+      cardLabel: "BURNING BRIDGE",
+      cardFace: { id: "dismantle-root", kind: "Dismantle", suit: "♠", rank: "4" },
+      ariaLabel: "Source played Burning Bridge targeting Target",
+      motion: undefined,
+      settlement: {
+        eventId: "dismantle-settlement",
+        outcome: "DISMANTLE_RESOLVED",
+        exiting: false,
+        targetCardMovement: {
+          sourceZone: "hand",
+          affectedCardOwnerId: "target",
+          destinationZone: "discard",
+          destinationOwnerId: null,
+          affectedCardFace: { id: "discarded-peach", kind: "Peach", suit: "♥", rank: "3" },
+        },
+      },
+      publicNoticeEventId: "dismantle-settlement",
+      ...overrides,
+    }),
+    enabled: true,
+    sourceName: "Source",
+    targetName: "Target",
+    compactPlayerNamesById: { source: "Source", target: "Target" },
+    roomCode: "STDMTEST",
+    viewerId: "observer",
+    viewerSeat: 2,
+  }));
+
+  const markup = render();
+  const normalized = markup.replaceAll("&#x27;", "'");
+  assert.match(normalized, /aria-label="Source discarded Peach \(3♥\) from Target's Hand to the discard pile\."/);
+  assert.match(markup, /data-settlement-event-id="dismantle-settlement"/);
+  assert.match(markup, /data-card-id="discarded-peach"/);
+  assert.match(markup, /public-dismantle-card-suit-rank is-red">♥3/);
+  assert.match(markup, /public-dismantle-card-name">Peach/);
+
+  const mismatched = render({ publicNoticeEventId: "different-event" });
+  assert.doesNotMatch(mismatched, /public-dismantle-card-face|discarded-peach|♥3/);
+  assert.match(mismatched, /Source resolved Burning Bridge on Target\./);
+
+  const hiddenSteal = render({
+    cardKind: "Steal",
+    cardLabel: "STEAL",
+    cardFace: { id: "steal-root", kind: "Steal", suit: "♣", rank: "7" },
+    publicNoticeEventId: undefined,
+    settlement: {
+      eventId: "steal-settlement",
+      outcome: "STEAL_RESOLVED",
+      exiting: false,
+      targetCardMovement: {
+        sourceZone: "hand",
+        affectedCardOwnerId: "target",
+        destinationZone: "hand",
+        destinationOwnerId: "source",
+        affectedCardFace: { id: "secret-hand-card", kind: "Peach", suit: "♥", rank: "3" },
+      },
+    },
+  });
+  assert.doesNotMatch(hiddenSteal, /secret-hand-card|Peach|♥3/);
+});
+
 test("public announcement typography is readable and never truncates its verified sentence", () => {
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   const overrides = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const choiceStage = readFileSync(new URL("../app/battlefield-choice-stage.tsx", import.meta.url), "utf8");
   const announcement = css.match(/\.public-card-display-journey-copy\{([^}]+)\}/)?.[1] ?? "";
   const text = css.match(/^\.public-card-display-journey-copy>b\{([^}]+)\}/m)?.[1] ?? "";
   assert.match(announcement, /520px/);
@@ -666,5 +767,13 @@ test("public announcement typography is readable and never truncates its verifie
   assert.match(css, /\.public-card-display-journey\[data-public-card-motion="lust-cost"\][^}]*overflow:visible[^}]*-webkit-line-clamp:unset/);
   assert.doesNotMatch(css, /data-public-card-announcement-long-names/);
   assert.match(overrides, /\.game-shell \.public-card-display-journey\.is-harvest-pool-active > \.public-card-display-journey-copy \{\s*z-index: 38;/);
+  assert.match(overrides, /\.public-card-display-journey\[data-public-card-kind="Dismantle"\] > \.public-card-display-journey-copy[\s\S]*?z-index: 38;/);
+  assert.match(overrides, /\.card-pool-target-stage\[data-choice-mode="actor-target-select"\]:not\(\[data-target-card-pool-ready="true"\]\)[\s\S]*?visibility: hidden !important;[\s\S]*?pointer-events: none !important;/);
+  assert.match(page, /aria-hidden=\{!pendingTargetCardPoolPlacement\.ready\}/);
+  assert.match(page, /data-target-card-pool-layout="central"/);
+  assert.match(choiceStage, /readiness\.placementKey === placementKey && readiness\.ready/);
+  assert.match(overrides, /\.public-dismantle-card-suit-rank\.is-red \{ color: #a51d18; \}/);
+  assert.match(overrides, /\.public-dismantle-card-suit-rank\.is-black \{ color: #171914; \}/);
+  assert.match(overrides, /\.public-dismantle-card-name \{[\s\S]*?font-weight: 800;/);
   assert.doesNotMatch(css, /public-card-display-journey-copy\.is-condensed/);
 });

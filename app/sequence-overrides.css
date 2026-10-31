@@ -5276,6 +5276,52 @@
   z-index: 40;
 }
 
+/* ST-DM-NEG-UX-01 F2: keep the existing H4 above only the genuine
+   Steal/Dismantle journey faces; its pointer-events remain informational. */
+.game-shell .play-table > .public-card-display-journey[data-public-card-kind="Steal"] > .public-card-display-journey-copy,
+.game-shell .play-table > .public-card-display-journey[data-public-card-kind="Dismantle"] > .public-card-display-journey-copy {
+  z-index: 38;
+  pointer-events: none;
+}
+.game-shell .play-table > .public-card-display-journey[data-public-card-kind="Steal"] > .public-card-journey-card.is-current.is-revealing,
+.game-shell .play-table > .public-card-display-journey[data-public-card-kind="Dismantle"] > .public-card-journey-card.is-current.is-revealing {
+  z-index: 36;
+}
+
+/* ST-DM-NEG-UX-01 F3: never paint an actor-only picker until its measured
+   safe placement has already selected the final compact/full layout. */
+.game-shell .play-table > .card-pool-target-stage[data-choice-mode="actor-target-select"]:not([data-target-card-pool-ready="true"]) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* ST-DM-NEG-UX-01 F4: show only a structured, settlement-proven Dismantle
+   face, with a high-contrast suit/rank chip and a distinct full card name. */
+.public-card-display-journey-copy .public-dismantle-card-face {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px;
+  vertical-align: baseline;
+}
+.public-card-display-journey-copy .public-dismantle-card-suit-rank {
+  display: inline-block;
+  padding: 0 3px;
+  border: 1px solid #fff0c6;
+  border-radius: 3px;
+  background: #fff8e7;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.public-card-display-journey-copy .public-dismantle-card-suit-rank.is-red { color: #a51d18; }
+.public-card-display-journey-copy .public-dismantle-card-suit-rank.is-black { color: #171914; }
+.public-card-display-journey-copy .public-dismantle-card-name {
+  color: #ffe09a;
+  font-weight: 800;
+  text-shadow: 0 1px 3px #000;
+}
+
 .game-shell .public-card-display-journey .public-card-journey-card.is-harvest-history-parked {
   opacity: 1 !important;
   filter: none !important;

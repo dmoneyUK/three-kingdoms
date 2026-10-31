@@ -57,6 +57,10 @@ const COLLISION_GAP = 6;
 const ACTIVITY_CHIP_GAP = 2;
 const CANDIDATE_EPSILON = 0.5;
 
+export function fixedLowerActivityEdge(tableBottom: number, viewportBottom: number) {
+  return Math.min(tableBottom - 8, viewportBottom - 8);
+}
+
 function intersects(left: Rect, right: Rect, gap = 6): boolean {
   return left.left < right.right + gap && left.right + gap > right.left
     && left.top < right.bottom + gap && left.bottom + gap > right.top;
@@ -163,28 +167,11 @@ function placeChip(
   const upperBandTop = Math.max(tableRect.top + 8, viewportTop + 8);
   const lowerBandTop = Math.max(tableRect.top + tableRect.height * 0.58, viewportTop + 8);
   const bottom = Math.min(tableRect.bottom - 8, viewportBottom - 8);
-  const systemCluster = table.querySelector<HTMLElement>(".stage-system-cluster");
-  const interactionSafeZone = systemCluster?.parentElement;
-  const systemClusterStyle = systemCluster ? window.getComputedStyle(systemCluster) : null;
-  const safeZoneStyle = interactionSafeZone ? window.getComputedStyle(interactionSafeZone) : null;
-  const parsePixels = (value: string | undefined, fallback: number) => {
-    const parsed = Number.parseFloat(value ?? "");
-    return Number.isFinite(parsed) ? parsed : fallback;
-  };
-  const timerHeight = Math.max(
-    window.innerWidth <= 520 ? 38 : 40,
-    ...[...(systemCluster?.children ?? [])].map((timer) => visibleRect(timer as HTMLElement)?.height ?? 0),
-  );
-  const safeZoneBottom = parsePixels(safeZoneStyle?.bottom, 1);
-  const clusterBottom = parsePixels(systemClusterStyle?.bottom, 4);
-  // Reserve the timer's fixed CSS slot even when no countdown is currently
-  // rendered, so the PAC edge does not jump when the response window closes.
-  const stableTimerTop = tableRect.bottom - safeZoneBottom - clusterBottom - timerHeight;
-  const fixedLowerEdge = Math.min(
-    tableRect.bottom - 8,
-    viewportBottom - 8,
-    stableTimerTop - COLLISION_GAP,
-  );
+  // Keep the lower edge attached to the battlefield. The compact countdown
+  // occupies a separate right-side lane; its real measured rectangle remains
+  // in protectedRects() and is checked below instead of reserving its height
+  // across the entire PAC width.
+  const fixedLowerEdge = fixedLowerActivityEdge(tableRect.bottom, viewportBottom);
   const fixedBand = {
     top: Math.max(tableRect.top + 8, viewportTop + 8, fixedLowerEdge - 112),
     bottom: fixedLowerEdge,
