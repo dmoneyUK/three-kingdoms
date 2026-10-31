@@ -1,6 +1,6 @@
 # WTK UX2 — Simplified Public Card UX
 
-**Revision:** 2026-10-31 19:49 UTC · **Branch:** `ux-v2` · **Current status authority:** Tables A (implementation/correction), B (owner review pending), C (owner-accepted/superseded), and each original item's latest explicit owner verdict. **No old CI, dated task plan, or historical appendix status can reopen closed work.**
+**Revision:** 2026-10-31 19:57 UTC · **Branch:** `ux-v2` · **Current status authority:** Tables A (implementation/correction), B (owner review pending), C (owner-accepted/superseded), and each original item's latest explicit owner verdict. **No old CI, dated task plan, or historical appendix status can reopen closed work.**
 
 This file is the **single active UX2 product/design authority**. It replaces the superseded, much longer UX2 design; previous revisions exist only in Git history. Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmap records, old tests and screenshots are references to prior implementation, **not** permission to reinstate old visual requirements.
 
@@ -8,7 +8,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 **Editorial cleanup (2026-10-30; R6 consolidation 22:27 UTC):** Closed items now retain only the final approved UX contract, explicit owner verdict and essential privacy/interaction boundaries. Historical implementation details and superseded plans remain accessible at the immutable [pre-cleanup revision](https://github.com/dmoneyUK/three-kingdoms/blob/b86c7a781468094fc844fe67b4ffda4e5b9a8d36/docs/UX2-refine.md). Delivered-but-unaccepted and active work remain independently reviewable; this editorial edit is **not** a new coding task or user acceptance.
 
-## UX2 CURRENT canonical work index — reconciled 2026-10-31 19:49 UTC
+## UX2 CURRENT canonical work index — reconciled 2026-10-31 19:57 UTC
 
 **AUTHORITATIVE STATUS INDEX / NO DUPLICATE EXECUTION:** Tables A–C and the latest explicit owner verdict in the original feature sections govern current work. Dated pre-cleanup snapshots and superseded repairs were removed from this active file but remain [archived in Git](#appendix-a--historical-ux2-status-snapshots-archive-only). A delivered feature awaiting human review belongs in Table B, **not** the development queue; USER-ACCEPTED/CLOSED and SUPERSEDED items in C are not active tasks. Keep one implementation identity per distinct defect.
 
@@ -21,7 +21,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 | Single work identity | Outstanding scope | Do not duplicate |
 | --- | --- | --- |
 
-| — | No active implementation item. `ROOM-6P-GATE-01` implementation is complete and awaiting release validation and owner phone review in Table B. | The 7/8-player visual work remains deferred under the temporary availability decision. |
+| — | No active implementation item. `ROOM-6P-GATE-01` is implemented and deployed; owner iPhone review is pending in Table B. | The 7/8-player visual work remains deferred under the temporary availability decision. |
 
 
 **Agent ownership:** This is a design index, not an Agent task dispatch. Autonomous Agent must check latest live branch, read this document at its own safe boundary and reconcile its own `HANDOVER.md`; Planner does not edit or supersede that handoff. W2 last technical source `2b99e7b4e05dc41b86c81185b83ca6e22e76fdad` was deployed with successful [Actions 40080892236](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40080892236); it is **not** an implementation task.
