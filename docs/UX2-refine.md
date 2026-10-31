@@ -38,7 +38,7 @@ The owner actually confirmed the following scopes; these are **not** CI-inferred
 
 | Accepted design / original reference | Exact owner verdict boundary |
 | --- | --- |
-| **Temporary 4–6 player new-game capacity (§10.24.1)** | **USER-ACCEPTED 2026-10-31 20:14 UTC.** Server-enforced join/start/Test Player limits; preserve legacy already-started 7/8-player games and deferred visual designs. |
+| **4–6-player new-game capacity (§10.24.1)** | **USER-ACCEPTED 2026-10-31 20:14 UTC.** Server-enforced join/start/Test Player limit remains product contract. Legacy already-started 7/8-player games remain compatible, but **unfinished 7/8 visual design and review tasks were removed from scope on 2026-10-31 23:04**. |
 | **Steal / Dismantle / Negation (§§9, 10.10, 10.25)** | **USER-ACCEPTED / CLOSED, owner reaffirmed 2026-10-31 21:13 UTC**: real root and counter, correct cancellation/restoration, actor-only picker, one genuine authorized Dismantle discard (no public duplicate result card), stable PAC/H4, protected Hands and author-attached genuine card history. Older narrower Steal/Dismantle presentation acceptance at 14:49 UTC is subsumed; no separate review task remains. |
 | **One PRIVATE received-card reveal (§R7; former R6-ARCH-02)** | **USER-ACCEPTED 2026-10-31 09:01 UTC.** True recipient sees original card once before Hand; no public hidden face, `PRIVATE DRAW` title or old transfer replay. |
 | **Harvest and other proven shared-response foundations (§9, §10.19)** | **USER-ACCEPTED / CLOSED in original scope 2026-10-28 (6/6)**; Negation/counter/FINAL shared presentation additionally reaffirmed 2026-10-31. Harvest's actual per-recipient choice and private-intent authority remain distinct game rules. |
@@ -163,7 +163,7 @@ The screen has three stable areas:
 - **Opponents in top row:** place the thumbnail **just below their actual Hero Seat**, clearly associated with that player without covering HP, name, Hand count, VIEW or SWITCH.
 - **Side-column opponents:** place beside the Seat's **battlefield-facing inward edge**.
 - **Local player:** place the card **immediately above the Local Dock**, on the battlefield side, not inside the private Hand or on top of Guidance/Confirm/Skip.
-- Derive anchor rectangles from the actual DOM Seat/Dock identified by server player ID. Recompute safely for phone/wide/4–8 seat layouts and resize; when full size cannot fit, use contained compact layout or a small verified recent-card count. Never relocate a physical Seat to create space.
+- Derive anchor rectangles from the actual DOM Seat/Dock identified by server player ID. Recompute safely for actual measured 4/5/6-player phone Seat/Dock geometry and resize; previously started legacy rooms remain truthful without adding new 7/8 mobile visual work. When full size cannot fit, use contained compact layout or a small verified recent-card count. Never relocate a physical Seat to create space.
 - For **ordinary Attack/Dodge and non-Duel interactions**, show the latest public card for each involved player, with at most one recent subdued predecessor as space allows; older cards may be summarized. **Exception: an active Duel retains the real Duel root and every committed Attack in full, grouped at their true author's Seat/Dock with topology-dependent orientation and a cross-player chronological sequence index (§8.1).** No latest-per-duelist replacement or `+N` substitute; never create a card without a genuine public commit.
 
 ### 2.3 Visible emphasis
@@ -255,7 +255,7 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 - **Exactly one** compact public-information inspector. Selecting a legal opponent or using their Inspect affordance opens/updates the **same panel**, never `PREVIEW TARGET` + separate overlapped `INSPECT`. Changing the *inspection subject* alone must not silently change the legally selected gameplay target; clicking a legal target Seat may explicitly select it. Closing Inspect preserves an existing valid target/Confirm state.
 - iPhone 17 Pro Max-style black/gold **upper/middle battlefield floating panel**, not full screen: use ~88–94% of usable safe width where feasible and content-driven height, roughly 40–50% battlefield-height cap with **internal scrolling** for overflow. Do not cover opponent Seats, Hand, Guidance or Confirm/Cancel; one close × control, no `View Details` button and no automatic full detail screen.
 - Show name, recognisable Hero portrait, public HP, Hand **count** (not card identities), named public skills, actual public Equipment Weapon/Armour/+1/−1 horse, and public Judgment cards or `None`. Any hidden role remains hidden. **Tap a skill to show its canonical NAME and description in the shared Details region**; tapping another skill or visible public equipment/Judgement card switches the description directly. **Tapping the already selected item does not collapse/clear it (§8.5)**; informational only, never skill activation. No invented equipment or hand-back identities.
-- Use actual server public data; compare equipment-rich real 4-player/6–8-seat cases and long skill descriptions, ensuring no overlapping panels or disabled local controls. **Inspector must keep long descriptions scrollable; tapping public equipment or another skill directly switches its named detail in the same open Inspector, with NO nested Back; inspected Hero and any legitimate selected target remain (§8.3–§8.5).** Equipment mini-card rank/suit/art must scale together.
+- Use actual server public data; compare equipment-rich supported 4/5/6-seat cases and long skill descriptions, ensuring no overlapping panels or disabled local controls. **Inspector must keep long descriptions scrollable; tapping public equipment or another skill directly switches its named detail in the same open Inspector, with NO nested Back; inspected Hero and any legitimate selected target remain (§8.3–§8.5).** Equipment mini-card rank/suit/art must scale together.
 
 ### 5.5 Separate authoritative target-card picker (old §4C)
 
@@ -268,7 +268,7 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 
 ## 6. Visual quality and production-path acceptance
 
-**Mandatory functional checks (no fixture-only completion claims):** genuine server-backed four-player game, with authorized host-controlled test players when switching is needed. Test at 390×844, **~440px CSS iPhone 17 Pro Max**, 480×900, one wide viewport, and 4/6/8 Seat topology where relevant.
+**Mandatory functional checks for CURRENT supported new matches (no fixture-only completion claims):** genuine server-backed 4/5/6-player games, with authorized host-controlled test players for identity switches. Use representative iPhone widths 390px, ~440px, and 480px when appropriate; **do not require 7/8-player iPhone visual runs, unfinished layout fixes or screenshot acceptance**. An existing larger-game server compatibility regression may still be retained independently of new-game visual review.
 
 **New visual invariants:**
 - **Zero** source-target/card-card relationship strokes, SVG arrows, old connector portals, historical route lines or per-player branch visualization.
@@ -281,7 +281,7 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 
 **Evidence grading:** Rule/API pass → public projection pass → browser fixture pass → real authenticated browser/game path pass → deployed device screenshot → **user visual acceptance**. CI or a mounted DOM element alone never proves the final UX. Capture actual visible screenshot and IDs/build SHA; report unsupported proof/fallback honestly.
 
-**CI policy:** normal required push-to-CI-to-Cloudflare deployment/smoke target **≤6:00 wall clock**. Retain small meaningful build/typecheck, lint, rules/API/privacy and startup smoke; do not add large unapproved visual matrices to mandatory push CI. Heavy display/4–8-seat tests run focused/opt-in until user approves them. Do not suppress real errors or remove real safety coverage merely to pass CI.
+**CI policy:** normal required push-to-CI-to-Cloudflare deployment/smoke target **≤6:00 wall clock**. Retain small meaningful build/typecheck, lint, rules/API/privacy and startup smoke; do not add large unapproved visual matrices to mandatory push CI. Optional **4/5/6 supported-game** visual cases stay focused and within the Agent's total local UI-test budget; **no 7/8 phone-test queue**. Preserve existing engine-level legacy game compatibility tests and do not suppress real safety errors.
 
 ## 7. Historical baseline migration — ARCHIVE ONLY (DO NOT EXECUTE)
 
