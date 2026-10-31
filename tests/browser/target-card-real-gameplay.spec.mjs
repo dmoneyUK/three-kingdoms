@@ -993,7 +993,7 @@ for (const kind of ["Steal", "Dismantle"]) {
         }
         if (chipRect && index !== 1) {
           const layout = await chip.getAttribute("data-public-activity-layout");
-          expect(layout).toMatch(/^(target-seat-adjacent|bottom-center|lower-band-(center|left|right))$/);
+          expect(layout).toMatch(/^fixed-lower-center(?:-blocked)?$/);
         }
         const targetPicker = viewerPage.locator(".card-pool-panel--actor-target-select");
         if (await targetPicker.isVisible().catch(() => false) && chipRect) {
@@ -1323,7 +1323,7 @@ test("T3-F1 keeps the authentic Steal and Burning Bridges root at its author acr
   }
 });
 
-test("T3-F1 R5-B preserves the Steal root through settlement and a second root", async ({ browser, request }, testInfo) => {
+test("ST-DM-NEG-UX-01 keeps Steal PAC, H4, and root stable across four mobile viewers", async ({ browser, request }, testInfo) => {
   test.setTimeout(120_000);
   const steal = card("Steal", "t3-r5-b-steal-root");
   const nextRoot = card("Dismantle", "t3-r5-b-second-root", "♦", "8");
@@ -1340,9 +1340,9 @@ test("T3-F1 R5-B preserves the Steal root through settlement and a second root",
     sourceSeat,
     targetSeat,
   }), sourceSeat);
-  const viewerSeats = [sourceSeat, targetSeat];
+  const viewerSeats = [sourceSeat, targetSeat, 2, 3];
   const contexts = await Promise.all(viewerSeats.map(() => browser.newContext({
-    viewport: { width: 390, height: 844 },
+    viewport: { width: 440, height: 894 },
     isMobile: true,
     hasTouch: true,
     deviceScaleFactor: 3,
@@ -1350,7 +1350,7 @@ test("T3-F1 R5-B preserves the Steal root through settlement and a second root",
   const pages = await Promise.all(contexts.map((context) => context.newPage()));
 
   try {
-    await Promise.all(pages.map((page, index) => openGame(page, seed, viewerSeats[index], { width: 390, height: 844 })));
+    await Promise.all(pages.map((page, index) => openGame(page, seed, viewerSeats[index], { width: 440, height: 894 })));
     // Observe the genuine root before it is played so the short move phase
     // cannot finish before the test attaches its lifecycle recorder.
     await Promise.all(pages.map((page) => page.evaluate(() => {
@@ -1399,16 +1399,40 @@ test("T3-F1 R5-B preserves the Steal root through settlement and a second root",
     const actorView = await roomView(request, seed, sourceSeat);
     const rootEvent = actorView.timeline.find((event) => event?.type === "card" && event.action === "play" && event.card?.id === steal.id);
     expect(rootEvent).toBeTruthy();
-    const authorId = seed.players[sourceSeat].id;
-    const reveal = await Promise.all(pages.map((page) => expectRootJourneyReveal(page, {
-      eventId: rootEvent.id,
-      cardId: steal.id,
-      actorId: authorId,
+    await Promise.all(pages.map(async (page) => {
+      const chip = page.locator(".public-activity-chip");
+      await expect(chip).toBeVisible();
+      await expect(chip).toHaveAttribute("data-public-activity-kind", /^(negation|response|target-card-choice)$/);
+    }));
+    const responseChipGeometry = await Promise.all(pages.map((page) => page.locator(".public-activity-chip").evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, width: rect.width, center: rect.left + rect.width / 2, bottom: rect.bottom, layout: element.getAttribute("data-public-activity-layout") };
     })));
+    for (const geometry of responseChipGeometry) expect(geometry.layout).toMatch(/^fixed-lower-center(?:-blocked)?$/);
+    for (const geometry of responseChipGeometry.slice(1)) {
+      expect(Math.abs(geometry.center - responseChipGeometry[0].center)).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.width - responseChipGeometry[0].width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.bottom - responseChipGeometry[0].bottom)).toBeLessThanOrEqual(1);
+    }
+    const authorId = seed.players[sourceSeat].id;
+    // The public card can finish its short reveal while the four authenticated
+    // views settle on the committed response checkpoint. Capture the genuine
+    // root now, then assert its stable parked author anchor below.
+    const reveal = await Promise.all(pages.map(async (page) => {
+      const display = page.locator('[data-public-card-display="true"]');
+      await expect(display).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
+      await expect(display).toHaveAttribute("data-public-card-root-event-id", rootEvent.id);
+      await expect(display).toHaveAttribute("data-public-card-id", steal.id);
+      const root = page.locator(`[data-public-card-journey-event-id="${rootEvent.id}"][data-public-card-journey-role="root"]`);
+      await expect(root).toHaveCount(1);
+      await expect(root).toHaveAttribute("data-public-card-journey-card-id", steal.id);
+      await expect(root).toHaveAttribute("data-public-card-journey-actor-id", authorId);
+      return { root, revealStartedAt: await root.getAttribute("data-public-card-journey-reveal-started-at") };
+    }));
     const initialActionKey = await pages[0].locator('[data-public-card-display="true"]').getAttribute("data-public-card-action-key");
     await Promise.all(pages.map((page, index) => page.evaluate(({ eventId, actor }) => {
       const root = document.querySelector(`[data-public-card-journey-event-id="${eventId}"][data-public-card-journey-role="root"]`);
-      if (!root) throw new Error("T3-F1 root must be mounted before monitoring its move.");
+      if (!root) throw new Error("ST-DM root must be mounted before monitoring its move.");
       window.__t3HandoffMonitor = {
         startedAt: performance.now(),
         frames: 0,
@@ -1509,6 +1533,16 @@ test("T3-F1 R5-B preserves the Steal root through settlement and a second root",
     await expect(pages[1].locator(".card-pool-target-stage--spectator, .card-pool-panel--target-readonly")).toHaveCount(0);
     await expect(spectatorActivity).toBeVisible();
     await expect(spectatorActivity.locator("strong")).toHaveText("Waiting for SOURCE to choose a card from TARGET.");
+    const choiceChipGeometry = await Promise.all(pages.slice(1).map((page) => page.locator(".public-activity-chip").evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, width: rect.width, center: rect.left + rect.width / 2, bottom: rect.bottom, layout: element.getAttribute("data-public-activity-layout") };
+    })));
+    for (const geometry of choiceChipGeometry) expect(geometry.layout).toMatch(/^fixed-lower-center(?:-blocked)?$/);
+    for (const geometry of choiceChipGeometry.slice(1)) {
+      expect(Math.abs(geometry.center - choiceChipGeometry[0].center)).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.width - choiceChipGeometry[0].width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.bottom - choiceChipGeometry[0].bottom)).toBeLessThanOrEqual(1);
+    }
     await expect(pages[0].locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
     await expect(pages[0].locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
     const handoffEvidence = await Promise.all(pages.map(async (page) => {
@@ -1546,7 +1580,7 @@ test("T3-F1 R5-B preserves the Steal root through settlement and a second root",
       await expect(page.locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
       await expect(page.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`)).toHaveCount(1);
       await expect(page.locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
-      if (index === 1) {
+      if (index !== 0) {
         await expect(page.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
         await expect(page.locator(".card-pool-panel--target-readonly")).toHaveCount(0);
       }
@@ -1581,56 +1615,22 @@ test("T3-F1 R5-B preserves the Steal root through settlement and a second root",
       await expect(page.locator(`[data-public-card-journey-event-id="${rootEvent.id}"][data-public-card-journey-role="root"]`)).toHaveCount(1);
       await expect(page.locator(`[data-public-card-static-event-id="${rootEvent.id}"]`)).toHaveCount(0);
       await expect(display).toHaveAttribute("data-public-card-settlement-outcome", "STEAL_RESOLVED", { timeout: 15_000 });
-      const resultCard = page.locator(`[data-public-card-target-result-card-event-id="${settlement.eventId}"]`);
-      const resultCopy = page.locator(`[data-public-card-target-result-copy-event-id="${settlement.eventId}"]`);
-      const resultGroup = page.locator('[data-public-card-target-result="true"]');
-      await expect(resultCard).toBeVisible();
-      await expect(resultCopy).toBeVisible();
-      await expect(resultCopy).toHaveText("SOURCE took 1 hidden card from TARGET (Hand).");
-      await expect(resultGroup).toHaveAttribute("aria-label", "SOURCE took one concealed card from TARGET's Hand into SOURCE's Hand. The stolen card identity is not public.");
-      await expect(resultGroup).toHaveAttribute("data-public-card-target-result-event-id", settlement.eventId);
-      await expect(resultGroup).toHaveAttribute("data-public-card-target-result-placement-ready", "true");
-      const resultOffset = Number(await resultGroup.getAttribute("data-public-card-target-result-placement-offset-px"));
-      expect(resultOffset).toBeGreaterThanOrEqual(-70);
-      expect(resultOffset).toBeLessThanOrEqual(-40);
-      const resultGeometry = await resultGroup.evaluate((element) => {
+      await expect(page.locator('[data-public-card-target-result="true"], .public-target-card-result')).toHaveCount(0);
+      const h4 = display.locator('[data-public-card-announcement="true"]');
+      await expect(h4).toBeVisible();
+      await expect(h4).toHaveText("SOURCE took 1 hidden card from TARGET (Hand).");
+      await expect(h4.locator("b")).toHaveAttribute("aria-label", "SOURCE took one concealed card from TARGET's Hand into SOURCE's Hand. The stolen card identity is not public.");
+      expect(await display.innerHTML()).not.toContain(hidden.id);
+      const h4Geometry = await h4.evaluate((element) => {
         const rect = element.getBoundingClientRect();
-        const dock = document.querySelector(".local-player-dock")?.getBoundingClientRect();
-        const seatBottoms = [...document.querySelectorAll(".play-table .player-board [data-player-anchor]")]
-          .map((seat) => seat.getBoundingClientRect().bottom);
-        const card = element.querySelector(".public-target-card-result__card")?.getBoundingClientRect();
-        const copy = element.querySelector(".public-target-card-result__copy")?.getBoundingClientRect();
-        return {
-          left: rect.left,
-          right: rect.right,
-          styleLeft: Number.parseFloat(element.style.left),
-          transform: getComputedStyle(element).transform,
-          top: rect.top,
-          bottom: rect.bottom,
-          dockTop: dock?.top ?? innerHeight,
-          maxSeatBottom: Math.max(0, ...seatBottoms),
-          cardBottom: card?.bottom ?? 0,
-          copyTop: copy?.top ?? 0,
-          placementLimited: element.dataset.publicCardTargetResultPlacementLimited === "true",
-          limitationReason: element.dataset.publicCardTargetResultPlacementReason ?? null,
-          placementGeometry: element.dataset.publicCardTargetResultPlacementGeometry ?? null,
-        };
+        return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth, clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, viewportWidth: innerWidth, viewportHeight: innerHeight };
       });
-      expect(resultGeometry.left).toBeGreaterThanOrEqual(0);
-      expect(resultGeometry.right).toBeLessThanOrEqual(390);
-      expect(Math.abs(resultGeometry.left - resultGeometry.styleLeft)).toBeLessThan(1);
-      expect(resultGeometry.transform).toBe("none");
-      expect(resultGeometry.top).toBeGreaterThanOrEqual(resultGeometry.maxSeatBottom + 10);
-      expect(resultGeometry.bottom).toBeLessThanOrEqual(resultGeometry.dockTop - 10);
-      expect(resultGeometry.copyTop).toBeGreaterThanOrEqual(resultGeometry.cardBottom);
-      if (resultGeometry.placementLimited) {
-        expect(resultGeometry.limitationReason).toBeTruthy();
-        expect(JSON.parse(resultGeometry.placementGeometry)).toMatchObject({ result: { left: resultGeometry.left, top: resultGeometry.top } });
-      }
-      await expect(resultCard).not.toHaveAttribute("data-public-card-target-result-card-id");
-      await expect(resultCard.locator(".public-target-card-result__back")).toBeVisible();
-      expect(await resultCard.innerHTML()).not.toContain(hidden.id);
-      expect(await resultCopy.innerHTML()).not.toContain(hidden.id);
+      expect(h4Geometry.left).toBeGreaterThanOrEqual(0);
+      expect(h4Geometry.top).toBeGreaterThanOrEqual(0);
+      expect(h4Geometry.right).toBeLessThanOrEqual(440);
+      expect(h4Geometry.bottom).toBeLessThanOrEqual(h4Geometry.viewportHeight);
+      expect(h4Geometry.scrollWidth).toBeLessThanOrEqual(h4Geometry.clientWidth + 1);
+      expect(h4Geometry.scrollHeight).toBeLessThanOrEqual(h4Geometry.clientHeight + 1);
       if (index === 0) settledActionKey = await display.getAttribute("data-public-card-action-key");
     }
     const parkedAfterSettlement = await Promise.all(pages.map((page) => expectRootJourneyParkedByAuthor(page, {
@@ -1638,7 +1638,7 @@ test("T3-F1 R5-B preserves the Steal root through settlement and a second root",
       cardId: steal.id,
       actorId: authorId,
     })));
-    await testInfo.attach("r5-b-steal-root-after-settlement.json", {
+    await testInfo.attach("st-dm-steal-root-after-settlement.json", {
       body: Buffer.from(JSON.stringify({
         eventId: rootEvent.id,
         cardId: steal.id,
@@ -1658,13 +1658,31 @@ test("T3-F1 R5-B preserves the Steal root through settlement and a second root",
       }, null, 2)),
       contentType: "application/json",
     });
-    const observerDisplay = pages[1].locator(`[data-public-card-settlement-event-id="${settlement.eventId}"]`);
-    await expect(observerDisplay).toHaveAttribute("data-public-card-target-result-read-started-at-ms", /\d+/);
-    const readStartedAt = Number(await observerDisplay.getAttribute("data-public-card-target-result-read-started-at-ms"));
-    await pages[1].waitForFunction((startedAt) => performance.now() - startedAt >= 2_850, readStartedAt, { timeout: 4_000 });
-    await expect(pages[1].locator(`[data-public-card-target-result-copy-event-id="${settlement.eventId}"]`)).toBeVisible();
-    await expect(pages[1].locator(`[data-public-card-target-result-copy-event-id="${settlement.eventId}"]`)).toBeHidden({ timeout: 1_000 });
-    expect(await pages[1].evaluate((startedAt) => performance.now() - startedAt, readStartedAt)).toBeGreaterThanOrEqual(3_000);
+    const switchPage = pages[1];
+    const h4AfterSwitchTarget = switchPage.locator(`[data-public-card-settlement-event-id="${settlement.eventId}"] [data-public-card-announcement="true"]`);
+    await expect(h4AfterSwitchTarget).toBeVisible();
+    const switchedViewerId = seed.players[2].id;
+    await switchPage.getByTestId(`test-view-switch-${switchedViewerId}`).click();
+    await expect(switchPage.locator(`.local-player-dock[data-player-anchor="${switchedViewerId}"]`)).toBeVisible();
+    await expect(h4AfterSwitchTarget).toHaveText("SOURCE took 1 hidden card from TARGET (Hand).");
+    await expectRootJourneyParkedByAuthor(switchPage, {
+      eventId: rootEvent.id,
+      cardId: steal.id,
+      actorId: authorId,
+      revealStartedAt: reveal[1].revealStartedAt,
+    });
+    await expect(h4AfterSwitchTarget).toBeHidden({ timeout: 4_000 });
+    const turnChipGeometry = await Promise.all(pages.map((page) => page.locator(".public-activity-chip").evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, width: rect.width, center: rect.left + rect.width / 2, bottom: rect.bottom, layout: element.getAttribute("data-public-activity-layout") };
+    })));
+    for (const geometry of turnChipGeometry) expect(geometry.layout).toMatch(/^fixed-lower-center(?:-blocked)?$/);
+    for (const geometry of turnChipGeometry.slice(1)) {
+      expect(Math.abs(geometry.center - turnChipGeometry[0].center)).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.width - turnChipGeometry[0].width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.bottom - turnChipGeometry[0].bottom)).toBeLessThanOrEqual(1);
+    }
+    await expect(pages[1].locator(`[data-public-card-settlement-event-id="${settlement.eventId}"] [data-public-card-announcement="true"]`)).toHaveCount(0);
     expect(settledActionKey).not.toBe(initialActionKey);
     expect(JSON.stringify(await roomView(request, seed, targetSeat))).not.toContain(hidden.id);
 
@@ -1952,23 +1970,11 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
         await expect(display).toHaveAttribute("data-public-card-settlement-source-zone", scenario.zone, { timeout: 15_000 });
         await expect(display).toHaveAttribute("data-public-card-settlement-destination-zone", scenario.kind === "Steal" ? "hand" : "discard", { timeout: 15_000 });
         if (scenario.kind === "Steal" && scenario.zone === "hand") {
-          const result = viewerPage.locator('[data-public-card-target-result="true"]');
-          const resultCard = result.locator(".public-target-card-result__card");
-          await expect(result).toBeVisible({ timeout: 15_000 });
-          if (index === 0) {
-            await expect(resultCard).toHaveAttribute("data-public-card-target-result-card-id", affected.id);
-            const face = resultCard.locator(".played-card");
-            await expect(face).toHaveClass(/peach/);
-            await expect(face.locator(".card-name-mark")).toHaveText("Peach");
-            await expect(face.locator("i")).toHaveText("7♥");
-          } else {
-            await expect(resultCard).not.toHaveAttribute("data-public-card-target-result-card-id");
-            expect(await viewerPage.locator("body").innerHTML()).not.toContain(affected.id);
-          }
+          await expect(viewerPage.locator('[data-public-card-target-result="true"], .public-target-card-result')).toHaveCount(0);
+          expect(await display.innerHTML()).not.toContain(affected.id);
+          if (index !== 0) expect(await viewerPage.locator("body").innerHTML()).not.toContain(affected.id);
         }
-        const announcement = scenario.kind === "Steal" && scenario.zone === "hand"
-          ? viewerPage.locator(".public-target-card-result__copy")
-          : viewerPage.locator('[data-public-card-announcement="true"]');
+        const announcement = viewerPage.locator('[data-public-card-announcement="true"]');
         await expect(announcement).toHaveText(expectedCopy);
         const copyGeometry = await announcement.evaluate((element) => {
           const rect = element.getBoundingClientRect();

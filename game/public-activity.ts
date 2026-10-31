@@ -33,7 +33,6 @@ export type PublicActivityStatus = {
   text: string;
   heading?: string;
   stage?: string;
-  anchorPlayerId?: string;
 };
 
 const RESOLVING: PublicActivityStatus = { kind: "resolving", text: "Resolving…" };
@@ -322,7 +321,6 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
       return {
         kind: "target-card-choice",
         text: `Waiting for ${actor} to choose a card from ${target}.`,
-        anchorPlayerId: targetCard.targetId,
       };
     }
   }

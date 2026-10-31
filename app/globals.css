@@ -1271,17 +1271,6 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 /* Proof-backed public card journeys reveal at the battlefield centre, then
    park at the event author's real Seat or Dock. */
 .public-card-display-journey{position:fixed!important;inset:0;z-index:34;display:block;width:auto;max-width:none;height:auto;margin:0;padding:0;translate:none;border:0;background:transparent;box-shadow:none;overflow:visible;pointer-events:none}
-.public-target-card-result{position:fixed;z-index:38;display:flex;flex-direction:column;align-items:center;gap:8px;width:min(90vw,360px);pointer-events:none}
-.public-target-card-result[data-public-card-target-result-placement-ready="false"]{visibility:hidden}
-.public-target-card-result__card{flex:0 0 135px;width:90px;height:135px;overflow:hidden;border:1px solid #d1b36d;border-radius:7px;background:#121610;box-shadow:0 8px 22px #000c}
-.public-target-card-result__card>.played-card{box-sizing:border-box;width:100%;height:100%;min-width:0;min-height:0;padding:10.5px 6px;border-radius:6px;animation:none;box-shadow:none}
-.public-target-card-result__card>.played-card>i{left:9px;top:7px;width:22px;min-height:30px;padding:1px 1px 4px;border-width:1px;border-radius:0 0 6px 0;font-size:10px}
-.public-target-card-result__card>.played-card>i small{font-size:8px}
-.public-target-card-result__card>.played-card .card-name-mark{font-size:clamp(17px,4.4vw,20px);line-height:1.02}
-.public-target-card-result__card>.played-card>strong{font-size:7px}
-.public-target-card-result__back{box-sizing:border-box;display:block;width:100%;height:100%;border:1px solid #c6a45c;border-radius:6px;background:repeating-linear-gradient(45deg,#242b21,#242b21 8px,#171b15 8px,#171b15 16px),linear-gradient(145deg,#27322a,#0c100c);box-shadow:inset 0 0 0 4px #171a13,inset 0 0 0 5px #c6a45c88}
-.public-target-card-result__copy{box-sizing:border-box;width:100%;max-width:360px;margin:0;padding:8px 10px;border:1px solid #c6a45c;border-radius:4px;background:#151812f5;box-shadow:0 5px 15px #000b;color:#f2e3bf;font:700 14px/1.25 Arial,sans-serif;text-align:center;overflow-wrap:anywhere}
-@media(prefers-reduced-motion:reduce){.public-target-card-result,.public-target-card-result__card,.public-target-card-result__copy{animation:none;transition:none}}
 .public-card-journey-card{position:fixed;z-index:1;display:block;flex:none;margin:0;padding:0;border:0;border-radius:8px;transform:none;opacity:1;transition:left var(--public-card-journey-move-duration,.38s) cubic-bezier(.2,.7,.2,1),top var(--public-card-journey-move-duration,.38s) cubic-bezier(.2,.7,.2,1),width var(--public-card-journey-move-duration,.38s) cubic-bezier(.2,.7,.2,1),height var(--public-card-journey-move-duration,.38s) cubic-bezier(.2,.7,.2,1),opacity .18s ease,filter .18s ease;pointer-events:none}
 .public-card-duel-physical-group{position:absolute;inset:0;display:block;pointer-events:none}
 .public-card-duel-physical-face{position:absolute;top:0;width:100%;height:100%;transform:translateX(-50%);pointer-events:none}

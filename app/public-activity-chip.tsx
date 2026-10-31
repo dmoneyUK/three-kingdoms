@@ -124,56 +124,6 @@ function protectedRects(table: HTMLElement): ProtectedRect[] {
   return [...rectsByGeometry.values()];
 }
 
-function placeNearPlayerSeat(chip: HTMLElement, table: HTMLElement, playerId: string): boolean {
-  const seat = [...table.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor]")]
-    .find((candidate) => candidate.dataset.playerAnchor === playerId);
-  const seatRect = seat && visibleRect(seat);
-  if (!seatRect) return false;
-
-  const tableRect = table.getBoundingClientRect();
-  chip.style.width = `${publicCorridorWidth(table, { top: seatRect.top, bottom: seatRect.bottom + 64 }, 340, { reserveTimer: false })}px`;
-  const width = chip.offsetWidth;
-  const height = chip.offsetHeight;
-  const visualViewport = window.visualViewport;
-  const viewportTop = Math.max(0, visualViewport?.offsetTop ?? 0);
-  const viewportBottom = Math.min(window.innerHeight, (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight));
-  const leftBound = Math.max(tableRect.left + 8, 8);
-  const rightBound = Math.min(tableRect.right - 8, window.innerWidth - 8);
-  const minCenter = leftBound + width / 2;
-  const maxCenter = rightBound - width / 2;
-  if (width <= 0 || height <= 0 || minCenter > maxCenter) return false;
-
-  const seatCenter = seatRect.left + seatRect.width / 2;
-  const center = Math.max(minCenter, Math.min(maxCenter, seatCenter));
-  const candidates = [
-    ...[COLLISION_GAP, COLLISION_GAP + 12, COLLISION_GAP + 24, COLLISION_GAP + 36]
-      .map((offset) => ({ center, top: seatRect.bottom + offset })),
-    { center, top: seatRect.top - height - COLLISION_GAP },
-  ];
-  const obstacles = protectedRects(table);
-  for (const candidate of candidates) {
-    const rect = {
-      left: candidate.center - width / 2,
-      top: candidate.top,
-      right: candidate.center + width / 2,
-      bottom: candidate.top + height,
-      width,
-      height,
-    };
-    if (rect.left < leftBound || rect.right > rightBound
-      || rect.top < tableRect.top + 4 || rect.top < viewportTop + 4
-      || rect.bottom > Math.min(tableRect.bottom - 4, viewportBottom - 4)
-      || obstacles.some((obstacle) => intersects(rect, obstacle, ACTIVITY_CHIP_GAP))) continue;
-
-    chip.style.left = `${rect.left - tableRect.left}px`;
-    chip.style.top = `${rect.top - tableRect.top}px`;
-    chip.style.visibility = "visible";
-    chip.dataset.publicActivityLayout = "target-seat-adjacent";
-    return true;
-  }
-  return false;
-}
-
 function rectSummary(rect: Rect | DOMRect | null | undefined): Rect | null {
   if (!rect) return null;
   const round = (value: number) => Math.round(value * 10) / 10;
@@ -197,8 +147,7 @@ function placeChip(
   chip: HTMLElement,
   table: HTMLElement,
   harvestPoolReadOnly: boolean,
-  anchorPlayerId: string | undefined,
-  allowUpperSafeBand: boolean,
+  fixedLowerCenter: boolean,
   statusKind: PublicActivityStatus["kind"],
   statusStage: string | undefined,
   viewerId: string,
@@ -212,22 +161,53 @@ function placeChip(
   const leftBound = Math.max(tableRect.left + 8, 8);
   const rightBound = Math.min(tableRect.right - 8, window.innerWidth - 8);
   const upperBandTop = Math.max(tableRect.top + 8, viewportTop + 8);
-  const lowerBandTop = Math.max(tableRect.top + (allowUpperSafeBand ? 8 : tableRect.height * 0.58), viewportTop + 8);
+  const lowerBandTop = Math.max(tableRect.top + tableRect.height * 0.58, viewportTop + 8);
   const bottom = Math.min(tableRect.bottom - 8, viewportBottom - 8);
-  chip.style.width = `${publicCorridorWidth(table, { top: allowUpperSafeBand ? upperBandTop : lowerBandTop, bottom }, 340, { reserveTimer: false })}px`;
+  const systemCluster = table.querySelector<HTMLElement>(".stage-system-cluster");
+  const interactionSafeZone = systemCluster?.parentElement;
+  const systemClusterStyle = systemCluster ? window.getComputedStyle(systemCluster) : null;
+  const safeZoneStyle = interactionSafeZone ? window.getComputedStyle(interactionSafeZone) : null;
+  const parsePixels = (value: string | undefined, fallback: number) => {
+    const parsed = Number.parseFloat(value ?? "");
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+  const timerHeight = Math.max(
+    window.innerWidth <= 520 ? 38 : 40,
+    ...[...(systemCluster?.children ?? [])].map((timer) => visibleRect(timer as HTMLElement)?.height ?? 0),
+  );
+  const safeZoneBottom = parsePixels(safeZoneStyle?.bottom, 1);
+  const clusterBottom = parsePixels(systemClusterStyle?.bottom, 4);
+  // Reserve the timer's fixed CSS slot even when no countdown is currently
+  // rendered, so the PAC edge does not jump when the response window closes.
+  const stableTimerTop = tableRect.bottom - safeZoneBottom - clusterBottom - timerHeight;
+  const fixedLowerEdge = Math.min(
+    tableRect.bottom - 8,
+    viewportBottom - 8,
+    stableTimerTop - COLLISION_GAP,
+  );
+  const fixedBand = {
+    top: Math.max(tableRect.top + 8, viewportTop + 8, fixedLowerEdge - 112),
+    bottom: fixedLowerEdge,
+  };
+  const fixedWidth = Math.min(340, Math.max(0, rightBound - leftBound));
+  chip.style.width = `${fixedLowerCenter
+    ? fixedWidth
+    : publicCorridorWidth(table, { top: lowerBandTop, bottom }, 340, { reserveTimer: false })}px`;
   const width = chip.offsetWidth;
   const height = chip.offsetHeight;
-  const firstTop = bottom - height;
+  const placementBottom = fixedLowerCenter ? fixedLowerEdge : bottom;
+  const placementTop = fixedLowerCenter ? fixedBand.top : lowerBandTop;
+  const firstTop = placementBottom - height;
   const obstacles = protectedRects(table);
   const candidateRegion = {
     left: leftBound,
-    top: lowerBandTop,
+    top: placementTop,
     right: rightBound,
-    bottom,
+    bottom: placementBottom,
     width: Math.max(0, rightBound - leftBound),
-    height: Math.max(0, bottom - lowerBandTop),
+    height: Math.max(0, placementBottom - placementTop),
   };
-  const relevantObstacles = allowUpperSafeBand || anchorPlayerId || harvestPoolReadOnly
+  const relevantObstacles = fixedLowerCenter || harvestPoolReadOnly
     ? obstacles
     : obstacles.filter((obstacle) => intersects(obstacle, candidateRegion, ACTIVITY_CHIP_GAP));
   const placementContext = {
@@ -236,11 +216,10 @@ function placeChip(
     chip: { width, height },
     statusKind,
     statusStage: statusStage ?? null,
-    anchorPlayerId: anchorPlayerId ?? null,
     harvestPoolReadOnly,
-    allowUpperSafeBand,
-    viewerId,
-    seatLayoutKey,
+    fixedLowerCenter,
+    viewerId: fixedLowerCenter ? null : viewerId,
+    seatLayoutKey: fixedLowerCenter ? null : seatLayoutKey,
   };
   const obstacleSignature = relevantObstacles.map(({ left, top, right, bottom: obstacleBottom, ids }) => ({
       rect: [left, top, right, obstacleBottom].map((value) => Math.round(value * 2) / 2),
@@ -275,7 +254,7 @@ function placeChip(
       table: rectSummary(tableRect),
       chip: { width, height },
       activityChipGap: ACTIVITY_CHIP_GAP,
-      safeBounds: { left: leftBound, right: rightBound, lowerBandTop, bottom },
+      safeBounds: { left: leftBound, right: rightBound, lowerBandTop: placementTop, bottom: placementBottom },
       obstacles: obstacles.slice(0, 64).map(({ sources, ids, ...rect }) => ({ ...rect, sources, ids })),
       candidates: [] as Array<Record<string, unknown>>,
     }
@@ -332,10 +311,9 @@ function placeChip(
   };
 
   const currentRect = rectSummary(visibleRect(chip));
-  const currentMinTop = allowUpperSafeBand || anchorPlayerId || harvestPoolReadOnly || previousMemory?.layout.startsWith("upper-band")
-    ? upperBandTop : lowerBandTop;
+  const currentMinTop = fixedLowerCenter ? fixedBand.top : lowerBandTop;
   const currentIsSafe = currentRect && currentRect.left >= leftBound && currentRect.right <= rightBound
-    && currentRect.top >= currentMinTop && currentRect.bottom <= bottom
+    && currentRect.top >= currentMinTop && currentRect.bottom <= placementBottom
     && !obstacles.some((obstacle) => intersects(currentRect, obstacle, ACTIVITY_CHIP_GAP));
   if (previousMemory?.reuseKey === reuseKey) {
     if (previousMemory.visible && currentIsSafe && sameRect(previousMemory.rect, currentRect)) {
@@ -379,8 +357,29 @@ function placeChip(
     }
   }
 
-  if (anchorPlayerId && placeNearPlayerSeat(chip, table, anchorPlayerId)) {
-    return finishTrace("placed:target-seat-adjacent", { rect: rectSummary(visibleRect(chip)) }, "safe-target-seat-anchor");
+  if (fixedLowerCenter) {
+    const rect = {
+      left: tableRect.left + (tableRect.width - width) / 2,
+      top: fixedLowerEdge - height,
+      right: tableRect.left + (tableRect.width + width) / 2,
+      bottom: fixedLowerEdge,
+      width,
+      height,
+    };
+    const blockers = obstacles.filter((obstacle) => intersects(rect, obstacle, ACTIVITY_CHIP_GAP));
+    const outOfBounds = rect.left < leftBound || rect.right > rightBound
+      || rect.top < fixedBand.top || rect.bottom > bottom;
+    chip.style.left = `${rect.left - tableRect.left}px`;
+    chip.style.top = `${rect.top - tableRect.top}px`;
+    chip.style.visibility = "visible";
+    chip.dataset.publicActivityLayout = blockers.length || outOfBounds ? "fixed-lower-center-blocked" : "fixed-lower-center";
+    chip.dataset.publicActivityPlacementBlockers = [
+      ...blockers.flatMap(({ ids }) => ids),
+      ...(outOfBounds ? ["fixed-lower-center-out-of-bounds"] : []),
+    ].join("|") || undefined;
+    return finishTrace(blockers.length || outOfBounds ? "placed:fixed-lower-center-blocked" : "placed:fixed-lower-center",
+      { rect, blockers: blockers.flatMap(({ ids }) => ids), outOfBounds },
+      blockers.length || outOfBounds ? "fixed-lower-center-protected-area-collision" : "fixed-lower-center");
   }
 
   if (width <= 0 || height <= 0 || rightBound - leftBound < width || firstTop < upperBandTop) {
@@ -470,19 +469,25 @@ function placeChip(
   return finishTrace("hidden:no-safe-candidate", undefined, "no-collision-free-candidate");
 }
 
-export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoolReadOnly = false }: {
+export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoolReadOnly = false, stableLowerCenter = false }: {
   status: PublicActivityStatus;
   viewerId: string;
   seatLayoutKey: string;
   harvestPoolReadOnly?: boolean;
+  stableLowerCenter?: boolean;
 }) {
   const chipRef = useRef<HTMLDivElement>(null);
   const placementMemoryRef = useRef<PlacementMemory | null>(null);
+  const stableLowerCenterLatchRef = useRef(false);
 
   useLayoutEffect(() => {
     const chip = chipRef.current;
     const table = chip?.closest<HTMLElement>(".play-table");
     if (!chip || !table) return;
+    if (stableLowerCenter || status.kind === "target-card-choice") stableLowerCenterLatchRef.current = true;
+    else if (status.kind !== "turn") stableLowerCenterLatchRef.current = false;
+    const useFixedLowerCenter = stableLowerCenter || status.kind === "target-card-choice"
+      || status.kind === "turn" && stableLowerCenterLatchRef.current;
     let frame = 0;
     const schedule = () => {
       window.cancelAnimationFrame(frame);
@@ -491,8 +496,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
           chip,
           table,
           harvestPoolReadOnly,
-          status.anchorPlayerId,
-          status.kind === "target-card-choice",
+          useFixedLowerCenter,
           status.kind,
           status.stage,
           viewerId,
@@ -558,7 +562,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
       window.removeEventListener("resize", schedule);
       window.visualViewport?.removeEventListener("resize", schedule);
     };
-  }, [harvestPoolReadOnly, status.anchorPlayerId, status.kind, status.stage, status.text, viewerId, seatLayoutKey]);
+  }, [harvestPoolReadOnly, status.kind, status.stage, status.text, stableLowerCenter, viewerId, seatLayoutKey]);
 
   return <div
     ref={chipRef}

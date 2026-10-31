@@ -198,7 +198,6 @@ test("target-card choice progress is identical across viewers and exposes no sel
     const expected = {
       kind: "target-card-choice",
       text: "Waiting for Test Player 1 to choose a card from Test Player 2.",
-      anchorPlayerId: "p2",
     };
     for (const view of views) {
       assert.deepEqual(view, expected);

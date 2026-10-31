@@ -132,10 +132,6 @@ export type PublicCardDisplayAction = {
     exiting: boolean;
     /** Server-derived remaining portion of a proof-backed public-card read, when supplied. */
     readRemainingMs?: number;
-    /** Show the proven selected-card result only after its root journey has parked. */
-    targetCardResultActive?: boolean;
-    /** Per-viewer performance time when the selected card and result copy became readable. */
-    targetCardResultReadStartedAtMs?: number;
     /** Validated source/destination facts for Steal and Burning Bridges. */
     targetCardMovement?: PresentationTargetCardSettlementMovement;
   };
@@ -1555,126 +1551,6 @@ function seatHistoryCardParking(
 function rectsOverlap(a: CardRect, b: CardRect | DOMRect, gap = 0) {
   return a.left < b.left + b.width + gap && a.left + a.width > b.left - gap
     && a.top < b.top + b.height + gap && a.top + a.height > b.top - gap;
-}
-
-type TargetCardResultPlacementDiagnostic = {
-  result: { left: number; top: number; width: number; height: number };
-  blockers: Array<{ selector: string; left: number; top: number; width: number; height: number }>;
-};
-type TargetCardResultPlacement = {
-  eventId: string;
-  left: number;
-  top: number;
-  limited: boolean;
-  limitationReason?: string;
-  diagnostic?: TargetCardResultPlacementDiagnostic;
-};
-
-function measureTargetCardResultPlacement(element: HTMLElement, center: CardRect): Omit<TargetCardResultPlacement, "eventId"> {
-  const result = element.getBoundingClientRect();
-  const table = document.querySelector<HTMLElement>(".play-table");
-  const dock = document.querySelector<HTMLElement>(".local-player-dock");
-  const tableBounds = table?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
-  const resultWidth = result.width || Math.min(window.innerWidth * 0.9, 360);
-  const resultHeight = result.height || 220;
-  const mobile = window.innerWidth <= 480;
-  const protectedSelectors = [
-    ".player-board [data-player-anchor]",
-    ".visible-countdown",
-    ".stage-system-cluster",
-    ".public-activity-chip",
-    ".public-card-journey-card",
-    ".card-pool-target-stage",
-    ".opponent-inspection-floating-shell",
-    ".card-details-panel",
-    ".hero-details-panel",
-    ".local-player-dock",
-  ];
-  const diagnosticRect = (rect: DOMRect | CardRect) => ({
-    left: Math.round(rect.left * 10) / 10,
-    top: Math.round(rect.top * 10) / 10,
-    width: Math.round(rect.width * 10) / 10,
-    height: Math.round(rect.height * 10) / 10,
-  });
-  const preferredTop = mobile
-    ? center.top - Math.min(70, Math.max(40, Math.round(window.innerHeight * 0.065)))
-    : center.top;
-  const minLeft = Math.max(8, tableBounds.left + 8);
-  const maxLeft = Math.min(window.innerWidth - resultWidth - 8, tableBounds.right - resultWidth - 8);
-  const centeredLeft = center.left + center.width / 2 - resultWidth / 2;
-  const hasHorizontalSpace = maxLeft >= minLeft;
-  const viewportMaxLeft = Math.max(8, window.innerWidth - resultWidth - 8);
-  const left = hasHorizontalSpace
-    ? Math.max(minLeft, Math.min(maxLeft, centeredLeft))
-    : Math.max(8, Math.min(viewportMaxLeft, centeredLeft));
-  if (!mobile) return {
-    left,
-    top: center.top,
-    limited: !hasHorizontalSpace,
-    ...(hasHorizontalSpace ? {} : {
-      limitationReason: "no-horizontal-safe-corridor",
-      diagnostic: { result: diagnosticRect({ left, top: center.top, width: resultWidth, height: resultHeight }), blockers: [] },
-    }),
-  };
-
-  const dockTop = dock?.getBoundingClientRect().top ?? window.innerHeight;
-  const minTop = Math.max(8, tableBounds.top + 8);
-  const maxTop = Math.min(
-    window.innerHeight - resultHeight - 8,
-    tableBounds.bottom - resultHeight - 8,
-    dockTop - resultHeight - 12,
-  );
-  const hasVerticalSpace = maxTop >= minTop;
-  const fallbackMinTop = 8;
-  const fallbackMaxTop = Math.max(fallbackMinTop, window.innerHeight - resultHeight - 8);
-  const low = hasVerticalSpace ? minTop : fallbackMinTop;
-  const high = hasVerticalSpace ? maxTop : fallbackMaxTop;
-  const clampedPreferred = Math.max(low, Math.min(high, preferredTop));
-  const candidates = new Set<number>([low, high, clampedPreferred]);
-  for (let top = low; top <= high; top += 8) candidates.add(top);
-
-  const obstacles = [...document.querySelectorAll<HTMLElement>(protectedSelectors.join(","))].flatMap((element) => {
-    const style = window.getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) <= 0.01
-      || rect.width <= 0 || rect.height <= 0) return [];
-    const selector = protectedSelectors.find((candidate) => element.matches(candidate)) ?? "protected-surface";
-    return [{ selector, rect }];
-  });
-  for (const obstacle of obstacles) {
-    for (const edge of [obstacle.rect.bottom + 12, obstacle.rect.top - resultHeight - 12]) {
-      if (edge >= low && edge <= high) candidates.add(edge);
-    }
-  }
-
-  const ranked = [...candidates].map((top) => ({
-    top,
-    rect: { left, top, width: resultWidth, height: resultHeight },
-    overlapCount: obstacles.reduce((count, obstacle) => count + (rectsOverlap({ left, top, width: resultWidth, height: resultHeight }, obstacle.rect, 12) ? 1 : 0), 0),
-    distance: Math.abs(top - preferredTop),
-  })).sort((a, b) => a.overlapCount - b.overlapCount || a.distance - b.distance);
-  const clear = ranked.find((candidate) => candidate.overlapCount === 0);
-  const selected = clear ?? ranked[0];
-  const selectedTop = selected?.top ?? clampedPreferred;
-  const selectedRect = { left, top: selectedTop, width: resultWidth, height: resultHeight };
-  const blockingRects = obstacles
-    .filter((obstacle) => rectsOverlap(selectedRect, obstacle.rect, 12))
-    .map((obstacle) => ({ selector: obstacle.selector, ...diagnosticRect(obstacle.rect) }));
-  const limitationReasons = [
-    !hasHorizontalSpace ? "no-horizontal-safe-corridor" : null,
-    !hasVerticalSpace ? "no-vertical-safe-corridor" : null,
-    !clear ? "protected-surface-overlap" : null,
-  ].filter((reason): reason is string => Boolean(reason));
-  const limited = limitationReasons.length > 0;
-  return {
-    left,
-    top: selectedTop,
-    limited,
-    ...(limited ? {
-      limitationReason: limitationReasons.join(","),
-      diagnostic: { result: diagnosticRect(selectedRect), blockers: blockingRects },
-    } : {}),
-  };
 }
 
 function settlementLabel(action: PublicCardDisplayAction, targetName: string | null) {
@@ -3168,7 +3044,6 @@ function AttackDodgeCardJourney({
   compactPlayerNamesById,
   roomCode,
   viewerId,
-  resultReadRemainingMs,
   onInspectCard,
   onJourneyEventParked,
 }: {
@@ -3179,7 +3054,6 @@ function AttackDodgeCardJourney({
   compactPlayerNamesById: CompactPublicPlayerNames;
   roomCode: string;
   viewerId: string;
-  resultReadRemainingMs: number | null;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneyEventParked?: (eventId: string) => void;
 }) {
@@ -3880,7 +3754,6 @@ function AttackDodgeCardJourney({
     data-public-card-settlement-event-id={action.settlement?.eventId}
     data-public-card-settlement-outcome={action.settlement?.outcome}
     data-public-card-deflection-event-id={latestDeflection?.eventId}
-    data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
     {cards.filter((card) => card.phase !== "queued").map((card) => {
       const isCurrent = card.eventId === activeEventId;
@@ -4051,7 +3924,6 @@ function SingleTargetCardJourney({
   compactPlayerNamesById,
   roomCode,
   viewerId,
-  resultReadRemainingMs,
   onInspectCard,
   onJourneySettled,
   onJourneyEventParked,
@@ -4069,7 +3941,6 @@ function SingleTargetCardJourney({
   compactPlayerNamesById: CompactPublicPlayerNames;
   roomCode: string;
   viewerId: string;
-  resultReadRemainingMs: number | null;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneySettled?: (settlementEventId: string) => void;
   onJourneyEventParked?: (eventId: string) => void;
@@ -4112,8 +3983,6 @@ function SingleTargetCardJourney({
   const documentVisibleRef = useRef(true);
   const [documentVisible, setDocumentVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
   const notifiedSettlementEventIdRef = useRef<string | null>(null);
-  const targetCardResultRef = useRef<HTMLDivElement | null>(null);
-  const [targetCardResultPlacement, setTargetCardResultPlacement] = useState<TargetCardResultPlacement | null>(null);
   const parkedNotifiedEventIdsRef = useRef(new Set<string>());
   const traceSignaturesRef = useRef(new Map<string, string>());
   const parkingFailureSignaturesRef = useRef(new Map<string, string>());
@@ -4970,121 +4839,6 @@ function SingleTargetCardJourney({
   const committedFactCopy = publicCardCommittedFactCopy(action, announcementCopy);
   const announcement = committedFactCopy.message;
   const compactAnnouncement = committedFactCopy.compactMessage;
-  const targetCardMovement = action.settlement?.targetCardMovement;
-  const publicTargetCardResultFace = targetCardMovement?.affectedCardFace;
-  const targetCardResultFace = publicTargetCardResultFace;
-  const targetCardResultProofValid = action.settlement?.outcome === "DISMANTLE_RESOLVED"
-    ? targetCardMovement?.destinationZone === "discard"
-      && targetCardMovement.destinationOwnerId === null
-      && action.targetId !== null
-      && targetCardMovement.affectedCardOwnerId === (targetCardMovement.sourceZone === "judgement" ? null : action.targetId)
-      && Boolean(targetCardResultFace)
-    : action.settlement?.outcome === "STEAL_RESOLVED"
-      && targetCardMovement?.destinationZone === "hand"
-      && targetCardMovement.destinationOwnerId === action.sourceId
-      && action.targetId !== null
-      && (targetCardMovement.sourceZone === "hand"
-        ? !publicTargetCardResultFace && targetCardMovement.affectedCardOwnerId === action.targetId
-        : (targetCardMovement.sourceZone === "equipment" || targetCardMovement.sourceZone === "judgement")
-          && Boolean(publicTargetCardResultFace)
-          && (targetCardMovement.sourceZone === "judgement"
-            ? targetCardMovement.affectedCardOwnerId === null
-            : targetCardMovement.affectedCardOwnerId === action.targetId));
-  const targetCardResultActive = Boolean(action.settlement?.targetCardResultActive
-    && targetCardResultProofValid && allParked && !viewerLayoutPending);
-  const targetCardResultEventId = action.settlement?.eventId ?? null;
-  const targetCardResultCenter = journey.center;
-  const currentTargetCardResultPlacement = targetCardResultPlacement?.eventId === targetCardResultEventId
-    ? targetCardResultPlacement
-    : null;
-  const fallbackResultLift = typeof window !== "undefined" && window.innerWidth <= 480
-    ? Math.min(70, Math.max(40, Math.round(window.innerHeight * 0.065)))
-    : 0;
-  const resultViewportWidth = typeof window === "undefined" ? 360 : window.innerWidth;
-  const fallbackResultWidth = Math.min(resultViewportWidth * 0.9, 360);
-  const fallbackResultLeft = targetCardResultCenter
-    ? Math.max(8, Math.min(resultViewportWidth - fallbackResultWidth - 8,
-      targetCardResultCenter.left + targetCardResultCenter.width / 2 - fallbackResultWidth / 2))
-    : 8;
-  useLayoutEffect(() => {
-    if (!targetCardResultActive || !targetCardResultEventId || !targetCardResultCenter) return;
-    const element = targetCardResultRef.current;
-    if (!element) return;
-    let frame = 0;
-    const protectedSelector = [
-      ".player-board [data-player-anchor]",
-      ".visible-countdown",
-      ".stage-system-cluster",
-      ".public-activity-chip",
-      ".public-card-journey-card",
-      ".card-pool-target-stage",
-      ".opponent-inspection-floating-shell",
-      ".card-details-panel",
-      ".hero-details-panel",
-      ".local-player-dock",
-    ].join(",");
-    let observer: ResizeObserver | null = null;
-    const observeProtectedSurfaces = () => {
-      document.querySelectorAll<HTMLElement>(protectedSelector).forEach((target) => observer?.observe(target));
-    };
-    const measure = () => {
-      if (frame) window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        frame = 0;
-        observeProtectedSurfaces();
-        const next = measureTargetCardResultPlacement(element, targetCardResultCenter);
-        setTargetCardResultPlacement((current) => current?.eventId === targetCardResultEventId
-          && Math.abs(current.left - next.left) < 0.5
-          && Math.abs(current.top - next.top) < 0.5
-          && current.limited === next.limited
-          && current.limitationReason === next.limitationReason
-          && JSON.stringify(current.diagnostic) === JSON.stringify(next.diagnostic)
-          ? current
-          : { ...next, eventId: targetCardResultEventId });
-      });
-    };
-    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    const table = document.querySelector<HTMLElement>(".play-table");
-    const dock = document.querySelector<HTMLElement>(".local-player-dock");
-    const board = table?.querySelector<HTMLElement>(".player-board");
-    [element, table, dock, table?.querySelector<HTMLElement>(".stage-system-cluster"), table?.querySelector<HTMLElement>(".public-activity-chip")]
-      .filter((target): target is HTMLElement => Boolean(target))
-      .forEach((target) => observer?.observe(target));
-    observeProtectedSurfaces();
-    const boardObserver = typeof MutationObserver === "undefined" || !board
-      ? null
-      : new MutationObserver(measure);
-    boardObserver?.observe(board!, { attributes: true, childList: true, subtree: true, attributeFilter: ["class", "style", "data-player-anchor"] });
-    const overlayObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
-      const changedProtectedSurface = records.some((record) => {
-        if (record.type === "attributes" && record.target instanceof HTMLElement) {
-          return record.target.matches(protectedSelector) || Boolean(record.target.closest(protectedSelector));
-        }
-        return [...record.addedNodes, ...record.removedNodes].some((node) => node instanceof HTMLElement
-          && (node.matches(protectedSelector) || Boolean(node.querySelector(protectedSelector))));
-      });
-      if (changedProtectedSurface) measure();
-    });
-    overlayObserver?.observe(document.body, {
-      attributes: true,
-      attributeFilter: ["class", "style", "aria-hidden", "hidden"],
-      childList: true,
-      subtree: true,
-    });
-    measure();
-    window.addEventListener("resize", measure);
-    window.visualViewport?.addEventListener("resize", measure);
-    window.visualViewport?.addEventListener("scroll", measure);
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-      observer?.disconnect();
-      boardObserver?.disconnect();
-      overlayObserver?.disconnect();
-      window.removeEventListener("resize", measure);
-      window.visualViewport?.removeEventListener("resize", measure);
-      window.visualViewport?.removeEventListener("scroll", measure);
-    };
-  }, [targetCardResultActive, targetCardResultCenter, targetCardResultEventId]);
   useEffect(() => {
     const settlementEventId = action.settlement?.eventId;
     if (!journeyEnabled || journey.scopeKey !== scopeKey || !allParked || !settlementEventId
@@ -5097,9 +4851,6 @@ function SingleTargetCardJourney({
     eventId: card.eventId,
     cardIds: (card.cardFaces ?? [card.cardFace]).map((face) => face.id).sort(),
     })),
-    ...(targetCardResultActive && targetCardResultFace && action.settlement?.eventId
-      ? [{ eventId: action.settlement.eventId, cardIds: [targetCardResultFace.id] }]
-      : []),
   ].sort((left, right) => left.eventId.localeCompare(right.eventId));
   const ownershipCardsSignature = JSON.stringify(ownershipCards);
   const ownershipScopeKey = Boolean(sourceName) && journey.scopeKey === scopeKey
@@ -5153,9 +4904,6 @@ function SingleTargetCardJourney({
     data-public-card-settlement-affected-card-owner-id={allParked ? action.settlement?.targetCardMovement?.affectedCardOwnerId ?? "none" : undefined}
     data-public-card-settlement-destination-owner-id={allParked ? action.settlement?.targetCardMovement?.destinationOwnerId ?? "none" : undefined}
     data-public-card-settlement-card-id={allParked ? action.settlement?.targetCardMovement?.affectedCardFace?.id : undefined}
-    data-public-card-target-result-active={targetCardResultActive ? "true" : undefined}
-    data-public-card-target-result-read-started-at-ms={targetCardResultActive ? action.settlement?.targetCardResultReadStartedAtMs : undefined}
-    data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
     {journey.cards.filter((card) => card.phase !== "queued").map((card) => {
       const isCurrent = card.eventId === activeEventId;
@@ -5207,44 +4955,7 @@ function SingleTargetCardJourney({
           : isBumperHarvest ? `Public card event ${event.globalOrdinal}: ${event.ariaLabel}` : event.ariaLabel}
       </li>)}
     </ol>
-    {targetCardResultActive && action.settlement?.eventId && <div
-      ref={targetCardResultRef}
-      className="public-target-card-result"
-      role="status"
-      aria-live="polite"
-      aria-label={announcementCopy.accessibleLabel ?? announcementCopy.message}
-      data-public-card-target-result="true"
-      data-public-card-target-result-event-id={action.settlement.eventId}
-      data-public-card-target-result-placement-ready={currentTargetCardResultPlacement ? "true" : "false"}
-      data-public-card-target-result-placement-limited={currentTargetCardResultPlacement?.limited ? "true" : undefined}
-      data-public-card-target-result-placement-reason={currentTargetCardResultPlacement?.limitationReason}
-      data-public-card-target-result-placement-geometry={currentTargetCardResultPlacement?.diagnostic
-        ? JSON.stringify(currentTargetCardResultPlacement.diagnostic)
-        : undefined}
-      data-public-card-target-result-placement-offset-px={targetCardResultCenter
-        ? Math.round((currentTargetCardResultPlacement?.top ?? targetCardResultCenter.top - fallbackResultLift) - targetCardResultCenter.top)
-        : undefined}
-      style={{
-        left: `${currentTargetCardResultPlacement?.left ?? fallbackResultLeft}px`,
-        top: `${currentTargetCardResultPlacement?.top ?? journey.center.top - fallbackResultLift}px`,
-      }}
-    >
-      <div
-        className="public-target-card-result__card"
-        data-public-card-target-result-card-event-id={action.settlement.eventId}
-        data-public-card-target-result-card-id={targetCardResultFace?.id}
-        aria-hidden={targetCardResultFace ? undefined : true}
-      >
-        {targetCardResultFace
-          ? <CardFace card={targetCardResultFace} settlementCardId={targetCardResultFace.id} />
-          : <span className="public-target-card-result__back" />}
-      </div>
-      <p
-        className="public-target-card-result__copy"
-        data-public-card-target-result-copy-event-id={action.settlement.eventId}
-      >{announcementCopy.message}</p>
-    </div>}
-    {!historyOnly && !suppressAnnouncement && !targetCardResultActive && <PublicCardAnnouncement
+    {!historyOnly && !suppressAnnouncement && <PublicCardAnnouncement
       eventId={negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId)}
       eventCopyKey={publicCardAnnouncementCopyKey(
         action,
@@ -6271,7 +5982,7 @@ export function PublicCardDisplay({
   }
   if (action.motion?.type === "single-target" || action.motion?.type === "negation"
     || action.motion?.type === "group-root" || action.motion?.type === "lust-cost") {
-    return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHarvestHistory={retainHarvestHistory} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
+    return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHarvestHistory={retainHarvestHistory} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
   }
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {
     return <DuelCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHistoryDuringInspection={retainDuelHistoryDuringInspection} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
@@ -6316,7 +6027,6 @@ export function PublicCardDisplay({
     data-public-card-settlement-affected-card-owner-id={action.settlement?.targetCardMovement ? action.settlement.targetCardMovement.affectedCardOwnerId ?? "none" : undefined}
     data-public-card-settlement-destination-owner-id={action.settlement?.targetCardMovement ? action.settlement.targetCardMovement.destinationOwnerId ?? "none" : undefined}
     data-public-card-settlement-card-id={action.settlement?.targetCardMovement?.affectedCardFace?.id}
-    data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
     {card && <div className="public-card-display-static-card" data-public-card-copy-anchor-event-id={eventId} data-public-card-static-event-id={eventId} data-public-card-static-card-id={card.id} data-harvest-root-parked={harvestRootParked ? "true" : undefined}><CardFace card={card} /></div>}
     {!suppressAnnouncement && !action.suppressAnnouncement && <PublicCardAnnouncement
