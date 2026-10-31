@@ -5,7 +5,7 @@ Latest design reviewed: `docs/UX2-refine.md` §10.25.3, owner-approved R6-ARCH-0
 
 ## Current bounded task — R6-ARCH-01 shared H4/PAC correction
 
-**Status: IN PROGRESS — NOT ACCEPTED.** Implement the approved H4/PAC corridor, fixed H4 horizontal position and adaptive height, pending-to-visible delivery, scoped paint order, and proof-backed committed Negation H4. Do not start R6-ARCH-02.
+**Status: IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW; NOT USER-ACCEPTED.** This task delivered the approved H4/PAC corridor, fixed H4 horizontal position and adaptive height, pending-to-visible delivery, scoped paint order, and proof-backed committed Negation H4. The parent R6 remains open.
 
 ### Start record — 2026-10-31 01:48 UTC
 
@@ -25,7 +25,10 @@ Latest design reviewed: `docs/UX2-refine.md` §10.25.3, owner-approved R6-ARCH-0
 - **2026-10-31 02:01 UTC:** Final focused 440px browser verification passed in 19s. The rendered H4 stayed at x=50..390 (340px) and y=246.9..294.9 with 0px horizontal centre offset through REVEAL/MOVE/PARKED; it remained visible at 15px, two lines, z-index 38 above the revealed/parked card, pointer-events none, and with no protected-rectangle collision. Known browser time is 91s plus the earlier uncaptured run (bounded by the period before process check), under the five-minute total cap. No further local UI/browser run is planned.
 - **2026-10-31 02:01 UTC:** Latest `npm run build` passed on the final application source. The only output was the repository's existing large-chunk and route-classification warnings.
 - **2026-10-31 02:03 UTC:** Added focused 6/8-seat corridor assertions and committed long Treachery/synthetic-skill headline coverage. `node --import tsx --test tests/public-card-announcement.test.mjs tests/api/public-activity.test.mjs` passed 34/34; focused ESLint passed with zero errors (the broader source-file run had 15 existing Hook dependency warnings); `git diff --check` passed. No further local UI tests were run.
+- **2026-10-31 02:04 UTC:** Committed and pushed source SHA `5a566ae91731700f4d76b4939cc28ab459d44945` to `ux-v2`; the isolated worktree was clean. Exact-SHA Actions [41158298856](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41158298856) started.
+- **2026-10-31 02:08 UTC:** Exact-SHA Actions `41158298856`: Lint/fast (2m08s), API (3m12s) and browser startup/room smoke (1m37s) passed. D1 migration, deployment and production smoke were then running.
+- **2026-10-31 02:09 UTC:** All Actions jobs passed, including deployment job `124410694018` and production smoke. Worker version `ad4a221f-304d-4f03-a579-9b419f33d401`; direct `/` and `/api/health` returned HTTP 200 and health returned `{"ok":true,"worker":"available"}`. Design §10.25.3 updated with actual delivery evidence and ARCH-02 left unstarted. Owner iPhone review remains pending; parent R6 remains open.
 
-### Required completion record
+### Owner review boundary
 
-Record changed files, focused checks and outcomes, browser duration or SKIPPED status, `git diff --check`, commit SHA, exact-SHA Actions URL/conclusion, deployed Worker version, production health/smoke and remaining owner iPhone review. Final technical status: **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**. Do not claim user acceptance or close parent R6.
+Source SHA `5a566ae91731700f4d76b4939cc28ab459d44945`; exact-SHA [Actions run 41158298856](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41158298856) passed all required jobs; Worker `ad4a221f-304d-4f03-a579-9b419f33d401` is deployed and production smoke passed. Focused local tests: 34/34; build and `git diff --check` passed; focused ESLint had zero errors and existing Hook warnings. One 440px real-gameplay H4 browser test passed in 19s; combined observed local UI/browser time stayed below five minutes. Full current-deployment multi-viewer Negation gameplay and owner iPhone review are **NOT TESTED**. Status remains **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**; do not claim user acceptance or close parent R6.
