@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
+import { publicCardCommittedFactCopy, PublicCardDisplay, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
 import {
   canClearPublicJourneyOwnership,
   publicAnnouncementEventCopyKey,
@@ -52,7 +52,7 @@ test("6/8-seat side-column footprints constrain only their intersecting caption 
   assert.equal(measuredPublicCorridorWidth(table, eightSeatSides, null, 340, band), 224);
 });
 
-test("H4 width ignores a right timer outside its fixed stage band and reserves its width when intersecting", () => {
+test("PAC excludes the countdown from its width while H4 retains its intersecting timer reservation", () => {
   const prior = globalThis.getComputedStyle;
   globalThis.getComputedStyle = () => ({ right: "14px", visibility: "visible" });
   const cluster = { getBoundingClientRect: () => ({ top: 620, bottom: 680, height: 60 }) };
@@ -64,8 +64,27 @@ test("H4 width ignores a right timer outside its fixed stage band and reserves i
     const widthWithReservedTimer = publicCorridorWidth(table, h4Band);
     assert.equal(widthWithoutTimer, 340);
     assert.equal(widthWithReservedTimer, widthWithoutTimer);
-    assert.equal(publicCorridorWidth(table, { top: 630, bottom: 670 }), 258);
+    const occupiedBand = { top: 630, bottom: 670 };
+    assert.ok(publicCorridorWidth(table, occupiedBand) < 340, "H4 still reserves an intersecting countdown footprint");
+    assert.equal(publicCorridorWidth(table, occupiedBand, 340, { reserveTimer: false }), 340, "PAC keeps its full centered width");
   } finally { globalThis.getComputedStyle = prior; }
+});
+
+test("440px centered PAC fits beside a compact far-right countdown", () => {
+  const table = { left: 0, right: 440, width: 440 };
+  const pacWidth = measuredPublicCorridorWidth(table, [], null, 340);
+  const pac = { left: (440 - pacWidth) / 2, right: (440 + pacWidth) / 2 };
+  const timer = { left: 393, right: 433, width: 40 };
+  assert.equal(pacWidth, 340);
+  assert.ok(pac.right + 2 <= timer.left, "the compact far-right clock clears PAC's collision gutter");
+  assert.ok(timer.right <= table.right - 4, "the clock stays inside the table edge");
+
+  const css = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
+  assert.match(css, /\.game-shell \.interaction-safe-zone > \.stage-system-cluster > \.visible-countdown-response,[\s\S]*?width: 40px;[\s\S]*?height: 38px;/);
+  assert.match(css, /@media \(max-width: 437px\)[\s\S]*?data-seat-topology="top-row"[\s\S]*?bottom: 82px;/);
+  assert.match(css, /data-seat-topology="side-column"[\s\S]*?bottom: 82px;/);
+  assert.match(css, /\.game-shell \.play-table > \.public-activity-chip \{[\s\S]*?width: min\(340px, calc\(100% - 16px\)\);/);
+  assert.match(css, /\.game-shell \.play-table > \.public-activity-chip > strong \{\s*max-width: 100%;/);
 });
 
 const action = (overrides = {}) => ({
@@ -569,6 +588,68 @@ test("Bumper Harvest announcement fails closed without a proven narration", () =
     counterNotice, "Test Player 2", "JD", null,
   ), counterNotice);
   assert.equal(publicCardAnnouncement({ ...firstNegation, settlement: { eventId: "settled", outcome: "ROOT_CANCELLED", exiting: false } }, "", "Test Player 4", "JD", null), "Test Player 4's Negation cancelled JD's Bumper Harvest.");
+});
+
+test("Duel and static H4 copy contains committed facts only", () => {
+  const render = (overrides = {}) => renderToStaticMarkup(React.createElement(PublicCardDisplay, {
+    action: action({
+      targetId: "target",
+      cardKind: "Duel",
+      cardLabel: "DUEL",
+      cardFace: { id: "duel-root", kind: "Duel", suit: "♠", rank: "7" },
+      ariaLabel: "King played Duel on Test Player 4.",
+      publicNotice: "King played Duel on Test Player 4.",
+      phaseNotice: "NEGATION MAY BE PLAYED",
+      ...overrides,
+    }),
+    enabled: true,
+    sourceName: "King",
+    targetName: "Test Player 4",
+    compactPlayerNamesById: { source: "King", target: "Test Player 4" },
+    roomCode: "R6TEST",
+    viewerId: "observer",
+    viewerSeat: 2,
+  }));
+
+  const rootFact = "King played Duel on Test Player 4.";
+  assert.deepEqual(publicCardCommittedFactCopy(
+    action({ phaseNotice: "NEGATION MAY BE PLAYED" }),
+    { message: rootFact, compactMessage: "King: Duel on Test Player 4" },
+  ), { message: rootFact, compactMessage: "King: Duel on Test Player 4" });
+
+  for (const headline of [
+    "Test Player 2's Negation cancelled King’s Duel effect on Test Player 4.",
+    "Test Player 3's Negation restored King’s Duel effect on Test Player 4.",
+  ]) {
+    const narration = {
+      rootLabel: "Duel",
+      eventId: "committed-negation",
+      latestCommittedEventId: "committed-negation",
+      checkpointId: "checkpoint-2",
+      phase: "WINDOW_OPEN",
+      rootEffectState: headline.includes("restored") ? "ACTIVE" : "BLOCKED",
+      headline,
+      compactHeadline: headline,
+      supportingMessage: "",
+      compactSupportingMessage: "",
+      accessibleLabel: headline,
+    };
+    const copy = publicCardCommittedFactCopy(action({ phaseNotice: "NEGATION RESPONSE", publicNegationNarration: narration }), {
+      message: rootFact,
+      compactMessage: "King: Duel on Test Player 4",
+    });
+    assert.deepEqual(copy, { message: headline, compactMessage: headline, accessibleLabel: headline });
+    const markup = render({
+      publicNegationNarration: narration,
+      phaseNotice: "NEGATION RESPONSE",
+    });
+    assert.match(markup.replaceAll("&#x27;", "'"), new RegExp(headline.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(markup, /a Negation response is open|Negation open/);
+  }
+
+  const staticMarkup = render({ motion: undefined, phaseNotice: "NEGATION RESPONSE" });
+  assert.match(staticMarkup, /King played Duel on Test Player 4\./);
+  assert.doesNotMatch(staticMarkup, /a Negation response is open|Negation open/);
 });
 
 test("public announcement typography is readable and never truncates its verified sentence", () => {

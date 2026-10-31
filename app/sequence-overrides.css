@@ -2972,6 +2972,20 @@
 @media (min-width: 600px) {
   .game-shell .play-table[data-seat-topology="top-row"] > .interaction-safe-zone > .stage-system-cluster { bottom: 3px; }
 }
+@media (max-width: 520px) {
+  .game-shell .interaction-safe-zone > .stage-system-cluster {
+    right: 4px;
+    gap: 2px;
+  }
+  .game-shell .play-table[data-seat-topology="side-column"] > .interaction-safe-zone > .stage-system-cluster {
+    bottom: 82px;
+  }
+}
+@media (max-width: 437px) {
+  .game-shell .play-table[data-seat-topology="top-row"] > .interaction-safe-zone > .stage-system-cluster {
+    bottom: 82px;
+  }
+}
 
 .stage-system-menu {
   position: relative;
@@ -3200,6 +3214,24 @@
 .game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-event[data-countdown-urgency="critical"] b,
 .game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response[data-countdown-urgency="critical"] .countdown-hourglass {
   color: #ffd0bd;
+}
+@media (max-width: 520px) {
+  .game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response,
+  .game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-event {
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    height: 38px;
+    gap: 1px;
+    padding: 0 2px;
+  }
+  .game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response .countdown-hourglass {
+    font-size: 11px;
+  }
+  .game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response b,
+  .game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-event b {
+    font-size: 12px;
+  }
 }
 
 /* §4C.29: size anonymous choices for scanning, while preserving readable
