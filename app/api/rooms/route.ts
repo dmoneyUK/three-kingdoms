@@ -6821,7 +6821,7 @@ export async function POST(request: Request) {
     if (!resumed) return json({ error: "That triggered effect cannot continue this event.", stale: true, room: await roomState(code, token) }, 409);
     // The generic continue outcome reports no committed effect; preserve the
     // informational event without claiming an actual skill result.
-    const effectNotice = addLogWithId(parse<string[]>(liveRoom.log_json, []), `${me.name} continues an optional reaction.`);
+    const effectNotice = addLogWithId(parse<string[]>(liveRoom.log_json, []), `${me.name} resolves an optional reaction with ${(triggerExecution.presentation?.label ?? "an optional effect").replace(/^Use\s+/, "")}.`);
     const presentation = addLogWithId(effectNotice.log, `${remaining.length ? "Another reaction remains available." : "No further reactions remain."}`);
     if (remaining.length) {
       const reopened = resumed.kind === "reopen" ? resumed.pending : next;
