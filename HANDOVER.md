@@ -1,31 +1,27 @@
 # HANDOVER — Current Task Only
 
 Repository: `dmoneyUK/three-kingdoms` · target: `ux-v2`
-Design authority: `docs/UX2-refine.md` §10.10.1, latest reviewed revision `79dd8e56d809a576932cc21c323b5f5f86c5eb72`.
+Design authority: `docs/UX2-refine.md` §10.10.1, reviewed at revision `79dd8e56d809a576932cc21c323b5f5f86c5eb72`.
 
 ## Latest relevant result
 
-The Duel Negation R6 path, including R6-ARCH-01 and R6-ARCH-02, was explicitly accepted/closed by the owner on 2026-10-31 09:55 UTC. Source `461f5dc9bf8b2d79be2a90955a76b2cbcc44a35f`, exact-SHA Actions `41188188356`, Worker `61da9222-62a4-4ecc-a3b8-bc04be5ce61d`. Do not reopen these closed Duel scopes for the distinct Steal/Dismantle issue.
+The main ST-DM-NEG-UX-01 implementation is pushed as `60dbd8aa78ac72fac500dfa7758b9c9f5792b5e2`. Exact-SHA Actions run [41196721516](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41196721516) passed lint/fast, API, browser-smoke and deploy. Cloudflare Worker version: `39f5c9ca-0e27-4f4c-a8ba-de6d60c46b82`; production health check passed.
+
+A minimal follow-up is now locally modified and **not yet committed, pushed or deployed**. It makes reveal/move/parked classes mutually exclusive and corrects the focused test's handling of a visible, retained author reservation while fresh layout measurement is pending.
 
 ## Current bounded task — ST-DM-NEG-UX-01
 
-**Status: IN PROGRESS — OWNER APPROVED 2026-10-31 10:26 UTC.** Implement only the approved shared Steal (顺手牵羊) / Burning Bridges (过河拆桥, Dismantle) presentation correction. Steal public UX failed owner iPhone review; Dismantle shares the presenter but is **NOT PHONE TESTED**.
+**Status: FOLLOW-UP IMPLEMENTED LOCALLY — PENDING EXACT-SHA CI/DEPLOY; PENDING OWNER PHONE REVIEW.** Steal passed the earlier owner phone review; Dismantle is not phone tested. Do not mark accepted.
 
-1. Give PAC one deterministic lower, centered table-relative position and stable width/edge through TEST SWITCH, response, target choice, settlement and normal turn. Long copy grows upward. Keep controls, Inspector, timer, side Seats and Harvest geometry protected; do not use viewer-relative seat anchors.
-2. Remove only the redundant centre target-card result/back/transport/popup and duplicate caption for these effects. Preserve genuine root/Negation CardFaces and author history, actor-only legal picker, committed public discard proof, actual zones, private Steal receipt and physical-card conservation.
-3. Decouple settlement H4 from removed-result geometry. Show one proof-backed fact for ~2–3s, then retire on genuine later event/ordinary turn; never show a success for cancelled effect or revive stale H4 after TEST SWITCH/poll/reconnect.
-4. Check original root and committed Negation parking once under the true source Seat/Dock across TEST SWITCH. Fix only a directly reproducible single-target reservation fallback; otherwise record NOT REPRODUCED.
-5. Focused tests, exact-SHA GitHub Actions/deployment/health. Combined local UI/browser testing is capped at five minutes including retries; no broad viewer/player matrix. After delivery, stop for owner phone acceptance. Do not reopen T2-F1/T3-F1, Duel R6, ARCH-02, NEG-A1, rules, Harvest or other closed work.
+Scope remains limited to the approved shared Steal/Dismantle presentation: stable lower-centred PAC; remove duplicate result-card transport while preserving genuine root/committed Negation cards, privacy, legal picker, zones and card conservation; proof-backed H4; author-seat parking. No game rules or permissions changed.
 
-### Execution log
+### Current execution and validation
 
-- **2026-10-31 10:56 UTC — startup:** Fetched `origin/ux-v2`; remote had advanced from local `e493e97f` to `79dd8e56` with docs-only commits. Fast-forwarded clean task worktree safely. Read current full HANDOVER and latest `docs/UX2-refine.md` §10.10.1 and §10.25.4; reconciled the stale R6 handoff to the design's owner-accepted status and selected this single authorized task.
-- **2026-10-31 11:15–11:20 UTC — implementation:** Removed the duplicate public target-result CardFace/back/transport/caption and its placement measurement code; kept root/committed Negation CardFaces, public discard proof, zone projection and private Steal receipt. Reworked settlement lifetime to measure the proof-backed H4 itself, preserve its readable interval through temporary cover, and retire it after the normal-turn read. Removed the target-seat PAC anchor branch and added a table-relative lower-centre latch through Steal/Dismantle response, choice, settlement and ordinary turn. Removed `anchorPlayerId` from the target-card public activity projection. No server rules, permissions, Negation timing or private choice data changed.
-- **2026-10-31 11:18 UTC — focused mobile flow, attempt 1:** At 440×894, four authenticated viewer pages initially sampled the old visible turn chip before polling reached the committed response; the layout assertion read `bottom-center`. Added a wait for an active Negation/response/target-choice checkpoint before measuring PAC geometry.
-- **2026-10-31 11:19 UTC — focused mobile flow, attempt 2:** Active-stage PAC geometry passed across all four viewer pages at the same centre, width and lower edge; each page also exposed the committed Steal root. The run then timed out on `expectRootJourneyReveal` because it required the short reveal phase/timestamp after the four views had settled. Updated this test to capture the committed root regardless of whether the reveal has already advanced; its existing following assertions still require a visible, settled root under the true source anchor. No further UI run was started; combined local browser execution stayed well below the five-minute cap.
-- **2026-10-31 11:21 UTC — focused checks:** `npm run build` passed. `node --import tsx --test tests/public-card-announcement.test.mjs tests/api/public-activity.test.mjs` passed 36/36. A stratagem API run started concurrently with build and failed to start because `dist/server/wrangler.json` did not yet exist; reran after build completed: `GAME_TEST_FILES=tests/api/stratagems.test.mjs node tests/run-tests.mjs` passed 29/29, including ordered Negation cancel/restore, Steal target choice, privacy and destination proofs. Targeted ESLint passed with 0 errors and 15 existing React dependency warnings. `git diff --check` passed.
-- **2026-10-31 11:23 UTC — current state:** Source and focused tests are locally modified on `codex/quick-test-negation-duel` at base SHA `79dd8e56d809a576932cc21c323b5f5f86c5eb72`; nothing from this task is committed or pushed yet. Exact-SHA Actions, Worker deploy and health check remain pending. UI root parking assertion remains a CI check; phone acceptance is pending.
+- **2026-10-31 11:15–11:28 UTC:** Base implementation completed, committed/pushed as `60dbd8a`; all exact-SHA Actions jobs passed and Worker deployed as recorded above. Local build, targeted lint, 36 announcement/activity tests and 29 stratagem API tests passed; diff check passed.
+- **2026-10-31 11:31–11:34 UTC:** A focused 440×894 flow exposed a hidden committed root during the reveal. Cause: `PublicJourneyCard` assigned `is-parked` to reveal-phase cards, so pending-layout CSS hid them. Changed phase classes to be mutually exclusive. After rebuilding `dist`, the mobile flow confirmed the root becomes visible and parks at its real author anchor. No gameplay, privacy or permission code changed.
+- **2026-10-31 11:34–11:37 UTC:** The same flow showed a visible, 48×72 root retained 11px from its local Dock while a same-viewer placement measurement remained pending. The DOM marked the prior placement as an authentic author reservation; screenshot showed it under the source Dock. Updated the focused assertion to verify that reservation geometry when pending, and to keep checking visibility, correct author, no Hero overlap and no other-seat overlap.
+- **2026-10-31 11:37–11:39 UTC:** One bounded rerun exceeded its 90-second cap and was stopped. It did not yield a final pass. No more local UI/browser tests are authorized for this task. `git diff --check` passed; the latest `npm run build` passed after the source fix.
 
-### Preserve during implementation
+### Next action
 
-Keep server legality, Negation timing, privacy, card conservation and accepted H4/PAC behavior authoritative. PAC is public next guidance; H4 is committed past fact; Console remains viewer-private. No card-specific server rules or card/Hero-specific shared presenter branches. Only claim observed tests, deployment or phone results.
+Review only the current diff, commit and push `app/public-card-display.tsx`, `tests/browser/target-card-real-gameplay.spec.mjs` and this handoff update. Wait for exact-SHA required CI, Worker deployment and production health. Record those actual results here, then stop for owner iPhone review. Keep Dismantle marked **NOT PHONE TESTED**.

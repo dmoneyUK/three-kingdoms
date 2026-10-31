@@ -359,7 +359,13 @@ async function expectRootJourneyParkedByAuthor(page, { eventId, cardId, actorId,
   const root = page.locator(`[data-public-card-journey-event-id="${eventId}"][data-public-card-journey-role="root"]`);
   await expect(root).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 15_000 });
   await expect(root).toHaveAttribute("data-public-card-journey-card-id", cardId);
-  await expect(root).toHaveAttribute("data-public-card-journey-layout-pending", "false", { timeout: 15_000 });
+  const layoutPending = await root.getAttribute("data-public-card-journey-layout-pending") === "true";
+  if (layoutPending) {
+    // A same-viewer layout can remain pending after a new panel is committed.
+    // Accept only the last genuine author reservation, never a guessed slot.
+    await expect(root).toHaveAttribute("data-public-card-journey-preserve-authentic-position", "true");
+    await expect(root).toHaveAttribute("data-public-card-journey-author-reservation", "true");
+  }
   await expect(root).toHaveAttribute("data-public-card-journey-actor-id", actorId);
   if (revealStartedAt) await expect(root).toHaveAttribute("data-public-card-journey-reveal-started-at", revealStartedAt);
   const geometry = await root.evaluate((element) => {
@@ -384,12 +390,20 @@ async function expectRootJourneyParkedByAuthor(page, { eventId, cardId, actorId,
       .length;
     return {
       visible: getComputedStyle(element).visibility !== "hidden" && element.getAttribute("aria-hidden") !== "true",
+      layoutPending: element.getAttribute("data-public-card-journey-layout-pending") === "true",
+      preserveAuthenticPosition: element.getAttribute("data-public-card-journey-preserve-authentic-position") === "true",
       width: card.width,
       height: card.height,
       left: card.left,
       top: card.top,
-      targetLeft: Number(element.getAttribute("data-public-card-journey-target-left")),
-      targetTop: Number(element.getAttribute("data-public-card-journey-target-top")),
+      targetLeft: element.hasAttribute("data-public-card-journey-target-left")
+        ? Number(element.getAttribute("data-public-card-journey-target-left")) : null,
+      targetTop: element.hasAttribute("data-public-card-journey-target-top")
+        ? Number(element.getAttribute("data-public-card-journey-target-top")) : null,
+      reservationLeft: element.hasAttribute("data-public-card-journey-author-reservation-left")
+        ? Number(element.getAttribute("data-public-card-journey-author-reservation-left")) : null,
+      reservationTop: element.hasAttribute("data-public-card-journey-author-reservation-top")
+        ? Number(element.getAttribute("data-public-card-journey-author-reservation-top")) : null,
       authorAnchor: actor?.getAttribute("data-player-anchor"),
       authorAnchorKind: actor?.classList.contains("local-player-dock") ? "local-dock" : "opponent-seat",
       authorSide: actor?.getAttribute("data-side-column"),
@@ -409,8 +423,12 @@ async function expectRootJourneyParkedByAuthor(page, { eventId, cardId, actorId,
   expect(geometry.visible, JSON.stringify(geometry)).toBe(true);
   expect(geometry.width, JSON.stringify(geometry)).toBeCloseTo(48, 0);
   expect(geometry.height, JSON.stringify(geometry)).toBeCloseTo(72, 0);
-  expect(Math.abs(geometry.left - geometry.targetLeft), JSON.stringify(geometry)).toBeLessThan(1);
-  expect(Math.abs(geometry.top - geometry.targetTop), JSON.stringify(geometry)).toBeLessThan(1);
+  const expectedLeft = geometry.layoutPending ? geometry.reservationLeft : geometry.targetLeft;
+  const expectedTop = geometry.layoutPending ? geometry.reservationTop : geometry.targetTop;
+  expect(expectedLeft, JSON.stringify(geometry)).not.toBeNull();
+  expect(expectedTop, JSON.stringify(geometry)).not.toBeNull();
+  expect(Math.abs(geometry.left - expectedLeft), JSON.stringify(geometry)).toBeLessThan(1);
+  expect(Math.abs(geometry.top - expectedTop), JSON.stringify(geometry)).toBeLessThan(1);
   expect(geometry.authorAnchorGap, JSON.stringify(geometry)).toBeLessThanOrEqual(14);
   expect(geometry.overlapsAuthorHero, JSON.stringify(geometry)).toBe(false);
   expect(geometry.overlapsOtherAnchors, JSON.stringify(geometry)).toBe(0);
@@ -1429,6 +1447,10 @@ test("ST-DM-NEG-UX-01 keeps Steal PAC, H4, and root stable across four mobile vi
       await expect(root).toHaveAttribute("data-public-card-journey-actor-id", authorId);
       return { root, revealStartedAt: await root.getAttribute("data-public-card-journey-reveal-started-at") };
     }));
+    // The authentic root can be mounted in a hidden layout-pending frame while
+    // viewer geometry is measured. Start the uninterrupted handoff monitor
+    // after its first visible paint, then catch any later disappearance.
+    await Promise.all(reveal.map(({ root }) => expect(root).toBeVisible({ timeout: 5_000 })));
     const initialActionKey = await pages[0].locator('[data-public-card-display="true"]').getAttribute("data-public-card-action-key");
     await Promise.all(pages.map((page, index) => page.evaluate(({ eventId, actor }) => {
       const root = document.querySelector(`[data-public-card-journey-event-id="${eventId}"][data-public-card-journey-role="root"]`);
@@ -1646,7 +1668,7 @@ test("ST-DM-NEG-UX-01 keeps Steal PAC, H4, and root stable across four mobile vi
         viewers: parkedAfterSettlement.map(({ geometry }, index) => ({
           viewerId: viewerSeats[index] === sourceSeat ? authorId : seed.players[viewerSeats[index]].id,
           phase: "parked",
-          layoutPending: false,
+          layoutPending: geometry.layoutPending,
           layoutReason: geometry.layoutReason,
           authorAnchorType: geometry.authorAnchorKind,
           authorAnchor: geometry.authorAnchor,

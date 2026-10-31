@@ -356,7 +356,7 @@ function PublicJourneyCard({
   return <button
     type="button"
     role={publicFrameAccessible && !inspectable ? "group" : undefined}
-    className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${card.layoutPending ? "is-layout-pending" : ""} ${harvestHistory && card.phase === "parked" ? "is-harvest-history-parked" : ""} ${passive ? "is-harvest-history-passive" : ""} ${className} ${lustCostFrame ? "is-lust-cost" : ""} ${publicCardEffectFrame ? "is-public-effect-frame" : ""} ${inspectable ? "is-inspectable" : ""}`}
+    className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : ""} ${card.phase === "parked" ? "is-parked" : ""} ${card.layoutPending ? "is-layout-pending" : ""} ${harvestHistory && card.phase === "parked" ? "is-harvest-history-parked" : ""} ${passive ? "is-harvest-history-passive" : ""} ${className} ${lustCostFrame ? "is-lust-cost" : ""} ${publicCardEffectFrame ? "is-public-effect-frame" : ""} ${inspectable ? "is-inspectable" : ""}`}
     disabled={!inspectable && !publicFrameAccessible}
     tabIndex={inspectable ? 0 : -1}
     aria-hidden={placementUnavailable ? true : inspectable || publicFrameAccessible ? undefined : true}
