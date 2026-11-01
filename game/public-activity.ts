@@ -149,8 +149,9 @@ export function derivePublicInteractionNarration(input: {
     const outcomeCategories = new Set([
       "DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED",
     ]);
-    latest = facts.filter((fact) => fact.eventId === input.rootEventId && fact.category === "CARD_PLAYED"
-      || fact.order > rootOrder && outcomeCategories.has(fact.category)).at(-1);
+    latest = facts.filter((fact) => fact.eventId === input.rootEventId
+      ? fact.category === "CARD_PLAYED" || outcomeCategories.has(fact.category)
+      : fact.order > rootOrder && outcomeCategories.has(fact.category)).at(-1);
   } else if (!identity && !interaction && snapshot.stable.kind === "REST"
     && snapshot.retainedPublicEvent?.identity.interactionId === input.interactionId
     && snapshot.retainedPublicEvent.identity.rootFrameId === input.rootFrameId

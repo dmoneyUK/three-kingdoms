@@ -8391,7 +8391,6 @@ export async function POST(request: Request) {
     const choiceEvent = addLogWithId(log, `${me.name} chooses ${chosen.name} as the target of ${holder.name}'s forced Attack.`, undefined,
       { actorId: me.id, ...(targetChoiceFact ? { publicFact: targetChoiceFact } : {}) });
     log = choiceEvent.log;
-    forced.readyAfterEventId = choiceEvent.eventId;
     await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(forced), JSON.stringify(log), child ? JSON.stringify(child.envelope) : liveRoom.causal_envelope_json, room.id).run();
     return json({ room: await roomState(code, token) });
   }
