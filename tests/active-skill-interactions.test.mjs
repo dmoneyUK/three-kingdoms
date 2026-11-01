@@ -496,23 +496,30 @@ test("ordinary target Stratagem has no Cancel and same-card retap clears target 
   await act(async () => { renderer.unmount(); });
 });
 
-test("End Turn requires an affirmative second confirmation and preserves legal action authority", async () => {
+test("End Turn opens the in-battlefield confirmation and preserves legal action authority", async () => {
   const room = normalHalberdTargetRoom();
   const actionCalls = [];
-  const confirmations = [];
+  let browserConfirmCalls = 0;
   let renderer;
-  globalThis.window.confirm = (message) => { confirmations.push(message); return false; };
+  globalThis.window.confirm = () => { browserConfirmCalls += 1; return true; };
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const endTurn = button(renderer, { children: "End" });
   assert.equal(endTurn.props.disabled, false, "the authoritative End Turn action remains available");
   await act(async () => { endTurn.props.onClick(); });
-  assert.deepEqual(confirmations, ["End your turn?"]);
-  assert.equal(actionCalls.length, 0, "canceling the confirmation does not submit end_turn");
-  globalThis.window.confirm = (message) => { confirmations.push(message); return true; };
-  await act(async () => { button(renderer, { children: "End" }).props.onClick(); });
-  assert.equal(actionCalls.length, 1);
-  assert.deepEqual(actionCalls[0], ["end_turn"]);
+  const stage = nodeWithClass(renderer, "end-turn-confirmation-stage");
+  assert.equal(renderedNodeText(stage).includes("End your Play Phase?"), true);
+  assert.equal(browserConfirmCalls, 0, "End Turn no longer opens a browser confirmation");
+  assert.equal(actionCalls.length, 0, "opening the confirmation does not submit end_turn");
+  const confirmEnd = button(renderer, { children: "Confirm End" });
+  assert.equal(confirmEnd.props.disabled, true, "confirmation stays unavailable until the battlefield placement is measured");
+  const previousRequestAnimationFrame = globalThis.window.requestAnimationFrame;
+  globalThis.window.requestAnimationFrame = (callback) => setTimeout(() => callback(Date.now()), 0);
+  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
+  globalThis.window.requestAnimationFrame = previousRequestAnimationFrame;
+  assert.equal(renderer.root.findAll((node) => node.type === "div" && node.props?.["data-end-turn-confirmation"] === "true").length, 0, "Cancel closes the in-battlefield confirmation");
+  assert.equal(actionCalls.length, 0, "Cancel sends no gameplay action");
+  assert.equal(browserConfirmCalls, 0);
   await act(async () => { renderer.unmount(); });
   globalThis.window.confirm = () => false;
 });
