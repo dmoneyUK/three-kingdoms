@@ -19,6 +19,7 @@ const fastTests = [
   "tests/presentation-v2.test.mjs",
   "tests/presentation-snapshot.test.mjs",
   "tests/presentation-client.test.mjs",
+  "tests/public-presentation-routing.test.mjs",
   "tests/presentation-causality.test.mjs",
   "tests/causal-context.test.mjs",
   "tests/attack-dodge-ux-trace.test.mjs",
