@@ -40,7 +40,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; actorId?: string; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicFact?: PublicPresentationEventFactDraft; publicZoneTransition?: PublicPhysicalZoneTransition; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; actorId?: string; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicFact?: PublicPresentationEventFactDraft; publicZoneTransition?: PublicPhysicalZoneTransition; publicZoneTransitions?: readonly PublicPhysicalZoneTransition[]; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type AttackDodgeProofDiagnostic = {
   result: "PROVEN" | "REJECTED" | "NOT_ATTEMPTED";
   reason: string;
@@ -731,7 +731,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
 function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "amount" | "effect">> = {}, envelope?: CausalEnvelope | null): PublicPresentationEventFactDraft | undefined {
   if (!causal?.interactionId || !causal.frameId) return undefined;
@@ -1827,7 +1827,53 @@ function ensureNegationResolutionEvent(log: string[], pending: NegationContinuat
   if (matchingIndex >= 0) return log;
   return addLog(log, message, undefined, proof ? { resolutionId: proof.resolutionId, importance: "essential", finalResult: true, negationSettlement: proof } : undefined);
 }
-function addDiscardEvent(log: string[], player: string, cards: Card[]) { return addCardGroupEvent(log, player, cards, "discard"); }
+function publicDiscardFrom(player: PlayerRow, card: Card): PublicZoneEndpoint | null {
+  const matches: PublicZoneEndpoint[] = [];
+  if (parse<Card[]>(player.hand_json, []).some((held) => held.id === card.id)) matches.push({ zone: "HAND", ownerId: player.id });
+  const equipment = equipmentZone(player);
+  for (const slot of Object.keys(equipment) as (keyof EquipmentZone)[]) {
+    if (equipment[slot]?.id === card.id) matches.push({ zone: "EQUIPMENT", ownerId: player.id, slot });
+  }
+  if (parse<Card[]>(player.judgement_json, []).some((held) => held.id === card.id)) matches.push({ zone: "JUDGEMENT", ownerId: player.id });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function publicDiscardTransitions(eventId: string, player: PlayerRow, cards: readonly Card[]): readonly PublicPhysicalZoneTransition[] | undefined {
+  if (!eventId || !cards.length || new Set(cards.map((card) => card.id)).size !== cards.length) return undefined;
+  const sources = cards.map((card) => publicDiscardFrom(player, card));
+  if (sources.some((source) => !source)) return undefined;
+  return cards.map((card, index) => ({
+    semantics: "PROVEN" as const,
+    visibility: "PUBLIC" as const,
+    eventId,
+    sourceEventId: eventId,
+    rootEventId: eventId,
+    physicalCardId: card.id,
+    from: sources[index]!,
+    to: { zone: "DISCARD" as const, ownerId: null },
+  }));
+}
+
+function addDiscardEvent(log: string[], player: PlayerRow | string, cards: Card[]) {
+  if (!cards.length) return log;
+  const ownerName = typeof player === "string" ? player : player.name;
+  const eventId = crypto.randomUUID();
+  const publicZoneTransitions = typeof player === "string" ? undefined : publicDiscardTransitions(eventId, player, cards);
+  const meta: PresentationMeta = {
+    ...(typeof player === "string" ? {} : { actorId: player.id }),
+    ...(publicZoneTransitions ? { publicZoneTransitions } : {}),
+  };
+  return addCardGroupEventWithId(log, ownerName, cards, "discard", true, ownerName, undefined, meta, eventId).log;
+}
+
+function addPublicDiscardCardEvent(log: string[], player: PlayerRow, card: Card) {
+  const eventId = crypto.randomUUID();
+  const publicZoneTransitions = publicDiscardTransitions(eventId, player, [card]);
+  return addCardEvent(log, player.name, card, player.name, "discard", true, {
+    actorId: player.id,
+    ...(publicZoneTransitions ? { publicZoneTransitions } : {}),
+  }, eventId);
+}
 function drawCards(deck: Card[], discard: Card[], count: number, log: string[]) {
   const drawn: Card[] = [];
   while (drawn.length < count) {
@@ -3648,16 +3694,16 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
   const defeatedEquipment = equipmentCards(target);
   if (defeatedHand.length) {
     discard.push(...defeatedHand);
-    log = addDiscardEvent(log, target?.name ?? "The defeated player", defeatedHand);
+    log = addDiscardEvent(log, target ?? "The defeated player", defeatedHand);
     log = addLog(log, `${target?.name ?? "The defeated player"} discards all remaining cards after being defeated.`);
   }
   if (defeatedJudgement.length) {
     discard.push(...defeatedJudgement);
-    log = addCardGroupEvent(log, target?.name ?? "The defeated player", defeatedJudgement, "discard");
+    log = addDiscardEvent(log, target ?? "The defeated player", defeatedJudgement);
   }
   if (defeatedEquipment.length) {
     discard.push(...defeatedEquipment);
-    log = addCardGroupEvent(log, target?.name ?? "The defeated player", defeatedEquipment, "discard");
+    log = addDiscardEvent(log, target ?? "The defeated player", defeatedEquipment);
   }
   const writes = [env.DB.prepare("UPDATE players SET hp = 0, alive = 0, hand_json = '[]', judgement_json = '[]', equipment_json = '{}' WHERE id = ?").bind(pending.targetId)];
   if (target?.role === "Rebel" && source?.alive) {
@@ -3671,11 +3717,11 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
     const lordEquipment = equipmentCards(source);
     if (lordHand.length) {
       discard.push(...lordHand);
-      log = addDiscardEvent(log, source.name, lordHand);
+      log = addDiscardEvent(log, source, lordHand);
     }
     if (lordEquipment.length) {
       discard.push(...lordEquipment);
-      log = addCardGroupEvent(log, source.name, lordEquipment, "discard");
+      log = addDiscardEvent(log, source, lordEquipment);
     }
     writes.push(env.DB.prepare("UPDATE players SET hand_json = '[]', equipment_json = '{}' WHERE id = ?").bind(source.id));
     log = addLog(log, `${source.name} defeated Loyalist ${target.name} and discards all cards as the Lord's penalty.`);
@@ -5246,7 +5292,7 @@ async function applyPreventDamageOutcome(room: RoomRow, continuation: DamageAbou
       effectId: "frost_sword_damage_about_to_apply", effectClass: "EFFECT", activationOwnerId: source.id,
       materials, targetId: target.id, outcome: "DAMAGE_PREVENTED", ...root,
     }).log
-    : addDiscardEvent(log, target.name, discarded);
+    : addDiscardEvent(log, target, discarded);
   log = addLog(log, `${source.name} uses an optional reaction to prevent damage and discards ${discarded.length} card${discarded.length === 1 ? "" : "s"} from ${target.name}. Action returns to ${source.name}.`);
   await db().batch([
     db().prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), JSON.stringify(nextEquipment), target.id),
@@ -5277,7 +5323,7 @@ async function applyKirinBowOutcome(room: RoomRow, continuation: DamageAboutToAp
       effectId: "kirin_bow_damage_about_to_apply", effectClass: "EFFECT", activationOwnerId: source.id,
       materials, targetId: target.id, outcome: "MOUNT_DISCARDED_DAMAGE_CONTINUES", ...root,
     }).log
-    : addDiscardEvent(log, target.name, [mount]);
+    : addDiscardEvent(log, target, [mount]);
   log = addLog(log, `${source.name} uses Kirin Bow to discard ${mount.rank}${mount.suit} ${cardDefinition(mount.kind).name} from ${target.name}. The Attack damage continues.`);
   await db().batch([
     db().prepare("UPDATE players SET equipment_json = ? WHERE id = ?").bind(JSON.stringify(equipment), target.id),
@@ -6905,7 +6951,7 @@ export async function POST(request: Request) {
             ...(lustActivationEventId ? { activationEventId: lustActivationEventId, targetIds: [firstId, secondId] } : {}),
           })
           : null;
-        log = lustCostPresentation?.log ?? addDiscardEvent(log, liveMe.name, selected);
+        log = lustCostPresentation?.log ?? addDiscardEvent(log, liveMe, selected);
         const lustActivation = first && second
           ? addLogWithId(log, `${liveMe.name} uses Lust: ${first.name} and ${second.name} enter a Duel. ${first.name} plays Attack first.`, undefined, {
             importance: "essential",
@@ -6951,7 +6997,7 @@ export async function POST(request: Request) {
               effectId: "hua_tuo_prodigal_healer", effectClass: "COST", activationOwnerId: liveMe.id,
               materials, targetId: target.id, outcome: "RECOVERY_APPLIED",
             }).log
-            : addDiscardEvent(log, liveMe.name, selected);
+            : addDiscardEvent(log, liveMe, selected);
           log = addLog(log, `${liveMe.name} uses Prodigal Healer on ${target.name}; ${target.name} recovers ${amountRecovered} HP.`);
           await db.batch([
             db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), liveMe.id),
@@ -6981,7 +7027,7 @@ export async function POST(request: Request) {
               outcome: sourceRecovered > 0 && targetRecovered > 0 ? "SOURCE_AND_TARGET_RECOVERED"
                 : targetRecovered > 0 ? "TARGET_RECOVERED" : "NO_RECOVERY",
             }).log
-            : addDiscardEvent(log, liveMe.name, selected);
+            : addDiscardEvent(log, liveMe, selected);
           log = addLog(log, `${liveMe.name} uses Betrothment on ${target.name}.`);
           const recoveryRecords: RecoveryRecord[] = [];
           if (sourceRecovered > 0) recoveryRecords.push({ playerId: liveMe.id, amountRecovered: sourceRecovered, sourceId: liveMe.id, reason: "betrothment" });
@@ -7041,7 +7087,7 @@ export async function POST(request: Request) {
             effectId: "sun_quan_zhiheng", effectClass: "COST", activationOwnerId: liveMe.id,
             materials, outcome: "DRAW_COUNT_MATCHES_DISCARDED",
           }).log
-          : addDiscardEvent(log, liveMe.name, selected);
+          : addDiscardEvent(log, liveMe, selected);
         const draw = drawCards(deck, discard, selected.length, log); deck = draw.deck; discard = draw.discard; log = addHistory(draw.log, `${liveMe.name} uses Equilibrium and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, liveMe.id);
         for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, liveMe, drawn);
         const nextState = { ...skillState, turnPlayerId: liveMe.id, zhihengUsed: true };
@@ -7368,7 +7414,7 @@ export async function POST(request: Request) {
             effectId: "yue_jin_dauntless", effectClass: "EFFECT", activationOwnerId: source.id,
             materials, targetId: endingPlayer.id, outcome: "DAMAGE_PREVENTED",
           }).log
-          : addDiscardEvent(log, endingPlayer.name, [selected]);
+          : addDiscardEvent(log, endingPlayer, [selected]);
         log = addLog(log, `${endingPlayer.name} discards Equipment with Dauntless; no damage is dealt.`);
         const resolved = { ...continuation, stage: "activation" as const, sourceId: undefined, targetId: undefined, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), "yue_jin_dauntless"])] } satisfies TurnEndTriggerContinuation;
         await db.batch([
@@ -7390,7 +7436,7 @@ export async function POST(request: Request) {
           effectId: "yue_jin_dauntless", effectClass: "COST", activationOwnerId: source.id,
           materials, targetId: endingPlayer.id, outcome: "ACTIVATION_COST",
         }).log
-        : addDiscardEvent(log, source.name, [cost]);
+        : addDiscardEvent(log, source, [cost]);
       log = addTriggeredEffectNotice(log, source.name, "Dauntless", triggerPublicFact).log;
       const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), "yue_jin_dauntless"])], sourceId: source.id, targetId: endingPlayer.id } satisfies TurnEndTriggerContinuation;
       if (equipmentCards(endingPlayer).length > 0) {
@@ -7680,7 +7726,7 @@ export async function POST(request: Request) {
             effectId: "lady_gan_divine_wisdom", effectClass: "COST", activationOwnerId: player.id,
             materials, outcome: amountRecovered ? "RECOVERY_APPLIED" : "NO_RECOVERY",
           }).log
-          : addDiscardEvent(log, player.name, hand);
+          : addDiscardEvent(log, player, hand);
         log = addLog(log, `${player.name} uses Divine Wisdom and discards all ${hand.length} hand card${hand.length === 1 ? "" : "s"}.${amountRecovered ? " They recover 1 HP." : " No HP is recovered."}`);
         const nextTurnStart: TurnStartTriggerContinuation = {
           kind: "turn_start_event",
@@ -7822,7 +7868,7 @@ export async function POST(request: Request) {
         } else {
           // The actual committed discard is public even if its causal root cannot
           // be verified. Keep the physical event, but omit an unproven effect link.
-          log = addCardEvent(log, target.name, card, target.name, "discard");
+          log = addPublicDiscardCardEvent(log, target, card);
         }
         discard.push(card); log = addLog(log, `${target.name} discards a hand card.`);
         const nextTargetHand = hand.filter((item) => item.id !== card.id);
@@ -8103,7 +8149,7 @@ export async function POST(request: Request) {
             effectId: "xiahou_dun_ganglie", effectClass: "COST", activationOwnerId: target.id,
             materials, targetId: source.id, outcome: "SOURCE_DISCARDED_TWO", ...root,
           }).log
-          : addDiscardEvent(log, source.name, selected);
+          : addDiscardEvent(log, source, selected);
         log = addLog(log, `${source.name} discards 2 hand cards to resolve Stauchness.`);
         await db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), source.id).run();
         const resolvedEffectIds = continuation.secondaryEffectId
@@ -9493,7 +9539,7 @@ export async function POST(request: Request) {
     if (requested.length !== required) return json({ error: `Choose exactly ${required} card${required === 1 ? "" : "s"} to discard.` }, 400);
     const selectedCards = requested.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)); if (selectedCards.length !== required) return json({ error: "One of those cards is no longer in your hand." }, 409);
     if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
-    const selectedIds = new Set(requested); hand = hand.filter((card) => !selectedIds.has(card.id)); const discard = [...parse<Card[]>(liveRoom.discard_json, []), ...selectedCards]; let log = addDiscardEvent(parse<string[]>(liveRoom.log_json, []), me.name, selectedCards); log = addLog(log, `${me.name} discards ${selectedCards.length} selected card${selectedCards.length === 1 ? "" : "s"}.`);
+    const selectedIds = new Set(requested); hand = hand.filter((card) => !selectedIds.has(card.id)); const discard = [...parse<Card[]>(liveRoom.discard_json, []), ...selectedCards]; let log = addDiscardEvent(parse<string[]>(liveRoom.log_json, []), me, selectedCards); log = addLog(log, `${me.name} discards ${selectedCards.length} selected card${selectedCards.length === 1 ? "" : "s"}.`);
     log = addLog(log, `${me.name} completes Discard; the turn-end event begins.`); await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), room.id)]); await beginTurnEnd(room.id, me);
     await maybeOpenHandLossTrigger(room.id, me.id, handBeforeDiscard);
     const immediateRoom = await roomState(code, token);

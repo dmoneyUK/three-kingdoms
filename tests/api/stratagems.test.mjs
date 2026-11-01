@@ -1500,6 +1500,39 @@ test("Overindulgence uses the Judgement Zone and skips only a failed target's Pl
 
 });
 
+test("committed Discard-phase cards carry one public physical HAND-to-Discard proof for every viewer", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const owner = game.room.players[0];
+  const committedCard = card("Peach", "m4-committed-hand-discard");
+  const retainedCards = [card("Attack", "m4-retained-attack"), card("Dodge", "m4-retained-dodge")];
+  setHand(owner.id, [committedCard, ...retainedCards], 2, 4);
+  setTurn(game.code, owner.seat, "play");
+
+  const ended = await requestAndSettle("end_turn", { code: game.code, token: game.members[0].token });
+  assert.equal(ended.status, 200, JSON.stringify(ended.data));
+  assert.equal(ended.data.room.phase, "discard");
+  const discarded = await requestAndSettle("discard_cards", {
+    code: game.code, token: game.members[0].token, cardIds: [committedCard.id],
+  });
+  assert.equal(discarded.status, 200, JSON.stringify(discarded.data));
+
+  const ownerEvent = discarded.data.room.timeline.find((event) => event.type === "cards"
+    && event.action === "discard" && event.cards.some((candidate) => candidate.id === committedCard.id));
+  assert.ok(ownerEvent, "the server persisted the committed public physical discard");
+  assert.equal(ownerEvent.actorId, owner.id);
+  assert.ok(Number.isSafeInteger(ownerEvent.publicSequence));
+  assert.deepEqual(ownerEvent.publicZoneTransitions, [{
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: ownerEvent.id,
+    sourceEventId: ownerEvent.id, rootEventId: ownerEvent.id, physicalCardId: committedCard.id,
+    from: { zone: "HAND", ownerId: owner.id }, to: { zone: "DISCARD", ownerId: null },
+  }]);
+
+  const observer = (await state(game.code, game.members[1].token)).data;
+  const observerEvent = observer.timeline.find((event) => event.id === ownerEvent.id);
+  assert.deepEqual(observerEvent?.publicZoneTransitions, ownerEvent.publicZoneTransitions,
+    "public transition evidence is identical for every viewer");
+});
+
 test("delayed Judgement Negation and counter-Negation reuse one activation frame", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const alice = game.members.find((member) => member.name === "Alice");
