@@ -361,6 +361,11 @@ test("real Worker/D1 equip publishes one actor-bound arrival to the owner and an
     const observerReveal = observerPage.locator(revealSelector);
     await expect(ownerReveal).toBeVisible({ timeout: 12_000 });
     await expect(observerReveal).toBeVisible({ timeout: 12_000 });
+    await expect(ownerReveal).toHaveAttribute("data-public-zone-transition-event-id", event.id);
+    await expect(ownerReveal).toHaveAttribute("data-public-zone-transition-destination", "EQUIPMENT");
+    await expect(observerReveal).toHaveAttribute("data-public-zone-transition-event-id", event.id);
+    await expect(ownerPage.locator(`.active-table-reveal[data-public-zone-transition-card-id="${bow.id}"]`)).toHaveCount(1);
+    await expect(observerPage.locator(`.active-table-reveal[data-public-zone-transition-card-id="${bow.id}"]`)).toHaveCount(1);
     const ownerMini = ownerPage.locator(`.local-zone-card[data-equipment-id="${bow.id}"]`);
     const ownerCardFace = ownerReveal.locator(`[data-settlement-card-id="${bow.id}"]`);
     await expect(ownerMini).toHaveAttribute("data-equipment-arrival-pending", "true");

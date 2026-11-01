@@ -108,6 +108,11 @@ export type PublicZoneProjection = {
   ownerId: string | null;
   zone: "EQUIPMENT" | "JUDGEMENT" | "DISCARD" | "PUBLIC_PLAY";
   slot?: "weapon" | "armor" | "offensiveHorse" | "defensiveHorse";
+  from?: {
+    zone: "HAND" | "EQUIPMENT" | "JUDGEMENT" | "PUBLIC_PLAY";
+    ownerId: string | null;
+    slot?: "weapon" | "armor" | "offensiveHorse" | "defensiveHorse";
+  };
 };
 
 type AuditSnapshot = Pick<PresentationSnapshot,
@@ -139,6 +144,7 @@ export type PublicPresentationCandidate =
     ownerId: string | null;
     destination: PublicZoneProjection["zone"];
     slot?: PublicZoneProjection["slot"];
+    from?: PublicZoneProjection["from"];
   })
   | { kind: "fact-only"; eventId: string }
   | { kind: "private-receipt"; eventId: string; physicalCardId: string; recipientId: string }
@@ -181,6 +187,7 @@ export type PublicPresentationRoute =
     ownerId: string | null;
     destination: PublicZoneProjection["zone"];
     slot?: PublicZoneProjection["slot"];
+    from?: PublicZoneProjection["from"];
     shadowComparison: ShadowComparison;
   }
   | {
@@ -464,13 +471,16 @@ export function routePublicPresentation(input: PublicPresentationRouterInput): P
     const zone = zoneRows[0];
     if (zone.semantics !== "PROVEN" || zone.visibility !== "PUBLIC" || zone.zone !== candidate.destination
       || zone.ownerId !== candidate.ownerId || zone.slot !== candidate.slot) return blocked("zone-proof-mismatch");
+    if (candidate.from && (!zone.from || zone.from.zone !== candidate.from.zone
+      || zone.from.ownerId !== candidate.from.ownerId || zone.from.slot !== candidate.from.slot)) return blocked("zone-proof-mismatch");
     const claimId = transitionClaimId(input.scope.roomCode, candidate.transitionId);
     if ((input.replay.retiredTransitionIds ?? []).includes(candidate.transitionId)) return { kind: "no-public-card-action", reason: "replayed-transition" };
     const shadowComparison = compareOwners("PublicPhysicalCardTransition", [{ eventId: candidate.eventId, physicalCardIds: [candidate.physicalCardId] }], input.existingOwners);
     return {
       kind: "zone-transition", claimedBy: "PublicPhysicalCardTransition", claimId, scope: scope(input),
       eventId: candidate.eventId, physicalCardId: candidate.physicalCardId, ownerId: candidate.ownerId,
-      destination: candidate.destination, ...(candidate.slot ? { slot: candidate.slot } : {}), shadowComparison,
+      destination: candidate.destination, ...(candidate.slot ? { slot: candidate.slot } : {}),
+      ...(candidate.from ? { from: candidate.from } : {}), shadowComparison,
     };
   }
 

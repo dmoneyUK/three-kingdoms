@@ -1,4 +1,5 @@
 import { CARD_DEFINITIONS } from "./cards";
+import type { EquipmentZone } from "./model";
 
 /** Stable public identity shared by the public event and the current decision. */
 export type PresentationSemanticIdentity = {
@@ -25,6 +26,16 @@ export type PublicPresentationEventCategory =
   | "STAGE_COMPLETED";
 
 export type PublicEffectDescriptor = { kind: string; label?: string };
+
+/** Exact public exit of a card already visible in an Equipment slot. */
+export type PublicPhysicalZoneTransition = {
+  semantics: "PROVEN";
+  visibility: "PUBLIC";
+  eventId: string;
+  physicalCardId: string;
+  from: { zone: "EQUIPMENT"; ownerId: string; slot: keyof EquipmentZone };
+  to: { zone: "DISCARD"; ownerId: null };
+};
 
 /** A provider-supplied, immutable public fact. Labels must already be privacy-safe. */
 export type PublicPresentationEvent = {

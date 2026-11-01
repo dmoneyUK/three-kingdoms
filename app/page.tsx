@@ -14,6 +14,7 @@ import { canUseAction, type CurrentAction, type GameplayAction, type PlayTargetR
 import { latestPublicMessages } from "../game/messages.js";
 import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice, PresentationSnapshotPublicCardEffect } from "../game/presentation-snapshot";
 import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationLustDuelAttackResponseProof, PresentationPublicCardEffectProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
+import type { PublicPhysicalZoneTransition } from "../game/presentation-semantics";
 import { attackDodgeResponseEventMatchesProof } from "../game/presentation-v2";
 import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
 import { attackDodgePublicActionEvents, attackDodgeSettlementSupersessionReason, attackHitSettlementSupersessionReason, parseRetiredAttackDodgeCompositionSnapshot, persistRetiredAttackDodgeComposition, retiredAttackDodgeCompositionServerSnapshot, retiredAttackDodgeCompositionStorageSnapshot, subscribeRetiredAttackDodgeComposition, type AttackDodgeSettlementHoldIdentity, type AttackHitSettlementHoldIdentity } from "../game/attack-dodge-settlement-lifecycle";
@@ -36,6 +37,8 @@ import { compactLustDuelOrderMessage, compactLustDuelResultMessage } from "./lus
 import { publicHeroCostAnnouncementLifecycle } from "../game/public-hero-cost-lifecycle";
 import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate } from "../game/public-announcement";
 import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
+import { isM2EquipmentTransitionEvent, routePublicEquipmentTransition } from "./public-equipment-transition";
+import type { PublicPresentationRoute } from "./public-presentation-routing";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -96,7 +99,7 @@ function persistAttackHitSettlementRetirement(held: AttackHitSettlementHoldIdent
 
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
 type PresentationImportance = "essential" | "informational";
-type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; privateToPlayerId?: string; publicDiaoChanNotice?: unknown; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; privateToPlayerId?: string; publicZoneTransition?: PublicPhysicalZoneTransition; publicDiaoChanNotice?: unknown; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type PrivateHandTransfer = { semantics: "PRIVATE_PROVEN"; transferId: string; cardId: string; recipientId: string; sourceZone: "deck" | "hand" | "equipment" | "judgement" | "harvest_pool" | "damage_cards" | "distribution"; sourcePlayerId?: string; destinationZone: "hand"; committedAt: number; revealUntil: number; rootEventId?: string; rootResolutionId?: string; interactionId?: string; frameId?: string };
 type CardEvent = PresentationEventMeta & { id: string; player: string; actorId?: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw"; drawPlayerId?: string; privateHandTransfer?: PrivateHandTransfer; presentation?: boolean };
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
@@ -4163,8 +4166,27 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeEquipmentArrival = activeEvent?.type === "card"
     ? equipmentArrivalIdentity(activeEvent, room.players)
     : null;
-  const activeEquipmentArrivalEventId = activeEquipmentArrival?.eventId ?? null;
-  const activeEquipmentArrivalKey = activeEquipmentArrival
+  const activeEquipmentTransitionRoute = useMemo(() => {
+    if (!activeEvent || !isM2EquipmentTransitionEvent(activeEvent)) return null;
+    if (!room.presentationSnapshot) return { kind: "blocked-invalid-proof", reason: "missing-public-fact" } as const;
+    return routePublicEquipmentTransition({
+      event: activeEvent,
+      players: room.players,
+      snapshot: room.presentationSnapshot,
+      clientView: clientPresentation,
+      roomCode: room.code,
+      viewerId: room.meId,
+      retiredTransitionIds: [...presentedEventIds],
+      existingOwners: activeEvent.type === "card" ? [{ eventId: activeEvent.id, physicalCardId: activeEvent.card.id, owner: "TableResolutionSequence" }] : [],
+    });
+  }, [activeEvent, room.players, room.presentationSnapshot, clientPresentation, room.code, room.meId, presentedEventIds]);
+  const activeEquipmentZoneTransition = activeEquipmentTransitionRoute?.kind === "zone-transition"
+    ? activeEquipmentTransitionRoute
+    : null;
+  const activeEquipmentArrivalEventId = activeEquipmentZoneTransition?.destination === "EQUIPMENT"
+    ? activeEquipmentZoneTransition.eventId
+    : null;
+  const activeEquipmentArrivalKey = activeEquipmentArrival && activeEquipmentArrivalEventId === activeEquipmentArrival.eventId
     ? `${activeEquipmentArrival.eventId}|${activeEquipmentArrival.cardId}|${activeEquipmentArrival.ownerId}|${activeEquipmentArrival.slot}`
     : "";
   const activeEventTimerEventId = activeEvent?.id ?? "";
@@ -4915,15 +4937,32 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const pendingPresentationEvents = [optimisticPlay, activeEvent, ...eventQueue, ...room.timeline.filter((event) => !processedEventIds.has(event.id))].filter((event): event is GameEvent => Boolean(event));
   const pendingEquipmentArrivals = derivePendingEquipmentArrivalIdentities(pendingPresentationEvents, room.players, presentedEventIds);
   const pendingEquipmentArrivalCardIds = new Set(pendingEquipmentArrivals.map((identity) => identity.cardId));
-  const markEquipmentArrivalPresented = useCallback((arrival: { eventId: string; cardId: string; ownerId: string; slot: string }) => {
-    if (arrival.eventId.startsWith("optimistic-") || activeEvent?.id !== arrival.eventId) return;
-    const event = activeEvent.type === "card" ? activeEvent : room.timeline.find((candidate) => candidate.id === arrival.eventId);
-    const proof = equipmentArrivalIdentity(event, room.players);
-    if (!proof || proof.eventId !== arrival.eventId || proof.cardId !== arrival.cardId
-      || proof.ownerId !== arrival.ownerId || proof.slot !== arrival.slot) return;
-    setPresentedEventIds((ids) => ids.has(arrival.eventId) ? ids : new Set([...ids, arrival.eventId]));
-    setActiveEvent((currentEvent) => currentEvent?.id === arrival.eventId ? null : currentEvent);
-  }, [activeEvent, room.players, room.timeline]);
+  const markPublicEquipmentTransitionPresented = useCallback((transition: Extract<PublicPresentationRoute, { kind: "zone-transition" }>) => {
+    if (transition.scope.roomCode !== room.code || transition.scope.viewerId !== room.meId
+      || !activeEvent || activeEvent.id !== transition.eventId || activeEvent.type !== "card"
+      || activeEvent.card.id !== transition.physicalCardId) return;
+    const refreshed = room.presentationSnapshot ? routePublicEquipmentTransition({
+      event: activeEvent,
+      players: room.players,
+      snapshot: room.presentationSnapshot,
+      clientView: clientPresentation,
+      roomCode: room.code,
+      viewerId: room.meId,
+      retiredTransitionIds: [...presentedEventIds],
+    }) : null;
+    if (refreshed?.kind !== "zone-transition" || refreshed.claimId !== transition.claimId
+      || refreshed.destination !== transition.destination || refreshed.ownerId !== transition.ownerId
+      || refreshed.slot !== transition.slot || refreshed.from?.zone !== transition.from?.zone
+      || refreshed.from?.ownerId !== transition.from?.ownerId || refreshed.from?.slot !== transition.from?.slot) return;
+    if (transition.destination === "EQUIPMENT") {
+      const proof = equipmentArrivalIdentity(activeEvent, room.players);
+      if (!proof || proof.eventId !== transition.eventId || proof.cardId !== transition.physicalCardId
+        || proof.ownerId !== transition.ownerId || proof.slot !== transition.slot) return;
+    } else if (activeEvent.publicZoneTransition?.eventId !== transition.eventId
+      || activeEvent.publicZoneTransition.physicalCardId !== transition.physicalCardId) return;
+    setPresentedEventIds((ids) => ids.has(transition.eventId) ? ids : new Set([...ids, transition.eventId]));
+    setActiveEvent((currentEvent) => currentEvent?.id === transition.eventId ? null : currentEvent);
+  }, [activeEvent, clientPresentation, presentedEventIds, room.code, room.meId, room.players, room.presentationSnapshot]);
   const judgementInFlight = new Set(pendingPresentationEvents.flatMap((event) => settlesInJudgement(event) ? [event.card.id] : []));
   const privateDrawVisible = privateDrawCards.length > 0 && !activeEvent && eventQueue.length === 0;
   const privateDrawTimer = privateDrawVisible
@@ -9394,6 +9433,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && (postDamageHistoryEventIds.has(displayedEvent.id)
       || eventCards(displayedEvent).some((card) => postDamageHistoryCardIds.has(card.id))));
   const displayedTableEvent = displayedEventOwnedByPublicCard || displayedEventIsRetiredAttackDodge || displayedEventIsRetiredPostDamageHistory ? null : displayedEvent;
+  const tableSequenceActiveEvent = activeEquipmentZoneTransition ? null : displayedTableEvent;
   const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(displayedTableEvent && eventCards(displayedTableEvent).length);
   const attackDodgeTraceSeat = (playerId: string | null | undefined) => playerId
     ? room.players.find((player) => player.id === playerId)?.seat ?? null
@@ -10323,7 +10363,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {privateDrawVisible && <div className="played-card-stage private-draw-stage" role="status"><div className="private-draw-content"><div className="private-draw-row" role="region" aria-label="Private drawn cards; scroll horizontally to view all" tabIndex={privateDrawCards.length > 3 ? 0 : undefined}>{privateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div></div>}
       {privateDistribution && !presentationBusy && <PrivateCardDistributionDialog key={room.actionRevision} cards={privateDistribution.cards} players={room.players.filter((player) => privateDistribution.eligibleRecipientIds.includes(player.id) && player.alive)} disabled={busy} error={error} onSubmit={(assignments) => onAction("trigger", { providerId: "private_card_distribution", assignments })} />}
       {privateDeckReorder && <PrivateDeckReorderDialog key={room.actionRevision} cards={privateDeckReorder.cards} minTop={privateDeckReorder.minTop} maxTop={privateDeckReorder.maxTop} disabled={busy} error={error} onSubmit={(topCardIds, bottomCardIds) => onAction("trigger", { providerId: "private_deck_reorder", topCardIds, bottomCardIds })} />}
-      {tablePresentationVisible && <TableResolutionSequence events={displayedSequenceEvents} activeEvent={displayedTableEvent} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} onEquipmentArrival={markEquipmentArrivalPresented} />}
+      {tablePresentationVisible && <TableResolutionSequence events={displayedSequenceEvents} activeEvent={tableSequenceActiveEvent} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} />}
+      {activeEquipmentZoneTransition && activeEvent?.type === "card" && <PublicEquipmentCardTransition event={activeEvent} route={activeEquipmentZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicEquipmentTransitionPresented} />}
       {harvestDisplay && <BattlefieldChoiceStage
         key={harvestDisplay.revealEventId ?? "bumper-harvest-public-pool"}
         ref={harvestStageRef}
@@ -11209,21 +11250,81 @@ function playerSettlementPoint(table: HTMLElement, anchor: HTMLElement): TablePo
     : { x: anchorRect.left - tableRect.left - 38, y: center.y };
 }
 
-function TableResolutionSequence({ events, activeEvent, players, myTableIndex, concluding, onEquipmentArrival }: { events: GameEvent[]; activeEvent: GameEvent | null; players: Player[]; myTableIndex: number; concluding: boolean; onEquipmentArrival: (arrival: { eventId: string; cardId: string; ownerId: string; slot: string }) => void }) {
+function PublicEquipmentCardTransition({ event, route, players, myTableIndex, onPresented }: {
+  event: CardEvent & { type: "card" };
+  route: Extract<PublicPresentationRoute, { kind: "zone-transition" }>;
+  players: Player[];
+  myTableIndex: number;
+  onPresented: (route: Extract<PublicPresentationRoute, { kind: "zone-transition" }>) => void;
+}) {
+  const revealRef = useRef<HTMLDivElement>(null);
+  const toEquipment = route.destination === "EQUIPMENT";
+  const sourceOwnerId = toEquipment ? event.actorId ?? route.ownerId ?? "" : route.from?.ownerId ?? "";
+  const sourceSlot = toEquipment ? "" : route.from?.slot ?? "";
+  useLayoutEffect(() => {
+    const reveal = revealRef.current;
+    const table = reveal?.closest<HTMLElement>(".play-table");
+    const shell = table?.closest<HTMLElement>(".game-shell");
+    if (!reveal || !table || !shell) return;
+    const localPlayerId = players[myTableIndex]?.id;
+    const source = !toEquipment && sourceOwnerId && sourceSlot
+      ? findEquipmentSlotAnchor(shell, sourceOwnerId, sourceSlot)
+      : sourceOwnerId === localPlayerId
+        ? findAnchor(shell, "data-card-origin-anchor", sourceOwnerId) ?? findAnchor(shell, "data-player-anchor", sourceOwnerId)
+        : sourceOwnerId ? findAnchor(shell, "data-player-anchor", sourceOwnerId) : null;
+    const destination = toEquipment && route.ownerId && route.slot
+      ? findEquipmentSlotAnchor(shell, route.ownerId, route.slot)
+      : !toEquipment ? findAnchor(shell, "data-discard-anchor", "true") : null;
+    const face = reveal.querySelector<HTMLElement>(".played-card");
+    if (!face) return;
+    const measure = () => {
+      const origin = source ? centerRelativeToTable(table, source) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+      reveal.style.setProperty("--origin-x", origin.x + "px");
+      reveal.style.setProperty("--origin-y", origin.y + "px");
+      if (toEquipment) {
+        const point = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+        reveal.style.setProperty("--equipment-x", point.x + "px");
+        reveal.style.setProperty("--equipment-y", point.y + "px");
+        if (destination) {
+          const rect = destination.getBoundingClientRect();
+          reveal.style.setProperty("--equipment-scale-x", String(rect.width / face.offsetWidth));
+          reveal.style.setProperty("--equipment-scale-y", String(rect.height / face.offsetHeight));
+        }
+      } else {
+        const point = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+        reveal.style.setProperty("--discard-x", point.x + "px");
+        reveal.style.setProperty("--discard-y", point.y + "px");
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(table);
+    if (source) observer.observe(source);
+    if (destination) observer.observe(destination);
+    return () => observer.disconnect();
+  }, [event.id, myTableIndex, players, route.destination, route.ownerId, route.slot, sourceOwnerId, sourceSlot, toEquipment]);
+
+  const expectedAnimation = toEquipment ? "equipmentCardToSlot" : "revealedCardsToDiscard";
+  return <div className="table-resolution-layer public-zone-transition-layer" role="status">
+    <div ref={revealRef} className={`active-table-reveal ${toEquipment ? "equipment-flight" : "direct-discard"}`}
+      data-settlement-event-id={event.id} data-public-zone-transition-event-id={route.eventId}
+      data-public-zone-transition-card-id={route.physicalCardId} data-public-zone-transition-destination={route.destination}
+      key={route.claimId} onAnimationEnd={(animation) => {
+        if (animation.target !== animation.currentTarget || animation.animationName !== expectedAnimation) return;
+        onPresented(route);
+      }}><div><CardFace card={event.card} settlementCardId={event.card.id} /></div></div>
+  </div>;
+}
+
+function TableResolutionSequence({ events, activeEvent, players, myTableIndex, concluding }: { events: GameEvent[]; activeEvent: GameEvent | null; players: Player[]; myTableIndex: number; concluding: boolean }) {
   const cards = events.filter(retainsAtPlayer).flatMap((event) => event.type === "card" ? [{ event, card: event.card, key: event.id }] : event.type === "cards" ? event.cards.map((card) => ({ event, card, key: `${event.id}-${card.id}` })) : []);
   const cardPlayers = players.filter((player) => cards.some(({ event }) => !settlesInJudgement(event) && publicPlayerName(event.player) === publicPlayerName(player.name)));
   const activeCards = activeEvent?.type === "card" ? [activeEvent.card] : activeEvent?.type === "cards" ? activeEvent.cards : [];
   const activeCardIds = new Set(activeCards.map((card) => card.id));
-  const equipmentArrival = activeEvent?.type === "card" ? equipmentArrivalIdentity(activeEvent, players) : null;
-  const equipmentFlightId = equipmentArrival?.cardId ?? null;
-  const equipmentArrivalOwnerId = equipmentArrival?.ownerId ?? "";
-  const equipmentArrivalSlot = equipmentArrival?.slot ?? "";
   const judgementFlightId = activeEvent && settlesInJudgement(activeEvent) ? activeEvent.card.id : null;
-  const activePlayerId = activeEvent?.type === "card" && activeEvent.action === "equip"
-    ? equipmentArrival?.ownerId ?? ""
-    : activeEvent?.type === "card" || activeEvent?.type === "cards"
-      ? players.find((player) => publicPlayerName(player.name) === publicPlayerName(activeEvent.player))?.id ?? ""
-      : "";
+  const activePlayerId = activeEvent?.type === "card" || activeEvent?.type === "cards"
+    ? players.find((player) => publicPlayerName(player.name) === publicPlayerName(activeEvent.player))?.id ?? ""
+    : "";
   const cardPlayerIds = cardPlayers.map((player) => player.id).join("|");
   const directDiscard = Boolean(activeEvent && movesDirectlyToDiscard(activeEvent) && !events.some((event) => event.id === activeEvent.id));
   const revealRef = useRef<HTMLDivElement>(null);
@@ -11236,24 +11337,22 @@ function TableResolutionSequence({ events, activeEvent, players, myTableIndex, c
     const source = activePlayerId === localPlayerId
       ? findAnchor(shell, "data-card-origin-anchor", activePlayerId) ?? findAnchor(shell, "data-player-anchor", activePlayerId)
       : findAnchor(shell, "data-player-anchor", activePlayerId);
-    const destination = equipmentArrivalOwnerId && equipmentArrivalSlot ? findEquipmentSlotAnchor(shell, equipmentArrivalOwnerId, equipmentArrivalSlot)
-      : equipmentFlightId ? findAnchor(shell, "data-equipment-id", equipmentFlightId)
-      : judgementFlightId ? findAnchor(shell, "data-judgement-id", judgementFlightId)
-        : directDiscard ? findAnchor(shell, "data-discard-anchor", "true") : null;
+    const destination = judgementFlightId ? findAnchor(shell, "data-judgement-id", judgementFlightId)
+      : directDiscard ? findAnchor(shell, "data-discard-anchor", "true") : null;
     const face = reveal.querySelector<HTMLElement>(".played-card");
     if (!face) return;
     const measure = () => {
       const origin = source ? centerRelativeToTable(table, source) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
       reveal.style.setProperty("--origin-x", origin.x + "px");
       reveal.style.setProperty("--origin-y", origin.y + "px");
-      if (equipmentFlightId || judgementFlightId) {
+      if (judgementFlightId) {
         const point = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
-        reveal.style.setProperty(equipmentFlightId ? "--equipment-x" : "--judgement-x", point.x + "px");
-        reveal.style.setProperty(equipmentFlightId ? "--equipment-y" : "--judgement-y", point.y + "px");
+        reveal.style.setProperty("--judgement-x", point.x + "px");
+        reveal.style.setProperty("--judgement-y", point.y + "px");
         if (destination) {
           const rect = destination.getBoundingClientRect();
-          reveal.style.setProperty(equipmentFlightId ? "--equipment-scale-x" : "--judgement-scale-x", String(rect.width / face.offsetWidth));
-          reveal.style.setProperty(equipmentFlightId ? "--equipment-scale-y" : "--judgement-scale-y", String(rect.height / face.offsetHeight));
+          reveal.style.setProperty("--judgement-scale-x", String(rect.width / face.offsetWidth));
+          reveal.style.setProperty("--judgement-scale-y", String(rect.height / face.offsetHeight));
         }
       } else if (directDiscard) {
         const point = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
@@ -11272,7 +11371,7 @@ function TableResolutionSequence({ events, activeEvent, players, myTableIndex, c
     if (source) observer.observe(source);
     if (destination) observer.observe(destination);
     return () => observer.disconnect();
-  }, [activeEvent?.id, activePlayerId, directDiscard, equipmentArrivalOwnerId, equipmentArrivalSlot, equipmentFlightId, judgementFlightId, myTableIndex, players]);
+  }, [activeEvent?.id, activePlayerId, directDiscard, judgementFlightId, myTableIndex, players]);
   useLayoutEffect(() => {
     const reveal = revealRef.current;
     const table = reveal?.closest<HTMLElement>(".play-table");
@@ -11301,10 +11400,7 @@ function TableResolutionSequence({ events, activeEvent, players, myTableIndex, c
     return () => observer.disconnect();
   }, [cardPlayerIds, myTableIndex, players]);
   return <div className={`table-resolution-layer ${concluding ? "concluding" : ""}`} role="status">
-    {activeCards.length > 0 && !concluding && <div ref={revealRef} className={`active-table-reveal ${equipmentFlightId ? "equipment-flight" : ""} ${judgementFlightId ? "judgement-flight" : ""} ${isJudgementReveal(activeEvent) ? "judgement-reveal" : ""} ${directDiscard ? "direct-discard" : ""}`} data-settlement-event-id={activeEvent?.id} key={activeEvent?.id} onAnimationEnd={(event) => {
-      if (event.target !== event.currentTarget || event.animationName !== "equipmentCardToSlot" || !equipmentArrival) return;
-      onEquipmentArrival(equipmentArrival);
-    }}><div>{activeCards.map((shown) => <CardFace card={shown} settlementCardId={shown.id} key={shown.id} />)}</div></div>}
+    {activeCards.length > 0 && !concluding && <div ref={revealRef} className={`active-table-reveal ${judgementFlightId ? "judgement-flight" : ""} ${isJudgementReveal(activeEvent) ? "judgement-reveal" : ""} ${directDiscard ? "direct-discard" : ""}`} data-settlement-event-id={activeEvent?.id} key={activeEvent?.id}><div>{activeCards.map((shown) => <CardFace card={shown} settlementCardId={shown.id} key={shown.id} />)}</div></div>}
     {cardPlayers.map((player) => {
       const playerCards = cards.filter(({ event }) => !settlesInJudgement(event) && publicPlayerName(event.player) === publicPlayerName(player.name));
       const equipmentOnly = playerCards.every(({ event }) => event.type === "card" && event.action === "equip");

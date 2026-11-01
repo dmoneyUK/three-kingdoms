@@ -505,9 +505,32 @@ test("committed Equipment H4 is shared by viewers and follows a real slot replac
 
   const replaced = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: replacementCard.id });
   assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
+  const replacementDiscardEvent = replaced.data.room.timeline.find((event) => event.type === "card" && event.action === "discard" && event.card?.id === firstCard.id);
   const replacementEvent = replaced.data.room.timeline.find((event) => event.type === "card" && event.action === "equip" && event.card?.id === replacementCard.id);
   assert.ok(replacementEvent);
+  assert.ok(replacementDiscardEvent, "the exact public Equipment leaving its slot has one committed zone transition");
+  assert.equal(replacementDiscardEvent.presentation, true);
+  assert.deepEqual(replacementDiscardEvent.publicZoneTransition, {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: replacementDiscardEvent.id, physicalCardId: firstCard.id,
+    from: { zone: "EQUIPMENT", ownerId: hostPlayer.id, slot: "weapon" },
+    to: { zone: "DISCARD", ownerId: null },
+  });
+  assert.equal(replacementDiscardEvent.publicFact?.category, "CARD_DISCARDED");
+  assert.equal(replacementDiscardEvent.publicFact?.effect?.kind, "equipment_replaced");
+  assert.equal(replacementDiscardEvent.publicFact?.rootEventId, replacementEvent.id);
+  assert.ok(replacementDiscardEvent.publicSequence < replacementEvent.publicSequence, "the old slot card exits before its replacement arrives");
+  assert.equal(replacementDiscardEvent.privateToPlayerId, undefined, "the outgoing equipment was already public");
   assert.equal(replacementEvent.publicFact?.category, "CARD_EQUIPPED");
+  const replacementSnapshot = replaced.data.room.presentationSnapshot;
+  const replacementFact = [
+    ...replacementSnapshot.publicEventFacts,
+    ...(replacementSnapshot.retainedPublicEventFacts ?? []),
+    ...(replacementSnapshot.retainedPublicEvent ? [replacementSnapshot.retainedPublicEvent] : []),
+  ].find((fact) => fact.eventId === replacementDiscardEvent.id);
+  assert.ok(replacementFact, "the exact outgoing Equipment fact is available to the public renderer snapshot");
+  assert.equal(replacementFact.category, "CARD_DISCARDED");
+  assert.equal(replacementFact.effect?.kind, "equipment_replaced");
+  assert.equal(replacementFact.rootEventId, replacementEvent.id);
   assert.equal(replaced.data.room.presentationSnapshot.retainedPublicEvent?.eventId, replacementEvent.id,
     "the newer committed equip supersedes the earlier H4 fact");
   assert.equal(replaced.data.room.presentationSnapshot.retainedPublicEvent?.label, "Blue Steel Sword");
@@ -515,6 +538,12 @@ test("committed Equipment H4 is shared by viewers and follows a real slot replac
   assert.ok(finalEquipment.some((item) => item.id === replacementCard.id && item.kind === "BlueSteelSword"));
   assert.equal(finalEquipment.some((item) => item.id === firstCard.id), false);
   assert.ok(discardIds(game.code).includes(firstCard.id), "replacement moves the exact prior Weapon to the real discard zone");
+  const observerAfterReplace = (await state(game.code, alice.token)).data;
+  const observerDiscard = observerAfterReplace.timeline.find((event) => event.type === "card" && event.action === "discard" && event.card?.id === firstCard.id);
+  assert.deepEqual(observerDiscard?.publicZoneTransition, replacementDiscardEvent.publicZoneTransition,
+    "the same exact public zone proof is visible to other viewers");
+  assert.deepEqual(observerAfterReplace.presentationSnapshot.publicEventFacts, replacementSnapshot.publicEventFacts);
+  assert.deepEqual(observerAfterReplace.presentationSnapshot.retainedPublicEventFacts, replacementSnapshot.retainedPublicEventFacts);
   assert.equal(alicePlayer.id, observer.meId);
 });
 
