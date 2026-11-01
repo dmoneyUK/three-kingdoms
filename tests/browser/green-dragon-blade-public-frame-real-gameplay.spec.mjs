@@ -47,15 +47,30 @@ test("Green Dragon Blade shows its real follow-up Attack Frame to source and tar
   const room = await seeded.json();
   const owner = room.players[0];
   const target = room.players[1];
-  const equipped = await postAction(request, room, owner, "play_card", { cardId: weapon.id });
-  expect(equipped.room.players.find((player) => player.id === owner.id).equipmentCards).toContainEqual(weapon);
-
   const ownerContext = await browser.newContext({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   const targetContext = await browser.newContext({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   const ownerPage = await ownerContext.newPage();
   const targetPage = await targetContext.newPage();
   try {
     await Promise.all([openSeat(ownerPage, room, 0), openSeat(targetPage, room, 1)]);
+
+    const equipped = await postAction(request, room, owner, "play_card", { cardId: weapon.id });
+    expect(equipped.room.players.find((player) => player.id === owner.id).equipmentCards).toContainEqual(weapon);
+    const equipEvent = equipped.room.timeline.find((event) => event.type === "card"
+      && event.action === "equip" && event.card?.id === weapon.id);
+    expect(equipEvent?.publicFact).toMatchObject({
+      category: "CARD_EQUIPPED",
+      rootEventId: equipEvent?.id,
+      actorId: owner.id,
+      label: "Green Dragon Blade",
+    });
+    for (const viewerPage of [ownerPage, targetPage]) {
+      const equipmentH4 = viewerPage.locator(`[data-public-card-announcement="true"][data-public-card-announcement-event-id="${equipEvent.id}"]`);
+      await expect(equipmentH4).toHaveCount(1);
+      await expect(equipmentH4).toContainText("BLADE OWNER equipped Green Dragon Blade.");
+      await expect(equipmentH4).toHaveAttribute("data-public-card-announcement-positioned", "true");
+      await expect(equipmentH4).toHaveAttribute("data-public-card-announcement-placement", /center-band-(above|below)/);
+    }
 
     await postAction(request, room, owner, "play_card", { cardId: firstAttack.id, targetId: target.id });
     await postAction(request, room, target, "respond", { providerId: "card", cardId: firstDodge.id });
