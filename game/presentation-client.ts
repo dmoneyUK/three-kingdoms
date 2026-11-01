@@ -341,9 +341,18 @@ function reactionChainForSnapshot(
 ): PresentationSnapshot["reactionChain"] {
   const chain = snapshot.reactionChain;
   const identity = snapshot.identity;
-  if (!chain || !identity || scene.stage !== "NEGATION" || chain.semantics !== "PROVEN"
+  const rawRootCard: unknown = chain && (chain as { rootCard?: unknown }).rootCard;
+  const rootCardCandidate = rawRootCard && typeof rawRootCard === "object" && !Array.isArray(rawRootCard)
+    ? rawRootCard as Record<string, unknown>
+    : null;
+  const borrowedSwordStage = rootCardCandidate?.cardKind === "BorrowedSword"
+    && (scene.stage === "NEGATION" || scene.stage === "SEQUENTIAL_CHOICE" || scene.stage === "FORCED_ACTION");
+  const chainFrameId = borrowedSwordStage && scene.continuity.relation === "CHILD_FRAME"
+    ? scene.rootFrameId
+    : scene.activeFrameId;
+  if (!chain || !identity || (scene.stage !== "NEGATION" && !borrowedSwordStage) || chain.semantics !== "PROVEN"
     || chain.interactionId !== identity.interactionId || chain.interactionId !== scene.interactionId
-    || chain.frameId !== scene.activeFrameId || !Array.isArray(chain.nodes)) return null;
+    || chain.frameId !== chainFrameId || !Array.isArray(chain.nodes)) return null;
 
   const nodes: NonNullable<PresentationSnapshot["reactionChain"]>["nodes"][number][] = [];
   const nodeIds = new Set<string>();
@@ -351,7 +360,7 @@ function reactionChainForSnapshot(
   for (const value of chain.nodes) {
     if (!value || typeof value !== "object") return null;
     const node = value as NonNullable<PresentationSnapshot["reactionChain"]>["nodes"][number];
-    if (!isString(node.nodeId) || node.interactionId !== identity.interactionId || node.frameId !== scene.activeFrameId
+    if (!isString(node.nodeId) || node.interactionId !== identity.interactionId || node.frameId !== chainFrameId
       || node.causedByNodeId !== previousNodeId || !isString(node.actorId)
       || node.kind !== "CARD_PLAY" || node.object?.type !== "card" || node.object.cardKind !== "Negation"
       || nodeIds.has(node.nodeId)) return null;
@@ -367,11 +376,20 @@ function reactionChainForSnapshot(
       object: { type: "card", cardKind: "Negation" },
     });
   }
-  const rawRootCard: unknown = (chain as { rootCard?: unknown }).rootCard;
   let rootCard: NonNullable<PresentationSnapshot["reactionChain"]>["rootCard"] = null;
-  if (rawRootCard && typeof rawRootCard === "object" && !Array.isArray(rawRootCard)) {
-    const candidate = rawRootCard as Record<string, unknown>;
+  if (rootCardCandidate) {
+    const candidate = rootCardCandidate;
     const targetId = scene.targetIds.length === 1 ? scene.targetIds[0] : null;
+    const borrowedRootSourceId = scene.continuity.relation === "CHILD_FRAME" ? scene.rootOrigin?.sourceId : scene.sourceId;
+    const borrowedRootTargetId = scene.continuity.relation === "CHILD_FRAME"
+      ? scene.rootOrigin?.targetIds.length === 1 ? scene.rootOrigin.targetIds[0] : null
+      : scene.participantRoles.originalTargetIds.length === 1 ? scene.participantRoles.originalTargetIds[0] : null;
+    const borrowedSwordRoot = borrowedSwordStage && scene.rootFrameId === candidate.frameId
+      && candidate.sourceId === borrowedRootSourceId && candidate.targetId === borrowedRootTargetId
+      && (scene.continuity.relation === "CHILD_FRAME"
+        ? scene.rootOrigin?.effect === "Borrowed Sword" && scene.parentFrameId === scene.rootFrameId
+        : scene.continuity.relation === "ROOT_FRAME" && candidate.sourceId === scene.sourceId
+          && candidate.targetId === targetId && scene.effect === "Borrowed Sword");
     const singleTargetRoot = targetId !== null
       && candidate.targetId === targetId
       && scene.participantRoles.originalTargetIds.length === 1
@@ -385,16 +403,18 @@ function reactionChainForSnapshot(
       && scene.participantRoles.originalTargetIds[0] === candidate.targetId
       && scene.participantRoles.originalTargetIds[1] === candidate.sourceId
       && scene.currentParticipantId === candidate.targetId;
-    if (candidate.interactionId === identity.interactionId
-      && candidate.frameId === scene.rootFrameId && candidate.frameId === scene.activeFrameId
+    const ordinaryRoot = candidate.frameId === scene.rootFrameId && candidate.frameId === scene.activeFrameId
       && scene.rootFrameId === scene.activeFrameId && scene.continuity.relation === "ROOT_FRAME"
-      && typeof candidate.sourceId === "string" && candidate.sourceId === scene.sourceId && candidate.sourceId === scene.activeSourceId
-      && typeof candidate.targetId === "string" && (singleTargetRoot || duelNegationRoot)
-      && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === candidate.targetId
+      && candidate.sourceId === scene.sourceId && candidate.sourceId === scene.activeSourceId
+      && (singleTargetRoot || duelNegationRoot)
+      && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === candidate.targetId;
+    if (candidate.interactionId === identity.interactionId
+      && (ordinaryRoot || borrowedSwordRoot)
+      && typeof candidate.sourceId === "string" && typeof candidate.targetId === "string"
       && typeof candidate.cardKind === "string" && CARD_KINDS.includes(candidate.cardKind as CardKind)) {
       rootCard = {
         interactionId: identity.interactionId,
-        frameId: scene.activeFrameId as string,
+        frameId: chainFrameId as string,
         sourceId: candidate.sourceId,
         targetId: candidate.targetId,
         cardKind: candidate.cardKind as CardKind,
@@ -461,7 +481,7 @@ function reactionChainForSnapshot(
     || (rawGroupTargetEffectScope !== undefined && (!groupTargetEffectScope || rootCard !== null))
     || (bumperNegation && (!publicNodeEventLinks || publicNodeEventLinks.length !== nodes.length || rootCard !== null))) return null;
   return {
-    semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
+    semantics: "PROVEN", interactionId: identity.interactionId, frameId: chainFrameId as string, rootCard, nodes,
     ...(groupTargetEffectScope ? { groupTargetEffectScope } : {}),
     ...(publicNodeEventLinks ? { publicNodeEventLinks } : {}),
     ...(publicEventLinks ? { publicEventLinks } : {}),
