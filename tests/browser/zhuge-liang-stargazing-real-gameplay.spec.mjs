@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { acceptEndTurnConfirmation } from "./end-turn-confirmation.mjs";
 
 const API = "http://127.0.0.1:3137";
 const card = (kind, id, suit, rank) => ({ kind, id, suit, rank });
@@ -75,6 +76,7 @@ async function openRealStargazingDecision({ page, request, browser, viewport, pl
   expect(turn.currentAction.legalActions).toContain("end_turn");
 
   const endTurnResponse = postedAction(turnPage, "end_turn");
+  acceptEndTurnConfirmation(turnPage);
   await turnDock.getByRole("button", { name: "End", exact: true }).click();
   const ended = await endTurnResponse;
   expect(ended.ok()).toBeTruthy();

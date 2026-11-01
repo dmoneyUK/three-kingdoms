@@ -2,24 +2,25 @@
 
 Repository: `dmoneyUK/three-kingdoms` · target branch: `ux-v2`
 
-Task: `ROOM-6P-GATE-01`
+Task: `CONSOLE-01 — Card tap-to-deselect and End Turn confirmation`
 
-Design authority reviewed: `docs/UX2-refine.md` §10.24.1 at `origin/ux-v2` `dc12e4d88b52e1d28c98621dc831b3885d744e96`; current design editorial revision: 2026-10-31 19:57 UTC.
+Design reviewed: `docs/UX2-refine.md` from `origin/ux-v2` `77879be2b5e114dcc9c9f2e3e87994d86579f61b`; canonical work index reconciled 2026-11-01 00:01 UTC. The design index had no active Table A item; this bounded change is authorized by the owner's direct task instruction. The main checkout's pre-existing unrelated changes remain untouched.
 
 ## Current status
 
-**IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW.** Do not mark owner-accepted. Stop here; §10.24.1 requires owner phone review.
+**IMPLEMENTED LOCALLY — REQUIRED CI / DEPLOYMENT PENDING — PENDING OWNER iPHONE REVIEW.** Do not mark USER-ACCEPTED.
 
-New and pre-start Classic rooms offer 4–6 players, enforced by the server on create, join, Test Player addition, Test mode enablement, and start. Legacy oversized lobbies retain every participant and cannot admit more players or start. Already-started legacy games remain playable. The underlying game rules and accepted 7/8-player designs are unchanged.
+Hand-card selection remains local and uses the existing toggle. Its accessible name now says `Select [card]` or `Deselect [card]` as appropriate. End Turn retains existing `CurrentAction` visibility and legality; tapping it asks `End your turn?`, Cancel sends no action, and affirmative confirmation submits only the existing `end_turn` action.
 
 ## Execution record
 
-- **2026-10-31 19:52 UTC:** Confirmed isolated task worktree is based on current `origin/ux-v2` `dc12e4d8`; the main checkout’s unrelated dirty work remains untouched. Latest Actions before this change: `41209570493` for `b515ccf4`, success.
-- **Before 19:52 UTC (individual command start times were not captured):** Focused API tests passed 26/26, including capacity, concurrent last-seat joins, atomic Test Player limit, oversized legacy lobby, and started eight-player legacy gameplay. Focused mobile room-creation browser smoke passed 1/1 at 390×844. Legacy-lobby server-render test passed 1/1. `npm run build` passed. Targeted ESLint passed with two existing `app/page.tsx` hook-dependency warnings. `git diff --check` passed.
-- **Initial validation attempt:** API test command could not load `tsx` because this isolated worktree had no installed dependencies. Reused the existing local `node_modules` via an ignored worktree symlink; the focused API run then passed. No broad test campaign was run.
-- **2026-10-31 19:53–19:57 UTC:** Pushed implementation commit [`ac7fd80f01b306ca15c5985f8b1f60a0e24f4cda`](https://github.com/dmoneyUK/three-kingdoms/commit/ac7fd80f01b306ca15c5985f8b1f60a0e24f4cda). Exact-SHA [Actions run 41236301619](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41236301619) passed lint/fast tests, API tests, browser smoke, deployment and production smoke. Cloudflare Worker version: `9d2377ed-0123-4ef6-8787-6f65d665618a`.
-- **2026-10-31 19:57 UTC:** Direct production `/api/health` returned `{"ok":true,"worker":"available"}` and the deployed home page contains `4–6 players`. Updated the design index and handoff to deployed / owner-phone-review-pending status. These post-deployment documentation updates are not part of the deployed source SHA.
+- **2026-11-01, earlier in this execution session (exact command start times were not captured):** Added the accessible select/deselect state and confirmation guard in `app/page.tsx`; added focused unit/mobile-browser coverage and a shared Playwright dialog helper. Updated existing browser cases that click End so they explicitly accept the new confirmation.
+- **Focused unit test:** Initial run failed because its room fixture did not include authoritative `end_turn` in `currentAction.legalActions`. Corrected the fixture; final focused run passed **2/2**. The test also verifies that retapping clears selection without submitting `play_card`, Cancel submits no `end_turn`, and affirmative confirmation submits once.
+- **Build/browser startup:** First mobile browser launch could not start because generated `dist/server/wrangler.json` was absent. `npm run build` passed, generating the browser runtime configuration; the focused mobile test then passed **1/1** at 390×844 with touch. Combined local UI/browser test time stayed under five minutes.
+- **Targeted ESLint:** Passed with 0 errors and 2 existing hook-dependency warnings in `app/page.tsx` (lines 8470 and 8692 at validation time). Build emitted existing large-chunk and API-classification warnings.
+- **2026-11-01 00:29 UTC:** Rechecked `origin/ux-v2` at `77879be2`; no active Actions run. Latest code-triggered Actions observed before this task: [run 41236301619](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41236301619), success for `ac7fd80f01b306ca15c5985f8b1f60a0e24f4cda`. This is baseline health evidence only, not validation for this task's future SHA.
+- **2026-11-01 00:29 UTC:** Reset the focused unit test's mocked `window.confirm` after completion and replaced this file with the current task only. `git diff --check`, commit, push, exact-SHA CI, deployment and production health verification are still pending.
 
-## Resume point and acceptance boundary
+## Resume point / acceptance boundary
 
-The task is implemented and deployed. Owner iPhone review is the remaining acceptance step. Do not start another task or mark it owner-accepted.
+Run the final scoped diff check, inspect the latest relevant `ux-v2` Actions state before committing, then commit and push only this task's files. Wait for the exact implementation SHA's required Actions and deployment, verify Worker health, and record the observed SHA/run/Worker version here. Owner iPhone review remains required; do not start another task or claim acceptance.

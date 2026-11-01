@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { acceptEndTurnConfirmation } from "./end-turn-confirmation.mjs";
 
 const API = "http://127.0.0.1:3137";
 
@@ -340,6 +341,7 @@ test("test-game perspective switches manually and stays selected when the server
     try { return JSON.parse(response.request().postData() ?? "{}").action === "end_turn"; }
     catch { return false; }
   });
+  acceptEndTurnConfirmation(page);
   await page.getByRole("button", { name: "End", exact: true }).click();
   const endTurnResponse = await endTurnResponsePromise;
   expect(endTurnResponse.status()).toBe(200);

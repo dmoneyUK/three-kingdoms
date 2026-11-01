@@ -13,7 +13,7 @@ const card = (id, kind = "Attack", suit = "♠") => ({ id, kind, suit, rank: "A"
 
 function installRenderEnvironment() {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-  globalThis.window = { addEventListener: () => {}, removeEventListener: () => {}, setInterval, clearInterval };
+  globalThis.window = { addEventListener: () => {}, removeEventListener: () => {}, setInterval, clearInterval, confirm: () => false };
   globalThis.document = { visibilityState: "visible", addEventListener: () => {}, removeEventListener: () => {} };
   globalThis.getComputedStyle = () => ({ getPropertyValue: () => "" });
   globalThis.ResizeObserver = class { observe() {} disconnect() {} };
@@ -85,7 +85,7 @@ function normalHalberdTargetRoom() {
       { id: "p3", name: "SECOND TARGET", seat: 2, hero: "sun-quan", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
     ],
     myHand: [card("halberd-attack", "Attack")], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play a card", isMyAction: true,
-    actionRevision: "halberd-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: "halberd-attack", canPlayAs: "attack" }], playTargetEligibility: [{ mode: "card", cardId: "halberd-attack", effectiveKind: "Attack", eligibleTargetIds: ["p2", "p3"], rejections: [] }] },
+    actionRevision: "halberd-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card", "end_turn"], canDeclareAttack: true, playPhaseActions: [{ cardId: "halberd-attack", canPlayAs: "attack" }], playTargetEligibility: [{ mode: "card", cardId: "halberd-attack", effectiveKind: "Attack", eligibleTargetIds: ["p2", "p3"], rejections: [] }] },
   });
 }
 
@@ -414,6 +414,13 @@ test("normal deferred multi-target selection is local until ordered Confirm", as
   assert.equal(consoleButtons(renderer).filter((node) => node.props.children === "End").length, 1, "ordinary turn retains independent End");
   assert.equal(consoleButtons(renderer).filter((node) => node.props.children === "Confirm").length, 0, "ordinary turn does not expose a response Confirm");
   await act(async () => { handCardButton(renderer, "halberd-attack").props.onClick(); });
+  assert.equal(handCardButton(renderer, "halberd-attack").props["aria-pressed"], true);
+  assert.equal(handCardButton(renderer, "halberd-attack").props["aria-label"], "Deselect Attack");
+  await act(async () => { handCardButton(renderer, "halberd-attack").props.onClick(); });
+  assert.equal(handCardButton(renderer, "halberd-attack").props["aria-pressed"], false, "retapping a selected physical card clears its local selection");
+  assert.equal(handCardButton(renderer, "halberd-attack").props["aria-label"], "Select Attack");
+  assert.equal(actionCalls.length, 0, "select and deselect remain local");
+  await act(async () => { handCardButton(renderer, "halberd-attack").props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select FIRST TARGET" }).props.onClick(); });
   assert.equal(actionCalls.length, 0, "normal seat selection remains local");
   await act(async () => { button(renderer, { "aria-label": "Select FIRST TARGET" }).props.onClick(); });
@@ -433,6 +440,27 @@ test("normal deferred multi-target selection is local until ordered Confirm", as
   await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
   assert.deepEqual(actionCalls.at(-1), ["play_card", { cardId: "halberd-attack", playAs: "attack", targetId: "p2", targetIds: ["p2", "p3"] }]);
   await act(async () => { renderer.unmount(); });
+});
+
+test("End Turn requires an affirmative second confirmation and preserves legal action authority", async () => {
+  const room = normalHalberdTargetRoom();
+  const actionCalls = [];
+  const confirmations = [];
+  let renderer;
+  globalThis.window.confirm = (message) => { confirmations.push(message); return false; };
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const endTurn = button(renderer, { children: "End" });
+  assert.equal(endTurn.props.disabled, false, "the authoritative End Turn action remains available");
+  await act(async () => { endTurn.props.onClick(); });
+  assert.deepEqual(confirmations, ["End your turn?"]);
+  assert.equal(actionCalls.length, 0, "canceling the confirmation does not submit end_turn");
+  globalThis.window.confirm = (message) => { confirmations.push(message); return true; };
+  await act(async () => { button(renderer, { children: "End" }).props.onClick(); });
+  assert.equal(actionCalls.length, 1);
+  assert.deepEqual(actionCalls[0], ["end_turn"]);
+  await act(async () => { renderer.unmount(); });
+  globalThis.window.confirm = () => false;
 });
 
 test("converted Attack Cancel clears Wusheng mode, card, and target without acting", async () => {

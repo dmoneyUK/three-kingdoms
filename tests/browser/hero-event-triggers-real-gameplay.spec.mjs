@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { acceptEndTurnConfirmation } from "./end-turn-confirmation.mjs";
 
 const API = "http://127.0.0.1:3137";
 const card = (kind, id, suit = "♠") => ({ id, kind, suit, rank: "7" });
@@ -108,6 +109,7 @@ test("real Beauty Outshining the Moon appears only after Diao Chan ends her turn
   const ended = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
     && response.request().method() === "POST"
     && response.request().postDataJSON()?.action === "end_turn");
+  acceptEndTurnConfirmation(page);
   await dock.locator('[data-action-slot="decline"] button').getByText("End", { exact: true }).click();
   expect((await ended).ok()).toBeTruthy();
   expect((await view(request, seedData, 0)).currentAction.triggerOptions.map((option) => option.effectId)).toContain("diao_chan_beauty_outshining_moon");

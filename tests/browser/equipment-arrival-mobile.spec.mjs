@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { acceptEndTurnConfirmation } from "./end-turn-confirmation.mjs";
 
 const testCard = { id: "browser-e1f-kirin-bow", kind: "KirinBow", suit: "♥", rank: "Q" };
 const eventId = "browser-e1f-kirin-bow-equip-event";
@@ -82,6 +83,7 @@ test("local Kirin Bow miniature stays hidden until its genuine CardFace reaches 
     await expect(page.locator('.decision-status[data-console-presentation-busy]')).toHaveAttribute("data-console-presentation-busy", "false");
     const endTurn = page.getByRole("button", { name: "End", exact: true });
     await expect(endTurn).toBeEnabled();
+    acceptEndTurnConfirmation(page);
     await endTurn.click();
     await expect.poll(() => page.evaluate(() => window.__browserActions.some(({ action }) => action === "end_turn"))).toBe(true);
 
