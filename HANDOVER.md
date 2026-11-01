@@ -8,9 +8,9 @@ Repository: `dmoneyUK/three-kingdoms` · target branch: `ux-v2`
 
 Design reviewed: `docs/UX2-refine.md` at `origin/ux-v2` `adfbbb3df9d77c7e979e02dd78f46830fea13abf`. The latest Table A and §10.27 preserve Step A as first; Step B, CONSOLE-01 and M1–M6 cannot interrupt it.
 
-**Status: CI REPAIR LOCALLY VERIFIED; REPAIR COMMIT/PUSH PENDING.** Feature commit: `49c08a6a4e1980ec359941d617b7142cc2698c0b`; its exact-SHA API job failed and deployment was skipped. Final status must be `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`, never USER-ACCEPTED. Stop after Step A's required review boundary.
+**Status: IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW.** Feature commit: `49c08a6a4e1980ec359941d617b7142cc2698c0b`; CI repair and deployed commit: `a9d9a9d5283d433a04934453214a60c9c8b03fe9`. Do not mark USER-ACCEPTED. Stop at this Step A review boundary; do not start Step B until the owner review/replan boundary.
 
-## Scope delivered locally
+## Delivered scope
 
 - Keep one server-proven Borrowed Sword root and committed Negation history linked through target choice, holder forced choice and the resulting genuine Attack.
 - Route the root and committed Negations through the existing `SingleTargetCardJourney` once; remove the duplicate Borrowed Sword notice without changing card identities or animation ownership.
@@ -27,8 +27,9 @@ Design reviewed: `docs/UX2-refine.md` at `origin/ux-v2` `adfbbb3df9d77c7e979e02d
 - **2026-11-01 12:37:46 UTC:** Pushed source commit `49c08a6a4e1980ec359941d617b7142cc2698c0b` to `ux-v2`; exact-SHA Actions run [41307401417](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41307401417) is queued. Worker deployment and production health are pending that run.
 - **2026-11-01 12:41 UTC:** Exact-SHA Actions failed only in API tests (329 passed, 2 failed); Lint/Fast and browser-startup smoke passed, deployment was skipped. `tests/api/presentation-v2-engine.test.mjs:949` caught a new forced-choice presentation barrier that would alter response timing; remove that barrier while retaining the committed target-choice fact. `tests/api/public-activity.test.mjs:378` caught a regression where a generic `SKILL_USED` fact at its own root event is no longer selected for H4; preserve generic root-fact narration.
 - **2026-11-01 12:43 UTC:** Removed the new Borrowed Sword `readyAfterEventId` timer/presentation gate and restored same-root generic public-fact narration. Build passed; the affected API files (`presentation-v2-engine`, `public-activity`, `borrowed-sword`) passed 68/68; targeted ESLint had 0 errors; `git diff --check` passed. No UI/browser rerun was needed for these non-layout corrections.
-- Latest completed Actions before this change: [41257243551](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41257243551), exact SHA `01a6e70e7f72f02f63ee8534ea77f582de2de02b`, success. The earlier `05efe554` run failed; the subsequent `01a6e70` run is green.
+- **2026-11-01 12:43:31 UTC:** Exact-SHA Actions run [41307843233](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41307843233) started for repair commit `a9d9a9d5283d433a04934453214a60c9c8b03fe9`.
+- **2026-11-01 12:48 UTC:** Exact-SHA run [41307843233](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41307843233) completed successfully on `a9d9a9d5283d433a04934453214a60c9c8b03fe9`: API tests, Lint/Fast, Browser startup/room smoke, and deployment all passed. Worker deployed to `https://three-kingdoms.dai-jinge.workers.dev`; Cloudflare Worker version `0bed6825-8839-4b56-8e49-523ef727933b`. Workflow production smoke passed and a direct `/api/health` check returned `{"ok":true,"worker":"available"}`.
 
-## Resume point
+## Review boundary
 
-Commit/push only the two verified CI repairs plus this HANDOVER. Wait for the repair SHA's exact Actions and Worker deployment; verify production `/api/health` and record actual results here. The separate main checkout remains detached at `b085cbc` with pre-existing uncommitted W3/EM-01-related files; do not stage or alter them.
+Step A is technically delivered and deployed. Await the owner's real-iPhone review; no UX acceptance is claimed. Do not begin `EQUIP-H4-01` Step B or another task before this review boundary is resolved. The separate main checkout remains detached at `b085cbc` with pre-existing uncommitted files outside this task; they were not staged or changed.
