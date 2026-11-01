@@ -2658,6 +2658,60 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
         || rect.width <= 0 || rect.height <= 0) return null;
       return rect;
     };
+    let revealSuspended = false;
+    let revealFocusReturn: HTMLElement | null = null;
+    let revealFocusProxy: HTMLElement | null = null;
+    const setRevealSuspended = (next: boolean) => {
+      if (next === revealSuspended) return;
+      if (next) {
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && shell.contains(active)) {
+          revealFocusReturn = active;
+          const currentSeat = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"))
+            .find((seat) => seat.dataset.playerAnchor === player.id);
+          revealFocusProxy = currentSeat?.querySelector<HTMLElement>(
+            ".opponent-seat-inspect-button:not([disabled]), .opponent-hero-target:not([disabled])",
+          ) ?? null;
+          if (revealFocusProxy) revealFocusProxy.focus({ preventScroll: true });
+          else active.blur();
+        }
+        layer.dataset.publicRevealSuspended = "true";
+        layer.setAttribute("aria-hidden", "true");
+        layer.inert = true;
+        revealSuspended = true;
+        return;
+      }
+      delete layer.dataset.publicRevealSuspended;
+      layer.removeAttribute("aria-hidden");
+      layer.inert = false;
+      revealSuspended = false;
+      const currentInspector = layer.querySelector<HTMLElement>(".opponent-inspection-panel");
+      if (revealFocusReturn?.isConnected && revealFocusProxy?.isConnected
+        && document.activeElement === revealFocusProxy
+        && currentInspector?.dataset.inspectPlayerId === player.id) {
+        revealFocusReturn.focus({ preventScroll: true });
+      }
+      revealFocusReturn = null;
+      revealFocusProxy = null;
+    };
+    const updateRevealPriority = () => {
+      const shellStyle = window.getComputedStyle(shell);
+      const shellRect = shell.getBoundingClientRect();
+      const shellAvailable = shellStyle.display !== "none"
+        && (revealSuspended || shellStyle.visibility !== "hidden" && Number(shellStyle.opacity) !== 0)
+        && shellRect.width > 0 && shellRect.height > 0;
+      const shouldSuspend = shellAvailable && Array.from(table.querySelectorAll<HTMLElement>(
+        '.public-card-journey-card[data-public-card-journey-phase="reveal"]',
+      )).some((card) => {
+        const cardStyle = window.getComputedStyle(card);
+        const cardRect = card.getBoundingClientRect();
+        return cardStyle.display !== "none" && cardStyle.visibility !== "hidden" && Number(cardStyle.opacity) !== 0
+          && cardRect.width > 0 && cardRect.height > 0
+          && cardRect.left < shellRect.right && shellRect.left < cardRect.right
+          && cardRect.top < shellRect.bottom && shellRect.top < cardRect.bottom;
+      });
+      setRevealSuspended(shouldSuspend);
+    };
     const observeCurrentTargets = () => {
       seats = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"));
       if (!observer) return;
@@ -2770,6 +2824,7 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
           shellStyle.paddingBottom,
         ].reduce((total, value) => total + (Number.parseFloat(value) || 0), 0);
         inspector.style.maxHeight = `${Math.max(0, safePanelHeight - shellVerticalInsets)}px`;
+        updateRevealPriority();
         return;
       }
 
@@ -2816,6 +2871,7 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
         shellStyle.paddingBottom,
       ].reduce((total, value) => total + (Number.parseFloat(value) || 0), 0);
       inspector.style.maxHeight = `${Math.max(0, safePanelHeight - shellVerticalInsets)}px`;
+      updateRevealPriority();
     };
 
     const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => scheduleMeasure());
@@ -2831,7 +2887,7 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["data-seat-topology"],
+      attributeFilter: ["data-seat-topology", "data-public-card-journey-phase"],
     });
     measure();
     const frame = requestAnimationFrame(measure);
@@ -2845,6 +2901,14 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
       cancelAnimationFrame(queuedFrame);
       observer?.disconnect();
       mutationObserver?.disconnect();
+      if (revealSuspended) {
+        delete layer.dataset.publicRevealSuspended;
+        layer.removeAttribute("aria-hidden");
+        layer.inert = false;
+        revealSuspended = false;
+        revealFocusReturn = null;
+        revealFocusProxy = null;
+      }
       window.removeEventListener("resize", scheduleMeasure);
       window.removeEventListener("orientationchange", scheduleMeasure);
       visualViewport?.removeEventListener("resize", scheduleMeasure);

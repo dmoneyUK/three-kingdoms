@@ -7510,3 +7510,12 @@
     row-gap: 0;
   }
 }
+
+/* §10.28: a genuine centre-card REVEAL may temporarily yield the optional
+   local Inspector. Keep its measured geometry mounted so it restores without
+   reopening, while allowing all underlying board controls to receive input. */
+.opponent-inspection-layer[data-public-reveal-suspended="true"],
+.opponent-inspection-layer[data-public-reveal-suspended="true"] * {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}

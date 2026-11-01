@@ -2108,6 +2108,140 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
   }
 });
 
+test("PUBLIC-INSPECT-REVEAL-01 keeps a committed Steal reveal clear of Inspector and PAC", async ({ browser, request }, testInfo) => {
+  test.setTimeout(90_000);
+  const steal = card("Steal", "inspect-reveal-real-steal");
+  const negation = card("Negation", "inspect-reveal-private-negation", "♣", "K");
+  const seed = await seedGame(request, fourPlayers(
+    { hand: [steal] },
+    { hero: "huang-yueying", hand: [negation] },
+  ));
+  const contexts = await Promise.all([0, 1, 2].map(() => browser.newContext({
+    viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3,
+  })));
+  const [sourcePage, targetPage, inspectorPage] = await Promise.all(contexts.map((context) => context.newPage()));
+
+  try {
+    await Promise.all([
+      openGame(sourcePage, seed, 0, { width: 390, height: 844 }),
+      openGame(targetPage, seed, 1, { width: 390, height: 844 }),
+      openGame(inspectorPage, seed, 2, { width: 390, height: 844 }),
+    ]);
+    await playCardThroughPage(sourcePage, steal.id, "TARGET");
+    const responseView = await roomView(request, seed, 1);
+    expect(responseView.currentAction).toMatchObject({ kind: "response", actorId: seed.players[1].id });
+    const windowId = responseView.currentAction.negationWindowId;
+    expect(windowId).toBeTruthy();
+    const held = await request.post(`${API}/__test/negation-window-clock`, { data: { code: seed.code, windowId, mode: "hold" } });
+    expect(await held.json()).toEqual({ adjusted: true });
+    await expect(targetPage.getByRole("button", { name: /Pass/i })).toBeEnabled();
+    await expect(targetPage.locator(".console-guidance")).toContainText(/Negation|Pass/);
+    await expect(inspectorPage.locator(".console-guidance .decision-status strong")).toHaveText("No Negation available. Pass.");
+    await expect(inspectorPage.getByRole("button", { name: "Pass", exact: true })).toBeEnabled();
+
+    const rootEvent = responseView.timeline.find((event) => event?.type === "card" && event.action === "play" && event.card?.id === steal.id);
+    expect(rootEvent).toBeTruthy();
+    await expectRootJourneyReveal(inspectorPage, {
+      eventId: rootEvent.id,
+      cardId: steal.id,
+      actorId: seed.players[0].id,
+    });
+    const inspectTrigger = inspectorPage.locator(`.opponent-player-card[data-player-anchor="${seed.players[1].id}"] .opponent-hero-target`);
+    await tapMobile(inspectorPage, inspectTrigger);
+    const inspection = inspectorPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${seed.players[1].id}"]`);
+    await expect(inspection).toHaveCount(1);
+    const geometry = await inspectorPage.evaluate(({ eventId }) => {
+      const table = document.querySelector(".play-table");
+      const card = document.querySelector(`[data-public-card-journey-event-id="${eventId}"][data-public-card-journey-role="root"]`);
+      const inspector = document.querySelector(".opponent-inspection-floating-shell");
+      const layer = document.querySelector(".opponent-inspection-layer");
+      const pac = table?.querySelector(".public-activity-chip");
+      const rect = (element) => {
+        if (!element) return null;
+        const value = element.getBoundingClientRect();
+        return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height };
+      };
+      const overlaps = (first, second) => Boolean(first && second
+        && first.left < second.right && second.left < first.right
+        && first.top < second.bottom && second.top < first.bottom);
+      const cardRect = rect(card);
+      const inspectorRect = rect(inspector);
+      const pacRect = rect(pac);
+      const tableRect = rect(table);
+      const seats = [...document.querySelectorAll(".opponent-player-card")].map(rect).filter(Boolean);
+      const countdown = rect(document.querySelector(".visible-countdown"));
+      const stageSystemCluster = rect(document.querySelector(".stage-system-cluster"));
+      const localDock = rect(document.querySelector(".local-player-dock"));
+      const localHand = rect(document.querySelector(".local-hand-rail"));
+      const protectedRects = [...seats, countdown, stageSystemCluster, localDock, localHand]
+        .filter((value) => value && value.width > 0 && value.height > 0);
+      const topSeatBottom = Math.max(...seats.map((value) => value.bottom));
+      const viewport = window.visualViewport;
+      const safeTop = Math.max(tableRect.top + 8, topSeatBottom + 8, viewport?.offsetTop ?? 0);
+      const safeBottom = Math.min(tableRect.bottom - 8, pacRect?.top ? pacRect.top - 8 : tableRect.bottom - 8,
+        (viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight) - 8);
+      const currentRevealCount = document.querySelectorAll('.public-card-journey-card[data-public-card-journey-phase="reveal"]').length;
+      return {
+        phase: card?.getAttribute("data-public-card-journey-phase"),
+        revealCount: currentRevealCount,
+        card: cardRect,
+        table: tableRect,
+        pac: pacRect,
+        inspector: inspectorRect,
+        seats,
+        countdown,
+        stageSystemCluster,
+        localDock,
+        localHand,
+        inspectorVisible: Boolean(inspector && getComputedStyle(inspector).visibility !== "hidden" && getComputedStyle(inspector).display !== "none"),
+        inspectorSuspended: layer?.getAttribute("data-public-reveal-suspended") === "true",
+        inspectorAriaHidden: layer?.getAttribute("aria-hidden") === "true",
+        inspectorInert: layer?.inert === true,
+        cardOverlapsPac: overlaps(cardRect, pacRect),
+        cardOverlapsInspector: overlaps(cardRect, inspectorRect),
+        cardOverlapsProtected: protectedRects.some((value) => overlaps(cardRect, value)),
+        cardCenterXError: cardRect && tableRect ? Math.abs((cardRect.left + cardRect.right) / 2 - (tableRect.left + tableRect.right) / 2) : null,
+        cardWithinSafeVerticalLane: Boolean(cardRect && cardRect.top >= safeTop && cardRect.bottom <= safeBottom),
+      };
+    }, { eventId: rootEvent.id });
+    await testInfo.attach("public-inspect-reveal-390x844-geometry.json", {
+      body: JSON.stringify(geometry, null, 2), contentType: "application/json",
+    });
+    console.log("PUBLIC-INSPECT-REVEAL-01 measured mobile geometry", geometry);
+    expect(geometry.phase, JSON.stringify(geometry)).toBe("reveal");
+    expect(geometry.revealCount, JSON.stringify(geometry)).toBe(1);
+    expect(geometry.card?.width, JSON.stringify(geometry)).toBeGreaterThanOrEqual(85);
+    expect(geometry.card?.height, JSON.stringify(geometry)).toBeGreaterThanOrEqual(125);
+    expect(geometry.cardCenterXError, JSON.stringify(geometry)).toBeLessThanOrEqual(8);
+    expect(geometry.cardWithinSafeVerticalLane, JSON.stringify(geometry)).toBe(true);
+    expect(geometry.cardOverlapsPac, JSON.stringify(geometry)).toBe(false);
+    expect(!geometry.inspectorVisible || !geometry.cardOverlapsInspector, JSON.stringify(geometry)).toBe(true);
+    if (geometry.cardOverlapsInspector) {
+      expect(geometry.inspectorSuspended, JSON.stringify(geometry)).toBe(true);
+      expect(geometry.inspectorAriaHidden, JSON.stringify(geometry)).toBe(true);
+      expect(geometry.inspectorInert, JSON.stringify(geometry)).toBe(true);
+    }
+    expect(geometry.cardOverlapsProtected, JSON.stringify(geometry)).toBe(false);
+
+    const passSubmission = inspectorPage.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "decline_response");
+    await inspectorPage.getByRole("button", { name: "Pass", exact: true }).click();
+    expect((await passSubmission).ok()).toBe(true);
+
+    const revealStartedAt = await inspectorPage.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`).getAttribute("data-public-card-journey-reveal-started-at");
+    await expect(inspectorPage.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`)).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
+    await expect(inspection).toBeVisible();
+    await expect(inspectorPage.locator(".opponent-inspection-layer")).not.toHaveAttribute("aria-hidden", "true");
+    expect(await inspectorPage.locator(".opponent-inspection-layer").evaluate((element) => element.inert)).toBe(false);
+    await expect(inspectorPage.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`)).toHaveAttribute("data-public-card-journey-reveal-started-at", revealStartedAt);
+    expect(await inspectorPage.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`).count()).toBe(1);
+    expect(JSON.stringify(await roomView(request, seed, 2).then((view) => view))).not.toContain(negation.id);
+  } finally {
+    await Promise.all(contexts.map((context) => context.close()));
+  }
+});
+
 test("T3 counter-Negation keeps Steal private until the restored root opens its shared picker", async ({ browser, request }, testInfo) => {
   test.setTimeout(150_000);
   const steal = card("Steal", "t3-counter-steal-root");
