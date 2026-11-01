@@ -874,6 +874,12 @@
   }
 }
 
+.local-player-dock .turn-controls[data-ordinary-play-target-selection="true"] > [data-action-slots="true"] {
+  grid-template-columns: var(--action-slot-width) var(--action-slot-width);
+  grid-template-areas: "primary decline";
+  justify-content: center;
+}
+
 @media (max-width: 360px) {
   .local-player-dock { --zone-card-gap: 1px; grid-template-columns: 56px minmax(0, 1fr); }
   .local-dock-zones { gap: 0; }

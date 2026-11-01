@@ -146,8 +146,7 @@ test("four/six/eight-seat mobile targeting separates compact name Inspect from l
       await expect(page.locator(".game-shell")).toBeVisible();
       await selectAttack(page, "tap");
       await expect(page.locator(".opponent-seat-inspect-button")).toHaveCount(count - 1);
-      await expect(page.locator(".local-target-selection")).toBeVisible();
-      await expect(page.locator(".local-target-cancel")).toBeVisible();
+      await expect(page.locator(".local-target-selection, .local-target-cancel")).toHaveCount(0);
 
       const seatHitAreas = await page.locator(".opponent-player-card").evaluateAll((seats) => seats.map((seat) => {
         const target = seat.querySelector(".opponent-hero-target");
@@ -227,8 +226,7 @@ test("four/six/eight-seat mobile targeting separates compact name Inspect from l
   await expect(page.locator(".game-shell")).toBeVisible();
   await page.locator('[data-hand-card-id="browser-target-eligibility-steal"] .game-card').click();
   await expect(page.locator(".opponent-seat-inspect-button")).toHaveCount(4);
-  await expect(page.locator(".local-target-selection")).toBeVisible();
-  await expect(page.locator(".local-target-cancel")).toBeVisible();
+  await expect(page.locator(".local-target-selection, .local-target-cancel")).toHaveCount(0);
   const stealInspector = page.locator('.opponent-player-card[data-player-anchor="p2"] .opponent-seat-inspect-button');
   await stealInspector.click();
   await expect(page.locator('.opponent-inspection-panel[data-inspect-player-id="p2"]')).toBeVisible();

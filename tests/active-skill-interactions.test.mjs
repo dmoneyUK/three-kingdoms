@@ -89,6 +89,18 @@ function normalHalberdTargetRoom() {
   });
 }
 
+function normalStealTargetRoom() {
+  return normalizeRoomData({
+    code: "STEAL-TARGET-UI", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "SOURCE", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "LEGAL TARGET", seat: 1, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    ],
+    myHand: [card("steal-card", "Steal", "♦")], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play a card", isMyAction: true,
+    actionRevision: "steal-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card", "end_turn"], playTargetEligibility: [{ mode: "card", cardId: "steal-card", effectiveKind: "Steal", eligibleTargetIds: ["p2"], rejections: [] }] },
+  });
+}
+
 function normalWushengTargetRoom() {
   return normalizeRoomData({
     code: "WUSHENG-TARGET-UI", status: "playing", maxPlayers: 2, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
@@ -429,16 +441,49 @@ test("normal deferred multi-target selection is local until ordered Confirm", as
   await act(async () => { button(renderer, { "aria-label": "Select FIRST TARGET" }).props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select SECOND TARGET" }).props.onClick(); });
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
-  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
-  assert.equal(actionCalls.length, 0, "Halberd Cancel sends no action");
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "ordinary Hand-card target selection has no redundant Cancel");
+  assert.equal(nodeWith(renderer, "data-console-local-cancel", "false").props["data-console-local-cancel"], "false", "ordinary Play guidance does not advertise LOCAL CANCEL");
+  await act(async () => { handCardButton(renderer, "halberd-attack").props.onClick(); });
+  assert.equal(actionCalls.length, 0, "retapping the selected card sends no action");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
   assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), false);
-  assert.equal(handCardButton(renderer, "halberd-attack").props.className.includes("selected"), false, "Halberd Cancel clears the card selection");
+  assert.equal(handCardButton(renderer, "halberd-attack").props.className.includes("selected"), false, "same-card retap clears the card selection");
+  assert.equal(button(renderer, { children: "Play" }).props.disabled, true, "retapping resets Play readiness");
   await act(async () => { handCardButton(renderer, "halberd-attack").props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select FIRST TARGET" }).props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select SECOND TARGET" }).props.onClick(); });
   await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
   assert.deepEqual(actionCalls.at(-1), ["play_card", { cardId: "halberd-attack", playAs: "attack", targetId: "p2", targetIds: ["p2", "p3"] }]);
+  await act(async () => { renderer.unmount(); });
+});
+
+test("ordinary target Stratagem has no Cancel and same-card retap clears target before authorized Confirm", async () => {
+  const room = normalStealTargetRoom();
+  const actionCalls = [];
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+  const cancelSurface = nodeWith(renderer, "data-console-surface", "local-operation");
+  await act(async () => { handCardButton(renderer, "steal-card").props.onClick(); });
+  assert.equal(cancelSurface.props["data-ordinary-play-target-selection"], "true");
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "ordinary target-card selection has no Cancel button");
+  assert.equal(renderer.root.findAll((node) => node.props?.["data-local-target-selection"] === "true").length, 0, "ordinary target-card selection has no Cancel guidance");
+  await act(async () => { targetButton(renderer, "p2").props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), true);
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
+  assert.equal(actionCalls.length, 0, "selecting the card and target remains a local draft");
+
+  await act(async () => { handCardButton(renderer, "steal-card").props.onClick(); });
+  assert.equal(handCardButton(renderer, "steal-card").props["aria-pressed"], false, "retapping the physical card deselects it");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "retapping clears its target draft");
+  assert.equal(button(renderer, { children: "Play" }).props.disabled, true, "retapping resets Play readiness");
+  assert.equal(actionCalls.length, 0, "retapping sends no gameplay action");
+
+  await act(async () => { handCardButton(renderer, "steal-card").props.onClick(); });
+  await act(async () => { targetButton(renderer, "p2").props.onClick(); });
+  await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
+  assert.deepEqual(actionCalls, [["play_card", { cardId: "steal-card", targetId: "p2" }]], "only the server-authorized Confirm submits the card");
   await act(async () => { renderer.unmount(); });
 });
 

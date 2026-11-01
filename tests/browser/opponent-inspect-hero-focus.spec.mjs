@@ -992,7 +992,7 @@ test("unified Inspector changes its subject without changing the legal target", 
   await expect(panel).not.toContainText("HERO FOCUS");
   await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
   await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
-  await expect(page.locator('[data-console-surface="local-operation"] button.local-target-cancel')).toBeVisible();
+  await expect(page.locator('[data-console-surface="local-operation"] button.local-target-cancel')).toHaveCount(0);
   expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
 
   await panel.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]').click();
