@@ -154,15 +154,12 @@ export function derivePublicInteractionNarration(input: {
     latest = facts.filter((fact) => fact.eventId === input.rootEventId
       ? rootCategories.has(fact.category) || outcomeCategories.has(fact.category)
       : fact.order > rootOrder && outcomeCategories.has(fact.category)).at(-1);
-  } else if (!identity && !interaction && snapshot.stable.kind === "REST"
-    && snapshot.retainedPublicEvent?.identity.interactionId === input.interactionId
-    && snapshot.retainedPublicEvent.identity.rootFrameId === input.rootFrameId
-    && snapshot.retainedPublicEvent.rootEventId === input.rootEventId
-    && snapshot.retainedPublicEventFacts?.some((fact) => fact.rootEventId === input.rootEventId
+  } else if (!identity && !interaction && snapshot.stable.kind === "REST") {
+    latest = snapshot.retainedPublicEventFacts?.filter((fact) => fact.rootEventId === input.rootEventId
       && fact.identity.interactionId === input.interactionId && fact.identity.rootFrameId === input.rootFrameId
       && (fact.category === "CARD_PLAYED" || fact.category === "CARD_EQUIPPED" || fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED"
-        || fact.category === "SKILL_USED" || fact.category === "EFFECT_APPLIED" || fact.category === "CARD_OBTAINED" || fact.category === "CARD_TRANSFERRED"))) {
-    latest = snapshot.retainedPublicEvent;
+        || fact.category === "SKILL_USED" || fact.category === "EFFECT_APPLIED" || fact.category === "CARD_OBTAINED" || fact.category === "CARD_TRANSFERRED"))
+      .sort((left, right) => left.order - right.order).at(-1);
   }
   if (!latest) return null;
 

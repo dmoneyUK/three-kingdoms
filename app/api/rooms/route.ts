@@ -28,10 +28,10 @@ import { resolveDamageModifiers, type DamageCause } from "../../../game/capabili
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
 import { attackRootProjectionDiagnosticsFor, projectPresentationV2, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
-import type { PublicPhysicalZoneTransition, PublicPresentationDecision, PublicPresentationEventFactDraft, ViewerNegationChoice } from "../../../game/presentation-semantics";
+import type { PublicPhysicalZoneTransition, PublicPresentationDecision, PublicPresentationEventFactDraft, PublicZoneEndpoint, ViewerNegationChoice } from "../../../game/presentation-semantics";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
-import { childCausalFrame, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
+import { childCausalFrame, contextFor, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
 import { advanceCausalSemanticCheckpoint } from "../causal-envelope";
 import { appendSequencedLogRecord, publicEventSequencesFromLog } from "../../../game/public-log-sequence";
 import { PRIVATE_HAND_REVEAL_DURATION_MS } from "../../../game/private-hand.js";
@@ -1094,6 +1094,85 @@ function addLogWithId(log: string[], message: string, drawPlayerId?: string, met
   const id = eventId;
   return { log: appendSequencedLogRecord(log, "@event:", { id, message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) }), eventId: id };
 }
+function latestPublicCardSourceEventId(log: string[], cardId: string): string | undefined {
+  const matches = gameTimeline(log).filter((event) => event.type === "card" && event.presentation !== false
+    && !event.privateToPlayerId && typeof event.card === "object" && event.card !== null
+    && (event.card as Card).id === cardId
+    && (event.action === "play" || event.action === "activate" || event.action === "reveal"));
+  const latest = matches.at(-1);
+  return matches.length ? latest?.id : undefined;
+}
+function addPublicZoneTransitionEvent(log: string[], input: {
+  message: string;
+  causal?: CausalContext;
+  envelope?: CausalEnvelope | null;
+  rootEventId?: string;
+  sourceEventId?: string;
+  actorId: string;
+  affectedPlayerIds: readonly string[];
+  card: Card;
+  from: PublicZoneEndpoint;
+  to: PublicZoneEndpoint;
+  resolutionId?: string;
+}): string[] {
+  const sourceEventId = input.sourceEventId ?? latestPublicCardSourceEventId(log, input.card.id);
+  const source = sourceEventId ? gameTimeline(log).filter((event) => event.id === sourceEventId) : [];
+  const sourceCard = source[0];
+  const sourceCardValue = sourceCard?.card && typeof sourceCard.card === "object" ? sourceCard.card as Card : null;
+  if (!input.causal || !input.rootEventId || !sourceEventId || source.length !== 1
+    || sourceCard?.type !== "card" || sourceCard.presentation === false || sourceCard.privateToPlayerId
+    || sourceCardValue?.id !== input.card.id
+    || sourceCard.action !== "play" && sourceCard.action !== "activate" && sourceCard.action !== "reveal") {
+    return addLog(log, input.message, undefined, input.resolutionId ? { resolutionId: input.resolutionId, importance: "essential", finalResult: true } : undefined);
+  }
+  const eventId = crypto.randomUUID();
+  const publicFact = publicFactFor(input.causal, "STAGE_COMPLETED", {
+    rootEventId: input.rootEventId,
+    actorId: input.actorId,
+    affectedPlayerIds: input.affectedPlayerIds,
+    effect: { kind: "public_zone_transition" },
+  }, input.envelope);
+  if (!publicFact?.committedIdentity) return addLog(log, input.message, undefined,
+    input.resolutionId ? { resolutionId: input.resolutionId, importance: "essential", finalResult: true } : undefined);
+  const publicZoneTransition: PublicPhysicalZoneTransition = {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId, sourceEventId, rootEventId: input.rootEventId,
+    physicalCardId: input.card.id, from: input.from, to: input.to,
+  };
+  return addLogWithId(log, input.message, undefined, {
+    ...(input.resolutionId ? { resolutionId: input.resolutionId } : {}), importance: "essential", finalResult: true,
+    actorId: input.actorId, publicFact, publicZoneTransition,
+  }, eventId).log;
+}
+function publicJudgementCardOrigin(log: string[], eventId: string, cardId: string, players: readonly PlayerRow[], allowDeckReveal: boolean): PublicZoneEndpoint | null {
+  const matches = gameTimeline(log).filter((event) => event.id === eventId);
+  if (matches.length !== 1) return null;
+  const event = matches[0];
+  const card = event.card && typeof event.card === "object" ? event.card as Card : null;
+  if (event.type !== "card" || event.presentation === false || event.privateToPlayerId || card?.id !== cardId) return null;
+  if (Array.isArray(event.publicCardEffects)) {
+    for (const rawEffect of event.publicCardEffects) {
+      if (!rawEffect || typeof rawEffect !== "object") continue;
+      const materials = (rawEffect as Record<string, unknown>).materials;
+      if (!Array.isArray(materials)) continue;
+      const material = materials.find((raw) => raw && typeof raw === "object" && (raw as Record<string, unknown>).cardId === cardId
+        && (raw as Record<string, unknown>).toZone === "JUDGEMENT") as Record<string, unknown> | undefined;
+      if (!material) continue;
+      const fromZone = material.fromZone;
+      if ((fromZone === "HAND" || fromZone === "EQUIPMENT" || fromZone === "JUDGEMENT") && typeof material.ownerId === "string") {
+        return { zone: fromZone, ownerId: material.ownerId };
+      }
+      if (fromZone === "DECK") return { zone: "DECK", ownerId: null };
+    }
+  }
+  if (event.action === "reveal" && allowDeckReveal) return { zone: "DECK", ownerId: null };
+  if (event.action !== "play" && event.action !== "activate") return null;
+  const actorId = typeof event.actorId === "string" ? event.actorId
+    : typeof event.player === "string" ? (() => {
+      const owners = players.filter((player) => player.name === event.player);
+      return owners.length === 1 ? owners[0].id : undefined;
+    })() : undefined;
+  return actorId ? { zone: "HAND", ownerId: actorId } : null;
+}
 function attachDiaoChanNotice(log: string[], proof: DiaoChanSkillNoticeProof): string[] {
   const index = log.length - 1;
   const entry = log[index];
@@ -1984,6 +2063,37 @@ function discardJudgementCards(discard: Card[], revealed: Card, finalCard: Card,
   if (!keepFinal) discard.push(finalCard);
 }
 
+function addDelayedJudgementZoneTransition(log: string[], room: RoomRow, judgement: JudgementContinuation, card: Card, input: {
+  actorId: string;
+  sourceEventId?: string;
+  from: PublicZoneEndpoint;
+  to: PublicZoneEndpoint;
+  message: string;
+}): string[] {
+  if (judgement.resume.kind !== "delayed" || !judgement.causal) return addLog(log, input.message);
+  const delayed = judgement.resume.delayedCard;
+  const rootEventId = latestPublicCardSourceEventId(log, delayed.id);
+  const envelope = causalEnvelopeAtStage(room, judgement.causal, "JUDGEMENT", {
+    currentSourceId: judgement.targetId,
+    currentEffect: judgement.purpose,
+    currentTargetIds: [judgement.targetId],
+    resolvingPlayerId: input.actorId,
+  });
+  return addPublicZoneTransitionEvent(log, {
+    message: input.message,
+    causal: judgement.causal,
+    envelope,
+    rootEventId,
+    sourceEventId: input.sourceEventId,
+    actorId: input.actorId,
+    affectedPlayerIds: input.to.ownerId ? [input.to.ownerId] : [judgement.targetId],
+    card,
+    from: input.from,
+    to: input.to,
+    resolutionId: judgement.resolutionId,
+  });
+}
+
 function legacyRecipients(players: PlayerRow[]) {
   return players.filter((player) => player.alive).map((player) => player.id);
 }
@@ -2203,6 +2313,13 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
       // while the final effective card remains held in this continuation until
       // the generic post-Judgement trigger decides its destination.
       discardJudgementCards(discard, judgement.revealedCard, finalCard, true);
+      if (judgement.resume.kind === "delayed" && judgement.revealedCard.id !== finalCard.id) {
+        log = addDelayedJudgementZoneTransition(log, room, judgement, judgement.revealedCard, {
+          actorId: target.id, sourceEventId: judgement.revealedEventId,
+          from: { zone: "DECK", ownerId: null }, to: { zone: "DISCARD", ownerId: null },
+          message: "A replaced public Judgement card moves to the Discard.",
+        });
+      }
       const presentation = addLogWithId(log, `${target.name}'s Judgment takes effect; an optional post-Judgment reaction is available.`, undefined, { resolutionId: judgement.resolutionId, importance: "essential", finalResult: true });
       const pending: TriggerPending = withPresentationBarrier({
         kind: "trigger",
@@ -2329,12 +2446,35 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
     let skipPlay = drawPhaseFlags(delayedResume.resumePhase).skipPlay;
     let skipDraw = drawPhaseFlags(delayedResume.resumePhase).skipDraw;
     const delayed = delayedResume.delayedCard;
+    let delayedDestination: PublicZoneEndpoint | null = null;
+    const appendReplacedPublicRevealDiscard = (nextLog: string[]) => {
+      if (postJudgementResolved || judgement.revealedCard.id === finalCard.id) return nextLog;
+      return addDelayedJudgementZoneTransition(nextLog, room, judgement, judgement.revealedCard, {
+        actorId: target.id, sourceEventId: judgement.revealedEventId,
+        from: { zone: "DECK", ownerId: null }, to: { zone: "DISCARD", ownerId: null },
+        message: "A replaced public Judgement card moves to the Discard.",
+      });
+    };
+    const appendFinalRevealDiscard = (nextLog: string[]) => {
+      if (finalCardObtained || keepFinal) return nextLog;
+      const sourceEventId = finalEventId ?? judgement.revealedEventId;
+      const origin = publicJudgementCardOrigin(nextLog, sourceEventId, finalCard.id, players, finalCard.id === judgement.revealedCard.id);
+      return origin ? addDelayedJudgementZoneTransition(nextLog, room, judgement, finalCard, {
+        actorId: target.id, sourceEventId, from: origin, to: { zone: "DISCARD", ownerId: null },
+        message: "The resolved public Judgement card moves to the Discard.",
+      }) : nextLog;
+    };
     if (judgement.purpose === "overindulgence") skipPlay ||= result.status !== "satisfied";
     if (judgement.purpose === "rations_depleted") skipDraw ||= result.status !== "satisfied";
     if (judgement.purpose === "lightning") {
       if (result.status === "satisfied") {
-        const nextLog = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for Lightning. Lightning strikes for 3 thunder damage.`, undefined, judgement.resolutionId);
+        let nextLog = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for Lightning. Lightning strikes for 3 thunder damage.`, undefined, judgement.resolutionId);
+        nextLog = appendFinalRevealDiscard(nextLog);
         discard.push(delayed);
+        nextLog = addDelayedJudgementZoneTransition(nextLog, room, judgement, delayed, {
+          actorId: target.id, from: { zone: "JUDGEMENT", ownerId: target.id }, to: { zone: "DISCARD", ownerId: null },
+          message: "The resolved delayed card moves from Judgement to the Discard.",
+        });
         await resolveSourcedDamage({
           room,
           source: null,
@@ -2358,16 +2498,27 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
         if (transferTarget) {
           writes.push(db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify([...parse<Card[]>(transferTarget.judgement_json, []), delayed]), transferTarget.id));
           log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for Lightning. Lightning misses and transfers to ${transferTarget.name}'s Judgement Zone.`, undefined, judgement.resolutionId);
+          delayedDestination = { zone: "JUDGEMENT", ownerId: transferTarget.id };
         } else {
           discard.push(delayed);
           log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for Lightning. No eligible Judgement Zone remains, so Lightning is discarded.`, undefined, judgement.resolutionId);
+          delayedDestination = { zone: "DISCARD", ownerId: null };
         }
       }
     } else {
       discard.push(delayed);
       log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for ${rule.label}. ${result.status === "satisfied" ? rule.successText : rule.failureText}`, undefined, judgement.resolutionId);
+      delayedDestination = { zone: "DISCARD", ownerId: null };
     }
     if (judgement.purpose === "lightning" && result.status === "satisfied") log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for Lightning and takes 3 thunder damage.`, undefined, judgement.resolutionId);
+    log = appendReplacedPublicRevealDiscard(log);
+    log = appendFinalRevealDiscard(log);
+    if (delayedDestination) log = addDelayedJudgementZoneTransition(log, room, judgement, delayed, {
+      actorId: target.id, from: { zone: "JUDGEMENT", ownerId: target.id }, to: delayedDestination,
+      message: delayedDestination.zone === "JUDGEMENT"
+        ? "The delayed card moves to another Judgement Zone."
+        : "The resolved delayed card moves from Judgement to the Discard.",
+    });
     const nextPhase = drawPhaseFor(skipPlay, skipDraw);
     if (delayedResume.remainingDelayedCards.length) {
       await db().batch([...writes, causalRoomStateWrite(room.id, { phase: nextPhase, pending: null, deck, discard, log, causalEnvelope: null })]);
@@ -2403,7 +2554,15 @@ async function beginDelayedJudgement(room: RoomRow, target: PlayerRow, players: 
   if (draw.reshuffled) log = addLog(log, "The discard pile is shuffled into a new draw deck.");
   if (!draw.card) {
     discard.push(delayed);
-    log = addLog(log, `${target.name} has no card available for judgement.`);
+    const rootEventId = latestPublicCardSourceEventId(log, delayed.id);
+    const message = `${target.name} has no card available for judgement.`;
+    log = causalRoot
+      ? addPublicZoneTransitionEvent(log, {
+        message, causal: causalRoot.context, envelope: causalRoot.envelope, rootEventId,
+        sourceEventId: rootEventId, actorId: target.id, affectedPlayerIds: [target.id], card: delayed,
+        from: { zone: "JUDGEMENT", ownerId: target.id }, to: { zone: "DISCARD", ownerId: null },
+      })
+      : addLog(log, message);
     await db().batch([...writes, causalRoomStateWrite(room.id, { phase: resumePhase, pending: null, deck, discard, log, causalEnvelope: null })]);
     return [];
   }
@@ -3865,14 +4024,29 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
         if (transferTarget) {
           const transferred = [...parse<Card[]>(transferTarget.judgement_json, []), delayed];
           writes.push(db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(transferred), transferTarget.id));
-          log = addLog(log, `Lightning's effect on ${target.name} is Negated; Lightning transfers directly to ${transferTarget.name}'s Judgement Zone without a Judgement.`);
+          log = addPublicZoneTransitionEvent(log, {
+            message: `Lightning's effect on ${target.name} is Negated; Lightning transfers directly to ${transferTarget.name}'s Judgement Zone without a Judgement.`,
+            causal: pending.causal, envelope: resumedEnvelope, rootEventId: pending.rootEventId,
+            actorId: target.id, affectedPlayerIds: [transferTarget.id], card: delayed,
+            from: { zone: "JUDGEMENT", ownerId: target.id }, to: { zone: "JUDGEMENT", ownerId: transferTarget.id },
+          });
         } else {
           discard.push(delayed);
-          log = addLog(log, `Lightning's effect on ${target.name} is Negated; no eligible Judgement Zone remains, so Lightning is discarded.`);
+          log = addPublicZoneTransitionEvent(log, {
+            message: `Lightning's effect on ${target.name} is Negated; no eligible Judgement Zone remains, so Lightning is discarded.`,
+            causal: pending.causal, envelope: resumedEnvelope, rootEventId: pending.rootEventId,
+            actorId: target.id, affectedPlayerIds: [target.id], card: delayed,
+            from: { zone: "JUDGEMENT", ownerId: target.id }, to: { zone: "DISCARD", ownerId: null },
+          });
         }
       } else if (delayed) {
         discard.push(delayed);
-        log = addLog(log, `${pending.cardName}'s effect on ${target?.name ?? "its target"} is cancelled by Negation.`);
+        log = target ? addPublicZoneTransitionEvent(log, {
+          message: `${pending.cardName}'s effect on ${target.name} is cancelled by Negation.`,
+          causal: pending.causal, envelope: resumedEnvelope, rootEventId: pending.rootEventId,
+          actorId: target.id, affectedPlayerIds: [target.id], card: delayed,
+          from: { zone: "JUDGEMENT", ownerId: target.id }, to: { zone: "DISCARD", ownerId: null },
+        }) : addLog(log, `${pending.cardName}'s effect is cancelled by Negation.`);
       }
       discard.push(...heldCards);
       writes.push(db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(remaining), pending.effect.targetId));
@@ -4023,7 +4197,19 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
       await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(discard), JSON.stringify(log), roomId).run();
     } else {
       const judgement = [...parse<Card[]>(target.judgement_json, []), played];
-      log = addLog(log, `${played.rank}${played.suit} ${pending.cardName} is placed in ${target.name}'s Judgement Zone.`);
+      log = addPublicZoneTransitionEvent(log, {
+        message: `${played.rank}${played.suit} ${pending.cardName} is placed in ${target.name}'s Judgement Zone.`,
+        causal: pending.causal,
+        envelope: resumedEnvelope,
+        rootEventId: pending.rootEventId,
+        sourceEventId: pending.rootEventId,
+        actorId: pending.sourceId,
+        affectedPlayerIds: [target.id],
+        card: played,
+        from: { zone: "HAND", ownerId: pending.sourceId },
+        to: { zone: "JUDGEMENT", ownerId: target.id },
+        resolutionId: pending.rootResolutionId,
+      });
       if (pending.effect.kind === "overindulgence") {
         log = settlePublicCardEffectZone(log, played.id, "daqiao_captivating", "JUDGEMENT");
       }
@@ -4443,7 +4629,22 @@ async function resumeNormalStratagemUse(room: RoomRow, source: PlayerRow, player
   }
   if (effect.kind === "lightning") {
     const judgement = [...parse<Card[]>(source.judgement_json, []), card];
-    const nextLog = addLog(addCardEvent(log, source.name, card), `${source.name} plays Lightning into their own Judgement Zone.`);
+    const presentation = addCardEventWithId(log, source.name, card, source.name, "play");
+    const judgementRoot = createdEnvelope
+      ? { envelope: createdEnvelope, context: contextFor(createdEnvelope) }
+      : createCausalRoot({ stage: "JUDGEMENT", origin: { originSourceId: source.id, originEffect: "delayed_stratagem", originalTargetIds: [source.id] }, current: { currentSourceId: source.id, currentEffect: "delayed_stratagem", currentTargetIds: [source.id], resolvingPlayerId: source.id } });
+    const nextLog = addPublicZoneTransitionEvent(presentation.log, {
+      message: `${source.name} plays Lightning into their own Judgement Zone.`,
+      causal: judgementRoot.context,
+      envelope: judgementRoot.envelope,
+      rootEventId: presentation.eventId,
+      sourceEventId: presentation.eventId,
+      actorId: source.id,
+      affectedPlayerIds: [source.id],
+      card,
+      from: { zone: "HAND", ownerId: source.id },
+      to: { zone: "JUDGEMENT", ownerId: source.id },
+    });
     await db().batch([
       db().prepare("UPDATE players SET hand_json = ?, judgement_json = ? WHERE id = ?").bind(JSON.stringify(hand), JSON.stringify(judgement), source.id),
       db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(room.phase, JSON.stringify(deck), JSON.stringify(discard.filter((candidate) => candidate.id !== card.id)), JSON.stringify(nextLog), room.id),

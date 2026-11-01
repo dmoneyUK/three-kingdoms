@@ -1,6 +1,6 @@
 import type { PresentationClientView } from "../game/presentation-client";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
-import type { PublicPresentationEvent } from "../game/presentation-semantics";
+import type { PublicPresentationEvent, PublicZoneEndpoint } from "../game/presentation-semantics";
 
 export type PublicPresentationCoverageId =
   | "E01" | "E02" | "E03" | "E04" | "E05" | "E06" | "E07"
@@ -87,7 +87,7 @@ export type PublicTimelineEventReference = {
   rootFrameId: string;
   rootEventId?: string;
   actorId?: string;
-  action?: "play" | "response" | "equip" | "discard" | "reveal" | "gain" | "activate";
+  action?: "play" | "response" | "equip" | "discard" | "reveal" | "gain" | "activate" | "zone_transition";
   physicalCardIds?: readonly string[];
   physicalCardKinds?: Readonly<Record<string, string>>;
   destination?: "EQUIPMENT" | "JUDGEMENT" | "DISCARD" | "AUTHOR_HISTORY";
@@ -108,11 +108,9 @@ export type PublicZoneProjection = {
   ownerId: string | null;
   zone: "EQUIPMENT" | "JUDGEMENT" | "DISCARD" | "PUBLIC_PLAY";
   slot?: "weapon" | "armor" | "offensiveHorse" | "defensiveHorse";
-  from?: {
-    zone: "HAND" | "EQUIPMENT" | "JUDGEMENT" | "PUBLIC_PLAY";
-    ownerId: string | null;
-    slot?: "weapon" | "armor" | "offensiveHorse" | "defensiveHorse";
-  };
+  from?: PublicZoneEndpoint | { zone: "PUBLIC_PLAY"; ownerId: string | null };
+  sourceEventId?: string;
+  rootEventId?: string;
 };
 
 type AuditSnapshot = Pick<PresentationSnapshot,
@@ -143,6 +141,7 @@ export type PublicPresentationCandidate =
     physicalCardId: string;
     ownerId: string | null;
     destination: PublicZoneProjection["zone"];
+    sourceEventId?: string;
     slot?: PublicZoneProjection["slot"];
     from?: PublicZoneProjection["from"];
   })
@@ -186,6 +185,7 @@ export type PublicPresentationRoute =
     physicalCardId: string;
     ownerId: string | null;
     destination: PublicZoneProjection["zone"];
+    sourceEventId?: string;
     slot?: PublicZoneProjection["slot"];
     from?: PublicZoneProjection["from"];
     shadowComparison: ShadowComparison;
@@ -270,7 +270,7 @@ function allPublicFacts(snapshot: AuditSnapshot): readonly PublicPresentationEve
   return [...snapshot.publicEventFacts, ...(snapshot.retainedPublicEventFacts ?? []), ...(snapshot.retainedPublicEvent ? [snapshot.retainedPublicEvent] : [])];
 }
 
-function factsForEvent(snapshot: AuditSnapshot, eventId: string): PublicPresentationEvent[] {
+export function publicFactsForEvent(snapshot: AuditSnapshot, eventId: string): PublicPresentationEvent[] {
   const rows = allPublicFacts(snapshot).filter((fact) => fact.eventId === eventId);
   const uniqueRows = rows.filter((fact, index) => rows.findIndex((other) => other.identity.interactionId === fact.identity.interactionId
     && other.identity.rootFrameId === fact.identity.rootFrameId && other.identity.checkpointId === fact.identity.checkpointId
@@ -306,7 +306,7 @@ type PublicEventProofResult =
   | { ok: false; error: RouteBlockReason };
 
 function publicFactFor(input: PublicPresentationRouterInput, candidate: CandidateBase & { eventId: string; rootEventId: string }, requireCardPlay = false): PublicEventProofResult {
-  const facts = factsForEvent(input.snapshot, candidate.eventId);
+  const facts = publicFactsForEvent(input.snapshot, candidate.eventId);
   if (facts.length === 0) return { ok: false, error: "missing-public-fact" };
   if (facts.length !== 1) return { ok: false, error: "conflicting-public-facts" };
   const fact = facts[0];
@@ -399,7 +399,7 @@ export function routePublicPresentation(input: PublicPresentationRouterInput): P
   if (input.expectedScopeGeneration && input.expectedScopeGeneration !== input.scope.generation) return blocked("scope-generation-mismatch");
 
   if (candidate.kind === "fact-only") {
-    const factRows = factsForEvent(input.snapshot, candidate.eventId);
+    const factRows = publicFactsForEvent(input.snapshot, candidate.eventId);
     if (factRows.length !== 1) return blocked(factRows.length ? "conflicting-public-facts" : "missing-public-fact");
     const fact = factRows[0];
     if (fact.semantics !== "PROVEN" || fact.visibility !== "PUBLIC") return blocked("timeline-proof-mismatch");
@@ -464,13 +464,16 @@ export function routePublicPresentation(input: PublicPresentationRouterInput): P
     if (!proof.event.physicalCardIds?.includes(candidate.physicalCardId) || proof.event.actorId !== proof.fact.actorId) return blocked("timeline-proof-mismatch");
     if (candidate.destination === "PUBLIC_PLAY") return blocked("zone-proof-mismatch");
     if (candidate.destination === "EQUIPMENT" && (proof.event.action !== "equip" || proof.fact.category !== "CARD_EQUIPPED")
-      || candidate.destination === "JUDGEMENT" && proof.event.action !== "play"
-      || candidate.destination === "DISCARD" && proof.event.action !== "discard" && proof.event.action !== "reveal") return blocked("zone-proof-mismatch");
+      || candidate.destination === "JUDGEMENT" && proof.event.action !== "play" && proof.event.action !== "zone_transition"
+      || candidate.destination === "DISCARD" && proof.event.action !== "discard" && proof.event.action !== "reveal" && proof.event.action !== "zone_transition") return blocked("zone-proof-mismatch");
+    if (proof.event.action === "zone_transition" && (proof.fact.category !== "STAGE_COMPLETED" || !candidate.sourceEventId)) return blocked("zone-proof-mismatch");
     const zoneRows = input.publicZones.filter((zone) => zone.eventId === candidate.eventId && zone.physicalCardId === candidate.physicalCardId);
     if (zoneRows.length !== 1) return blocked("missing-zone-proof");
     const zone = zoneRows[0];
     if (zone.semantics !== "PROVEN" || zone.visibility !== "PUBLIC" || zone.zone !== candidate.destination
-      || zone.ownerId !== candidate.ownerId || zone.slot !== candidate.slot) return blocked("zone-proof-mismatch");
+      || zone.ownerId !== candidate.ownerId || zone.slot !== candidate.slot
+      || zone.sourceEventId !== candidate.sourceEventId
+      || zone.rootEventId !== undefined && zone.rootEventId !== candidate.rootEventId) return blocked("zone-proof-mismatch");
     if (candidate.from && (!zone.from || zone.from.zone !== candidate.from.zone
       || zone.from.ownerId !== candidate.from.ownerId || zone.from.slot !== candidate.from.slot)) return blocked("zone-proof-mismatch");
     const claimId = transitionClaimId(input.scope.roomCode, candidate.transitionId);
@@ -479,7 +482,7 @@ export function routePublicPresentation(input: PublicPresentationRouterInput): P
     return {
       kind: "zone-transition", claimedBy: "PublicPhysicalCardTransition", claimId, scope: scope(input),
       eventId: candidate.eventId, physicalCardId: candidate.physicalCardId, ownerId: candidate.ownerId,
-      destination: candidate.destination, ...(candidate.slot ? { slot: candidate.slot } : {}),
+      destination: candidate.destination, ...(candidate.sourceEventId ? { sourceEventId: candidate.sourceEventId } : {}), ...(candidate.slot ? { slot: candidate.slot } : {}),
       ...(candidate.from ? { from: candidate.from } : {}), shadowComparison,
     };
   }

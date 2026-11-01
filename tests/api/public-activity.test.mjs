@@ -368,6 +368,10 @@ test("generic H4 retains damage through Skip and formats committed public or hid
   const rest = { ...snapshot({ stage: "DAMAGE" }), identity: null, interaction: null, stable: { kind: "REST" },
     retainedPublicEvent: visible, retainedPublicEventFacts: [damage, visible] };
   assert.equal(derivePublicInteractionNarration({ ...input([]), snapshot: rest })?.eventId, "visible");
+  const zoneTransition = fact("zone-transition", 5, "STAGE_COMPLETED", { actorId: "p2", effect: { kind: "public_zone_transition" } });
+  const restAfterZoneTransition = { ...rest, retainedPublicEvent: zoneTransition, retainedPublicEventFacts: [damage, visible, zoneTransition] };
+  assert.equal(derivePublicInteractionNarration({ ...input([]), snapshot: restAfterZoneTransition })?.eventId, "visible",
+    "a proof-only zone transition must not replace the last truthful H4 narration");
   assert.equal(derivePublicInteractionNarration({ ...input([]), snapshot: rest, interactionId: "new-interaction" }), null);
   assert.equal(derivePublicInteractionNarration(input([root, hidden]))?.headline, "Test Player 2 used Retaliation and obtained one card from Test Player 1.");
   const generic = fact("generic", 4, "SKILL_USED", { actorId: "p2", label: "New ability", outcomeLabel: "resolved a public effect", effect: { kind: "generic_effect" } });

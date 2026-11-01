@@ -142,6 +142,15 @@ test("Captivating uses one Diamond hand card as Overindulgence and preserves its
   const used = await requestAndSettle("trigger", { code: game.code, token: daqiaoMember.token, providerId: "daqiao_captivating", cardIds: [diamond.id], targetId: target.id });
   assert.equal(used.status, 200, JSON.stringify(used.data));
   const captivatingEvent = used.data.room.timeline.find((event) => event.type === "card" && event.card?.id === diamond.id);
+  const attachedTransition = used.data.room.timeline.find((event) => event.publicZoneTransition?.physicalCardId === diamond.id
+    && event.publicZoneTransition.to?.zone === "JUDGEMENT");
+  assert.ok(attachedTransition, "the committed delayed card gets one public transition into Judgement");
+  assert.deepEqual(attachedTransition.publicZoneTransition.from, { zone: "HAND", ownerId: daqiao.id });
+  assert.deepEqual(attachedTransition.publicZoneTransition.to, { zone: "JUDGEMENT", ownerId: target.id });
+  assert.equal(attachedTransition.publicZoneTransition.sourceEventId, captivatingEvent.id,
+    "the real committed source card supplies the public CardFace");
+  assert.equal(attachedTransition.publicFact?.category, "STAGE_COMPLETED");
+  assert.equal(attachedTransition.publicFact?.rootEventId, attachedTransition.publicZoneTransition.rootEventId);
   assert.deepEqual(captivatingEvent.publicCardEffects?.[0]?.materials, [{ cardId: diamond.id, ownerId: daqiao.id, fromZone: "HAND", toZone: "JUDGEMENT" }],
     "the committed conversion proof settles to the delayed card's actual Judgement Zone");
   assert.equal(captivatingEvent.publicCardEffects?.[0]?.activationOwnerId, daqiao.id);
@@ -150,6 +159,12 @@ test("Captivating uses one Diamond hand card as Overindulgence and preserves its
   const placed = (await state(game.code, targetMember.token)).data;
   const delayed = placed.players.find((player) => player.id === target.id).judgementCards;
   assert.deepEqual(delayed, [{ ...diamond, kind: "Overindulgence" }]);
+  const allViewerStates = await Promise.all(game.members.map((member) => state(game.code, member.token)));
+  for (const viewerResponse of allViewerStates) {
+    const viewer = viewerResponse.data;
+    assert.deepEqual(viewer.timeline.find((event) => event.id === attachedTransition.id)?.publicZoneTransition, attachedTransition.publicZoneTransition,
+      "all viewers receive the same committed public attachment proof");
+  }
   assert.equal(placed.players.find((player) => player.id === daqiao.id).handCount, 1);
   assert.equal(discardIds(game.code).includes(diamond.id), false);
   assert.equal(countCardInZones(game.code, diamond.id), 1);
@@ -160,6 +175,16 @@ test("Captivating uses one Diamond hand card as Overindulgence and preserves its
   assert.equal(resolved.status, 200, JSON.stringify(resolved.data));
   assert.equal(resolved.data.room.phase, "discard", "a black Overindulgence judgement skips the target's Play Phase");
   assert.equal(resolved.data.room.players.find((player) => player.id === target.id).judgementCards.length, 0);
+  const settledTransition = resolved.data.room.timeline.find((event) => event.publicZoneTransition?.physicalCardId === diamond.id
+    && event.publicZoneTransition.from?.zone === "JUDGEMENT" && event.publicZoneTransition.to?.zone === "DISCARD");
+  assert.ok(settledTransition, "later public Judgement resolution proves the delayed card's committed Discard destination");
+  assert.deepEqual(settledTransition.publicZoneTransition.from, { zone: "JUDGEMENT", ownerId: target.id });
+  assert.deepEqual(settledTransition.publicZoneTransition.to, { zone: "DISCARD", ownerId: null });
+  const reloaded = (await state(game.code, game.members[2].token)).data;
+  assert.equal(reloaded.timeline.filter((event) => event.id === settledTransition.id).length, 1,
+    "a reconnect-style state reload retains exactly one copy of the committed transition");
+  assert.deepEqual(reloaded.timeline.find((event) => event.id === settledTransition.id)?.publicZoneTransition,
+    settledTransition.publicZoneTransition, "replay keeps the same public source and destination proof");
   assert.ok(discardIds(game.code).includes(diamond.id), "the converted physical card is discarded after resolution");
   assert.equal(countCardInZones(game.code, diamond.id), 1);
 });
@@ -173,6 +198,8 @@ test("Captivating enters the ordinary Overindulgence Negation lifecycle", async 
   assert.equal(pending.currentAction.requirement, "negate");
   assert.equal(pending.pendingNegation.cardName, "Overindulgence");
   assert.equal(pending.players.find((player) => player.id === opened.target.id).judgementCards.length, 0);
+  assert.equal(JSON.stringify(pending.timeline).includes("negation-captivating-negation"), false,
+    "an uncommitted response card identity is absent from the public timeline");
   const pendingCaptivating = pending.timeline.find((event) => event.type === "card" && event.card?.id === opened.diamond.id);
   assert.equal(pending.presentationSnapshot.reactionChain?.publicEventLinks?.root?.eventId, pendingCaptivating.id,
     "the semantic Overindulgence Negation chain links to Captivating's real Diamond play event");
@@ -191,6 +218,9 @@ test("Captivating enters the ordinary Overindulgence Negation lifecycle", async 
   const settledCaptivating = negated.data.room.timeline.find((event) => event.type === "card" && event.card?.id === opened.diamond.id);
   assert.equal(settledCaptivating.publicCardEffects?.[0]?.materials[0]?.toZone, "DISCARD",
     "a negated conversion settles to discard instead of claiming Judgement placement");
+  assert.equal(negated.data.room.timeline.some((event) => event.publicZoneTransition?.physicalCardId === opened.diamond.id
+    && event.publicZoneTransition.to?.zone === "JUDGEMENT"), false,
+  "a cancelled placement never emits a false Judgement arrival");
   assert.equal(negated.data.room.presentationSnapshot.publicCardEffects.find((proof) => proof.effectId === "daqiao_captivating")?.materials[0]?.toZone, "DISCARD");
   assert.equal(discardIds(opened.game.code).filter((id) => id === opened.diamond.id).length, 1);
   assert.equal(discardIds(opened.game.code).filter((id) => id === "negation-captivating-negation").length, 1);
@@ -255,6 +285,8 @@ test("Captivating uses Sima Yi's final replacement Judgement result in both dire
     assert.equal(revealed.status, 200, JSON.stringify(revealed.data));
     assert.equal(revealed.data.room.currentAction.triggerEvent, "judgement_revealed");
     assert.equal(revealed.data.room.actionPlayerId, opened.other.id);
+    assert.equal(JSON.stringify(revealed.data.room.timeline).includes(replacement.id), false,
+      "the replacement card remains private while Sima Yi is only being offered the decision");
     const replaced = await requestAndSettle("trigger", { code: opened.game.code, token: opened.otherMember.token, providerId: "sima_yi_guicai", cardId: replacement.id });
     assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
     assert.equal(replaced.data.room.phase, expectedPhase);
@@ -262,6 +294,12 @@ test("Captivating uses Sima Yi's final replacement Judgement result in both dire
     assert.ok(discardIds(opened.game.code).includes(opened.diamond.id));
     assert.ok(discardIds(opened.game.code).includes(original.id));
     assert.ok(discardIds(opened.game.code).includes(replacement.id));
+    const replacedCardTransition = replaced.data.room.timeline.find((event) => event.publicZoneTransition?.physicalCardId === replacement.id
+      && event.publicZoneTransition.from?.zone === "HAND" && event.publicZoneTransition.to?.zone === "DISCARD");
+    assert.ok(replacedCardTransition, "a committed public Sima Yi replacement can be proved into Discard");
+    const revealedCardTransition = replaced.data.room.timeline.find((event) => event.publicZoneTransition?.physicalCardId === original.id
+      && event.publicZoneTransition.from?.zone === "DECK" && event.publicZoneTransition.to?.zone === "DISCARD");
+    assert.ok(revealedCardTransition, "the original public deck reveal is separately proved into Discard");
     assert.equal(countCardInZones(opened.game.code, opened.diamond.id), 1);
   }
 });

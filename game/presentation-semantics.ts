@@ -27,14 +27,23 @@ export type PublicPresentationEventCategory =
 
 export type PublicEffectDescriptor = { kind: string; label?: string };
 
-/** Exact public exit of a card already visible in an Equipment slot. */
+export type PublicZoneEndpoint =
+  | { zone: "HAND" | "EQUIPMENT" | "JUDGEMENT"; ownerId: string; slot?: keyof EquipmentZone }
+  | { zone: "DECK" | "DISCARD"; ownerId: null };
+
+/** Server-committed movement of one already-public physical card. */
 export type PublicPhysicalZoneTransition = {
   semantics: "PROVEN";
   visibility: "PUBLIC";
+  /** ID of the committed log event that records this movement. */
   eventId: string;
+  /** Exact public event that supplies the real CardFace. */
+  sourceEventId?: string;
+  /** Causal public root; it can differ from sourceEventId on a later Judgement. */
+  rootEventId?: string;
   physicalCardId: string;
-  from: { zone: "EQUIPMENT"; ownerId: string; slot: keyof EquipmentZone };
-  to: { zone: "DISCARD"; ownerId: null };
+  from: PublicZoneEndpoint;
+  to: PublicZoneEndpoint;
 };
 
 /** A provider-supplied, immutable public fact. Labels must already be privacy-safe. */
@@ -305,7 +314,7 @@ export function retainedPublicEventFromTimeline(timeline: readonly unknown[]): {
     if (fact) {
       const committedIdentity = identity(fact.committedIdentity);
       if (!committedIdentity || fact.interactionId !== committedIdentity.interactionId || !nonEmptyString(fact.rootEventId)
-        || !["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED"].includes(String(fact.category))
+        || !["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED", "STAGE_COMPLETED"].includes(String(fact.category))
           && !(fact.category === "CARD_EQUIPPED" && isCommittedPublicEquipmentFact(event, fact))) return null;
       const latest = publicEvent({ ...fact, identity: committedIdentity, eventId: event.id,
         order: event.publicSequence, affectedPlayerIds: fact.affectedPlayerIds ?? [],

@@ -14,7 +14,7 @@ import { canUseAction, type CurrentAction, type GameplayAction, type PlayTargetR
 import { latestPublicMessages } from "../game/messages.js";
 import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice, PresentationSnapshotPublicCardEffect } from "../game/presentation-snapshot";
 import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationLustDuelAttackResponseProof, PresentationPublicCardEffectProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
-import type { PublicPhysicalZoneTransition } from "../game/presentation-semantics";
+import type { PublicPhysicalZoneTransition, PublicPresentationEventFactDraft } from "../game/presentation-semantics";
 import { attackDodgeResponseEventMatchesProof } from "../game/presentation-v2";
 import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
 import { attackDodgePublicActionEvents, attackDodgeSettlementSupersessionReason, attackHitSettlementSupersessionReason, parseRetiredAttackDodgeCompositionSnapshot, persistRetiredAttackDodgeComposition, retiredAttackDodgeCompositionServerSnapshot, retiredAttackDodgeCompositionStorageSnapshot, subscribeRetiredAttackDodgeComposition, type AttackDodgeSettlementHoldIdentity, type AttackHitSettlementHoldIdentity } from "../game/attack-dodge-settlement-lifecycle";
@@ -38,6 +38,7 @@ import { publicHeroCostAnnouncementLifecycle } from "../game/public-hero-cost-li
 import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate } from "../game/public-announcement";
 import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
 import { isM2EquipmentTransitionEvent, routePublicEquipmentTransition } from "./public-equipment-transition";
+import { isM3JudgementTransitionEvent, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, routePublicJudgementTransition } from "./public-judgement-transition";
 import type { PublicPresentationRoute } from "./public-presentation-routing";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
@@ -99,7 +100,7 @@ function persistAttackHitSettlementRetirement(held: AttackHitSettlementHoldIdent
 
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
 type PresentationImportance = "essential" | "informational";
-type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; privateToPlayerId?: string; publicZoneTransition?: PublicPhysicalZoneTransition; publicDiaoChanNotice?: unknown; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; actorId?: string; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; privateToPlayerId?: string; publicFact?: PublicPresentationEventFactDraft; publicZoneTransition?: PublicPhysicalZoneTransition; publicDiaoChanNotice?: unknown; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type PrivateHandTransfer = { semantics: "PRIVATE_PROVEN"; transferId: string; cardId: string; recipientId: string; sourceZone: "deck" | "hand" | "equipment" | "judgement" | "harvest_pool" | "damage_cards" | "distribution"; sourcePlayerId?: string; destinationZone: "hand"; committedAt: number; revealUntil: number; rootEventId?: string; rootResolutionId?: string; interactionId?: string; frameId?: string };
 type CardEvent = PresentationEventMeta & { id: string; player: string; actorId?: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw"; drawPlayerId?: string; privateHandTransfer?: PrivateHandTransfer; presentation?: boolean };
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
@@ -4183,6 +4184,33 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeEquipmentZoneTransition = activeEquipmentTransitionRoute?.kind === "zone-transition"
     ? activeEquipmentTransitionRoute
     : null;
+  const activeJudgementTransitionRoute = useMemo(() => {
+    if (!activeEvent || !isM3JudgementTransitionEvent(activeEvent) || !room.presentationSnapshot) return null;
+    return routePublicJudgementTransition({
+      event: activeEvent,
+      timeline: room.timeline,
+      snapshot: room.presentationSnapshot,
+      clientView: clientPresentation,
+      roomCode: room.code,
+      viewerId: room.meId,
+      retiredTransitionIds: [...presentedEventIds],
+    });
+  }, [activeEvent, room.timeline, room.presentationSnapshot, clientPresentation, room.code, room.meId, presentedEventIds]);
+  const activeJudgementZoneTransition = activeJudgementTransitionRoute?.kind === "zone-transition"
+    ? activeJudgementTransitionRoute
+    : null;
+  const activeJudgementTransitionCard = activeJudgementZoneTransition
+    ? room.timeline.find((event) => event.id === activeJudgementZoneTransition.sourceEventId && event.type === "card")?.card ?? null
+    : null;
+  const validatedJudgementTransitionSourceEventIds = useMemo(() => new Set(room.timeline.flatMap((event) => {
+    if (!isM3JudgementTransitionEvent(event) || !room.presentationSnapshot) return [];
+    const route = routePublicJudgementTransition({
+      event, timeline: room.timeline, snapshot: room.presentationSnapshot, clientView: clientPresentation,
+      roomCode: room.code, viewerId: room.meId,
+    });
+    const sourceEventId = publicJudgementTransitionSourceEventId(route);
+    return sourceEventId ? [sourceEventId] : [];
+  })), [room.timeline, room.presentationSnapshot, clientPresentation, room.code, room.meId]);
   const activeEquipmentArrivalEventId = activeEquipmentZoneTransition?.destination === "EQUIPMENT"
     ? activeEquipmentZoneTransition.eventId
     : null;
@@ -4196,10 +4224,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ? `cards:${activeEvent.action}:${activeEvent.cards.map((item) => item.kind).join(",")}`
       : activeEvent ? "message" : "";
   const activeEventTimerIdentity = activeEventTimerEventId ? `${activeEventTimerEventId}|${activeEventTimerKind}` : "";
-  const activeEventDisplayDuration = activeEvent?.type === "card" || activeEvent?.type === "cards"
+  const activeJudgementTransitionKey = activeJudgementZoneTransition?.claimId ?? "";
+  const activeEventDisplayDuration = activeJudgementZoneTransition ? UI_TIMING.judgementCard
+    : activeEvent?.type === "card" || activeEvent?.type === "cards"
     ? isJudgementReveal(activeEvent) ? UI_TIMING.judgementCard : UI_TIMING.playedCard
     : 0;
-  const hasUnseenPresentations = room.timeline.some((event) => event.type !== "message" && event.presentation !== false
+  const hasUnseenPresentations = room.timeline.some((event) => (event.type !== "message" || isM3JudgementTransitionEvent(event)) && event.presentation !== false
     && !presentedEventIds.has(event.id) && event.id !== activeEquipmentArrivalEventId);
   const presentationBusyCauses = {
     optimisticPlay: Boolean(optimisticPlay),
@@ -4931,7 +4961,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const scopedEventIds = new Set(scopedTimelineEvents.map((event) => event.id));
   const scopedCardIds = new Set(scopedTimelineEvents.flatMap(eventCards).map((item) => item.id));
   const scopedLocalEvents = effectiveSequenceStartId ? resolutionEvents.filter((event) => scopedEventIds.has(event.id) || eventCards(event).some((item) => scopedCardIds.has(item.id)) || event.id === optimisticPlay?.id) : resolutionEvents;
-  const sequenceEvents = [...scopedTimelineEvents, ...scopedLocalEvents].filter(retainsAtPlayer).filter((event, index, all) => all.findIndex((candidate) => candidate.id === event.id || event.type === "card" && candidate.type === "card" && candidate.card.id === event.card.id) === index);
+  const publicJudgementCardIds = new Set(room.players.flatMap((player) => player.judgementCards.map((card) => card.id)));
+  const sequenceEvents = [...scopedTimelineEvents, ...scopedLocalEvents].filter(retainsAtPlayer)
+    .filter((event) => !validatedJudgementTransitionSourceEventIds.has(event.id)
+      && !eventCards(event).some((card) => publicJudgementCardIds.has(card.id)))
+    .filter((event, index, all) => all.findIndex((candidate) => candidate.id === event.id || event.type === "card" && candidate.type === "card" && candidate.card.id === event.card.id) === index);
   const displayedEvent = activeEvent ?? optimisticPlay;
   const processedEventIds = new Set(processedTimelineKey.split("|"));
   const pendingPresentationEvents = [optimisticPlay, activeEvent, ...eventQueue, ...room.timeline.filter((event) => !processedEventIds.has(event.id))].filter((event): event is GameEvent => Boolean(event));
@@ -4963,7 +4997,22 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     setPresentedEventIds((ids) => ids.has(transition.eventId) ? ids : new Set([...ids, transition.eventId]));
     setActiveEvent((currentEvent) => currentEvent?.id === transition.eventId ? null : currentEvent);
   }, [activeEvent, clientPresentation, presentedEventIds, room.code, room.meId, room.players, room.presentationSnapshot]);
-  const judgementInFlight = new Set(pendingPresentationEvents.flatMap((event) => settlesInJudgement(event) ? [event.card.id] : []));
+  const markPublicJudgementTransitionPresented = useCallback((transition: Extract<PublicPresentationRoute, { kind: "zone-transition" }>) => {
+    if (transition.scope.roomCode !== room.code || transition.scope.viewerId !== room.meId
+      || !activeEvent || activeEvent.id !== transition.eventId || !isM3JudgementTransitionEvent(activeEvent)) return;
+    const refreshed = room.presentationSnapshot ? routePublicJudgementTransition({
+      event: activeEvent, timeline: room.timeline, snapshot: room.presentationSnapshot, clientView: clientPresentation,
+      roomCode: room.code, viewerId: room.meId, retiredTransitionIds: [...presentedEventIds],
+    }) : null;
+    if (refreshed?.kind !== "zone-transition" || refreshed.claimId !== transition.claimId
+      || !publicJudgementTransitionMatches(activeEvent, transition)) return;
+    setPresentedEventIds((ids) => ids.has(transition.eventId) ? ids : new Set([...ids, transition.eventId]));
+    setActiveEvent((currentEvent) => currentEvent?.id === transition.eventId ? null : currentEvent);
+  }, [activeEvent, clientPresentation, presentedEventIds, room.code, room.meId, room.presentationSnapshot, room.timeline]);
+  const judgementInFlight = new Set([
+    ...pendingPresentationEvents.flatMap((event) => settlesInJudgement(event) ? [event.card.id] : []),
+    ...(activeJudgementZoneTransition?.destination === "JUDGEMENT" ? [activeJudgementZoneTransition.physicalCardId] : []),
+  ]);
   const privateDrawVisible = privateDrawCards.length > 0 && !activeEvent && eventQueue.length === 0;
   const privateDrawTimer = privateDrawVisible
     ? <Countdown key={privateDrawCards.map((drawn) => drawn.id).join("-")} durationMs={UI_TIMING.privateDraw} label="Cards close in" compactEvent />
@@ -5193,7 +5242,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const visible = fresh.filter((event) => {
       if (event.presentation === false) return false;
       // Informational text is not a blocking visual presentation.
-      if (event.type === "message") return false;
+      if (event.type === "message") return isM3JudgementTransitionEvent(event);
       if (event.type === "card" && optimisticallyPresentedCards.current.delete(event.card.id)) { immediatelyPresented.add(event.id); return false; }
       if (event.type === "cards" && event.action === "play") {
         const matched = event.cards.map((card) => optimisticallyPresentedCards.current.delete(card.id));
@@ -5247,18 +5296,22 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => {
     if (!activeEventTimerEventId) return;
     const timerContext = presentationTimerDiagnosticContextRef.current;
-    const traceTimer = (status: "scheduled" | "cancelled" | "fired" | "equipment-arrival-exempt") => recordAttackDodgeUxTrace("public-event-presentation-timer", {
+    const traceTimer = (status: "scheduled" | "cancelled" | "fired" | "equipment-arrival-exempt" | "zone-transition-exempt") => recordAttackDodgeUxTrace("public-event-presentation-timer", {
       status,
       eventId: activeEventTimerEventId,
       eventKind: activeEventTimerKind,
       stableIdentity: activeEventTimerIdentity,
       durationMs: activeEventDisplayDuration,
-      timerMode: activeEquipmentArrivalKey ? "equipment-arrival" : "timed-reveal",
+      timerMode: activeEquipmentArrivalKey ? "equipment-arrival" : activeJudgementTransitionKey ? "zone-transition" : "timed-reveal",
       equipmentArrivalIdentity: activeEquipmentArrivalKey || undefined,
       ...timerContext,
     });
     if (activeEquipmentArrivalKey) {
       traceTimer("equipment-arrival-exempt");
+      return;
+    }
+    if (activeJudgementTransitionKey) {
+      traceTimer("zone-transition-exempt");
       return;
     }
     let fired = false;
@@ -5273,7 +5326,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       clearTimeout(timer);
       if (!fired) traceTimer("cancelled");
     };
-  }, [activeEventTimerEventId, activeEventTimerKind, activeEventTimerIdentity, activeEventDisplayDuration, activeEquipmentArrivalKey]);
+  }, [activeEventTimerEventId, activeEventTimerKind, activeEventTimerIdentity, activeEventDisplayDuration, activeEquipmentArrivalKey, activeJudgementTransitionKey]);
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || resolutionClosing || !resolutionEvents.length) return; const timer = setTimeout(() => setResolutionClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, resolutionClosing, resolutionEvents.length]);
   useEffect(() => { if (!resolutionClosing) return; const closingRevision = resolutionRevision.current; const timer = setTimeout(() => { if (resolutionRevision.current !== closingRevision) { setResolutionClosing(false); return; } setResolutionEvents([]); setSequenceScopeStartId(""); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
   useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawPresentation({ playerId: room.meId, cards: [], transferIds: [] }), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, room.meId, activeEvent, eventQueue.length]);
@@ -9433,7 +9486,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && (postDamageHistoryEventIds.has(displayedEvent.id)
       || eventCards(displayedEvent).some((card) => postDamageHistoryCardIds.has(card.id))));
   const displayedTableEvent = displayedEventOwnedByPublicCard || displayedEventIsRetiredAttackDodge || displayedEventIsRetiredPostDamageHistory ? null : displayedEvent;
-  const tableSequenceActiveEvent = activeEquipmentZoneTransition ? null : displayedTableEvent;
+  const tableSequenceActiveEvent = activeEquipmentZoneTransition || activeJudgementZoneTransition ? null : displayedTableEvent;
   const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(displayedTableEvent && eventCards(displayedTableEvent).length);
   const attackDodgeTraceSeat = (playerId: string | null | undefined) => playerId
     ? room.players.find((player) => player.id === playerId)?.seat ?? null
@@ -10365,6 +10418,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {privateDeckReorder && <PrivateDeckReorderDialog key={room.actionRevision} cards={privateDeckReorder.cards} minTop={privateDeckReorder.minTop} maxTop={privateDeckReorder.maxTop} disabled={busy} error={error} onSubmit={(topCardIds, bottomCardIds) => onAction("trigger", { providerId: "private_deck_reorder", topCardIds, bottomCardIds })} />}
       {tablePresentationVisible && <TableResolutionSequence events={displayedSequenceEvents} activeEvent={tableSequenceActiveEvent} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} />}
       {activeEquipmentZoneTransition && activeEvent?.type === "card" && <PublicEquipmentCardTransition event={activeEvent} route={activeEquipmentZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicEquipmentTransitionPresented} />}
+      {activeJudgementZoneTransition && activeJudgementTransitionCard && activeEvent && <PublicJudgementCardTransition event={activeEvent} card={activeJudgementTransitionCard} route={activeJudgementZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicJudgementTransitionPresented} />}
       {harvestDisplay && <BattlefieldChoiceStage
         key={harvestDisplay.revealEventId ?? "bumper-harvest-public-pool"}
         ref={harvestStageRef}
@@ -11313,6 +11367,73 @@ function PublicEquipmentCardTransition({ event, route, players, myTableIndex, on
         if (animation.target !== animation.currentTarget || animation.animationName !== expectedAnimation) return;
         onPresented(route);
       }}><div><CardFace card={event.card} settlementCardId={event.card.id} /></div></div>
+  </div>;
+}
+
+function PublicJudgementCardTransition({ event, card, route, players, myTableIndex, onPresented }: {
+  event: GameEvent;
+  card: Card;
+  route: Extract<PublicPresentationRoute, { kind: "zone-transition" }>;
+  players: Player[];
+  myTableIndex: number;
+  onPresented: (route: Extract<PublicPresentationRoute, { kind: "zone-transition" }>) => void;
+}) {
+  const revealRef = useRef<HTMLDivElement>(null);
+  const arrivingInJudgement = route.destination === "JUDGEMENT";
+  const sourceOwnerId = route.from?.ownerId ?? "";
+  useLayoutEffect(() => {
+    const reveal = revealRef.current;
+    const table = reveal?.closest<HTMLElement>(".play-table");
+    const shell = table?.closest<HTMLElement>(".game-shell");
+    if (!reveal || !table || !shell) return;
+    const localPlayerId = players[myTableIndex]?.id;
+    const source = route.from?.zone === "DECK"
+      ? findAnchor(shell, "data-draw-anchor", "true")
+      : route.from?.zone === "JUDGEMENT"
+        ? findAnchor(shell, "data-judgement-id", card.id) ?? (sourceOwnerId ? findAnchor(shell, "data-player-anchor", sourceOwnerId) : null)
+        : sourceOwnerId === localPlayerId
+          ? findAnchor(shell, "data-card-origin-anchor", sourceOwnerId) ?? findAnchor(shell, "data-player-anchor", sourceOwnerId)
+          : sourceOwnerId ? findAnchor(shell, "data-player-anchor", sourceOwnerId) : null;
+    const destination = arrivingInJudgement
+      ? findAnchor(shell, "data-judgement-id", card.id)
+      : findAnchor(shell, "data-discard-anchor", "true");
+    const face = reveal.querySelector<HTMLElement>(".played-card");
+    if (!face) return;
+    const measure = () => {
+      const origin = source ? centerRelativeToTable(table, source) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+      reveal.style.setProperty("--origin-x", origin.x + "px");
+      reveal.style.setProperty("--origin-y", origin.y + "px");
+      const point = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+      if (arrivingInJudgement) {
+        reveal.style.setProperty("--judgement-x", point.x + "px");
+        reveal.style.setProperty("--judgement-y", point.y + "px");
+        if (destination) {
+          const rect = destination.getBoundingClientRect();
+          reveal.style.setProperty("--judgement-scale-x", String(rect.width / face.offsetWidth));
+          reveal.style.setProperty("--judgement-scale-y", String(rect.height / face.offsetHeight));
+        }
+      } else {
+        reveal.style.setProperty("--discard-x", point.x + "px");
+        reveal.style.setProperty("--discard-y", point.y + "px");
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(table);
+    if (source) observer.observe(source);
+    if (destination) observer.observe(destination);
+    return () => observer.disconnect();
+  }, [arrivingInJudgement, card.id, myTableIndex, players, route.destination, route.from, sourceOwnerId]);
+
+  const expectedAnimation = arrivingInJudgement ? "judgementCardToZone" : "revealedCardsToDiscard";
+  return <div className="table-resolution-layer public-zone-transition-layer" role="status">
+    <div ref={revealRef} className={`active-table-reveal ${arrivingInJudgement ? "judgement-flight" : "direct-discard"}`}
+      data-settlement-event-id={event.id} data-public-zone-transition-event-id={route.eventId}
+      data-public-zone-transition-card-id={route.physicalCardId} data-public-zone-transition-destination={route.destination}
+      key={route.claimId} onAnimationEnd={(animation) => {
+        if (animation.target !== animation.currentTarget || animation.animationName !== expectedAnimation) return;
+        onPresented(route);
+      }}><div><CardFace card={card} settlementCardId={card.id} /></div></div>
   </div>;
 }
 
