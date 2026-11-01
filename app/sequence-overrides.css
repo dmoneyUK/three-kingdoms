@@ -4477,6 +4477,24 @@
   letter-spacing: .035em;
 }
 
+/* §10.30: when a genuine full-size REVEAL leaves no room for the regular
+   lower PAC, preserve its public stage copy in a short lower-lane label. */
+.game-shell .play-table > .public-activity-chip[data-public-activity-compact="true"] {
+  min-height: 0;
+  gap: 0;
+  padding: 2px 8px;
+}
+
+.game-shell .play-table > .public-activity-chip[data-public-activity-compact="true"][data-public-activity-has-stage="true"] > strong {
+  display: none;
+}
+
+.game-shell .play-table > .public-activity-chip[data-public-activity-compact="true"] > strong,
+.game-shell .play-table > .public-activity-chip[data-public-activity-compact="true"] > small {
+  font: 700 clamp(10px, 2.8vw, 11px)/1.05 Arial, sans-serif;
+  letter-spacing: normal;
+}
+
 @media (max-width: 520px) {
   .game-shell .play-table > .public-activity-chip[data-public-activity-kind="target-card-choice"] {
     min-height: 34px;

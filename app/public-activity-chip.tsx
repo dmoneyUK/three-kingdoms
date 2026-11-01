@@ -51,10 +51,13 @@ type PlacementMemory = {
   reason: string;
   traceCount: number;
   lastTraceSignature: string;
+  compact: boolean;
+  activeRevealKey: string | null;
 };
 
 const COLLISION_GAP = 6;
 const ACTIVITY_CHIP_GAP = 2;
+const ACTIVE_REVEAL_PAC_GAP = 8;
 const CANDIDATE_EPSILON = 0.5;
 
 export function fixedLowerActivityEdge(tableBottom: number, viewportBottom: number) {
@@ -159,6 +162,22 @@ function placeChip(
   previousMemory: PlacementMemory | null,
 ): PlacementMemory {
   const tableRect = table.getBoundingClientRect();
+  const activeFullRevealCards = [...table.querySelectorAll<HTMLElement>(
+    '.public-card-journey-card[data-public-card-journey-phase="reveal"][data-public-card-journey-size="reveal"]',
+  )].filter((card) => {
+    const style = window.getComputedStyle(card);
+    const rect = card.getBoundingClientRect();
+    return style.display !== "none" && style.visibility !== "hidden" && rect.width >= 70 && rect.height >= 110;
+  });
+  const activeRevealKey = activeFullRevealCards.map((card) =>
+    `${card.dataset.publicCardJourneyEventId ?? ""}:${card.dataset.publicCardJourneyCardId ?? ""}`,
+  ).sort().join("|") || null;
+  const hasActiveFullReveal = activeFullRevealCards.length > 0;
+  // Keep a compact label stable throughout this genuine REVEAL. This avoids
+  // ResizeObserver toggling between full and compact copy on every pass.
+  let compact = hasActiveFullReveal && previousMemory?.compact === true && previousMemory.activeRevealKey === activeRevealKey;
+  if (compact) chip.dataset.publicActivityCompact = "true";
+  else delete chip.dataset.publicActivityCompact;
   const visualViewport = window.visualViewport;
   const viewportTop = Math.max(0, visualViewport?.offsetTop ?? 0);
   const viewportBottom = Math.min(window.innerHeight, (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight));
@@ -181,10 +200,11 @@ function placeChip(
     ? fixedWidth
     : publicCorridorWidth(table, { top: lowerBandTop, bottom }, 340, { reserveTimer: false })}px`;
   const width = chip.offsetWidth;
-  const height = chip.offsetHeight;
-  const placementBottom = fixedLowerCenter ? fixedLowerEdge : bottom;
-  const placementTop = fixedLowerCenter ? fixedBand.top : lowerBandTop;
+  let height = chip.offsetHeight;
+  const placementBottom = fixedLowerCenter && !hasActiveFullReveal ? fixedLowerEdge : bottom;
+  const placementTop = fixedLowerCenter && !hasActiveFullReveal ? fixedBand.top : lowerBandTop;
   const firstTop = placementBottom - height;
+  const collisionGap = hasActiveFullReveal ? ACTIVE_REVEAL_PAC_GAP : ACTIVITY_CHIP_GAP;
   const obstacles = protectedRects(table);
   const candidateRegion = {
     left: leftBound,
@@ -194,9 +214,9 @@ function placeChip(
     width: Math.max(0, rightBound - leftBound),
     height: Math.max(0, placementBottom - placementTop),
   };
-  const relevantObstacles = fixedLowerCenter || harvestPoolReadOnly
+  const relevantObstacles = fixedLowerCenter || harvestPoolReadOnly || hasActiveFullReveal
     ? obstacles
-    : obstacles.filter((obstacle) => intersects(obstacle, candidateRegion, ACTIVITY_CHIP_GAP));
+    : obstacles.filter((obstacle) => intersects(obstacle, candidateRegion, collisionGap));
   const placementContext = {
     table: rectSummary(tableRect),
     viewport: { width: window.innerWidth, height: window.innerHeight, top: viewportTop, bottom: viewportBottom },
@@ -205,6 +225,9 @@ function placeChip(
     statusStage: statusStage ?? null,
     harvestPoolReadOnly,
     fixedLowerCenter,
+    hasActiveFullReveal,
+    activeRevealKey,
+    compact,
     viewerId: fixedLowerCenter ? null : viewerId,
     seatLayoutKey: fixedLowerCenter ? null : seatLayoutKey,
   };
@@ -225,10 +248,10 @@ function placeChip(
     }
     : null;
   const centerCollisionIds = centeredCandidate
-    ? obstacles.filter((obstacle) => intersects(centeredCandidate, obstacle, ACTIVITY_CHIP_GAP)).flatMap(({ ids }) => ids).sort()
+    ? obstacles.filter((obstacle) => intersects(centeredCandidate, obstacle, collisionGap)).flatMap(({ ids }) => ids).sort()
     : [];
   const previousPlacementCollisionIds = previousMemory?.rect
-    ? obstacles.filter((obstacle) => intersects(previousMemory.rect!, obstacle, ACTIVITY_CHIP_GAP)).flatMap(({ ids }) => ids).sort()
+    ? obstacles.filter((obstacle) => intersects(previousMemory.rect!, obstacle, collisionGap)).flatMap(({ ids }) => ids).sort()
     : [];
   const reuseKey = JSON.stringify({ placementContext, centerCollisionIds, previousPlacementCollisionIds });
   const geometryEpoch = !previousMemory ? 1
@@ -240,7 +263,7 @@ function placeChip(
       measuredAt: performance.now(),
       table: rectSummary(tableRect),
       chip: { width, height },
-      activityChipGap: ACTIVITY_CHIP_GAP,
+      activityChipGap: collisionGap,
       safeBounds: { left: leftBound, right: rightBound, lowerBandTop: placementTop, bottom: placementBottom },
       obstacles: obstacles.slice(0, 64).map(({ sources, ids, ...rect }) => ({ ...rect, sources, ids })),
       candidates: [] as Array<Record<string, unknown>>,
@@ -250,7 +273,7 @@ function placeChip(
     const visible = Boolean(visibleRect(chip));
     const chosenRect = rectSummary(visibleRect(chip));
     const chosenCollisionIds = chosenRect
-      ? obstacles.filter((obstacle) => intersects(chosenRect, obstacle, ACTIVITY_CHIP_GAP)).flatMap(({ ids }) => ids).sort()
+      ? obstacles.filter((obstacle) => intersects(chosenRect, obstacle, collisionGap)).flatMap(({ ids }) => ids).sort()
       : [];
     const reused = outcome === "reused" || outcome === "reused:hidden";
     const decision = reused ? "reuse" : visible ? "reflow" : "hide";
@@ -264,6 +287,8 @@ function placeChip(
       reason,
       traceCount: previousMemory?.traceCount ?? 0,
       lastTraceSignature: previousMemory?.lastTraceSignature ?? "",
+      compact,
+      activeRevealKey,
     };
     if (trace) {
       const data = {
@@ -274,13 +299,16 @@ function placeChip(
         decision,
         placementReason: reason,
         geometryEpoch,
+        activeFullReveal: hasActiveFullReveal,
+        activeRevealKey,
+        compact,
         previousRect: previousMemory?.rect ?? null,
         centeredCandidateRect: rectSummary(centeredCandidate),
         chosenRect,
         actualObstacleIds: obstacles.flatMap((obstacle) => obstacle.ids.filter((id) => id.startsWith("actual:"))).sort().slice(0, 64),
         projectedObstacleIds: obstacles.flatMap((obstacle) => obstacle.ids.filter((id) => id.startsWith("projected-final:"))).sort().slice(0, 64),
         centerCollisionIds: centeredCandidate
-          ? obstacles.filter((obstacle) => intersects(centeredCandidate, obstacle, ACTIVITY_CHIP_GAP)).flatMap(({ ids }) => ids).sort()
+          ? obstacles.filter((obstacle) => intersects(centeredCandidate, obstacle, collisionGap)).flatMap(({ ids }) => ids).sort()
           : [],
         chosenCollisionIds,
         rejectedCandidates: trace.candidates.filter((candidate) => candidate.accepted === false).slice(0, 20),
@@ -298,10 +326,10 @@ function placeChip(
   };
 
   const currentRect = rectSummary(visibleRect(chip));
-  const currentMinTop = fixedLowerCenter ? fixedBand.top : lowerBandTop;
+  const currentMinTop = fixedLowerCenter && !hasActiveFullReveal ? fixedBand.top : lowerBandTop;
   const currentIsSafe = currentRect && currentRect.left >= leftBound && currentRect.right <= rightBound
     && currentRect.top >= currentMinTop && currentRect.bottom <= placementBottom
-    && !obstacles.some((obstacle) => intersects(currentRect, obstacle, ACTIVITY_CHIP_GAP));
+    && !obstacles.some((obstacle) => intersects(currentRect, obstacle, collisionGap));
   if (previousMemory?.reuseKey === reuseKey) {
     if (previousMemory.visible && currentIsSafe && sameRect(previousMemory.rect, currentRect)) {
       return finishTrace("reused", { rect: currentRect, horizontalOffset: Math.round((currentRect.left + currentRect.width / 2 - preferredCenter) * 10) / 10 }, "same-inputs-still-safe");
@@ -311,7 +339,7 @@ function placeChip(
     }
   }
 
-  if (harvestPoolReadOnly) {
+  if (harvestPoolReadOnly && !hasActiveFullReveal) {
     const root = table.querySelector<HTMLElement>("[data-harvest-root-parked='true']");
     const timer = table.querySelector<HTMLElement>(".stage-system-cluster .visible-countdown-event");
     const rootRect = root?.getBoundingClientRect();
@@ -344,7 +372,7 @@ function placeChip(
     }
   }
 
-  if (fixedLowerCenter) {
+  if (fixedLowerCenter && !hasActiveFullReveal) {
     const rect = {
       left: tableRect.left + (tableRect.width - width) / 2,
       top: fixedLowerEdge - height,
@@ -369,56 +397,62 @@ function placeChip(
       blockers.length || outOfBounds ? "fixed-lower-center-protected-area-collision" : "fixed-lower-center");
   }
 
-  if (width <= 0 || height <= 0 || rightBound - leftBound < width || firstTop < upperBandTop) {
+  if (width <= 0 || height <= 0 || rightBound - leftBound < width || !hasActiveFullReveal && firstTop < upperBandTop) {
     chip.style.visibility = "hidden";
     chip.dataset.publicActivityLayout = "hidden";
     return finishTrace("hidden:insufficient-safe-area", undefined, "safe-area-too-small");
   }
 
-  const regularVerticalSteps = [0, height + 8, (height + 8) * 2];
-  const obstacleEdgeTops = obstacles.flatMap((obstacle) => [
-    obstacle.top - height - ACTIVITY_CHIP_GAP - CANDIDATE_EPSILON,
-    obstacle.bottom + ACTIVITY_CHIP_GAP + CANDIDATE_EPSILON,
-  ]);
-  const verticalSteps = [...new Set([
-    ...regularVerticalSteps,
-    firstTop - lowerBandTop,
-    firstTop - upperBandTop,
-    ...obstacleEdgeTops.map((top) => firstTop - top),
-  ].map((step) => Math.round(step * 100) / 100))]
-    .filter((step) => {
-      const top = firstTop - step;
-      return top >= upperBandTop && top + height <= bottom;
-    });
   const minCenter = leftBound + width / 2;
   const maxCenter = rightBound - width / 2;
-  const placements: Array<{ center: number; top: number; verticalStep: number }> = [];
-  for (const verticalStep of verticalSteps) {
-    const top = firstTop - verticalStep;
-    const relevantObstacles = obstacles.filter((obstacle) =>
-      top < obstacle.bottom + ACTIVITY_CHIP_GAP && top + height + ACTIVITY_CHIP_GAP > obstacle.top);
-    const rawCenters = [preferredCenter];
-    for (const obstacle of relevantObstacles) {
-      rawCenters.push(
-        obstacle.left - width / 2 - ACTIVITY_CHIP_GAP - CANDIDATE_EPSILON,
-        obstacle.right + width / 2 + ACTIVITY_CHIP_GAP + CANDIDATE_EPSILON,
-      );
+  const buildPlacements = (candidateHeight: number) => {
+    const candidateFirstTop = placementBottom - candidateHeight;
+    const verticalSteps = [...new Set([
+      0,
+      candidateHeight + 8,
+      (candidateHeight + 8) * 2,
+      candidateFirstTop - lowerBandTop,
+      candidateFirstTop - upperBandTop,
+      ...obstacles.flatMap((obstacle) => [
+        candidateFirstTop - (obstacle.top - candidateHeight - collisionGap - CANDIDATE_EPSILON),
+        candidateFirstTop - (obstacle.bottom + collisionGap + CANDIDATE_EPSILON),
+      ]),
+    ].map((step) => Math.round(step * 100) / 100))].filter((step) => {
+      const top = candidateFirstTop - step;
+      return top >= (hasActiveFullReveal ? lowerBandTop : upperBandTop) && top + candidateHeight <= placementBottom;
+    });
+    const candidates: Array<{ center: number; top: number; verticalStep: number }> = [];
+    for (const verticalStep of verticalSteps) {
+      const top = candidateFirstTop - verticalStep;
+      const nearbyObstacles = obstacles.filter((obstacle) =>
+        top < obstacle.bottom + collisionGap && top + candidateHeight + collisionGap > obstacle.top);
+      const rawCenters = [preferredCenter];
+      for (const obstacle of nearbyObstacles) {
+        rawCenters.push(
+          obstacle.left - width / 2 - collisionGap - CANDIDATE_EPSILON,
+          obstacle.right + width / 2 + collisionGap + CANDIDATE_EPSILON,
+        );
+      }
+      const centers = [...new Set(rawCenters.map((center) => Math.round(Math.max(minCenter, Math.min(maxCenter, center)) * 100) / 100))];
+      for (const center of centers) candidates.push({ center, top, verticalStep });
     }
-    const candidates = [...new Set(rawCenters.map((center) => {
-      const clamped = Math.max(minCenter, Math.min(maxCenter, center));
-      return Math.round(clamped * 100) / 100;
-    }))];
-    for (const center of candidates) placements.push({ center, top, verticalStep });
-  }
-
-  placements.sort((left, right) => {
-    const leftOffset = left.center - preferredCenter;
-    const rightOffset = right.center - preferredCenter;
-    return Number(left.top < lowerBandTop) - Number(right.top < lowerBandTop)
-      || Math.abs(leftOffset) - Math.abs(rightOffset)
+    candidates.sort((left, right) => Number(left.top < lowerBandTop) - Number(right.top < lowerBandTop)
+      || Math.abs(left.center - preferredCenter) - Math.abs(right.center - preferredCenter)
       || left.verticalStep - right.verticalStep
-      || left.center - right.center;
+      || left.center - right.center);
+    return candidates;
+  };
+  let placements = buildPlacements(height);
+  const hasSafePlacement = (candidateHeight: number, candidates: typeof placements) => candidates.some(({ center, top }) => {
+    const candidate = { left: center - width / 2, top, right: center + width / 2, bottom: top + candidateHeight, width, height: candidateHeight };
+    return obstacles.every((obstacle) => !intersects(candidate, obstacle, collisionGap));
   });
+  if (hasActiveFullReveal && !compact && !hasSafePlacement(height, placements)) {
+    compact = true;
+    chip.dataset.publicActivityCompact = "true";
+    height = chip.offsetHeight;
+    placements = buildPlacements(height);
+  }
 
   for (const placement of placements) {
     const { center, top, verticalStep } = placement;
@@ -430,7 +464,7 @@ function placeChip(
       width,
       height,
     };
-    const collisions = obstacles.filter((obstacle) => intersects(candidate, obstacle, ACTIVITY_CHIP_GAP));
+    const collisions = obstacles.filter((obstacle) => intersects(candidate, obstacle, collisionGap));
     const horizontalOffset = Math.round((center - preferredCenter) * 10) / 10;
     const candidateRecord = {
       verticalStep,
@@ -520,6 +554,8 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
         "data-seat-topology",
         "data-public-card-journey-target-left",
         "data-public-card-journey-target-top",
+        "data-public-card-journey-phase",
+        "data-public-card-journey-size",
         "data-public-card-layout-pending",
         "data-public-activity-hit-target",
       ],
@@ -556,6 +592,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
     className="public-activity-chip"
     data-public-activity-chip="true"
     data-public-activity-kind={status.kind}
+    data-public-activity-has-stage={status.stage ? "true" : undefined}
     data-public-activity-layout="pending"
     role="status"
     aria-live="polite"
