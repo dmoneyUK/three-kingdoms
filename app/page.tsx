@@ -3682,6 +3682,39 @@ function captureHandViewportSnapshot(rail: HTMLElement, viewerId: string | null)
 }
 
 export function GameRoom({ room, presentationView, busy, busyAction = null, error, onAction, onLeave, onPublicCounterReadVisible, onSwitchTestViewer = async () => undefined }: { room: Room; presentationView?: PresentationClientView; busy: boolean; busyAction?: string | null; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void; onSwitchTestViewer?: (playerId: string) => Promise<void> }) {
+  const endTurnConfirmationScope = [
+    room.code,
+    room.meId,
+    room.turnSeat ?? "",
+    room.phase ?? "",
+    room.actionRevision ?? "",
+    room.currentAction?.kind ?? "",
+    room.currentAction?.actorId ?? "",
+    room.currentAction?.legalActions?.join(",") ?? "",
+    room.isMyTurn ? "my-turn" : "not-my-turn",
+    room.isMyAction ? "my-action" : "not-my-action",
+  ].join("\u001f");
+  const [endTurnConfirmationIdentity, setEndTurnConfirmationIdentity] = useState<string | null>(null);
+  const [endTurnConfirmationSubmitting, setEndTurnConfirmationSubmitting] = useState(false);
+  const endTurnConfirmationScopeRef = useRef(endTurnConfirmationScope);
+  const endTurnConfirmationSubmissionRef = useRef(false);
+  const endTurnConfirmationButtonRef = useRef<HTMLButtonElement | null>(null);
+  const endTurnConfirmationCancelRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (endTurnConfirmationScopeRef.current === endTurnConfirmationScope) return;
+    endTurnConfirmationScopeRef.current = endTurnConfirmationScope;
+    endTurnConfirmationSubmissionRef.current = false;
+    setEndTurnConfirmationSubmitting(false);
+    setEndTurnConfirmationIdentity(null);
+  }, [endTurnConfirmationScope]);
+  const closeEndTurnConfirmation = useCallback((restoreFocus = false) => {
+    if (endTurnConfirmationSubmissionRef.current) return;
+    setEndTurnConfirmationIdentity(null);
+    setEndTurnConfirmationSubmitting(false);
+    if (restoreFocus) window.requestAnimationFrame(() => {
+      if (endTurnConfirmationButtonRef.current?.isConnected) endTurnConfirmationButtonRef.current.focus({ preventScroll: true });
+    });
+  }, []);
   const isPhoneViewport = useSyncExternalStore(subscribeToPhoneViewport, getPhoneViewportSnapshot, () => false);
   const playerBoardRef = useRef<HTMLDivElement | null>(null);
   const [mobileSeatRingMetrics, setMobileSeatRingMetrics] = useState({ topCapacity: 0, boardWidth: 0, boardTopInset: 0, seatWidth: 0, seatHeight: 0, gap: 0, leftInset: 0, topStep: 0 });
@@ -10259,6 +10292,58 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : room.currentAction?.kind === "turn" && currentActionOwnedByViewer ? "turn"
     : room.currentAction?.kind === "none" || !room.currentAction ? "rest"
     : "waiting";
+  const endTurnConfirmationAuthorized = Boolean(
+    room.isMyTurn
+    && room.isMyAction
+    && canPlay
+    && consoleKind === "turn"
+    && room.currentAction?.kind === "turn"
+    && room.currentAction.actorId === room.meId
+    && canUseAction(room.currentAction, "end_turn"),
+  );
+  const endTurnConfirmationIsCurrent = Boolean(
+    endTurnConfirmationIdentity === endTurnConfirmationScope
+    && endTurnConfirmationAuthorized,
+  );
+  const endTurnConfirmationPlacement = useBattlefieldChoicePlacement({
+    enabled: endTurnConfirmationIsCurrent,
+    playerCount: room.players.length,
+    placementKey: endTurnConfirmationScope,
+    requireSafePlacement: true,
+    protectActiveReveal: true,
+  });
+  useEffect(() => {
+    if (!endTurnConfirmationIsCurrent || !endTurnConfirmationPlacement.ready) return;
+    window.requestAnimationFrame(() => endTurnConfirmationCancelRef.current?.focus({ preventScroll: true }));
+  }, [endTurnConfirmationIdentity, endTurnConfirmationIsCurrent, endTurnConfirmationPlacement.ready]);
+  useEffect(() => {
+    if (!endTurnConfirmationIsCurrent) return;
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || endTurnConfirmationSubmissionRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeEndTurnConfirmation(true);
+    };
+    window.addEventListener("keydown", dismissOnEscape, true);
+    return () => window.removeEventListener("keydown", dismissOnEscape, true);
+  }, [closeEndTurnConfirmation, endTurnConfirmationIsCurrent]);
+  const confirmEndTurn = async () => {
+    if (endTurnConfirmationSubmissionRef.current
+      || !endTurnConfirmationIsCurrent
+      || !endTurnConfirmationPlacement.ready
+      || busy
+      || presentationBusy && !ordinaryTurnPlayAuthorized
+      || !canUseAction(room.currentAction, "end_turn")) return;
+    endTurnConfirmationSubmissionRef.current = true;
+    setEndTurnConfirmationSubmitting(true);
+    const submitted = await onAction("end_turn");
+    if (submitted) {
+      setEndTurnConfirmationIdentity(null);
+      return;
+    }
+    endTurnConfirmationSubmissionRef.current = false;
+    setEndTurnConfirmationSubmitting(false);
+  };
   const consoleSelection: ConsoleSelectionFact | undefined = daqiaoDeflectionSelectionActive
     ? { active: true, hasInput: daqiaoDeflectionCardCount > 0 || daqiaoDeflectionTargetCount > 0, count: daqiaoDeflectionCardCount + daqiaoDeflectionTargetCount, min: 2, max: 2, summary: "" }
     : lustLocalSelectionActive && activeSkillSelection
@@ -10590,6 +10675,26 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           onInfo={(card, trigger) => openCardDetails(card, "public-zone", trigger)}
         />
       </BattlefieldChoiceStage>}
+      {endTurnConfirmationIsCurrent && <BattlefieldChoiceStage
+        ref={endTurnConfirmationPlacement.ref}
+        className="game-event-stage harvest-choice-stage end-turn-confirmation-stage"
+        mode="actor-select"
+        accessibilityLabel="End turn confirmation"
+        data-end-turn-confirmation="true"
+        data-end-turn-confirmation-ready={endTurnConfirmationPlacement.ready ? "true" : "false"}
+        aria-hidden={!endTurnConfirmationPlacement.ready}
+        style={{ top: endTurnConfirmationPlacement.top === null ? undefined : `${endTurnConfirmationPlacement.top}px` }}
+      >
+        <section className="card-pool-panel card-pool-panel--end-turn-confirmation harvest-choice-panel harvest-choice-panel--actor end-turn-confirmation-panel" role="dialog" aria-modal="false" aria-labelledby="end-turn-confirmation-title">
+          <header className="card-pool-panel__heading end-turn-confirmation__heading">
+            <b id="end-turn-confirmation-title">End your Play Phase?</b>
+          </header>
+          <footer className="card-pool-panel__footer end-turn-confirmation__actions">
+            <button ref={endTurnConfirmationCancelRef} type="button" className="end end-turn-confirmation__cancel" tabIndex={endTurnConfirmationPlacement.ready ? 0 : -1} disabled={endTurnConfirmationSubmitting} onClick={() => closeEndTurnConfirmation(true)}>Cancel</button>
+            <button type="button" className="primary end-turn-confirmation__confirm" tabIndex={endTurnConfirmationPlacement.ready ? 0 : -1} disabled={!endTurnConfirmationPlacement.ready || busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onClick={() => { void confirmEndTurn(); }}>Confirm End</button>
+          </footer>
+        </section>
+      </BattlefieldChoiceStage>}
       {targetCardPickerInModal && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && <TargetCardPicker option={targetCardPickerOption} compact={targetCardPickerOption.effectId === "sima_yi_fankui"} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={triggerControlsDisabled} canDecline={Boolean(consoleDecision.authoritativeDecline)} showCancel={targetCardPickerOption.effectId !== "sima_yi_fankui" && (targetCardPickerUsesUnifiedModal || consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId))} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={submitTargetCardPicker} onCancel={cancelTargetCardPicker} onDecline={() => onAction("decline_trigger")} />}
       {triggerResponse && responseDecisionReady && choiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={choiceTriggerOption} selection={choiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={triggerControlsDisabled} error={error} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => { const validKeys = triggerSelectedKeys.filter((selectedKey) => choiceTriggerOption.selection?.type === "choice" && choiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = choiceTriggerOption.selection?.type === "choice" ? choiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; setTriggerSelectedKeys(validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys); }} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: choiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}
@@ -10855,7 +10960,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}
             {triggerResponse && triggerDeclineAction && (!targetCardPickerInModal || targetCardPickerInLocalDock) && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !consoleDecision.authoritativeDecline.enabled} onClick={() => onAction("decline_trigger")}>Skip</button>}
             {canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !responseDamageAction || !consoleDecision.authoritativeDecline.enabled} onClick={() => responseDamageAction && onAction(responseDamageAction)}>{responseDeclineLabel}</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && <button className="end" disabled={busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canUseAction(room.currentAction, "end_turn")} onClick={() => { if (canUseAction(room.currentAction, "end_turn") && window.confirm("End your turn?")) void onAction("end_turn"); }}>{busy ? "Finishing…" : "End"}</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && <button ref={endTurnConfirmationButtonRef} className="end" disabled={busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onClick={() => { if (endTurnConfirmationAuthorized && !endTurnConfirmationSubmissionRef.current) setEndTurnConfirmationIdentity(endTurnConfirmationScope); }}>{busy ? "Finishing…" : "End"}</button>}
           </div>
         </div>
       </div>

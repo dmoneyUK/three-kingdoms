@@ -7519,3 +7519,70 @@
   visibility: hidden !important;
   pointer-events: none !important;
 }
+
+/* §10.26: the End confirmation uses the battlefield choice shell without a
+   backdrop. Only the measured panel captures input; an unsafe placement waits
+   until the active reveal/other protected content clears. */
+.game-shell .play-table > .end-turn-confirmation-stage[data-end-turn-confirmation-ready="false"] {
+  visibility: hidden;
+  pointer-events: none;
+}
+.game-shell .play-table > .end-turn-confirmation-stage[data-end-turn-confirmation-ready="true"] {
+  visibility: visible;
+}
+.game-shell .end-turn-confirmation-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(100%, 360px);
+  max-width: min(calc(100vw - 20px), 360px);
+  padding: 12px 14px;
+  border: 1px solid #bda267;
+  background: linear-gradient(145deg, #22241ceF, #10130ef7);
+  box-shadow: 0 10px 28px #000c, inset 0 0 0 1px #594b2c;
+  color: #f0dfb8;
+  pointer-events: auto;
+}
+.game-shell .end-turn-confirmation__heading {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  color: #f2d58f;
+  font: 700 14px/1.25 Georgia, serif;
+}
+.game-shell .end-turn-confirmation__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+.game-shell .end-turn-confirmation__actions button {
+  box-sizing: border-box;
+  min-width: 104px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #9a8352;
+  color: #f3e5c4;
+  font: 700 10px/1 Arial, sans-serif;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+.game-shell .end-turn-confirmation__cancel {
+  background: #292a22;
+}
+.game-shell .end-turn-confirmation__confirm {
+  background: linear-gradient(#a88748, #705523);
+  border-color: #e1c77c;
+}
+.game-shell .end-turn-confirmation__actions button:focus-visible {
+  outline: 2px solid #ffe39b;
+  outline-offset: 2px;
+}
+.game-shell .end-turn-confirmation__actions button:disabled {
+  cursor: wait;
+  opacity: .6;
+}

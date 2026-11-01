@@ -53,12 +53,14 @@ type BattlefieldChoicePlacementOptions = {
   placementKey: string;
   centralTargetLayout?: boolean;
   rootEventId?: string;
+  requireSafePlacement?: boolean;
+  protectActiveReveal?: boolean;
 };
 
 type ScheduledBattlefieldFrame = { kind: "animation"; id: number } | { kind: "timeout"; id: ReturnType<typeof setTimeout> };
 
 /** Measures the shared panel and places it in Harvest's current safe battlefield corridor. */
-export function useBattlefieldChoicePlacement({ enabled, playerCount, placementKey, centralTargetLayout = false, rootEventId }: BattlefieldChoicePlacementOptions) {
+export function useBattlefieldChoicePlacement({ enabled, playerCount, placementKey, centralTargetLayout = false, rootEventId, requireSafePlacement = false, protectActiveReveal = false }: BattlefieldChoicePlacementOptions) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [top, setTop] = useState<number | null>(null);
   const [insets, setInsets] = useState<BattlefieldChoiceInsets | null>(null);
@@ -122,6 +124,9 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
     const protectedSelectors = [
       ".player-board > .opponent-player-card",
       ".public-card-display-journey-copy",
+      ...(protectActiveReveal ? [
+        ".public-card-journey-card[data-public-card-journey-phase='reveal'], .public-card-journey-card[data-public-card-journey-phase='move'], .active-table-reveal, .table-played-card",
+      ] : []),
       ...(targetCardSelect
         ? [centralTargetLayout
           ? ".public-card-journey-card[data-public-card-journey-role='root']:not(.is-parked)"
@@ -330,13 +335,21 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
             return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
               && panelRect.left < rect.right + margin && panelRect.right > rect.left - margin;
           });
-        const offset = chooseBattlefieldChoiceTopOffset({
+        const verticalPlacement = {
           table: tableRect,
           panel: panelRect,
           obstacles: [...obstacles.map(({ rect }) => rect), ...measureAuthorReservationRects()],
-          viewportHeight: window.innerHeight,
+          viewportHeight: Math.min(window.innerHeight, (window.visualViewport?.offsetTop ?? 0) + (window.visualViewport?.height ?? window.innerHeight)),
           margin,
-        });
+        };
+        const safeOffset = requireSafePlacement ? findBattlefieldChoiceSafeTopOffset(verticalPlacement) : null;
+        if (requireSafePlacement && safeOffset === null) {
+          setTop(null);
+          setReady(false);
+          setRootCardOverlap(false);
+          return;
+        }
+        const offset = requireSafePlacement ? safeOffset! : chooseBattlefieldChoiceTopOffset(verticalPlacement);
         setTop((current) => current === offset ? current : offset);
         setReady(true);
         setRootCardOverlap(false);
@@ -408,7 +421,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
       cancelFrame(resetFrame);
       targetWidthProbe?.remove();
     };
-  }, [centralTargetLayout, enabled, playerCount, placementKey, setReady]);
+  }, [centralTargetLayout, enabled, playerCount, placementKey, protectActiveReveal, requireSafePlacement, setReady]);
 
   return { ref, top, insets, ready, rootCardOverlap };
 }
