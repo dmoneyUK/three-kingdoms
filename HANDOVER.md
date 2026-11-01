@@ -1,15 +1,17 @@
 # HANDOVER — Current Task Only
 
-Repository: `dmoneyUK/three-kingdoms` · target branch: `ux-v2` · worktree branch: `codex/console-01`
+Repository: `dmoneyUK/three-kingdoms` · target: `origin/ux-v2`
 
 ## Current task
 
-**§10.27 M3 — delayed Judgement attachment and later resolution.**
+**§10.27 M4 — generic public Discard/reveal and known zone exits.**
 
-Design reviewed: remote `origin/ux-v2` at `dd859bc8` (design content unchanged from `3040a637`); `docs/UX2-refine.md` §§10.27.3–10.27.6, especially §10.27.5 M3; `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` §§2–5 and 8–10.
+Design reviewed: `docs/UX2-refine.md` at `fd126344684a1029c7ebcb6a8fbd2751d1f5a18c`, §§10.27.3–10.27.5 (M4); `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` §§2, 4–10.
 
-**Implementation status:** local implementation complete; commit, exact-SHA CI and deployment pending. The server now appends a public physical-zone proof only after committed delayed-card placement or Judgement settlement. The shared Router validates the source CardFace, public fact, source/destination zones, causal root, viewer scope and replay claim. The UI routes the original card to the real Judgement/Discard anchor and suppresses only the proven legacy owner. Rules, Negation timing and card legality are unchanged.
+**Scope:** Route E15/E16 only from real committed public-card facts and authoritative terminal destinations. Preserve the actual author, original physical card ID, destination, viewer rebasing, replay safety, and true public/private reveal distinction. A Dismantle discard remains one fact with **no second public result CardFace**. Keep private hand-picker candidates, recipient-only R7 gains, and R4 skill-cost material private. Remove only the corresponding legacy presentation paths proven replaced.
 
-**Focused validation (2026-11-01, approximately 17:50–17:54 UTC):** the first API attempt ran before rebuilding `dist` and failed one new assertion; it was invalid for the changed source. After build passed, real API coverage found that a replaced original Judgement reveal could reach Discard without its own transition proof. Added the missing final-path proof; rebuild passed and `tests/api/da-qiao.test.mjs` passed 16/16, including attachment, later settlement, four-viewer shared proof, refresh deduplication, Sima Yi private choice/replacement, and cancelled placement. Router/Judgement/Equipment/H4 focused tests passed 30/30. Targeted ESLint passed with zero errors; `app/page.tsx` retains two existing hook warnings. `tests/api/da-qiao.test.mjs` ESLint and `git diff --check` passed. No local UI/browser run; owner phone review remains pending. A prior broad `npx tsc --noEmit` emitted over 1,000 repository-wide diagnostics and did not verify this change.
+**Acceptance:** Focused regressions prove one truthful owner for public exits, correct physical identity and final zone after polling/rebase, no duplicate parked card, no fabricated card for private/nonrevealed outcomes, and no gameplay/legal-action change. Local UI/browser work stays within five minutes; owner phone review remains separate.
 
-**Delivery gate:** latest completed remote Actions before this task was [41332998550](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41332998550), green for SHA `3040a6372ec1e291852996dbdc6a0aca9e422051`, Worker `f80e35a7-4bd4-4531-b8b7-f03d1c272197`, production `/api/health` HTTP 200. M3 changes are still uncommitted and not pushed; they have no exact-SHA CI or deployment yet. Preserve the current M3 diff; do not reset, overwrite or mix unrelated files. After push, verify every required exact-SHA Actions job, Worker deployment and health check. Status after technical delivery must remain **IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE REVIEW**.
+**Resume point:** M3 source is deployed at `fd126344684a1029c7ebcb6a8fbd2751d1f5a18c`. Exact-SHA [Actions 41333906965](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41333906965) passed all required jobs after a same-SHA rerun; Worker `c5dab198-acc2-4ad0-8036-c1cec9f7dd32` deployed and production `/api/health` returned HTTP 200. M3 remains **PENDING OWNER PHONE REVIEW**. The run's first attempt had an API shard `fetch failed`; the full rerun passed without source changes. Latest `origin/ux-v2` CI is green. M4 is the only active task.
+
+**Stop condition:** If any E15/E16 transition lacks authoritative public source, physical identity, or terminal destination proof, do not infer it or broaden the schema silently. Record the exact missing producer/consumer field and stop that route.

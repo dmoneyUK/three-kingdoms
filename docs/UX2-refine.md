@@ -20,6 +20,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 | Single work identity | Outstanding scope | Do not duplicate |
 | --- | --- | --- |
+| **PUBLIC-RENDER-MIGRATION-PLAN-01 — M4** | Route only E15/E16 public exits with committed public facts and authoritative terminal destinations; preserve exact physical identity, privacy, and one real owner. | Do not emit a second Dismantle result CardFace; do not reveal private picker candidates, recipient-only R7 gains, or R4 skill-cost material. M1–M3 are complete; M5/M6 remain later slices. |
 
 
 
@@ -34,6 +35,8 @@ This file is the **single active UX2 product/design authority**. It replaces the
 **EQUIP-H4-01:** the separate Step B correction is **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**. The existing server emits one `CARD_EQUIPPED` fact linked to the original public equip event and exact actor/name; the fact is retained in the public snapshot, rendered by the existing H4 path, and the same physical card arrives in the real equipment slot. On 2026-11-01, the focused equipment API file passed 21/21, public activity/H4 tests passed 16/16, equipment route tests passed 3/3, and one 390×844 real-gameplay mobile browser flow passed in 11.8s. The browser check verified one exact-name H4 announcement on both owner and opponent views. The existing latest exact-SHA Actions `41331804865` and Worker `3445b10e-1aa3-4788-84a6-8632d14ef755` include the production code; the current task adds browser regression coverage only. No owner acceptance is inferred; iPhone review remains pending.
 
 **CONSOLE-01 (§10.26):** The ordinary Play Cancel correction, physical-card retap and native End confirmation are **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**. The user must review ordinary Stratagem retap/target clearing, continued special/provider Cancel and Skip controls, and End dismissal/confirmation including the server's normal Discard boundary. No USER-ACCEPTED status is inferred from CI or deployment.
+
+**PUBLIC-RENDER-MIGRATION-PLAN-01 — M3:** Delayed Judgement attachment and separately proven later reveal/settlement are **IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE REVIEW**. Source commit `fd126344684a1029c7ebcb6a8fbd2751d1f5a18c`; exact-SHA [Actions 41333906965](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41333906965) completed successfully on rerun, including API, browser smoke, lint/fast and deploy; Worker version `c5dab198-acc2-4ad0-8036-c1cec9f7dd32`; production `/api/health` returned HTTP 200. No owner phone acceptance is inferred.
 
 Older pre-cutoff technically delivered work remains administratively archived under Table D rather than being retroactively represented as user acceptance.
 
