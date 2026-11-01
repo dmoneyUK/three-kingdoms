@@ -874,10 +874,17 @@
   }
 }
 
-.local-player-dock .turn-controls[data-ordinary-play-target-selection="true"] > [data-action-slots="true"] {
-  grid-template-columns: var(--action-slot-width) var(--action-slot-width);
-  grid-template-areas: "primary decline";
-  justify-content: center;
+@media (max-width: 700px) {
+  .local-player-dock .turn-controls[data-ordinary-play-target-selection="true"] > [data-action-slots="true"] {
+    grid-template-columns: minmax(0, 1fr) var(--action-slot-width) minmax(0, 1fr);
+    grid-template-areas: ". primary decline";
+    column-gap: 0;
+  }
+
+  .local-player-dock .turn-controls[data-ordinary-play-target-selection="true"] [data-action-slot="decline"] {
+    width: var(--action-slot-width);
+    justify-self: end;
+  }
 }
 
 @media (max-width: 360px) {

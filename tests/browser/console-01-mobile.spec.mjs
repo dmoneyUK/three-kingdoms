@@ -18,13 +18,48 @@ test("CONSOLE-01 mobile hand-card retap deselects and End Turn submits only afte
     await expect(card).toHaveAttribute("aria-pressed", "true");
     await expect(card).toHaveAttribute("aria-label", /^Deselect /);
     await expect(decisionPanel).toHaveAttribute("data-ordinary-play-target-selection", "true");
-    await expect.poll(() => decisionPanel.locator('[data-action-slots="true"]').evaluate((slots) => getComputedStyle(slots).gridTemplateColumns.trim().split(/\s+/).length)).toBe(2);
+    const actionSlots = decisionPanel.locator('[data-action-slots="true"]');
+    const confirmButton = actionSlots.locator('[data-action-slot="primary"] button');
+    const endButton = actionSlots.locator('[data-action-slot="decline"] button');
+    const expectPhoneActionGeometry = async () => {
+      const geometry = await actionSlots.evaluate((slots) => {
+        const rect = (element) => {
+          const box = element.getBoundingClientRect();
+          return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height };
+        };
+        const confirm = slots.querySelector('[data-action-slot="primary"] button');
+        const end = slots.querySelector('[data-action-slot="decline"] button');
+        const hitAtCenter = (element) => {
+          const box = element.getBoundingClientRect();
+          const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+          return hit === element || element.contains(hit);
+        };
+        return { slots: rect(slots), confirm: rect(confirm), end: rect(end), confirmHit: hitAtCenter(confirm), endHit: hitAtCenter(end), viewportHeight: window.innerHeight };
+      });
+      expect(Math.abs((geometry.confirm.left + geometry.confirm.right) / 2 - (geometry.slots.left + geometry.slots.right) / 2)).toBeLessThanOrEqual(8);
+      expect(Math.abs(geometry.end.right - geometry.slots.right)).toBeLessThanOrEqual(12);
+      expect(geometry.end.left).toBeGreaterThanOrEqual(geometry.confirm.right);
+      for (const button of [geometry.confirm, geometry.end]) {
+        expect(button.width).toBeGreaterThanOrEqual(78);
+        expect(button.height).toBeGreaterThanOrEqual(32);
+        expect(button.top).toBeGreaterThanOrEqual(0);
+        expect(button.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
+      }
+      expect(geometry.confirmHit).toBe(true);
+      expect(geometry.endHit).toBe(true);
+    };
+    await expect(confirmButton).toBeVisible();
+    await expect(confirmButton).toBeDisabled();
+    await expect(endButton).toBeVisible();
+    await expect(endButton).toBeEnabled();
+    await expectPhoneActionGeometry();
     await expect(decisionPanel.locator('[data-action-slot="cancel"]')).toBeHidden();
     await expect(decisionPanel.locator(".local-target-cancel, [data-local-target-selection]")).toHaveCount(0);
     await page.locator('.opponent-player-card[data-player-anchor="p2"] .opponent-hero-target').tap();
     await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
     await expect(decisionPanel.locator(".local-target-cancel, [data-local-target-selection]")).toHaveCount(0);
-    await expect(decisionPanel.locator('[data-action-slot="primary"] button')).toBeEnabled();
+    await expect(confirmButton).toBeEnabled();
+    await expectPhoneActionGeometry();
     expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card"))).toHaveLength(0);
     await card.tap();
     await expect(card).toHaveAttribute("aria-pressed", "false");
