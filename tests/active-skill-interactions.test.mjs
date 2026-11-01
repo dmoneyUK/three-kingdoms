@@ -90,14 +90,16 @@ function normalHalberdTargetRoom() {
 }
 
 function normalStealTargetRoom() {
+  const steal = card("steal-card", "Steal", "♦");
+  const dismantle = card("dismantle-card", "Dismantle", "♣");
   return normalizeRoomData({
     code: "STEAL-TARGET-UI", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
     players: [
       { id: "p1", name: "SOURCE", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
       { id: "p2", name: "LEGAL TARGET", seat: 1, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
     ],
-    myHand: [card("steal-card", "Steal", "♦")], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play a card", isMyAction: true,
-    actionRevision: "steal-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card", "end_turn"], playTargetEligibility: [{ mode: "card", cardId: "steal-card", effectiveKind: "Steal", eligibleTargetIds: ["p2"], rejections: [] }] },
+    myHand: [steal, dismantle], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play a card", isMyAction: true,
+    actionRevision: "steal-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card", "end_turn"], playTargetEligibility: [{ mode: "card", cardId: "steal-card", effectiveKind: "Steal", eligibleTargetIds: ["p2"], rejections: [] }, { mode: "card", cardId: "dismantle-card", effectiveKind: "Dismantle", eligibleTargetIds: ["p2"], rejections: [] }] },
   });
 }
 
@@ -474,8 +476,15 @@ test("ordinary target Stratagem has no Cancel and same-card retap clears target 
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
   assert.equal(actionCalls.length, 0, "selecting the card and target remains a local draft");
 
-  await act(async () => { handCardButton(renderer, "steal-card").props.onClick(); });
-  assert.equal(handCardButton(renderer, "steal-card").props["aria-pressed"], false, "retapping the physical card deselects it");
+  await act(async () => { handCardButton(renderer, "dismantle-card").props.onClick(); });
+  assert.equal(handCardButton(renderer, "steal-card").props["aria-pressed"], false, "selecting another physical card replaces the previous selection");
+  assert.equal(handCardButton(renderer, "dismantle-card").props["aria-pressed"], true);
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "selecting another card clears the old target draft");
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "switching cards resets Confirm readiness");
+  assert.equal(actionCalls.length, 0, "switching the selected card sends no gameplay action");
+
+  await act(async () => { handCardButton(renderer, "dismantle-card").props.onClick(); });
+  assert.equal(handCardButton(renderer, "dismantle-card").props["aria-pressed"], false, "retapping the selected physical card deselects it");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "retapping clears its target draft");
   assert.equal(button(renderer, { children: "Play" }).props.disabled, true, "retapping resets Play readiness");
   assert.equal(actionCalls.length, 0, "retapping sends no gameplay action");
