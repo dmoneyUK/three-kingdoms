@@ -4032,6 +4032,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && hasAvailableHarvestChoice);
   const canChooseTargetCard = room.phase === "response" && Boolean(room.pendingTargetCard) && room.isMyAction;
   const canChooseBorrowedSword = room.phase === "response" && room.isMyAction && room.pendingBorrowedSword?.stage === "choose_target";
+  const borrowedSwordForcedChoiceActive = Boolean(room.phase === "response" && room.isMyAction
+    && room.pendingBorrowedSword?.stage === "force_attack"
+    && room.pendingBorrowedSword.holderId === room.meId
+    && room.currentAction?.kind === "response" && room.currentAction.requirement === "attack");
   const pendingBorrowedSwordEligibleTargetIds = room.pendingBorrowedSword?.eligibleTargetIds;
   const borrowedSwordEligibleTargetIds = useMemo(() => pendingBorrowedSwordEligibleTargetIds ?? [], [pendingBorrowedSwordEligibleTargetIds]);
   // `currentAction` is the server's canonical response discriminator and
@@ -4493,6 +4497,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const triggerTargetMax = triggerTargetSelection?.max ?? 1;
   const triggerTargetMode = Boolean(triggerResponse && responseDecisionReady && triggerTargetSelection && responseProviderId === selectedTriggerOption?.effectId);
   const borrowedSwordTargetSelectionActive = Boolean(canChooseBorrowedSword && !presentationBusy);
+  const borrowedSwordContinuationConsole = borrowedSwordTargetSelectionActive || borrowedSwordForcedChoiceActive;
   const normalTurnTargetSelectionActive = Boolean(ordinaryTurnPlayAuthorized
     && (serpentMode || selectedCanPlayAsAttack || card && ["Dismantle", "Steal", "Duel", "BorrowedSword", "Overindulgence", "RationsDepleted"].includes(card.kind)));
   const targetSelectionActive = Boolean(borrowedSwordTargetSelectionActive || triggerTargetMode || activeSkillTargetMode || normalTurnTargetSelectionActive);
@@ -5935,6 +5940,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? singleTargetNegationProofCandidate
     : null;
   const singleTargetNegationNarration = singleTargetNegationProofCandidate
+    && clientPresentation.stage === "NEGATION"
     ? derivePublicNegationNarration({
       snapshot: room.presentationSnapshot,
       players: room.players,
@@ -7088,13 +7094,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           ? finalizePublicNegationNarration(singleTargetNegationNarration, singleTargetNegationSettlement.outcome, singleTargetNegationSettlement.eventId)
           : singleTargetNegationNarration,
       } : {}),
-      phaseNotice: singleTargetNegationUsesJourney
+      phaseNotice: singleTargetNegationUsesJourney && clientPresentation.stage === "NEGATION"
         ? singleTargetNegationSettlement ? undefined : singleTargetNegationResponses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED"
         : undefined,
       ...(singleTargetNegationUsesJourney ? {
         motion: {
           type: singleTargetNegationProofCandidate.root.cardKind === "Dismantle"
-            || singleTargetNegationProofCandidate.root.cardKind === "Steal" ? "single-target" as const : "negation" as const,
+            || singleTargetNegationProofCandidate.root.cardKind === "Steal"
+            || singleTargetNegationProofCandidate.root.cardKind === "BorrowedSword" ? "single-target" as const : "negation" as const,
           scopeKey: singleTargetNegationProofCandidate.root.cardKind === "Dismantle"
             || singleTargetNegationProofCandidate.root.cardKind === "Steal"
             ? [room.code, singleTargetNegationProofCandidate.rootEvent.id].join(":")
@@ -8239,7 +8246,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : null;
   const currentInteractionFact = room.presentationSnapshot?.interaction?.stage !== "NEGATION"
     ? [...(room.presentationSnapshot?.publicEventFacts ?? [])]
-      .filter((fact) => fact.rootEventId && ["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED"].includes(fact.category))
+      .filter((fact) => fact.rootEventId && (
+        ["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED"].includes(fact.category)
+        || fact.category === "CARD_PLAYED" && fact.eventId === fact.rootEventId
+          && fact.effect?.label === "Borrowed Sword"
+      ))
       .sort((left, right) => left.order - right.order).at(-1) ?? room.presentationSnapshot?.retainedPublicEvent
     : null;
   const publicInteractionNarration = currentInteractionFact?.rootEventId
@@ -10040,7 +10051,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ? { eligibleIds: triggerCardOption?.selection?.type === "cards" ? triggerCardOption.selection.eligibleCardIds : [], selectedIds: triggerSelectedCardIds, max: triggerSelectionMax, disabled: busy || !responseDecisionReady, onToggle: (cardId: string) => setSerpentSelected((ids) => ids.includes(cardId) ? ids.filter((id) => id !== cardId) : ids.length < triggerSelectionMax ? [...ids, cardId] : ids) }
         : null;
   const consoleKind: ConsoleDecisionKind = canChooseTargetCard || targetCardPickerOption ? "target-card"
-    : borrowedSwordTargetSelectionActive ? "borrowed-sword"
+    : borrowedSwordTargetSelectionActive || borrowedSwordForcedChoiceActive ? "borrowed-sword"
     : activeSkillSelection || activeSkillTargetSelection ? "active-skill"
     : triggerResponse ? "trigger"
     : canRespond ? (room.currentAction?.requirement === "dodge" ? "response" : room.currentAction?.requirement === "attack" ? "duel" : room.currentAction?.requirement === "negate" ? "judgement" : "response")
@@ -10054,6 +10065,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? { active: true, hasInput: daqiaoDeflectionCardCount > 0 || daqiaoDeflectionTargetCount > 0, count: daqiaoDeflectionCardCount + daqiaoDeflectionTargetCount, min: 2, max: 2, summary: "" }
     : lustLocalSelectionActive && activeSkillSelection
       ? { active: true, hasInput: activeSkillSelectedCardIds.length > 0 || activeSkillSelectedTargetIds.length > 0, count: activeSkillSelectedCardIds.length + activeSkillSelectedTargetIds.length, min: activeSkillSelection.min + activeSkillTargetMin, max: activeSkillSelection.max + activeSkillTargetMax, summary: "" }
+    : borrowedSwordTargetSelectionActive
+      ? { active: true, hasInput: localTargetSelection.selectedTargetIds.length > 0, count: localTargetSelection.selectedTargetIds.length, min: 1, max: 1, summary: `${localTargetSelection.selectedTargetIds.length}/1 selected` }
     : localTargetSelection.selectionActive
       ? { active: true, hasInput: localTargetSelection.canCancel, count: localTargetSelection.selectedTargetIds.length, min: localTargetSelection.minTargetCount, max: localTargetSelection.maxTargetCount, summary: localTargetSelection.instruction }
     : activeSkillSelection && activeSkillStateIsCurrent
@@ -10138,7 +10151,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && canUseAction(room.currentAction, "decline_response")
     && (attackDamageResponseDecline || duelDamageResponseDecline || rainingArrowsDamageDecline || groupDamageResponseDecline),
   );
-  const responseDeclineLabel = declineAcceptsDamage ? "TAKE DAMAGE" : sharedNegationWindow ? "Pass" : "Skip";
+  const responseDeclineLabel = borrowedSwordForcedChoiceActive ? "Give up Weapon" : declineAcceptsDamage ? "TAKE DAMAGE" : sharedNegationWindow ? "Pass" : "Skip";
   const rainingArrowsDodgeProviderCardIds = new Set(
     rainingArrowsDamageDecline
       && responseSelection?.type === "cards"
@@ -10175,7 +10188,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && publicActivityStatus.kind !== "finished";
   const consoleAuthoritativeDecision = Boolean(room.currentAction && room.currentAction.kind !== "none" && (consoleIsDecisionActor || room.isMyTurn && room.currentAction.kind === "turn" && currentActionOwnedByViewer));
   const privateNegationAcknowledgement = viewerNegationAcknowledgement(room.presentationSnapshot, room.currentAction?.negationWindowId, room.phase);
-  const consoleInstruction = privateNegationAcknowledgement ?? (localWaitAlreadyPublic
+  const consoleInstruction = privateNegationAcknowledgement ?? (borrowedSwordTargetSelectionActive
+    ? `Choose who ${room.players.find((player) => player.id === room.pendingBorrowedSword?.holderId)?.name ?? "the Weapon holder"} must Attack.`
+    : borrowedSwordForcedChoiceActive
+    ? `Play Attack on ${room.players.find((player) => player.id === room.pendingBorrowedSword?.targetId)?.name ?? "the selected target"}, or give up your Weapon.`
+    : localWaitAlreadyPublic
     ? "No action needed."
     : lustLocalSelectionActive && activeSkillSelection
     ? `Select ${activeSkillSelection.min} card${activeSkillSelection.min === 1 ? "" : "s"} and ${activeSkillTargetMin} Duel participant${activeSkillTargetMin === 1 ? "" : "s"}.`
@@ -10294,8 +10311,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         && !effectNoticeOwnedByPublicCardFrame
           && <div key={effectNotice.eventId} className={`effect-notice${effectNotice.exiting ? " is-exiting" : ""}`} role="status" aria-live="polite" aria-atomic="true" data-effect-notice-event-id={effectNotice.eventId} data-diao-chan-beauty-root-event-id={effectNotice.beautyRootEventId} data-diao-chan-beauty-source-id={effectNotice.beautySourceId} data-diao-chan-beauty-proof-event-id={effectNotice.beautyProofEventId} data-diao-chan-beauty-phase={effectNotice.beautyPhase}><span>{effectNotice.heading}</span><b>{effectNotice.message}</b></div>}
       </div>
-      {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
-      {canChooseBorrowedSword && <div className="turn-notice borrowed-sword-notice" role="status"><span>BORROWED SWORD</span><b>{borrowedSwordTargetId ? "Target selected · confirm below" : "Choose a legal Attack target"}</b></div>}
+      {turnNotice && !borrowedSwordContinuationConsole && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
       {privateDrawVisible && <div className="played-card-stage private-draw-stage" role="status"><div className="private-draw-content"><div className="private-draw-row" role="region" aria-label="Private drawn cards; scroll horizontally to view all" tabIndex={privateDrawCards.length > 3 ? 0 : undefined}>{privateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div></div>}
       {privateDistribution && !presentationBusy && <PrivateCardDistributionDialog key={room.actionRevision} cards={privateDistribution.cards} players={room.players.filter((player) => privateDistribution.eligibleRecipientIds.includes(player.id) && player.alive)} disabled={busy} error={error} onSubmit={(assignments) => onAction("trigger", { providerId: "private_card_distribution", assignments })} />}
       {privateDeckReorder && <PrivateDeckReorderDialog key={room.actionRevision} cards={privateDeckReorder.cards} minTop={privateDeckReorder.minTop} maxTop={privateDeckReorder.maxTop} disabled={busy} error={error} onSubmit={(topCardIds, bottomCardIds) => onAction("trigger", { providerId: "private_deck_reorder", topCardIds, bottomCardIds })} />}
@@ -10515,7 +10531,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               aria-live="polite"
               aria-atomic="true"
             >
-              {!lustLocalSelectionActive && !privateNegationAcknowledgement && !localWaitAlreadyPublic && !(consoleIsDecisionActor && room.currentAction?.kind === "trigger") && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "WAITING FOR OTHERS" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
+              {!borrowedSwordContinuationConsole && !lustLocalSelectionActive && !privateNegationAcknowledgement && !localWaitAlreadyPublic && !(consoleIsDecisionActor && room.currentAction?.kind === "trigger") && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "WAITING FOR OTHERS" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
               <strong>{activeLocalPlayTargetNotice?.message ?? consoleDecision.instruction}</strong>
               {lustTargetOrder && <em className="lust-order-guidance" data-testid="lust-order-guidance">
                 Attack order: <strong>{lustTargetOrder.firstName}</strong> first → <span className="lust-second-actor">{lustTargetOrder.secondName}</span> second.

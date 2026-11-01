@@ -1185,6 +1185,23 @@ function semanticDecisionActorId(envelope: CausalEnvelope | null, pending: unkno
       && activeFrame.current.resolvingPlayerId === actorId
       && progress.currentParticipantId === actorId && participant?.status === "CURRENT") return actorId;
   }
+  if (item?.kind === "borrowed_sword" && item.stage === "choose_target" && envelope && activeFrame && actorId) {
+    const sourceId = stringValue(item.sourceId);
+    const holderId = stringValue(item.holderId);
+    const rootFrames = envelope.frames.filter((frame) => frame.parentFrameId == null);
+    if (sourceId && holderId && sourceId !== holderId && actorId === sourceId
+      && rootFrames.length === 1 && rootFrames[0]!.frameId === activeFrame.frameId
+      && activeFrame.parentFrameId == null && activeFrame.stage === "SEQUENTIAL_CHOICE"
+      && envelope.activeFrameId === activeFrame.frameId && envelope.checkpoint.frameId === activeFrame.frameId
+      && envelope.checkpoint.stage === "SEQUENTIAL_CHOICE"
+      && record(item.causal)?.interactionId === envelope.interactionId && record(item.causal)?.frameId === activeFrame.frameId
+      && activeFrame.origin.originSourceId === sourceId && activeFrame.origin.originEffect === "Borrowed Sword"
+      && activeFrame.origin.originalTargetIds.length === 1 && activeFrame.origin.originalTargetIds[0] === holderId
+      && activeFrame.current.currentSourceId === sourceId && activeFrame.current.currentEffect === "Borrowed Sword"
+      && activeFrame.current.currentTargetIds.length === 1 && activeFrame.current.currentTargetIds[0] === holderId
+      && activeFrame.current.resolvingPlayerId === sourceId) return actorId;
+    return null;
+  }
   if (!envelope || !activeFrame || !item || !actorId || !causal || causal.interactionId !== envelope.interactionId
     || causal.frameId !== activeFrame.frameId) return null;
   if (item.kind === "target_card" && (item.cardKind === "Dismantle" || item.cardKind === "Steal")) {
@@ -1931,6 +1948,122 @@ function groupTargetEffectScopeFor(
   };
 }
 
+/** Retains one server-proven Borrowed Sword root and its committed Negation cards
+ * through the confirmed victim choice and forced Attack decision. */
+function borrowedSwordReactionChainFor(
+  timeline: readonly PresentationV2Event[],
+  envelope: CausalEnvelope | null,
+  pending: unknown,
+  scene: PresentationInteractionScene | null,
+): PresentationReactionChain | null {
+  const item = record(pending);
+  const continuation = record(item?.continuation);
+  const negationEffect = record(continuation?.effect);
+  const forced = item?.kind === "response" && continuation?.kind === "borrowed_sword_attack";
+  const negation = (item?.kind === "response" || item?.kind === "negation_window")
+    && continuation?.kind === "negation" && negationEffect?.kind === "borrowed_sword";
+  const sharedNegationWindow = item?.kind === "negation_window";
+  const choosing = item?.kind === "borrowed_sword" && item.stage === "choose_target";
+  if ((!forced && !negation && !choosing) || !scene || scene.semantics !== "PROVEN" || !envelope
+    || scene.interactionId !== envelope.interactionId || !scene.rootFrameId || !scene.activeFrameId) return null;
+
+  const sourceId = stringValue(forced || negation ? continuation.sourceId : item.sourceId);
+  const targetId = stringValue(forced || negation ? continuation.holderId ?? negationEffect?.targetId : item.holderId);
+  const rootEventId = stringValue(forced || negation ? continuation.rootEventId : item.rootEventId);
+  const rootResolutionId = stringValue(forced || negation ? continuation.rootResolutionId : item.rootResolutionId);
+  const rootCardId = stringValue(forced || negation ? continuation.rootCardId : item.rootCardId);
+  const causal = record(forced ? continuation.causal : negation ? continuation.causal : item.causal);
+  const rootFrames = envelope.frames.filter((frame) => frame.parentFrameId == null);
+  const rootFrame = rootFrames.length === 1 ? rootFrames[0] : null;
+  if (!sourceId || !targetId || sourceId === targetId || !rootEventId || !rootResolutionId || !rootCardId
+    || !rootFrame || rootFrame.frameId !== scene.rootFrameId
+    || rootFrame.origin.originSourceId !== sourceId || rootFrame.origin.originEffect !== "Borrowed Sword"
+    || rootFrame.origin.originalTargetIds.length !== 1 || rootFrame.origin.originalTargetIds[0] !== targetId
+    || rootFrame.current.currentSourceId !== sourceId || rootFrame.current.currentTargetIds.length !== 1
+    || rootFrame.current.currentTargetIds[0] !== targetId
+    || !causal || causal.interactionId !== envelope.interactionId
+    || timeline.filter((event) => event.id === rootEventId).length !== 1
+    || !timeline.some((event) => event.id === rootEventId && event.type === "card" && event.action === "play"
+      && event.presentation !== false && typeof event.privateToPlayerId !== "string"
+      && event.resolutionId === rootResolutionId && event.card?.id === rootCardId && event.card.kind === "BorrowedSword")) return null;
+
+  if (negation) {
+    if (scene.stage !== "NEGATION" || scene.activeFrameId !== rootFrame.frameId
+      || scene.continuity.relation !== "ROOT_FRAME" || rootFrame.stage !== "NEGATION"
+      || causal.frameId !== rootFrame.frameId || scene.sourceId !== sourceId || scene.effect !== "Borrowed Sword"
+      || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== targetId
+      || (!sharedNegationWindow && (scene.activeResolverId !== item.actorId || scene.decisionActorId !== item.actorId))
+      || (sharedNegationWindow && (scene.activeResolverId !== null || scene.decisionActorId !== null))) return null;
+  } else if (choosing) {
+    if (scene.stage !== "SEQUENTIAL_CHOICE" || scene.activeFrameId !== rootFrame.frameId
+      || scene.continuity.relation !== "ROOT_FRAME" || rootFrame.stage !== "SEQUENTIAL_CHOICE"
+      || causal.frameId !== rootFrame.frameId || item.sourceId !== sourceId || item.actorId !== sourceId
+      || item.targetId !== targetId
+      || scene.sourceId !== sourceId || scene.effect !== "Borrowed Sword"
+      || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== targetId
+      || scene.decisionActorId !== sourceId || scene.activeResolverId !== sourceId) return null;
+  } else {
+    const childFrame = envelope.frames.find((frame) => frame.frameId === scene.activeFrameId);
+    const selectedTargetId = stringValue(continuation.targetId);
+    const rootOrigin = scene.rootOrigin;
+    if (scene.stage !== "FORCED_ACTION" || scene.continuity.relation !== "CHILD_FRAME"
+      || causal.frameId !== scene.activeFrameId || !childFrame || childFrame.parentFrameId !== rootFrame.frameId
+      || childFrame.stage !== "FORCED_ACTION" || childFrame.origin.originSourceId !== targetId
+      || childFrame.origin.originEffect !== "borrowed_sword_attack"
+      || childFrame.origin.originalTargetIds.length !== 1 || childFrame.origin.originalTargetIds[0] !== selectedTargetId
+      || childFrame.origin.originRef?.interactionId !== envelope.interactionId
+      || childFrame.origin.originRef?.frameId !== rootFrame.frameId
+      || scene.decisionActorId !== targetId || scene.activeResolverId !== targetId
+      || rootOrigin?.sourceId !== sourceId || rootOrigin.effect !== "Borrowed Sword"
+      || rootOrigin.targetIds.length !== 1 || rootOrigin.targetIds[0] !== targetId) return null;
+  }
+
+  const rawHistory = (forced || choosing ? (forced ? continuation.negationHistory : item.negationHistory) : continuation.negationHistory) ?? [];
+  if (!Array.isArray(rawHistory)) return null;
+  const nodes: PresentationReactionChainNode[] = [];
+  const linked: Array<{ nodeId: string; eventId: string; resolutionId: string } | null> = [];
+  const nodeIds = new Set<string>();
+  const cardIds = new Set<string>([rootCardId]);
+  const eventIds = new Set<string>([rootEventId]);
+  let previousNodeId: string | null = null;
+  for (const raw of rawHistory) {
+    const node = record(raw);
+    const nodeId = stringValue(node?.nodeId);
+    const actorId = stringValue(node?.actorId);
+    const cardId = stringValue(node?.physicalCardId);
+    const eventId = stringValue(node?.publicEventId);
+    const frameId = stringValue(node?.frameId);
+    const matches = eventId ? timeline.filter((event) => event.id === eventId) : [];
+    const event = matches.length === 1 ? matches[0] : null;
+    const publicFact = record(event?.publicFact);
+    if (!nodeId || !actorId || !cardId || !eventId || frameId !== rootFrame.frameId
+      || node?.interactionId !== envelope.interactionId || node.causedByNodeId !== previousNodeId
+      || node.kind !== "NEGATION_CARD" || nodeIds.has(nodeId) || cardIds.has(cardId) || eventIds.has(eventId)
+      || !event || event.type !== "card" || event.action !== "play" || event.presentation === false
+      || typeof event.privateToPlayerId === "string" || event.card?.kind !== "Negation" || event.card.id !== cardId
+      || !stringValue(event.resolutionId)
+      || publicFact && publicFact.actorId !== undefined && publicFact.actorId !== actorId) return null;
+    nodeIds.add(nodeId);
+    cardIds.add(cardId);
+    eventIds.add(eventId);
+    previousNodeId = nodeId;
+    nodes.push({ nodeId, interactionId: envelope.interactionId, frameId, causedByNodeId: node.causedByNodeId as string | null, actorId, kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } });
+    linked.push({ nodeId, eventId, resolutionId: event.resolutionId });
+  }
+
+  const negated = negation ? continuation.negated : false;
+  if (typeof negated !== "boolean" || negated !== (nodes.length % 2 === 1)) return null;
+  return {
+    semantics: "PROVEN",
+    interactionId: envelope.interactionId,
+    frameId: rootFrame.frameId,
+    rootCard: { interactionId: envelope.interactionId, frameId: rootFrame.frameId, sourceId, targetId, cardKind: "BorrowedSword" },
+    nodes,
+    publicEventLinks: { root: { eventId: rootEventId, resolutionId: rootResolutionId }, nodes: linked as Array<{ nodeId: string; eventId: string; resolutionId: string }> },
+    rootEffectState: negated ? "BLOCKED" : "ACTIVE",
+  };
+}
+
 function reactionChainFor(
   timeline: readonly PresentationV2Event[],
   envelope: CausalEnvelope | null,
@@ -1940,6 +2073,8 @@ function reactionChainFor(
   groupValues: GroupProjectionValues | null,
   groupProgress: ReturnType<typeof groupParticipantProgress>,
 ): PresentationReactionChain | null {
+  const borrowedSwordChain = borrowedSwordReactionChainFor(timeline, envelope, pending, scene);
+  if (borrowedSwordChain) return borrowedSwordChain;
   const item = record(pending);
   const continuation = record(item?.continuation);
   const effect = record(continuation?.effect);
@@ -2380,6 +2515,20 @@ function eventForContext(context: Context | null, timeline: readonly Presentatio
     if (byCard) return byCard;
   }
   if (barrierId) return timeline.find((event) => event.id === barrierId && event.presentation !== false) ?? null;
+  return null;
+}
+
+function borrowedSwordRootEventId(pending: unknown): string | null {
+  const item = record(pending);
+  const continuation = record(item?.continuation);
+  const effect = record(continuation?.effect);
+  if (item?.kind === "borrowed_sword") return stringValue(item.rootEventId);
+  if (continuation?.kind === "borrowed_sword_attack") return stringValue(continuation.rootEventId);
+  if (continuation?.kind === "negation" && effect?.kind === "borrowed_sword") return stringValue(continuation.rootEventId);
+  if (item?.kind === "negation_window") {
+    const windowContinuation = record(item.continuation);
+    if (record(windowContinuation?.effect)?.kind === "borrowed_sword") return stringValue(windowContinuation.rootEventId);
+  }
   return null;
 }
 
@@ -3977,7 +4126,12 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     : null;
   const barrierId = input.currentAction?.presentation?.readyAfterEventId ?? null;
   const legacyResolutionId = firstString(input.currentAction?.presentation?.resolutionId, active?.resolutionId, parent?.resolutionId, root?.resolutionId);
-  const rootEvent = eventForContext(root, input.timeline, barrierId) ?? eventForContext(active, input.timeline, barrierId);
+  const borrowedRootEventId = borrowedSwordRootEventId(input.pending);
+  const borrowedRootMatches = borrowedRootEventId ? input.timeline.filter((event) => event.id === borrowedRootEventId
+    && event.type === "card" && event.action === "play" && event.presentation !== false
+    && event.card?.kind === "BorrowedSword") : [];
+  const borrowedRootEvent = borrowedRootMatches.length === 1 ? borrowedRootMatches[0]! : null;
+  const rootEvent = borrowedRootEvent ?? eventForContext(root, input.timeline, barrierId) ?? eventForContext(active, input.timeline, barrierId);
   const activeEvent = eventForContext(active, input.timeline, barrierId);
   const parentEvent = eventForContext(parent, input.timeline, barrierId);
   const relevantIds = unique([rootEvent?.id, activeEvent?.id, parentEvent?.id, barrierId]);

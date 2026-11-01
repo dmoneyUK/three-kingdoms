@@ -2,24 +2,30 @@
 
 Repository: `dmoneyUK/three-kingdoms` · target branch: `ux-v2`
 
-Task: `CONSOLE-01 — Card tap-to-deselect and End Turn confirmation`
+## Current task
 
-Design reviewed: latest `origin/ux-v2` `docs/UX2-refine.md`, SHA `77879be2b5e114dcc9c9f2e3e87994d86579f61b`; canonical index reconciled 2026-11-01 00:01 UTC. Table A was empty; this bounded task was directly authorized by the owner. The unrelated dirty main checkout remains untouched.
+`BORROWED-SWORD-PHONE-01 — §10.25.3 Step A (A1–A6)`
 
-## Current status
+Design reviewed: `docs/UX2-refine.md` at `origin/ux-v2` `adfbbb3df9d77c7e979e02dd78f46830fea13abf`. The latest Table A and §10.27 preserve Step A as first; Step B, CONSOLE-01 and M1–M6 cannot interrupt it.
 
-**IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW.** Do not mark USER-ACCEPTED.
+**Status: IMPLEMENTATION LOCALLY VERIFIED; COMMIT, EXACT-SHA CI AND WORKER DEPLOYMENT PENDING.** Final status must be `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`, never USER-ACCEPTED. Stop after Step A's required review boundary.
 
-Hand-card choice remains local and uses the existing toggle. The selected card's accessible name changes between `Select [card]` and `Deselect [card]`. End Turn keeps the existing `CurrentAction` authority and asks `End your turn?`; Cancel submits nothing, and affirmative confirmation invokes only the existing `end_turn` action.
+## Scope delivered locally
 
-## Execution record
+- Keep one server-proven Borrowed Sword root and committed Negation history linked through target choice, holder forced choice and the resulting genuine Attack.
+- Route the root and committed Negations through the existing `SingleTargetCardJourney` once; remove the duplicate Borrowed Sword notice without changing card identities or animation ownership.
+- Publish H4/PAC only from committed facts and show the chooser, Weapon holder and real Attack responder accurately. Preserve the viewer-private Console and server-owned action permissions.
+- No gameplay rules, response order, timers, or public/private boundaries changed.
 
-- **2026-11-01, local validation (exact command start times not captured):** Focused React tests passed 2/2; the first attempt exposed a fixture missing authoritative `end_turn`, which was corrected. `npm run build` passed. First mobile-browser startup lacked generated `dist/server/wrangler.json`; after build, the focused 390×844 touch test passed 1/1. Combined local UI/browser time was under five minutes. Targeted ESLint passed with 0 errors and 2 pre-existing hook-dependency warnings; build reported existing bundle-size/API-classification warnings.
-- **00:29 UTC:** Implementation commit `05efe5542dc94fa67e86788305670889f75651ac` pushed. Its exact-SHA [Actions run 41257001700](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41257001700) failed only `test:fast`: a source-shape check in `tests/room-safety-render.test.mjs:706` expected `aria-pressed` to appear before sibling controls. Browser, API, lint and build passed; deploy was skipped.
-- **00:32 UTC:** Reordered the new `aria-label` after `aria-pressed` without changing runtime behavior. The previously failing focused room-safety test passed 1/1. No additional UI test was run.
-- **00:33 UTC:** Corrective commit `01a6e70e7f72f02f63ee8534ea77f582de2de02b` pushed. Exact-SHA [Actions run 41257243551](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41257243551) completed **success** at 00:37:50 UTC: Lint/fast tests, API tests, browser smoke, D1 migration, Worker deployment and production smoke all passed. The fast suite passed 334/334; browser smoke passed 1/1.
-- **00:38 UTC:** Deployment log reported Cloudflare Worker version `0fb41159-c6c8-409d-b2e9-1157eecc1f97`. Direct `GET /api/health` returned `{"ok":true,"worker":"available"}`. `git diff --check` passed. This handoff is being synchronized after deployment; no further implementation task is selected.
+## Execution and validation
 
-## Acceptance boundary
+- **2026-11-01 08:57 UTC:** Baseline API reproduction passed; isolated the lost Borrowed Sword root, private uncommitted Negation projection gap, forced-stage misclassification and incorrect Attack/result handoff.
+- **2026-11-01 12:28 UTC:** Safely synced the isolated task worktree to design SHA `adfbbb3`; main checkout's existing dirty work was left untouched.
+- **2026-11-01 12:36 UTC:** Focused API `tests/api/borrowed-sword.test.mjs` passed 8/8; Presentation V2/snapshot/client tests passed 131/131; targeted ESLint exited 0 with two existing React Hook warnings; `git diff --check` passed.
+- **2026-11-01 12:35 UTC:** The 480px browser case first failed because its new assertion queried the action-button container instead of the sibling `.console-guidance`. Updated the locator to the actual guidance owner; the same case then passed 1/1. Combined local browser time remained below the five-minute cap. No production change was made for this test-only mismatch.
+- **2026-11-01 12:37 UTC:** `npm run build` passed; only existing chunk-size, dynamic API classification and Node deprecation notices appeared.
+- Latest relevant remote Actions run before this change: [41257243551](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41257243551), exact SHA `01a6e70e7f72f02f63ee8534ea77f582de2de02b`, success. The earlier `05efe554` run failed; the later `01a6e70` run is green. No BSW source commit has been pushed yet.
 
-The implementation is ready for owner iPhone review. No development work remains for CONSOLE-01; do not mark it accepted or start another task before the owner review/next instruction.
+## Resume point
+
+Review the task-only diff, commit/push only these BSW source/tests plus this HANDOVER to `ux-v2`, then wait for the exact source SHA's required Actions and Worker deployment. Verify production `/api/health` and record the actual run, deployment version and health result here. The separate main checkout remains detached at `b085cbc` with pre-existing uncommitted W3/EM-01-related files; do not stage or alter them.

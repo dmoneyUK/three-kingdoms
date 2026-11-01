@@ -895,6 +895,8 @@ export function buildInteractionStageView(
   view: PresentationClientView,
   resolvePlayerName: PresentationPlayerNameResolver,
 ): InteractionStageView {
+  const borrowedSwordChainStage = view.reactionChain?.rootCard?.cardKind === "BorrowedSword"
+    && (view.stage === "NEGATION" || view.stage === "SEQUENTIAL_CHOICE" || view.stage === "FORCED_ACTION");
   const source = displayIdentity(view.sourceId, "Unknown source", resolvePlayerName);
   const originalTargets = view.originalTargetIds.map((id) => displayIdentity(id, "Unknown target", resolvePlayerName));
   const activeTargets = view.activeTargetIds.map((id) => displayIdentity(id, "Unknown target", resolvePlayerName));
@@ -931,7 +933,7 @@ export function buildInteractionStageView(
         publicNegationResponses: view.bumperHarvestProgress.publicNegationResponses.map((response) => ({ ...response })),
       } : {}),
     } : null,
-    reactionChainNegationNodes: view.stage === "NEGATION"
+    reactionChainNegationNodes: view.stage === "NEGATION" || borrowedSwordChainStage
       ? (view.reactionChain?.nodes ?? []).map((node, index) => {
         const publicEventLink = view.reactionChain?.publicNodeEventLinks?.find((link) => link.nodeId === node.nodeId)
           ?? view.reactionChain?.publicEventLinks?.nodes.find((link) => link.nodeId === node.nodeId);
@@ -954,10 +956,10 @@ export function buildInteractionStageView(
         };
       })
       : [],
-    reactionChainRootCard: view.stage === "NEGATION" ? view.reactionChain?.rootCard ?? null : null,
-    reactionChainPublicEventLinks: view.stage === "NEGATION" ? view.reactionChain?.publicEventLinks ?? null : null,
-    reactionChainRootEffectState: view.stage === "NEGATION" ? view.reactionChain?.rootEffectState ?? null : null,
-    reactionChainGroupTargetEffectScope: view.stage === "NEGATION" ? view.reactionChain?.groupTargetEffectScope ?? null : null,
+    reactionChainRootCard: view.stage === "NEGATION" || borrowedSwordChainStage ? view.reactionChain?.rootCard ?? null : null,
+    reactionChainPublicEventLinks: view.stage === "NEGATION" || borrowedSwordChainStage ? view.reactionChain?.publicEventLinks ?? null : null,
+    reactionChainRootEffectState: view.stage === "NEGATION" || borrowedSwordChainStage ? view.reactionChain?.rootEffectState ?? null : null,
+    reactionChainGroupTargetEffectScope: view.stage === "NEGATION" || borrowedSwordChainStage ? view.reactionChain?.groupTargetEffectScope ?? null : null,
     ...(view.rootOrigin ? {
       rootOrigin: {
         frameId: view.rootOrigin.frameId,
@@ -983,9 +985,15 @@ export function buildInteractionStageView(
  * opportunities and passes never manufacture graph nodes.
  */
 export function buildReactionChainView(stage: InteractionStageView): ReactionChainView {
-  if (!stage.visible || stage.stage !== "NEGATION" || !stage.effect || !stage.source.id) {
+  const borrowedSword = stage.reactionChainRootCard?.cardKind === "BorrowedSword"
+    && (stage.stage === "NEGATION" || stage.stage === "SEQUENTIAL_CHOICE" || stage.stage === "FORCED_ACTION");
+  if (!stage.visible || stage.stage !== "NEGATION" && !borrowedSword || !stage.effect) {
     return { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, rootEffectState: null, groupTargetEffectScope: null, root: null, active: null };
   }
+  const nestedBorrowedRoot = borrowedSword && stage.continuity.relation === "CHILD_FRAME" ? stage.rootOrigin : null;
+  const rootSource = nestedBorrowedRoot?.source ?? stage.source;
+  const rootTargets = nestedBorrowedRoot?.targets ?? stage.originalTargets;
+  if (!rootSource.id) return { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, rootEffectState: null, groupTargetEffectScope: null, root: null, active: null };
   return {
     visible: true,
     interactionId: stage.interactionId,
@@ -997,10 +1005,10 @@ export function buildReactionChainView(stage: InteractionStageView): ReactionCha
     rootEffectState: stage.reactionChainRootEffectState,
     groupTargetEffectScope: stage.reactionChainGroupTargetEffectScope ? { ...stage.reactionChainGroupTargetEffectScope } : null,
     root: {
-      effect: stage.effect,
+      effect: nestedBorrowedRoot?.effect ?? stage.effect,
       cardKind: stage.reactionChainRootCard?.cardKind ?? null,
-      source: stage.source,
-      targets: stage.originalTargets,
+      source: rootSource,
+      targets: rootTargets,
     },
     active: {
       label: "Negation response",
@@ -1052,7 +1060,7 @@ function displayNames(identities: readonly PresentationDisplayIdentity[], emptyL
 
 export function isProvenBorrowedSwordForcedAttack(stage: InteractionStageView): boolean {
   return Boolean(stage.visible
-    && stage.stage === "ATTACK_RESPONSE"
+    && stage.stage === "FORCED_ACTION"
     && stage.effect === "borrowed_sword_attack"
     && stage.continuity.relation === "CHILD_FRAME"
     && stage.rootOrigin

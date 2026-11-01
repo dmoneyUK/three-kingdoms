@@ -1,8 +1,39 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration } from "../../game/public-activity.ts";
 import {
-  assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
+  advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
+
+function publicBorrowedSwordProjection(view) {
+  const snapshot = view.presentationSnapshot;
+  return {
+    identity: snapshot?.identity,
+    stable: snapshot?.stable,
+    interaction: snapshot?.interaction,
+    reactionChain: snapshot?.reactionChain,
+    rootAction: snapshot?.rootAction,
+    publicEventFacts: snapshot?.publicEventFacts,
+    publicNextDecision: snapshot?.publicNextDecision,
+  };
+}
+
+async function assertSameBorrowedSwordPublicProjection(game) {
+  const views = await Promise.all(game.members.map((member) => state(game.code, member.token)));
+  const expected = publicBorrowedSwordProjection(views[0].data);
+  for (const view of views.slice(1)) assert.deepEqual(publicBorrowedSwordProjection(view.data), expected);
+  return views.map((view) => view.data);
+}
+
+function borrowedSwordPublicStatus(view) {
+  return derivePublicActivityStatus({
+    status: view.status,
+    phase: view.phase,
+    turnSeat: view.turnSeat,
+    players: view.players,
+    presentationSnapshot: view.presentationSnapshot,
+  });
+}
 
 test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal", { timeout: 30_000 }, async () => {
   const game = await createHumanGame(); const [host, alice] = game.members;
@@ -17,10 +48,33 @@ test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal"
   const childEnvelope = chosen.data.room.causalEnvelope;
   assert.ok(childEnvelope, "Borrowed Sword child Attack persists a public causal envelope");
   assert.equal(childEnvelope.frames.length, 2);
-  assert.equal(childEnvelope.frames.find((frame) => frame.frameId === childEnvelope.activeFrameId).stage, "ATTACK_RESPONSE");
+  assert.equal(childEnvelope.frames.find((frame) => frame.frameId === childEnvelope.activeFrameId).stage, "FORCED_ACTION");
   assert.equal(childEnvelope.frames.find((frame) => frame.frameId === childEnvelope.activeFrameId).parentFrameId, childEnvelope.frames.find((frame) => frame.frameId !== childEnvelope.activeFrameId).frameId);
+  assert.equal(chosen.data.room.presentationSnapshot.reactionChain?.rootCard?.cardKind, "BorrowedSword");
+  assert.equal(chosen.data.room.presentationSnapshot.reactionChain?.publicEventLinks?.root.eventId, opened.data.room.timeline.find((event) => event.type === "card" && event.card?.id === borrowed.id)?.id);
+  assert.equal(chosen.data.room.presentationSnapshot.publicNextDecision?.stageLabel, "Borrowed Sword forced choice");
+  assert.match(borrowedSwordPublicStatus(chosen.data.room).text, /play Attack or give up their Weapon/);
+  assert.doesNotMatch(borrowedSwordPublicStatus(chosen.data.room).text, /take damage/i);
   const refused = await requestAndSettle("decline_response", { code: game.code, token: alice.token });
   assert.equal(refused.status, 200, JSON.stringify(refused.data)); assert.equal(refused.data.room.phase, "play"); assert.ok((await state(game.code, host.token)).data.myHand.some((item) => item.id === weapon.id));
+  const rootEventId = opened.data.room.timeline.find((event) => event.type === "card" && event.card?.id === borrowed.id)?.id;
+  const transferEvent = refused.data.room.timeline.find((event) => event.publicFact?.category === "CARD_TRANSFERRED" && event.publicFact?.rootEventId === rootEventId);
+  assert.ok(transferEvent, "the committed Weapon transfer is linked to the Borrowed Sword root");
+  assert.equal(transferEvent.publicFact.actorId, source.id);
+  assert.equal(transferEvent.publicFact.label, "Green Dragon Blade");
+  const retainedTransferFact = [
+    ...(refused.data.room.presentationSnapshot.publicEventFacts ?? []),
+    ...(refused.data.room.presentationSnapshot.retainedPublicEventFacts ?? []),
+  ].find((fact) => fact.eventId === transferEvent.id);
+  assert.ok(retainedTransferFact, "the public snapshot retains the committed Weapon transfer proof");
+  const transferNarration = derivePublicInteractionNarration({
+    snapshot: refused.data.room.presentationSnapshot,
+    players: refused.data.room.players,
+    rootEventId,
+    interactionId: retainedTransferFact.identity.interactionId,
+    rootFrameId: retainedTransferFact.identity.rootFrameId,
+  });
+  assert.equal(transferNarration?.headline, `${source.name} obtained Green Dragon Blade from ${holder.name}.`);
   assert.equal(refused.data.room.causalEnvelope.interactionId, childEnvelope.interactionId);
   assert.equal(refused.data.room.causalEnvelope.activeFrameId, childEnvelope.frames.find((frame) => frame.frameId !== childEnvelope.activeFrameId).frameId);
 
@@ -35,6 +89,150 @@ test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal"
   await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id }); await requestAndSettle("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: secondTarget.id });
   const spearAttack = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "serpent_spear_attack", cardIds: ["peach-spear-cost-one", "dodge-spear-cost-two"] });
   assert.equal(spearAttack.status, 200, JSON.stringify(spearAttack.data)); assert.equal(spearAttack.data.room.players.find((player) => player.id === secondTarget.id).hp, 3); assert.equal(spearAttack.data.room.players.find((player) => player.id === holder.id).equipmentCards[0].id, spear.id);
+});
+
+test("Borrowed Sword public root, private Negation, counter, chooser and forced Attack remain linked for every viewer", { timeout: 60_000 }, async () => {
+  const game = await createHumanGame();
+  const [sourceMember, holderMember, targetMember] = game.members;
+  const [source, holder, target, other] = game.room.players;
+  const borrowed = card("BorrowedSword", "borrowed-public-root");
+  const weapon = card("GreenDragonBlade", "borrowed-public-weapon");
+  const attack = card("Attack", "borrowed-public-attack");
+  const holderNegation = card("Negation", "borrowed-private-negation");
+  const targetNegation = card("Negation", "borrowed-counter-negation");
+  const dodge = card("Dodge", "borrowed-target-dodge");
+  setHand(source.id, [borrowed], 4, 4);
+  setHand(holder.id, [attack, holderNegation], 4, 4);
+  setHand(target.id, [targetNegation, dodge], 4, 4);
+  setHand(other.id, [], 4, 4);
+  setEquipment(holder.id, { weapon });
+  setTurn(game.code, source.seat);
+
+  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: borrowed.id, targetId: holder.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const rootEvent = opened.data.room.timeline.find((event) => event.type === "card" && event.action === "play" && event.card?.id === borrowed.id);
+  assert.ok(rootEvent, "the actual Borrowed Sword play is present in the public timeline");
+  const rootViewers = await assertSameBorrowedSwordPublicProjection(game);
+  const rootFacts = rootViewers[0].presentationSnapshot.publicEventFacts.filter((fact) => fact.eventId === rootEvent.id && fact.rootEventId === rootEvent.id);
+  assert.equal(rootFacts.length, 1);
+  assert.equal(rootFacts[0].category, "CARD_PLAYED");
+  assert.equal(rootViewers[0].presentationSnapshot.interaction?.stage, "NEGATION");
+  for (const viewer of rootViewers) {
+    assert.equal(viewer.presentationSnapshot.reactionChain?.rootCard?.cardKind, "BorrowedSword");
+    assert.equal(viewer.presentationSnapshot.reactionChain?.publicEventLinks?.root.eventId, rootEvent.id,
+      "the real Borrowed Sword root remains linked during the public Negation window");
+  }
+  const firstWindowId = rootViewers[0].currentAction.negationWindowId;
+  assert.ok(firstWindowId);
+
+  const privateIntent = await request("respond", { code: game.code, token: holderMember.token, providerId: "negation_card", cardId: holderNegation.id });
+  assert.equal(privateIntent.status, 200, JSON.stringify(privateIntent.data));
+  const intentViewers = await assertSameBorrowedSwordPublicProjection(game);
+  assert.deepEqual(intentViewers[1].presentationSnapshot.viewerNegationChoice, {
+    windowId: firstWindowId,
+    locked: true,
+    choice: "negation_intent",
+  });
+  for (const viewer of [intentViewers[0], intentViewers[2], intentViewers[3]]) {
+    assert.deepEqual(viewer.presentationSnapshot.viewerNegationChoice, {
+      windowId: firstWindowId,
+      locked: false,
+      choice: null,
+    });
+  }
+  assert.deepEqual(intentViewers[1].presentationSnapshot.publicEventFacts, rootFacts,
+    "an uncommitted Negation intent does not replace or hide the public Borrowed Sword fact");
+  assert.equal(intentViewers[0].timeline.some((event) => event.card?.id === holderNegation.id && event.action === "play"), false);
+
+  await advanceNegationWindow(game.code, sourceMember.token, firstWindowId);
+  const firstCommitted = (await state(game.code, sourceMember.token)).data;
+  assert.equal(firstCommitted.presentationSnapshot.reactionChain?.nodes.length, 1);
+  assert.equal(firstCommitted.presentationSnapshot.reactionChain?.rootEffectState, "BLOCKED");
+  const firstNegationEvent = firstCommitted.timeline.find((event) => event.type === "card" && event.card?.id === holderNegation.id && event.action === "play");
+  assert.ok(firstNegationEvent?.publicFact?.rootEventId === rootEvent.id);
+  const cancelledNarration = derivePublicNegationNarration({
+    snapshot: firstCommitted.presentationSnapshot,
+    players: firstCommitted.players,
+    rootEventId: rootEvent.id,
+  });
+  assert.match(cancelledNarration?.headline ?? "", /Borrowed Sword effect/);
+  const counterWindowId = firstCommitted.currentAction.negationWindowId;
+  assert.ok(counterWindowId);
+
+  const counterIntent = await request("respond", { code: game.code, token: targetMember.token, providerId: "negation_card", cardId: targetNegation.id });
+  assert.equal(counterIntent.status, 200, JSON.stringify(counterIntent.data));
+  await advanceNegationWindow(game.code, sourceMember.token, counterWindowId);
+  const countered = (await state(game.code, sourceMember.token)).data;
+  assert.equal(countered.presentationSnapshot.reactionChain?.nodes.length, 2);
+  assert.equal(countered.presentationSnapshot.reactionChain?.rootEffectState, "ACTIVE");
+  const counterWindowAgain = countered.currentAction.negationWindowId;
+  assert.ok(counterWindowAgain);
+  await advanceNegationWindow(game.code, sourceMember.token, counterWindowAgain);
+
+  const chooserViewers = await assertSameBorrowedSwordPublicProjection(game);
+  const chooser = chooserViewers[0];
+  assert.equal(chooser.pendingBorrowedSword?.stage, "choose_target");
+  assert.equal(chooser.presentationSnapshot.reactionChain?.publicEventLinks?.root.eventId, rootEvent.id);
+  assert.equal(chooser.presentationSnapshot.reactionChain?.nodes.length, 2);
+  assert.equal(chooser.presentationSnapshot.reactionChain?.rootEffectState, "ACTIVE");
+  for (const viewer of chooserViewers) {
+    assert.equal(viewer.presentationSnapshot.reactionChain?.publicEventLinks?.root.eventId, rootEvent.id,
+      "the same public root remains linked while A chooses the target");
+  }
+  assert.equal(chooser.presentationSnapshot.publicNextDecision?.stageLabel, "Borrowed Sword target choice");
+  assert.equal(borrowedSwordPublicStatus(chooser).text, `Waiting for ${source.name} to choose ${holder.name}'s Attack target.`);
+  assert.equal(borrowedSwordPublicStatus(chooser).text.includes(target.name), false);
+  assert.equal(chooser.presentationSnapshot.publicEventFacts.some((fact) => fact.label === "Borrowed Sword target choice"), false,
+    "the unconfirmed selected victim is absent from public event facts");
+
+  const chosen = await request("choose_borrowed_sword_target", { code: game.code, token: sourceMember.token, targetId: target.id });
+  assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+  const chosenRoom = chosen.data.room;
+  const choiceFact = chosenRoom.presentationSnapshot.publicEventFacts.find((fact) => fact.label === "Borrowed Sword target choice");
+  assert.ok(choiceFact);
+  assert.equal(choiceFact.actorId, source.id);
+  assert.deepEqual(choiceFact.affectedPlayerIds, [target.id]);
+  const choiceNarration = derivePublicInteractionNarration({
+    snapshot: chosenRoom.presentationSnapshot,
+    players: chosenRoom.players,
+    rootEventId: rootEvent.id,
+    interactionId: choiceFact.identity.interactionId,
+    rootFrameId: choiceFact.identity.rootFrameId,
+  });
+  assert.equal(choiceNarration?.headline, `${source.name} chose ${target.name} as ${holder.name}'s Attack target.`);
+  assert.equal(chosenRoom.presentationSnapshot.publicNextDecision?.stageLabel, "Borrowed Sword forced choice");
+  assert.match(borrowedSwordPublicStatus(chosenRoom).text, /play Attack or give up their Weapon/);
+  assert.doesNotMatch(borrowedSwordPublicStatus(chosenRoom).text, /take damage/i);
+  const forcedViews = await assertSameBorrowedSwordPublicProjection(game);
+  assert.equal(forcedViews[1].currentAction.actorId, holder.id);
+  assert.equal(forcedViews[1].currentAction.requirement, "attack");
+  for (const viewer of forcedViews) {
+    assert.equal(viewer.presentationSnapshot.reactionChain?.rootCard?.cardKind, "BorrowedSword");
+    assert.equal(viewer.presentationSnapshot.reactionChain?.publicEventLinks?.root.eventId, rootEvent.id,
+      "the Borrowed Sword root remains linked during B's forced choice");
+  }
+
+  const playedAttack = await request("respond", { code: game.code, token: holderMember.token, providerId: "card", cardId: attack.id });
+  assert.equal(playedAttack.status, 200, JSON.stringify(playedAttack.data));
+  const targetView = (await state(game.code, targetMember.token)).data;
+  const attackEvent = targetView.timeline.find((event) => event.type === "card" && event.action === "play" && event.card?.id === attack.id);
+  assert.ok(attackEvent);
+  assert.equal(attackEvent.actorId, holder.id);
+  assert.equal(targetView.presentationSnapshot.rootAction?.action, "ATTACK");
+  const attackInteraction = targetView.presentationSnapshot.interaction;
+  const attackNarration = attackInteraction ? derivePublicInteractionNarration({
+    snapshot: targetView.presentationSnapshot,
+    players: targetView.players,
+    rootEventId: attackEvent.id,
+    interactionId: attackInteraction.interactionId,
+    rootFrameId: attackInteraction.rootFrameId,
+  }) : null;
+  assert.equal(attackNarration?.headline, `${holder.name} played Attack targeting ${target.name}.`);
+  assert.equal(borrowedSwordPublicStatus(targetView).text, `Waiting for ${target.name} to respond to ${holder.name}'s Attack.`);
+  const dodgeResult = await request("respond", { code: game.code, token: targetMember.token, providerId: "card", cardId: dodge.id });
+  assert.equal(dodgeResult.status, 200, JSON.stringify(dodgeResult.data));
+  assert.equal(dodgeResult.data.room.players.find((player) => player.id === target.id).hp, 4);
+  assert.ok(dodgeResult.data.room.players.find((player) => player.id === holder.id).equipmentCards.some((item) => item.id === weapon.id));
 });
 
 test("Borrowed Sword canonical response ownership and CAS matrix", { timeout: 120_000 }, async () => {

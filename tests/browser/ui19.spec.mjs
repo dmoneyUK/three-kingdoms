@@ -1632,7 +1632,9 @@ for (const width of [480, 650]) {
     await expect(targetSeat).not.toHaveClass(/selected-target/);
     await page.getByRole("button", { name: "Select Player 3", exact: true }).click();
     await expect(targetSeat).toHaveClass(/selected-target/);
-    await expect(page.locator(".borrowed-sword-notice")).toContainText("Target selected");
+    await expect(page.locator(".borrowed-sword-notice")).toHaveCount(0);
+    await expect(page.locator('[data-console-guidance="true"]'))
+      .toContainText("Choose who Player 2 must Attack.");
   });
 }
 

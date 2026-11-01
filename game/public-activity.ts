@@ -146,16 +146,19 @@ export function derivePublicInteractionNarration(input: {
         && fact.rootEventId === input.rootEventId,
     ).sort((left, right) => left.order - right.order);
     const rootOrder = facts.find((fact) => fact.eventId === input.rootEventId)?.order ?? -1;
-    const hasDamage = facts.some((fact) => fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED");
-    latest = facts.filter((fact) => (fact.order > rootOrder || fact.eventId === input.rootEventId && fact.category === "SKILL_USED")
-      && (hasDamage || fact.category === "SKILL_USED")).at(-1);
+    const outcomeCategories = new Set([
+      "DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED",
+    ]);
+    latest = facts.filter((fact) => fact.eventId === input.rootEventId && fact.category === "CARD_PLAYED"
+      || fact.order > rootOrder && outcomeCategories.has(fact.category)).at(-1);
   } else if (!identity && !interaction && snapshot.stable.kind === "REST"
     && snapshot.retainedPublicEvent?.identity.interactionId === input.interactionId
     && snapshot.retainedPublicEvent.identity.rootFrameId === input.rootFrameId
     && snapshot.retainedPublicEvent.rootEventId === input.rootEventId
     && snapshot.retainedPublicEventFacts?.some((fact) => fact.rootEventId === input.rootEventId
       && fact.identity.interactionId === input.interactionId && fact.identity.rootFrameId === input.rootFrameId
-      && (fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED" || fact.category === "SKILL_USED"))) {
+      && (fact.category === "CARD_PLAYED" || fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED"
+        || fact.category === "SKILL_USED" || fact.category === "EFFECT_APPLIED" || fact.category === "CARD_OBTAINED" || fact.category === "CARD_TRANSFERRED"))) {
     latest = snapshot.retainedPublicEvent;
   }
   if (!latest) return null;
@@ -166,7 +169,10 @@ export function derivePublicInteractionNarration(input: {
   const amount = Number.isSafeInteger(latest.amount) && (latest.amount ?? 0) > 0 ? latest.amount : null;
   let headline: string;
 
-  if (latest.category === "DAMAGE_APPLIED") {
+  if (latest.category === "CARD_PLAYED") {
+    const card = effectLabel(latest.label) ?? "a card";
+    headline = `${actor ?? "A player"} played ${card}${target ? ` targeting ${target}` : ""}.`;
+  } else if (latest.category === "DAMAGE_APPLIED") {
     const damage = amount === null ? "damage" : `${amount} damage`;
     headline = actor && target ? `${actor} dealt ${damage} to ${target}.`
       : target ? `${target} took ${damage}.`
@@ -184,7 +190,10 @@ export function derivePublicInteractionNarration(input: {
     if (effectKind === "gain_target_card" && target && outcome) outcome = `${outcome} from ${target}`;
     headline = `${actor ? `${actor} used` : "A player used"} ${skill}${outcome ? ` and ${outcome}` : ""}.`;
   } else if (latest.category === "CARD_OBTAINED" || latest.category === "CARD_TRANSFERRED") {
-    headline = `${actor ?? "A player"} obtained a card${target ? ` from ${target}` : ""}.`;
+    const outcome = latest.outcomeLabel?.trim();
+    headline = outcome
+      ? `${actor ? `${actor} ` : ""}${outcome.replace(/[.!?]+$/, "")}.`
+      : `${actor ?? "A player"} obtained ${latest.label?.trim() || "a card"}${target ? ` from ${target}` : ""}.`;
   } else if (latest.category === "EFFECT_CANCELLED" || latest.category === "EFFECT_RESTORED") {
     const effect = effectLabel(latest.effect?.label) ?? "an effect";
     headline = `${actor ?? "A player"} ${latest.category === "EFFECT_RESTORED" ? "restored" : "cancelled"} ${effect}.`;
@@ -322,6 +331,36 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
         kind: "target-card-choice",
         text: `Waiting for ${actor} to choose a card from ${target}.`,
       };
+    }
+  }
+
+  if (input.status === "playing" && input.phase === "response"
+    && nextDecision?.stageLabel === "Borrowed Sword target choice" && nextDecision.actorIds.length === 1) {
+    const actor = playerName(input, nextDecision.actorIds[0]);
+    const holderId = interaction?.targetIds.length === 1 ? interaction.targetIds[0] : null;
+    const holder = playerName(input, holderId);
+    if (actor && holder) {
+      const text = `Waiting for ${actor} to choose ${holder}'s Attack target.`;
+      return { kind: "response", text, heading: text, stage: nextDecision.stageLabel };
+    }
+  }
+
+  if (input.status === "playing" && input.phase === "response"
+    && nextDecision?.stageLabel === "Borrowed Sword forced choice" && nextDecision.actorIds.length === 1) {
+    const actor = playerName(input, nextDecision.actorIds[0]);
+    if (actor) {
+      const text = `Waiting for ${actor} to play Attack or give up their Weapon.`;
+      return { kind: "response", text, heading: text, stage: nextDecision.stageLabel };
+    }
+  }
+
+  if (input.status === "playing" && input.phase === "response" && interaction?.stage === "ATTACK_RESPONSE"
+    && interaction.effect?.toLowerCase() === "borrowed_sword" && nextDecision?.actorIds.length === 1) {
+    const actor = playerName(input, nextDecision.actorIds[0]);
+    const attacker = playerName(input, interaction.sourceId);
+    if (actor && attacker) {
+      const text = `Waiting for ${actor} to respond to ${attacker}'s Attack.`;
+      return { kind: "response", text, heading: text, stage: "Attack response" };
     }
   }
 
