@@ -11,6 +11,7 @@ export type PresentationSemanticIdentity = {
 /** Generic meanings are provider-neutral; card, Hero and skill IDs do not belong here. */
 export type PublicPresentationEventCategory =
   | "CARD_PLAYED"
+  | "CARD_EQUIPPED"
   | "CARD_DISCARDED"
   | "CARD_OBTAINED"
   | "CARD_TRANSFERRED"
@@ -89,6 +90,7 @@ export function collectPublicPresentationEventFacts(input: {
     if (raw) {
       if (raw.semantics !== "PROVEN" || raw.visibility !== "PUBLIC"
         || raw.interactionId !== current.interactionId || !nonEmptyString(raw.frameId) || !frameIds.has(raw.frameId)) return;
+      if (raw.category === "CARD_EQUIPPED" && !isCommittedPublicEquipmentFact(event, raw)) return;
       const frame = frameRows.find((row) => row.frameId === raw.frameId);
       if (raw.parentFrameId !== undefined && raw.parentFrameId !== (frame?.parentFrameId ?? undefined)) return;
       const fact: PublicPresentationEventFactDraft = {
@@ -113,9 +115,9 @@ export function collectPublicPresentationEventFacts(input: {
     // Root card identity is inherited only through the exact Pending-proven
     // event ID. The public fact remains intentionally less specific.
     if (event.id !== input.rootEventId || event.type !== "card" && event.type !== "cards") return;
-    if (event.action !== "play" && event.action !== "equip" && event.action !== "discard"
+    if (event.action !== "play" && event.action !== "discard"
       && event.action !== "gain" && event.action !== "reveal" && event.action !== "activate") return;
-    const category: PublicPresentationEventCategory = event.action === "play" || event.action === "equip" ? "CARD_PLAYED"
+    const category: PublicPresentationEventCategory = event.action === "play" ? "CARD_PLAYED"
       : event.action === "discard" ? "CARD_DISCARDED"
         : event.action === "gain" ? "CARD_OBTAINED"
           : event.action === "activate" ? "SKILL_USED" : "EFFECT_APPLIED";
@@ -178,7 +180,7 @@ export type PublicPresentationSemantics = {
 };
 
 const EVENT_CATEGORIES = new Set<PublicPresentationEventCategory>([
-  "CARD_PLAYED", "CARD_DISCARDED", "CARD_OBTAINED", "CARD_TRANSFERRED", "EFFECT_APPLIED",
+  "CARD_PLAYED", "CARD_EQUIPPED", "CARD_DISCARDED", "CARD_OBTAINED", "CARD_TRANSFERRED", "EFFECT_APPLIED",
   "EFFECT_CANCELLED", "EFFECT_RESTORED", "DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED",
   "ACTION_DECLINED", "STAGE_COMPLETED",
 ]);
@@ -202,6 +204,21 @@ function identity(value: unknown): PresentationSemanticIdentity | null {
     checkpointId: item.checkpointId,
     presentationRevision: item.presentationRevision as number,
   };
+}
+
+function isCommittedPublicEquipmentFact(event: Record<string, unknown>, fact: Record<string, unknown>): boolean {
+  const card = record(event.card);
+  const kind = typeof card?.kind === "string" ? CARD_DEFINITIONS[card.kind as keyof typeof CARD_DEFINITIONS] : null;
+  const actorId = typeof event.actorId === "string" ? event.actorId : null;
+  const affectedPlayerIds = Array.isArray(fact.affectedPlayerIds) ? fact.affectedPlayerIds : null;
+  const effect = record(fact.effect);
+  return event.type === "card" && event.action === "equip" && event.presentation !== false
+    && typeof event.privateToPlayerId !== "string" && nonEmptyString(event.id)
+    && nonEmptyString(card?.id) && Boolean(kind?.equipmentSlot) && Boolean(actorId)
+    && fact.rootEventId === event.id && fact.actorId === actorId
+    && fact.label === kind?.name
+    && effect?.kind === "equipment_play" && effect.label === kind?.name
+    && affectedPlayerIds?.length === 1 && affectedPlayerIds[0] === actorId;
 }
 
 function sameIdentity(left: PresentationSemanticIdentity, right: PresentationSemanticIdentity): boolean {
@@ -277,7 +294,8 @@ export function retainedPublicEventFromTimeline(timeline: readonly unknown[]): {
     if (fact) {
       const committedIdentity = identity(fact.committedIdentity);
       if (!committedIdentity || fact.interactionId !== committedIdentity.interactionId || !nonEmptyString(fact.rootEventId)
-        || !["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED"].includes(String(fact.category))) return null;
+        || !["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED"].includes(String(fact.category))
+          && !(fact.category === "CARD_EQUIPPED" && isCommittedPublicEquipmentFact(event, fact))) return null;
       const latest = publicEvent({ ...fact, identity: committedIdentity, eventId: event.id,
         order: event.publicSequence, affectedPlayerIds: fact.affectedPlayerIds ?? [],
         ...(typeof event.resolutionId === "string" ? { resolutionId: event.resolutionId } : {}),
@@ -288,7 +306,8 @@ export function retainedPublicEventFromTimeline(timeline: readonly unknown[]): {
         const candidateIdentity = identity(raw?.committedIdentity);
         if (!raw || !candidateIdentity || !sameInteraction(candidateIdentity, committedIdentity)
           || raw.interactionId !== committedIdentity.interactionId || raw.rootEventId !== latest.rootEventId
-          || candidateIdentity.presentationRevision > committedIdentity.presentationRevision) return [];
+          || candidateIdentity.presentationRevision > committedIdentity.presentationRevision
+          || raw.category === "CARD_EQUIPPED" && !isCommittedPublicEquipmentFact(candidate, raw)) return [];
         const accepted = publicEvent({ ...raw, identity: candidateIdentity, eventId: candidate.id,
           order: candidate.publicSequence, affectedPlayerIds: raw.affectedPlayerIds ?? [],
           ...(typeof candidate.resolutionId === "string" ? { resolutionId: candidate.resolutionId } : {}),

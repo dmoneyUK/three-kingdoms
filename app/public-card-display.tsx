@@ -3213,6 +3213,14 @@ export function PublicInteractionAnnouncementLayer({ narration, roomCode, viewer
   roomCode: string;
   viewerId: string;
 }) {
+  const [expiredEventId, setExpiredEventId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!narration.readDurationMs) return;
+    const eventId = narration.eventId;
+    const timer = window.setTimeout(() => setExpiredEventId(eventId), narration.readDurationMs);
+    return () => window.clearTimeout(timer);
+  }, [narration.eventId, narration.readDurationMs]);
+  if (narration.readDurationMs && expiredEventId === narration.eventId) return null;
   return <section className="public-card-display public-card-display-journey public-interaction-event-announcement"
     data-public-interaction-event-id={narration.eventId} data-public-event-root-id={narration.rootEventId}>
     <PublicCardAnnouncement

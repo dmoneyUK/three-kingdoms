@@ -53,6 +53,49 @@ test("idle retention uses committed causal facts and stops at a later public act
   assert.equal(retainedPublicEventFromTimeline([damage, { ...skill, publicFact: { ...skill.publicFact, committedIdentity: undefined } }]), null);
 });
 
+test("public Equipment facts require a committed real equip and never infer a play from an unproven equip", () => {
+  const checkpoint = identity(2, "equipment-checkpoint");
+  const equip = {
+    id: "equip-event", type: "card", action: "equip", presentation: true, publicSequence: 20,
+    actorId: "player-1", card: { id: "real-frost-sword", kind: "FrostSword", suit: "♠", rank: "A" },
+    publicFact: { semantics: "PROVEN", visibility: "PUBLIC", interactionId: checkpoint.interactionId,
+      frameId: checkpoint.rootFrameId, rootEventId: "equip-event", category: "CARD_EQUIPPED",
+      actorId: "player-1", affectedPlayerIds: ["player-1"], label: "Frost Sword",
+      effect: { kind: "equipment_play", label: "Frost Sword" }, committedIdentity: checkpoint },
+  };
+  const frames = [{ frameId: checkpoint.rootFrameId, parentFrameId: null,
+    origin: { originSourceId: "player-1", originalTargetIds: ["player-1"] } }];
+  const active = collectPublicPresentationEventFacts({ timeline: [equip], identity: checkpoint, frames, rootEventId: equip.id });
+  assert.equal(active.length, 1);
+  assert.equal(active[0].category, "CARD_EQUIPPED");
+  assert.equal(active[0].eventId, equip.id);
+
+  const retained = retainedPublicEventFromTimeline([equip]);
+  assert.equal(retained?.event.category, "CARD_EQUIPPED");
+  assert.equal(retained?.event.actorId, "player-1");
+  assert.equal(retained?.event.label, "Frost Sword");
+  assert.deepEqual(retained?.facts.map((fact) => fact.eventId), [equip.id]);
+
+  const invalid = [
+    { ...equip, publicFact: { ...equip.publicFact, label: "A weapon" } },
+    { ...equip, publicFact: { ...equip.publicFact, effect: { kind: "unknown", label: "Frost Sword" } } },
+    { ...equip, publicFact: { ...equip.publicFact, actorId: "player-2" } },
+    { ...equip, publicFact: { ...equip.publicFact, affectedPlayerIds: ["player-1", "player-2"] } },
+    { ...equip, publicFact: { ...equip.publicFact, rootEventId: "another-event" } },
+    { ...equip, card: { ...equip.card, kind: "Attack" } },
+    { ...equip, privateToPlayerId: "player-1" },
+    { ...equip, presentation: false },
+  ];
+  for (const candidate of invalid) assert.equal(retainedPublicEventFromTimeline([candidate]), null);
+  assert.deepEqual(collectPublicPresentationEventFacts({
+    timeline: [{ ...equip, publicFact: undefined }], identity: checkpoint, frames, rootEventId: equip.id,
+  }), [], "a public equip without causal event proof must not become a generic CARD_PLAYED fact");
+  assert.equal(retainedPublicEventFromTimeline([{
+    id: "unproven-equip", type: "card", action: "equip", presentation: true, publicSequence: 21,
+    actorId: "player-1", card: equip.card,
+  }]), null, "an unproven later equip supersedes older retained results without inventing H4");
+});
+
 test("public semantic projection fails closed for empty, stale, private, and unproven facts", () => {
   const empty = projectPublicPresentationSemantics({ identity: null, events: [], nextDecision: null });
   assert.deepEqual(empty, { identity: null, event: null, events: [], nextDecision: null, viewerNegationChoice: null });

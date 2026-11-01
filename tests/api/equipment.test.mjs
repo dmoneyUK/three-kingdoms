@@ -469,6 +469,55 @@ test("Green Dragon Blade and Attack-use-limit rules preserve normal Attack flow"
 
 });
 
+test("committed Equipment H4 is shared by viewers and follows a real slot replacement", async () => {
+  const game = await createHumanGame();
+  const [host, alice] = game.members;
+  const [hostPlayer, alicePlayer] = game.room.players;
+  const firstCard = card("FrostSword", "public-h4-first");
+  const replacementCard = card("BlueSteelSword", "public-h4-replacement");
+  setEquipment(hostPlayer.id, {});
+  setHand(hostPlayer.id, [firstCard, replacementCard], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+
+  const equipped = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: firstCard.id });
+  assert.equal(equipped.status, 200, JSON.stringify(equipped.data));
+  const firstEvent = equipped.data.room.timeline.find((event) => event.type === "card" && event.action === "equip" && event.card?.id === firstCard.id);
+  assert.ok(firstEvent, "the original public equip event remains the physical zone transition");
+  assert.equal(firstEvent.actorId, hostPlayer.id);
+  assert.equal(firstEvent.publicFact?.category, "CARD_EQUIPPED");
+  assert.equal(firstEvent.publicFact?.rootEventId, firstEvent.id);
+  assert.equal(firstEvent.publicFact?.actorId, hostPlayer.id);
+  assert.equal(firstEvent.publicFact?.label, "Frost Sword");
+  assert.equal(firstEvent.publicFact?.cardId, undefined, "the semantic fact does not copy or invent a physical card ID");
+  assert.deepEqual(firstEvent.publicFact?.affectedPlayerIds, [hostPlayer.id]);
+  const firstSlot = equipped.data.room.players.find((player) => player.id === hostPlayer.id).equipmentCards;
+  assert.ok(firstSlot.some((item) => item.id === firstCard.id && item.kind === "FrostSword"), "the same original CardFace lands in the real Weapon slot");
+  assert.equal(equipped.data.room.presentationSnapshot.retainedPublicEvent?.eventId, firstEvent.id);
+  assert.equal(equipped.data.room.presentationSnapshot.retainedPublicEvent?.category, "CARD_EQUIPPED");
+  assert.equal(equipped.data.room.presentationSnapshot.retainedPublicEvent?.label, "Frost Sword");
+
+  const observer = (await state(game.code, alice.token)).data;
+  assert.deepEqual(observer.presentationSnapshot.retainedPublicEvent, equipped.data.room.presentationSnapshot.retainedPublicEvent,
+    "the same committed public H4 fact is projected to a different player");
+  assert.deepEqual(observer.presentationSnapshot.retainedPublicEventFacts, equipped.data.room.presentationSnapshot.retainedPublicEventFacts);
+  assert.equal(observer.myHand.some((item) => item.id === firstCard.id || item.id === replacementCard.id), false,
+    "another player's public equipment identity does not expose either card as a hidden Hand card");
+
+  const replaced = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: replacementCard.id });
+  assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
+  const replacementEvent = replaced.data.room.timeline.find((event) => event.type === "card" && event.action === "equip" && event.card?.id === replacementCard.id);
+  assert.ok(replacementEvent);
+  assert.equal(replacementEvent.publicFact?.category, "CARD_EQUIPPED");
+  assert.equal(replaced.data.room.presentationSnapshot.retainedPublicEvent?.eventId, replacementEvent.id,
+    "the newer committed equip supersedes the earlier H4 fact");
+  assert.equal(replaced.data.room.presentationSnapshot.retainedPublicEvent?.label, "Blue Steel Sword");
+  const finalEquipment = replaced.data.room.players.find((player) => player.id === hostPlayer.id).equipmentCards;
+  assert.ok(finalEquipment.some((item) => item.id === replacementCard.id && item.kind === "BlueSteelSword"));
+  assert.equal(finalEquipment.some((item) => item.id === firstCard.id), false);
+  assert.ok(discardIds(game.code).includes(firstCard.id), "replacement moves the exact prior Weapon to the real discard zone");
+  assert.equal(alicePlayer.id, observer.meId);
+});
+
 test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [host, alice, bob, carol] = game.members; const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = game.room.players;

@@ -8247,7 +8247,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const currentInteractionFact = room.presentationSnapshot?.interaction?.stage !== "NEGATION"
     ? [...(room.presentationSnapshot?.publicEventFacts ?? [])]
       .filter((fact) => fact.rootEventId && (
-        ["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED"].includes(fact.category)
+        ["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED", "CARD_EQUIPPED"].includes(fact.category)
         || fact.category === "CARD_PLAYED" && fact.eventId === fact.rootEventId
           && fact.effect?.label === "Borrowed Sword"
       ))

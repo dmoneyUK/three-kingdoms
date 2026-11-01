@@ -9014,7 +9014,22 @@ export async function POST(request: Request) {
         const equipment = equipmentZone(me); const slot = cardDefinition(card.kind).equipmentSlot!; const replacedEquipment = equipment[slot];
         hand = hand.filter((item) => item.id !== card.id); equipment[slot] = card;
         if (replacedEquipment) { discard.push(replacedEquipment); log = addCardEvent(log, me.name, replacedEquipment, me.name, "discard", false); }
-        log = addCardEvent(log, me.name, card, me.name, "equip", true, { actorId: me.id });
+        const equipEventId = crypto.randomUUID();
+        const equipmentName = cardDefinition(card.kind).name;
+        const equipCausal = createCausalRoot({
+          stage: "SETTLEMENT",
+          origin: { originSourceId: me.id, originEffect: "equipment", originalTargetIds: [me.id] },
+          current: { currentSourceId: me.id, currentEffect: "equipment", currentTargetIds: [me.id], resolvingPlayerId: null },
+        });
+        const equipPublicFact = publicFactFor(equipCausal.context, "CARD_EQUIPPED", {
+          rootEventId: equipEventId,
+          actorId: me.id,
+          affectedPlayerIds: [me.id],
+          label: equipmentName,
+          effect: { kind: "equipment_play", label: equipmentName },
+        }, equipCausal.envelope);
+        log = addCardEvent(log, me.name, card, me.name, "equip", true,
+          { actorId: me.id, ...(equipPublicFact ? { publicFact: equipPublicFact } : {}) }, equipEventId);
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(hand), JSON.stringify(equipment), me.id),
           db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(replacedEquipment ? "resolving" : liveRoom.phase, JSON.stringify(discard), JSON.stringify(log), room.id),

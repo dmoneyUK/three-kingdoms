@@ -112,6 +112,7 @@ export type PublicInteractionNarration = {
   checkpointId?: string;
   phase?: "WINDOW_OPEN" | "FINAL";
   rootEffectState?: "ACTIVE" | "BLOCKED";
+  readDurationMs?: number;
 };
 
 function narrationPlayerName(input: Pick<PublicActivityInput, "players">, playerId: string | undefined): string | null {
@@ -149,8 +150,9 @@ export function derivePublicInteractionNarration(input: {
     const outcomeCategories = new Set([
       "DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED",
     ]);
+    const rootCategories = new Set(["CARD_PLAYED", "CARD_EQUIPPED"]);
     latest = facts.filter((fact) => fact.eventId === input.rootEventId
-      ? fact.category === "CARD_PLAYED" || outcomeCategories.has(fact.category)
+      ? rootCategories.has(fact.category) || outcomeCategories.has(fact.category)
       : fact.order > rootOrder && outcomeCategories.has(fact.category)).at(-1);
   } else if (!identity && !interaction && snapshot.stable.kind === "REST"
     && snapshot.retainedPublicEvent?.identity.interactionId === input.interactionId
@@ -158,7 +160,7 @@ export function derivePublicInteractionNarration(input: {
     && snapshot.retainedPublicEvent.rootEventId === input.rootEventId
     && snapshot.retainedPublicEventFacts?.some((fact) => fact.rootEventId === input.rootEventId
       && fact.identity.interactionId === input.interactionId && fact.identity.rootFrameId === input.rootFrameId
-      && (fact.category === "CARD_PLAYED" || fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED"
+      && (fact.category === "CARD_PLAYED" || fact.category === "CARD_EQUIPPED" || fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED"
         || fact.category === "SKILL_USED" || fact.category === "EFFECT_APPLIED" || fact.category === "CARD_OBTAINED" || fact.category === "CARD_TRANSFERRED"))) {
     latest = snapshot.retainedPublicEvent;
   }
@@ -170,7 +172,9 @@ export function derivePublicInteractionNarration(input: {
   const amount = Number.isSafeInteger(latest.amount) && (latest.amount ?? 0) > 0 ? latest.amount : null;
   let headline: string;
 
-  if (latest.category === "CARD_PLAYED") {
+  if (latest.category === "CARD_EQUIPPED") {
+    headline = `${actor ?? "A player"} equipped ${effectLabel(latest.label) ?? "equipment"}.`;
+  } else if (latest.category === "CARD_PLAYED") {
     const card = effectLabel(latest.label) ?? "a card";
     headline = `${actor ?? "A player"} played ${card}${target ? ` targeting ${target}` : ""}.`;
   } else if (latest.category === "DAMAGE_APPLIED") {
@@ -215,6 +219,7 @@ export function derivePublicInteractionNarration(input: {
     headline,
     compactHeadline: headline,
     accessibleLabel: headline,
+    ...(latest.category === "CARD_EQUIPPED" ? { readDurationMs: 2_600 } : {}),
     checkpointId: latest.identity.checkpointId,
   };
 }

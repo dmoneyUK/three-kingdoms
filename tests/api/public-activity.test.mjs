@@ -377,3 +377,28 @@ test("generic H4 retains damage through Skip and formats committed public or hid
   const independent = { ...generic, eventId: "standalone", rootEventId: "standalone" };
   assert.equal(derivePublicInteractionNarration({ ...input([independent]), rootEventId: "standalone" })?.eventId, "standalone");
 });
+
+test("Equipment H4 uses the exact committed owner and card name for active and retained snapshots", () => {
+  const identity = { interactionId: "interaction-1", rootFrameId: "root-1",
+    checkpointId: "checkpoint-1", presentationRevision: 1 };
+  const equip = {
+    semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "frost-equip-event", order: 7,
+    rootEventId: "frost-equip-event", category: "CARD_EQUIPPED", actorId: "p1", affectedPlayerIds: ["p1"],
+    label: "Frost Sword", effect: { kind: "equipment_play", label: "Frost Sword" },
+  };
+  const input = (state) => ({ snapshot: state, players, rootEventId: equip.rootEventId,
+    interactionId: identity.interactionId, rootFrameId: identity.rootFrameId });
+  const active = derivePublicInteractionNarration(input(snapshot({ stage: "SETTLEMENT", actorId: null,
+    stableKind: "REST", publicEventFacts: [equip] })));
+  assert.equal(active?.headline, "Test Player 1 equipped Frost Sword.");
+  assert.equal(active?.eventId, equip.eventId);
+  assert.equal(active?.readDurationMs, 2_600);
+
+  const retainedSnapshot = { identity: null, interaction: null, stable: { kind: "REST" },
+    retainedPublicEvent: equip, retainedPublicEventFacts: [equip], publicEventFacts: [] };
+  const retained = derivePublicInteractionNarration(input(retainedSnapshot));
+  assert.equal(retained?.headline, active?.headline);
+  assert.equal(retained?.eventId, active?.eventId);
+  assert.equal(retained?.readDurationMs, 2_600);
+  assert.equal(derivePublicInteractionNarration({ ...input(retainedSnapshot), interactionId: "different-interaction" }), null);
+});
