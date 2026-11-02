@@ -1896,7 +1896,7 @@ function publicSettlementCardFaceId(action: PublicCardDisplayAction, dismantleFa
   return action.settlement?.targetCardMovement?.affectedCardFace?.id;
 }
 
-function publicCardAnnouncementCopy(
+export function publicCardAnnouncementCopy(
   action: PublicCardDisplayAction,
   notice: string,
   actorName: string | null,
@@ -1914,7 +1914,12 @@ function publicCardAnnouncementCopy(
       dismantleCardFace: dismantleFace,
     };
   }
-  if (action.publicInteractionNarration) {
+  const sameEventConversionCopy = action.publicCardEffectFrame?.effectClass === "CONVERSION"
+    && action.publicCardEffectFrame.eventId === eventId
+    && Boolean(action.publicNotice)
+    && (!action.publicInteractionNarration
+      || action.publicInteractionNarration.eventId === action.publicCardEffectFrame.eventId);
+  if (action.publicInteractionNarration && !sameEventConversionCopy) {
     return {
       message: action.publicInteractionNarration.headline,
       compactMessage: action.publicInteractionNarration.compactHeadline,
@@ -1957,7 +1962,9 @@ function publicCardAnnouncementCopy(
       accessibleLabel: action.publicNotice,
     };
   }
-  if (action.publicCardEffectFrame && action.publicNotice) {
+  if (action.publicCardEffectFrame && action.publicNotice
+    && (action.publicCardEffectFrame.effectClass !== "CONVERSION"
+      || action.publicCardEffectFrame.eventId === eventId)) {
     const compactMessage = action.publicNoticeCompact?.trim();
     return {
       message: action.publicNotice,
@@ -1983,16 +1990,26 @@ function publicCardAnnouncementCopy(
   };
 }
 
+function publicNegationNarrationOwnsCopy(action: PublicCardDisplayAction): boolean {
+  const narration = action.publicNegationNarration;
+  return Boolean(narration && !(
+    action.publicCardEffectFrame?.effectClass === "CONVERSION"
+      && action.publicCardEffectFrame.eventId === action.rootEventId
+      && narration.eventId === action.rootEventId
+  ));
+}
+
 export function publicCardCommittedFactCopy(
   action: PublicCardDisplayAction,
   copy: PublicCardAnnouncementCopy,
 ): PublicCardAnnouncementCopy {
   const narration = action.publicNegationNarration;
+  const negationNarrationOwnsCopy = publicNegationNarrationOwnsCopy(action);
   const normalize = (message: string | undefined) => message?.trim()
     .replace(/\.\s+Play Dodge or Skip\.$/i, ".")
     .replace(/\.\s+(Resolved:)/i, "; $1")
     .replace(/\.\s+(\d+\s+(?:targets|choices) resolved\.)/i, "; $1");
-  return narration && !copy.dismantleCardFace ? {
+  return narration && !copy.dismantleCardFace && negationNarrationOwnsCopy ? {
     message: narration.headline,
     compactMessage: narration.compactHeadline,
     accessibleLabel: narration.accessibleLabel,
@@ -2593,9 +2610,9 @@ function PublicCardAnnouncement({
       // anchor, but stop treating that old frame as occupied once the final
       // result has no card left in REVEAL or MOVE. Every physical card is then
       // parked by its real seat and independently reserved as an obstacle.
-      // Public REVEAL and authentic PARKED miniatures are explicitly allowed
-      // beneath H4; only interactive/protected stage geometry blocks it.
-      const centerCardStillOccupiesStage = false;
+      // Public REVEAL and authentic PARKED miniatures remain allowed beneath
+      // H4. A centre frame explicitly marked to stay clear remains protected.
+      const centerCardStillOccupiesStage = keepCenterAnchorClear;
 
       const gap = PUBLIC_CARD_ANNOUNCEMENT_GAP;
       const obstacleClearance = (element: HTMLElement | null) => privateDrawAware && element?.matches(".private-draw-row")
@@ -2816,15 +2833,27 @@ function PublicCardAnnouncement({
         }
       }
 
-      const canReflowNegationBand = hasNegationNarration
-        && (!lastValidPlacementRef.current
-          || lastValidPlacementRef.current.viewerLayoutKey !== viewerLayoutKey
-          || lastValidPlacementRef.current.layoutEpoch !== layoutEpoch);
-      if (!selected && (stableCenterAnchor || canReflowNegationBand)) {
+      const previousCopyRect = lastValidPlacementRef.current
+        ? new DOMRect(
+          lastValidPlacementRef.current.left,
+          lastValidPlacementRef.current.top,
+          lastValidPlacementRef.current.width,
+          lastValidPlacementRef.current.height,
+        )
+        : null;
+      const priorBandOverlapsProtectedCenter = keepCenterAnchorClear && (
+        Boolean(existingBandRect && rectsOverlap(existingBandRect, centerCardRect, gap))
+        || Boolean(previousCopyRect && rectsOverlap(previousCopyRect, centerCardRect, gap))
+      );
+      const canReflowCurrentBand = (!lastValidPlacementRef.current
+        || lastValidPlacementRef.current.viewerLayoutKey !== viewerLayoutKey
+        || lastValidPlacementRef.current.layoutEpoch !== layoutEpoch);
+      if (!selected && (stableCenterAnchor || (hasNegationNarration && canReflowCurrentBand)
+        || priorBandOverlapsProtectedCenter)) {
         // Keep the previous H4 position and preferred side when either fits.
-        // If a TEST SWITCH or material table resize invalidates that baseline,
-        // search the current viewer's safe area on both sides of the center
-        // card. Protected Seat, Dock, Hand and control rects still apply.
+        // A layout change or a protected centre-card collision can invalidate
+        // that baseline; then search the current safe area around the frame.
+        // Protected Seat, Dock, Hand and control rects still apply.
         for (const option of announcementOptions) {
           if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace);
           if (supportElement) supportElement.textContent = option.supporting;
@@ -5098,10 +5127,13 @@ function SingleTargetCardJourney({
     sourceName,
     targetName,
     compactPlayerNamesById,
-    action.settlement?.eventId,
+    announcementEventId,
   );
   const negationNarration = action.publicNegationNarration;
+  const negationNarrationOwnsCopy = publicNegationNarrationOwnsCopy(action);
   const committedFactCopy = publicCardCommittedFactCopy(action, announcementCopy);
+  const interactionNarrationOwnsCopy = Boolean(action.publicInteractionNarration
+    && committedFactCopy.message === action.publicInteractionNarration.headline);
   const dismantleFaceCopy = committedFactCopy.dismantleCardFace;
   const displayedAnnouncementEventId = dismantleFaceCopy?.settlementEventId
     ?? negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? announcementEventId;
@@ -5243,10 +5275,10 @@ function SingleTargetCardJourney({
       compactMessage={compactAnnouncement}
       accessibleLabel={committedFactCopy.accessibleLabel}
       dismantleCardFace={dismantleFaceCopy}
-      supportingMessage={dismantleFaceCopy ? undefined : negationNarration?.supportingMessage}
-      compactSupportingMessage={dismantleFaceCopy ? undefined : negationNarration?.compactSupportingMessage}
-      presentationNarration={dismantleFaceCopy || negationNarration ? undefined : action.publicInteractionNarration}
-      negationNarration={dismantleFaceCopy ? undefined : negationNarration}
+      supportingMessage={dismantleFaceCopy || !negationNarrationOwnsCopy ? undefined : negationNarration?.supportingMessage}
+      compactSupportingMessage={dismantleFaceCopy || !negationNarrationOwnsCopy ? undefined : negationNarration?.compactSupportingMessage}
+      presentationNarration={dismantleFaceCopy || !interactionNarrationOwnsCopy ? undefined : action.publicInteractionNarration}
+      negationNarration={dismantleFaceCopy || !negationNarrationOwnsCopy ? undefined : negationNarration}
       fallbackCardRect={harvestPoolVisible
         ? journey.center
       : motion?.type === "lust-cost" && journey.center

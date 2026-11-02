@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { centerRevealCardInSafeBattlefield, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
+import { centerRevealCardInSafeBattlefield, publicCardAnnouncementCopy, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
 import {
   canClearPublicJourneyOwnership,
   publicAnnouncementEventCopyKey,
@@ -169,6 +169,72 @@ const action = (overrides = {}) => ({
   cardLabel: "ATTACK",
   ariaLabel: "Source played Attack targeting Target",
   ...overrides,
+});
+
+test("same-event proven conversion copy outranks its generic root narration but yields to newer facts", () => {
+  const conversionNotice = "Source used Ambushment AS Burning Bridges on Target.";
+  const genericRootHeadline = "Source played Dodge targeting Target.";
+  const frame = { effectClass: "CONVERSION", eventId: "root-event", accessibleLabel: "Verified Ambushment conversion." };
+  const rootNarration = {
+    eventId: "root-event", headline: genericRootHeadline, compactHeadline: genericRootHeadline,
+    accessibleLabel: genericRootHeadline,
+  };
+  const conversionAction = action({
+    cardKind: "Dismantle",
+    publicNotice: conversionNotice,
+    publicCardEffectFrame: frame,
+    publicInteractionNarration: rootNarration,
+  });
+  const copyFor = (candidate, eventId = "root-event") => publicCardAnnouncementCopy(
+    candidate, genericRootHeadline, "Source", "source", "Source", "Target", {}, eventId,
+  );
+
+  const sameEvent = copyFor(conversionAction);
+  assert.equal(sameEvent.message, conversionNotice);
+  assert.equal(sameEvent.accessibleLabel, frame.accessibleLabel);
+
+  const laterHeadline = "Source dealt 1 damage to Target.";
+  const laterFact = { ...rootNarration, eventId: "damage-event", headline: laterHeadline,
+    compactHeadline: laterHeadline, accessibleLabel: laterHeadline };
+  assert.equal(copyFor({ ...conversionAction, publicInteractionNarration: laterFact }).message, laterHeadline,
+    "a later committed interaction fact owns H4 over the older conversion root");
+
+  assert.equal(copyFor({ ...conversionAction, publicCardEffectFrame: undefined }).message, genericRootHeadline,
+    "without the validated conversion frame, retain the generic root narration");
+  assert.equal(copyFor({ ...conversionAction, publicCardEffectFrame: { ...frame, eventId: "different-event" } }).message, genericRootHeadline,
+    "a conversion frame for another event cannot replace this event's narration");
+
+  const normalAttack = action({ cardKind: "Attack", cardLabel: "ATTACK", publicNotice: undefined,
+    publicCardEffectFrame: undefined, publicInteractionNarration: undefined });
+  const normalAttackCopy = copyFor(normalAttack);
+  assert.equal(normalAttackCopy.message, publicCardAnnouncement(
+    normalAttack, genericRootHeadline, "Source", "Source", "Target",
+  ), "ordinary Attack H4 retains the established generic copy");
+
+  const sameEventNegationWindow = publicCardCommittedFactCopy({
+    ...conversionAction,
+    publicNegationNarration: {
+      rootLabel: "Dodge", eventId: "root-event", latestCommittedEventId: "root-event", checkpointId: "checkpoint-root",
+      phase: "WINDOW_OPEN", rootEffectState: "ACTIVE",
+      headline: genericRootHeadline, compactHeadline: genericRootHeadline, supportingMessage: "", compactSupportingMessage: "",
+      accessibleLabel: genericRootHeadline,
+    },
+  }, sameEvent);
+  assert.equal(sameEventNegationWindow.message, conversionNotice,
+    "the Negation window's same-event root narration must not erase a proven conversion");
+
+  const committedNegationHeadline = "Responder's Negation cancelled Burning Bridges on Target.";
+  const committedNegation = publicCardCommittedFactCopy({
+    ...conversionAction,
+    publicNegationNarration: {
+      rootLabel: "Dodge", eventId: "negation-event", latestCommittedEventId: "negation-event", checkpointId: "checkpoint-negation",
+      phase: "WINDOW_OPEN", rootEffectState: "BLOCKED",
+      headline: committedNegationHeadline, compactHeadline: committedNegationHeadline,
+      supportingMessage: "", compactSupportingMessage: "", accessibleLabel: committedNegationHeadline,
+    },
+  }, sameEvent);
+  assert.equal(committedNegation.message, committedNegationHeadline,
+    "a later committed Negation fact still supersedes the conversion root");
 });
 
 test("committed outcomes from existing and synthetic providers use the same H4 layer", () => {

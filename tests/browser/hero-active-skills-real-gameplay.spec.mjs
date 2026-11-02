@@ -810,6 +810,7 @@ test("W4: Ambushment frames the genuine black card as Burning Bridges for actor 
     const observer = await openSkillViewer(observerPage, seed, seed.players[2], { width: 390, height: 844 });
     const watchFrame = (viewerPage) => viewerPage.evaluate(() => {
       window.__w4AmbushmentFrameSeen = null;
+      window.__w4AmbushmentVisibleSince = null;
       const capture = () => {
         if (window.__w4AmbushmentFrameSeen) return;
         const root = [...document.querySelectorAll('[data-public-card-journey-event-id][data-public-card-journey-role="root"]')]
@@ -821,28 +822,38 @@ test("W4: Ambushment frames the genuine black card as Burning Bridges for actor 
         const frameRect = frame?.getBoundingClientRect();
         const noticeRect = announcement?.getBoundingClientRect();
         if (!root || !frame || !display || !announcement || !frameRect || !noticeRect
-          || !["reveal", "move"].includes(root.dataset.publicCardJourneyPhase)
-          || display.dataset.publicCardLayoutPending !== "false"
-          || announcement.dataset.publicCardAnnouncementPositioned !== "true"
-          || style?.visibility !== "visible" || style.display === "none" || Number(style.opacity) <= 0) return;
-        window.__w4AmbushmentFrameSeen = {
+          || !["reveal", "move"].includes(root.dataset.publicCardJourneyPhase)) return;
+        window.__w4AmbushmentVisibleSince ??= performance.now();
+        const notice = announcement.textContent?.trim() ?? "";
+        const observation = {
           viewerId: display.dataset.publicCardViewerId,
+          actionRootEventId: display.dataset.publicCardRootEventId,
           rootEventId: root.dataset.publicCardJourneyEventId,
           actorId: root.dataset.publicCardJourneyActorId,
           phase: root.dataset.publicCardJourneyPhase,
           effectId: frame.dataset.publicCardFrameEffectId,
+          frameClass: frame.dataset.publicCardFrameClass,
           frameEventId: frame.dataset.publicCardFrameEventId,
+          frameCardEventId: frame.dataset.publicCardFrameCardEventId,
+          announcementEventId: announcement.dataset.publicCardAnnouncementEventId,
           materialCardIds: frame.dataset.publicCardFrameMaterialCardIds,
           title: frame.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
-          notice: announcement.textContent?.trim(),
+          notice,
+          visible: style?.visibility === "visible" && style.display !== "none" && Number(style.opacity) > 0,
+          positioned: announcement.dataset.publicCardAnnouncementPositioned === "true",
           overlap: noticeRect.left < frameRect.right && noticeRect.right > frameRect.left
             && noticeRect.top < frameRect.bottom && noticeRect.bottom > frameRect.top,
           viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
         };
+        if (observation.positioned || performance.now() - window.__w4AmbushmentVisibleSince >= 1_000) {
+          window.__w4AmbushmentFrameSeen = observation;
+          if (window.__w4AmbushmentInterval) clearInterval(window.__w4AmbushmentInterval);
+        }
       };
       const observer = new MutationObserver(capture);
       observer.observe(document.documentElement, { attributes: true, childList: true, subtree: true });
       window.__w4AmbushmentFrameObserver = observer;
+      window.__w4AmbushmentInterval = setInterval(capture, 100);
       capture();
     });
     await Promise.all([watchFrame(page), watchFrame(observerPage)]);
@@ -872,11 +883,15 @@ test("W4: Ambushment frames the genuine black card as Burning Bridges for actor 
       const evidence = await viewerPage.waitForFunction(() => window.__w4AmbushmentFrameSeen, null, { timeout: 8_000 });
       const details = await evidence.jsonValue();
       expect(details).toMatchObject({
-        viewerId, rootEventId: rootEvent.id, actorId: actor.id, phase: expect.stringMatching(/^(reveal|move)$/),
-        effectId: "gan_ning_qixi", frameEventId: rootEvent.id, materialCardIds: black.id,
+        viewerId, actionRootEventId: rootEvent.id, rootEventId: rootEvent.id, actorId: actor.id,
+        phase: expect.stringMatching(/^(reveal|move)$/), frameClass: "CONVERSION",
+        effectId: "gan_ning_qixi", frameEventId: rootEvent.id, frameCardEventId: rootEvent.id,
+        announcementEventId: rootEvent.id, materialCardIds: black.id,
         title: "AMBUSHMENT · AS BURNING BRIDGES", viewport: { width: 390, height: 844, scrollWidth: 390 },
       });
-      expect(details.notice).toMatch(/Ambushment.*AS BURNING BRIDGES/i);
+      expect(details.notice, JSON.stringify(details)).toMatch(/Ambushment.*AS BURNING BRIDGES/i);
+      expect(details.visible, JSON.stringify(details)).toBe(true);
+      expect(details.positioned, JSON.stringify(details)).toBe(true);
       expect(details.overlap, JSON.stringify(details)).toBe(false);
       return details;
     }));
@@ -950,8 +965,14 @@ test("W4: Ambushment frames the genuine black card as Burning Bridges for actor 
     const settled = await projectedRoom(request, seed, observer);
     expect(settled.timeline.some((event) => event.type === "card" && event.action === "discard" && event.card?.id === privateTargetCard.id)).toBe(true);
   } finally {
-    await page.evaluate(() => window.__w4AmbushmentFrameObserver?.disconnect()).catch(() => {});
-    await observerContext.pages().at(0)?.evaluate(() => window.__w4AmbushmentFrameObserver?.disconnect()).catch(() => {});
+    await page.evaluate(() => {
+      window.__w4AmbushmentFrameObserver?.disconnect();
+      if (window.__w4AmbushmentInterval) clearInterval(window.__w4AmbushmentInterval);
+    }).catch(() => {});
+    await observerContext.pages().at(0)?.evaluate(() => {
+      window.__w4AmbushmentFrameObserver?.disconnect();
+      if (window.__w4AmbushmentInterval) clearInterval(window.__w4AmbushmentInterval);
+    }).catch(() => {});
     await observerContext.close();
   }
 });
