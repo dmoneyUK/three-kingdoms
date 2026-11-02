@@ -40,6 +40,7 @@ import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game
 import { isM2EquipmentTransitionEvent, routePublicEquipmentTransition } from "./public-equipment-transition";
 import { isM3JudgementTransitionEvent, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, routePublicJudgementTransition } from "./public-judgement-transition";
 import { routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
+import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
 import type { PublicPresentationRoute } from "./public-presentation-routing";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
@@ -1580,7 +1581,7 @@ function timelineSequenceFrom(room: Room, startId: string) {
 
 function eventCards(event: GameEvent) { return event.type === "card" ? [event.card] : event.type === "cards" ? event.cards : []; }
 function movesDirectlyToDiscard(event: GameEvent) {
-  return event.type === "cards" ? event.action === "discard" : event.type === "card" ? event.action === "discard" || event.action === "reveal" : false;
+  return event.type === "cards" ? event.action === "discard" : event.type === "card" ? event.action === "discard" || event.action === "reveal" && event.judgement === true : false;
 }
 function settlesInJudgement(event: GameEvent | null | undefined) {
   return Boolean(event && event.type === "card" && !event.playedAs && event.action === "play" && ["Overindulgence", "Lightning", "RationsDepleted"].includes(event.card.kind));
@@ -1590,7 +1591,7 @@ function retainsAtPlayer(event: GameEvent) {
   // presentation is emitted. Keep the centre reveal, but do not also retain a
   // numbered copy in the settled sequence; that duplicate made an equipped
   // card appear to return to the player's hand before settling.
-  return eventCards(event).length === 0 || (!movesDirectlyToDiscard(event) && !(event.type === "card" && (event.action === "gain" || event.action === "equip")));
+  return eventCards(event).length === 0 || (!movesDirectlyToDiscard(event) && !(event.type === "card" && (event.action === "gain" || event.action === "equip" || event.action === "reveal")));
 }
 function isJudgementReveal(event: GameEvent | null | undefined) {
   return Boolean(event && event.type === "card" && event.action === "reveal" && event.judgement);
@@ -4328,6 +4329,25 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
     return route ? [event.id] : [];
   })), [room.timeline, room.code, room.meId]);
+  const activePublicHandRevealTransition = useMemo(() => {
+    if (!activeEvent) return null;
+    return routePublicHandRevealTransition({
+      event: activeEvent as PublicHandRevealTimelineEvent,
+      timeline: room.timeline as readonly PublicHandRevealTimelineEvent[],
+      roomCode: room.code,
+      viewerId: room.meId,
+      retiredTransitionIds: [...presentedEventIds],
+    });
+  }, [activeEvent, room.timeline, room.code, room.meId, presentedEventIds]);
+  const validatedPublicHandRevealTransitionEventIds = useMemo(() => new Set(room.timeline.flatMap((event) => {
+    const route = routePublicHandRevealTransition({
+      event: event as PublicHandRevealTimelineEvent,
+      timeline: room.timeline as readonly PublicHandRevealTimelineEvent[],
+      roomCode: room.code,
+      viewerId: room.meId,
+    });
+    return route ? [event.id] : [];
+  })), [room.timeline, room.code, room.meId]);
   const activeEquipmentArrivalEventId = activeEquipmentZoneTransition?.destination === "EQUIPMENT"
     ? activeEquipmentZoneTransition.eventId
     : null;
@@ -4343,6 +4363,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeEventTimerIdentity = activeEventTimerEventId ? `${activeEventTimerEventId}|${activeEventTimerKind}` : "";
   const activeJudgementTransitionKey = activeJudgementZoneTransition?.claimId ?? "";
   const activePublicDiscardTransitionKey = activePublicDiscardTransition?.claimId ?? "";
+  const activePublicHandRevealTransitionKey = activePublicHandRevealTransition?.claimId ?? "";
   const activeEventDisplayDuration = activeJudgementZoneTransition ? UI_TIMING.judgementCard
     : activeEvent?.type === "card" || activeEvent?.type === "cards"
     ? isJudgementReveal(activeEvent) ? UI_TIMING.judgementCard : UI_TIMING.playedCard
@@ -5083,6 +5104,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const sequenceEvents = [...scopedTimelineEvents, ...scopedLocalEvents].filter(retainsAtPlayer)
     .filter((event) => !validatedJudgementTransitionSourceEventIds.has(event.id)
       && !validatedPublicDiscardTransitionEventIds.has(event.id)
+      && !validatedPublicHandRevealTransitionEventIds.has(event.id)
       && !eventCards(event).some((card) => publicJudgementCardIds.has(card.id)))
     .filter((event, index, all) => all.findIndex((candidate) => candidate.id === event.id || event.type === "card" && candidate.type === "card" && candidate.card.id === event.card.id) === index);
   const displayedEvent = activeEvent ?? optimisticPlay;
@@ -5140,6 +5162,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
     if (!refreshed || refreshed.claimId !== transition.claimId
       || JSON.stringify(refreshed.transitions) !== JSON.stringify(transition.transitions)) return;
+    setPresentedEventIds((ids) => ids.has(transition.eventId) ? ids : new Set([...ids, transition.eventId]));
+    setActiveEvent((currentEvent) => currentEvent?.id === transition.eventId ? null : currentEvent);
+  }, [activeEvent, presentedEventIds, room.code, room.meId, room.timeline]);
+  const markPublicHandRevealTransitionPresented = useCallback((transition: PublicHandRevealTransitionRoute) => {
+    if (transition.scope.roomCode !== room.code || transition.scope.viewerId !== room.meId
+      || !activeEvent || activeEvent.id !== transition.eventId) return;
+    const refreshed = routePublicHandRevealTransition({
+      event: activeEvent as PublicHandRevealTimelineEvent,
+      timeline: room.timeline as readonly PublicHandRevealTimelineEvent[],
+      roomCode: room.code,
+      viewerId: room.meId,
+      retiredTransitionIds: [...presentedEventIds],
+    });
+    if (!refreshed || refreshed.claimId !== transition.claimId
+      || refreshed.physicalCardId !== transition.physicalCardId
+      || refreshed.sourcePlayerId !== transition.sourcePlayerId
+      || refreshed.destinationPlayerId !== transition.destinationPlayerId) return;
     setPresentedEventIds((ids) => ids.has(transition.eventId) ? ids : new Set([...ids, transition.eventId]));
     setActiveEvent((currentEvent) => currentEvent?.id === transition.eventId ? null : currentEvent);
   }, [activeEvent, presentedEventIds, room.code, room.meId, room.timeline]);
@@ -5436,7 +5475,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       eventKind: activeEventTimerKind,
       stableIdentity: activeEventTimerIdentity,
       durationMs: activeEventDisplayDuration,
-      timerMode: activeEquipmentArrivalKey ? "equipment-arrival" : activeJudgementTransitionKey || activePublicDiscardTransitionKey ? "zone-transition" : "timed-reveal",
+      timerMode: activeEquipmentArrivalKey ? "equipment-arrival" : activeJudgementTransitionKey || activePublicDiscardTransitionKey || activePublicHandRevealTransitionKey ? "zone-transition" : "timed-reveal",
       equipmentArrivalIdentity: activeEquipmentArrivalKey || undefined,
       ...timerContext,
     });
@@ -5452,6 +5491,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       traceTimer("zone-transition-exempt");
       return;
     }
+    if (activePublicHandRevealTransitionKey) {
+      traceTimer("zone-transition-exempt");
+      return;
+    }
     let fired = false;
     traceTimer("scheduled");
     const timer = setTimeout(() => {
@@ -5464,7 +5507,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       clearTimeout(timer);
       if (!fired) traceTimer("cancelled");
     };
-  }, [activeEventTimerEventId, activeEventTimerKind, activeEventTimerIdentity, activeEventDisplayDuration, activeEquipmentArrivalKey, activeJudgementTransitionKey, activePublicDiscardTransitionKey]);
+  }, [activeEventTimerEventId, activeEventTimerKind, activeEventTimerIdentity, activeEventDisplayDuration, activeEquipmentArrivalKey, activeJudgementTransitionKey, activePublicDiscardTransitionKey, activePublicHandRevealTransitionKey]);
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || resolutionClosing || !resolutionEvents.length) return; const timer = setTimeout(() => setResolutionClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, resolutionClosing, resolutionEvents.length]);
   useEffect(() => { if (!resolutionClosing) return; const closingRevision = resolutionRevision.current; const timer = setTimeout(() => { if (resolutionRevision.current !== closingRevision) { setResolutionClosing(false); return; } setResolutionEvents([]); setSequenceScopeStartId(""); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
   useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawPresentation({ playerId: room.meId, cards: [], transferIds: [] }), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, room.meId, activeEvent, eventQueue.length]);
@@ -9624,8 +9667,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && (postDamageHistoryEventIds.has(displayedEvent.id)
       || eventCards(displayedEvent).some((card) => postDamageHistoryCardIds.has(card.id))));
   const displayedTableEvent = displayedEventOwnedByPublicCard || displayedEventIsRetiredAttackDodge || displayedEventIsRetiredPostDamageHistory ? null : displayedEvent;
-  const tableSequenceActiveEvent = activeEquipmentZoneTransition || activeJudgementZoneTransition || activePublicDiscardTransition ? null : displayedTableEvent;
-  const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(displayedTableEvent && eventCards(displayedTableEvent).length);
+  const unsupportedPublicHandReveal = displayedTableEvent?.type === "card"
+    && displayedTableEvent.action === "reveal" && displayedTableEvent.judgement !== true;
+  const tableSequenceActiveEvent = activeEquipmentZoneTransition || activeJudgementZoneTransition
+    || activePublicDiscardTransition || activePublicHandRevealTransition || unsupportedPublicHandReveal ? null : displayedTableEvent;
+  const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(tableSequenceActiveEvent && eventCards(tableSequenceActiveEvent).length);
   const attackDodgeTraceSeat = (playerId: string | null | undefined) => playerId
     ? room.players.find((player) => player.id === playerId)?.seat ?? null
     : null;
@@ -10610,6 +10656,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {activeEquipmentZoneTransition && activeEvent?.type === "card" && <PublicEquipmentCardTransition event={activeEvent} route={activeEquipmentZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicEquipmentTransitionPresented} />}
       {activeJudgementZoneTransition && activeJudgementTransitionCard && activeEvent && <PublicJudgementCardTransition event={activeEvent} card={activeJudgementTransitionCard} route={activeJudgementZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicJudgementTransitionPresented} />}
       {activePublicDiscardTransition && activeEvent && <PublicDiscardCardTransition event={activeEvent} route={activePublicDiscardTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicDiscardTransitionPresented} />}
+      {activePublicHandRevealTransition && activeEvent?.type === "card" && <PublicHandRevealCardTransition event={activeEvent} route={activePublicHandRevealTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicHandRevealTransitionPresented} />}
       {harvestDisplay && <BattlefieldChoiceStage
         key={harvestDisplay.revealEventId ?? "bumper-harvest-public-pool"}
         ref={harvestStageRef}
@@ -11727,6 +11774,52 @@ function PublicDiscardCardTransition({ event, route, players, myTableIndex, onPr
         if (completedRef.current.cardIds.size === items.length) onPresented(route);
       }}><div><CardFace card={card} settlementCardId={card.id} /></div>
     </div>)}
+  </div>;
+}
+
+function PublicHandRevealCardTransition({ event, route, players, myTableIndex, onPresented }: {
+  event: CardEvent & { type: "card" };
+  route: PublicHandRevealTransitionRoute;
+  players: Player[];
+  myTableIndex: number;
+  onPresented: (route: PublicHandRevealTransitionRoute) => void;
+}) {
+  const revealRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const reveal = revealRef.current;
+    const table = reveal?.closest<HTMLElement>(".play-table");
+    const shell = table?.closest<HTMLElement>(".game-shell");
+    if (!reveal || !table || !shell) return;
+    const localPlayerId = players[myTableIndex]?.id;
+    const playerAnchor = (playerId: string) => playerId === localPlayerId
+      ? findAnchor(shell, "data-card-origin-anchor", playerId) ?? findAnchor(shell, "data-player-anchor", playerId)
+      : findAnchor(shell, "data-player-anchor", playerId);
+    const source = playerAnchor(route.sourcePlayerId);
+    const destination = playerAnchor(route.destinationPlayerId);
+    const measure = () => {
+      const origin = source ? centerRelativeToTable(table, source) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+      const target = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+      reveal.style.setProperty("--origin-x", `${origin.x}px`);
+      reveal.style.setProperty("--origin-y", `${origin.y}px`);
+      reveal.style.setProperty("--hand-x", `${target.x}px`);
+      reveal.style.setProperty("--hand-y", `${target.y}px`);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(table);
+    if (source) observer.observe(source);
+    if (destination) observer.observe(destination);
+    return () => observer.disconnect();
+  }, [myTableIndex, players, route.destinationPlayerId, route.sourcePlayerId]);
+
+  return <div className="table-resolution-layer public-zone-transition-layer" role="status" aria-label="Publicly revealed card transferred to hand">
+    <div ref={revealRef} className="active-table-reveal public-hand-transfer"
+      data-settlement-event-id={event.id} data-public-zone-transition-event-id={route.eventId}
+      data-public-zone-transition-card-id={route.physicalCardId} data-public-zone-transition-destination="HAND"
+      key={route.claimId} onAnimationEnd={(animation) => {
+        if (animation.target !== animation.currentTarget || animation.animationName !== "revealedCardToHand") return;
+        onPresented(route);
+      }}><div><CardFace card={event.card} settlementCardId={route.physicalCardId} /></div></div>
   </div>;
 }
 

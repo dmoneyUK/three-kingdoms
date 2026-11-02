@@ -13,7 +13,6 @@ export type PublicPresentationLegacyRouteId =
   | "TABLE_JUDGEMENT_ATTACHMENT"
   | "TABLE_JUDGEMENT_REVEAL"
   | "TABLE_DIRECT_DISCARD"
-  | "TABLE_PUBLIC_REVEAL"
   | "TABLE_PUBLIC_PLAY_HISTORY"
   | "STATIC_ORDERED_HALBERD_ROOT"
   | "STATIC_SELF_TARGET_PEACH_ROOT"
@@ -45,7 +44,7 @@ export const PUBLIC_PRESENTATION_EVENT_COVERAGE = [
   { id: "E13", family: "delayed Stratagem attachment", currentOwner: "TableResolutionSequence Judgement arrival", route: "zone-transition", legacyRoutes: ["TABLE_JUDGEMENT_ATTACHMENT"], nextMigration: "M3" },
   { id: "E14", family: "later Judgement reveal/outcome/removal", currentOwner: "TableResolutionSequence Judgement reveal", route: "zone-transition", legacyRoutes: ["TABLE_JUDGEMENT_REVEAL"], nextMigration: "M3" },
   { id: "E15", family: "committed public card to Discard", currentOwner: "TableResolutionSequence direct Discard event", route: "zone-transition", legacyRoutes: ["TABLE_DIRECT_DISCARD"], nextMigration: "M4" },
-  { id: "E16", family: "other publicly disclosed discard/reveal", currentOwner: "TableResolutionSequence public reveal/discard event", route: "zone-transition", legacyRoutes: ["TABLE_PUBLIC_REVEAL"], nextMigration: "M4" },
+  { id: "E16", family: "other publicly disclosed discard/reveal", currentOwner: "PublicHandRevealTransition for exact committed HAND-to-HAND reveal; no owner without matching proof", route: "zone-transition", legacyRoutes: [], nextMigration: "none" },
   { id: "E17", family: "public Hero-skill COST material", currentOwner: "PublicCardDisplay validated R4 frame", route: "journey", legacyRoutes: [], nextMigration: "none" },
   { id: "E18", family: "public CONVERSION/EFFECT material", currentOwner: "PublicCardDisplay validated R4 frame", route: "journey", legacyRoutes: [], nextMigration: "none" },
   { id: "E19", family: "public skill result without public material", currentOwner: "PublicSkillEventAnnouncementLayer fact", route: "fact-only", legacyRoutes: [], nextMigration: "none" },
@@ -71,7 +70,6 @@ export const PUBLIC_PRESENTATION_LEGACY_ALLOWLIST: readonly LegacyAllowlistEntry
   { id: "TABLE_JUDGEMENT_ATTACHMENT", owner: "TableResolutionSequence", removalSlice: "M3", action: "play", destination: "JUDGEMENT", requiresPublicZoneProjection: true },
   { id: "TABLE_JUDGEMENT_REVEAL", owner: "TableResolutionSequence", removalSlice: "M3", action: "reveal", destination: "DISCARD" },
   { id: "TABLE_DIRECT_DISCARD", owner: "TableResolutionSequence", removalSlice: "M4", action: "discard", destination: "DISCARD" },
-  { id: "TABLE_PUBLIC_REVEAL", owner: "TableResolutionSequence", removalSlice: "M4", action: "reveal", destination: "DISCARD" },
   { id: "TABLE_PUBLIC_PLAY_HISTORY", owner: "TableResolutionSequence", removalSlice: "M6", action: "play", destination: "AUTHOR_HISTORY" },
   { id: "STATIC_ORDERED_HALBERD_ROOT", owner: "PublicCardDisplay.static-fallback", removalSlice: "M5", action: "play", requiredCardKind: "Attack" },
   { id: "STATIC_SELF_TARGET_PEACH_ROOT", owner: "PublicCardDisplay.static-fallback", removalSlice: "M5", action: "play", requiredCardKind: "Peach" },

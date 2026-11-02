@@ -18,10 +18,22 @@ test("Fanjian validates target ownership, empty hands, matching suits, once-per-
   await requestAndSettle("trigger", { code: matchGame.code, token: matchGame.members[1].token, providerId: "zhou_yu_fanjian_choice", choice: "♥" });
   const matched = await requestAndSettle("trigger", { code: matchGame.code, token: matchGame.members[1].token, providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:0"] });
   assert.equal(matched.status, 200, JSON.stringify(matched.data)); assert.equal(matched.data.room.players.find((player) => player.id === matchTarget.id).hp, 4);
+  const publicReveal = matched.data.room.timeline.find((event) => event.type === "card" && event.action === "reveal" && event.card.id === matchCard.id);
+  assert.equal(publicReveal?.actorId, matchSource.id);
+  assert.ok(Number.isSafeInteger(publicReveal?.publicSequence));
+  assert.deepEqual(publicReveal?.publicZoneTransition, {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: publicReveal?.id,
+    sourceEventId: publicReveal?.id, rootEventId: publicReveal?.publicZoneTransition?.rootEventId,
+    physicalCardId: matchCard.id,
+    from: { zone: "HAND", ownerId: matchSource.id }, to: { zone: "HAND", ownerId: matchTarget.id },
+  });
   const fanjianArrival = matched.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === matchCard.id);
   assert.equal(fanjianArrival?.privateHandTransfer?.sourcePlayerId, matchSource.id);
   assert.equal(fanjianArrival?.privateHandTransfer?.recipientId, matchTarget.id);
-  assert.equal((await state(matchGame.code, matchGame.members[2].token)).data.timeline.some((event) => event.privateHandTransfer), false, "the transfer receipt remains private although Fanjian reveals the selected face");
+  const observerTimeline = (await state(matchGame.code, matchGame.members[2].token)).data.timeline;
+  const observerReveal = observerTimeline.find((event) => event.type === "card" && event.action === "reveal" && event.card.id === matchCard.id);
+  assert.deepEqual(observerReveal?.publicZoneTransition, publicReveal?.publicZoneTransition, "all viewers receive the same committed public transition");
+  assert.equal(observerTimeline.some((event) => event.privateHandTransfer), false, "the transfer receipt remains private although Fanjian reveals the selected face");
   assert.equal((await requestAndSettle("trigger", { code: matchGame.code, token: matchGame.members[0].token, providerId: "zhou_yu_fanjian", targetId: matchTarget.id })).status, 409, "Fanjian cannot be used twice in one Play Phase");
   for (const player of matchGame.room.players.slice(2)) setHand(player.id, [], 4, 4);
   assert.equal((await requestAndSettle("end_turn", { code: matchGame.code, token: matchGame.members[0].token })).status, 200);

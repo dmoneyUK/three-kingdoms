@@ -7564,7 +7564,17 @@ export async function POST(request: Request) {
       const updatedSource = { ...source, hand_json: JSON.stringify(sourceHandAfter) } satisfies PlayerRow;
       const updatedTarget = { ...target, hand_json: JSON.stringify(targetHand) } satisfies PlayerRow;
       let log = addTriggeredEffectNotice(parse<string[]>(liveRoom.log_json, []), target.name, "Sowing Distrust — choose a hidden card", triggerPublicFact).log;
-      const presentation = addCardEventWithId(log, source.name, card, target.name, "reveal");
+      const revealEventId = crypto.randomUUID();
+      const presentation = addCardEventWithId(log, source.name, card, target.name, "reveal", true, {
+        actorId: source.id,
+        publicZoneTransition: {
+          semantics: "PROVEN", visibility: "PUBLIC", eventId: revealEventId,
+          sourceEventId: revealEventId, rootEventId: continuation.effectRoot?.rootEventId ?? revealEventId,
+          physicalCardId: card.id,
+          from: { zone: "HAND", ownerId: source.id },
+          to: { zone: "HAND", ownerId: target.id },
+        },
+      }, revealEventId);
       const outcome = continuation.guess === card.suit ? "SUITS_MATCHED" : "SUITS_DIFFERED";
       const settlementProof = fanjianSettlementProofFor(presentation.log, continuation, outcome);
       const result = addLogWithId(presentation.log, `${target.name} chooses ${card.rank}${card.suit}. ${outcome === "SUITS_MATCHED" ? "The suits match; no damage is dealt." : `${target.name} takes 1 damage from Sowing Distrust.`}`, undefined, { importance: "essential", finalResult: true });
