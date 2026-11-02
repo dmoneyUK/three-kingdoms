@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { projectPresentationV2 } from "../../game/presentation-v2.ts";
 import {
   assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -861,8 +862,23 @@ test("Wu hero skills complete through the normal semantic API", async () => {
   assert.deepEqual(qixiEvent.publicCardEffects?.[0]?.materials, [{ cardId: blackCard.id, ownerId: qixiSource.id, fromZone: "HAND", toZone: "DISCARD" }]);
   assert.equal(qixiEvent.publicCardEffects?.[0]?.resultingCardKind, "Dismantle");
   assert.equal(qixiEvent.publicCardEffects?.[0]?.outcome, "AS_DISMANTLE");
+  assert.equal(qixi.data.room.presentationV2.rootAction?.rootEventId, qixiEvent.id, "the effective Dismantle action remains linked to the real public Qixi play");
+  assert.equal(qixi.data.room.presentationV2.rootAction?.cardKind, "Dismantle");
   const qixiChosen = await requestAndSettle("choose_target_card", { code: qixiGame.code, token: qixiGame.members[0].token, targetCardZone: "hand", targetCardIndex: 0 });
   assert.equal(qixiChosen.status, 200, JSON.stringify(qixiChosen.data)); assert.ok(discardIds(qixiGame.code).includes(blackCard.id)); assert.ok(!JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(qixiTarget.id)}`)).some((item) => item.id === targetCard.id));
+  const qixiSettlement = qixiChosen.data.room.presentationV2.dismantleSettlements[0];
+  assert.equal(qixiSettlement.rootEventId, qixiEvent.id);
+  assert.equal(qixiSettlement.rootResolutionId, qixiEvent.resolutionId);
+  assert.equal(qixiSettlement.rootInteractionId, qixi.data.room.presentationV2.rootAction.interactionId);
+  assert.equal(qixiSettlement.rootFrameId, qixi.data.room.presentationV2.rootAction.rootFrameId);
+  assert.deepEqual(qixiSettlement.rootPhysicalCard, blackCard, "the committed settlement carries the actual physical conversion card");
+  assert.equal(qixiSettlement.resultingCardKind, "Dismantle");
+  const qixiObserver = (await state(qixiGame.code, qixiGame.members[1].token)).data;
+  assert.deepEqual(qixiObserver.presentationSnapshot.dismantleSettlements, qixiChosen.data.room.presentationSnapshot.dismantleSettlements, "the proven converted settlement is identical for observers");
+  assert.equal(qixiObserver.presentationSnapshot.dismantleSettlements[0].rootPhysicalCard.id, blackCard.id);
+  const qixiSettledInput = { pending: null, currentAction: null, actionRevision: "", timeline: qixiChosen.data.room.timeline };
+  assert.deepEqual(projectPresentationV2({ ...qixiSettledInput, timeline: qixiSettledInput.timeline.map((event) => event.id === qixiEvent.id ? { ...event, publicCardEffects: [] } : event) }).dismantleSettlements, [], "a converted root without its committed effect proof fails closed");
+  assert.deepEqual(projectPresentationV2({ ...qixiSettledInput, timeline: qixiSettledInput.timeline.map((event) => event.id === qixiEvent.id ? { ...event, publicCardEffects: event.publicCardEffects.map((effect) => ({ ...effect, resultingCardKind: "Steal" })) } : event) }).dismantleSettlements, [], "a conversion proof for another effective kind cannot own the Dismantle settlement");
 
   const kejiGame = await createHumanGame(); const kejiSource = kejiGame.room.players[0]; const oversized = [card("Peach", "keji-1"), card("Peach", "keji-2"), card("Peach", "keji-3")];
   sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(kejiSource.id)}`); setHand(kejiSource.id, oversized, 2, 4); setTurn(kejiGame.code, kejiSource.seat);

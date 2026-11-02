@@ -26,7 +26,7 @@ import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { evaluatePlayTarget, type PlayTargetEligibilityPlayer, type PlayTargetMode, type PlayTargetRejection } from "../../../game/capabilities/play-target-eligibility";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { attackRootProjectionDiagnosticsFor, projectPresentationV2, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
+import { attackRootProjectionDiagnosticsFor, projectPresentationV2, publicCardPlayProvesEffectiveKind, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
 import type { PublicPhysicalZoneTransition, PublicPresentationDecision, PublicPresentationEventFactDraft, PublicZoneEndpoint, ViewerNegationChoice } from "../../../game/presentation-semantics";
 import { oathRecipientIds } from "../../../game/oath";
@@ -901,16 +901,29 @@ function dismantleSettlementProofFor(room: RoomRow, pending: TargetCardPending, 
   const rootAction = presentation.rootAction;
   if (!rootAction || rootAction.semantics !== "PROVEN" || rootAction.action !== "STRATAGEM"
     || rootAction.cardKind !== "Dismantle" || rootAction.sourceId !== pending.sourceId
-    || rootAction.targetId !== pending.targetId) return undefined;
+    || rootAction.targetId !== pending.targetId
+    || rootAction.interactionId !== pending.causal?.interactionId
+    || rootAction.rootFrameId !== pending.causal?.frameId
+    || pending.rootEventId && pending.rootEventId !== rootAction.rootEventId) return undefined;
   const rootEvents = timeline.filter((event) => event.id === rootAction.rootEventId);
   const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
   const rootResolutionId = rootEvent && typeof rootEvent.resolutionId === "string" ? rootEvent.resolutionId : "";
+  const heldRootCards = pending.heldCards?.filter((card) => pending.rootCardId ? card.id === pending.rootCardId : card.kind === "Dismantle") ?? [];
+  const rootPhysicalCard = heldRootCards.length === 1 ? heldRootCards[0] : null;
   if (!rootEvent || rootEvent.type !== "card" || rootEvent.action !== "play"
-    || rootEvent.presentation === false || rootEvent.card?.kind !== "Dismantle" || !rootResolutionId) return undefined;
+    || rootEvent.presentation === false || !rootResolutionId
+    || pending.rootResolutionId && pending.rootResolutionId !== rootResolutionId
+    || pending.rootCardId && rootPhysicalCard?.id !== pending.rootCardId
+    || pending.rootCardKind && rootPhysicalCard?.kind !== pending.rootCardKind
+    || !rootPhysicalCard || !publicCardPlayProvesEffectiveKind(rootEvent, rootPhysicalCard, "Dismantle", pending.sourceId, pending.targetId)) return undefined;
   return {
     semantics: "PROVEN",
     rootEventId: rootAction.rootEventId,
     rootResolutionId,
+    rootInteractionId: rootAction.interactionId,
+    rootFrameId: rootAction.rootFrameId,
+    rootPhysicalCard,
+    resultingCardKind: "Dismantle",
     sourceId: rootAction.sourceId,
     targetId: rootAction.targetId,
     outcome: "DISMANTLE_RESOLVED",
@@ -4167,10 +4180,21 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
       const causal = pending.causal;
       const causalFrame = causal && resumedEnvelope?.frames.find((frame) => frame.frameId === causal.frameId);
       const rootFrames = resumedEnvelope?.frames.filter((frame) => frame.parentFrameId == null) ?? [];
-      const heldRootCards = heldCards.filter((heldCard) => heldCard.kind === targetCardKind);
-      const canProveTargetCardChoice = Boolean(!pending.negated && pending.rootCardKind === targetCardKind
+      const heldRootCards = heldCards.filter((heldCard) => pending.rootCardId
+        ? heldCard.id === pending.rootCardId
+        : heldCard.kind === targetCardKind);
+      const rootPhysicalCard = heldRootCards.length === 1 ? heldRootCards[0] : null;
+      const rootTimeline = gameTimeline(log);
+      const rootEventCandidates = pending.rootEventId
+        ? rootTimeline.filter((event) => event.id === pending.rootEventId)
+        : rootPhysicalCard ? rootTimeline.filter((event) => event.type === "card" && event.card?.id === rootPhysicalCard.id) : [];
+      const rootEvent = rootEventCandidates.length === 1 ? rootEventCandidates[0] : null;
+      const rootCardPlayIsProven = Boolean(rootPhysicalCard && rootEvent && rootEvent.id
+        && (!pending.rootResolutionId || rootEvent.resolutionId === pending.rootResolutionId)
+        && (!pending.rootCardKind || rootPhysicalCard.kind === pending.rootCardKind)
+        && publicCardPlayProvesEffectiveKind(rootEvent, rootPhysicalCard, targetCardKind, source.id, target.id));
+      const canProveTargetCardChoice = Boolean(!pending.negated && rootCardPlayIsProven
         && pending.cardName === targetEffectName && pending.sourceId === source.id && pending.effect.targetId === target.id
-        && heldRootCards.length === 1
         && causal && resumedEnvelope && resumedEnvelope.interactionId === causal.interactionId
         && resumedEnvelope.activeFrameId === causal.frameId && resumedEnvelope.checkpoint.frameId === causal.frameId
         && resumedEnvelope.checkpoint.stage === "NEGATION"
@@ -4191,6 +4215,12 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
         cardKind: isDismantle ? "Dismantle" : "Steal", resumePhase: pending.resumePhase,
         reason: `Choose 1 current card from ${target.name} for ${pending.cardName}`, heldCards,
         ...(targetCardEnvelope && causal ? { causal } : {}),
+        ...(canProveTargetCardChoice && rootEvent && rootPhysicalCard ? {
+          rootEventId: rootEvent.id,
+          ...(rootEvent.resolutionId ? { rootResolutionId: rootEvent.resolutionId } : {}),
+          rootCardId: rootPhysicalCard.id,
+          rootCardKind: rootPhysicalCard.kind,
+        } : {}),
       };
       await causalRoomStateWrite(roomId, { phase: "response", pending: next, log, causalEnvelope: targetCardEnvelope }).run();
     }

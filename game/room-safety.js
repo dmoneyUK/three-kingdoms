@@ -92,21 +92,36 @@ function normalizePresentationMeta(entry) {
   if (entry.effectNotice === true) metadata.effectNotice = true;
   if (entry.judgement === true) metadata.judgement = true;
   if (entry.initialDeal === true) metadata.initialDeal = true;
-  if (isRecord(entry.publicDismantleSettlement)
-    && entry.publicDismantleSettlement.semantics === "PROVEN"
-    && typeof entry.publicDismantleSettlement.rootEventId === "string"
-    && typeof entry.publicDismantleSettlement.rootResolutionId === "string"
-    && typeof entry.publicDismantleSettlement.sourceId === "string"
-    && typeof entry.publicDismantleSettlement.targetId === "string"
-    && entry.publicDismantleSettlement.outcome === "DISMANTLE_RESOLVED"
-    && normalizeTargetCardMovement(entry.publicDismantleSettlement, entry, "Dismantle")) {
-    const movement = normalizeTargetCardMovement(entry.publicDismantleSettlement, entry, "Dismantle");
+  const dismantleProof = isRecord(entry.publicDismantleSettlement) ? entry.publicDismantleSettlement : null;
+  const dismantleRootFields = ["rootInteractionId", "rootFrameId", "rootPhysicalCard", "resultingCardKind"];
+  const hasDismantleRootContract = dismantleProof && dismantleRootFields.some((field) => Object.prototype.hasOwnProperty.call(dismantleProof, field));
+  const dismantleRootPhysicalCard = dismantleProof ? normalizePhysicalCard(dismantleProof.rootPhysicalCard) : null;
+  const dismantleRootContractValid = !hasDismantleRootContract || Boolean(dismantleProof
+    && typeof dismantleProof.rootInteractionId === "string" && dismantleProof.rootInteractionId.length > 0
+    && typeof dismantleProof.rootFrameId === "string" && dismantleProof.rootFrameId.length > 0
+    && dismantleRootPhysicalCard && dismantleProof.resultingCardKind === "Dismantle");
+  if (dismantleProof
+    && dismantleProof.semantics === "PROVEN"
+    && typeof dismantleProof.rootEventId === "string"
+    && typeof dismantleProof.rootResolutionId === "string"
+    && typeof dismantleProof.sourceId === "string"
+    && typeof dismantleProof.targetId === "string"
+    && dismantleProof.outcome === "DISMANTLE_RESOLVED"
+    && dismantleRootContractValid
+    && normalizeTargetCardMovement(dismantleProof, entry, "Dismantle")) {
+    const movement = normalizeTargetCardMovement(dismantleProof, entry, "Dismantle");
     metadata.publicDismantleSettlement = {
       semantics: "PROVEN",
-      rootEventId: entry.publicDismantleSettlement.rootEventId,
-      rootResolutionId: entry.publicDismantleSettlement.rootResolutionId,
-      sourceId: entry.publicDismantleSettlement.sourceId,
-      targetId: entry.publicDismantleSettlement.targetId,
+      rootEventId: dismantleProof.rootEventId,
+      rootResolutionId: dismantleProof.rootResolutionId,
+      ...(hasDismantleRootContract ? {
+        rootInteractionId: dismantleProof.rootInteractionId,
+        rootFrameId: dismantleProof.rootFrameId,
+        rootPhysicalCard: dismantleRootPhysicalCard,
+        resultingCardKind: "Dismantle",
+      } : {}),
+      sourceId: dismantleProof.sourceId,
+      targetId: dismantleProof.targetId,
       outcome: "DISMANTLE_RESOLVED",
       ...movement,
     };

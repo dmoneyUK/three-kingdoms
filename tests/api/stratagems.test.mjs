@@ -1063,6 +1063,10 @@ test("target-card CurrentAction projects anonymous eligible positions only to it
     eventId: settledView.timeline.find((event) => event.publicDismantleSettlement)?.id,
     rootEventId: rootAction.rootEventId,
     rootResolutionId: publicDismantlePlays[0].resolutionId,
+    rootInteractionId: rootAction.interactionId,
+    rootFrameId: rootAction.rootFrameId,
+    rootPhysicalCard: publicDismantlePlays[0].card,
+    resultingCardKind: "Dismantle",
     sourceId: populated.source.id,
     targetId: populated.target.id,
     outcome: "DISMANTLE_RESOLVED",
@@ -1082,6 +1086,10 @@ test("target-card CurrentAction projects anonymous eligible positions only to it
     semantics: "PROVEN",
     rootEventId: dismantleSettlement.rootEventId,
     rootResolutionId: dismantleSettlement.rootResolutionId,
+    rootInteractionId: dismantleSettlement.rootInteractionId,
+    rootFrameId: dismantleSettlement.rootFrameId,
+    rootPhysicalCard: dismantleSettlement.rootPhysicalCard,
+    resultingCardKind: dismantleSettlement.resultingCardKind,
     sourceId: dismantleSettlement.sourceId,
     targetId: dismantleSettlement.targetId,
     outcome: "DISMANTLE_RESOLVED",
@@ -1104,6 +1112,12 @@ test("target-card CurrentAction projects anonymous eligible positions only to it
   assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: settledView.timeline.filter((event) => event.id !== rootAction.rootEventId) }).dismantleSettlements, [], "a missing exact Dismantle root event fails closed");
   assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: settledView.timeline.map((event) => event.id === dismantleSettlement.eventId ? { ...event, resolutionId: "unrelated-resolution" } : event) }).dismantleSettlements, [], "a mismatched root resolution fails closed");
   assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: settledView.timeline.map((event) => event.id === dismantleSettlement.eventId ? { ...event, publicDismantleSettlement: { ...event.publicDismantleSettlement, rootEventId: "missing-root" } } : event) }).dismantleSettlements, [], "a mismatched root link fails closed");
+  const legacyNaturalSettlement = projectPresentationV2({ ...settledInput, timeline: settledView.timeline.map((event) => {
+    if (event.id !== dismantleSettlement.eventId) return event;
+    const { rootInteractionId: _rootInteractionId, rootFrameId: _rootFrameId, rootPhysicalCard: _rootPhysicalCard, resultingCardKind: _resultingCardKind, ...legacyProof } = event.publicDismantleSettlement;
+    return { ...event, publicDismantleSettlement: legacyProof };
+  }) }).dismantleSettlements;
+  assert.equal(legacyNaturalSettlement.length, 1, "legacy natural Dismantle history remains projectable without the conversion root contract");
 
   const emptied = await openTargetCardPending("empty");
   setHand(emptied.target.id, [], 4, 4);

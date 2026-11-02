@@ -16,7 +16,7 @@ import { latestPublicMessages } from "../game/messages.js";
 import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice, PresentationSnapshotPublicCardEffect } from "../game/presentation-snapshot";
 import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationLustDuelAttackResponseProof, PresentationPublicCardEffectProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
 import type { PublicPhysicalZoneTransition, PublicPresentationEventFactDraft } from "../game/presentation-semantics";
-import { attackDodgeResponseEventMatchesProof } from "../game/presentation-v2";
+import { attackDodgeResponseEventMatchesProof, publicCardPlayProvesEffectiveKind } from "../game/presentation-v2";
 import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
 import { attackDodgePublicActionEvents, attackDodgeSettlementSupersessionReason, attackHitSettlementSupersessionReason, parseRetiredAttackDodgeCompositionSnapshot, persistRetiredAttackDodgeComposition, retiredAttackDodgeCompositionServerSnapshot, retiredAttackDodgeCompositionStorageSnapshot, subscribeRetiredAttackDodgeComposition, type AttackDodgeSettlementHoldIdentity, type AttackHitSettlementHoldIdentity } from "../game/attack-dodge-settlement-lifecycle";
 import { buildDyingHandoffView, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
@@ -6879,7 +6879,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const rootEvent = rootEvents[0];
     const settlementEvent = settlementEvents[0];
     if (rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play"
-      || rootEvent.card.kind !== "Dismantle" || rootEvent.resolutionId !== settlement.rootResolutionId
+      || rootEvent.resolutionId !== settlement.rootResolutionId
       || settlementEvent.type !== "card" || settlementEvent.presentation === false || settlementEvent.action !== "discard"
       || settlementEvent.importance !== "essential" || settlementEvent.finalResult !== true
       || settlementEvent.resolutionId !== settlement.rootResolutionId
@@ -6893,6 +6893,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || settlementEvent.publicDismantleSettlement.affectedCardOwnerId !== settlement.affectedCardOwnerId
       || settlementEvent.publicDismantleSettlement.destinationZone !== settlement.destinationZone
       || settlementEvent.publicDismantleSettlement.destinationOwnerId !== settlement.destinationOwnerId
+      || settlementEvent.publicDismantleSettlement.rootInteractionId !== settlement.rootInteractionId
+      || settlementEvent.publicDismantleSettlement.rootFrameId !== settlement.rootFrameId
+      || settlementEvent.publicDismantleSettlement.rootPhysicalCard?.id !== settlement.rootPhysicalCard?.id
+      || settlementEvent.publicDismantleSettlement.rootPhysicalCard?.kind !== settlement.rootPhysicalCard?.kind
+      || settlementEvent.publicDismantleSettlement.rootPhysicalCard?.suit !== settlement.rootPhysicalCard?.suit
+      || settlementEvent.publicDismantleSettlement.rootPhysicalCard?.rank !== settlement.rootPhysicalCard?.rank
+      || settlementEvent.publicDismantleSettlement.resultingCardKind !== settlement.resultingCardKind
       || settlementEvent.publicDismantleSettlement.affectedCardFace?.id !== settlement.affectedCardFace?.id
       || settlementEvent.publicDismantleSettlement.affectedCardFace?.kind !== settlement.affectedCardFace?.kind
       || settlementEvent.publicDismantleSettlement.affectedCardFace?.suit !== settlement.affectedCardFace?.suit
@@ -6901,6 +6908,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || settlementEvent.card.kind !== settlement.affectedCardFace?.kind
       || settlementEvent.card.suit !== settlement.affectedCardFace?.suit
       || settlementEvent.card.rank !== settlement.affectedCardFace?.rank) return null;
+    const rootPhysicalCard = settlement.rootPhysicalCard ?? rootEvent.card;
+    if (!rootPhysicalCard || !publicCardPlayProvesEffectiveKind(rootEvent, rootPhysicalCard, "Dismantle", settlement.sourceId, settlement.targetId)) return null;
     const source = room.players.find((player) => player.id === settlement.sourceId);
     const target = room.players.find((player) => player.id === settlement.targetId);
     if (!source?.name || !target?.name || source.id === target.id) return null;

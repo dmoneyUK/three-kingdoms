@@ -492,8 +492,22 @@ export function provenDismantleSettlements(value: unknown): PresentationSnapshot
     if (candidate.semantics !== "PROVEN" || !nonEmptyString(eventId) || !nonEmptyString(rootEventId)
       || eventId === rootEventId || !nonEmptyString(rootResolutionId) || !nonEmptyString(sourceId)
       || !nonEmptyString(targetId) || sourceId === targetId || candidate.outcome !== "DISMANTLE_RESOLVED") return [];
+    const rootContractFields = ["rootInteractionId", "rootFrameId", "rootPhysicalCard", "resultingCardKind"];
+    const hasRootContract = rootContractFields.some((field) => Object.prototype.hasOwnProperty.call(candidate, field));
+    const rootPhysicalCard = publicPhysicalCard(candidate.rootPhysicalCard);
+    const rootContractValid = !hasRootContract || nonEmptyString(candidate.rootInteractionId)
+      && nonEmptyString(candidate.rootFrameId) && Boolean(rootPhysicalCard)
+      && candidate.resultingCardKind === "Dismantle";
+    if (!rootContractValid) return [];
     const movement = provenTargetCardMovement(candidate, "Dismantle", sourceId, targetId);
-    return movement ? [{ semantics: "PROVEN" as const, eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "DISMANTLE_RESOLVED" as const, ...movement }] : [];
+    return movement ? [{ semantics: "PROVEN" as const, eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "DISMANTLE_RESOLVED" as const,
+      ...(hasRootContract ? {
+        rootInteractionId: candidate.rootInteractionId as string,
+        rootFrameId: candidate.rootFrameId as string,
+        rootPhysicalCard: rootPhysicalCard!,
+        resultingCardKind: "Dismantle" as const,
+      } : {}),
+      ...movement }] : [];
   });
   const eventCounts = new Map<string, number>();
   const rootCounts = new Map<string, number>();

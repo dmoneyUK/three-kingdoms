@@ -22,6 +22,8 @@ test("drops null and incomplete timeline entries without throwing", () => {
 test("preserves only the privacy-safe Dismantle settlement proof fields", () => {
   const proof = {
     semantics: "PROVEN", rootEventId: "dismantle-root-event", rootResolutionId: "dismantle-resolution",
+    rootInteractionId: "dismantle-interaction", rootFrameId: "dismantle-frame",
+    rootPhysicalCard: { id: "dismantle-root-card", kind: "Dismantle", suit: "♣", rank: "3" }, resultingCardKind: "Dismantle",
     sourceId: "source", targetId: "target", outcome: "DISMANTLE_RESOLVED",
     sourceZone: "hand", affectedCardOwnerId: "target", destinationZone: "discard", destinationOwnerId: null,
     affectedCardFace: { id: "discarded-card-id", kind: "Peach", suit: "♥", rank: "3" }, selectedCardId: "hidden-card-id",
@@ -34,6 +36,8 @@ test("preserves only the privacy-safe Dismantle settlement proof fields", () => 
   }])[0];
   assert.deepEqual(event.publicDismantleSettlement, {
     semantics: "PROVEN", rootEventId: "dismantle-root-event", rootResolutionId: "dismantle-resolution",
+    rootInteractionId: "dismantle-interaction", rootFrameId: "dismantle-frame",
+    rootPhysicalCard: { id: "dismantle-root-card", kind: "Dismantle", suit: "♣", rank: "3" }, resultingCardKind: "Dismantle",
     sourceId: "source", targetId: "target", outcome: "DISMANTLE_RESOLVED",
     sourceZone: "hand", affectedCardOwnerId: "target", destinationZone: "discard", destinationOwnerId: null,
     affectedCardFace: { id: "discarded-card-id", kind: "Peach", suit: "♥", rank: "3" },
@@ -42,6 +46,7 @@ test("preserves only the privacy-safe Dismantle settlement proof fields", () => 
   assert.equal(normalizeTimeline([{ ...event, publicDismantleSettlement: { ...proof, outcome: "STEAL_RESOLVED" } }])[0].publicDismantleSettlement, undefined);
   assert.equal(normalizeTimeline([{ ...event, publicDismantleSettlement: { ...proof, affectedCardFace: { ...proof.affectedCardFace, id: "different-card" } } }])[0].publicDismantleSettlement, undefined, "discard proof must match the committed public discard face");
   assert.equal(normalizeTimeline([{ ...event, publicDismantleSettlement: { ...proof, destinationOwnerId: "source" } }])[0].publicDismantleSettlement, undefined, "discard destination cannot have a card owner");
+  assert.equal(normalizeTimeline([{ ...event, publicDismantleSettlement: { ...proof, rootFrameId: undefined } }])[0].publicDismantleSettlement, undefined, "partial root contracts fail closed");
 });
 
 test("preserves only the privacy-safe Steal settlement proof fields", () => {
