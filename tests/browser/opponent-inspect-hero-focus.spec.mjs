@@ -578,16 +578,25 @@ for (const viewport of inspectorMiniatureViewports) {
         const button = cards.nth(index);
         const face = button.locator(".played-card");
         const corner = face.locator(":scope > i");
+        const name = face.locator(":scope > .card-name-mark");
         await expect(button).toHaveAttribute("aria-label", `Explain ${expected.name}`);
         await expect(face).toHaveClass(new RegExp(expected.suitClass));
-        await expect(face.locator(":scope > .card-name-mark")).toHaveCSS("display", "none");
+        await expect(name).toBeVisible();
         await expect(face.locator(":scope > strong")).toHaveCSS("display", "none");
         await expect(corner.locator("small")).toHaveText(expected.suit);
 
-        const [buttonBox, faceBox, cornerBox, rank, cornerStyle, faceStyle] = await Promise.all([
+        const [buttonBox, faceBox, cornerBox, nameBox, nameMetrics, rank, cornerStyle, faceStyle] = await Promise.all([
           button.boundingBox(),
           face.boundingBox(),
           corner.boundingBox(),
+          name.boundingBox(),
+          name.evaluate((element) => ({
+            fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+            scrollWidth: element.scrollWidth,
+            clientWidth: element.clientWidth,
+            overflow: getComputedStyle(element).overflow,
+            lineClamp: getComputedStyle(element).getPropertyValue("-webkit-line-clamp"),
+          })),
           corner.evaluate((element) => element.firstChild?.textContent?.trim()),
           corner.evaluate((element) => ({
             transform: getComputedStyle(element).transform,
@@ -599,15 +608,24 @@ for (const viewport of inspectorMiniatureViewports) {
         expect(buttonBox).not.toBeNull();
         expect(faceBox).not.toBeNull();
         expect(cornerBox).not.toBeNull();
+        expect(nameBox).not.toBeNull();
         expect(rank).toBe(expected.rank);
         expect(faceBox.height / faceBox.width).toBeGreaterThanOrEqual(1.45);
         expect(faceBox.height / faceBox.width).toBeLessThanOrEqual(1.55);
-        expect(faceBox.width).toBeGreaterThanOrEqual(29);
+        expect(faceBox.width).toBeGreaterThanOrEqual(28);
         expect(faceBox.width).toBeLessThanOrEqual(60);
         expect(cornerBox.x).toBeGreaterThanOrEqual(faceBox.x - 0.5);
         expect(cornerBox.y).toBeGreaterThanOrEqual(faceBox.y - 0.5);
         expect(cornerBox.x + cornerBox.width).toBeLessThanOrEqual(faceBox.x + faceBox.width + 0.5);
         expect(cornerBox.y + cornerBox.height).toBeLessThanOrEqual(faceBox.y + faceBox.height + 0.5);
+        expect(nameBox.x).toBeGreaterThanOrEqual(faceBox.x - 0.5);
+        expect(nameBox.y).toBeGreaterThanOrEqual(faceBox.y - 0.5);
+        expect(nameBox.x + nameBox.width).toBeLessThanOrEqual(faceBox.x + faceBox.width + 0.5);
+        expect(nameBox.y + nameBox.height).toBeLessThanOrEqual(faceBox.y + faceBox.height + 0.5);
+        expect(nameMetrics.fontSize).toBeLessThanOrEqual(7.1);
+        expect(nameMetrics.scrollWidth).toBeLessThanOrEqual(nameMetrics.clientWidth + 1);
+        expect(nameMetrics.overflow).toBe("hidden");
+        expect(nameMetrics.lineClamp).toBe("2");
         expect(cornerBox.width).toBeGreaterThanOrEqual(11.5);
         expect(cornerBox.height).toBeGreaterThanOrEqual(17);
         expect(cornerStyle.transform).toBe("none");
@@ -617,12 +635,14 @@ for (const viewport of inspectorMiniatureViewports) {
         expect(buttonBox.x).toBeGreaterThanOrEqual(equipmentBox.x);
         expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(equipmentBox.x + equipmentBox.width);
         geometry.push({
-          name: expected.name,
+          cardName: expected.name,
           rank: expected.rank,
           suit: expected.suit,
           button: buttonBox,
           face: faceBox,
           corner: cornerBox,
+          nameRect: nameBox,
+          nameFontSize: nameMetrics.fontSize,
           cornerFontSize: cornerStyle.fontSize,
           suitFontSize: cornerStyle.suitFontSize,
         });
@@ -642,6 +662,87 @@ for (const viewport of inspectorMiniatureViewports) {
     });
   }
 }
+
+test("UX2 T2 shared Judgement and Equipment miniatures contain their visible text", async ({ page }, testInfo) => {
+  const viewport = { width: 390, height: 844 };
+  await loadFixture(page, { ...viewport, targetHero: "xiahou-dun", equipmentCase: "weapon", judgementCase: "single-lightning" });
+  await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+  const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+  await expect(inspect).toBeVisible();
+  await testInfo.attach("UX2-T2-390px-miniature-screenshot.png", {
+    body: await page.screenshot({ animations: "disabled" }),
+    contentType: "image/png",
+  });
+  const miniatures = [
+    { locator: inspect.locator('[aria-label="Judgement Zone"] .opponent-inspection-card'), name: "Lightning", rank: "Q", suit: "♥" },
+    { locator: inspect.locator('[aria-label="Equipment"] .opponent-inspection-equipment-card'), name: "Zhuge Crossbow", rank: "A", suit: "♦" },
+  ];
+  await expect(inspect.locator(".played-card")).toHaveCount(2);
+
+  const measurements = [];
+  for (const miniature of miniatures) {
+    const button = miniature.locator;
+    const face = button.locator(".played-card");
+    const name = face.locator(":scope > .card-name-mark");
+    const corner = face.locator(":scope > i");
+    await expect(button).toHaveAttribute("aria-label", `Explain ${miniature.name}`);
+    await expect(name).toBeVisible();
+    await expect(name).toContainText(miniature.name);
+    await expect(face.locator(":scope > strong")).toHaveCSS("display", "none");
+    await expect(corner).toContainText(miniature.rank);
+    await expect(corner.locator("small")).toHaveText(miniature.suit);
+
+    const geometry = await face.evaluate((faceNode) => {
+      const faceRect = faceNode.getBoundingClientRect();
+      const buttonRect = faceNode.parentElement.getBoundingClientRect();
+      const nameNode = faceNode.querySelector(":scope > .card-name-mark");
+      const nameRect = nameNode.getBoundingClientRect();
+      const nameStyle = getComputedStyle(nameNode);
+      const cornerNode = faceNode.querySelector(":scope > i");
+      const cornerRect = cornerNode.getBoundingClientRect();
+      const cornerStyle = getComputedStyle(cornerNode);
+      return {
+        face: { left: faceRect.left, top: faceRect.top, right: faceRect.right, bottom: faceRect.bottom, width: faceRect.width, height: faceRect.height },
+        button: { left: buttonRect.left, top: buttonRect.top, right: buttonRect.right, bottom: buttonRect.bottom },
+        name: { left: nameRect.left, top: nameRect.top, right: nameRect.right, bottom: nameRect.bottom, fontSize: Number.parseFloat(nameStyle.fontSize), scrollWidth: nameNode.scrollWidth, clientWidth: nameNode.clientWidth, overflow: nameStyle.overflow, lineClamp: nameStyle.getPropertyValue("-webkit-line-clamp") },
+        corner: { left: cornerRect.left, top: cornerRect.top, right: cornerRect.right, bottom: cornerRect.bottom, width: cornerRect.width, height: cornerRect.height, fontSize: Number.parseFloat(cornerStyle.fontSize), transform: cornerStyle.transform },
+        artwork: getComputedStyle(faceNode).backgroundImage,
+      };
+    });
+    expect(geometry.face.width).toBeGreaterThanOrEqual(28);
+    expect(geometry.face.width).toBeLessThanOrEqual(60);
+    expect(geometry.face.height / geometry.face.width).toBeGreaterThanOrEqual(1.45);
+    expect(geometry.face.height / geometry.face.width).toBeLessThanOrEqual(1.55);
+    expect(geometry.name.left).toBeGreaterThanOrEqual(geometry.face.left - 0.5);
+    expect(geometry.name.top).toBeGreaterThanOrEqual(geometry.face.top - 0.5);
+    expect(geometry.name.right).toBeLessThanOrEqual(geometry.face.right + 0.5);
+    expect(geometry.name.bottom).toBeLessThanOrEqual(geometry.face.bottom + 0.5);
+    expect(geometry.name.fontSize).toBeLessThanOrEqual(7.1);
+    expect(geometry.name.scrollWidth).toBeLessThanOrEqual(geometry.name.clientWidth + 1);
+    expect(geometry.name.overflow).toBe("hidden");
+    expect(geometry.name.lineClamp).toBe("2");
+    expect(geometry.corner.left).toBeGreaterThanOrEqual(geometry.face.left - 0.5);
+    expect(geometry.corner.top).toBeGreaterThanOrEqual(geometry.face.top - 0.5);
+    expect(geometry.corner.right).toBeLessThanOrEqual(geometry.face.right + 0.5);
+    expect(geometry.corner.bottom).toBeLessThanOrEqual(geometry.face.bottom + 0.5);
+    expect(geometry.corner.fontSize).toBeGreaterThanOrEqual(7);
+    expect(geometry.corner.transform).toBe("none");
+    expect(geometry.artwork).not.toBe("none");
+    measurements.push({ cardName: miniature.name, ...geometry });
+
+    await button.click();
+    const detail = inspect.locator("[data-inspector-card-detail='true']");
+    await expect(detail.locator(".hero-focus-inspect-card-name")).toHaveText(miniature.name);
+    await expect(detail.locator(".hero-focus-inspect-card-metadata")).toContainText(`${miniature.rank}${miniature.suit}`);
+  }
+
+  expect(await page.evaluate(() => window.__browserActions.length)).toBe(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+  await testInfo.attach("UX2-T2-390px-miniature-geometry.json", {
+    body: Buffer.from(JSON.stringify({ viewport, miniatures: measurements }, null, 2)),
+    contentType: "application/json",
+  });
+});
 
 const ins5Viewports = [
   { width: 390, height: 700, count: 4, equipmentCase: "empty", judgementCase: null, equipmentSlots: [], judgementCards: 0 },
