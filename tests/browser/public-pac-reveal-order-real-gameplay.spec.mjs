@@ -3,17 +3,19 @@ import { expect, test } from "@playwright/test";
 const API = "http://127.0.0.1:3137";
 const card = (kind, id, suit = "♠") => ({ id, kind, suit, rank: "7" });
 
-async function seedRoom(request) {
+async function seedRoom(request, { rainingArrowsOnly = false } = {}) {
   const prefix = `pac-order-${Date.now()}`;
   const ids = {
     drawRoot: `${prefix}-draw-root`,
     groupRoot: `${prefix}-group-root`,
+    rainingRoot: `${prefix}-raining-root`,
     negation: `${prefix}-negation`,
     drawOne: `${prefix}-draw-one`,
     drawTwo: `${prefix}-draw-two`,
   };
   const players = [
-    { name: "PAC SOURCE", role: "Lord", hero: "liu-bei", hp: 4, maxHp: 4, hand: [card("DrawTwo", ids.drawRoot), card("BarbarianInvasion", ids.groupRoot)] },
+    { name: "PAC SOURCE", role: "Lord", hero: "liu-bei", hp: 4, maxHp: 4,
+      hand: rainingArrowsOnly ? [card("RainingArrows", ids.rainingRoot)] : [card("DrawTwo", ids.drawRoot), card("BarbarianInvasion", ids.groupRoot)] },
     { name: "PAC NEGATION", role: "Loyalist", hero: "cao-cao", hp: 4, maxHp: 4, hand: [card("Negation", ids.negation, "♥")] },
     { name: "PAC TARGET 2", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
     { name: "PAC TARGET 3", role: "Renegade", hero: "zhen-ji", hp: 4, maxHp: 4, hand: [] },
@@ -187,6 +189,85 @@ test("PUBLIC-PAC keeps genuine Something Out of Nothing and Barbarian Invasion r
       expect(overlaps(geometry.h4, geometry.pac)).toBe(false);
       expect(overlaps(geometry.countdown, geometry.pac)).toBe(false);
     }
+  } finally {
+    await page.close();
+  }
+});
+
+test("PUBLIC-PAC keeps a genuine Raining Arrows reveal above the lower PAC through a committed Negation", async ({ browser, request }, testInfo) => {
+  test.setTimeout(150_000);
+  const room = await seedRoom(request, { rainingArrowsOnly: true });
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  try {
+    await openPlayer(page, room, 1);
+    const root = await playRoot(request, room, room.ids.rainingRoot);
+    const reveal = await sampleReveal(page, root.root);
+    const negation = await commitNegation(request, room, root.windowId);
+    expect(negation.state.timeline.filter((entry) => entry?.type === "card" && entry.card?.id === room.ids.negation)).toHaveLength(1);
+    expect(negation.event.player).toBe(room.players[1].name);
+
+    let postResponse = null;
+    await expect.poll(async () => {
+      postResponse = await page.evaluate((eventId) => {
+        const rect = (element) => {
+          if (!element) return null;
+          const bounds = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom,
+            width: bounds.width, height: bounds.height,
+            visible: style.visibility !== "hidden" && style.display !== "none" && bounds.width > 0 && bounds.height > 0 };
+        };
+        const face = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
+          .find((element) => element.dataset.publicCardJourneyEventId === eventId);
+        const chip = document.querySelector("[data-public-activity-chip='true']");
+        return {
+          face: face ? { eventId: face.dataset.publicCardJourneyEventId, cardId: face.dataset.publicCardJourneyCardId,
+            actorId: face.dataset.publicCardJourneyActorId, phase: face.dataset.publicCardJourneyPhase,
+            size: face.dataset.publicCardJourneySize, ...rect(face) } : null,
+          pac: { ...rect(chip), layout: chip?.dataset.publicActivityLayout ?? null,
+            compact: chip?.dataset.publicActivityCompact === "true", label: chip?.getAttribute("aria-label") ?? null },
+          h4: rect(document.querySelector("[data-public-card-announcement='true']")),
+          countdown: rect(document.querySelector(".stage-system-cluster .visible-countdown-event, .visible-countdown")),
+          dock: rect(document.querySelector(".local-player-dock")),
+        };
+      }, root.root.id);
+      return postResponse.face?.phase === "reveal" && postResponse.face?.visible && postResponse.pac?.visible
+        && postResponse.pac.label?.includes("Negation can cancel the Raining Arrows effect");
+    }, { timeout: 12_000, intervals: [40, 80, 120] }).toBe(true);
+
+    const evidence = {
+      viewport: { width: 390, height: 844 },
+      viewerId: room.players[1].id,
+      root: { eventId: root.root.id, cardId: room.ids.rainingRoot, actorId: room.players[0].id,
+        actorName: root.root.player, resolutionId: root.root.resolutionId },
+      committedNegation: { eventId: negation.event.id, cardId: room.ids.negation, actorId: room.players[1].id },
+      reveal,
+      postResponse,
+    };
+    console.log(`[PUBLIC-PAC-REVEAL-ORDER-01] ${JSON.stringify(evidence)}`);
+    await testInfo.attach("public-pac-raining-arrows-geometry.json", {
+      body: JSON.stringify(evidence, null, 2), contentType: "application/json",
+    });
+
+    expect(reveal.eventId).toBe(root.root.id);
+    expect(reveal.cardId).toBe(room.ids.rainingRoot);
+    expect(reveal.actorId).toBe(room.players[0].id);
+    expect(reveal.size).toBe("reveal");
+    expect(reveal.activeSamePhysicalCardFaces).toBe(1);
+    expect(reveal.face.width).toBe(90);
+    expect(reveal.face.height).toBe(135);
+    expect(reveal.face.bottom + 8).toBeLessThanOrEqual(reveal.pac.top);
+    expect(reveal.pac.bottom).toBeLessThanOrEqual(reveal.dock.top);
+    expect(postResponse.face.cardId).toBe(room.ids.rainingRoot);
+    expect(postResponse.face.bottom + 8).toBeLessThanOrEqual(postResponse.pac.top);
+    expect(postResponse.pac.bottom).toBeLessThanOrEqual(postResponse.dock.top);
+    expect(postResponse.h4.visible).toBe(true);
+    expect(postResponse.countdown.visible).toBe(true);
+    const overlaps = (left, right) => left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
+    expect(overlaps(postResponse.face, postResponse.pac)).toBe(false);
+    expect(overlaps(postResponse.h4, postResponse.face)).toBe(false);
+    expect(overlaps(postResponse.h4, postResponse.pac)).toBe(false);
+    expect(overlaps(postResponse.countdown, postResponse.pac)).toBe(false);
   } finally {
     await page.close();
   }
