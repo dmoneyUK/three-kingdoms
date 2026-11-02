@@ -35,7 +35,7 @@ function clientView(viewerId = "viewer-1") {
 function route(event, players, snapshot, view = clientView(), retiredTransitionIds = []) {
   return routePublicEquipmentTransition({
     event, players, snapshot, clientView: view, roomCode: "ROOM", viewerId: view.viewerId ?? "viewer-1", retiredTransitionIds,
-    existingOwners: event.card ? [{ eventId: event.id, physicalCardId: event.card.id, owner: "TableResolutionSequence" }] : [],
+    existingOwners: event.card ? [{ eventId: event.id, physicalCardId: event.card.id, owner: "PriorRenderer" }] : [],
   });
 }
 

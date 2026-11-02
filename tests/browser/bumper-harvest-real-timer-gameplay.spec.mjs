@@ -191,20 +191,14 @@ async function publicCardInstances(page, identities) {
   return page.evaluate((expected) => {
     const selector = [
       "[data-public-card-journey-event-id]",
-      "[data-public-card-static-event-id]",
       ".active-table-reveal [data-settlement-card-id]",
-      ".table-played-card[data-settlement-card-id]",
     ].join(",");
     return [...document.querySelectorAll(selector)].flatMap((element) => {
       const journey = element.matches("[data-public-card-journey-event-id]");
       const active = element.closest(".active-table-reveal");
-      const settled = element.closest(".table-played-card");
       const eventId = element.getAttribute("data-public-card-journey-event-id")
-        ?? element.getAttribute("data-public-card-static-event-id")
-        ?? active?.getAttribute("data-settlement-event-id")
-        ?? settled?.getAttribute("data-settlement-event-id");
+        ?? active?.getAttribute("data-settlement-event-id");
       const cardId = element.getAttribute("data-public-card-journey-card-id")
-        ?? element.getAttribute("data-public-card-static-card-id")
         ?? element.getAttribute("data-settlement-card-id");
       if (!expected.some((identity) => identity.eventId === eventId || identity.cardId === cardId)) return [];
       const rect = element.getBoundingClientRect();
@@ -213,7 +207,7 @@ async function publicCardInstances(page, identities) {
       return [{
         eventId,
         cardId,
-        renderer: journey ? "public-journey" : active ? "active-table-reveal" : settled ? "settled-table-card" : "public-static",
+        renderer: journey ? "public-journey" : active ? "public-zone-transition" : "unknown",
         phase: element.getAttribute("data-public-card-journey-phase")
           ?? element.getAttribute("data-public-card-visual-phase")
           ?? active?.getAttribute("data-public-card-visual-phase")
@@ -232,9 +226,7 @@ async function startPublicCardIdentityCapture(page, cardIds) {
   await page.evaluate((capturedCardIds) => {
     const selector = [
       "[data-public-card-journey-event-id]",
-      "[data-public-card-static-event-id]",
       ".active-table-reveal [data-settlement-card-id]",
-      ".table-played-card[data-settlement-card-id]",
     ].join(",");
     const capture = { samples: 0, duplicateFrames: 0, firstDuplicate: null, identities: {} };
     let frame = 0;
@@ -244,15 +236,11 @@ async function startPublicCardIdentityCapture(page, cardIds) {
       for (const element of document.querySelectorAll(selector)) {
         const journey = element.matches("[data-public-card-journey-event-id]");
         const active = element.closest(".active-table-reveal");
-        const settled = element.closest(".table-played-card");
         const cardId = element.getAttribute("data-public-card-journey-card-id")
-          ?? element.getAttribute("data-public-card-static-card-id")
           ?? element.getAttribute("data-settlement-card-id");
         if (!capturedCardIds.includes(cardId)) continue;
         const eventId = element.getAttribute("data-public-card-journey-event-id")
-          ?? element.getAttribute("data-public-card-static-event-id")
-          ?? active?.getAttribute("data-settlement-event-id")
-          ?? settled?.getAttribute("data-settlement-event-id");
+          ?? active?.getAttribute("data-settlement-event-id");
         const rect = element.getBoundingClientRect();
         const visible = rect.width > 0 && rect.height > 0
           && element.checkVisibility({ opacityProperty: true, visibilityProperty: true });
@@ -260,7 +248,7 @@ async function startPublicCardIdentityCapture(page, cardIds) {
         const instance = {
           eventId,
           cardId,
-          renderer: journey ? "public-journey" : active ? "active-table-reveal" : settled ? "settled-table-card" : "public-static",
+          renderer: journey ? "public-journey" : active ? "public-zone-transition" : "unknown",
           phase: element.getAttribute("data-public-card-journey-phase")
             ?? element.getAttribute("data-public-card-visual-phase")
             ?? active?.getAttribute("data-public-card-visual-phase")

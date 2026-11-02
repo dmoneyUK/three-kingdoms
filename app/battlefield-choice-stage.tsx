@@ -125,7 +125,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
       ".player-board > .opponent-player-card",
       ".public-card-display-journey-copy",
       ...(protectActiveReveal ? [
-        ".public-card-journey-card[data-public-card-journey-phase='reveal'], .public-card-journey-card[data-public-card-journey-phase='move'], .active-table-reveal, .table-played-card",
+        ".public-card-journey-card[data-public-card-journey-phase='reveal'], .public-card-journey-card[data-public-card-journey-phase='move'], .active-table-reveal",
       ] : []),
       ...(targetCardSelect
         ? [centralTargetLayout

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   PUBLIC_PRESENTATION_EVENT_COVERAGE,
-  PUBLIC_PRESENTATION_LEGACY_ALLOWLIST,
   routePublicPresentation,
 } from "../app/public-presentation-routing.ts";
 
@@ -65,17 +64,11 @@ function journeyInput({ viewerId = "viewer-1", interactionId = "interaction-1", 
   };
 }
 
-test("coverage inventory records producer, route, owner, zone, and only remaining legacy owners", () => {
+test("coverage inventory records one current producer, route, owner and zone for every event family", () => {
   assert.equal(PUBLIC_PRESENTATION_EVENT_COVERAGE.length, 21);
   assert.deepEqual(PUBLIC_PRESENTATION_EVENT_COVERAGE.map((entry) => entry.id), Array.from({ length: 21 }, (_, index) => `E${String(index + 1).padStart(2, "0")}`));
   assert.ok(PUBLIC_PRESENTATION_EVENT_COVERAGE.every((entry) => entry.producer.trim() && entry.route && entry.currentOwner.trim() && entry.zone.trim()));
-  assert.equal(new Set(PUBLIC_PRESENTATION_LEGACY_ALLOWLIST.map((entry) => entry.id)).size, PUBLIC_PRESENTATION_LEGACY_ALLOWLIST.length);
-  const legacyIds = new Set(PUBLIC_PRESENTATION_LEGACY_ALLOWLIST.map((entry) => entry.id));
-  assert.ok(PUBLIC_PRESENTATION_EVENT_COVERAGE.flatMap((entry) => entry.legacyRoutes).every((id) => legacyIds.has(id)));
-  assert.equal(PUBLIC_PRESENTATION_LEGACY_ALLOWLIST.some((entry) => entry.id === "STATIC_GENERIC_FALLBACK"), false);
-  assert.equal(PUBLIC_PRESENTATION_LEGACY_ALLOWLIST.some((entry) => entry.owner === "PublicCardDisplay.static-fallback" || entry.removalSlice === "M5"), false);
-  assert.equal(PUBLIC_PRESENTATION_EVENT_COVERAGE.flatMap((entry) => entry.legacyRoutes).some((id) => id.startsWith("STATIC_")), false);
-  assert.ok(PUBLIC_PRESENTATION_LEGACY_ALLOWLIST.every((entry) => entry.owner && entry.removalSlice && entry.action));
+  assert.ok(PUBLIC_PRESENTATION_EVENT_COVERAGE.every((entry) => !("legacyRoutes" in entry) && !("nextMigration" in entry)));
 });
 
 test("Attack, Duel and committed Negation response cards retain one public journey owner", () => {
@@ -125,7 +118,7 @@ test("viewer rebase changes only the scoped callback generation, and layout read
 
   const conflictingOwners = journeyInput({ existingOwners: [
     { eventId: "root-event", physicalCardId: "root-card", owner: "PublicCardDisplay" },
-    { eventId: "root-event", physicalCardId: "root-card", owner: "TableResolutionSequence" },
+    { eventId: "root-event", physicalCardId: "root-card", owner: "PriorRenderer" },
   ] });
   assert.equal(routePublicPresentation(conflictingOwners).shadowComparison.status, "multiple-owners");
 
@@ -151,13 +144,13 @@ test("equipment and later discard transitions for one physical card have separat
     clientView: { hasInteraction: true, interactionId: "equip-interaction", checkpointId: "equip-checkpoint", presentationRevision: 1, rootFrameId: "equip-frame", stage: "SETTLEMENT", stableKind: "SETTLEMENT" },
     publicTimeline: [equipTimeline],
     publicZones: [{ semantics: "PROVEN", visibility: "PUBLIC", eventId: "equip-event", physicalCardId: cardId, ownerId: "actor-1", zone: "EQUIPMENT", slot: "weapon" }],
-    existingOwners: [{ eventId: "equip-event", physicalCardId: cardId, owner: "TableResolutionSequence" }],
+    existingOwners: [{ eventId: "equip-event", physicalCardId: cardId, owner: "PriorRenderer" }],
     candidate: { kind: "zone-transition", mode: "active", interactionId: "equip-interaction", rootFrameId: "equip-frame", rootEventId: "equip-event", transitionId: "equip-event", eventId: "equip-event", physicalCardId: cardId, ownerId: "actor-1", destination: "EQUIPMENT", slot: "weapon" },
   };
   const equip = routePublicPresentation(equipInput);
   assert.equal(equip.kind, "zone-transition");
   assert.equal(equip.claimedBy, "PublicPhysicalCardTransition");
-  assert.deepEqual(equip.shadowComparison, { status: "mismatch", currentOwners: ["TableResolutionSequence"] });
+  assert.deepEqual(equip.shadowComparison, { status: "mismatch", currentOwners: ["PriorRenderer"] });
 
   const discardIdentity = { interactionId: "discard-interaction", rootFrameId: "discard-frame", checkpointId: "discard-checkpoint", presentationRevision: 1 };
   const discardFact = fact("discard-event", 11, "discard-event", "actor-1", { category: "CARD_DISCARDED", identity: discardIdentity });
@@ -183,23 +176,10 @@ test("equipment and later discard transitions for one physical card have separat
   assert.notEqual(discard.claimId, equip.claimId);
 });
 
-test("only exact committed TableResolutionSequence proof remains allowlisted until M6", () => {
+test("uncommitted/private candidate has no public physical-card route", () => {
   const input = journeyInput();
-  input.candidate = {
-    kind: "legacy", mode: "active", allowlistId: "TABLE_PUBLIC_PLAY_HISTORY",
-    transitionId: "root-event", eventId: "root-event", rootEventId: "root-event",
-    physicalCardIds: ["root-card"], interactionId: "interaction-1", rootFrameId: "root-frame",
-  };
-  input.publicTimeline[0].physicalCardKinds = { "root-card": "Peach" };
-  input.publicTimeline[0].destination = "AUTHOR_HISTORY";
-  input.existingOwners = [{ eventId: "root-event", physicalCardId: "root-card", owner: "TableResolutionSequence" }];
-  const allowed = routePublicPresentation(input);
-  assert.equal(allowed.kind, "legacy-allowlisted");
-  assert.equal(allowed.removalSlice, "M6");
-  assert.equal(allowed.shadowComparison.status, "match");
-
-  input.candidate.allowlistId = "STATIC_SELF_TARGET_PEACH_ROOT";
-  assert.deepEqual(routePublicPresentation(input), { kind: "blocked-invalid-proof", reason: "legacy-route-not-allowlisted" });
+  input.candidate = { kind: "private-pending" };
+  assert.deepEqual(routePublicPresentation(input), { kind: "no-public-card-action", reason: "private-or-uncommitted" });
 });
 
 test("fact-only routes require the exact public timeline event and current public stage", () => {

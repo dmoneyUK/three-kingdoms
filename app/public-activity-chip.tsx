@@ -21,7 +21,6 @@ const SAFE_OBSTACLES = [
   ".target-card-picker-panel",
   ".public-card-journey-card",
   ".public-card-duel-parked-card",
-  ".public-card-display-static-card > .played-card",
   ".effect-notice",
   ".turn-notice",
   ".played-card-stage .played-card",
@@ -105,7 +104,7 @@ function protectedRects(table: HTMLElement): ProtectedRect[] {
     const insideTable = table.contains(element) || element.closest(".play-table") === table;
     if (!insideTable && !element.matches(EXTERNAL_ACTION_OBSTACLES)) continue;
     const rect = visibleRect(element);
-    const parked = element.closest<HTMLElement>('[data-public-card-journey-phase="parked"], .table-played-card.settled');
+    const parked = element.closest<HTMLElement>('[data-public-card-journey-phase="parked"]');
     const parkedRect = parked ? visibleRect(parked) : null;
     const parkedThumbnail = Boolean(parkedRect && parkedRect.width <= 70 && parkedRect.height <= 110);
     if (!parkedThumbnail && rect && rect.right > tableRect.left && rect.left < tableRect.right

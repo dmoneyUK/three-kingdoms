@@ -344,18 +344,13 @@ async function publicPhysicalCardInstances(page, identities) {
     const expectedKeys = new Set(expected.map(({ eventId, cardId }) => `${eventId}\u001f${cardId}`));
     const elements = [...document.querySelectorAll([
       "[data-public-card-journey-event-id]",
-      "[data-public-card-static-event-id]",
       ".active-table-reveal [data-settlement-card-id]",
-      ".table-played-card[data-settlement-card-id]",
     ].join(","))];
     return elements.flatMap((element) => {
       const eventId = element.getAttribute("data-public-card-journey-event-id")
-        ?? element.getAttribute("data-public-card-static-event-id")
-        ?? element.getAttribute("data-settlement-event-id")
         ?? element.closest(".active-table-reveal")?.getAttribute("data-settlement-event-id")
         ?? null;
       const cardId = element.getAttribute("data-public-card-journey-card-id")
-        ?? element.getAttribute("data-public-card-static-card-id")
         ?? element.getAttribute("data-settlement-card-id")
         ?? null;
       if (!eventId || !cardId || !expectedKeys.has(`${eventId}\u001f${cardId}`)) return [];
@@ -363,18 +358,15 @@ async function publicPhysicalCardInstances(page, identities) {
       const rect = face.getBoundingClientRect();
       const style = getComputedStyle(face);
       const display = element.closest("[data-public-card-display]");
-      const settled = element.closest(".table-played-card");
       const active = element.closest(".active-table-reveal");
-      const settlementOwner = element.closest("[data-player-settlement-id]");
       return [{
         eventId,
         cardId,
         actorId: element.getAttribute("data-public-card-journey-actor-id")
           ?? display?.getAttribute("data-public-card-source-id")
-          ?? settlementOwner?.getAttribute("data-player-settlement-id")
           ?? null,
         rendererKind: display?.getAttribute("data-public-card-renderer-kind")
-          ?? (settled ? "table-resolution-settled" : active ? "table-resolution-active" : "static"),
+          ?? (active ? "public-zone-transition" : "unknown"),
         visible: style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0
           && rect.width > 0 && rect.height > 0,
         rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
@@ -1164,7 +1156,6 @@ test("Duel physical cards keep one public owner through Cao Cao's Treachery skip
       expect(treacheryEvidence.filter((instance) => instance.eventId === identity.eventId && instance.cardId === identity.cardId)).toHaveLength(0);
       expect(switchedViewerEvidence.filter((instance) => instance.eventId === identity.eventId && instance.cardId === identity.cardId)).toHaveLength(0);
     }
-    expect(treacheryEvidence.filter((instance) => instance.visible && instance.rendererKind === "table-resolution-settled")).toEqual([]);
     await expect(skip).toBeEnabled();
     const skipSubmission = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
       && response.request().method() === "POST"

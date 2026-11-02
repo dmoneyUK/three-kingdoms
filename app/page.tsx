@@ -1560,7 +1560,7 @@ function publicPlayerName(name: string) { return name; }
 function delayUntil(deadline: number) { return Math.max(0, deadline - Date.now()); }
 function suitColorClass(suit: Card["suit"]) { return suit === "♥" || suit === "♦" ? "red-suit" : "black-suit"; }
 
-function pendingTimelineSequence(room: Room) {
+function pendingSelfTargetActionWindow(room: Room) {
   const sourceId = room.pendingTargetCard?.sourceId ?? room.pendingNegation?.sourceId ?? room.pendingDuel?.sourceId ?? room.pendingAttack?.sourceId ?? room.pendingGreenDragon?.sourceId ?? room.pendingRockCleaving?.sourceId ?? room.pendingFrostSword?.sourceId ?? room.pendingGroup?.sourceId;
   const source = room.players.find((player) => player.id === sourceId);
   if (!source) return [];
@@ -1574,7 +1574,7 @@ function pendingTimelineSequence(room: Room) {
   return room.timeline.slice(initiatingIndex).filter((event) => event.presentation !== false);
 }
 
-function timelineSequenceFrom(room: Room, startId: string) {
+function timelineEventsFrom(room: Room, startId: string) {
   const startIndex = room.timeline.findIndex((event) => event.id === startId);
   return startIndex < 0 ? [] : room.timeline.slice(startIndex).filter((event) => event.presentation !== false);
 }
@@ -1587,10 +1587,9 @@ function settlesInJudgement(event: GameEvent | null | undefined) {
   return Boolean(event && event.type === "card" && !event.playedAs && event.action === "play" && ["Overindulgence", "Lightning", "RationsDepleted"].includes(event.card.kind));
 }
 function retainsAtPlayer(event: GameEvent) {
-  // Equipment is committed to the owner's rack by the API before its public
-  // presentation is emitted. Keep the centre reveal, but do not also retain a
-  // numbered copy in the settled sequence; that duplicate made an equipped
-  // card appear to return to the player's hand before settling.
+  // Keep only public events that can still identify a fresh, self-target
+  // action inside its current resolution window. Equipment, gain and reveal
+  // events are owned by their proven zone/pool presenters.
   return eventCards(event).length === 0 || (!movesDirectlyToDiscard(event) && !(event.type === "card" && (event.action === "gain" || event.action === "equip" || event.action === "reveal")));
 }
 function isJudgementReveal(event: GameEvent | null | undefined) {
@@ -1621,7 +1620,7 @@ const UI_TIMING = {
   privateDraw: PRIVATE_HAND_REVEAL_DURATION_MS,
   effectNotice: 2400,
   effectNoticeExit: 160,
-  sequenceDiscard: 700,
+  selfTargetWindowClose: 700,
   interactionSettlement: 600,
   interactionSettlementReduced: 120,
   // The selected-card result and its settlement copy need three full seconds
@@ -1643,7 +1642,6 @@ const NO_SKILL_EFFECT_SETTLEMENTS = [] as const;
 const NO_DISMANTLE_SETTLEMENTS = [] as const;
 const NO_STEAL_SETTLEMENTS = [] as const;
 const NO_ATTACK_HIT_SETTLEMENTS = [] as const;
-const EMPTY_STRING_SET: ReadonlySet<string> = new Set();
 
 async function readApiJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -3780,7 +3778,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       window.removeEventListener("resize", measure);
     };
   }, [isPhoneViewport, room.meId, room.players.length]);
-  const initialPendingSequence = pendingTimelineSequence(room);
+  const initialSelfTargetWindow = pendingSelfTargetActionWindow(room);
   const clientPresentation = useMemo(() => presentationView ?? buildPresentationClientView(room.presentationSnapshot ?? null, room.meId), [presentationView, room.presentationSnapshot, room.meId]);
   const skillEffectSettlements = clientPresentation.skillEffectSettlements ?? NO_SKILL_EFFECT_SETTLEMENTS;
   const dismantleSettlements = clientPresentation.dismantleSettlements ?? NO_DISMANTLE_SETTLEMENTS;
@@ -3952,14 +3950,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [attackDodgeSettlementCapturedEventIdsSnapshot, setAttackDodgeSettlementCapturedEventIdsSnapshot] = useState<ReadonlySet<string>>(() => new Set());
   const attackDodgeSettlementRetirementLoggedEventIds = useRef(new Set<string>());
   const retiredAttackDodgeComposition = useRef<RetiredAttackDodgeComposition>({ roomCode: room.code, eventIds: new Set(), cardIds: new Set() });
-  const [retiredAttackDodgeCompositionSnapshot, setRetiredAttackDodgeCompositionSnapshot] = useState<RetiredAttackDodgeComposition>(() => ({ roomCode: room.code, eventIds: new Set(), cardIds: new Set() }));
   const publishRetiredAttackDodgeComposition = useCallback((composition: RetiredAttackDodgeComposition) => {
     retiredAttackDodgeComposition.current = composition;
-    setRetiredAttackDodgeCompositionSnapshot({
-      roomCode: composition.roomCode,
-      eventIds: new Set(composition.eventIds),
-      cardIds: new Set(composition.cardIds),
-    });
   }, []);
   const retiredAttackDodgeStorageRaw = useSyncExternalStore(
     useCallback((listener) => subscribeRetiredAttackDodgeComposition(room.code, listener), [room.code]),
@@ -3971,7 +3963,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     [retiredAttackDodgeStorageRaw, room.code],
   );
   const persistedRetiredAttackDodgeEvents = useMemo(() => new Set(persistedAttackDodgeComposition.eventIds), [persistedAttackDodgeComposition]);
-  const persistedRetiredAttackDodgeCards = useMemo(() => new Set(persistedAttackDodgeComposition.cardIds), [persistedAttackDodgeComposition]);
   const recordAttackHitSettlementRetirement = useCallback((hold: AttackHitSettlementHoldIdentity) => {
     const retired = persistAttackHitSettlementRetirement(hold);
     const prior = retiredAttackDodgeComposition.current.roomCode === hold.roomCode
@@ -3990,9 +3981,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // Events already present when the screen mounts have no new animation to
   // wait for. New event IDs enter this set only after their presentation ends.
   const [presentedEventIds, setPresentedEventIds] = useState<Set<string>>(() => new Set((room.timeline ?? []).map((event) => event.id)));
-  // The centre-to-seat card journey has its own lifecycle. The legacy event
-  // queue may finish its two-second read before the authoritative response
-  // projection is ready; that must not make the committed card look stale.
+  // The centre-to-seat card journey has its own lifecycle. The announcement
+  // queue may finish its read before the authoritative response projection is
+  // ready; that must not make the committed card look stale.
   const [publicCardJourneySeen, setPublicCardJourneySeen] = useState<{ roomCode: string; eventIds: Set<string> }>(() => ({
     roomCode: room.code,
     eventIds: new Set((room.timeline ?? []).map((event) => event.id)),
@@ -4074,14 +4065,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const publicCardJourneySeenEventIds = publicCardJourneySeen.roomCode === room.code
     ? publicCardJourneySeen.eventIds
     : new Set((room.timeline ?? []).map((event) => event.id));
-  const [resolutionEvents, setResolutionEvents] = useState<GameEvent[]>(initialPendingSequence);
-  const [resolutionClosing, setResolutionClosing] = useState(false);
-  const [sequenceScopeStartId, setSequenceScopeStartId] = useState(initialPendingSequence[0]?.id ?? "");
-  const resolutionRevision = useRef(0);
+  // Bounds public selfTargetActions to the live resolution window; this state
+  // is not a physical-card renderer or a second ownership path.
+  const [selfTargetWindowEvents, setSelfTargetWindowEvents] = useState<GameEvent[]>(initialSelfTargetWindow);
+  const [selfTargetWindowClosing, setSelfTargetWindowClosing] = useState(false);
+  const [selfTargetWindowStartId, setSelfTargetWindowStartId] = useState(initialSelfTargetWindow[0]?.id ?? "");
+  const selfTargetWindowRevision = useRef(0);
   const [processedTimelineKey, setProcessedTimelineKey] = useState(() => room.timeline.map((event) => event.id).join("|"));
   const card = room.myHand.find((item) => item.id === selected); const current = room.players.find((player) => player.seat === room.turnSeat); const me = room.players.find((player) => player.id === room.meId); const localHero = heroDefinition(me?.hero); const targetPlayer = room.players.find((player) => player.id === target); const pendingTargetPlayer = room.players.find((player) => player.id === room.pendingTargetCard?.targetId); const pickerTarget = pendingTargetPlayer ?? targetPlayer;
   const excessCards = Math.max(0, room.myHand.length - (me?.hp ?? 0));
-  // TableResolutionSequence still indexes the server-ordered player snapshot.
+  // Zone-transition presenters index the server-ordered player snapshot.
   // Keep that contract separate from the seat-sorted mobile projection below.
   const myTableIndex = Math.max(0, room.players.findIndex((player) => player.id === room.meId));
   const seatRelativeIndices = useMemo(() => {
@@ -4277,7 +4270,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       roomCode: room.code,
       viewerId: room.meId,
       retiredTransitionIds: [...presentedEventIds],
-      existingOwners: activeEvent.type === "card" ? [{ eventId: activeEvent.id, physicalCardId: activeEvent.card.id, owner: "TableResolutionSequence" }] : [],
     });
   }, [activeEvent, room.players, room.presentationSnapshot, clientPresentation, room.code, room.meId, presentedEventIds]);
   const activeEquipmentZoneTransition = activeEquipmentTransitionRoute?.kind === "zone-transition"
@@ -4374,7 +4366,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     optimisticPlay: Boolean(optimisticPlay),
     activeEvent: Boolean(activeEvent && !activeEquipmentArrivalEventId),
     eventQueue: eventQueue.length > 0,
-    resolutionClosing,
+    selfTargetWindowClosing,
     turnNotice: Boolean(turnNotice),
     privateDrawCards: privateDrawCards.length > 0,
     hasUnseenPresentations,
@@ -5093,21 +5085,25 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (!accepted) setHarvestSubmitting(null);
   };
   const lastTimelineId = room.timeline.at(-1)?.id ?? "start";
-  const livePendingSequence = pendingTimelineSequence(room);
-  const livePendingStartId = livePendingSequence[0]?.id ?? "";
-  const effectiveSequenceStartId = livePendingStartId || sequenceScopeStartId;
-  const scopedTimelineEvents = (effectiveSequenceStartId ? timelineSequenceFrom(room, effectiveSequenceStartId) : livePendingSequence).filter(retainsAtPlayer);
-  const scopedEventIds = new Set(scopedTimelineEvents.map((event) => event.id));
-  const scopedCardIds = new Set(scopedTimelineEvents.flatMap(eventCards).map((item) => item.id));
-  const scopedLocalEvents = effectiveSequenceStartId ? resolutionEvents.filter((event) => scopedEventIds.has(event.id) || eventCards(event).some((item) => scopedCardIds.has(item.id)) || event.id === optimisticPlay?.id) : resolutionEvents;
-  const publicJudgementCardIds = new Set(room.players.flatMap((player) => player.judgementCards.map((card) => card.id)));
-  const sequenceEvents = [...scopedTimelineEvents, ...scopedLocalEvents].filter(retainsAtPlayer)
+  const livePendingSelfTargetEvents = pendingSelfTargetActionWindow(room);
+  const livePendingSelfTargetStartId = livePendingSelfTargetEvents[0]?.id ?? "";
+  const effectiveSelfTargetStartId = livePendingSelfTargetStartId || selfTargetWindowStartId;
+  const scopedTimelineSelfTargetEvents = (effectiveSelfTargetStartId ? timelineEventsFrom(room, effectiveSelfTargetStartId) : livePendingSelfTargetEvents).filter(retainsAtPlayer);
+  const scopedSelfTargetEventIds = new Set(scopedTimelineSelfTargetEvents.map((event) => event.id));
+  const scopedSelfTargetCardIds = new Set(scopedTimelineSelfTargetEvents.flatMap(eventCards).map((item) => item.id));
+  const scopedLocalSelfTargetEvents = effectiveSelfTargetStartId
+    ? selfTargetWindowEvents.filter((event) => scopedSelfTargetEventIds.has(event.id)
+      || eventCards(event).some((item) => scopedSelfTargetCardIds.has(item.id))
+      || event.id === optimisticPlay?.id)
+    : selfTargetWindowEvents;
+  const publicJudgementCardIds = new Set(room.players.flatMap((player) => player.judgementCards.map((item) => item.id)));
+  const activeSelfTargetWindowEvents = [...scopedTimelineSelfTargetEvents, ...scopedLocalSelfTargetEvents].filter(retainsAtPlayer)
     .filter((event) => !validatedJudgementTransitionSourceEventIds.has(event.id)
       && !validatedPublicDiscardTransitionEventIds.has(event.id)
       && !validatedPublicHandRevealTransitionEventIds.has(event.id)
-      && !eventCards(event).some((card) => publicJudgementCardIds.has(card.id)))
+      && !eventCards(event).some((item) => publicJudgementCardIds.has(item.id)))
     .filter((event, index, all) => all.findIndex((candidate) => candidate.id === event.id || event.type === "card" && candidate.type === "card" && candidate.card.id === event.card.id) === index);
-  const displayedEvent = activeEvent ?? optimisticPlay;
+  const currentPublicEventPresentation = activeEvent ?? optimisticPlay;
   const processedEventIds = new Set(processedTimelineKey.split("|"));
   const pendingPresentationEvents = [optimisticPlay, activeEvent, ...eventQueue, ...room.timeline.filter((event) => !processedEventIds.has(event.id))].filter((event): event is GameEvent => Boolean(event));
   const pendingEquipmentArrivals = derivePendingEquipmentArrivalIdentities(pendingPresentationEvents, room.players, presentedEventIds);
@@ -5425,16 +5421,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
     if (immediatelyPresented.size) setPresentedEventIds((ids) => new Set([...ids, ...immediatelyPresented]));
     if (visible.length) {
-      setResolutionClosing(false);
+      setSelfTargetWindowClosing(false);
       const cardsArrived = visible.some((event) => eventCards(event).length > 0);
-      if (cardsArrived) resolutionRevision.current += 1;
+      if (cardsArrived) selfTargetWindowRevision.current += 1;
       const latestResolutionId = visible.map((event) => event.resolutionId).filter(Boolean).at(-1);
       if (latestResolutionId && activeEvent?.resolutionId && activeEvent.resolutionId !== latestResolutionId && eventImportance(activeEvent) === "informational") setActiveEvent(null);
       if (!optimisticPlay && !activeEvent && eventQueue.length === 0) {
         const first = visible[0];
         if (first) {
           setActiveEvent(first);
-          if (retainsAtPlayer(first)) setResolutionEvents((events) => appendUniqueEvents(events, [first]));
+          if (retainsAtPlayer(first)) setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [first]));
         }
         setEventQueue(coalescePresentationQueue([], visible.slice(1)));
       } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
@@ -5462,10 +5458,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     return () => { window.clearTimeout(exitTimer); window.clearTimeout(removeTimer); };
   }, [effectNoticeEventId, effectNoticeProofEventId, effectNoticeRoomCode, effectNoticeViewerId, room.code, room.meId]);
   useEffect(() => { if (!optimisticPlay) return; const timer = setTimeout(() => setOptimisticPlay(null), UI_TIMING.playedCard); return () => clearTimeout(timer); }, [optimisticPlay]);
-  useEffect(() => { if (!livePendingStartId || livePendingStartId === sequenceScopeStartId) return; const timer = setTimeout(() => setSequenceScopeStartId(livePendingStartId), 0); return () => clearTimeout(timer); }, [livePendingStartId, sequenceScopeStartId]);
+  useEffect(() => { if (!livePendingSelfTargetStartId || livePendingSelfTargetStartId === selfTargetWindowStartId) return; const timer = setTimeout(() => setSelfTargetWindowStartId(livePendingSelfTargetStartId), 0); return () => clearTimeout(timer); }, [livePendingSelfTargetStartId, selfTargetWindowStartId]);
   useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);
   useEffect(() => { const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || !room.phase?.startsWith("draw") || !canUseAction(room.currentAction, "draw") || activeEvent || eventQueue.length || hasUnseenPresentations || privateDrawCards.length || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey && canUseAction(room.currentAction, "draw")) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, UI_TIMING.turnDrawStart); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, room.currentAction, current?.name, lastTimelineId, hasUnseenPresentations, activeEvent, eventQueue.length, privateDrawCards.length]);
-  useEffect(() => { if (optimisticPlay || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { const next = eventQueue[0]; setActiveEvent(next); if (retainsAtPlayer(next)) setResolutionEvents((events) => appendUniqueEvents(events, [next])); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue]);
+  useEffect(() => { if (optimisticPlay || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { const next = eventQueue[0]; setActiveEvent(next); if (retainsAtPlayer(next)) setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [next])); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue]);
   useEffect(() => {
     if (!activeEventTimerEventId) return;
     const timerContext = presentationTimerDiagnosticContextRef.current;
@@ -5508,8 +5504,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       if (!fired) traceTimer("cancelled");
     };
   }, [activeEventTimerEventId, activeEventTimerKind, activeEventTimerIdentity, activeEventDisplayDuration, activeEquipmentArrivalKey, activeJudgementTransitionKey, activePublicDiscardTransitionKey, activePublicHandRevealTransitionKey]);
-  useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || resolutionClosing || !resolutionEvents.length) return; const timer = setTimeout(() => setResolutionClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, resolutionClosing, resolutionEvents.length]);
-  useEffect(() => { if (!resolutionClosing) return; const closingRevision = resolutionRevision.current; const timer = setTimeout(() => { if (resolutionRevision.current !== closingRevision) { setResolutionClosing(false); return; } setResolutionEvents([]); setSequenceScopeStartId(""); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
+  useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || selfTargetWindowClosing || !selfTargetWindowEvents.length) return; const timer = setTimeout(() => setSelfTargetWindowClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, selfTargetWindowClosing, selfTargetWindowEvents.length]);
+  useEffect(() => { if (!selfTargetWindowClosing) return; const closingRevision = selfTargetWindowRevision.current; const timer = setTimeout(() => { if (selfTargetWindowRevision.current !== closingRevision) { setSelfTargetWindowClosing(false); return; } setSelfTargetWindowEvents([]); setSelfTargetWindowStartId(""); setSelfTargetWindowClosing(false); }, UI_TIMING.selfTargetWindowClose); return () => clearTimeout(timer); }, [selfTargetWindowClosing]);
   useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawPresentation({ playerId: room.meId, cards: [], transferIds: [] }), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, room.meId, activeEvent, eventQueue.length]);
   useEffect(() => {
     if (!privateDrawVisible || !privateDrawPresentation.transferIds.length) return;
@@ -5650,10 +5646,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     // A Negation submitted during the shared window is still a private intent.
     // Only the server-selected winner may create a public card presentation.
     const presentImmediately = Boolean(optimisticEvent && !room.currentAction?.negationWindowId && !optimisticPlay && !activeEvent && eventQueue.length === 0);
-    if (presentImmediately && optimisticEvent) { resolutionRevision.current += 1; materials.forEach((item) => optimisticallyPresentedCards.current.add(item.id)); setResolutionClosing(false); setResolutionEvents((events) => appendUniqueEvents(events, [optimisticEvent])); setOptimisticPlay(optimisticEvent); }
+    if (presentImmediately && optimisticEvent) { selfTargetWindowRevision.current += 1; materials.forEach((item) => optimisticallyPresentedCards.current.add(item.id)); setSelfTargetWindowClosing(false); setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [optimisticEvent])); setOptimisticPlay(optimisticEvent); }
     setResponseProviderId(""); setLongdanMode(null); setSelected(""); setSerpentSelected([]);
     const accepted = await onAction("respond", { providerId: provider.providerId, ...(selectedIds.length === 1 ? { cardId: selectedIds[0] } : selectedIds.length > 1 ? { cardIds: selectedIds } : {}) });
-    if (!accepted && presentImmediately && optimisticEvent) { materials.forEach((item) => optimisticallyPresentedCards.current.delete(item.id)); setOptimisticPlay(null); setResolutionEvents((events) => events.filter((event) => event.id !== optimisticEvent.id)); }
+    if (!accepted && presentImmediately && optimisticEvent) { materials.forEach((item) => optimisticallyPresentedCards.current.delete(item.id)); setOptimisticPlay(null); setSelfTargetWindowEvents((events) => events.filter((event) => event.id !== optimisticEvent.id)); }
   };
   const playSerpentAttack = async () => {
     if (!me || !canPlay || !canDeclareAttack || serpentSelected.length !== 2) return;
@@ -5665,16 +5661,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const optimisticEvent: CardGroupEvent = { id: `optimistic-serpent-${materials.map((item) => item.id).join("-")}`, type: "cards", player: me.name, target: displayTarget ?? me.name, cards: materials, action: "play" };
     const presentImmediately = !optimisticPlay && !activeEvent && eventQueue.length === 0;
     if (presentImmediately) {
-      resolutionRevision.current += 1;
+      selfTargetWindowRevision.current += 1;
       materials.forEach((item) => optimisticallyPresentedCards.current.add(item.id));
-      setResolutionClosing(false); setResolutionEvents((events) => appendUniqueEvents(events, [optimisticEvent])); setOptimisticPlay(optimisticEvent);
+      setSelfTargetWindowClosing(false); setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [optimisticEvent])); setOptimisticPlay(optimisticEvent);
     }
     const action = "serpent_spear_attack";
     setSerpentMode(false); setSerpentSelected([]); setSelected(""); setTargetIds([]);
     const accepted = await submitWithLocalTargetPreview(() => onAction(action, { cardIds: materials.map((item) => item.id), targetId: target }));
     if (!accepted && presentImmediately) {
       materials.forEach((item) => optimisticallyPresentedCards.current.delete(item.id));
-      setOptimisticPlay(null); setResolutionEvents((events) => events.filter((event) => event.id !== optimisticEvent.id));
+      setOptimisticPlay(null); setSelfTargetWindowEvents((events) => events.filter((event) => event.id !== optimisticEvent.id));
     }
   };
   const chooseBorrowedSwordTarget = (playerId: string) => { if (!borrowedSwordTargetSelectionActive || !borrowedSwordEligibleTargetIds.includes(playerId)) return; setBorrowedSwordTargetId((currentId) => currentId === playerId ? "" : playerId); };
@@ -5704,10 +5700,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const serverCommittedEquipmentJourney = Boolean(definition.equipmentSlot && !selectedCanPlayAsAttack);
     const presentImmediately = !serverCommittedEquipmentJourney && !optimisticPlay && !activeEvent && eventQueue.length === 0;
     if (presentImmediately) {
-      resolutionRevision.current += 1;
+      selfTargetWindowRevision.current += 1;
       optimisticallyPresentedCards.current.add(playedCard.id);
-      setResolutionClosing(false);
-      setResolutionEvents(retainsAtPlayer(optimisticEvent) ? [optimisticEvent] : []);
+      setSelfTargetWindowClosing(false);
+      setSelfTargetWindowEvents(retainsAtPlayer(optimisticEvent) ? [optimisticEvent] : []);
       setOptimisticPlay(optimisticEvent);
     }
     setSelected("");
@@ -5721,7 +5717,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       if (presentImmediately) {
         optimisticallyPresentedCards.current.delete(playedCard.id);
         setOptimisticPlay(null);
-        setResolutionEvents([]);
+        setSelfTargetWindowEvents([]);
       }
     }
   };
@@ -5856,13 +5852,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
     return { proof, rootEvent, responseEvent, reasons, lifecycleRetirementReason };
   });
-  const serverRetiredAttackDodgeEvents = new Set(attackDodgeResponseEvaluations
-    .filter(({ lifecycleRetirementReason }) => lifecycleRetirementReason !== null)
-    .flatMap(({ proof }) => [proof.rootEventId, proof.responseEventId]));
-  const serverRetiredAttackDodgeCards = new Set(attackDodgeResponseEvaluations
-    .filter(({ lifecycleRetirementReason }) => lifecycleRetirementReason !== null)
-    .flatMap(({ rootEvent, responseEvent }) => [rootEvent, responseEvent]
-      .flatMap((event) => event ? eventCards(event).map((card) => card.id) : [])));
   const attackDodgeResponseCandidates = attackDodgeResponseEvaluations.flatMap(({ proof, rootEvent, responseEvent, reasons }) =>
     reasons.length === 0 && (rootEvent?.type === "card" || rootEvent?.type === "cards") && responseEvent?.type === "card"
       ? [{ proof, rootEvent, responseEvent }]
@@ -5884,9 +5873,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const attackDodgeResponsesForActiveSettlement = visibleActiveAttackDodgeSettlement
     ? attackDodgeResponseCandidates.filter(({ proof }) => attackDodgeResponseProofKey(proof) === activeAttackDodgeSettlementProofKey)
     : [];
-  const completedAttackDodgeSettlementCandidate = visibleActiveAttackDodgeSettlement?.phase === "complete" && activeAttackDodgeSettlementProofKey
-    ? attackDodgeResponseCandidates.find(({ proof }) => attackDodgeResponseProofKey(proof) === activeAttackDodgeSettlementProofKey) ?? null
-    : null;
   useEffect(() => {
     const observation = observedAttackDodgeProofs.current;
     if (!observation) return;
@@ -7086,10 +7072,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
       || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind
       || action.sourceId !== action.targetId) return [];
-    const matchingSequenceEvents = sequenceEvents.filter((candidate) => eventCards(candidate).some((card) => card.id === event.card.id));
-    if (matchingSequenceEvents.length !== 1) return [];
-    const isDisplayedEvent = Boolean(displayedEvent && eventCards(displayedEvent).some((card) => card.id === event.card.id));
-    const isSettledEvent = !displayedEvent && eventQueue.length === 0 && !hasUnseenPresentations;
+    const matchingSelfTargetEvents = activeSelfTargetWindowEvents.filter((candidate) => eventCards(candidate).some((card) => card.id === event.card.id));
+    if (matchingSelfTargetEvents.length !== 1) return [];
+    const isDisplayedEvent = Boolean(currentPublicEventPresentation && eventCards(currentPublicEventPresentation).some((card) => card.id === event.card.id));
+    const isSettledEvent = !currentPublicEventPresentation && eventQueue.length === 0 && !hasUnseenPresentations;
     if (eventQueue.length > 0 || !isDisplayedEvent && !isSettledEvent) return [];
     const source = room.players.find((player) => player.id === action.sourceId);
     if (!source) return [];
@@ -9001,30 +8987,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         && (!duelJourneyOwnsRootAndAttacks || Number.isInteger(response.ordinal));
     })
     : [];
-  const publicDisplayOwnedEventIds = publicCardDisplayOwnsPresentation && publicCardDisplayAction
-    ? [...new Set([
-      publicCardDisplayAction.rootEventId,
-      publicCardDisplayAction.lustCostFrame?.activationEventId,
-      publicCardDisplayAction.settlement?.eventId,
-      publicCardDisplayAction.deflection?.eventId,
-      ...(!duelJourneyOwnsRootAndAttacks ? [publicCardDisplayAction.response?.eventId, publicCardDisplayAction.publicCounterRead?.eventId] : []),
-      ...(publicCardDisplayAction.responses ?? [])
-        .filter((response) => !duelJourneyOwnsRootAndAttacks || Number.isInteger(response.ordinal))
-        .map((response) => response.eventId),
-      ...publicDisplayOwnedResponseHistory.map((response) => response.eventId),
-    ].filter((eventId): eventId is string => Boolean(eventId)))]
-    : [];
-  const publicDisplayOwnedPhysicalCardIds = new Set(publicCardDisplayOwnsPresentation && publicCardDisplayAction
-    ? [
-      publicCardDisplayAction.cardFace?.id,
-      publicCardDisplayAction.deflection?.cardFace.id,
-      ...(!duelJourneyOwnsRootAndAttacks ? [publicCardDisplayAction.response?.cardFace?.id] : []),
-      ...(publicCardDisplayAction.responses ?? [])
-        .filter((response) => !duelJourneyOwnsRootAndAttacks || Number.isInteger(response.ordinal))
-        .flatMap((response) => (response.cardFaces ?? (response.cardFace ? [response.cardFace] : [])).map((card) => card.id)),
-      ...publicDisplayOwnedResponseHistory.flatMap((response) => (response.cardFaces ?? (response.cardFace ? [response.cardFace] : [])).map((card) => card.id)),
-    ].filter((cardId): cardId is string => Boolean(cardId))
-    : []);
   const activePublicCardSettlementEventId = publicCardDisplayAction?.settlement?.eventId ?? null;
   const activePublicCardSettlementExiting = publicCardDisplayAction?.settlement?.exiting === true;
   const visibleNegationReadAction = singleTargetNegationActionKey
@@ -9617,73 +9579,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }, UI_TIMING.publicCounterFade);
     return () => window.clearTimeout(timer);
   }, [activeAttackDodgeSettlementExitingEventId]);
-  const completedAttackDodgeSequenceCandidate = visibleActiveAttackDodgeSettlement?.phase === "complete"
-    && completedAttackDodgeSettlementCandidate?.proof.responseEventId === visibleActiveAttackDodgeSettlement.eventId
-    ? completedAttackDodgeSettlementCandidate
-    : null;
-  const retiredAttackDodgeEvents = new Set([
-    ...persistedRetiredAttackDodgeEvents,
-    ...(retiredAttackDodgeCompositionSnapshot.roomCode === room.code ? retiredAttackDodgeCompositionSnapshot.eventIds : EMPTY_STRING_SET),
-    ...serverRetiredAttackDodgeEvents,
-    ...(attackHitSettlementSuperseded && activeAttackHitSettlement?.lifecycle.roomCode === room.code
-      ? [activeAttackHitSettlement.lifecycle.rootEventId, activeAttackHitSettlement.lifecycle.eventId]
-      : []),
-    ...(attackDodgeHoldSuperseded && activeAttackDodgeSettlement?.lifecycle.roomCode === room.code
-      ? [activeAttackDodgeSettlement.lifecycle.rootEventId, activeAttackDodgeSettlement.lifecycle.responseEventId]
-      : []),
-  ]);
-  const retiredAttackDodgeCards = new Set([
-    ...persistedRetiredAttackDodgeCards,
-    ...(retiredAttackDodgeCompositionSnapshot.roomCode === room.code ? retiredAttackDodgeCompositionSnapshot.cardIds : EMPTY_STRING_SET),
-    ...serverRetiredAttackDodgeCards,
-    ...(attackHitSettlementSuperseded && activeAttackHitSettlement?.lifecycle.roomCode === room.code
-      ? [activeAttackHitSettlement.lifecycle.rootCardId]
-      : []),
-    ...(attackDodgeHoldSuperseded && activeAttackDodgeSettlement?.lifecycle.roomCode === room.code
-      ? [activeAttackDodgeSettlement.action.cardFace?.id, activeAttackDodgeSettlement.action.response?.cardFace?.id].filter((id): id is string => Boolean(id))
-      : []),
-  ]);
-  const sequenceEventsWithoutRetiredAttackDodge = sequenceEvents.filter((event) =>
-    !retiredAttackDodgeEvents.has(event.id)
-    && !eventCards(event).some((card) => retiredAttackDodgeCards.has(card.id)));
-  const completedAttackDodgeEventIds = new Set(completedAttackDodgeSequenceCandidate
-    ? [completedAttackDodgeSequenceCandidate.proof.rootEventId, completedAttackDodgeSequenceCandidate.proof.responseEventId]
-    : []);
-  const completedAttackDodgeCardIds = new Set(completedAttackDodgeSequenceCandidate
-    ? [...eventCards(completedAttackDodgeSequenceCandidate.rootEvent).map((card) => card.id), completedAttackDodgeSequenceCandidate.responseEvent.card.id]
-    : []);
-  const sequenceOwnerEventIds = publicCardDisplayOwnsPresentation ? new Set(publicDisplayOwnedEventIds) : completedAttackDodgeEventIds;
-  const sequenceOwnerCardIds = publicCardDisplayOwnsPresentation ? publicDisplayOwnedPhysicalCardIds : completedAttackDodgeCardIds;
-  const postDamageHistoryEventIds = new Set(publicInteractionNarration ? [
-    publicInteractionNarration.rootEventId,
-    ...[...(room.presentationSnapshot?.publicEventFacts ?? []), ...(room.presentationSnapshot?.retainedPublicEventFacts ?? [])]
-      .filter((fact) => fact.category === "CARD_PLAYED"
-        && fact.rootEventId === publicInteractionNarration.rootEventId
-        && fact.identity.interactionId === publicInteractionNarration.interactionId
-        && fact.identity.rootFrameId === publicInteractionNarration.rootFrameId)
-      .map((fact) => fact.eventId),
-  ] : []);
-  const postDamageHistoryCardIds = new Set(room.timeline.filter((event) => postDamageHistoryEventIds.has(event.id))
-    .flatMap(eventCards).map((card) => card.id));
-  const displayedSequenceEvents = sequenceEventsWithoutRetiredAttackDodge.filter((event) =>
-    !sequenceOwnerEventIds.has(event.id)
-    && !postDamageHistoryEventIds.has(event.id)
-    && !eventCards(event).some((card) => sequenceOwnerCardIds.has(card.id) || postDamageHistoryCardIds.has(card.id)));
-  const displayedEventOwnedByPublicCard = Boolean(publicCardDisplayOwnsPresentation && displayedEvent
-    && (sequenceOwnerEventIds.has(displayedEvent.id)
-      || eventCards(displayedEvent).some((card) => sequenceOwnerCardIds.has(card.id))));
-  const displayedEventIsRetiredAttackDodge = Boolean(displayedEvent
-    && (retiredAttackDodgeEvents.has(displayedEvent.id)
-      || eventCards(displayedEvent).some((card) => retiredAttackDodgeCards.has(card.id))));
-  const displayedEventIsRetiredPostDamageHistory = Boolean(displayedEvent
-    && (postDamageHistoryEventIds.has(displayedEvent.id)
-      || eventCards(displayedEvent).some((card) => postDamageHistoryCardIds.has(card.id))));
-  const displayedTableEvent = displayedEventOwnedByPublicCard || displayedEventIsRetiredAttackDodge || displayedEventIsRetiredPostDamageHistory ? null : displayedEvent;
-  const unsupportedPublicHandReveal = displayedTableEvent?.type === "card"
-    && displayedTableEvent.action === "reveal" && displayedTableEvent.judgement !== true;
-  const tableSequenceActiveEvent = activeEquipmentZoneTransition || activeJudgementZoneTransition
-    || activePublicDiscardTransition || activePublicHandRevealTransition || unsupportedPublicHandReveal ? null : displayedTableEvent;
-  const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(tableSequenceActiveEvent && eventCards(tableSequenceActiveEvent).length);
   const attackDodgeTraceSeat = (playerId: string | null | undefined) => playerId
     ? room.players.find((player) => player.id === playerId)?.seat ?? null
     : null;
@@ -9895,7 +9790,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         cardIds: [...publicCardJourneyOwnership.cardIds],
       },
       responseHistoryEventIds: publicCardDisplayAction?.responseHistory?.map((response) => response.eventId) ?? [],
-      ownedEventCount: publicDisplayOwnedEventIds.length,
+      ownedEventCount: publicCardJourneyOwnership.eventIds.size,
       temporarilyBlockedBy: {
         targetPreview: Boolean(targetPreviewPresentation),
         opponentInspection: Boolean(opponentInspectionPresentation),
@@ -9903,8 +9798,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         expandedOpponent: expandedOpponentId !== null,
         groupScopePreview: groupScopePreview.active,
       },
-      legacySequenceEventCount: displayedSequenceEvents.length,
-      legacyTablePresentationVisible: tablePresentationVisible,
     },
     hold: {
       eventId: activeAttackDodgeSettlement?.eventId ?? null,
@@ -10041,11 +9934,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ".opponent-inspection-floating-shell",
       ".table-resolution-layer",
       ".active-table-reveal",
-      ".player-played-cards",
-      ".table-played-card",
       ".public-card-display",
       ".public-card-display .played-card",
-      ".public-card-display-static-card",
       "[data-public-card-journey-event-id]",
       "[data-public-card-announcement='true']",
       ".effect-notice",
@@ -10075,12 +9965,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       "data-public-card-actor-id", "data-public-card-source-id", "data-public-card-target-id", "data-public-card-settlement-event-id",
       "data-public-card-settlement-outcome", "data-public-card-settlement-source-zone", "data-public-card-settlement-destination-zone",
       "data-public-card-settlement-affected-card-owner-id", "data-public-card-settlement-destination-owner-id",
-      "data-public-card-settlement-card-id", "data-public-card-static-event-id", "data-public-card-static-card-id",
+      "data-public-card-settlement-card-id",
       "data-public-card-journey-event-id", "data-public-card-journey-actor-id", "data-public-card-journey-card-id",
       "data-public-card-journey-role", "data-public-card-journey-phase", "data-public-card-journey-size",
       "data-public-card-journey-layout-reason", "data-public-card-journey-reveal-started-at", "data-public-card-journey-target-left",
       "data-public-card-journey-target-top", "data-public-card-journey-target-width", "data-public-card-journey-target-height",
-      "data-settlement-event-id", "data-settlement-card-id", "data-player-settlement-id", "data-player-anchor",
+      "data-settlement-event-id", "data-settlement-card-id", "data-player-anchor",
       "data-public-card-announcement-key", "data-public-card-announcement-event-id", "data-public-card-copy-anchor-event-id",
       "data-effect-notice-event-id", "data-seat-topology", "data-countdown-urgency",
     ];
@@ -10098,7 +9988,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           attributes: attributesFor(current),
           rect: rectFor(current),
         });
-        if (current.matches("[data-public-card-display], .active-table-reveal, .table-played-card")) break;
+        if (current.matches("[data-public-card-display], .active-table-reveal")) break;
         current = current.parentElement;
       }
       return path;
@@ -10124,34 +10014,27 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         };
       });
       const cardElements = Array.from(shell.querySelectorAll<HTMLElement>([
-        "[data-public-card-static-event-id]",
         "[data-public-card-journey-event-id]",
         ".active-table-reveal [data-settlement-card-id]",
-        ".table-played-card[data-settlement-card-id]",
       ].join(",")));
       const cardInstances = cardElements.map((element) => {
         const journey = element.matches("[data-public-card-journey-event-id]");
         const activeReveal = element.closest(".active-table-reveal");
-        const settledCard = element.closest(".table-played-card");
         const owner = element.closest<HTMLElement>("[data-public-card-display]");
-        const playerSettlement = element.closest<HTMLElement>("[data-player-settlement-id]");
         const face = element.matches(".played-card") ? element : element.querySelector<HTMLElement>(".played-card") ?? element;
         const actualRect = rectFor(face);
         const width = actualRect?.width ?? 0;
         const eventId = element.dataset.publicCardJourneyEventId
-          ?? element.dataset.publicCardStaticEventId
-          ?? element.dataset.settlementEventId
           ?? activeReveal?.getAttribute("data-settlement-event-id")
           ?? null;
         const cardId = element.dataset.publicCardJourneyCardId
-          ?? element.dataset.publicCardStaticCardId
           ?? element.dataset.settlementCardId
           ?? null;
         const visualPhase = element.dataset.publicCardJourneyPhase
           ?? owner?.dataset.publicCardVisualPhase
-          ?? (settledCard ? "SETTLED" : activeReveal ? "TABLE_REVEAL" : "STATIC");
+          ?? (activeReveal ? "ZONE_TRANSITION_REVEAL" : "UNKNOWN");
         const rendererKind = owner?.dataset.publicCardRendererKind
-          ?? (settledCard ? "table-resolution-settled" : activeReveal ? "table-resolution-active" : "unknown");
+          ?? (activeReveal ? "public-zone-transition" : "unknown");
         const sizeClass = width >= 70 ? "FULL" : width <= 60 ? "PARKED" : "INTERMEDIATE";
         const targetRect = journey ? {
           left: Number(element.dataset.publicCardJourneyTargetLeft),
@@ -10163,7 +10046,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           eventId,
           publicCardId: cardId,
           publicActorId: element.dataset.publicCardJourneyActorId ?? owner?.dataset.publicCardActorId
-            ?? owner?.dataset.publicCardSourceId ?? playerSettlement?.dataset.playerSettlementId ?? null,
+            ?? owner?.dataset.publicCardSourceId ?? null,
           rendererKind,
           motionType: owner?.dataset.publicCardMotion ?? null,
           visualPhase,
@@ -10301,7 +10184,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         },
         layoutTransitionSample,
         stageMounted: Boolean(shell.querySelector(".interaction-stage")),
-        legacySequenceMounted: Boolean(shell.querySelector(".table-resolution-layer")),
+        publicZoneTransitionCount: shell.querySelectorAll(".public-zone-transition-layer").length,
         publicCardDisplayMounted: Boolean(shell.querySelector(".public-card-display")),
         geometry,
         cardInstances,
@@ -10647,7 +10530,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   })() : null;
   return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
-    <section className={`play-table ${displayedSequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-public-card-journey-ownership-ready={publicCardJourneyOwnershipReady ? "true" : "false"} data-public-card-owned-history-count={publicDisplayOwnedResponseHistory.length} style={mobileSeatRingLayoutStyle}>
+    <section className="play-table" data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-public-card-journey-ownership-ready={publicCardJourneyOwnershipReady ? "true" : "false"} data-public-card-owned-history-count={publicDisplayOwnedResponseHistory.length} style={mobileSeatRingLayoutStyle}>
       <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} inspectPlayer={opponentInspectionPresentation} inspectPlayerCount={room.players.length} judgementInFlight={judgementInFlight} equipmentArrivalPendingIds={pendingEquipmentArrivalCardIds} nestedCardDetailDismissRef={nestedInspectorCardDetailDismissRef} /><StageSystemCluster
         publicResponseTimerPending={seatCountdown?.kind === "response"}
         responseTimer={seatCountdown?.kind === "response"
@@ -10664,7 +10547,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {privateDrawVisible && <div className="played-card-stage private-draw-stage" role="status"><div className="private-draw-content"><div className="private-draw-row" role="region" aria-label="Private drawn cards; scroll horizontally to view all" tabIndex={privateDrawCards.length > 3 ? 0 : undefined}>{privateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div></div>}
       {privateDistribution && !presentationBusy && <PrivateCardDistributionDialog key={room.actionRevision} cards={privateDistribution.cards} players={room.players.filter((player) => privateDistribution.eligibleRecipientIds.includes(player.id) && player.alive)} disabled={busy} error={error} onSubmit={(assignments) => onAction("trigger", { providerId: "private_card_distribution", assignments })} />}
       {privateDeckReorder && <PrivateDeckReorderDialog key={room.actionRevision} cards={privateDeckReorder.cards} minTop={privateDeckReorder.minTop} maxTop={privateDeckReorder.maxTop} disabled={busy} error={error} onSubmit={(topCardIds, bottomCardIds) => onAction("trigger", { providerId: "private_deck_reorder", topCardIds, bottomCardIds })} />}
-      {tablePresentationVisible && <TableResolutionSequence events={displayedSequenceEvents} activeEvent={tableSequenceActiveEvent} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} />}
       {activeEquipmentZoneTransition && activeEvent?.type === "card" && <PublicEquipmentCardTransition event={activeEvent} route={activeEquipmentZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicEquipmentTransitionPresented} />}
       {activeJudgementZoneTransition && activeJudgementTransitionCard && activeEvent && <PublicJudgementCardTransition event={activeEvent} card={activeJudgementTransitionCard} route={activeJudgementZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicJudgementTransitionPresented} />}
       {activePublicDiscardTransition && activeEvent && <PublicDiscardCardTransition event={activeEvent} route={activePublicDiscardTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicDiscardTransitionPresented} />}
@@ -11562,18 +11444,6 @@ function findEquipmentSlotAnchor(root: ParentNode, ownerId: string, slot: string
     .find((element) => element.dataset.playerEquipmentSlotOwner === ownerId && element.dataset.slot === slot) ?? null;
 }
 
-function playerSettlementPoint(table: HTMLElement, anchor: HTMLElement): TablePoint {
-  const tableRect = table.getBoundingClientRect();
-  const anchorRect = anchor.getBoundingClientRect();
-  const center = centerRelativeToTable(table, anchor);
-  const tableCenterX = tableRect.width / 2;
-  if (anchorRect.top >= tableRect.bottom - tableRect.height * .2) return { x: tableCenterX, y: anchorRect.top - tableRect.top - 42 };
-  if (anchorRect.bottom <= tableRect.top + tableRect.height * .35) return { x: center.x, y: anchorRect.bottom - tableRect.top + 42 };
-  return anchorRect.left + anchorRect.width / 2 < tableRect.left + tableCenterX
-    ? { x: anchorRect.right - tableRect.left + 38, y: center.y }
-    : { x: anchorRect.left - tableRect.left - 38, y: center.y };
-}
-
 function PublicEquipmentCardTransition({ event, route, players, myTableIndex, onPresented }: {
   event: CardEvent & { type: "card" };
   route: Extract<PublicPresentationRoute, { kind: "zone-transition" }>;
@@ -11832,99 +11702,6 @@ function PublicHandRevealCardTransition({ event, route, players, myTableIndex, o
         if (animation.target !== animation.currentTarget || animation.animationName !== "revealedCardToHand") return;
         onPresented(route);
       }}><div><CardFace card={event.card} settlementCardId={route.physicalCardId} /></div></div>
-  </div>;
-}
-
-function TableResolutionSequence({ events, activeEvent, players, myTableIndex, concluding }: { events: GameEvent[]; activeEvent: GameEvent | null; players: Player[]; myTableIndex: number; concluding: boolean }) {
-  const cards = events.filter(retainsAtPlayer).flatMap((event) => event.type === "card" ? [{ event, card: event.card, key: event.id }] : event.type === "cards" ? event.cards.map((card) => ({ event, card, key: `${event.id}-${card.id}` })) : []);
-  const cardPlayers = players.filter((player) => cards.some(({ event }) => !settlesInJudgement(event) && publicPlayerName(event.player) === publicPlayerName(player.name)));
-  const activeCards = activeEvent?.type === "card" ? [activeEvent.card] : activeEvent?.type === "cards" ? activeEvent.cards : [];
-  const activeCardIds = new Set(activeCards.map((card) => card.id));
-  const judgementFlightId = activeEvent && settlesInJudgement(activeEvent) ? activeEvent.card.id : null;
-  const activePlayerId = activeEvent?.type === "card" || activeEvent?.type === "cards"
-    ? players.find((player) => publicPlayerName(player.name) === publicPlayerName(activeEvent.player))?.id ?? ""
-    : "";
-  const cardPlayerIds = cardPlayers.map((player) => player.id).join("|");
-  const directDiscard = Boolean(activeEvent && movesDirectlyToDiscard(activeEvent) && !events.some((event) => event.id === activeEvent.id));
-  const revealRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const reveal = revealRef.current;
-    const table = reveal?.closest<HTMLElement>(".play-table");
-    const shell = table?.closest<HTMLElement>(".game-shell");
-    if (!reveal || !table || !shell || !activePlayerId) return;
-    const localPlayerId = players[myTableIndex]?.id;
-    const source = activePlayerId === localPlayerId
-      ? findAnchor(shell, "data-card-origin-anchor", activePlayerId) ?? findAnchor(shell, "data-player-anchor", activePlayerId)
-      : findAnchor(shell, "data-player-anchor", activePlayerId);
-    const destination = judgementFlightId ? findAnchor(shell, "data-judgement-id", judgementFlightId)
-      : directDiscard ? findAnchor(shell, "data-discard-anchor", "true") : null;
-    const face = reveal.querySelector<HTMLElement>(".played-card");
-    if (!face) return;
-    const measure = () => {
-      const origin = source ? centerRelativeToTable(table, source) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
-      reveal.style.setProperty("--origin-x", origin.x + "px");
-      reveal.style.setProperty("--origin-y", origin.y + "px");
-      if (judgementFlightId) {
-        const point = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
-        reveal.style.setProperty("--judgement-x", point.x + "px");
-        reveal.style.setProperty("--judgement-y", point.y + "px");
-        if (destination) {
-          const rect = destination.getBoundingClientRect();
-          reveal.style.setProperty("--judgement-scale-x", String(rect.width / face.offsetWidth));
-          reveal.style.setProperty("--judgement-scale-y", String(rect.height / face.offsetHeight));
-        }
-      } else if (directDiscard) {
-        const point = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
-        reveal.style.setProperty("--discard-x", point.x + "px");
-        reveal.style.setProperty("--discard-y", point.y + "px");
-      } else {
-        const anchor = findAnchor(shell, "data-player-anchor", activePlayerId);
-        const point = anchor ? playerSettlementPoint(table, anchor) : origin;
-        reveal.style.setProperty("--settle-x", point.x + "px");
-        reveal.style.setProperty("--settle-y", point.y + "px");
-      }
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(table);
-    if (source) observer.observe(source);
-    if (destination) observer.observe(destination);
-    return () => observer.disconnect();
-  }, [activeEvent?.id, activePlayerId, directDiscard, judgementFlightId, myTableIndex, players]);
-  useLayoutEffect(() => {
-    const reveal = revealRef.current;
-    const table = reveal?.closest<HTMLElement>(".play-table");
-    const shell = table?.closest<HTMLElement>(".game-shell");
-    if (!reveal || !table || !shell) return;
-    const nodes = Array.from(reveal.querySelectorAll<HTMLElement>("[data-player-settlement-id]"));
-    const anchors = nodes.map((node) => findAnchor(shell, "data-player-anchor", node.dataset.playerSettlementId ?? ""));
-    const discard = findAnchor(shell, "data-discard-anchor", "true");
-    const measure = () => nodes.forEach((node, index) => {
-      const anchor = anchors[index];
-      if (!anchor) return;
-      const point = playerSettlementPoint(table, anchor);
-      node.style.setProperty("--settle-x", point.x + "px");
-      node.style.setProperty("--settle-y", point.y + "px");
-      if (discard) {
-        const discardPoint = centerRelativeToTable(table, discard);
-        node.style.setProperty("--discard-x", discardPoint.x + "px");
-        node.style.setProperty("--discard-y", discardPoint.y + "px");
-      }
-    });
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(table);
-    if (discard) observer.observe(discard);
-    anchors.forEach((anchor) => { if (anchor) observer.observe(anchor); });
-    return () => observer.disconnect();
-  }, [cardPlayerIds, myTableIndex, players]);
-  return <div className={`table-resolution-layer ${concluding ? "concluding" : ""}`} role="status">
-    {activeCards.length > 0 && !concluding && <div ref={revealRef} className={`active-table-reveal ${judgementFlightId ? "judgement-flight" : ""} ${isJudgementReveal(activeEvent) ? "judgement-reveal" : ""} ${directDiscard ? "direct-discard" : ""}`} data-settlement-event-id={activeEvent?.id} key={activeEvent?.id}><div>{activeCards.map((shown) => <CardFace card={shown} settlementCardId={shown.id} key={shown.id} />)}</div></div>}
-    {cardPlayers.map((player) => {
-      const playerCards = cards.filter(({ event }) => !settlesInJudgement(event) && publicPlayerName(event.player) === publicPlayerName(player.name));
-      const equipmentOnly = playerCards.every(({ event }) => event.type === "card" && event.action === "equip");
-      return <div className={`player-played-cards ${equipmentOnly ? "equipment-only" : ""}`} data-player-settlement-id={player.id} key={player.id}><span>{publicPlayerName(player.name)}</span><div>{playerCards.map(({ event, card, key }, index) => activeCardIds.has(card.id) ? null : <div className="table-played-card settled" data-settlement-event-id={event.id} data-settlement-card-id={card.id} key={key}><em>{index + 1}</em><CardFace card={card} /></div>)}</div></div>;
-    })}
   </div>;
 }
 

@@ -119,7 +119,7 @@ test("CONSOLE-01 mobile hand-card retap deselects and End Turn submits only afte
       const panel = rect(element);
       const table = rect(element.closest(".play-table"));
       const blockers = [...document.querySelectorAll(
-        ".player-board > .opponent-player-card, .public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip], .visible-countdown, .local-player-dock, .local-hand-section, .turn-controls, .public-card-journey-card[data-public-card-journey-phase='reveal'], .public-card-journey-card[data-public-card-journey-phase='move'], .active-table-reveal, .table-played-card",
+        ".player-board > .opponent-player-card, .public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip], .visible-countdown, .local-player-dock, .local-hand-section, .turn-controls, .public-card-journey-card[data-public-card-journey-phase='reveal'], .public-card-journey-card[data-public-card-journey-phase='move'], .active-table-reveal",
       )].filter((node) => {
         const style = getComputedStyle(node);
         const box = node.getBoundingClientRect();

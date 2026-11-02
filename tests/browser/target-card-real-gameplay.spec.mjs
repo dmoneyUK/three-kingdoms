@@ -1872,7 +1872,7 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
         await expect(display).toHaveAttribute("data-public-card-root-event-id", rootEvent.id);
         await expect(display).toHaveAttribute("data-public-card-id", rootCard.id);
         const rootCardRepresentations = viewerPage.locator(
-          `[data-public-card-journey-event-id="${rootEvent.id}"][data-public-card-journey-role="root"], [data-public-card-static-event-id="${rootEvent.id}"][data-public-card-static-card-id="${rootCard.id}"]`,
+          `[data-public-card-journey-event-id="${rootEvent.id}"][data-public-card-journey-role="root"]`,
         );
         await expect(rootCardRepresentations).toHaveCount(1);
         if (actorPage) {
@@ -2094,7 +2094,7 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
           await expect(display).toHaveAttribute("data-public-card-root-event-id", nextRootEvent.id);
           await expect(display).toHaveAttribute("data-public-card-settlement-card-id", equipment.armor.id);
           await expect(viewerPage.locator(
-            `[data-public-card-journey-event-id="${nextRootEvent.id}"][data-public-card-journey-role="root"], [data-public-card-static-event-id="${nextRootEvent.id}"][data-public-card-static-card-id="${nextRoot.id}"]`,
+            `[data-public-card-journey-event-id="${nextRootEvent.id}"][data-public-card-journey-role="root"]`,
           )).toHaveCount(1);
         }
       }

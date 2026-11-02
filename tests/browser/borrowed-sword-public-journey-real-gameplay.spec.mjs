@@ -71,7 +71,6 @@ async function expectSingleBorrowedJourney(page, eventId, rootCardId, authorId) 
   await expect(display).toHaveAttribute("data-public-card-actor-id", authorId);
   await expect(display.locator(`[data-public-card-journey-event-id="${eventId}"]`)).toHaveAttribute("data-public-card-journey-card-id", rootCardId);
   await expect(page.locator(`[data-public-card-journey-card-id="${rootCardId}"]`)).toHaveCount(1);
-  await expect(page.locator(`.table-played-card[data-settlement-event-id="${eventId}"]`)).toHaveCount(0);
   await expect(page.locator(`[data-public-card-renderer-kind="static-fallback"][data-public-card-root-event-id="${eventId}"]`)).toHaveCount(0);
 }
 

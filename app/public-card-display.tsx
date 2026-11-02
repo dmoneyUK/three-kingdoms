@@ -61,21 +61,6 @@ type PublicCardDisplayMotion = {
   freshEventIds: readonly string[];
 };
 
-function publicCardMotionHasJourneyRenderer(motion: PublicCardDisplayMotion | undefined): boolean {
-  switch (motion?.type) {
-    case "attack-dodge":
-    case "single-target":
-    case "negation":
-    case "group-root":
-    case "duel":
-    case "lust-duel":
-    case "lust-cost":
-      return true;
-    default:
-      return false;
-  }
-}
-
 export type PublicNegationNarration = {
   rootLabel: string;
   eventId: string;
@@ -2473,7 +2458,7 @@ function PublicCardAnnouncement({
       const obstacles: Array<{ element: HTMLElement | null; rect: DOMRect }> = [...document.querySelectorAll<HTMLElement>(
         [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-row"] : [])].join(", "),
       )].flatMap((element) => {
-        const parked = element.closest<HTMLElement>('[data-public-card-journey-phase="parked"], .table-played-card.settled');
+        const parked = element.closest<HTMLElement>('[data-public-card-journey-phase="parked"]');
         const parkedBounds = parked?.getBoundingClientRect();
         if (parkedBounds && parkedBounds.width <= 70 && parkedBounds.height <= 110) return [];
         if (element === anchor || element === copy
@@ -5148,7 +5133,7 @@ function SingleTargetCardJourney({
     if (previous?.generation === ownershipScopeGeneration && previous.signature === ownershipCardsSignature) return;
     lastPublishedOwnershipRef.current = { generation: ownershipScopeGeneration, signature: ownershipCardsSignature };
     // Ownership is a semantic event/card fact. Geometry can temporarily be
-    // pending without transferring ownership to the legacy sequence renderer.
+    // pending without changing the Journey owner.
     onJourneyOwnershipChange?.(roomCode, ownershipIdentity, viewerId, ownershipScopeGeneration, true, ownershipCards);
   }, [onJourneyOwnershipChange, ownershipCards, ownershipCardsSignature, ownershipIdentity, ownershipScopeGeneration, ownershipScopeKey, roomCode, viewerId]);
   useLayoutEffect(() => {
@@ -6261,7 +6246,7 @@ export function PublicCardDisplay({
     cards: readonly { eventId: string; cardIds: readonly string[] }[],
   ) => void;
 }) {
-  if (!action || !publicCardMotionHasJourneyRenderer(action.motion)) return null;
+  if (!action) return null;
   if (action.motion?.type === "attack-dodge") {
     return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }
@@ -6272,68 +6257,5 @@ export function PublicCardDisplay({
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {
     return <DuelCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHistoryDuringInspection={retainDuelHistoryDuringInspection} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }
-  if (!enabled || !sourceName) return null;
-  const latestResponse = action.response ?? action.responses?.at(-1) ?? null;
-  const card = latestResponse?.cardFace ?? action.cardFace ?? null;
-  const eventId = latestResponse?.eventId ?? action.rootEventId;
-  const actorId = latestResponse?.actorId ?? action.sourceId;
-  const notice = latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
-  const announcementCopy = publicCardAnnouncementCopy(action, notice, latestResponse?.actorName ?? sourceName, actorId, sourceName, targetName, compactPlayerNamesById, action.settlement?.eventId ?? eventId);
-  const committedFactCopy = publicCardCommittedFactCopy(action, announcementCopy);
-  const dismantleFaceCopy = committedFactCopy.dismantleCardFace;
-  const negationNarration = action.publicNegationNarration;
-  const announcementPhaseNotice = action.settlement || action.publicInteractionNarration || negationNarration ? undefined : action.phaseNotice;
-  const announcement = committedFactCopy.message;
-  const compactAnnouncement = committedFactCopy.compactMessage;
-  const harvestRootParked = harvestChoiceActive && card?.kind === "BumperHarvest";
-  return <section
-    className={`public-card-display${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${harvestRootParked ? " public-card-display-harvest-active" : ""}`}
-    data-public-card-display="true"
-    data-public-card-renderer-kind="static-fallback"
-    data-public-card-ready="true"
-    data-public-card-visual-phase="STATIC"
-    data-public-card-motion={action.motion?.type ?? undefined}
-    data-public-card-viewer-id={viewerId}
-    data-public-card-event-id={eventId}
-    data-public-card-root-event-id={action.rootEventId}
-    data-public-card-interaction-id={action.interactionId ?? undefined}
-    data-public-card-root-frame-id={action.rootFrameId ?? undefined}
-    data-public-card-checkpoint-id={action.checkpointId ?? undefined}
-    data-public-card-presentation-revision={action.presentationRevision ?? undefined}
-    data-public-card-id={card?.id}
-    data-public-card-kind={card?.kind}
-    data-public-card-harvest-active={harvestRootParked ? "true" : undefined}
-    data-public-card-actor-id={actorId}
-    data-public-card-source-id={action.sourceId}
-    data-public-card-target-id={action.targetId ?? undefined}
-    data-public-card-settlement-event-id={action.settlement?.eventId}
-    data-public-card-settlement-outcome={action.settlement?.outcome}
-    data-public-card-settlement-source-zone={action.settlement?.targetCardMovement?.sourceZone}
-    data-public-card-settlement-destination-zone={action.settlement?.targetCardMovement?.destinationZone}
-    data-public-card-settlement-affected-card-owner-id={action.settlement?.targetCardMovement ? action.settlement.targetCardMovement.affectedCardOwnerId ?? "none" : undefined}
-    data-public-card-settlement-destination-owner-id={action.settlement?.targetCardMovement ? action.settlement.targetCardMovement.destinationOwnerId ?? "none" : undefined}
-    data-public-card-settlement-card-id={publicSettlementCardFaceId(action, dismantleFaceCopy)}
-  >
-    {card && <div className="public-card-display-static-card" data-public-card-copy-anchor-event-id={eventId} data-public-card-static-event-id={eventId} data-public-card-static-card-id={card.id} data-harvest-root-parked={harvestRootParked ? "true" : undefined}><CardFace card={card} /></div>}
-    {!suppressAnnouncement && !action.suppressAnnouncement && <PublicCardAnnouncement
-      eventId={dismantleFaceCopy?.settlementEventId ?? negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? eventId}
-      eventCopyKey={publicCardAnnouncementCopyKey(action, dismantleFaceCopy?.settlementEventId ?? negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? eventId, negationNarration?.actorId ?? action.publicInteractionNarration?.actorId ?? actorId, roomCode)}
-      announcementIdentity={action.publicAnnouncementIdentity}
-      geometryKey={publicAnnouncementGeometryKey(roomCode, viewerId)}
-      copyLifecycleStage={publicCardAnnouncementLifecycleStage(action)}
-      placementKey={publicCardAnnouncementPlacementKey(action, roomCode)}
-      viewerLayoutKey={viewerId}
-      phase="static"
-      message={announcement}
-      compactMessage={compactAnnouncement}
-      accessibleLabel={committedFactCopy.accessibleLabel}
-      dismantleCardFace={dismantleFaceCopy}
-      presentationNarration={dismantleFaceCopy || negationNarration ? undefined : action.publicInteractionNarration}
-      negationNarration={dismantleFaceCopy ? undefined : negationNarration}
-      fallbackCardRect={null}
-      phaseNotice={announcementPhaseNotice}
-      outcome={action.settlement?.outcome}
-      negationWaiting={Boolean(!dismantleFaceCopy && (negationNarration || announcementPhaseNotice?.includes("NEGATION")))}
-    />}
-  </section>;
+  return null;
 }

@@ -3,11 +3,6 @@
   transition: opacity .15s ease;
 }
 
-.play-table.sequence-active:not(.sequence-concluding) .play-center {
-  opacity: 0;
-  visibility: hidden;
-}
-
 .play-seat > .visible-countdown {
   left: 50%;
   right: auto;
@@ -31,10 +26,8 @@
 }
 
 .active-table-reveal {
-  --settle-scale: .4;
   left: var(--origin-x, 50%);
   top: var(--origin-y, 50%);
-  animation: sequenceCardToOwner var(--played-card-display) ease-in-out both !important;
 }
 
 .active-table-reveal.direct-discard {
@@ -72,15 +65,6 @@
     animation-duration: 1ms !important;
     animation-delay: 0s !important;
   }
-}
-
-/* Reach the owner early enough to remain visibly settled before React swaps in
-   the small persistent copy. No frame in this animation targets the discard. */
-@keyframes sequenceCardToOwner {
-  0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
-  10% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
-  85% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
-  100% { left: var(--settle-x, 50%); top: var(--settle-y, 50%); opacity: 1; transform: scale(var(--settle-scale)); }
 }
 
 @keyframes revealedCardsToDiscard {
@@ -472,23 +456,7 @@
   }
 }
 
-.table-resolution-layer .player-played-cards {
-  left: var(--settle-x, 50%);
-  top: var(--settle-y, 50%);
-  transform: none;
-}
 
-.player-played-cards > span {
-  position: absolute;
-  bottom: calc(100% + 3px);
-  margin: 0;
-  white-space: nowrap;
-}
-
-@keyframes sequenceCardsToDiscard {
-  0% { left: var(--settle-x, 50%); top: var(--settle-y, 50%); opacity: 1; transform: scale(1); }
-  100% { left: var(--discard-x, 50%); top: var(--discard-y, 50%); opacity: 0; transform: scale(.12) rotate(3deg); }
-}
 
 /* The local hand sits below the table. Resolution cards must be able to leave
    that real origin and travel across the board without being clipped. */
@@ -496,12 +464,7 @@
   overflow: visible;
 }
 
-@media (max-width: 700px) {
-  .active-table-reveal { --settle-scale: .463; }
-}
-
 @media (max-width: 480px) {
-  .active-table-reveal { --settle-scale: .426; }
   .play-seat > .visible-countdown { min-width: 50px; }
 }
 .table-hidden-card-picker.target-card-picker { position: fixed; max-height: 85dvh; overflow-y: auto; }
@@ -1296,24 +1259,6 @@
   line-height: .95;
 }
 
-.table-played-card .played-card > i {
-  left: -1px;
-  top: -1px;
-  width: 13px;
-  min-height: 18px;
-  padding: 1px 1px 4px;
-  border-width: 1px;
-  border-radius: 0 0 4px 0;
-  font-size: 6px;
-  line-height: .9;
-}
-
-.table-played-card .played-card > i small {
-  margin-top: 0;
-  font-size: 5px;
-  line-height: 1;
-}
-
 .played-card > i small {
   margin-top: 1px;
   font-size: 15px;
@@ -1456,18 +1401,7 @@
   }
 }
 
-@media (max-width: 480px) {
-  .table-played-card .played-card > i {
-    width: 12px;
-    min-height: 17px;
-    padding: 1px 1px 3px;
-    font-size: 6px;
-  }
 
-  .table-played-card .played-card > i small {
-    font-size: 5px;
-  }
-}
 
 /* CardFace variants must size the whole shield, not only its typography. */
 .player-equipment-card > i {
@@ -1517,26 +1451,6 @@
 .player-judgement-card .played-card > i small {
   margin-top: 0;
   font-size: 4px;
-  line-height: 1;
-}
-
-.sequence-card .played-card > i,
-.sequence-mini-cards .played-card > i {
-  left: -1px;
-  top: -1px;
-  width: 18px;
-  min-height: 25px;
-  padding: 1px 1px 4px;
-  border-width: 1px;
-  border-radius: 0 0 5px 0;
-  font-size: 8px;
-  line-height: .9;
-}
-
-.sequence-card .played-card > i small,
-.sequence-mini-cards .played-card > i small {
-  margin-top: 0;
-  font-size: 6px;
   line-height: 1;
 }
 
@@ -1590,20 +1504,6 @@
   }
 }
 
-@media (max-width: 600px) {
-  .sequence-card .played-card > i,
-  .sequence-mini-cards .played-card > i {
-    width: 16px;
-    min-height: 22px;
-    padding: 1px 1px 4px;
-    font-size: 7px;
-  }
-
-  .sequence-card .played-card > i small,
-  .sequence-mini-cards .played-card > i small {
-    font-size: 6px;
-  }
-}
 
 @media (max-width: 520px) {
   .player-equipment-card > i {
@@ -5208,31 +5108,6 @@
   box-shadow: none;
   z-index: 17;
 }
-.game-shell .public-card-display-harvest-active .public-card-display-static-card {
-  width: 40px;
-  height: 60px;
-}
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card {
-  width: 40px;
-  height: 60px;
-  padding: 1.6px .8px;
-  border-radius: 2.4px;
-  box-shadow: 0 0 0 1px #d4b46f99, 0 4px 12px #000b;
-}
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i {
-  left: 0;
-  top: 0;
-  width: 6.4px;
-  min-height: 10.4px;
-  padding: 0 .8px 1.6px;
-  border-width: .8px;
-  border-radius: 0 0 2.4px 0;
-  font-size: 4px;
-  line-height: .9;
-}
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i small { margin-top: 0; font-size: 3.2px; line-height: 1; }
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card .card-name-mark { max-width: 92%; font-size: 4.8px; line-height: 1; }
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > strong { margin-top: 0; font-size: 3.2px; letter-spacing: .02em; }
 
 /* BCP-1-F2: the approved phone history mini is 32×48. Scale only its face
    details with the physical card; root and committed responses share this
@@ -5647,29 +5522,6 @@
     pointer-events: none;
   }
 }
-
-/* Read-only and active viewers share the same content-fit CardFace geometry;
-   shrinking only the observer pool made public card identities unreadable. */
-
-/* The genuine Harvest root becomes a 40x60 phone thumbnail beside the pool.
-   Scale its internal frame and marks together so the corner does not dominate
-   the parked card after the large reveal has settled. */
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card {
-  border-width: 1px;
-  border-radius: 2.5px;
-  padding: 1.5px .75px;
-}
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i {
-  width: 6.5px;
-  min-height: 10.5px;
-  padding: 0 .75px 1.5px;
-  border-width: .75px;
-  border-radius: 0 0 2.25px 0;
-  font-size: 4.25px;
-}
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i small { font-size: 3.5px; }
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card .card-name-mark { font-size: 5px; }
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > strong { font-size: 3.5px; }
 
 /* §10.17.2–10.17.3 BCP-2/3: compact card decisions stay in the table
    corridor. The table-wide backdrop remains pass-through; this panel owns

@@ -121,13 +121,13 @@ async function geometry(page) {
       ".stage-system-cluster", ".hero-focus", ".opponent-inspection-floating-shell", ".card-details-panel", ".hero-details-panel",
       ".interaction-stage-dying", ".dying-handoff-compact",
       ".public-card-display-journey-copy", ".public-card-journey-card", ".public-card-duel-parked-card",
-      ".public-card-display-static-card > .played-card", ".effect-notice", ".turn-notice", ".played-card-stage .played-card",
+      ".effect-notice", ".turn-notice", ".played-card-stage .played-card",
       ".game-event-stage > div", ".harvest-choice-panel", ".victory-banner", ".table-resolution-layer .played-card",
     ].join(",");
     const overlaps = [...document.querySelectorAll(protectedSelector)]
       .filter((element) => element !== chip && getComputedStyle(element).display !== "none" && getComputedStyle(element).visibility !== "hidden")
       .filter((element) => {
-        const parked = element.closest('[data-public-card-journey-phase="parked"], .table-played-card.settled');
+        const parked = element.closest('[data-public-card-journey-phase="parked"]');
         const parkedBounds = parked?.getBoundingClientRect();
         return !parkedBounds || parkedBounds.width > 70 || parkedBounds.height > 110;
       })

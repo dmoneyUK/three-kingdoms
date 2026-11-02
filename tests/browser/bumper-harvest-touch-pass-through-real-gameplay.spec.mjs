@@ -1825,8 +1825,8 @@ async function harvestGeometry(page) {
       stageZIndex: stage ? getComputedStyle(stage).zIndex : null,
       root: rootRect,
       rootFace: rect(rootFace),
-      rootCardId: root?.getAttribute("data-public-card-journey-card-id") ?? root?.getAttribute("data-public-card-static-card-id"),
-      rootEventId: root?.getAttribute("data-public-card-journey-event-id") ?? root?.getAttribute("data-public-card-static-event-id"),
+      rootCardId: root?.getAttribute("data-public-card-journey-card-id"),
+      rootEventId: root?.getAttribute("data-public-card-journey-event-id"),
       rootPhase: root?.getAttribute("data-public-card-journey-phase"),
       rootSize: root?.getAttribute("data-public-card-journey-size"),
       rootLayoutPending: root?.getAttribute("data-public-card-journey-layout-pending"),
@@ -2911,12 +2911,12 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
           viewerId: candidate.dataset.publicCardViewerId ?? null,
           eventId: candidate.dataset.publicCardEventId ?? null,
           actorId: candidate.dataset.publicCardActorId ?? null,
-          cards: [...candidate.querySelectorAll("[data-public-card-journey-event-id], [data-public-card-static-event-id]")].map((node) => {
+          cards: [...candidate.querySelectorAll("[data-public-card-journey-event-id]")].map((node) => {
             const rect = node.getBoundingClientRect();
             return {
-              eventId: node.dataset.publicCardJourneyEventId ?? node.dataset.publicCardStaticEventId ?? null,
+              eventId: node.dataset.publicCardJourneyEventId ?? null,
               actorId: node.dataset.publicCardJourneyActorId ?? candidate.dataset.publicCardActorId ?? null,
-              cardId: node.dataset.publicCardJourneyCardId ?? node.dataset.publicCardStaticCardId ?? null,
+              cardId: node.dataset.publicCardJourneyCardId ?? null,
               phase: node.dataset.publicCardJourneyPhase ?? candidate.dataset.publicCardVisualPhase ?? null,
               visibility: getComputedStyle(node).visibility,
               rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },

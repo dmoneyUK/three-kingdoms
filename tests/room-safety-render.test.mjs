@@ -12,6 +12,7 @@ import { BUILD_SHA } from "../app/build-info.ts";
 
 const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
 const gameRoomSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+const publicCardDisplaySource = readFileSync(new URL("../app/public-card-display.tsx", import.meta.url), "utf8");
 const globalStyleSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
 
@@ -717,9 +718,19 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(html, /data-discard-kind=/, "permanent Discard identity is no longer rendered into the battlefield");
   assert.match(html, /title="After you take damage, you may obtain the card that caused damage on you\."/);
   assert.doesNotMatch(html, /private-opponent-card/);
-  const sequenceSource = gameRoomSource.slice(gameRoomSource.indexOf("function TableResolutionSequence"), gameRoomSource.indexOf("function CardFace"));
-  assert.doesNotMatch(sequenceSource, /Math\.(sin|cos)|activeAngle|activeRadians|--seat-[xy]/, "resolution placement is not circular seat geometry");
-  assert.match(sequenceSource, /centerRelativeToTable/);
+  assert.doesNotMatch(gameRoomSource, /function TableResolutionSequence|player-played-cards|table-played-card/, "the retired centre/settled-card renderer has no production owner");
+  assert.match(gameRoomSource, /function PublicEquipmentCardTransition/);
+  assert.match(gameRoomSource, /function PublicJudgementCardTransition/);
+  assert.match(gameRoomSource, /function PublicDiscardCardTransition/);
+  assert.match(gameRoomSource, /function PublicHandRevealCardTransition/);
+  assert.doesNotMatch(gameRoomSource, /tablePresentationVisible|displayedSequenceEvents/);
+  assert.doesNotMatch(publicCardDisplaySource, /static-fallback|public-card-display-static-card/, "public CardFace display fails closed without a typed Journey owner");
+  assert.doesNotMatch(globalStyleSource, /player-played-cards|table-played-card|public-card-display-static-card|activeCardJourney|sequenceCardsToDiscard/);
+  assert.doesNotMatch(sequenceStyleSource, /player-played-cards|table-played-card|sequenceCardToOwner|sequenceCardsToDiscard/);
+  assert.match(sequenceStyleSource, /\.active-table-reveal\.equipment-flight/);
+  assert.match(sequenceStyleSource, /\.active-table-reveal\.judgement-flight/);
+  assert.match(sequenceStyleSource, /\.active-table-reveal\.direct-discard/);
+  assert.match(sequenceStyleSource, /\.active-table-reveal\.public-hand-transfer/);
   const sharedPanelChrome = sequenceStyleSource.match(/\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-status-panel,\s*\.local-equipment-panel,\s*\.local-hand-section,\s*\.local-player-dock \.console-guidance,\s*\.local-player-dock \.turn-controls\s*\{([^}]*)\}/)?.[1] ?? "";
   assert.match(sharedPanelChrome, /border: 1px solid #765f3c99;/);
   assert.match(sharedPanelChrome, /background: #0e120dcc;/);
