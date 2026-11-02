@@ -780,6 +780,21 @@ test("ROOM-6P-GATE-01 new rooms start with the exact Standard role sets for four
     }
     if (views[0].data.myRole !== "Lord") hostWasNotLord = true;
   }
+  // Role assignment is intentionally shuffled, so the three size samples above
+  // can all place the host in the Lord seat by chance. Only sample additional
+  // four-player rooms when that rare outcome occurs, with a bounded retry count.
+  for (let attempt = 1; !hostWasNotLord && attempt <= 8; attempt++) {
+    const created = await requestAndSettle("create", { name: `Role Shuffle Retry ${attempt}` });
+    assert.equal(created.status, 201);
+    for (let seat = 1; seat < 4; seat++) {
+      const joined = await requestAndSettle("join", { code: created.data.room.code, name: `Role Shuffle Player ${attempt}-${seat}` });
+      assert.equal(joined.status, 201);
+    }
+    const started = await requestAndSettle("start", { code: created.data.room.code, token: created.data.token });
+    assert.equal(started.status, 200, JSON.stringify(started.data));
+    const hostView = await state(created.data.room.code, created.data.token);
+    hostWasNotLord = hostView.data.myRole !== "Lord";
+  }
   assert.equal(hostWasNotLord, true, "the host is not forced to be Lord");
 });
 
