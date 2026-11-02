@@ -341,7 +341,7 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
       reason: "Respond to Raining Arrows",
       legalActions: hasDodgeProvider ? ["respond", "decline_response"] : ["decline_response"],
       requirement: "dodge",
-      options: hasDodgeProvider ? [{ providerId: "dodge_card", label: "Dodge", satisfies: "dodge", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [handCardId] } }] : [],
+      options: hasDodgeProvider ? [{ providerId: "card", label: "Play Dodge", satisfies: "dodge", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [handCardId] } }] : [],
     };
   }
   if (state === "group-observer" || state === "group-unfocused") {

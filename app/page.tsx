@@ -11,6 +11,7 @@ import { getResponseOptions } from "../game/responses";
 import { HEROES, heroGender, type HeroSkill } from "../game/heroes";
 import { normalizeRoomData } from "../game/room-safety.js";
 import { canUseAction, type CurrentAction, type GameplayAction, type PlayTargetRejectionView, type TriggerOptionView } from "../game/protocol.js";
+import { rainingArrowsPrivateGuidance } from "../game/raining-arrows-private-guidance.ts";
 import { latestPublicMessages } from "../game/messages.js";
 import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice, PresentationSnapshotPublicCardEffect } from "../game/presentation-snapshot";
 import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationLustDuelAttackResponseProof, PresentationPublicCardEffectProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
@@ -10326,11 +10327,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play", enabled: (canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack) && (!selectedCardNeedsTarget || selectedPlayTargetsValid) && (!(["Dodge", "Negation"].includes(card?.kind ?? "")) || selectedCanPlayAsAttack)), priority: 40 }] : []),
   ];
   const consoleIsDecisionActor = currentActionOwnedByViewer;
-  const rainingArrowsDamageDecline = Boolean(
+  const rainingArrowsCurrentResponse = Boolean(
     currentActionOwnedByViewer
     && room.currentAction?.kind === "response"
     && room.currentAction.requirement === "dodge"
-    && responseDamageAction === "decline_response"
     && clientPresentation.stage === "GROUP_RESOLUTION"
     && clientPresentation.groupResolution?.resolutionSemantics === "GROUP"
     && clientPresentation.groupResolution.cardKind === "RainingArrows"
@@ -10339,6 +10339,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       participant.playerId === room.meId && (participant.status === "CURRENT" || participant.status === "PAUSED"),
     ),
   );
+  const rainingArrowsDamageDecline = Boolean(rainingArrowsCurrentResponse
+    && canUseAction(room.currentAction, "decline_response"));
+  const rainingArrowsResponseGuidance = rainingArrowsPrivateGuidance({
+    currentAction: room.currentAction,
+    viewerIsDecisionActor: currentActionOwnedByViewer,
+    provenCurrentRainingArrowsParticipant: rainingArrowsCurrentResponse,
+  });
   const negationWindowSubmitted = sharedNegationWindow && room.pendingNegation?.submitted === true;
   const responseRequirementForDecline = room.currentAction?.requirement;
   // Require a proven damage-causing interaction; the available response cards do not define the decline's consequence.
@@ -10433,8 +10440,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? room.currentAction?.reason || "Negation response window"
     : negationResponseGuidance
       ? "Play Negation or Skip."
-    : rainingArrowsDamageDecline
-      ? "Respond to Raining Arrows."
+    : rainingArrowsResponseGuidance
+      ? rainingArrowsResponseGuidance
     : consoleIsDecisionActor
     ? room.currentAction?.kind === "trigger" ? decisionInstruction(room.currentAction, room.currentAction.reason) : decisionPresentation.primaryStatus
     : decisionPresentation.isWaiting
