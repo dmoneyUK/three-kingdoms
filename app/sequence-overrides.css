@@ -2464,8 +2464,7 @@
   font-size: 8px;
 }
 .game-shell .player-board[data-seat-topology="side-column"] .opponent-player-name,
-.game-shell .player-board[data-seat-topology="side-column"] .player-hearts,
-.game-shell .player-board[data-seat-topology="side-column"] .opponent-judgement-zone { display: none; }
+.game-shell .player-board[data-seat-topology="side-column"] .player-hearts { display: none; }
 .game-shell .player-board[data-seat-topology="side-column"] .opponent-equipment-summary {
   top: 2px;
   right: 2px;
@@ -2612,8 +2611,7 @@
   font-size: 9px;
 }
 
-.game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-overlay .player-hearts,
-.game-shell .player-board[data-seat-topology="top-row"] .opponent-judgement-zone {
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-overlay .player-hearts {
   display: none;
 }
 
@@ -7468,4 +7466,113 @@
 .game-shell .end-turn-confirmation__actions button:disabled {
   cursor: wait;
   opacity: .6;
+}
+
+/* UX2 §10.31 — public Judgement cards stay attached to their real Seat.
+   The rail is an overflow sibling of portrait/status content, so it does not
+   resize or cover Hero, HP, Equipment, SWITCH, or target hit areas. Its Seat-
+   relative placement follows the measured DOM layout after resize and viewer
+   reprojection; only the Info control captures pointer input. */
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] > .opponent-player-card .opponent-judgement-zone,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] > .opponent-player-card .opponent-judgement-zone,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="6"] > .opponent-player-card .opponent-judgement-zone {
+  display: block;
+  z-index: 7;
+  width: clamp(44px, 13vw, 52px);
+  max-width: 52px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] > .opponent-player-card .opponent-judgement-zone,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] > .opponent-player-card[data-side-column="top"] .opponent-judgement-zone,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="6"] > .opponent-player-card[data-side-column="top"] .opponent-judgement-zone {
+  top: calc(100% + 4px);
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] > .opponent-player-card[data-side-column="left"] .opponent-judgement-zone,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="6"] > .opponent-player-card[data-side-column="left"] .opponent-judgement-zone {
+  top: 50%;
+  right: auto;
+  left: calc(100% + 4px);
+  transform: translateY(-50%);
+}
+
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] > .opponent-player-card[data-side-column="right"] .opponent-judgement-zone,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="6"] > .opponent-player-card[data-side-column="right"] .opponent-judgement-zone {
+  top: 50%;
+  right: calc(100% + 4px);
+  left: auto;
+  transform: translateY(-50%);
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-judgement-zone .opponent-zone-label,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] .opponent-judgement-zone .opponent-zone-label,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="6"] .opponent-judgement-zone .opponent-zone-label {
+  display: none;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-judgement-cards,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] .opponent-judgement-cards,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="6"] .opponent-judgement-cards {
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-judgement-cards .judgement-mini,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] .opponent-judgement-cards .judgement-mini,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="6"] .opponent-judgement-cards .judgement-mini {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2 / 3;
+  pointer-events: none;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-judgement-cards .judgement-mini > span,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] .opponent-judgement-cards .judgement-mini > span,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="6"] .opponent-judgement-cards .judgement-mini > span {
+  box-sizing: border-box;
+  padding: 3px 2px 22px;
+  align-items: center;
+  text-align: center;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-judgement-cards .judgement-mini small,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] .opponent-judgement-cards .judgement-mini small,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="6"] .opponent-judgement-cards .judgement-mini small {
+  font-size: 8px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-judgement-cards .judgement-mini b,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] .opponent-judgement-cards .judgement-mini b,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="6"] .opponent-judgement-cards .judgement-mini b {
+  width: 100%;
+  max-width: none;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font-size: 7px;
+  line-height: 1.05;
+  text-align: center;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-judgement-cards .judgement-mini .zone-info-button,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] .opponent-judgement-cards .judgement-mini .zone-info-button,
+.game-shell .player-board[data-seat-topology="side-column"][data-player-count="6"] .opponent-judgement-cards .judgement-mini .zone-info-button {
+  top: auto;
+  right: 2px;
+  bottom: 2px;
+  translate: none;
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+  pointer-events: auto;
+  touch-action: manipulation;
 }

@@ -2459,7 +2459,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, m
         <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count={equipmentBySlot.size}>{equipmentSummary}</div>
         {seatInspectorActive && <button type="button" className="opponent-hero-inspect-name opponent-seat-inspect-button" aria-label={`Inspect ${player.name}`} aria-pressed={isInspected} aria-expanded={isInspected} title={`Inspect ${player.name}`} onClick={(event) => { event.stopPropagation(); onInspect(event.currentTarget); }}><span className="opponent-player-name" aria-hidden="true">{player.name}</span></button>}
       </div>
-      {player.judgementCards.length > 0 && <section className="opponent-judgement-zone" aria-label="Judgement Zone">
+      {player.judgementCards.length > 0 && <section className="opponent-judgement-zone" data-judgement-owner-id={player.id} aria-label={`${player.name} Judgement Zone`}>
         <span className="opponent-zone-label">Judgement</span>
         <div className="opponent-judgement-cards">{miniJudgement}</div>
       </section>}
@@ -2634,6 +2634,7 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
       ".public-activity-chip",
       ".stage-system-cluster",
       ".visible-countdown",
+      ".opponent-judgement-zone",
       "[data-public-card-announcement='true']",
       ".public-card-journey-card[data-public-card-journey-phase='reveal']",
       ".public-card-journey-card[data-public-card-journey-phase='move']",
@@ -2841,7 +2842,7 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
       const shellRect = shell.getBoundingClientRect();
       const shellLeft = layerRect.left + (layerRect.width - shellRect.width) / 2;
       const shellRight = shellLeft + shellRect.width;
-      const obstacleRects = [activityChip, ...table.querySelectorAll<HTMLElement>(".visible-countdown")].flatMap((element) => {
+      const obstacleRects = [activityChip, ...table.querySelectorAll<HTMLElement>(".visible-countdown, .opponent-judgement-zone")].flatMap((element) => {
         const rect = visibleRect(element);
         if (!rect || rect.right <= shellLeft || rect.left >= shellRight) return [];
         return [rect];
