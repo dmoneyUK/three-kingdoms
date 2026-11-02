@@ -10,9 +10,16 @@ Latest design reviewed: `docs/UX2-refine.md` revision `e33190bfdee03c87ddcd27ccf
 
 **Status: IN PROGRESS — NOT OWNER-ACCEPTED.** This remains one consolidated phone-acceptance scope. Preserve the delivered T4 Frame typography and accepted T2 Inspector, Console End, Harvest, Steal/Dismantle, privacy and 4/5/6-player behavior. The design defines no new task IDs.
 
-**Latest design reviewed:** remote `ux-v2` was `6e82d5f989d54d28f95b341bc9a70021719ac242` at the planning boundary; `docs/UX2-refine.md` remains revision `e33190bfdee03c87ddcd27ccfaeab4b1db9638d4` (2026-11-02 23:09 UTC). The refreshed remote diff contains no design change.
+**Latest design reviewed:** remote `ux-v2` is `f366b1711d9b3efb7eacb0e2310111a2dbe47f9f`; `docs/UX2-refine.md` remains revision `e33190bfdee03c87ddcd27ccfaeab4b1db9638d4` (2026-11-02 23:09 UTC). The intervening remote change only recorded the T5 handoff; the current §10.30 instructions are unchanged.
 
-**Current implementation step:** T6 shared public-stage geometry, first bounded slice (§10.30): audit current CardFace / Frame / H4 / PAC placement ownership and derive a shared scene/layout contract from proven event identity, viewer, phase and generation. Keep card identity and current safe-area/seat/dock protections. Do not add card/effect-specific offsets. Do not change public card history until the actual first lost rendering-owner stage is established from committed event and renderer evidence; stop if that proof is unavailable.
+**Current implementation step:** Integrate the shared public-stage layout contract into the CardFace/Frame, H4 and PAC render owners using one measured scene and generation. Do not add card/effect-specific offsets. Keep card identity and safe-area/Seat/Dock/Inspector/timer protections. Public history remains unchanged until the first lost owner stage is established from committed event and renderer evidence; stop that part if proof is unavailable.
+
+### Current T6 implementation result — shared geometry contract foundation
+
+- Added `game/public-stage-layout.ts`: proven-scene identity is scoped by room, interaction, public event, physical card, viewer, phase and generation. The measured-geometry solver keeps H4 → full-size primary CardFace/Frame → PAC ordered, preserves the measured 8px minimum Card–PAC gap, avoids supplied protected-obstacle rectangles, and fails closed when proof/geometry is invalid or the stack cannot fit. It has no card/effect-specific branches. This is a contract foundation; the existing page render owners are not yet wired to it, so no visible layout fix is claimed.
+- Added four focused contract tests to `tests/public-stage-layout.test.mjs` and registered the file in `tests/run-fast-tests.mjs`. Focused tests: **4/4 passed**. Targeted ESLint: **passed**. `git diff --check`: **passed**. No local UI/browser test was needed for this pure geometry contract; browser budget used: **0 minutes**.
+- Pre-push CI context: the latest Actions run is successful for code SHA `6e82d5f989d54d28f95b341bc9a70021719ac242` ([run 41546885447](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41546885447)). Remote head `f366b1711d9b3efb7eacb0e2310111a2dbe47f9f` only updates Markdown handoff, which the workflow excludes via `paths-ignore: "**/*.md"`; there is therefore no push-triggered run for that metadata-only SHA. Exact-SHA CI/deployment for this geometry code is **PENDING PUSH**.
+- No readable real game JSON/DOM trace is available in this worktree, so this step does not claim a runtime renderer-owner finding or alter committed card history.
 
 ### Previous T6 step result — T3 §10.33
 
