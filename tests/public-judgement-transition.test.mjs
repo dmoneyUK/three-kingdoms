@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isM3JudgementTransitionEvent, routePublicJudgementTransition } from "../app/public-judgement-transition.ts";
+import { isM3JudgementTransitionEvent, routePublicJudgementReveal, routePublicJudgementTransition } from "../app/public-judgement-transition.ts";
 
 const card = { id: "physical-delayed-card", kind: "Overindulgence", rank: "4", suit: "♥" };
 const ownerId = "player-1";
@@ -37,6 +37,43 @@ function route(input) {
     ...input, roomCode: "ROOM", viewerId: "viewer-1",
   });
 }
+
+function originalReveal({ privateToPlayerId, presentation = true } = {}) {
+  return {
+    id: "original-judgement-reveal", type: "card", action: "reveal", judgement: true,
+    presentation, publicSequence: 9, resolutionId: "judgement-resolution",
+    card: { id: "physical-drawn-judgement", kind: "Dodge", rank: "7", suit: "♠" },
+    ...(privateToPlayerId ? { privateToPlayerId } : {}),
+  };
+}
+
+test("a committed public original Judgement reveal has one scoped physical-card owner", () => {
+  const event = originalReveal();
+  const timeline = [event];
+  const first = routePublicJudgementReveal({ event, timeline, roomCode: "ROOM", viewerId: "viewer-1" });
+  const switchedViewer = routePublicJudgementReveal({ event, timeline, roomCode: "ROOM", viewerId: "viewer-2" });
+  assert.deepEqual(first, {
+    kind: "judgement-reveal", claimedBy: "PublicJudgementCardReveal",
+    claimId: ["ROOM", "public-judgement-reveal", event.id, event.card.id].join("\u001f"),
+    scope: { roomCode: "ROOM", viewerId: "viewer-1", generation: "ROOM:viewer-1" },
+    eventId: event.id, physicalCardId: event.card.id, publicSequence: 9,
+  });
+  assert.equal(switchedViewer.physicalCardId, first.physicalCardId);
+  assert.notEqual(switchedViewer.scope.generation, first.scope.generation);
+});
+
+test("private, uncommitted, mismatched, replayed, or already-owned Judgement reveals fail closed", () => {
+  const event = originalReveal();
+  const base = { event, timeline: [event], roomCode: "ROOM", viewerId: "viewer-1" };
+  assert.equal(routePublicJudgementReveal({ ...base, event: originalReveal({ privateToPlayerId: "viewer-1" }), timeline: [originalReveal({ privateToPlayerId: "viewer-1" })] }), null);
+  assert.equal(routePublicJudgementReveal({ ...base, event: originalReveal({ presentation: false }), timeline: [originalReveal({ presentation: false })] }), null);
+  assert.equal(routePublicJudgementReveal({ ...base, retiredEventIds: [event.id] }), null);
+  assert.equal(routePublicJudgementReveal({ ...base, existingOwners: [{ eventId: "other-event", physicalCardId: event.card.id, owner: "PublicCardDisplay" }] }), null);
+  assert.ok(routePublicJudgementReveal({ ...base, existingOwners: [{ eventId: event.id, physicalCardId: "other-card", owner: "PublicPhysicalCardTransition" }] }),
+    "a shared causal root cannot suppress a distinct physical reveal card");
+  assert.equal(routePublicJudgementReveal({ ...base, timeline: [{ ...event, card: { ...event.card, id: "different-physical-card" } }] }), null);
+  assert.equal(routePublicJudgementReveal({ ...base, timeline: [event, { ...event, id: "duplicate-event" }] }), null);
+});
 
 test("committed delayed-card attachment routes the exact real card into the recipient Judgement slot", () => {
   const input = setup({ from: { zone: "HAND", ownerId }, to: { zone: "JUDGEMENT", ownerId: targetId } });

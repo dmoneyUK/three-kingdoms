@@ -39,7 +39,7 @@ import { publicHeroCostAnnouncementLifecycle } from "../game/public-hero-cost-li
 import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate } from "../game/public-announcement";
 import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
 import { isM2EquipmentTransitionEvent, routePublicEquipmentTransition } from "./public-equipment-transition";
-import { isM3JudgementTransitionEvent, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, routePublicJudgementTransition } from "./public-judgement-transition";
+import { isM3JudgementTransitionEvent, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, routePublicJudgementReveal, routePublicJudgementTransition, type PublicJudgementRevealRoute } from "./public-judgement-transition";
 import { routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
 import type { PublicPresentationRoute } from "./public-presentation-routing";
@@ -8498,6 +8498,28 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const selectedPublicCardAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
     ?? heldAttackDodgeReadAction
     ?? livePublicCardAction;
+  const activeJudgementRevealRoute = useMemo(() => {
+    if (!activeEvent) return null;
+    const selectedActionCardIds = selectedPublicCardAction ? [
+      selectedPublicCardAction.cardFace?.id,
+      selectedPublicCardAction.response?.cardFace?.id,
+      selectedPublicCardAction.deflection?.cardFace.id,
+      ...(selectedPublicCardAction.responseHistory ?? []).flatMap((response) => [response.cardFace?.id, ...(response.cardFaces ?? []).map((card) => card.id)]),
+      ...(selectedPublicCardAction.responses ?? []).flatMap((response) => [response.cardFace?.id, ...(response.cardFaces ?? []).map((card) => card.id)]),
+    ].filter((cardId): cardId is string => Boolean(cardId)) : [];
+    return routePublicJudgementReveal({
+      event: activeEvent,
+      timeline: room.timeline,
+      roomCode: room.code,
+      viewerId: room.meId,
+      retiredEventIds: [...presentedEventIds],
+      existingOwners: selectedActionCardIds.map((physicalCardId) => ({
+        eventId: selectedPublicCardAction?.rootEventId ?? "",
+        physicalCardId,
+        owner: "PublicCardDisplay",
+      })),
+    });
+  }, [activeEvent, room.timeline, room.code, room.meId, presentedEventIds, selectedPublicCardAction]);
   const selectedCardHasDedicatedZoneOwner = Boolean(selectedPublicCardAction?.cardFace && (
     activeEquipmentZoneTransition?.physicalCardId === selectedPublicCardAction.cardFace.id
     || activeJudgementZoneTransition?.physicalCardId === selectedPublicCardAction.cardFace.id
@@ -10563,6 +10585,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {privateDrawVisible && <div className="played-card-stage private-draw-stage" role="status"><div className="private-draw-content"><div className="private-draw-row" role="region" aria-label="Private drawn cards; scroll horizontally to view all" tabIndex={privateDrawCards.length > 3 ? 0 : undefined}>{privateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div></div>}
       {privateDistribution && !presentationBusy && <PrivateCardDistributionDialog key={room.actionRevision} cards={privateDistribution.cards} players={room.players.filter((player) => privateDistribution.eligibleRecipientIds.includes(player.id) && player.alive)} disabled={busy} error={error} onSubmit={(assignments) => onAction("trigger", { providerId: "private_card_distribution", assignments })} />}
       {privateDeckReorder && <PrivateDeckReorderDialog key={room.actionRevision} cards={privateDeckReorder.cards} minTop={privateDeckReorder.minTop} maxTop={privateDeckReorder.maxTop} disabled={busy} error={error} onSubmit={(topCardIds, bottomCardIds) => onAction("trigger", { providerId: "private_deck_reorder", topCardIds, bottomCardIds })} />}
+      {activeJudgementRevealRoute && activeEvent?.type === "card" && <PublicJudgementOriginalReveal event={activeEvent} route={activeJudgementRevealRoute} />}
       {activeEquipmentZoneTransition && activeEvent?.type === "card" && <PublicEquipmentCardTransition event={activeEvent} route={activeEquipmentZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicEquipmentTransitionPresented} />}
       {activeJudgementZoneTransition && activeJudgementTransitionCard && activeEvent && <PublicJudgementCardTransition event={activeEvent} card={activeJudgementTransitionCard} route={activeJudgementZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicJudgementTransitionPresented} />}
       {activePublicDiscardTransition && activeEvent && <PublicDiscardCardTransition event={activeEvent} route={activePublicDiscardTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicDiscardTransitionPresented} />}
@@ -11526,6 +11549,26 @@ function PublicEquipmentCardTransition({ event, route, players, myTableIndex, on
   </div>;
 }
 
+function JudgementCardFace({ card }: { card: Card }) {
+  return <CardFace card={card} settlementCardId={card.id} />;
+}
+
+function PublicJudgementOriginalReveal({ event, route }: {
+  event: Extract<GameEvent, { type: "card" }>;
+  route: PublicJudgementRevealRoute;
+}) {
+  if (event.id !== route.eventId || event.card.id !== route.physicalCardId) return null;
+  return <div className="table-resolution-layer public-judgement-reveal-layer" role="status" aria-label="Public Judgement card revealed">
+    <div className="active-table-reveal public-judgement-original-reveal" key={route.claimId}
+      data-public-card-owner={route.claimedBy}
+      data-public-judgement-reveal-event-id={route.eventId}
+      data-public-judgement-reveal-card-id={route.physicalCardId}
+      data-public-judgement-reveal-sequence={route.publicSequence}>
+      <div><JudgementCardFace card={event.card} /></div>
+    </div>
+  </div>;
+}
+
 function PublicJudgementCardTransition({ event, card, route, players, myTableIndex, onPresented }: {
   event: GameEvent;
   card: Card;
@@ -11589,7 +11632,7 @@ function PublicJudgementCardTransition({ event, card, route, players, myTableInd
       key={route.claimId} onAnimationEnd={(animation) => {
         if (animation.target !== animation.currentTarget || animation.animationName !== expectedAnimation) return;
         onPresented(route);
-      }}><div><CardFace card={card} settlementCardId={card.id} /></div></div>
+      }}><div><JudgementCardFace card={card} /></div></div>
   </div>;
 }
 

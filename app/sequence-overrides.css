@@ -30,6 +30,11 @@
   top: var(--origin-y, 50%);
 }
 
+.active-table-reveal.public-judgement-original-reveal {
+  left: 50%;
+  top: 50%;
+}
+
 .active-table-reveal.direct-discard {
   animation: revealedCardsToDiscard var(--played-card-display) ease-in-out both !important;
 }
@@ -82,6 +87,17 @@
 
 .active-table-reveal .played-card {
   animation: none !important;
+}
+
+@media (max-width: 700px) {
+  .active-table-reveal.public-judgement-original-reveal .played-card {
+    width: 90px;
+    height: 135px;
+  }
+
+  .active-table-reveal.public-judgement-original-reveal .played-card .card-name-mark {
+    font-size: 16px;
+  }
 }
 
 /* Target-card reactions are table decisions, so keep the same readable card

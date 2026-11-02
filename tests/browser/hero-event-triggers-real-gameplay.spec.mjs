@@ -233,6 +233,38 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
     expect(openedJudgement.ok(), await openedJudgement.text()).toBeTruthy();
     projected = await view(request, game, 2);
     expect(projected.currentAction).toMatchObject({ kind: "trigger", actorId: sima.id, triggerEvent: "judgement_revealed" });
+    const originalReveal = projected.timeline.find((event) => event.type === "card" && event.card?.id === original.id);
+    expect(originalReveal).toMatchObject({ action: "reveal", judgement: true, presentation: true });
+    expect(originalReveal.privateToPlayerId).toBeUndefined();
+    const revealEvidence = await Promise.all([page, observerPage].map(async (viewerPage) => {
+      const owner = viewerPage.locator(`[data-public-judgement-reveal-event-id="${originalReveal.id}"]`);
+      await expect(owner).toBeVisible({ timeout: 12_000 });
+      await expect(owner).toHaveCount(1);
+      const face = owner.locator(".played-card");
+      await expect(face).toHaveCount(1);
+      const geometry = await viewerPage.evaluate(({ eventId }) => {
+        const element = document.querySelector(`[data-public-judgement-reveal-event-id="${eventId}"] .played-card`);
+        const table = document.querySelector(".play-table");
+        if (!element || !table) return null;
+        const face = element.getBoundingClientRect();
+        const stage = table.getBoundingClientRect();
+        return {
+          width: face.width, height: face.height,
+          centerOffsetX: Math.abs(face.left + face.width / 2 - (stage.left + stage.width / 2)),
+          centerOffsetY: Math.abs(face.top + face.height / 2 - (stage.top + stage.height / 2)),
+        };
+      }, { eventId: originalReveal.id });
+      expect(geometry).not.toBeNull();
+      expect(geometry.width).toBeCloseTo(90, 0);
+      expect(geometry.height).toBeCloseTo(135, 0);
+      expect(geometry.centerOffsetX).toBeLessThan(2);
+      expect(geometry.centerOffsetY).toBeLessThan(2);
+      return { eventId: originalReveal.id, cardId: originalReveal.card.id, geometry };
+    }));
+    expect(revealEvidence.map(({ eventId, cardId }) => ({ eventId, cardId }))).toEqual([
+      { eventId: originalReveal.id, cardId: original.id },
+      { eventId: originalReveal.id, cardId: original.id },
+    ]);
 
     const dock = page.locator(`.local-player-dock[data-player-anchor="${sima.id}"]`);
     const skill = dock.locator(".local-hero-skills").getByRole("button", { name: "Necromancy", exact: true });

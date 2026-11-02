@@ -3,7 +3,7 @@ import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PublicPhysicalZoneTransition } from "../game/presentation-semantics";
 import { publicFactsForEvent, routePublicPresentation, type PublicPresentationExistingOwner, type PublicPresentationRoute, type PublicTimelineEventReference, type PublicZoneProjection } from "./public-presentation-routing";
 
-type PublicCard = { id: string; kind: string };
+type PublicCard = { id: string; kind: string; rank?: string; suit?: string };
 export type PublicJudgementTimelineEvent = {
   id: string;
   type: string;
@@ -11,11 +11,60 @@ export type PublicJudgementTimelineEvent = {
   actorId?: string;
   card?: PublicCard;
   presentation?: boolean;
+  judgement?: boolean;
+  resolutionId?: string;
   privateToPlayerId?: string;
   publicSequence?: number;
   publicFact?: { category?: string; actorId?: string; rootEventId?: string; interactionId?: string; frameId?: string; visibility?: string; semantics?: string };
   publicZoneTransition?: PublicPhysicalZoneTransition;
 };
+
+export type PublicJudgementRevealRoute = {
+  kind: "judgement-reveal";
+  claimedBy: "PublicJudgementCardReveal";
+  claimId: string;
+  scope: { roomCode: string; viewerId: string; generation: string };
+  eventId: string;
+  physicalCardId: string;
+  publicSequence: number;
+};
+
+/** Claims only the active, server-committed public original Judgement card. */
+export function routePublicJudgementReveal(input: {
+  event: PublicJudgementTimelineEvent;
+  timeline: readonly PublicJudgementTimelineEvent[];
+  roomCode: string;
+  viewerId: string;
+  retiredEventIds?: readonly string[];
+  existingOwners?: readonly { eventId: string; physicalCardId: string; owner: string }[];
+}): PublicJudgementRevealRoute | null {
+  const { event, timeline } = input;
+  if (!input.roomCode || !input.viewerId || event.type !== "card" || event.action !== "reveal"
+    || event.judgement !== true || event.presentation === false || typeof event.privateToPlayerId === "string"
+    || !event.id || !event.card?.id || !event.card.kind || !event.card.rank || !event.card.suit
+    || !Number.isSafeInteger(event.publicSequence) || (event.publicSequence as number) < 0
+    || input.retiredEventIds?.includes(event.id)) return null;
+
+  const matchingEvents = timeline.filter((candidate) => candidate.id === event.id);
+  const matchingSequence = timeline.filter((candidate) => candidate.publicSequence === event.publicSequence);
+  const committed = matchingEvents[0];
+  if (matchingEvents.length !== 1 || matchingSequence.length !== 1 || committed?.type !== "card"
+    || committed.action !== "reveal" || committed.judgement !== true || committed.presentation === false
+    || typeof committed.privateToPlayerId === "string" || committed.publicSequence !== event.publicSequence
+    || committed.card?.id !== event.card.id || committed.card.kind !== event.card.kind
+    || committed.card.rank !== event.card.rank || committed.card.suit !== event.card.suit) return null;
+  // A causal root ID is not a CardFace owner ID: one interaction can contain
+  // multiple events and physical cards. Suppress only an owner of this exact
+  // physical card, so a shared root cannot hide a distinct original reveal.
+  if (input.existingOwners?.some((owner) => owner.physicalCardId === event.card?.id)) return null;
+
+  return {
+    kind: "judgement-reveal", claimedBy: "PublicJudgementCardReveal",
+    claimId: [input.roomCode, "public-judgement-reveal", event.id, event.card.id].join("\u001f"),
+    scope: { roomCode: input.roomCode, viewerId: input.viewerId, generation: `${input.roomCode}:${input.viewerId}` },
+    eventId: event.id, physicalCardId: event.card.id, publicSequence: event.publicSequence as number,
+  };
+}
 
 function isEndpoint(value: unknown): value is PublicZoneProjection["from"] {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;

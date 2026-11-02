@@ -1793,8 +1793,9 @@ test("delayed Standard cards resolve newest first and stale draws cannot replay 
 
   const olderLightning = { ...card("Lightning", "older"), suit: "♥", rank: "Q" }; const newerOverindulgence = { ...card("Overindulgence", "newer"), suit: "♣", rank: "6" };
   setJudgement(alicePlayer.id, [olderLightning, newerOverindulgence]); setTurn(game.code, alicePlayer.seat, "draw");
-  setDeck(game.code, [{ ...card("Dodge", "over-judge"), suit: "♠", rank: "7" }, { ...card("Dodge", "lightning-judge"), suit: "♥", rank: "7" }]);
-  const alice = game.members.find((member) => member.name === "Alice"); const beforeFirstDraw = await state(game.code, alice.token);
+  const lightningJudge = { ...card("Dodge", "lightning-judge"), suit: "♥", rank: "7" };
+  setDeck(game.code, [{ ...card("Dodge", "over-judge"), suit: "♠", rank: "7" }, lightningJudge]);
+  const alice = game.members.find((member) => member.name === "Alice"); const bob = game.members.find((member) => member.name === "Bob"); const beforeFirstDraw = await state(game.code, alice.token);
   const newestFirst = await requestAndSettle("draw", { code: game.code, token: alice.token });
   assert.equal(newestFirst.status, 200); assert.equal(newestFirst.data.room.phase, "draw-skip-play"); assert.deepEqual(newestFirst.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards.map((delayed) => delayed.id), ["lightning-older"]);
   assert.ok(newestFirst.data.room.log.some((entry) => /Overindulgence/.test(entry)));
@@ -1803,6 +1804,19 @@ test("delayed Standard cards resolve newest first and stale draws cannot replay 
   const olderResolved = await requestAndSettle("draw", { code: game.code, token: alice.token });
   assert.equal(olderResolved.status, 200); assert.deepEqual(olderResolved.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []); assert.ok(olderResolved.data.room.log.some((entry) => /Lightning misses and transfers to Bob/.test(entry)), "the older Lightning resolves after the newer Overindulgence");
   assert.equal(olderResolved.data.room.players.find((player) => player.id === bobPlayer.id).judgementCards[0].id, "lightning-older");
+  const lightningOriginalReveal = olderResolved.data.room.timeline.find((event) => event.type === "card" && event.card?.id === lightningJudge.id);
+  assert.ok(lightningOriginalReveal, "the actual drawn Lightning Judgement card remains a public reveal event");
+  assert.equal(lightningOriginalReveal.action, "reveal");
+  assert.equal(lightningOriginalReveal.judgement, true);
+  assert.equal(lightningOriginalReveal.presentation, true);
+  assert.equal(typeof lightningOriginalReveal.publicSequence, "number");
+  assert.equal(lightningOriginalReveal.privateToPlayerId, undefined);
+  assert.notEqual(lightningOriginalReveal.card.id, "lightning-older", "the real draw is distinct from the attached Lightning that transfers");
+  const bobPerspective = (await state(game.code, bob.token)).data;
+  const bobOriginalReveal = bobPerspective.timeline.find((event) => event.type === "card" && event.card?.id === lightningJudge.id);
+  assert.deepEqual({ id: bobOriginalReveal?.id, cardId: bobOriginalReveal?.card?.id, publicSequence: bobOriginalReveal?.publicSequence },
+    { id: lightningOriginalReveal.id, cardId: lightningOriginalReveal.card.id, publicSequence: lightningOriginalReveal.publicSequence },
+    "all viewers share the same public Lightning Judgement event identity");
 
   const lightning = { ...card("Lightning", "race"), suit: "♥", rank: "Q" }; setJudgement(alicePlayer.id, [lightning]); setTurn(game.code, alicePlayer.seat, "draw"); setDeck(game.code, [{ ...card("Dodge", "race-judge"), suit: "♥", rank: "7" }, card("Attack", "race-draw-1"), card("Attack", "race-draw-2")]);
   const [first, second] = await Promise.all([request("draw", { code: game.code, token: alice.token }), request("draw", { code: game.code, token: alice.token })]);
