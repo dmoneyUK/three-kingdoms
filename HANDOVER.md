@@ -1,17 +1,26 @@
 # HANDOVER — Current Task Only
 
-Repository: `dmoneyUK/three-kingdoms` · target branch: `ux-v2`
+Repository: `dmoneyUK/three-kingdoms` · target `ux-v2`
+Worktree: `/Users/jingedai/.codex/worktrees/ux2-judgement-seat-01` · branch `codex/ux2-judgement-seat-01`
 
 ## Latest relevant result
 
-**T3 — UX2-CONVERSION-H4-01: DEPLOYED PER OWNER DIRECTION — PENDING OWNER iPHONE REVIEW.** Code SHA [`a50da86ca4414177acea20e0400bc8bef8aa609f`](https://github.com/dmoneyUK/three-kingdoms/commit/a50da86ca4414177acea20e0400bc8bef8aa609f); exact-SHA [Actions 41500850799](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41500850799) passed lint/fast, API, browser startup/room smoke, deployment and production smoke. Worker version `af47b922-cb5f-4d31-9cf5-3fbcee425f9f`; live `/api/health` returned `{"ok":true,"worker":"available"}`. Focused announcement tests passed 27/27; local build passed; ESLint had 0 errors and 13 existing React Hook dependency warnings. **Known local UI regression:** the single 390×844 W4 actor/observer scenario failed: actor H4 text and event identity were correct, but H4 was `visible=false` / `positioned=false` during the conversion Frame; observer assertions did not complete. This was disclosed to the owner, who directed commit and continuation. Do not claim the focused UI behavior passed or infer phone acceptance.
+T3 `UX2-CONVERSION-H4-01` is deployed at code SHA `a50da86ca4414177acea20e0400bc8bef8aa609f`; [Actions 41500850799](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41500850799) passed. Worker `af47b922-cb5f-4d31-9cf5-3fbcee425f9f` passed the recorded production health check. The prior focused local H4 visibility observation remains pending owner iPhone review; T4 does not change that behavior.
 
-## Current bounded task
+## Current bounded task — T4 UX2-CONVERSION-FRAME-TITLE-01 (§10.34)
 
-**T4 — UX2-CONVERSION-FRAME-TITLE-01 (§10.34), STARTED AT THE T3 DELIVERY BOUNDARY.** Implement one generic responsive Frame header: render proven skill name and optional verified AS effect as separate readable semantic lines; reserve measured header height above real material CardFaces; use controlled wrapping/font bounds without shrinking the genuine cards. If typed segments are absent, wrap the original legitimate title. Reuse for COST, CONVERSION and EFFECT frames and 1/2/multi-card grids; no card/Hero-specific position branches. Preserve original material image, identity and owner. Validate long/short titles inside actual Frame bounds, card ID, accessibility and PAC/H4 coexistence; prefer targeted tests and at most one focused mobile browser scenario, under five minutes total. STOP if the layout requires a new product decision or makes genuine material unreadably small. T3's known local H4 visibility failure remains pending owner phone review and must not be weakened or hidden.
+**Status: IMPLEMENTATION READY — PENDING COMMIT, EXACT-SHA CI/DEPLOYMENT AND OWNER iPHONE REVIEW.** No acceptance claimed.
 
-### Reviewed authority and resume point
+Latest design reviewed: `docs/UX2-refine.md` revision `2026-11-02 18:38 UTC`, remote design commit `d7fb7187b0ba4382bcdba2973c84978a9dc84889`. The intervening remote commits changed only that design document; they leave T4 unchanged. T1's icon-only correction is explicitly deferred and does not interrupt this task. Latest relevant code CI is successful Actions `41500850799` on `a50da86`; the two later remote commits are docs-only and produced no Actions run.
 
-- Latest fetched `origin/ux-v2` at the T3 delivery boundary: `a50da86ca4414177acea20e0400bc8bef8aa609f`. Latest design revision: owner-approved `324ee3b750829aab7d9c0c20383238f291bb216c`, reviewed in `docs/UX2-refine.md` Table A and §10.34 before starting T4.
-- Current worktree: `/Users/jingedai/.codex/worktrees/ux2-judgement-seat-01`, branch `codex/ux2-judgement-seat-01` tracking `origin/ux-v2`. Main checkout's pre-existing work remains separate.
-- Next action: inspect `game/public-card-effect-frame-layout.ts` and `PublicJourneyCard` in `app/public-card-display.tsx`, identify existing typed title/effect segments and actual measured grid geometry, then implement only §10.34. Check latest relevant CI before the first T4 commit; exact-SHA CI/deploy remains required. No owner iPhone acceptance has been recorded.
+**Implemented locally:** typed, title-matching skill/effect labels for verified AS Frames; safe wrapping for original titles when segments are absent; responsive bounded title typography; in-flow material count; computed header height shared by Frame rendering and battlefield/announcement anchors. Real CardFaces, IDs, source owners, gameplay and public/private projections remain unchanged. Added layout/view tests and extended the existing Captivating mobile scenario with actual title/Frame/CardFace geometry assertions.
+
+**Recorded execution (UTC):**
+
+- **18:44** — Initial direct `node --test` could not load TSX. Retried with the repository's `--import tsx`; this exposed a JSX syntax error in the new title markup. Fixed it. The correct focused tests then passed **6/6**.
+- **18:45** — First browser attempts ran against stale `dist/client` (built 18:16); `worker-server.mjs` uses that bundle. The old bundle reproduced an overlapping title (measured gap `-29.78px`), so it was not valid evidence for current source. An attempted shell `timeout` command was unavailable on this macOS host; no test ran from that command.
+- **18:46** — `npm run build` passed. Re-ran the single 390×844 Captivating real-gameplay scenario against the fresh build: **1/1 passed in 9.2s** across actor, target and observer views; title fits and does not clip, has at least 2px clearance above material CardFace, original card ID and announcement remain correct. Aggregate local UI time stayed below five minutes.
+- **18:49** — Fetched and reviewed remote design updates, then fast-forwarded safely from `ab459e62` to `d7fb7187`; no local source changes were overwritten.
+- **18:50** — Focused layout/view tests passed **6/6**; `git diff --check` passed. Correct targeted ESLint invocation passed with **0 errors / 15 React Hook dependency warnings** (none introduced at changed Hook sites). One earlier ESLint invocation named a nonexistent `app/public-card-effect-frame-layout.ts` and stopped before linting; the corrected invocation passed.
+
+**Remaining for this task:** review the final diff, check the latest relevant push CI immediately before commit, commit/push only T4 files to `ux-v2`, verify exact-SHA Actions and Cloudflare deployment/health, then report `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`. Preserve the T3 H4 review note. Do not mark T4 accepted.

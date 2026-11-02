@@ -1016,6 +1016,30 @@ test("W4: Captivating frames its real Diamond AS Overindulgence for every Negati
       await expect(root).toHaveCount(1);
       await expect(frame).toHaveAttribute("data-public-card-frame-material-card-ids", diamond.id);
       await expect(frame.locator(".public-card-effect-frame-title")).toHaveText("CAPTIVATING · AS OVERINDULGENCE");
+      const frameGeometry = await frame.evaluate((element) => {
+        const panel = element.getBoundingClientRect();
+        const title = element.querySelector(".public-card-effect-frame-title");
+        const materials = element.querySelector(".public-card-effect-frame-materials");
+        if (!title || !materials) return null;
+        const titleRect = title.getBoundingClientRect();
+        const materialsRect = materials.getBoundingClientRect();
+        return {
+          panel: { left: panel.left, top: panel.top, width: panel.width, height: panel.height },
+          title: { left: titleRect.left, top: titleRect.top, right: titleRect.right, bottom: titleRect.bottom, width: titleRect.width, height: titleRect.height, clientHeight: title.clientHeight, scrollHeight: title.scrollHeight },
+          titleCss: { fontSize: getComputedStyle(title).fontSize, lineHeight: getComputedStyle(title).lineHeight, className: title.className },
+          lines: [...title.querySelectorAll(".public-card-effect-frame-title-line")].map((line) => {
+            const rect = line.getBoundingClientRect();
+            return { text: line.textContent, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height, fontSize: getComputedStyle(line).fontSize };
+          }),
+          materials: { top: materialsRect.top, bottom: materialsRect.bottom, width: materialsRect.width, height: materialsRect.height },
+          titleFitsPanel: titleRect.left >= panel.left && titleRect.right <= panel.right,
+          titleDoesNotClip: title.scrollHeight <= title.clientHeight + 1,
+          titleMaterialGap: materialsRect.top - titleRect.bottom,
+          materialCardId: element.getAttribute("data-public-card-frame-material-card-ids"),
+        };
+      });
+      expect(frameGeometry).toMatchObject({ titleFitsPanel: true, titleDoesNotClip: true, materialCardId: diamond.id });
+      expect(frameGeometry?.titleMaterialGap, JSON.stringify(frameGeometry)).toBeGreaterThanOrEqual(2);
       const notice = display.locator('[data-public-card-announcement="true"]');
       await expect(notice).toContainText(/Captivating.*AS OVERINDULGENCE.*TARGET/);
       const eventId = await root.getAttribute("data-public-card-journey-event-id");

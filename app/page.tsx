@@ -521,6 +521,7 @@ type AttackConversionFrameSpec = {
   hero: "guan-yu" | "zhao-yun";
   skillName: "God of War" | "Braveheart";
   title: "GOD OF WAR · AS ATTACK" | "BRAVEHEART · DODGE AS ATTACK";
+  titleParts: { skillName: "GOD OF WAR" | "BRAVEHEART"; effectLabel: "AS ATTACK" | "DODGE AS ATTACK" };
   sourceKind: "RED_NON_ATTACK" | "DODGE";
 };
 type VerifiedAttackConversionFrameProof = {
@@ -784,6 +785,7 @@ function publicSerpentSpearAttackFrame(
   const accessibleLabel = `${proof.owner.name} used Serpent Spear to form one Attack from two real Hand cards as Attack, targeting ${proof.target.name}.`;
   const frame = createPublicCardEffectFrameView(proof.effect, {
     title: "SERPENT SPEAR · AS ATTACK",
+    titleParts: { skillName: "SERPENT SPEAR", effectLabel: "AS ATTACK" },
     accessibleLabel,
     activationOwnerName: proof.owner.name,
     ownerNamesById: Object.fromEntries(players.map((player) => [player.id, player.name])),
@@ -7717,6 +7719,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     },
     publicCardEffectFrame: createPublicCardEffectFrameView(firstAidConversionFrameCandidate.effect, {
       title: "FIRST AID · AS PEACH",
+      titleParts: { skillName: "FIRST AID", effectLabel: "AS PEACH" },
       accessibleLabel: `${firstAidConversionFrameCandidate.owner.name} used First Aid. ${cardDefinition(firstAidConversionFrameCandidate.sourceCard.kind).name}, ${firstAidConversionFrameCandidate.sourceCard.rank} ${firstAidConversionFrameCandidate.sourceCard.suit}, was played as Peach for ${firstAidConversionFrameCandidate.target.name}'s Dying response.`,
       activationOwnerName: firstAidConversionFrameCandidate.owner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
@@ -8582,8 +8585,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (!selectedPublicCardAction || selectedPublicCardAction.motion?.type !== "attack-dodge"
       || selectedPublicCardAction.cardKind !== "Attack" || !selectedPublicCardAction.cardFace) return null;
     const specs: readonly AttackConversionFrameSpec[] = [
-      { effectId: "guan_yu_red_card_attack", hero: "guan-yu", skillName: "God of War", title: "GOD OF WAR · AS ATTACK", sourceKind: "RED_NON_ATTACK" },
-      { effectId: "zhao_yun_dodge_as_attack", hero: "zhao-yun", skillName: "Braveheart", title: "BRAVEHEART · DODGE AS ATTACK", sourceKind: "DODGE" },
+      { effectId: "guan_yu_red_card_attack", hero: "guan-yu", skillName: "God of War", title: "GOD OF WAR · AS ATTACK", titleParts: { skillName: "GOD OF WAR", effectLabel: "AS ATTACK" }, sourceKind: "RED_NON_ATTACK" },
+      { effectId: "zhao_yun_dodge_as_attack", hero: "zhao-yun", skillName: "Braveheart", title: "BRAVEHEART · DODGE AS ATTACK", titleParts: { skillName: "BRAVEHEART", effectLabel: "DODGE AS ATTACK" }, sourceKind: "DODGE" },
     ];
     const candidates = specs.flatMap((spec) => {
       const proof = verifiedAttackConversionFrameForEvent(
@@ -8605,6 +8608,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const accessibleLabel = `${proof.owner.name} used ${spec.skillName}. ${cardDefinition(proof.sourceCard.kind).name}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Attack targeting ${proof.conversionEvent.target}.`;
     const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
       title: spec.title,
+      titleParts: spec.titleParts,
       accessibleLabel,
       activationOwnerName: proof.owner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
@@ -8627,6 +8631,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const accessibleLabel = `${proof.owner.name} used Ambushment. ${cardName}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Burning Bridges targeting ${proof.target.name}.`;
     const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
       title: "AMBUSHMENT · AS BURNING BRIDGES",
+      titleParts: { skillName: "AMBUSHMENT", effectLabel: "AS BURNING BRIDGES" },
       accessibleLabel,
       activationOwnerName: proof.owner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
@@ -8650,6 +8655,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const accessibleLabel = `${proof.owner.name} used Captivating. ${cardName}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Overindulgence targeting ${proof.target.name}.`;
     const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
       title: "CAPTIVATING · AS OVERINDULGENCE",
+      titleParts: { skillName: "CAPTIVATING", effectLabel: "AS OVERINDULGENCE" },
       accessibleLabel,
       activationOwnerName: proof.owner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
@@ -8675,6 +8681,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const accessibleLabel = `${proof.owner.name} used Braveheart. Attack, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Dodge against ${proof.attackSource.name}'s Attack on ${proof.target.name}.`;
     const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
       title: "BRAVEHEART · ATTACK AS DODGE",
+      titleParts: { skillName: "BRAVEHEART", effectLabel: "ATTACK AS DODGE" },
       accessibleLabel,
       activationOwnerName: proof.owner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
@@ -8700,6 +8707,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const accessibleLabel = `${proof.owner.name} used Empress Dowager. ${cardDefinition(proof.sourceCard.kind).name}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Dodge against ${proof.attackSource.name}'s Attack on ${proof.target.name}.`;
     const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
       title: "EMPRESS DOWAGER · AS DODGE",
+      titleParts: { skillName: "EMPRESS DOWAGER", effectLabel: "AS DODGE" },
       accessibleLabel,
       activationOwnerName: proof.owner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),

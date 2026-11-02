@@ -27,3 +27,33 @@ test("two and many-card frames stay within short and tall phone viewports", () =
     }
   }
 });
+
+test("semantic skill and AS lines reserve header space without shrinking real material cards", () => {
+  const title = {
+    title: "AMBUSHMENT · AS BURNING BRIDGES",
+    titleParts: { skillName: "AMBUSHMENT", effectLabel: "AS BURNING BRIDGES" },
+  };
+  for (const [width, height] of [[390, 700], [390, 844], [440, 894]]) {
+    for (const count of [1, 2, 4]) {
+      const baseline = publicCardEffectFrameLayout(count, width, height);
+      const framed = publicCardEffectFrameLayout(count, width, height, title);
+      assert.equal(framed.cardWidth, baseline.cardWidth, `${count} real cards shrank at ${width}×${height}`);
+      assert.equal(framed.cardHeight, baseline.cardHeight);
+      assert.ok(framed.headerHeight >= 43);
+      assert.equal(framed.cardOffsetTop, framed.headerHeight);
+      assert.ok(framed.cardOffsetTop + framed.gridHeight + 12 <= framed.frameHeight);
+    }
+  }
+});
+
+test("long unsegmented titles wrap into a reserved header above the unchanged CardFaces", () => {
+  const baseline = publicCardEffectFrameLayout(1, 390, 844);
+  const wrapped = publicCardEffectFrameLayout(1, 390, 844, {
+    title: "A LONG PUBLIC SKILL EFFECT LABEL THAT NEEDS MULTIPLE LINES",
+  });
+  assert.ok(wrapped.headerHeight > baseline.headerHeight);
+  assert.equal(wrapped.cardWidth, baseline.cardWidth);
+  assert.equal(wrapped.cardHeight, baseline.cardHeight);
+  assert.equal(wrapped.cardOffsetTop, wrapped.headerHeight);
+  assert.ok(wrapped.cardOffsetTop + wrapped.cardHeight + 12 <= wrapped.frameHeight);
+});

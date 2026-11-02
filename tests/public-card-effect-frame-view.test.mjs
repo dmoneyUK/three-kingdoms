@@ -27,16 +27,22 @@ const copy = {
 };
 
 test("public effect frame factory preserves true activation and material owners and all genuine faces", () => {
-  const frame = createPublicCardEffectFrameView(effect(), copy);
+  const titleParts = { skillName: "FROST SWORD", effectLabel: "AS DAMAGE PREVENTION" };
+  const frame = createPublicCardEffectFrameView(effect(), {
+    ...copy,
+    title: "FROST SWORD · AS DAMAGE PREVENTION",
+    titleParts,
+  });
   assert.ok(frame);
   assert.equal(frame.activationOwnerId, "attacker");
+  assert.deepEqual(frame.titleParts, titleParts);
   assert.deepEqual(frame.materials.map(({ ownerId, ownerName, card: materialCard }) => ({
     ownerId, ownerName, id: materialCard.id,
   })), [
     { ownerId: "target", ownerName: "Target", id: "target-card-1" },
     { ownerId: "target", ownerName: "Target", id: "target-card-2" },
   ]);
-  assert.match(frame.accessibleLabel, /FROST SWORD effect frame/);
+  assert.match(frame.accessibleLabel, /FROST SWORD · AS DAMAGE PREVENTION effect frame/);
   assert.match(frame.accessibleLabel, /Target's Attack, 7 of Spades/);
   assert.equal((frame.accessibleLabel.match(/Target's Attack, 7 of Spades/g) ?? []).length, 2);
 });
@@ -44,5 +50,10 @@ test("public effect frame factory preserves true activation and material owners 
 test("public effect frame factory fails closed on identity, ownership-name, and class errors", () => {
   assert.equal(createPublicCardEffectFrameView(effect({ cards: [card("wrong-card"), card("target-card-2")] }), copy), null);
   assert.equal(createPublicCardEffectFrameView(effect(), { ...copy, ownerNamesById: { attacker: "Attacker" } }), null);
+  assert.equal(createPublicCardEffectFrameView(effect(), {
+    ...copy,
+    title: "FROST SWORD · AS DAMAGE PREVENTION",
+    titleParts: { skillName: "FROST SWORD", effectLabel: "AS DODGE" },
+  }), null);
   assert.equal(createPublicCardEffectFrameView(effect({ effectClass: "PRIVATE" }), copy), null);
 });

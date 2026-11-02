@@ -1290,9 +1290,12 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-effect-frame-panel{display:block}
 .public-card-lust-cost-frame-panel.is-moving{opacity:0;transition:none}
 .public-card-lust-cost-frame-panel::after{content:"";position:absolute;inset:4px;border:1px solid #d7bd7860;pointer-events:none}
-.public-card-effect-frame-title,.public-card-lust-cost-frame-title{position:relative;z-index:1;display:block;width:100%;color:#e7c974;font:700 22px/1.1 Arial,sans-serif;letter-spacing:.14em;text-align:center;text-transform:uppercase}
+.public-card-effect-frame-title{position:relative;z-index:1;display:block;width:100%;margin:0;color:#e7c974;font:700 clamp(12px,3.6vw,14px)/1.08 Arial,sans-serif;letter-spacing:.06em;text-align:center;text-transform:uppercase;overflow-wrap:anywhere;word-break:normal}
+.public-card-effect-frame-title-line{display:block;max-width:100%;overflow-wrap:anywhere}
+.public-card-effect-frame-title-line.is-effect{font-size:clamp(10px,2.8vw,11px);line-height:1.08;letter-spacing:.05em}
+.public-card-effect-frame-title-separator{white-space:pre}
 .public-card-lust-cost-frame-panel .public-card-lust-cost-frame-title{color:#f2d58f;font-size:20px;line-height:1.08;letter-spacing:.1em}
-.public-card-effect-frame-count{position:absolute;z-index:1;left:8px;right:8px;top:31px;display:block;color:#b9a36f;font:700 6px/1 Arial,sans-serif;letter-spacing:.12em;text-align:center}
+.public-card-effect-frame-count{position:relative;z-index:1;display:block;height:6px;margin-top:2px;color:#b9a36f;font:700 6px/6px Arial,sans-serif;letter-spacing:.12em;text-align:center}
 .public-card-effect-frame-materials{position:absolute;display:grid;align-content:start;justify-content:center;pointer-events:none}
 .public-card-effect-frame-material{position:relative;display:block;min-width:0;min-height:0;overflow:hidden;border-radius:7px}
 .public-card-effect-frame-material>.played-card{position:absolute;inset:0;width:100%;height:100%;min-width:0;min-height:0;padding:7px 4px;animation:none;border-radius:7px;box-shadow:0 0 0 1px #d4b46f99,0 7px 18px #000c}
