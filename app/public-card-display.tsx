@@ -61,6 +61,21 @@ type PublicCardDisplayMotion = {
   freshEventIds: readonly string[];
 };
 
+function publicCardMotionHasJourneyRenderer(motion: PublicCardDisplayMotion | undefined): boolean {
+  switch (motion?.type) {
+    case "attack-dodge":
+    case "single-target":
+    case "negation":
+    case "group-root":
+    case "duel":
+    case "lust-duel":
+    case "lust-cost":
+      return true;
+    default:
+      return false;
+  }
+}
+
 export type PublicNegationNarration = {
   rootLabel: string;
   eventId: string;
@@ -168,6 +183,22 @@ export type PublicCardDisplayAction = {
   publicCardEffectFrame?: PublicCardEffectFrameView;
   responses?: readonly PublicCardDisplayResponseNode[];
 };
+
+/** Routes a proven physical public root through the shared Journey when a more specific Journey was not selected. */
+export function publicCardMotionForCommittedCard(
+  action: Pick<PublicCardDisplayAction, "rootEventId" | "cardFace" | "motion">,
+  roomCode: string,
+  seenEventIds: ReadonlySet<string>,
+  hasDedicatedZoneOwner = false,
+): PublicCardDisplayAction["motion"] | null {
+  if (action.motion) return action.motion;
+  if (!action.cardFace || hasDedicatedZoneOwner) return null;
+  return {
+    type: "single-target",
+    scopeKey: [roomCode, "public-physical-card", action.rootEventId].join(":"),
+    freshEventIds: seenEventIds.has(action.rootEventId) ? [] : [action.rootEventId],
+  };
+}
 
 /**
  * Keeps the renderer owner stable while a proven Steal/Dismantle root moves
@@ -6230,7 +6261,7 @@ export function PublicCardDisplay({
     cards: readonly { eventId: string; cardIds: readonly string[] }[],
   ) => void;
 }) {
-  if (!action) return null;
+  if (!action || !publicCardMotionHasJourneyRenderer(action.motion)) return null;
   if (action.motion?.type === "attack-dodge") {
     return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }

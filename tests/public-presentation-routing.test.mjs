@@ -65,13 +65,16 @@ function journeyInput({ viewerId = "viewer-1", interactionId = "interaction-1", 
   };
 }
 
-test("coverage inventory classifies every E01-E21 family and names each temporary legacy owner", () => {
+test("coverage inventory records producer, route, owner, zone, and only remaining legacy owners", () => {
   assert.equal(PUBLIC_PRESENTATION_EVENT_COVERAGE.length, 21);
   assert.deepEqual(PUBLIC_PRESENTATION_EVENT_COVERAGE.map((entry) => entry.id), Array.from({ length: 21 }, (_, index) => `E${String(index + 1).padStart(2, "0")}`));
+  assert.ok(PUBLIC_PRESENTATION_EVENT_COVERAGE.every((entry) => entry.producer.trim() && entry.route && entry.currentOwner.trim() && entry.zone.trim()));
   assert.equal(new Set(PUBLIC_PRESENTATION_LEGACY_ALLOWLIST.map((entry) => entry.id)).size, PUBLIC_PRESENTATION_LEGACY_ALLOWLIST.length);
   const legacyIds = new Set(PUBLIC_PRESENTATION_LEGACY_ALLOWLIST.map((entry) => entry.id));
   assert.ok(PUBLIC_PRESENTATION_EVENT_COVERAGE.flatMap((entry) => entry.legacyRoutes).every((id) => legacyIds.has(id)));
   assert.equal(PUBLIC_PRESENTATION_LEGACY_ALLOWLIST.some((entry) => entry.id === "STATIC_GENERIC_FALLBACK"), false);
+  assert.equal(PUBLIC_PRESENTATION_LEGACY_ALLOWLIST.some((entry) => entry.owner === "PublicCardDisplay.static-fallback" || entry.removalSlice === "M5"), false);
+  assert.equal(PUBLIC_PRESENTATION_EVENT_COVERAGE.flatMap((entry) => entry.legacyRoutes).some((id) => id.startsWith("STATIC_")), false);
   assert.ok(PUBLIC_PRESENTATION_LEGACY_ALLOWLIST.every((entry) => entry.owner && entry.removalSlice && entry.action));
 });
 
@@ -180,21 +183,22 @@ test("equipment and later discard transitions for one physical card have separat
   assert.notEqual(discard.claimId, equip.claimId);
 });
 
-test("only exact committed legacy proof is allowlisted and compared with current renderer ownership", () => {
+test("only exact committed TableResolutionSequence proof remains allowlisted until M6", () => {
   const input = journeyInput();
   input.candidate = {
-    kind: "legacy", mode: "active", allowlistId: "STATIC_SELF_TARGET_PEACH_ROOT",
+    kind: "legacy", mode: "active", allowlistId: "TABLE_PUBLIC_PLAY_HISTORY",
     transitionId: "root-event", eventId: "root-event", rootEventId: "root-event",
     physicalCardIds: ["root-card"], interactionId: "interaction-1", rootFrameId: "root-frame",
   };
   input.publicTimeline[0].physicalCardKinds = { "root-card": "Peach" };
-  input.existingOwners = [{ eventId: "root-event", physicalCardId: "root-card", owner: "PublicCardDisplay.static-fallback" }];
+  input.publicTimeline[0].destination = "AUTHOR_HISTORY";
+  input.existingOwners = [{ eventId: "root-event", physicalCardId: "root-card", owner: "TableResolutionSequence" }];
   const allowed = routePublicPresentation(input);
   assert.equal(allowed.kind, "legacy-allowlisted");
-  assert.equal(allowed.removalSlice, "M5");
+  assert.equal(allowed.removalSlice, "M6");
   assert.equal(allowed.shadowComparison.status, "match");
 
-  input.candidate.allowlistId = "STATIC_GENERIC_FALLBACK";
+  input.candidate.allowlistId = "STATIC_SELF_TARGET_PEACH_ROOT";
   assert.deepEqual(routePublicPresentation(input), { kind: "blocked-invalid-proof", reason: "legacy-route-not-allowlisted" });
 });
 

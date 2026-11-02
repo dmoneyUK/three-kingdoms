@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { centerRevealCardInSafeBattlefield, publicCardCommittedFactCopy, PublicCardDisplay, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
+import { centerRevealCardInSafeBattlefield, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
 import {
   canClearPublicJourneyOwnership,
   publicAnnouncementEventCopyKey,
@@ -20,6 +20,46 @@ import {
   compactLustDuelOrderMessage,
   compactLustDuelResultMessage,
 } from "../app/lust-public-copy.ts";
+
+test("unowned committed physical roots use the shared Journey and restored roots stay parked", () => {
+  const action = { rootEventId: "committed-root", cardFace: { id: "peach-1", kind: "Peach", rank: 1, suit: "♥" } };
+  assert.deepEqual(publicCardMotionForCommittedCard(action, "ROOM", new Set()), {
+    type: "single-target",
+    scopeKey: "ROOM:public-physical-card:committed-root",
+    freshEventIds: ["committed-root"],
+  });
+  assert.deepEqual(publicCardMotionForCommittedCard(action, "ROOM", new Set(["committed-root"]))?.freshEventIds, []);
+  assert.equal(publicCardMotionForCommittedCard({ rootEventId: "text-only" }, "ROOM", new Set()), null);
+  const existingMotion = { type: "duel", scopeKey: "existing", freshEventIds: [] };
+  assert.equal(publicCardMotionForCommittedCard({ ...action, motion: existingMotion }, "ROOM", new Set()), existingMotion);
+  assert.equal(publicCardMotionForCommittedCard(action, "ROOM", new Set(), true), null);
+});
+
+test("PublicCardDisplay fails closed instead of falling back to a static card", () => {
+  const publicAction = {
+    key: "text-only-action",
+    rootEventId: "text-only-event",
+    sourceId: "source",
+    targetId: null,
+    cardFace: { id: "unowned-card", kind: "Peach", rank: 1, suit: "♥" },
+    cardKind: "Peach",
+    cardLabel: "PEACH",
+    ariaLabel: "Source used Peach",
+  };
+  for (const motion of [undefined, { type: "future-unhandled" }]) {
+    const html = renderToStaticMarkup(React.createElement(PublicCardDisplay, {
+      action: { ...publicAction, ...(motion ? { motion } : {}) },
+      enabled: true,
+      sourceName: "Source",
+      targetName: null,
+      compactPlayerNamesById: {},
+      roomCode: "ROOM",
+      viewerId: "viewer",
+      viewerSeat: 1,
+    }));
+    assert.equal(html, "");
+  }
+});
 
 test("public width uses equal gutters for two seats on each side", () => {
   const table = { left: 0, right: 390, width: 390 };
@@ -624,27 +664,7 @@ test("Bumper Harvest announcement fails closed without a proven narration", () =
   assert.equal(publicCardAnnouncement({ ...firstNegation, settlement: { eventId: "settled", outcome: "ROOT_CANCELLED", exiting: false } }, "", "Test Player 4", "JD", null), "Test Player 4's Negation cancelled JD's Bumper Harvest.");
 });
 
-test("Duel and static H4 copy contains committed facts only", () => {
-  const render = (overrides = {}) => renderToStaticMarkup(React.createElement(PublicCardDisplay, {
-    action: action({
-      targetId: "target",
-      cardKind: "Duel",
-      cardLabel: "DUEL",
-      cardFace: { id: "duel-root", kind: "Duel", suit: "♠", rank: "7" },
-      ariaLabel: "King played Duel on Test Player 4.",
-      publicNotice: "King played Duel on Test Player 4.",
-      phaseNotice: "NEGATION MAY BE PLAYED",
-      ...overrides,
-    }),
-    enabled: true,
-    sourceName: "King",
-    targetName: "Test Player 4",
-    compactPlayerNamesById: { source: "King", target: "Test Player 4" },
-    roomCode: "R6TEST",
-    viewerId: "observer",
-    viewerSeat: 2,
-  }));
-
+test("Duel H4 copy contains committed facts only", () => {
   const rootFact = "King played Duel on Test Player 4.";
   assert.deepEqual(publicCardCommittedFactCopy(
     action({ phaseNotice: "NEGATION MAY BE PLAYED" }),
@@ -673,64 +693,38 @@ test("Duel and static H4 copy contains committed facts only", () => {
       compactMessage: "King: Duel on Test Player 4",
     });
     assert.deepEqual(copy, { message: headline, compactMessage: headline, accessibleLabel: headline });
-    const markup = render({
-      publicNegationNarration: narration,
-      phaseNotice: "NEGATION RESPONSE",
-    });
-    assert.match(markup.replaceAll("&#x27;", "'"), new RegExp(headline.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    assert.doesNotMatch(markup, /a Negation response is open|Negation open/);
   }
-
-  const staticMarkup = render({ motion: undefined, phaseNotice: "NEGATION RESPONSE" });
-  assert.match(staticMarkup, /King played Duel on Test Player 4\./);
-  assert.doesNotMatch(staticMarkup, /a Negation response is open|Negation open/);
 });
 
-test("Dismantle H4 shows only event-matched public discard face proof; hidden Steal Hand identity stays private", () => {
-  const render = (overrides = {}) => renderToStaticMarkup(React.createElement(PublicCardDisplay, {
-    action: action({
-      cardKind: "Dismantle",
-      cardLabel: "BURNING BRIDGE",
-      cardFace: { id: "dismantle-root", kind: "Dismantle", suit: "♠", rank: "4" },
-      ariaLabel: "Source played Burning Bridge targeting Target",
-      motion: undefined,
-      settlement: {
-        eventId: "dismantle-settlement",
-        outcome: "DISMANTLE_RESOLVED",
-        exiting: false,
-        targetCardMovement: {
-          sourceZone: "hand",
-          affectedCardOwnerId: "target",
-          destinationZone: "discard",
-          destinationOwnerId: null,
-          affectedCardFace: { id: "discarded-peach", kind: "Peach", suit: "♥", rank: "3" },
-        },
+test("Dismantle H4 uses event-matched public discard facts; hidden Steal Hand identity stays private", () => {
+  const makeAction = (overrides = {}) => action({
+    cardKind: "Dismantle",
+    cardLabel: "BURNING BRIDGE",
+    cardFace: { id: "dismantle-root", kind: "Dismantle", suit: "♠", rank: "4" },
+    ariaLabel: "Source played Burning Bridge targeting Target",
+    settlement: {
+      eventId: "dismantle-settlement",
+      outcome: "DISMANTLE_RESOLVED",
+      exiting: false,
+      targetCardMovement: {
+        sourceZone: "hand",
+        affectedCardOwnerId: "target",
+        destinationZone: "discard",
+        destinationOwnerId: null,
+        affectedCardFace: { id: "discarded-peach", kind: "Peach", suit: "♥", rank: "3" },
       },
-      publicNoticeEventId: "dismantle-settlement",
-      ...overrides,
-    }),
-    enabled: true,
-    sourceName: "Source",
-    targetName: "Target",
-    compactPlayerNamesById: { source: "Source", target: "Target" },
-    roomCode: "STDMTEST",
-    viewerId: "observer",
-    viewerSeat: 2,
-  }));
+    },
+    publicNoticeEventId: "dismantle-settlement",
+    ...overrides,
+  });
 
-  const markup = render();
-  const normalized = markup.replaceAll("&#x27;", "'");
-  assert.match(normalized, /aria-label="Source discarded Peach \(3♥\) from Target's Hand to the discard pile\."/);
-  assert.match(markup, /data-settlement-event-id="dismantle-settlement"/);
-  assert.match(markup, /data-card-id="discarded-peach"/);
-  assert.match(markup, /public-dismantle-card-suit-rank is-red">♥3/);
-  assert.match(markup, /public-dismantle-card-name">Peach/);
+  const copy = publicCardAnnouncement(makeAction(), "Source played Burning Bridge targeting Target", "Source", "Source", "Target");
+  assert.equal(copy, "Source discarded ♥3 Peach from Target (Hand).");
 
-  const mismatched = render({ publicNoticeEventId: "different-event" });
-  assert.doesNotMatch(mismatched, /public-dismantle-card-face|discarded-peach|♥3/);
-  assert.match(mismatched, /Source resolved Burning Bridge on Target\./);
+  const mismatched = publicCardAnnouncement(makeAction({ publicNoticeEventId: "different-event" }), "Source played Burning Bridge targeting Target", "Source", "Source", "Target");
+  assert.equal(mismatched, "Source resolved Burning Bridge on Target.");
 
-  const hiddenSteal = render({
+  const hiddenSteal = publicCardAnnouncement(makeAction({
     cardKind: "Steal",
     cardLabel: "STEAL",
     cardFace: { id: "steal-root", kind: "Steal", suit: "♣", rank: "7" },
@@ -747,7 +741,8 @@ test("Dismantle H4 shows only event-matched public discard face proof; hidden St
         affectedCardFace: { id: "secret-hand-card", kind: "Peach", suit: "♥", rank: "3" },
       },
     },
-  });
+  }), "Source played Steal targeting Target", "Source", "Source", "Target");
+  assert.equal(hiddenSteal, "Source resolved Steal on Target.");
   assert.doesNotMatch(hiddenSteal, /secret-hand-card|Peach|♥3/);
 });
 

@@ -13,67 +13,62 @@ export type PublicPresentationLegacyRouteId =
   | "TABLE_JUDGEMENT_ATTACHMENT"
   | "TABLE_JUDGEMENT_REVEAL"
   | "TABLE_DIRECT_DISCARD"
-  | "TABLE_PUBLIC_PLAY_HISTORY"
-  | "STATIC_ORDERED_HALBERD_ROOT"
-  | "STATIC_SELF_TARGET_PEACH_ROOT"
-  | "STATIC_BUMPER_HARVEST_SETTLEMENT";
+  | "TABLE_PUBLIC_PLAY_HISTORY";
 
 type CoverageEntry = {
   id: PublicPresentationCoverageId;
   family: string;
+  producer: string;
   currentOwner: string;
   route: "journey" | "zone-transition" | "fact-only" | "private-receipt" | "no-public-action";
+  zone: string;
   legacyRoutes: readonly PublicPresentationLegacyRouteId[];
-  nextMigration: "M2" | "M3" | "M4" | "M5" | "M6" | "none";
+  nextMigration: "M6" | "none";
 };
 
-/** Source audit inventory for the E01–E21 families. This is descriptive only. */
+/** Auditable producer → route → owner → zone inventory for E01–E21. */
 export const PUBLIC_PRESENTATION_EVENT_COVERAGE = [
-  { id: "E01", family: "committed Attack root", currentOwner: "PublicCardDisplay Attack journey", route: "journey", legacyRoutes: ["STATIC_ORDERED_HALBERD_ROOT", "TABLE_PUBLIC_PLAY_HISTORY"], nextMigration: "M5" },
-  { id: "E02", family: "committed Dodge or Attack response", currentOwner: "PublicCardDisplay response journey", route: "journey", legacyRoutes: [], nextMigration: "none" },
-  { id: "E03", family: "Duel root and committed exchanges", currentOwner: "PublicCardDisplay Duel journey", route: "journey", legacyRoutes: [], nextMigration: "none" },
-  { id: "E04", family: "Steal/Dismantle root and Negation chain", currentOwner: "PublicCardDisplay single-target journey", route: "journey", legacyRoutes: [], nextMigration: "none" },
-  { id: "E05", family: "Steal/Dismantle settlement result", currentOwner: "root journey plus fact/private receipt; no result CardFace", route: "fact-only", legacyRoutes: [], nextMigration: "none" },
-  { id: "E06", family: "Borrowed Sword root and actual B Attack", currentOwner: "PublicCardDisplay Borrowed Sword journey", route: "journey", legacyRoutes: [], nextMigration: "none" },
-  { id: "E07", family: "committed Negation/counter/final disposition", currentOwner: "PublicCardDisplay journey and proven fact", route: "journey", legacyRoutes: [], nextMigration: "none" },
-  { id: "E08", family: "Group/AOE root and proven recipient effects", currentOwner: "PublicCardDisplay group journey", route: "journey", legacyRoutes: [], nextMigration: "none" },
-  { id: "E09", family: "Bumper Harvest root/pool/current pick", currentOwner: "PublicCardDisplay Harvest journey and public pool", route: "journey", legacyRoutes: ["STATIC_BUMPER_HARVEST_SETTLEMENT"], nextMigration: "M5" },
-  { id: "E10", family: "Peach/Oath/Draw Two and other original roots", currentOwner: "specialized journey or exact named compatibility owner", route: "journey", legacyRoutes: ["STATIC_SELF_TARGET_PEACH_ROOT", "TABLE_PUBLIC_PLAY_HISTORY"], nextMigration: "M5" },
-  { id: "E11", family: "Equipment play to actual slot", currentOwner: "TableResolutionSequence physical arrival; Step B H4 is separate", route: "zone-transition", legacyRoutes: ["TABLE_EQUIPMENT_ARRIVAL"], nextMigration: "M2" },
-  { id: "E12", family: "Equipment replacement/loss and private refusal transfer", currentOwner: "TableResolutionSequence zone exit; recipient-only R7", route: "zone-transition", legacyRoutes: ["TABLE_EQUIPMENT_REPLACEMENT_LOSS"], nextMigration: "M2" },
-  { id: "E13", family: "delayed Stratagem attachment", currentOwner: "TableResolutionSequence Judgement arrival", route: "zone-transition", legacyRoutes: ["TABLE_JUDGEMENT_ATTACHMENT"], nextMigration: "M3" },
-  { id: "E14", family: "later Judgement reveal/outcome/removal", currentOwner: "TableResolutionSequence Judgement reveal", route: "zone-transition", legacyRoutes: ["TABLE_JUDGEMENT_REVEAL"], nextMigration: "M3" },
-  { id: "E15", family: "committed public card to Discard", currentOwner: "TableResolutionSequence direct Discard event", route: "zone-transition", legacyRoutes: ["TABLE_DIRECT_DISCARD"], nextMigration: "M4" },
-  { id: "E16", family: "other publicly disclosed discard/reveal", currentOwner: "PublicHandRevealTransition for exact committed HAND-to-HAND reveal; no owner without matching proof", route: "zone-transition", legacyRoutes: [], nextMigration: "none" },
-  { id: "E17", family: "public Hero-skill COST material", currentOwner: "PublicCardDisplay validated R4 frame", route: "journey", legacyRoutes: [], nextMigration: "none" },
-  { id: "E18", family: "public CONVERSION/EFFECT material", currentOwner: "PublicCardDisplay validated R4 frame", route: "journey", legacyRoutes: [], nextMigration: "none" },
-  { id: "E19", family: "public skill result without public material", currentOwner: "PublicSkillEventAnnouncementLayer fact", route: "fact-only", legacyRoutes: [], nextMigration: "none" },
-  { id: "E20", family: "private card receipt or draw", currentOwner: "recipient-only R7 PrivateCardReceipt", route: "private-receipt", legacyRoutes: [], nextMigration: "none" },
-  { id: "E21", family: "draft, pending private Negation/Pass, or legality update", currentOwner: "no public card route", route: "no-public-action", legacyRoutes: [], nextMigration: "none" },
+  { id: "E01", family: "committed Attack root", producer: "public card play or validated Attack conversion", currentOwner: "PublicCardDisplay Attack journey", route: "journey", zone: "HAND → PUBLIC_PLAY → author history", legacyRoutes: ["TABLE_PUBLIC_PLAY_HISTORY"], nextMigration: "M6" },
+  { id: "E02", family: "committed Dodge or Attack response", producer: "public response card event", currentOwner: "PublicCardDisplay response journey", route: "journey", zone: "HAND → PUBLIC_PLAY → response-author history", legacyRoutes: [], nextMigration: "none" },
+  { id: "E03", family: "Duel root and committed exchanges", producer: "public Duel root and response events", currentOwner: "PublicCardDisplay Duel journey", route: "journey", zone: "HAND → PUBLIC_PLAY → actor history", legacyRoutes: [], nextMigration: "none" },
+  { id: "E04", family: "Steal/Dismantle root and Negation chain", producer: "public root and committed response events", currentOwner: "PublicCardDisplay single-target journey", route: "journey", zone: "HAND → PUBLIC_PLAY → actor history", legacyRoutes: [], nextMigration: "none" },
+  { id: "E05", family: "Steal/Dismantle settlement result", producer: "server-proven settlement or private receipt", currentOwner: "root journey plus fact/private receipt; no result CardFace", route: "fact-only", zone: "no new public CardFace; recipient HAND remains private; true DISCARD uses E15", legacyRoutes: [], nextMigration: "none" },
+  { id: "E06", family: "Borrowed Sword root and actual B Attack", producer: "committed root and forced public Attack event", currentOwner: "PublicCardDisplay Borrowed Sword journey", route: "journey", zone: "HAND → PUBLIC_PLAY → each actual author's history", legacyRoutes: [], nextMigration: "none" },
+  { id: "E07", family: "committed Negation/counter/final disposition", producer: "committed public response-card events", currentOwner: "PublicCardDisplay journey and proven fact", route: "journey", zone: "HAND → PUBLIC_PLAY → response-author history", legacyRoutes: [], nextMigration: "none" },
+  { id: "E08", family: "Group/AOE root and proven recipient effects", producer: "public group root and committed responses", currentOwner: "PublicCardDisplay group journey", route: "journey", zone: "HAND → PUBLIC_PLAY → each response author's history", legacyRoutes: [], nextMigration: "none" },
+  { id: "E09", family: "Bumper Harvest root/pool/current pick", producer: "committed Harvest root, public pool and server-proven participant progress", currentOwner: "PublicCardDisplay Harvest journey and public pool", route: "journey", zone: "HAND → PUBLIC_PLAY; revealed pool cards are public until claimed", legacyRoutes: ["TABLE_PUBLIC_PLAY_HISTORY"], nextMigration: "M6" },
+  { id: "E10", family: "Peach/Oath/Draw Two and other original roots", producer: "committed public card-play event", currentOwner: "specialized journey or generic proof-backed physical-card journey", route: "journey", zone: "HAND → PUBLIC_PLAY → actual author history", legacyRoutes: ["TABLE_PUBLIC_PLAY_HISTORY"], nextMigration: "M6" },
+  { id: "E11", family: "Equipment play to actual slot", producer: "committed equip event plus public zone/slot proof", currentOwner: "PublicEquipmentCardTransition; Step B H4 is separate", route: "zone-transition", zone: "HAND → actual EQUIPMENT slot", legacyRoutes: ["TABLE_EQUIPMENT_ARRIVAL"], nextMigration: "M6" },
+  { id: "E12", family: "Equipment replacement/loss and private refusal transfer", producer: "committed equipment discard or recipient-only refusal receipt", currentOwner: "PublicEquipmentCardTransition; recipient-only R7", route: "zone-transition", zone: "EQUIPMENT → DISCARD; private refusal → recipient HAND", legacyRoutes: ["TABLE_EQUIPMENT_REPLACEMENT_LOSS"], nextMigration: "M6" },
+  { id: "E13", family: "delayed Stratagem attachment", producer: "committed play plus public Judgement-zone proof", currentOwner: "PublicJudgementCardTransition", route: "zone-transition", zone: "HAND → JUDGEMENT", legacyRoutes: ["TABLE_JUDGEMENT_ATTACHMENT"], nextMigration: "M6" },
+  { id: "E14", family: "later Judgement reveal/outcome/removal", producer: "later public Judgement reveal and result event", currentOwner: "PublicJudgementCardTransition", route: "zone-transition", zone: "JUDGEMENT → public reveal / DISCARD only when proven", legacyRoutes: ["TABLE_JUDGEMENT_REVEAL"], nextMigration: "M6" },
+  { id: "E15", family: "committed public card to Discard", producer: "committed discard event with exact public source and destination", currentOwner: "PublicDiscardCardTransition", route: "zone-transition", zone: "proven HAND/EQUIPMENT/JUDGEMENT → DISCARD", legacyRoutes: ["TABLE_DIRECT_DISCARD"], nextMigration: "M6" },
+  { id: "E16", family: "other publicly disclosed discard/reveal", producer: "committed public reveal event with exact source, card and recipient", currentOwner: "PublicHandRevealTransition for exact committed HAND-to-HAND reveal; no owner without matching proof", route: "zone-transition", zone: "HAND → recipient HAND; identity public only after commitment", legacyRoutes: [], nextMigration: "none" },
+  { id: "E17", family: "public Hero-skill COST material", producer: "committed public skill-effect frame and exact material proof", currentOwner: "PublicCardDisplay validated R4 frame", route: "journey", zone: "proven material-owner zone → public COST frame", legacyRoutes: [], nextMigration: "none" },
+  { id: "E18", family: "public CONVERSION/EFFECT material", producer: "committed public conversion/effect frame and exact physical-card proof", currentOwner: "PublicCardDisplay validated R4 frame", route: "journey", zone: "proven original material zone → public effect frame / actual destination", legacyRoutes: [], nextMigration: "none" },
+  { id: "E19", family: "public skill result without public material", producer: "committed public semantic fact", currentOwner: "PublicSkillEventAnnouncementLayer fact", route: "fact-only", zone: "no public physical-card zone", legacyRoutes: [], nextMigration: "none" },
+  { id: "E20", family: "private card receipt or draw", producer: "authenticated recipient-only receipt projection", currentOwner: "recipient-only R7 PrivateCardReceipt", route: "private-receipt", zone: "private receipt → recipient HAND", legacyRoutes: [], nextMigration: "none" },
+  { id: "E21", family: "draft, pending private Negation/Pass, or legality update", producer: "viewer-authorized CurrentAction only", currentOwner: "no public card route", route: "no-public-action", zone: "no committed public physical-card transition", legacyRoutes: [], nextMigration: "none" },
 ] as const satisfies readonly CoverageEntry[];
 
-type LegacyOwner = "TableResolutionSequence" | "PublicCardDisplay.static-fallback";
+type LegacyOwner = "TableResolutionSequence";
 type LegacyAllowlistEntry = {
   id: PublicPresentationLegacyRouteId;
   owner: LegacyOwner;
-  removalSlice: "M2" | "M3" | "M4" | "M5" | "M6";
+  removalSlice: "M6";
   action: PublicTimelineCardProof["action"];
   destination?: PublicTimelineCardProof["destination"];
-  requiredCardKind?: string;
   requiresPublicZoneProjection?: boolean;
 };
 
-/** Exact temporary owners only. There is deliberately no generic static-fallback entry. */
+/** Exact remaining TableResolutionSequence owners only. Static fallback has no remaining owner. */
 export const PUBLIC_PRESENTATION_LEGACY_ALLOWLIST: readonly LegacyAllowlistEntry[] = [
-  { id: "TABLE_EQUIPMENT_ARRIVAL", owner: "TableResolutionSequence", removalSlice: "M2", action: "equip", destination: "EQUIPMENT", requiresPublicZoneProjection: true },
-  { id: "TABLE_EQUIPMENT_REPLACEMENT_LOSS", owner: "TableResolutionSequence", removalSlice: "M2", action: "discard", destination: "DISCARD" },
-  { id: "TABLE_JUDGEMENT_ATTACHMENT", owner: "TableResolutionSequence", removalSlice: "M3", action: "play", destination: "JUDGEMENT", requiresPublicZoneProjection: true },
-  { id: "TABLE_JUDGEMENT_REVEAL", owner: "TableResolutionSequence", removalSlice: "M3", action: "reveal", destination: "DISCARD" },
-  { id: "TABLE_DIRECT_DISCARD", owner: "TableResolutionSequence", removalSlice: "M4", action: "discard", destination: "DISCARD" },
+  { id: "TABLE_EQUIPMENT_ARRIVAL", owner: "TableResolutionSequence", removalSlice: "M6", action: "equip", destination: "EQUIPMENT", requiresPublicZoneProjection: true },
+  { id: "TABLE_EQUIPMENT_REPLACEMENT_LOSS", owner: "TableResolutionSequence", removalSlice: "M6", action: "discard", destination: "DISCARD" },
+  { id: "TABLE_JUDGEMENT_ATTACHMENT", owner: "TableResolutionSequence", removalSlice: "M6", action: "play", destination: "JUDGEMENT", requiresPublicZoneProjection: true },
+  { id: "TABLE_JUDGEMENT_REVEAL", owner: "TableResolutionSequence", removalSlice: "M6", action: "reveal", destination: "DISCARD" },
+  { id: "TABLE_DIRECT_DISCARD", owner: "TableResolutionSequence", removalSlice: "M6", action: "discard", destination: "DISCARD" },
   { id: "TABLE_PUBLIC_PLAY_HISTORY", owner: "TableResolutionSequence", removalSlice: "M6", action: "play", destination: "AUTHOR_HISTORY" },
-  { id: "STATIC_ORDERED_HALBERD_ROOT", owner: "PublicCardDisplay.static-fallback", removalSlice: "M5", action: "play", requiredCardKind: "Attack" },
-  { id: "STATIC_SELF_TARGET_PEACH_ROOT", owner: "PublicCardDisplay.static-fallback", removalSlice: "M5", action: "play", requiredCardKind: "Peach" },
-  { id: "STATIC_BUMPER_HARVEST_SETTLEMENT", owner: "PublicCardDisplay.static-fallback", removalSlice: "M5", action: "play", requiredCardKind: "BumperHarvest" },
 ];
 
 export type PublicTimelineEventReference = {
@@ -161,7 +156,7 @@ export type PublicPresentationCandidate =
 export type PublicPresentationExistingOwner = {
   eventId: string;
   physicalCardId: string;
-  owner: "PublicCardDisplay" | "TableResolutionSequence" | "PublicCardDisplay.static-fallback";
+  owner: "PublicCardDisplay" | "TableResolutionSequence";
 };
 
 export type PublicPresentationRoute =
@@ -494,8 +489,7 @@ export function routePublicPresentation(input: PublicPresentationRouterInput): P
     if (!proof.ok) return blocked(proof.error);
     if (proof.event.action !== allowlist.action || !proof.event.physicalCardIds || proof.event.physicalCardIds.length !== candidate.physicalCardIds.length
       || candidate.physicalCardIds.some((cardId) => !proof.event.physicalCardIds?.includes(cardId))
-      || allowlist.destination && proof.event.destination !== allowlist.destination
-      || allowlist.requiredCardKind && candidate.physicalCardIds.some((cardId) => proof.event.physicalCardKinds?.[cardId] !== allowlist.requiredCardKind)) return blocked("legacy-route-proof-mismatch");
+      || allowlist.destination && proof.event.destination !== allowlist.destination) return blocked("legacy-route-proof-mismatch");
     if (allowlist.requiresPublicZoneProjection) {
       const matched = candidate.physicalCardIds.every((physicalCardId) => input.publicZones.some((zone) => zone.semantics === "PROVEN"
         && zone.visibility === "PUBLIC" && zone.eventId === candidate.eventId && zone.physicalCardId === physicalCardId

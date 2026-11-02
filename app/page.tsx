@@ -28,7 +28,7 @@ import { CardFace } from "./card-face";
 import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
-import { PublicCardDisplay, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, publicCardActionKey, publicCardJourneyOwnershipIdentity, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
+import { PublicCardDisplay, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, publicCardActionKey, publicCardJourneyOwnershipIdentity, publicCardMotionForCommittedCard, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, hasAttackDodgeUxTrace, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
@@ -8507,6 +8507,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const selectedPublicCardAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
     ?? heldAttackDodgeReadAction
     ?? livePublicCardAction;
+  const selectedCardHasDedicatedZoneOwner = Boolean(selectedPublicCardAction?.cardFace && (
+    activeEquipmentZoneTransition?.physicalCardId === selectedPublicCardAction.cardFace.id
+    || activeJudgementZoneTransition?.physicalCardId === selectedPublicCardAction.cardFace.id
+    || activePublicDiscardTransition?.transitions.some((transition) => transition.physicalCardId === selectedPublicCardAction.cardFace?.id)
+    || activePublicHandRevealTransition?.physicalCardId === selectedPublicCardAction.cardFace.id
+  ));
   const selectedActionIsNegationPresentation = Boolean(selectedPublicCardAction
     && (selectedPublicCardAction.motion?.type === "negation"
       || room.presentationSnapshot?.interaction?.stage === "NEGATION"));
@@ -8753,6 +8759,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   })() : undefined;
   const publicCardDisplayAction: PublicCardDisplayAction | null = selectedPublicCardAction ? {
     ...selectedPublicCardAction,
+    motion: publicCardMotionForCommittedCard(
+      selectedPublicCardAction,
+      room.code,
+      publicCardJourneySeenEventIds,
+      selectedCardHasDedicatedZoneOwner,
+    ) ?? undefined,
     publicAnnouncementIdentity,
     ...(interactionNarrationBelongsToAction && publicInteractionNarration ? { publicInteractionNarration, suppressAnnouncement: false }
       : publicInteractionNarration ? { suppressAnnouncement: true } : {}),
@@ -8844,7 +8856,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const retainDuelHistoryDuringInspection = Boolean(
     (publicCardDisplayAction?.motion?.type === "duel" || publicCardDisplayAction?.motion?.type === "lust-duel")
     && retainPublicCardHistoryDuringInspection);
-  const publicCardDisplayEnabled = Boolean(publicCardDisplayAction && rootActionSource?.name
+  const publicCardDisplayEnabled = Boolean(publicCardDisplayAction?.motion && rootActionSource?.name
     && (publicCardDisplayAction.targetId === null || rootActionTarget?.name)
     && !rootActionTemporarilyBlocked);
   // The initial LUST order copy names the proven first actor, so it owns the
@@ -9842,7 +9854,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       candidateRendererKind: publicCardDisplayAction?.motion?.type === "attack-dodge" ? "attack-dodge-journey"
         : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation" || publicCardDisplayAction?.motion?.type === "group-root" || publicCardDisplayAction?.motion?.type === "lust-cost" ? "single-target-journey"
           : publicCardDisplayAction?.motion?.type === "duel" || publicCardDisplayAction?.motion?.type === "lust-duel" ? "duel-journey"
-            : "static-fallback",
+            : "no-public-card-renderer",
       candidateMotionType: publicCardDisplayAction?.motion?.type ?? null,
       revealDurationMs: publicCardDisplayAction?.motion ? 4_000 : null,
       moveDurationMs: publicCardDisplayAction?.motion ? 380 : null,

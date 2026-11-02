@@ -1948,13 +1948,9 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
 
       // The current real root must remain singular and attributable when the actor confirms promptly.
       const rootRenderer = await pages[0].locator('[data-public-card-display="true"]').getAttribute("data-public-card-renderer-kind");
-      if (rootRenderer === "single-target-journey") {
-        const rootPhase = await pages[0].locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`).getAttribute("data-public-card-journey-phase");
-        expect(["reveal", "move", "parked"]).toContain(rootPhase);
-      } else {
-        expect(rootRenderer).toBe("static-fallback");
-        await expect(pages[0].locator(`[data-public-card-static-event-id="${rootEvent.id}"][data-public-card-static-card-id="${rootCard.id}"]`)).toHaveCount(1);
-      }
+      expect(rootRenderer).toBe("single-target-journey");
+      const rootPhase = await pages[0].locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`).getAttribute("data-public-card-journey-phase");
+      expect(["reveal", "move", "parked"]).toContain(rootPhase);
       await tapMobile(pages[0], choice);
       await expect(choice).toHaveAttribute("aria-pressed", "true");
       const use = dialog.getByRole("button", { name: `Use ${modalTitle}`, exact: true });
