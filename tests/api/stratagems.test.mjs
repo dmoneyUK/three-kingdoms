@@ -1684,6 +1684,11 @@ test("Lightning is placed on self, transfers after a miss, and deals 3 thunder d
   const placed = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "lightning-placed" });
   assert.equal(placed.status, 200); assert.equal(placed.data.room.phase, "play");
   assert.equal(placed.data.room.players.find((player) => player.id === hostPlayer.id).judgementCards[0].id, "lightning-placed");
+  const lightningPlays = placed.data.room.timeline.filter((event) => event.type === "card" && event.action === "play" && event.card?.id === "lightning-placed");
+  assert.equal(lightningPlays.length, 1, "the one physical Lightning play has one public source event");
+  const lightningArrival = placed.data.room.timeline.find((event) => event.publicZoneTransition?.physicalCardId === "lightning-placed"
+    && event.publicZoneTransition?.to?.zone === "JUDGEMENT");
+  assert.equal(lightningArrival?.publicZoneTransition?.sourceEventId, lightningPlays[0].id, "the real Judgement arrival retains the committed play identity");
   setHand(hostPlayer.id, [card("Lightning", "duplicate")], 5, 5); setTurn(game.code, hostPlayer.seat, "play");
   assert.equal((await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "lightning-duplicate" })).status, 409);
 

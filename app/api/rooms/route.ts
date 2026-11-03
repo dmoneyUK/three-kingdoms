@@ -4705,7 +4705,11 @@ async function resumeNormalStratagemUse(room: RoomRow, source: PlayerRow, player
   }
   if (effect.kind === "lightning") {
     const judgement = [...parse<Card[]>(source.judgement_json, []), card];
-    const presentation = addCardEventWithId(log, source.name, card, source.name, "play");
+    // The actual play was already committed before this direct continuation.
+    // Reuse its physical event instead of emitting a second play of the card.
+    const existingSourceEventId = latestPublicCardSourceEventId(log, card.id);
+    const presentation = existingSourceEventId ? { log, eventId: existingSourceEventId }
+      : addCardEventWithId(log, source.name, card, source.name, "play");
     const judgementRoot = createdEnvelope
       ? { envelope: createdEnvelope, context: contextFor(createdEnvelope) }
       : createCausalRoot({ stage: "JUDGEMENT", origin: { originSourceId: source.id, originEffect: "delayed_stratagem", originalTargetIds: [source.id] }, current: { currentSourceId: source.id, currentEffect: "delayed_stratagem", currentTargetIds: [source.id], resolvingPlayerId: source.id } });

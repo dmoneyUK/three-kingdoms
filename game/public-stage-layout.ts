@@ -164,11 +164,13 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     }
     const centerX = (safeBounds.left + safeBounds.right) / 2;
     const centerY = (safeBounds.top + safeBounds.bottom) / 2;
-    const activityObstacles = [...input.obstacles, { id: "primary-card", rect: phaseRects.card }];
+    // The parked miniature is a soft layer: the centred public status may
+    // cover it, while actual Seats, controls and timers remain protected.
+    const activityObstacles = input.obstacles;
     const activityFits = (rect: PublicStageRect) => rect.left >= safeBounds.left && rect.right <= safeBounds.right
       && rect.top >= safeBounds.top && rect.bottom <= safeBounds.bottom
       && !activityObstacles.some((obstacle) => overlaps(rect, obstacle.rect));
-    let activityRect = phaseRects.activity;
+    let activityRect = makeRect(centerX, phaseRects.activity.top, activity);
     if (!activityFits(activityRect)) {
       // A newly mounted PAC can have a measurable but unpositioned (0, 0)
       // rectangle. Never publish that rectangle as a safe parked layout.
@@ -179,17 +181,13 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
         return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
       }
       const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-      const centers = new Set([clamp(centerX, minCenter, maxCenter)]);
       const tops = new Set([maxTop]);
       for (const { rect } of activityObstacles) {
-        centers.add(clamp(rect.left - 2 - activity.width / 2, minCenter, maxCenter));
-        centers.add(clamp(rect.right + 2 + activity.width / 2, minCenter, maxCenter));
         tops.add(clamp(rect.top - 2 - activity.height, safeBounds.top, maxTop));
         tops.add(clamp(rect.bottom + 2, safeBounds.top, maxTop));
       }
-      const candidates = [...tops].flatMap((top) => [...centers].map((candidateCenter) => ({ top, center: candidateCenter })))
-        .sort((left, right) => right.top - left.top || Math.abs(left.center - centerX) - Math.abs(right.center - centerX));
-      const safeActivity = candidates.map(({ center, top }) => makeRect(center, top, activity)).find(activityFits);
+      const safeActivity = [...tops].sort((left, right) => right - left)
+        .map((top) => makeRect(centerX, top, activity)).find(activityFits);
       if (!safeActivity) return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
       activityRect = safeActivity;
     }

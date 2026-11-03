@@ -155,3 +155,22 @@ test("PARKED repositions an unplaced PAC away from Seats into the lower battlefi
   assert.ok(result.layout.activity.bottom <= result.layout.safeBounds.bottom);
   assert.ok(result.layout.activity.top > result.layout.announcement.bottom);
 });
+
+test("PARKED centres PAC even when it covers the real parked miniature", () => {
+  const card = { left: 32, top: 384, right: 80, bottom: 456 };
+  const result = calculatePublicStageLayout(input({
+    scene: { ...scene, phase: "PARKED", generation: 4 },
+    viewport: { left: 0, top: 0, right: 390, bottom: 700 },
+    table: { left: 0, top: 0, right: 390, bottom: 460 },
+    card: { width: 48, height: 72 },
+    activity: { width: 340, height: 44 },
+    phaseRects: { card, activity: { left: 0, top: 0, right: 340, bottom: 44 } },
+    obstacles: [{ id: "seats", rect: { left: 8, top: 0, right: 382, bottom: 94 } }],
+  }));
+  assert.equal(result.status, "placed");
+  if (result.status !== "placed") return;
+  assert.equal((result.layout.activity.left + result.layout.activity.right) / 2, 195);
+  assert.ok(result.layout.activity.left < card.right && result.layout.activity.right > card.left);
+  assert.ok(result.layout.activity.top < card.bottom && result.layout.activity.bottom > card.top);
+  assert.deepEqual(result.layout.card, card);
+});

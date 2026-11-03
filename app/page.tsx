@@ -5423,6 +5423,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       if (event.presentation === false) return false;
       // Informational text is not a blocking visual presentation.
       if (event.type === "message") return isM3JudgementTransitionEvent(event);
+      if (event.type === "card" && settlesInJudgement(event)
+        && validatedJudgementTransitionSourceEventIds.has(event.id)) {
+        // Its proven zone-transition owner presents the same physical card;
+        // the source event must not consume a separate invisible timer first.
+        immediatelyPresented.add(event.id);
+        optimisticallyPresentedCards.current.delete(event.card.id);
+        if (optimisticPlay?.type === "card" && optimisticPlay.card.id === event.card.id) setOptimisticPlay(null);
+        return false;
+      }
       if (event.type === "card" && optimisticallyPresentedCards.current.delete(event.card.id)) { immediatelyPresented.add(event.id); return false; }
       if (event.type === "cards" && event.action === "play") {
         const matched = event.cards.map((card) => optimisticallyPresentedCards.current.delete(card.id));
@@ -5447,7 +5456,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, lustFramePresentationBlocked, optimisticPlay, activeEvent, activeGroupSettlement?.eventId, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements]);
+  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, lustFramePresentationBlocked, optimisticPlay, activeEvent, activeGroupSettlement?.eventId, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements, validatedJudgementTransitionSourceEventIds]);
   const effectNoticeEventId = effectNotice?.eventId ?? "";
   const effectNoticeProofEventId = effectNotice?.beautyProofEventId ?? effectNoticeEventId;
   const effectNoticeRoomCode = effectNotice?.roomCode ?? "";

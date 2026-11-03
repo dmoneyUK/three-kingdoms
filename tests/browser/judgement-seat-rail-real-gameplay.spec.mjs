@@ -160,3 +160,30 @@ test("T1: narrow six-player Seat retains HP, equipment and Judgement summary", a
   expect(rects.summary.top).toBeGreaterThanOrEqual(rects.strip.top);
   expect(rects.summary.bottom).toBeLessThanOrEqual(rects.strip.bottom);
 });
+
+test("T6: a committed Lightning play promptly displays its real card", async ({ page, request }) => {
+  const lightning = card("Lightning", "t6-played-lightning", "♥");
+  const response = await request.post(`${API}/__test/seed-playing-game`, {
+    data: { phase: "play", turnSeat: 0, players: [
+      { name: "SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [lightning] },
+      { name: "P2", role: "Loyalist", hero: "simayi", hp: 3, maxHp: 3, hand: [] },
+      { name: "P3", role: "Rebel", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [] },
+      { name: "P4", role: "Renegade", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+    ] },
+  });
+  expect(response.ok()).toBeTruthy();
+  const room = await response.json();
+  await openPlayer(page, room, room.players[0], { width: 390, height: 700 });
+  await page.locator(`[data-hand-card-id="${lightning.id}"] .game-card`).click();
+  const submitted = page.waitForResponse((result) => result.url() === `${API}/api/rooms`
+    && result.request().method() === "POST" && result.request().postDataJSON()?.action === "play_card");
+  const start = Date.now();
+  await page.locator('.local-player-dock [data-action-slot="primary"] button').click();
+  const played = await submitted;
+  expect(played.ok(), await played.text()).toBeTruthy();
+  const realCard = page.locator(`.play-table [data-public-card-journey-card-id="${lightning.id}"], .play-table [data-public-zone-transition-card-id="${lightning.id}"]`).first();
+  await expect(realCard).toBeVisible({ timeout: 8_000 });
+  const elapsed = Date.now() - start;
+  console.log(`T6 committed Lightning to visible real card: ${elapsed}ms`);
+  expect(elapsed).toBeLessThan(2_000);
+});

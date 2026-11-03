@@ -1243,6 +1243,8 @@ test("T3: Ambushment hand discard keeps the turn status clear of Seats", async (
     for (const trace of traces) {
       const firstOverlap = trace.find((sample) => sample.overlap);
       expect(firstOverlap, JSON.stringify(firstOverlap)).toBeUndefined();
+      const offCenter = trace.find((sample) => Math.abs((sample.left + sample.right) / 2 - 195) > 1);
+      expect(offCenter, JSON.stringify(offCenter)).toBeUndefined();
     }
   } finally {
     for (const viewerPage of [page, ...observerContext.pages()]) {
