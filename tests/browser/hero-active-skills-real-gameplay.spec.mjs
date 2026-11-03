@@ -914,33 +914,54 @@ test("W4: converted public Judgement discard settles with one shared H4", async 
       const evidence = window.__w4DismantleSettlementEvidence ?? [];
       const capture = () => {
         const displays = [...document.querySelectorAll(".public-card-display[data-public-card-settlement-event-id]")];
+        if (!displays.length && evidence.length) evidence.push({ at: performance.now(), visible: false, eventId: null });
         for (const display of displays) {
           const announcement = display.querySelector('[data-public-card-announcement="true"]');
-          if (!announcement) continue;
+          if (!announcement) {
+            evidence.push({ at: performance.now(), visible: false, eventId: display.dataset.publicCardSettlementEventId ?? null });
+            continue;
+          }
           const rect = announcement.getBoundingClientRect();
           const style = getComputedStyle(announcement);
+          const pac = document.querySelector(".public-activity-chip");
+          const overlaps = (selector) => [...document.querySelectorAll(selector)].some((element) => {
+            const bounds = element.getBoundingClientRect();
+            const elementStyle = getComputedStyle(element);
+            return bounds.width > 0 && bounds.height > 0 && elementStyle.display !== "none"
+              && elementStyle.visibility !== "hidden" && Number(elementStyle.opacity) > 0
+              && rect.left < bounds.right && rect.right > bounds.left && rect.top < bounds.bottom && rect.bottom > bounds.top;
+          });
           const record = {
+            at: performance.now(),
+            viewerId: display.dataset.publicCardViewerId ?? null,
             eventId: display.dataset.publicCardSettlementEventId ?? null,
             rootEventId: display.dataset.publicCardRootEventId ?? null,
             announcementEventId: announcement.dataset.publicCardAnnouncementEventId ?? null,
             message: announcement.innerText?.replace(/\s+/g, " ").trim() ?? "",
             placement: announcement.dataset.publicCardAnnouncementPlacement ?? null,
             layoutIdentity: announcement.dataset.publicStageLayoutIdentity ?? null,
+            delivery: announcement.dataset.publicCardAnnouncementDelivery ?? null,
+            result: announcement.dataset.publicCardResult ?? null,
+            resultCardCount: display.querySelectorAll('.public-dismantle-card-face[data-card-id="w4-ambushment-public-lightning"]').length,
+            duplicateJourneyCount: document.querySelectorAll('.public-card-journey-card[data-public-card-journey-card-id="w4-ambushment-public-lightning"]').length,
+            documentVisible: document.visibilityState === "visible",
+            pacKind: pac?.dataset.publicActivityKind ?? null,
+            pacRect: pac ? (() => {
+              const bounds = pac.getBoundingClientRect();
+              return { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom };
+            })() : null,
+            overlap: overlaps(".public-activity-chip, .visible-countdown, .public-card-effect-frame, .public-card-journey-card"),
             visible: style.display !== "none" && style.visibility === "visible" && Number(style.opacity) > 0
-              && rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.left < innerWidth
-              && rect.bottom > 0 && rect.top < innerHeight,
+              && rect.width > 0 && rect.height > 0 && rect.left >= 0 && rect.right <= innerWidth
+              && rect.top >= 0 && rect.bottom <= innerHeight,
             pac: document.querySelector(".public-activity-chip")?.innerText?.replace(/\s+/g, " ").trim() ?? null,
             rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
           };
-          const signature = JSON.stringify(record);
-          if (!evidence.some((entry) => entry.signature === signature)) evidence.push({ ...record, signature });
+          evidence.push(record);
         }
         window.__w4DismantleSettlementEvidence = evidence;
       };
-      const observer = new MutationObserver(capture);
-      observer.observe(document.documentElement, { attributes: true, childList: true, subtree: true });
-      window.__w4DismantleSettlementObserver = observer;
-      window.__w4DismantleSettlementInterval = setInterval(capture, 50);
+      window.__w4DismantleSettlementInterval = setInterval(capture, 20);
       window.__w4DismantleSettlementEvidence = evidence;
       capture();
     });
@@ -1102,9 +1123,25 @@ test("W4: converted public Judgement discard settles with one shared H4", async 
     }
     expect(settled.players.find((player) => player.id === seed.players[1].id).judgementCards).toEqual([]);
     const settlementEvidence = await Promise.all([page, observerPage].map(async (viewerPage) => {
-      await expect.poll(async () => viewerPage.evaluate((eventId) => window.__w4DismantleSettlementEvidence
-        ?.some((entry) => entry.eventId === eventId && entry.announcementEventId === eventId && entry.visible), settlementEvent.id))
-        .toBe(true);
+      const continuousRead = (entries, eventId) => {
+        let start = null;
+        let last = null;
+        for (const entry of entries) {
+          const valid = entry.eventId === eventId && entry.announcementEventId === eventId
+            && entry.result === "DISMANTLE_RESOLVED" && entry.delivery === "VISIBLE"
+            && entry.visible && entry.documentVisible && entry.pacKind === "turn" && !entry.overlap
+            && entry.resultCardCount === 1 && entry.duplicateJourneyCount === 0
+            && /SKILL USER discarded\s*♥Q\s*Lightning from TARGET \(Judgement\)\./.test(entry.message);
+          if (start !== null && (!valid || entry.at - last > 150)) return last - start;
+          if (!valid) continue;
+          start ??= entry.at;
+          last = entry.at;
+        }
+        return start === null ? 0 : last - start;
+      };
+      await expect.poll(async () => continuousRead(
+        await viewerPage.evaluate(() => window.__w4DismantleSettlementEvidence ?? []), settlementEvent.id,
+      ), { timeout: 12_000, message: "The matching settlement H4 must remain unobscured for two seconds while PAC is on TURN" }).toBeGreaterThanOrEqual(2_000);
       const entries = await viewerPage.evaluate(() => window.__w4DismantleSettlementEvidence ?? []);
       const evidence = entries.find((entry) => entry.eventId === settlementEvent.id
         && entry.announcementEventId === settlementEvent.id && entry.visible);
@@ -1113,11 +1150,14 @@ test("W4: converted public Judgement discard settles with one shared H4", async 
       expect(evidence.message).toMatch(/SKILL USER discarded\s*♥Q\s*Lightning from TARGET \(Judgement\)\./);
       expect(evidence.placement).toBe("shared-parked");
       expect(evidence.layoutIdentity).toBeTruthy();
-      return evidence;
+      return { ...evidence, continuousVisibleMs: continuousRead(entries, settlementEvent.id) };
     }));
     expect(settlementEvidence[0].message).toBe(settlementEvidence[1].message);
-    expect(await page.locator(`.public-card-display[data-public-card-settlement-event-id="${settlementEvent.id}"] .public-dismantle-card-face[data-card-id="${lightning.id}"]`).count()).toBe(1);
-    await expect(page.locator(`.public-card-journey-card[data-public-card-journey-card-id="${lightning.id}"]`)).toHaveCount(0);
+    for (const evidence of settlementEvidence) {
+      expect(evidence.resultCardCount).toBe(1);
+      expect(evidence.duplicateJourneyCount).toBe(0);
+    }
+    console.log("T3 settlement readable durations (ms):", settlementEvidence.map(({ viewerId, continuousVisibleMs }) => ({ viewerId, continuousVisibleMs })));
     await testInfo.attach("gan-ning-dismantle-lightning-settlement.json", {
       body: Buffer.from(JSON.stringify({ rootEvent, settlementEvent, settlementProjection, viewers: settlementEvidence }, null, 2)),
       contentType: "application/json",
