@@ -610,7 +610,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /class="opponent-status-equipment-strip"[\s\S]*class="opponent-hp-chip" aria-label="HP 3 of 4">HP 3\/4<\/span>[\s\S]*class="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count="1"[\s\S]*data-slot="weapon"[^>]*>/, "authoritative HP precedes real public Equipment in one lower band");
   assert.doesNotMatch(html, /class="opponent-hand-footer"|class="player-hand-count"/);
   assert.match(html, /class="opponent-equipment-indicator"[^>]*title="Weapon: Blue Steel Sword"/);
-  assert.match(html, /class="mini-zone-card judgement-mini"[^>]*data-judgement-id="opponent-judgement"/);
+  assert.match(html, /class="opponent-judgement-indicator" data-judgement-id="opponent-judgement" data-card-kind="Lightning"[^>]*role="img"/, "the public Judgement indicator preserves the true card identity");
   assert.match(html, /class="local-hand"[^>]*data-card-origin-anchor="p1"/);
   assert.match(html, /class="play-center" aria-hidden="true"><div class="draw-stack" data-draw-anchor="true"><\/div><div class="discard-stack" data-discard-anchor="true"><\/div><\/div>/, "card-flight anchors contain no visible pile content");
   assert.doesNotMatch(html, /class="player-square player-square-0/);
@@ -681,7 +681,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.equal((html.match(/class="opponent-equipment-slot is-empty"/g) ?? []).length, 11, "all remaining public Equipment positions stay reserved as neutral empty slots");
   assert.equal((html.match(/class="opponent-equipment-summary"/g) ?? []).length, 3, "each opponent reserves the same row height even when no public slot is occupied");
   assert.equal((html.match(/data-slot-count="0"/g) ?? []).length, 2, "empty rows expose no fake equipment glyphs");
-  assert.match(html, /class="opponent-judgement-zone"[\s\S]*data-judgement-id="opponent-judgement"/, "Judgement is a separate side zone with its card anchor");
+  assert.match(html, /class="opponent-judgement-status" data-judgement-owner-id="p3"[\s\S]*data-judgement-id="opponent-judgement"/, "the real owner carries the Judgement marker inside the status bar");
+  assert.doesNotMatch(html, /class="opponent-judgement-zone"|class="mini-zone-card judgement-mini"/, "no detached full-card Judgement rail remains on opponent Seats");
   assert.doesNotMatch(html, /class="opponent-card-zones"/, "the old portrait-overlay zone wrapper is removed");
   assert.match(gameRoomSource, /const renderZoneCard[\s\S]*<CardFace card=\{card\}/, "local zones reuse the shared card artwork renderer");
   assert.match(html, /class="local-hand"/); assert.match(html, /class="local-hand-rail"/);
@@ -814,8 +815,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /\.opponent-seat-inspect-button\s*\{[\s\S]*?height: 44px[\s\S]*?background: transparent[\s\S]*?pointer-events: auto/, "target selection keeps a transparent 44px name-band Inspector hit target without a painted icon");
   assert.match(sequenceStyleSource, /\.opponent-hero-card\.is-targeting-with-seat-inspector \.opponent-hero-target\s*\{[\s\S]*?inset: 0 0 var\(--opponent-seat-inspect-portrait-reserve, 24px\)/, "legal portrait target ends before the independent Inspector hit region");
   assert.match(sequenceStyleSource, /\.opponent-player-card\s*\{\s*--opponent-seat-inspect-portrait-reserve: 26px/, "side-column Inspect geometry accounts for its measured 18px status band");
-  assert.match(sequenceStyleSource, /\.opponent-judgement-zone \{[\s\S]*left: calc\(100% \+ 4px\)/, "Judgement is visually distinct and offset to the side");
-  assert.match(sequenceStyleSource, /\.opponent-judgement-cards \.mini-zone-card \+ \.mini-zone-card \{[\s\S]*margin-left: -45%/i, "multiple Judgement cards use controlled overlap");
+  assert.match(sequenceStyleSource, /\.opponent-judgement-status[\s\S]*\.opponent-judgement-indicators[\s\S]*display: flex/, "Judgement markers use the shared status band");
+  assert.match(sequenceStyleSource, /@container opponent-status \(max-width: 82px\)[\s\S]*\.opponent-judgement-overflow \{ display: grid; \}/, "narrow Seats retain a bounded count summary");
   assert.match(gameRoomSource, /const \[expandedOpponentId, setExpandedOpponentId\] = useState<string \| null>\(null\)/, "inspection is presentation-local state");
   assert.match(gameRoomSource, /targetSelectionActive \? onTarget\(trigger\) : onInspect\(trigger\)/, "target selection takes priority over inspection while inspection retains its opener for focus return");
   // Inspect placement, projected public details, and concealed-hand redaction are behavior-tested in tests/browser/opponent-inspect-hero-focus.spec.mjs.
