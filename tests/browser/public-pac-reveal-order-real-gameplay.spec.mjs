@@ -115,7 +115,7 @@ async function sampleReveal(page, event) {
       const display = card.closest(".public-card-display");
       const chip = document.querySelector("[data-public-activity-chip='true']");
       const announcement = display?.querySelector("[data-public-card-announcement='true']");
-      const table = document.querySelector(".play-table");
+      const table = card.closest(".play-table");
       const countdown = document.querySelector(".stage-system-cluster .visible-countdown-event, .visible-countdown");
       const dock = document.querySelector(".local-player-dock");
       return {
@@ -127,14 +127,27 @@ async function sampleReveal(page, event) {
         activeSamePhysicalCardFaces: [...document.querySelectorAll('[data-public-card-journey-phase="reveal"][data-public-card-journey-card-id]')]
           .filter((face) => face.dataset.publicCardJourneyCardId === card.dataset.publicCardJourneyCardId).length,
         motion: display?.dataset.publicCardMotion ?? display?.dataset.publicCardRendererKind ?? null,
+        displayInteractionId: display?.dataset.publicCardInteractionId ?? null,
+        displayViewerId: display?.dataset.publicCardViewerId ?? null,
+        displayLayoutViewerId: display?.dataset.publicCardLayoutViewerId ?? null,
+        displayLayoutPending: display?.dataset.publicCardLayoutPending ?? null,
+        matchingPrimaryCount: display?.querySelectorAll('[data-public-card-primary-card="true"][data-public-card-journey-phase="reveal"]').length ?? 0,
+        announcementAnchorEventId: announcement?.dataset.publicCardAnnouncementAnchorEventId ?? null,
+        sharedLayoutFailure: table?.dataset.publicStageLayoutFailure ?? null,
         rootEventId: display?.dataset.publicCardRootEventId ?? null,
         face: rect(card),
         pac: { ...rect(chip), layout: chip?.dataset.publicActivityLayout ?? null, compact: chip?.dataset.publicActivityCompact === "true", label: chip?.getAttribute("aria-label") ?? null },
+        pacLayoutIdentity: chip?.dataset.publicStageLayoutIdentity ?? null,
         h4: { ...rect(announcement), eventId: announcement?.dataset.publicCardAnnouncementEventId ?? null, text: announcement?.textContent?.trim() ?? null },
+        h4LayoutIdentity: announcement?.dataset.publicStageLayoutIdentity ?? null,
+        cardLayoutIdentity: card.dataset.publicStageLayoutIdentity ?? null,
         countdown: rect(countdown),
         dock: rect(dock),
         seats: [...document.querySelectorAll(".opponent-player-card[data-player-anchor]")].map((seat) => ({ id: seat.dataset.playerAnchor, ...rect(seat) })),
         table: rect(table),
+        sharedLayoutStatus: table?.dataset.publicStageLayoutStatus ?? null,
+        sharedLayoutIdentity: table?.dataset.publicStageLayoutIdentity ?? null,
+        sharedLayoutScope: table?.dataset.publicStageLayoutScope ?? null,
       };
     }, event.id);
     return latest?.phase === "reveal" && latest.face?.visible && latest.pac?.visible && latest.h4?.visible && latest.countdown?.visible;
@@ -171,13 +184,17 @@ test("PUBLIC-PAC keeps genuine Something Out of Nothing and Barbarian Invasion r
       { eventId: groupRoot.root.id, cardId: room.ids.groupRoot, phase: "reveal" },
     ]);
     for (const geometry of observations) {
+      expect(geometry.sharedLayoutStatus).toBe("shared-reveal");
+      expect(geometry.sharedLayoutIdentity).toBeTruthy();
+      expect(geometry.cardLayoutIdentity).toBe(geometry.sharedLayoutIdentity);
+      expect(geometry.h4LayoutIdentity).toBe(geometry.sharedLayoutIdentity);
+      expect(geometry.pacLayoutIdentity).toBe(geometry.sharedLayoutIdentity);
       expect(geometry.motion).toBeTruthy();
       expect(geometry.rootEventId).toBe(geometry.eventId);
       expect(geometry.actorId).toBe(room.players[0].id);
       expect(geometry.size).toBe("reveal");
       expect(geometry.activeSamePhysicalCardFaces).toBe(1);
       expect(geometry.face.bottom + 7.5).toBeLessThanOrEqual(geometry.pac.top);
-      expect(geometry.pac.compact).toBe(true);
       expect(geometry.pac.layout).not.toContain("upper-band");
       expect(geometry.pac.top).toBeGreaterThanOrEqual(geometry.table.top + geometry.table.height * 0.58);
       expect(geometry.pac.bottom).toBeLessThanOrEqual(geometry.dock.top);

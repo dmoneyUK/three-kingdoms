@@ -6,7 +6,8 @@ export type PublicStagePhase = "REVEAL" | "MOVE" | "PARKED";
 export type PublicStageScene = {
   semantics: "PROVEN";
   roomId: string;
-  interactionId: string;
+  scopeId: string;
+  interactionId?: string | null;
   eventId: string;
   cardId: string;
   viewerId: string;
@@ -70,13 +71,16 @@ function overlaps(left: PublicStageRect, right: PublicStageRect): boolean {
  */
 export function publicStageSceneIdentity(scene: PublicStageScene | null | undefined): string | null {
   if (!scene || scene.semantics !== "PROVEN"
-    || [scene.roomId, scene.interactionId, scene.eventId, scene.cardId, scene.viewerId]
+    || [scene.roomId, scene.scopeId, scene.eventId, scene.cardId, scene.viewerId]
       .some((value) => typeof value !== "string" || !value.trim())
+    || scene.interactionId !== undefined && scene.interactionId !== null
+      && (typeof scene.interactionId !== "string" || !scene.interactionId.trim())
     || !["REVEAL", "MOVE", "PARKED"].includes(scene.phase)
     || !Number.isInteger(scene.generation) || scene.generation < 0) return null;
   return JSON.stringify([
     scene.roomId,
-    scene.interactionId,
+    scene.scopeId,
+    scene.interactionId ?? null,
     scene.eventId,
     scene.cardId,
     scene.viewerId,

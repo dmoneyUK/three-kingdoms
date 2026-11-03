@@ -5,7 +5,8 @@ import { calculatePublicStageLayout, publicStageSceneIdentity } from "../game/pu
 const scene = {
   semantics: "PROVEN",
   roomId: "room-1",
-  interactionId: "interaction-1",
+  scopeId: "root-event-1",
+  interactionId: null,
   eventId: "event-1",
   cardId: "card-1",
   viewerId: "viewer-1",
@@ -39,6 +40,7 @@ test("public stage identity is scoped to proven event, physical card, viewer, ph
   ]) assert.notEqual(publicStageSceneIdentity({ ...scene, ...change }), identity);
   assert.equal(publicStageSceneIdentity({ ...scene, semantics: "INFERRED" }), null);
   assert.equal(publicStageSceneIdentity({ ...scene, cardId: "" }), null);
+  assert.notEqual(publicStageSceneIdentity({ ...scene, scopeId: "root-event-2" }), identity);
 });
 
 test("reveal layout keeps H4, full-size card and PAC in order with the measured minimum gap", () => {
@@ -78,7 +80,7 @@ test("impossible measured geometry and non-reveal phases fail closed", () => {
   }));
   assert.deepEqual(impossible, {
     status: "unavailable",
-    identity: JSON.stringify(["room-1", "interaction-1", "event-1", "card-1", "viewer-1", "REVEAL", 1]),
+    identity: JSON.stringify(["room-1", "root-event-1", null, "event-1", "card-1", "viewer-1", "REVEAL", 1]),
     reason: "NO_SAFE_STACK",
   });
   const parked = calculatePublicStageLayout(input({ scene: { ...scene, phase: "PARKED" } }));

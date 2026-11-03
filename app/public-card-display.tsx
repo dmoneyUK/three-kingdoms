@@ -13,6 +13,7 @@ import { publicAnnouncementEventCopyKey as buildPublicAnnouncementEventCopyKey, 
 import { compactLustDuelAttackMessage } from "./lust-public-copy";
 import { CardFace } from "./card-face";
 import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
+import { sharedPublicStageMatchesElement, usePublicStageLayout } from "./public-stage-layout-context";
 
 type PublicCardDisplayResponseNode = {
   eventId: string;
@@ -392,6 +393,16 @@ function PublicJourneyCard({
   publicCardEffectFrame?: PublicCardEffectFrameView;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
+  const sharedPublicStage = usePublicStageLayout();
+  const usesSharedRevealLayout = Boolean(sharedPublicStage && primary && card.phase === "reveal"
+    && card.eventId === sharedPublicStage.primaryEventId
+    && card.cardFace.id === sharedPublicStage.primaryCardId);
+  const journeyLeft = usesSharedRevealLayout && sharedPublicStage
+    ? sharedPublicStage.layout.card.left - sharedPublicStage.primaryOffset.left
+    : card.rect.left;
+  const journeyTop = usesSharedRevealLayout && sharedPublicStage
+    ? sharedPublicStage.layout.card.top - sharedPublicStage.primaryOffset.top
+    : card.rect.top;
   const placementUnavailable = !parkingTargetKnown && card.phase === "parked" && !preservePendingParking;
   const inspectable = !placementUnavailable && !passive && card.phase === "parked" && Boolean(onInspectCard);
   const publicFrameAccessible = !placementUnavailable && Boolean(publicCardEffectFrame && card.phase !== "move");
@@ -451,13 +462,14 @@ function PublicJourneyCard({
     data-public-card-journey-target-width={parkingTargetKnown ? card.target.width : undefined}
     data-public-card-journey-target-height={parkingTargetKnown ? card.target.height : undefined}
     data-public-card-primary-card={primary ? "true" : undefined}
+    data-public-stage-layout-identity={usesSharedRevealLayout ? sharedPublicStage?.layout.identity : undefined}
     data-public-card-journey-parking-side={parkingSide}
     data-public-card-journey-ordinal={card.globalOrdinal}
     data-public-card-inspectable={inspectable ? "true" : "false"}
     data-public-card-copy-anchor-event-id={card.eventId}
     style={{
-      left: card.rect.left,
-      top: card.rect.top,
+      left: journeyLeft,
+      top: journeyTop,
       width: card.rect.width,
       height: card.rect.height,
       ["--public-card-journey-move-duration"]: `${Math.max(0, Math.round(card.moveRemainingMs ?? MOVE_DURATION_MS))}ms`,
@@ -2208,6 +2220,7 @@ function PublicCardAnnouncement({
   preferredVerticalMode?: "above" | "below";
   privateDrawAware?: boolean;
 }) {
+  const sharedPublicStage = usePublicStageLayout();
   const copyRef = useRef<HTMLDivElement>(null);
   const lastH4TraceSignatureRef = useRef("");
   const h4TraceCountRef = useRef(0);
@@ -2450,6 +2463,39 @@ function PublicCardAnnouncement({
         dismantleCardFace,
       };
       commitDisplayedCopy(incomingDisplayedCopy);
+      const sharedTable = display.closest<HTMLElement>(".play-table");
+      const sharedPlacementIsCurrent = Boolean(sharedPublicStage
+        && sharedTable
+        && sharedPublicStageMatchesElement(sharedTable, sharedPublicStage)
+        && sharedPublicStage.announcementEventId === copy.dataset.publicCardAnnouncementEventId
+        && sharedPublicStage.layout.scene.scopeId === display.dataset.publicCardRootEventId
+        && sharedPublicStage.layout.scene.viewerId === display.dataset.publicCardViewerId
+        && display.dataset.publicCardLayoutViewerId === display.dataset.publicCardViewerId
+        && display.dataset.publicCardLayoutPending !== "true");
+      if (sharedPlacementIsCurrent && sharedPublicStage) {
+        const rect = sharedPublicStage.layout.announcement;
+        setPx("left", rect.left);
+        setPx("top", rect.top);
+        setPx("width", rect.right - rect.left);
+        setData("data-public-stage-layout-identity", sharedPublicStage.layout.identity);
+        setData("data-public-card-announcement-placement", "shared-reveal");
+        setData("data-public-card-announcement-positioned", "true");
+        if (copy.style.visibility !== "visible") copy.style.visibility = "visible";
+        setDelivery("VISIBLE", currentEventCopyKey);
+        reportH4Placement({
+          geometryEpoch: sharedPublicStage.layout.identity,
+          obstacleIds: [],
+          decision: "reflow",
+          reason: "shared-public-stage-layout",
+          compact: copy.dataset.publicCardAnnouncementCompact === "true",
+          rect: { left: rect.left, top: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top },
+          visible: true,
+          text: copy.textContent ?? "",
+        });
+        return;
+      }
+      setData("data-public-stage-layout-identity", undefined);
+      setData("data-public-card-announcement-placement", undefined);
       const anchor = getAnchor();
       const actualRect = anchor?.getBoundingClientRect();
       const tableRect = display.closest<HTMLElement>(".play-table")?.getBoundingClientRect() ?? null;
@@ -3187,7 +3233,7 @@ function PublicCardAnnouncement({
       anchorObserver?.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [anchorEventId, eventCopyKey, eventId, geometryKey, privateDrawAware, reportH4Placement, stableHarvestAnchor]);
+  }, [anchorEventId, eventCopyKey, eventId, geometryKey, privateDrawAware, reportH4Placement, sharedPublicStage, stableHarvestAnchor]);
 
   useLayoutEffect(() => {
     latestInputsRef.current = latestInputs;
@@ -3219,6 +3265,7 @@ function PublicCardAnnouncement({
     data-public-card-announcement-copy-key={eventCopyKey}
     data-public-card-announcement-geometry-key={geometryKey}
     data-public-card-announcement-event-id={displayedCopy.eventId}
+    data-public-card-announcement-anchor-event-id={anchorEventId === null ? undefined : anchorEventId ?? eventId}
     data-public-negation-latest-event-id={displayedCopy.latestCommittedEventId}
     data-public-negation-checkpoint-id={displayedCopy.checkpointId}
     data-public-negation-phase={displayedCopy.phase}
@@ -5207,6 +5254,7 @@ function SingleTargetCardJourney({
     data-public-card-renderer-kind="single-target-journey"
     data-public-card-ready="true"
     data-public-card-action-key={action.key}
+    data-public-card-interaction-id={action.interactionId ?? undefined}
     data-public-card-motion={motion?.type ?? "single-target"}
     data-public-card-kind={action.cardKind}
     data-public-card-viewer-id={viewerId}

@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef } from "react";
 import { publicCorridorWidth } from "./public-corridor";
 import type { PublicActivityStatus } from "../game/public-activity";
 import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
+import { sharedPublicStageMatchesElement, usePublicStageLayout } from "./public-stage-layout-context";
 
 const SAFE_OBSTACLES = [
   ".opponent-player-card[data-player-anchor]",
@@ -496,6 +497,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
   harvestPoolReadOnly?: boolean;
   stableLowerCenter?: boolean;
 }) {
+  const sharedPublicStage = usePublicStageLayout();
   const chipRef = useRef<HTMLDivElement>(null);
   const placementMemoryRef = useRef<PlacementMemory | null>(null);
   const stableLowerCenterLatchRef = useRef(false);
@@ -512,6 +514,22 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
     const schedule = () => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
+        const currentChip = chipRef.current;
+        const currentTable = currentChip?.closest<HTMLElement>(".play-table");
+        if (currentChip && currentTable && sharedPublicStage
+          && sharedPublicStageMatchesElement(currentTable, sharedPublicStage)) {
+          const tableRect = currentTable.getBoundingClientRect();
+          const activityRect = sharedPublicStage.layout.activity;
+          currentChip.style.width = `${activityRect.right - activityRect.left}px`;
+          currentChip.style.left = `${activityRect.left - tableRect.left}px`;
+          currentChip.style.top = `${activityRect.top - tableRect.top}px`;
+          currentChip.style.visibility = "visible";
+          currentChip.dataset.publicActivityLayout = "shared-reveal";
+          currentChip.dataset.publicStageLayoutIdentity = sharedPublicStage.layout.identity;
+          delete currentChip.dataset.publicActivityPlacementBlockers;
+          return;
+        }
+        delete chip.dataset.publicStageLayoutIdentity;
         placementMemoryRef.current = placeChip(
           chip,
           table,
@@ -584,7 +602,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
       window.removeEventListener("resize", schedule);
       window.visualViewport?.removeEventListener("resize", schedule);
     };
-  }, [harvestPoolReadOnly, status.kind, status.stage, status.text, stableLowerCenter, viewerId, seatLayoutKey]);
+  }, [harvestPoolReadOnly, status.kind, status.stage, status.text, stableLowerCenter, viewerId, seatLayoutKey, sharedPublicStage]);
 
   return <div
     ref={chipRef}
