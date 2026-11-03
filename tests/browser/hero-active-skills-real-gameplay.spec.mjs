@@ -1179,6 +1179,79 @@ test("W4: converted public Judgement discard settles with one shared H4", async 
   }
 });
 
+test("T3: Ambushment hand discard keeps the turn status clear of Seats", async ({ page, browser, request }, testInfo) => {
+  test.setTimeout(60_000);
+  const material = { ...card("Negation", "t3-black-negation-material", "♠"), rank: "5" };
+  const targetHand = { ...card("Overindulgence", "t3-target-hand-card", "♥"), rank: "6" };
+  const observerNegation = card("Negation", "t3-observer-private-negation", "♣");
+  const lightning = { ...card("Lightning", "t3-observer-lightning", "♥"), rank: "Q" };
+  const seed = await seedSkillRoom(request, {
+    hero: "gan-ning", hand: [material],
+    targets: [
+      { name: "TARGET", role: "Loyalist", hero: "simayi", hp: 3, maxHp: 3, hand: [targetHand] },
+      { name: "OBSERVER", role: "Rebel", hero: "cao-cao", hp: 5, maxHp: 5, hand: [observerNegation], judgement: [lightning] },
+    ],
+  });
+  const observerContext = await browser.newContext({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  try {
+    const actor = await openSkillUser(page, seed, { width: 390, height: 700 });
+    const observerPage = await observerContext.newPage();
+    const observer = await openSkillViewer(observerPage, seed, seed.players[2], { width: 390, height: 700 });
+    await completeSkillSelection({ page, request, seed, skillName: "Ambushment", providerId: "gan_ning_qixi", cardIds: [material.id], targetIndexes: [1] });
+    const pending = await projectedRoom(request, seed, seed.players[1]);
+    const windowId = pending.currentAction?.negationWindowId;
+    expect(windowId).toBeTruthy();
+    for (const player of seed.players) {
+      const passed = await request.post(`${API}/api/rooms`, {
+        data: { action: "decline_response", code: seed.code, token: player.token, context: { windowId } },
+      });
+      expect(passed.ok()).toBeTruthy();
+    }
+    const picker = page.locator(".card-pool-panel--actor-target-select");
+    await expect(picker).toBeVisible();
+    await picker.getByRole("button", { name: "Choose hidden Hand position 1", exact: true }).click();
+    const installTrace = (viewerPage) => viewerPage.evaluate(() => {
+      const samples = [];
+      window.__t3SeatTrace = samples;
+      window.__t3SeatTraceInterval = setInterval(() => {
+        const chip = document.querySelector('.public-activity-chip[data-public-activity-kind="turn"]');
+        if (!chip || getComputedStyle(chip).visibility !== "visible") return;
+        const rect = chip.getBoundingClientRect();
+        const seats = [...document.querySelectorAll('.opponent-player-card[data-player-anchor]')].map((seat) => {
+          const bounds = seat.getBoundingClientRect();
+          return { id: seat.getAttribute("data-player-anchor"), left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom };
+        });
+        samples.push({ at: performance.now(), layout: chip.dataset.publicActivityLayout, top: rect.top, bottom: rect.bottom,
+          left: rect.left, right: rect.right, seats, overlap: seats.some((seat) => rect.left < seat.right && rect.right > seat.left && rect.top < seat.bottom && rect.bottom > seat.top) });
+      }, 25);
+    });
+    await Promise.all([installTrace(page), installTrace(observerPage)]);
+    const submitted = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST" && response.request().postDataJSON()?.action === "choose_target_card");
+    await picker.getByRole("button", { name: "Use Burning Bridge", exact: true }).click();
+    expect((await submitted).ok()).toBeTruthy();
+    const traces = await Promise.all([page, observerPage].map(async (viewerPage) => {
+      await viewerPage.waitForFunction(() => {
+        const samples = window.__t3SeatTrace ?? [];
+        return samples.length > 1 && samples.at(-1).at - samples[0].at >= 2_500;
+      }, null, { timeout: 15_000 });
+      return viewerPage.evaluate(() => window.__t3SeatTrace);
+    }));
+    await testInfo.attach("t3-turn-seat-geometry.json", {
+      body: Buffer.from(JSON.stringify({ viewers: [actor.id, observer.id], traces }, null, 2)), contentType: "application/json",
+    });
+    for (const trace of traces) {
+      const firstOverlap = trace.find((sample) => sample.overlap);
+      expect(firstOverlap, JSON.stringify(firstOverlap)).toBeUndefined();
+    }
+  } finally {
+    for (const viewerPage of [page, ...observerContext.pages()]) {
+      await viewerPage.evaluate(() => clearInterval(window.__t3SeatTraceInterval)).catch(() => {});
+    }
+    await observerContext.close();
+  }
+});
+
 test("W4: Captivating frames its real Diamond AS Overindulgence for every Negation viewer", async ({ page, browser, request }) => {
   test.setTimeout(60_000);
   const diamond = card("Peach", "real-captivating-diamond", "♦");

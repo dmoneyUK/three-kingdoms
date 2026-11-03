@@ -135,3 +135,23 @@ test("PARKED returns H4 to the safe stage centre without moving the authentic ca
       && result.layout.announcement.top < obstacle.rect.bottom && result.layout.announcement.bottom > obstacle.rect.top, false);
   }
 });
+
+test("PARKED repositions an unplaced PAC away from Seats into the lower battlefield", () => {
+  const card = { left: 35, top: 105, right: 75, bottom: 165 };
+  const seats = { left: 8, top: 0, right: 382, bottom: 94 };
+  const result = calculatePublicStageLayout(input({
+    scene: { ...scene, phase: "PARKED", generation: 3 },
+    viewport: { left: 0, top: 0, right: 390, bottom: 700 },
+    table: { left: 0, top: 0, right: 390, bottom: 460 },
+    card: { width: 40, height: 60 },
+    activity: { width: 340, height: 44 },
+    phaseRects: { card, activity: { left: 0, top: 0, right: 340, bottom: 44 } },
+    obstacles: [{ id: "seats", rect: seats }],
+  }));
+  assert.equal(result.status, "placed");
+  if (result.status !== "placed") return;
+  assert.deepEqual(result.layout.card, card);
+  assert.ok(result.layout.activity.top >= seats.bottom);
+  assert.ok(result.layout.activity.bottom <= result.layout.safeBounds.bottom);
+  assert.ok(result.layout.activity.top > result.layout.announcement.bottom);
+});

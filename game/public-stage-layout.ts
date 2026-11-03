@@ -164,10 +164,39 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     }
     const centerX = (safeBounds.left + safeBounds.right) / 2;
     const centerY = (safeBounds.top + safeBounds.bottom) / 2;
+    const activityObstacles = [...input.obstacles, { id: "primary-card", rect: phaseRects.card }];
+    const activityFits = (rect: PublicStageRect) => rect.left >= safeBounds.left && rect.right <= safeBounds.right
+      && rect.top >= safeBounds.top && rect.bottom <= safeBounds.bottom
+      && !activityObstacles.some((obstacle) => overlaps(rect, obstacle.rect));
+    let activityRect = phaseRects.activity;
+    if (!activityFits(activityRect)) {
+      // A newly mounted PAC can have a measurable but unpositioned (0, 0)
+      // rectangle. Never publish that rectangle as a safe parked layout.
+      const minCenter = safeBounds.left + activity.width / 2;
+      const maxCenter = safeBounds.right - activity.width / 2;
+      const maxTop = safeBounds.bottom - activity.height;
+      if (maxCenter < minCenter || maxTop < safeBounds.top) {
+        return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
+      }
+      const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+      const centers = new Set([clamp(centerX, minCenter, maxCenter)]);
+      const tops = new Set([maxTop]);
+      for (const { rect } of activityObstacles) {
+        centers.add(clamp(rect.left - 2 - activity.width / 2, minCenter, maxCenter));
+        centers.add(clamp(rect.right + 2 + activity.width / 2, minCenter, maxCenter));
+        tops.add(clamp(rect.top - 2 - activity.height, safeBounds.top, maxTop));
+        tops.add(clamp(rect.bottom + 2, safeBounds.top, maxTop));
+      }
+      const candidates = [...tops].flatMap((top) => [...centers].map((candidateCenter) => ({ top, center: candidateCenter })))
+        .sort((left, right) => right.top - left.top || Math.abs(left.center - centerX) - Math.abs(right.center - centerX));
+      const safeActivity = candidates.map(({ center, top }) => makeRect(center, top, activity)).find(activityFits);
+      if (!safeActivity) return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
+      activityRect = safeActivity;
+    }
     const obstacles = [
       ...input.obstacles,
       { id: "primary-card", rect: phaseRects.card },
-      { id: "public-activity", rect: phaseRects.activity },
+      { id: "public-activity", rect: activityRect },
     ];
     const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
     const minCenterX = safeBounds.left + announcement.width / 2;
@@ -205,8 +234,8 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
           protectedRects: obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
           announcement: announcementRect,
           card: { ...phaseRects.card },
-          activity: { ...phaseRects.activity },
-          cardActivityGap: phaseRects.activity.top - phaseRects.card.bottom,
+          activity: { ...activityRect },
+          cardActivityGap: activityRect.top - phaseRects.card.bottom,
         },
       };
     }
