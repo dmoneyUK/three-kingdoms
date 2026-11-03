@@ -1199,6 +1199,7 @@ for (const { cardKind, responseKind } of [
     const rootEvent = publicState.timeline.find((event) => event.type === "card" && event.card?.id === room.rootCardId);
     const sourceCounter = publicState.timeline.find((event) => event.type === "card" && event.card?.id === room.sourceNegationId);
     const targetCounter = publicState.timeline.find((event) => event.type === "card" && event.card?.id === room.targetNegationId);
+    const groupEffectLabel = cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows";
     expect(rootEvent).toBeTruthy();
     expect(sourceCounter).toBeTruthy();
     expect(targetCounter).toBeTruthy();
@@ -1308,7 +1309,9 @@ for (const { cardKind, responseKind } of [
     await expect(display).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
     const announcement = display.locator('[data-public-card-announcement="true"]');
     await expect(announcement).toHaveCount(1);
-    await expect(announcement.locator("small,span,strong")).toHaveCount(0);
+    await expect(announcement).toContainText("GROUP TARGET counters GROUP SOURCE's Negation.");
+    await expect(announcement.locator(".public-negation-narration-support"))
+      .toHaveText(`${groupEffectLabel} on GROUP TARGET · ACTIVE · response open.`);
     await expect(display.locator('[data-public-card-journey-event-id]')).toHaveCount(3);
     for (const [event, player, cardId, ordinal] of [
       [rootEvent, room.players[0], room.rootCardId, "1"],
@@ -1340,8 +1343,17 @@ for (const { cardKind, responseKind } of [
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(440);
     await screenshot(page, testInfo, "group-target-negation-history-at-current-counter-window");
 
+    // A different viewer must reconstruct the same committed public cards
+    // directly from the server proof, without inheriting the source tab's
+    // local Journey state.
+    await restoreViewer(page, room, 3);
     const restoredDisplay = page.locator('[data-public-card-motion="group-root"]');
+    await expect(restoredDisplay).toBeVisible();
     await expect(restoredDisplay.locator('[data-public-card-journey-event-id]')).toHaveCount(3);
+    for (const event of [rootEvent, sourceCounter, targetCounter]) {
+      await expect(restoredDisplay.locator(`[data-public-card-journey-event-id="${event.id}"]`))
+        .toHaveAttribute("data-public-card-journey-phase", "parked");
+    }
     await expect(restoredDisplay.locator(`[data-public-card-journey-event-id="${targetCounter.id}"]`)).toHaveAttribute("data-public-card-journey-phase", "parked");
     await expect(restoredDisplay).not.toContainText(room.losingNegationId);
     await expect(page.getByText("GAME SCREEN ERROR")).toHaveCount(0);
@@ -1358,6 +1370,16 @@ for (const { cardKind, responseKind } of [
     await expect.poll(async () => (await view(request, room, 1)).currentAction?.requirement ?? null, { timeout: 15_000 }).toBe(responseKind.toLowerCase());
     const groupResponse = await view(request, room, 1);
     expect(groupResponse.presentationSnapshot?.groupParticipantProgress?.currentParticipantId).toBe(room.players[1].id);
+    const committedCounterFacts = (groupResponse.presentationSnapshot?.publicEventFacts ?? []).filter((fact) =>
+      fact.identity.interactionId === groupResponse.presentationSnapshot?.identity?.interactionId
+      && fact.identity.rootFrameId === groupResponse.presentationSnapshot?.groupParticipantProgress?.groupFrameId
+      && fact.frameId === groupResponse.presentationSnapshot?.groupParticipantProgress?.groupFrameId
+      && (!fact.rootEventId || fact.rootEventId === rootEvent.id)
+      && fact.category === "CARD_PLAYED"
+      && fact.effect?.kind === "card_play" && fact.effect.label === "Negation");
+    expect(committedCounterFacts.map((fact) => fact.eventId)).toEqual([sourceCounter.id, targetCounter.id]);
+    expect(committedCounterFacts.map((fact) => fact.actorId)).toEqual([room.players[0].id, room.players[1].id]);
+    expect(committedCounterFacts.every((fact) => fact.visibility === "PUBLIC" && fact.semantics === "PROVEN")).toBe(true);
     const groupResponseResult = await request.post(`${API}/api/rooms`, {
       data: { action: "respond", code: room.code, token: room.players[1].token, providerId: "card", cardId: `${room.prefix}-${responseKind.toLowerCase()}` },
     });
@@ -1369,6 +1391,10 @@ for (const { cardKind, responseKind } of [
     for (const event of [rootEvent, sourceCounter, targetCounter]) {
       await expect(restoredDisplay.locator(`[data-public-card-journey-event-id="${event.id}"]`)).toHaveAttribute("data-public-card-journey-phase", "parked");
     }
+    await page.reload();
+    await expect(page.locator(`.local-player-dock[data-player-anchor="${room.players[3].id}"]`)).toBeVisible();
+    await expect(page.locator('[data-public-card-motion="group-root"]')).toBeVisible();
+    await expect(page.locator('[data-public-card-motion="group-root"] [data-public-card-journey-event-id]')).toHaveCount(3);
     await expect(page.locator(`[data-public-card-renderer-kind="static-fallback"][data-public-card-root-event-id="${rootEvent.id}"]`)).toHaveCount(0);
     expect(pageErrors).toEqual([]);
   });

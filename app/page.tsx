@@ -6607,6 +6607,46 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
       || rootEvent.playedAs !== undefined || rootEvent.card.kind !== group.cardKind
       || rootEvent.card.id !== rootProof.rootCardId || rootEvent.resolutionId !== rootProof.rootEventResolutionId) return null;
+    const historyFacts = [...(room.presentationSnapshot?.publicEventFacts ?? [])]
+      .filter((fact) => fact.semantics === "PROVEN" && fact.visibility === "PUBLIC"
+        && fact.identity.interactionId === group.interactionId
+        && fact.identity.rootFrameId === group.groupFrameId
+        && fact.identity.presentationRevision <= group.presentationRevision
+        && fact.frameId === group.groupFrameId
+        && (!fact.rootEventId || fact.rootEventId === rootEvent.id)
+        && fact.category === "CARD_PLAYED"
+        && fact.effect?.kind === "card_play" && fact.effect.label === "Negation")
+      .sort((left, right) => left.order - right.order);
+    const responseHistory: { eventId: string; ordinal: number; actorId: string; actorName: string; cardFace: Card; cardLabel: string; ariaLabel: string }[] = [];
+    const historyEventIds = new Set<string>([rootEvent.id]);
+    const historyCardIds = new Set<string>([rootEvent.card.id]);
+    let responseHistoryIsValid = true;
+    for (const fact of historyFacts) {
+      const matches = room.timeline.filter((event) => event.id === fact.eventId);
+      const event = matches.length === 1 ? matches[0] : null;
+      const actor = fact.actorId ? room.players.find((player) => player.id === fact.actorId) : null;
+      if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
+        || typeof event.privateToPlayerId === "string" || event.playedAs !== undefined
+        || event.card?.kind !== "Negation" || !event.card.id || event.publicSequence !== fact.order
+        || !fact.actorId || !actor?.name || event.actorId !== fact.actorId || event.player !== actor.name
+        || event.resolutionId !== fact.resolutionId || !fact.frameId
+        || historyEventIds.has(event.id) || historyCardIds.has(event.card.id)) {
+        responseHistoryIsValid = false;
+        break;
+      }
+      historyEventIds.add(event.id);
+      historyCardIds.add(event.card.id);
+      responseHistory.push({
+        eventId: event.id,
+        ordinal: responseHistory.length + 1,
+        actorId: actor.id,
+        actorName: actor.name,
+        cardFace: event.card,
+        cardLabel: "NEGATION",
+        ariaLabel: `${actor.name} played Negation during ${cardDefinition(group.cardKind).name}.`,
+      });
+    }
+    if (!responseHistoryIsValid) responseHistory.length = 0;
     const responseEventIds = new Set([rootEvent.id]);
     const responseCardIds = new Set([rootEvent.card.id]);
     const responses = isGroupNegationScene ? negationChain!.negationNodes.map((node, index) => {
@@ -6657,6 +6697,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       targets: targets as NonNullable<(typeof targets)[number]>[],
       groupTargetEffectScope: isGroupNegationScene ? groupTargetEffectScope : null,
       responses: responses as NonNullable<(typeof responses)[number]>[],
+      responseHistory,
     };
   })();
   const deriveGroupTargetNegationNarration = (candidate: NonNullable<typeof groupTargetBranchCandidate>): PublicNegationNarration | null => {
@@ -6672,11 +6713,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const targetName = targetMatches.length === 1 ? targetMatches[0]?.playerName.trim() : "";
     const sourceName = candidate.source.name.trim();
     const rootLabel = cardDefinition(candidate.group.cardKind).name;
+    const targetIndex = candidate.group.targetIds.indexOf(scope.targetId);
     const expectedEffectState = depth % 2 === 0 ? "ACTIVE" : "BLOCKED";
     if (!targetName || !sourceName || scope.effectState !== expectedEffectState) return null;
 
     if (depth === 0) {
-      const targetIndex = candidate.group.targetIds.indexOf(scope.targetId);
       const hasCompletedPriorTarget = targetIndex > 0
         && candidate.group.participants.slice(0, targetIndex).every((participant) =>
           participant.status === "RESOLVED" || participant.status === "NO_LONGER_APPLICABLE");
@@ -8187,10 +8228,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         type: "group-root",
         scopeKey: [room.code, groupTargetBranchCandidate.group.interactionId,
           groupTargetBranchCandidate.group.groupFrameId, groupTargetBranchCandidate.rootEvent.id].join(":"),
-        freshEventIds: [groupTargetBranchCandidate.rootEvent.id, ...groupTargetBranchCandidate.responses.map((response) => response.eventId)]
+        freshEventIds: [groupTargetBranchCandidate.rootEvent.id,
+          ...groupTargetBranchCandidate.responseHistory.map((response) => response.eventId),
+          ...groupTargetBranchCandidate.responses.map((response) => response.eventId)]
           .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
       },
       ...(groupTargetNegationNarration ? { publicNegationNarration: groupTargetNegationNarration } : {}),
+      ...(groupTargetBranchCandidate.responseHistory.length
+        ? { responseHistory: groupTargetBranchCandidate.responseHistory } : {}),
       ...(groupTargetBranchCandidate.groupTargetEffectScope ? {
         phaseNotice: groupTargetBranchCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",
         ...(groupTargetBranchCandidate.responses.length ? { responses: groupTargetBranchCandidate.responses } : {}),
