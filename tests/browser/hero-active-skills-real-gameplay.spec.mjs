@@ -1196,10 +1196,10 @@ test("T6: Ambushment reveal keeps H4 and PAC visible with the real card", async 
     window.__t6RevealSamples = samples;
     window.__t6RevealInterval = setInterval(() => {
       const frame = document.querySelector('[data-public-card-frame-effect-id="gan_ning_qixi"]');
-      const root = frame?.closest('[data-public-card-journey-role="root"]');
-      const display = frame?.closest(".public-card-display");
+      const root = document.querySelector('[data-public-card-journey-role="root"][data-public-card-journey-card-id="t6-ambushment-blue-steel"]');
+      const display = root?.closest(".public-card-display");
       const table = document.querySelector(".play-table");
-      if (!frame || !root || root.dataset.publicCardJourneyPhase !== "reveal") return;
+      if (!root) return;
       const visible = (element) => {
         if (!element) return false;
         const rect = element.getBoundingClientRect();
@@ -1212,8 +1212,9 @@ test("T6: Ambushment reveal keeps H4 and PAC visible with the real card", async 
         const r = element?.getBoundingClientRect();
         return r ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom } : null;
       };
-      samples.push({ at: performance.now(), frame: visible(frame), h4: visible(h4), pac: visible(pac),
-        frameRect: bounds(frame), h4Rect: bounds(h4), pacRect: bounds(pac), variant: table?.dataset.publicStageLayoutVariant,
+      samples.push({ at: performance.now(), phase: root.dataset.publicCardJourneyPhase, frame: visible(frame), h4: visible(h4), pac: visible(pac),
+        frameRect: bounds(frame), h4Rect: bounds(h4), pacRect: bounds(pac), cardRect: bounds(root),
+        ids: [root.dataset.publicStageLayoutIdentity, h4?.dataset.publicStageLayoutIdentity, pac?.dataset.publicStageLayoutIdentity], variant: table?.dataset.publicStageLayoutVariant,
         layout: table?.dataset.publicStageLayoutStatus ?? null, failure: table?.dataset.publicStageLayoutFailure ?? null,
         h4Delivery: h4?.dataset.publicCardAnnouncementDelivery ?? null, pacLayout: pac?.dataset.publicActivityLayout ?? null });
     }, 25);
@@ -1229,7 +1230,7 @@ test("T6: Ambushment reveal keeps H4 and PAC visible with the real card", async 
     }));
     await testInfo.attach("t6-ambushment-reveal-status.json", { body: Buffer.from(JSON.stringify(traces, null, 2)), contentType: "application/json" });
     for (const samples of traces) {
-      const settled = samples.filter((sample) => sample.at - samples[0].at >= 250 && sample.frame);
+      const settled = samples.filter((sample) => sample.at - samples[0].at >= 250 && sample.frame && sample.phase === "reveal");
       expect(settled.length).toBeGreaterThan(0);
       const missing = settled.find((sample) => !sample.h4 || !sample.pac);
       expect(missing, JSON.stringify(missing)).toBeUndefined();
@@ -1237,10 +1238,74 @@ test("T6: Ambushment reveal keeps H4 and PAC visible with the real card", async 
         Math.abs((p.left + p.right) / 2 - 195) > 2 || p.top < f.bottom + 8
         || (h.left < f.right && h.right > f.left && h.top < f.bottom && h.bottom > f.top));
       expect(invalid, JSON.stringify(invalid)).toBeUndefined();
+      const mismatched = settled.find(({ ids }) => !ids[0] || ids.some((id) => id !== ids[0]));
+      expect(mismatched, JSON.stringify(mismatched)).toBeUndefined();
+    }
+
+    for (const viewer of [page, observerPage]) {
+      await viewer.waitForFunction(() => window.__t6RevealSamples?.some((sample) => sample.phase === "parked" && sample.pacLayout === "shared-parked" && sample.pac), null, { timeout: 10_000 });
+      const samples = await viewer.evaluate(() => window.__t6RevealSamples);
+      const move = samples.filter((sample) => sample.phase === "move");
+      expect(move.length).toBeGreaterThan(0);
+      const missing = move.find((sample) => !sample.h4 || !sample.pac);
+      expect(missing, JSON.stringify(missing)).toBeUndefined();
+      const parked = samples.find((sample) => sample.phase === "parked" && sample.pac && sample.pacLayout === "shared-parked");
+      expect(parked, JSON.stringify(samples.at(-1))).toBeTruthy();
+      expect(Math.abs((parked.pacRect.left + parked.pacRect.right) / 2 - 195)).toBeLessThanOrEqual(2);
+    }
+    const pending = await projectedRoom(request, seed, seed.players[1]);
+    const windowId = pending.currentAction?.negationWindowId;
+    expect(windowId).toBeTruthy();
+    for (const player of seed.players) {
+      const response = await request.post(`${API}/api/rooms`, { data: { action: "decline_response", code: seed.code, token: player.token, context: { windowId } } });
+      expect(response.ok()).toBeTruthy();
+    }
+    const picker = page.locator('.card-pool-panel[data-choice-mode="actor-target-select"]');
+    await expect(picker).toBeVisible();
+    await picker.getByRole("tab", { name: "Judgement (1)", exact: true }).click();
+    const lightningButton = picker.getByRole("button", { name: "Judgement: Lightning", exact: true });
+    try { await lightningButton.click({ timeout: 5_000 }); } catch (error) {
+      const diagnostic = await page.evaluate(() => {
+        const selectors = [".play-table", ".card-pool-target-stage", ".card-pool-panel", ".public-card-journey-card", ".visible-countdown", ".public-activity-chip", ".opponent-player-card"];
+        return selectors.flatMap((selector) => [...document.querySelectorAll(selector)].map((el) => {
+          const r = el.getBoundingClientRect(), c = getComputedStyle(el);
+          return { selector, rect: [r.left,r.top,r.right,r.bottom], display:c.display, visibility:c.visibility, data: {...el.dataset}, text:el.textContent?.slice(0,100) };
+        }));
+      });
+      throw new Error(`${error.message}\n${JSON.stringify(diagnostic)}`);
+    }
+    await Promise.all([page, observerPage].map((viewer) => viewer.evaluate(() => {
+      window.__t6SettlementTrace = [];
+      window.__t6SettlementInterval = setInterval(() => {
+        const h4 = [...document.querySelectorAll('[data-public-card-announcement="true"]')].find((el) => /discarded.*Lightning/.test(el.textContent ?? ""));
+        const pac = document.querySelector('.public-activity-chip');
+        const visible = (el) => Boolean(el && getComputedStyle(el).visibility === "visible" && el.getBoundingClientRect().width > 0);
+        window.__t6SettlementTrace.push({ at: performance.now(), h4: visible(h4), pac: visible(pac), kind: pac?.dataset.publicActivityKind, text: h4?.textContent, delivery: h4?.dataset.publicCardAnnouncementDelivery });
+      }, 25);
+    })));
+    await picker.locator(".card-pool-panel__confirm").click();
+    for (const viewer of [page, observerPage]) {
+      const announcement = viewer.locator('[data-public-card-announcement="true"]').filter({ hasText: /discarded.*Lightning/ }).first();
+      await expect(announcement).toBeVisible({ timeout: 12_000 });
+      try {
+        await viewer.waitForFunction(() => {
+          const trace = window.__t6SettlementTrace ?? [];
+          let start = null;
+          for (const entry of trace) {
+            if (!entry.h4 || !entry.pac || entry.kind !== "turn") { start = null; continue; }
+            start ??= entry.at;
+            if (entry.at - start >= 2_000) return true;
+          }
+          return false;
+        }, null, { timeout: 8_000 });
+      } catch (error) {
+        const trace = await viewer.evaluate(() => window.__t6SettlementTrace);
+        throw new Error(`${error.message}\n${JSON.stringify(trace.filter((entry) => entry.h4))}`);
+      }
     }
 
   } finally {
-    for (const viewer of [page, observerPage]) await viewer.evaluate(() => clearInterval(window.__t6RevealInterval)).catch(() => {});
+    for (const viewer of [page, observerPage]) await viewer.evaluate(() => { clearInterval(window.__t6RevealInterval); clearInterval(window.__t6SettlementInterval); }).catch(() => {});
     await observerContext.close();
   }
 });

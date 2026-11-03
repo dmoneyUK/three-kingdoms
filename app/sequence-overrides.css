@@ -7553,3 +7553,11 @@
   .game-shell .player-board .opponent-judgement-status[data-multiple="true"] .opponent-judgement-indicators { display: none; }
   .game-shell .player-board .opponent-judgement-status[data-multiple="true"] .opponent-judgement-overflow { display: grid; }
 }
+
+/* Keep the target picker usable on short phone stages after a zone switch. */
+@media (max-width: 520px) and (max-height: 740px) {
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--actor-target-select.harvest-choice-panel {
+    padding: 3px;
+    gap: 2px;
+  }
+}
