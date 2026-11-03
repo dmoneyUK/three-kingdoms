@@ -1,25 +1,31 @@
 # HANDOVER — 当前唯一任务
 
-仓库：`dmoneyUK/three-kingdoms` · 工作分支：`ux-v2`
-工作树：`/Users/jingedai/.codex/worktrees/ux2-judgement-seat-01` · 本地分支：`codex/ux2-judgement-seat-01`
+仓库：dmoneyUK/three-kingdoms · 目标分支：ux-v2
+工作树：/Users/jingedai/.codex/worktrees/ux2-judgement-seat-01 · 本地分支：codex/ux2-judgement-seat-01
 
-## T6 — PUBLIC-PAC-REVEAL-ORDER-01（§10.30，含原 T3 §10.33）
+## T6 — PUBLIC-PAC-REVEAL-ORDER-01（§10.30）
 
-**当前有界步骤：**让同一组牌根下已提交的公开无懈可击历史，在目标阶段切换、观察者切换及刷新后仍由服务器快照重建，并停放在真实作者座位。不得改牌局规则、卡牌身份、私密选择、计时或已接受的 T5 行为。T6 仍为 **OWNER FAIL / CORRECTION REQUIRED**；不得宣称 iPhone 验收。
+**当前状态：IMPLEMENTED / DEPLOYED — READY FOR OWNER iPHONE RE-REVIEW。此前的 owner FAIL 仍未解除；不得标记 USER-ACCEPTED。**
 
-**已审阅设计：**`origin/ux-v2` HEAD `3ed3028d5b13f99e1080b478725ebeacaf5c04b1`；最新设计变更 `ba7ee751cb2d15cfcd406b1552cd29800451d685`，已复核 §10.30。当前远端 HEAD 与本地一致。
+### 最新代码和部署
 
-### 证据、实现和验证（2026-11-03 UTC）
+- 源码 SHA：178d3fe76e2498884f4dc884aa445cfa59c9bca8，已推送到 origin/ux-v2。
+- 精确 SHA GitHub Actions：41559882924，SUCCESS。Lint/fast、Browser startup smoke、API、deploy 四个 job 均通过；部署 workflow 生产 smoke 通过。
+- Worker 版本：89fa136d-342e-42b5-ad14-09b749685a8a。2026-11-03 01:40 UTC 生产 /api/health 返回 HTTP 200，{"ok":true,"worker":"available"}。
+- 该源码交付恢复服务器证明的已提交无懈可击历史，并修复深层组牌旁白 targetIndex 作用域错误。它也包含先前完成的共享 CardFace/Frame/H4/PAC 几何和 Gan Ning 转换结算修正。
 
-- `01:24` 真实四人 Raining Arrows 场景的诊断附件显示：下一目标 API 快照仍有两张已提交 Negation 的公开事实，分别具有事件 ID、作者 ID、物理牌事件、持久 `publicSequence`、`frameId` 和提交身份；它们的 `frameId` 与组根帧一致，但事实未带 `rootEventId`。此前按 `rootEventId` 过滤的断言过窄，已修正；不改服务器规则或事件投影。
-- `app/page.tsx`：以同一 interaction/root frame 的结构化 `CARD_PLAYED / card_play / Negation` 事实为候选；再逐张核对 timeline 事件 ID、公开播放状态、物理牌种类/ID、作者、resolution ID 与持久序号。排序后构建停放历史；若任一事实不匹配则清空该历史，不猜测。向既有 group-root renderer 提供 history，使新观察者/刷新不依赖来源标签页的 React 内存。
-- 实际场景同时发现 `targetIndex` 只在 `depth === 0` 分支内声明，却被后续 Negation narration 深度引用，导致页面运行时异常；已提升到函数共同作用域。
-- 将浏览器断言改为当前合法的 Negation 主文案与说明文案，并在同一场景验证异玩家刷新、下一组目标阶段的快照事实以及私密失败意图不泄漏。
-- `01:23` 一次早期浏览器检查因测试要求不存在的 `rootEventId` 而失败；随后读取追踪附件证实实际关联为 `interactionId + rootFrameId/frameId`。未将这次断言失败记作产品行为失败。
-- `01:25` 最终手机尺寸 Raining Arrows 浏览器场景：**1 passed（8.9 秒）**。观察者切换后 3 张牌各出现一次且为 parked，提交作者和真实卡 ID 正确；推进到下一目标后刷新仍保留 3 张；私密失败意图未显示；无页面错误。
-- `npm run build` 通过（输出 chunk size 与 vinext 动态路由提示）。目标 ESLint：0 errors、2 个位于未修改区域的 React Hook warnings。`node --import tsx --test tests/api/presentation-semantics.test.mjs`：17/17 通过。`node --check`、`git diff --check` 通过。直接用 `node --test` 首次运行因 TS extensionless import 未加载而失败，改用仓库 tsx loader 后通过。
-- 推送前已查看远端最新相关 Actions：`41557817703` 对 `84a114d27c55d08999c2f6e354a1590d0cae1579` 为 SUCCESS。当前修正尚未提交/推送，CI 与 Worker 部署待办。
+### 当前代码 SHA 的定向手机尺寸浏览器证据
 
-### 当前交付状态
+- 2026-11-03 01:34 UTC：W4 Gan Ning 转换【过河拆桥】→公开【闪电】结算场景，1/1 通过，15.1s。检查了真实实体牌与有效牌证明、公开判定牌弃置、两个视角的结算 H4 和隐私边界。
+- 2026-11-03 01:36 UTC：【万箭齐发】+已提交无懈可击，390×844，1/1 通过，9.1s。CardFace 为 90×135；H4 y=254.4–283.6，卡牌 y=291.6–426.6，PAC y=435.6–492.5，卡牌-PAC 间距 9px。CardFace、H4、PAC、倒计时共享同一布局身份；提交无懈可击后根牌、H4、PAC 仍正确。
+- 2026-11-03 01:37 UTC：【南蛮入侵】REVEAL→MOVE→PARKED 单页场景，390×844，1/1 通过，14.1s。三阶段布局身份依次更新且各层一致；停放后 H4 回到桌面中心带，与真实作者牌、PAC 和倒计时不重叠。真实牌保持 90×135 翻开，停放位置匹配作者座位。
+- 上一有界步骤的 Raining Arrows 已提交无懈可击历史场景：1/1 通过，8.9s；观察者切换和刷新后只显示真实已提交牌，私密失败意图未出现。
+- 当前回合 UI 浏览器检查共使用上述单场景；没有执行多设备/多玩家矩阵或重复重试。以上均是本地测试，不代表 owner iPhone 验收。
 
-**本地实现 / 定向验证通过；提交、精确 SHA CI、Worker 部署和健康检查待执行。**此步骤交付后，仍需在 T6 内继续修复共享 CardFace/Frame/H4/PAC 的公共几何与时序，再做合并验收；本文件只保留当前这一项 T6 工作。
+### 设计文档更新
+
+已复核远端设计基线 ba7ee751cb2d15cfcd406b1552cd29800451d685。当前文档更新只修正 T6/T3 状态、保留此前手机失败作为未解除证据，并删除相关源码执行清单，保留可复用的产品与布局约定。2026-11-03 01:40 UTC 的首次 git diff --check 检出 HANDOVER 标题行末空格；已清理。2026-11-03 01:41 UTC 再次运行 `git diff --check`，通过。
+
+### 唯一待办
+
+由 owner 对当前已部署版本执行 §10.30 的单次 iPhone 复验：检查 Raining Arrows/Barbarian Invasion 的 H4→真实卡牌→PAC 顺序、Gan Ning 转换与公开 Lightning 结算、提交无懈可击后的作者缩略历史，以及 T2/T5/Console/隐私回归边界。报告 PASS / PARTIAL PASS / FAIL 后再更新设计状态。T5 已接受并关闭；不得将 T6 标为接受，除非 owner 明确给出完整 PASS。
