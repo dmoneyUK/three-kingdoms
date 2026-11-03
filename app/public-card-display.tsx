@@ -983,7 +983,7 @@ function seatHistoryParkingProtectedSelectors(options: SeatHistoryCardParkingOpt
     ...(options.preserveAuthorControls ? [
       ".test-view-switch-button", ".opponent-seat-inspect-button", ".opponent-player-name",
       ".opponent-player-name-strip", ".opponent-status-equipment-strip", ".opponent-hp-chip",
-      ".opponent-equipment-summary", ".opponent-judgement-zone", ".opponent-judgement-cards",
+      ".opponent-equipment-summary",
     ] : []),
   ];
 }

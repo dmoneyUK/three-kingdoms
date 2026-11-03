@@ -37,41 +37,25 @@ async function judgementGeometry(page, ownerId, cardId) {
       return { left, top, right, bottom, width, height };
     };
     const seat = cardNode.closest(".opponent-player-card");
-    const rail = cardNode.closest(".opponent-judgement-zone");
-    const table = cardNode.closest(".play-table");
-    const info = cardNode.querySelector(".zone-info-button");
-    const infoRect = info.getBoundingClientRect();
-    const infoHit = document.elementFromPoint(infoRect.left + infoRect.width / 2, infoRect.top + infoRect.height / 2);
+    const rail = cardNode.closest(".opponent-judgement-status");
+    const strip = cardNode.closest(".opponent-status-equipment-strip");
+    const hp = strip.querySelector(".opponent-hp-chip");
+    const equipment = strip.querySelector(".opponent-equipment-summary");
     const cardRect = rectangle(cardNode);
     const seatRect = rectangle(seat);
     const railRect = rectangle(rail);
-    const tableRect = rectangle(table);
-    const protectedElements = [...table.querySelectorAll([
-      ".opponent-player-card", ".public-card-journey-card", ".active-table-reveal .played-card",
-      ".public-card-announcement", ".public-activity-chip", ".visible-countdown", ".stage-system-cluster",
-      ".local-player-dock", ".local-hand-rail", ".console-guidance", ".opponent-inspection-floating-shell",
-    ].join(","))].filter((element) => element !== seat && !seat.contains(element));
-    const intersects = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-    const collisions = protectedElements.flatMap((element) => {
-      const style = getComputedStyle(element);
-      const obstacleRect = rectangle(element);
-      if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0
-        || obstacleRect.width <= 0 || obstacleRect.height <= 0 || !intersects(railRect, obstacleRect)) return [];
-      return [element.className?.baseVal ?? element.className ?? element.tagName];
-    });
     return {
       ownerId: rail.dataset.judgementOwnerId,
       seat: seatRect,
       rail: railRect,
       card: cardRect,
-      table: tableRect,
-      infoHit: infoHit === info || info.contains(infoHit),
-      collisions,
+      strip: rectangle(strip), hp: rectangle(hp), equipment: rectangle(equipment),
+      equipmentCount: equipment.querySelectorAll(".opponent-equipment-slot").length,
     };
   });
 }
 
-test("T1: a committed public Judgement rail stays with its real Seat across viewers", async ({ browser, request }) => {
+test("T1: public Judgement markers stay inside their real Seat across viewers", async ({ browser, request }) => {
   test.setTimeout(90_000);
   const lightning = card("Lightning", "t1-public-lightning", "♥");
   const room = await seed(request, lightning);
@@ -88,7 +72,7 @@ test("T1: a committed public Judgement rail stays with its real Seat across view
     ]);
 
     const ownerSeat = firstPage.locator(`.opponent-player-card[data-player-anchor="${owner.id}"]`);
-    const rail = ownerSeat.locator(".opponent-judgement-zone");
+    const rail = ownerSeat.locator(".opponent-judgement-status");
     const attachedCard = ownerSeat.locator(`[data-judgement-id="${lightning.id}"]`);
     await expect(rail).toBeVisible();
     await expect(attachedCard).toBeVisible();
@@ -98,14 +82,15 @@ test("T1: a committed public Judgement rail stays with its real Seat across view
 
     const initialGeometry = await judgementGeometry(firstPage, owner.id, lightning.id);
     expect(initialGeometry.ownerId).toBe(owner.id);
-    expect(initialGeometry.card.width).toBeGreaterThanOrEqual(44);
-    expect(initialGeometry.card.height).toBeGreaterThanOrEqual(66);
-    expect(initialGeometry.rail.top).toBeGreaterThanOrEqual(initialGeometry.seat.bottom);
-    expect(initialGeometry.rail.left).toBeGreaterThanOrEqual(initialGeometry.table.left);
-    expect(initialGeometry.rail.right).toBeLessThanOrEqual(initialGeometry.table.right);
-    expect(initialGeometry.rail.bottom).toBeLessThanOrEqual(initialGeometry.table.bottom);
-    expect(initialGeometry.collisions).toEqual([]);
-    expect(initialGeometry.infoHit).toBe(true);
+    expect(initialGeometry.card.width).toBeLessThanOrEqual(16);
+    expect(initialGeometry.rail.top).toBeGreaterThanOrEqual(initialGeometry.seat.top);
+    expect(initialGeometry.rail.bottom).toBeLessThanOrEqual(initialGeometry.seat.bottom);
+    expect(initialGeometry.hp.right).toBeLessThanOrEqual(initialGeometry.rail.left);
+    expect(initialGeometry.rail.right).toBeLessThanOrEqual(initialGeometry.equipment.left);
+    expect(initialGeometry.equipmentCount).toBe(4);
+    await expect(ownerSeat.locator(".opponent-judgement-zone, .judgement-mini")).toHaveCount(0);
+    await expect(attachedCard).toHaveAttribute("aria-label", `Lightning in ${owner.name}'s Judgement zone`);
+    await expect(attachedCard).toHaveText("⚡");
 
     const play = await request.post(`${API}/api/rooms`, {
       data: { action: "play_card", code: room.code, token: room.players[0].token, cardId: room.delayed.id, targetId: owner.id },
@@ -115,39 +100,63 @@ test("T1: a committed public Judgement rail stays with its real Seat across view
     const inFlight = firstPage.locator(`.active-table-reveal[data-public-zone-transition-card-id="${room.delayed.id}"]`);
     await expect(inFlight).toBeVisible({ timeout: 12_000 });
     const attachedDelayed = firstPage.locator(`.opponent-player-card[data-player-anchor="${owner.id}"] [data-judgement-id="${room.delayed.id}"]`);
-    await expect(attachedDelayed).toHaveCount(1);
-    await expect(attachedDelayed).toHaveCSS("visibility", "hidden");
+    await expect(attachedDelayed).toHaveCount(0);
     await expect(inFlight.locator(`[data-settlement-card-id="${room.delayed.id}"]`)).toHaveCount(1);
-    await expect(attachedDelayed).toHaveCSS("visibility", "hidden");
     await expect(attachedDelayed).toBeVisible({ timeout: 12_000 });
+    await expect(attachedDelayed.locator("svg")).toHaveCount(1);
     await expect(firstPage.locator(`.active-table-reveal[data-public-zone-transition-card-id="${room.delayed.id}"]`)).toHaveCount(0);
 
     const postArrival = await judgementGeometry(firstPage, owner.id, room.delayed.id);
     expect(postArrival.ownerId).toBe(owner.id);
-    expect(postArrival.collisions).toEqual([]);
-    const infoButton = attachedDelayed.getByRole("button", { name: `Inspect ${owner.name} to explain Overindulgence`, exact: true });
-    await infoButton.click();
+    expect(postArrival.rail.right).toBeLessThanOrEqual(postArrival.equipment.left);
+    await ownerSeat.getByRole("button", { name: `Inspect ${owner.name}`, exact: true }).click();
     await expect(firstPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${owner.id}"]`)).toBeVisible();
-    const inspectorGeometry = await judgementGeometry(firstPage, owner.id, room.delayed.id);
-    expect(inspectorGeometry.collisions).toEqual([]);
+    await expect(firstPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${owner.id}"]`).getByRole("button", { name: "Explain Lightning" })).toBeVisible();
+    await expect(firstPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${owner.id}"]`).getByRole("button", { name: "Explain Overindulgence" })).toBeVisible();
 
     const otherOwnerSeat = secondPage.locator(`.opponent-player-card[data-player-anchor="${owner.id}"]`);
-    await expect(otherOwnerSeat.locator(".opponent-judgement-zone")).toBeVisible();
+    await expect(otherOwnerSeat.locator(".opponent-judgement-status")).toBeVisible();
     await expect(otherOwnerSeat.locator(`[data-judgement-id="${room.delayed.id}"]`)).toBeVisible();
     await expect(secondPage.locator(`.player-board [data-judgement-id="${room.delayed.id}"]`)).toHaveCount(1);
     const secondGeometry = await judgementGeometry(secondPage, owner.id, room.delayed.id);
     expect(secondGeometry.ownerId).toBe(owner.id);
-    expect(secondGeometry.collisions).toEqual([]);
+    expect(secondGeometry.rail.right).toBeLessThanOrEqual(secondGeometry.equipment.left);
 
-    await secondPage.setViewportSize({ width: 440, height: 844 });
-    await expect(otherOwnerSeat.locator(`[data-judgement-id="${room.delayed.id}"]`)).toBeVisible();
-    const resizedGeometry = await judgementGeometry(secondPage, owner.id, room.delayed.id);
-    expect(resizedGeometry.ownerId).toBe(owner.id);
-    expect(resizedGeometry.rail.left).toBeGreaterThanOrEqual(resizedGeometry.table.left);
-    expect(resizedGeometry.rail.right).toBeLessThanOrEqual(resizedGeometry.table.right);
-    expect(resizedGeometry.collisions).toEqual([]);
   } finally {
     await firstPage.close();
     await secondPage.close();
   }
+});
+
+test("T1: narrow six-player Seat retains HP, equipment and Judgement summary", async ({ page, request }) => {
+  const hidden = card("Peach", "t1-six-hidden-hand", "♥");
+  const response = await request.post(`${API}/__test/seed-playing-game`, {
+    data: { phase: "play", turnSeat: 0, players: [
+      { name: "VIEWER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
+      { name: "OWNER", role: "Loyalist", hero: "simayi", hp: 3, maxHp: 3, hand: [hidden], judgement: [card("Lightning", "t1-six-lightning"), card("Overindulgence", "t1-six-overindulgence", "♥")] },
+      { name: "P3", role: "Rebel", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [] },
+      { name: "P4", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+      { name: "P5", role: "Renegade", hero: "gan-ning", hp: 4, maxHp: 4, hand: [] },
+      { name: "P6", role: "Rebel", hero: "xiahou-dun", hp: 4, maxHp: 4, hand: [] },
+    ] },
+  });
+  expect(response.ok()).toBeTruthy();
+  const room = await response.json();
+  await openPlayer(page, room, room.players[0], { width: 390, height: 700 });
+  const seat = page.locator(`.opponent-player-card[data-player-anchor="${room.players[1].id}"]`);
+  const summary = seat.locator(".opponent-judgement-overflow");
+  await expect(summary).toBeVisible();
+  await expect(summary).toHaveText("2");
+  await expect(seat.locator(".opponent-equipment-slot")).toHaveCount(4);
+  await expect(seat.locator(`[data-hand-card-id="${hidden.id}"]`)).toHaveCount(0);
+  const rects = await summary.evaluate((element) => {
+    const strip = element.closest(".opponent-status-equipment-strip");
+    const rect = (node) => { const r = node.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
+    return { strip: rect(strip), hp: rect(strip.querySelector(".opponent-hp-chip")), summary: rect(element), equipment: rect(strip.querySelector(".opponent-equipment-summary")) };
+  });
+  expect(rects.hp.right).toBeLessThanOrEqual(rects.summary.left);
+  expect(rects.summary.right).toBeLessThanOrEqual(rects.equipment.left);
+  expect(rects.equipment.right).toBeLessThanOrEqual(rects.strip.right);
+  expect(rects.summary.top).toBeGreaterThanOrEqual(rects.strip.top);
+  expect(rects.summary.bottom).toBeLessThanOrEqual(rects.strip.bottom);
 });

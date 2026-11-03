@@ -2430,9 +2430,16 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, m
     const accessibleSlotLabel = key === "defensiveHorse" ? "Plus-one horse" : key === "offensiveHorse" ? "Minus-one horse" : label;
     return <span className="opponent-equipment-slot is-occupied" data-slot={key} data-player-equipment-slot-owner={player.id} data-occupied="true" key={key}><span className="opponent-equipment-indicator" data-slot={key} data-equipment-id={equipment.id} data-card-kind={equipment.kind} role="img" aria-label={`${accessibleSlotLabel} equipped: ${equipmentName}`} title={`${label}: ${equipmentName}`}><OpponentEquipmentGlyph slot={key} /></span></span>;
   });
-  const miniJudgement = player.judgementCards.map((judgement) => <span className="mini-zone-card judgement-mini" data-judgement-id={judgement.id} key={judgement.id} style={{ visibility: judgementInFlight.has(judgement.id) ? "hidden" : "visible" }}>
-    <span><small>{judgement.rank}{judgement.suit}</small><b>{cardDefinition(judgement.kind).name}</b></span>
-    <button type="button" className="zone-info-button" aria-label={`Inspect ${player.name} to explain ${cardDefinition(judgement.kind).name}`} onClick={(event) => { event?.stopPropagation(); onInspect(event?.currentTarget ?? null); }}>i</button>
+  const visibleJudgement = player.judgementCards.filter((card) => !judgementInFlight.has(card.id));
+  const visibleJudgementCount = visibleJudgement.length;
+  const judgementIndicators = visibleJudgement.map((judgement) => <span
+    className="opponent-judgement-indicator" data-judgement-id={judgement.id} data-card-kind={judgement.kind}
+    key={judgement.id}
+    role="img" aria-label={`${cardDefinition(judgement.kind).name} in ${player.name}'s Judgement zone`}
+    title={cardDefinition(judgement.kind).name}>
+    {judgement.kind === "Lightning" ? "⚡" : judgement.kind === "Overindulgence"
+      ? <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2h10l-1 4a4 4 0 0 1-3.5 3v3h3v2h-7v-2h3V9A4 4 0 0 1 4 6L3 2Z" fill="currentColor" /></svg>
+      : "◆"}
   </span>);
   const targetButtonDisabled = targetSelectionActive && !targetAttemptEnabled && (!targetablePlayer || !player.alive);
   const seatInspectorActive = targetSelectionActive && showSeparateInspectAffordance;
@@ -2460,13 +2467,13 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, m
       </div>
       <div className={`opponent-status-equipment-strip${seatInspectorActive ? " has-seat-inspector" : ""}`}>
         <span className="opponent-hp-chip" aria-label={`HP ${player.hp ?? 0} of ${player.maxHp ?? 0}`}>HP {player.hp ?? 0}/{player.maxHp ?? 0}</span>
+        {visibleJudgementCount > 0 && <div className="opponent-judgement-status" data-judgement-owner-id={player.id} data-multiple={visibleJudgementCount > 1 ? "true" : undefined} role="group" aria-label={`${player.name} Judgement zone`}>
+          <span className="opponent-judgement-indicators">{judgementIndicators}</span>
+          {visibleJudgementCount > 1 && <span className="opponent-judgement-overflow" role="img" aria-label={`${visibleJudgementCount} Judgement cards; inspect ${player.name} for details`}>{visibleJudgementCount}</span>}
+        </div>}
         <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count={equipmentBySlot.size}>{equipmentSummary}</div>
         {seatInspectorActive && <button type="button" className="opponent-hero-inspect-name opponent-seat-inspect-button" aria-label={`Inspect ${player.name}`} aria-pressed={isInspected} aria-expanded={isInspected} title={`Inspect ${player.name}`} onClick={(event) => { event.stopPropagation(); onInspect(event.currentTarget); }}><span className="opponent-player-name" aria-hidden="true">{player.name}</span></button>}
       </div>
-      {player.judgementCards.length > 0 && <section className="opponent-judgement-zone" data-judgement-owner-id={player.id} aria-label={`${player.name} Judgement Zone`}>
-        <span className="opponent-zone-label">Judgement</span>
-        <div className="opponent-judgement-cards">{miniJudgement}</div>
-      </section>}
     </div>
   </article>;
 }
@@ -2638,7 +2645,6 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
       ".public-activity-chip",
       ".stage-system-cluster",
       ".visible-countdown",
-      ".opponent-judgement-zone",
       "[data-public-card-announcement='true']",
       ".public-card-journey-card[data-public-card-journey-phase='reveal']",
       ".public-card-journey-card[data-public-card-journey-phase='move']",
@@ -2846,7 +2852,7 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
       const shellRect = shell.getBoundingClientRect();
       const shellLeft = layerRect.left + (layerRect.width - shellRect.width) / 2;
       const shellRight = shellLeft + shellRect.width;
-      const obstacleRects = [activityChip, ...table.querySelectorAll<HTMLElement>(".visible-countdown, .opponent-judgement-zone")].flatMap((element) => {
+      const obstacleRects = [activityChip, ...table.querySelectorAll<HTMLElement>(".visible-countdown")].flatMap((element) => {
         const rect = visibleRect(element);
         if (!rect || rect.right <= shellLeft || rect.left >= shellRight) return [];
         return [rect];
