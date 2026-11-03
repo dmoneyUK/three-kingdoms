@@ -524,7 +524,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
           currentChip.style.left = `${activityRect.left - tableRect.left}px`;
           currentChip.style.top = `${activityRect.top - tableRect.top}px`;
           currentChip.style.visibility = "visible";
-          currentChip.dataset.publicActivityLayout = "shared-reveal";
+          currentChip.dataset.publicActivityLayout = `shared-${sharedPublicStage.layout.scene.phase.toLowerCase()}`;
           currentChip.dataset.publicStageLayoutIdentity = sharedPublicStage.layout.identity;
           delete currentChip.dataset.publicActivityPlacementBlockers;
           return;

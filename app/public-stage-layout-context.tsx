@@ -97,7 +97,9 @@ export function PublicStageLayoutProvider({
   children: ReactNode;
 }) {
   const [snapshot, setSnapshot] = useState<SharedPublicStageLayout | null>(null);
+  const snapshotRef = useRef<SharedPublicStageLayout | null>(null);
   const generationRef = useRef({ sceneKey: "", geometrySignature: "", generation: 0 });
+  const movePathRef = useRef<{ sceneKey: string; rect: PublicStageRect } | null>(null);
 
   useLayoutEffect(() => {
     const table = scopeId
@@ -110,8 +112,11 @@ export function PublicStageLayoutProvider({
 
     const clear = () => {
       generationRef.current = { ...generationRef.current, sceneKey: "", geometrySignature: "" };
+      movePathRef.current = null;
       clearCountdownLayoutMetadata(table);
+      snapshotRef.current = null;
       setData(table, "data-public-stage-layout-status", undefined);
+      setData(table, "data-public-stage-layout-phase", undefined);
       setData(table, "data-public-stage-layout-failure", undefined);
       setData(table, "data-public-stage-layout-identity", undefined);
       setSnapshot((current) => current === null ? current : null);
@@ -136,24 +141,34 @@ export function PublicStageLayoutProvider({
       }
 
       const primaryCards = [...display.querySelectorAll<HTMLElement>(
-        '.public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="reveal"]',
-      )].filter((card) => ["reveal", "duel-reveal"].includes(card.dataset.publicCardJourneySize ?? "")
+        '.public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="reveal"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="move"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="parked"]',
+      )].filter((card) => (card.dataset.publicCardJourneyPhase !== "reveal"
+          || ["reveal", "duel-reveal"].includes(card.dataset.publicCardJourneySize ?? ""))
         && visibleForMeasure(card));
       if (primaryCards.length !== 1) {
         clear();
         return;
       }
       const primary = primaryCards[0];
+      const phaseName = primary.dataset.publicCardJourneyPhase?.toUpperCase();
+      if (phaseName !== "REVEAL" && phaseName !== "MOVE" && phaseName !== "PARKED") {
+        clear();
+        return;
+      }
+      const phase = phaseName;
       const eventId = primary.dataset.publicCardJourneyEventId ?? "";
       const cardId = primary.dataset.publicCardJourneyCardId ?? "";
+      const cardSceneKey = JSON.stringify([roomId, scopeId, interactionId, eventId, cardId, viewerId]);
       const primaryRect = primary.getBoundingClientRect();
       if (!eventId || !cardId || primaryRect.width <= 0 || primaryRect.height <= 0) {
         clear();
         return;
       }
 
-      const frameRects = [...primary.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel")]
-        .filter(visibleForMeasure).map((element) => element.getBoundingClientRect());
+      const frameRects = phase === "REVEAL"
+        ? [...primary.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel")]
+          .filter(visibleForMeasure).map((element) => element.getBoundingClientRect())
+        : [];
       const visualPrimary = frameRects.reduce((rect, frameRect) => ({
         left: Math.min(rect.left, frameRect.left),
         top: Math.min(rect.top, frameRect.top),
@@ -196,13 +211,84 @@ export function PublicStageLayoutProvider({
           id: element.dataset.playerAnchor || element.id || String(element.className).slice(0, 48) + ":" + index,
           rect: rectOf(element),
         }));
-      const sceneKey = JSON.stringify([roomId, scopeId, interactionId, eventId, cardId, viewerId, "REVEAL"]);
       const cardSize = { width: visualPrimary.right - visualPrimary.left, height: visualPrimary.bottom - visualPrimary.top };
+      const measuredCardRect = { left: visualPrimary.left, top: visualPrimary.top, right: visualPrimary.right, bottom: visualPrimary.bottom };
+      const phaseRects = phase === "REVEAL" ? undefined : {
+        card: rectOf(primary),
+        activity: rectOf(chip),
+        ...(phase === "MOVE" ? { announcement: rectOf(announcement) } : {}),
+      };
+      let moveTarget: PublicStageRect | null = null;
+      let movePath: PublicStageRect | null = null;
+      if (phase === "MOVE") {
+        const targetValues = ["Left", "Top", "Width", "Height"].map((suffix) => Number(primary.dataset[`publicCardJourneyTarget${suffix}`]));
+        if (targetValues.some((value) => !Number.isFinite(value)) || targetValues[2] <= 0 || targetValues[3] <= 0) {
+          setData(table, "data-public-stage-layout-status", "unavailable");
+          setData(table, "data-public-stage-layout-phase", phase.toLowerCase());
+          setData(table, "data-public-stage-layout-identity", undefined);
+          setData(table, "data-public-stage-layout-failure", JSON.stringify({ reason: "MOVE_TARGET_UNPROVEN", card: roundedRect(measuredCardRect) }));
+          snapshotRef.current = null;
+          setSnapshot((current) => current === null ? current : null);
+          return;
+        }
+        const [left, top, width, height] = targetValues;
+        const target = {
+          left,
+          top,
+          right: left + width,
+          bottom: top + height,
+        };
+        moveTarget = target;
+        if (movePathRef.current?.sceneKey !== cardSceneKey) {
+          const previous = snapshotRef.current;
+          const previousReveal = previous?.layout.scene.phase === "REVEAL"
+            && previous.layout.scene.roomId === roomId
+            && previous.layout.scene.scopeId === scopeId
+            && previous.layout.scene.interactionId === interactionId
+            && previous.layout.scene.eventId === eventId
+            && previous.layout.scene.cardId === cardId
+            && previous.layout.scene.viewerId === viewerId
+            ? previous.layout.card
+            : phaseRects!.card;
+          movePathRef.current = {
+            sceneKey: cardSceneKey,
+            rect: {
+              left: Math.min(previousReveal.left, target.left),
+              top: Math.min(previousReveal.top, target.top),
+              right: Math.max(previousReveal.right, target.right),
+              bottom: Math.max(previousReveal.bottom, target.bottom),
+            },
+          };
+        }
+        movePath = movePathRef.current.rect;
+        obstacles.push({ id: "primary-card-move-path", rect: movePath });
+        const previous = snapshotRef.current;
+        if (previous?.layout.scene.roomId === roomId
+          && previous.layout.scene.scopeId === scopeId
+          && previous.layout.scene.interactionId === interactionId
+          && previous.layout.scene.eventId === eventId
+          && previous.layout.scene.cardId === cardId
+          && previous.layout.scene.viewerId === viewerId
+          && ["REVEAL", "MOVE"].includes(previous.layout.scene.phase)) {
+          phaseRects!.announcement = previous.layout.announcement;
+        }
+      } else {
+        movePathRef.current = null;
+      }
+      const sceneKey = JSON.stringify([roomId, scopeId, interactionId, eventId, cardId, viewerId, phase]);
+      const signatureCardRect = phase === "MOVE" && movePath ? movePath : measuredCardRect;
+      const signatureCardSize = phase === "MOVE" && moveTarget
+        ? { width: moveTarget.right - moveTarget.left, height: moveTarget.bottom - moveTarget.top }
+        : cardSize;
       const geometrySignature = JSON.stringify({
+        phase,
         viewport: roundedRect(viewport),
         table: roundedRect(tableBounds),
-        primary: cardSize,
-        primaryOffset,
+        primary: signatureCardSize,
+        // REVEAL may move once from its preferred anchor to the shared safe
+        // stack. That owned placement must not mint a second generation.
+        primaryRect: phase === "REVEAL" ? null : roundedRect(signatureCardRect),
+        primaryOffset: phase === "MOVE" ? { left: 0, top: 0 } : primaryOffset,
         announcement: measuredSize(announcementRect),
         activity: measuredSize(activityRect),
         obstacles: obstacles.map(({ id, rect }) => [id, roundedRect(rect)])
@@ -215,7 +301,7 @@ export function PublicStageLayoutProvider({
       const nextGeneration = Math.max(1, generation);
       generationRef.current = { sceneKey, geometrySignature, generation: nextGeneration };
 
-      const scene = { semantics: "PROVEN" as const, roomId, scopeId, interactionId, eventId, cardId, viewerId, phase: "REVEAL" as const, generation: nextGeneration };
+      const scene = { semantics: "PROVEN" as const, roomId, scopeId, interactionId, eventId, cardId, viewerId, phase, generation: nextGeneration };
       const safeLeft = Math.max(viewport.left, tableBounds.left) + 8;
       const safeRight = Math.min(viewport.right, tableBounds.right) - 8;
       const safeTop = Math.max(viewport.top, tableBounds.top) + 8;
@@ -232,11 +318,13 @@ export function PublicStageLayoutProvider({
         announcement: measuredSize(announcementRect),
         activity: measuredSize(activityRect),
         obstacles,
+        phaseRects,
       });
       if (result.status !== "placed") {
         generationRef.current = { ...generationRef.current, sceneKey: "", geometrySignature: "" };
         clearCountdownLayoutMetadata(table);
         setData(table, "data-public-stage-layout-status", "unavailable");
+        setData(table, "data-public-stage-layout-phase", phase.toLowerCase());
         setData(table, "data-public-stage-layout-identity", undefined);
         setData(table, "data-public-stage-layout-failure", JSON.stringify({
           reason: result.reason,
@@ -247,6 +335,7 @@ export function PublicStageLayoutProvider({
           activity: roundedRect(rectOf(chip)),
           obstacles: obstacles.map(({ id, rect }) => ({ id, rect: roundedRect(rect) })),
         }));
+        snapshotRef.current = null;
         setSnapshot((current) => current === null ? current : null);
         return;
       }
@@ -271,12 +360,14 @@ export function PublicStageLayoutProvider({
         setData(countdown, "data-public-stage-layout-identity", result.layout.identity);
         setData(countdown, "data-public-stage-layout-protected-rect", measured);
       });
-      setData(table, "data-public-stage-layout-status", "shared-reveal");
+      setData(table, "data-public-stage-layout-status", `shared-${phase.toLowerCase()}`);
+      setData(table, "data-public-stage-layout-phase", phase.toLowerCase());
       setData(table, "data-public-stage-layout-identity", result.layout.identity);
       setData(table, "data-public-stage-layout-failure", undefined);
+      snapshotRef.current = next;
       setSnapshot((current) => sameSnapshot(current, next) ? current : next);
       resizeObserver?.disconnect();
-      for (const element of [table, display, primary, announcement, chip,
+      for (const element of [table, display, ...(phase === "MOVE" ? [] : [primary]), announcement, chip,
         ...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)]) resizeObserver?.observe(element);
     };
     function schedule() {
@@ -293,7 +384,7 @@ export function PublicStageLayoutProvider({
     const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
       if (records.some((record) => {
         if (record.type === "attributes" && record.target === table
-          && ["data-public-stage-layout-status", "data-public-stage-layout-identity", "data-public-stage-layout-failure"].includes(record.attributeName ?? "")) return false;
+          && ["data-public-stage-layout-status", "data-public-stage-layout-phase", "data-public-stage-layout-identity", "data-public-stage-layout-failure"].includes(record.attributeName ?? "")) return false;
         if (record.type === "attributes" && record.attributeName?.startsWith("data-public-stage-layout-")
           && record.target !== table) return false;
         if (record.type === "attributes" && record.attributeName === "style" && ownedGeometryElement(record.target)) return false;
@@ -315,6 +406,7 @@ export function PublicStageLayoutProvider({
       window.visualViewport?.removeEventListener("resize", onResize);
       window.visualViewport?.removeEventListener("scroll", onResize);
       setData(table, "data-public-stage-layout-status", undefined);
+      setData(table, "data-public-stage-layout-phase", undefined);
       setData(table, "data-public-stage-layout-failure", undefined);
       setData(table, "data-public-stage-layout-identity", undefined);
     };
@@ -330,10 +422,11 @@ export function PublicStageLayoutProvider({
 
 export function sharedPublicStageMatchesElement(table: HTMLElement, shared: SharedPublicStageLayout): boolean {
   return [...table.querySelectorAll<HTMLElement>(
-    '.public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="reveal"]',
+    '.public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="reveal"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="move"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="parked"]',
   )].some((card) => card.dataset.publicCardJourneyEventId === shared.primaryEventId
     && card.dataset.publicCardJourneyCardId === shared.primaryCardId
-    && ["reveal", "duel-reveal"].includes(card.dataset.publicCardJourneySize ?? "")
+    && card.dataset.publicCardJourneyPhase?.toUpperCase() === shared.layout.scene.phase
+    && (shared.layout.scene.phase !== "REVEAL" || ["reveal", "duel-reveal"].includes(card.dataset.publicCardJourneySize ?? ""))
     && card.closest<HTMLElement>(".public-card-display")?.dataset.publicCardRootEventId === shared.layout.scene.scopeId
     && (!shared.layout.scene.interactionId
       || card.closest<HTMLElement>(".public-card-display")?.dataset.publicCardInteractionId === shared.layout.scene.interactionId)

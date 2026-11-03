@@ -394,9 +394,11 @@ function PublicJourneyCard({
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
   const sharedPublicStage = usePublicStageLayout();
-  const usesSharedRevealLayout = Boolean(sharedPublicStage && primary && card.phase === "reveal"
+  const sharesCurrentStageIdentity = Boolean(sharedPublicStage && primary
     && card.eventId === sharedPublicStage.primaryEventId
-    && card.cardFace.id === sharedPublicStage.primaryCardId);
+    && card.cardFace.id === sharedPublicStage.primaryCardId
+    && card.phase.toUpperCase() === sharedPublicStage.layout.scene.phase);
+  const usesSharedRevealLayout = sharesCurrentStageIdentity && card.phase === "reveal";
   const journeyLeft = usesSharedRevealLayout && sharedPublicStage
     ? sharedPublicStage.layout.card.left - sharedPublicStage.primaryOffset.left
     : card.rect.left;
@@ -462,7 +464,7 @@ function PublicJourneyCard({
     data-public-card-journey-target-width={parkingTargetKnown ? card.target.width : undefined}
     data-public-card-journey-target-height={parkingTargetKnown ? card.target.height : undefined}
     data-public-card-primary-card={primary ? "true" : undefined}
-    data-public-stage-layout-identity={usesSharedRevealLayout ? sharedPublicStage?.layout.identity : undefined}
+    data-public-stage-layout-identity={sharesCurrentStageIdentity ? sharedPublicStage?.layout.identity : undefined}
     data-public-card-journey-parking-side={parkingSide}
     data-public-card-journey-ordinal={card.globalOrdinal}
     data-public-card-inspectable={inspectable ? "true" : "false"}
@@ -2478,7 +2480,7 @@ function PublicCardAnnouncement({
         setPx("top", rect.top);
         setPx("width", rect.right - rect.left);
         setData("data-public-stage-layout-identity", sharedPublicStage.layout.identity);
-        setData("data-public-card-announcement-placement", "shared-reveal");
+        setData("data-public-card-announcement-placement", `shared-${sharedPublicStage.layout.scene.phase.toLowerCase()}`);
         setData("data-public-card-announcement-positioned", "true");
         if (copy.style.visibility !== "visible") copy.style.visibility = "visible";
         setDelivery("VISIBLE", currentEventCopyKey);
@@ -2486,7 +2488,7 @@ function PublicCardAnnouncement({
           geometryEpoch: sharedPublicStage.layout.identity,
           obstacleIds: [],
           decision: "reflow",
-          reason: "shared-public-stage-layout",
+          reason: `shared-public-stage-layout-${sharedPublicStage.layout.scene.phase.toLowerCase()}`,
           compact: copy.dataset.publicCardAnnouncementCompact === "true",
           rect: { left: rect.left, top: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top },
           visible: true,

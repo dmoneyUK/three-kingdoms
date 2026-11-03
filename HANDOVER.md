@@ -1,22 +1,22 @@
-# HANDOVER — Current Task Only
+# HANDOVER — 当前任务
 
-Repository: `dmoneyUK/three-kingdoms` · target `ux-v2`
+仓库：`dmoneyUK/three-kingdoms` · 目标分支：`ux-v2`
 
-Worktree: `/Users/jingedai/.codex/worktrees/ux2-judgement-seat-01` · branch `codex/ux2-judgement-seat-01`
+工作树：`/Users/jingedai/.codex/worktrees/ux2-judgement-seat-01` · 本地分支：`codex/ux2-judgement-seat-01`
 
-Latest design reviewed: `docs/UX2-refine.md` revision `e33190bfdee03c87ddcd27ccfaeab4b1db9638d4` (2026-11-02 23:09 UTC).
-Latest remote `ux-v2` reviewed: `b49becadc42909c55dd36de0d106da772d9d6d8f`; design revision unchanged.
+最新设计已复习并同步：`docs/UX2-refine.md`，远端设计提交 `54d42b9ceef944ab517a22a1cd1676a03612c069`（2026-11-03 00:34 UTC）。本次设计更新关闭并接受了 T5 私有响应指引；T6 §10.30 的公共布局、转换结果和公开反制历史要求仍待完成及手机复验。最新远端代码提交仍为 `b49becadc42909c55dd36de0d106da772d9d6d8f`，之后的 `dbf63f1` 与 `54d42b9` 为文档提交。
 
-## Current bounded task — T6 PUBLIC-PAC-REVEAL-ORDER-01 (§10.30)
+## 当前唯一有界任务 — T6 PUBLIC-PAC-REVEAL-ORDER-01（§10.30）
 
-**Status: IN PROGRESS — NOT OWNER-ACCEPTED.** This remains one consolidated phone-acceptance scope. Preserve the delivered T4 Frame typography and accepted T2 Inspector, Console End, Harvest, Steal/Dismantle, privacy and 4/5/6-player behavior. The design defines no new task IDs.
+**状态：实现进行中；本步骤尚未提交、CI 未运行、未部署；未获用户验收。** 保留 T5 已通过的私有响应指引作为回归要求，不将其重新列为待验收功能。
 
-**Current implementation step:** Reflow H4 under one proven scene generation across REVEAL → MOVE → PARKED. When the primary card moves away, return H4 to its stage-centred band without replaying or re-parking the physical card. Preserve event/card/viewer identity, full CardFace/Frame, PAC and timer ownership. Do not change public history ownership in this step.
+**当前步骤：** 让真实公开卡牌在 REVEAL → MOVE → PARKED 三阶段与 CardFace、H4、PAC、倒计时共享同一阶段身份。MOVE 保持已验证的 H4 位置和真实卡牌动画；PARKED 按卡牌实际落点避让并将 H4 放回安全的舞台居中区域。卡牌身份、作者落点、PAC 与倒计时不因 H4 重排而变化。本步骤不改公开反制历史归属。
 
-**Latest local result — 2026-11-03 00:17 UTC:** shared layout includes visible countdowns among its protected Rects and tags them with the current scene identity without changing timer CSS/position. The full-size 90×135 card remains unchanged; browser-measured CardFace-to-PAC gaps are **8.94px** and **8.67px** after adding a 1px subpixel margin. Targeted layout tests **4/4**, targeted ESLint, `npm run build`, and `git diff --check` passed. One real-game 390×844 browser scenario passed in **10.2s** for committed Something Out of Nothing and Barbarian Invasion reveals; countdown identity and Rect match the shared result on both.
+**本地实现与验证 — 2026-11-03 00:38 UTC：** 修改 4 个实现文件和 2 个既有测试文件，共 6 个文件。纯布局测试 **6/6 通过**；目标 ESLint **0 错误**（`app/public-card-display.tsx` 有 13 条既存 hooks 依赖警告）；`npm run build` 通过（保留既有包体积和 API 分类提示）；`git diff --check` 通过。一个既有真实对局浏览器场景在 **390×844** 下通过 **1/1**，用时 **14.1 秒**，观察到 REVEAL、MOVE、PARKED 身份一致，PARKED H4 居中且不遮挡卡牌、PAC、倒计时；实体卡停在实际目标。所有本地浏览器测试合计少于 5 分钟。当前改动尚无 exact-SHA CI、部署或生产健康检查结果。
 
-**Latest delivered T6 step — shared REVEAL geometry:** Source commit [`16468f5e713a0c68bd9d4e1a45e6deb897bc1854`](https://github.com/dmoneyUK/three-kingdoms/commit/16468f5e713a0c68bd9d4e1a45e6deb897bc1854) is pushed to `ux-v2`. Exact-SHA [Actions run 41550956280](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41550956280) completed **SUCCESS** at 00:14 UTC: Lint/fast tests, API tests, browser startup/room smoke, Worker deployment and production smoke all passed. Worker version `285c94ea-b1fc-4261-a754-ddec38b77306`; direct `/api/health` at 00:14 UTC returned HTTP 200, `{"ok":true,"worker":"available"}`. The shared REVEAL geometry and focused 390×844 test results above are deployed. Public response-history retention and MOVE/PARKED H4 reflow remain unmodified and unverified.
+**最近已部署的 T6 基线：**
 
-**Latest delivered T6 step — countdown shares the REVEAL generation:** Source commit [`b49becadc42909c55dd36de0d106da772d9d6d8f`](https://github.com/dmoneyUK/three-kingdoms/commit/b49becadc42909c55dd36de0d106da772d9d6d8f) is pushed to `ux-v2`. Exact-SHA [Actions run 41551875970](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41551875970) completed **SUCCESS** at 00:22 UTC: Lint/fast tests, API tests, browser startup/room smoke, Worker deployment and production smoke all passed. Worker version `9acbd612-68d2-45cf-b340-90bfa3920fa8`; direct `/api/health` at 00:22 UTC returned HTTP 200, `{"ok":true,"worker":"available"}`. The countdown position is retained as a protected measured side lane within the same layout identity.
+- 共享 REVEAL 几何：提交 `16468f5e713a0c68bd9d4e1a45e6deb897bc1854`；exact-SHA [Actions 41550956280](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41550956280) 成功；Worker `285c94ea-b1fc-4261-a754-ddec38b77306`；当时 `/api/health` HTTP 200。
+- 倒计时纳入同一 REVEAL 布局身份：提交 `b49becadc42909c55dd36de0d106da772d9d6d8f`；exact-SHA [Actions 41551875970](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41551875970) 成功；Worker `9acbd612-68d2-45cf-b340-90bfa3920fa8`；当时 `/api/health` HTTP 200。
 
-Do not mark T6 accepted or ready for owner phone review until shared phase reflow and committed public counter history corrections are deployed and the single combined iPhone checklist is prepared.
+**下一安全边界：** 本步骤 exact-SHA CI、部署和健康检查通过后，再单独审计并修复真实已提交公开反制卡牌的历史保留与渲染所有权；先追到首个丢失渲染所有权的阶段，不猜测事件语义。T6 全部修正部署后，才准备一次合并 iPhone 复验；不宣称 USER-ACCEPTED。

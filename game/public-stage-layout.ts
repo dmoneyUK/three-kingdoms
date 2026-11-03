@@ -24,6 +24,7 @@ export type PublicStageLayoutInput = {
   announcement: PublicStageSize;
   activity: PublicStageSize;
   obstacles: readonly { id: string; rect: PublicStageRect }[];
+  phaseRects?: { card: PublicStageRect; activity: PublicStageRect; announcement?: PublicStageRect };
   announcementCardGap?: number;
   cardActivityGap?: number;
 };
@@ -42,7 +43,7 @@ export type PublicStageLayout = {
 
 export type PublicStageLayoutResult =
   | { status: "placed"; layout: PublicStageLayout }
-  | { status: "unavailable"; identity: string | null; reason: "UNPROVEN_SCENE" | "INVALID_GEOMETRY" | "PHASE_NOT_REVEAL" | "NO_SAFE_STACK" };
+  | { status: "unavailable"; identity: string | null; reason: "UNPROVEN_SCENE" | "INVALID_GEOMETRY" | "NO_SAFE_STACK" | "NO_SAFE_STAGE_BAND" };
 
 function finiteRect(rect: PublicStageRect): boolean {
   return rect !== null && typeof rect === "object"
@@ -91,15 +92,14 @@ export function publicStageSceneIdentity(scene: PublicStageScene | null | undefi
 }
 
 /**
- * Finds one nearest collision-free H4 → full CardFace → PAC stack for a real
- * REVEAL. All dimensions and obstacles are measured inputs; card/effect names
- * do not affect placement. An unavailable result means the caller must not
- * claim that this stack fits.
+ * Finds the shared collision-free placement for one proven public-card phase.
+ * REVEAL uses H4 → full CardFace → PAC. MOVE/PARKED preserve the measured card
+ * and PAC positions and reflow only H4 around their actual protected bounds.
+ * Card/effect names never affect placement; unavailable means no fit is claimed.
  */
 export function calculatePublicStageLayout(input: PublicStageLayoutInput): PublicStageLayoutResult {
   const identity = publicStageSceneIdentity(input.scene);
   if (!identity) return { status: "unavailable", identity: null, reason: "UNPROVEN_SCENE" };
-  if (input.scene.phase !== "REVEAL") return { status: "unavailable", identity, reason: "PHASE_NOT_REVEAL" };
 
   const { viewport, table, card, announcement, activity } = input;
   const announcementCardGap = input.announcementCardGap ?? 8;
@@ -116,6 +116,13 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
       || !obstacle.id.trim() || !finiteRect(obstacle.rect))) {
     return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
   }
+  if (input.scene.phase !== "REVEAL" && (!input.phaseRects
+    || !finiteRect(input.phaseRects.card) || !finiteRect(input.phaseRects.activity))) {
+    return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
+  }
+  if (input.scene.phase === "MOVE" && (!input.phaseRects?.announcement || !finiteRect(input.phaseRects.announcement))) {
+    return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
+  }
 
   const safeBounds: PublicStageRect = {
     left: Math.max(viewport.left, table.left) + 8,
@@ -123,6 +130,89 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     right: Math.min(viewport.right, table.right) - 8,
     bottom: Math.min(viewport.bottom, table.bottom) - 8,
   };
+  if (input.scene.phase !== "REVEAL") {
+    const phaseRects = input.phaseRects!;
+    const gap = Math.max(8, announcementCardGap);
+    if (input.scene.phase === "MOVE") {
+      // The 380ms physical-card transition can cross the entire narrow mobile
+      // stage. Keep the already-safe reveal band until departure completes;
+      // PARKED computes a fresh centre band after the card reaches its author.
+      const announcementRect = phaseRects.announcement!;
+      const stationaryObstacles = [
+        ...input.obstacles.filter(({ id }) => id !== "primary-card-move-path"),
+        { id: "public-activity", rect: phaseRects.activity },
+      ];
+      if (announcementRect.left < safeBounds.left || announcementRect.right > safeBounds.right
+        || announcementRect.top < safeBounds.top || announcementRect.bottom > safeBounds.bottom
+        || stationaryObstacles.some(({ rect }) => overlaps(announcementRect, rect))) {
+        return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
+      }
+      return {
+        status: "placed",
+        layout: {
+          identity,
+          generation: input.scene.generation,
+          scene: input.scene,
+          safeBounds,
+          protectedRects: stationaryObstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
+          announcement: { ...announcementRect },
+          card: { ...phaseRects.card },
+          activity: { ...phaseRects.activity },
+          cardActivityGap: phaseRects.activity.top - phaseRects.card.bottom,
+        },
+      };
+    }
+    const centerX = (safeBounds.left + safeBounds.right) / 2;
+    const centerY = (safeBounds.top + safeBounds.bottom) / 2;
+    const obstacles = [
+      ...input.obstacles,
+      { id: "primary-card", rect: phaseRects.card },
+      { id: "public-activity", rect: phaseRects.activity },
+    ];
+    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+    const minCenterX = safeBounds.left + announcement.width / 2;
+    const maxCenterX = safeBounds.right - announcement.width / 2;
+    const minTop = safeBounds.top;
+    const maxTop = safeBounds.bottom - announcement.height;
+    if (maxCenterX < minCenterX || maxTop < minTop) {
+      return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
+    }
+    const centers = new Set([clamp(centerX, minCenterX, maxCenterX)]);
+    const tops = new Set([clamp(centerY - announcement.height / 2, minTop, maxTop)]);
+    for (const { rect } of obstacles) {
+      centers.add(clamp(rect.left - gap - announcement.width / 2, minCenterX, maxCenterX));
+      centers.add(clamp(rect.right + gap + announcement.width / 2, minCenterX, maxCenterX));
+      tops.add(clamp(rect.top - gap - announcement.height, minTop, maxTop));
+      tops.add(clamp(rect.bottom + gap, minTop, maxTop));
+    }
+    const candidates = [...centers].flatMap((candidateX) => [...tops].map((candidateTop) => ({
+      centerX: candidateX,
+      top: candidateTop,
+      distance: Math.abs(candidateX - centerX) + Math.abs(candidateTop + announcement.height / 2 - centerY),
+    }))).sort((left, right) => left.distance - right.distance || left.top - right.top || left.centerX - right.centerX);
+    for (const candidate of candidates) {
+      const announcementRect = makeRect(candidate.centerX, candidate.top, announcement);
+      if (announcementRect.left < safeBounds.left || announcementRect.right > safeBounds.right
+        || announcementRect.top < safeBounds.top || announcementRect.bottom > safeBounds.bottom
+        || obstacles.some(({ rect }) => overlaps(announcementRect, rect))) continue;
+      return {
+        status: "placed",
+        layout: {
+          identity,
+          generation: input.scene.generation,
+          scene: input.scene,
+          safeBounds,
+          protectedRects: obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
+          announcement: announcementRect,
+          card: { ...phaseRects.card },
+          activity: { ...phaseRects.activity },
+          cardActivityGap: phaseRects.activity.top - phaseRects.card.bottom,
+        },
+      };
+    }
+    return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
+  }
+
   const stackWidth = Math.max(card.width, announcement.width, activity.width);
   const minCenterX = safeBounds.left + stackWidth / 2;
   const maxCenterX = safeBounds.right - stackWidth / 2;

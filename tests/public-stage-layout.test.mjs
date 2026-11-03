@@ -75,7 +75,7 @@ test("obstacle reflow avoids the obstacle without resizing or reordering the rev
   assert.deepEqual(result.layout.protectedRects, [obstacle]);
 });
 
-test("impossible measured geometry and non-reveal phases fail closed", () => {
+test("impossible reveal geometry fails closed", () => {
   const impossible = calculatePublicStageLayout(input({
     table: { left: 0, top: 0, right: 150, bottom: 180 },
   }));
@@ -84,7 +84,54 @@ test("impossible measured geometry and non-reveal phases fail closed", () => {
     identity: JSON.stringify(["room-1", "root-event-1", null, "event-1", "card-1", "viewer-1", "REVEAL", 1]),
     reason: "NO_SAFE_STACK",
   });
-  const parked = calculatePublicStageLayout(input({ scene: { ...scene, phase: "PARKED" } }));
-  assert.equal(parked.status, "unavailable");
-  assert.equal(parked.reason, "PHASE_NOT_REVEAL");
+});
+
+test("MOVE preserves the validated reveal H4 band until the card leaves its 380ms route", () => {
+  const card = { left: 150, top: 350, right: 180, bottom: 395 };
+  const activity = { left: 85, top: 700, right: 305, bottom: 744 };
+  const route = { left: 18, top: 182, right: 180, bottom: 395 };
+  const announcement = { left: 75, top: 310, right: 315, bottom: 362 };
+  const countdown = { left: 340, top: 370, right: 380, bottom: 410 };
+  const result = calculatePublicStageLayout(input({
+    scene: { ...scene, phase: "MOVE", generation: 2 },
+    card: { width: 30, height: 45 },
+    obstacles: [{ id: "primary-card-move-path", rect: route }, { id: "countdown", rect: countdown }],
+    phaseRects: { card, activity, announcement },
+  }));
+  assert.equal(result.status, "placed");
+  if (result.status !== "placed") return;
+  assert.equal(result.layout.scene.phase, "MOVE");
+  assert.deepEqual(result.layout.card, card);
+  assert.deepEqual(result.layout.activity, activity);
+  assert.deepEqual(result.layout.announcement, announcement);
+  assert.equal(result.layout.announcement.left < route.right && result.layout.announcement.right > route.left
+    && result.layout.announcement.top < route.bottom && result.layout.announcement.bottom > route.top, true);
+  assert.equal(result.layout.announcement.left < activity.right && result.layout.announcement.right > activity.left
+    && result.layout.announcement.top < activity.bottom && result.layout.announcement.bottom > activity.top, false);
+  assert.equal(result.layout.announcement.left < countdown.right && result.layout.announcement.right > countdown.left
+    && result.layout.announcement.top < countdown.bottom && result.layout.announcement.bottom > countdown.top, false);
+});
+
+test("PARKED returns H4 to the safe stage centre without moving the authentic card or PAC", () => {
+  const card = { left: 14, top: 158, right: 44, bottom: 203 };
+  const activity = { left: 85, top: 700, right: 305, bottom: 744 };
+  const table = { left: 8, top: 100, right: 382, bottom: 780 };
+  const result = calculatePublicStageLayout(input({
+    scene: { ...scene, phase: "PARKED", generation: 3 },
+    card: { width: 30, height: 45 },
+    table,
+    phaseRects: { card, activity },
+    obstacles: [{ id: "seat", rect: { left: 8, top: 154, right: 192, bottom: 286 } }],
+  }));
+  assert.equal(result.status, "placed");
+  if (result.status !== "placed") return;
+  assert.equal(result.layout.scene.phase, "PARKED");
+  assert.deepEqual(result.layout.card, card);
+  assert.deepEqual(result.layout.activity, activity);
+  const h4CenterY = (result.layout.announcement.top + result.layout.announcement.bottom) / 2;
+  assert.ok(Math.abs(h4CenterY - (table.top + table.bottom) / 2) <= 8);
+  for (const obstacle of [...result.layout.protectedRects, { id: "parked-card", rect: card }, { id: "pac", rect: activity }]) {
+    assert.equal(result.layout.announcement.left < obstacle.rect.right && result.layout.announcement.right > obstacle.rect.left
+      && result.layout.announcement.top < obstacle.rect.bottom && result.layout.announcement.bottom > obstacle.rect.top, false);
+  }
 });

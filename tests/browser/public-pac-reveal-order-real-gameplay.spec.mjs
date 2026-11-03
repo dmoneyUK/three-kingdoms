@@ -152,8 +152,152 @@ async function sampleReveal(page, event) {
         sharedLayoutScope: table?.dataset.publicStageLayoutScope ?? null,
       };
     }, event.id);
-    return latest?.phase === "reveal" && latest.face?.visible && latest.pac?.visible && latest.h4?.visible && latest.countdown?.visible;
+    return latest?.phase === "reveal" && latest.face?.visible && latest.pac?.visible && latest.h4?.visible && latest.countdown?.visible
+      && latest.sharedLayoutStatus === "shared-reveal" && latest.sharedLayoutIdentity
+      && latest.cardLayoutIdentity === latest.sharedLayoutIdentity
+      && latest.h4LayoutIdentity === latest.sharedLayoutIdentity
+      && latest.pacLayoutIdentity === latest.sharedLayoutIdentity
+      && latest.countdownLayoutIdentity === latest.sharedLayoutIdentity;
   }, { timeout: 12_000, intervals: [40, 80, 120] }).toBe(true);
+  return latest;
+}
+
+async function sampleSharedPhase(page, event, expectedPhase) {
+  let latest = null;
+  try {
+    await expect.poll(async () => {
+    latest = await page.evaluate(({ eventId, expected }) => {
+      const card = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
+        .find((element) => element.dataset.publicCardJourneyEventId === eventId);
+      const table = card?.closest(".play-table");
+      const display = card?.closest(".public-card-display");
+      const h4 = display?.querySelector("[data-public-card-announcement='true']");
+      const pac = document.querySelector("[data-public-activity-chip='true']");
+      const countdown = document.querySelector(".visible-countdown");
+      const rect = (element) => {
+        if (!element) return null;
+        const bounds = element.getBoundingClientRect();
+        return { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom,
+          width: bounds.width, height: bounds.height };
+      };
+      if (!card) return { phase: null, expected, status: table?.dataset.publicStageLayoutStatus ?? null,
+        failure: table?.dataset.publicStageLayoutFailure ?? null };
+      return {
+        phase: card.dataset.publicCardJourneyPhase,
+        expected,
+        phaseMatches: card.dataset.publicCardJourneyPhase === expected,
+        eventId: card.dataset.publicCardJourneyEventId,
+        cardId: card.dataset.publicCardJourneyCardId,
+        target: {
+          left: Number(card.dataset.publicCardJourneyTargetLeft),
+          top: Number(card.dataset.publicCardJourneyTargetTop),
+          width: Number(card.dataset.publicCardJourneyTargetWidth),
+          height: Number(card.dataset.publicCardJourneyTargetHeight),
+        },
+        card: rect(card),
+        h4: rect(h4),
+        pac: rect(pac),
+        countdown: rect(countdown),
+        h4Identity: h4?.dataset.publicStageLayoutIdentity ?? null,
+        cardIdentity: card.dataset.publicStageLayoutIdentity ?? null,
+        pacIdentity: pac?.dataset.publicStageLayoutIdentity ?? null,
+        countdownIdentity: countdown?.dataset.publicStageLayoutIdentity ?? null,
+        h4Placement: h4?.dataset.publicCardAnnouncementPlacement ?? null,
+        status: table?.dataset.publicStageLayoutStatus ?? null,
+        failure: table?.dataset.publicStageLayoutFailure ?? null,
+        identity: table?.dataset.publicStageLayoutIdentity ?? null,
+        table: rect(table),
+      };
+    }, { eventId: event.id, expected: expectedPhase });
+      return {
+        ...latest,
+        ready: Boolean(latest && latest.phaseMatches && latest.status === `shared-${expectedPhase}`
+        && latest.identity && latest.h4Identity === latest.identity && latest.cardIdentity === latest.identity
+        && latest.pacIdentity === latest.identity && latest.countdownIdentity === latest.identity),
+      };
+    }, { timeout: 9_000, intervals: [20, 40, 60] }).toMatchObject({ ready: true });
+  } catch (error) {
+    console.error(`[PUBLIC-PAC-REVEAL-ORDER-01] phase diagnostic ${JSON.stringify(latest)}`);
+    throw error;
+  }
+  return latest;
+}
+
+async function watchPublicCardPhases(page, cardId) {
+  await page.evaluate((watchedCardId) => {
+    const phases = {};
+    let frame = 0;
+    const capture = () => {
+      frame = 0;
+      const card = [...document.querySelectorAll("[data-public-card-journey-card-id]")]
+        .find((element) => element.dataset.publicCardJourneyCardId === watchedCardId
+          && ["move", "parked"].includes(element.dataset.publicCardJourneyPhase ?? ""));
+      if (!card) return;
+      const table = card.closest(".play-table");
+      const display = card.closest(".public-card-display");
+      const h4 = display?.querySelector("[data-public-card-announcement='true']");
+      const pac = document.querySelector("[data-public-activity-chip='true']");
+      const countdown = document.querySelector(".visible-countdown");
+      const rect = (element) => {
+        if (!element) return null;
+        const bounds = element.getBoundingClientRect();
+        return { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom,
+          width: bounds.width, height: bounds.height };
+      };
+      const phase = card.dataset.publicCardJourneyPhase;
+      const identity = table?.dataset.publicStageLayoutIdentity ?? null;
+      const record = {
+        phase,
+        eventId: card.dataset.publicCardJourneyEventId,
+        cardId: card.dataset.publicCardJourneyCardId,
+        target: {
+          left: Number(card.dataset.publicCardJourneyTargetLeft),
+          top: Number(card.dataset.publicCardJourneyTargetTop),
+          width: Number(card.dataset.publicCardJourneyTargetWidth),
+          height: Number(card.dataset.publicCardJourneyTargetHeight),
+        },
+        card: rect(card),
+        h4: rect(h4),
+        pac: rect(pac),
+        countdown: rect(countdown),
+        h4Identity: h4?.dataset.publicStageLayoutIdentity ?? null,
+        cardIdentity: card.dataset.publicStageLayoutIdentity ?? null,
+        pacIdentity: pac?.dataset.publicStageLayoutIdentity ?? null,
+        countdownIdentity: countdown?.dataset.publicStageLayoutIdentity ?? null,
+        h4Placement: h4?.dataset.publicCardAnnouncementPlacement ?? null,
+        status: table?.dataset.publicStageLayoutStatus ?? null,
+        identity,
+        table: rect(table),
+      };
+      record.ready = Boolean(record.status === `shared-${phase}` && identity
+        && record.h4Identity === identity && record.cardIdentity === identity
+        && record.pacIdentity === identity && record.countdownIdentity === identity);
+      phases[phase] = record;
+      window.__publicCardPhaseEvidence = phases;
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(capture);
+    };
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true });
+    window.__publicCardPhaseEvidence = phases;
+    window.__publicCardPhaseObserver = observer;
+    schedule();
+  }, cardId);
+}
+
+async function sampleObservedPublicCardPhase(page, phase) {
+  let latest = null;
+  try {
+    await expect.poll(async () => {
+      latest = await page.evaluate((currentPhase) => window.__publicCardPhaseEvidence?.[currentPhase] ?? null, phase);
+      return Boolean(latest?.ready);
+    }, { timeout: 9_000, intervals: [20, 40, 60] }).toBe(true);
+  } catch (error) {
+    const phaseEvidence = await page.evaluate(() => window.__publicCardPhaseEvidence ?? null);
+    console.error(`[PUBLIC-PAC-REVEAL-ORDER-01] observed phase evidence ${JSON.stringify(phaseEvidence)}`);
+    throw error;
+  }
   return latest;
 }
 
@@ -173,10 +317,13 @@ test("PUBLIC-PAC keeps genuine Something Out of Nothing and Barbarian Invasion r
     const committedNegation = { eventId: negation.event.id, cardId: room.ids.negation, actorId: room.players[1].id };
 
     await expect.poll(async () => (await view(request, room)).currentAction?.actorId).toBe(room.players[0].id);
+    await watchPublicCardPhases(page, room.ids.groupRoot);
     const groupRoot = await playRoot(request, room, room.ids.groupRoot);
     observations.push(await sampleReveal(page, groupRoot.root));
+    const move = await sampleObservedPublicCardPhase(page, "move");
+    const parked = await sampleSharedPhase(page, groupRoot.root, "parked");
 
-    const evidence = { observations, committedNegation };
+    const evidence = { observations, phases: [move, parked], committedNegation };
     console.log(`[PUBLIC-PAC-REVEAL-ORDER-01] ${JSON.stringify(evidence)}`);
     await testInfo.attach("public-pac-reveal-order-dom-geometry.json", {
       body: JSON.stringify(evidence, null, 2), contentType: "application/json",
@@ -215,6 +362,20 @@ test("PUBLIC-PAC keeps genuine Something Out of Nothing and Barbarian Invasion r
       expect(overlaps(geometry.h4, geometry.pac)).toBe(false);
       expect(overlaps(geometry.countdown, geometry.pac)).toBe(false);
     }
+    expect(move.phase).toBe("move");
+    expect(move.cardId).toBe(groupRoot.root.card.id);
+    expect(move.h4Placement).toBe("shared-move");
+    expect(parked.phase).toBe("parked");
+    expect(parked.eventId).toBe(groupRoot.root.id);
+    expect(parked.cardId).toBe(groupRoot.root.card.id);
+    expect(parked.h4Placement).toBe("shared-parked");
+    expect(Math.abs((parked.h4.top + parked.h4.bottom) / 2 - (parked.table.top + parked.table.bottom) / 2)).toBeLessThanOrEqual(32);
+    const overlaps = (left, right) => left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
+    expect(overlaps(parked.h4, parked.card)).toBe(false);
+    expect(overlaps(parked.h4, parked.pac)).toBe(false);
+    expect(overlaps(parked.h4, parked.countdown)).toBe(false);
+    expect(Math.abs(parked.card.left - parked.target.left)).toBeLessThanOrEqual(2);
+    expect(Math.abs(parked.card.top - parked.target.top)).toBeLessThanOrEqual(2);
   } finally {
     await page.close();
   }
