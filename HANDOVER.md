@@ -1,15 +1,12 @@
 # HANDOVER — 当前唯一任务
 
-## T6 / PUBLIC-PAC-REVEAL-ORDER-01：共享展示连续性修复
+## 对手判定标志的手机间距修正
 
-**状态：OWNER FAIL / CORRECTION REQUIRED。** 2026-11-03 已同步并复习设计 `99ad12302ca796b84e486d83587dacd78ab5bd17` §10.30。最新手机日志证明同一甘宁奇袭实体牌 H4 有 2.436s、2.454s、2.202s 的消失；PAC 确切消失时长尚未由日志证明。作者缩略牌停放算法错误地将居中 PAC 作为硬障碍，和公共布局优先级冲突。
+**状态：IMPLEMENTED / focused validation PASS / exact-SHA CI and deployment pending.**
 
-- 2026-11-03：工作树干净，安全快进至上述设计版本；上一实现 `ffdf5be1` 曾通过 CI/部署，但用户明确验收失败，不得宣称完成。
-- **当前唯一任务：**依 §10.30 先以真实黑色无懈实体牌奇袭复现，再修复已提交缩略牌与 PAC 的优先级、同事件同视角安全布局原子交接及过渡日志；仅在不违反其他实际障碍与隐私前提下继续，五分钟本地浏览器预算。完成精确 SHA CI 与部署后仍需用户手机复验。
-- 2026-11-03 20:08 UTC：440×894 黑色无懈实体牌作为奇袭材料的真实场景 RED：完整相框出现时 H4/PAC 仍为 `PENDING_PLACEMENT`；此为新客户端真实复现，不把材料误认成无懈反制。
-- 2026-11-03 20:12–20:17 UTC：修正仅针对真实已提交历史缩略牌的 PAC 软覆盖；共享位置只在同事件、同视角、同文案及实际 DOM 障碍仍安全时保留，补充共享 PAC/布局变更日志。440×894 与 390×700 双视角逐帧检查初步通过；测试环境原控制器辅助接口仅支持五谷，尝试切换时返回 409，未将其视为成功。
-- 2026-11-03 20:18 UTC：加入真实视角切换后，两种屏幕通过；再次严格逐帧检查偶发 PARKED 首帧 H4 隐藏，未交付。继续修正共享布局发布，让两个消费者在 React 上下文更新前同步读取同一已提交布局。最终 440×894 DPR3 和 390×700 各 1/1 通过，包含初次安全布局后的逐帧可见、MOVE、PARKED、视角切换后真实作者/牌身份、最终结算公告与 TURN PAC ≥2 秒；本地浏览器累计约 150 秒（含失败），未超过五分钟上限。构建通过；布局单元 9/9，目标 ESLint 0 错误（13 条现有警告）。测试控制器扩展只在 `WTK_TEST_CAPABILITIES=1` 的测试路由生效。
-- **交付状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。** 产品验收仍为 OWNER FAIL，尚未接受。
-- 2026-11-03 20:21 UTC：实现及 HANDOVER 随提交 `b10828eef1a80bd1ed1bf87e5a19919ee3b4c0c6` 推送至 `ux-v2`。精确 SHA CI 全部通过：API tests、Lint and fast tests、Browser startup and room smoke、deploy；[CI run 41711631892](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41711631892)。Cloudflare Worker version `e2c7e002-fd2b-44ea-becd-da6117295665` 部署成功；`/api/health` 返回 `{"ok":true,"worker":"available"}`（HTTP 200）。
-- **复验边界：**本地真实游戏回归覆盖 390×700 和 440×894 DPR3、双观察视角、动画逐帧 H4/PAC 可见、牌移动及停放、选牌阶段 TEST SWITCH、真实弃牌和结算状态。TEST SWITCH 是在目标选牌阶段检查，未证明在 REVEAL 动画中途切换的逐帧行为。需由用户手机复验原报告场景：甘宁发动技能时，相框内牌、H4 与居中 PAC 应在同一阶段同步出现且持续稳定；确认 PAC 可覆盖已停放缩略牌而不会被推移。CI/部署和本地回归不代表用户验收。
-- **唯一后续任务：**等待用户 iPhone 复验 T6 §10.30；若仍有问题，按新 trace 继续这一修复，不开始其他任务。
+**设计复核：**最新版 `docs/UX2-refine.md`（`b2ab078b186e06262fff663403ee21583e832e0d`）§10.31 已将 T1 核心设计标记为用户通过：座位状态栏保持 **HP → 判定标志 → 装备槽**，只显示真实公开的闪电/乐不思蜀标志。用户 2026-11-03 新截图要求图标与 HP、装备标志更清楚分开；这是当前唯一执行任务，不改变已接受的身份、顺序、卡位、公开性或 gameplay 语义。
+
+- 2026-11-03 22:55 UTC：源码显示有判定标志时整行 `gap: 1px`。仅对手机端且状态容器宽度至少 108px 的座位，给判定标志两侧增加 3px margin；窄座位（包括 6 人局）继续紧凑，由现有几何保证不重叠。
+- 2026-11-03 22:55 UTC：`npm run build` 通过。已重建 `dist/client` 后运行 `npx playwright test --config tests/browser/playwright.config.mjs tests/browser/judgement-seat-rail-real-gameplay.spec.mjs --grep "T1:" --workers=1`，2/2 通过：390×844 双视角确认 HP/图标及图标/装备槽间距各至少 4px，且四个装备槽保留；390×700 六人窄座位确认判定摘要、HP、装备槽不重叠。累计浏览器测试未超过 5 分钟；未做 desktop 验收。
+- 诊断记录：重建客户端前的浏览器结果使用旧 `dist/client`，不作为证据；重建后曾发现整行统一加宽会令六人座位装备区溢出 0.125px，现已改成仅宽座位增加图标 margin，并由最终 2/2 回归覆盖。
+- **唯一后续步骤：**提交并推送本项变更，核实 exact-SHA GitHub Actions 和 Worker 部署；部署后等待用户 iPhone 复验这项间距修正。不得把 T1 已接受的核心行为重新标为未接受，也不得将本次手机反馈标为已验收。

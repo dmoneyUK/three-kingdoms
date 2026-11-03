@@ -85,8 +85,8 @@ test("T1: public Judgement markers stay inside their real Seat across viewers", 
     expect(initialGeometry.card.width).toBeLessThanOrEqual(16);
     expect(initialGeometry.rail.top).toBeGreaterThanOrEqual(initialGeometry.seat.top);
     expect(initialGeometry.rail.bottom).toBeLessThanOrEqual(initialGeometry.seat.bottom);
-    expect(initialGeometry.hp.right).toBeLessThanOrEqual(initialGeometry.rail.left);
-    expect(initialGeometry.rail.right).toBeLessThanOrEqual(initialGeometry.equipment.left);
+    expect(initialGeometry.rail.left - initialGeometry.hp.right).toBeGreaterThanOrEqual(4);
+    expect(initialGeometry.equipment.left - initialGeometry.rail.right).toBeGreaterThanOrEqual(4);
     expect(initialGeometry.equipmentCount).toBe(4);
     await expect(ownerSeat.locator(".opponent-judgement-zone, .judgement-mini")).toHaveCount(0);
     await expect(attachedCard).toHaveAttribute("aria-label", `Lightning in ${owner.name}'s Judgement zone`);
@@ -108,7 +108,8 @@ test("T1: public Judgement markers stay inside their real Seat across viewers", 
 
     const postArrival = await judgementGeometry(firstPage, owner.id, room.delayed.id);
     expect(postArrival.ownerId).toBe(owner.id);
-    expect(postArrival.rail.right).toBeLessThanOrEqual(postArrival.equipment.left);
+    expect(postArrival.rail.left - postArrival.hp.right).toBeGreaterThanOrEqual(4);
+    expect(postArrival.equipment.left - postArrival.rail.right).toBeGreaterThanOrEqual(4);
     await ownerSeat.getByRole("button", { name: `Inspect ${owner.name}`, exact: true }).click();
     await expect(firstPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${owner.id}"]`)).toBeVisible();
     await expect(firstPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${owner.id}"]`).getByRole("button", { name: "Explain Lightning" })).toBeVisible();
@@ -120,7 +121,8 @@ test("T1: public Judgement markers stay inside their real Seat across viewers", 
     await expect(secondPage.locator(`.player-board [data-judgement-id="${room.delayed.id}"]`)).toHaveCount(1);
     const secondGeometry = await judgementGeometry(secondPage, owner.id, room.delayed.id);
     expect(secondGeometry.ownerId).toBe(owner.id);
-    expect(secondGeometry.rail.right).toBeLessThanOrEqual(secondGeometry.equipment.left);
+    expect(secondGeometry.rail.left - secondGeometry.hp.right).toBeGreaterThanOrEqual(4);
+    expect(secondGeometry.equipment.left - secondGeometry.rail.right).toBeGreaterThanOrEqual(4);
 
   } finally {
     await firstPage.close();

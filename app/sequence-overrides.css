@@ -7549,6 +7549,13 @@
   height: 12px;
 }
 .game-shell .player-board .opponent-judgement-overflow { display: none; }
+@media (max-width: 520px) {
+  @container opponent-status (min-width: 108px) {
+    .game-shell .player-board .opponent-status-equipment-strip:has(.opponent-judgement-status) .opponent-judgement-status {
+      margin-inline: 3px;
+    }
+  }
+}
 @container opponent-status (max-width: 82px) {
   .game-shell .player-board .opponent-judgement-status[data-multiple="true"] .opponent-judgement-indicators { display: none; }
   .game-shell .player-board .opponent-judgement-status[data-multiple="true"] .opponent-judgement-overflow { display: grid; }
