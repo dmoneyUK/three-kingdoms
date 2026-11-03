@@ -1,6 +1,6 @@
 # WTK UX2 — Simplified Public Card UX
 
-**Revision:** 2026-11-03 01:41 UTC (T6 corrections implemented and deployed; owner iPhone re-review pending; prior owner FAIL unresolved; T5 CLOSED, T1 deferred, T2 CLOSED) · **Branch:** `ux-v2` · **Current status authority:** Tables A (implementation/correction), B (owner review pending), C (owner-accepted/superseded), and each original item's latest explicit owner verdict. **No old CI, dated task plan, or historical appendix status can reopen closed work.**
+**Revision:** 2026-11-03 09:30 UTC (owner reports original T3 Gan Ning Ambushment failed review; correction required; T6 combined review remains open; T5 CLOSED, T1 deferred, T2 CLOSED) · **Branch:** `ux-v2` · **Current status authority:** Tables A (implementation/correction), B (owner review pending), C (owner-accepted/superseded), and each original item's latest explicit owner verdict. **No old CI, dated task plan, or historical appendix status can reopen closed work.**
 
 This file is the **single active UX2 product/design authority**. It replaces the superseded, much longer UX2 design; previous revisions exist only in Git history. Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmap records, old tests and screenshots are references to prior implementation, **not** permission to reinstate old visual requirements.
 
@@ -8,7 +8,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 **Editorial cleanup (2026-10-30; R6 consolidation 22:27 UTC):** Closed items now retain only the final approved UX contract, explicit owner verdict and essential privacy/interaction boundaries. Historical implementation details and superseded plans remain accessible at the immutable [pre-cleanup revision](https://github.com/dmoneyUK/three-kingdoms/blob/b86c7a781468094fc844fe67b4ffda4e5b9a8d36/docs/UX2-refine.md). Delivered-but-unaccepted and active work remain independently reviewable; this editorial edit is **not** a new coding task or user acceptance.
 
-## UX2 CURRENT canonical work index — 2026-11-03 01:37 UTC (T5 OWNER-ACCEPTED/CLOSED; T6 ready for owner iPhone re-review; no new task IDs)
+## UX2 CURRENT canonical work index — 2026-11-03 09:30 UTC (T5 OWNER-ACCEPTED/CLOSED; T3 owner FAIL requires correction; T6 combined review open; no new task IDs)
 
 **AUTHORITATIVE STATUS INDEX / NO DUPLICATE EXECUTION:** Tables A–C and the latest explicit owner verdict in the original feature sections govern current work. Dated pre-cleanup snapshots and superseded repairs were removed from this active file but remain [archived in Git](#appendix-a--historical-ux2-status-snapshots-archive-only). A delivered feature awaiting human review belongs in Table B, **not** the development queue; USER-ACCEPTED/CLOSED and SUPERSEDED items in C are not active tasks. Keep one implementation identity per distinct defect.
 
@@ -25,7 +25,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 | Original task (NO NEW IDs) | State and next action |
 | --- | --- |
-| **T6 / PUBLIC-PAC-REVEAL-ORDER-01** | **IMPLEMENTED / DEPLOYED — READY FOR ONE OWNER iPHONE RE-REVIEW; PRIOR OWNER FAIL REMAINS UNRESOLVED.** Review the public CardFace/Frame/H4/PAC layout and committed response history, including original T3 converted settlement and T4 Frame title. T5 is USER-ACCEPTED/CLOSED and is a regression guard only. Do not mark T6 accepted until the owner reports the combined phone result. |
+| **T6 / PUBLIC-PAC-REVEAL-ORDER-01** | **T3 OWNER FAIL / CORRECTION REQUIRED; T6 COMBINED REVIEW OPEN.** The owner reported Gan Ning Ambushment failed review on 2026-11-03; the exact newly observed failure is not yet specified. Continue under original T3 and preserve the public CardFace/Frame/H4/PAC layout and committed response history, including T4 Frame title. T5 is USER-ACCEPTED/CLOSED and is a regression guard only. Do not mark T6 accepted until the owner reports the combined phone result. |
 | **T1 / UX2-JUDGEMENT-SEAT-01** | **OWNER FAIL / DEFERRED, NOT NEXT.** Original §10.31 retains small ⚡/wine-cup status-icon rework. Do not interrupt Agent. |
 
 **T2 and T5** are explicitly **USER-ACCEPTED / CLOSED**; keep both in Table C and preserve their Inspector and authenticated private-response guidance respectively. T3 remains unaccepted, and T4 is technically delivered but not independently owner-accepted. T7A completed its audit and T7B was deployed, awaiting a **later, separate Judgement-specific phone review** in Table B, **not the next T6 review**. Earlier accepted Console End, Inspector, Steal/Dismantle, privacy and 4/5/6 phone scope remain protected.
@@ -811,7 +811,7 @@ In `app/page.tsx`, remove `TableResolutionSequence`, retired event queue/timer/s
 
 **Owner visual acceptance:** During a committed public Steal and genuine Negation waiting, opening the target's Inspector must **not shove the true Steal CardFace into PAC**. The real REVEAL is readable and correctly centred while required; H4/PAC and countdown remain readable and accurate, Inspector state survives a temporary presentation yield, and normal private Pass/response works. If the true public card has already PARKED, Inspector must display normally without resurrecting an old central card. Repeatability across viewer switch/poll, genuine counter and resize is a preservation rule, not a required local browser test matrix.
 
-### 10.30 T6 / PUBLIC-PAC-REVEAL-ORDER-01 — ONE SHARED PUBLIC STAGE, ONE PHONE ACCEPTANCE (**IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW; PRIOR OWNER FAIL UNRESOLVED**)
+### 10.30 T6 / PUBLIC-PAC-REVEAL-ORDER-01 — ONE SHARED PUBLIC STAGE, ONE PHONE ACCEPTANCE (**T3 OWNER FAIL / CORRECTION REQUIRED; COMBINED REVIEW OPEN**)
 
 **Same original T6; no new task IDs.** This remains one combined owner phone review. T3 conversion settlement and T4 Frame title remain included subscopes. T5 private response guidance is USER-ACCEPTED/CLOSED and must be preserved as a regression guard, not treated as pending acceptance.
 
@@ -827,7 +827,7 @@ In `app/page.tsx`, remove `TableResolutionSequence`, retired event queue/timer/s
 
 **Latest prior owner rejection (2026-11-03 00:29, reported 00:41; IMG_4016/IMG_4017):** The large Gan Ning Frame showed the correct K♠ Fergana Steed and the skill-root H4 was correct, but H4 appeared below the Frame. After the material parked, its miniature overlapped the lower PAC and the central H4 remained stale. The screenshots predate the subsequent corrections. They remain valid evidence of the previous failure and do not constitute a review of the current deployed revision.
 
-**Current review boundary:** The approved corrections are implemented and deployed. T6 remains not accepted until one owner iPhone review of the current revision. The owner should report PASS, PARTIAL PASS, or FAIL against the checklist below; a prior failure is not cleared by local tests, CI, or deployment.
+**Current review boundary:** On 2026-11-03 the owner reported that Gan Ning Ambushment failed acceptance. The new observation has not yet been described; investigate and correct it under original T3 without assuming which behavior failed. T6 remains open, and local tests, CI, or deployment do not clear the owner failure.
 
 **Reusable design contract:**
 
@@ -871,9 +871,11 @@ The owner supplies one T6 PASS / PARTIAL PASS / FAIL. Only an explicit full PASS
 
 **Final owner verdict:** The owner explicitly says **T2 PASS** on 2026-11-02 18:18 UTC. The accepted implementation (`b80741c40f443d4c188798e0e2f38a814ab8bfbf`) provides compact, no-overflow genuine public **Judgement and Equipment** miniature CardFaces inside the existing nonmodal Inspector. Preserve original rank/suit/art, server-proven public card identity, accessible labels, two Judgement slots bottom-left and four Equipment slots bottom-right, existing tap-to-full-details and scroll, portrait LEFT and identity/HP/Hand-count on RIGHT. Inspector never exposes concealed Hand cards or secret role faces. **This PASS is limited to T2 Inspector miniatures; it is NOT a T1 Seat-rail PASS.** No additional T2 redesign or browser-suite task is authorized. Historical proposal, implementation steps and technical evidence remain at immutable [pre-closure design](https://github.com/dmoneyUK/three-kingdoms/blob/324ee3b750829aab7d9c0c20383238f291bb216c/docs/UX2-refine.md). Future changes must retain genuine details on T2 while T1's seat-facing view changes to icons.
 
-### 10.33 T3 UX2-CONVERSION-H4-01 — original conversion H4 + genuine settlement (**IMPLEMENTED / DEPLOYED — PENDING T6 OWNER iPHONE RE-REVIEW; PRIOR OWNER FAIL UNRESOLVED**)
+### 10.33 T3 UX2-CONVERSION-H4-01 — original conversion H4 + genuine settlement (**OWNER FAIL / CORRECTION REQUIRED**)
 
-**Owner evidence (2026-11-03, IMG_4016/IMG_4017):** The large frame correctly showed Gan Ning's original K♠ Fergana Steed as Ambushment used AS Burning Bridges, and the root H4 named the effective skill and target. In the later image the target's public Q♥ Lightning was absent from the Judgement zone, the PAC had advanced to the turn, and H4 still repeated the root skill announcement instead of identifying the actual discarded card. The owner marked this flow NOT ACCEPTED. Review the latest deployed behavior on iPhone before clearing that failure.
+**Latest owner verdict (2026-11-03):** Gan Ning Ambushment failed acceptance. The tested build, exact failed behavior and corresponding trace or screenshot have not yet been supplied; do not infer them from prior evidence.
+
+**Earlier owner evidence (2026-11-03, IMG_4016/IMG_4017):** The large frame correctly showed Gan Ning's original K♠ Fergana Steed as Ambushment used AS Burning Bridges, and the root H4 named the effective skill and target. In the later image the target's public Q♥ Lightning was absent from the Judgement zone, the PAC had advanced to the turn, and H4 still repeated the root skill announcement instead of identifying the actual discarded card. The owner marked this flow NOT ACCEPTED. Review the latest deployed behavior on iPhone before clearing that failure.
 
 **Reusable design contract:**
 
