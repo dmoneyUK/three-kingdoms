@@ -5149,6 +5149,14 @@
   z-index: 17;
 }
 
+/* A shared REVEAL stack positions the full visual Frame and H4 as one scene.
+   Do not let the primary card's generic positional transition sweep its
+   Frame through the already-positioned H4 while that scene is being applied.
+   The separate REVEAL → MOVE journey keeps its existing movement transition. */
+.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="reveal"][data-public-stage-layout-identity] {
+  transition-property: opacity, filter;
+}
+
 /* BCP-1-F2: the approved phone history mini is 32×48. Scale only its face
    details with the physical card; root and committed responses share this
    parked mini footprint while the 90×135 reveal and 48×72 wide view remain. */

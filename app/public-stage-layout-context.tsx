@@ -421,6 +421,8 @@ export function PublicStageLayoutProvider({
 }
 
 export function sharedPublicStageMatchesElement(table: HTMLElement, shared: SharedPublicStageLayout): boolean {
+  if (table.dataset.publicStageLayoutIdentity !== shared.layout.identity
+    || table.dataset.publicStageLayoutPhase !== shared.layout.scene.phase.toLowerCase()) return false;
   return [...table.querySelectorAll<HTMLElement>(
     '.public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="reveal"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="move"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="parked"]',
   )].some((card) => card.dataset.publicCardJourneyEventId === shared.primaryEventId
@@ -433,4 +435,26 @@ export function sharedPublicStageMatchesElement(table: HTMLElement, shared: Shar
     && card.closest<HTMLElement>(".public-card-display")?.dataset.publicCardViewerId === shared.layout.scene.viewerId
     && card.closest<HTMLElement>(".public-card-display")?.dataset.publicCardLayoutViewerId === shared.layout.scene.viewerId
     && card.closest<HTMLElement>(".public-card-display")?.dataset.publicCardLayoutPending !== "true");
+}
+
+export function publicStageLayoutCandidateMatchesElement(table: HTMLElement, criteria: {
+  scopeId: string;
+  viewerId: string;
+  interactionId?: string | null;
+  eventIds?: readonly string[];
+}): boolean {
+  if (!criteria.scopeId || table.dataset.publicStageLayoutScope !== criteria.scopeId) return false;
+  const eventIds = criteria.eventIds ? new Set(criteria.eventIds.filter(Boolean)) : null;
+  return [...table.querySelectorAll<HTMLElement>(
+    '.public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="reveal"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="move"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="parked"]',
+  )].some((card) => {
+    const display = card.closest<HTMLElement>(".public-card-display");
+    return Boolean(display
+      && (!eventIds || eventIds.has(card.dataset.publicCardJourneyEventId ?? ""))
+      && display.dataset.publicCardRootEventId === criteria.scopeId
+      && display.dataset.publicCardViewerId === criteria.viewerId
+      && display.dataset.publicCardLayoutViewerId === criteria.viewerId
+      && (criteria.interactionId === undefined || criteria.interactionId === null
+        || display.dataset.publicCardInteractionId === criteria.interactionId));
+  });
 }

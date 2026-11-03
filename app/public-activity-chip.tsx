@@ -4,7 +4,11 @@ import { useLayoutEffect, useRef } from "react";
 import { publicCorridorWidth } from "./public-corridor";
 import type { PublicActivityStatus } from "../game/public-activity";
 import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
-import { sharedPublicStageMatchesElement, usePublicStageLayout } from "./public-stage-layout-context";
+import {
+  publicStageLayoutCandidateMatchesElement,
+  sharedPublicStageMatchesElement,
+  usePublicStageLayout,
+} from "./public-stage-layout-context";
 
 const SAFE_OBSTACLES = [
   ".opponent-player-card[data-player-anchor]",
@@ -526,6 +530,21 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
           currentChip.style.visibility = "visible";
           currentChip.dataset.publicActivityLayout = `shared-${sharedPublicStage.layout.scene.phase.toLowerCase()}`;
           currentChip.dataset.publicStageLayoutIdentity = sharedPublicStage.layout.identity;
+          delete currentChip.dataset.publicActivityPlacementBlockers;
+          return;
+        }
+        const sharedStageCandidate = Boolean(currentChip && currentTable
+          && publicStageLayoutCandidateMatchesElement(currentTable, {
+            scopeId: currentTable.dataset.publicStageLayoutScope ?? "",
+            viewerId,
+            interactionId: sharedPublicStage?.layout.scene.interactionId,
+          }));
+        if (currentChip && sharedStageCandidate) {
+          // Hold PAC until the provider's current generation reaches this
+          // viewer. Independent placement here can overlap the active Frame.
+          currentChip.style.visibility = "hidden";
+          currentChip.dataset.publicActivityLayout = "pending-shared-stage-layout";
+          delete currentChip.dataset.publicStageLayoutIdentity;
           delete currentChip.dataset.publicActivityPlacementBlockers;
           return;
         }

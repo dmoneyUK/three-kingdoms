@@ -789,17 +789,18 @@ test("real Ambushment uses only an eligible black Hand card and a legal target",
   await completeSkillSelection({ page, request, seed, skillName: "Ambushment", providerId: "gan_ning_qixi", cardIds: [black.id], targetIndexes: [1] });
 });
 
-test("W4: Ambushment frames the genuine black card as Burning Bridges for actor and observer", async ({ page, browser, request }) => {
+test("W4: converted public Judgement discard settles with one shared H4", async ({ page, browser, request }, testInfo) => {
   test.setTimeout(60_000);
-  const black = card("Dodge", "w4-ambushment-black-dodge", "♣");
+  const black = { ...card("FerganaSteed", "w4-ambushment-black-fergana-steed", "♠"), rank: "K" };
   const privateGanNingCard = card("Peach", "w4-ambushment-private-gan-ning", "♥");
   const targetNegation = card("Negation", "w4-ambushment-target-negation", "♠");
   const privateTargetCard = card("Attack", "w4-ambushment-private-target", "♠");
+  const lightning = { ...card("Lightning", "w4-ambushment-public-lightning", "♥"), rank: "Q" };
   const observerNegation = card("Negation", "w4-ambushment-observer-negation", "♠");
   const seed = await seedSkillRoom(request, {
     hero: "gan-ning", hand: [black, privateGanNingCard],
     targets: [
-      { name: "TARGET", role: "Loyalist", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [targetNegation, privateTargetCard] },
+      { name: "TARGET", role: "Loyalist", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [targetNegation, privateTargetCard], judgement: [lightning] },
       { name: "OBSERVER", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [observerNegation] },
     ],
   });
@@ -821,6 +822,14 @@ test("W4: Ambushment frames the genuine black card as Burning Bridges for actor 
         const style = announcement ? getComputedStyle(announcement) : null;
         const frameRect = frame?.getBoundingClientRect();
         const noticeRect = announcement?.getBoundingClientRect();
+        const primaryCard = root?.matches('[data-public-card-primary-card="true"]')
+          ? root : root?.querySelector('[data-public-card-primary-card="true"]');
+        const primaryRect = primaryCard?.getBoundingClientRect();
+        const table = display?.closest(".play-table");
+        const rectDetails = (rect) => rect ? {
+          left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
+          width: rect.width, height: rect.height,
+        } : null;
         if (!root || !frame || !display || !announcement || !frameRect || !noticeRect
           || !["reveal", "move"].includes(root.dataset.publicCardJourneyPhase)) return;
         window.__w4AmbushmentVisibleSince ??= performance.now();
@@ -841,11 +850,56 @@ test("W4: Ambushment frames the genuine black card as Burning Bridges for actor 
           notice,
           visible: style?.visibility === "visible" && style.display !== "none" && Number(style.opacity) > 0,
           positioned: announcement.dataset.publicCardAnnouncementPositioned === "true",
+          placement: announcement.dataset.publicCardAnnouncementPlacement ?? null,
+          announcementRect: rectDetails(noticeRect),
+          frameRect: rectDetails(frameRect),
+          journeyRootRect: rectDetails(root.getBoundingClientRect()),
+          journeyRootInlineStyle: {
+            left: root.style.left, top: root.style.top, width: root.style.width, height: root.style.height,
+          },
+          positionSettled: Math.abs(root.getBoundingClientRect().left - Number.parseFloat(root.style.left)) <= 1
+            && Math.abs(root.getBoundingClientRect().top - Number.parseFloat(root.style.top)) <= 1,
+          journeyRootTransition: {
+            property: getComputedStyle(root).transitionProperty,
+            duration: getComputedStyle(root).transitionDuration,
+          },
+          primaryRect: rectDetails(primaryRect),
+          frameOffsetFromJourneyRoot: {
+            left: frameRect.left - root.getBoundingClientRect().left,
+            top: frameRect.top - root.getBoundingClientRect().top,
+          },
+          frameCss: {
+            display: getComputedStyle(frame).display,
+            visibility: getComputedStyle(frame).visibility,
+            opacity: getComputedStyle(frame).opacity,
+            transform: getComputedStyle(frame).transform,
+          },
+          journeyRootLayoutIdentity: root.dataset.publicStageLayoutIdentity ?? null,
+          tableRect: rectDetails(table?.getBoundingClientRect()),
+          tableLayoutStatus: table?.dataset.publicStageLayoutStatus ?? null,
+          tableLayoutPhase: table?.dataset.publicStageLayoutPhase ?? null,
+          tableLayoutIdentity: table?.dataset.publicStageLayoutIdentity ?? null,
+          tableLayoutFailure: table?.dataset.publicStageLayoutFailure
+            ? JSON.parse(table.dataset.publicStageLayoutFailure) : null,
+          announcementLayoutIdentity: announcement.dataset.publicStageLayoutIdentity ?? null,
+          layoutIdentityCurrent: Boolean(table?.dataset.publicStageLayoutIdentity
+            && table.dataset.publicStageLayoutIdentity === announcement.dataset.publicStageLayoutIdentity),
+          displayLayoutPending: display.dataset.publicCardLayoutPending ?? null,
+          displayLayoutViewerId: display.dataset.publicCardLayoutViewerId ?? null,
+          announcementCss: {
+            position: style?.position ?? null,
+            left: style?.left ?? null,
+            top: style?.top ?? null,
+            width: style?.width ?? null,
+            height: style?.height ?? null,
+          },
           overlap: noticeRect.left < frameRect.right && noticeRect.right > frameRect.left
             && noticeRect.top < frameRect.bottom && noticeRect.bottom > frameRect.top,
+          announcementFrameGap: frameRect.top - noticeRect.bottom,
           viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
         };
-        if (observation.positioned || performance.now() - window.__w4AmbushmentVisibleSince >= 1_000) {
+        if (observation.layoutIdentityCurrent && observation.positionSettled
+          || performance.now() - window.__w4AmbushmentVisibleSince >= 1_000) {
           window.__w4AmbushmentFrameSeen = observation;
           if (window.__w4AmbushmentInterval) clearInterval(window.__w4AmbushmentInterval);
         }
@@ -856,12 +910,48 @@ test("W4: Ambushment frames the genuine black card as Burning Bridges for actor 
       window.__w4AmbushmentInterval = setInterval(capture, 100);
       capture();
     });
+    const watchSettlementCopy = (viewerPage) => viewerPage.evaluate(() => {
+      const evidence = window.__w4DismantleSettlementEvidence ?? [];
+      const capture = () => {
+        const displays = [...document.querySelectorAll(".public-card-display[data-public-card-settlement-event-id]")];
+        for (const display of displays) {
+          const announcement = display.querySelector('[data-public-card-announcement="true"]');
+          if (!announcement) continue;
+          const rect = announcement.getBoundingClientRect();
+          const style = getComputedStyle(announcement);
+          const record = {
+            eventId: display.dataset.publicCardSettlementEventId ?? null,
+            rootEventId: display.dataset.publicCardRootEventId ?? null,
+            announcementEventId: announcement.dataset.publicCardAnnouncementEventId ?? null,
+            message: announcement.innerText?.replace(/\s+/g, " ").trim() ?? "",
+            placement: announcement.dataset.publicCardAnnouncementPlacement ?? null,
+            layoutIdentity: announcement.dataset.publicStageLayoutIdentity ?? null,
+            visible: style.display !== "none" && style.visibility === "visible" && Number(style.opacity) > 0
+              && rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.left < innerWidth
+              && rect.bottom > 0 && rect.top < innerHeight,
+            pac: document.querySelector(".public-activity-chip")?.innerText?.replace(/\s+/g, " ").trim() ?? null,
+            rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
+          };
+          const signature = JSON.stringify(record);
+          if (!evidence.some((entry) => entry.signature === signature)) evidence.push({ ...record, signature });
+        }
+        window.__w4DismantleSettlementEvidence = evidence;
+      };
+      const observer = new MutationObserver(capture);
+      observer.observe(document.documentElement, { attributes: true, childList: true, subtree: true });
+      window.__w4DismantleSettlementObserver = observer;
+      window.__w4DismantleSettlementInterval = setInterval(capture, 50);
+      window.__w4DismantleSettlementEvidence = evidence;
+      capture();
+    });
     await Promise.all([watchFrame(page), watchFrame(observerPage)]);
+    await Promise.all([watchSettlementCopy(page), watchSettlementCopy(observerPage)]);
     await completeSkillSelection({ page, request, seed, skillName: "Ambushment", providerId: "gan_ning_qixi", cardIds: [black.id], targetIndexes: [1] });
 
     const actorProjection = await projectedRoom(request, seed, actor);
     const rootEvent = actorProjection.timeline.find((event) => event?.type === "card" && event.action === "play" && event.card?.id === black.id);
     expect(rootEvent).toBeTruthy();
+    expect(rootEvent.card).toEqual(black);
     expect(JSON.stringify(actorProjection)).not.toContain(observerNegation.id);
     expect(JSON.stringify(actorProjection)).not.toContain(targetNegation.id);
     expect(rootEvent.publicCardEffects).toContainEqual(expect.objectContaining({
@@ -892,13 +982,16 @@ test("W4: Ambushment frames the genuine black card as Burning Bridges for actor 
       expect(details.notice, JSON.stringify(details)).toMatch(/Ambushment.*AS BURNING BRIDGES/i);
       expect(details.visible, JSON.stringify(details)).toBe(true);
       expect(details.positioned, JSON.stringify(details)).toBe(true);
+      expect(details.layoutIdentityCurrent, JSON.stringify(details)).toBe(true);
+      expect(details.positionSettled, JSON.stringify(details)).toBe(true);
       expect(details.overlap, JSON.stringify(details)).toBe(false);
+      expect(details.announcementFrameGap, JSON.stringify(details)).toBeGreaterThanOrEqual(8);
       return details;
     }));
     expect(new Set(frameDetails.map((details) => details.title)).size).toBe(1);
 
     const parkedGeometry = await Promise.all(viewers.map(async ({ viewerPage, viewerId }) => {
-      const evidence = await viewerPage.waitForFunction(({ eventId, actorId }) => {
+      const evidence = await viewerPage.waitForFunction(({ eventId, actorId, cardId }) => {
         const root = [...document.querySelectorAll('[data-public-card-journey-event-id][data-public-card-journey-role="root"]')]
           .find((element) => element.dataset.publicCardJourneyEventId === eventId);
         const anchor = [...document.querySelectorAll("[data-player-anchor]")]
@@ -906,7 +999,7 @@ test("W4: Ambushment frames the genuine black card as Burning Bridges for actor 
         if (!root || !anchor || root.dataset.publicCardJourneyPhase !== "parked"
           || root.dataset.publicCardJourneyLayoutPending !== "false"
           || root.dataset.publicCardJourneyActorId !== actorId
-          || root.dataset.publicCardJourneyCardId !== "w4-ambushment-black-dodge") return false;
+          || root.dataset.publicCardJourneyCardId !== cardId) return false;
         const target = {
           left: Number(root.dataset.publicCardJourneyTargetLeft),
           top: Number(root.dataset.publicCardJourneyTargetTop),
@@ -926,10 +1019,10 @@ test("W4: Ambushment frames the genuine black card as Burning Bridges for actor 
           anchorDistance: Math.hypot(dx, dy),
           target,
         };
-      }, { eventId: rootEvent.id, actorId: actor.id }, { timeout: 12_000 });
+      }, { eventId: rootEvent.id, actorId: actor.id, cardId: black.id }, { timeout: 12_000 });
       const details = await evidence.jsonValue();
       expect(details).toMatchObject({ viewerId, phase: "parked", actorId: actor.id, cardId: black.id, anchorId: actor.id });
-      expect(details.cardText).toMatch(/Dodge/);
+      expect(details.cardText).toMatch(/Fergana Steed/);
       expect(details.anchorDistance, JSON.stringify(details)).toBeLessThanOrEqual(8);
       return details;
     }));
@@ -949,10 +1042,19 @@ test("W4: Ambushment frames the genuine black card as Burning Bridges for actor 
     }
     const targetChoice = await projectedRoom(request, seed, actor);
     expect(targetChoice.currentAction?.legalActions).toContain("choose_target_card");
+    expect(targetChoice.currentAction?.targetCardSelection).toMatchObject({
+      targetId: seed.players[1].id,
+      eligibleKeys: expect.arrayContaining([lightning.id]),
+    });
+    const provenRootAction = targetChoice.presentationV2.rootAction;
+    expect(provenRootAction).toMatchObject({ rootEventId: rootEvent.id });
     expect(JSON.stringify(targetChoice)).not.toContain(privateTargetCard.id);
     const picker = page.locator('.card-pool-panel[data-choice-mode="actor-target-select"]');
     await expect(picker).toBeVisible();
-    await picker.getByRole("button", { name: "Choose hidden Hand position 2", exact: true }).click();
+    await picker.getByRole("tab", { name: "Judgement (1)", exact: true }).click();
+    const lightningChoice = picker.getByRole("button", { name: "Judgement: Lightning", exact: true });
+    await expect(lightningChoice).toBeVisible();
+    await lightningChoice.click();
     const chosen = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
       && response.request().method() === "POST"
       && response.request().postDataJSON()?.action === "choose_target_card");
@@ -960,18 +1062,78 @@ test("W4: Ambushment frames the genuine black card as Burning Bridges for actor 
     const submittedChoice = await chosen;
     expect(submittedChoice.ok()).toBeTruthy();
     expect(submittedChoice.request().postDataJSON()).toMatchObject({
-      action: "choose_target_card", targetCardZone: "hand", targetCardIndex: 1,
+      action: "choose_target_card", targetCardZone: "judgement", targetCardId: lightning.id,
     });
-    const settled = await projectedRoom(request, seed, observer);
-    expect(settled.timeline.some((event) => event.type === "card" && event.action === "discard" && event.card?.id === privateTargetCard.id)).toBe(true);
+    const viewerProjections = await Promise.all(seed.players.map((player) => projectedRoom(request, seed, player)));
+    const settled = viewerProjections[0];
+    const settlementEvent = settled.timeline.find((event) => event.type === "card" && event.action === "discard"
+      && event.publicDismantleSettlement?.rootEventId === rootEvent.id);
+    expect(settlementEvent, `Missing committed Dismantle settlement for ${rootEvent.id}`).toBeTruthy();
+    expect(settlementEvent).toMatchObject({
+      card: lightning,
+      publicDismantleSettlement: {
+        semantics: "PROVEN", rootEventId: rootEvent.id, rootResolutionId: rootEvent.resolutionId,
+        rootInteractionId: provenRootAction.interactionId,
+        rootFrameId: provenRootAction.rootFrameId,
+        rootPhysicalCard: black, resultingCardKind: "Dismantle", sourceId: actor.id,
+        targetId: seed.players[1].id, outcome: "DISMANTLE_RESOLVED", sourceZone: "judgement",
+        affectedCardOwnerId: null, destinationZone: "discard", destinationOwnerId: null,
+        affectedCardFace: lightning,
+      },
+    });
+    const settlementProjection = settled.presentationV2.dismantleSettlements.find((entry) => entry.eventId === settlementEvent.id);
+    expect(settlementProjection).toMatchObject({
+      semantics: "PROVEN", eventId: settlementEvent.id, rootEventId: rootEvent.id,
+      rootResolutionId: rootEvent.resolutionId, rootPhysicalCard: black, resultingCardKind: "Dismantle",
+      sourceId: actor.id, targetId: seed.players[1].id, sourceZone: "judgement",
+      affectedCardOwnerId: null, destinationZone: "discard", affectedCardFace: lightning,
+    });
+    for (const [index, view] of viewerProjections.entries()) {
+      expect(view.presentationV2.dismantleSettlements).toEqual(settled.presentationV2.dismantleSettlements);
+      expect(view.presentationSnapshot.dismantleSettlements).toEqual(settled.presentationSnapshot.dismantleSettlements);
+      expect(view.timeline.find((event) => event.id === settlementEvent.id)?.publicDismantleSettlement)
+        .toEqual(settlementEvent.publicDismantleSettlement);
+      if (index !== 1) {
+        expect(JSON.stringify(view)).not.toContain(privateTargetCard.id);
+        expect(JSON.stringify(view)).not.toContain(targetNegation.id);
+      }
+      if (index !== 2) expect(JSON.stringify(view)).not.toContain(observerNegation.id);
+      if (index !== 0) expect(JSON.stringify(view)).not.toContain(privateGanNingCard.id);
+    }
+    expect(settled.players.find((player) => player.id === seed.players[1].id).judgementCards).toEqual([]);
+    const settlementEvidence = await Promise.all([page, observerPage].map(async (viewerPage) => {
+      await expect.poll(async () => viewerPage.evaluate((eventId) => window.__w4DismantleSettlementEvidence
+        ?.some((entry) => entry.eventId === eventId && entry.announcementEventId === eventId && entry.visible), settlementEvent.id))
+        .toBe(true);
+      const entries = await viewerPage.evaluate(() => window.__w4DismantleSettlementEvidence ?? []);
+      const evidence = entries.find((entry) => entry.eventId === settlementEvent.id
+        && entry.announcementEventId === settlementEvent.id && entry.visible);
+      expect(evidence, JSON.stringify(entries)).toBeTruthy();
+      expect(evidence.rootEventId).toBe(rootEvent.id);
+      expect(evidence.message).toMatch(/SKILL USER discarded\s*♥Q\s*Lightning from TARGET \(Judgement\)\./);
+      expect(evidence.placement).toBe("shared-parked");
+      expect(evidence.layoutIdentity).toBeTruthy();
+      return evidence;
+    }));
+    expect(settlementEvidence[0].message).toBe(settlementEvidence[1].message);
+    expect(await page.locator(`.public-card-display[data-public-card-settlement-event-id="${settlementEvent.id}"] .public-dismantle-card-face[data-card-id="${lightning.id}"]`).count()).toBe(1);
+    await expect(page.locator(`.public-card-journey-card[data-public-card-journey-card-id="${lightning.id}"]`)).toHaveCount(0);
+    await testInfo.attach("gan-ning-dismantle-lightning-settlement.json", {
+      body: Buffer.from(JSON.stringify({ rootEvent, settlementEvent, settlementProjection, viewers: settlementEvidence }, null, 2)),
+      contentType: "application/json",
+    });
   } finally {
     await page.evaluate(() => {
       window.__w4AmbushmentFrameObserver?.disconnect();
       if (window.__w4AmbushmentInterval) clearInterval(window.__w4AmbushmentInterval);
+      window.__w4DismantleSettlementObserver?.disconnect();
+      if (window.__w4DismantleSettlementInterval) clearInterval(window.__w4DismantleSettlementInterval);
     }).catch(() => {});
     await observerContext.pages().at(0)?.evaluate(() => {
       window.__w4AmbushmentFrameObserver?.disconnect();
       if (window.__w4AmbushmentInterval) clearInterval(window.__w4AmbushmentInterval);
+      window.__w4DismantleSettlementObserver?.disconnect();
+      if (window.__w4DismantleSettlementInterval) clearInterval(window.__w4DismantleSettlementInterval);
     }).catch(() => {});
     await observerContext.close();
   }

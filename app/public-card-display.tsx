@@ -13,7 +13,11 @@ import { publicAnnouncementEventCopyKey as buildPublicAnnouncementEventCopyKey, 
 import { compactLustDuelAttackMessage } from "./lust-public-copy";
 import { CardFace } from "./card-face";
 import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
-import { sharedPublicStageMatchesElement, usePublicStageLayout } from "./public-stage-layout-context";
+import {
+  publicStageLayoutCandidateMatchesElement,
+  sharedPublicStageMatchesElement,
+  usePublicStageLayout,
+} from "./public-stage-layout-context";
 
 type PublicCardDisplayResponseNode = {
   eventId: string;
@@ -2492,6 +2496,38 @@ function PublicCardAnnouncement({
           compact: copy.dataset.publicCardAnnouncementCompact === "true",
           rect: { left: rect.left, top: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top },
           visible: true,
+          text: copy.textContent ?? "",
+        });
+        return;
+      }
+      const sharedStageCandidate = Boolean(sharedTable
+        && publicStageLayoutCandidateMatchesElement(sharedTable, {
+          scopeId: display.dataset.publicCardRootEventId ?? "",
+          viewerId: display.dataset.publicCardViewerId ?? "",
+          interactionId: display.dataset.publicCardInteractionId,
+          eventIds: [
+            copy.dataset.publicCardAnnouncementEventId ?? "",
+            copy.dataset.publicCardAnnouncementAnchorEventId ?? "",
+          ],
+        }));
+      if (sharedStageCandidate) {
+        // The provider publishes a new generation before React delivers its
+        // matching context value. Never expose the prior H4 placement or fall
+        // back to an independent solver during that short mismatch window.
+        if (copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
+        setDelivery("PENDING_PLACEMENT", currentEventCopyKey);
+        setData("data-public-stage-layout-identity", undefined);
+        setData("data-public-card-announcement-placement", undefined);
+        setData("data-public-card-announcement-positioned", undefined);
+        setData("data-public-card-announcement-stability", "awaiting-current-shared-stage-layout");
+        reportH4Placement({
+          geometryEpoch: null,
+          obstacleIds: [],
+          decision: "hide",
+          reason: "awaiting-current-shared-stage-layout-generation",
+          compact: null,
+          rect: null,
+          visible: false,
           text: copy.textContent ?? "",
         });
         return;
@@ -5178,9 +5214,12 @@ function SingleTargetCardJourney({
   const announcementAnchorCard = groupRootStageOwnsCopy
     ? journey.cards.find((card) => card.eventId === action.rootEventId) ?? currentCard
     : currentCard;
+  const dismantleSettlementAnnouncementEventId = action.settlement?.outcome === "DISMANTLE_RESOLVED"
+    ? action.settlement.eventId
+    : null;
   const announcementEventId = groupRootStageOwnsCopy
     ? action.settlement?.eventId ?? action.rootEventId
-    : activeEventId;
+    : dismantleSettlementAnnouncementEventId ?? activeEventId;
   const publicEffectFrameOwnsAnnouncementAnchor = (action.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer"
     || action.publicCardEffectFrame?.effectId === "hua_tuo_first_aid"
     || action.publicCardEffectFrame?.effectId === "gan_ning_qixi"
@@ -5343,7 +5382,10 @@ function SingleTargetCardJourney({
       copyLifecycleStage={publicCardAnnouncementLifecycleStage(action)}
       placementKey={`${publicCardAnnouncementPlacementKey(action)}${harvestPoolVisible ? ":harvest-public-pool" : ""}`}
       viewerLayoutKey={harvestPoolVisible ? "public-harvest" : viewerId}
-      anchorEventId={harvestPoolVisible || groupRootStageOwnsCopy || publicEffectFrameOwnsAnnouncementAnchor ? null : activeEventId}
+      anchorEventId={harvestPoolVisible || groupRootStageOwnsCopy
+        ? null
+        : dismantleFaceCopy ? activeEventId
+          : publicEffectFrameOwnsAnnouncementAnchor ? null : activeEventId}
       phase={harvestPoolVisible || publicEffectFrameOwnsAnnouncementAnchor ? "static" : announcementAnchorCard?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
