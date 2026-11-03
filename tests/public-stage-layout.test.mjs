@@ -174,3 +174,25 @@ test("PARKED centres PAC even when it covers the real parked miniature", () => {
   assert.ok(result.layout.activity.top < card.bottom && result.layout.activity.bottom > card.top);
   assert.deepEqual(result.layout.card, card);
 });
+
+test("short mobile stage fits a measured wrapped announcement beside the full card", () => {
+  const result = calculatePublicStageLayout(input({
+    viewport: { left: 0, top: 0, right: 390, bottom: 700 },
+    table: { left: 0, top: 0, right: 390, bottom: 360 },
+    preferredCard: { left: 110, top: 100 },
+    card: { width: 168, height: 190 },
+    announcement: { width: 366, height: 48 },
+    compactAnnouncement: { width: 198, height: 100 },
+    activity: { width: 340, height: 57 },
+    obstacles: [{ id: "seats", rect: { left: 0, top: 0, right: 390, bottom: 94 } }],
+  }));
+  assert.equal(result.status, "placed");
+  if (result.status !== "placed") return;
+  const { card, announcement, activity, variant } = result.layout;
+  assert.equal(variant, "compact-split");
+  assert.equal(card.right - card.left, 168);
+  assert.ok(card.right <= announcement.left || announcement.right <= card.left);
+  assert.ok(activity.top >= card.bottom + 8);
+  assert.equal((activity.left + activity.right) / 2, 195);
+  assert.ok(card.top >= 94 && activity.bottom <= result.layout.safeBounds.bottom);
+});

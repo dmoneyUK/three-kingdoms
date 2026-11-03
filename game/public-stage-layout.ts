@@ -23,6 +23,7 @@ export type PublicStageLayoutInput = {
   card: PublicStageSize;
   announcement: PublicStageSize;
   activity: PublicStageSize;
+  compactAnnouncement?: PublicStageSize;
   obstacles: readonly { id: string; rect: PublicStageRect }[];
   phaseRects?: { card: PublicStageRect; activity: PublicStageRect; announcement?: PublicStageRect };
   announcementCardGap?: number;
@@ -31,6 +32,7 @@ export type PublicStageLayoutInput = {
 
 export type PublicStageLayout = {
   identity: string;
+  variant: "stack" | "compact-split" | "move" | "parked";
   generation: number;
   scene: PublicStageScene;
   safeBounds: PublicStageRect;
@@ -151,6 +153,7 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
         status: "placed",
         layout: {
           identity,
+          variant: "move",
           generation: input.scene.generation,
           scene: input.scene,
           safeBounds,
@@ -226,6 +229,7 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
         status: "placed",
         layout: {
           identity,
+          variant: "parked",
           generation: input.scene.generation,
           scene: input.scene,
           safeBounds,
@@ -245,9 +249,7 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
   const maxCenterX = safeBounds.right - stackWidth / 2;
   const minCardTop = safeBounds.top + announcement.height + announcementCardGap;
   const maxCardTop = safeBounds.bottom - card.height - cardActivityGap - activity.height;
-  if (maxCenterX < minCenterX || maxCardTop < minCardTop) {
-    return { status: "unavailable", identity, reason: "NO_SAFE_STACK" };
-  }
+  const stackPossible = maxCenterX >= minCenterX && maxCardTop >= minCardTop;
 
   const preferredCenterX = input.preferredCard.left + card.width / 2;
   const preferredCardTop = input.preferredCard.top;
@@ -282,7 +284,7 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
   }))).sort((left, right) => left.distance - right.distance
     || left.cardTop - right.cardTop || left.centerX - right.centerX);
 
-  for (const candidate of candidates) {
+  for (const candidate of stackPossible ? candidates : []) {
     const cardRect = makeRect(candidate.centerX, candidate.cardTop, card);
     const announcementRect = makeRect(candidate.centerX, cardRect.top - announcementCardGap - announcement.height, announcement);
     const activityRect = makeRect(candidate.centerX, cardRect.bottom + cardActivityGap, activity);
@@ -294,6 +296,7 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
       status: "placed",
       layout: {
         identity,
+        variant: "stack",
         generation: input.scene.generation,
         scene: input.scene,
         safeBounds,
@@ -306,5 +309,47 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     };
   }
 
+  // When the full stack cannot fit, place the full card and a measured,
+  // wrapped H4 side by side; the PAC remains centred underneath both.
+  const compact = input.compactAnnouncement;
+  if (compact && finiteSize(compact)) {
+    const center = (safeBounds.left + safeBounds.right) / 2;
+    const gap = Math.max(8, announcementCardGap);
+    const rowWidth = card.width + gap + compact.width;
+    const rowHeight = Math.max(card.height, compact.height);
+    // Reserve a six-pixel edge on short stages; the measured Dock remains a
+    // hard obstacle and the full card-to-PAC gap remains at least eight.
+    const compactBounds = { ...safeBounds, bottom: safeBounds.bottom + 2 };
+    const compactActivityGap = Math.max(8, cardActivityGap - 1);
+    const rowLeft = center - rowWidth / 2;
+    const minTop = safeBounds.top;
+    const maxTop = compactBounds.bottom - rowHeight - compactActivityGap - activity.height;
+    if (rowLeft >= safeBounds.left && rowLeft + rowWidth <= safeBounds.right
+      && activity.width <= safeBounds.right - safeBounds.left && maxTop >= minTop) {
+      const rowTops = new Set([minTop, maxTop, clamp(input.preferredCard.top, minTop, maxTop)]);
+      for (const { rect } of input.obstacles) {
+        rowTops.add(clamp(rect.bottom + gap, minTop, maxTop));
+        rowTops.add(clamp(rect.top - gap - rowHeight - compactActivityGap - activity.height, minTop, maxTop));
+      }
+      for (const top of [...rowTops].sort((a, b) => a - b)) {
+        for (const cardOnLeft of [true, false]) {
+          const cardLeft = rowLeft + (cardOnLeft ? 0 : compact.width + gap);
+          const announcementLeft = rowLeft + (cardOnLeft ? card.width + gap : 0);
+          const cardRect = makeRect(cardLeft + card.width / 2, top, card);
+          const announcementRect = makeRect(announcementLeft + compact.width / 2, top, compact);
+          const activityRect = makeRect(center, top + rowHeight + compactActivityGap, activity);
+          if ([cardRect, announcementRect, activityRect].some((rect) =>
+            input.obstacles.some((obstacle) => overlaps(rect, obstacle.rect)))) continue;
+          return { status: "placed", layout: {
+            identity, variant: "compact-split", generation: input.scene.generation,
+            scene: input.scene, safeBounds: compactBounds,
+            protectedRects: input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
+            announcement: announcementRect, card: cardRect, activity: activityRect,
+            cardActivityGap: activityRect.top - cardRect.bottom,
+          } };
+        }
+      }
+    }
+  }
   return { status: "unavailable", identity, reason: "NO_SAFE_STACK" };
 }

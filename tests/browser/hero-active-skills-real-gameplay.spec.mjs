@@ -1179,6 +1179,72 @@ test("W4: converted public Judgement discard settles with one shared H4", async 
   }
 });
 
+test("T6: Ambushment reveal keeps H4 and PAC visible with the real card", async ({ page, browser, request }, testInfo) => {
+  const material = { ...card("BlueSteelSword", "t6-ambushment-blue-steel", "♠"), rank: "6" };
+  const lightning = { ...card("Lightning", "t6-ambushment-lightning", "♥"), rank: "Q" };
+  const negation = card("Negation", "t6-private-negation", "♣");
+  const seed = await seedSkillRoom(request, {
+    hero: "gan-ning", hand: [material],
+    targets: [{ name: "TARGET", role: "Loyalist", hero: "cao-cao", hp: 5, maxHp: 5, hand: [negation], judgement: [lightning] }],
+  });
+  const observerContext = await browser.newContext({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true });
+  const observerPage = await observerContext.newPage();
+  await openSkillUser(page, seed, { width: 390, height: 700 });
+  await openSkillViewer(observerPage, seed, seed.players[1], { width: 390, height: 700 });
+  await Promise.all([page, observerPage].map((viewer) => viewer.evaluate(() => {
+    const samples = [];
+    window.__t6RevealSamples = samples;
+    window.__t6RevealInterval = setInterval(() => {
+      const frame = document.querySelector('[data-public-card-frame-effect-id="gan_ning_qixi"]');
+      const root = frame?.closest('[data-public-card-journey-role="root"]');
+      const display = frame?.closest(".public-card-display");
+      const table = document.querySelector(".play-table");
+      if (!frame || !root || root.dataset.publicCardJourneyPhase !== "reveal") return;
+      const visible = (element) => {
+        if (!element) return false;
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility === "visible" && Number(style.opacity) > 0;
+      };
+      const h4 = display?.querySelector('[data-public-card-announcement="true"]');
+      const pac = document.querySelector(".public-activity-chip");
+      const bounds = (element) => {
+        const r = element?.getBoundingClientRect();
+        return r ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom } : null;
+      };
+      samples.push({ at: performance.now(), frame: visible(frame), h4: visible(h4), pac: visible(pac),
+        frameRect: bounds(frame), h4Rect: bounds(h4), pacRect: bounds(pac), variant: table?.dataset.publicStageLayoutVariant,
+        layout: table?.dataset.publicStageLayoutStatus ?? null, failure: table?.dataset.publicStageLayoutFailure ?? null,
+        h4Delivery: h4?.dataset.publicCardAnnouncementDelivery ?? null, pacLayout: pac?.dataset.publicActivityLayout ?? null });
+    }, 25);
+  })));
+  try {
+    await completeSkillSelection({ page, request, seed, skillName: "Ambushment", providerId: "gan_ning_qixi", cardIds: [material.id], targetIndexes: [1] });
+    const traces = await Promise.all([page, observerPage].map(async (viewer) => {
+      await viewer.waitForFunction(() => {
+        const samples = window.__t6RevealSamples ?? [];
+        return samples.length > 1 && samples.at(-1).at - samples[0].at >= 1_500;
+      }, null, { timeout: 10_000 });
+      return viewer.evaluate(() => window.__t6RevealSamples);
+    }));
+    await testInfo.attach("t6-ambushment-reveal-status.json", { body: Buffer.from(JSON.stringify(traces, null, 2)), contentType: "application/json" });
+    for (const samples of traces) {
+      const settled = samples.filter((sample) => sample.at - samples[0].at >= 250 && sample.frame);
+      expect(settled.length).toBeGreaterThan(0);
+      const missing = settled.find((sample) => !sample.h4 || !sample.pac);
+      expect(missing, JSON.stringify(missing)).toBeUndefined();
+      const invalid = settled.find(({ frameRect: f, h4Rect: h, pacRect: p }) =>
+        Math.abs((p.left + p.right) / 2 - 195) > 2 || p.top < f.bottom + 8
+        || (h.left < f.right && h.right > f.left && h.top < f.bottom && h.bottom > f.top));
+      expect(invalid, JSON.stringify(invalid)).toBeUndefined();
+    }
+
+  } finally {
+    for (const viewer of [page, observerPage]) await viewer.evaluate(() => clearInterval(window.__t6RevealInterval)).catch(() => {});
+    await observerContext.close();
+  }
+});
+
 test("T3: Ambushment hand discard keeps the turn status clear of Seats", async ({ page, browser, request }, testInfo) => {
   test.setTimeout(60_000);
   const material = { ...card("Negation", "t3-black-negation-material", "♠"), rank: "5" };

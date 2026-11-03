@@ -186,7 +186,13 @@ export function PublicStageLayoutProvider({
         return;
       }
       const announcement = announcements[0];
+      // Measure both widths before publishing a single shared generation. The
+      // H4 may already be compact from the previous frame, so measure its
+      // stylesheet width independently instead of feeding that back as normal.
+      const savedWidth = announcement.style.width;
+      announcement.style.removeProperty("width");
       const announcementRect = announcement.getBoundingClientRect();
+      announcement.style.width = savedWidth;
       const activityRect = chip.getBoundingClientRect();
       const measuredSize = (rect: { width: number; height: number }) => ({ width: rect.width, height: rect.height });
       if (announcementRect.width <= 0 || announcementRect.height <= 0
@@ -306,6 +312,14 @@ export function PublicStageLayoutProvider({
       const safeRight = Math.min(viewport.right, tableBounds.right) - 8;
       const safeTop = Math.max(viewport.top, tableBounds.top) + 8;
       const safeBottom = Math.min(viewport.bottom, tableBounds.bottom) - 8;
+      const compactWidth = safeRight - safeLeft - cardSize.width - 8;
+      let compactAnnouncement: { width: number; height: number } | undefined;
+      if (phase === "REVEAL" && compactWidth >= 120) {
+        announcement.style.width = `${compactWidth}px`;
+        const compactRect = announcement.getBoundingClientRect();
+        compactAnnouncement = measuredSize(compactRect);
+        announcement.style.width = savedWidth;
+      }
       const result = calculatePublicStageLayout({
         scene,
         viewport,
@@ -316,6 +330,7 @@ export function PublicStageLayoutProvider({
         },
         card: cardSize,
         announcement: measuredSize(announcementRect),
+        compactAnnouncement,
         activity: measuredSize(activityRect),
         obstacles,
         phaseRects,
@@ -332,6 +347,7 @@ export function PublicStageLayoutProvider({
           table: roundedRect(tableBounds),
           primary: roundedRect(visualPrimary),
           announcement: roundedRect(rectOf(announcement)),
+          compactAnnouncement,
           activity: roundedRect(rectOf(chip)),
           obstacles: obstacles.map(({ id, rect }) => ({ id, rect: roundedRect(rect) })),
         }));
@@ -362,6 +378,7 @@ export function PublicStageLayoutProvider({
       });
       setData(table, "data-public-stage-layout-status", `shared-${phase.toLowerCase()}`);
       setData(table, "data-public-stage-layout-phase", phase.toLowerCase());
+      setData(table, "data-public-stage-layout-variant", result.layout.variant);
       setData(table, "data-public-stage-layout-identity", result.layout.identity);
       setData(table, "data-public-stage-layout-failure", undefined);
       snapshotRef.current = next;
