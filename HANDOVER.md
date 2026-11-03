@@ -9,4 +9,7 @@
 - 2026-11-03 20:08 UTC：440×894 黑色无懈实体牌作为奇袭材料的真实场景 RED：完整相框出现时 H4/PAC 仍为 `PENDING_PLACEMENT`；此为新客户端真实复现，不把材料误认成无懈反制。
 - 2026-11-03 20:12–20:17 UTC：修正仅针对真实已提交历史缩略牌的 PAC 软覆盖；共享位置只在同事件、同视角、同文案及实际 DOM 障碍仍安全时保留，补充共享 PAC/布局变更日志。440×894 与 390×700 双视角逐帧检查初步通过；测试环境原控制器辅助接口仅支持五谷，尝试切换时返回 409，未将其视为成功。
 - 2026-11-03 20:18 UTC：加入真实视角切换后，两种屏幕通过；再次严格逐帧检查偶发 PARKED 首帧 H4 隐藏，未交付。继续修正共享布局发布，让两个消费者在 React 上下文更新前同步读取同一已提交布局。最终 440×894 DPR3 和 390×700 各 1/1 通过，包含初次安全布局后的逐帧可见、MOVE、PARKED、视角切换后真实作者/牌身份、最终结算公告与 TURN PAC ≥2 秒；本地浏览器累计约 150 秒（含失败），未超过五分钟上限。构建通过；布局单元 9/9，目标 ESLint 0 错误（13 条现有警告）。测试控制器扩展只在 `WTK_TEST_CAPABILITIES=1` 的测试路由生效。
-- **交付进行中：**准备提交上述修复，随后核对精确 SHA CI、Worker 和线上健康；仍保持 OWNER FAIL，等待用户新手机复验，不得自认验收通过。
+- **交付状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。** 产品验收仍为 OWNER FAIL，尚未接受。
+- 2026-11-03 20:21 UTC：实现及 HANDOVER 随提交 `b10828eef1a80bd1ed1bf87e5a19919ee3b4c0c6` 推送至 `ux-v2`。精确 SHA CI 全部通过：API tests、Lint and fast tests、Browser startup and room smoke、deploy；[CI run 41711631892](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41711631892)。Cloudflare Worker version `e2c7e002-fd2b-44ea-becd-da6117295665` 部署成功；`/api/health` 返回 `{"ok":true,"worker":"available"}`（HTTP 200）。
+- **复验边界：**本地真实游戏回归覆盖 390×700 和 440×894 DPR3、双观察视角、动画逐帧 H4/PAC 可见、牌移动及停放、选牌阶段 TEST SWITCH、真实弃牌和结算状态。TEST SWITCH 是在目标选牌阶段检查，未证明在 REVEAL 动画中途切换的逐帧行为。需由用户手机复验原报告场景：甘宁发动技能时，相框内牌、H4 与居中 PAC 应在同一阶段同步出现且持续稳定；确认 PAC 可覆盖已停放缩略牌而不会被推移。CI/部署和本地回归不代表用户验收。
+- **唯一后续任务：**等待用户 iPhone 复验 T6 §10.30；若仍有问题，按新 trace 继续这一修复，不开始其他任务。
