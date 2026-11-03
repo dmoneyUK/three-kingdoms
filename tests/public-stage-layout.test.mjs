@@ -72,6 +72,7 @@ test("obstacle reflow avoids the obstacle without resizing or reordering the rev
   assert.ok(result.layout.announcement.bottom <= result.layout.card.top);
   assert.ok(result.layout.card.bottom <= result.layout.activity.top);
   assert.deepEqual([result.layout.card.right - result.layout.card.left, result.layout.card.bottom - result.layout.card.top], [90, 135]);
+  assert.deepEqual(result.layout.protectedRects, [obstacle]);
 });
 
 test("impossible measured geometry and non-reveal phases fail closed", () => {

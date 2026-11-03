@@ -56,6 +56,13 @@ function setData(element: HTMLElement, key: string, value: string | undefined) {
   }
 }
 
+function clearCountdownLayoutMetadata(table: HTMLElement) {
+  table.querySelectorAll<HTMLElement>(".visible-countdown").forEach((countdown) => {
+    setData(countdown, "data-public-stage-layout-identity", undefined);
+    setData(countdown, "data-public-stage-layout-protected-rect", undefined);
+  });
+}
+
 const PROTECTED_SELECTORS = [
   ".opponent-player-card[data-player-anchor]",
   ".player-square",
@@ -103,6 +110,7 @@ export function PublicStageLayoutProvider({
 
     const clear = () => {
       generationRef.current = { ...generationRef.current, sceneKey: "", geometrySignature: "" };
+      clearCountdownLayoutMetadata(table);
       setData(table, "data-public-stage-layout-status", undefined);
       setData(table, "data-public-stage-layout-failure", undefined);
       setData(table, "data-public-stage-layout-identity", undefined);
@@ -227,6 +235,7 @@ export function PublicStageLayoutProvider({
       });
       if (result.status !== "placed") {
         generationRef.current = { ...generationRef.current, sceneKey: "", geometrySignature: "" };
+        clearCountdownLayoutMetadata(table);
         setData(table, "data-public-stage-layout-status", "unavailable");
         setData(table, "data-public-stage-layout-identity", undefined);
         setData(table, "data-public-stage-layout-failure", JSON.stringify({
@@ -251,6 +260,17 @@ export function PublicStageLayoutProvider({
         announcementAnchorEventId: announcement.dataset.publicCardAnnouncementAnchorEventId || null,
         tableRect: tableBounds,
       };
+      const protectedRectByValue = new Set(result.layout.protectedRects.map(({ rect }) => JSON.stringify(roundedRect(rect))));
+      table.querySelectorAll<HTMLElement>(".visible-countdown").forEach((countdown) => {
+        const measured = JSON.stringify(roundedRect(rectOf(countdown)));
+        if (!visibleObstacle(countdown) || !protectedRectByValue.has(measured)) {
+          setData(countdown, "data-public-stage-layout-identity", undefined);
+          setData(countdown, "data-public-stage-layout-protected-rect", undefined);
+          return;
+        }
+        setData(countdown, "data-public-stage-layout-identity", result.layout.identity);
+        setData(countdown, "data-public-stage-layout-protected-rect", measured);
+      });
       setData(table, "data-public-stage-layout-status", "shared-reveal");
       setData(table, "data-public-stage-layout-identity", result.layout.identity);
       setData(table, "data-public-stage-layout-failure", undefined);
@@ -274,6 +294,8 @@ export function PublicStageLayoutProvider({
       if (records.some((record) => {
         if (record.type === "attributes" && record.target === table
           && ["data-public-stage-layout-status", "data-public-stage-layout-identity", "data-public-stage-layout-failure"].includes(record.attributeName ?? "")) return false;
+        if (record.type === "attributes" && record.attributeName?.startsWith("data-public-stage-layout-")
+          && record.target !== table) return false;
         if (record.type === "attributes" && record.attributeName === "style" && ownedGeometryElement(record.target)) return false;
         return true;
       })) schedule();
@@ -288,6 +310,7 @@ export function PublicStageLayoutProvider({
       if (frame) window.cancelAnimationFrame(frame);
       mutationObserver?.disconnect();
       resizeObserver?.disconnect();
+      clearCountdownLayoutMetadata(table);
       window.removeEventListener("resize", onResize);
       window.visualViewport?.removeEventListener("resize", onResize);
       window.visualViewport?.removeEventListener("scroll", onResize);

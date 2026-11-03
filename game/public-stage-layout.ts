@@ -33,6 +33,7 @@ export type PublicStageLayout = {
   generation: number;
   scene: PublicStageScene;
   safeBounds: PublicStageRect;
+  protectedRects: readonly { id: string; rect: PublicStageRect }[];
   announcement: PublicStageRect;
   card: PublicStageRect;
   activity: PublicStageRect;
@@ -102,7 +103,9 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
 
   const { viewport, table, card, announcement, activity } = input;
   const announcementCardGap = input.announcementCardGap ?? 8;
-  const cardActivityGap = input.cardActivityGap ?? 8;
+  // One extra CSS pixel absorbs subpixel offsets in CardFace/Frame rendering,
+  // so the measured browser gap still meets the approved 8px minimum.
+  const cardActivityGap = input.cardActivityGap ?? 9;
   if (!finiteRect(viewport) || !finiteRect(table)
     || !finiteSize(card) || !finiteSize(announcement) || !finiteSize(activity)
     || !Number.isFinite(input.preferredCard.left) || !Number.isFinite(input.preferredCard.top)
@@ -177,6 +180,7 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
         generation: input.scene.generation,
         scene: input.scene,
         safeBounds,
+        protectedRects: input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
         announcement: announcementRect,
         card: cardRect,
         activity: activityRect,

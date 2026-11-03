@@ -142,6 +142,8 @@ async function sampleReveal(page, event) {
         h4LayoutIdentity: announcement?.dataset.publicStageLayoutIdentity ?? null,
         cardLayoutIdentity: card.dataset.publicStageLayoutIdentity ?? null,
         countdown: rect(countdown),
+        countdownLayoutIdentity: countdown?.dataset.publicStageLayoutIdentity ?? null,
+        countdownSharedRect: countdown?.dataset.publicStageLayoutProtectedRect ?? null,
         dock: rect(dock),
         seats: [...document.querySelectorAll(".opponent-player-card[data-player-anchor]")].map((seat) => ({ id: seat.dataset.playerAnchor, ...rect(seat) })),
         table: rect(table),
@@ -189,12 +191,19 @@ test("PUBLIC-PAC keeps genuine Something Out of Nothing and Barbarian Invasion r
       expect(geometry.cardLayoutIdentity).toBe(geometry.sharedLayoutIdentity);
       expect(geometry.h4LayoutIdentity).toBe(geometry.sharedLayoutIdentity);
       expect(geometry.pacLayoutIdentity).toBe(geometry.sharedLayoutIdentity);
+      expect(geometry.countdownLayoutIdentity).toBe(geometry.sharedLayoutIdentity);
+      expect(JSON.parse(geometry.countdownSharedRect)).toEqual([
+        Math.round(geometry.countdown.left * 2) / 2,
+        Math.round(geometry.countdown.top * 2) / 2,
+        Math.round(geometry.countdown.right * 2) / 2,
+        Math.round(geometry.countdown.bottom * 2) / 2,
+      ]);
       expect(geometry.motion).toBeTruthy();
       expect(geometry.rootEventId).toBe(geometry.eventId);
       expect(geometry.actorId).toBe(room.players[0].id);
       expect(geometry.size).toBe("reveal");
       expect(geometry.activeSamePhysicalCardFaces).toBe(1);
-      expect(geometry.face.bottom + 7.5).toBeLessThanOrEqual(geometry.pac.top);
+      expect(geometry.face.bottom + 8).toBeLessThanOrEqual(geometry.pac.top);
       expect(geometry.pac.layout).not.toContain("upper-band");
       expect(geometry.pac.top).toBeGreaterThanOrEqual(geometry.table.top + geometry.table.height * 0.58);
       expect(geometry.pac.bottom).toBeLessThanOrEqual(geometry.dock.top);
