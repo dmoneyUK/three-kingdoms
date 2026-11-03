@@ -14,6 +14,8 @@ import { compactLustDuelAttackMessage } from "./lust-public-copy";
 import { CardFace } from "./card-face";
 import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 import {
+  committedPublicStageLayout,
+  canRetainPublicStageLayout,
   publicStageLayoutCandidateMatchesElement,
   sharedPublicStageMatchesElement,
   usePublicStageLayout,
@@ -953,6 +955,7 @@ type SeatHistoryCardParkingOptions = {
   protectSingleTargetControls?: boolean;
   avoidAuthorSeat?: boolean;
   protectInteractionControls?: boolean;
+  allowStatusOverParked?: boolean;
   allowHarvestPoolOverlap?: boolean;
   allowAuthorPortraitEdgeOverlap?: boolean;
   preserveAuthorControls?: boolean;
@@ -963,7 +966,8 @@ function seatHistoryParkingProtectedSelectors(options: SeatHistoryCardParkingOpt
   if (!options.protectInteractionControls) return [];
   return [
     ".console-guidance", ".decision-status", ".public-card-display-journey-copy", "[data-public-card-announcement='true']",
-    ".public-activity-chip", "[data-public-activity-chip]", ".visible-countdown", ".stage-system-cluster",
+    ...(options.allowStatusOverParked ? [] : [".public-activity-chip", "[data-public-activity-chip]"]),
+    ".visible-countdown", ".stage-system-cluster",
     ".local-judgement-cards",
     ".local-dock-zones", ".local-status-panel", ".local-equipment-panel", ".local-hand-section",
     ".local-hand-rail [data-hand-card-id]", ".local-hand-rail button", ".turn-controls", ".turn-controls button",
@@ -2470,29 +2474,30 @@ function PublicCardAnnouncement({
       };
       commitDisplayedCopy(incomingDisplayedCopy);
       const sharedTable = display.closest<HTMLElement>(".play-table");
-      const sharedPlacementIsCurrent = Boolean(sharedPublicStage
+      const currentSharedStage = sharedTable ? committedPublicStageLayout(sharedTable) ?? sharedPublicStage : sharedPublicStage;
+      const sharedPlacementIsCurrent = Boolean(currentSharedStage
         && sharedTable
-        && sharedPublicStageMatchesElement(sharedTable, sharedPublicStage)
-        && sharedPublicStage.announcementEventId === copy.dataset.publicCardAnnouncementEventId
-        && sharedPublicStage.layout.scene.scopeId === display.dataset.publicCardRootEventId
-        && sharedPublicStage.layout.scene.viewerId === display.dataset.publicCardViewerId
-        && display.dataset.publicCardLayoutViewerId === display.dataset.publicCardViewerId
-        && display.dataset.publicCardLayoutPending !== "true");
-      if (sharedPlacementIsCurrent && sharedPublicStage) {
-        const rect = sharedPublicStage.layout.announcement;
+        && (sharedPublicStageMatchesElement(sharedTable, currentSharedStage)
+          || canRetainPublicStageLayout(sharedTable, currentSharedStage))
+        && currentSharedStage.announcementEventId === copy.dataset.publicCardAnnouncementEventId
+        && currentSharedStage.layout.scene.scopeId === display.dataset.publicCardRootEventId
+        && currentSharedStage.layout.scene.viewerId === display.dataset.publicCardViewerId
+        && display.dataset.publicCardLayoutViewerId === display.dataset.publicCardViewerId);
+      if (sharedPlacementIsCurrent && currentSharedStage) {
+        const rect = currentSharedStage.layout.announcement;
         setPx("left", rect.left);
         setPx("top", rect.top);
         setPx("width", rect.right - rect.left);
-        setData("data-public-stage-layout-identity", sharedPublicStage.layout.identity);
-        setData("data-public-card-announcement-placement", `shared-${sharedPublicStage.layout.scene.phase.toLowerCase()}`);
+        setData("data-public-stage-layout-identity", currentSharedStage.layout.identity);
+        setData("data-public-card-announcement-placement", `shared-${currentSharedStage.layout.scene.phase.toLowerCase()}`);
         setData("data-public-card-announcement-positioned", "true");
         if (copy.style.visibility !== "visible") copy.style.visibility = "visible";
         setDelivery("VISIBLE", currentEventCopyKey);
         reportH4Placement({
-          geometryEpoch: sharedPublicStage.layout.identity,
+          geometryEpoch: currentSharedStage.layout.identity,
           obstacleIds: [],
           decision: "reflow",
-          reason: `shared-public-stage-layout-${sharedPublicStage.layout.scene.phase.toLowerCase()}`,
+          reason: `shared-public-stage-layout-${currentSharedStage.layout.scene.phase.toLowerCase()}`,
           compact: copy.dataset.publicCardAnnouncementCompact === "true",
           rect: { left: rect.left, top: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top },
           visible: true,
@@ -4269,6 +4274,9 @@ function singleTargetParkingOptions(
     && typeof window !== "undefined" && window.matchMedia("(max-width: 520px)").matches;
   return {
     extendNegationChainCollisionSlots,
+    // This measures the destination of an already-proven physical history
+    // card, not the enlarged live reveal. The public status paints above it.
+    allowStatusOverParked: Boolean(event.eventId && event.cardFace.id),
     ...(action.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer" ? { avoidAuthorSeat: true } : {}),
     // All parked Harvest history (root and committed responses) uses the
     // same footprint. The 90×135 reveal remains a separate live phase.

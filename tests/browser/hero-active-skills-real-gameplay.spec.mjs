@@ -1180,23 +1180,27 @@ test("W4: converted public Judgement discard settles with one shared H4", async 
 });
 
 test("T6: Ambushment reveal keeps H4 and PAC visible with the real card", async ({ page, browser, request }, testInfo) => {
-  const material = { ...card("BlueSteelSword", "t6-ambushment-blue-steel", "♠"), rank: "6" };
+  const viewport = process.env.T6_SHORT_SCREEN === "1" ? { width: 390, height: 700 } : { width: 440, height: 894 };
+  const material = { ...card("Negation", "t6-ambushment-black-material", "♠"), rank: "6" };
   const lightning = { ...card("Lightning", "t6-ambushment-lightning", "♥"), rank: "Q" };
   const negation = card("Negation", "t6-private-negation", "♣");
   const seed = await seedSkillRoom(request, {
     hero: "gan-ning", hand: [material],
     targets: [{ name: "TARGET", role: "Loyalist", hero: "cao-cao", hp: 5, maxHp: 5, hand: [negation], judgement: [lightning] }],
   });
-  const observerContext = await browser.newContext({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true });
+  const observerContext = await browser.newContext({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   const observerPage = await observerContext.newPage();
-  await openSkillUser(page, seed, { width: 390, height: 700 });
-  await openSkillViewer(observerPage, seed, seed.players[1], { width: 390, height: 700 });
+  await openSkillUser(page, seed, viewport);
+  await openSkillViewer(observerPage, seed, seed.players[1], viewport);
   await Promise.all([page, observerPage].map((viewer) => viewer.evaluate(() => {
     const samples = [];
     window.__t6RevealSamples = samples;
-    window.__t6RevealInterval = setInterval(() => {
+    window.__t6RevealActive = true;
+    const captureFrame = () => {
+      if (!window.__t6RevealActive) return;
+      requestAnimationFrame(captureFrame);
       const frame = document.querySelector('[data-public-card-frame-effect-id="gan_ning_qixi"]');
-      const root = document.querySelector('[data-public-card-journey-role="root"][data-public-card-journey-card-id="t6-ambushment-blue-steel"]');
+      const root = document.querySelector('[data-public-card-journey-role="root"][data-public-card-journey-card-id="t6-ambushment-black-material"]');
       const display = root?.closest(".public-card-display");
       const table = document.querySelector(".play-table");
       if (!root) return;
@@ -1217,7 +1221,8 @@ test("T6: Ambushment reveal keeps H4 and PAC visible with the real card", async 
         ids: [root.dataset.publicStageLayoutIdentity, h4?.dataset.publicStageLayoutIdentity, pac?.dataset.publicStageLayoutIdentity], variant: table?.dataset.publicStageLayoutVariant,
         layout: table?.dataset.publicStageLayoutStatus ?? null, failure: table?.dataset.publicStageLayoutFailure ?? null,
         h4Delivery: h4?.dataset.publicCardAnnouncementDelivery ?? null, pacLayout: pac?.dataset.publicActivityLayout ?? null });
-    }, 25);
+    };
+    requestAnimationFrame(captureFrame);
   })));
   try {
     await completeSkillSelection({ page, request, seed, skillName: "Ambushment", providerId: "gan_ning_qixi", cardIds: [material.id], targetIndexes: [1] });
@@ -1235,7 +1240,7 @@ test("T6: Ambushment reveal keeps H4 and PAC visible with the real card", async 
       const missing = settled.find((sample) => !sample.h4 || !sample.pac);
       expect(missing, JSON.stringify(missing)).toBeUndefined();
       const invalid = settled.find(({ frameRect: f, h4Rect: h, pacRect: p }) =>
-        Math.abs((p.left + p.right) / 2 - 195) > 2 || p.top < f.bottom + 8
+        Math.abs((p.left + p.right) / 2 - viewport.width / 2) > 2 || p.top < f.bottom + 8
         || (h.left < f.right && h.right > f.left && h.top < f.bottom && h.bottom > f.top));
       expect(invalid, JSON.stringify(invalid)).toBeUndefined();
       const mismatched = settled.find(({ ids }) => !ids[0] || ids.some((id) => id !== ids[0]));
@@ -1245,13 +1250,17 @@ test("T6: Ambushment reveal keeps H4 and PAC visible with the real card", async 
     for (const viewer of [page, observerPage]) {
       await viewer.waitForFunction(() => window.__t6RevealSamples?.some((sample) => sample.phase === "parked" && sample.pacLayout === "shared-parked" && sample.pac), null, { timeout: 10_000 });
       const samples = await viewer.evaluate(() => window.__t6RevealSamples);
+      const first = samples.findIndex((sample) => sample.phase === "reveal" && sample.h4 && sample.pac && sample.ids[0] && sample.ids.every((id) => id === sample.ids[0]));
+      expect(first).toBeGreaterThanOrEqual(0);
+      const lost = samples.slice(first + 1).find((sample) => !sample.h4 || !sample.pac);
+      expect(lost, `same-scene visibility dropped: ${JSON.stringify(lost)}`).toBeUndefined();
       const move = samples.filter((sample) => sample.phase === "move");
       expect(move.length).toBeGreaterThan(0);
       const missing = move.find((sample) => !sample.h4 || !sample.pac);
       expect(missing, JSON.stringify(missing)).toBeUndefined();
       const parked = samples.find((sample) => sample.phase === "parked" && sample.pac && sample.pacLayout === "shared-parked");
       expect(parked, JSON.stringify(samples.at(-1))).toBeTruthy();
-      expect(Math.abs((parked.pacRect.left + parked.pacRect.right) / 2 - 195)).toBeLessThanOrEqual(2);
+      expect(Math.abs((parked.pacRect.left + parked.pacRect.right) / 2 - viewport.width / 2)).toBeLessThanOrEqual(2);
     }
     const pending = await projectedRoom(request, seed, seed.players[1]);
     const windowId = pending.currentAction?.negationWindowId;
@@ -1260,6 +1269,22 @@ test("T6: Ambushment reveal keeps H4 and PAC visible with the real card", async 
       const response = await request.post(`${API}/api/rooms`, { data: { action: "decline_response", code: seed.code, token: player.token, context: { windowId } } });
       expect(response.ok()).toBeTruthy();
     }
+    const enabledController = await request.post(`${API}/__test/enable-seeded-controller`, {
+      data: { code: seed.code, hostToken: seed.players[0].token, targetPlayerId: seed.players[2].id },
+    });
+    expect(enabledController.ok(), await enabledController.text()).toBeTruthy();
+    await page.reload();
+    await expect(page.locator(".game-shell")).toBeVisible();
+    await page.getByRole("button", { name: `Switch to ${seed.players[2].name}` }).click();
+    await expect(page.locator(`.local-player-dock[data-player-anchor="${seed.players[2].id}"]`)).toBeVisible();
+    const switchedDisplay = page.locator('.public-card-display[data-public-card-display="true"]').first();
+    await expect(switchedDisplay).toHaveAttribute("data-public-card-viewer-id", seed.players[2].id);
+    await expect(switchedDisplay).toHaveAttribute("data-public-card-layout-viewer-id", seed.players[2].id);
+    const switchedRoot = switchedDisplay.locator('[data-public-card-journey-role="root"][data-public-card-journey-card-id="t6-ambushment-black-material"]');
+    await expect(switchedRoot).toHaveCount(1);
+    await expect(switchedRoot).toHaveAttribute("data-public-card-journey-actor-id", seed.players[0].id);
+    await page.getByRole("button", { name: `Switch to ${seed.players[0].name}` }).click();
+    await expect(page.locator(`.local-player-dock[data-player-anchor="${seed.players[0].id}"]`)).toBeVisible();
     const picker = page.locator('.card-pool-panel[data-choice-mode="actor-target-select"]');
     await expect(picker).toBeVisible();
     await picker.getByRole("tab", { name: "Judgement (1)", exact: true }).click();
@@ -1305,7 +1330,7 @@ test("T6: Ambushment reveal keeps H4 and PAC visible with the real card", async 
     }
 
   } finally {
-    for (const viewer of [page, observerPage]) await viewer.evaluate(() => { clearInterval(window.__t6RevealInterval); clearInterval(window.__t6SettlementInterval); }).catch(() => {});
+    for (const viewer of [page, observerPage]) await viewer.evaluate(() => { window.__t6RevealActive = false; clearInterval(window.__t6SettlementInterval); }).catch(() => {});
     await observerContext.close();
   }
 });

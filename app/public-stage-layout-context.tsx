@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 import {
   calculatePublicStageLayout,
   type PublicStageLayout,
@@ -13,11 +14,19 @@ export type SharedPublicStageLayout = {
   primaryCardId: string;
   primaryOffset: { left: number; top: number };
   announcementEventId: string;
+  announcementCopyKey: string;
   announcementAnchorEventId: string | null;
   tableRect: PublicStageRect;
 };
 
 const PublicStageLayoutContext = createContext<SharedPublicStageLayout | null>(null);
+// Publish the measured scene synchronously with its DOM generation marker.
+// React context remains the render subscription; scheduled consumers may read
+// this same commit before that subscription has rerendered.
+const committedLayouts = new WeakMap<HTMLElement, SharedPublicStageLayout>();
+export function committedPublicStageLayout(table: HTMLElement): SharedPublicStageLayout | null {
+  return committedLayouts.get(table) ?? null;
+}
 
 export function usePublicStageLayout() {
   return useContext(PublicStageLayoutContext);
@@ -100,6 +109,7 @@ export function PublicStageLayoutProvider({
   const snapshotRef = useRef<SharedPublicStageLayout | null>(null);
   const generationRef = useRef({ sceneKey: "", geometrySignature: "", generation: 0 });
   const movePathRef = useRef<{ sceneKey: string; rect: PublicStageRect } | null>(null);
+  const traceSignatureRef = useRef("");
 
   useLayoutEffect(() => {
     const table = scopeId
@@ -111,10 +121,12 @@ export function PublicStageLayoutProvider({
     const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
 
     const clear = () => {
+      if (snapshotRef.current && canRetainPublicStageLayout(table, snapshotRef.current)) return;
       generationRef.current = { ...generationRef.current, sceneKey: "", geometrySignature: "" };
       movePathRef.current = null;
       clearCountdownLayoutMetadata(table);
       snapshotRef.current = null;
+      committedLayouts.delete(table);
       setData(table, "data-public-stage-layout-status", undefined);
       setData(table, "data-public-stage-layout-phase", undefined);
       setData(table, "data-public-stage-layout-failure", undefined);
@@ -336,6 +348,20 @@ export function PublicStageLayoutProvider({
         phaseRects,
       });
       if (result.status !== "placed") {
+        if (snapshotRef.current && canRetainPublicStageLayout(table, snapshotRef.current)) return;
+        if (isAttackDodgeUxTraceActive()) {
+          const signature = `${eventId}:${viewerId}:${phase}:${result.reason}`;
+          if (signature !== traceSignatureRef.current) {
+            traceSignatureRef.current = signature;
+            recordAttackDodgeUxTrace("public-stage-layout-transition", {
+              reason: result.reason, rootEventId: scopeId, eventId, publicCardId: cardId,
+              viewerId, layoutViewerId: display.dataset.publicCardLayoutViewerId, phase,
+              generation: nextGeneration, identity: snapshotRef.current?.layout.identity ?? null,
+              candidate: roundedRect(visualPrimary), lastSafe: snapshotRef.current?.layout ?? null,
+              blockers: obstacles.map(({ id, rect }) => ({ id, rect: roundedRect(rect) })),
+            });
+          }
+        }
         generationRef.current = { ...generationRef.current, sceneKey: "", geometrySignature: "" };
         clearCountdownLayoutMetadata(table);
         setData(table, "data-public-stage-layout-status", "unavailable");
@@ -352,16 +378,31 @@ export function PublicStageLayoutProvider({
           obstacles: obstacles.map(({ id, rect }) => ({ id, rect: roundedRect(rect) })),
         }));
         snapshotRef.current = null;
+        committedLayouts.delete(table);
         setSnapshot((current) => current === null ? current : null);
         return;
       }
 
+      if (isAttackDodgeUxTraceActive()) {
+        const signature = `${eventId}:${viewerId}:${phase}:${result.layout.identity}`;
+        if (signature !== traceSignatureRef.current) {
+          traceSignatureRef.current = signature;
+          recordAttackDodgeUxTrace("public-stage-layout-transition", {
+            reason: "placed", rootEventId: scopeId, eventId, publicCardId: cardId,
+            viewerId, layoutViewerId: display.dataset.publicCardLayoutViewerId,
+            phase, generation: result.layout.generation, identity: result.layout.identity,
+            variant: result.layout.variant, announcement: result.layout.announcement,
+            activity: result.layout.activity, card: result.layout.card,
+          });
+        }
+      }
       const next: SharedPublicStageLayout = {
         layout: result.layout,
         primaryEventId: eventId,
         primaryCardId: cardId,
         primaryOffset,
         announcementEventId: announcement.dataset.publicCardAnnouncementEventId ?? "",
+        announcementCopyKey: announcement.dataset.publicCardAnnouncementCopyKey ?? "",
         announcementAnchorEventId: announcement.dataset.publicCardAnnouncementAnchorEventId || null,
         tableRect: tableBounds,
       };
@@ -376,6 +417,7 @@ export function PublicStageLayoutProvider({
         setData(countdown, "data-public-stage-layout-identity", result.layout.identity);
         setData(countdown, "data-public-stage-layout-protected-rect", measured);
       });
+      committedLayouts.set(table, next);
       setData(table, "data-public-stage-layout-status", `shared-${phase.toLowerCase()}`);
       setData(table, "data-public-stage-layout-phase", phase.toLowerCase());
       setData(table, "data-public-stage-layout-variant", result.layout.variant);
@@ -419,6 +461,7 @@ export function PublicStageLayoutProvider({
       mutationObserver?.disconnect();
       resizeObserver?.disconnect();
       clearCountdownLayoutMetadata(table);
+      committedLayouts.delete(table);
       window.removeEventListener("resize", onResize);
       window.visualViewport?.removeEventListener("resize", onResize);
       window.visualViewport?.removeEventListener("scroll", onResize);
@@ -435,6 +478,47 @@ export function PublicStageLayoutProvider({
     && snapshot.layout.scene.interactionId === interactionId
     ? snapshot : null;
   return <PublicStageLayoutContext.Provider value={currentSnapshot}>{children}</PublicStageLayoutContext.Provider>;
+}
+
+
+/** Retain only a previously committed, same-event/viewer pair which is still
+ * safe against current DOM geometry. Never carry state across viewer changes. */
+export function canRetainPublicStageLayout(table: HTMLElement, shared: SharedPublicStageLayout): boolean {
+  const scene = shared.layout.scene;
+  if (table.dataset.publicStageLayoutScope !== scene.scopeId) return false;
+  const cards = [...table.querySelectorAll<HTMLElement>('.public-card-journey-card[data-public-card-primary-card="true"]')];
+  const card = cards.find((el) => el.dataset.publicCardJourneyEventId === shared.primaryEventId
+    && el.dataset.publicCardJourneyCardId === shared.primaryCardId);
+  const display = card?.closest<HTMLElement>('.public-card-display');
+  if (!card || !display || display.dataset.publicCardRootEventId !== scene.scopeId
+    || display.dataset.publicCardViewerId !== scene.viewerId
+    || display.dataset.publicCardLayoutViewerId !== scene.viewerId
+    || (scene.interactionId && display.dataset.publicCardInteractionId !== scene.interactionId)) return false;
+  const h4 = [...display.querySelectorAll<HTMLElement>('[data-public-card-announcement="true"]')]
+    .find((el) => el.dataset.publicCardAnnouncementEventId === shared.announcementEventId
+      && (el.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey);
+  const pac = table.querySelector<HTMLElement>('[data-public-activity-chip="true"]');
+  if (!h4 || !pac) return false;
+  const rects = [rectOf(h4), rectOf(pac)];
+  const saved = [shared.layout.announcement, shared.layout.activity];
+  const intersects = (a: PublicStageRect, b: PublicStageRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+  const within = (r: PublicStageRect, bounds: PublicStageRect) => r.left >= bounds.left - 1 && r.right <= bounds.right + 1 && r.top >= bounds.top - 1 && r.bottom <= bounds.bottom + 1;
+  const liveBounds = rectOf(table);
+  if (rects.some((r, i) => !within(r, liveBounds)
+    || Math.abs(r.left - saved[i].left) > 1 || Math.abs(r.top - saved[i].top) > 1
+    || Math.abs((r.right - r.left) - (saved[i].right - saved[i].left)) > 1
+    || Math.abs((r.bottom - r.top) - (saved[i].bottom - saved[i].top)) > 1)
+    || intersects(rects[0], rects[1])) return false;
+  const obstacles = [...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)]
+    .filter((el) => el !== card && el !== h4 && el !== pac && !card.contains(el) && visibleObstacle(el))
+    .map(rectOf);
+  if (card.dataset.publicCardJourneyPhase !== 'parked') {
+    obstacles.push(rectOf(card));
+    card.querySelectorAll<HTMLElement>('.public-card-effect-frame-panel').forEach((el) => {
+      if (visibleForMeasure(el)) obstacles.push(rectOf(el));
+    });
+  }
+  return !rects.some((rect) => obstacles.some((obstacle) => intersects(rect, obstacle)));
 }
 
 export function sharedPublicStageMatchesElement(table: HTMLElement, shared: SharedPublicStageLayout): boolean {
