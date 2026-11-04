@@ -2,22 +2,25 @@
 
 ## 当前唯一任务：PUBLIC-DISCARD-UX-01 / M4 E15 (§10.36)
 
-**状态：首个实现 SHA 已推送但 fast CI 失败；CI 修复已在本地完成并通过三条定向回归，替换 SHA 尚待提交/推送/CI。未部署、未验收。** 最新设计为 `docs/UX2-refine.md` Revision 2026-11-04 20:17 UTC；`ux-v2` 首个实现 SHA `07d03967f838aff40baf50e9746a26985ff82ab9`。
+**状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。** 已修复判定结束 → 多张弃牌 → 下一回合间 H4、PAC 与 Console 不同步。不得将 CI/部署视为手机验收。
 
-### 已确认原因与实现范围
+### 当前结果
 
-- 服务端弃牌事件已带真实牌 ID、HAND→DISCARD 证明和较新 `publicSequence`；旧 H4 未让弃牌事实取得公告所有权。
-- 下一普通回合 PAC 被上一判定的停靠卡布局挂起；当前普通回合状态不再等待已过期的共享阶段布局。
-- 观察者 Console 不得显示上阶段选择或旧判定原因；交互决策仍优先使用已验证的 `PresentationClientView`，仅当服务端回合座位已经推进时才让当前 `turn` 状态取代旧互动。
-- H4 仅从新提交的公共弃牌事实显示公开玩家名与数量。既有弃牌、Dismantle、Steal 物理牌结果所有者和隐私规则不变。
+- 根因：较新的已提交弃牌事件未取得 H4 公告所有权；下一普通回合的 PAC 继续等待旧判定卡布局；观察者 Console 保留上一阶段内容。
+- 修复：仅以服务器已提交、带更高 `publicSequence` 的公开弃牌事实更新通用 H4；普通回合 PAC 不再等待过期布局；Console 只在服务器实际推进回合后清除旧互动，并继续以当前 viewer 的 `CurrentAction` 为合法性来源。未泄露手牌、未改游戏规则。
+- 代码 SHA：[`08a07112beb56fdeb1d9cc2fdfd3e9a0e78fcd6d`](https://github.com/dmoneyUK/three-kingdoms/commit/08a07112beb56fdeb1d9cc2fdfd3e9a0e78fcd6d)。首个实现 SHA `07d03967` 的 Actions `41904219119` 有 3/372 fast tests 失败；定向修复后该 SHA 的三条回归 3/3 通过。
+- 精确 SHA Actions：[41905324697 — success](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41905324697)。API、browser startup/room smoke、lint、fast tests、部署及 production smoke 全部通过。
+- 部署：Worker version `1c60c3d6-e67c-4597-b88e-8be475f62b56`；线上 `/api/health` 返回 `{"ok":true,"worker":"available"}`。
 
-### 验证和失败记录（UTC）
+### 验证与待验收
 
-- 首次实现推送：`07d03967f838aff40baf50e9746a26985ff82ab9`；Actions [41904219119](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41904219119) **失败**。API tests、browser startup/room smoke、lint、build 通过；`test:fast` 369/372，失败为 `active decision status ignores legacy ownership and reason fields`、`shared decision presentation keeps turn ownership, action ownership, privacy, and revisions distinct`、`normalized malformed and unknown response states render safely`。Deploy 跳过，没有 Worker 发布。
-- 失败后仅运行三条针对性复现；调整为仅在服务端当前座位确实超越旧互动时更新 Console，并对可空 `currentAction` 安全读取。三条定向回归 3/3 通过（20:16 UTC）。
-- 当前手机浏览器回归 390×844 为 1/1 通过（20:06 UTC）；本任务本地 UI 总时长未超过 5 分钟。无需再次启动浏览器测试。
-- 弃牌路由/布局测试 7/7、E15 定向 API 18/18 通过；变更文件 ESLint 0 errors、15 warnings；`git diff --check` 通过。首个 SHA 的 CI build 也通过。
+- 20:06 UTC：移动端浏览器回归 390×844，1/1；弃牌路由/布局测试 7/7、E15 API 18/18 通过。任务本地 UI/browser 测试总计未超过 5 分钟；未启动额外测试。
+- 20:16 UTC：复现首轮 CI 的三条 fast-test 失败并验证窄修复，定向 assertions 3/3 通过。
+- 20:18–20:23 UTC：修复 SHA 的精确 CI 全部通过，包括 API、browser startup/room smoke、lint、fast tests、build、部署和 production smoke；Worker 于 20:23:06 UTC 发布。
+- 20:24 UTC：线上 `/api/health` 返回成功。`git diff --check`、变更文件 ESLint（0 errors，15 warnings）通过。首 SHA 的构建通过。
+- Owner iPhone 需复核：最终弃牌 H4 取代旧判定 H4；PAC 在新回合可见且不被旧布局挂起；当前玩家私有 Console 正确、旁观者显示无行动状态；公开弃牌脸保持中性样式且不泄露手牌。
+- §10.36 仍未获用户验收。当前交付只记录 M4 E15 的跨阶段修复；M4 E16 是独立待验收项，不在本任务内。
 
-### 唯一恢复点
+### 设计与恢复点
 
-只提交当前 CI 修复（`app/page.tsx` 和本 handover/设计状态），推送 `ux-v2` 并等待替换 SHA 全部 Actions 与 Worker smoke。部署前不得宣称 E15 技术交付完成；部署后更新精确 SHA、CI、Worker 结果。最终状态应为 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`，不得自行验收或启动其他任务。
+已复习 `docs/UX2-refine.md` §10.36（2026-11-04 20:24 UTC）及 `AGENTS.md`、`docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`。实现已完成并推送；当前停在 Owner iPhone review 边界。仅在收到复验反馈后继续本任务或关闭，不自行标记 USER-ACCEPTED。
