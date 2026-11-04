@@ -2580,7 +2580,7 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
         actorId: target.id,
         affectedPlayerIds: [target.id],
         label: rule.label,
-        outcomeLabel: `${heroDisplayName(target)} revealed ${finalCard.rank}${finalCard.suit} ${cardDefinition(finalCard.kind).name}. ${result.status === "satisfied" ? rule.successText : rule.failureText} ${rule.label} ends.`,
+        outcomeLabel: `${target.name} revealed ${finalCard.rank}${finalCard.suit} ${cardDefinition(finalCard.kind).name}. ${result.status === "satisfied" ? rule.successText : rule.failureText} ${rule.label} ends.`,
         effect: { kind: "judgement", label: rule.label },
       }, judgementEnvelope) : undefined;
       log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for ${rule.label}. ${result.status === "satisfied" ? rule.successText : rule.failureText}`, undefined, judgement.resolutionId,
@@ -2651,7 +2651,7 @@ async function beginDelayedJudgement(room: RoomRow, target: PlayerRow, players: 
     actorId: target.id,
     affectedPlayerIds: [target.id],
     label: rule.label,
-    outcomeLabel: `${heroDisplayName(target)} revealed ${draw.card.rank}${draw.card.suit} ${cardDefinition(draw.card.kind).name} for ${rule.label}.`,
+    outcomeLabel: `${target.name} revealed ${draw.card.rank}${draw.card.suit} ${cardDefinition(draw.card.kind).name} for ${rule.label}.`,
     effect: { kind: "judgement", label: rule.label },
   }, causalRoot.envelope) : undefined;
   const presentation = addCardEventWithId(log, target.name, draw.card, target.name, "reveal", true, {

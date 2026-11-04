@@ -6,10 +6,10 @@
 
 ## 当前唯一任务：T7B / UX2-JUDGEMENT-REVEAL-OWNER-01 — §10.27.7
 
-**状态：IN PROGRESS — 实现已完成，精确 SHA CI/部署待验证；NOT ACCEPTED / CORRECTION REQUIRED。** 已复习 `docs/UX2-refine.md` 2026-11-04 15:17 UTC 和 `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`。这项修正仍需 Owner iPhone 复审。
+**状态：IN PROGRESS — 首次交付 CI 失败，修正已完成并本地通过，等待第二次精确 SHA CI/部署；NOT ACCEPTED / CORRECTION REQUIRED。** 已复习 `docs/UX2-refine.md` 2026-11-04 15:17 UTC 和 `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`。这项修正仍需 Owner iPhone 复审。
 
-实现：首次真实判定牌 reveal 的服务器公开事实现在包含牌点数、花色、牌名和对应延迟牌效果，但不提前声称最终判定；PAC 单独保留“玩家正在判定该效果”的阶段状态。服务器进入 `discard` 后，PAC 显示当前回合玩家等待弃牌，残留的旧 reveal 不能覆盖新阶段。没有改规则、合法操作、私有选择或卡牌身份。
+首次推送源码 SHA [`65204e25`](https://github.com/dmoneyUK/three-kingdoms/commit/65204e2507f29bd112b2b3dbec1446338f40459b) 的精确 SHA [Actions 41858496818](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41858496818) 已结束：Lint/fast 与 Browser startup/room smoke 通过；API tests 失败，deploy 因上游失败跳过。失败根因：PAC 的 Discard 分支覆盖了仍在展示的确切判定牌事件；旧断言仍期望泛化 H4；一个 engine 测试遗漏 `.data` 层。该 SHA 未部署。
 
-验证：`npm run build`、`tests/api/public-activity.test.mjs` 18/18、`git diff --check` 通过。单条引擎 API 用例曾以裸 `node --test` 启动，因未先启本地 Worker 在 `localhost:3137` 连接拒绝、未运行到断言；未重复本地集成运行，等待标准 CI API job 覆盖。未运行 UI/browser 测试。
+本地修正：仍在呈现的确切公开判定事件保持 H4/PAC 同步；仅当该事件退出活动展示后才显示服务器 `discard` 阶段。H4 使用服务器提交的实际玩家名、牌点数、花色和牌名；最终判定文案同样使用玩家名。修正 viewer state 测试访问，并覆盖显示中/退出展示后的 PAC 分界。验证：`npm run build`、目标 ESLint、`git diff --check` 通过；定向 API `tests/api/da-qiao.test.mjs`、`tests/api/presentation-v2-engine.test.mjs`、`tests/api/public-activity.test.mjs` 共 80/80 通过。未运行本地 UI/browser 测试。
 
-**恢复点：** 源码变更在 `app/api/rooms/route.ts`、`game/public-activity.ts`，聚焦回归在 `tests/api/public-activity.test.mjs` 和 `tests/api/presentation-v2-engine.test.mjs`。检查工作树后提交推送至 `ux-v2`，按精确 SHA 核验所有必需 CI job、Cloudflare Worker 部署与生产 smoke；结果仍需 Owner iPhone 复审。
+**恢复点：** 当前待提交修正在 `app/api/rooms/route.ts`、`game/public-activity.ts`、`tests/api/da-qiao.test.mjs`、`tests/api/presentation-v2-engine.test.mjs`、`tests/api/public-activity.test.mjs`。检查远端最新 `ux-v2` 后，将当前任务相关变更与本 Handover 一起提交推送；等待精确 SHA 所有必需 CI、Worker 部署和生产 smoke。不得进入 M3，直到 T7B 精确 SHA 健康交付；此结果仍需 Owner iPhone 复审。

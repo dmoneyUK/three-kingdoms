@@ -426,18 +426,10 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
     }
   }
 
-  // A newer server-owned phase always wins over a still-visible earlier
-  // Judgement reveal in the client presentation queue.
-  if (input.status === "playing" && input.phase === "discard") {
-    const player = input.players.find((candidate) => candidate.seat === input.turnSeat && candidate.alive);
-    if (player?.name.trim()) {
-      const text = `Waiting for ${player.name.trim()} to discard cards.`;
-      return { kind: "discard", text, heading: text };
-    }
-    return RESOLVING;
-  }
-
-  if (input.status === "playing" && (input.phase === "response" || input.phase === "resolving")) {
+  // While the exact committed Judgement reveal is the currently presented
+  // event, keep PAC aligned with that public card and H4. The server Discard
+  // phase takes over as soon as the reveal is no longer the active event.
+  if (input.status === "playing") {
     const fact = activePublicJudgementFact(input);
     if (fact) {
       const actor = playerName(input, fact.actorId);
@@ -447,6 +439,15 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
         : judgement ? `Judgement for ${judgement} is resolving.` : "Resolving a public Judgement.";
       return { kind: "judgement", text, heading: text };
     }
+  }
+
+  if (input.status === "playing" && input.phase === "discard") {
+    const player = input.players.find((candidate) => candidate.seat === input.turnSeat && candidate.alive);
+    if (player?.name.trim()) {
+      const text = `Waiting for ${player.name.trim()} to discard cards.`;
+      return { kind: "discard", text, heading: text };
+    }
+    return RESOLVING;
   }
 
   if (input.status === "playing" && input.phase !== "response" && input.phase !== "resolving" && input.phase !== "dying") {

@@ -191,10 +191,10 @@ test("Captivating uses one Diamond hand card as Overindulgence and preserves its
   assert.equal(derivePublicActivityStatus({ ...resolved.data.room, status: "playing", activePublicJudgementEventId: revealedEvent.id }).kind,
     "judgement", "PAC follows the exact public reveal while that event is presented");
   const judgementResultEvent = resolved.data.room.timeline.find((event) => event.type === "message"
-    && event.publicFact?.effect?.kind === "judgement" && event.publicFact?.outcomeLabel?.includes("Zhao Yun revealed"));
+    && event.publicFact?.effect?.kind === "judgement" && event.publicFact?.outcomeLabel?.includes(`${target.name} revealed`));
   assert.ok(judgementResultEvent, "the committed result has a typed public Judgement fact");
   const resultFact = publicFacts.find((fact) => fact.eventId === judgementResultEvent.id);
-  assert.match(resultFact?.outcomeLabel ?? "", /Zhao Yun revealed 9♠ Dodge\. The result is not a Heart, so the Play Phase is skipped\. Overindulgence ends\./);
+  assert.equal(resultFact?.outcomeLabel, `${target.name} revealed 9♠ Dodge. The result is not a Heart, so the Play Phase is skipped. Overindulgence ends.`);
   const resultNarration = derivePublicInteractionNarration({
     snapshot: resolved.data.room.presentationSnapshot,
     players: resolved.data.room.players,
@@ -263,13 +263,14 @@ test("Diao Qiao Overindulgence publishes a single 2 club reveal with current PAC
   const facts = [...(snapshot.publicEventFacts ?? []), ...(snapshot.retainedPublicEventFacts ?? [])];
   const revealFact = facts.find((fact) => fact.eventId === reveal.id);
   assert.equal(revealFact?.actorId, daqiao.id);
-  assert.equal(revealFact?.outcomeLabel, "Da Qiao is judging Overindulgence.");
+  assert.equal(revealFact?.outcomeLabel, `${daqiao.name} revealed 2♣ Attack for Overindulgence.`);
   assert.equal(derivePublicActivityStatus({ ...settled.data.room, status: "playing", activePublicJudgementEventId: reveal.id }).text,
-    "Da Qiao is judging Overindulgence.");
+    `${daqiao.name} is judging Overindulgence.`);
 
-  const resultFact = facts.find((fact) => fact.effect?.kind === "judgement" && fact.outcomeLabel?.includes("Da Qiao revealed 2♣ Attack"));
+  const resultFact = facts.find((fact) => fact.eventId !== reveal.id && fact.effect?.kind === "judgement"
+    && fact.outcomeLabel?.includes(`${daqiao.name} revealed 2♣ Attack`));
   assert.ok(resultFact, "the committed outcome survives with the public Judgement fact chain");
-  assert.match(resultFact.outcomeLabel, /Da Qiao revealed 2♣ Attack\. The result is not a Heart, so the Play Phase is skipped\. Overindulgence ends\./);
+  assert.equal(resultFact.outcomeLabel, `${daqiao.name} revealed 2♣ Attack. The result is not a Heart, so the Play Phase is skipped. Overindulgence ends.`);
   assert.equal(derivePublicInteractionNarration({ snapshot, players: settled.data.room.players,
     rootEventId: resultFact.rootEventId, interactionId: resultFact.identity.interactionId,
     rootFrameId: resultFact.identity.rootFrameId, eventId: resultFact.eventId })?.headline, resultFact.outcomeLabel);

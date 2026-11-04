@@ -59,9 +59,11 @@ test("PAC follows the exact committed Judgement event and ignores stale or misma
   assert.equal(derivePublicActivityStatus({ ...input,
     presentationSnapshot: { ...judgementSnapshot, interaction: { ...judgementSnapshot.interaction, stage: "SETTLEMENT" } },
   }).kind, "resolving", "an earlier Judgement fact must not override a newer server stage");
-  assert.deepEqual(derivePublicActivityStatus({ ...input, phase: "discard" }), {
+  assert.equal(derivePublicActivityStatus({ ...input, phase: "discard" }).kind, "judgement",
+    "the exact public reveal stays aligned with H4/PAC until it stops being the active event");
+  assert.deepEqual(derivePublicActivityStatus({ ...input, phase: "discard", activePublicJudgementEventId: null }), {
     kind: "discard", text: "Waiting for Test Player 1 to discard cards.", heading: "Waiting for Test Player 1 to discard cards.",
-  }, "the current server Discard Phase takes precedence over a still-visible prior reveal");
+  }, "server Discard Phase takes over after the prior reveal is no longer active");
 });
 
 test("shared Negation wording is identical and ignores viewer-private submission state", () => {

@@ -3125,13 +3125,13 @@ test("engine-backed Judgement replacement exposes reveal and resume evidence", {
   assert.equal(revealView.presentationV2.interactionScene?.decisionActorId, setup.sima.id);
   const revealEventId = revealPending.continuation.judgement.revealedEventId;
   const revealFact = revealView.presentationSnapshot.publicEventFacts.find((fact) => fact.eventId === revealEventId);
-  assert.equal(revealFact?.outcomeLabel, "Guo Jia revealed 7♠ Dodge for Overindulgence.", "H4 follows the exact committed reveal without claiming the final Judgement result");
+  assert.equal(revealFact?.outcomeLabel, `${setup.guo.name} revealed 7♠ Dodge for Overindulgence.`, "H4 follows the exact committed reveal without claiming the final Judgement result");
   assert.deepEqual(revealView.presentationV2.interactionScene?.participantRoles, { sourceId: setup.guo.id, originalTargetIds: [setup.guo.id], activeTargetIds: [setup.guo.id], currentParticipantId: setup.guo.id, decisionActorId: setup.sima.id, activeResolverId: setup.sima.id, parentParticipantId: null, participantIds: [] });
   assert.equal(revealView.presentationV2.stableBoundary.kind, "CHOICE");
   assert.equal(revealView.presentationV2.stableBoundary.decisionActorId, setup.sima.id);
   const revealRepeat = await state(setup.game.code, setup.simaMember.token);
   const revealOtherViewer = await state(setup.game.code, setup.guoMember.token);
-  assert.deepEqual(revealOtherViewer.presentationSnapshot.publicEventFacts.find((fact) => fact.eventId === revealEventId), revealFact,
+  assert.deepEqual(revealOtherViewer.data.presentationSnapshot.publicEventFacts.find((fact) => fact.eventId === revealEventId), revealFact,
     "the same committed reveal narration is public and identical for actor and observer");
   assert.deepEqual(revealRepeat.data.presentationV2.interactionScene, revealView.presentationV2.interactionScene);
   assert.deepEqual(revealRepeat.data.presentationV2.stableBoundary, revealView.presentationV2.stableBoundary);
