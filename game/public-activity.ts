@@ -23,19 +23,52 @@ export type PublicActivityInput = {
   turnSeat: number | null;
   players: readonly PublicActivityPlayer[];
   presentationSnapshot: PresentationSnapshot | null;
+  /** Exact currently presented public Judgement reveal event, if any. */
+  activePublicJudgementEventId?: string | null;
   pendingTargetCard?: PublicPendingTargetCard | null;
   /** Viewer-local server identity for the currently open Negation window. */
   currentViewerNegationWindowId?: string | null;
 };
 
 export type PublicActivityStatus = {
-  kind: "turn" | "response" | "negation" | "target-card-choice" | "resolving" | "finished";
+  kind: "turn" | "response" | "negation" | "judgement" | "target-card-choice" | "resolving" | "finished";
   text: string;
   heading?: string;
   stage?: string;
 };
 
 const RESOLVING: PublicActivityStatus = { kind: "resolving", text: "Resolving…" };
+
+function activePublicJudgementFact(input: PublicActivityInput) {
+  const snapshot = input.presentationSnapshot;
+  const eventId = input.activePublicJudgementEventId;
+  if (!snapshot || !eventId) return null;
+  const interaction = snapshot.interaction;
+  let facts: PresentationSnapshot["publicEventFacts"] = snapshot.publicEventFacts;
+  if (interaction) {
+    const identity = snapshot.identity;
+    if (!identity || interaction.semantics !== "PROVEN" || interaction.stage !== "JUDGEMENT"
+      || interaction.interactionId !== identity.interactionId
+      || interaction.checkpointId !== identity.checkpointId
+      || interaction.presentationRevision !== identity.presentationRevision) return null;
+  } else {
+    const retained = snapshot.retainedPublicEvent;
+    if (snapshot.identity || !retained) return null;
+    facts = snapshot.retainedPublicEventFacts ?? [];
+  }
+  const matching = facts.filter((fact) => fact.eventId === eventId
+    && fact.category === "EFFECT_APPLIED" && fact.effect?.kind === "judgement"
+    && fact.rootEventId && fact.outcomeLabel
+    && (!interaction || fact.identity.interactionId === interaction.interactionId
+      && fact.identity.rootFrameId === interaction.rootFrameId)
+    && (!snapshot.identity && snapshot.retainedPublicEvent
+      ? fact.identity.interactionId === snapshot.retainedPublicEvent.identity.interactionId
+        && fact.identity.rootFrameId === snapshot.retainedPublicEvent.identity.rootFrameId
+        && fact.rootEventId === snapshot.retainedPublicEvent.rootEventId
+        && fact.identity.presentationRevision <= snapshot.retainedPublicEvent.identity.presentationRevision
+      : true));
+  return matching.length === 1 ? matching[0] : null;
+}
 
 function playerName(input: PublicActivityInput, playerId: string | null | undefined): string | null {
   if (!playerId) return null;
@@ -130,6 +163,8 @@ export function derivePublicInteractionNarration(input: {
   rootEventId: string;
   interactionId: string;
   rootFrameId: string;
+  /** Selects the exact active public event instead of a later same-root result. */
+  eventId?: string;
 }): PublicInteractionNarration | null {
   const snapshot = input.snapshot;
   const identity = snapshot?.identity;
@@ -151,15 +186,21 @@ export function derivePublicInteractionNarration(input: {
       "DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED",
     ]);
     const rootCategories = new Set(["CARD_PLAYED", "CARD_EQUIPPED"]);
-    latest = facts.filter((fact) => fact.eventId === input.rootEventId
+    const narratable = facts.filter((fact) => fact.eventId === input.rootEventId
       ? rootCategories.has(fact.category) || outcomeCategories.has(fact.category)
-      : fact.order > rootOrder && outcomeCategories.has(fact.category)).at(-1);
+      : fact.order > rootOrder && outcomeCategories.has(fact.category));
+    latest = input.eventId
+      ? narratable.find((fact) => fact.eventId === input.eventId)
+      : narratable.at(-1);
   } else if (!identity && !interaction && snapshot.stable.kind === "REST") {
-    latest = snapshot.retainedPublicEventFacts?.filter((fact) => fact.rootEventId === input.rootEventId
+    const narratable = snapshot.retainedPublicEventFacts?.filter((fact) => fact.rootEventId === input.rootEventId
       && fact.identity.interactionId === input.interactionId && fact.identity.rootFrameId === input.rootFrameId
       && (fact.category === "CARD_PLAYED" || fact.category === "CARD_EQUIPPED" || fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED"
         || fact.category === "SKILL_USED" || fact.category === "EFFECT_APPLIED" || fact.category === "CARD_OBTAINED" || fact.category === "CARD_TRANSFERRED"))
-      .sort((left, right) => left.order - right.order).at(-1);
+      .sort((left, right) => left.order - right.order);
+    latest = input.eventId
+      ? narratable?.find((fact) => fact.eventId === input.eventId)
+      : narratable?.at(-1);
   }
   if (!latest) return null;
 
@@ -200,8 +241,11 @@ export function derivePublicInteractionNarration(input: {
     const effect = effectLabel(latest.effect?.label) ?? "an effect";
     headline = `${actor ?? "A player"} ${latest.category === "EFFECT_RESTORED" ? "restored" : "cancelled"} ${effect}.`;
   } else if (latest.category === "EFFECT_APPLIED") {
-    headline = latest.outcomeLabel?.trim()
-      ? `${actor ? `${actor} ` : ""}${latest.outcomeLabel.trim().replace(/[.!?]+$/, "")}.`
+    const outcome = latest.outcomeLabel?.trim();
+    headline = outcome
+      ? latest.effect?.kind === "judgement"
+        ? `${outcome.replace(/[.!?]+$/, "")}.`
+        : `${actor ? `${actor} ` : ""}${outcome.replace(/[.!?]+$/, "")}.`
       : `${actor ?? "A player"} resolved an effect.`;
   } else {
     return null;
@@ -379,6 +423,13 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
         : "";
       const waiting = `Waiting for ${actor}${actionCopy}`;
       return { kind: "response", text: waiting, heading: waiting, stage: nextDecision.stageLabel };
+    }
+  }
+
+  if (input.status === "playing") {
+    const fact = activePublicJudgementFact(input);
+    if (fact?.outcomeLabel) {
+      return { kind: "judgement", text: fact.outcomeLabel, heading: fact.outcomeLabel };
     }
   }
 

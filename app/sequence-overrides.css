@@ -38,6 +38,9 @@
 .active-table-reveal.direct-discard {
   animation: revealedCardsToDiscard var(--played-card-display) ease-in-out both !important;
 }
+.active-table-reveal.public-discard-neutral .played-card {
+  filter: grayscale(1) brightness(1.1) contrast(.92);
+}
 .active-table-reveal.public-hand-transfer {
   animation: revealedCardToHand var(--played-card-display) ease-in-out both !important;
 }

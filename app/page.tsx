@@ -40,7 +40,7 @@ import { publicHeroCostAnnouncementLifecycle } from "../game/public-hero-cost-li
 import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate } from "../game/public-announcement";
 import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
 import { isM2EquipmentTransitionEvent, routePublicEquipmentTransition } from "./public-equipment-transition";
-import { isM3JudgementTransitionEvent, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, routePublicJudgementReveal, routePublicJudgementTransition, type PublicJudgementRevealRoute } from "./public-judgement-transition";
+import { isM3JudgementTransitionEvent, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition, type PublicJudgementRevealRoute } from "./public-judgement-transition";
 import { routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
 import type { PublicPresentationRoute } from "./public-presentation-routing";
@@ -5748,6 +5748,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     turnSeat: room.turnSeat,
     players: room.players,
     presentationSnapshot: room.presentationSnapshot,
+    activePublicJudgementEventId: activeEvent?.type === "card" && activeEvent.action === "reveal" && activeEvent.judgement
+      ? activeEvent.id : null,
     pendingTargetCard: room.pendingTargetCard,
     currentViewerNegationWindowId: room.currentAction?.negationWindowId ?? null,
   });
@@ -8606,14 +8608,19 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       rootEventId: selectedPublicCardAction.rootEventId,
     })
     : null;
-  const currentInteractionFact = room.presentationSnapshot?.interaction?.stage !== "NEGATION"
-    ? [...(room.presentationSnapshot?.publicEventFacts ?? [])]
-      .filter((fact) => fact.rootEventId && (
+  const narratableInteractionFacts = [
+    ...(room.presentationSnapshot?.publicEventFacts ?? []),
+    ...(room.presentationSnapshot?.retainedPublicEventFacts ?? []),
+  ].filter((fact) => fact.rootEventId && (
         ["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED", "CARD_EQUIPPED"].includes(fact.category)
         || fact.category === "CARD_PLAYED" && fact.eventId === fact.rootEventId
           && fact.effect?.label === "Borrowed Sword"
       ))
-      .sort((left, right) => left.order - right.order).at(-1) ?? room.presentationSnapshot?.retainedPublicEvent
+    .sort((left, right) => left.order - right.order);
+  const currentInteractionFact = room.presentationSnapshot?.interaction?.stage !== "NEGATION"
+    ? (activeEvent ? narratableInteractionFacts.find((fact) => fact.eventId === activeEvent.id) : null)
+      ?? narratableInteractionFacts.at(-1)
+      ?? room.presentationSnapshot?.retainedPublicEvent
     : null;
   const publicInteractionNarration = currentInteractionFact?.rootEventId
     ? derivePublicInteractionNarration({
@@ -8622,9 +8629,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       rootEventId: currentInteractionFact.rootEventId,
       interactionId: currentInteractionFact.identity.interactionId,
       rootFrameId: currentInteractionFact.identity.rootFrameId,
+      eventId: currentInteractionFact.eventId,
     })
     : null;
   const interactionNarrationBelongsToAction = Boolean(publicInteractionNarration && selectedPublicCardAction
+    && !activeJudgementRevealRoute
+    && currentInteractionFact?.effect?.kind !== "judgement"
     && selectedPublicCardAction.rootEventId === publicInteractionNarration.rootEventId
     && selectedPublicCardAction.interactionId === publicInteractionNarration.interactionId
     && selectedPublicCardAction.rootFrameId === publicInteractionNarration.rootFrameId);
@@ -11647,7 +11657,9 @@ function PublicJudgementCardTransition({ event, card, route, players, myTableInd
   onPresented: (route: Extract<PublicPresentationRoute, { kind: "zone-transition" }>) => void;
 }) {
   const revealRef = useRef<HTMLDivElement>(null);
+  const silentlyRetiredClaimId = useRef<string | null>(null);
   const arrivingInJudgement = route.destination === "JUDGEMENT";
+  const alreadyShownFromDeck = publicJudgementTransitionUsesExistingRevealOwner(route);
   const sourceOwnerId = route.from?.ownerId ?? "";
   useLayoutEffect(() => {
     const reveal = revealRef.current;
@@ -11693,9 +11705,18 @@ function PublicJudgementCardTransition({ event, card, route, players, myTableInd
     return () => observer.disconnect();
   }, [arrivingInJudgement, card.id, myTableIndex, players, route.destination, route.from, sourceOwnerId]);
 
+  useEffect(() => {
+    if (!alreadyShownFromDeck || event.id !== route.eventId || silentlyRetiredClaimId.current === route.claimId) return;
+    silentlyRetiredClaimId.current = route.claimId;
+    onPresented(route);
+  }, [alreadyShownFromDeck, event.id, onPresented, route]);
+
+  if (alreadyShownFromDeck) return null;
+
   const expectedAnimation = arrivingInJudgement ? "judgementCardToZone" : "revealedCardsToDiscard";
+  const isPublicJudgementDiscard = route.from?.zone === "JUDGEMENT" && route.destination === "DISCARD";
   return <div className="table-resolution-layer public-zone-transition-layer" role="status">
-    <div ref={revealRef} className={`active-table-reveal ${arrivingInJudgement ? "judgement-flight" : "direct-discard"}`}
+    <div ref={revealRef} className={`active-table-reveal ${arrivingInJudgement ? "judgement-flight" : "direct-discard"}${isPublicJudgementDiscard ? " public-discard-neutral" : ""}`}
       data-settlement-event-id={event.id} data-public-zone-transition-event-id={route.eventId}
       data-public-zone-transition-card-id={route.physicalCardId} data-public-zone-transition-destination={route.destination}
       key={route.claimId} onAnimationEnd={(animation) => {

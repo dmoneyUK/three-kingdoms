@@ -43,6 +43,24 @@ test("public activity uses the public turn seat and fails closed for an absent s
   assert.deepEqual(derivePublicActivityStatus(room({ turnSeat: 99 })), { kind: "resolving", text: "Resolving…" });
 });
 
+test("PAC follows the exact committed Judgement event and ignores stale or mismatched stage facts", () => {
+  const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
+  const judgementFact = {
+    semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "judgement-reveal", rootEventId: "overindulgence-play",
+    order: 2, category: "EFFECT_APPLIED", actorId: "p2", affectedPlayerIds: ["p2"], label: "Overindulgence",
+    outcomeLabel: "Da Qiao is judging Overindulgence.", effect: { kind: "judgement", label: "Overindulgence" },
+  };
+  const judgementSnapshot = snapshot({ stage: "JUDGEMENT", actorId: null, stableKind: "REST", publicEventFacts: [judgementFact] });
+  const input = room({ presentationSnapshot: judgementSnapshot, activePublicJudgementEventId: "judgement-reveal" });
+  assert.deepEqual(derivePublicActivityStatus(input), {
+    kind: "judgement", text: "Da Qiao is judging Overindulgence.", heading: "Da Qiao is judging Overindulgence.",
+  });
+  assert.equal(derivePublicActivityStatus({ ...input, activePublicJudgementEventId: "stale-reveal" }).kind, "turn");
+  assert.equal(derivePublicActivityStatus({ ...input,
+    presentationSnapshot: { ...judgementSnapshot, interaction: { ...judgementSnapshot.interaction, stage: "SETTLEMENT" } },
+  }).kind, "turn", "an earlier Judgement fact must not override a newer server stage");
+});
+
 test("shared Negation wording is identical and ignores viewer-private submission state", () => {
   const publicSnapshot = snapshot({ stage: "NEGATION", actorId: null, stableKind: "SPECIAL", effect: "DrawTwo" });
   const base = room({ phase: "response", presentationSnapshot: publicSnapshot });
@@ -380,6 +398,24 @@ test("generic H4 retains damage through Skip and formats committed public or hid
   assert.equal(derivePublicInteractionNarration({ ...input([]), snapshot: noDamageRest })?.eventId, "generic");
   const independent = { ...generic, eventId: "standalone", rootEventId: "standalone" };
   assert.equal(derivePublicInteractionNarration({ ...input([independent]), rootEventId: "standalone" })?.eventId, "standalone");
+});
+
+test("H4 selects the exact active Judgement event, then its committed result", () => {
+  const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
+  const root = { semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "overindulgence-play", order: 1,
+    rootEventId: "overindulgence-play", category: "CARD_PLAYED", actorId: "p1", affectedPlayerIds: ["p2"],
+    label: "Overindulgence", effect: { kind: "card_play", label: "Overindulgence" } };
+  const reveal = { ...root, eventId: "judgement-reveal", order: 2, category: "EFFECT_APPLIED", actorId: "p2",
+    outcomeLabel: "Da Qiao is judging Overindulgence.", effect: { kind: "judgement", label: "Overindulgence" } };
+  const result = { ...reveal, eventId: "judgement-result", order: 3,
+    outcomeLabel: "Da Qiao revealed 2♣ Attack. The result is not a Heart, so the Play Phase is skipped. Overindulgence ends." };
+  const snapshotWithFacts = snapshot({ stage: "JUDGEMENT", actorId: null, stableKind: "REST", publicEventFacts: [root, reveal, result] });
+  const input = { snapshot: snapshotWithFacts, players, rootEventId: root.eventId,
+    interactionId: identity.interactionId, rootFrameId: identity.rootFrameId };
+  assert.equal(derivePublicInteractionNarration({ ...input, eventId: reveal.eventId })?.headline,
+    "Da Qiao is judging Overindulgence.");
+  assert.equal(derivePublicInteractionNarration({ ...input, eventId: result.eventId })?.headline,
+    "Da Qiao revealed 2♣ Attack. The result is not a Heart, so the Play Phase is skipped. Overindulgence ends.");
 });
 
 test("Equipment H4 uses the exact committed owner and card name for active and retained snapshots", () => {

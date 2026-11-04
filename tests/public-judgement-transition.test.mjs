@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isM3JudgementTransitionEvent, routePublicJudgementReveal, routePublicJudgementTransition } from "../app/public-judgement-transition.ts";
+import { isM3JudgementTransitionEvent, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition } from "../app/public-judgement-transition.ts";
 
 const card = { id: "physical-delayed-card", kind: "Overindulgence", rank: "4", suit: "♥" };
 const ownerId = "player-1";
@@ -92,6 +92,16 @@ test("later Judgement settlement routes from the real Judgement owner to public 
   assert.equal(result.kind, "zone-transition");
   assert.equal(result.destination, "DISCARD");
   assert.deepEqual(result.from, { zone: "JUDGEMENT", ownerId: targetId });
+});
+
+test("a Deck-to-Discard judgement movement reuses the original reveal owner; delayed card still animates", () => {
+  const revealedCard = setup({ from: { zone: "DECK", ownerId: null }, to: { zone: "DISCARD", ownerId: null }, sourceAction: "reveal" });
+  const revealRoute = route(revealedCard);
+  assert.equal(publicJudgementTransitionUsesExistingRevealOwner(revealRoute), true);
+
+  const delayedCard = setup({ from: { zone: "JUDGEMENT", ownerId: targetId }, to: { zone: "DISCARD", ownerId: null }, sourceAction: "activate" });
+  const delayedRoute = route(delayedCard);
+  assert.equal(publicJudgementTransitionUsesExistingRevealOwner(delayedRoute), false);
 });
 
 test("cancelled placement and private, mismatched, or replayed proof never create a public card route", () => {

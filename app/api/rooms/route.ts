@@ -1231,7 +1231,9 @@ function attachFanjianSettlement(log: string[], eventId: string, proof: Presenta
   });
   return matches === 1 ? next : log;
 }
-function addFinalResult(log: string[], message: string, drawPlayerId?: string, resolutionId?: string) { return addLog(log, message, drawPlayerId, { resolutionId, importance: "essential", finalResult: true }); }
+function addFinalResult(log: string[], message: string, drawPlayerId?: string, resolutionId?: string, meta?: PresentationMeta) {
+  return addLog(log, message, drawPlayerId, { ...meta, resolutionId, importance: "essential", finalResult: true });
+}
 function addHistory(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) {
   return appendSequencedLogRecord(log, "@history:", { id: crypto.randomUUID(), message, presentation: false, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) });
 }
@@ -2566,7 +2568,23 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
       }
     } else {
       discard.push(delayed);
-      log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for ${rule.label}. ${result.status === "satisfied" ? rule.successText : rule.failureText}`, undefined, judgement.resolutionId);
+      const rootEventId = latestPublicCardSourceEventId(log, delayed.id);
+      const judgementEnvelope = judgement.causal
+        ? causalEnvelopeAtStage(room, judgement.causal, "JUDGEMENT", {
+          currentSourceId: target.id, currentEffect: judgement.purpose,
+          currentTargetIds: [target.id], resolvingPlayerId: target.id,
+        })
+        : null;
+      const publicFact = judgement.causal && rootEventId ? publicFactFor(judgement.causal, "EFFECT_APPLIED", {
+        rootEventId,
+        actorId: target.id,
+        affectedPlayerIds: [target.id],
+        label: rule.label,
+        outcomeLabel: `${heroDisplayName(target)} revealed ${finalCard.rank}${finalCard.suit} ${cardDefinition(finalCard.kind).name}. ${result.status === "satisfied" ? rule.successText : rule.failureText} ${rule.label} ends.`,
+        effect: { kind: "judgement", label: rule.label },
+      }, judgementEnvelope) : undefined;
+      log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for ${rule.label}. ${result.status === "satisfied" ? rule.successText : rule.failureText}`, undefined, judgement.resolutionId,
+        publicFact ? { publicFact } : undefined);
       delayedDestination = { zone: "DISCARD", ownerId: null };
     }
     if (judgement.purpose === "lightning" && result.status === "satisfied") log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for Lightning and takes 3 thunder damage.`, undefined, judgement.resolutionId);
@@ -2625,8 +2643,22 @@ async function beginDelayedJudgement(room: RoomRow, target: PlayerRow, players: 
     await db().batch([...writes, causalRoomStateWrite(room.id, { phase: resumePhase, pending: null, deck, discard, log, causalEnvelope: null })]);
     return [];
   }
-  const presentation = addCardEventWithId(log, target.name, draw.card, target.name, "reveal", true, { judgement: true });
-  const judgement: JudgementContinuation = { targetId: target.id, purpose: judgementPurposeForDelayed(delayed) ?? "overindulgence", revealedCard: draw.card, revealedEventId: presentation.eventId, ...(causalRoot ? { causal: causalRoot.context } : {}), resume: { kind: "delayed", targetId: target.id, delayedCard: delayed, remainingDelayedCards: remaining, resumePhase } };
+  const purpose = judgementPurposeForDelayed(delayed) ?? "overindulgence";
+  const rule = judgementResolutionFor(purpose);
+  const rootEventId = latestPublicCardSourceEventId(log, delayed.id);
+  const judgementFact = causalRoot && rootEventId ? publicFactFor(causalRoot.context, "EFFECT_APPLIED", {
+    rootEventId,
+    actorId: target.id,
+    affectedPlayerIds: [target.id],
+    label: rule.label,
+    outcomeLabel: `${heroDisplayName(target)} is judging ${rule.label}.`,
+    effect: { kind: "judgement", label: rule.label },
+  }, causalRoot.envelope) : undefined;
+  const presentation = addCardEventWithId(log, target.name, draw.card, target.name, "reveal", true, {
+    judgement: true,
+    ...(judgementFact ? { publicFact: judgementFact } : {}),
+  });
+  const judgement: JudgementContinuation = { targetId: target.id, purpose, revealedCard: draw.card, revealedEventId: presentation.eventId, ...(causalRoot ? { causal: causalRoot.context } : {}), resume: { kind: "delayed", targetId: target.id, delayedCard: delayed, remainingDelayedCards: remaining, resumePhase } };
   return beginJudgementResolution(room, target, players, judgement, deck, discard, presentation.log, writes, causalRoot?.envelope);
 }
 function messageEvent(entry: string, index: number) {

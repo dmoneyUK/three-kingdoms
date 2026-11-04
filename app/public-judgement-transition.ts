@@ -173,6 +173,12 @@ export function publicJudgementTransitionSourceEventId(route: PublicPresentation
   return route?.kind === "zone-transition" ? route.sourceEventId ?? null : null;
 }
 
+/** A deck reveal already has its own CardFace owner before it reaches Discard. */
+export function publicJudgementTransitionUsesExistingRevealOwner(route: PublicPresentationRoute): boolean {
+  return route.kind === "zone-transition" && route.from?.zone === "DECK"
+    && route.destination === "DISCARD" && Boolean(route.sourceEventId && route.physicalCardId);
+}
+
 export function publicJudgementTransitionMatches(event: PublicJudgementTimelineEvent, route: PublicPresentationRoute): boolean {
   const transition = transitionFor(event);
   return Boolean(route.kind === "zone-transition" && transition && route.eventId === event.id
