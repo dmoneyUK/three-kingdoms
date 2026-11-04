@@ -1,6 +1,6 @@
 # WTK UX2 — Simplified Public Card UX
 
-**Revision:** 2026-11-04 13:04 UTC (Lightning/Overindulgence Test Game preset implemented locally; focused validation passed; exact-SHA CI/deployment pending; T7B remains pending owner phone review; PUBLIC-DISCARD-UX-01 follows; no rules change) · **Branch:** `ux-v2` · **Current status authority:** Tables A (implementation/correction), B (owner review pending), C (owner-accepted/superseded), and each original item's latest explicit owner verdict. **No old CI, dated task plan, or historical appendix status can reopen closed work.**
+**Revision:** 2026-11-04 13:12 UTC (Lightning/Overindulgence Test Game preset `72c7d86d` deployed; pending owner phone review; PUBLIC-DISCARD-UX-01 is current; T7B remains pending owner phone review; no rules change) · **Branch:** `ux-v2` · **Current status authority:** Tables A (implementation/correction), B (owner review pending), C (owner-accepted/superseded), and each original item's latest explicit owner verdict. **No old CI, dated task plan, or historical appendix status can reopen closed work.**
 
 This file is the **single active UX2 product/design authority**. It replaces the superseded, much longer UX2 design; previous revisions exist only in Git history. Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmap records, old tests and screenshots are references to prior implementation, **not** permission to reinstate old visual requirements.
 
@@ -8,7 +8,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 **Editorial cleanup (2026-10-30; R6 consolidation 22:27 UTC):** Closed items now retain only the final approved UX contract, explicit owner verdict and essential privacy/interaction boundaries. Historical implementation details and superseded plans remain accessible at the immutable [pre-cleanup revision](https://github.com/dmoneyUK/three-kingdoms/blob/b86c7a781468094fc844fe67b4ffda4e5b9a8d36/docs/UX2-refine.md). Delivered-but-unaccepted and active work remain independently reviewable; this editorial edit is **not** a new coding task or user acceptance.
 
-## UX2 CURRENT canonical work index — 2026-11-04 13:04 UTC (T6 and four other delivered scopes accepted; T7B correction pending owner phone re-review; Lightning/Overindulgence test preset implementation awaiting CI/deployment)
+## UX2 CURRENT canonical work index — 2026-11-04 13:12 UTC (T6 and four other delivered scopes accepted; test preset deployed pending owner phone review; PUBLIC-DISCARD-UX-01 current; T7B remains pending owner phone re-review)
 
 **AUTHORITATIVE STATUS INDEX / NO DUPLICATE EXECUTION:** Tables A–C and the latest explicit owner verdict in the original feature sections govern current work. Dated pre-cleanup snapshots and superseded repairs were removed from this active file but remain [archived in Git](#appendix-a--historical-ux2-status-snapshots-archive-only). A delivered feature awaiting human review belongs in Table B, **not** the development queue; USER-ACCEPTED/CLOSED and SUPERSEDED items in C are not active tasks. Keep one implementation identity per distinct defect.
 
@@ -26,10 +26,11 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 | Authorized correction | State and order |
 | --- | --- |
-| **LIGHTNING-OVERINDULGENCE-TEST-MODE-01** | **CURRENT — DIRECT OWNER REQUEST.** Add a host-controlled Test Game starting-hand preset to exercise both real Standard delayed Stratagems through normal gameplay. |
-| **PUBLIC-DISCARD-UX-01 (§10.36)** | **NEXT SERIAL TASK — OWNER-AUTHORIZED.** Extend the shared event presentation to end-turn multi-card discards, Dismantle results and Steal results, preserving H4, card identity and hidden-Hand privacy. |
+| **PUBLIC-DISCARD-UX-01 (§10.36)** | **CURRENT — OWNER-AUTHORIZED.** Extend the shared event presentation to end-turn multi-card discards, Dismantle results and Steal results, preserving H4, card identity and hidden-Hand privacy. |
 
 ### B. Other technically deployed scopes awaiting owner phone review
+
+**LIGHTNING-OVERINDULGENCE-TEST-MODE-01:** **IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE REVIEW**, not USER-ACCEPTED. Source commit [`72c7d86d`](https://github.com/dmoneyUK/three-kingdoms/commit/72c7d86d5f20c072c5a8c90a15b93d245d3ed656); exact-SHA [Actions 41835239834](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41835239834) passed API, lint/fast, browser startup/room smoke and deployment. Worker version `2fa0ed01-91ae-4d8d-bb69-ed53b713d3b5`; deployment production smoke passed and independent `/api/health` returned HTTP 200 `{"ok":true,"worker":"available"}` at 2026-11-04 13:12 UTC. Focused preset tests 8/8, actual four-seat Standard-hand API test 1/1, build, targeted ESLint and diff checks passed. No local UI/browser test was run; review the new 4–5-player starting-hand option on iPhone. It grants real starting cards only; no auto-attachment, deck ordering or game-rule change.
 
 **T7B / UX2-JUDGEMENT-REVEAL-OWNER-01:** **IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE RE-REVIEW**, not USER-ACCEPTED. Source commit [`d925993f`](https://github.com/dmoneyUK/three-kingdoms/commit/d925993fe49871bb9fd44a06001d38e8a9a0082a); exact-SHA [Actions 41818324011](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41818324011) passed API tests, lint/fast, browser startup/room smoke, Cloudflare deployment and production smoke. Worker version `a0e2cbf8-3120-42d1-913d-94d8cc557cb0`; production `/api/health` returned `{"ok":true,"worker":"available"}` at 2026-11-04 11:08 UTC. Focused public-activity/H4/transition tests 24/24, `da-qiao.test.mjs` 17/17, build, targeted ESLint (0 errors; 2 existing React Hook warnings) and `git diff --check` passed. No local UI/browser test was run. The Diao Qiao sequence shares the M3 lifecycle but does not itself close M3's separate owner-review boundary.
 
