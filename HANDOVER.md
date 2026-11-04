@@ -2,13 +2,13 @@
 
 ## 当前唯一任务：PUBLIC-DISCARD-UX-01 / §10.36.1
 
-**状态：本地实现与定向验证完成；尚未提交、推送或部署。NOT ACCEPTED / OWNER PHONE REVIEW PENDING。** 仅实现同一成功的手牌顺手牵羊结算中，偷牌者与原持有人各自短暂私下看到同一真实牌面；其他玩家只看到匿名牌背。保护 E15 已部署待手机复验和独立待验收的 E16；不改规则，不创建子任务 ID。
+**状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。源实现提交 `bf327e76b11efcfefae2f14bc0f7ccfa8090d521` 已通过精确 SHA CI 并部署；不代表用户验收。** 仅实现同一成功的手牌顺手牵羊结算中，偷牌者与原持有人各自短暂私下看到同一真实牌面；其他玩家只看到匿名牌背。保护 E15 已部署待手机复验和独立待验收的 E16；不改规则，不创建子任务 ID。
 
 ### 设计与分支基线
 
-- 实现依据：远端 `ux-v2` 的 `docs/UX2-refine.md` §10.36.1（2026-11-04 22:40 UTC）；最新文档 revision 为 **23:17 UTC**。23:17 的远端提交 `875e9628` 只新增独立 Fanjian 设计 §10.37；该任务排在本任务之后，本 handover 仍只跟踪 §10.36.1。
-- 源码基线：`cf779c6b5fa4a21c77de70706222734a45c70b97`。工作分支 `codex/ux2-judgement-seat-01`，目标 `origin/ux-v2`。在准备交付时发现远端已前进到 `875e9628`；唯一差异为设计文档，没有源码冲突。已 fetch，尚未 rebase/push。
-- 最近远端 Actions：`41905324697`，SHA `08a07112beb56fdeb1d9cc2fdfd3e9a0e78fcd6d`，success；该旧 SHA 不验证当前改动。精确 SHA Actions、Worker 部署及生产 smoke 均待提交后完成。
+- 实现依据：远端 `ux-v2` 的 `docs/UX2-refine.md` §10.36.1（2026-11-04 22:40 UTC）；截至本次安全同步的最新文档 revision 为 **23:38 UTC**（远端 `407a5878`；设计合并提交 `3a4bf00e`）。更新只细化独立 §10.37 Fanjian 并新增 §10.38 Treachery 设计；未更改 §10.36.1 的合同，本 handover 仍只跟踪当前 §10.36.1 手机验收边界。
+- 源码基线：`cf779c6b5fa4a21c77de70706222734a45c70b97`；实现提交：`bf327e76b11efcfefae2f14bc0f7ccfa8090d521`。工作分支 `codex/ux2-judgement-seat-01`，已推送至 `origin/ux-v2`。实现提交推送前安全 rebase 到 `875e9628`；随后将 HANDOVER 更新安全 rebase 到远端最新 `407a5878`，仅并入 §10.37/§10.38 设计文档更新。
+- 精确 SHA Actions：[`41935465005`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41935465005)，head SHA `bf327e76b11efcfefae2f14bc0f7ccfa8090d521`，结论 success。Browser startup/room smoke、Lint + fast tests、API tests、deploy 均通过；D1 migrations、Worker deploy 和 production smoke 均通过。Worker version：`ab45581b-bf45-4e05-9d89-1415e682114c`。独立 production `/api/health` 检查返回 HTTP 200 和 `{"ok":true,"worker":"available"}`。
 
 ### 当前实现
 
@@ -23,10 +23,9 @@
 - 23:20–23:24：首次 targeted lint 报 3 个错误；修复 timeline 私有字段清洗与私有卡面切换时的状态重置。复跑 lint **0 errors**，有页面原有的 2 条 React Hook warning（`publicCardDisplayAction` 依赖，未改动）。
 - 23:21–23:32：唯一 390×844 浏览器场景合计 11 次短运行，累计远低于 5 分钟。前 9 次中的失败均来自测试夹具推进/选中卡假设或过宽/过时断言，逐项修正后场景通过；随后加入参与者无障碍卡面身份断言时，运行曾读到旧 `dist/client`，重建后最终场景 **1 passed，7.8s**。最终断言验证：两名参与者都见同一原始卡面，H4/PAC 无隐藏身份，匿名观察者无卡牌 ID/真牌标签，TEST SWITCH 与刷新无重放，同一牌不重复显示为 R7 Hand 到达牌。
 - 23:30–23:36：发现远端推进到 `875e9628`；确认仅文档变更并读完新增设计差异。最终 `npm run build` **通过**（只有项目现有 large chunk 与动态 API 分类提示）；最终 targeted lint **0 errors / 2 warnings**；`git diff --check` **通过**。
+- 23:39–23:44：实现提交 `bf327e76b11efcfefae2f14bc0f7ccfa8090d521` 推送到 `ux-v2`；精确 SHA Actions `41935465005` 全部通过，Cloudflare Worker 部署及生产 smoke 成功，版本 `ab45581b-bf45-4e05-9d89-1415e682114c`；独立线上 health 请求 HTTP 200。
+- 23:45 UTC：复核远端新增的 §10.37/§10.38 设计更新，确认与已交付 §10.36.1 不冲突；HANDOVER 仍只保留本任务及其待手机验收边界。
 
-### 待完成交付步骤
+### Owner 手机验收边界
 
-1. 检查最终 diff 与 HANDOVER，确保只包含 §10.36.1 文件；将当前提交安全 rebase 到 `origin/ux-v2` 最新 `875e9628`（远端只有文档变化）。
-2. 提交并推送到 `ux-v2`；等待并核实**精确提交 SHA** 的全部 GitHub Actions。
-3. 确认该 SHA 成功部署 Cloudflare Worker，完成生产 health smoke；将真实 SHA、Actions、Worker version 与 smoke 结果补入本文件。
-4. 最终状态只能为 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**，不得自我验收。用户手机复验要求：偷牌者和失主各见同一真牌一次；旁观者只见牌背；所有公共说明不泄露卡面；TEST SWITCH/刷新无泄漏或重放。
+技术交付已完成。状态保持 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**，不得自我验收。用户手机复验要求：偷牌者和失主各见同一真牌一次；旁观者只见牌背；所有公共说明不泄露卡面；TEST SWITCH/刷新无泄漏或重放。
