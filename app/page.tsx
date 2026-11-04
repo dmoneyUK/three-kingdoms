@@ -3244,11 +3244,15 @@ export function buildDecisionPresentation(room: Pick<Room, "players" | "meId" | 
       interaction: semantic?.interaction,
     };
   }
-  // Keep a retained public interaction from overriding a newer authoritative
-  // turn/settlement action in the viewer's private Console.
-  if (presentationView?.hasInteraction
-    && room.currentAction?.kind !== "turn"
-    && room.currentAction?.kind !== "none") return buildPresentationDecisionPresentation(room, presentationView);
+  // A turn action supersedes a retained public decision only when the
+  // authoritative actor has advanced beyond that decision's actor.
+  const currentTurnOwnerId = room.players.find((player) => player.seat === room.turnSeat)?.id ?? null;
+  const turnAdvancedPastInteraction = presentationView?.hasInteraction
+    && room.currentAction?.kind === "turn"
+    && currentTurnOwnerId !== presentationView.decisionActorId;
+  if (presentationView?.hasInteraction && !turnAdvancedPastInteraction) {
+    return buildPresentationDecisionPresentation(room, presentationView);
+  }
   const turnOwner = projectedPlayerName(room, room.players.find((player) => player.seat === room.turnSeat)?.id, "The current player");
   const action = room.currentAction;
   const actionOwner = projectedPlayerName(room, room.actionPlayerId ?? action?.actorId, "the acting player");
@@ -10666,7 +10670,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       }
       : { ...shared, mode: "public-readonly" as const };
   })() : null;
-  return <main className="game-shell" data-room-phase={room.phase} data-room-action-revision={room.actionRevision} data-current-action-actor-id={room.currentAction.actorId ?? ""} data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div></header>
+  return <main className="game-shell" data-room-phase={room.phase} data-room-action-revision={room.actionRevision} data-current-action-actor-id={room.currentAction?.actorId ?? ""} data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
     <section className="play-table" data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-public-stage-layout-scope={publicCardDisplayAction?.rootEventId ?? undefined} data-public-card-journey-ownership-ready={publicCardJourneyOwnershipReady ? "true" : "false"} data-public-card-owned-history-count={publicDisplayOwnedResponseHistory.length} style={mobileSeatRingLayoutStyle}>
       <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} inspectPlayer={opponentInspectionPresentation} inspectPlayerCount={room.players.length} judgementInFlight={judgementInFlight} equipmentArrivalPendingIds={pendingEquipmentArrivalCardIds} nestedCardDetailDismissRef={nestedInspectorCardDetailDismissRef} /><StageSystemCluster
