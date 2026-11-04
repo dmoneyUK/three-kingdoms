@@ -485,7 +485,13 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
       frame = window.requestAnimationFrame(() => {
         const currentChip = chipRef.current;
         const currentTable = currentChip?.closest<HTMLElement>(".play-table");
-        const currentSharedStage = currentTable ? committedPublicStageLayout(currentTable) ?? sharedPublicStage : sharedPublicStage;
+        // A parked card from an earlier interaction may still own the shared
+        // layout context after the server has advanced to an ordinary turn.
+        // The turn PAC belongs to the current phase and must not wait for that
+        // stale interaction layout to become measurable again.
+        const currentSharedStage = status.kind !== "turn"
+          ? currentTable ? committedPublicStageLayout(currentTable) ?? sharedPublicStage : sharedPublicStage
+          : null;
         if (currentChip && currentTable && currentSharedStage
           && (sharedPublicStageMatchesElement(currentTable, currentSharedStage)
             || canRetainPublicStageLayout(currentTable, currentSharedStage))) {
@@ -510,7 +516,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
           }
           return;
         }
-        const sharedStageCandidate = Boolean(currentChip && currentTable
+        const sharedStageCandidate = Boolean(status.kind !== "turn" && currentChip && currentTable
           && publicStageLayoutCandidateMatchesElement(currentTable, {
             scopeId: currentTable.dataset.publicStageLayoutScope ?? "",
             viewerId,

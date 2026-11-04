@@ -28,6 +28,15 @@ export type PublicDiscardTransitionRoute = {
   }[];
 };
 
+export type PublicDiscardAnnouncement = {
+  eventId: string;
+  actorId: string;
+  order: number;
+  count: number;
+  headline: string;
+  accessibleLabel: string;
+};
+
 function eventCards(event: PublicDiscardTimelineEvent): readonly PublicDiscardCard[] {
   if (event.type === "card") return event.card ? [event.card] : [];
   return event.type === "cards" && Array.isArray(event.cards) ? event.cards : [];
@@ -104,4 +113,22 @@ export function routePublicDiscardTransition(input: {
     eventId: event.id,
     transitions: routed as NonNullable<(typeof routed)[number]>[],
   };
+}
+
+/** Builds public copy only from the exact committed discard event and route. */
+export function publicDiscardAnnouncement(input: {
+  event: PublicDiscardTimelineEvent;
+  route: PublicDiscardTransitionRoute;
+  players: readonly { id: string; name: string }[];
+}): PublicDiscardAnnouncement | null {
+  const { event, route } = input;
+  if (route.eventId !== event.id || route.transitions.length === 0
+    || route.transitions.some((transition) => transition.from.ownerId !== event.actorId)
+    || route.transitions.length !== eventCards(event).length
+    || !Number.isSafeInteger(event.publicSequence) || (event.publicSequence ?? -1) < 0) return null;
+  const actor = input.players.find((player) => player.id === event.actorId)?.name.trim();
+  if (!actor) return null;
+  const count = route.transitions.length;
+  const headline = `${actor} discarded ${count} ${count === 1 ? "card" : "cards"}.`;
+  return { eventId: event.id, actorId: event.actorId!, order: event.publicSequence!, count, headline, accessibleLabel: headline };
 }

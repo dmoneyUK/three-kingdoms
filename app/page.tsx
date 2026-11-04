@@ -29,7 +29,7 @@ import { CardFace } from "./card-face";
 import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
-import { PublicCardDisplay, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, publicCardActionKey, publicCardJourneyOwnershipIdentity, publicCardMotionForCommittedCard, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
+import { PublicCardDisplay, PublicDiscardAnnouncementLayer, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, publicCardActionKey, publicCardJourneyOwnershipIdentity, publicCardMotionForCommittedCard, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
 import { PublicStageLayoutProvider } from "./public-stage-layout-context";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, hasAttackDodgeUxTrace, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
@@ -41,7 +41,7 @@ import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate } fro
 import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
 import { isM2EquipmentTransitionEvent, routePublicEquipmentTransition } from "./public-equipment-transition";
 import { isM3JudgementTransitionEvent, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition, type PublicJudgementRevealRoute } from "./public-judgement-transition";
-import { routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
+import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
 import { layoutPublicResultCards, type PublicResultObstacle } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
 import type { PublicPresentationRoute } from "./public-presentation-routing";
@@ -3244,7 +3244,11 @@ export function buildDecisionPresentation(room: Pick<Room, "players" | "meId" | 
       interaction: semantic?.interaction,
     };
   }
-  if (presentationView?.hasInteraction) return buildPresentationDecisionPresentation(room, presentationView);
+  // Keep a retained public interaction from overriding a newer authoritative
+  // turn/settlement action in the viewer's private Console.
+  if (presentationView?.hasInteraction
+    && room.currentAction?.kind !== "turn"
+    && room.currentAction?.kind !== "none") return buildPresentationDecisionPresentation(room, presentationView);
   const turnOwner = projectedPlayerName(room, room.players.find((player) => player.seat === room.turnSeat)?.id, "The current player");
   const action = room.currentAction;
   const actionOwner = projectedPlayerName(room, room.actionPlayerId ?? action?.actorId, "the acting player");
@@ -4333,6 +4337,19 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
     return route ? [event.id] : [];
   })), [room.timeline, room.code, room.meId]);
+  const latestPublicDiscardAnnouncement = useMemo(() => {
+    const event = room.timeline
+      .filter((candidate) => validatedPublicDiscardTransitionEventIds.has(candidate.id))
+      .sort((left, right) => (right.publicSequence ?? -1) - (left.publicSequence ?? -1))[0] as PublicDiscardTimelineEvent | undefined;
+    if (!event) return null;
+    const route = routePublicDiscardTransition({
+      event,
+      timeline: room.timeline as readonly PublicDiscardTimelineEvent[],
+      roomCode: room.code,
+      viewerId: room.meId,
+    });
+    return route ? publicDiscardAnnouncement({ event, route, players: room.players }) : null;
+  }, [room.timeline, room.code, room.meId, room.players, validatedPublicDiscardTransitionEventIds]);
   const activePublicHandRevealTransition = useMemo(() => {
     if (!activeEvent) return null;
     return routePublicHandRevealTransition({
@@ -8623,6 +8640,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ?? narratableInteractionFacts.at(-1)
       ?? room.presentationSnapshot?.retainedPublicEvent
     : null;
+  const publicDiscardOwnsAnnouncement = Boolean(latestPublicDiscardAnnouncement
+    && latestPublicDiscardAnnouncement.order > (currentInteractionFact?.order ?? -1));
   const publicInteractionNarration = currentInteractionFact?.rootEventId
     ? derivePublicInteractionNarration({
       snapshot: room.presentationSnapshot,
@@ -9054,6 +9073,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
     : null;
   const visibleBeautyAnnouncement = beautyNotice
+    && !publicDiscardOwnsAnnouncement
     && effectNotice?.roomCode === room.code
     && effectNotice.viewerId === room.meId
     && Boolean(beautyNotice.sourceId && beautyNotice.proofEventId)
@@ -10534,6 +10554,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? `Play Attack on ${room.players.find((player) => player.id === room.pendingBorrowedSword?.targetId)?.name ?? "the selected target"}, or give up your Weapon.`
     : localWaitAlreadyPublic
     ? "No action needed."
+    : room.currentAction?.kind === "turn" && !currentActionOwnedByViewer
+    ? "No action needed."
     : lustLocalSelectionActive && activeSkillSelection
     ? `Select ${activeSkillSelection.min} card${activeSkillSelection.min === 1 ? "" : "s"} and ${activeSkillTargetMin} Duel participant${activeSkillTargetMin === 1 ? "" : "s"}.`
     : sharedNegationWindow
@@ -10644,7 +10666,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       }
       : { ...shared, mode: "public-readonly" as const };
   })() : null;
-  return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div></header>
+  return <main className="game-shell" data-room-phase={room.phase} data-room-action-revision={room.actionRevision} data-current-action-actor-id={room.currentAction.actorId ?? ""} data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
     <section className="play-table" data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-public-stage-layout-scope={publicCardDisplayAction?.rootEventId ?? undefined} data-public-card-journey-ownership-ready={publicCardJourneyOwnershipReady ? "true" : "false"} data-public-card-owned-history-count={publicDisplayOwnedResponseHistory.length} style={mobileSeatRingLayoutStyle}>
       <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} inspectPlayer={opponentInspectionPresentation} inspectPlayerCount={room.players.length} judgementInFlight={judgementInFlight} equipmentArrivalPendingIds={pendingEquipmentArrivalCardIds} nestedCardDetailDismissRef={nestedInspectorCardDetailDismissRef} /><StageSystemCluster
@@ -10849,7 +10871,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
       <PublicStageLayoutProvider roomId={room.code} scopeId={publicCardDisplayAction?.rootEventId ?? null} viewerId={room.meId} interactionId={publicCardDisplayAction?.interactionId ?? null}>
-      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} suppressAnnouncement={targetCardChoiceMergeActive} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} responseHistoryOwnership={publicDisplayOwnedResponseHistory.map((response) => ({ eventId: response.eventId, cardIds: (response.cardFaces ?? [response.cardFace]).map((card) => card.id) }))} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardDisplayEventParked} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
+      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} suppressAnnouncement={targetCardChoiceMergeActive || publicDiscardOwnsAnnouncement} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} responseHistoryOwnership={publicDisplayOwnedResponseHistory.map((response) => ({ eventId: response.eventId, cardIds: (response.cardFaces ?? [response.cardFace]).map((card) => card.id) }))} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardDisplayEventParked} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
         setActiveDismantleSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
           ? { ...current, journeySettled: true }
           : current);
@@ -10857,7 +10879,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           ? { ...current, journeySettled: true }
           : current);
       }} />
-      {publicInteractionNarration && (!interactionNarrationBelongsToAction || !publicCardDisplayEnabled) && <PublicInteractionAnnouncementLayer
+      {publicDiscardOwnsAnnouncement && latestPublicDiscardAnnouncement && <PublicDiscardAnnouncementLayer
+        announcement={latestPublicDiscardAnnouncement} roomCode={room.code} viewerId={room.meId}
+      />}
+      {!publicDiscardOwnsAnnouncement && publicInteractionNarration && (!interactionNarrationBelongsToAction || !publicCardDisplayEnabled) && <PublicInteractionAnnouncementLayer
         narration={publicInteractionNarration} roomCode={room.code} viewerId={room.meId}
       />}
       {visibleBeautyAnnouncement && !publicInteractionNarration && <PublicSkillEventAnnouncementLayer

@@ -7,6 +7,7 @@ import type { Card, CardKind } from "../game/model";
 import type { PresentationSnapshotPublicCardEffect, PresentationSnapshotRootAction } from "../game/presentation-snapshot";
 import type { PresentationTargetCardSettlementMovement } from "../game/presentation-v2";
 import type { PublicInteractionNarration } from "../game/public-activity";
+import type { PublicDiscardAnnouncement } from "./public-discard-transition";
 import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
 import { cardDefinition } from "../game/cards";
 import { publicAnnouncementEventCopyKey as buildPublicAnnouncementEventCopyKey, publicAnnouncementGeometryIdentity, publicAnnouncementGeometryKey, transitionPublicAnnouncementCopyLifecycle, type PublicAnnouncementCopyLifecycle, type PublicAnnouncementProtectedGeometry, type PublicAnnouncementSeatGeometry } from "../game/public-announcement";
@@ -3420,6 +3421,40 @@ export function PublicInteractionAnnouncementLayer({ narration, roomCode, viewer
       compactMessage={narration.compactHeadline}
       accessibleLabel={narration.accessibleLabel}
       presentationNarration={narration}
+      fallbackCardRect={null}
+      stableCenterAnchor
+      ignoreJourneyLayoutPending
+    />
+  </section>;
+}
+
+/** H4 for a newer, server-proven public discard that supersedes an older result. */
+export function PublicDiscardAnnouncementLayer({ announcement, roomCode, viewerId }: {
+  announcement: PublicDiscardAnnouncement;
+  roomCode: string;
+  viewerId: string;
+}) {
+  return <section className="public-card-display public-card-display-journey public-interaction-event-announcement public-discard-announcement"
+    data-public-discard-announcement-event-id={announcement.eventId}>
+    <PublicCardAnnouncement
+      eventId={announcement.eventId}
+      anchorEventId={null}
+      eventCopyKey={buildPublicAnnouncementEventCopyKey({
+        roomCode,
+        rootEventId: announcement.eventId,
+        checkpointEventId: announcement.eventId,
+        proofEventId: announcement.eventId,
+        actorId: announcement.actorId,
+        actionClass: "committed-public-discard",
+      })}
+      geometryKey={publicAnnouncementGeometryKey(roomCode, viewerId)}
+      copyLifecycleStage="ACTIVE"
+      placementKey={`${roomCode}:public-discard-announcement`}
+      viewerLayoutKey={viewerId}
+      phase="static"
+      message={announcement.headline}
+      compactMessage={announcement.headline}
+      accessibleLabel={announcement.accessibleLabel}
       fallbackCardRect={null}
       stableCenterAnchor
       ignoreJourneyLayoutPending

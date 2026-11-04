@@ -197,6 +197,176 @@ test("real Necromancy replaces a revealed Delayed Stratagem Judgement from the S
   expect((await submitted.json()).room.currentAction.actorId).toBe(sima.id);
 });
 
+test("E15: final Judgement, two-card discard and next-turn status stay coherent for actor and TEST SWITCH observer", async ({ page, request }) => {
+  test.setTimeout(90_000);
+  const replacement = { ...card("Attack", "e15-browser-necromancy-replacement"), suit: "♠", rank: "K" };
+  const discarded = [card("Dodge", "e15-browser-discard-a"), card("Peach", "e15-browser-discard-b")];
+  const hiddenNextHand = card("BorrowedSword", "e15-browser-private-next-hand");
+  const dismantleTarget = card("Attack", "e15-browser-dismantle-target");
+  const dismantle = card("Dismantle", "e15-browser-controller-dismantle");
+  const delayed = { ...card("Overindulgence", "e15-browser-overindulgence"), suit: "♣", rank: "6" };
+  const original = { ...card("Dodge", "e15-browser-original-judgement"), suit: "♦", rank: "K" };
+  const seedResponse = await request.post(`${API}/__test/seed-playing-game`, { data: {
+    phase: "play", turnSeat: 3,
+    players: [
+      { name: "SIMA YI", role: "Lord", hero: "simayi", hp: 3, maxHp: 4,
+        hand: [replacement, ...discarded, card("Steal", "e15-browser-retained-c")], judgement: [delayed] },
+      { name: "NEXT PLAYER", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [dismantleTarget, hiddenNextHand] },
+      { name: "OBSERVER", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+      { name: "FOURTH", role: "Renegade", hero: "cao-cao", hp: 4, maxHp: 4, hand: [dismantle] },
+    ],
+    deck: [original, card("Attack", "e15-browser-draw-a"), card("Duel", "e15-browser-draw-b")],
+  } });
+  expect(seedResponse.ok(), await seedResponse.text()).toBeTruthy();
+  const game = await seedResponse.json();
+
+  const openedDismantle = await request.post(`${API}/api/rooms`, { data: { action: "play_card", code: game.code,
+    token: game.players[3].token, cardId: dismantle.id, targetId: game.players[1].id } });
+  expect(openedDismantle.ok(), await openedDismantle.text()).toBeTruthy();
+  let dismantleState = await view(request, game, 3);
+  if (dismantleState.currentAction?.negationWindowId) {
+    const expired = await request.post(`${API}/__test/negation-window-clock`, {
+      data: { code: game.code, windowId: dismantleState.currentAction.negationWindowId, mode: "expire" },
+    });
+    expect(expired.ok(), await expired.text()).toBeTruthy();
+    const advanced = await request.post(`${API}/api/rooms`, { data: { action: "advance_timers", code: game.code, token: game.players[3].token } });
+    expect(advanced.ok(), await advanced.text()).toBeTruthy();
+    dismantleState = await view(request, game, 3);
+  }
+  expect(dismantleState.currentAction).toMatchObject({ kind: "target_card", actorId: game.players[3].id });
+  const enabledController = await request.post(`${API}/__test/enable-seeded-controller`, {
+    data: { code: game.code, hostToken: game.players[0].token, targetPlayerId: game.players[2].id },
+  });
+  expect(enabledController.ok(), await enabledController.text()).toBeTruthy();
+  const dismantled = await request.post(`${API}/api/rooms`, { data: { action: "choose_target_card", code: game.code,
+    token: game.players[3].token, targetCardZone: "hand", targetCardIndex: 0 } });
+  expect(dismantled.ok(), await dismantled.text()).toBeTruthy();
+  const ended = await request.post(`${API}/api/rooms`, { data: { action: "end_turn", code: game.code, token: game.players[3].token } });
+  expect(ended.ok(), await ended.text()).toBeTruthy();
+  const simaTurn = await view(request, game, 0);
+  expect(simaTurn).toMatchObject({ phase: "draw", turnSeat: 0, currentAction: { actorId: game.players[0].id } });
+
+  const opened = await request.post(`${API}/api/rooms`, { data: { action: "draw", code: game.code, token: game.players[0].token } });
+  expect(opened.ok(), await opened.text()).toBeTruthy();
+  const judgementWindow = (await view(request, game, 0)).currentAction;
+  if (judgementWindow.negationWindowId) {
+    const expired = await request.post(`${API}/__test/negation-window-clock`, {
+      data: { code: game.code, windowId: judgementWindow.negationWindowId, mode: "expire" },
+    });
+    expect(expired.ok(), await expired.text()).toBeTruthy();
+    const advanced = await request.post(`${API}/api/rooms`, { data: { action: "advance_timers", code: game.code, token: game.players[0].token } });
+    expect(advanced.ok(), await advanced.text()).toBeTruthy();
+  }
+  const triggerState = await view(request, game, 0);
+  expect(triggerState.currentAction).toMatchObject({ kind: "trigger", actorId: game.players[0].id, triggerEvent: "judgement_revealed" });
+  const activated = await request.post(`${API}/api/rooms`, { data: {
+    action: "trigger", code: game.code, token: game.players[0].token,
+    providerId: "sima_yi_guicai", cardId: replacement.id,
+  } });
+  expect(activated.ok(), await activated.text()).toBeTruthy();
+  const actorState = (await activated.json()).room;
+  expect(actorState.phase).toBe("discard");
+  expect(actorState.myHand).toHaveLength(5);
+  let settledActorState = await view(request, game, 0);
+  if (settledActorState.currentAction?.negationWindowId) {
+    const expired = await request.post(`${API}/__test/negation-window-clock`, {
+      data: { code: game.code, windowId: settledActorState.currentAction.negationWindowId, mode: "expire" },
+    });
+    expect(expired.ok(), await expired.text()).toBeTruthy();
+    const advanced = await request.post(`${API}/api/rooms`, { data: { action: "advance_timers", code: game.code, token: game.players[0].token } });
+    expect(advanced.ok(), await advanced.text()).toBeTruthy();
+    settledActorState = await view(request, game, 0);
+  }
+  expect(settledActorState).toMatchObject({ phase: "discard", currentAction: { actorId: game.players[0].id, reason: "Discard down to the hand limit" } });
+  await openPlayer(page, game, 0);
+
+  const actor = game.players[0];
+  const dock = page.locator(`.local-player-dock[data-player-anchor="${actor.id}"]`);
+  await expect(page.locator(".game-shell")).toHaveAttribute("data-room-phase", "discard");
+  for (const candidate of discarded) {
+    const face = dock.locator(`[data-hand-card-id="${candidate.id}"] .game-card`);
+    await expect(face).toBeVisible({ timeout: 15_000 });
+    await face.scrollIntoViewIfNeeded();
+    await face.click();
+  }
+  await expect(dock.locator(".console-guidance")).toContainText("2 of 2 selected");
+  const discardResponse = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+    && response.request().method() === "POST"
+    && response.request().postDataJSON()?.action === "discard_cards");
+  await dock.getByRole("button", { name: "Discard 2 selected" }).click();
+  const committed = await discardResponse;
+  expect(committed.ok(), await committed.text()).toBeTruthy();
+  const committedRoom = (await committed.json()).room;
+  expect(committedRoom.currentAction.kind).toBe("turn");
+  await expect(page.locator(".game-shell")).toHaveAttribute("data-room-phase", committedRoom.phase);
+  await expect(page.locator(".game-shell")).toHaveAttribute("data-room-action-revision", committedRoom.actionRevision);
+  await expect(page.locator(".game-shell")).toHaveAttribute("data-current-action-actor-id", committedRoom.currentAction.actorId ?? "");
+  await expect(dock.locator(".console-guidance")).not.toContainText("2 of 2 selected");
+  await expect(dock.locator(".console-guidance")).toContainText("No action needed.");
+  const discardEvent = committedRoom.timeline.find((event) => event.type === "cards" && event.action === "discard"
+    && event.cards.length === 2 && event.cards.some((held) => held.id === discarded[0].id));
+  expect(discardEvent).toBeTruthy();
+
+  const discardH4 = page.locator(`[data-public-discard-announcement-event-id="${discardEvent.id}"]`);
+  await expect(discardH4).toBeVisible({ timeout: 15_000 });
+  await expect(discardH4).toContainText("SIMA YI discarded 2 cards.");
+  await expect(discardH4.locator('[data-public-card-announcement-event-id="' + discardEvent.id + '"]')).toHaveAttribute(
+    "data-public-card-announcement-delivery", "VISIBLE");
+  await expect(page.locator('[data-public-card-announcement="true"]')).not.toContainText("The result is not a Heart, so the Play Phase is skipped");
+
+  const chip = page.locator('[data-public-activity-chip="true"]');
+  await expect(chip).toHaveAttribute("data-public-activity-kind", "turn");
+  const chipState = () => chip.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    const shell = document.querySelector(".game-shell");
+    return { visible: style.visibility === "visible" && rect.width > 0 && rect.height > 0,
+      layout: element.dataset.publicActivityLayout, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      phase: shell?.getAttribute("data-room-phase"), revision: shell?.getAttribute("data-room-action-revision"),
+      console: document.querySelector(".console-guidance")?.textContent?.trim(),
+      stageScope: document.querySelector(".play-table")?.getAttribute("data-public-stage-layout-scope"),
+      stageLayout: document.querySelector(".play-table")?.getAttribute("data-public-stage-layout-phase"),
+      blockers: element.dataset.publicActivityPlacementBlockers };
+  });
+  try {
+    await expect.poll(chipState).toMatchObject({ visible: true });
+  } catch (error) {
+    throw new Error(`${error instanceof Error ? error.message : String(error)}\nE15 PAC diagnostics: ${JSON.stringify(await chipState())}`);
+  }
+  const geometry = await page.evaluate(() => {
+    const chipElement = document.querySelector('[data-public-activity-chip="true"]');
+    const consoleElement = document.querySelector(".console-guidance");
+    if (!chipElement || !consoleElement) return null;
+    const rect = chipElement.getBoundingClientRect();
+    const consoleRect = consoleElement.getBoundingClientRect();
+    const overlaps = (other) => rect.left < other.right && rect.right > other.left && rect.top < other.bottom && rect.bottom > other.top;
+    const seatOverlaps = [...document.querySelectorAll(".opponent-player-card[data-player-anchor]")]
+      .filter((seat) => overlaps(seat.getBoundingClientRect())).length;
+    const tableRect = document.querySelector(".play-table").getBoundingClientRect();
+    const chipRect = chipElement.getBoundingClientRect();
+    return { visible: getComputedStyle(chipElement).visibility === "visible", layout: chipElement.dataset.publicActivityLayout,
+      consoleOverlap: overlaps(consoleRect), seatOverlaps,
+      centerOffsetX: Math.abs(chipRect.left + chipRect.width / 2 - (tableRect.left + tableRect.width / 2)),
+      width: innerWidth, height: innerHeight };
+  });
+  expect(geometry).toMatchObject({ visible: true, consoleOverlap: false, seatOverlaps: 0, width: 390, height: 844 });
+  expect(geometry.centerOffsetX).toBeLessThan(2);
+
+  const observer = game.players[2];
+  await page.getByTestId(`test-view-switch-${observer.id}`).click();
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${observer.id}"]`)).toBeVisible({ timeout: 15_000 });
+  const observerState = await view(request, game, 2);
+  await expect(page.locator(".game-shell")).toHaveAttribute("data-room-phase", observerState.phase);
+  await expect(page.locator(".game-shell")).toHaveAttribute("data-room-action-revision", observerState.actionRevision);
+  await expect(page.locator(".game-shell")).toHaveAttribute("data-current-action-actor-id", game.players[1].id);
+  await expect(page.locator(`[data-public-discard-announcement-event-id="${discardEvent.id}"]`)).toContainText("SIMA YI discarded 2 cards.");
+  await expect(page.locator('[data-public-activity-chip="true"]')).toHaveAttribute("data-public-activity-kind", "turn");
+  await expect(page.locator(".console-guidance")).not.toContainText("2 of 2 selected");
+  await expect(page.locator(".console-guidance")).toContainText("No action needed.");
+  expect(await page.locator("body").innerHTML()).not.toContain(hiddenNextHand.id);
+  expect(observerState.currentAction.actorId).toBe(game.players[1].id);
+});
+
 test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple phone viewers", async ({ page, browser, request }) => {
   test.setTimeout(90_000);
   const attack = card("Attack", "w4-f8-eight-trigrams-attack");
