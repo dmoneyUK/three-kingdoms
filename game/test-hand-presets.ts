@@ -8,6 +8,7 @@ export const TEST_HAND_PRESET_OPTIONS = [
   { id: "duel_chain", name: "Duel / Negation Counter Chain (4 players)" },
   { id: "group_stratagem_negation", name: "Barbarian Invasion / Raining Arrows + Negation (4 players)" },
   { id: "harvest_negation_chain", name: "Bumper Harvest + Negation Counter Chain (4 players)" },
+  { id: "lightning_overindulgence", name: "Lightning / Overindulgence Judgement (4–5 players)" },
   { id: "custom", name: "Custom Hands" },
 ] as const;
 
@@ -22,6 +23,11 @@ const FOUR_PLAYER_NEGATION_PRESET_IDS = new Set<TestHandPresetId>([
   "duel_chain",
   "group_stratagem_negation",
   "harvest_negation_chain",
+]);
+
+const ROSTER_MAPPED_PRESET_IDS = new Set<TestHandPresetId>([
+  ...FOUR_PLAYER_NEGATION_PRESET_IDS,
+  "lightning_overindulgence",
 ]);
 
 export const STANDARD_PRESET_CARD_KINDS = Object.keys(STANDARD_DECK_COUNTS)
@@ -67,23 +73,39 @@ const PRESET_HANDS: Record<Exclude<TestHandPresetId, "custom">, Record<number, C
     2: ["Steal", "Negation", "Attack", "Dodge"],
     3: ["Duel", "Negation", "Attack", "Dodge"],
   },
+  // Assign every seat one real delayed Stratagem. Four seats use two copies
+  // of each card; a fifth seat uses the remaining Overindulgence copy.
+  lightning_overindulgence: {
+    0: ["Lightning", "Attack", "Dodge", "Peach"],
+    1: ["Overindulgence", "Attack", "Dodge", "Peach"],
+    2: ["Lightning", "Attack", "Dodge", "Peach"],
+    3: ["Overindulgence", "Attack", "Dodge", "Peach"],
+    4: ["Overindulgence", "Attack", "Dodge", "Peach"],
+  },
 };
 
 export function testHandPresetFor(id: Exclude<TestHandPresetId, "custom">, seatOrder?: readonly number[]): TestHandPreset {
   const presetHands = PRESET_HANDS[id];
-  if (FOUR_PLAYER_NEGATION_PRESET_IDS.has(id) && seatOrder) {
-    const seats = [...new Set(seatOrder)].sort((left, right) => left - right).slice(0, 4);
+  if (ROSTER_MAPPED_PRESET_IDS.has(id) && seatOrder) {
+    const templateSeats = Object.keys(presetHands).map(Number).sort((left, right) => left - right);
+    const seats = [...new Set(seatOrder)].sort((left, right) => left - right).slice(0, templateSeats.length);
     return {
       id,
-      handsBySeat: Object.fromEntries(seats.map((seat, index) => [seat, [...(presetHands[index] ?? [])]])),
+      handsBySeat: Object.fromEntries(seats.map((seat, index) => [seat, [...(presetHands[templateSeats[index]] ?? [])]])),
     };
   }
   return { id, handsBySeat: Object.fromEntries(Object.entries(presetHands).map(([seat, kinds]) => [Number(seat), [...kinds]])) };
 }
 
 export function testHandPresetCompatibilityError(id: TestHandPresetId, availableSeats?: ReadonlySet<number>): string | null {
-  if (!FOUR_PLAYER_NEGATION_PRESET_IDS.has(id) || !availableSeats || availableSeats.size === 4) return null;
-  return "This scenario uses all four Standard Negation cards, so it requires exactly four players.";
+  if (!availableSeats) return null;
+  if (FOUR_PLAYER_NEGATION_PRESET_IDS.has(id) && availableSeats.size !== 4) {
+    return "This scenario uses all four Standard Negation cards, so it requires exactly four players.";
+  }
+  if (id === "lightning_overindulgence" && (availableSeats.size < 4 || availableSeats.size > 5)) {
+    return "This scenario provides one Lightning or Overindulgence to each seat and requires four or five players.";
+  }
+  return null;
 }
 
 export function isTestHandPresetId(value: unknown): value is TestHandPresetId {
@@ -140,11 +162,11 @@ export function validateStoredTestHandPreset(
   const storedId = value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>).id
     : null;
-  if (isTestHandPresetId(storedId) && FOUR_PLAYER_NEGATION_PRESET_IDS.has(storedId)) {
+  if (isTestHandPresetId(storedId) && ROSTER_MAPPED_PRESET_IDS.has(storedId)) {
     const currentSeats = availableSeats ? [...availableSeats] : undefined;
     // A lobby may gain or lose seats after saving. Rebuild this server-owned
     // preset for its current roster so the host can still change the preset;
-    // save/start separately enforce its four-player requirement.
+    // save/start separately enforce each scenario's player-count requirement.
     return { preset: testHandPresetFor(storedId, currentSeats), error: null };
   }
   return typeof storedId === "string" && RETIRED_TEST_HAND_PRESET_IDS.has(storedId)

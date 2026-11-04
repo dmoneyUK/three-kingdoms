@@ -1,6 +1,6 @@
 # WTK UX2 — Simplified Public Card UX
 
-**Revision:** 2026-11-04 11:08 UTC (T7B correction implemented/deployed pending owner phone re-review; owner accepts T6, Borrowed Sword A1–A6, Equip H4 B1–B3, CONSOLE-01 and PUBLIC-INSPECT-REVEAL-01; PUBLIC-DISCARD-UX-01 is next; no rules change) · **Branch:** `ux-v2` · **Current status authority:** Tables A (implementation/correction), B (owner review pending), C (owner-accepted/superseded), and each original item's latest explicit owner verdict. **No old CI, dated task plan, or historical appendix status can reopen closed work.**
+**Revision:** 2026-11-04 13:04 UTC (Lightning/Overindulgence Test Game preset implemented locally; focused validation passed; exact-SHA CI/deployment pending; T7B remains pending owner phone review; PUBLIC-DISCARD-UX-01 follows; no rules change) · **Branch:** `ux-v2` · **Current status authority:** Tables A (implementation/correction), B (owner review pending), C (owner-accepted/superseded), and each original item's latest explicit owner verdict. **No old CI, dated task plan, or historical appendix status can reopen closed work.**
 
 This file is the **single active UX2 product/design authority**. It replaces the superseded, much longer UX2 design; previous revisions exist only in Git history. Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmap records, old tests and screenshots are references to prior implementation, **not** permission to reinstate old visual requirements.
 
@@ -8,7 +8,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 **Editorial cleanup (2026-10-30; R6 consolidation 22:27 UTC):** Closed items now retain only the final approved UX contract, explicit owner verdict and essential privacy/interaction boundaries. Historical implementation details and superseded plans remain accessible at the immutable [pre-cleanup revision](https://github.com/dmoneyUK/three-kingdoms/blob/b86c7a781468094fc844fe67b4ffda4e5b9a8d36/docs/UX2-refine.md). Delivered-but-unaccepted and active work remain independently reviewable; this editorial edit is **not** a new coding task or user acceptance.
 
-## UX2 CURRENT canonical work index — 2026-11-04 11:08 UTC (T6 and four other delivered scopes accepted; T7B correction pending owner phone re-review; shared discard/Steal display current)
+## UX2 CURRENT canonical work index — 2026-11-04 13:04 UTC (T6 and four other delivered scopes accepted; T7B correction pending owner phone re-review; Lightning/Overindulgence test preset implementation awaiting CI/deployment)
 
 **AUTHORITATIVE STATUS INDEX / NO DUPLICATE EXECUTION:** Tables A–C and the latest explicit owner verdict in the original feature sections govern current work. Dated pre-cleanup snapshots and superseded repairs were removed from this active file but remain [archived in Git](#appendix-a--historical-ux2-status-snapshots-archive-only). A delivered feature awaiting human review belongs in Table B, **not** the development queue; USER-ACCEPTED/CLOSED and SUPERSEDED items in C are not active tasks. Keep one implementation identity per distinct defect.
 
@@ -26,7 +26,8 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 | Authorized correction | State and order |
 | --- | --- |
-| **PUBLIC-DISCARD-UX-01 (§10.36)** | **CURRENT — OWNER-AUTHORIZED.** Extend the shared event presentation to end-turn multi-card discards, Dismantle results and Steal results, preserving H4, card identity and hidden-Hand privacy. |
+| **LIGHTNING-OVERINDULGENCE-TEST-MODE-01** | **CURRENT — DIRECT OWNER REQUEST.** Add a host-controlled Test Game starting-hand preset to exercise both real Standard delayed Stratagems through normal gameplay. |
+| **PUBLIC-DISCARD-UX-01 (§10.36)** | **NEXT SERIAL TASK — OWNER-AUTHORIZED.** Extend the shared event presentation to end-turn multi-card discards, Dismantle results and Steal results, preserving H4, card identity and hidden-Hand privacy. |
 
 ### B. Other technically deployed scopes awaiting owner phone review
 
@@ -755,7 +756,7 @@ In `app/page.tsx`, remove `TableResolutionSequence`, retired event queue/timer/s
 - **M5 — static-fallback retirement:** phone evidence checks one genuine owner and no blank, duplicated or counterfeit card for representative ordinary Play, AOE/Harvest, delayed-Judgement and public Equipment/conversion flows. The exhaustive E01–E21 producer→route→owner→zone classification remains source/API evidence; it is not proven by a few screenshots.
 - **M6 — legacy removal:** verify the same representative flows continue to show each committed physical card once, at the correct author/zone, with H4/PAC and legal controls intact. Source audit/CI proves dead legacy code was removed; no special card is needed to prove code deletion.
 
-**Minimal deterministic Standard-card acceptance setup:** use an attached `Overindulgence` 6♥ on Diao Qiao, a committed ♣2 `Attack` judgement result, then discard the delayed card; include an end-phase hand discard of 3–5 mixed cards; exercise Dismantle on a public Equipment or Judgement card; and exercise Steal once from public Equipment/Judgement and once from a concealed Hand. Add one existing `Barbarian Invasion` or `Bumper Harvest` flow as the group/choice route. Prefer the existing test mode; if it cannot supply these committed states, a test-only fixture may seed existing Standard cards without changing game rules. Public Hand results remain card backs.
+**Standard-card test setup:** a host-controlled `Lightning / Overindulgence Judgement (4–5 players)` starting-hand preset supplies one genuine Standard `Lightning` or `Overindulgence` to each seat (up to the two Lightning and three Overindulgence copies in the deck). Players choose Heroes and play/attach cards through normal legal actions; the preset must not auto-attach cards, choose a Hero, control the Judgement deck top, or change rules. For a deterministic acceptance fixture, seed the exact existing Standard `Overindulgence` 6♥ on Da Qiao's Judgement area and ♣2 `Attack` at the Judgement draw; this remains an API test fixture, not the phone preset. Also include a 3–5-card end-phase Hand discard, Dismantle of public Equipment/Judgement, Steal from public Equipment/Judgement and a concealed Hand, plus one existing Barbarian Invasion or Bumper Harvest flow. Public Hand results remain card backs.
 
 **Superseded 2026-11-02 scheduling note:** The former Console → Inspector re-review order is closed by the owner's 2026-11-04 acceptance. T6 and those independent scopes are USER-ACCEPTED; M3–M6 remain pending their own phone review. **Inspector Close change §10.29 and EQUIP-H4-01 B4 remain OWNER-CANCELLED** and must not be implemented or reactivated without new explicit authorization. No parallel tasks, duplicate identities, or CI-inferred owner acceptance.
 
