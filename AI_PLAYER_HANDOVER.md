@@ -38,6 +38,8 @@ M1–M4 add genuine `human`/`bot`/legacy-`test` controller identity, host-only b
 Focused evidence from this worktree:
 
 - `bot-scheduler.test.mjs` and lobby/Hero API regressions: 34/34 passed against isolated local D1, including concurrent rate-limit and active-room cap cases.
+- Full API suite: 307/307 passed across 27 files; fast suite: 314/314 passed after registering the new API file in `tests/run-api-suite.mjs` and lazy-loading the Cloudflare-only room route from the Worker bot driver.
+- First exact-SHA run [41818161496](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41818161496) on `311ea0e855256544a97f1e41f61f4c44f4a93dbc` passed browser smoke and lint/build, but API shard discovery failed and one fast SSR test hit the eager `cloudflare:workers` import. Staging and production deploy were skipped. Both fixes are currently local and uncommitted; rerun exact-SHA CI/Staging on the follow-up commit.
 - Staging config guard and room safety render: 27/27 passed.
 - Strengthened local mobile bot smoke: 1/1 passed in 46.6 seconds with a Staging-target build, isolated local D1, scheduled-event simulation during Hero selection and bot turns, all 3 bot turns, human-control return, and refresh/rejoin. Screenshot: `tests/browser/test-results/ai-bot-demo-local/staging-room-reconnect-mob-3d014-s-and-rejoins-after-refresh/staging-bot-demo.png`.
 - Demo-off local mobile fallback: 1/1 passed in 2.5 seconds with `BOT_DEMO_ENABLED=false` through the legacy Test Player path.

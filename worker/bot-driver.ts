@@ -1,4 +1,3 @@
-import { GET as getRoom, POST as postRoom } from "../app/api/rooms/route";
 import { createBotActionPrincipal } from "./bot-principal";
 
 type PublicBotRoom = {
@@ -51,12 +50,19 @@ export type BotSchedulerSummary = {
   skippedLocked: number;
 };
 
+async function loadRoomRouteHandlers() {
+  // Keep the Cloudflare-only room route out of the Worker entry's eager module
+  // graph. Ordinary Node SSR/fast-test imports must not load cloudflare:workers.
+  return import("../app/api/rooms/route");
+}
+
 export async function runBotStep(db: Pick<D1Database, "prepare">, input: BotStepInput): Promise<Response> {
   const code = input.code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
   if (!code || !input.botId) return Response.json({ error: "A room code and bot ID are required." }, { status: 400 });
   const roomRow = await db.prepare("SELECT id FROM rooms WHERE code = ?").bind(code).first<{ id: string }>();
   if (!roomRow) return Response.json({ error: "Room not found." }, { status: 404 });
   const roomRequest = new Request(`https://internal.invalid/api/rooms?code=${encodeURIComponent(code)}`);
+  const { GET: getRoom, POST: postRoom } = await loadRoomRouteHandlers();
   const roomResponse = await getRoom(roomRequest);
   if (!roomResponse.ok) return roomResponse;
   const room = await roomResponse.json() as PublicBotRoom;
@@ -102,6 +108,7 @@ export async function runBotStep(db: Pick<D1Database, "prepare">, input: BotStep
 }
 
 async function publicRoom(code: string): Promise<PublicBotRoom | null> {
+  const { GET: getRoom } = await loadRoomRouteHandlers();
   const response = await getRoom(new Request(`https://internal.invalid/api/rooms?code=${encodeURIComponent(code)}`));
   if (!response.ok) return null;
   return await response.json() as PublicBotRoom;
