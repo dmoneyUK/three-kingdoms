@@ -31,6 +31,7 @@ import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
 import { childCausalFrame, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
 import { advanceCausalSemanticCheckpoint } from "../causal-envelope";
+import { isBotActionPrincipal, type BotActionPrincipal } from "../../../worker/bot-principal";
 
 export const runtime = "edge";
 
@@ -46,13 +47,21 @@ type AttackDodgeProofDiagnostic = {
 type AttackDodgeProofEvaluation = { proof: PresentationAttackDodgeResponseProof | null; diagnostic: AttackDodgeProofDiagnostic };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null; test_room: number; test_hand_preset_json: string | null; test_hand_config_revision: number };
 type Hero = HeroDefinition;
-type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; is_test_player: number; connected_at: number };
+type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; is_test_player: number; controller_type: "human" | "bot" | "test"; controller_request_id: string | null; connected_at: number };
 type CausalCreation<T> = { value: T; createdEnvelope: CausalEnvelope | null };
 
 const ROLE_SETS: Record<number, string[]> = { 4: ["Lord", "Loyalist", "Rebel", "Renegade"], 5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"], 6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 7: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"] };
 const LORD_GENERAL_IDS = new Set(["cao-cao", "liu-bei", "sun-quan"]);
+// The deterministic Staging bot demo offers only these fully playable
+// non-Lord Generals so optional turn-start/draw/discard choices stay outside
+// the first bot action matrix. Normal Standard rooms keep the full random pool.
+const BOT_DEMO_SAFE_GENERAL_IDS = new Set([
+  "xiahou-dun", "guo-jia", "guan-yu", "zhang-fei", "zhao-yun", "ma-chao",
+  "gan-ning", "huang-gai", "sun-shangxiang", "hua-tuo", "lü-bu", "huaxiong",
+  "gongsun-zan", "pan-feng",
+]);
 
-const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+const json = (data: unknown, status = 200, extraHeaders: Record<string, string> = {}) => Response.json(data, { status, headers: { "Cache-Control": "no-store", ...extraHeaders } });
 const publicRoleName = (role: string | null | undefined) => role === "Renegade" ? "Spy" : role ?? null;
 const HARVEST_CHOICE_HOLD_MS = 1400;
 const HARVEST_CHOICE_DURATION_MS = 60_000;
@@ -60,6 +69,10 @@ const HUMAN_RESPONSE_TIMEOUT_MS = 60_000;
 const NEGATION_WINDOW_MS = 8_000;
 const NEGATION_SETTLEMENT_LEASE_MS = 30_000;
 const ROOM_IDLE_TIMEOUT_MS = 5 * 60_000;
+const MAX_BOT_SEATS_PER_ROOM = 3;
+const MAX_BOT_DEMO_ACTIVE_ROOMS = 8;
+const MAX_BOT_ADDS_PER_HOUR = 12;
+const botDemoEnabled = () => (env as typeof env & { BOT_DEMO_ENABLED?: string }).BOT_DEMO_ENABLED === "true";
 // Human decisions do not begin their clock until the client has finished the
 // public presentation and explicitly arms it.
 const nextResponseDeadline = (_actor?: PlayerRow | null, startHumanClock = false) => startHumanClock ? Date.now() + HUMAN_RESPONSE_TIMEOUT_MS : 0;
@@ -168,7 +181,7 @@ function testPresetFromRoom(room: RoomRow, seats: ReadonlySet<number>) {
   return validateTestHandPreset(stored, seats);
 }
 
-async function beginStandardHeroSelection(roomId: string, players: PlayerRow[], testRoom = false) {
+async function beginStandardHeroSelection(roomId: string, players: PlayerRow[], testRoom = false): Promise<boolean | "active_room_limit"> {
   const roles = shuffle([...(ROLE_SETS[players.length] ?? [])]);
   const rulers = IMPLEMENTED_STANDARD_HEROES.filter((hero) => LORD_GENERAL_IDS.has(hero.id));
   const shuffledGenerals = shuffle(IMPLEMENTED_STANDARD_HEROES.filter((hero) => !LORD_GENERAL_IDS.has(hero.id)));
@@ -179,8 +192,30 @@ async function beginStandardHeroSelection(roomId: string, players: PlayerRow[], 
     if (leftRole !== "Lord" && rightRole === "Lord") return 1;
     return left.seat - right.seat;
   });
+  const botDemoScenario = botDemoEnabled() && players.some((player) => player.controller_type === "bot" && player.is_test_player === 0);
+  const botDemoSafeGenerals = botDemoScenario
+    ? shuffle(IMPLEMENTED_STANDARD_HEROES.filter((hero) => BOT_DEMO_SAFE_GENERAL_IDS.has(hero.id)))
+    : [];
+  const botDemoOptionsByPlayerId = new Map<string, HeroDefinition[]>();
+  const botDemoReservedGeneralIds = new Set<string>();
+  if (botDemoScenario) {
+    let botDemoGeneralCursor = 0;
+    for (const player of selectionOrder) {
+      if (player.controller_type !== "bot" || player.is_test_player !== 0) continue;
+      const count = rolesByPlayerId.get(player.id) === "Lord" ? 2 : 3;
+      const options = botDemoSafeGenerals.slice(botDemoGeneralCursor, botDemoGeneralCursor + count);
+      if (options.length !== count) throw new Error("The Staging bot demo has too few safe Standard General choices.");
+      botDemoGeneralCursor += count;
+      botDemoOptionsByPlayerId.set(player.id, options);
+      for (const option of options) botDemoReservedGeneralIds.add(option.id);
+    }
+  }
+  const botDemoHumanGenerals = shuffledGenerals.filter((hero) => !botDemoReservedGeneralIds.has(hero.id));
   let generalCursor = 0;
   let remainingNonLordPlayers = selectionOrder.filter((player) => rolesByPlayerId.get(player.id) !== "Lord").length;
+  let botDemoHumanGeneralCursor = 0;
+  let remainingBotDemoHumanNonLordPlayers = selectionOrder.filter((player) => rolesByPlayerId.get(player.id) !== "Lord"
+    && (!botDemoScenario || player.controller_type !== "bot" || player.is_test_player !== 0)).length;
   const optionsByPlayerId = new Map<string, HeroDefinition[]>();
   for (const player of selectionOrder) {
     if (testRoom) {
@@ -188,6 +223,24 @@ async function beginStandardHeroSelection(roomId: string, players: PlayerRow[], 
       continue;
     }
     const role = rolesByPlayerId.get(player.id);
+    if (botDemoScenario) {
+      if (player.controller_type === "bot" && player.is_test_player === 0) {
+        const safeOptions = botDemoOptionsByPlayerId.get(player.id) ?? [];
+        optionsByPlayerId.set(player.id, role === "Lord" ? [...rulers, ...safeOptions] : safeOptions);
+      } else if (role === "Lord") {
+        const nonLordOptions = botDemoHumanGenerals.slice(botDemoHumanGeneralCursor, botDemoHumanGeneralCursor + 2);
+        if (nonLordOptions.length !== 2) throw new Error("The Staging bot demo has too few Standard General choices for the human Lord.");
+        botDemoHumanGeneralCursor += 2;
+        optionsByPlayerId.set(player.id, [...rulers, ...nonLordOptions]);
+      } else {
+        const available = botDemoHumanGenerals.length - botDemoHumanGeneralCursor;
+        const optionCount = Math.min(3, Math.max(1, available - Math.max(0, remainingBotDemoHumanNonLordPlayers - 1)));
+        optionsByPlayerId.set(player.id, botDemoHumanGenerals.slice(botDemoHumanGeneralCursor, botDemoHumanGeneralCursor + optionCount));
+        botDemoHumanGeneralCursor += optionCount;
+        remainingBotDemoHumanNonLordPlayers -= 1;
+      }
+      continue;
+    }
     if (role === "Lord") {
       optionsByPlayerId.set(player.id, [...rulers, ...shuffledGenerals.slice(generalCursor, generalCursor + 2)]);
       generalCursor += 2;
@@ -201,12 +254,32 @@ async function beginStandardHeroSelection(roomId: string, players: PlayerRow[], 
   }
   const assigned = players.map((player, index) => ({ player, role: roles[index], options: optionsByPlayerId.get(player.id) ?? [] }));
   const claim = `hero-selection:${crypto.randomUUID()}`;
+  const botDemoRoom = botDemoEnabled() && players.some((player) => player.controller_type === "bot" && player.is_test_player === 0);
+  const startRoom = botDemoRoom
+    ? db().prepare(`UPDATE rooms SET status = 'heroes', turn_seat = NULL, phase = ?, pending_json = NULL
+        WHERE id = ? AND status = 'lobby' AND (
+          SELECT COUNT(*) FROM rooms AS active_room
+          WHERE active_room.status IN ('heroes', 'playing') AND active_room.test_room = 0
+            AND EXISTS (SELECT 1 FROM players AS active_bot WHERE active_bot.room_id = active_room.id
+              AND active_bot.controller_type = 'bot' AND active_bot.is_test_player = 0)
+        ) < ?`).bind(claim, roomId, MAX_BOT_DEMO_ACTIVE_ROOMS)
+    : db().prepare("UPDATE rooms SET status = 'heroes', turn_seat = NULL, phase = ?, pending_json = NULL WHERE id = ? AND status = 'lobby'").bind(claim, roomId);
   const result = await db().batch([
-    db().prepare("UPDATE rooms SET status = 'heroes', turn_seat = NULL, phase = ?, pending_json = NULL WHERE id = ? AND status = 'lobby'").bind(claim, roomId),
+    startRoom,
     ...assigned.map(({ player, role, options }) => db().prepare("UPDATE players SET role = ?, hero = NULL, hp = NULL, max_hp = NULL, hero_options_json = ? WHERE id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'heroes' AND phase = ?)").bind(role, JSON.stringify(options), player.id, roomId, claim)),
     db().prepare("UPDATE rooms SET phase = NULL WHERE id = ? AND status = 'heroes' AND phase = ?").bind(roomId, claim),
   ]);
-  return (result[0]?.meta.changes ?? 0) > 0;
+  if ((result[0]?.meta.changes ?? 0) > 0) return true;
+  if (botDemoRoom) {
+    const liveRoom = await db().prepare("SELECT status FROM rooms WHERE id = ?").bind(roomId).first<{ status: string }>();
+    const activeRooms = await db().prepare(`SELECT COUNT(*) AS count FROM rooms AS active_room
+      WHERE active_room.status IN ('heroes', 'playing') AND active_room.test_room = 0
+        AND EXISTS (SELECT 1 FROM players AS active_bot WHERE active_bot.room_id = active_room.id
+          AND active_bot.controller_type = 'bot' AND active_bot.is_test_player = 0)`)
+      .first<{ count: number }>();
+    if (liveRoom?.status === "lobby" && (activeRooms?.count ?? 0) >= MAX_BOT_DEMO_ACTIVE_ROOMS) return "active_room_limit";
+  }
+  return false;
 }
 function parsePersistedPending(value: string | null): Pending | null {
   try { return value ? JSON.parse(value) as Pending : null; } catch { return null; }
@@ -5331,6 +5404,12 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   if (!room) return null;
   const result = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
   const players = result.results ?? [];
+  const latestBotWorkStatus = new Map<string, string>();
+  if (players.some((player) => player.controller_type === "bot")) {
+    const botWork = await db.prepare(`SELECT bot_id, status FROM bot_work
+      WHERE room_id = ? ORDER BY updated_at DESC, created_at DESC, decision_id DESC`).bind(room.id).all<{ bot_id: string; status: string }>();
+    for (const work of botWork.results ?? []) if (!latestBotWorkStatus.has(work.bot_id)) latestBotWorkStatus.set(work.bot_id, work.status);
+  }
   const rawLog = parse<string[]>(room.log_json, []);
   const causalEnvelope = parseCausalEnvelope(room.causal_envelope_json);
   const persistedPending = parsePersistedPending(room.pending_json);
@@ -5505,7 +5584,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const presentationSnapshot = composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null });
   return {
     ...(attackDodgeProjectionDiagnostics ? { attackDodgeProjectionDiagnostics } : {}),
-    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, isTestRoom: Boolean(room.test_room), testHandPreset: hostTestHandPreset, responseCountdownVisibleAt: concealPrivateTriggerDecision ? 0 : responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending && !concealPrivateTriggerDecision ? { kind: responsePending || negationWindow ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,
+    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, isTestRoom: Boolean(room.test_room), botDemoEnabled: botDemoEnabled(), testHandPreset: hostTestHandPreset, responseCountdownVisibleAt: concealPrivateTriggerDecision ? 0 : responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending && !concealPrivateTriggerDecision ? { kind: responsePending || negationWindow ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,
     isHost: isRoomHost, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
     myHeroOptions,
@@ -5535,7 +5614,15 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     pendingTargetCard: pending?.kind === "target_card" ? { kind: "target_card", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, cardKind: pending.cardKind } : null,
     pendingBorrowedSword: pending?.kind === "borrowed_sword" ? { kind: "borrowed_sword", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, holderId: pending.holderId, stage: pending.stage, weaponId: pending.weaponId ?? null, eligibleTargetIds: pending.stage === "choose_target" ? borrowedSwordForcedTargetIds(players, pending.sourceId, pending.holderId) : [] } : responsePending?.continuation.kind === "borrowed_sword_attack" ? { kind: "borrowed_sword", sourceId: responsePending.continuation.sourceId, actorId: responsePending.actorId, targetId: responsePending.continuation.targetId, holderId: responsePending.continuation.holderId, stage: "force_attack", weaponId: responsePending.continuation.weaponId, eligibleTargetIds: [] } : null,
     pendingDying: pending?.kind === "dying" ? { kind: "dying", sourceId: pending.sourceId, targetId: pending.targetId, origin: pending.origin ?? null, recoveryNeeded: recoveryNeeded(players.find((player) => player.id === pending.targetId)?.hp ?? 0), deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
-    players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: room.status === "heroes" && !(room.test_room && isTestController) && player.role !== "Lord" && player.id !== me?.id ? null : player.hero, generalReady: Boolean(player.hero), ready: Boolean(player.ready), hp: room.status === "heroes" ? null : player.hp, maxHp: room.status === "heroes" ? null : player.max_hp, alive: Boolean(player.alive), connected: viewerPlayerIds.has(player.id) || Date.now() - player.connected_at < 90_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isTestPlayer: Boolean(player.is_test_player), role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
+    players: players.map((player) => {
+      const latestStatus = latestBotWorkStatus.get(player.id);
+      const botStatus = player.controller_type !== "bot" || room.status === "lobby" || room.status === "finished" ? null
+        : latestStatus === "unsupported" ? "unsupported"
+          : latestStatus === "failed" ? "error"
+            : latestStatus === "pending" || latestStatus === "claimed" || actionPlayerId === player.id ? "thinking"
+              : "waiting_for_human";
+      return { id: player.id, name: player.name, seat: player.seat, hero: room.status === "heroes" && !(room.test_room && isTestController) && player.role !== "Lord" && player.id !== me?.id ? null : player.hero, generalReady: Boolean(player.hero), ready: Boolean(player.ready), hp: room.status === "heroes" ? null : player.hp, maxHp: room.status === "heroes" ? null : player.max_hp, alive: Boolean(player.alive), connected: viewerPlayerIds.has(player.id) || Date.now() - player.connected_at < 90_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isTestPlayer: Boolean(player.is_test_player), isBot: player.controller_type === "bot", botStatus, role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null };
+    }),
   };
 }
 
@@ -5615,10 +5702,17 @@ export async function GET(request: Request) {
   return json(state);
 }
 
-export async function POST(request: Request) {
+export async function POST(request: Request, routeContext?: unknown) {
+  const internalBot = isBotActionPrincipal(routeContext) ? routeContext : null;
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
   const uxTraceId = typeof body.uxTraceId === "string" && /^[a-zA-Z0-9-]{8,80}$/.test(body.uxTraceId) ? body.uxTraceId : null;
   let action = String(body.action ?? "");
+  const internalBotActions = new Set(["bot_step", "choose_hero", "draw", "end_turn", "discard_cards", "decline_response", "skip_rescue"]);
+  if (action === "bot_step" && !internalBot) return json({ error: "Unknown action." }, 404);
+  if (internalBot && (!botDemoEnabled() || !internalBotActions.has(action))) return json({ error: "The server bot principal cannot perform this action." }, 403);
+  if (internalBot && (!/^[0-9a-f-]{36}$/i.test(internalBot.roomId) || !/^[0-9a-f-]{36}$/i.test(internalBot.botId)
+    || !/^[0-9a-f-]{8}-[0-9a-f-]{4}-[1-8][0-9a-f-]{3}-[89ab][0-9a-f-]{3}-[0-9a-f-]{12}$/i.test(internalBot.decisionId)
+    || !internalBot.actionRevision)) return json({ error: "The internal bot decision is invalid." }, 400);
   let responseExecution: ResponseExecution | null = null;
   let triggerExecution: ReturnType<typeof resolveTriggeredEffect> = null;
   let canonicalResponseSatisfied = false;
@@ -5645,6 +5739,7 @@ export async function POST(request: Request) {
   const token = String(body.token ?? "");
   let room = await db.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
   if (!room) return json({ error: "Room not found. Check the five-character code." }, 404);
+  if (internalBot && room.id !== internalBot.roomId) return json({ error: "The internal bot decision targets a different room." }, 403);
   // Let the acting client submit its automatic decline at the deadline before
   // the general expiry check races that same request.
   if (GAMEPLAY_ACTION_SET.has(action) && !["give_peach", "skip_rescue", "advance_timers"].includes(action)) await expireDyingRescue(room.id);
@@ -5668,8 +5763,13 @@ export async function POST(request: Request) {
   let sessionPlayers = authenticated.results ?? [];
   let allPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
   let allRoomPlayers = allPlayers.results ?? [];
+  if (internalBot) {
+    const bot = allRoomPlayers.find((player) => player.id === internalBot.botId && player.controller_type === "bot" && player.is_test_player === 0);
+    if (!bot) return json({ error: "The internal bot actor is no longer a bot in this room." }, 403);
+    sessionPlayers = [bot];
+  }
   let rawControllerPending = parsePersistedPending(room.pending_json);
-  if (room.phase === "response" && rawControllerPending?.kind === "response" && rawControllerPending.continuation.kind === "negation") {
+  if (!internalBot && room.phase === "response" && rawControllerPending?.kind === "response" && rawControllerPending.continuation.kind === "negation") {
     await advanceNegation(room.id);
     room = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>() ?? room;
     allPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
@@ -5684,6 +5784,147 @@ export async function POST(request: Request) {
   let me = isTestController
     ? actionPlayerIdForController && controlledPlayerIds.has(actionPlayerIdForController) ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? controllerFallback : controllerFallback
     : sessionPlayers[0];
+  if (internalBot) {
+    const bot = sessionPlayers[0];
+    const expectedRevision = await actionRevisionFor(room, allRoomPlayers, actionPlayerIdForController);
+    if (!bot || bot.id !== internalBot.botId || actionPlayerIdForController !== bot.id) {
+      return json({ error: "The bot is not the current server-authorized actor." , stale: true }, 409);
+    }
+    if (expectedRevision !== internalBot.actionRevision) return json({ error: "The bot action revision is stale." , stale: true }, 409);
+    if (room.status === "heroes" && action !== "bot_step" && action !== "choose_hero"
+      || room.status === "playing" && action !== "bot_step" && !["draw", "end_turn", "discard_cards", "decline_response", "skip_rescue"].includes(action)) {
+      return json({ error: "The internal bot action does not match the current game stage." }, 409);
+    }
+    if (room.status !== "heroes" && room.status !== "playing") return json({ error: "The bot room is not in an actionable stage." }, 409);
+  }
+  if (action === "bot_step" && internalBot) {
+    const actor = sessionPlayers[0];
+    if (!actor) return json({ error: "The bot actor is unavailable." }, 409);
+    if (room.status === "heroes") {
+      const selector = nextGeneralSelector(allRoomPlayers);
+      const hero = selector?.id === actor.id ? currentHeroOptions(selector.hero_options_json)[0] : null;
+      if (!hero) return json({ state: "unsupported", code: "UNSUPPORTED_BOT_DECISION", actionRevision: internalBot.actionRevision });
+      const nextBody = { action: "choose_hero", code, token: "", heroId: hero.id };
+      return POST(new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(nextBody) }), internalBot satisfies BotActionPrincipal);
+    }
+
+    const legalActions = legalActionsFor(room, actor, pendingForController, allRoomPlayers);
+    let nextAction: string | null = null;
+    let actionFields: Record<string, unknown> = {};
+    if (room.phase?.startsWith("draw") && pendingForController === null && legalActions.includes("draw")) {
+      const delayed = takeNextDelayedCard(parse<Card[]>(actor.judgement_json, []))?.delayed ?? null;
+      if (!delayed) nextAction = "draw";
+    } else if (room.phase === "discard" && pendingForController === null && legalActions.includes("discard_cards")) {
+      const hand = parse<Card[]>(actor.hand_json, []);
+      const required = Math.max(0, hand.length - (actor.hp ?? 0));
+      nextAction = "discard_cards";
+      actionFields = { cardIds: hand.slice(0, required).map((card) => card.id) };
+    } else if (room.phase?.startsWith("play") && pendingForController === null && legalActions.includes("end_turn")) {
+      nextAction = "end_turn";
+    } else if (pendingForController?.kind === "response" && legalActions.includes("decline_response")) {
+      const response = responseDecisionFor(pendingForController, responseContext(actor, allRoomPlayers, room.turn_seat));
+      if (!(response?.options.length)) nextAction = "decline_response";
+    } else if (pendingForController?.kind === "dying" && pendingForController.actorId === actor.id && legalActions.includes("skip_rescue")) {
+      const response = responseDecisionFor(pendingForController, responseContext(actor, allRoomPlayers, room.turn_seat));
+      if (!(response?.options.length)) nextAction = "skip_rescue";
+    }
+    if (!nextAction) return json({ state: "unsupported", code: "UNSUPPORTED_BOT_DECISION", actionRevision: internalBot.actionRevision });
+    const expectedPendingKind = pendingForController?.kind === "response" || pendingForController?.kind === "negation_window"
+      ? "response"
+      : asTriggerPending(pendingForController) ? "trigger" : pendingForController?.kind ?? null;
+    const nextBody = {
+      ...actionFields,
+      action: nextAction,
+      code,
+      token: "",
+      context: {
+        actionRevision: internalBot.actionRevision,
+        meId: actor.id,
+        phase: room.phase ?? null,
+        pendingKind: expectedPendingKind,
+        actorId: actionPlayerIdForController ?? null,
+      },
+    };
+    return POST(new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(nextBody) }), internalBot satisfies BotActionPrincipal);
+  }
+  if (action === "add_bot" || action === "remove_bot") {
+    if (!botDemoEnabled()) return json({ error: "The bot demo is not enabled in this environment." }, 404);
+    if (!sessionPlayers.some((player) => player.id === room.host_player_id && player.controller_type === "human" && player.is_test_player === 0)) {
+      return json({ error: "Only the authenticated host can change bot seats." }, 403);
+    }
+    if (room.status !== "lobby") return json({ error: "Bot seats can only be changed before the match starts." }, 409);
+    if (room.test_room) return json({ error: "Bots cannot be added to a host-controlled test game." }, 409);
+
+    if (action === "add_bot") {
+      const requestId = typeof body.requestId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId)
+        ? body.requestId.toLowerCase()
+        : null;
+      if (!requestId) return json({ error: "A valid bot request ID is required." }, 400);
+      const existing = await db.prepare("SELECT * FROM players WHERE room_id = ? AND controller_request_id = ?").bind(room.id, requestId).first<PlayerRow>();
+      if (existing) {
+        if (existing.controller_type !== "bot") return json({ error: "That request ID is already in use." }, 409);
+        return json({ room: await roomState(code, token) });
+      }
+      const testSeatCount = await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ? AND is_test_player = 1").bind(room.id).first<{ count: number }>();
+      if ((testSeatCount?.count ?? 0) > 0) return json({ error: "Bot seats cannot be mixed with host-controlled Test Players." }, 409);
+      const roster = await db.prepare("SELECT seat FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<{ seat: number }>();
+      const occupiedSeats = new Set((roster.results ?? []).map((player) => player.seat));
+      let seat = 0;
+      while (seat < room.max_players && occupiedSeats.has(seat)) seat++;
+      if (seat >= room.max_players) return json({ error: "This room is full." }, 409);
+
+      const rateNow = Date.now();
+      const hourBucket = Math.floor(rateNow / 3_600_000);
+      const rateReservation = await db.prepare(`INSERT INTO bot_demo_rate_limits (hour_bucket, bot_add_count)
+        VALUES (?, 1) ON CONFLICT(hour_bucket) DO UPDATE SET bot_add_count = bot_add_count + 1
+        WHERE bot_add_count < ?`).bind(hourBucket, MAX_BOT_ADDS_PER_HOUR).run();
+      if ((rateReservation.meta.changes ?? 0) <= 0) {
+        const retryAfterSeconds = Math.max(1, Math.ceil(((hourBucket + 1) * 3_600_000 - rateNow) / 1000));
+        return json({ error: "The Staging bot creation limit has been reached. Try again after the current hour." }, 429, { "Retry-After": String(retryAfterSeconds) });
+      }
+      await db.prepare("DELETE FROM bot_demo_rate_limits WHERE hour_bucket < ?").bind(hourBucket - 24).run();
+
+      const botId = crypto.randomUUID();
+      const noLoginTokenHash = `bot:no-login:${botId}`;
+      let inserted;
+      try {
+        inserted = await db.prepare(`INSERT INTO players
+          (id, room_id, name, token_hash, seat, ready, connected_at, controller_type, controller_request_id)
+          SELECT ?, rooms.id, ?, ?, ?, 0, ?, 'bot', ?
+          FROM rooms
+          WHERE rooms.id = ? AND rooms.host_player_id = ? AND rooms.status = 'lobby' AND rooms.test_room = 0
+            AND (SELECT COUNT(*) FROM players WHERE room_id = rooms.id) < rooms.max_players
+            AND (SELECT COUNT(*) FROM players WHERE room_id = rooms.id AND controller_type = 'bot') < ?
+            AND NOT EXISTS (SELECT 1 FROM players WHERE room_id = rooms.id AND is_test_player = 1)
+            AND NOT EXISTS (SELECT 1 FROM players WHERE room_id = rooms.id AND seat = ?)
+            AND NOT EXISTS (SELECT 1 FROM players WHERE room_id = rooms.id AND controller_request_id = ?)`)
+          .bind(botId, `BOT ${seat + 1}`, noLoginTokenHash, seat, Date.now(), requestId, room.id, room.host_player_id, MAX_BOT_SEATS_PER_ROOM, seat, requestId)
+          .run();
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes("UNIQUE constraint failed")) throw error;
+        const replay = await db.prepare("SELECT * FROM players WHERE room_id = ? AND controller_request_id = ?").bind(room.id, requestId).first<PlayerRow>();
+        if (replay?.controller_type === "bot") return json({ room: await roomState(code, token) });
+        return json({ error: "The lobby changed while adding a bot. Refresh and try again." }, 409);
+      }
+      if ((inserted.meta.changes ?? 0) <= 0) {
+        const replay = await db.prepare("SELECT * FROM players WHERE room_id = ? AND controller_request_id = ?").bind(room.id, requestId).first<PlayerRow>();
+        if (replay?.controller_type === "bot") return json({ room: await roomState(code, token) });
+        return json({ error: "The lobby is full or no longer accepts bot seats." }, 409);
+      }
+      return json({ room: await roomState(code, token) }, 201);
+    }
+
+    if (typeof body.botId !== "string" || body.botId.length > 80) return json({ error: "A bot seat ID is required." }, 400);
+    const removed = await db.prepare(`DELETE FROM players
+      WHERE id = ? AND room_id = ? AND controller_type = 'bot' AND is_test_player = 0
+        AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'lobby' AND host_player_id = ? AND test_room = 0)`)
+      .bind(body.botId, room.id, room.id, room.host_player_id).run();
+    if ((removed.meta.changes ?? 0) <= 0) {
+      const target = await db.prepare("SELECT controller_type FROM players WHERE id = ? AND room_id = ?").bind(body.botId, room.id).first<{ controller_type: string }>();
+      return json({ error: target ? "Only a bot seat can be removed." : "That bot seat is no longer available." }, 409);
+    }
+    return json({ room: await roomState(code, token) });
+  }
   if (action === "heartbeat") {
     if (!sessionPlayers.length) return json({ error: "Your player session is no longer valid." }, 403);
     // A pure generated-seat room has live seats behind one controller token;
@@ -5717,7 +5958,9 @@ export async function POST(request: Request) {
     room = currentRoom;
     allPlayers = currentPlayers;
     allRoomPlayers = currentPlayers.results ?? [];
-    sessionPlayers = allRoomPlayers.filter((player) => player.token_hash === tokenHash);
+    sessionPlayers = internalBot
+      ? allRoomPlayers.filter((player) => player.id === internalBot.botId && player.controller_type === "bot" && player.is_test_player === 0)
+      : allRoomPlayers.filter((player) => player.token_hash === tokenHash);
     const rawCurrentPending = parsePersistedPending(room.pending_json);
     pendingForController = rawCurrentPending;
     actionPlayerIdForController = room.status === "heroes" ? nextGeneralSelector(allRoomPlayers)?.id : actionPlayerIdForPending(room, pendingForController, allRoomPlayers);
@@ -7281,6 +7524,8 @@ export async function POST(request: Request) {
   if (action === "add_test_players") {
     if (!me || me.id !== room.host_player_id) return json({ error: "Only the host can add test players." }, 403);
     if (room.status !== "lobby") return json({ error: "Test players can only be added before the match starts." }, 409);
+    const existingBots = await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ? AND controller_type = 'bot'").bind(room.id).first<{ count: number }>();
+    if ((existingBots?.count ?? 0) > 0) return json({ error: "Test Players cannot be mixed with genuine bot seats." }, 409);
     const requestedCount = body.count;
     if (requestedCount !== undefined && (typeof requestedCount !== "number" || !Number.isInteger(requestedCount) || requestedCount < 1)) {
       return json({ error: "Choose a whole number of test players to add." }, 400);
@@ -7295,9 +7540,14 @@ export async function POST(request: Request) {
       let seat = 0; while (seat < room.max_players && seats.has(seat)) seat++;
       if (seat >= room.max_players) return json({ error: "There are no open seats for another test player." }, 409);
       seats.add(seat);
-      inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, ready, connected_at, is_test_player) VALUES (?, ?, ?, ?, ?, 1, ?, 1)").bind(crypto.randomUUID(), room.id, `Test Player ${seat + 1}`, tokenHash, seat, Date.now()));
+      inserts.push(db.prepare(`INSERT INTO players (id, room_id, name, token_hash, seat, ready, connected_at, is_test_player, controller_type)
+        SELECT ?, ?, ?, ?, ?, 1, ?, 1, 'test'
+        WHERE EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'lobby' AND host_player_id = ?)
+          AND NOT EXISTS (SELECT 1 FROM players WHERE room_id = ? AND controller_type = 'bot')`)
+        .bind(crypto.randomUUID(), room.id, `Test Player ${seat + 1}`, tokenHash, seat, Date.now(), room.id, room.host_player_id, room.id));
     }
-    if (inserts.length) await db.batch(inserts);
+    const inserted = inserts.length ? await db.batch(inserts) : [];
+    if (inserted.reduce((count, result) => count + (result.meta.changes ?? 0), 0) !== needed) return json({ error: "The lobby changed while adding test players. Refresh before trying again." }, 409);
     return json({ room: await roomState(code, token) });
   }
 
@@ -7348,7 +7598,9 @@ export async function POST(request: Request) {
       const preset = testPresetFromRoom(room, new Set(players.map((player) => player.seat)));
       if (preset.error || !preset.preset) return json({ error: preset.error ?? "The saved test-hand preset is invalid." }, 409);
     }
-    if (!await beginStandardHeroSelection(room.id, players, Boolean(room.test_room))) return json({ error: "The lobby has already started." }, 409);
+    const started = await beginStandardHeroSelection(room.id, players, Boolean(room.test_room));
+    if (started === "active_room_limit") return json({ error: "The Staging bot demo already has eight active rooms. Try again after a room finishes." }, 429, { "Retry-After": "60" });
+    if (!started) return json({ error: "The lobby has already started." }, 409);
     await resetAudit(room.id);
     await recordAuditAction(room, me, name, action);
     return json({ room: await roomState(code, token) });
@@ -7356,9 +7608,15 @@ export async function POST(request: Request) {
 
   if (action === "choose_hero") {
     if (room.status !== "heroes") return json({ error: "Hero selection is not active." }, 409);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
     const livePlayers = (await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
     const selector = nextGeneralSelector(livePlayers);
-    if (!selector || selector.token_hash !== tokenHash) return json({ error: "Wait for the current seat to choose its general.", stale: true, room: await roomState(code, token) }, 409);
+    const internalBotSelector = Boolean(internalBot && selector?.id === internalBot.botId && selector.controller_type === "bot" && selector.is_test_player === 0);
+    if (!selector || selector.token_hash !== tokenHash && !internalBotSelector) return json({ error: "Wait for the current seat to choose its general.", stale: true, room: await roomState(code, token) }, 409);
+    if (internalBot && (!internalBotSelector || !liveRoom || liveRoom.status !== "heroes"
+      || await actionRevisionFor(liveRoom, livePlayers, selector.id) !== internalBot.actionRevision)) {
+      return json({ error: "The bot hero-selection decision is stale." , stale: true, room: await roomState(code, token) }, 409);
+    }
     if (selector.hero) return json({ error: "Your hero is already locked in.", stale: true, room: await roomState(code, token) }, 409);
     const heroId = String(body.heroId ?? "");
     const options = currentHeroOptions(selector.hero_options_json);

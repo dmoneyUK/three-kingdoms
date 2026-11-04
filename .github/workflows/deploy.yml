@@ -132,6 +132,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Verify health and mobile room refresh/rejoin
         run: npx playwright test --config tests/browser/staging-playwright.config.mjs
+      - name: Upload Staging mobile smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-mobile-smoke-evidence
+          path: tests/browser/test-results/staging-browser/
+          if-no-files-found: ignore
+          retention-days: 14
 
   deploy:
     needs: [lint-fast, api, browser-smoke]

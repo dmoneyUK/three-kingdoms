@@ -22,6 +22,12 @@ export function verifyAiStagingConfig(config) {
   if (config?.vars?.BOT_AI_ENABLED !== "false") {
     throw new Error("BOT_AI_ENABLED must be the string false");
   }
+  if (config?.vars?.BOT_DEMO_ENABLED !== "true") {
+    throw new Error("BOT_DEMO_ENABLED must be the string true in the verified Staging deployment config");
+  }
+  if (config?.triggers?.crons?.length !== 1 || config.triggers.crons[0] !== "* * * * *") {
+    throw new Error("the Staging Worker must have exactly the bounded one-minute bot recovery Cron");
+  }
   if (!Array.isArray(config?.d1_databases) || config.d1_databases.length !== 1) {
     throw new Error("generated config must contain exactly one D1 binding");
   }
@@ -47,6 +53,8 @@ export function verifyAiStagingConfig(config) {
     productionDatabaseExcluded: true,
     workersDev: true,
     botAiEnabled: false,
+    botDemoEnabled: true,
+    persistentSchedulerCronEnabled: true,
   });
 }
 

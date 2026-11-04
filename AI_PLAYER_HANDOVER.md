@@ -4,35 +4,52 @@ Branch: `feature/smart-bot-player`
 Design: `docs/AI_PLAYER_DESIGN.md` — AIP-D16 (2026-11-03)
 Workflow: `docs/AI_PLAYER_AGENT_WORKFLOW.md` — AIP-AUTO-1
 
-## Current task: BLOCKED — AIP-MOB-01, deterministic Staging-only mobile bot pilot
+## Current task: IN_PROGRESS — AIP-MOB-01, M0–M5 local checks complete; exact-SHA CI/Staging and M6 remain
 
-The Product Owner approved one continuous M0–M6 implementation/review unit on 2026-11-03. AIP-01 is human-accepted. OpenAI/model/API use, production Worker/D1, branch sync, public bot-action routes and UX2/core-game redesign remain out of scope.
+The Product Owner authorized the continuous deterministic Staging-only M0–M6 task on 2026-11-04. The owner also confirmed AIP-01 mock-only acceptance, authorized AIP-02A within its existing scope, and confirmed authorization for the `9d0bf68` synchronization. That commit is already an ancestor of the feature branch; no additional sync is needed. AIP-02A remains deferred until this mobile pilot clears its consolidated review. Stop at `PENDING_REVIEW`; never self-accept.
 
-### M0 — read-only safety/source audit
+### Scope and safety boundary
 
-The active isolated worktree is `/private/tmp/WTK-AIP-MOB-01-20261104`. It began clean at `f79bc094be4582a1ddc622756b44585db77046cf`, matching the fetched remote branch; latest refetch found no Planner changes. The primary UX2 worktree's unrelated dirty/untracked files remain untouched. Only this AI handover and the AIP-MOB-01 status/evidence in the design are changed locally. No source, schema, migration, Worker or remote D1 mutation occurred.
+- Worktree: `/private/tmp/WTK-AIP-MOB-01-20261104`, detached at `0e578ea059cfab8131abf2ea8d3c04125de517bc`, exactly matching the freshly fetched `origin/feature/smart-bot-player`; `origin/main` is `7e14307eff6af1ab917666b6fc1aa409df96ab61`. It is isolated from the primary UX2 worktree. Recheck the remote feature head immediately before push.
+- Only the AI feature branch may change. Do not modify UX2 documents, `HANDOVER.md`, core-game design, or unrelated source.
+- Staging target: Worker `three-kingdoms-ai-staging`, D1 `three-kingdoms-ai-staging-db`, UUID `62616495-59ea-4a9c-b669-2d3267a83cab`; production D1 UUID `3151997a-f69e-4a45-ab51-9e4fd062aeb3` must remain excluded. `BOT_AI_ENABLED=false`; `BOT_DEMO_ENABLED=true` is configured only under `env.ai-staging`. The root/default Worker has no Cron and cannot enable demo seats.
+- No OpenAI/model calls, paid requests, external real-player data, production Worker/D1 changes, Test Player identity shortcut in the bot path, or public bot-action endpoint.
+- Inherited code-bearing baseline `9d0bf68c818b4dc18e3cbf8b40be714b800a0660` passed [Actions run 39842895719](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39842895719); production deploy was skipped. Its migration evidence did not query the present remote ledger. No migration or Worker deployment has yet been run from this worktree.
 
-**Identity and lifecycle findings:** normal room credentials are stored as SHA-256 `token_hash`; `POST` hashes the submitted token before player lookup. Host operations also require the authenticated host player ID. Hero selection uses the next server-selected seat and its persisted `hero_options_json`. Host-controlled Test Player seats instead share the host token hash and set `is_test_player=1`; that mechanism is expressly unsuitable for genuine bots. Room status transitions are `lobby → heroes → playing → finished` (including win/idle finish paths). `actionRevisionFor`, live state reloads, `claimTurnAction` phase/seat compare-and-swap, `causalRoomStateWrite`, and the Negation window ID/submission checks are existing guards to preserve.
+### M0 supported-action boundary
 
-| Decision family | Existing authority | First-pilot boundary |
-| --- | --- | --- |
-| Hero | `nextGeneralSelector`, `currentHeroOptions`, `choose_hero`, `beginStandardHeroSelection`; options are assigned per seat | Deterministically choose only that bot's actual persisted options, through internal actor context |
-| Draw | `legalActionsFor`; `draw` reloads state and `claimTurnAction`; `beginDrawPhaseDecision` handles draw continuations | Allow canonical draw only when no unsupported delayed-judgement/trigger continuation is opened |
-| End-play | `legalActionsFor` and `end_turn` branch use `claimTurnAction`; may open Composure or discard handling | Allow only when currently legal; stop on an unsupported trigger/continuation |
-| Exact discard | `discard_cards` computes `max(0, hand.length - hp)`, checks exact owned card IDs, then claims the phase | Allow exactly the authoritative count from the bot's own hand |
-| Response / decline | `responseDecisionFor` + `resolveResponseDecision` recompute current providers; `legalActionsFor` is actor/pending scoped | Only explicit legal decline/skip is in the initial safe subset; no arbitrary response-card play |
-| Shared Negation | Per-seat durable submission, live `windowId`, actor membership, deadline and idempotent insert checks | Unsupported in the first pilot; never treat it as one ordinary actor response |
-| Dying / Peach | Dying actor and ordered rescue continuation; Peach providers through response authority; `skip_rescue` only in legal context | Decline only when explicitly legal; do not bypass a rescue or human response |
-| Trigger, Harvest, target selection, multi-card Dodge/Attack | Explicit trigger/provider and pending-family routes with selection/target payloads; response candidates can require multiple physical card IDs | Unsupported until each family has a safe internal mapping; show `UNSUPPORTED_BOT_DECISION` and stop |
+Bot actions require the current server-authorized bot actor and action revision, then pass through the ordinary room handlers. The driver never acts during a human turn or advances a human timer.
 
-**Staging target and CI evidence:** exact baseline run [39842895719](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39842895719), attempt 1, on code SHA `9d0bf68c818b4dc18e3cbf8b40be714b800a0660`: lint/build/fast, API, browser smoke, and `Deploy isolated AI Staging Worker` succeeded; production `deploy` was skipped. Its Staging log reports Worker `three-kingdoms-ai-staging`, binding `DB` to `three-kingdoms-ai-staging-db` / UUID `62616495-59ea-4a9c-b669-2d3267a83cab`, excludes production D1 UUID `3151997a-f69e-4a45-ab51-9e4fd062aeb3`, reports `BOT_AI_ENABLED=false`, “No migrations to apply”, and Worker version `69d68387-9267-4057-80e4-dd7e1e0c44ad`. The current branch has no later code/migration changes; the current remote D1 ledger has not been independently queried since that run.
+| Decision family | Pilot behavior |
+| --- | --- |
+| Hero selection | Select the first server-assigned legal option from the Staging demo's safe pool; normal non-demo options are unchanged. |
+| Draw | Use canonical draw only when no delayed judgement card is pending; otherwise stop as unsupported. |
+| Play phase / end play | End the bot turn through canonical `end_turn`; card play is outside this pilot. |
+| Discard | Submit exactly the required physical card IDs from the bot's own hand to the existing discard handler. |
+| Single response / decline | Decline only when the server's response projection has no legal response option; otherwise stop as unsupported. |
+| Shared Negation window | Unsupported; no bot submits or settles another participant's window. |
+| Dying / Peach rescue | Skip only when the server exposes no legal rescue option; a Peach choice is unsupported. |
+| Triggers / Harvest / targets / multi-card Attack or Dodge | Unsupported and fail closed with `UNSUPPORTED_BOT_DECISION`; no new card rules or choices are invented. |
 
-The deploy workflow restricts the Staging job to pushes on `refs/heads/feature/smart-bot-player`, after all validation jobs; it builds for `ai-staging`, verifies the generated target, dry-runs, then names only the Staging D1 migration target and Worker. The `ai-staging` GitHub environment branch policy is exact-branch, but its secret list is empty. `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` exist as repository secrets. The production deploy job has no GitHub environment override and references those same repository secrets for production D1 migration and Worker deployment, so GitHub does not isolate those credentials between jobs. Their current Cloudflare resource scopes cannot be inspected from GitHub. No local Wrangler binary or Cloudflare token is available. CI proves the credential could perform the earlier Staging migration/deploy; it does not prove the current token's resource scope or prevent production writes.
+### Implementation and local evidence
 
-**Disable/rollback plan before any mutation:** keep `BOT_DEMO_ENABLED` absent/false by default and `BOT_AI_ENABLED=false`. For a demo failure, disable the Staging-only demo flag; if code rollback is needed, revert the bot implementation commit on this feature branch and let the guarded Staging CI deploy the revert. Never use root/default Wrangler commands or production D1. Keep schema changes additive; do not attempt a destructive migration rollback. This is a planned procedure, not an executed rollback test.
+M1–M4 add genuine `human`/`bot`/legacy-`test` controller identity, host-only bot lobby controls, an internal canonical action principal, bounded persistent D1 work/lease scheduling with Staging-only recovery Cron, and mobile bot status UI. Additive migrations are `0013_bot_player_identity.sql`, `0014_bot_work_queue.sql`, and `0015_bot_demo_rate_limits.sql`. M5 now also caps concurrent active bot games at 8, limits public Staging bot-seat creation to 12 per hour globally, and keeps each room to 3 bots and 200 bot actions. The demo assigns genuine bot seats only server-generated legal Hero choices that avoid the currently unsupported automatic Stargazing trigger; ordinary non-demo Hero offers remain unchanged.
 
-### Blocker and resume point
+Focused evidence from this worktree:
 
-**Owner confirmation received 2026-11-04:** the user confirmed AIP-01 mock-only acceptance, approved AIP-02A within its existing scope, and confirmed the `9d0bf68` branch synchronization was authorized. AIP-01 and AIP-02A are already recorded in AIP-D16 as accepted and approved; AIP-02A remains deferred behind the current AIP-MOB-01 milestone. This resolves the stale D12 approval prompt but does not verify Cloudflare credential scope or clear the M0 gate.
+- `bot-scheduler.test.mjs` and lobby/Hero API regressions: 34/34 passed against isolated local D1, including concurrent rate-limit and active-room cap cases.
+- Staging config guard and room safety render: 27/27 passed.
+- Strengthened local mobile bot smoke: 1/1 passed in 46.6 seconds with a Staging-target build, isolated local D1, scheduled-event simulation during Hero selection and bot turns, all 3 bot turns, human-control return, and refresh/rejoin. Screenshot: `tests/browser/test-results/ai-bot-demo-local/staging-room-reconnect-mob-3d014-s-and-rejoins-after-refresh/staging-bot-demo.png`.
+- Demo-off local mobile fallback: 1/1 passed in 2.5 seconds with `BOT_DEMO_ENABLED=false` through the legacy Test Player path.
+- Staging config guard and full room-safety render passed; default and Staging-target builds passed; focused ESLint reported 0 errors and 3 React Hook warnings in existing presentation effects; browser/API syntax checks and `git diff --check` passed on the current source.
+- Local Staging D1 migrations 0000–0015 applied using `--local`. Generated target guard confirmed Worker `three-kingdoms-ai-staging`, D1 UUID `62616495-59ea-4a9c-b669-2d3267a83cab`, production UUID excluded, AI disabled, demo enabled, and one-minute Cron enabled. A read-only remote ledger check lists only `0013`–`0015` pending. No remote migration or Worker deployment has occurred.
+- The demo-on screenshot was visually inspected. Both local browser runs are Chromium mobile emulation, not real iPhone acceptance or Staging deployment evidence.
 
-M0's credential-permission gate is not satisfied: Staging and production jobs use the same repository-level Cloudflare secret names, the `ai-staging` environment has no scoped secret override, and the current token's Cloudflare permissions are not observable from the available read-only GitHub evidence. Stop before M1 source changes, any migration push, or any remote write. Resume after the owner verifies the current token scope and explicitly confirms it may be used for the bounded Staging-only Worker/D1 task, or provides an appropriately scoped Staging credential through the `ai-staging` environment. Do not send or paste token values into chat or repository files.
+### Next steps
+
+1. Recheck remote head and the complete scoped diff/file list; commit only AIP-MOB-01 implementation, tests, this handover and this task's design evidence.
+2. Push only to `origin/feature/smart-bot-player`. Verify lint/build/fast, API, browser, Staging target guard, migrations, Worker deploy and mobile smoke for the exact pushed SHA; confirm production deploy is skipped and only the Staging Worker/D1 were mutated. Fix any failures before proceeding.
+3. Verify the live HTTPS Staging Worker, deployed build SHA and health/room/rejoin smoke. Record sanitized evidence, limitations and short iPhone test steps in this handover and only AIP-MOB-01's design status/evidence.
+4. Finish at `PENDING_REVIEW` and stop for the consolidated human mobile review. Do not start AIP-02A.
+
+Rollback: disable `BOT_DEMO_ENABLED` in the Staging-only config and run the guarded feature-branch Staging workflow, or revert this feature implementation through the same guarded workflow. Never use the root/default production deploy or D1 migration path.

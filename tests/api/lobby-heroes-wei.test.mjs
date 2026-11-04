@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
 import {
-  assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
+  assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, runBotStep, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
 
 test("test controller accepts displayed Lord and non-first candidates through the normal selection flow", async () => {
@@ -637,6 +637,7 @@ test("normal multiplayer lobby starts after four named players join and keeps ro
   assert.equal(created.data.room.players[0].isHost, true);
   assert.equal(created.data.room.players[0].ready, false);
   assert.equal(created.data.room.players[0].role, null);
+  assert.equal(query(`SELECT controller_type FROM players WHERE id=${quote(created.data.room.meId)}`), "human");
   assert.equal(query(`SELECT ready FROM players WHERE id=${quote(created.data.room.meId)}`), "0");
 
   const members = [{ name: "Host", token: created.data.token }];
@@ -650,6 +651,7 @@ test("normal multiplayer lobby starts after four named players join and keeps ro
 
   const fourth = await requestAndSettle("join", { code: created.data.room.code, name: "Carol" });
   assert.equal(fourth.status, 201);
+  assert.equal(query(`SELECT controller_type FROM players WHERE id=${quote(fourth.data.room.meId)}`), "human");
   assert.equal(fourth.data.room.players.find((player) => player.name === "Carol").ready, false, "a joining seat never inherits another player's readiness");
   members.push({ name: "Carol", token: fourth.data.token });
   assert.equal((await requestAndSettle("start", { code: created.data.room.code, token: members[1].token })).status, 403, "only the host can start");
@@ -670,6 +672,213 @@ test("normal multiplayer lobby starts after four named players join and keeps ro
   }
 });
 
+test("genuine bot seats are host-owned, idempotent, bounded, and never expose a client credential", async () => {
+  sql("DELETE FROM bot_demo_rate_limits");
+  const created = await requestAndSettle("create", { name: "Bot Host" });
+  assert.equal(created.status, 201);
+  const { code, meId: hostId } = created.data.room;
+  const requestId = crypto.randomUUID();
+  const first = await request("add_bot", { code, token: created.data.token, requestId, actorId: "forged-actor", botId: "forged-bot-id" });
+  assert.equal(first.status, 201, JSON.stringify(first.data));
+  const firstBot = first.data.room.players.find((player) => player.isBot);
+  assert.ok(firstBot, "the host can add one genuine bot seat");
+  assert.equal(firstBot.isTestPlayer, false);
+  assert.equal(firstBot.name, `BOT ${firstBot.seat + 1}`);
+  assert.equal(firstBot.role, null);
+  assert.equal(firstBot.handCount, 0);
+  assert.equal(first.data.room.isTestController, false, "the host token does not gain control of a genuine bot seat");
+  assert.equal(first.data.room.botDemoEnabled, true);
+  assert.ok(!Object.hasOwn(first.data, "token"), "adding a bot never returns a bot or host token");
+  assert.ok(!JSON.stringify(first.data).includes("bot:no-login:"), "the internal no-login marker never enters a room projection");
+  assert.equal(query(`SELECT controller_type FROM players WHERE id=${quote(firstBot.id)}`), "bot");
+  const botNoLoginMarker = query(`SELECT token_hash FROM players WHERE id=${quote(firstBot.id)}`);
+  assert.match(botNoLoginMarker, /^bot:no-login:[0-9a-f-]{36}$/i);
+  assert.notEqual(botNoLoginMarker, query(`SELECT token_hash FROM players WHERE id=${quote(hostId)}`));
+  assert.notEqual(firstBot.id, "forged-bot-id", "the server generates the bot player ID");
+  const botCredentialAttempt = await request("add_bot", { code, token: botNoLoginMarker, requestId: crypto.randomUUID() });
+  assert.equal(botCredentialAttempt.status, 403, "the internal no-login marker cannot authenticate through the SHA-256 token lookup");
+  assert.equal(query(`SELECT controller_request_id FROM players WHERE id=${quote(firstBot.id)}`), requestId);
+
+  const replay = await request("add_bot", { code, token: created.data.token, requestId });
+  assert.equal(replay.status, 200, JSON.stringify(replay.data));
+  assert.equal(replay.data.room.players.filter((player) => player.isBot).length, 1, "replaying one request ID does not create a second seat");
+
+  for (let index = 0; index < 2; index++) {
+    const added = await request("add_bot", { code, token: created.data.token, requestId: crypto.randomUUID() });
+    assert.equal(added.status, 201, JSON.stringify(added.data));
+  }
+  const capped = await request("add_bot", { code, token: created.data.token, requestId: crypto.randomUUID() });
+  assert.equal(capped.status, 409, "one human lobby is capped at three bots");
+  const hostView = await state(code, created.data.token);
+  assert.equal(hostView.data.players.filter((player) => player.isBot).length, 3);
+  assert.equal(hostView.data.players.filter((player) => player.id === hostId).length, 1);
+});
+
+test("only the authenticated host can add bots and only genuine bot seats can be removed", async () => {
+  sql("DELETE FROM bot_demo_rate_limits");
+  const created = await requestAndSettle("create", { name: "Bot Host" });
+  assert.equal(created.status, 201);
+  const code = created.data.room.code;
+  const human = await requestAndSettle("join", { code, name: "Human Player" });
+  assert.equal(human.status, 201);
+  const requestId = crypto.randomUUID();
+  const forgedHost = await request("add_bot", { code, token: human.data.token, requestId, hostId: created.data.room.meId });
+  assert.equal(forgedHost.status, 403);
+  const unauthenticated = await request("add_bot", { code, requestId: crypto.randomUUID() });
+  assert.equal(unauthenticated.status, 403);
+  assert.equal(query(`SELECT COUNT(*) FROM players WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)}) AND controller_type='bot'`), "0");
+
+  const added = await request("add_bot", { code, token: created.data.token, requestId });
+  assert.equal(added.status, 201, JSON.stringify(added.data));
+  const bot = added.data.room.players.find((player) => player.isBot);
+  const mixedTestPlayer = await request("add_test_players", { code, token: created.data.token });
+  assert.equal(mixedTestPlayer.status, 409, "legacy Test Players cannot be added to a genuine bot lobby");
+  const humanRemoval = await request("remove_bot", { code, token: created.data.token, botId: human.data.room.meId });
+  assert.equal(humanRemoval.status, 409, "a host cannot remove a human seat by presenting its ID");
+  const forgedRemoval = await request("remove_bot", { code, token: created.data.token, botId: "forged-bot-id" });
+  assert.equal(forgedRemoval.status, 409);
+  const removed = await request("remove_bot", { code, token: created.data.token, botId: bot.id });
+  assert.equal(removed.status, 200, JSON.stringify(removed.data));
+  assert.equal(removed.data.room.players.some((player) => player.id === bot.id), false);
+  assert.equal(query(`SELECT controller_type FROM players WHERE id=${quote(human.data.room.meId)}`), "human");
+
+  const testRoom = await requestAndSettle("create", { name: "Legacy Test Host" });
+  assert.equal(testRoom.status, 201);
+  const testSeats = await requestAndSettle("add_test_players", { code: testRoom.data.room.code, token: testRoom.data.token });
+  assert.equal(testSeats.status, 200);
+  const mixedBot = await request("add_bot", { code: testRoom.data.room.code, token: testRoom.data.token, requestId: crypto.randomUUID() });
+  assert.equal(mixedBot.status, 409, "genuine bots cannot be added to a Test Player lobby");
+  const testSeat = testSeats.data.room.players.find((player) => player.isTestPlayer);
+  const testRemoval = await request("remove_bot", { code: testRoom.data.room.code, token: testRoom.data.token, botId: testSeat.id });
+  assert.equal(testRemoval.status, 409, "a host cannot remove a legacy Test Player as a bot");
+  assert.equal(query(`SELECT controller_type FROM players WHERE id=${quote(testSeat.id)}`), "test");
+});
+
+test("bot operations reject a full lobby and cannot mutate seats after start", async () => {
+  sql("DELETE FROM bot_demo_rate_limits");
+  const full = await requestAndSettle("create", { name: "Full Lobby Host" });
+  assert.equal(full.status, 201);
+  for (let index = 0; index < 7; index++) {
+    const joined = await requestAndSettle("join", { code: full.data.room.code, name: `Human ${index + 1}` });
+    assert.equal(joined.status, 201, JSON.stringify(joined.data));
+  }
+  const fullAdd = await request("add_bot", { code: full.data.room.code, token: full.data.token, requestId: crypto.randomUUID() });
+  assert.equal(fullAdd.status, 409, "bot insertion checks the room capacity");
+
+  const startedLobby = await requestAndSettle("create", { name: "Started Lobby Host" });
+  assert.equal(startedLobby.status, 201);
+  let bot;
+  for (let index = 0; index < 3; index++) {
+    const added = await request("add_bot", { code: startedLobby.data.room.code, token: startedLobby.data.token, requestId: crypto.randomUUID() });
+    assert.equal(added.status, 201, JSON.stringify(added.data));
+    bot ??= added.data.room.players.find((player) => player.isBot);
+  }
+  const begin = await requestAndSettle("start", { code: startedLobby.data.room.code, token: startedLobby.data.token });
+  assert.equal(begin.status, 200, JSON.stringify(begin.data));
+  const lateAdd = await request("add_bot", { code: startedLobby.data.room.code, token: startedLobby.data.token, requestId: crypto.randomUUID() });
+  assert.equal(lateAdd.status, 409, "bot insertion closes when the lobby starts");
+  const lateRemove = await request("remove_bot", { code: startedLobby.data.room.code, token: startedLobby.data.token, botId: bot.id });
+  assert.equal(lateRemove.status, 409, "bot removal closes when the lobby starts");
+});
+
+test("server-owned bots use assigned Heroes and canonical draw, end-turn, discard, and decline paths", async () => {
+  sql("DELETE FROM bot_demo_rate_limits");
+  const created = await requestAndSettle("create", { name: "Canonical Bot Host" });
+  assert.equal(created.status, 201);
+  const code = created.data.room.code;
+  const hostId = created.data.room.meId;
+  for (let index = 0; index < 3; index++) {
+    const added = await request("add_bot", { code, token: created.data.token, requestId: crypto.randomUUID() });
+    assert.equal(added.status, 201, JSON.stringify(added.data));
+  }
+  const initial = (await state(code, created.data.token)).data;
+  const bot = initial.players.find((player) => player.isBot);
+  const publicBotAction = await request("bot_step", { code, token: created.data.token, botId: bot.id });
+  assert.equal(publicBotAction.status, 404, "bot_step is not a public HTTP action");
+
+  let room = (await requestAndSettle("start", { code, token: created.data.token })).data.room;
+  for (let guard = 0; room.status === "heroes" && guard < 8; guard++) {
+    const actor = room.players.find((player) => player.id === room.actionPlayerId);
+    assert.ok(actor, "Hero selection has a current server actor");
+    if (actor.isBot) {
+      const chosen = await runBotStep(code, actor.id, { actionRevision: room.actionRevision, decisionId: crypto.randomUUID() });
+      assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+      assert.notEqual(chosen.data.code, "UNSUPPORTED_BOT_DECISION");
+    } else {
+      assert.equal(actor.id, hostId, "the only human seat owns the human selection");
+      const selected = room.myHeroOptions[0];
+      assert.ok(selected, "the host's private options remain available to the human");
+      const result = await requestAndSettle("choose_hero", { code, token: created.data.token, heroId: selected.id });
+      assert.equal(result.status, 200, JSON.stringify(result.data));
+    }
+    room = (await state(code, created.data.token)).data;
+  }
+  assert.equal(room.status, "playing", "all three bots select only from the normal assigned Hero pools");
+  const botPlayer = room.players.find((player) => player.isBot);
+  assert.ok(botPlayer);
+  sql(`UPDATE players SET role='Rebel',hero='cao-cao',hp=4,max_hp=4 WHERE id=${quote(botPlayer.id)}`);
+
+  assert.equal((await runBotStep(code, hostId)).status, 403, "a human player ID cannot be used as a bot actor");
+  const anotherRoom = await requestAndSettle("create", { name: "Other Bot Room" });
+  assert.equal(anotherRoom.status, 201);
+  assert.equal((await runBotStep(anotherRoom.data.room.code, botPlayer.id)).status, 403, "a bot from another room cannot act here");
+
+  setTurn(code, room.players.find((player) => player.id === hostId).seat, "play");
+  const humanTurn = (await state(code, created.data.token)).data;
+  const waiting = await runBotStep(code, botPlayer.id, { actionRevision: humanTurn.actionRevision });
+  assert.equal(waiting.status, 200);
+  assert.equal(waiting.data.state, "waiting_for_human", "the bot driver does not take a human turn");
+  assert.equal((await state(code, created.data.token)).data.actionRevision, humanTurn.actionRevision);
+
+  setHand(botPlayer.id, [], 4, 4);
+  setDeck(code, [card("Attack", "bot-draw-1"), card("Dodge", "bot-draw-2"), card("Peach", "bot-draw-3")]);
+  setTurn(code, botPlayer.seat, "draw");
+  const beforeDraw = (await state(code, created.data.token)).data;
+  const drawDecisionId = crypto.randomUUID();
+  const drawn = await runBotStep(code, botPlayer.id, { actionRevision: beforeDraw.actionRevision, decisionId: drawDecisionId });
+  assert.equal(drawn.status, 200, JSON.stringify(drawn.data));
+  assert.equal(JSON.stringify(drawn.data).includes("drawnCards"), false, "the internal result does not return the bot's private drawn cards");
+  const afterDraw = (await state(code, created.data.token)).data;
+  assert.equal(afterDraw.phase, "play");
+  assert.equal(afterDraw.players.find((player) => player.id === botPlayer.id).handCount, 2);
+  const replayedDraw = await runBotStep(code, botPlayer.id, { actionRevision: beforeDraw.actionRevision, decisionId: drawDecisionId });
+  assert.equal(replayedDraw.status, 409, "a consumed action revision cannot be replayed");
+
+  const ended = await runBotStep(code, botPlayer.id, { actionRevision: afterDraw.actionRevision, decisionId: crypto.randomUUID() });
+  assert.equal(ended.status, 200, JSON.stringify(ended.data));
+  assert.notEqual((await state(code, created.data.token)).data.actionPlayerId, botPlayer.id, "the canonical end-turn transition advances away from the bot");
+
+  const handBeforeDiscard = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(botPlayer.id)}`));
+  assert.ok(handBeforeDiscard.length >= 2);
+  setHand(botPlayer.id, handBeforeDiscard, 1, 4);
+  setTurn(code, botPlayer.seat, "discard");
+  const beforeDiscard = (await state(code, created.data.token)).data;
+  const required = Math.max(0, handBeforeDiscard.length - 1);
+  const expectedDiscardIds = handBeforeDiscard.slice(0, required).map((held) => held.id);
+  const discarded = await runBotStep(code, botPlayer.id, { actionRevision: beforeDiscard.actionRevision, decisionId: crypto.randomUUID() });
+  assert.equal(discarded.status, 200, JSON.stringify(discarded.data));
+  const afterDiscard = (await state(code, created.data.token)).data;
+  assert.equal(afterDiscard.players.find((player) => player.id === botPlayer.id).handCount, 1, "the canonical discard handler enforces the exact hand limit");
+  for (const cardId of expectedDiscardIds) {
+    assert.ok(discardIds(code).includes(cardId), `${cardId} is moved into the public discard pile`);
+    assert.equal(roomCardCount(code, cardId), 1, `${cardId} remains in exactly one room zone`);
+  }
+
+  const hostAttack = card("Attack", "bot-response-attack");
+  setHand(hostId, [hostAttack], 4, 4);
+  setHand(botPlayer.id, [], 4, 4);
+  setTurn(code, room.players.find((player) => player.id === hostId).seat, "play");
+  const opened = await requestAndSettle("play_card", { code, token: created.data.token, cardId: hostAttack.id, targetId: botPlayer.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  assert.equal(opened.data.room.actionPlayerId, botPlayer.id, "the engine assigns the response to the targeted bot");
+  assert.equal(opened.data.room.currentAction.kind, "response");
+  const declined = await runBotStep(code, botPlayer.id, { actionRevision: opened.data.room.actionRevision, decisionId: crypto.randomUUID() });
+  assert.equal(declined.status, 200, JSON.stringify(declined.data));
+  const afterResponse = (await state(code, created.data.token)).data;
+  assert.equal(afterResponse.players.find((player) => player.id === botPlayer.id).hp, 3, "the normal response resolver applies the failed Attack response");
+  assert.notEqual(afterResponse.pending?.kind, "response");
+});
+
 test("host test seats remain controllable without exposing a mixed human seat", async () => {
   const created = await requestAndSettle("create", { name: "Host" });
   assert.equal(created.status, 201);
@@ -679,6 +888,8 @@ test("host test seats remain controllable without exposing a mixed human seat", 
   const added = await requestAndSettle("add_test_players", { code, token: created.data.token, name: "Host" });
   assert.equal(added.status, 200, JSON.stringify(added.data));
   assert.equal(added.data.room.players.length, 4);
+  assert.equal(query(`SELECT controller_type FROM players WHERE id=${quote(added.data.room.players.find((player) => player.isTestPlayer).id)}`), "test", "legacy Test Players remain explicitly distinct from bots");
+  assert.ok(added.data.room.players.filter((player) => player.isTestPlayer).every((player) => !player.isBot));
   assert.deepEqual(added.data.room.players.map((player) => player.name), ["Host", "Alice", "Test Player 3", "Test Player 4"]);
   assert.equal(added.data.room.isTestController, true);
   assert.ok(added.data.room.players.slice(2).every((player) => player.ready));

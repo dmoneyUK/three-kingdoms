@@ -76,6 +76,28 @@ export async function request(action, values = {}) {
   throw new Error(`${action} did not return a response`);
 }
 
+export async function runBotStep(code, botId, options = {}) {
+  const response = await fetch(`${baseUrl}/__test/run-bot-step`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ code, botId, ...options }),
+  });
+  const text = await response.text();
+  try { return { status: response.status, data: JSON.parse(text) }; }
+  catch { return { status: response.status, data: { error: text.slice(0, 800) } }; }
+}
+
+export async function runBotScheduler(options = {}) {
+  const response = await fetch(`${baseUrl}/__test/run-bot-scheduler`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(options),
+  });
+  const text = await response.text();
+  try { return { status: response.status, data: JSON.parse(text) }; }
+  catch { return { status: response.status, data: { error: text.slice(0, 800) } }; }
+}
+
 async function fastForwardNegationWindow(code, token) {
   const current = await state(code, token);
   const windowId = current.data.currentAction?.negationWindowId;

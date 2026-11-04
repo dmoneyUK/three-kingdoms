@@ -2,11 +2,13 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { seedPlayingGame, type SeedPlayingGameInput } from "./test-playing-game";
+import { BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP, runBotScheduler, runBotStep } from "./bot-driver";
 
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   WTK_TEST_CAPABILITIES?: string;
+  BOT_DEMO_ENABLED?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -27,9 +29,23 @@ async function setupTestCapabilities(env: Env) {
   await testCapabilitySetup;
 }
 
+async function runBoundedPostWriteBotScheduler(db: D1Database) {
+  const first = await runBotScheduler(db);
+  if (first.steps < BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP) return;
+  // A single human write may wake the bounded scheduler twice. Each pass
+  // retains its own 4-step cap, while this fixed limit avoids minute-long
+  // pauses halfway through the 3-bot mobile demo.
+  await runBotScheduler(db);
+}
+
 interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
   passThroughOnException(): void;
+}
+
+interface ScheduledController {
+  cron: string;
+  scheduledTime: number;
 }
 
 // Image security config. SVG sources with .svg extension auto-skip the
@@ -55,6 +71,31 @@ const worker = {
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : "Invalid test fixture." }, { status: 400 });
       }
+    }
+    if (url.pathname === "/__test/run-bot-step" && env.WTK_TEST_CAPABILITIES === "1" && request.method === "POST") {
+      const body = await request.json<{ code?: unknown; botId?: unknown; actionRevision?: unknown; decisionId?: unknown }>().catch(() => ({}));
+      if (typeof body.code !== "string" || typeof body.botId !== "string"
+        || body.actionRevision !== undefined && typeof body.actionRevision !== "string"
+        || body.decisionId !== undefined && typeof body.decisionId !== "string") {
+        return Response.json({ error: "A valid room, bot, and optional revision/decision ID are required." }, { status: 400 });
+      }
+      return runBotStep(env.DB, {
+        code: body.code,
+        botId: body.botId,
+        ...(typeof body.actionRevision === "string" ? { actionRevision: body.actionRevision } : {}),
+        ...(typeof body.decisionId === "string" ? { decisionId: body.decisionId } : {}),
+      });
+    }
+    if (url.pathname === "/__test/run-bot-scheduler" && env.WTK_TEST_CAPABILITIES === "1" && request.method === "POST") {
+      const body = await request.json<{ maxRoomsPerWakeup?: unknown; maxStepsPerWakeup?: unknown }>().catch(() => ({}));
+      if (body.maxRoomsPerWakeup !== undefined && typeof body.maxRoomsPerWakeup !== "number"
+        || body.maxStepsPerWakeup !== undefined && typeof body.maxStepsPerWakeup !== "number") {
+        return Response.json({ error: "Scheduler test limits must be numeric." }, { status: 400 });
+      }
+      return Response.json(await runBotScheduler(env.DB, {
+        ...(typeof body.maxRoomsPerWakeup === "number" ? { maxRoomsPerWakeup: body.maxRoomsPerWakeup } : {}),
+        ...(typeof body.maxStepsPerWakeup === "number" ? { maxStepsPerWakeup: body.maxStepsPerWakeup } : {}),
+      }));
     }
     if (url.pathname === "/__test/negation-window-clock" && env.WTK_TEST_CAPABILITIES === "1" && request.method === "POST") {
       const body = await request.json<{ code?: unknown; windowId?: unknown; mode?: unknown }>().catch(() => ({}));
@@ -98,7 +139,17 @@ const worker = {
       }, allowedWidths);
     }
 
-    return handler.fetch(request, env, ctx);
+    const response = await handler.fetch(request, env, ctx);
+    if (env.BOT_DEMO_ENABLED === "true" && env.WTK_TEST_CAPABILITIES !== "1"
+      && request.method === "POST" && url.pathname === "/api/rooms") {
+      ctx.waitUntil(runBoundedPostWriteBotScheduler(env.DB).catch(() => undefined));
+    }
+    return response;
+  },
+
+  scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    if (env.BOT_DEMO_ENABLED !== "true") return;
+    ctx.waitUntil(runBotScheduler(env.DB).catch(() => undefined));
   },
 };
 

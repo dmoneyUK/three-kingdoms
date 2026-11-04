@@ -25,6 +25,8 @@ export {
   requestForViewer,
   requestAndSettle,
   roomCardCount,
+  runBotStep,
+  runBotScheduler,
   seedPlayingGame,
   setDeck,
   setEquipment,

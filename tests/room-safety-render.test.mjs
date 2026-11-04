@@ -158,6 +158,15 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.doesNotMatch(html, /Start Attack\/Dodge trace|Stop Attack\/Dodge trace|Copy UX trace/);
   assert.equal((html.match(/class="decision-status/g) ?? []).length, 1, "one primary status area is rendered");
   assert.equal((html.match(/class="interaction-stage"/g) ?? []).length, 0, "ordinary combat does not render the retired Interaction Stage");
+
+  const botHtml = renderToStaticMarkup(React.createElement(GameRoom, {
+    room: { ...uxRoom, players: uxRoom.players.map((player) => player.id === "p2" ? { ...player, isBot: true, botStatus: "unsupported" } : player) },
+    busy: false, error: "", onAction: async () => true, onLeave: () => {},
+  }));
+  assert.match(botHtml, /data-testid="bot-status-p2"/);
+  assert.match(botHtml, /data-bot-status="unsupported"/);
+  assert.match(botHtml, /aria-label="Bot unsupported"/);
+  assert.match(botHtml, /BOT · UNSUPPORTED/);
   assert.equal((html.match(/data-public-card-display="true"/g) ?? []).length, 0, "an interaction without a committed physical root event does not invent a public CardFace");
   assert.equal((html.match(/data-player-anchor="/g) ?? []).length, 2, "retiring the Stage preserves both physical player anchors");
   assert.equal((html.match(/class="local-player-dock/g) ?? []).length, 1, "retiring the Stage keeps one local dock");
@@ -349,11 +358,36 @@ test("waiting room starts without lobby readiness controls", () => {
       { id: "p4", name: "CAROL", seat: 3, isHost: false, ready: false },
     ],
   });
-  const html = renderToStaticMarkup(React.createElement(WaitingRoom, { room, busy: false, error: "", onStart: () => {}, onAddTestPlayers: () => {}, onLeave: () => {} }));
+  const html = renderToStaticMarkup(React.createElement(WaitingRoom, { room, busy: false, error: "", onStart: () => {}, onAddTestPlayers: () => {}, onAddBot: () => {}, onRemoveBot: () => {}, onEnableTestRoom: () => {}, onConfigureTestHands: () => {}, onLeave: () => {} }));
   assert.match(html, />Start game<\/button>/);
   assert.doesNotMatch(html, />Ready<\/button>/);
   assert.doesNotMatch(html, /NOT READY|ready<\/span>|everybody is ready/i);
   assert.doesNotMatch(gameRoomSource, /set_ready/);
+});
+
+test("AI Staging bot lobby controls are host-only and hidden in default or Test Game mode", () => {
+  const makeRoom = ({ isHost, botDemoEnabled, isTestRoom = false }) => normalizeRoomData({
+    code: "BOT01", status: "lobby", maxPlayers: 4, isHost, isTestRoom, botDemoEnabled, meId: isHost ? "host" : "visitor",
+    players: [
+      { id: "host", name: "Host", seat: 0, isHost: true },
+      { id: "bot-1", name: "BOT 1", seat: 1, isBot: true },
+    ],
+  });
+  const props = { busy: false, error: "", onStart: () => {}, onAddTestPlayers: () => {}, onAddBot: () => {}, onRemoveBot: () => {}, onEnableTestRoom: () => {}, onConfigureTestHands: () => {}, onLeave: () => {} };
+  const hostHtml = renderToStaticMarkup(React.createElement(WaitingRoom, { ...props, room: makeRoom({ isHost: true, botDemoEnabled: true }) }));
+  assert.match(hostHtml, />\+ Bot<\/button>/);
+  assert.match(hostHtml, /aria-label="Remove bot BOT 1"/);
+  assert.match(hostHtml, /BOT<\/small>/);
+  assert.doesNotMatch(hostHtml, /Add \d+ Test Player|Enable Test Game/);
+
+  const visitorHtml = renderToStaticMarkup(React.createElement(WaitingRoom, { ...props, room: makeRoom({ isHost: false, botDemoEnabled: true }) }));
+  assert.doesNotMatch(visitorHtml, /\+ Bot|Remove bot/);
+  assert.match(visitorHtml, /BOT<\/small>/, "the public bot label is visible to a nonhost viewer");
+
+  const defaultHtml = renderToStaticMarkup(React.createElement(WaitingRoom, { ...props, room: makeRoom({ isHost: true, botDemoEnabled: false }) }));
+  assert.doesNotMatch(defaultHtml, /\+ Bot|Remove bot/);
+  const testGameHtml = renderToStaticMarkup(React.createElement(WaitingRoom, { ...props, room: makeRoom({ isHost: true, botDemoEnabled: true, isTestRoom: true }) }));
+  assert.doesNotMatch(testGameHtml, /\+ Bot|Remove bot/);
 });
 
 test("hero selection shows the effective viewer's private role", () => {

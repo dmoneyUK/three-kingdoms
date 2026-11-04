@@ -1358,3 +1358,10 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .dying-handoff-compact strong{color:#f0d28c;font-size:9px}
 .dying-handoff-compact span{color:#e3b565;font-weight:700}
 .dying-handoff-compact small{color:#b8aa91;font-size:7px}
+.bot-add-button{min-height:42px;padding:13px 18px;border:1px solid #607d72;background:#17201a;color:#b9d5c7;text-transform:uppercase;font:700 10px Arial;letter-spacing:.12em;cursor:pointer}
+.bot-add-button:disabled,.bot-seat-remove:disabled{opacity:.45;cursor:default}
+.bot-seat-remove{margin-top:5px;padding:4px 8px;border:1px solid #8d6655;border-radius:3px;background:#201613;color:#e8b9a7;font:700 8px Arial;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+.bot-status-chip{position:absolute;top:4px;left:4px;z-index:5;max-width:calc(100% - 10px);overflow:hidden;padding:3px 5px;border:1px solid #c1a05e;border-radius:3px;background:#11140fe8;color:#f1d995;box-shadow:0 1px 4px #0009;font:700 6px/1 Arial,sans-serif;letter-spacing:.04em;text-overflow:ellipsis;white-space:nowrap;pointer-events:none}
+.bot-status-chip[data-bot-status="unsupported"],.bot-status-chip[data-bot-status="error"]{border-color:#c47758;color:#ffd0b1}
+.bot-status-chip[data-bot-status="waiting_for_human"]{border-color:#748d8b;color:#c4dddc}
+@media(max-width:720px){.seat.bot-seat{min-height:96px;height:96px}.bot-add-button{min-height:40px;padding:8px 4px;font-size:8px;letter-spacing:.05em}}
