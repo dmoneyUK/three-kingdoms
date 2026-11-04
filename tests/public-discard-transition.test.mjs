@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { routePublicDiscardTransition } from "../app/public-discard-transition.ts";
+import { layoutPublicResultCards } from "../app/public-result-layout.ts";
 
 const actorId = "player-1";
 const discard = { zone: "DISCARD", ownerId: null };
@@ -88,4 +89,48 @@ test("timeline identity must match the active event's actor, sequence, and physi
   assert.equal(routePublicDiscardTransition({ ...input, timeline: [mismatch] }), null);
   const duplicate = { ...input.event };
   assert.equal(routePublicDiscardTransition({ ...input, timeline: [input.event, duplicate] }), null);
+});
+
+test("3–5 committed discard cards fit in one neutral presentation row without collisions", () => {
+  const obstacles = [
+    { left: 0, top: 0, right: 390, bottom: 96 },
+    { left: 35, top: 400, right: 355, bottom: 448 },
+    { left: 145, top: 490, right: 245, bottom: 535 },
+  ];
+  for (const count of [3, 4, 5]) {
+    const layout = layoutPublicResultCards(count, { width: 390, height: 560 }, obstacles);
+    assert.ok(layout, `${count} cards should fit around phone seats, H4 and PAC`);
+    assert.equal(layout.rows, 1);
+    assert.equal(layout.placements.length, count);
+    assert.ok(layout.placements.every(({ centerX, centerY }) => centerX >= layout.cardWidth / 2
+      && centerX + layout.cardWidth / 2 <= 390
+      && centerY >= layout.cardHeight / 2 && centerY + layout.cardHeight / 2 <= 560));
+    for (let first = 0; first < count; first += 1) for (let second = first + 1; second < count; second += 1) {
+      const a = layout.placements[first];
+      const b = layout.placements[second];
+      const overlaps = Math.abs(a.centerX - b.centerX) < layout.cardWidth
+        && Math.abs(a.centerY - b.centerY) < layout.cardHeight;
+      assert.equal(overlaps, false, `${count} card positions must not overlap`);
+    }
+    for (const { centerX, centerY } of layout.placements) {
+      const box = { left: centerX - layout.cardWidth / 2, right: centerX + layout.cardWidth / 2,
+        top: centerY - layout.cardHeight / 2, bottom: centerY + layout.cardHeight / 2 };
+      assert.equal(obstacles.some((obstacle) => box.left < obstacle.right && box.right > obstacle.left
+        && box.top < obstacle.bottom && box.bottom > obstacle.top), false,
+      `${count} card positions must avoid Seats, H4 and PAC`);
+    }
+  }
+});
+
+test("larger committed discard groups use two rows while keeping all cards inside the measured table", () => {
+  const layout = layoutPublicResultCards(8, { width: 390, height: 560 }, [
+    { left: 0, top: 0, right: 390, bottom: 92 },
+    { left: 20, top: 490, right: 370, bottom: 550 },
+  ]);
+  assert.ok(layout);
+  assert.equal(layout.rows, 2);
+  assert.equal(layout.placements.length, 8);
+  assert.ok(layout.placements.every(({ centerX, centerY }) => centerX - layout.cardWidth / 2 >= 0
+    && centerX + layout.cardWidth / 2 <= 390
+    && centerY - layout.cardHeight / 2 >= 0 && centerY + layout.cardHeight / 2 <= 560));
 });

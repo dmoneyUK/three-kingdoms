@@ -42,6 +42,7 @@ import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game
 import { isM2EquipmentTransitionEvent, routePublicEquipmentTransition } from "./public-equipment-transition";
 import { isM3JudgementTransitionEvent, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition, type PublicJudgementRevealRoute } from "./public-judgement-transition";
 import { routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
+import { layoutPublicResultCards, type PublicResultObstacle } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
 import type { PublicPresentationRoute } from "./public-presentation-routing";
 
@@ -10666,6 +10667,22 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {activeEquipmentZoneTransition && activeEvent?.type === "card" && <PublicEquipmentCardTransition event={activeEvent} route={activeEquipmentZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicEquipmentTransitionPresented} />}
       {activeJudgementZoneTransition && activeJudgementTransitionCard && activeEvent && <PublicJudgementCardTransition event={activeEvent} card={activeJudgementTransitionCard} route={activeJudgementZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicJudgementTransitionPresented} />}
       {activePublicDiscardTransition && activeEvent && <PublicDiscardCardTransition event={activeEvent} route={activePublicDiscardTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicDiscardTransitionPresented} />}
+      {dismantleSettlementCandidate?.journeySettled && dismantleSettlementCandidate.action.affectedCardFace && <PublicSettlementCardResult result={{
+        eventId: dismantleSettlementCandidate.action.eventId,
+        rootEventId: dismantleSettlementCandidate.action.rootEventId,
+        outcome: "discarded",
+        card: dismantleSettlementCandidate.action.affectedCardFace,
+        accessibleLabel: `Public discarded card from ${dismantleSettlementCandidate.target.name}`,
+      }} />}
+      {stealSettlementCandidate?.journeySettled && (stealSettlementCandidate.action.affectedCardFace || stealSettlementCandidate.action.sourceZone === "hand") && <PublicSettlementCardResult result={{
+        eventId: stealSettlementCandidate.action.eventId,
+        rootEventId: stealSettlementCandidate.action.rootEventId,
+        outcome: "obtained",
+        ...(stealSettlementCandidate.action.affectedCardFace ? { card: stealSettlementCandidate.action.affectedCardFace } : { anonymousHandBack: true }),
+        accessibleLabel: stealSettlementCandidate.action.affectedCardFace
+          ? `Public card obtained from ${stealSettlementCandidate.target.name}`
+          : `A concealed Hand card was obtained from ${stealSettlementCandidate.target.name}`,
+      }} />}
       {activePublicHandRevealTransition && activeEvent?.type === "card" && <PublicHandRevealCardTransition event={activeEvent} route={activePublicHandRevealTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicHandRevealTransitionPresented} />}
       {harvestDisplay && <BattlefieldChoiceStage
         key={harvestDisplay.revealEventId ?? "bumper-harvest-public-pool"}
@@ -11726,6 +11743,29 @@ function PublicJudgementCardTransition({ event, card, route, players, myTableInd
   </div>;
 }
 
+const PUBLIC_RESULT_PROTECTED_SELECTORS = [
+  ".opponent-player-card", ".player-card[data-player-anchor]", "[data-player-anchor]", ".player-square", ".player-square-target", ".play-seat",
+  ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip",
+  ".public-card-display-journey-copy", ".public-card-journey-card", ".harvest-choice-stage", ".card-pool-target-stage",
+  ".opponent-inspection-floating-shell", ".local-player-dock", ".local-hand-rail", ".console-guidance", ".turn-controls", ".turn-notice",
+].join(",");
+
+function publicResultObstacles(table: HTMLElement): PublicResultObstacle[] {
+  const tableRect = table.getBoundingClientRect();
+  return Array.from(document.querySelectorAll<HTMLElement>(PUBLIC_RESULT_PROTECTED_SELECTORS)).flatMap((element) => {
+    if (element.closest(".public-result-card-layer")) return [];
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    if (style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0) return [];
+    return [{
+      left: rect.left - tableRect.left,
+      top: rect.top - tableRect.top,
+      right: rect.right - tableRect.left,
+      bottom: rect.bottom - tableRect.top,
+    }];
+  });
+}
+
 function PublicDiscardCardTransition({ event, route, players, myTableIndex, onPresented }: {
   event: GameEvent;
   route: PublicDiscardTransitionRoute;
@@ -11735,12 +11775,13 @@ function PublicDiscardCardTransition({ event, route, players, myTableIndex, onPr
 }) {
   const items = useMemo(() => {
     const cardsById = new Map(eventCards(event).map((card) => [card.id, card]));
-    return route.transitions.flatMap((transition, index) => {
+    return route.transitions.flatMap((transition) => {
       const card = cardsById.get(transition.physicalCardId);
-      return card ? [{ transition, card, index }] : [];
+      return card ? [{ transition, card }] : [];
     });
   }, [event, route.transitions]);
   const revealRefs = useRef(new Map<string, HTMLDivElement>());
+  const groupRef = useRef<HTMLDivElement>(null);
   const completedRef = useRef<{ claimId: string; cardIds: Set<string> }>({ claimId: route.claimId, cardIds: new Set() });
 
   useLayoutEffect(() => {
@@ -11767,31 +11808,58 @@ function PublicDiscardCardTransition({ event, route, players, myTableIndex, onPr
           ?? findAnchor(shell, "data-player-anchor", transition.from.ownerId)
         : findAnchor(shell, "data-player-anchor", transition.from.ownerId);
     });
-    const measure = () => items.forEach(({ card, index }, itemIndex) => {
-      const reveal = revealRefs.current.get(card.id);
-      if (!reveal) return;
-      const source = sources[itemIndex];
-      const spread = (index - (items.length - 1) / 2) * 12;
-      const origin = source ? centerRelativeToTable(table, source) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
-      const destination = discard ? centerRelativeToTable(table, discard) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
-      reveal.style.setProperty("--origin-x", `${origin.x + spread}px`);
-      reveal.style.setProperty("--origin-y", `${origin.y}px`);
-      reveal.style.setProperty("--discard-x", `${destination.x + spread}px`);
-      reveal.style.setProperty("--discard-y", `${destination.y}px`);
-    });
+    const measure = () => {
+      const layout = layoutPublicResultCards(items.length, { width: table.clientWidth, height: table.clientHeight }, publicResultObstacles(table));
+      if (groupRef.current) groupRef.current.dataset.publicDiscardLayout = layout ? `${layout.rows}-rows` : "blocked";
+      items.forEach(({ card }, itemIndex) => {
+        const reveal = revealRefs.current.get(card.id);
+        const placement = layout?.placements[itemIndex];
+        if (!reveal) return;
+        if (!layout || !placement) {
+          reveal.style.visibility = "hidden";
+          return;
+        }
+        reveal.style.visibility = "visible";
+        const source = sources[itemIndex];
+        const origin = source ? centerRelativeToTable(table, source) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+        const destination = discard ? centerRelativeToTable(table, discard) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+        reveal.style.setProperty("--origin-x", `${origin.x}px`);
+        reveal.style.setProperty("--origin-y", `${origin.y}px`);
+        reveal.style.setProperty("--discard-reveal-x", `${placement.centerX}px`);
+        reveal.style.setProperty("--discard-reveal-y", `${placement.centerY}px`);
+        reveal.style.setProperty("--discard-card-width", `${layout.cardWidth}px`);
+        reveal.style.setProperty("--discard-card-height", `${layout.cardHeight}px`);
+        reveal.style.setProperty("--discard-x", `${destination.x}px`);
+        reveal.style.setProperty("--discard-y", `${destination.y}px`);
+      });
+    };
     measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(table);
-    if (discard) observer.observe(discard);
-    sources.forEach((source) => { if (source) observer.observe(source); });
-    return () => observer.disconnect();
+    const resizeObserver = new ResizeObserver(measure);
+    const mutationObserver = new MutationObserver(measure);
+    const treeObserver = new MutationObserver(measure);
+    resizeObserver.observe(table);
+    if (discard) resizeObserver.observe(discard);
+    sources.forEach((source) => { if (source) resizeObserver.observe(source); });
+    for (const element of document.querySelectorAll<HTMLElement>(PUBLIC_RESULT_PROTECTED_SELECTORS)) {
+      if (element.closest(".public-result-card-layer")) continue;
+      resizeObserver.observe(element);
+      mutationObserver.observe(element, { attributes: true, attributeFilter: ["class", "style", "data-public-activity-layout"] });
+    }
+    treeObserver.observe(table, { childList: true, subtree: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      treeObserver.disconnect();
+      window.removeEventListener("resize", measure);
+    };
   }, [items, myTableIndex, players]);
 
   if (items.length !== route.transitions.length) return null;
-  return <div className="table-resolution-layer public-zone-transition-layer" role="status" aria-label="Public discarded cards">
+  return <div ref={groupRef} className="table-resolution-layer public-zone-transition-layer public-discard-transition-group" role="status" aria-label="Public discarded cards">
     {items.map(({ card }) => <div
       ref={(node) => { if (node) revealRefs.current.set(card.id, node); else revealRefs.current.delete(card.id); }}
-      className="active-table-reveal direct-discard"
+      className="active-table-reveal direct-discard public-discard-neutral"
       data-settlement-event-id={event.id}
       data-public-zone-transition-event-id={route.eventId}
       data-public-zone-transition-card-id={card.id}
@@ -11805,6 +11873,73 @@ function PublicDiscardCardTransition({ event, route, players, myTableIndex, onPr
         if (completedRef.current.cardIds.size === items.length) onPresented(route);
       }}><div><CardFace card={card} settlementCardId={card.id} /></div>
     </div>)}
+  </div>;
+}
+
+type PublicSettlementCardResult = {
+  eventId: string;
+  rootEventId: string;
+  outcome: "discarded" | "obtained";
+  card?: Card;
+  anonymousHandBack?: boolean;
+  accessibleLabel: string;
+};
+
+function PublicSettlementCardResult({ result }: { result: PublicSettlementCardResult }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const cardElement = cardRef.current;
+    const table = cardElement?.closest<HTMLElement>(".play-table");
+    if (!cardElement || !table) return;
+    const measure = () => {
+      const layout = layoutPublicResultCards(1, { width: table.clientWidth, height: table.clientHeight }, publicResultObstacles(table), {
+        maxCardWidth: 90,
+        minCardWidth: 42,
+      });
+      const placement = layout?.placements[0];
+      cardElement.dataset.publicResultLayout = layout ? "placed" : "blocked";
+      cardElement.style.visibility = layout && placement ? "visible" : "hidden";
+      if (!layout || !placement) return;
+      cardElement.style.left = `${placement.centerX}px`;
+      cardElement.style.top = `${placement.centerY}px`;
+      cardElement.style.width = `${layout.cardWidth}px`;
+      cardElement.style.height = `${layout.cardHeight}px`;
+    };
+    measure();
+    const resizeObserver = new ResizeObserver(measure);
+    const mutationObserver = new MutationObserver(measure);
+    const treeObserver = new MutationObserver(measure);
+    resizeObserver.observe(table);
+    for (const element of document.querySelectorAll<HTMLElement>(PUBLIC_RESULT_PROTECTED_SELECTORS)) {
+      if (element.closest(".public-result-card-layer")) continue;
+      resizeObserver.observe(element);
+      mutationObserver.observe(element, { attributes: true, attributeFilter: ["class", "style", "data-public-activity-layout"] });
+    }
+    treeObserver.observe(table, { childList: true, subtree: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      treeObserver.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [result.eventId, result.rootEventId]);
+
+  return <div className="table-resolution-layer public-result-card-layer" role="img" aria-label={result.accessibleLabel}>
+    <div ref={cardRef}
+      className="public-result-card public-discard-neutral"
+      data-public-result-event-id={result.eventId}
+      data-public-result-root-event-id={result.rootEventId}
+      data-public-result-outcome={result.outcome}
+      data-public-result-face={result.card ? "public" : "anonymous-back"}
+      {...(result.card ? { "data-public-result-card-id": result.card.id } : {})}
+    >
+      {result.card
+        ? <CardFace card={result.card} settlementCardId={result.card.id} />
+        : result.anonymousHandBack
+          ? <div className="public-card-result-back" aria-label="Card back; identity hidden" />
+          : null}
+    </div>
   </div>;
 }
 
