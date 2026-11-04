@@ -663,7 +663,12 @@ test(`${cardKind} pending card choice uses the nonmodal shared pool without Canc
     const stage = nodeWithClass(renderer, "card-pool-target-stage");
     assert.equal(stage.props.role, "region", "the proven external choice uses the shared nonmodal stage");
     assert.equal(stage.props["aria-label"], `${actionName} target card selection`);
-    nodeWithClass(renderer, "card-pool-panel--actor-target-select");
+    const sharedPanel = nodeWithClass(renderer, "card-pool-panel--actor-target-select");
+    assert.equal(sharedPanel.findAll((node) => node.props?.className?.split(/\s+/).includes("card-pool-panel__target-public-zone-title")).length, 0, "actor tabs are the only visible zone labels in both Steal and Burning Bridge");
+    assert.equal(nodeWithClass(renderer, "card-pool-panel__target-public-hand").props["aria-label"], "Hand: 2 face-down cards", "removing the duplicate visual label preserves the semantic public count");
+    const emptySelectionMessage = nodeWithClass(renderer, "card-pool-panel__selected-zone");
+    assert.match(emptySelectionMessage.props.className, /\bis-empty\b/, "an empty status row is marked for zero-height layout");
+    assert.equal(emptySelectionMessage.props["aria-hidden"], "true");
     assert.equal(renderedNodeText(nodeWithClass(renderer, "card-pool-panel__title")), title);
     assert.equal(renderedNodeText(nodeWithClass(renderer, "card-pool-panel__instruction")), instruction);
     assert.equal(renderer.root.findAll((node) => node.props?.role === "dialog").length, 0);

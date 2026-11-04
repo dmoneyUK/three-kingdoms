@@ -2974,3 +2974,56 @@ test("real Burning Bridge Hand-only pool scrolls horizontally without page overf
   expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({ action: "choose_target_card", targetCardZone: "hand", targetCardIndex: 9 });
   await attachScreenshot(testInfo, "burning-bridge-large-hand-contained-overflow-390", page);
 });
+
+test("§10.22 real Steal Hand(4) uses the compact shared target pool and submits normally", async ({ browser, request }) => {
+  test.setTimeout(60_000);
+  const viewport = { width: 390, height: 844 };
+  const page = await browser.newPage({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  try {
+    const { seed, dialog: pool, hidden } = await openRealTargetCardDecision({ page, request, kind: "Steal", viewport, handCount: 4 });
+    const handTab = pool.getByRole("tab", { name: "Hand (4)", exact: true });
+    const handPositions = pool.locator('[data-target-card-public-zone="hand"] .card-pool-panel__target-public-position');
+    const emptySelectionMessage = pool.locator(".card-pool-panel__selected-zone.is-empty");
+    const use = pool.getByRole("button", { name: "Use Steal", exact: true });
+
+    await expect(handTab).toHaveAttribute("aria-selected", "true");
+    await expect(pool.locator(".card-pool-panel__target-public-zone-title"), "the tab is the single visible label for the active zone").toHaveCount(0);
+    await expect(pool.locator('[data-target-card-public-zone="hand"]')).toHaveAttribute("aria-label", "Hand: 4 face-down cards");
+    await expect(handPositions).toHaveCount(4);
+    await expect(pool.locator('[data-target-card-public-zone="hand"] .card-pool-panel__target-public-select')).toHaveCount(4);
+    await expect(emptySelectionMessage).toHaveAttribute("aria-hidden", "true");
+    expect(await emptySelectionMessage.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
+    expect(await page.locator(".game-shell").innerHTML()).not.toContain(hidden[0].id);
+
+    const useGeometry = await use.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return { width: rect.width, height: rect.height, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth, textOverflow: style.textOverflow };
+    });
+    expect(useGeometry.width).toBeLessThan(150);
+    expect(useGeometry.height).toBeGreaterThanOrEqual(44);
+    expect(useGeometry.scrollWidth).toBeLessThanOrEqual(useGeometry.clientWidth + 1);
+    expect(useGeometry.textOverflow).not.toBe("ellipsis");
+    await expect(use).toBeDisabled();
+
+    const firstHandChoice = pool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
+    await tapMobile(page, firstHandChoice);
+    await expect(firstHandChoice).toHaveAttribute("aria-pressed", "true");
+    await expect(use).toBeEnabled();
+
+    const submitPromise = page.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+      catch { return false; }
+    });
+    await tapMobile(page, use);
+    const submitted = await submitPromise;
+    expect(submitted.ok()).toBe(true);
+    expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
+      action: "choose_target_card", targetCardZone: "hand", targetCardIndex: 0,
+    });
+    expect((await roomView(request, seed, 0)).currentAction?.kind).not.toBe("target_card");
+  } finally {
+    await page.close();
+  }
+});

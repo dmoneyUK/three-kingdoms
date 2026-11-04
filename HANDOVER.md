@@ -1,15 +1,15 @@
 # HANDOVER — 当前唯一任务
 
-## T6 §10.30 + §10.22：PAC/Console 接缝与共享紧凑选牌池
+## T6 §10.22 — 共享 Steal / Dismantle 紧凑选牌池
 
-**状态：IN PROGRESS — NOT ACCEPTED。** 本轮只执行 T6 的两个开放修正；完成代码和部署后等待一次合并的用户 iPhone 复验，不得自行标记通过。
+**状态：本地实现与定向验证完成；本次精确 SHA CI/部署待执行 — NOT ACCEPTED。** 目标是顺手牵羊与过河拆桥/燃烧桥复用同一紧凑布局；不改变授权选牌、获取/弃置效果、隐私或此前通过的 §10.22 功能。完成交付后待用户 iPhone 复验，不得自行标记通过。
 
-**设计复核：** `docs/UX2-refine.md`，远端 `ux-v2` SHA `3d23b9807d5c6af6869eabe2133a8108af45f29d`，§10.22、§10.30；执行流程 `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`。工作树在该 SHA 与 `origin/ux-v2` 一致且原本干净。T6 已接受的甘宁 H4/真实 CardFace/PAC 显示时序作为回归合同。
+**设计复核：** 最新远端设计 `docs/UX2-refine.md`（当前 `origin/ux-v2` 以 `b3bacf00344d3a3be29f27adb2be677ae4d2cbf9` 为 HEAD；设计修订 `3d23b9807d5c6af6869eabe2133a8108af45f29d`），§10.22 紧凑度补充及 §10.30。执行流程见 `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`。
 
-**当前子步骤：PAC / Console 接缝 — 本地实现完成，精确 SHA CI 与部署待执行。** 2026-11-04 00:13 UTC 定位到 `sharedPublicStageMatchesElement()` 要求 PAC/H4 先位于新目标位置，才允许消费者把两者移过去，形成循环等待；已拆分代际归属检查与 `canRetainPublicStageLayout()` 的旧几何安全检查。共享 REVEAL/MOVE/PARKED 和独立 PAC 回退现以实际 `.console-guidance` 顶边为下锚。
+**最近完成的相关交付：** T6 §10.30 PAC/Console 接缝修复已由 `b3bacf00344d3a3be29f27adb2be677ae4d2cbf9` 推送并部署。Actions [41745298490](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41745298490) 全部成功；Cloudflare Worker Version ID `0da1dba4-9204-44b6-a46c-ce46dd0b9e3c`；生产 `/api/health` 返回 HTTP 200。仍待合并手机复验。
 
-**本地结果：** `npm run build` 通过；定向 ESLint 通过；`tests/public-stage-layout.test.mjs` 与 `tests/public-card-announcement.test.mjs` 共 38/38 通过；手机 390×844 的既有 Something Out of Nothing / Barbarian Invasion 真实浏览器场景通过。测量到 H4→卡牌间距 8px，卡牌→PAC 间距 9px；PAC 底边分别与 Console 顶边精确重合（0px），REVEAL/MOVE/PARKED 的共享身份一致。浏览器场景约 15 秒；累计 UI 测试仍低于每步 5 分钟。CI、Worker 部署与线上健康检查尚未运行。
+**当前实施范围：** 共享 `app/card-pool-panel.tsx` 只在多个有效区域时显示 Hand/Equipment/Judgement tabs；有 tabs 时 tabs 是唯一可见区名/数量，仍保留 ARIA 区名和旁观者只读标题。只压缩 actor target picker：减少面板/区域空隙、移除空选区提示行的高度、缩小 Confirm/Use 按钮并允许完整文字换行；选择保留消息仍可读。牌背维持至少 44px 可触区域；保留混合区域、选择状态/数量、公共牌信息、键盘与触控操作。
 
-**同一任务后续范围：** §10.22 的顺手牵羊、过河拆桥/燃烧桥及同组件 actor target 选择使用同一紧凑布局；不改两种牌的服务器效果。保留有效区签名与数量、44px 触控牌背、信息按钮、键盘/触控可达性、可读且至少 44px 高的 Confirm/Use。仅在有选中提示时保留对应提示行；旁观只读标题不变。
+**本地验证（记录截至 2026-11-04 00:36 UTC）：** `tests/active-skill-interactions.test.mjs` 47/47 通过，覆盖真实 Steal 与 Burning Bridge 共用组件及两种原有提交行为；定向 ESLint、`git diff --check` 与最终 `npm run build` 通过。单个真实 390×844 Steal Hand(4) 浏览器场景通过（1/1，9.1 秒）：无重复区标签、4 个匿名选项、空提示行为高 0px、`Use Steal` 宽度低于既有 150px 下限且高度≥44px、选牌后正常提交授权 Hand 位置并退出选择。首次调用本机没有的 `timeout` 命令，测试未启动；随即直接运行同一场景并通过。总 UI 测试时间低于 5 分钟。
 
-**交付与恢复点：** 当前源码 + 本 HANDOVER 等待提交推送 `ux-v2`；推送后记录本次精确 SHA、Actions、Worker 版本与 `/api/health`。仅当本次 CI/部署成功，才开始 §10.22；该子步骤完成并部署后等待一次合并的用户 iPhone 复验。最终状态为 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`。
+**交付状态：** 最新已部署基线 `b3bacf00344d3a3be29f27adb2be677ae4d2cbf9` 的 Actions 41745298490 全绿，Worker `0da1dba4-9204-44b6-a46c-ce46dd0b9e3c`，线上 `/api/health` HTTP 200。§10.22 实现与本 HANDOVER 已本地提交；尚待推送。推送后核对新 SHA 的全部 CI/部署与线上健康结果，再记录本任务交付 SHA、Actions、Worker 版本。不得宣称用户验收。

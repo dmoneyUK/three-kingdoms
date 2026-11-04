@@ -6587,6 +6587,13 @@
   width: min(100%, 440px);
   min-width: 0;
   max-width: min(calc(100vw - 16px), 440px);
+}
+
+.game-shell .card-pool-panel--actor-target-select.harvest-choice-panel {
+  padding: 4px;
+  gap: 4px;
+}
+.game-shell .card-pool-panel--target-readonly.harvest-choice-panel {
   padding: 6px;
   gap: 6px;
 }
@@ -6651,7 +6658,7 @@
 .game-shell .card-pool-panel--actor-target-select .card-pool-panel__target-public-zones {
   box-sizing: border-box;
   align-items: flex-start;
-  min-height: 86px;
+  min-height: 0;
   pointer-events: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -6697,6 +6704,9 @@
 
 .game-shell .card-pool-panel__target-public-hand .card-pool-panel__target-public-zone-title {
   align-self: flex-start;
+}
+.game-shell .card-pool-panel--actor-target-select .card-pool-panel__target-public-zone {
+  gap: 2px;
 }
 
 .game-shell .card-pool-panel__target-public-backs {
@@ -6917,26 +6927,32 @@
 
 .game-shell .card-pool-panel__selected-zone {
   flex: 0 0 auto;
-  min-height: 10px;
+  min-height: 0;
   margin: 0;
   color: #e9d08f;
   font: 600 8px/1.2 Arial, sans-serif;
 }
+.game-shell .card-pool-panel__selected-zone.is-empty { display: none; }
 
 .game-shell .card-pool-panel--actor-target-select .card-pool-panel__footer {
-  width: max-content;
+  width: 100%;
   max-width: 100%;
   min-height: 44px;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 4px;
 }
 
 .game-shell .card-pool-panel--actor-target-select .card-pool-panel__confirm {
-  min-width: min(150px, 50%);
+  flex: 0 1 auto;
+  width: fit-content;
+  min-width: 0;
   min-height: 44px;
   max-width: 62%;
-  overflow: hidden;
-  padding-inline: 8px;
-  text-overflow: ellipsis;
+  padding-inline: 6px;
+  overflow: visible;
+  overflow-wrap: normal;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .game-shell .card-pool-panel__error {
@@ -7061,17 +7077,17 @@
     white-space: normal;
   }
   .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
     width: auto;
     min-width: 0;
     min-height: 44px;
-    max-width: none;
+    max-width: 62%;
     padding-inline: 6px;
     overflow: visible;
     font-size: 7px;
     letter-spacing: .01em;
     text-overflow: clip;
-    white-space: nowrap;
+    white-space: normal;
   }
 }
 
