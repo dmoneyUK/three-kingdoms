@@ -46,6 +46,44 @@ function normalizePrivateStealResult(value, roomCode, viewerId) {
   } : null;
 }
 
+function normalizePrivateStealParticipantResult(value, roomCode, viewerId, serverNow) {
+  if (!isRecord(value) || value.semantics !== "PRIVATE_PROVEN" || value.roomCode !== roomCode
+    || typeof viewerId !== "string" || value.viewerId !== viewerId
+    || (value.role !== "TAKER" && value.role !== "FORMER_OWNER")
+    || typeof value.sourceId !== "string" || !value.sourceId
+    || typeof value.targetId !== "string" || !value.targetId || value.sourceId === value.targetId
+    || value.role === "TAKER" && viewerId !== value.sourceId
+    || value.role === "FORMER_OWNER" && viewerId !== value.targetId
+    || typeof value.settlementEventId !== "string" || !value.settlementEventId
+    || typeof value.rootEventId !== "string" || !value.rootEventId
+    || typeof value.rootResolutionId !== "string" || !value.rootResolutionId
+    || value.sourceZone !== "hand"
+    || !Number.isSafeInteger(value.committedAt) || !Number.isSafeInteger(value.eligibleUntil)
+    || value.eligibleUntil <= value.committedAt || value.eligibleUntil - value.committedAt > 15_000
+    || !Number.isFinite(serverNow) || value.eligibleUntil < serverNow) return null;
+  const card = normalizePhysicalCard(value.card);
+  if (!card || value.physicalCardId !== card.id) return null;
+  if (value.role === "TAKER" && (typeof value.transferId !== "string" || !value.transferId)) return null;
+  if (value.role === "FORMER_OWNER" && value.transferId !== undefined) return null;
+  return {
+    semantics: "PRIVATE_PROVEN",
+    roomCode,
+    viewerId,
+    role: value.role,
+    settlementEventId: value.settlementEventId,
+    rootEventId: value.rootEventId,
+    rootResolutionId: value.rootResolutionId,
+    sourceId: value.sourceId,
+    targetId: value.targetId,
+    sourceZone: "hand",
+    physicalCardId: card.id,
+    committedAt: value.committedAt,
+    eligibleUntil: value.eligibleUntil,
+    ...(value.role === "TAKER" ? { transferId: value.transferId } : {}),
+    card,
+  };
+}
+
 function normalizeTargetCardMovement(proof, event, effect) {
   if (!isRecord(proof) || (proof.sourceZone !== "hand" && proof.sourceZone !== "equipment" && proof.sourceZone !== "judgement")
     || typeof proof.targetId !== "string" || typeof proof.sourceId !== "string") return null;
@@ -406,6 +444,7 @@ export function normalizeRoomData(value) {
     myHand: normalizeCards(value.myHand),
     timeline: normalizeTimeline(value.timeline),
     privateStealResult: normalizePrivateStealResult(value.privateStealResult, value.code, value.meId),
+    privateStealParticipantResult: normalizePrivateStealParticipantResult(value.privateStealParticipantResult, value.code, value.meId, value.serverNow),
     publicHarvestPool: normalizePublicHarvestPool(value.publicHarvestPool),
     log: Array.isArray(value.log) ? value.log.filter((entry) => typeof entry === "string") : [],
     myHeroOptions: normalizeHeroes(value.myHeroOptions),

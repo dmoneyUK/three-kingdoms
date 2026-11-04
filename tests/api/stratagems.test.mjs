@@ -763,7 +763,7 @@ test("Steal chooses from the target's current zones only after counter-Negation"
 
 test("committed Steal exposes a root-linked public settlement without revealing the acquired Hand identity", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
-  const [sourceMember, targetMember, observerMember] = game.members;
+  const [sourceMember, targetMember, observerMember, fourthMember] = game.members;
   const [source, target] = game.room.players;
   const otherHiddenCard = card("Dodge", "steal-settlement-other-private-hand-card", "♣", "4");
   const hiddenCard = card("Peach", "steal-settlement-private-hand-card");
@@ -776,18 +776,61 @@ test("committed Steal exposes a root-linked public settlement without revealing 
   const opened = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: stealCard.id, targetId: target.id });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   const pendingView = (await state(game.code, sourceMember.token)).data;
+  const pendingTargetView = (await state(game.code, targetMember.token)).data;
   const root = pendingView.presentationSnapshot.rootAction;
   const rootEvent = pendingView.timeline.find((event) => event.id === root.rootEventId);
   assert.equal(root?.cardKind, "Steal");
   assert.equal(typeof rootEvent?.resolutionId, "string");
   assert.equal(pendingView.privateStealResult, null, "the chosen Hand face is not available before a successful choice");
+  assert.equal(pendingView.privateStealParticipantResult, null, "no participant result is projected before the committed choice");
+  assert.equal(pendingTargetView.privateStealParticipantResult, null, "the former owner receives no result before settlement");
   const committed = await requestAndSettle("choose_target_card", { code: game.code, token: sourceMember.token, targetCardZone: "hand", targetCardIndex: 1 });
   assert.equal(committed.status, 200, JSON.stringify(committed.data));
 
   const settledView = (await state(game.code, sourceMember.token)).data;
   const targetView = (await state(game.code, targetMember.token)).data;
   const observerView = (await state(game.code, observerMember.token)).data;
+  const fourthView = (await state(game.code, fourthMember.token)).data;
+  const settlementProof = settledView.presentationV2.stealSettlements[0];
   assert.equal(settledView.myHand.some((held) => held.id === hiddenCard.id), true, "the acquired physical card belongs to the Steal actor");
+  assert.deepEqual(settledView.privateStealParticipantResult, {
+    semantics: "PRIVATE_PROVEN",
+    roomCode: game.code,
+    viewerId: source.id,
+    role: "TAKER",
+    settlementEventId: settlementProof.eventId,
+    rootEventId: root.rootEventId,
+    rootResolutionId: rootEvent.resolutionId,
+    sourceId: source.id,
+    targetId: target.id,
+    sourceZone: "hand",
+    physicalCardId: hiddenCard.id,
+    committedAt: settledView.privateStealParticipantResult.committedAt,
+    eligibleUntil: settledView.privateStealParticipantResult.committedAt + 12_000,
+    transferId: settledView.privateStealParticipantResult.transferId,
+    card: hiddenCard,
+  }, "the taker receives a normalized private result for the exact transferred card");
+  assert.equal(Number.isInteger(settledView.privateStealParticipantResult.committedAt), true);
+  assert.equal(typeof settledView.privateStealParticipantResult.transferId, "string");
+  assert.deepEqual(targetView.privateStealParticipantResult, {
+    semantics: "PRIVATE_PROVEN",
+    roomCode: game.code,
+    viewerId: target.id,
+    role: "FORMER_OWNER",
+    settlementEventId: settlementProof.eventId,
+    rootEventId: root.rootEventId,
+    rootResolutionId: rootEvent.resolutionId,
+    sourceId: source.id,
+    targetId: target.id,
+    sourceZone: "hand",
+    physicalCardId: hiddenCard.id,
+    committedAt: targetView.privateStealParticipantResult.committedAt,
+    eligibleUntil: targetView.privateStealParticipantResult.committedAt + 12_000,
+    card: hiddenCard,
+  }, "the former owner receives the same exact card as a private loss result, not a gain");
+  assert.equal(targetView.privateStealParticipantResult.committedAt, settledView.privateStealParticipantResult.committedAt);
+  assert.equal(targetView.privateStealParticipantResult.eligibleUntil, settledView.privateStealParticipantResult.eligibleUntil);
+  assert.equal(targetView.timeline.some((event) => event.action === "private_loss"), false, "private loss proof is projected only through the normalized viewer result");
   assert.deepEqual(settledView.privateStealResult, {
     semantics: "PRIVATE_PROVEN",
     roomCode: game.code,
@@ -807,8 +850,12 @@ test("committed Steal exposes a root-linked public settlement without revealing 
   assert.equal(observerView.timeline.some((event) => event.privateHandTransfer), false);
   assert.equal(targetView.privateStealResult, null, "the victim receives no private Steal result face");
   assert.equal(observerView.privateStealResult, null, "other viewers receive no private Steal result face");
-  assert.equal(JSON.stringify(targetView).includes(hiddenCard.id), false, "the victim response omits the stolen card identity");
+  assert.equal(observerView.privateStealParticipantResult, null, "unrelated viewers receive no private Steal result face");
+  assert.equal(fourthView.privateStealParticipantResult, null, "a fourth viewer receives no private Steal result face");
+  assert.equal(JSON.stringify(targetView).includes(hiddenCard.id), true, "the former owner privately receives the exact committed loss result");
+  assert.equal(targetView.privateStealResult, null, "the former owner does not receive the taker's legacy gain result");
   assert.equal(JSON.stringify(observerView).includes(hiddenCard.id), false, "observer response omits the stolen card identity");
+  assert.equal(JSON.stringify(fourthView).includes(hiddenCard.id), false, "the fourth viewer response omits the stolen card identity");
   assert.equal(settledView.players.find((player) => player.id === target.id).handCount, 1, "the victim retains the other concealed Hand card");
   assert.deepEqual(settledView.presentationV2.stealSettlements, [{
     semantics: "PROVEN",
@@ -842,6 +889,31 @@ test("committed Steal exposes a root-linked public settlement without revealing 
   assert.equal(JSON.stringify(settlementEvent.publicStealSettlement).includes(hiddenCard.id), false);
   assert.equal(JSON.stringify(observerView.timeline).includes(hiddenCard.id), false, "the public result does not reveal the acquired card");
   assert.equal(JSON.stringify(observerView.presentationSnapshot).includes(hiddenCard.id), false);
+  assert.deepEqual(observerView.presentationV2, fourthView.presentationV2, "public presentation remains identical for all observers");
+
+  const repeatedTakerPoll = (await state(game.code, sourceMember.token)).data;
+  const repeatedOwnerPoll = (await state(game.code, targetMember.token)).data;
+  assert.deepEqual(repeatedTakerPoll.privateStealParticipantResult, settledView.privateStealParticipantResult, "rapid polling preserves one stable scoped proof");
+  assert.deepEqual(repeatedOwnerPoll.privateStealParticipantResult, targetView.privateStealParticipantResult, "rapid polling preserves the former owner's matching proof");
+
+  const storedLog = JSON.parse(query(`SELECT log_json FROM rooms WHERE code=${quote(game.code)}`));
+  const duplicateProof = storedLog.find((entry) => entry.startsWith("@card:") && JSON.parse(entry.slice(6)).privateStealParticipantResult?.role === "FORMER_OWNER");
+  assert.ok(duplicateProof, "the committed log retains one former-owner proof");
+  const duplicateEvent = { ...JSON.parse(duplicateProof.slice(6)), id: "duplicate-private-steal-loss-proof" };
+  sql(`UPDATE rooms SET log_json=${quote(JSON.stringify([...storedLog, `@card:${JSON.stringify(duplicateEvent)}`]))} WHERE code=${quote(game.code)}`);
+  assert.equal((await state(game.code, sourceMember.token)).data.privateStealParticipantResult, null, "duplicate participant proofs fail closed for the taker");
+  assert.equal((await state(game.code, targetMember.token)).data.privateStealParticipantResult, null, "duplicate participant proofs fail closed for the former owner");
+  sql(`UPDATE rooms SET log_json=${quote(JSON.stringify(storedLog))} WHERE code=${quote(game.code)}`);
+  const expiredLog = storedLog.map((entry) => {
+    if (!entry.startsWith("@card:")) return entry;
+    const event = JSON.parse(entry.slice(6));
+    if (event.privateStealParticipantResult?.settlementEventId !== settlementProof.eventId) return entry;
+    event.privateStealParticipantResult.eligibleUntil = event.privateStealParticipantResult.committedAt;
+    return `@card:${JSON.stringify(event)}`;
+  });
+  sql(`UPDATE rooms SET log_json=${quote(JSON.stringify(expiredLog))} WHERE code=${quote(game.code)}`);
+  assert.equal((await state(game.code, sourceMember.token)).data.privateStealParticipantResult, null, "an expired first-presentation window fails closed after refresh or replay");
+  assert.equal((await state(game.code, targetMember.token)).data.privateStealParticipantResult, null, "the former owner cannot replay an expired result");
 
   const settledInput = { pending: null, currentAction: settledView.currentAction, actionRevision: settledView.actionRevision, timeline: settledView.timeline, causalEnvelope: settledView.causalEnvelope };
   assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: [...settledView.timeline, settlementEvent] }).stealSettlements, [], "duplicate settlement event IDs fail closed");

@@ -3027,3 +3027,157 @@ test("§10.22 real Steal Hand(4) uses the compact shared target pool and submits
     await page.close();
   }
 });
+
+test("§10.36.1 concealed-Hand Steal result is private to both participants through TEST SWITCH", async ({ browser, request }) => {
+  test.setTimeout(90_000);
+  const name = `Steal result ${Date.now().toString(36)}`;
+  const createdResponse = await request.post(`${API}/api/rooms`, { data: { action: "create", name } });
+  const created = await createdResponse.json();
+  expect(createdResponse.status()).toBe(201);
+  const { code, token } = { code: created.room.code, token: created.token };
+  const post = async (action, values = {}) => {
+    const response = await request.post(`${API}/api/rooms`, { data: { action, name, code, token, ...values } });
+    const body = await response.json();
+    expect(response.status(), `${action}: ${body.error ?? "unexpected response"}`).toBeLessThan(300);
+    return body.room;
+  };
+  let room = await post("add_test_players");
+  room = await post("enable_test_room");
+  room = await post("configure_test_hands", {
+    presetId: "custom",
+    expectedRevision: 0,
+    handsBySeat: { 0: ["Steal"], 1: ["Peach"], 2: [], 3: [] },
+  });
+  room = await post("start");
+  for (let selections = 0; room.status === "heroes" && selections < 8; selections++) {
+    const hero = room.myHeroOptions.find((candidate) => candidate.hp >= 4);
+    expect(hero).toBeTruthy();
+    room = await post("choose_hero", { heroId: hero.id });
+  }
+  expect(room.status).toBe("playing");
+  const source = room.players.find((player) => player.seat === 0);
+  const target = room.players.find((player) => player.seat === 1);
+  const otherViewers = room.players.filter((player) => player.id !== source.id && player.id !== target.id);
+  const controlledAction = async (action, values = {}) => {
+    const actorId = room.currentAction?.actorId ?? room.actionPlayerId;
+    room = await post(action, { ...values, context: {
+      actionRevision: room.actionRevision,
+      meId: room.meId,
+      phase: room.phase,
+      pendingKind: room.pending?.kind ?? null,
+      actorId,
+    } });
+  };
+  let playedSteal = false;
+  let stealCard = null;
+  for (let attempt = 0; attempt < 24 && !playedSteal; attempt++) {
+    const actorId = room.currentAction?.actorId ?? room.actionPlayerId;
+    if (actorId === source.id && room.phase?.startsWith("draw")) await controlledAction("draw");
+    else if (actorId === source.id && room.phase?.startsWith("play")) {
+      stealCard = room.myHand.find((held) => held.kind === "Steal") ?? null;
+      expect(stealCard).toBeTruthy();
+      await controlledAction("play_card", { cardId: stealCard.id, targetId: target.id });
+      playedSteal = true;
+    } else if (room.phase?.startsWith("draw")) await controlledAction("draw");
+    else if (room.phase?.startsWith("play")) await controlledAction("end_turn");
+    else if (room.phase === "discard") {
+      const active = room.players.find((player) => player.id === room.meId);
+      const required = Math.max(0, room.myHand.length - (active?.hp ?? 0));
+      await controlledAction("discard_cards", { cardIds: room.myHand.slice(0, required).map((card) => card.id) });
+    } else if (room.currentAction?.kind === "trigger" && room.currentAction.legalActions.includes("decline_trigger")) {
+      await controlledAction("decline_trigger");
+    } else throw new Error(`Unexpected ${room.phase} (${room.currentAction?.kind ?? "no action"}) while preparing the private Steal result.`);
+  }
+  expect(playedSteal).toBe(true);
+  let current = await controlledRoomView(request, code, token);
+  const windowId = current.currentAction?.negationWindowId;
+  if (windowId) {
+    for (const player of current.players.filter((candidate) => candidate.alive)) {
+      current = await controlledRoomView(request, code, token);
+      if (current.phase !== "response" || current.currentAction?.negationWindowId !== windowId) break;
+      const response = await request.post(`${API}/api/rooms`, {
+        data: { action: "decline_response", name, code, token, context: {
+          actionRevision: current.actionRevision, meId: player.id, phase: "response", pendingKind: "response", windowId,
+        } },
+      });
+      expect(response.status(), `Negation pass for ${player.name}`).toBeLessThan(300);
+    }
+  }
+  current = await controlledRoomView(request, code, token);
+  expect(current.pendingTargetCard?.actorId).toBe(source.id);
+  const stolenCard = (await controlledRoomView(request, code, token, target.id)).myHand[0];
+  expect(stolenCard).toBeTruthy();
+  const fixture = { code, players: room.players.map((player) => ({ ...player, token })) };
+  const seed = fixture;
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const page = await context.newPage();
+  try {
+    await openGame(page, seed, 0, { width: 390, height: 844 });
+    const choiceView = await controlledRoomView(request, code, token, source.id);
+    expect(choiceView.pendingTargetCard).toMatchObject({ cardKind: "Steal", actorId: source.id, targetId: target.id });
+    expect((await controlledRoomView(request, code, token, target.id)).myHand).toContainEqual(stolenCard);
+    const pool = page.locator(".card-pool-panel--actor-target-select");
+    await expect(pool).toBeVisible({ timeout: 15_000 });
+    await expect(pool.getByRole("button", { name: "Use Steal", exact: true })).toBeVisible();
+    const hiddenChoice = pool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
+    await tapMobile(page, hiddenChoice);
+    const submit = page.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+      catch { return false; }
+    });
+    await tapMobile(page, pool.getByRole("button", { name: "Use Steal", exact: true }));
+    expect((await submit).ok()).toBe(true);
+
+    const result = page.locator(`[data-public-result-event-id]`);
+    await expect(result).toHaveCount(1);
+    await expect(result).toHaveAttribute("data-public-result-face", "private", { timeout: 20_000 });
+    const actorProof = await controlledRoomView(request, code, token, source.id);
+    expect(actorProof.privateStealParticipantResult).toMatchObject({ role: "TAKER", viewerId: source.id, physicalCardId: stolenCard.id, card: stolenCard });
+    await expect(result).toHaveAttribute("data-public-result-card-id", stolenCard.id);
+    const takerLabel = await page.locator(".public-result-card-layer").getAttribute("aria-label");
+    expect(takerLabel).toContain(await result.locator(".card-name-mark").innerText());
+    expect(takerLabel).toContain(`${stolenCard.rank} ${stolenCard.suit}`);
+    const duplicatePrivateDraw = await page.locator(".private-draw-stage .played-card").evaluateAll((faces, expected) => faces.some((face) => {
+      const rank = face.querySelector("i")?.childNodes[0]?.textContent?.trim();
+      const suit = face.querySelector("i small")?.textContent?.trim();
+      const name = face.querySelector(".card-name-mark")?.textContent?.trim();
+      return rank === expected.rank && suit === expected.suit && name === expected.kind;
+    }), stolenCard);
+    expect(duplicatePrivateDraw).toBe(false, "the stolen physical card is not also shown as a private Hand-arrival receipt");
+    const publicCopy = (await page.locator('[data-public-card-announcement="true"], .public-activity-chip').allInnerTexts()).join(" ");
+    for (const privateIdentity of [stolenCard.id, stolenCard.kind, `${stolenCard.rank}${stolenCard.suit}`]) {
+      expect(publicCopy).not.toContain(privateIdentity);
+    }
+    await expect(page.locator(".public-activity-chip")).toBeVisible();
+
+    await page.getByTestId(`test-view-switch-${target.id}`).click();
+    await expect(page.locator(`.local-player-dock[data-player-anchor="${target.id}"]`)).toBeVisible();
+    const formerOwnerView = await controlledRoomView(request, code, token, target.id);
+    expect(formerOwnerView.privateStealParticipantResult).toMatchObject({ role: "FORMER_OWNER", viewerId: target.id, physicalCardId: stolenCard.id, card: stolenCard });
+    await expect(result).toHaveAttribute("data-public-result-face", "private", { timeout: 5_000 });
+    await expect(result).toHaveAttribute("data-public-result-card-id", stolenCard.id);
+    const ownerLabel = await page.locator(".public-result-card-layer").getAttribute("aria-label");
+    expect(ownerLabel).toContain(await result.locator(".card-name-mark").innerText());
+    expect(ownerLabel).toContain(`${stolenCard.rank} ${stolenCard.suit}`);
+
+    const observer = otherViewers[0];
+    await page.getByTestId(`test-view-switch-${observer.id}`).click();
+    await expect(page.locator(`.local-player-dock[data-player-anchor="${observer.id}"]`)).toBeVisible();
+    const observerView = await controlledRoomView(request, code, token, observer.id);
+    expect(observerView.privateStealParticipantResult).toBeNull();
+    expect(JSON.stringify(observerView)).not.toContain(stolenCard.id);
+    await expect(result).toHaveAttribute("data-public-result-face", "anonymous-back", { timeout: 5_000 });
+    await expect(result).not.toHaveAttribute("data-public-result-card-id");
+    await expect(page.locator(".public-result-card-layer")).toHaveAttribute("aria-label", `A concealed Hand card was obtained from ${target.name}`);
+
+    const fourthView = await controlledRoomView(request, code, token, otherViewers[1].id);
+    expect(fourthView.privateStealParticipantResult).toBeNull();
+    expect(JSON.stringify(fourthView)).not.toContain(stolenCard.id);
+    await page.reload();
+    await expect(page.locator(".game-shell")).toBeVisible();
+    await expect(page.locator('[data-public-result-face="private"]')).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
