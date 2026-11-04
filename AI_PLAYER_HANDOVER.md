@@ -33,4 +33,6 @@ The deploy workflow restricts the Staging job to pushes on `refs/heads/feature/s
 
 ### Blocker and resume point
 
+**Owner confirmation received 2026-11-04:** the user confirmed AIP-01 mock-only acceptance, approved AIP-02A within its existing scope, and confirmed the `9d0bf68` branch synchronization was authorized. AIP-01 and AIP-02A are already recorded in AIP-D16 as accepted and approved; AIP-02A remains deferred behind the current AIP-MOB-01 milestone. This resolves the stale D12 approval prompt but does not verify Cloudflare credential scope or clear the M0 gate.
+
 M0's credential-permission gate is not satisfied: Staging and production jobs use the same repository-level Cloudflare secret names, the `ai-staging` environment has no scoped secret override, and the current token's Cloudflare permissions are not observable from the available read-only GitHub evidence. Stop before M1 source changes, any migration push, or any remote write. Resume after the owner verifies the current token scope and explicitly confirms it may be used for the bounded Staging-only Worker/D1 task, or provides an appropriately scoped Staging credential through the `ai-staging` environment. Do not send or paste token values into chat or repository files.
