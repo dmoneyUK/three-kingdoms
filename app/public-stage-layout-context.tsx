@@ -198,6 +198,12 @@ export function PublicStageLayoutProvider({
         return;
       }
       const announcement = announcements[0];
+      const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
+      if (!consoleGuidance || !visibleObstacle(consoleGuidance)) {
+        clear();
+        return;
+      }
+      const consoleBounds = rectOf(consoleGuidance);
       // Measure both widths before publishing a single shared generation. The
       // H4 may already be compact from the previous frame, so measure its
       // stylesheet width independently instead of feeding that back as normal.
@@ -302,6 +308,7 @@ export function PublicStageLayoutProvider({
         phase,
         viewport: roundedRect(viewport),
         table: roundedRect(tableBounds),
+        consoleGuidance: roundedRect(consoleBounds),
         primary: signatureCardSize,
         // REVEAL may move once from its preferred anchor to the shared safe
         // stack. That owned placement must not mint a second generation.
@@ -323,7 +330,7 @@ export function PublicStageLayoutProvider({
       const safeLeft = Math.max(viewport.left, tableBounds.left) + 8;
       const safeRight = Math.min(viewport.right, tableBounds.right) - 8;
       const safeTop = Math.max(viewport.top, tableBounds.top) + 8;
-      const safeBottom = Math.min(viewport.bottom, tableBounds.bottom) - 8;
+      const safeBottom = Math.min(viewport.bottom, consoleBounds.top);
       const compactWidth = safeRight - safeLeft - cardSize.width - 8;
       let compactAnnouncement: { width: number; height: number } | undefined;
       if (phase === "REVEAL" && compactWidth >= 120) {
@@ -344,6 +351,7 @@ export function PublicStageLayoutProvider({
         announcement: measuredSize(announcementRect),
         compactAnnouncement,
         activity: measuredSize(activityRect),
+        activityBottom: consoleBounds.top,
         obstacles,
         phaseRects,
       });
@@ -371,6 +379,7 @@ export function PublicStageLayoutProvider({
           reason: result.reason,
           viewport: roundedRect(viewport),
           table: roundedRect(tableBounds),
+          consoleGuidance: roundedRect(consoleBounds),
           primary: roundedRect(visualPrimary),
           announcement: roundedRect(rectOf(announcement)),
           compactAnnouncement,
@@ -498,14 +507,19 @@ export function canRetainPublicStageLayout(table: HTMLElement, shared: SharedPub
     .find((el) => el.dataset.publicCardAnnouncementEventId === shared.announcementEventId
       && (el.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey);
   const pac = table.querySelector<HTMLElement>('[data-public-activity-chip="true"]');
-  if (!h4 || !pac) return false;
+  const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
+  if (!h4 || !pac || !consoleGuidance || !visibleObstacle(consoleGuidance)) return false;
   const rects = [rectOf(h4), rectOf(pac)];
   const saved = [shared.layout.announcement, shared.layout.activity];
   const intersects = (a: PublicStageRect, b: PublicStageRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
   const within = (r: PublicStageRect, bounds: PublicStageRect) => r.left >= bounds.left - 1 && r.right <= bounds.right + 1 && r.top >= bounds.top - 1 && r.bottom <= bounds.bottom + 1;
   const liveBounds = rectOf(table);
-  if (rects.some((r, i) => !within(r, liveBounds)
-    || Math.abs(r.left - saved[i].left) > 1 || Math.abs(r.top - saved[i].top) > 1
+  const consoleBounds = rectOf(consoleGuidance);
+  const pacInSafeCorridor = rects[1].left >= liveBounds.left - 1 && rects[1].right <= liveBounds.right + 1
+    && rects[1].top >= liveBounds.top - 1 && rects[1].bottom <= consoleBounds.top + 2;
+  if (!within(rects[0], liveBounds) || !pacInSafeCorridor
+    || Math.abs(rects[1].bottom - consoleBounds.top) > 2
+    || rects.some((r, i) => Math.abs(r.left - saved[i].left) > 1 || Math.abs(r.top - saved[i].top) > 1
     || Math.abs((r.right - r.left) - (saved[i].right - saved[i].left)) > 1
     || Math.abs((r.bottom - r.top) - (saved[i].bottom - saved[i].top)) > 1)
     || intersects(rects[0], rects[1])) return false;
@@ -524,11 +538,25 @@ export function canRetainPublicStageLayout(table: HTMLElement, shared: SharedPub
 export function sharedPublicStageMatchesElement(table: HTMLElement, shared: SharedPublicStageLayout): boolean {
   if (table.dataset.publicStageLayoutIdentity !== shared.layout.identity
     || table.dataset.publicStageLayoutPhase !== shared.layout.scene.phase.toLowerCase()) return false;
+  const h4 = [...table.querySelectorAll<HTMLElement>('[data-public-card-announcement="true"]')]
+    .find((el) => el.dataset.publicCardAnnouncementEventId === shared.announcementEventId
+      && (el.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey);
+  const pac = table.querySelector<HTMLElement>('[data-public-activity-chip="true"]');
+  const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
+  if (!h4 || !pac || !consoleGuidance || !visibleObstacle(consoleGuidance)) return false;
+  const consoleTop = consoleGuidance.getBoundingClientRect().top;
+  // Validate generation ownership before consumers apply the published rects.
+  // Requiring the H4/PAC to already match those rects here deadlocks first
+  // placement: the consumers hide both elements until this predicate succeeds.
+  if (Math.abs(shared.layout.activity.bottom - consoleTop) > 2
+    || h4.dataset.publicCardAnnouncementEventId !== shared.announcementEventId
+    || (h4.dataset.publicCardAnnouncementCopyKey ?? "") !== shared.announcementCopyKey) return false;
   return [...table.querySelectorAll<HTMLElement>(
     '.public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="reveal"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="move"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="parked"]',
   )].some((card) => card.dataset.publicCardJourneyEventId === shared.primaryEventId
     && card.dataset.publicCardJourneyCardId === shared.primaryCardId
     && card.dataset.publicCardJourneyPhase?.toUpperCase() === shared.layout.scene.phase
+    && card.dataset.publicStageLayoutIdentity === shared.layout.identity
     && (shared.layout.scene.phase !== "REVEAL" || ["reveal", "duel-reveal"].includes(card.dataset.publicCardJourneySize ?? ""))
     && card.closest<HTMLElement>(".public-card-display")?.dataset.publicCardRootEventId === shared.layout.scene.scopeId
     && (!shared.layout.scene.interactionId

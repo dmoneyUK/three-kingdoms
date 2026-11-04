@@ -60,6 +60,26 @@ test("reveal layout keeps H4, full-size card and PAC in order with the measured 
   }
 });
 
+test("REVEAL anchors the shared PAC to the measured Console top without moving H4 or the full card over it", () => {
+  const consoleTop = 482;
+  const result = calculatePublicStageLayout(input({
+    viewport: { left: 0, top: 0, right: 390, bottom: 700 },
+    table: { left: 0, top: 0, right: 390, bottom: 470 },
+    activityBottom: consoleTop,
+    preferredCard: { left: 150, top: 250 },
+    obstacles: [{ id: "console-guidance", rect: { left: 0, top: consoleTop, right: 390, bottom: 560 } }],
+  }));
+  assert.equal(result.status, "placed");
+  if (result.status !== "placed") return;
+  const { announcement, card, activity } = result.layout;
+  assert.equal(activity.bottom, consoleTop);
+  assert.equal((activity.left + activity.right) / 2, 195);
+  assert.ok(activity.top - card.bottom >= 8);
+  assert.ok(announcement.bottom <= card.top);
+  assert.equal(activity.bottom > 470, true, "PAC uses the real gap below the battlefield border");
+  assert.equal(activity.top < 560 && activity.bottom > consoleTop, false);
+});
+
 test("obstacle reflow avoids the obstacle without resizing or reordering the reveal", () => {
   const obstacle = { id: "countdown", rect: { left: 132, top: 310, right: 258, bottom: 374 } };
   const result = calculatePublicStageLayout(input({ obstacles: [obstacle] }));
@@ -112,6 +132,32 @@ test("MOVE preserves the validated reveal H4 band until the card leaves its 380m
     && result.layout.announcement.top < countdown.bottom && result.layout.announcement.bottom > countdown.top, false);
 });
 
+test("MOVE keeps PAC on the measured Console seam while the physical card follows its route", () => {
+  const consoleTop = 482;
+  const card = { left: 150, top: 350, right: 180, bottom: 395 };
+  const activity = { left: 85, top: 700, right: 305, bottom: 744 };
+  const route = { left: 18, top: 182, right: 180, bottom: 395 };
+  const announcement = { left: 75, top: 310, right: 315, bottom: 362 };
+  const result = calculatePublicStageLayout(input({
+    scene: { ...scene, phase: "MOVE", generation: 2 },
+    viewport: { left: 0, top: 0, right: 390, bottom: 700 },
+    table: { left: 0, top: 0, right: 390, bottom: 470 },
+    activityBottom: consoleTop,
+    card: { width: 30, height: 45 },
+    obstacles: [
+      { id: "primary-card-move-path", rect: route },
+      { id: "console-guidance", rect: { left: 0, top: consoleTop, right: 390, bottom: 560 } },
+    ],
+    phaseRects: { card, activity, announcement },
+  }));
+  assert.equal(result.status, "placed");
+  if (result.status !== "placed") return;
+  assert.deepEqual(result.layout.card, card);
+  assert.deepEqual(result.layout.announcement, announcement);
+  assert.equal(result.layout.activity.bottom, consoleTop);
+  assert.ok(result.layout.activity.top - result.layout.card.bottom >= 8);
+});
+
 test("PARKED returns H4 to the safe stage centre without moving the authentic card or PAC", () => {
   const card = { left: 14, top: 158, right: 44, bottom: 203 };
   const activity = { left: 85, top: 700, right: 305, bottom: 744 };
@@ -162,6 +208,7 @@ test("PARKED centres PAC even when it covers the real parked miniature", () => {
     scene: { ...scene, phase: "PARKED", generation: 4 },
     viewport: { left: 0, top: 0, right: 390, bottom: 700 },
     table: { left: 0, top: 0, right: 390, bottom: 460 },
+    activityBottom: 480,
     card: { width: 48, height: 72 },
     activity: { width: 340, height: 44 },
     phaseRects: { card, activity: { left: 0, top: 0, right: 340, bottom: 44 } },
@@ -170,6 +217,7 @@ test("PARKED centres PAC even when it covers the real parked miniature", () => {
   assert.equal(result.status, "placed");
   if (result.status !== "placed") return;
   assert.equal((result.layout.activity.left + result.layout.activity.right) / 2, 195);
+  assert.equal(result.layout.activity.bottom, 480);
   assert.ok(result.layout.activity.left < card.right && result.layout.activity.right > card.left);
   assert.ok(result.layout.activity.top < card.bottom && result.layout.activity.bottom > card.top);
   assert.deepEqual(result.layout.card, card);

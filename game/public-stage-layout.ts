@@ -23,6 +23,8 @@ export type PublicStageLayoutInput = {
   card: PublicStageSize;
   announcement: PublicStageSize;
   activity: PublicStageSize;
+  /** Measured top edge of the real Local Console guidance panel. */
+  activityBottom?: number;
   compactAnnouncement?: PublicStageSize;
   obstacles: readonly { id: string; rect: PublicStageRect }[];
   phaseRects?: { card: PublicStageRect; activity: PublicStageRect; announcement?: PublicStageRect };
@@ -110,6 +112,7 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
   const cardActivityGap = input.cardActivityGap ?? 9;
   if (!finiteRect(viewport) || !finiteRect(table)
     || !finiteSize(card) || !finiteSize(announcement) || !finiteSize(activity)
+    || input.activityBottom !== undefined && !Number.isFinite(input.activityBottom)
     || !Number.isFinite(input.preferredCard.left) || !Number.isFinite(input.preferredCard.top)
     || !Number.isFinite(announcementCardGap) || announcementCardGap < 0
     || !Number.isFinite(cardActivityGap) || cardActivityGap < 8
@@ -126,15 +129,27 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
   }
 
+  const activityBottom = Math.min(viewport.bottom, input.activityBottom ?? Math.min(viewport.bottom, table.bottom) - 8);
   const safeBounds: PublicStageRect = {
     left: Math.max(viewport.left, table.left) + 8,
     top: Math.max(viewport.top, table.top) + 8,
     right: Math.min(viewport.right, table.right) - 8,
-    bottom: Math.min(viewport.bottom, table.bottom) - 8,
+    // The PAC may use the measured gap below the battlefield border so its
+    // lower edge can meet the Console guidance border exactly.
+    bottom: activityBottom,
   };
+  if (safeBounds.right <= safeBounds.left || safeBounds.bottom <= safeBounds.top) {
+    return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
+  }
+  const anchoredActivity = makeRect(
+    (safeBounds.left + safeBounds.right) / 2,
+    safeBounds.bottom - activity.height,
+    activity,
+  );
   if (input.scene.phase !== "REVEAL") {
     const phaseRects = input.phaseRects!;
     const gap = Math.max(8, announcementCardGap);
+    const moveActivityRect = input.activityBottom === undefined ? phaseRects.activity : anchoredActivity;
     if (input.scene.phase === "MOVE") {
       // The 380ms physical-card transition can cross the entire narrow mobile
       // stage. Keep the already-safe reveal band until departure completes;
@@ -142,10 +157,15 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
       const announcementRect = phaseRects.announcement!;
       const stationaryObstacles = [
         ...input.obstacles.filter(({ id }) => id !== "primary-card-move-path"),
-        { id: "public-activity", rect: phaseRects.activity },
+        { id: "public-activity", rect: moveActivityRect },
       ];
       if (announcementRect.left < safeBounds.left || announcementRect.right > safeBounds.right
         || announcementRect.top < safeBounds.top || announcementRect.bottom > safeBounds.bottom
+        || moveActivityRect.left < safeBounds.left || moveActivityRect.right > safeBounds.right
+        || moveActivityRect.top < safeBounds.top
+        || input.activityBottom !== undefined && Math.abs(moveActivityRect.bottom - safeBounds.bottom) > 2
+        || input.obstacles.filter(({ id }) => id !== "primary-card-move-path")
+          .some(({ rect }) => overlaps(moveActivityRect, rect))
         || stationaryObstacles.some(({ rect }) => overlaps(announcementRect, rect))) {
         return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
       }
@@ -160,21 +180,26 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
           protectedRects: stationaryObstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
           announcement: { ...announcementRect },
           card: { ...phaseRects.card },
-          activity: { ...phaseRects.activity },
+          activity: { ...moveActivityRect },
           cardActivityGap: phaseRects.activity.top - phaseRects.card.bottom,
         },
       };
     }
     const centerX = (safeBounds.left + safeBounds.right) / 2;
-    const centerY = (safeBounds.top + safeBounds.bottom) / 2;
+    const centerY = (Math.max(viewport.top, table.top) + Math.min(viewport.bottom, table.bottom)) / 2;
     // The parked miniature is a soft layer: the centred public status may
     // cover it, while actual Seats, controls and timers remain protected.
     const activityObstacles = input.obstacles;
     const activityFits = (rect: PublicStageRect) => rect.left >= safeBounds.left && rect.right <= safeBounds.right
       && rect.top >= safeBounds.top && rect.bottom <= safeBounds.bottom
       && !activityObstacles.some((obstacle) => overlaps(rect, obstacle.rect));
-    let activityRect = makeRect(centerX, phaseRects.activity.top, activity);
+    let activityRect = input.activityBottom === undefined
+      ? makeRect(centerX, phaseRects.activity.top, activity)
+      : anchoredActivity;
     if (!activityFits(activityRect)) {
+      if (input.activityBottom !== undefined) {
+        return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
+      }
       // A newly mounted PAC can have a measurable but unpositioned (0, 0)
       // rectangle. Never publish that rectangle as a safe parked layout.
       const minCenter = safeBounds.left + activity.width / 2;
@@ -248,46 +273,37 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
   const minCenterX = safeBounds.left + stackWidth / 2;
   const maxCenterX = safeBounds.right - stackWidth / 2;
   const minCardTop = safeBounds.top + announcement.height + announcementCardGap;
-  const maxCardTop = safeBounds.bottom - card.height - cardActivityGap - activity.height;
+  const activityRect = anchoredActivity;
+  const maxCardTop = activityRect.top - card.height - cardActivityGap;
   const stackPossible = maxCenterX >= minCenterX && maxCardTop >= minCardTop;
 
   const preferredCenterX = input.preferredCard.left + card.width / 2;
-  const preferredCardTop = input.preferredCard.top;
   const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
   const centers = new Set<number>([
     clamp(preferredCenterX, minCenterX, maxCenterX),
     minCenterX,
     maxCenterX,
   ]);
-  const tops = new Set<number>([
-    clamp(preferredCardTop, minCardTop, maxCardTop),
-    minCardTop,
-    maxCardTop,
-  ]);
+  const tops = new Set<number>([maxCardTop]);
   for (const obstacle of input.obstacles) {
     centers.add(clamp(obstacle.rect.left - stackWidth / 2, minCenterX, maxCenterX));
     centers.add(clamp(obstacle.rect.right + stackWidth / 2, minCenterX, maxCenterX));
-    // Keep the complete stack above the obstacle: its lowest edge is the PAC.
-    tops.add(clamp(
-      obstacle.rect.top - announcementCardGap - card.height - cardActivityGap - activity.height,
-      minCardTop,
-      maxCardTop,
-    ));
-    // Keep the complete stack below the obstacle: its highest edge is H4.
-    tops.add(clamp(obstacle.rect.bottom + announcementCardGap + announcement.height + announcementCardGap, minCardTop, maxCardTop));
+    // Keep H4 and the genuine card together above or below each blocker; PAC
+    // stays on its independent, measured Console seam.
+    tops.add(clamp(obstacle.rect.top - card.height, minCardTop, maxCardTop));
+    tops.add(clamp(obstacle.rect.bottom + announcementCardGap + announcement.height, minCardTop, maxCardTop));
   }
 
   const candidates = [...centers].flatMap((centerX) => [...tops].map((cardTop) => ({
     centerX,
     cardTop,
-    distance: Math.abs(centerX - preferredCenterX) + Math.abs(cardTop - preferredCardTop),
+    distance: Math.abs(centerX - preferredCenterX) + Math.abs(cardTop - maxCardTop),
   }))).sort((left, right) => left.distance - right.distance
     || left.cardTop - right.cardTop || left.centerX - right.centerX);
 
   for (const candidate of stackPossible ? candidates : []) {
     const cardRect = makeRect(candidate.centerX, candidate.cardTop, card);
     const announcementRect = makeRect(candidate.centerX, cardRect.top - announcementCardGap - announcement.height, announcement);
-    const activityRect = makeRect(candidate.centerX, cardRect.bottom + cardActivityGap, activity);
     const stackRects = [announcementRect, cardRect, activityRect];
     if (stackRects.some((rect) => rect.left < safeBounds.left || rect.right > safeBounds.right
       || rect.top < safeBounds.top || rect.bottom > safeBounds.bottom)) continue;
@@ -323,21 +339,20 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     const compactActivityGap = Math.max(8, cardActivityGap - 1);
     const rowLeft = center - rowWidth / 2;
     const minTop = safeBounds.top;
-    const maxTop = compactBounds.bottom - rowHeight - compactActivityGap - activity.height;
+    const maxTop = activityRect.top - rowHeight - compactActivityGap;
     if (rowLeft >= safeBounds.left && rowLeft + rowWidth <= safeBounds.right
       && activity.width <= safeBounds.right - safeBounds.left && maxTop >= minTop) {
-      const rowTops = new Set([minTop, maxTop, clamp(input.preferredCard.top, minTop, maxTop)]);
+      const rowTops = new Set([maxTop]);
       for (const { rect } of input.obstacles) {
         rowTops.add(clamp(rect.bottom + gap, minTop, maxTop));
         rowTops.add(clamp(rect.top - gap - rowHeight - compactActivityGap - activity.height, minTop, maxTop));
       }
-      for (const top of [...rowTops].sort((a, b) => a - b)) {
+      for (const top of [...rowTops].sort((a, b) => b - a)) {
         for (const cardOnLeft of [true, false]) {
           const cardLeft = rowLeft + (cardOnLeft ? 0 : compact.width + gap);
           const announcementLeft = rowLeft + (cardOnLeft ? card.width + gap : 0);
           const cardRect = makeRect(cardLeft + card.width / 2, top, card);
           const announcementRect = makeRect(announcementLeft + compact.width / 2, top, compact);
-          const activityRect = makeRect(center, top + rowHeight + compactActivityGap, activity);
           if ([cardRect, announcementRect, activityRect].some((rect) =>
             input.obstacles.some((obstacle) => overlaps(rect, obstacle.rect)))) continue;
           return { status: "placed", layout: {

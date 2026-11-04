@@ -100,8 +100,9 @@ async function sampleReveal(page, event) {
   const journey = page.locator(`[data-public-card-journey-event-id="${event.id}"]`);
   await expect(journey).toHaveCount(1, { timeout: 12_000 });
   let latest = null;
-  await expect.poll(async () => {
-    latest = await page.evaluate((eventId) => {
+  try {
+    await expect.poll(async () => {
+      latest = await page.evaluate((eventId) => {
       const card = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
         .find((element) => element.dataset.publicCardJourneyEventId === eventId);
       if (!card) return null;
@@ -118,6 +119,7 @@ async function sampleReveal(page, event) {
       const table = card.closest(".play-table");
       const countdown = document.querySelector(".stage-system-cluster .visible-countdown-event, .visible-countdown");
       const dock = document.querySelector(".local-player-dock");
+      const consoleGuidance = document.querySelector(".local-player-dock .console-guidance");
       return {
         eventId: card.dataset.publicCardJourneyEventId,
         cardId: card.dataset.publicCardJourneyCardId,
@@ -145,20 +147,26 @@ async function sampleReveal(page, event) {
         countdownLayoutIdentity: countdown?.dataset.publicStageLayoutIdentity ?? null,
         countdownSharedRect: countdown?.dataset.publicStageLayoutProtectedRect ?? null,
         dock: rect(dock),
+        consoleGuidance: rect(consoleGuidance),
         seats: [...document.querySelectorAll(".opponent-player-card[data-player-anchor]")].map((seat) => ({ id: seat.dataset.playerAnchor, ...rect(seat) })),
         table: rect(table),
         sharedLayoutStatus: table?.dataset.publicStageLayoutStatus ?? null,
         sharedLayoutIdentity: table?.dataset.publicStageLayoutIdentity ?? null,
         sharedLayoutScope: table?.dataset.publicStageLayoutScope ?? null,
       };
-    }, event.id);
-    return latest?.phase === "reveal" && latest.face?.visible && latest.pac?.visible && latest.h4?.visible && latest.countdown?.visible
-      && latest.sharedLayoutStatus === "shared-reveal" && latest.sharedLayoutIdentity
-      && latest.cardLayoutIdentity === latest.sharedLayoutIdentity
-      && latest.h4LayoutIdentity === latest.sharedLayoutIdentity
-      && latest.pacLayoutIdentity === latest.sharedLayoutIdentity
-      && latest.countdownLayoutIdentity === latest.sharedLayoutIdentity;
-  }, { timeout: 12_000, intervals: [40, 80, 120] }).toBe(true);
+      }, event.id);
+      const ready = latest?.phase === "reveal" && latest.face?.visible && latest.pac?.visible && latest.h4?.visible && latest.countdown?.visible
+        && latest.sharedLayoutStatus === "shared-reveal" && latest.sharedLayoutIdentity
+        && latest.cardLayoutIdentity === latest.sharedLayoutIdentity
+        && latest.h4LayoutIdentity === latest.sharedLayoutIdentity
+        && latest.pacLayoutIdentity === latest.sharedLayoutIdentity
+        && latest.countdownLayoutIdentity === latest.sharedLayoutIdentity;
+      return { ready: Boolean(ready), observation: latest };
+    }, { timeout: 12_000, intervals: [40, 80, 120] }).toMatchObject({ ready: true });
+  } catch (error) {
+    console.error(`[PUBLIC-PAC-REVEAL-ORDER-01] reveal geometry diagnostic ${JSON.stringify(latest)}`);
+    throw error;
+  }
   return latest;
 }
 
@@ -351,6 +359,7 @@ test("PUBLIC-PAC keeps genuine Something Out of Nothing and Barbarian Invasion r
       expect(geometry.size).toBe("reveal");
       expect(geometry.activeSamePhysicalCardFaces).toBe(1);
       expect(geometry.face.bottom + 8).toBeLessThanOrEqual(geometry.pac.top);
+      expect(Math.abs(geometry.pac.bottom - geometry.consoleGuidance.top)).toBeLessThanOrEqual(2);
       expect(geometry.pac.layout).not.toContain("upper-band");
       expect(geometry.pac.top).toBeGreaterThanOrEqual(geometry.table.top + geometry.table.height * 0.58);
       expect(geometry.pac.bottom).toBeLessThanOrEqual(geometry.dock.top);
@@ -416,6 +425,7 @@ test("PUBLIC-PAC keeps a genuine Raining Arrows reveal above the lower PAC throu
           h4: rect(document.querySelector("[data-public-card-announcement='true']")),
           countdown: rect(document.querySelector(".stage-system-cluster .visible-countdown-event, .visible-countdown")),
           dock: rect(document.querySelector(".local-player-dock")),
+          consoleGuidance: rect(document.querySelector(".local-player-dock .console-guidance")),
         };
       }, root.root.id);
       return postResponse.face?.phase === "reveal" && postResponse.face?.visible && postResponse.pac?.visible
@@ -444,9 +454,11 @@ test("PUBLIC-PAC keeps a genuine Raining Arrows reveal above the lower PAC throu
     expect(reveal.face.width).toBe(90);
     expect(reveal.face.height).toBe(135);
     expect(reveal.face.bottom + 8).toBeLessThanOrEqual(reveal.pac.top);
+    expect(Math.abs(reveal.pac.bottom - reveal.consoleGuidance.top)).toBeLessThanOrEqual(2);
     expect(reveal.pac.bottom).toBeLessThanOrEqual(reveal.dock.top);
     expect(postResponse.face.cardId).toBe(room.ids.rainingRoot);
     expect(postResponse.face.bottom + 8).toBeLessThanOrEqual(postResponse.pac.top);
+    expect(Math.abs(postResponse.pac.bottom - postResponse.consoleGuidance.top)).toBeLessThanOrEqual(2);
     expect(postResponse.pac.bottom).toBeLessThanOrEqual(postResponse.dock.top);
     expect(postResponse.h4.visible).toBe(true);
     expect(postResponse.countdown.visible).toBe(true);

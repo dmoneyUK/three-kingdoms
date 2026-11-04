@@ -1,13 +1,15 @@
 # HANDOVER — 当前唯一任务
 
-## 对手判定标志的手机间距修正
+## T6 §10.30 + §10.22：PAC/Console 接缝与共享紧凑选牌池
 
-**状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。**
+**状态：IN PROGRESS — NOT ACCEPTED。** 本轮只执行 T6 的两个开放修正；完成代码和部署后等待一次合并的用户 iPhone 复验，不得自行标记通过。
 
-**设计复核：**最新版 `docs/UX2-refine.md`（`b2ab078b186e06262fff663403ee21583e832e0d`）§10.31 已将 T1 核心设计标记为用户通过：座位状态栏保持 **HP → 判定标志 → 装备槽**，只显示真实公开的闪电/乐不思蜀标志。用户 2026-11-03 新截图要求图标与 HP、装备标志更清楚分开；这是当前唯一执行任务，不改变已接受的身份、顺序、卡位、公开性或 gameplay 语义。
+**设计复核：** `docs/UX2-refine.md`，远端 `ux-v2` SHA `3d23b9807d5c6af6869eabe2133a8108af45f29d`，§10.22、§10.30；执行流程 `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`。工作树在该 SHA 与 `origin/ux-v2` 一致且原本干净。T6 已接受的甘宁 H4/真实 CardFace/PAC 显示时序作为回归合同。
 
-- 2026-11-03 22:55 UTC：源码显示有判定标志时整行 `gap: 1px`。仅对手机端且状态容器宽度至少 108px 的座位，给判定标志两侧增加 3px margin；窄座位（包括 6 人局）继续紧凑，由现有几何保证不重叠。
-- 2026-11-03 22:55 UTC：`npm run build` 通过。已重建 `dist/client` 后运行 `npx playwright test --config tests/browser/playwright.config.mjs tests/browser/judgement-seat-rail-real-gameplay.spec.mjs --grep "T1:" --workers=1`，2/2 通过：390×844 双视角确认 HP/图标及图标/装备槽间距各至少 4px，且四个装备槽保留；390×700 六人窄座位确认判定摘要、HP、装备槽不重叠。累计浏览器测试未超过 5 分钟；未做 desktop 验收。
-- 诊断记录：重建客户端前的浏览器结果使用旧 `dist/client`，不作为证据；重建后曾发现整行统一加宽会令六人座位装备区溢出 0.125px，现已改成仅宽座位增加图标 margin，并由最终 2/2 回归覆盖。
-- 2026-11-03 23:04 UTC：实现与 HANDOVER 提交 `b2a45923956d7866e33c881c03c4c0248c0dafb9` 已推送至 `ux-v2`。精确 SHA [CI run 41735421060](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41735421060) 的 API、lint/fast、browser smoke 和 deploy 全部通过；Worker version `1d4476e4-2352-432a-b255-e374a9db8200` 部署成功；线上 `/api/health` 返回 `{"ok":true,"worker":"available"}`（HTTP 200）。
-- **唯一后续步骤：**等待用户 iPhone 复验这项间距修正。不得把 T1 已接受的核心行为重新标为未接受，也不得将本次手机反馈标为已验收。
+**当前子步骤：PAC / Console 接缝 — 本地实现完成，精确 SHA CI 与部署待执行。** 2026-11-04 00:13 UTC 定位到 `sharedPublicStageMatchesElement()` 要求 PAC/H4 先位于新目标位置，才允许消费者把两者移过去，形成循环等待；已拆分代际归属检查与 `canRetainPublicStageLayout()` 的旧几何安全检查。共享 REVEAL/MOVE/PARKED 和独立 PAC 回退现以实际 `.console-guidance` 顶边为下锚。
+
+**本地结果：** `npm run build` 通过；定向 ESLint 通过；`tests/public-stage-layout.test.mjs` 与 `tests/public-card-announcement.test.mjs` 共 38/38 通过；手机 390×844 的既有 Something Out of Nothing / Barbarian Invasion 真实浏览器场景通过。测量到 H4→卡牌间距 8px，卡牌→PAC 间距 9px；PAC 底边分别与 Console 顶边精确重合（0px），REVEAL/MOVE/PARKED 的共享身份一致。浏览器场景约 15 秒；累计 UI 测试仍低于每步 5 分钟。CI、Worker 部署与线上健康检查尚未运行。
+
+**同一任务后续范围：** §10.22 的顺手牵羊、过河拆桥/燃烧桥及同组件 actor target 选择使用同一紧凑布局；不改两种牌的服务器效果。保留有效区签名与数量、44px 触控牌背、信息按钮、键盘/触控可达性、可读且至少 44px 高的 Confirm/Use。仅在有选中提示时保留对应提示行；旁观只读标题不变。
+
+**交付与恢复点：** 当前源码 + 本 HANDOVER 等待提交推送 `ux-v2`；推送后记录本次精确 SHA、Actions、Worker 版本与 `/api/health`。仅当本次 CI/部署成功，才开始 §10.22；该子步骤完成并部署后等待一次合并的用户 iPhone 复验。最终状态为 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`。

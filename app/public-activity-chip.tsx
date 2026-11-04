@@ -61,12 +61,12 @@ type PlacementMemory = {
   activeRevealKey: string | null;
 };
 
-const COLLISION_GAP = 6;
 const ACTIVITY_CHIP_GAP = 2;
 const ACTIVE_REVEAL_PAC_GAP = 8;
 const CANDIDATE_EPSILON = 0.5;
 
-export function fixedLowerActivityEdge(tableBottom: number, viewportBottom: number) {
+export function fixedLowerActivityEdge(tableBottom: number, viewportBottom: number, consoleTop?: number) {
+  if (Number.isFinite(consoleTop)) return Math.min(consoleTop!, viewportBottom);
   return Math.min(tableBottom - 8, viewportBottom - 8);
 }
 
@@ -185,18 +185,18 @@ function placeChip(
   if (compact) chip.dataset.publicActivityCompact = "true";
   else delete chip.dataset.publicActivityCompact;
   const visualViewport = window.visualViewport;
+  const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
+  const consoleRect = consoleGuidance ? visibleRect(consoleGuidance) : null;
   const viewportTop = Math.max(0, visualViewport?.offsetTop ?? 0);
   const viewportBottom = Math.min(window.innerHeight, (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight));
   const leftBound = Math.max(tableRect.left + 8, 8);
   const rightBound = Math.min(tableRect.right - 8, window.innerWidth - 8);
   const upperBandTop = Math.max(tableRect.top + 8, viewportTop + 8);
   const lowerBandTop = Math.max(tableRect.top + tableRect.height * 0.58, viewportTop + 8);
-  const bottom = Math.min(tableRect.bottom - 8, viewportBottom - 8);
-  // Keep the lower edge attached to the battlefield. The compact countdown
-  // occupies a separate right-side lane; its real measured rectangle remains
-  // in protectedRects() and is checked below instead of reserving its height
-  // across the entire PAC width.
-  const fixedLowerEdge = fixedLowerActivityEdge(tableRect.bottom, viewportBottom);
+  // Every standalone PAC shares the measured Local Console top edge. Longer
+  // copy grows upward; it never moves away from this seam to avoid an obstacle.
+  const fixedLowerEdge = fixedLowerActivityEdge(tableRect.bottom, viewportBottom, consoleRect?.top);
+  const bottom = fixedLowerEdge;
   const fixedBand = {
     top: Math.max(tableRect.top + 8, viewportTop + 8, fixedLowerEdge - 112),
     bottom: fixedLowerEdge,
@@ -207,7 +207,7 @@ function placeChip(
     : publicCorridorWidth(table, { top: lowerBandTop, bottom }, 340, { reserveTimer: false })}px`;
   const width = chip.offsetWidth;
   let height = chip.offsetHeight;
-  const placementBottom = fixedLowerCenter && !hasActiveFullReveal ? fixedLowerEdge : bottom;
+  const placementBottom = fixedLowerEdge;
   const placementTop = fixedLowerCenter && !hasActiveFullReveal ? fixedBand.top : lowerBandTop;
   const firstTop = placementBottom - height;
   const collisionGap = hasActiveFullReveal ? ACTIVE_REVEAL_PAC_GAP : ACTIVITY_CHIP_GAP;
@@ -229,6 +229,7 @@ function placeChip(
     chip: { width, height },
     statusKind,
     statusStage: statusStage ?? null,
+    consoleTop: consoleRect?.top ?? null,
     harvestPoolReadOnly,
     fixedLowerCenter,
     hasActiveFullReveal,
@@ -268,6 +269,7 @@ function placeChip(
     ? {
       measuredAt: performance.now(),
       table: rectSummary(tableRect),
+      consoleGuidance: rectSummary(consoleRect),
       chip: { width, height },
       activityChipGap: collisionGap,
       safeBounds: { left: leftBound, right: rightBound, lowerBandTop: placementTop, bottom: placementBottom },
@@ -331,8 +333,14 @@ function placeChip(
     return nextMemory;
   };
 
+  if (!consoleRect) {
+    chip.style.visibility = "hidden";
+    chip.dataset.publicActivityLayout = "awaiting-console-anchor";
+    return finishTrace("hidden:missing-console-anchor", undefined, "missing-console-anchor");
+  }
+
   const currentRect = rectSummary(visibleRect(chip));
-  const currentMinTop = fixedLowerCenter && !hasActiveFullReveal ? fixedBand.top : lowerBandTop;
+  const currentMinTop = Math.max(tableRect.top + 8, viewportTop + 8);
   const currentIsSafe = currentRect && currentRect.left >= leftBound && currentRect.right <= rightBound
     && currentRect.top >= currentMinTop && currentRect.bottom <= placementBottom
     && !obstacles.some((obstacle) => intersects(currentRect, obstacle, collisionGap));
@@ -342,39 +350,6 @@ function placeChip(
     }
     if (!previousMemory.visible && !currentRect && chip.style.visibility === "hidden") {
       return finishTrace("reused:hidden", undefined, "same-inputs-still-no-safe-location");
-    }
-  }
-
-  if (harvestPoolReadOnly && !hasActiveFullReveal) {
-    const root = table.querySelector<HTMLElement>("[data-harvest-root-parked='true']");
-    const timer = table.querySelector<HTMLElement>(".stage-system-cluster .visible-countdown-event");
-    const rootRect = root?.getBoundingClientRect();
-    const timerRect = timer ? visibleRect(timer) : null;
-    const laneLeft = rootRect?.right !== undefined ? rootRect.right + COLLISION_GAP : leftBound;
-    const laneRight = timerRect ? timerRect.left - COLLISION_GAP : rightBound;
-    const railTop = rootRect?.top ?? firstTop;
-    const candidate = {
-      left: laneLeft,
-      top: railTop,
-      right: laneLeft + width,
-      bottom: railTop + height,
-      width,
-      height,
-    };
-    const insideSafeArea = laneLeft >= leftBound && candidate.right <= rightBound
-      && laneRight - laneLeft >= width && railTop >= viewportTop + 4
-      && candidate.bottom <= bottom;
-    const collisions = obstacles.filter((obstacle) => intersects(candidate, obstacle));
-    if (rootRect && insideSafeArea && collisions.length === 0) {
-      chip.style.left = `${candidate.left - tableRect.left}px`;
-      chip.style.top = `${candidate.top - tableRect.top}px`;
-      chip.style.visibility = "visible";
-      chip.dataset.publicActivityLayout = "harvest-root-rail";
-      return finishTrace("placed:harvest-root-rail", {
-        rect: candidate,
-        root: { left: rootRect.left, top: rootRect.top, right: rootRect.right, bottom: rootRect.bottom },
-        timer: timerRect ? { left: timerRect.left, top: timerRect.top, right: timerRect.right, bottom: timerRect.bottom } : null,
-      }, "safe-harvest-root-rail");
     }
   }
 
@@ -413,20 +388,7 @@ function placeChip(
   const maxCenter = rightBound - width / 2;
   const buildPlacements = (candidateHeight: number) => {
     const candidateFirstTop = placementBottom - candidateHeight;
-    const verticalSteps = [...new Set([
-      0,
-      candidateHeight + 8,
-      (candidateHeight + 8) * 2,
-      candidateFirstTop - lowerBandTop,
-      candidateFirstTop - upperBandTop,
-      ...obstacles.flatMap((obstacle) => [
-        candidateFirstTop - (obstacle.top - candidateHeight - collisionGap - CANDIDATE_EPSILON),
-        candidateFirstTop - (obstacle.bottom + collisionGap + CANDIDATE_EPSILON),
-      ]),
-    ].map((step) => Math.round(step * 100) / 100))].filter((step) => {
-      const top = candidateFirstTop - step;
-      return top >= (hasActiveFullReveal ? lowerBandTop : upperBandTop) && top + candidateHeight <= placementBottom;
-    });
+    const verticalSteps = [0];
     const candidates: Array<{ center: number; top: number; verticalStep: number }> = [];
     for (const verticalStep of verticalSteps) {
       const top = candidateFirstTop - verticalStep;

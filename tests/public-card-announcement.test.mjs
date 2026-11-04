@@ -131,6 +131,8 @@ test("440px centered PAC fits beside a compact far-right countdown", () => {
 test("Steal/Dismantle PAC lower edge follows the table while the measured timer stays in its side lane", () => {
   assert.equal(fixedLowerActivityEdge(474, 894), 466);
   assert.equal(fixedLowerActivityEdge(474, 450), 442);
+  assert.equal(fixedLowerActivityEdge(474, 894, 492), 492);
+  assert.equal(fixedLowerActivityEdge(474, 450, 492), 450);
 });
 
 test("Steal/Dismantle genuine reveal is centred inside measured Seat-to-PAC battlefield bounds", () => {
