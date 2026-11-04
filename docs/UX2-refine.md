@@ -1,6 +1,6 @@
 # WTK UX2 — Simplified Public Card UX
 
-**Revision:** 2026-11-04 10:50 UTC (T7B source correction scoped from owner phone review; owner accepts T6, Borrowed Sword A1–A6, Equip H4 B1–B3, CONSOLE-01 and PUBLIC-INSPECT-REVEAL-01; T7B correction required; shared discard/Steal display task added; no rules change) · **Branch:** `ux-v2` · **Current status authority:** Tables A (implementation/correction), B (owner review pending), C (owner-accepted/superseded), and each original item's latest explicit owner verdict. **No old CI, dated task plan, or historical appendix status can reopen closed work.**
+**Revision:** 2026-11-04 11:08 UTC (T7B correction implemented/deployed pending owner phone re-review; owner accepts T6, Borrowed Sword A1–A6, Equip H4 B1–B3, CONSOLE-01 and PUBLIC-INSPECT-REVEAL-01; PUBLIC-DISCARD-UX-01 is next; no rules change) · **Branch:** `ux-v2` · **Current status authority:** Tables A (implementation/correction), B (owner review pending), C (owner-accepted/superseded), and each original item's latest explicit owner verdict. **No old CI, dated task plan, or historical appendix status can reopen closed work.**
 
 This file is the **single active UX2 product/design authority**. It replaces the superseded, much longer UX2 design; previous revisions exist only in Git history. Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmap records, old tests and screenshots are references to prior implementation, **not** permission to reinstate old visual requirements.
 
@@ -8,7 +8,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 **Editorial cleanup (2026-10-30; R6 consolidation 22:27 UTC):** Closed items now retain only the final approved UX contract, explicit owner verdict and essential privacy/interaction boundaries. Historical implementation details and superseded plans remain accessible at the immutable [pre-cleanup revision](https://github.com/dmoneyUK/three-kingdoms/blob/b86c7a781468094fc844fe67b4ffda4e5b9a8d36/docs/UX2-refine.md). Delivered-but-unaccepted and active work remain independently reviewable; this editorial edit is **not** a new coding task or user acceptance.
 
-## UX2 CURRENT canonical work index — 2026-11-04 10:50 UTC (T6 and four other delivered scopes accepted; T7B correction current; shared discard/Steal display next)
+## UX2 CURRENT canonical work index — 2026-11-04 11:08 UTC (T6 and four other delivered scopes accepted; T7B correction pending owner phone re-review; shared discard/Steal display current)
 
 **AUTHORITATIVE STATUS INDEX / NO DUPLICATE EXECUTION:** Tables A–C and the latest explicit owner verdict in the original feature sections govern current work. Dated pre-cleanup snapshots and superseded repairs were removed from this active file but remain [archived in Git](#appendix-a--historical-ux2-status-snapshots-archive-only). A delivered feature awaiting human review belongs in Table B, **not** the development queue; USER-ACCEPTED/CLOSED and SUPERSEDED items in C are not active tasks. Keep one implementation identity per distinct defect.
 
@@ -22,14 +22,15 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 **Owner acceptances, 2026-11-04:** T6 / PUBLIC-PAC-REVEAL-ORDER-01 is **USER-ACCEPTED / CLOSED in full**, including §10.22, §10.30, §10.33 and §10.34. **BORROWED-SWORD-PHONE-01 A1–A6**, **EQUIP-H4-01 B1–B3**, **CONSOLE-01**, and **PUBLIC-INSPECT-REVEAL-01** are also **USER-ACCEPTED / CLOSED**. EQUIP-H4-01 B4 and INSPECT-CLOSE-TOUCH-01 remain cancelled.
 
-**Current owner-reported correction:** T7B / `UX2-JUDGEMENT-REVEAL-OWNER-01` failed its phone review in the four screenshots supplied on 2026-11-04. Correct the Diao Qiao Overindulgence judgement lifecycle: truthful H4/PAC before and during judgement; show the committed 2♣ Attack judgement card once; state that Diao Qiao skips the Play Phase; then show the Overindulgence card's discard with an H4 that says its effect ended. The discard card must use the neutral discard treatment defined in §10.36. No card/Hero-specific renderer branch; verify physical IDs and public event ownership.
+**T7B owner correction:** the Diao Qiao / Overindulgence phone review initially failed on 2026-11-04. Its bounded correction is now **IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE RE-REVIEW**; no phone acceptance is inferred. The required sequence remains truthful H4/PAC before and during judgement, one committed 2♣ Attack reveal, H4 stating the Play Phase is skipped, and the distinct Overindulgence card moving to Discard in neutral grey/white with H4 saying its effect ended. No card/Hero-specific renderer branch.
 
 | Authorized correction | State and order |
 | --- | --- |
-| **T7B / UX2-JUDGEMENT-REVEAL-OWNER-01** | **CURRENT — CORRECTION REQUIRED / NOT ACCEPTED.** T7A audit is complete and the prior T7B delivery is deployed, but the latest phone review reports missing H4/PAC context and duplicate judgement-card display. Fix the shared proof-fed route and verify the Diao Qiao / Overindulgence / 2♣ Attack sequence. |
-| **PUBLIC-DISCARD-UX-01 (§10.36)** | **NEXT SERIAL TASK — OWNER-DIRECTED.** Extend the shared event presentation to end-turn multi-card discards, Dismantle results and Steal results, preserving H4, card identity and hidden-Hand privacy. |
+| **PUBLIC-DISCARD-UX-01 (§10.36)** | **CURRENT — OWNER-AUTHORIZED.** Extend the shared event presentation to end-turn multi-card discards, Dismantle results and Steal results, preserving H4, card identity and hidden-Hand privacy. |
 
 ### B. Other technically deployed scopes awaiting owner phone review
+
+**T7B / UX2-JUDGEMENT-REVEAL-OWNER-01:** **IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE RE-REVIEW**, not USER-ACCEPTED. Source commit [`d925993f`](https://github.com/dmoneyUK/three-kingdoms/commit/d925993fe49871bb9fd44a06001d38e8a9a0082a); exact-SHA [Actions 41818324011](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41818324011) passed API tests, lint/fast, browser startup/room smoke, Cloudflare deployment and production smoke. Worker version `a0e2cbf8-3120-42d1-913d-94d8cc557cb0`; production `/api/health` returned `{"ok":true,"worker":"available"}` at 2026-11-04 11:08 UTC. Focused public-activity/H4/transition tests 24/24, `da-qiao.test.mjs` 17/17, build, targeted ESLint (0 errors; 2 existing React Hook warnings) and `git diff --check` passed. No local UI/browser test was run. The Diao Qiao sequence shares the M3 lifecycle but does not itself close M3's separate owner-review boundary.
 
 **PUBLIC-RENDER-MIGRATION-PLAN-01 — M3:** Delayed Judgement attachment and separately proven later reveal/settlement are **IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE REVIEW**. Source commit `fd126344684a1029c7ebcb6a8fbd2751d1f5a18c`; exact-SHA [Actions 41333906965](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41333906965) completed successfully on rerun, including API, browser smoke, lint/fast and deploy; Worker version `c5dab198-acc2-4ad0-8036-c1cec9f7dd32`; production `/api/health` returned HTTP 200. No owner phone acceptance is inferred.
 
@@ -764,7 +765,7 @@ In `app/page.tsx`, remove `TableResolutionSequence`, retired event queue/timer/s
 
 #### 10.27.7 F6/F8 — true Judgement reveal, effective result and physical destination (T7B OWNER-DIRECTED CORRECTION)
 
-**Owner phone review, 2026-11-04 — T7B NOT ACCEPTED; correction authorized.** The supplied Diao Qiao / Overindulgence phone sequence shows no clear H4/PAC explanation while the delayed card is being judged; the committed 2♣ Attack face appears twice; the result does not say that Diao Qiao skips the Play Phase; and the later Overindulgence discard lacks an H4 saying its effect ended. The owner directly authorized this bounded correction. The former conditional T7B gate and instruction to stop for an H4-only finding are superseded for this scenario.
+**Owner phone review, 2026-11-04 — initial T7B review failed; bounded correction is deployed pending re-review.** The supplied Diao Qiao / Overindulgence phone sequence showed no clear H4/PAC explanation while the delayed card was being judged; the committed 2♣ Attack face appeared twice; the result did not say that Diao Qiao skips the Play Phase; and the later Overindulgence discard lacked an H4 saying its effect ended. The owner directly authorized this correction. The former conditional T7B gate and instruction to stop for an H4-only finding are superseded for this scenario.
 
 **Required visible sequence:**
 1. H4 says Diao Qiao is judging Overindulgence; PAC follows the exact current server Judgement stage/decision.
