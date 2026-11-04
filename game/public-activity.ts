@@ -31,7 +31,7 @@ export type PublicActivityInput = {
 };
 
 export type PublicActivityStatus = {
-  kind: "turn" | "response" | "negation" | "judgement" | "target-card-choice" | "resolving" | "finished";
+  kind: "turn" | "discard" | "response" | "negation" | "judgement" | "target-card-choice" | "resolving" | "finished";
   text: string;
   heading?: string;
   stage?: string;
@@ -426,10 +426,26 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
     }
   }
 
-  if (input.status === "playing") {
+  // A newer server-owned phase always wins over a still-visible earlier
+  // Judgement reveal in the client presentation queue.
+  if (input.status === "playing" && input.phase === "discard") {
+    const player = input.players.find((candidate) => candidate.seat === input.turnSeat && candidate.alive);
+    if (player?.name.trim()) {
+      const text = `Waiting for ${player.name.trim()} to discard cards.`;
+      return { kind: "discard", text, heading: text };
+    }
+    return RESOLVING;
+  }
+
+  if (input.status === "playing" && (input.phase === "response" || input.phase === "resolving")) {
     const fact = activePublicJudgementFact(input);
-    if (fact?.outcomeLabel) {
-      return { kind: "judgement", text: fact.outcomeLabel, heading: fact.outcomeLabel };
+    if (fact) {
+      const actor = playerName(input, fact.actorId);
+      const judgement = effectLabel(fact.effect?.label ?? fact.label);
+      const text = actor && judgement
+        ? `${actor} is judging ${judgement}.`
+        : judgement ? `Judgement for ${judgement} is resolving.` : "Resolving a public Judgement.";
+      return { kind: "judgement", text, heading: text };
     }
   }
 

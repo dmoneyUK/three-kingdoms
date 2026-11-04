@@ -2651,7 +2651,7 @@ async function beginDelayedJudgement(room: RoomRow, target: PlayerRow, players: 
     actorId: target.id,
     affectedPlayerIds: [target.id],
     label: rule.label,
-    outcomeLabel: `${heroDisplayName(target)} is judging ${rule.label}.`,
+    outcomeLabel: `${heroDisplayName(target)} revealed ${draw.card.rank}${draw.card.suit} ${cardDefinition(draw.card.kind).name} for ${rule.label}.`,
     effect: { kind: "judgement", label: rule.label },
   }, causalRoot.envelope) : undefined;
   const presentation = addCardEventWithId(log, target.name, draw.card, target.name, "reveal", true, {

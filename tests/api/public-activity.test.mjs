@@ -48,17 +48,20 @@ test("PAC follows the exact committed Judgement event and ignores stale or misma
   const judgementFact = {
     semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "judgement-reveal", rootEventId: "overindulgence-play",
     order: 2, category: "EFFECT_APPLIED", actorId: "p2", affectedPlayerIds: ["p2"], label: "Overindulgence",
-    outcomeLabel: "Da Qiao is judging Overindulgence.", effect: { kind: "judgement", label: "Overindulgence" },
+    outcomeLabel: "Da Qiao revealed A♠ Duel for Overindulgence.", effect: { kind: "judgement", label: "Overindulgence" },
   };
   const judgementSnapshot = snapshot({ stage: "JUDGEMENT", actorId: null, stableKind: "REST", publicEventFacts: [judgementFact] });
-  const input = room({ presentationSnapshot: judgementSnapshot, activePublicJudgementEventId: "judgement-reveal" });
+  const input = room({ phase: "resolving", presentationSnapshot: judgementSnapshot, activePublicJudgementEventId: "judgement-reveal" });
   assert.deepEqual(derivePublicActivityStatus(input), {
-    kind: "judgement", text: "Da Qiao is judging Overindulgence.", heading: "Da Qiao is judging Overindulgence.",
+    kind: "judgement", text: "Test Player 2 is judging Overindulgence.", heading: "Test Player 2 is judging Overindulgence.",
   });
-  assert.equal(derivePublicActivityStatus({ ...input, activePublicJudgementEventId: "stale-reveal" }).kind, "turn");
+  assert.equal(derivePublicActivityStatus({ ...input, activePublicJudgementEventId: "stale-reveal" }).kind, "resolving");
   assert.equal(derivePublicActivityStatus({ ...input,
     presentationSnapshot: { ...judgementSnapshot, interaction: { ...judgementSnapshot.interaction, stage: "SETTLEMENT" } },
-  }).kind, "turn", "an earlier Judgement fact must not override a newer server stage");
+  }).kind, "resolving", "an earlier Judgement fact must not override a newer server stage");
+  assert.deepEqual(derivePublicActivityStatus({ ...input, phase: "discard" }), {
+    kind: "discard", text: "Waiting for Test Player 1 to discard cards.", heading: "Waiting for Test Player 1 to discard cards.",
+  }, "the current server Discard Phase takes precedence over a still-visible prior reveal");
 });
 
 test("shared Negation wording is identical and ignores viewer-private submission state", () => {
@@ -406,14 +409,14 @@ test("H4 selects the exact active Judgement event, then its committed result", (
     rootEventId: "overindulgence-play", category: "CARD_PLAYED", actorId: "p1", affectedPlayerIds: ["p2"],
     label: "Overindulgence", effect: { kind: "card_play", label: "Overindulgence" } };
   const reveal = { ...root, eventId: "judgement-reveal", order: 2, category: "EFFECT_APPLIED", actorId: "p2",
-    outcomeLabel: "Da Qiao is judging Overindulgence.", effect: { kind: "judgement", label: "Overindulgence" } };
+    outcomeLabel: "Da Qiao revealed A♠ Duel for Overindulgence.", effect: { kind: "judgement", label: "Overindulgence" } };
   const result = { ...reveal, eventId: "judgement-result", order: 3,
     outcomeLabel: "Da Qiao revealed 2♣ Attack. The result is not a Heart, so the Play Phase is skipped. Overindulgence ends." };
   const snapshotWithFacts = snapshot({ stage: "JUDGEMENT", actorId: null, stableKind: "REST", publicEventFacts: [root, reveal, result] });
   const input = { snapshot: snapshotWithFacts, players, rootEventId: root.eventId,
     interactionId: identity.interactionId, rootFrameId: identity.rootFrameId };
   assert.equal(derivePublicInteractionNarration({ ...input, eventId: reveal.eventId })?.headline,
-    "Da Qiao is judging Overindulgence.");
+    "Da Qiao revealed A♠ Duel for Overindulgence.");
   assert.equal(derivePublicInteractionNarration({ ...input, eventId: result.eventId })?.headline,
     "Da Qiao revealed 2♣ Attack. The result is not a Heart, so the Play Phase is skipped. Overindulgence ends.");
 });
