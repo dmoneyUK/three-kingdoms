@@ -51,7 +51,18 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm run build
-      - run: npm run test:api
+      - name: Run API tests
+        run: npm run test:api
+        env:
+          WRANGLER_LOG_PATH: .wrangler/api-logs
+      - name: Upload Wrangler API runtime logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-wrangler-runtime-logs
+          path: .wrangler/api-logs/
+          if-no-files-found: ignore
+          retention-days: 3
 
   browser-smoke:
     name: Browser startup and room smoke (1 test)

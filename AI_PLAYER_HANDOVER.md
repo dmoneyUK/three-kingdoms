@@ -4,13 +4,13 @@ Branch: `feature/smart-bot-player`
 Design: `docs/AI_PLAYER_DESIGN.md` — AIP-D16 (2026-11-03)
 Workflow: `docs/AI_PLAYER_AGENT_WORKFLOW.md` — AIP-AUTO-1
 
-## Current task: IN_PROGRESS — AIP-MOB-01, M0–M5 local checks complete; exact-SHA CI/Staging and M6 remain
+## Current task: IN_PROGRESS — AIP-MOB-01, M0–M5 local checks complete; exact-SHA API CI diagnosis and Staging/M6 remain
 
 The Product Owner authorized the continuous deterministic Staging-only M0–M6 task on 2026-11-04. The owner also confirmed AIP-01 mock-only acceptance, authorized AIP-02A within its existing scope, and confirmed authorization for the `9d0bf68` synchronization. That commit is already an ancestor of the feature branch; no additional sync is needed. AIP-02A remains deferred until this mobile pilot clears its consolidated review. Stop at `PENDING_REVIEW`; never self-accept.
 
 ### Scope and safety boundary
 
-- Worktree: `/private/tmp/WTK-AIP-MOB-01-20261104`, detached at `0e578ea059cfab8131abf2ea8d3c04125de517bc`, exactly matching the freshly fetched `origin/feature/smart-bot-player`; `origin/main` is `7e14307eff6af1ab917666b6fc1aa409df96ab61`. It is isolated from the primary UX2 worktree. Recheck the remote feature head immediately before push.
+- Worktree: `/private/tmp/WTK-AIP-MOB-01-20261104`, detached at `81f3d1338fee82f10245e99ffa7f944883274df6`, exactly matching `origin/feature/smart-bot-player`; `origin/main` is `7e14307eff6af1ab917666b6fc1aa409df96ab61`. It is isolated from the primary UX2 worktree. The implementation and CI follow-up are pushed; recheck the remote feature head before any further push.
 - Only the AI feature branch may change. Do not modify UX2 documents, `HANDOVER.md`, core-game design, or unrelated source.
 - Staging target: Worker `three-kingdoms-ai-staging`, D1 `three-kingdoms-ai-staging-db`, UUID `62616495-59ea-4a9c-b669-2d3267a83cab`; production D1 UUID `3151997a-f69e-4a45-ab51-9e4fd062aeb3` must remain excluded. `BOT_AI_ENABLED=false`; `BOT_DEMO_ENABLED=true` is configured only under `env.ai-staging`. The root/default Worker has no Cron and cannot enable demo seats.
 - No OpenAI/model calls, paid requests, external real-player data, production Worker/D1 changes, Test Player identity shortcut in the bot path, or public bot-action endpoint.
@@ -39,7 +39,8 @@ Focused evidence from this worktree:
 
 - `bot-scheduler.test.mjs` and lobby/Hero API regressions: 34/34 passed against isolated local D1, including concurrent rate-limit and active-room cap cases.
 - Full API suite: 307/307 passed across 27 files; fast suite: 314/314 passed after registering the new API file in `tests/run-api-suite.mjs` and lazy-loading the Cloudflare-only room route from the Worker bot driver.
-- First exact-SHA run [41818161496](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41818161496) on `311ea0e855256544a97f1e41f61f4c44f4a93dbc` passed browser smoke and lint/build, but API shard discovery failed and one fast SSR test hit the eager `cloudflare:workers` import. Staging and production deploy were skipped. Both fixes are currently local and uncommitted; rerun exact-SHA CI/Staging on the follow-up commit.
+- First exact-SHA run [41818161496](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41818161496) on `311ea0e855256544a97f1e41f61f4c44f4a93dbc` passed browser smoke and lint/build, but API shard discovery failed and one fast SSR test hit the eager `cloudflare:workers` import. Staging and production deploy were skipped. Both fixes were committed and pushed in `81f3d1338fee82f10245e99ffa7f944883274df6`.
+- Follow-up exact-SHA run [41819196997](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41819196997) on `81f3d1338fee82f10245e99ffa7f944883274df6`: lint/build/fast and browser smoke passed; both production and Staging deploy jobs were skipped because API was red. Shard 1 passed 179/179. Shard 2 first failed at `tests/api/privacy-response.test.mjs:800` (Deliverance, subtest 88) with `TypeError: fetch failed` from `tests/api/harness.mjs:175`; 41 later tests cascaded into fetch failures. Logs show Wrangler initially reached Ready and served requests, but do not establish why the local server connection failed. The full local API suite passed 307/307 and fast suite 314/314 on this source. Attempt 2 of the same-SHA workflow again passed lint/build/fast and browser smoke; shard 2 passed 128/128, while shard 1 failed first at `tests/api/concurrency.test.mjs:7` with the same `TypeError: fetch failed` and 41 later failures cascaded. Wrangler emitted a generic `✘ ERROR` and wrote detail to the runner home log, which was not uploaded. Different shard/test positions point to a local Worker-runtime disconnect, but the cause is unverified. Preserve coverage; the next CI change uploads API Wrangler logs on failure.
 - Staging config guard and room safety render: 27/27 passed.
 - Strengthened local mobile bot smoke: 1/1 passed in 46.6 seconds with a Staging-target build, isolated local D1, scheduled-event simulation during Hero selection and bot turns, all 3 bot turns, human-control return, and refresh/rejoin. Screenshot: `tests/browser/test-results/ai-bot-demo-local/staging-room-reconnect-mob-3d014-s-and-rejoins-after-refresh/staging-bot-demo.png`.
 - Demo-off local mobile fallback: 1/1 passed in 2.5 seconds with `BOT_DEMO_ENABLED=false` through the legacy Test Player path.
@@ -49,9 +50,9 @@ Focused evidence from this worktree:
 
 ### Next steps
 
-1. Recheck remote head and the complete scoped diff/file list; commit only AIP-MOB-01 implementation, tests, this handover and this task's design evidence.
-2. Push only to `origin/feature/smart-bot-player`. Verify lint/build/fast, API, browser, Staging target guard, migrations, Worker deploy and mobile smoke for the exact pushed SHA; confirm production deploy is skipped and only the Staging Worker/D1 were mutated. Fix any failures before proceeding.
-3. Verify the live HTTPS Staging Worker, deployed build SHA and health/room/rejoin smoke. Record sanitized evidence, limitations and short iPhone test steps in this handover and only AIP-MOB-01's design status/evidence.
-4. Finish at `PENDING_REVIEW` and stop for the consolidated human mobile review. Do not start AIP-02A.
+1. Run `git diff --check` and inspect the scoped diff. Commit the API Wrangler log artifact capture with only the current AIP-MOB-01 handover/design evidence.
+2. Recheck that `origin/feature/smart-bot-player` still equals `81f3d1338fee82f10245e99ffa7f944883274df6`, then push the new commit only to that branch. Verify lint/build/fast, API and browser checks on the exact new SHA; inspect the uploaded Wrangler logs if API fails.
+3. If required checks and generated-target guards pass, verify only the Staging D1/Worker are migrated/deployed and production deploy remains skipped; then verify live build SHA, health, room/rejoin smoke and mobile artifact.
+4. Record sanitized evidence, limitations and short iPhone test steps. Finish at `PENDING_REVIEW` and stop; do not start AIP-02A.
 
 Rollback: disable `BOT_DEMO_ENABLED` in the Staging-only config and run the guarded feature-branch Staging workflow, or revert this feature implementation through the same guarded workflow. Never use the root/default production deploy or D1 migration path.
