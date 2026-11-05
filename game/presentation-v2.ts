@@ -2881,7 +2881,7 @@ function skillEffectActionFor(input: PresentationV2Input): PresentationSkillEffe
   if (pending?.kind !== "trigger" || pending.event !== "hero_choice"
     || continuation?.kind !== "hero_choice_event"
     || effectRoot?.effectId !== "zhou_yu_fanjian"
-    || (continuation.stage !== "suit" && continuation.stage !== "card")
+    || (continuation.stage !== "suit" && continuation.stage !== "card" && continuation.stage !== "combined")
     || input.currentAction?.kind !== "trigger" || !sourceId || !targetId
     || sourceId === targetId || pending.actorId !== targetId || input.currentAction.actorId !== targetId
     || !rootEventId || !rootEvent || rootEvent.type !== "message" || rootEvent.presentation === false

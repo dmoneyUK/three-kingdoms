@@ -6621,6 +6621,95 @@
   z-index: 26;
 }
 
+.game-shell .play-table > .fanjian-combined-stage {
+  z-index: 26;
+}
+
+.game-shell .fanjian-combined-stage .fanjian-combined-controls {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.game-shell .fanjian-combined-stage .fanjian-combined-suits {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.game-shell .fanjian-combined-stage .fanjian-combined-suits legend,
+.game-shell .fanjian-combined-stage .fanjian-combined-controls h3 {
+  margin: 0 0 4px;
+  color: #d7c28f;
+  font: 700 8px/1.2 Arial, sans-serif;
+}
+
+.game-shell .fanjian-combined-stage .fanjian-combined-suit-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(44px, 1fr));
+  gap: 4px;
+}
+
+.game-shell .fanjian-combined-stage .fanjian-combined-suit-options button {
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px;
+  border: 1px solid #796844;
+  border-radius: 4px;
+  background: #151811;
+  color: #ead9ad;
+  font: 700 8px/1.15 Arial, sans-serif;
+  white-space: normal;
+}
+
+.game-shell .fanjian-combined-stage .fanjian-combined-suit-options button.selected,
+.game-shell .fanjian-combined-stage .fanjian-combined-suit-options button[aria-pressed="true"] {
+  border-color: #f2ca65;
+  background: #342a14;
+  box-shadow: 0 0 0 2px #f2ca6544;
+  color: #fff0c7;
+}
+
+.game-shell .fanjian-combined-stage .card-pool-panel__target-public-zone {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.game-shell .fanjian-combined-stage .card-pool-panel__target-public-backs {
+  box-sizing: border-box;
+  width: min(100%, 185px);
+  max-width: 100%;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+
+.game-shell .fanjian-combined-stage .card-pool-panel__target-public-backs::-webkit-scrollbar {
+  display: none;
+}
+
+.game-shell .fanjian-combined-stage .card-pool-panel__selection-count:empty {
+  display: none;
+}
+
+.game-shell .fanjian-combined-stage .card-pool-panel__confirm {
+  min-height: 44px;
+}
+
+@media (max-width: 360px) {
+  .game-shell .fanjian-combined-stage .fanjian-combined-suit-options {
+    grid-template-columns: repeat(2, minmax(44px, 1fr));
+  }
+}
+
 .game-shell .play-table:has(> .card-pool-target-stage[data-choice-mode="actor-target-select"]) > .interaction-safe-zone:has(> .interaction-stage-inspect-only),
 .game-shell .play-table:has(> .card-pool-target-stage[data-choice-mode="target-readonly"]) > .interaction-safe-zone:has(> .interaction-stage-inspect-only) {
   z-index: 40;

@@ -416,7 +416,10 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
     if (actor) {
       const labels = nextDecision.actionLabels.filter((label) => label !== "Respond")
         .map((label) => label.replace(/^Use\s+/i, ""));
-      const actionCopy = labels.length
+      const chooseInstruction = labels.length === 1 && /^choose\s/i.test(labels[0]);
+      const actionCopy = chooseInstruction
+        ? ` to ${labels[0][0].toLowerCase()}${labels[0].slice(1)}`
+        : labels.length
         ? nextDecision.stageLabel === "Skill decision"
           ? ` to use ${actionList(labels)}`
           : ` to play ${actionList(labels)}`

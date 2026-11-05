@@ -126,7 +126,7 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
     stable: { kind: stableKindOverride ?? "CHOICE", interactionId, checkpointId, presentationRevision: 1, decisionActorId },
     interaction: scene,
     decision: { actorId: decisionActorId, stage },
-    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" || state.startsWith("hua-tuo-first-aid") ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "pending-target-card" ? "target_card" : state === "picker" || state === "picker-hand-zone" || state === "retaliation-modal" || state === "frost-sword-selectable" || state.startsWith("local-equipment-target-card") || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" || state === "judgement" || state === "judgement-local" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "active-attack-observer" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state.startsWith("oath-negation") || state.startsWith("bumper-harvest") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "group-negation-local" || state === "raining-arrows-response" || state === "raining-arrows-no-dodge" || state === "preview-ack" || state === "conversion-no-provider" || state.startsWith("guan-yu-wusheng-response") || state.startsWith("zhao-yun-longdan-") || state.startsWith("cao-cao-entourage-") || state.startsWith("liu-bei-influencing-") || state.startsWith("zhen-ji-empress-dowager-") ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" || state.startsWith("hua-tuo-first-aid") ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "pending-target-card" ? "target_card" : state === "picker" || state === "picker-hand-zone" || state === "retaliation-modal" || state === "frost-sword-selectable" || state.startsWith("local-equipment-target-card") || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" || state === "judgement" || state === "judgement-local" || state === "fanjian-combined" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "active-attack-observer" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state.startsWith("oath-negation") || state.startsWith("bumper-harvest") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "group-negation-local" || state === "raining-arrows-response" || state === "raining-arrows-no-dodge" || state === "preview-ack" || state === "conversion-no-provider" || state.startsWith("guan-yu-wusheng-response") || state.startsWith("zhao-yun-longdan-") || state.startsWith("cao-cao-entourage-") || state.startsWith("liu-bei-influencing-") || state.startsWith("zhen-ji-empress-dowager-") ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
     groupParticipantProgress: progressCase && orderedProgressCase !== "missing" ? {
       cardKind: orderedProgressCase ? "SkyPiercingHalberdAttack" : "RainingArrows",
       resolutionSemantics: orderedProgressCase ? "ORDERED" : "GROUP",
@@ -430,6 +430,34 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
       declineAction: "decline_trigger",
     };
   }
+  if (state === "fanjian-combined") {
+    return {
+      version: 3,
+      kind: "trigger",
+      actorId,
+      deadline: 0,
+      reason: "Choose a suit and a hidden card",
+      legalActions: ["trigger"],
+      triggerOptions: [{
+        effectId: "zhou_yu_fanjian_choice",
+        label: "Choose a suit and a card",
+        allowDecline: false,
+        selection: {
+          type: "choice_and_target_cards",
+          choices: [
+            { id: "♥", label: "♥ Heart" },
+            { id: "♦", label: "♦ Diamond" },
+            { id: "♣", label: "♣ Club" },
+            { id: "♠", label: "♠ Spade" },
+          ],
+          targetId: "p1",
+          min: 1,
+          max: 1,
+          eligibleKeys: Array.from({ length: targetHandCount }, (_, index) => `hand:${index}`),
+        },
+      }],
+    };
+  }
   if (state === "fanjian-selectable") {
     return {
       version: 3,
@@ -615,10 +643,12 @@ function browserRoom({ state, count, handSize, handKind, targetHandCount, target
   const retaliationModalFixture = state === "retaliation-modal";
   const playerIds = Array.from({ length: count }, (_, index) => `p${index + 1}`);
   const bumperCurrentId = bumperHarvestComplete ? null : state === "bumper-harvest-returned" ? playerIds[2] ?? playerIds[1] : state === "bumper-harvest-dense" ? playerIds[playerIds.length - 2] : playerIds[1];
-  const meId = huaTuoFirstAidFixture ? "p1" : state === "hua-xiong-triumphant-observer" ? "p2" : bumperHarvestSourceViewer || oathNegationSourceViewer ? "p1" : bumperHarvestLocalFixture || oathNegationLocalFixture ? "p3" : groupNegationLocalFixture ? "p1" : bumperHarvestFixture ? "p4" : activeNegationObserver || timedNegationObserver ? "p4" : duelObserverView ? "p3" : judgementStage ? state === "judgement-local" ? "p1" : "p4" : borrowedSwordActiveFixture ? count === 2 ? "p1" : "p4" : targetShiftFixture ? count >= 5 ? "p5" : "p3" : frostSwordSelectionFixture || kirinBowSelectionFixture ? "p2" : state === "active-attack-observer" || state === "group-observer" || unfocusedGroup || groupNegationFixture || oathNegationFixture ? "p3" : state === "duel" || state === "duel-response" || state === "duel-no-attack" || state === "dodge" || state === "dodge-mismatch" || state === "dodge-no-provider" || state === "negation" || state === "confirm-skip" || state === "picker" || state === "picker-hand-zone" || state === "fanjian-selectable" ? "p2" : state === "dying" ? "p3" : "p1";
+  const meId = huaTuoFirstAidFixture ? "p1" : state === "hua-xiong-triumphant-observer" ? "p2" : bumperHarvestSourceViewer || oathNegationSourceViewer ? "p1" : bumperHarvestLocalFixture || oathNegationLocalFixture ? "p3" : groupNegationLocalFixture ? "p1" : bumperHarvestFixture ? "p4" : activeNegationObserver || timedNegationObserver ? "p4" : duelObserverView ? "p3" : judgementStage ? state === "judgement-local" ? "p1" : "p4" : borrowedSwordActiveFixture ? count === 2 ? "p1" : "p4" : targetShiftFixture ? count >= 5 ? "p5" : "p3" : frostSwordSelectionFixture || kirinBowSelectionFixture || state === "fanjian-combined" ? "p2" : state === "active-attack-observer" || state === "group-observer" || unfocusedGroup || groupNegationFixture || oathNegationFixture ? "p3" : state === "duel" || state === "duel-response" || state === "duel-no-attack" || state === "dodge" || state === "dodge-mismatch" || state === "dodge-no-provider" || state === "negation" || state === "confirm-skip" || state === "picker" || state === "picker-hand-zone" || state === "fanjian-selectable" ? "p2" : state === "dying" ? "p3" : "p1";
   const actorId = huaTuoFirstAidObserver ? "p2" : huaTuoFirstAidFixture ? "p1" : state === "hua-xiong-triumphant-observer" ? "p1" : state === "stargazing-active-observer" ? "p2" : bumperHarvestFixture ? bumperHarvestChild ? "p3" : bumperCurrentId : oathNegationFixture ? oathNegationLocalFixture ? "p3" : "p2" : timedNegationObserver || duelObserverView ? "p2" : judgementStage ? state === "judgement" ? "p3" : "p2" : borrowedSwordActiveFixture ? "p2" : targetShiftFixture ? "p4" : state === "active-attack-observer" ? "p2" : activeNegationObserver ? "p3" : state === "group-observer" || unfocusedGroup || groupNegationFixture ? "p1" : state === "dying" ? "p3" : meId;
   // Geometry-only large-hand fixture; IDs are synthetic, not a dealt deck.
-  const hand = huaTuoFirstAidFixture
+  const hand = state === "fanjian-combined"
+    ? []
+    : huaTuoFirstAidFixture
     ? [card("browser-first-aid-red", "Attack", "♥"), card("browser-first-aid-black", "Attack", "♠"), card("browser-first-aid-peach", "Peach", "♥")]
     : state.startsWith("liu-bei-benevolence")
     ? [card("browser-rende-eligible-one", "Attack", "♠"), card("browser-rende-eligible-two", "Peach", "♥"), card("browser-rende-ineligible", "Dodge", "♣")]
@@ -832,7 +862,7 @@ function browserRoom({ state, count, handSize, handKind, targetHandCount, target
     maxHp: 4,
     alive: oathNegationFixture ? id !== "p4" : id !== defeatedSeat,
     connected: true,
-    handCount: (state === "picker-hand-zone" || frostSwordSelectionFixture || state === "fanjian-selectable") && id === "p1" || retaliationModalFixture && id === "p2" || state === "pending-target-card" && id === "p2" ? targetHandCount : id === meId ? hand.length : 2,
+    handCount: (state === "picker-hand-zone" || frostSwordSelectionFixture || state === "fanjian-selectable" || state === "fanjian-combined") && id === "p1" || retaliationModalFixture && id === "p2" || state === "pending-target-card" && id === "p2" ? targetHandCount : id === meId ? hand.length : 2,
     judgementCards: state === "picker-hand-zone" && id === "p1"
       ? [card("browser-public-judgement", "Lightning", "♥", "Q")]
       : state === "pending-target-card" && id === "p2"

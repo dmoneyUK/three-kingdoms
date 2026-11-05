@@ -31,13 +31,14 @@ export type TriggerEvent = "turn_start" | "turn_end" | "draw_phase" | "discard_p
  * The event context is deliberately capability-neutral. Providers decide which
  * source/target cards they can use; orchestration only knows the domain event.
  */
-export type TriggerContext = { event: TriggerEvent; sourceId?: string; sourceEquipment: Card[]; sourceHand?: Card[]; sourceJudgement?: Card[]; sourceCards?: Card[]; damageCards?: Card[]; damageCause?: DamageCause; physicalSuit?: Card["suit"]; lostCards?: Card[]; attackUsed?: boolean; targetId?: string; targetIds?: string[]; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; sourceHero?: string | null; sourceHp?: number; sourceMaxHp?: number; targetHp?: number; turnPlayerId?: string; playPhase?: boolean; skillState?: Record<string, unknown>; playerId?: string; hero?: string | null; targetHero?: string | null; damageAmount?: number; amountRecovered?: number; recoveryReason?: string; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" | "ganglie" | "cavalry"; effectiveCard?: Card; heroChoiceStage?: "suit" | "card"; heroChoiceGuess?: string; turnEndStage?: "activation" | "equipment" };
+export type TriggerContext = { event: TriggerEvent; sourceId?: string; sourceEquipment: Card[]; sourceHand?: Card[]; sourceJudgement?: Card[]; sourceCards?: Card[]; damageCards?: Card[]; damageCause?: DamageCause; physicalSuit?: Card["suit"]; lostCards?: Card[]; attackUsed?: boolean; targetId?: string; targetIds?: string[]; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; sourceHero?: string | null; sourceHp?: number; sourceMaxHp?: number; targetHp?: number; turnPlayerId?: string; playPhase?: boolean; skillState?: Record<string, unknown>; playerId?: string; hero?: string | null; targetHero?: string | null; damageAmount?: number; amountRecovered?: number; recoveryReason?: string; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" | "ganglie" | "cavalry"; effectiveCard?: Card; heroChoiceStage?: "suit" | "card" | "combined"; heroChoiceGuess?: string; turnEndStage?: "activation" | "equipment" };
 export type TriggerSelection = { cardId?: unknown; cardIds?: unknown; cardKeys?: unknown; targetId?: unknown; targetIds?: unknown; choice?: unknown };
 export type TriggerSelectionConstraint =
   | { type: "cards"; min: number; max: number; eligibleCardIds: string[]; targetIds?: string[]; targetMin?: number; targetMax?: number }
   | { type: "target"; targetIds: string[]; min?: number; max?: number }
   | { type: "target_cards"; targetId: string; min: number; max: number; eligibleKeys: string[] }
-  | { type: "choice"; choices: { id: string; label: string }[]; eligibleHandKeys: string[]; cardCountByChoice?: Record<string, number> };
+  | { type: "choice"; choices: { id: string; label: string }[]; eligibleHandKeys: string[]; cardCountByChoice?: Record<string, number> }
+  | { type: "choice_and_target_cards"; choices: { id: string; label: string }[]; targetId: string; min: number; max: number; eligibleKeys: string[] };
 export type TriggerOption = { effectId: string; label: string; description?: string; selection: TriggerSelectionConstraint | null; allowDecline?: boolean; timeoutChoiceId?: string };
 export function triggerAllowsDecline(option: Pick<TriggerOption, "allowDecline">) {
   return option.allowDecline !== false;
@@ -64,6 +65,7 @@ type TriggerExecutionOutcome =
   | { kind: "gain_damage_cards"; targetId: string; cardIds: string[] }
   | { kind: "fanjian_guess"; targetId: string; guess: string }
   | { kind: "fanjian_card"; sourceId: string; targetId: string; targetCardKey: string }
+  | { kind: "fanjian_combined"; sourceId: string; targetId: string; guess: string; targetCardKey: string }
   | { kind: "draw_phase_modifier"; amount: number; modifierId?: string }
   | { kind: "draw_phase_replacement"; targetIds: string[] }
   | { kind: "draw_cards"; amount: number }
@@ -94,7 +96,13 @@ export type TriggeredEffect = {
 const zhouYuFanjianChoice: TriggeredEffect = {
   id: "zhou_yu_fanjian_choice",
   event: "hero_choice",
-  getOption: (context) => context.heroChoiceStage === "suit" ? {
+  getOption: (context) => context.heroChoiceStage === "combined" && context.sourceId && context.sourceHand?.length ? {
+    effectId: "zhou_yu_fanjian_choice",
+    label: "Choose a suit and a card",
+    description: "Choose a suit and one hidden card from Zhou Yu's hand.",
+    allowDecline: false,
+    selection: { type: "choice_and_target_cards", choices: [{ id: "♥", label: "♥ Heart" }, { id: "♦", label: "♦ Diamond" }, { id: "♣", label: "♣ Club" }, { id: "♠", label: "♠ Spade" }], targetId: context.sourceId, min: 1, max: 1, eligibleKeys: context.sourceHand.map((_, index) => `hand:${index}`) },
+  } : context.heroChoiceStage === "suit" ? {
     effectId: "zhou_yu_fanjian_choice",
     label: "Sowing Distrust — choose a suit",
     description: "Choose the suit before taking an unknown card from Zhou Yu's hand.",
@@ -108,6 +116,14 @@ const zhouYuFanjianChoice: TriggeredEffect = {
     selection: { type: "target_cards", targetId: context.sourceId, min: 1, max: 1, eligibleKeys: context.sourceHand.map((_, index) => `hand:${index}`) },
   } : null,
   resolve: (context, selection) => {
+    if (context.heroChoiceStage === "combined" && context.sourceId && context.targetId
+      && typeof selection.choice === "string" && ["♥", "♦", "♣", "♠"].includes(selection.choice)
+      && Array.isArray(selection.cardKeys) && selection.cardKeys.length === 1 && typeof selection.cardKeys[0] === "string" && /^hand:\d+$/.test(selection.cardKeys[0])) {
+      const index = Number(selection.cardKeys[0].slice(5));
+      if (Number.isInteger(index) && index >= 0 && index < (context.sourceHand?.length ?? 0)) {
+        return { status: "resolved", effectId: "zhou_yu_fanjian_choice", outcome: { kind: "fanjian_combined", sourceId: context.sourceId, targetId: context.targetId, guess: selection.choice, targetCardKey: selection.cardKeys[0] } };
+      }
+    }
     if (context.heroChoiceStage === "suit" && typeof selection.choice === "string" && ["♥", "♦", "♣", "♠"].includes(selection.choice)) {
       return { status: "resolved", effectId: "zhou_yu_fanjian_choice", outcome: { kind: "fanjian_guess", targetId: context.targetId ?? "", guess: selection.choice } };
     }

@@ -26,7 +26,7 @@ import { buildConsoleDecisionDisplay, triggerDecisionInstruction, viewerNegation
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration } from "../game/public-activity";
 import { CardFace } from "./card-face";
-import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolZone } from "./card-pool-panel";
+import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
 import { PublicCardDisplay, PublicDiscardAnnouncementLayer, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, publicCardActionKey, publicCardJourneyOwnershipIdentity, publicCardMotionForCommittedCard, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
@@ -3874,6 +3874,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [triggerSelectedKeys, setTriggerSelectedKeys] = useState<string[]>([]);
   const targetCardSubmissionRef = useRef("");
   const targetCardPickerSubmissionRef = useRef("");
+  const triggerChoiceSubmissionRef = useRef("");
   const [triggerChoice, setTriggerChoice] = useState("");
   const [discardSelected, setDiscardSelected] = useState<string[]>([]); const automaticDraw = useRef("");
   // Equipment cost selections use the selected-cost visual state.
@@ -4289,6 +4290,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // use the same target controls without making ordinary card targeting
   // available outside Play Phase.
   const activeSkillTargetMode = Boolean(activeSkillOption && activeSkillStateIsCurrent && activeSkillTargetIds.length > 0);
+  const fanjianTargetSelectionActive = Boolean(activeSkillTargetMode && activeSkillOption?.effectId === "zhou_yu_fanjian");
   const activeSkillSelectedTargetIds = activeSkillStateIsCurrent ? (activeSkillSelectionState?.targetIds ?? []).filter((id) => activeSkillTargetIds.includes(id)) : [];
   const activeSkillTargetId = activeSkillSelectedTargetIds[0] ?? "";
   const lustLocalSelectionActive = Boolean(
@@ -4485,6 +4487,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     playAuthorized: ordinaryTurnPlayAuthorized && !busy,
   });
   const mandatoryChoiceTriggerOption = triggerOptions.find((option) => option.selection?.type === "choice" && option.allowDecline === false) ?? null;
+  const combinedChoiceTriggerOption = triggerOptions.find((option) => option.selection?.type === "choice_and_target_cards" && option.allowDecline === false) ?? null;
+  const combinedChoiceSelection = combinedChoiceTriggerOption?.selection?.type === "choice_and_target_cards" ? combinedChoiceTriggerOption.selection : null;
   const genericChoiceTriggerOption = triggerOptions.find((option) => option.selection?.type === "choice" && !heroSkillEffectIds.has(option.effectId)) ?? null;
   const genericChoiceSelection = genericChoiceTriggerOption?.selection?.type === "choice" ? genericChoiceTriggerOption.selection : null;
   const inlineChoiceTriggerOption = genericChoiceTriggerOption
@@ -4501,7 +4505,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : null;
   const genericTriggerOptions = triggerOptions.filter((option) =>
     (!heroTriggerEffectIds.has(option.effectId) || option.selection?.type === "choice")
-    && option.effectId !== inlineChoiceTriggerOption?.effectId);
+    && option.effectId !== inlineChoiceTriggerOption?.effectId
+    && !(option.selection?.type === "choice_and_target_cards" && option.allowDecline === false));
   const choiceTriggerOption = mandatoryChoiceTriggerOption ?? (inlineChoiceTriggerOption ? null : genericChoiceTriggerOption);
   const selectedTriggerOption = choiceTriggerOption ?? triggerOptions.find((option) => option.effectId === responseProviderId) ?? null;
   // Mapped Hero skills (such as Retaliation) must be activated from the
@@ -5043,6 +5048,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const accepted = await onAction("trigger", { providerId: targetCardPickerOption.effectId, cardKeys: selectedKeys });
     if (!accepted) targetCardPickerSubmissionRef.current = "";
   };
+  const submitCombinedChoice = async (choice: string, keys: string[]) => {
+    if (!combinedChoiceTriggerOption || !combinedChoiceSelection || busy || !responseDecisionReady || !canUseAction(room.currentAction, "trigger")) return;
+    const eligibleChoice = combinedChoiceSelection.choices.some((candidate) => candidate.id === choice);
+    const selectedKeys = keys.filter((key) => combinedChoiceSelection.eligibleKeys.includes(key));
+    if (!eligibleChoice || selectedKeys.length !== 1 || selectedKeys.length !== keys.length) return;
+    const submissionKey = `${room.actionRevision ?? ""}|${combinedChoiceTriggerOption.effectId}|${choice}|${selectedKeys[0]}`;
+    if (triggerChoiceSubmissionRef.current === submissionKey) return;
+    triggerChoiceSubmissionRef.current = submissionKey;
+    const accepted = await onAction("trigger", { providerId: combinedChoiceTriggerOption.effectId, choice, cardKeys: selectedKeys });
+    if (!accepted) triggerChoiceSubmissionRef.current = "";
+  };
   const cancelLocalTargetSelection = () => {
     const responseTargetSelection = responseDecisionReady && (triggerResponse || canRespond)
       && (localTargetFlow === "trigger" || localTargetFlow === "active-skill");
@@ -5124,6 +5140,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         if (option.selection?.type === "cards" || option.selection?.type === "target" || option.selection?.type === "target_cards") {
           const activating = kingSkillId !== option.effectId;
           if (!activating && option.effectId === "diao_chan_lust") resetLocalTargetFlow("active-skill");
+          else if (!activating && option.effectId === "zhou_yu_fanjian" && option.selection?.type === "target") resetLocalTargetFlow("active-skill");
           else if (!activating && option.selection?.type === "target") {
             // Other target skills keep their explicit local Cancel surface.
             // Lust alone uses a second skill tap to clear its ordered choice.
@@ -5617,6 +5634,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     setInspectOnlyHandCardId("");
     closeCardDetails(false);
     closeHeroDetails(false);
+    setTriggerSelectedKeys([]);
+    setTriggerChoice("");
+    triggerChoiceSubmissionRef.current = "";
     opponentInspectionReturnFocusRef.current = null;
     setExpandedOpponentId(null);
   }, [closeCardDetails, closeHeroDetails, room.code, room.meId]);
@@ -5637,7 +5657,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // A response may advance to another decision without changing the turn,
   // phase, or acting seat. The authoritative revision identifies that new
   // decision and prevents a previous provider/cost from leaking into it.
-  useEffect(() => { const timer = setTimeout(() => { setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setResponseProviderId(""); setSelected(""); setTargetIds([]); setBorrowedSwordTargetId(""); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); targetCardSubmissionRef.current = ""; targetCardPickerSubmissionRef.current = ""; }, 0); return () => clearTimeout(timer); }, [room.actionRevision]);
+  useEffect(() => { const timer = setTimeout(() => { setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setResponseProviderId(""); setSelected(""); setTargetIds([]); setBorrowedSwordTargetId(""); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); targetCardSubmissionRef.current = ""; targetCardPickerSubmissionRef.current = ""; triggerChoiceSubmissionRef.current = ""; }, 0); return () => clearTimeout(timer); }, [room.actionRevision]);
   useEffect(() => {
     const nextIdentity = { roomCode: room.code, viewerId: room.meId, actionRevision: room.actionRevision ?? "" };
     const previousIdentity = targetActionIdentityRef.current;
@@ -9144,6 +9164,29 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const targetCardChoicePanelLabel = targetCardChoiceSharedCopyReady && targetCardPoolCompactLayout && targetCardChoiceAnnouncement
     ? `${targetCardChoiceAnnouncement} Choose one card.`
     : `${pendingTargetCardActionName ?? "Target card"} target card selection`;
+  const combinedChoicePoolTarget: PublicTargetPoolView | null = combinedChoiceSelection
+    ? { handCount: combinedChoiceSelection.eligibleKeys.length, equipmentCards: [], judgementCards: [] }
+    : null;
+  const combinedChoicePoolZones: TargetCardPoolZone[] = combinedChoiceSelection ? [{
+    id: "hand",
+    title: "Hand",
+    accessibleName: `Hand · ${combinedChoiceSelection.eligibleKeys.length} cards`,
+    choices: combinedChoiceSelection.eligibleKeys.map((opaqueKey): TargetCardPoolChoice => ({
+      type: "concealed-position",
+      opaqueKey,
+      position: Number(opaqueKey.slice(5)),
+      accessibleLabel: `Choose hidden Hand position ${Number(opaqueKey.slice(5)) + 1}`,
+      state: triggerSelectedKeys.includes(opaqueKey) ? "selected" : "available",
+    })),
+  }] : [];
+  const combinedChoicePlacement = useBattlefieldChoicePlacement({
+    enabled: Boolean(combinedChoiceTriggerOption && combinedChoiceSelection && triggerResponse && responseDecisionReady && canUseAction(room.currentAction, "trigger")),
+    playerCount: room.players.length,
+    placementKey: [room.code, room.meId, room.actionRevision ?? "", combinedChoiceSelection?.targetId ?? "", ...(combinedChoiceSelection?.eligibleKeys ?? [])].join("\u001f"),
+    centralTargetLayout: true,
+    requireSafePlacement: true,
+    protectActiveReveal: true,
+  });
   const activePublicEffectFrameAction = publicCardDisplayReady && publicCardDisplayAction?.publicCardEffectFrame
     ? publicCardDisplayAction : null;
   const activePublicEffectFrameEventIds = new Set([
@@ -10712,12 +10755,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     localTargetSelection.canCancel && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface && !ordinaryPlayTargetSelection
     || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal)
     || canClearTargetCardPickerSelection
-  );
+  ) && !fanjianTargetSelectionActive;
   const consoleLocalCancelEnabled = !lustLocalSelectionActive && (
     localTargetSelection.canCancel
     || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal)
     || canClearTargetCardPickerSelection
-  );
+  ) && !fanjianTargetSelectionActive;
   const ordinaryTurnDecisionSurface = consoleKind === "turn"
     && ordinaryTurnPlayAuthorized
     && !activeSkillSelection
@@ -10855,6 +10898,64 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         {harvestPoolProps && <CardPoolPanel {...harvestPoolProps} />}
       </BattlefieldChoiceStage>}
       <div className="play-center" aria-hidden="true"><div className="draw-stack" data-draw-anchor="true" /><div className="discard-stack" data-discard-anchor="true" /></div>
+      {combinedChoiceTriggerOption && combinedChoiceSelection && combinedChoicePoolTarget && combinedChoicePoolZones.length > 0 && <BattlefieldChoiceStage
+        key={`${room.actionRevision ?? ""}:${combinedChoiceTriggerOption.effectId}:${room.meId}`}
+        ref={combinedChoicePlacement.ref}
+        className="game-event-stage harvest-choice-stage card-pool-target-stage fanjian-combined-stage"
+        mode="actor-target-select"
+        accessibilityLabel="Sowing Distrust: choose a suit and one hidden card"
+        data-fanjian-combined-choice="true"
+        data-fanjian-choice-actor={room.meId}
+        data-fanjian-choice-action-revision={room.actionRevision ?? undefined}
+        data-target-card-pool-layout="central"
+        data-target-card-pool-top={combinedChoicePlacement.top ?? undefined}
+        data-target-card-pool-ready={combinedChoicePlacement.ready ? "true" : "false"}
+        aria-hidden={!combinedChoicePlacement.ready}
+        style={{
+          top: combinedChoicePlacement.top === null ? undefined : `${combinedChoicePlacement.top}px`,
+          left: combinedChoicePlacement.insets ? `${combinedChoicePlacement.insets.left}px` : undefined,
+          right: combinedChoicePlacement.insets?.width ? "auto" : combinedChoicePlacement.insets ? `${combinedChoicePlacement.insets.right}px` : undefined,
+          width: combinedChoicePlacement.insets?.width ? `${combinedChoicePlacement.insets.width}px` : undefined,
+        }}
+      >
+        <CardPoolPanel
+          mode="actor-target-select"
+          title="SOWING DISTRUST"
+          instruction="Choose a suit and one hidden card."
+          accessibilityLabel="Sowing Distrust combined choice"
+          publicTarget={combinedChoicePoolTarget}
+          zones={combinedChoicePoolZones}
+          handCountHeading={`Hand (${combinedChoiceSelection.eligibleKeys.length})`}
+          selectionControls={<div className="fanjian-combined-controls">
+            <fieldset className="fanjian-combined-suits">
+              <legend>Choose a suit</legend>
+              <div role="group" aria-label="Choose a suit" className="fanjian-combined-suit-options">
+                {combinedChoiceSelection.choices.map((choice) => <button
+                  key={choice.id}
+                  type="button"
+                  className={triggerChoice === choice.id ? "selected" : ""}
+                  disabled={triggerControlsDisabled}
+                  aria-pressed={triggerChoice === choice.id}
+                  onClick={() => setTriggerChoice(choice.id)}
+                >{choice.label}</button>)}
+              </div>
+            </fieldset>
+            <h3>Choose one hidden card</h3>
+          </div>}
+          scrollHint={combinedChoiceSelection.eligibleKeys.length > 4 ? "Swipe for more" : undefined}
+          selectionCount=""
+          actionLabel="Confirm"
+          disabled={triggerControlsDisabled}
+          confirmDisabled={triggerControlsDisabled || !combinedChoiceSelection.choices.some((choice) => choice.id === triggerChoice) || triggerSelectedKeys.filter((key) => combinedChoiceSelection.eligibleKeys.includes(key)).length !== 1}
+          error={error}
+          onToggle={(key) => {
+            if (!combinedChoiceSelection.eligibleKeys.includes(key)) return;
+            setTriggerSelectedKeys((keys) => keys.includes(key) ? [] : [key]);
+          }}
+          onConfirm={() => void submitCombinedChoice(triggerChoice, triggerSelectedKeys)}
+          onInfo={() => {}}
+        />
+      </BattlefieldChoiceStage>}
       {pendingTargetCardUsesUnifiedModal && pendingTargetCardPoolZones.length > 0 && pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget && pendingTargetCardPublicPool && room.pendingTargetCard && pendingTargetCardActionName && <BattlefieldChoiceStage
         key={`${room.actionRevision ?? ""}:${pendingTargetCardSelectableTarget.id}`}
         ref={pendingTargetCardPoolPlacement.ref}
@@ -11082,8 +11183,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               aria-live="polite"
               aria-atomic="true"
             >
-              {!borrowedSwordContinuationConsole && !lustLocalSelectionActive && !privateNegationAcknowledgement && !localWaitAlreadyPublic && !(consoleIsDecisionActor && room.currentAction?.kind === "trigger") && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "WAITING FOR OTHERS" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
-              <strong>{activeLocalPlayTargetNotice?.message ?? consoleDecision.instruction}</strong>
+              {!combinedChoiceTriggerOption && !borrowedSwordContinuationConsole && !lustLocalSelectionActive && !privateNegationAcknowledgement && !localWaitAlreadyPublic && !(consoleIsDecisionActor && room.currentAction?.kind === "trigger") && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "WAITING FOR OTHERS" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
+              {!combinedChoiceTriggerOption && <strong>{activeLocalPlayTargetNotice?.message ?? consoleDecision.instruction}</strong>}
               {lustTargetOrder && <em className="lust-order-guidance" data-testid="lust-order-guidance">
                 Attack order: <strong>{lustTargetOrder.firstName}</strong> first → <span className="lust-second-actor">{lustTargetOrder.secondName}</span> second.
               </em>}

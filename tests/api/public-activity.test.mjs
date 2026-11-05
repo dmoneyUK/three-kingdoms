@@ -43,6 +43,17 @@ test("public activity uses the public turn seat and fails closed for an absent s
   assert.deepEqual(derivePublicActivityStatus(room({ turnSeat: 99 })), { kind: "resolving", text: "Resolving…" });
 });
 
+test("public next-decision copy narrates a combined suit and hidden-card choice", () => {
+  const current = snapshot({ stage: "SEQUENTIAL_CHOICE", actorId: "p2", stableKind: "CHOICE", actionLabels: ["Choose a suit and a card"] });
+  current.publicNextDecision.stageLabel = "Skill decision";
+  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: current })), {
+    kind: "response",
+    text: "Waiting for Test Player 2 to choose a suit and a card",
+    heading: "Waiting for Test Player 2 to choose a suit and a card",
+    stage: "Skill decision",
+  });
+});
+
 test("PAC follows the exact committed Judgement event and ignores stale or mismatched stage facts", () => {
   const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
   const judgementFact = {

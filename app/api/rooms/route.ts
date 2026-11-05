@@ -757,6 +757,7 @@ function publicTriggerOutcomeSummary(outcome: { kind: string }): PublicTriggerOu
   const count = (value: unknown) => Array.isArray(value) ? value.length : null;
   switch (outcome.kind) {
     case "gain_target_card": return { affectedPlayerIds: ids(details.sourceId), outcomeLabel: "obtained one card" };
+    case "fanjian_combined": return { affectedPlayerIds: ids(details.targetId), outcomeLabel: "revealed one hidden card" };
     case "gain_damage_cards": {
       const gained = count(details.cardIds);
       return { affectedPlayerIds: ids(details.targetId), ...(gained !== null ? { amount: gained } : {}), outcomeLabel: gained === 1 ? "obtained the card that caused the damage" : "obtained the cards that caused the damage" };
@@ -1228,6 +1229,19 @@ function attachFanjianSettlement(log: string[], eventId: string, proof: Presenta
       if (event.id !== eventId) return entry;
       matches += 1;
       return `@event:${JSON.stringify({ ...event, importance: "essential", finalResult: true, publicSkillEffectSettlement: proof })}`;
+    } catch { return entry; }
+  });
+  return matches === 1 ? next : log;
+}
+function updatePublicEventMessage(log: string[], eventId: string, message: string) {
+  let matches = 0;
+  const next = log.map((entry) => {
+    if (!entry.startsWith("@event:")) return entry;
+    try {
+      const event = JSON.parse(entry.slice(7)) as { id?: unknown; presentation?: unknown } & Record<string, unknown>;
+      if (event.id !== eventId || event.presentation === false) return entry;
+      matches += 1;
+      return `@event:${JSON.stringify({ ...event, message })}`;
     } catch { return entry; }
   });
   return matches === 1 ? next : log;
@@ -7323,16 +7337,21 @@ export async function POST(request: Request) {
         if (!target || target.id === liveMe.id || sourceHand.length === 0) await recoverClaimedHeroSkill(liveRoom, liveMe, hand, selected, discard, log, `${liveMe.name}'s Sowing Distrust could not find a valid target and was settled safely.`);
         else {
         const nextState = { ...skillState, turnPlayerId: liveMe.id, fanjianUsed: true };
-        const presentation = addLogWithId(log, `${liveMe.name} uses Sowing Distrust on ${target.name}; ${target.name} must choose a suit before taking an unknown card.`, undefined, {
+        const presentation = addLogWithId(log, `${liveMe.name} uses Sowing Distrust on ${target.name}; ${target.name} must choose a suit and one hidden card from ${liveMe.name}'s hand.`, undefined, {
           publicSkillEffect: { effectId: "zhou_yu_fanjian", sourceId: liveMe.id, targetId: target.id },
         });
+        const choiceCausal = createCausalRoot({
+          stage: "SEQUENTIAL_CHOICE",
+          origin: { originSourceId: liveMe.id, originEffect: "Sowing Distrust", originalTargetIds: [target.id] },
+          current: { currentSourceId: liveMe.id, currentEffect: "Sowing Distrust", currentTargetIds: [target.id], resolvingPlayerId: target.id },
+        });
         const pending: TriggerPending = withPresentationBarrier({
-          kind: "trigger", event: "hero_choice", actorId: target.id, reason: `Sowing Distrust — choose a suit before taking a hidden card from ${liveMe.name}'s hand`, deadline: nextResponseDeadline(target),
-          continuation: { kind: "hero_choice_event", sourceId: liveMe.id, targetId: target.id, stage: "suit", effectRoot: { effectId: "zhou_yu_fanjian", rootEventId: presentation.eventId }, resumePhase: "play" },
+          kind: "trigger", event: "hero_choice", actorId: target.id, reason: "Sowing Distrust — choose a suit and a card", deadline: nextResponseDeadline(target), causal: choiceCausal.context,
+          continuation: { kind: "hero_choice_event", sourceId: liveMe.id, targetId: target.id, stage: "combined", causal: choiceCausal.context, effectRoot: { effectId: "zhou_yu_fanjian", rootEventId: presentation.eventId }, resumePhase: "play" },
         }, presentation.log, presentation.eventId);
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), liveMe.id),
-          db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(nextState), JSON.stringify(presentation.log), room.id),
+          db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, skill_state_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(nextState), JSON.stringify(presentation.log), JSON.stringify(choiceCausal.envelope), room.id),
         ]);
         }
       } else if (execution.outcome.kind === "lose_draw") {
@@ -7742,6 +7761,88 @@ export async function POST(request: Request) {
       const execution = triggerExecution;
       const sourceHand = source ? parse<Card[]>(source.hand_json, []) : [];
       if (!source || !target || sourceHand.length === 0 || action === "decline_trigger_effect") return json({ error: "That Sowing Distrust choice is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      if (continuation.stage === "combined") {
+        const livePending = parsePersistedPending(liveRoom.pending_json);
+        if (liveRoom.phase !== "response" || liveRoom.pending_json !== room.pending_json
+          || livePending?.kind !== "trigger" || livePending.actorId !== target.id
+          || livePending.continuation.kind !== "hero_choice_event" || livePending.continuation.stage !== "combined"
+          || livePending.continuation.sourceId !== source.id || livePending.continuation.targetId !== target.id
+          || target.id !== me.id) {
+          return json({ error: "That Sowing Distrust choice is stale.", stale: true, room: await roomState(code, token) }, 409);
+        }
+        const liveContext = triggerContextFor(livePending, players);
+        const liveOption = triggerOptionsFor(livePending, players).find((option) => option.effectId === "zhou_yu_fanjian_choice");
+        const liveExecution = liveContext && liveOption
+          ? resolveTriggeredEffect("zhou_yu_fanjian_choice", liveContext, { choice: body.choice, cardKeys: body.cardKeys })
+          : null;
+        if (liveExecution?.outcome.kind !== "fanjian_combined"
+          || liveExecution.outcome.sourceId !== source.id || liveExecution.outcome.targetId !== target.id) {
+          return json({ error: "Choose one valid suit and one current hidden card position.", stale: true, room: await roomState(code, token) }, 409);
+        }
+        const cardIndexMatch = /^hand:(\d+)$/.exec(liveExecution.outcome.targetCardKey);
+        const cardIndex = cardIndexMatch ? Number(cardIndexMatch[1]) : -1;
+        const card = Number.isInteger(cardIndex) && cardIndex >= 0 ? sourceHand[cardIndex] : undefined;
+        if (!card || sourceHand.filter((held) => held.id === card.id).length !== 1) {
+          return json({ error: "That Sowing Distrust card position is stale.", stale: true, room: await roomState(code, token) }, 409);
+        }
+        const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?")
+          .bind(room.id, liveRoom.pending_json).run();
+        if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Sowing Distrust choice has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+        const sourceHandAfter = sourceHand.filter((held) => held.id !== card.id);
+        const targetHand = [...parse<Card[]>(target.hand_json, []), card];
+        const updatedSource = { ...source, hand_json: JSON.stringify(sourceHandAfter) } satisfies PlayerRow;
+        const updatedTarget = { ...target, hand_json: JSON.stringify(targetHand) } satisfies PlayerRow;
+        const revealEventId = crypto.randomUUID();
+        const presentation = addCardEventWithId(parse<string[]>(liveRoom.log_json, []), source.name, card, target.name, "reveal", true, {
+          actorId: source.id,
+          publicZoneTransition: {
+            semantics: "PROVEN", visibility: "PUBLIC", eventId: revealEventId,
+            sourceEventId: revealEventId, rootEventId: continuation.effectRoot?.rootEventId ?? revealEventId,
+            physicalCardId: card.id,
+            from: { zone: "HAND", ownerId: source.id },
+            to: { zone: "HAND", ownerId: target.id },
+          },
+        }, revealEventId);
+        const outcome = liveExecution.outcome.guess === card.suit ? "SUITS_MATCHED" : "SUITS_DIFFERED";
+        const settlementProof = fanjianSettlementProofFor(presentation.log, continuation, outcome);
+        const resultMessage = outcome === "SUITS_MATCHED"
+          ? `${target.name} revealed ${card.rank}${card.suit} ${cardDefinition(card.kind).name} from ${source.name}'s hand. The suits match; ${target.name} keeps the card and takes no damage.`
+          : `${target.name} revealed ${card.rank}${card.suit} ${cardDefinition(card.kind).name} from ${source.name}'s hand. The suits differ; ${target.name} keeps the card.`;
+        const result = addLogWithId(presentation.log, resultMessage, undefined, { importance: "essential", finalResult: true });
+        let nextLog = addPrivateHandArrivalEvent(result.log, target, card, {
+          sourceZone: "hand",
+          sourcePlayerId: source.id,
+          rootEventId: presentation.eventId,
+          rootResolutionId: latestResolutionId(presentation.log),
+        });
+        if (settlementProof) nextLog = attachFanjianSettlement(nextLog, result.eventId, settlementProof);
+        if (outcome === "SUITS_MATCHED") {
+          await db.batch([
+            db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHandAfter), source.id),
+            db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id),
+            db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ?, causal_envelope_json = NULL WHERE id = ?").bind(continuation.resumePhase, JSON.stringify(nextLog), room.id),
+          ]);
+        } else {
+          await resolveSourcedDamage({
+            room: liveRoom, source: updatedSource, target: updatedTarget,
+            players: players.map((player) => player.id === source.id ? updatedSource : player.id === target.id ? updatedTarget : player),
+            amount: 1, discard: parse<Card[]>(liveRoom.discard_json, []), log: nextLog,
+            resumePhase: continuation.resumePhase, resumePlayerId: source.id, sequenceStartCardId: card.id,
+            rootEventId: continuation.effectRoot?.rootEventId, damageCards: [card], label: "Sowing Distrust", causal: continuation.causal,
+            damageDescription: (amount) => amount > 0 ? `${target.name} takes ${amount} damage from Sowing Distrust` : `${target.name}'s Sowing Distrust damage is prevented`,
+            writes: [
+              db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHandAfter), source.id),
+              db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id),
+            ],
+            finalizeDamageLog: (damageLog: string[], amount: number) => updatePublicEventMessage(
+              settlementProof ? attachFanjianSettlement(damageLog, result.eventId, settlementProof) : damageLog,
+              result.eventId,
+              `${target.name} revealed ${card.rank}${card.suit} ${cardDefinition(card.kind).name} from ${source.name}'s hand. The suits differ; ${target.name} keeps the card and ${amount > 0 ? `takes ${amount} damage from Sowing Distrust` : "the damage is prevented"}.`,
+            ),
+          });
+        }
+        return json({ room: await roomState(code, token) });
+      }
       if (continuation.stage === "suit") {
         if (execution?.outcome.kind !== "fanjian_guess") return json({ error: "That Sowing Distrust suit choice is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();

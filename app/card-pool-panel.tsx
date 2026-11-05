@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Card } from "../game/model";
 import { cardDefinition } from "../game/cards";
 import { CardFace } from "./card-face";
@@ -79,6 +79,9 @@ type TargetSelectProps = SharedProps & {
   mode: "actor-target-select";
   publicTarget: PublicTargetPoolView;
   zones: readonly TargetCardPoolZone[];
+  selectionControls?: ReactNode;
+  scrollHint?: string;
+  handCountHeading?: string;
   selectionCount: string;
   actionLabel: string;
   disabled: boolean;
@@ -221,6 +224,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
       </footer>}
     </>}
     {targetPublicProps && <>
+    {actorTargetProps?.selectionControls}
     {showActorTargetZoneTabs && <div className="card-pool-panel__tabs" role="tablist" aria-label="Target card zones" tabIndex={-1} onKeyDown={handleTargetZoneTabKeyDown}>
       {populatedTargetZoneTabs.map((zone) => <button
         key={zone.id}
@@ -239,9 +243,9 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
     <div
       id="card-pool-target-public-zones"
       className="card-pool-panel__target-public-zones"
-      role={actorTargetProps ? "tabpanel" : "group"}
+      role={actorTargetProps && showActorTargetZoneTabs ? "tabpanel" : "group"}
       aria-label={actorTargetProps ? `${activeTargetZoneTab.label}: ${activeTargetZoneTab.count} cards` : "Public target card zones"}
-      aria-labelledby={actorTargetProps ? `card-pool-target-tab-${activeTargetZoneTab.id}` : undefined}
+      aria-labelledby={actorTargetProps && showActorTargetZoneTabs ? `card-pool-target-tab-${activeTargetZoneTab.id}` : undefined}
       data-target-card-public-zones="true"
       data-active-zone={actorTargetProps ? activeTargetZoneTab.id : undefined}
     >
@@ -250,9 +254,10 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
         data-target-card-public-zone="hand"
         aria-label={`Hand: ${targetPublicHandCount} face-down cards`}
       >
-        {(!actorTargetProps || !showActorTargetZoneTabs) && <b className="card-pool-panel__target-public-zone-title">HAND · {targetPublicHandCount}</b>}
+        {(!actorTargetProps || !showActorTargetZoneTabs) && <b className="card-pool-panel__target-public-zone-title">{actorTargetProps?.handCountHeading ?? `HAND · ${targetPublicHandCount}`}</b>}
+        {actorTargetProps?.scrollHint && targetPublicHandCount > 4 && <small className="card-pool-panel__scroll-hint" aria-hidden="true">{actorTargetProps.scrollHint}</small>}
         {targetPublicHandCount > 0
-          ? <span className={`card-pool-panel__target-public-backs${randomHandSelected ? " pending-choice" : ""}`}>
+          ? <span className={`card-pool-panel__target-public-backs${randomHandSelected ? " pending-choice" : ""}`} data-hand-scrollable={targetPublicHandCount > 4 ? "true" : undefined}>
             {Array.from({ length: targetPublicHandCount }, (_, index) => {
               const choice = handChoicesByPosition.get(index);
               const selected = choice?.state === "selected";
