@@ -317,7 +317,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       expect(Number.parseFloat(await skill.evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(10);
     }
     await expect(inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]')).toHaveCount(1);
-    await expect(inspect.locator(".hero-focus-identity-stats [data-public-hand-count]")).toHaveText("Hand · 2");
+    await expect(inspect.locator(".hero-focus-identity-row [data-public-hand-count]")).toHaveText("Hand · 2");
     await expect(opener).toHaveAttribute("aria-pressed", "true");
     await expect(opener).toHaveAttribute("aria-expanded", "true");
     await expect(inspect.locator('[aria-label="Concealed Hand"]')).toHaveCount(0);
@@ -340,8 +340,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       inspect.locator(".hero-focus-identity").boundingBox(),
       inspect.locator(".hero-focus-identity").evaluate((element) => ({
         hero: Number.parseFloat(getComputedStyle(document.querySelector(".hero-focus-inspect-identity-caption .hero-focus-identity-hero")).fontSize),
-        hp: Number.parseFloat(getComputedStyle(element.querySelector(".hero-focus-identity-stats small")).fontSize),
-        hand: Number.parseFloat(getComputedStyle(element.querySelector("[data-public-hand-count]")).fontSize),
+        hp: Number.parseFloat(getComputedStyle(element.querySelector(".hero-focus-identity-row .hero-focus-identity-stat")).fontSize),
+        hand: Number.parseFloat(getComputedStyle(element.querySelectorAll(".hero-focus-identity-row .hero-focus-identity-stat")[1]).fontSize),
       })),
       page.locator(".stage-system-menu-trigger").boundingBox(),
       page.locator(".local-player-dock .console-guidance").boundingBox(),
@@ -367,21 +367,25 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     expect(identityType.hand).toBeGreaterThanOrEqual(10);
     expect(portraitBox.x).toBeGreaterThanOrEqual(portraitColumnBox.x);
     expect(portraitBox.x + portraitBox.width).toBeLessThanOrEqual(portraitColumnBox.x + portraitColumnBox.width + 1);
-    expect(captionBox.y).toBeGreaterThanOrEqual(portraitBox.y + portraitBox.height - 1);
-    expect(captionBox.x).toBeGreaterThanOrEqual(portraitBox.x - 1);
-    expect(captionBox.x + captionBox.width).toBeLessThanOrEqual(portraitBox.x + portraitBox.width + 1);
+    expect(captionBox.y).toBeGreaterThanOrEqual(portraitBox.y - 1);
+    expect(captionBox.y + captionBox.height).toBeLessThanOrEqual(portraitBox.y + portraitBox.height + 1);
+    expect(captionBox.x).toBeGreaterThanOrEqual(portraitBox.x + portraitBox.width - 1);
+    expect(captionBox.x + captionBox.width).toBeLessThanOrEqual(bodyBox.x + bodyBox.width + 1);
     expect(portraitBox.height / portraitBox.width).toBeGreaterThanOrEqual(1.2);
     expect(portraitBox.height / portraitBox.width).toBeLessThanOrEqual(1.3);
     if (viewport.width <= 520) {
-      expect(portraitBox.width).toBeGreaterThanOrEqual(viewport.count <= 4 ? 74 : 50);
+      expect(portraitBox.width).toBeGreaterThanOrEqual(viewport.count <= 4 ? 58 : 50);
       expect(shellBox.width / stageBox.width).toBeLessThanOrEqual(0.92);
       const leftInset = shellBox.x - stageBox.x;
       const rightInset = stageBox.x + stageBox.width - shellBox.x - shellBox.width;
       expect(Math.abs(leftInset - rightInset)).toBeLessThanOrEqual(1);
     }
-    const hpBox = await inspect.locator(".hero-focus-identity-stats small").first().boundingBox();
-    const handBox = await inspect.locator(".hero-focus-identity-stats small").nth(1).boundingBox();
-    expect(Math.abs((hpBox.y + hpBox.height / 2) - (handBox.y + handBox.height / 2))).toBeLessThanOrEqual(3);
+    const heroNameBox = await inspect.locator(".hero-focus-identity-row").nth(0).locator(".hero-focus-identity-name").boundingBox();
+    const hpBox = await inspect.locator(".hero-focus-identity-row").nth(0).locator(".hero-focus-identity-stat").boundingBox();
+    const playerNameBox = await inspect.locator(".hero-focus-identity-row").nth(1).locator(".hero-focus-identity-name").boundingBox();
+    const handBox = await inspect.locator(".hero-focus-identity-row").nth(1).locator(".hero-focus-identity-stat").boundingBox();
+    expect(Math.abs((heroNameBox.y + heroNameBox.height / 2) - (hpBox.y + hpBox.height / 2))).toBeLessThanOrEqual(3);
+    expect(Math.abs((playerNameBox.y + playerNameBox.height / 2) - (handBox.y + handBox.height / 2))).toBeLessThanOrEqual(3);
     expect(overlaps(shellBox, menuBox)).toBe(false);
     expect(overlaps(shellBox, guidanceBox)).toBe(false);
     if (activityBox) expect(overlaps(shellBox, activityBox)).toBe(false);
@@ -574,16 +578,25 @@ for (const viewport of inspectorMiniatureViewports) {
         const button = cards.nth(index);
         const face = button.locator(".played-card");
         const corner = face.locator(":scope > i");
+        const name = face.locator(":scope > .card-name-mark");
         await expect(button).toHaveAttribute("aria-label", `Explain ${expected.name}`);
         await expect(face).toHaveClass(new RegExp(expected.suitClass));
-        await expect(face.locator(":scope > .card-name-mark")).toHaveCSS("display", "none");
+        await expect(name).toBeVisible();
         await expect(face.locator(":scope > strong")).toHaveCSS("display", "none");
         await expect(corner.locator("small")).toHaveText(expected.suit);
 
-        const [buttonBox, faceBox, cornerBox, rank, cornerStyle, faceStyle] = await Promise.all([
+        const [buttonBox, faceBox, cornerBox, nameBox, nameMetrics, rank, cornerStyle, faceStyle] = await Promise.all([
           button.boundingBox(),
           face.boundingBox(),
           corner.boundingBox(),
+          name.boundingBox(),
+          name.evaluate((element) => ({
+            fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+            scrollWidth: element.scrollWidth,
+            clientWidth: element.clientWidth,
+            overflow: getComputedStyle(element).overflow,
+            lineClamp: getComputedStyle(element).getPropertyValue("-webkit-line-clamp"),
+          })),
           corner.evaluate((element) => element.firstChild?.textContent?.trim()),
           corner.evaluate((element) => ({
             transform: getComputedStyle(element).transform,
@@ -595,15 +608,24 @@ for (const viewport of inspectorMiniatureViewports) {
         expect(buttonBox).not.toBeNull();
         expect(faceBox).not.toBeNull();
         expect(cornerBox).not.toBeNull();
+        expect(nameBox).not.toBeNull();
         expect(rank).toBe(expected.rank);
         expect(faceBox.height / faceBox.width).toBeGreaterThanOrEqual(1.45);
         expect(faceBox.height / faceBox.width).toBeLessThanOrEqual(1.55);
-        expect(faceBox.width).toBeGreaterThanOrEqual(29);
+        expect(faceBox.width).toBeGreaterThanOrEqual(28);
         expect(faceBox.width).toBeLessThanOrEqual(60);
         expect(cornerBox.x).toBeGreaterThanOrEqual(faceBox.x - 0.5);
         expect(cornerBox.y).toBeGreaterThanOrEqual(faceBox.y - 0.5);
         expect(cornerBox.x + cornerBox.width).toBeLessThanOrEqual(faceBox.x + faceBox.width + 0.5);
         expect(cornerBox.y + cornerBox.height).toBeLessThanOrEqual(faceBox.y + faceBox.height + 0.5);
+        expect(nameBox.x).toBeGreaterThanOrEqual(faceBox.x - 0.5);
+        expect(nameBox.y).toBeGreaterThanOrEqual(faceBox.y - 0.5);
+        expect(nameBox.x + nameBox.width).toBeLessThanOrEqual(faceBox.x + faceBox.width + 0.5);
+        expect(nameBox.y + nameBox.height).toBeLessThanOrEqual(faceBox.y + faceBox.height + 0.5);
+        expect(nameMetrics.fontSize).toBeLessThanOrEqual(7.1);
+        expect(nameMetrics.scrollWidth).toBeLessThanOrEqual(nameMetrics.clientWidth + 1);
+        expect(nameMetrics.overflow).toBe("hidden");
+        expect(nameMetrics.lineClamp).toBe("2");
         expect(cornerBox.width).toBeGreaterThanOrEqual(11.5);
         expect(cornerBox.height).toBeGreaterThanOrEqual(17);
         expect(cornerStyle.transform).toBe("none");
@@ -613,12 +635,14 @@ for (const viewport of inspectorMiniatureViewports) {
         expect(buttonBox.x).toBeGreaterThanOrEqual(equipmentBox.x);
         expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(equipmentBox.x + equipmentBox.width);
         geometry.push({
-          name: expected.name,
+          cardName: expected.name,
           rank: expected.rank,
           suit: expected.suit,
           button: buttonBox,
           face: faceBox,
           corner: cornerBox,
+          nameRect: nameBox,
+          nameFontSize: nameMetrics.fontSize,
           cornerFontSize: cornerStyle.fontSize,
           suitFontSize: cornerStyle.suitFontSize,
         });
@@ -639,6 +663,87 @@ for (const viewport of inspectorMiniatureViewports) {
   }
 }
 
+test("UX2 T2 shared Judgement and Equipment miniatures contain their visible text", async ({ page }, testInfo) => {
+  const viewport = { width: 390, height: 844 };
+  await loadFixture(page, { ...viewport, targetHero: "xiahou-dun", equipmentCase: "weapon", judgementCase: "single-lightning" });
+  await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+  const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+  await expect(inspect).toBeVisible();
+  await testInfo.attach("UX2-T2-390px-miniature-screenshot.png", {
+    body: await page.screenshot({ animations: "disabled" }),
+    contentType: "image/png",
+  });
+  const miniatures = [
+    { locator: inspect.locator('[aria-label="Judgement Zone"] .opponent-inspection-card'), name: "Lightning", rank: "Q", suit: "♥" },
+    { locator: inspect.locator('[aria-label="Equipment"] .opponent-inspection-equipment-card'), name: "Zhuge Crossbow", rank: "A", suit: "♦" },
+  ];
+  await expect(inspect.locator(".played-card")).toHaveCount(2);
+
+  const measurements = [];
+  for (const miniature of miniatures) {
+    const button = miniature.locator;
+    const face = button.locator(".played-card");
+    const name = face.locator(":scope > .card-name-mark");
+    const corner = face.locator(":scope > i");
+    await expect(button).toHaveAttribute("aria-label", `Explain ${miniature.name}`);
+    await expect(name).toBeVisible();
+    await expect(name).toContainText(miniature.name);
+    await expect(face.locator(":scope > strong")).toHaveCSS("display", "none");
+    await expect(corner).toContainText(miniature.rank);
+    await expect(corner.locator("small")).toHaveText(miniature.suit);
+
+    const geometry = await face.evaluate((faceNode) => {
+      const faceRect = faceNode.getBoundingClientRect();
+      const buttonRect = faceNode.parentElement.getBoundingClientRect();
+      const nameNode = faceNode.querySelector(":scope > .card-name-mark");
+      const nameRect = nameNode.getBoundingClientRect();
+      const nameStyle = getComputedStyle(nameNode);
+      const cornerNode = faceNode.querySelector(":scope > i");
+      const cornerRect = cornerNode.getBoundingClientRect();
+      const cornerStyle = getComputedStyle(cornerNode);
+      return {
+        face: { left: faceRect.left, top: faceRect.top, right: faceRect.right, bottom: faceRect.bottom, width: faceRect.width, height: faceRect.height },
+        button: { left: buttonRect.left, top: buttonRect.top, right: buttonRect.right, bottom: buttonRect.bottom },
+        name: { left: nameRect.left, top: nameRect.top, right: nameRect.right, bottom: nameRect.bottom, fontSize: Number.parseFloat(nameStyle.fontSize), scrollWidth: nameNode.scrollWidth, clientWidth: nameNode.clientWidth, overflow: nameStyle.overflow, lineClamp: nameStyle.getPropertyValue("-webkit-line-clamp") },
+        corner: { left: cornerRect.left, top: cornerRect.top, right: cornerRect.right, bottom: cornerRect.bottom, width: cornerRect.width, height: cornerRect.height, fontSize: Number.parseFloat(cornerStyle.fontSize), transform: cornerStyle.transform },
+        artwork: getComputedStyle(faceNode).backgroundImage,
+      };
+    });
+    expect(geometry.face.width).toBeGreaterThanOrEqual(28);
+    expect(geometry.face.width).toBeLessThanOrEqual(60);
+    expect(geometry.face.height / geometry.face.width).toBeGreaterThanOrEqual(1.45);
+    expect(geometry.face.height / geometry.face.width).toBeLessThanOrEqual(1.55);
+    expect(geometry.name.left).toBeGreaterThanOrEqual(geometry.face.left - 0.5);
+    expect(geometry.name.top).toBeGreaterThanOrEqual(geometry.face.top - 0.5);
+    expect(geometry.name.right).toBeLessThanOrEqual(geometry.face.right + 0.5);
+    expect(geometry.name.bottom).toBeLessThanOrEqual(geometry.face.bottom + 0.5);
+    expect(geometry.name.fontSize).toBeLessThanOrEqual(7.1);
+    expect(geometry.name.scrollWidth).toBeLessThanOrEqual(geometry.name.clientWidth + 1);
+    expect(geometry.name.overflow).toBe("hidden");
+    expect(geometry.name.lineClamp).toBe("2");
+    expect(geometry.corner.left).toBeGreaterThanOrEqual(geometry.face.left - 0.5);
+    expect(geometry.corner.top).toBeGreaterThanOrEqual(geometry.face.top - 0.5);
+    expect(geometry.corner.right).toBeLessThanOrEqual(geometry.face.right + 0.5);
+    expect(geometry.corner.bottom).toBeLessThanOrEqual(geometry.face.bottom + 0.5);
+    expect(geometry.corner.fontSize).toBeGreaterThanOrEqual(7);
+    expect(geometry.corner.transform).toBe("none");
+    expect(geometry.artwork).not.toBe("none");
+    measurements.push({ cardName: miniature.name, ...geometry });
+
+    await button.click();
+    const detail = inspect.locator("[data-inspector-card-detail='true']");
+    await expect(detail.locator(".hero-focus-inspect-card-name")).toHaveText(miniature.name);
+    await expect(detail.locator(".hero-focus-inspect-card-metadata")).toContainText(`${miniature.rank}${miniature.suit}`);
+  }
+
+  expect(await page.evaluate(() => window.__browserActions.length)).toBe(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+  await testInfo.attach("UX2-T2-390px-miniature-geometry.json", {
+    body: Buffer.from(JSON.stringify({ viewport, miniatures: measurements }, null, 2)),
+    contentType: "application/json",
+  });
+});
+
 const ins5Viewports = [
   { width: 390, height: 700, count: 4, equipmentCase: "empty", judgementCase: null, equipmentSlots: [], judgementCards: 0 },
   { width: 390, height: 844, count: 6, equipmentCase: "weapon", judgementCase: "single-lightning", equipmentSlots: ["weapon"], judgementCards: 1 },
@@ -655,15 +760,16 @@ for (const viewport of ins5Viewports) {
     const body = inspect.locator(":scope > .hero-focus-body");
     const portraitColumn = body.locator(":scope > .hero-focus-inspect-portrait-column");
     const portrait = portraitColumn.locator(":scope > .hero-focus-portrait");
-    const caption = portraitColumn.locator(":scope > .hero-focus-inspect-identity-caption");
+    const caption = inspect.locator(":scope .hero-focus-inspect-profile > .hero-focus-inspect-identity-caption");
     const heroCaption = caption.locator(".hero-focus-identity-hero");
     const playerCaption = caption.locator(".hero-focus-identity-player");
     const main = body.locator(":scope > .hero-focus-inspect-main");
     const upper = main.locator(":scope > .hero-focus-inspect-upper");
     const identity = upper.locator(":scope > .hero-focus-identity");
     const skills = identity.locator('[aria-label="Public Skills"]');
-    const judgement = upper.locator('[aria-label="Judgement Zone"]');
-    const equipment = main.locator('[aria-label="Equipment"]');
+    const publicZones = main.locator(":scope > .hero-focus-inspect-public-zones");
+    const judgement = publicZones.locator(":scope > [aria-label=\"Judgement Zone\"]");
+    const equipment = publicZones.locator(":scope > [aria-label=\"Equipment\"]");
     const judgementRow = judgement.locator(".opponent-inspection-slot-row");
     const equipmentRow = equipment.locator(".opponent-inspection-slot-row");
     await expect(inspect).toHaveAttribute("data-inspector-layout", "content-wrapped");
@@ -680,11 +786,10 @@ for (const viewport of ins5Viewports) {
       await expect(playerCaption).toHaveText("Player 2");
     }
     await expect(heroCaption).toBeVisible();
-    await expect(upper.locator(".opponent-inspection-zone")).toHaveCount(2);
-    await expect(main.locator(".opponent-inspection-zone[aria-label=\"Equipment\"]")).toHaveCount(1);
-    await expect(identity.locator(".hero-focus-identity-hero, .hero-focus-identity-player")).toHaveCount(0);
-    await expect(identity.locator(".hero-focus-identity-stats")).toHaveCount(1);
-    await expect(identity.locator(".hero-focus-identity-stats small")).toHaveCount(2);
+    await expect(upper.locator(".opponent-inspection-zone")).toHaveCount(1);
+    await expect(publicZones.locator(":scope > .opponent-inspection-zone")).toHaveCount(2);
+    await expect(caption.locator(".hero-focus-identity-row")).toHaveCount(2);
+    await expect(caption.locator(".hero-focus-identity-stat")).toHaveCount(2);
     await expect(judgementRow.locator("[data-inspector-slot]")).toHaveCount(2);
     await expect(equipmentRow.locator("[data-inspector-slot]")).toHaveCount(4);
     expect(await equipmentRow.locator("[data-inspector-slot]").evaluateAll((slots) => slots.map((slot) => slot.getAttribute("data-inspector-slot"))))
@@ -702,13 +807,13 @@ for (const viewport of ins5Viewports) {
       await expect(overflow).toHaveCount(0);
     }
 
-    const [inspectBox, bodyBox, portraitColumnBox, portraitBox, captionBox, mainBox, upperBox, identityBox, skillsBox, judgementBox, equipmentBox, panelBox, stageBox, dockBox, handBox, activityBox, seatBoxes] = await Promise.all([
+    const [inspectBox, bodyBox, portraitColumnBox, portraitBox, captionBox, mainBox, upperBox, identityBox, skillsBox, publicZonesBox, judgementBox, equipmentBox, panelBox, stageBox, dockBox, handBox, activityBox, seatBoxes] = await Promise.all([
       inspect.boundingBox(), body.boundingBox(), portraitColumn.boundingBox(), portrait.boundingBox(), caption.boundingBox(), main.boundingBox(), upper.boundingBox(), identity.boundingBox(),
-      skills.boundingBox(), judgement.boundingBox(), equipment.boundingBox(),
+      skills.boundingBox(), publicZones.boundingBox(), judgement.boundingBox(), equipment.boundingBox(),
       page.locator(".opponent-inspection-floating-shell").boundingBox(), page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]').boundingBox(),
       page.locator(".local-player-dock").boundingBox(), page.locator(".local-hand-rail").boundingBox(), visibleBoundingBox(page.locator(".public-activity-chip")), seatGeometry(page),
     ]);
-    for (const box of [inspectBox, bodyBox, portraitColumnBox, portraitBox, captionBox, mainBox, upperBox, identityBox, skillsBox, judgementBox, equipmentBox, panelBox, stageBox, dockBox, handBox]) expect(box).not.toBeNull();
+    for (const box of [inspectBox, bodyBox, portraitColumnBox, portraitBox, captionBox, mainBox, upperBox, identityBox, skillsBox, publicZonesBox, judgementBox, equipmentBox, panelBox, stageBox, dockBox, handBox]) expect(box).not.toBeNull();
     expect(Math.abs(panelBox.width - inspectBox.width)).toBeLessThanOrEqual(8);
     expect(inspectBox.width).toBeLessThanOrEqual(bodyBox.width + captionBox.width * 0.01 + 2);
     expect(Math.abs(panelBox.x + panelBox.width / 2 - (stageBox.x + stageBox.width / 2))).toBeLessThanOrEqual(1);
@@ -716,24 +821,28 @@ for (const viewport of ins5Viewports) {
     expect(portraitColumnBox.x + portraitColumnBox.width).toBeLessThanOrEqual(bodyBox.x + bodyBox.width + 1);
     expect(portraitBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.25);
     expect(portraitBox.width / bodyBox.width).toBeLessThanOrEqual(0.42);
-    expect(portraitBox.height / portraitBox.width).toBeGreaterThanOrEqual(1.2);
-    expect(portraitBox.height / portraitBox.width).toBeLessThanOrEqual(1.3);
-    expect(captionBox.y).toBeGreaterThanOrEqual(portraitBox.y + portraitBox.height - 1);
-    expect(captionBox.x).toBeGreaterThanOrEqual(portraitBox.x - 1);
-    expect(captionBox.x + captionBox.width).toBeLessThanOrEqual(portraitBox.x + portraitBox.width + 1);
+    expect(portraitBox.height / portraitBox.width).toBeGreaterThanOrEqual(0.85);
+    expect(captionBox.y).toBeGreaterThanOrEqual(portraitBox.y - 1);
+    expect(captionBox.x).toBeGreaterThanOrEqual(portraitBox.x + portraitBox.width - 1);
+    expect(captionBox.x + captionBox.width).toBeLessThanOrEqual(bodyBox.x + bodyBox.width + 1);
     expect(mainBox.x).toBeGreaterThanOrEqual(portraitColumnBox.x + portraitColumnBox.width);
     expect(mainBox.x + mainBox.width).toBeLessThanOrEqual(bodyBox.x + bodyBox.width + 1);
     expect(identityBox.y + identityBox.height).toBeLessThanOrEqual(upperBox.y + upperBox.height + 1);
-    expect(Math.abs(identityBox.y - judgementBox.y)).toBeLessThanOrEqual(2);
     await expect(judgement.locator("h3")).toHaveText("Judgement");
-    expect(equipmentBox.y).toBeGreaterThanOrEqual(upperBox.y + upperBox.height - 1);
-    expect(equipmentBox.x).toBeGreaterThanOrEqual(portraitColumnBox.x + portraitColumnBox.width);
+    expect(judgementBox.y).toBeGreaterThanOrEqual(portraitColumnBox.y + portraitColumnBox.height - 1);
+    expect(Math.abs(judgementBox.y - equipmentBox.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(judgementBox.height - equipmentBox.height)).toBeLessThanOrEqual(1);
+    expect(judgementBox.x).toBeLessThan(equipmentBox.x);
     expect(equipmentBox.x + equipmentBox.width).toBeLessThanOrEqual(bodyBox.x + bodyBox.width + 1);
-    const statsBoxes = await identity.locator(".hero-focus-identity-stats small").evaluateAll((items) => items.map((item) => {
-      const rect = item.getBoundingClientRect();
-      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    const rows = await caption.locator(".hero-focus-identity-row").evaluateAll((items) => items.map((row) => {
+      const name = row.querySelector(".hero-focus-identity-name").getBoundingClientRect();
+      const stat = row.querySelector(".hero-focus-identity-stat").getBoundingClientRect();
+      return { name: { left: name.left, right: name.right }, stat: { left: stat.left, right: stat.right } };
     }));
-    expect(Math.abs((statsBoxes[0].y + statsBoxes[0].height / 2) - (statsBoxes[1].y + statsBoxes[1].height / 2))).toBeLessThanOrEqual(3);
+    for (const row of rows) {
+      expect(row.name.right).toBeLessThanOrEqual(row.stat.left + 1);
+      expect(Math.abs(row.stat.right - captionBox.x - captionBox.width)).toBeLessThanOrEqual(2);
+    }
     const skillButtons = await skills.locator(".hero-focus-inspect-skill").evaluateAll((buttons) => buttons.map((button) => {
       const rect = button.getBoundingClientRect();
       return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
@@ -803,7 +912,7 @@ for (const viewport of ins5Viewports) {
   });
 }
 
-test("INS5-F1 keeps full accessible names and wraps long labels in the compact phone Inspector", async ({ page }, testInfo) => {
+test("H2-G3 F2-R3 keeps full names and wraps long labels in the compact phone Inspector", async ({ page }, testInfo) => {
   const viewport = { width: 390, height: 700 };
   await loadFixture(page, {
     ...viewport,
@@ -852,6 +961,8 @@ test("INS5-F1 keeps full accessible names and wraps long labels in the compact p
     inspect.locator(".hero-focus-body").boundingBox(),
     shell.boundingBox(), page.locator(".local-player-dock").boundingBox(), page.locator(".local-hand-rail").boundingBox(), visibleBoundingBox(page.locator(".public-activity-chip")), seatGeometry(page),
   ]);
+  const judgementBox = await inspect.locator('[aria-label="Judgement Zone"]').boundingBox();
+  const equipmentBox = await inspect.locator('[aria-label="Equipment"]').boundingBox();
 
   expect(heroGeometry.whiteSpace).toBe("normal");
   expect(heroGeometry.scrollWidth).toBeLessThanOrEqual(heroGeometry.clientWidth + 1);
@@ -862,7 +973,13 @@ test("INS5-F1 keeps full accessible names and wraps long labels in the compact p
   expect(skillGeometry.lines).toBeGreaterThan(1);
   expect(skillGeometry.scrollWidth).toBeLessThanOrEqual(skillGeometry.clientWidth + 1);
   expect(skillGeometry.textBottom).toBeLessThanOrEqual(skillGeometry.boxBottom + 1);
-  expect(captionBox.y).toBeGreaterThanOrEqual(portraitBox.y + portraitBox.height - 1);
+  expect(captionBox.x).toBeGreaterThanOrEqual(portraitBox.x + portraitBox.width);
+  expect(captionBox.x + captionBox.width).toBeLessThanOrEqual(bodyBox.x + bodyBox.width);
+  expect(captionBox.y).toBeLessThan(portraitBox.y + portraitBox.height);
+  expect(judgementBox.y).toBeGreaterThanOrEqual(portraitBox.y + portraitBox.height - 1);
+  expect(Math.abs(judgementBox.y - equipmentBox.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(judgementBox.height - equipmentBox.height)).toBeLessThanOrEqual(1);
+  expect(judgementBox.x).toBeLessThan(equipmentBox.x);
   expect(panelBox).not.toBeNull();
   expect(panelBox.x).toBeGreaterThanOrEqual(0);
   expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(viewport.width);
@@ -895,18 +1012,20 @@ for (const count of [6, 8, 10]) {
     const judgmentCard = judgment.locator('.opponent-inspection-card[aria-label="Explain Lightning"]');
     const identity = inspect.locator(".hero-focus-identity");
     await expect(judgmentCard).toHaveCount(1);
-    const [inspectBox, identityBox, judgmentBox, profileBox] = await Promise.all([
+    const [inspectBox, identityBox, judgmentBox, equipmentBox, portraitBox] = await Promise.all([
       inspect.boundingBox(),
       identity.boundingBox(),
       judgment.boundingBox(),
-      inspect.locator(".hero-focus-inspect-profile").boundingBox(),
+      inspect.locator('[aria-label="Equipment"]').boundingBox(),
+      inspect.locator(".hero-focus-portrait").boundingBox(),
     ]);
     expect(inspectBox).not.toBeNull();
     expect(identityBox).not.toBeNull();
-    expect(profileBox).not.toBeNull();
-    expect(Math.abs(judgmentBox.y - profileBox.y)).toBeLessThanOrEqual(2);
-    expect(judgmentBox.x).toBeGreaterThanOrEqual(identityBox.x + identityBox.width - 1);
     expect(judgmentBox).not.toBeNull();
+    expect(judgmentBox.y).toBeGreaterThanOrEqual(portraitBox.y + portraitBox.height - 1);
+    expect(Math.abs(judgmentBox.y - equipmentBox.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(judgmentBox.height - equipmentBox.height)).toBeLessThanOrEqual(1);
+    expect(judgmentBox.x).toBeLessThan(equipmentBox.x);
     await expect(inspect.locator(".hero-focus-identity [data-public-hand-count]")).toBeVisible();
     await expect(inspect.locator('[aria-label="Concealed Hand"]')).toHaveCount(0);
     await expect(inspect.locator(".hero-focus-inspect-hand-backs")).toHaveCount(0);
@@ -927,16 +1046,18 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     const judgment = inspect.locator('[aria-label="Judgement Zone"]');
     await expect(judgment.locator(".opponent-inspection-empty-slot")).toHaveCount(2);
     await expect(judgment.locator(".opponent-inspection-card")).toHaveCount(0);
-    const [zoneBox, detailsBox, upperBox, bodyBox, equipmentBox] = await Promise.all([
+    const [zoneBox, detailsBox, portraitBox, bodyBox, equipmentBox] = await Promise.all([
       judgment.boundingBox(), inspect.locator(".hero-focus-inspect-details").boundingBox(),
-      inspect.locator(".hero-focus-inspect-upper").boundingBox(), inspect.locator(".hero-focus-body").boundingBox(),
+      inspect.locator(".hero-focus-portrait").boundingBox(), inspect.locator(".hero-focus-body").boundingBox(),
       inspect.locator('[aria-label="Equipment"]').boundingBox(),
     ]);
-    for (const box of [zoneBox, detailsBox, upperBox, bodyBox, equipmentBox]) expect(box).not.toBeNull();
+    for (const box of [zoneBox, detailsBox, portraitBox, bodyBox, equipmentBox]) expect(box).not.toBeNull();
     expect(detailsBox).not.toBeNull();
-    expect(Math.abs(zoneBox.y - upperBox.y)).toBeLessThanOrEqual(2);
-    expect(equipmentBox.y).toBeGreaterThanOrEqual(upperBox.y + upperBox.height - 1);
-    expect(equipmentBox.x).toBeGreaterThanOrEqual(bodyBox.x + bodyBox.width * 0.24);
+    expect(zoneBox.y).toBeGreaterThanOrEqual(portraitBox.y + portraitBox.height - 1);
+    expect(Math.abs(zoneBox.y - equipmentBox.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(zoneBox.height - equipmentBox.height)).toBeLessThanOrEqual(1);
+    expect(zoneBox.x).toBeLessThan(equipmentBox.x);
+    expect(equipmentBox.x + equipmentBox.width).toBeLessThanOrEqual(bodyBox.x + bodyBox.width + 1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
   });
 }
@@ -972,7 +1093,7 @@ test("unified Inspector changes its subject without changing the legal target", 
   await expect(panel).not.toContainText("HERO FOCUS");
   await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
   await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
-  await expect(page.locator('[data-console-surface="local-operation"] button.local-target-cancel')).toBeVisible();
+  await expect(page.locator('[data-console-surface="local-operation"] button.local-target-cancel')).toHaveCount(0);
   expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
 
   await panel.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]').click();
@@ -1059,6 +1180,234 @@ test("INS5-F1-R phone Inspector preserves target selection and Confirm through t
       body: await page.screenshot({ animations: "disabled" }),
       contentType: "image/png",
     });
+  } finally {
+    await context.close();
+  }
+});
+
+test("INS5-2 five-seat phone Inspector follows each actual Hero Seat across mobile viewports", async ({ browser }, testInfo) => {
+  const viewports = [
+    { width: 390, height: 700 },
+    { width: 390, height: 844 },
+    { width: 440, height: 766 },
+    { width: 440, height: 894 },
+    { width: 480, height: 900 },
+  ];
+  const measurements = [];
+  for (const viewport of viewports) {
+    const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+    const page = await context.newPage();
+    try {
+      await loadFixture(page, { ...viewport, count: 5, state: "rest", equipmentCase: "ins5PhoneDetails" });
+      const panel = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
+      for (const id of ["p4", "p2", "p5", "p3"]) {
+        const hero = page.locator(`.player-board [data-player-anchor="${id}"] .opponent-hero-target`);
+        await hero.tap();
+        await expect(panel).toHaveAttribute("data-inspect-player-id", id);
+        await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const geometry = await page.evaluate((subjectId) => {
+          const rect = (element) => {
+            if (!element) return null;
+            const { x, y, width, height, left, right, top, bottom } = element.getBoundingClientRect();
+            return { x, y, width, height, left, right, top, bottom };
+          };
+          const visible = (element) => {
+            const style = getComputedStyle(element);
+            const box = element.getBoundingClientRect();
+            return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0
+              && box.width > 0 && box.height > 0;
+          };
+          const table = document.querySelector(".play-table");
+          const layer = document.querySelector(".opponent-inspection-layer");
+          const shell = document.querySelector(".opponent-inspection-floating-shell");
+          const subject = [...document.querySelectorAll(".player-board [data-player-anchor]")]
+            .find((seat) => seat.dataset.playerAnchor === subjectId);
+          const shellBox = rect(shell);
+          const subjectBox = rect(subject);
+          const obstacleSelector = [
+            ".public-activity-chip", ".stage-system-cluster", ".visible-countdown",
+            "[data-public-card-announcement='true']",
+            ".public-card-journey-card[data-public-card-journey-phase='reveal']",
+            ".public-card-journey-card[data-public-card-journey-phase='move']",
+            ".harvest-choice-panel", ".target-card-picker-overlay", ".target-card-picker-panel",
+          ].join(",");
+          return {
+            viewport: { width: innerWidth, height: innerHeight },
+            subjectId,
+            side: subject?.dataset.sideColumn,
+            seat: subjectBox,
+            layer: rect(layer),
+            shell: shellBox,
+            verticalCenterDelta: shellBox && subjectBox
+              ? Math.abs((shellBox.top + shellBox.height / 2) - (subjectBox.top + subjectBox.height / 2))
+              : null,
+            dock: rect(document.querySelector(".local-player-dock")),
+            hand: rect(document.querySelector(".local-hand-rail")),
+            seats: [...document.querySelectorAll(".player-board [data-player-anchor]")].map(rect),
+            obstacles: [...table.querySelectorAll(obstacleSelector)].filter(visible).map(rect),
+            documentWidth: document.documentElement.scrollWidth,
+          };
+        }, id);
+        expect(geometry.shell, JSON.stringify(geometry)).not.toBeNull();
+        expect(geometry.shell.height, JSON.stringify(geometry)).toBeGreaterThan(0);
+        expect(geometry.shell.left).toBeGreaterThanOrEqual(0);
+        expect(geometry.shell.right).toBeLessThanOrEqual(viewport.width);
+        expect(geometry.shell.top).toBeGreaterThanOrEqual(0);
+        expect(geometry.shell.bottom).toBeLessThanOrEqual(viewport.height);
+        expect(geometry.documentWidth).toBeLessThanOrEqual(viewport.width);
+        expect(geometry.verticalCenterDelta, JSON.stringify(geometry)).toBeLessThanOrEqual(24);
+        if (geometry.side === "left") expect(geometry.shell.left).toBeGreaterThanOrEqual(geometry.seat.right + 2);
+        else expect(geometry.shell.right).toBeLessThanOrEqual(geometry.seat.left - 2);
+        for (const seat of geometry.seats) expect(overlaps(geometry.shell, seat)).toBe(false);
+        expect(overlaps(geometry.shell, geometry.dock)).toBe(false);
+        expect(overlaps(geometry.shell, geometry.hand)).toBe(false);
+        for (const obstacle of geometry.obstacles) expect(overlaps(geometry.shell, obstacle)).toBe(false);
+        measurements.push({ viewport, ...geometry });
+      }
+
+      const lastHero = page.locator('.player-board [data-player-anchor="p3"] .opponent-hero-target');
+      await lastHero.tap();
+      await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+      await lastHero.tap();
+      await expect(panel).toHaveAttribute("data-inspect-player-id", "p3");
+      if (viewport.width === 390 && viewport.height === 700) {
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const resized = await page.evaluate(() => {
+          const seat = [...document.querySelectorAll(".player-board [data-player-anchor]")]
+            .find((element) => element.dataset.playerAnchor === "p3");
+          const shell = document.querySelector(".opponent-inspection-floating-shell");
+          const seatBox = seat?.getBoundingClientRect();
+          const shellBox = shell?.getBoundingClientRect();
+          return {
+            seatCenter: seatBox ? seatBox.top + seatBox.height / 2 : null,
+            shellCenter: shellBox ? shellBox.top + shellBox.height / 2 : null,
+            shell: shellBox ? { left: shellBox.left, top: shellBox.top, right: shellBox.right, bottom: shellBox.bottom } : null,
+            viewport: { width: innerWidth, height: innerHeight },
+          };
+        });
+        expect(resized.viewport).toEqual({ width: 390, height: 844 });
+        expect(Math.abs(resized.shellCenter - resized.seatCenter), JSON.stringify(resized)).toBeLessThanOrEqual(24);
+      }
+      await lastHero.focus();
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+      await expect(lastHero).toBeFocused();
+      await lastHero.tap();
+      await expect(panel).toHaveAttribute("data-inspect-player-id", "p3");
+      const judgementSlots = panel.locator('[aria-label="Judgement Zone"] .opponent-inspection-card, [aria-label="Judgement Zone"] .opponent-inspection-empty-slot');
+      const equipmentSlots = panel.locator('[aria-label="Equipment"] .opponent-inspection-card, [aria-label="Equipment"] .opponent-inspection-empty-slot');
+      await expect(judgementSlots).toHaveCount(2);
+      await expect(equipmentSlots).toHaveCount(4);
+      await testInfo.attach(`INS5-2 mobile anchor ${viewport.width}x${viewport.height}`, {
+        body: Buffer.from(JSON.stringify(measurements.filter((entry) => entry.viewport.width === viewport.width && entry.viewport.height === viewport.height), null, 2)),
+        contentType: "application/json",
+      });
+      if (viewport.width === 390 && viewport.height === 700) {
+        await testInfo.attach("INS5-2 compact five-seat mobile screenshot", {
+          body: await page.screenshot({ animations: "disabled" }),
+          contentType: "image/png",
+        });
+      }
+    } finally {
+      await context.close();
+    }
+  }
+  console.log("INS5-2 FIVE-SEAT MOBILE ANCHORS", JSON.stringify(measurements.map(({ viewport, subjectId, side, shell, seat, verticalCenterDelta }) => ({
+    viewport,
+    subjectId,
+    side,
+    shell: { left: shell.left, top: shell.top, width: shell.width, height: shell.height },
+    seat: { left: seat.left, top: seat.top, width: seat.width, height: seat.height },
+    verticalCenterDelta,
+  }))));
+  expect(measurements).toHaveLength(20);
+});
+
+test("INS5-2 five-seat Inspector preserves a live local target and Card Details through touch", async ({ browser }) => {
+  const viewport = { width: 390, height: 844 };
+  const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+  const page = await context.newPage();
+  try {
+    await loadFixture(page, {
+      ...viewport,
+      count: 5,
+      state: "ordinary-turn",
+      equipmentCase: "ins5PhoneLongRules",
+      targetHero: "cao-cao",
+    });
+    const currentAction = await page.evaluate(() => window.__browserRoom.currentAction);
+    await page.locator('[data-hand-card-id="browser-ordinary-5"] .game-card').tap();
+    await page.getByRole("button", { name: "Select Player 2", exact: true }).tap();
+    const confirm = page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" });
+    await expect(confirm).toBeEnabled();
+    await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+
+    const inspectTwo = page.locator('.player-board [data-player-anchor="p2"] .opponent-hero-target');
+    await inspectTwo.tap();
+    const panel = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
+    await expect(panel).toHaveAttribute("data-inspect-player-id", "p2");
+    const entourage = panel.getByRole("button", { name: "Show Entourage description" });
+    await entourage.tap();
+    const skillDescription = panel.locator(".hero-focus-inspect-skill-description");
+    await expect(skillDescription).toBeVisible();
+    await scrollInspectorDetailsToBottom(panel.locator(".hero-focus-inspect-details"));
+    const skillFinalText = await touchScrollToBottom(page, skillDescription);
+    expect(skillFinalText.visible).toBe(true);
+
+    const frostSword = panel.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Frost Sword"]');
+    await frostSword.tap();
+    const cardRules = panel.locator(".hero-focus-inspect-card-rules");
+    await expect(cardRules).toContainText("Frost Sword has an Attack Range of 2.");
+    await scrollInspectorDetailsToBottom(panel.locator(".hero-focus-inspect-details"));
+    const cardFinalText = await touchScrollToBottom(page, cardRules);
+    expect(cardFinalText.visible).toBe(true);
+    await expect(confirm).toBeEnabled();
+    await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+    await expect(confirm).toBeEnabled();
+    expect(await page.evaluate(() => window.__browserRoom.currentAction)).toEqual(currentAction);
+    expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
+test("INS5-2 five-seat Inspector stays clear of an active Harvest choice and its touch controls", async ({ browser }) => {
+  const viewport = { width: 390, height: 844 };
+  const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+  const page = await context.newPage();
+  try {
+    await loadFixture(page, { ...viewport, count: 5, state: "bumper-harvest-choosing" });
+    await page.evaluate(() => window.__updateBrowserRoom((room) => ({
+      ...room,
+      meId: "p2",
+      isMyAction: true,
+      phase: "response",
+    })));
+    const pool = page.locator(".harvest-choice-panel--actor");
+    await expect(pool).toBeVisible();
+    const poolCardsBefore = await pool.locator(".harvest-card-choice").count();
+    const inspectorOpener = page.locator('.player-board [data-player-anchor="p4"] .opponent-hero-target');
+    await inspectorOpener.tap();
+    const panel = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
+    await expect(panel).toHaveAttribute("data-inspect-player-id", "p4");
+    const [shellBox, poolBox] = await Promise.all([
+      page.locator(".opponent-inspection-floating-shell").boundingBox(),
+      pool.boundingBox(),
+    ]);
+    expect(shellBox).not.toBeNull();
+    expect(poolBox).not.toBeNull();
+    expect(overlaps(shellBox, poolBox)).toBe(false);
+    expect(await pool.locator(".harvest-card-choice").count()).toBe(poolCardsBefore);
+
+    const choice = pool.locator(".harvest-card-choice").first();
+    const select = choice.locator(".harvest-card-select");
+    await select.tap();
+    await expect(choice).toHaveAttribute("data-harvest-card-state", "selected");
+    const confirm = pool.locator(".harvest-confirm-row button.primary");
+    await expect(confirm).toBeEnabled();
+    expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "choose_harvest"))).toEqual([]);
   } finally {
     await context.close();
   }
@@ -1333,6 +1682,134 @@ test("INS5-F1-R captures mobile Inspector width allocation across four, six, eig
     } finally {
       await context.close();
     }
+  }
+});
+
+for (const scenario of [
+  { count: 4, width: 390, height: 844, targetHero: "cao-cao" },
+  { count: 6, width: 390, height: 700, targetHero: "simayi" },
+]) {
+  test(`H2-G3 F2-R3 uses one right-side identity and bottom public strip at ${scenario.count} seats`, async ({ browser }, testInfo) => {
+    test.setTimeout(90_000);
+    const context = await browser.newContext({ viewport: { width: scenario.width, height: scenario.height }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+    try {
+      const page = await context.newPage();
+      await loadFixture(page, { ...scenario, equipmentCase: "miniatureSet", judgementCase: "two" });
+      await page.locator('[data-player-anchor="p2"] .opponent-hero-target').tap();
+      const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+      await expect(inspect).toBeVisible();
+      await expect(inspect.locator("[data-public-hand-count]")).toHaveText("Hand · 2");
+      await expect(inspect.locator('[aria-label="Judgement Zone"] .opponent-inspection-card')).toHaveCount(2);
+      await expect(inspect.locator('[aria-label="Equipment"] .opponent-inspection-card')).toHaveCount(4);
+
+      const geometry = await inspect.evaluate((root) => {
+        const box = (element) => {
+          if (!element) return null;
+          const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+          return { left, top, right, bottom, width, height };
+        };
+        const measured = (element) => ({ ...box(element), scrollWidth: element?.scrollWidth ?? null, clientWidth: element?.clientWidth ?? null });
+        const shell = root.closest(".opponent-inspection-floating-shell");
+        const portraitColumn = root.querySelector(".hero-focus-inspect-portrait-column");
+        const portrait = root.querySelector(".hero-focus-inspect-portrait-column > .hero-focus-portrait");
+        const caption = root.querySelector(".hero-focus-inspect-identity-caption");
+        const profile = root.querySelector(".hero-focus-inspect-profile");
+        const rows = [...(caption?.querySelectorAll(".hero-focus-identity-row") ?? [])].map((row) => ({
+          box: box(row),
+          name: measured(row.querySelector(".hero-focus-identity-name")),
+          stat: measured(row.querySelector(".hero-focus-identity-stat")),
+          text: row.textContent?.trim() ?? "",
+        }));
+        const skillPanel = root.querySelector(".hero-focus-inspect-public-skills");
+        const skills = root.querySelector(".hero-focus-inspect-skills");
+        const judgement = root.querySelector(".hero-focus-inspect-judgement");
+        const equipment = root.querySelector(".hero-focus-inspect-equipment");
+        const publicZones = root.querySelector(".hero-focus-inspect-public-zones");
+        return {
+          shell: box(shell), inspector: box(root), body: box(root.querySelector(".hero-focus-body")),
+          portraitColumn: box(portraitColumn), portrait: box(portrait), caption: box(caption),
+          captionInPortrait: Boolean(portraitColumn?.contains(caption)), captionInProfile: Boolean(profile?.contains(caption)),
+          heroNameCount: root.querySelectorAll(".hero-focus-identity-hero").length,
+          playerNameCount: root.querySelectorAll(".hero-focus-identity-player").length,
+          rows, publicZones: box(publicZones),
+          skillPanel: box(skillPanel), skills: {
+            ...measured(skills), overflowY: skills ? getComputedStyle(skills).overflowY : null,
+            buttons: [...(skills?.querySelectorAll("button") ?? [])].map((button) => ({
+              text: button.textContent?.trim() ?? "", ...measured(button),
+              minHeight: getComputedStyle(button).minHeight, whiteSpace: getComputedStyle(button).whiteSpace,
+              overflowWrap: getComputedStyle(button).overflowWrap, wordBreak: getComputedStyle(button).wordBreak,
+            })),
+          },
+          judgement: box(judgement), equipment: box(equipment),
+          zoneTitles: [judgement?.querySelector("h3"), equipment?.querySelector("h3")].map((title) => ({
+            text: title?.textContent?.trim() ?? "", ...measured(title), visibility: title ? getComputedStyle(title).visibility : null,
+          })),
+          slots: [...root.querySelectorAll("[data-inspector-slot]")].map((slot) => ({
+            id: slot.dataset.inspectorSlot, ...box(slot), visibility: getComputedStyle(slot).visibility,
+          })),
+        };
+      });
+      await testInfo.attach(`H2-G3 F2-R3 ${scenario.count}-seat Inspector geometry`, {
+        body: JSON.stringify({ scenario, geometry }, null, 2), contentType: "application/json",
+      });
+      await testInfo.attach(`H2-G3 F2-R3 ${scenario.count}-seat Inspector screenshot`, {
+        body: await page.screenshot({ animations: "disabled" }), contentType: "image/png",
+      });
+      const baseline = scenario.count === 4
+        ? { width: 235.296875, height: 140.78125 }
+        : { width: 176.46875, height: 146.546875 };
+      expect(Math.abs(geometry.inspector.width - baseline.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.inspector.height - baseline.height), JSON.stringify({ scenario, geometry, baseline })).toBeLessThanOrEqual(1);
+
+      expect(geometry.captionInPortrait).toBe(false);
+      expect(geometry.captionInProfile).toBe(true);
+      expect(geometry.heroNameCount).toBe(1);
+      expect(geometry.playerNameCount).toBe(1);
+      expect(geometry.rows).toHaveLength(2);
+      for (const row of geometry.rows) {
+        expect(row.name.right).toBeLessThanOrEqual(row.stat.left + 1);
+        expect(Math.abs(row.stat.right - geometry.caption.right)).toBeLessThanOrEqual(2);
+        expect(row.name.scrollWidth).toBeLessThanOrEqual(row.name.clientWidth + 1);
+        expect(row.stat.scrollWidth).toBeLessThanOrEqual(row.stat.clientWidth + 1);
+      }
+      expect(geometry.caption.left).toBeGreaterThan(geometry.portrait.right);
+      expect(geometry.caption.right).toBeLessThanOrEqual(geometry.inspector.right);
+      expect(geometry.judgement.top).toBeGreaterThanOrEqual(geometry.portraitColumn.bottom - 1);
+      expect(geometry.judgement.left).toBeLessThan(geometry.equipment.left);
+      expect(geometry.equipment.right).toBeLessThanOrEqual(geometry.body.right);
+      expect(Math.abs(geometry.judgement.height - geometry.equipment.height)).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.judgement.top - geometry.equipment.top)).toBeLessThanOrEqual(1);
+      expect(geometry.zoneTitles.map(({ visibility }) => visibility)).toEqual(["visible", "visible"]);
+      for (const button of geometry.skills.buttons) {
+        expect(Number.parseFloat(button.minHeight)).toBeGreaterThanOrEqual(20);
+        expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth + 1);
+      }
+      expect(geometry.slots).toHaveLength(6);
+      for (const slot of geometry.slots) {
+        expect(Math.abs(slot.width - geometry.slots[0].width)).toBeLessThanOrEqual(1);
+        expect(Math.abs(slot.height - geometry.slots[0].height)).toBeLessThanOrEqual(1);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(scenario.width);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+test("H2-G3 F2-R3 keeps one Inspector structure for every supported phone player count", async ({ page }) => {
+  const viewport = { width: 390, height: 844 };
+  for (const count of [4, 5, 6, 7, 8, 9, 10]) {
+    await loadFixture(page, { ...viewport, count, targetHero: "cao-cao", equipmentCase: "empty" });
+    await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+    const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+    const caption = inspect.locator(".hero-focus-inspect-identity-caption");
+    await expect(inspect).toHaveAttribute("data-inspector-layout", "content-wrapped");
+    await expect(caption).toHaveCount(1);
+    expect(await caption.evaluate((element) => element.closest(".hero-focus-inspect-profile") !== null)).toBe(true);
+    expect(await caption.evaluate((element) => element.closest(".hero-focus-inspect-portrait-column") === null)).toBe(true);
+    await expect(caption.locator(".hero-focus-identity-row")).toHaveCount(2);
+    expect(await inspect.locator(".hero-focus-inspect-public-zones").locator(":scope > .hero-focus-inspect-judgement").count()).toBe(1);
+    expect(await inspect.locator(".hero-focus-inspect-public-zones").locator(":scope > .hero-focus-inspect-equipment").count()).toBe(1);
   }
 });
 

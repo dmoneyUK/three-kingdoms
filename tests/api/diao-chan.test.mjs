@@ -1,5 +1,6 @@
 import test from "node:test";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
+import { projectPresentationV2 } from "../../game/presentation-v2.ts";
 import {
   assert, card, createHumanGame, createTestGame, discardIds, query, quote, request, requestAndSettle, roomCardCount,
   setDeck, setEquipment, setHand, setTurn, sql, state,
@@ -134,6 +135,86 @@ test("Lust offers ordered male Duel targets, accepts one Hand cost, bypasses Neg
   assert.equal(finished.data.room.phase, "play");
   assert.equal(finished.data.room.causalEnvelope, null, "the settled Duel root clears after the exchange");
   assert.equal(JSON.parse(query(`SELECT skill_state_json FROM rooms WHERE code=${quote(game.code)}`)).lustUsed, true);
+});
+
+test("Lust result stays public through the same damage-trigger continuation, then yields to a new interaction", async () => {
+  const game = await createHumanGame();
+  const newAttack = card("Attack", "lust-after-settlement-new-root");
+  const setup = configureLust(game, { firstHero: "guo-jia", firstHand: [], secondHand: [] });
+  setHand(setup.diao.id, [setup.cost, newAttack], 3, 3);
+  const started = await requestAndSettle("trigger", {
+    code: game.code, token: game.members[0].token, providerId: "diao_chan_lust",
+    cardIds: [setup.cost.id], targetIds: [setup.first.id, setup.second.id], preserveResponse: true,
+  });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+
+  const failed = await requestAndSettle("decline_response", {
+    code: game.code, token: game.members[1].token, preserveResponse: true,
+  });
+  assert.equal(failed.status, 200, JSON.stringify(failed.data));
+  assert.equal(failed.data.room.currentAction.kind, "trigger", "Guo Jia receives the real optional post-damage Legacy choice");
+  assert.equal(failed.data.room.currentAction.actorId, setup.first.id);
+  const settlement = failed.data.room.presentationSnapshot.diaoChanSkillNotices.find((notice) => notice.notice === "DUEL_RESULT");
+  assert.equal(settlement?.outcome, "DAMAGE_APPLIED");
+  const pending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(pending?.kind, "trigger");
+  assert.equal(pending?.continuation?.kind, "damage_suffered_event");
+
+  const inputFor = (view) => ({
+    pending,
+    currentAction: view.currentAction,
+    actionRevision: view.actionRevision,
+    timeline: view.timeline,
+    causalEnvelope: view.causalEnvelope,
+  });
+  const immediateProjection = projectPresentationV2(inputFor(failed.data.room));
+  assert.equal(immediateProjection.lustDuelExchange?.settlement?.eventId, settlement.eventId,
+    "the pure projection retains the proven terminal result through its damage trigger");
+
+  const publicViews = await Promise.all(game.members.map((member) => state(game.code, member.token)));
+  const exchange = publicViews[0].data.presentationSnapshot.lustDuelExchange;
+  assert.equal(exchange?.settlement?.eventId, settlement.eventId,
+    "the proven terminal result is projected before the optional trigger is skipped");
+  const normalizeExchange = (value) => {
+    const normalized = structuredClone(value);
+    if (normalized?.settlement) delete normalized.settlement.readRemainingMs;
+    return normalized;
+  };
+  for (const view of publicViews) {
+    assert.deepEqual(normalizeExchange(view.data.presentationSnapshot.lustDuelExchange), normalizeExchange(exchange),
+      "the terminal result is identical in every viewer's public snapshot");
+    assert.equal(JSON.stringify(view.data.presentationSnapshot.lustDuelExchange).includes(newAttack.id), false,
+      "a later private Hand card is not included in the public settlement proof");
+  }
+  const originalNow = Date.now;
+  try {
+    Date.now = () => settlement.settledAt + 2_500;
+    const lateProjection = projectPresentationV2(inputFor(publicViews[0].data));
+    assert.equal(lateProjection.lustDuelExchange?.settlement?.eventId, settlement.eventId,
+      "a viewer whose first poll is late can still receive the bounded public proof");
+    assert.equal(lateProjection.lustDuelExchange?.settlement?.readRemainingMs, 0,
+      "the client-visible read lifetime is not extended from the server settlement clock");
+    Date.now = () => settlement.settledAt + 8_001;
+    assert.equal(projectPresentationV2(inputFor(publicViews[0].data)).lustDuelExchange, null,
+      "the server proof buffer remains bounded");
+  } finally {
+    Date.now = originalNow;
+  }
+
+  const skipped = await requestAndSettle("decline_trigger", { code: game.code, token: game.members[1].token, preserveResponse: true });
+  assert.equal(skipped.status, 200, JSON.stringify(skipped.data));
+  assert.equal(skipped.data.room.presentationSnapshot.lustDuelExchange?.settlement?.eventId, settlement.eventId,
+    "promptly skipping Legacy does not replace the active public result");
+  assert.equal(skipped.data.room.currentAction.actorId, setup.diao.id, "normal turn ownership resumes after the optional trigger");
+
+  const nextRoot = await requestAndSettle("play_card", {
+    code: game.code, token: game.members[0].token, cardId: newAttack.id, targetId: setup.first.id, preserveResponse: true,
+  });
+  assert.equal(nextRoot.status, 200, JSON.stringify(nextRoot.data));
+  assert.notEqual(nextRoot.data.room.causalEnvelope?.interactionId, exchange.interactionId,
+    "the new Attack begins an independent authoritative interaction");
+  assert.equal(nextRoot.data.room.presentationSnapshot.lustDuelExchange, null,
+    "a new committed interaction supersedes the older result buffer");
 });
 
 test("Lust accepts owned Equipment, rejects stale or duplicate selections, and resets on the next Play Phase", async () => {

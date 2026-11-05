@@ -33,7 +33,8 @@ test("shared Negation windows keep submissions private and expose only each view
 
   const target = await openWithNegation(1); const targetView = (await state(target.game.code, target.holderMember.token)).data; const publicTargetView = (await state(target.game.code, target.sourceMember.token)).data; const targetOtherView = (await state(target.game.code, target.otherMember.token)).data;
   assert.equal(targetView.currentAction.requirement, "negate"); assert.ok(targetView.currentAction.options.some((option) => option.providerId === "negation_card")); assert.equal(targetView.isMyAction, true);
-  assert.equal(targetView.actionReason, "Play Negation or Pass");
+  const affectedPlayer = target.game.room.players.find((player) => player.id === targetView.pendingNegation.effectTargetId);
+  assert.equal(targetView.actionReason, `Play Negation to cancel ${targetView.pendingNegation.cardName}'s effect on ${affectedPlayer?.name}, or Pass.`);
   assert.equal(publicTargetView.actionPlayerId, null); assert.equal(publicTargetView.pendingNegation.actorId, null); assert.equal(publicTargetView.actionReason, "No Negation available. Pass."); assert.equal(publicTargetView.currentAction.options?.length ?? 0, 0);
   assert.equal(targetOtherView.actionPlayerId, null); assert.equal(targetOtherView.pendingNegation.actorId, null); assert.equal(targetOtherView.actionReason, "No Negation available. Pass.");
   const targetWindowId = targetView.currentAction.negationWindowId;
@@ -107,6 +108,32 @@ test("shared Negation settles early after explicit responses from all seats in 4
     assert.equal(roomCardCount(game.code, root.id), 1);
     assert.equal(query(`SELECT COUNT(*) FROM negation_window_submissions WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)}) AND window_id=${quote(windowId)}`), "0", "private submissions are retired after the once-only settlement");
     assert.equal(JSON.stringify(settled).includes("submission_json"), false);
+    if (seatCount === 4) {
+      const observer = (await state(game.code, game.members[1].token)).data;
+      const publicOrder = (view) => view.timeline.filter((event) => Number.isSafeInteger(event.publicSequence))
+        .map(({ id, publicSequence }) => [id, publicSequence]);
+      assert.deepEqual(publicOrder(settled), publicOrder(observer), "identical committed checkpoints expose the same public event order to each viewer");
+      assert.equal(JSON.stringify(settled).includes("publicSequenceWatermark"), false, "the internal private-log watermark stays server-side");
+
+      const persistedLog = JSON.parse(query(`SELECT log_json FROM rooms WHERE code=${quote(game.code)}`));
+      const structured = persistedLog.flatMap((entry) => {
+        const prefix = ["@event:", "@card:", "@cards:", "@history:"].find((candidate) => entry.startsWith(candidate));
+        return prefix ? [{ prefix, value: JSON.parse(entry.slice(prefix.length)) }] : [];
+      });
+      let previousWatermark = null;
+      const publicOrdinals = [];
+      for (const { prefix, value } of structured) {
+        assert.ok(Number.isSafeInteger(value.publicSequenceWatermark), "every structured D1 record carries the sequence watermark");
+        const isPublic = prefix !== "@history:" && value.presentation !== false && typeof value.privateToPlayerId !== "string";
+        if (previousWatermark !== null) assert.equal(value.publicSequenceWatermark, previousWatermark + Number(isPublic), "private records preserve the watermark and public commits advance it once");
+        if (isPublic) {
+          assert.equal(value.publicSequence, value.publicSequenceWatermark);
+          publicOrdinals.push(value.publicSequence);
+        } else assert.equal(Object.hasOwn(value, "publicSequence"), false);
+        previousWatermark = value.publicSequenceWatermark;
+      }
+      assert.deepEqual(publicOrdinals, [...new Set(publicOrdinals)], "concurrent Worker/D1 settlement leaves no duplicate public ordinal");
+    }
   }
 });
 
@@ -301,6 +328,11 @@ test("shared Negation keeps three human submissions private and rejects conflict
     assert.equal(view.actionPlayerId, null);
     assert.equal(view.pendingNegation.actorId, null);
     assert.equal(view.pendingNegation.submitted, false);
+    assert.deepEqual(view.presentationSnapshot.viewerNegationChoice, {
+      windowId: firstWindowId,
+      locked: false,
+      choice: null,
+    }, "the current viewer starts with an unlocked private choice for this exact window");
     assert.equal("seatOrderPlayerIds" in view.pendingNegation, false);
     const options = view.currentAction.options ?? [];
     if (index === 0) assert.equal(options.some(({ providerId }) => providerId === "negation_card"), false);
@@ -333,6 +365,15 @@ test("shared Negation keeps three human submissions private and rejects conflict
     assert.equal(view.currentAction.deadline, sharedDeadline, "submissions do not shorten or restart the shared deadline");
     assert.equal(view.responseCountdownVisibleAt, sharedVisibleAt);
     assert.equal(view.pendingNegation.submitted, [false, true, true, true, false][index], "submission status is visible only to its owner");
+    const privateChoice = [null, "negation_intent", "pass", "negation_intent", null][index];
+    assert.deepEqual(view.presentationSnapshot.viewerNegationChoice, {
+      windowId: firstWindowId,
+      locked: privateChoice !== null,
+      choice: privateChoice,
+    }, "only the authenticated viewer's own locked choice category is projected");
+    assert.equal(view.presentationSnapshot.publicEventFacts.some((fact) =>
+      fact.category === "CARD_PLAYED" && [seatTwo.id, seatThree.id, seatFour.id].includes(fact.actorId)), false,
+    "uncommitted Negation intents never become public card-play facts");
     const serialized = JSON.stringify(view);
     for (const hiddenCardId of secretCardIds) {
       if (hiddenCardId !== secretCardIds[index - 1]) assert.equal(serialized.includes(hiddenCardId), false, `seat ${index + 1} cannot see another private intent or card ID`);
@@ -627,7 +668,21 @@ test("Benevolence counts exact physical cards cumulatively and spends its thresh
   const twoResult = await requestAndSettle("trigger", { code: two.game.code, token: two.game.members[0].token, providerId: "liu_bei_rende", cardIds: ["attack-rende-two-a", "dodge-rende-two-b"], targetId: two.target.id });
   assert.equal(twoResult.status, 200, JSON.stringify(twoResult.data)); assert.equal(twoResult.data.room.players.find((player) => player.id === two.source.id).hp, 4, "two cards recover once when Liu Bei is eligible");
   assert.deepEqual(discardIds(two.game.code), [], "Benevolence transfers cards without touching discard");
-  assert.deepEqual((await state(two.game.code, two.game.members[1].token)).data.myHand.map((held) => held.id), ["attack-rende-two-a", "dodge-rende-two-b"]);
+  const benevolenceRecipient = (await state(two.game.code, two.game.members[1].token)).data;
+  assert.deepEqual(benevolenceRecipient.myHand.map((held) => held.id), ["attack-rende-two-a", "dodge-rende-two-b"]);
+  const benevolenceArrivals = benevolenceRecipient.timeline.filter((event) => event.type === "card" && event.privateHandTransfer);
+  assert.deepEqual(benevolenceArrivals.map((event) => event.privateHandTransfer.cardId), ["attack-rende-two-a", "dodge-rende-two-b"]);
+  assert.ok(benevolenceArrivals.every((event) => event.privateHandTransfer.sourceZone === "hand"
+    && event.privateHandTransfer.sourcePlayerId === two.source.id
+    && event.privateHandTransfer.recipientId === two.target.id));
+  const benevolenceObserver = (await state(two.game.code, two.game.members[2].token)).data;
+  assert.equal(benevolenceObserver.timeline.some((event) => event.privateHandTransfer), false, "other seats do not receive private transfer receipts");
+  const serializedObserver = JSON.stringify(benevolenceObserver);
+  assert.equal(serializedObserver.includes("attack-rende-two-a"), false, "a transferred hidden card ID is not disclosed to observers");
+  assert.equal(serializedObserver.includes("dodge-rende-two-b"), false, "the second transferred hidden card ID is not disclosed to observers");
+  assert.equal(benevolenceRecipient.timeline.some((event) => event.type === "cards" && event.action === "play"
+    && event.cards.some((held) => held.id === "attack-rende-two-a" || held.id === "dodge-rende-two-b")), false,
+  "a hand transfer is not represented as a public card play");
 
   const split = await open([card("Attack", "rende-split-a"), card("Dodge", "rende-split-b")]);
   setHand(split.game.room.players[2].id, [], 4, 4);

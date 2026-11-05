@@ -104,6 +104,21 @@ function coherentBoundary(overrides = {}) {
   };
 }
 
+test("a resumed interaction retains committed child outcomes without admitting another interaction", () => {
+  const priorIdentity = { interactionId: "interaction-1", rootFrameId: "root-frame", checkpointId: "child-checkpoint", presentationRevision: 2 };
+  const fact = (eventId, order, category, identity = priorIdentity) => ({
+    semantics: "PROVEN", visibility: "PUBLIC", identity, eventId, order, rootEventId: "root-event",
+    frameId: "child-frame", category, actorId: "B", affectedPlayerIds: ["B"],
+  });
+  const damage = fact("damage", 5, "DAMAGE_APPLIED");
+  const skill = fact("skill", 6, "SKILL_USED");
+  const stale = fact("other", 7, "SKILL_USED", { ...priorIdentity, interactionId: "other-interaction" });
+  const source = { ...presentation(scene()), publicEventFacts: [], retainedPublicEvent: skill, retainedPublicEventFacts: [damage, skill, stale] };
+  const project = (viewerId) => composePresentationSnapshot({ presentationV2: source, currentAction: { kind: "response", actorId: "B" }, actionRevision: "next", viewerId });
+  assert.deepEqual(project("B").publicEventFacts.map((event) => event.eventId), ["damage", "skill"]);
+  assert.deepEqual(project("C").publicEventFacts, project("B").publicEventFacts);
+});
+
 test("snapshot composes proven identity and public scene while keeping CurrentAction local", () => {
   const publicPresentation = presentation(scene());
   const acting = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "response", actorId: "B" }, actionRevision: "action-a", viewerId: "B" });

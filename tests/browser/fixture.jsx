@@ -341,7 +341,7 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
       reason: "Respond to Raining Arrows",
       legalActions: hasDodgeProvider ? ["respond", "decline_response"] : ["decline_response"],
       requirement: "dodge",
-      options: hasDodgeProvider ? [{ providerId: "dodge_card", label: "Dodge", satisfies: "dodge", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [handCardId] } }] : [],
+      options: hasDodgeProvider ? [{ providerId: "card", label: "Play Dodge", satisfies: "dodge", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [handCardId] } }] : [],
     };
   }
   if (state === "group-observer" || state === "group-unfocused") {
@@ -573,6 +573,7 @@ function browserRoom({ state, count, handSize, handKind, targetHandCount, target
   const crossHeroChoiceFixture = state.startsWith("hua-xiong-triumphant");
   const judgementStage = state === "judgement" || state === "judgement-local";
   const ordinaryTurn = state === "ordinary-turn";
+  const targetEligibilityFixture = state === "target-eligibility";
   const borrowedSwordFixture = state === "borrowed-sword-play" || state === "borrowed-sword-no-target";
   const borrowedSwordActiveFixture = state.startsWith("borrowed-sword-active");
   const borrowedSwordRootOrigin = state === "borrowed-sword-active" || state === "borrowed-sword-active-two-player"
@@ -584,7 +585,7 @@ function browserRoom({ state, count, handSize, handKind, targetHandCount, target
   const timedNegationObserver = timedObserver && state === "negation";
   const duelObserverView = duelObserver && state === "duel";
   const selfTargetTriggerFixture = state === "self-target-trigger" || state === "multi-target-trigger";
-  if (ordinaryTurn) state = "normal";
+  if (ordinaryTurn || targetEligibilityFixture) state = "normal";
   const hasLocalJudgementFixture = ["local-judgement-empty", "local-judgement-one", "local-judgement-two"].includes(state);
   const localJudgementCount = state === "local-judgement-one" ? 1 : state === "local-judgement-two" ? 2 : 0;
   if (hasLocalJudgementFixture) state = "normal";
@@ -639,6 +640,8 @@ function browserRoom({ state, count, handSize, handKind, targetHandCount, target
     ? genericResponseFixture.hand.map(([id, kind, suit]) => card(id, kind, suit))
     : timedNegationObserver
     ? []
+    : targetEligibilityFixture
+      ? [card("browser-target-eligibility-attack", "Attack"), card("browser-target-eligibility-steal", "Steal"), card("browser-target-eligibility-dismantle", "Dismantle")]
     : ordinaryTurn
     ? ["Shadowrunner", "Overindulgence", "Negation", "Dodge", "Attack", "Attack"].map((kind, index) => card(`browser-ordinary-${index + 1}`, kind))
     : state === "active-attack-observer" && handSize !== null
@@ -719,12 +722,12 @@ function browserRoom({ state, count, handSize, handKind, targetHandCount, target
     ? {
       ...resolvedCurrentAction,
       reason: privateNegationSubmitted
-        ? "Response submitted — waiting"
+        ? "Waiting for the other players."
         : negationAuthority === "missing-provider"
           ? "No Negation available. Pass."
           : negationAuthority === "missing-response" || negationAuthority === "missing-decline"
             ? "Negation response window"
-            : "Play Negation or Pass",
+        : "Play Negation to cancel Dismantle's effect on Test Player 1, or Pass.",
       ...(privateNegationSubmitted ? { negationWindowId: "browser-shared-negation-window", legalActions: [], options: [] } : { negationWindowId: "browser-shared-negation-window" }),
       presentation: { resolutionId: "browser-shared-negation-resolution", readyAfterEventId: "browser-unpresented-negation-root" },
       ...(negationAuthority === "missing-response" ? { legalActions: ["decline_response"] } : {}),
@@ -864,6 +867,27 @@ function browserRoom({ state, count, handSize, handKind, targetHandCount, target
     isHost: index === 0,
     role: index === 0 ? "Lord" : "Rebel",
   }));
+  if ((ordinaryTurn || targetEligibilityFixture) && currentAction?.kind === "turn") {
+    const livePlayers = players.filter((player) => player.alive);
+    currentAction.playTargetEligibility = hand
+      .filter((item) => ["Attack", "Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(item.kind))
+      .map((item) => {
+        const eligibleTargetIds = [];
+        const rejections = [];
+        for (const targetPlayer of livePlayers) {
+          if (targetPlayer.id === meId) continue;
+          const sourceSeat = players.findIndex((player) => player.id === meId);
+          const targetSeat = players.findIndex((player) => player.id === targetPlayer.id);
+          const rawDistance = Math.abs(targetSeat - sourceSeat);
+          const distance = Math.min(rawDistance, players.length - rawDistance);
+          const distanceSensitive = item.kind === "Attack" || item.kind === "Steal" || item.kind === "RationsDepleted";
+          const blockedByRange = targetEligibilityFixture && distanceSensitive && distance > 1;
+          if (blockedByRange) rejections.push({ targetId: targetPlayer.id, code: "OUT_OF_RANGE", distance, range: 1 });
+          else eligibleTargetIds.push(targetPlayer.id);
+        }
+        return { mode: "card", cardId: item.id, effectiveKind: item.kind, eligibleTargetIds, rejections };
+      });
+  }
   const bumperHarvestProgress = presentationSnapshot?.bumperHarvestProgress;
   const bumperHarvestNegationLinks = presentationSnapshot?.reactionChain?.publicNodeEventLinks ?? [];
   const bumperHarvestNegationTimeline = bumperHarvestFixture && bumperHarvestProgress ? [
@@ -1009,7 +1033,27 @@ const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false
     renderFixture();
   }
   return true;
-}} onLeave={() => { window.__browserLeaves += 1; }} />);
+}} onLeave={() => { window.__browserLeaves += 1; }} onSwitchTestViewer={async (playerId) => {
+  if (!fixtureRoom.isTestController || !fixtureRoom.players.some((player) => player.id === playerId)) {
+    throw new Error("TEST SWITCH requires a known player in this fixture.");
+  }
+  const selectedViewer = fixtureRoom.players.find((player) => player.id === playerId);
+  fixtureRoom = {
+    ...fixtureRoom,
+    meId: playerId,
+    myRole: selectedViewer?.role ?? null,
+    myHand: [],
+    isMyTurn: selectedViewer?.seat === fixtureRoom.turnSeat,
+    isMyAction: fixtureRoom.currentAction?.actorId === playerId,
+  };
+  window.__browserRoom = fixtureRoom;
+  renderFixture();
+}} />);
+window.__updateBrowserRoom = (update) => {
+  fixtureRoom = typeof update === "function" ? update(fixtureRoom) : update;
+  window.__browserRoom = fixtureRoom;
+  renderFixture();
+};
 window.__switchQuickTestViewer = (viewerId) => {
   const actorId = fixtureRoom.currentAction?.actorId ?? null;
   if (!fixtureRoom.isTestController

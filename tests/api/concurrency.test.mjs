@@ -591,6 +591,14 @@ test("classic role deaths apply cleanup, rewards, penalties, and victory rules",
   const rewarded = { data: { room: (await state(rebelRewardGame.code, traitorMember.token)).data } };
   assert.equal(rewarded.data.room.myHand.length, 4, "a Traitor also draws three cards for defeating a Rebel");
   assert.ok(rewarded.data.room.timeline.some((event) => /draws 3 reward cards/.test(event.message ?? "")));
+  const rewardArrivals = rewarded.data.room.timeline.filter((event) => event.type === "card" && event.privateHandTransfer);
+  assert.equal(rewardArrivals.length, 3, "the committed Rebel reward has one owner-private receipt per card");
+  assert.ok(rewardArrivals.every((event) => event.privateHandTransfer.recipientId === traitorKiller.id
+    && event.privateHandTransfer.sourceZone === "deck"
+    && rewarded.data.room.myHand.some((held) => held.id === event.card.id)));
+  const rewardObserver = (await state(rebelRewardGame.code, rebelTargetMember.token)).data;
+  assert.equal(rewardObserver.timeline.some((event) => event.privateHandTransfer), false);
+  assert.ok(rewardArrivals.every((event) => !JSON.stringify(rewardObserver).includes(event.card.id)));
 
   const traitorVictoryGame = await createHumanGame();
   const [finalLordMember, traitorWinner] = traitorVictoryGame.members; const [finalLord, finalTraitor, deadRebel, deadLoyalist] = traitorVictoryGame.room.players;

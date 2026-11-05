@@ -133,7 +133,8 @@ test("Cavalry uses the shared Judgement replacement continuation", async () => {
   setHand(target.id, [], 4, 4);
   const replacement = { ...card("Dodge", "cavalry-replacement"), suit: "♥", rank: "2" };
   setHand(sima.id, [replacement], 3, 3);
-  setDeck(game.code, [{ ...card("Attack", "cavalry-original"), suit: "♠", rank: "9" }]);
+  const original = { ...card("Attack", "cavalry-original"), suit: "♠", rank: "9" };
+  setDeck(game.code, [original]);
   setTurn(game.code, source.seat, "play");
   assert.equal((await request("play_card", { code: game.code, token: sourceMember.token, cardId: "attack-cavalry-replacement-attack", targetId: target.id })).status, 200);
   const attackView = (await state(game.code, sourceMember.token)).data;
@@ -165,6 +166,13 @@ test("Cavalry uses the shared Judgement replacement continuation", async () => {
   const revealed = (await state(game.code, simaMember.token)).data;
   assert.equal(revealed.currentAction.triggerEvent, "judgement_revealed", JSON.stringify(revealed));
   assert.equal(revealed.currentAction.actorId, sima.id);
+  const originalReveal = revealed.timeline.find((event) => event.type === "card" && event.card?.id === original.id);
+  assert.ok(originalReveal, "the actual Cavalry draw is present as a public original Judgement reveal");
+  assert.equal(originalReveal.action, "reveal");
+  assert.equal(originalReveal.judgement, true);
+  assert.equal(originalReveal.presentation, true);
+  assert.equal(typeof originalReveal.publicSequence, "number");
+  assert.equal(originalReveal.privateToPlayerId, undefined, "the revealed physical card is public, not viewer-private");
   assert.equal(revealed.causalEnvelope.interactionId, attackRoot.interactionId);
   assert.equal(revealed.causalEnvelope.activeFrameId, attackRoot.activeFrameId);
   assert.notEqual(revealed.causalEnvelope.checkpoint.checkpointId, attackRoot.checkpoint.checkpointId, "Judgement reveal advances the semantic checkpoint within the Attack Interaction");
@@ -181,6 +189,10 @@ test("Cavalry uses the shared Judgement replacement continuation", async () => {
   assert.equal(revealed.presentationV2.stableBoundary.kind, "CHOICE");
   assert.ok(revealed.currentAction.triggerOptions?.some((option) => option.effectId === "sima_yi_guicai"), "the Judgement actor receives private Guicai controls");
   const revealedOtherViewer = (await state(game.code, targetMember.token)).data;
+  const otherViewerOriginalReveal = revealedOtherViewer.timeline.find((event) => event.type === "card" && event.card?.id === original.id);
+  assert.deepEqual({ id: otherViewerOriginalReveal?.id, cardId: otherViewerOriginalReveal?.card?.id, publicSequence: otherViewerOriginalReveal?.publicSequence },
+    { id: originalReveal.id, cardId: originalReveal.card.id, publicSequence: originalReveal.publicSequence },
+    "every viewer receives the same committed physical reveal identity");
   assert.deepEqual(revealedOtherViewer.presentationV2.interactionScene, revealed.presentationV2.interactionScene);
   assert.deepEqual(revealedOtherViewer.presentationV2.interactionScene.participantRoles, revealed.presentationV2.interactionScene.participantRoles);
   assert.deepEqual(revealedOtherViewer.presentationV2.stableBoundary, revealed.presentationV2.stableBoundary);
@@ -196,6 +208,13 @@ test("Cavalry uses the shared Judgement replacement continuation", async () => {
   const replaced = await request("trigger", { code: game.code, token: simaMember.token, providerId: "sima_yi_guicai", cardId: replacement.id });
   assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
   const settled = (await state(game.code, targetMember.token)).data;
+  const finalOriginalReveal = settled.timeline.find((event) => event.type === "card" && event.card?.id === original.id);
+  const replacementReveal = settled.timeline.find((event) => event.type === "card" && event.card?.id === replacement.id);
+  assert.equal(finalOriginalReveal?.id, originalReveal.id);
+  assert.notEqual(replacementReveal?.card?.id, finalOriginalReveal?.card?.id, "the committed replacement remains a distinct physical card");
+  assert.ok(replacementReveal?.publicCardEffects?.some((effect) => effect.effectId === "sima_yi_guicai"
+    && effect.outcome === "REPLACED_JUDGEMENT" && effect.rootEventId === originalReveal.id),
+  "the replacement is publicly linked to the original reveal only after its server commit");
   assert.equal(settled.players.find((player) => player.id === target.id).hp, 3, JSON.stringify(settled));
   assert.equal(settled.causalEnvelope, null, "the resumed Attack root settles after Cavalry damage");
   assert.equal(settled.presentationV2.interactionScene, null, "no stale Judgement scene remains after Attack settlement");

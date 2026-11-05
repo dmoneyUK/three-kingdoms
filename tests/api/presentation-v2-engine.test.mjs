@@ -48,10 +48,30 @@ function assertProjectionMatchesEngine(code, token) {
       actionRevision: view.actionRevision,
       timeline: view.timeline,
       causalEnvelope: view.causalEnvelope,
+      retainPublicEventAtRest: view.status === "playing" && !storedPending && !view.causalEnvelope && view.currentAction?.kind === "turn",
       oathRecipientIds: oathRecipientIds(view.players.map((player) => ({ id: player.id, alive: player.alive, hp: player.hp, maxHp: player.maxHp }))),
     });
     assert.deepEqual(view.presentationV2, expected, "route presentationV2 is projected from the persisted engine state");
-    const expectedSnapshot = composePresentationSnapshot({ presentationV2: view.presentationV2, currentAction: view.currentAction, actionRevision: view.actionRevision, viewerId: view.meId });
+    const serverDecision = view.presentationSnapshot.publicNextDecision;
+    if (serverDecision) {
+      const scene = view.presentationV2.interactionScene;
+      assert.ok(scene, "a public next decision is bound to a proven server interaction");
+      assert.deepEqual(serverDecision.identity, {
+        interactionId: scene.interactionId,
+        rootFrameId: scene.rootFrameId,
+        checkpointId: scene.checkpointId,
+        presentationRevision: scene.presentationRevision,
+      });
+      assert.equal(serverDecision.stage, scene.stage, "the public decision follows the current server stage");
+    }
+    const expectedSnapshot = composePresentationSnapshot({
+      presentationV2: view.presentationV2,
+      currentAction: view.currentAction,
+      actionRevision: view.actionRevision,
+      viewerId: view.meId,
+      publicNextDecision: serverDecision,
+      viewerNegationChoice: view.presentationSnapshot.viewerNegationChoice,
+    });
     assert.deepEqual(view.presentationSnapshot, expectedSnapshot, "route PresentationSnapshot is composed from the persisted engine projection");
     assert.deepEqual(view.presentationSnapshot.identity, expectedSnapshot.identity, "snapshot identity follows the atomic public authority gate");
     if (view.presentationV2.stableBoundary.kind === "CHOICE") {
@@ -67,6 +87,7 @@ function assertProjectionMatchesEngine(code, token) {
 function publicSnapshot(snapshot) {
   const publicPart = { ...snapshot };
   delete publicPart.localControl;
+  delete publicPart.viewerNegationChoice;
   return publicPart;
 }
 
@@ -2647,6 +2668,41 @@ test("R2 D1 reproduction keeps fresh Negation roots bound to their persisted cau
   assert.ok(discardIds(game.code).includes(targetAttack.id));
 });
 
+test("single-target Duel Negation cancellation proves the root before resuming the nested exchange", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [sourceMember, targetMember] = game.members;
+  const [source, target] = game.room.players;
+  const duel = card("Duel", "settlement-negation-root");
+  const negation = card("Negation", "settlement-negation-physical-card");
+  setHand(source.id, [duel], 4, 4);
+  setHand(target.id, [negation], 4, 4);
+  for (const player of game.room.players.slice(2)) setHand(player.id, [], 4, 4);
+  setTurn(game.code, source.seat);
+
+  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: duel.id, targetId: target.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const response = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  assert.equal(response.currentAction.actorId, target.id);
+  assert.equal(response.presentationSnapshot.settlement, null, "an open Negation window has no terminal disposition");
+
+  const windowId = response.currentAction.negationWindowId;
+  const cancelled = await requestAndSettle("respond", { code: game.code, token: targetMember.token, cardId: negation.id, preserveResponse: true });
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+  await advanceNegationWindow(game.code, sourceMember.token, windowId);
+  await passNegationWindows(game.code, game.members);
+  const cancelledView = await assertProjectionMatchesEngine(game.code, sourceMember.token);
+  const settlement = cancelledView.presentationSnapshot.settlement;
+  assert.equal(settlement?.outcome, "ROOT_CANCELLED");
+  assert.equal(settlement?.rootCardKind, "Duel");
+  assert.equal(cancelledView.timeline.find((event) => event.id === settlement?.eventId)?.finalResult, true, "the public settlement event explicitly confirms finality");
+  assert.equal(settlement?.sourceId, source.id);
+  assert.equal(settlement?.targetId, target.id);
+  assert.equal(settlement?.resolutionId, cancelledView.presentationV2.negationSettlement?.resolutionId);
+  assert.equal(JSON.stringify(settlement).includes("settlement-negation-physical-card"), false, "proof carries no physical responder card identity");
+  const observer = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  assert.deepEqual(publicSnapshot(observer.presentationSnapshot), publicSnapshot(cancelledView.presentationSnapshot), "root cancellation proof is public and viewer-equal");
+});
+
 test("single-target Negation cancellation exposes an explicit public root disposition", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [sourceMember, targetMember] = game.members;
@@ -2907,14 +2963,43 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   const settlementObserver = await assertProjectionMatchesEngine(game.code, alice.token);
   assert.deepEqual(publicSnapshot(settlementObserver.presentationSnapshot).bumperHarvestSettlements, [settlement], "settlement is viewer-equal");
 
-  const duePending = { ...completedPending, completeAt: Date.now() - 1 };
+  const futurePending = { ...completedPending, completeAt: Date.now() + 10_000 };
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(futurePending))} WHERE code=${quote(game.code)}`);
+  const pendingBeforeUnauthorized = authoritativePending(game.code);
+  const unauthorized = await request("advance_timers", { code: game.code, token: "not-a-room-member" });
+  assert.equal(unauthorized.status, 403, JSON.stringify(unauthorized.data));
+  assert.deepEqual(authoritativePending(game.code), pendingBeforeUnauthorized, "an invalid token cannot change the active Harvest hold");
+  const early = await request("advance_timers", {
+    code: game.code,
+    token: alice.token,
+    context: { actionRevision: "old-revision", meId: "old-viewer", phase: "play", pendingKind: "response", actorId: "old-actor" },
+  });
+  assert.equal(early.status, 200, JSON.stringify(early.data));
+  assert.equal(early.data.room.pendingHarvest.complete, true, "an authenticated non-acting viewer cannot settle before the server deadline");
+  assert.equal(authoritativePending(game.code).completeAt, futurePending.completeAt);
+
+  const duePending = { ...futurePending, completeAt: Date.now() - 1 };
   sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(duePending))} WHERE code=${quote(game.code)}`);
-  const closed = await request("advance_timers", { code: game.code, token: host.token });
-  assert.equal(closed.status, 200, JSON.stringify(closed.data));
-  assert.equal(closed.data.room.pending, null);
-  assert.equal(closed.data.room.causalEnvelope, null, "the completed Bumper Harvest causal identity is cleared atomically");
+  const staleTimerContext = { actionRevision: "stale-revision", meId: first.id, phase: "play", pendingKind: "response", actorId: third.id, windowId: "stale-window" };
+  const [closedByHost, closedByOtherViewer] = await Promise.all([
+    request("advance_timers", { code: game.code, token: host.token, context: staleTimerContext }),
+    request("advance_timers", { code: game.code, token: alice.token, context: staleTimerContext }),
+  ]);
+  assert.equal(closedByHost.status, 200, JSON.stringify(closedByHost.data));
+  assert.equal(closedByOtherViewer.status, 200, JSON.stringify(closedByOtherViewer.data));
+  assert.equal(closedByHost.data.room.pending, null);
+  assert.equal(closedByHost.data.room.pendingHarvest, null);
+  assert.equal(closedByHost.data.room.phase, completedPending.resumePhase);
+  assert.equal(closedByHost.data.room.causalEnvelope, null, "the completed Bumper Harvest causal identity is cleared atomically");
   const afterClose = await assertProjectionMatchesEngine(game.code, bob.token);
   assert.deepEqual(afterClose.presentationSnapshot.bumperHarvestSettlements, [settlement], "the exact public settlement survives causal cleanup");
+  assert.equal(afterClose.log.filter((entry) => entry === "Bumper Harvest finishes resolving.").length, 1, "racing timer requests publish the final result once");
+  for (const held of [harvest, ...harvestCards]) {
+    assert.equal(roomCardCount(game.code, held.id), 1, `${held.kind} remains in exactly one physical zone after timer races`);
+  }
+  const duplicateTimer = await request("advance_timers", { code: game.code, token: bob.token });
+  assert.equal(duplicateTimer.status, 200, JSON.stringify(duplicateTimer.data));
+  assert.equal(authoritativePending(game.code), null, "a later maintenance check is a harmless no-op after the CAS winner");
 });
 
 test("FIX10 shared Negation uses private viewer options and one stable public checkpoint", { timeout: 30_000 }, async () => {
@@ -3038,11 +3123,16 @@ test("engine-backed Judgement replacement exposes reveal and resume evidence", {
   assert.equal(revealView.presentationV2.interactionScene?.rootFrameId, judgementRoot.activeFrameId);
   assert.equal(revealView.presentationV2.interactionScene?.activeResolverId, setup.sima.id);
   assert.equal(revealView.presentationV2.interactionScene?.decisionActorId, setup.sima.id);
+  const revealEventId = revealPending.continuation.judgement.revealedEventId;
+  const revealFact = revealView.presentationSnapshot.publicEventFacts.find((fact) => fact.eventId === revealEventId);
+  assert.equal(revealFact?.outcomeLabel, `${setup.guo.name} revealed 7♠ Dodge for Overindulgence.`, "H4 follows the exact committed reveal without claiming the final Judgement result");
   assert.deepEqual(revealView.presentationV2.interactionScene?.participantRoles, { sourceId: setup.guo.id, originalTargetIds: [setup.guo.id], activeTargetIds: [setup.guo.id], currentParticipantId: setup.guo.id, decisionActorId: setup.sima.id, activeResolverId: setup.sima.id, parentParticipantId: null, participantIds: [] });
   assert.equal(revealView.presentationV2.stableBoundary.kind, "CHOICE");
   assert.equal(revealView.presentationV2.stableBoundary.decisionActorId, setup.sima.id);
   const revealRepeat = await state(setup.game.code, setup.simaMember.token);
   const revealOtherViewer = await state(setup.game.code, setup.guoMember.token);
+  assert.deepEqual(revealOtherViewer.data.presentationSnapshot.publicEventFacts.find((fact) => fact.eventId === revealEventId), revealFact,
+    "the same committed reveal narration is public and identical for actor and observer");
   assert.deepEqual(revealRepeat.data.presentationV2.interactionScene, revealView.presentationV2.interactionScene);
   assert.deepEqual(revealRepeat.data.presentationV2.stableBoundary, revealView.presentationV2.stableBoundary);
   assert.deepEqual(revealOtherViewer.data.presentationV2.interactionScene, revealView.presentationV2.interactionScene, "Judgement public scene is viewer-stable");

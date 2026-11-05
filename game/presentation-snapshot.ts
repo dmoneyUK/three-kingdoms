@@ -13,6 +13,7 @@ import type {
   PresentationRootAction,
   PresentationDismantleSettlement,
   PresentationStealSettlement,
+  PresentationTargetCardSettlementMovement,
   PresentationAttackHitSettlement,
   PresentationBumperHarvestSettlement,
   PresentationGroupSettlement,
@@ -32,6 +33,7 @@ import type {
   PresentationV2,
 } from "./presentation-v2";
 import { isProvenGroupRootCardProof, isSupportedAttackDodgeResponseProof } from "./presentation-v2";
+import { projectPublicPresentationSemantics, validateRetainedPublicEvent, type PublicPresentationDecision, type PublicPresentationEvent, type ViewerNegationChoice } from "./presentation-semantics";
 
 /** The only public identity a future presentation client may use. */
 export type PresentationSnapshotIdentity = {
@@ -124,6 +126,14 @@ export type PresentationSnapshot = {
   localControl: PresentationSnapshotLocalControl;
   /** Explicit public Negation disposition; legacy final-result hints never populate it. */
   settlement: PresentationNegationSettlement | null;
+  /** Server-committed public event facts; private room facts are never admitted. */
+  publicEventFacts: readonly PublicPresentationEvent[];
+  retainedPublicEvent?: PublicPresentationEvent;
+  retainedPublicEventFacts?: readonly PublicPresentationEvent[];
+  /** Server-authored current public decision; never reconstructed from viewer CurrentAction. */
+  publicNextDecision: PublicPresentationDecision | null;
+  /** Current viewer's private Negation choice category only. */
+  viewerNegationChoice: ViewerNegationChoice | null;
   /** Reserved until durable public transition occurrences are accepted. */
   transitionEvents: readonly [];
 };
@@ -133,6 +143,8 @@ export type PresentationSnapshotInput = {
   currentAction: Pick<CurrentAction, "kind" | "actorId"> | null;
   actionRevision: string | null;
   viewerId?: string | null;
+  publicNextDecision?: unknown;
+  viewerNegationChoice?: unknown;
 };
 
 const REST_BOUNDARY: PresentationStableBoundary = {
@@ -265,6 +277,32 @@ function publicPhysicalCard(value: unknown): Card | null {
     && typeof card.rank === "string" && ranks.includes(card.rank)
     ? { id: card.id, kind: card.kind as CardKind, suit: card.suit as Card["suit"], rank: card.rank as Card["rank"] }
     : null;
+}
+
+function provenTargetCardMovement(
+  candidate: Record<string, unknown>,
+  effect: "Dismantle" | "Steal",
+  sourceId: string,
+  targetId: string,
+): PresentationTargetCardSettlementMovement | null {
+  const sourceZone = candidate.sourceZone;
+  if (sourceZone !== "hand" && sourceZone !== "equipment" && sourceZone !== "judgement") return null;
+  const destinationZone = effect === "Dismantle" ? "discard" : "hand";
+  const destinationOwnerId = effect === "Dismantle" ? null : sourceId;
+  const affectedCardOwnerId = sourceZone === "judgement" ? null : targetId;
+  if (candidate.destinationZone !== destinationZone || candidate.destinationOwnerId !== destinationOwnerId
+    || candidate.affectedCardOwnerId !== affectedCardOwnerId) return null;
+  const hasCardFace = Object.prototype.hasOwnProperty.call(candidate, "affectedCardFace");
+  if (effect === "Steal" && sourceZone === "hand") return hasCardFace
+    ? null
+    : { sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId };
+  const affectedCardFace = publicPhysicalCard(candidate.affectedCardFace);
+  if (!hasCardFace || !affectedCardFace) return null;
+  if (effect === "Dismantle" && sourceZone === "hand") {
+    // The selected card is public only after commitment, when it enters the face-up discard pile.
+    return { sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId, affectedCardFace };
+  }
+  return { sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId, affectedCardFace };
 }
 
 export function provenDeflectionActions(value: unknown): PresentationSnapshotDeflectionAction[] {
@@ -443,60 +481,66 @@ export function provenDiaoChanSkillNotices(
 
 export function provenDismantleSettlements(value: unknown): PresentationSnapshotDismantleSettlement[] {
   if (!Array.isArray(value)) return [];
-  const settlements = value.filter((candidate): candidate is PresentationSnapshotDismantleSettlement => Boolean(candidate && typeof candidate === "object" && !Array.isArray(candidate)
-    && (candidate as PresentationSnapshotDismantleSettlement).semantics === "PROVEN"
-    && nonEmptyString((candidate as PresentationSnapshotDismantleSettlement).eventId)
-    && nonEmptyString((candidate as PresentationSnapshotDismantleSettlement).rootEventId)
-    && (candidate as PresentationSnapshotDismantleSettlement).eventId !== (candidate as PresentationSnapshotDismantleSettlement).rootEventId
-    && nonEmptyString((candidate as PresentationSnapshotDismantleSettlement).rootResolutionId)
-    && nonEmptyString((candidate as PresentationSnapshotDismantleSettlement).sourceId)
-    && nonEmptyString((candidate as PresentationSnapshotDismantleSettlement).targetId)
-    && (candidate as PresentationSnapshotDismantleSettlement).sourceId !== (candidate as PresentationSnapshotDismantleSettlement).targetId
-    && (candidate as PresentationSnapshotDismantleSettlement).outcome === "DISMANTLE_RESOLVED"));
+  const settlements = value.flatMap((valueCandidate) => {
+    if (!valueCandidate || typeof valueCandidate !== "object" || Array.isArray(valueCandidate)) return [];
+    const candidate = valueCandidate as Record<string, unknown>;
+    const eventId = candidate.eventId;
+    const rootEventId = candidate.rootEventId;
+    const rootResolutionId = candidate.rootResolutionId;
+    const sourceId = candidate.sourceId;
+    const targetId = candidate.targetId;
+    if (candidate.semantics !== "PROVEN" || !nonEmptyString(eventId) || !nonEmptyString(rootEventId)
+      || eventId === rootEventId || !nonEmptyString(rootResolutionId) || !nonEmptyString(sourceId)
+      || !nonEmptyString(targetId) || sourceId === targetId || candidate.outcome !== "DISMANTLE_RESOLVED") return [];
+    const rootContractFields = ["rootInteractionId", "rootFrameId", "rootPhysicalCard", "resultingCardKind"];
+    const hasRootContract = rootContractFields.some((field) => Object.prototype.hasOwnProperty.call(candidate, field));
+    const rootPhysicalCard = publicPhysicalCard(candidate.rootPhysicalCard);
+    const rootContractValid = !hasRootContract || nonEmptyString(candidate.rootInteractionId)
+      && nonEmptyString(candidate.rootFrameId) && Boolean(rootPhysicalCard)
+      && candidate.resultingCardKind === "Dismantle";
+    if (!rootContractValid) return [];
+    const movement = provenTargetCardMovement(candidate, "Dismantle", sourceId, targetId);
+    return movement ? [{ semantics: "PROVEN" as const, eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "DISMANTLE_RESOLVED" as const,
+      ...(hasRootContract ? {
+        rootInteractionId: candidate.rootInteractionId as string,
+        rootFrameId: candidate.rootFrameId as string,
+        rootPhysicalCard: rootPhysicalCard!,
+        resultingCardKind: "Dismantle" as const,
+      } : {}),
+      ...movement }] : [];
+  });
   const eventCounts = new Map<string, number>();
   const rootCounts = new Map<string, number>();
   settlements.forEach((settlement) => {
     eventCounts.set(settlement.eventId, (eventCounts.get(settlement.eventId) ?? 0) + 1);
     rootCounts.set(settlement.rootEventId, (rootCounts.get(settlement.rootEventId) ?? 0) + 1);
   });
-  return settlements.filter((settlement) => eventCounts.get(settlement.eventId) === 1 && rootCounts.get(settlement.rootEventId) === 1).map((settlement) => ({
-    semantics: "PROVEN",
-    eventId: settlement.eventId,
-    rootEventId: settlement.rootEventId,
-    rootResolutionId: settlement.rootResolutionId,
-    sourceId: settlement.sourceId,
-    targetId: settlement.targetId,
-    outcome: "DISMANTLE_RESOLVED",
-  }));
+  return settlements.filter((settlement) => eventCounts.get(settlement.eventId) === 1 && rootCounts.get(settlement.rootEventId) === 1);
 }
 
 export function provenStealSettlements(value: unknown): PresentationSnapshotStealSettlement[] {
   if (!Array.isArray(value)) return [];
-  const settlements = value.filter((candidate): candidate is PresentationSnapshotStealSettlement => Boolean(candidate && typeof candidate === "object" && !Array.isArray(candidate)
-    && (candidate as PresentationSnapshotStealSettlement).semantics === "PROVEN"
-    && nonEmptyString((candidate as PresentationSnapshotStealSettlement).eventId)
-    && nonEmptyString((candidate as PresentationSnapshotStealSettlement).rootEventId)
-    && (candidate as PresentationSnapshotStealSettlement).eventId !== (candidate as PresentationSnapshotStealSettlement).rootEventId
-    && nonEmptyString((candidate as PresentationSnapshotStealSettlement).rootResolutionId)
-    && nonEmptyString((candidate as PresentationSnapshotStealSettlement).sourceId)
-    && nonEmptyString((candidate as PresentationSnapshotStealSettlement).targetId)
-    && (candidate as PresentationSnapshotStealSettlement).sourceId !== (candidate as PresentationSnapshotStealSettlement).targetId
-    && (candidate as PresentationSnapshotStealSettlement).outcome === "STEAL_RESOLVED"));
+  const settlements = value.flatMap((valueCandidate) => {
+    if (!valueCandidate || typeof valueCandidate !== "object" || Array.isArray(valueCandidate)) return [];
+    const candidate = valueCandidate as Record<string, unknown>;
+    const eventId = candidate.eventId;
+    const rootEventId = candidate.rootEventId;
+    const rootResolutionId = candidate.rootResolutionId;
+    const sourceId = candidate.sourceId;
+    const targetId = candidate.targetId;
+    if (candidate.semantics !== "PROVEN" || !nonEmptyString(eventId) || !nonEmptyString(rootEventId)
+      || eventId === rootEventId || !nonEmptyString(rootResolutionId) || !nonEmptyString(sourceId)
+      || !nonEmptyString(targetId) || sourceId === targetId || candidate.outcome !== "STEAL_RESOLVED") return [];
+    const movement = provenTargetCardMovement(candidate, "Steal", sourceId, targetId);
+    return movement ? [{ semantics: "PROVEN" as const, eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "STEAL_RESOLVED" as const, ...movement }] : [];
+  });
   const eventCounts = new Map<string, number>();
   const rootCounts = new Map<string, number>();
   settlements.forEach((settlement) => {
     eventCounts.set(settlement.eventId, (eventCounts.get(settlement.eventId) ?? 0) + 1);
     rootCounts.set(settlement.rootEventId, (rootCounts.get(settlement.rootEventId) ?? 0) + 1);
   });
-  return settlements.filter((settlement) => eventCounts.get(settlement.eventId) === 1 && rootCounts.get(settlement.rootEventId) === 1).map((settlement) => ({
-    semantics: "PROVEN",
-    eventId: settlement.eventId,
-    rootEventId: settlement.rootEventId,
-    rootResolutionId: settlement.rootResolutionId,
-    sourceId: settlement.sourceId,
-    targetId: settlement.targetId,
-    outcome: "STEAL_RESOLVED",
-  }));
+  return settlements.filter((settlement) => eventCounts.get(settlement.eventId) === 1 && rootCounts.get(settlement.rootEventId) === 1);
 }
 
 export function provenAttackHitSettlements(value: unknown): PresentationSnapshotAttackHitSettlement[] {
@@ -638,6 +682,9 @@ export function provenAttackDodgeResponses(value: unknown): PresentationSnapshot
     responseCardKind: "Dodge",
     responseEventId: response.responseEventId,
     responseResolutionId: response.responseResolutionId,
+    ...(response.responseConversionEffectId === "zhen_ji_black_card_dodge"
+      ? { responsePhysicalCardKind: response.responsePhysicalCardKind, responseConversionEffectId: "zhen_ji_black_card_dodge" as const }
+      : {}),
     ...(response.responsePhysicalCardKind === "Attack" && response.responsePlayedAs === "dodge"
       ? { responsePhysicalCardKind: "Attack" as const, responsePlayedAs: "dodge" as const }
       : {}),
@@ -709,6 +756,40 @@ export function provenDuelExchange(
     });
   }
 
+  let negationResponses: PresentationSnapshotDuelExchange["negationResponses"];
+  if (exchange.negationResponses !== undefined) {
+    if (!Array.isArray(exchange.negationResponses)) return null;
+    const responseCardIds = new Set<string>();
+    const validatedNegations: NonNullable<PresentationSnapshotDuelExchange["negationResponses"]>[number][] = [];
+    for (const [index, candidate] of exchange.negationResponses.entries()) {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+      const response = candidate as Record<string, unknown>;
+      if (response.semantics !== "PROVEN" || response.relation !== "DUEL_NEGATION"
+        || response.interactionId !== exchange.interactionId || response.rootFrameId !== exchange.rootFrameId
+        || response.rootEventId !== root.eventId || response.rootResolutionId !== root.resolutionId
+        || response.ordinal !== index + 1 || !nonEmptyString(response.responseEventId)
+        || !nonEmptyString(response.responseResolutionId) || !nonEmptyString(response.responseActorId)
+        || !nonEmptyString(response.responseCardId)
+        || eventIds.has(response.responseEventId as string) || responseCardIds.has(response.responseCardId as string)) return null;
+      eventIds.add(response.responseEventId as string);
+      responseCardIds.add(response.responseCardId as string);
+      validatedNegations.push({
+        semantics: "PROVEN",
+        relation: "DUEL_NEGATION",
+        interactionId: exchange.interactionId as string,
+        rootFrameId: exchange.rootFrameId as string,
+        rootEventId: root.eventId as string,
+        rootResolutionId: root.resolutionId as string,
+        ordinal: index + 1,
+        responseActorId: response.responseActorId as string,
+        responseCardId: response.responseCardId as string,
+        responseEventId: response.responseEventId as string,
+        responseResolutionId: response.responseResolutionId as string,
+      });
+    }
+    negationResponses = validatedNegations;
+  }
+
   if (scene !== undefined || identity !== undefined || stable !== undefined) {
     if (!scene || !identity || !stable || scene.semantics !== "PROVEN"
       || scene.stage !== "DUEL_EXCHANGE" || stable.kind !== "CHOICE"
@@ -734,6 +815,7 @@ export function provenDuelExchange(
     root: { eventId: root.eventId as string, resolutionId: root.resolutionId as string, sourceId: root.sourceId as string, targetId: root.targetId as string, cardKind: "Duel" },
     responseCount: responseCount as number,
     responses,
+    ...(negationResponses ? { negationResponses } : {}),
     currentParticipantId: exchange.currentParticipantId as string,
     decisionActorId: exchange.decisionActorId as string | null,
   };
@@ -795,6 +877,35 @@ export function provenLustDuelExchange(
     || settlement.failedPlayerId === settlement.damageSourceId)) return null;
   if (!settlement && !participants.has(exchange.currentParticipantId as string)
     || exchange.decisionActorId !== null && exchange.decisionActorId !== exchange.currentParticipantId) return null;
+  const settlementSharesDamageContinuation = Boolean(settlement && scene && identity && stable
+    && scene.semantics === "PROVEN"
+    && scene.interactionId === exchange.interactionId && identity.interactionId === exchange.interactionId
+    && scene.rootFrameId === exchange.rootFrameId && scene.continuity.relation === "CHILD_FRAME"
+    && scene.parentFrameId === exchange.rootFrameId && scene.stage === "DAMAGE"
+    && scene.effect?.toLowerCase() === "duel"
+    && scene.rootOrigin?.frameId === exchange.rootFrameId && scene.rootOrigin.stage === "DUEL_EXCHANGE"
+    && scene.rootOrigin.effect.toLowerCase() === "duel"
+    && scene.rootOrigin.targetIds.length === 2
+    && scene.rootOrigin.targetIds.includes(root.firstParticipantId as string)
+    && scene.rootOrigin.targetIds.includes(root.secondParticipantId as string)
+    && scene.sourceId === settlement.damageSourceId && scene.activeSourceId === settlement.damageSourceId
+    && scene.targetIds.length === 1 && scene.targetIds[0] === settlement.failedPlayerId
+    && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === settlement.failedPlayerId
+    && scene.currentParticipantId === settlement.failedPlayerId
+    && scene.decisionActorId === settlement.failedPlayerId
+    && scene.activeResolverId === settlement.failedPlayerId
+    && scene.participantRoles.sourceId === settlement.damageSourceId
+    && scene.participantRoles.originalTargetIds.length === 1
+    && scene.participantRoles.originalTargetIds[0] === settlement.failedPlayerId
+    && scene.participantRoles.activeTargetIds.length === 1
+    && scene.participantRoles.activeTargetIds[0] === settlement.failedPlayerId
+    && scene.participantRoles.currentParticipantId === settlement.failedPlayerId
+    && scene.participantRoles.decisionActorId === settlement.failedPlayerId
+    && scene.participantRoles.activeResolverId === settlement.failedPlayerId
+    && stable.kind === "CHOICE" && stable.interactionId === identity.interactionId
+    && stable.checkpointId === identity.checkpointId
+    && stable.presentationRevision === identity.presentationRevision
+    && stable.decisionActorId === settlement.failedPlayerId);
   const eventIds = new Set<string>([root.activationEventId as string, root.costEventId as string]);
   if (settlement) {
     if (eventIds.has(settlement.eventId as string)) return null;
@@ -849,7 +960,8 @@ export function provenLustDuelExchange(
 
   if (scene !== undefined || identity !== undefined || stable !== undefined) {
     if (hasSettlement) {
-      if (scene !== null || identity !== null || stable?.kind !== "REST") return null;
+      const settledAtRest = scene === null && identity === null && stable?.kind === "REST";
+      if (!settledAtRest && !settlementSharesDamageContinuation) return null;
     } else if (!scene || !identity || !stable || scene.semantics !== "PROVEN"
       || scene.stage !== "DUEL_EXCHANGE" || stable.kind !== "CHOICE"
       || scene.interactionId !== exchange.interactionId || identity.interactionId !== exchange.interactionId
@@ -1239,9 +1351,15 @@ function reactionChainFor(
   groupProgress: PresentationSnapshotGroupProgress | null,
 ): PresentationReactionChain | null {
   const chain = presentationV2.reactionChain;
-  if (scene.stage !== "NEGATION" || !chain || chain.semantics !== "PROVEN"
+  const rawChainRoot = chain?.rootCard && typeof chain.rootCard === "object" ? chain.rootCard : null;
+  const borrowedSwordStage = rawChainRoot?.cardKind === "BorrowedSword"
+    && (scene.stage === "NEGATION" || scene.stage === "SEQUENTIAL_CHOICE" || scene.stage === "FORCED_ACTION");
+  const chainFrameId = borrowedSwordStage && scene.continuity.relation === "CHILD_FRAME"
+    ? scene.rootFrameId
+    : scene.activeFrameId;
+  if (!(scene.stage === "NEGATION" || borrowedSwordStage) || !chain || chain.semantics !== "PROVEN"
     || chain.interactionId !== identity.interactionId || chain.interactionId !== scene.interactionId
-    || chain.frameId !== scene.activeFrameId
+    || chain.frameId !== chainFrameId
     || !Array.isArray(chain.nodes)) return null;
 
   const nodes: PresentationReactionChainNode[] = [];
@@ -1251,7 +1369,7 @@ function reactionChainFor(
     if (!value || typeof value !== "object") return null;
     const node = value as PresentationReactionChainNode;
     if (typeof node.nodeId !== "string" || !node.nodeId
-      || node.interactionId !== identity.interactionId || node.frameId !== scene.activeFrameId
+      || node.interactionId !== identity.interactionId || node.frameId !== chainFrameId
       || node.causedByNodeId !== previousNodeId
       || typeof node.actorId !== "string" || !node.actorId
       || node.kind !== "CARD_PLAY" || node.object?.type !== "card" || node.object.cardKind !== "Negation"
@@ -1273,6 +1391,16 @@ function reactionChainFor(
   if (rawRootCard && typeof rawRootCard === "object" && !Array.isArray(rawRootCard)) {
     const candidate = rawRootCard as Record<string, unknown>;
     const targetId = scene.targetIds.length === 1 ? scene.targetIds[0] : null;
+    const borrowedRootSourceId = scene.continuity.relation === "CHILD_FRAME" ? scene.rootOrigin?.sourceId : scene.sourceId;
+    const borrowedRootTargetId = scene.continuity.relation === "CHILD_FRAME"
+      ? scene.rootOrigin?.targetIds.length === 1 ? scene.rootOrigin.targetIds[0] : null
+      : scene.participantRoles.originalTargetIds.length === 1 ? scene.participantRoles.originalTargetIds[0] : null;
+    const borrowedSwordRoot = borrowedSwordStage && scene.rootFrameId === candidate.frameId
+      && candidate.sourceId === borrowedRootSourceId && candidate.targetId === borrowedRootTargetId
+      && (scene.continuity.relation === "CHILD_FRAME"
+        ? scene.rootOrigin?.effect === "Borrowed Sword" && scene.parentFrameId === scene.rootFrameId
+        : scene.continuity.relation === "ROOT_FRAME" && candidate.sourceId === scene.sourceId
+          && candidate.targetId === targetId && scene.effect === "Borrowed Sword");
     const singleTargetRoot = targetId !== null
       && candidate.targetId === targetId
       && scene.participantRoles.originalTargetIds.length === 1
@@ -1286,16 +1414,18 @@ function reactionChainFor(
       && scene.participantRoles.originalTargetIds[0] === candidate.targetId
       && scene.participantRoles.originalTargetIds[1] === candidate.sourceId
       && scene.currentParticipantId === candidate.targetId;
-    if (candidate.interactionId === identity.interactionId
-      && candidate.frameId === scene.rootFrameId && candidate.frameId === scene.activeFrameId
+    const ordinaryRoot = candidate.frameId === scene.rootFrameId && candidate.frameId === scene.activeFrameId
       && scene.rootFrameId === scene.activeFrameId && scene.continuity.relation === "ROOT_FRAME"
-      && typeof candidate.sourceId === "string" && candidate.sourceId === scene.sourceId && candidate.sourceId === scene.activeSourceId
-      && typeof candidate.targetId === "string" && (singleTargetRoot || duelNegationRoot)
-      && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === candidate.targetId
+      && candidate.sourceId === scene.sourceId && candidate.sourceId === scene.activeSourceId
+      && (singleTargetRoot || duelNegationRoot)
+      && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === candidate.targetId;
+    if (candidate.interactionId === identity.interactionId
+      && (ordinaryRoot || borrowedSwordRoot)
+      && typeof candidate.sourceId === "string" && typeof candidate.targetId === "string"
       && typeof candidate.cardKind === "string" && CARD_KINDS.includes(candidate.cardKind as CardKind)) {
       rootCard = {
         interactionId: identity.interactionId,
-        frameId: scene.activeFrameId as string,
+        frameId: chainFrameId as string,
         sourceId: candidate.sourceId,
         targetId: candidate.targetId,
         cardKind: candidate.cardKind as CardKind,
@@ -1360,7 +1490,7 @@ function reactionChainFor(
   if ((groupNegation && (!groupTargetEffectScope || nodes.length > 0 && !publicNodeEventLinks))
     || (rawGroupTargetEffectScope !== undefined && (!groupTargetEffectScope || rootCard !== null))) return null;
   return {
-    semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
+    semantics: "PROVEN", interactionId: identity.interactionId, frameId: chainFrameId as string, rootCard, nodes,
     ...(groupTargetEffectScope ? { groupTargetEffectScope } : {}),
     ...(publicNodeEventLinks ? { publicNodeEventLinks } : {}),
     ...(publicEventLinks ? { publicEventLinks } : {}),
@@ -1432,6 +1562,10 @@ function rootActionFor(
     sourceId: action.sourceId,
     targetId: action.targetId,
   };
+  if (action.action === "ATTACK" && "conversionId" in action && action.conversionId === "serpent_spear_attack") return {
+    ...common, action: "ATTACK", cardKind: "Attack", conversionId: "serpent_spear_attack",
+    materialCardIds: [...action.materialCardIds] as [string, string], playedAs: "attack",
+  };
   if (action.action === "ATTACK" && action.physicalCardKind === "Attack") return {
     ...common, action: "ATTACK", cardKind: "Attack", physicalCardKind: "Attack",
   };
@@ -1471,6 +1605,28 @@ function coherentPublicAuthority(presentationV2: PresentationV2): PublicAuthorit
  */
 export function composePresentationSnapshot(input: PresentationSnapshotInput): PresentationSnapshot {
   const authority = coherentPublicAuthority(input.presentationV2);
+  const semanticIdentity = authority ? {
+    ...authority.identity,
+    rootFrameId: authority.scene.rootFrameId as string,
+  } : null;
+  const activeFacts = authority ? (input.presentationV2.publicEventFacts ?? []).map((fact) => ({ ...fact, identity: semanticIdentity })) : [];
+  const activeFactIds = new Set(activeFacts.map((fact) => fact.eventId));
+  const continuedFacts = semanticIdentity ? (input.presentationV2.retainedPublicEventFacts ?? [])
+    .map(validateRetainedPublicEvent)
+    .filter((fact): fact is PublicPresentationEvent => Boolean(fact
+      && fact.identity.interactionId === semanticIdentity.interactionId
+      && fact.identity.rootFrameId === semanticIdentity.rootFrameId
+      && fact.identity.presentationRevision <= semanticIdentity.presentationRevision
+      && !activeFactIds.has(fact.eventId))) : [];
+  const semantic = projectPublicPresentationSemantics({
+    identity: semanticIdentity,
+    events: [...continuedFacts, ...activeFacts],
+    nextDecision: authority && (authority.stable.kind === "CHOICE" || authority.stable.kind === "SPECIAL")
+      ? input.publicNextDecision : null,
+    viewerNegationChoice: input.viewerNegationChoice,
+  });
+  const acceptedViewerNegationChoice = semantic.nextDecision?.stage === "NEGATION"
+    && semantic.nextDecision.responseWindowOpen ? semantic.viewerNegationChoice : null;
   const publicCardEffects = provenPublicCardEffects(input.presentationV2.publicCardEffects);
   const groupParticipantProgress = authority
     ? groupParticipantProgressFor(input.presentationV2, authority.scene, authority.identity, authority.stable)
@@ -1513,6 +1669,14 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
       entitled: Boolean(input.viewerId && input.currentAction?.actorId === input.viewerId),
     },
     settlement: provenNegationSettlement(input.presentationV2.negationSettlement),
+    publicEventFacts: semantic.events,
+    ...(!authority && input.presentationV2.retainedPublicEvent
+      && validateRetainedPublicEvent(input.presentationV2.retainedPublicEvent)
+      ? { retainedPublicEvent: validateRetainedPublicEvent(input.presentationV2.retainedPublicEvent)!,
+        retainedPublicEventFacts: (input.presentationV2.retainedPublicEventFacts ?? [])
+          .map(validateRetainedPublicEvent).filter((fact): fact is PublicPresentationEvent => Boolean(fact)) } : {}),
+    publicNextDecision: semantic.nextDecision,
+    viewerNegationChoice: acceptedViewerNegationChoice,
     transitionEvents: [],
   };
 }

@@ -3,9 +3,11 @@ import { existsSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 
 const fastTests = [
+  "tests/equipment-arrival.test.mjs",
   "tests/dying.test.mjs",
   "tests/ai-decision-prototype.test.mjs",
   "tests/standard-deck.test.mjs",
+  "tests/test-hand-presets.test.mjs",
   "tests/private-hand.test.mjs",
   "tests/game-messages.test.mjs",
   "tests/response-capabilities.test.mjs",
@@ -18,10 +20,17 @@ const fastTests = [
   "tests/presentation-v2.test.mjs",
   "tests/presentation-snapshot.test.mjs",
   "tests/presentation-client.test.mjs",
+  "tests/public-presentation-routing.test.mjs",
+  "tests/public-equipment-transition.test.mjs",
+  "tests/public-discard-transition.test.mjs",
+  "tests/public-hand-reveal-transition.test.mjs",
   "tests/presentation-causality.test.mjs",
   "tests/causal-context.test.mjs",
   "tests/attack-dodge-ux-trace.test.mjs",
   "tests/public-card-announcement.test.mjs",
+  "tests/public-card-effect-frame-layout.test.mjs",
+  "tests/public-stage-layout.test.mjs",
+  "tests/public-card-effect-frame-view.test.mjs",
   "tests/wrangler-worker-supervisor.test.mjs",
 ];
 

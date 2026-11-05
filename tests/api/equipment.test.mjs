@@ -409,6 +409,8 @@ test("Green Dragon Blade and Attack-use-limit rules preserve normal Attack flow"
   const equipped = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "greendragonblade-human" });
   const publicHost = equipped.data.room.players.find((player) => player.id === hostPlayer.id);
   assert.equal(publicHost.equipmentCards[0].kind, "GreenDragonBlade"); assert.equal(publicHost.attackRange, 3);
+  const equipEvent = equipped.data.room.timeline.find((event) => event.type === "card" && event.action === "equip" && event.card?.id === "greendragonblade-human");
+  assert.equal(equipEvent?.actorId, hostPlayer.id, "a public Equip event carries the exact server-owned actor ID for its destination slot");
   assert.equal(equipped.data.room.players.find((player) => player.id === bobPlayer.id).distance, 2, "Bob is opposite Host at distance 2");
 
   const firstAttack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-dragon-first", targetId: bobPlayer.id });
@@ -467,13 +469,93 @@ test("Green Dragon Blade and Attack-use-limit rules preserve normal Attack flow"
 
 });
 
+test("committed Equipment H4 is shared by viewers and follows a real slot replacement", async () => {
+  const game = await createHumanGame();
+  const [host, alice] = game.members;
+  const [hostPlayer, alicePlayer] = game.room.players;
+  const firstCard = card("FrostSword", "public-h4-first");
+  const replacementCard = card("BlueSteelSword", "public-h4-replacement");
+  setEquipment(hostPlayer.id, {});
+  setHand(hostPlayer.id, [firstCard, replacementCard], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+
+  const equipped = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: firstCard.id });
+  assert.equal(equipped.status, 200, JSON.stringify(equipped.data));
+  const firstEvent = equipped.data.room.timeline.find((event) => event.type === "card" && event.action === "equip" && event.card?.id === firstCard.id);
+  assert.ok(firstEvent, "the original public equip event remains the physical zone transition");
+  assert.equal(firstEvent.actorId, hostPlayer.id);
+  assert.equal(firstEvent.publicFact?.category, "CARD_EQUIPPED");
+  assert.equal(firstEvent.publicFact?.rootEventId, firstEvent.id);
+  assert.equal(firstEvent.publicFact?.actorId, hostPlayer.id);
+  assert.equal(firstEvent.publicFact?.label, "Frost Sword");
+  assert.equal(firstEvent.publicFact?.cardId, undefined, "the semantic fact does not copy or invent a physical card ID");
+  assert.deepEqual(firstEvent.publicFact?.affectedPlayerIds, [hostPlayer.id]);
+  const firstSlot = equipped.data.room.players.find((player) => player.id === hostPlayer.id).equipmentCards;
+  assert.ok(firstSlot.some((item) => item.id === firstCard.id && item.kind === "FrostSword"), "the same original CardFace lands in the real Weapon slot");
+  assert.equal(equipped.data.room.presentationSnapshot.retainedPublicEvent?.eventId, firstEvent.id);
+  assert.equal(equipped.data.room.presentationSnapshot.retainedPublicEvent?.category, "CARD_EQUIPPED");
+  assert.equal(equipped.data.room.presentationSnapshot.retainedPublicEvent?.label, "Frost Sword");
+
+  const observer = (await state(game.code, alice.token)).data;
+  assert.deepEqual(observer.presentationSnapshot.retainedPublicEvent, equipped.data.room.presentationSnapshot.retainedPublicEvent,
+    "the same committed public H4 fact is projected to a different player");
+  assert.deepEqual(observer.presentationSnapshot.retainedPublicEventFacts, equipped.data.room.presentationSnapshot.retainedPublicEventFacts);
+  assert.equal(observer.myHand.some((item) => item.id === firstCard.id || item.id === replacementCard.id), false,
+    "another player's public equipment identity does not expose either card as a hidden Hand card");
+
+  const replaced = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: replacementCard.id });
+  assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
+  const replacementDiscardEvent = replaced.data.room.timeline.find((event) => event.type === "card" && event.action === "discard" && event.card?.id === firstCard.id);
+  const replacementEvent = replaced.data.room.timeline.find((event) => event.type === "card" && event.action === "equip" && event.card?.id === replacementCard.id);
+  assert.ok(replacementEvent);
+  assert.ok(replacementDiscardEvent, "the exact public Equipment leaving its slot has one committed zone transition");
+  assert.equal(replacementDiscardEvent.presentation, true);
+  assert.deepEqual(replacementDiscardEvent.publicZoneTransition, {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: replacementDiscardEvent.id, physicalCardId: firstCard.id,
+    from: { zone: "EQUIPMENT", ownerId: hostPlayer.id, slot: "weapon" },
+    to: { zone: "DISCARD", ownerId: null },
+  });
+  assert.equal(replacementDiscardEvent.publicFact?.category, "CARD_DISCARDED");
+  assert.equal(replacementDiscardEvent.publicFact?.effect?.kind, "equipment_replaced");
+  assert.equal(replacementDiscardEvent.publicFact?.rootEventId, replacementEvent.id);
+  assert.ok(replacementDiscardEvent.publicSequence < replacementEvent.publicSequence, "the old slot card exits before its replacement arrives");
+  assert.equal(replacementDiscardEvent.privateToPlayerId, undefined, "the outgoing equipment was already public");
+  assert.equal(replacementEvent.publicFact?.category, "CARD_EQUIPPED");
+  const replacementSnapshot = replaced.data.room.presentationSnapshot;
+  const replacementFact = [
+    ...replacementSnapshot.publicEventFacts,
+    ...(replacementSnapshot.retainedPublicEventFacts ?? []),
+    ...(replacementSnapshot.retainedPublicEvent ? [replacementSnapshot.retainedPublicEvent] : []),
+  ].find((fact) => fact.eventId === replacementDiscardEvent.id);
+  assert.ok(replacementFact, "the exact outgoing Equipment fact is available to the public renderer snapshot");
+  assert.equal(replacementFact.category, "CARD_DISCARDED");
+  assert.equal(replacementFact.effect?.kind, "equipment_replaced");
+  assert.equal(replacementFact.rootEventId, replacementEvent.id);
+  assert.equal(replaced.data.room.presentationSnapshot.retainedPublicEvent?.eventId, replacementEvent.id,
+    "the newer committed equip supersedes the earlier H4 fact");
+  assert.equal(replaced.data.room.presentationSnapshot.retainedPublicEvent?.label, "Blue Steel Sword");
+  const finalEquipment = replaced.data.room.players.find((player) => player.id === hostPlayer.id).equipmentCards;
+  assert.ok(finalEquipment.some((item) => item.id === replacementCard.id && item.kind === "BlueSteelSword"));
+  assert.equal(finalEquipment.some((item) => item.id === firstCard.id), false);
+  assert.ok(discardIds(game.code).includes(firstCard.id), "replacement moves the exact prior Weapon to the real discard zone");
+  const observerAfterReplace = (await state(game.code, alice.token)).data;
+  const observerDiscard = observerAfterReplace.timeline.find((event) => event.type === "card" && event.action === "discard" && event.card?.id === firstCard.id);
+  assert.deepEqual(observerDiscard?.publicZoneTransition, replacementDiscardEvent.publicZoneTransition,
+    "the same exact public zone proof is visible to other viewers");
+  assert.deepEqual(observerAfterReplace.presentationSnapshot.publicEventFacts, replacementSnapshot.publicEventFacts);
+  assert.deepEqual(observerAfterReplace.presentationSnapshot.retainedPublicEventFacts, replacementSnapshot.retainedPublicEventFacts);
+  assert.equal(alicePlayer.id, observer.meId);
+});
+
 test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
-  const [host, alice, bob] = game.members; const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = game.room.players;
+  const [host, alice, bob, carol] = game.members; const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = game.room.players;
   sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(hostPlayer.id)}`);
   setEquipment(hostPlayer.id);
-  setHand(hostPlayer.id, [card("SerpentSpear", "human"), card("Peach", "serpent-one"), card("Dodge", "serpent-two")], 4, 4);
-  setHand(alicePlayer.id, [], 4, 4); setHand(bobPlayer.id, [card("Dodge", "serpent-answer")], 4, 4); setHand(carolPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const privateSerpentHand = card("Attack", "serpent-private-source-hand");
+  const privateObserverHand = card("Peach", "serpent-private-observer-hand");
+  setHand(hostPlayer.id, [card("SerpentSpear", "human"), card("Peach", "serpent-one"), card("Dodge", "serpent-two"), privateSerpentHand], 4, 4);
+  setHand(alicePlayer.id, [], 4, 4); setHand(bobPlayer.id, [card("Dodge", "serpent-answer")], 4, 4); setHand(carolPlayer.id, [privateObserverHand], 4, 4); setTurn(game.code, hostPlayer.seat);
   sql(`UPDATE rooms SET discard_json='[]' WHERE code=${quote(game.code)}`);
 
   const equipped = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "serpentspear-human" });
@@ -498,8 +580,34 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
     targetId: bobPlayer.id, resultingCardKind: "Attack", outcome: "AS_ATTACK",
   }, "the two real cards form one server-authored Attack without a fabricated Attack face");
   const serpentDecision = await state(game.code, bob.token); assert.equal(serpentDecision.data.currentAction.kind, "response"); assert.equal(serpentDecision.data.currentAction.requirement, "dodge"); assert.ok(serpentDecision.data.currentAction.options.some((option) => option.providerId === "card"));
+  const [sourceDuringResponse, targetDuringResponse, observerDuringResponse] = await Promise.all([
+    state(game.code, host.token), state(game.code, bob.token), state(game.code, carol.token),
+  ]).then((views) => views.map((view) => view.data));
+  for (const view of [sourceDuringResponse, targetDuringResponse, observerDuringResponse]) {
+    assert.deepEqual(view.presentationSnapshot.rootAction, view.presentationV2.rootAction,
+      "the shared public snapshot carries the same proof-backed Serpent Spear Attack root for each viewer");
+    assert.equal(view.presentationSnapshot.rootAction.conversionId, "serpent_spear_attack");
+    assert.equal(view.presentationSnapshot.rootAction.playedAs, "attack");
+    assert.deepEqual(view.presentationSnapshot.rootAction.materialCardIds, ["peach-serpent-one", "dodge-serpent-two"]);
+    assert.equal(view.presentationSnapshot.rootAction.physicalCardKind, undefined, "the semantic Attack never invents a physical Attack card");
+  }
+  assert.deepEqual(targetDuringResponse.currentAction.options.find((option) => option.providerId === "card")?.selection.eligibleCardIds, ["dodge-serpent-answer"],
+    "the target retains the real server-authorized Dodge option");
+  assert.equal(JSON.stringify(observerDuringResponse).includes(privateSerpentHand.id), false, "the observer cannot see the source's remaining Hand");
+  assert.equal(JSON.stringify(sourceDuringResponse).includes(privateObserverHand.id), false, "the actor cannot see the observer's private Hand");
+  assert.equal(JSON.stringify(targetDuringResponse).includes(privateObserverHand.id), false, "the target cannot see the observer's private Hand");
   const dodged = await requestAndSettle("respond", { code: game.code, token: bob.token, providerId: "card", cardId: "dodge-serpent-answer" });
   assert.equal(dodged.status, 200); assert.equal(dodged.data.room.phase, "play-struck"); assert.ok(discardIds(game.code).includes("peach-serpent-one"));
+  const [sourceAfterDodge, targetAfterDodge, observerAfterDodge] = await Promise.all([
+    state(game.code, host.token), state(game.code, bob.token), state(game.code, carol.token),
+  ]).then((views) => views.map((view) => view.data));
+  const dodgeProof = sourceAfterDodge.presentationSnapshot.attackDodgeResponses[0];
+  assert.ok(dodgeProof, "the real submitted Dodge remains linked to the Serpent Spear root");
+  assert.equal(dodgeProof.rootEventId, formedEvent.id);
+  assert.deepEqual(targetAfterDodge.presentationSnapshot.attackDodgeResponses, [dodgeProof]);
+  assert.deepEqual(observerAfterDodge.presentationSnapshot.attackDodgeResponses, [dodgeProof]);
+  assert.equal(sourceAfterDodge.timeline.find((event) => event.id === formedEvent.id)?.type, "cards");
+  assert.equal(JSON.stringify(observerAfterDodge).includes(privateSerpentHand.id), false, "the committed public frame does not expose remaining source Hand identities");
 
   setEquipment(alicePlayer.id, { weapon: card("SerpentSpear", "duel") });
   setHand(hostPlayer.id, [card("Duel", "serpent")], 4, 4); setHand(alicePlayer.id, [card("Peach", "duel-one"), card("Dodge", "duel-two")], 4, 4); setTurn(game.code, hostPlayer.seat);
@@ -798,6 +906,11 @@ test("Nio Shield occupies the Armor slot and prevents black Attack before Dodge 
   assert.equal(blackAttack.data.room.phase, "play-struck", "the black Attack finishes without opening a Dodge response");
   assert.equal(blackAttack.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "Nio Shield prevents the black Attack's damage");
   assert.ok(blackAttack.data.room.timeline.some((event) => event.type === "message" && event.effectNotice && /Nio Shield blocks .*black Attack/.test(event.message)), "Nio Shield shows an Effect Triggered notice when it blocks a black Attack");
+  const preventionFact = blackAttack.data.room.presentationSnapshot.retainedPublicEvent;
+  assert.equal(preventionFact?.category, "SKILL_USED");
+  assert.equal(preventionFact?.actorId, alicePlayer.id);
+  assert.equal(preventionFact?.outcomeLabel, "blocked the Attack");
+  assert.equal(preventionFact?.label, "Nio Shield");
 
   const redAttack = { ...card("Attack", "red"), suit: "♥" };
   setHand(hostPlayer.id, [redAttack], 4, 4); setTurn(game.code, hostPlayer.seat);
@@ -909,6 +1022,22 @@ test("generic response executes Zhen Ji's black-card Dodge without a physical Do
   const qingguoEvent = resolved.data.room.timeline.find((event) => event.type === "card" && event.card?.id === blackPeach.id);
   assert.equal(qingguoEvent.publicCardEffects?.[0]?.effectId, "zhen_ji_black_card_dodge");
   assert.deepEqual(qingguoEvent.publicCardEffects?.[0]?.materials, [{ cardId: blackPeach.id, ownerId: alicePlayer.id, fromZone: "HAND", toZone: "DISCARD" }]);
+  assert.deepEqual(qingguoEvent.attackDodgeResponse && {
+    responsePhysicalCardKind: qingguoEvent.attackDodgeResponse.responsePhysicalCardKind,
+    responseConversionEffectId: qingguoEvent.attackDodgeResponse.responseConversionEffectId,
+    responseActorId: qingguoEvent.attackDodgeResponse.responseActorId,
+    targetId: qingguoEvent.attackDodgeResponse.targetId,
+  }, {
+    responsePhysicalCardKind: "Peach", responseConversionEffectId: "zhen_ji_black_card_dodge",
+    responseActorId: alicePlayer.id, targetId: alicePlayer.id,
+  }, "the exact server-authorized black card is linked to its Attack target as an Empress Dowager Dodge");
+  const hostView = await state(game.code, host.token);
+  assert.deepEqual(hostView.data.presentationSnapshot.attackDodgeResponses, resolved.data.room.presentationSnapshot.attackDodgeResponses,
+    "the typed Empress Dowager Dodge relation is public and viewer-equal");
+  assert.ok(hostView.data.presentationSnapshot.attackDodgeResponses?.length,
+    JSON.stringify({ event: qingguoEvent, presentationV2: hostView.data.presentationV2, snapshot: hostView.data.presentationSnapshot }));
+  assert.equal(hostView.data.presentationSnapshot.attackDodgeResponses[0].responsePhysicalCardKind, "Peach");
+  assert.equal(hostView.data.presentationSnapshot.attackDodgeResponses[0].responseConversionEffectId, "zhen_ji_black_card_dodge");
   assert.ok(discardIds(game.code).includes(blackPeach.id));
 });
 

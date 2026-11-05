@@ -1,15 +1,22 @@
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
+import { collectPublicPresentationEventFacts, retainedPublicEventFromTimeline, type PublicPresentationEvent, type PublicPresentationEventFactDraft } from "./presentation-semantics";
 import { CARD_DEFINITIONS } from "./cards";
 import { CARD_KINDS, type Card, type CardKind } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestNegationResponseRecord, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type NegationHistoryRecord } from "./pending";
 
+const LUST_DUEL_SETTLEMENT_PROJECTION_RETENTION_MS = 8_000;
+
 export type PresentationV2Event = {
   id: string;
+  /** Source append order in the retained room log; id remains the durable identity. */
+  appendOrder?: number;
+  /** Persisted public-event chronology, independent of rolling room-log indexes. */
+  publicSequence?: number;
   type: "message" | "card" | "cards" | string;
   player?: string;
   target?: string;
-  card?: { id?: string; kind?: string };
+  card?: { id?: string; kind?: string; suit?: string; rank?: string };
   cards?: readonly { id?: string; kind?: string }[];
   message?: string;
   action?: string;
@@ -39,7 +46,47 @@ export type PresentationV2Event = {
   /** Legacy persisted Raining Arrows metadata; normalized into groupSettlement. */
   publicRainingArrowsSettlement?: unknown;
   bumperHarvestRoot?: { semantics?: unknown; sourceId?: unknown; cardId?: unknown; interactionId?: unknown; rootFrameId?: unknown };
+  publicFact?: PublicPresentationEventFactDraft;
 };
+
+/**
+ * Proves that one committed public physical-card play represents an effective
+ * target-card action. A conversion is accepted only when its server-authored
+ * proof names the same physical face, owner, target and destination.
+ */
+export function publicCardPlayProvesEffectiveKind(
+  event: PresentationV2Event | null | undefined,
+  physicalCard: Card,
+  effectiveCardKind: CardKind,
+  sourceId: string,
+  targetId: string,
+): boolean {
+  const eventCard = record(event?.card);
+  if (!sourceId || !targetId || sourceId === targetId
+    || !event || event.type !== "card" || event.action !== "play" || event.presentation === false
+    || typeof event.privateToPlayerId === "string" || !stringValue(event.id) || !stringValue(event.resolutionId)
+    || eventCard?.id !== physicalCard.id || eventCard.kind !== physicalCard.kind
+    || eventCard.suit !== physicalCard.suit || eventCard.rank !== physicalCard.rank) return false;
+
+  const conversionProofs = Array.isArray(event.publicCardEffects)
+    ? event.publicCardEffects.map(record).filter((proof) => proof?.effectClass === "CONVERSION")
+    : [];
+  if (physicalCard.kind === effectiveCardKind) {
+    return event.playedAs === undefined && conversionProofs.length === 0;
+  }
+  if (event.playedAs !== undefined || conversionProofs.length !== 1) return false;
+
+  const proof = conversionProofs[0];
+  const materials = Array.isArray(proof?.materials) ? proof.materials.map(record) : [];
+  const [material] = materials;
+  return typeof proof?.effectId === "string" && proof.effectId.length > 0
+    && proof.semantics === "PROVEN" && proof.eventId === event.id
+    && proof.activationOwnerId === sourceId && proof.targetId === targetId
+    && proof.resultingCardKind === effectiveCardKind
+    && proof.outcome === `AS_${effectiveCardKind.toUpperCase()}`
+    && materials.length === 1 && material?.cardId === physicalCard.id
+    && material.ownerId === sourceId && material.fromZone === "HAND" && material.toZone === "DISCARD";
+}
 
 export type PresentationPublicCardEffectId =
   | "yue_jin_dauntless"
@@ -158,11 +205,30 @@ export type DiaoChanSkillNoticeProof =
 
 export type PresentationDiaoChanSkillNotice = DiaoChanSkillNoticeProof & { eventId: string; rootEventId: string };
 
+export type PresentationTargetCardSourceZone = "hand" | "equipment" | "judgement";
+
+/** Public, server-authored physical card movement from a committed target-card choice. */
+export type PresentationTargetCardSettlementMovement = {
+  sourceZone: PresentationTargetCardSourceZone;
+  /** Judgement-zone cards are unowned; other selected cards belong to the target. */
+  affectedCardOwnerId: string | null;
+  destinationZone: "hand" | "discard";
+  destinationOwnerId: string | null;
+  /** Omitted only for a card taken from a hidden Hand by Steal. */
+  affectedCardFace?: Card;
+};
+
 /** Server-authored result for a resolved Dismantle target-card choice. */
-export type PresentationDismantleSettlementProof = {
+export type PresentationDismantleSettlementProof = PresentationTargetCardSettlementMovement & {
   semantics: "PROVEN";
   rootEventId: string;
   rootResolutionId: string;
+  /** Exact causal context and physical face of the public root card. Omitted only by legacy natural Dismantle events. */
+  rootInteractionId?: string;
+  rootFrameId?: string;
+  rootPhysicalCard?: Card;
+  /** Effective action proved by the public root; distinct from rootPhysicalCard.kind for conversions. */
+  resultingCardKind?: "Dismantle";
   sourceId: string;
   targetId: string;
   outcome: "DISMANTLE_RESOLVED";
@@ -180,7 +246,7 @@ export type PresentationStealSettlementProof = {
   sourceId: string;
   targetId: string;
   outcome: "STEAL_RESOLVED";
-};
+} & PresentationTargetCardSettlementMovement;
 
 export type PresentationStealSettlement = PresentationStealSettlementProof & {
   eventId: string;
@@ -303,10 +369,14 @@ export type PresentationV2Input = {
   currentAction: Pick<CurrentAction, "kind" | "actorId" | "reason" | "deadline" | "declineAction" | "presentation"> | null;
   actionRevision: string;
   timeline: readonly PresentationV2Event[];
+  /** Viewer-independent public events from the same persisted log append stream. */
+  publicTimeline?: readonly PresentationV2Event[];
   /** Engine-derived public Oath recipients; never reconstructed from client state. */
   oathRecipientIds?: readonly string[] | null;
   /** The parsed server-owned causal envelope; never reconstructed by this projector. */
   causalEnvelope?: CausalEnvelope | null;
+  /** Server permits the last committed outcome only at a proven idle boundary. */
+  retainPublicEventAtRest?: boolean;
 };
 
 export type AttackRootProjectionDiagnostics = {
@@ -474,6 +544,14 @@ type PresentationRootActionBase = {
 export type PresentationRootAction =
   | (PresentationRootActionBase & {
     action: "ATTACK";
+    cardKind: "Attack";
+    /** Two public Hand cards combine into one virtual Attack; neither is an Attack card. */
+    conversionId: "serpent_spear_attack";
+    materialCardIds: readonly [string, string];
+    playedAs: "attack";
+  })
+  | (PresentationRootActionBase & {
+    action: "ATTACK";
     /** Semantic root action; distinct from the physical card used to play it. */
     cardKind: "Attack";
     physicalCardKind: "Attack";
@@ -553,6 +631,15 @@ export function isProvenRootActionCardProof(value: unknown): value is Presentati
   if (!action) return false;
   if (action.action === "ATTACK") {
     if (action.cardKind !== "Attack") return false;
+    if (action.conversionId !== undefined) {
+      const materialCardIds = action.materialCardIds;
+      return action.conversionId === "serpent_spear_attack"
+        && action.physicalCardKind === undefined && action.playedAs === "attack"
+        && Array.isArray(materialCardIds) && materialCardIds.length === 2
+        && materialCardIds.every((cardId) => typeof cardId === "string" && cardId.length > 0)
+        && materialCardIds[0] !== materialCardIds[1];
+    }
+    if (action.materialCardIds !== undefined) return false;
     if (action.physicalCardKind === "Attack") return action.playedAs === undefined;
     return typeof action.physicalCardKind === "string"
       && CARD_KINDS.includes(action.physicalCardKind as CardKind)
@@ -584,8 +671,9 @@ type PresentationAttackDodgeResponseProofBase = {
 };
 
 export type PresentationAttackDodgeResponseProof = PresentationAttackDodgeResponseProofBase & (
-  | { responsePhysicalCardKind?: never; responsePlayedAs?: never }
-  | { responsePhysicalCardKind: "Attack"; responsePlayedAs: "dodge" }
+  | { responsePhysicalCardKind?: never; responsePlayedAs?: never; responseConversionEffectId?: never }
+  | { responsePhysicalCardKind: "Attack"; responsePlayedAs: "dodge"; responseConversionEffectId?: never }
+  | { responsePhysicalCardKind: Card["kind"]; responsePlayedAs?: never; responseConversionEffectId: "zhen_ji_black_card_dodge" }
 );
 
 export type PresentationAttackDodgeResponse = PresentationAttackDodgeResponseProof & {
@@ -599,6 +687,10 @@ export function isSupportedAttackDodgeResponseProof(value: unknown): value is Pr
   if (!proof) return false;
   const hasPhysicalKind = Object.prototype.hasOwnProperty.call(proof, "responsePhysicalCardKind");
   const hasPlayedAs = Object.prototype.hasOwnProperty.call(proof, "responsePlayedAs");
+  const hasConversionEffect = Object.prototype.hasOwnProperty.call(proof, "responseConversionEffectId");
+  if (hasConversionEffect) return proof.responseConversionEffectId === "zhen_ji_black_card_dodge"
+    && hasPhysicalKind && !hasPlayedAs && typeof proof.responsePhysicalCardKind === "string"
+    && CARD_KINDS.includes(proof.responsePhysicalCardKind as CardKind);
   if (!hasPhysicalKind && !hasPlayedAs) return true;
   return hasPhysicalKind && hasPlayedAs
     && proof.responsePhysicalCardKind === "Attack" && proof.responsePlayedAs === "dodge";
@@ -607,9 +699,28 @@ export function isSupportedAttackDodgeResponseProof(value: unknown): value is Pr
 /** Cross-checks a typed server proof against the exact public physical response event. */
 export function attackDodgeResponseEventMatchesProof(
   value: unknown,
-  event: Pick<PresentationV2Event, "card" | "playedAs">,
+  event: Pick<PresentationV2Event, "id" | "card" | "playedAs" | "publicCardEffects">,
 ): boolean {
   if (!isSupportedAttackDodgeResponseProof(value)) return false;
+  if (value.responseConversionEffectId === "zhen_ji_black_card_dodge") {
+    const card = event.card;
+    if (!card?.id || card.kind !== value.responsePhysicalCardKind
+      || (card.suit !== "♠" && card.suit !== "♣")
+      || event.playedAs !== undefined) return false;
+    const effects = Array.isArray(event.publicCardEffects) ? event.publicCardEffects.map(record).filter((effect) => effect !== null) : [];
+    const matchingEffects = effects.filter((effect) => effect.effectId === value.responseConversionEffectId);
+    if (matchingEffects.length !== 1) return false;
+    const effect = matchingEffects[0];
+    const materials = Array.isArray(effect.materials) ? effect.materials.map(record).filter((candidate) => candidate !== null) : [];
+    const [material] = materials;
+    return effect.semantics === "PROVEN" && effect.eventId === event.id && effect.effectClass === "CONVERSION"
+      && effect.activationOwnerId === value.responseActorId && effect.rootEventId === value.rootEventId
+      && effect.rootResolutionId === value.rootResolutionId && effect.targetId === value.targetId
+      && effect.resultingCardKind === "Dodge" && effect.outcome === "AS_DODGE"
+      && materials.length === 1
+      && material?.cardId === card.id && material.ownerId === value.responseActorId
+      && material.fromZone === "HAND" && material.toZone === "DISCARD";
+  }
   if (value.responsePhysicalCardKind === "Attack") {
     return event.card?.kind === "Attack" && event.playedAs === "dodge";
   }
@@ -640,6 +751,20 @@ export type PresentationDuelAttackResponse = PresentationDuelAttackResponseProof
   responseResolutionId: string;
 };
 
+export type PresentationDuelNegationResponse = {
+  semantics: "PROVEN";
+  relation: "DUEL_NEGATION";
+  interactionId: string;
+  rootFrameId: string;
+  rootEventId: string;
+  rootResolutionId: string;
+  ordinal: number;
+  responseActorId: string;
+  responseCardId: string;
+  responseEventId: string;
+  responseResolutionId: string;
+};
+
 export type PresentationDuelExchange = {
   semantics: "PROVEN";
   interactionId: string;
@@ -647,6 +772,8 @@ export type PresentationDuelExchange = {
   checkpointId: string;
   presentationRevision: number;
   root: { eventId: string; resolutionId: string; sourceId: string; targetId: string; cardKind: "Duel" };
+  /** Committed physical Negations linked to this printed Duel before exchange resumed. */
+  negationResponses?: readonly PresentationDuelNegationResponse[];
   responseCount: number;
   responses: readonly PresentationDuelAttackResponse[];
   currentParticipantId: string;
@@ -818,6 +945,9 @@ export type PresentationV2 = {
   decision: { kind: CurrentAction["kind"] | null; actorId: string | null; actionRevision: string; resolutionId: string | null; readyAfterEventId: string | null; deadline: number } | null;
   settlement: { eventId: string; resolutionId: string | null } | null;
   transitionEvents: readonly { eventId: string; type: string; resolutionId: string | null }[];
+  publicEventFacts: readonly PublicPresentationEventFactDraft[];
+  retainedPublicEvent?: PublicPresentationEvent | null;
+  retainedPublicEventFacts?: readonly PublicPresentationEvent[];
   stableBoundary: PresentationStableBoundary;
 };
 
@@ -1099,6 +1229,23 @@ function semanticDecisionActorId(envelope: CausalEnvelope | null, pending: unkno
       && activeFrame.current.currentTargetIds.length === 1 && activeFrame.current.currentTargetIds[0] === actorId
       && activeFrame.current.resolvingPlayerId === actorId
       && progress.currentParticipantId === actorId && participant?.status === "CURRENT") return actorId;
+  }
+  if (item?.kind === "borrowed_sword" && item.stage === "choose_target" && envelope && activeFrame && actorId) {
+    const sourceId = stringValue(item.sourceId);
+    const holderId = stringValue(item.holderId);
+    const rootFrames = envelope.frames.filter((frame) => frame.parentFrameId == null);
+    if (sourceId && holderId && sourceId !== holderId && actorId === sourceId
+      && rootFrames.length === 1 && rootFrames[0]!.frameId === activeFrame.frameId
+      && activeFrame.parentFrameId == null && activeFrame.stage === "SEQUENTIAL_CHOICE"
+      && envelope.activeFrameId === activeFrame.frameId && envelope.checkpoint.frameId === activeFrame.frameId
+      && envelope.checkpoint.stage === "SEQUENTIAL_CHOICE"
+      && record(item.causal)?.interactionId === envelope.interactionId && record(item.causal)?.frameId === activeFrame.frameId
+      && activeFrame.origin.originSourceId === sourceId && activeFrame.origin.originEffect === "Borrowed Sword"
+      && activeFrame.origin.originalTargetIds.length === 1 && activeFrame.origin.originalTargetIds[0] === holderId
+      && activeFrame.current.currentSourceId === sourceId && activeFrame.current.currentEffect === "Borrowed Sword"
+      && activeFrame.current.currentTargetIds.length === 1 && activeFrame.current.currentTargetIds[0] === holderId
+      && activeFrame.current.resolvingPlayerId === sourceId) return actorId;
+    return null;
   }
   if (!envelope || !activeFrame || !item || !actorId || !causal || causal.interactionId !== envelope.interactionId
     || causal.frameId !== activeFrame.frameId) return null;
@@ -1846,6 +1993,122 @@ function groupTargetEffectScopeFor(
   };
 }
 
+/** Retains one server-proven Borrowed Sword root and its committed Negation cards
+ * through the confirmed victim choice and forced Attack decision. */
+function borrowedSwordReactionChainFor(
+  timeline: readonly PresentationV2Event[],
+  envelope: CausalEnvelope | null,
+  pending: unknown,
+  scene: PresentationInteractionScene | null,
+): PresentationReactionChain | null {
+  const item = record(pending);
+  const continuation = record(item?.continuation);
+  const negationEffect = record(continuation?.effect);
+  const forced = item?.kind === "response" && continuation?.kind === "borrowed_sword_attack";
+  const negation = (item?.kind === "response" || item?.kind === "negation_window")
+    && continuation?.kind === "negation" && negationEffect?.kind === "borrowed_sword";
+  const sharedNegationWindow = item?.kind === "negation_window";
+  const choosing = item?.kind === "borrowed_sword" && item.stage === "choose_target";
+  if ((!forced && !negation && !choosing) || !scene || scene.semantics !== "PROVEN" || !envelope
+    || scene.interactionId !== envelope.interactionId || !scene.rootFrameId || !scene.activeFrameId) return null;
+
+  const sourceId = stringValue(forced || negation ? continuation.sourceId : item.sourceId);
+  const targetId = stringValue(forced || negation ? continuation.holderId ?? negationEffect?.targetId : item.holderId);
+  const rootEventId = stringValue(forced || negation ? continuation.rootEventId : item.rootEventId);
+  const rootResolutionId = stringValue(forced || negation ? continuation.rootResolutionId : item.rootResolutionId);
+  const rootCardId = stringValue(forced || negation ? continuation.rootCardId : item.rootCardId);
+  const causal = record(forced ? continuation.causal : negation ? continuation.causal : item.causal);
+  const rootFrames = envelope.frames.filter((frame) => frame.parentFrameId == null);
+  const rootFrame = rootFrames.length === 1 ? rootFrames[0] : null;
+  if (!sourceId || !targetId || sourceId === targetId || !rootEventId || !rootResolutionId || !rootCardId
+    || !rootFrame || rootFrame.frameId !== scene.rootFrameId
+    || rootFrame.origin.originSourceId !== sourceId || rootFrame.origin.originEffect !== "Borrowed Sword"
+    || rootFrame.origin.originalTargetIds.length !== 1 || rootFrame.origin.originalTargetIds[0] !== targetId
+    || rootFrame.current.currentSourceId !== sourceId || rootFrame.current.currentTargetIds.length !== 1
+    || rootFrame.current.currentTargetIds[0] !== targetId
+    || !causal || causal.interactionId !== envelope.interactionId
+    || timeline.filter((event) => event.id === rootEventId).length !== 1
+    || !timeline.some((event) => event.id === rootEventId && event.type === "card" && event.action === "play"
+      && event.presentation !== false && typeof event.privateToPlayerId !== "string"
+      && event.resolutionId === rootResolutionId && event.card?.id === rootCardId && event.card.kind === "BorrowedSword")) return null;
+
+  if (negation) {
+    if (scene.stage !== "NEGATION" || scene.activeFrameId !== rootFrame.frameId
+      || scene.continuity.relation !== "ROOT_FRAME" || rootFrame.stage !== "NEGATION"
+      || causal.frameId !== rootFrame.frameId || scene.sourceId !== sourceId || scene.effect !== "Borrowed Sword"
+      || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== targetId
+      || (!sharedNegationWindow && (scene.activeResolverId !== item.actorId || scene.decisionActorId !== item.actorId))
+      || (sharedNegationWindow && (scene.activeResolverId !== null || scene.decisionActorId !== null))) return null;
+  } else if (choosing) {
+    if (scene.stage !== "SEQUENTIAL_CHOICE" || scene.activeFrameId !== rootFrame.frameId
+      || scene.continuity.relation !== "ROOT_FRAME" || rootFrame.stage !== "SEQUENTIAL_CHOICE"
+      || causal.frameId !== rootFrame.frameId || item.sourceId !== sourceId || item.actorId !== sourceId
+      || item.targetId !== targetId
+      || scene.sourceId !== sourceId || scene.effect !== "Borrowed Sword"
+      || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== targetId
+      || scene.decisionActorId !== sourceId || scene.activeResolverId !== sourceId) return null;
+  } else {
+    const childFrame = envelope.frames.find((frame) => frame.frameId === scene.activeFrameId);
+    const selectedTargetId = stringValue(continuation.targetId);
+    const rootOrigin = scene.rootOrigin;
+    if (scene.stage !== "FORCED_ACTION" || scene.continuity.relation !== "CHILD_FRAME"
+      || causal.frameId !== scene.activeFrameId || !childFrame || childFrame.parentFrameId !== rootFrame.frameId
+      || childFrame.stage !== "FORCED_ACTION" || childFrame.origin.originSourceId !== targetId
+      || childFrame.origin.originEffect !== "borrowed_sword_attack"
+      || childFrame.origin.originalTargetIds.length !== 1 || childFrame.origin.originalTargetIds[0] !== selectedTargetId
+      || childFrame.origin.originRef?.interactionId !== envelope.interactionId
+      || childFrame.origin.originRef?.frameId !== rootFrame.frameId
+      || scene.decisionActorId !== targetId || scene.activeResolverId !== targetId
+      || rootOrigin?.sourceId !== sourceId || rootOrigin.effect !== "Borrowed Sword"
+      || rootOrigin.targetIds.length !== 1 || rootOrigin.targetIds[0] !== targetId) return null;
+  }
+
+  const rawHistory = (forced || choosing ? (forced ? continuation.negationHistory : item.negationHistory) : continuation.negationHistory) ?? [];
+  if (!Array.isArray(rawHistory)) return null;
+  const nodes: PresentationReactionChainNode[] = [];
+  const linked: Array<{ nodeId: string; eventId: string; resolutionId: string } | null> = [];
+  const nodeIds = new Set<string>();
+  const cardIds = new Set<string>([rootCardId]);
+  const eventIds = new Set<string>([rootEventId]);
+  let previousNodeId: string | null = null;
+  for (const raw of rawHistory) {
+    const node = record(raw);
+    const nodeId = stringValue(node?.nodeId);
+    const actorId = stringValue(node?.actorId);
+    const cardId = stringValue(node?.physicalCardId);
+    const eventId = stringValue(node?.publicEventId);
+    const frameId = stringValue(node?.frameId);
+    const matches = eventId ? timeline.filter((event) => event.id === eventId) : [];
+    const event = matches.length === 1 ? matches[0] : null;
+    const publicFact = record(event?.publicFact);
+    if (!nodeId || !actorId || !cardId || !eventId || frameId !== rootFrame.frameId
+      || node?.interactionId !== envelope.interactionId || node.causedByNodeId !== previousNodeId
+      || node.kind !== "NEGATION_CARD" || nodeIds.has(nodeId) || cardIds.has(cardId) || eventIds.has(eventId)
+      || !event || event.type !== "card" || event.action !== "play" || event.presentation === false
+      || typeof event.privateToPlayerId === "string" || event.card?.kind !== "Negation" || event.card.id !== cardId
+      || !stringValue(event.resolutionId)
+      || publicFact && publicFact.actorId !== undefined && publicFact.actorId !== actorId) return null;
+    nodeIds.add(nodeId);
+    cardIds.add(cardId);
+    eventIds.add(eventId);
+    previousNodeId = nodeId;
+    nodes.push({ nodeId, interactionId: envelope.interactionId, frameId, causedByNodeId: node.causedByNodeId as string | null, actorId, kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } });
+    linked.push({ nodeId, eventId, resolutionId: event.resolutionId });
+  }
+
+  const negated = negation ? continuation.negated : false;
+  if (typeof negated !== "boolean" || negated !== (nodes.length % 2 === 1)) return null;
+  return {
+    semantics: "PROVEN",
+    interactionId: envelope.interactionId,
+    frameId: rootFrame.frameId,
+    rootCard: { interactionId: envelope.interactionId, frameId: rootFrame.frameId, sourceId, targetId, cardKind: "BorrowedSword" },
+    nodes,
+    publicEventLinks: { root: { eventId: rootEventId, resolutionId: rootResolutionId }, nodes: linked as Array<{ nodeId: string; eventId: string; resolutionId: string }> },
+    rootEffectState: negated ? "BLOCKED" : "ACTIVE",
+  };
+}
+
 function reactionChainFor(
   timeline: readonly PresentationV2Event[],
   envelope: CausalEnvelope | null,
@@ -1855,6 +2118,8 @@ function reactionChainFor(
   groupValues: GroupProjectionValues | null,
   groupProgress: ReturnType<typeof groupParticipantProgress>,
 ): PresentationReactionChain | null {
+  const borrowedSwordChain = borrowedSwordReactionChainFor(timeline, envelope, pending, scene);
+  if (borrowedSwordChain) return borrowedSwordChain;
   const item = record(pending);
   const continuation = record(item?.continuation);
   const effect = record(continuation?.effect);
@@ -1932,6 +2197,75 @@ function reactionChainFor(
   const cardName = stringValue(continuation.cardName);
   const rootCardKind = continuation.rootCardKind;
   const expectedRootCardKind = effect && sourceId && targetId ? singleTargetNegationRootCardKind(effect, sourceId, targetId) : null;
+  const heldRootCardIds = Array.isArray(continuation.heldCards)
+    ? continuation.heldCards.flatMap((value) => {
+      const card = record(value);
+      const id = stringValue(card?.id);
+      return card?.kind === rootCardKind && id ? [id] : [];
+    })
+    : [];
+  const effectRootCardId = stringValue(effect?.cardId);
+  const rootPhysicalCardId = heldRootCardIds.length === 1
+    && (!effectRootCardId || effectRootCardId === heldRootCardIds[0])
+    ? heldRootCardIds[0]
+    : heldRootCardIds.length === 0 ? effectRootCardId : null;
+  const ambushmentConversionRootEvent = (() => {
+    if (expectedRootCardKind !== "Dismantle" || rootCardKind === expectedRootCardKind
+      || !sourceId || !targetId || !rootPhysicalCardId || heldRootCardIds.length !== 1) return null;
+    const matches = timeline.filter((candidate) => candidate.type === "card" && candidate.action === "play"
+      && candidate.presentation !== false && typeof candidate.privateToPlayerId !== "string"
+      && candidate.playedAs === undefined && candidate.card?.id === rootPhysicalCardId
+      && candidate.card.kind === rootCardKind
+      && (candidate.card.suit === "♣" || candidate.card.suit === "♠")
+      && typeof candidate.id === "string" && candidate.id.length > 0
+      && typeof candidate.resolutionId === "string" && candidate.resolutionId.length > 0);
+    if (matches.length !== 1 || timeline.filter((candidate) => candidate.id === matches[0].id).length !== 1) return null;
+    const event = matches[0];
+    const proofs = Array.isArray(event.publicCardEffects)
+      ? event.publicCardEffects.map(record).filter((proof) => proof?.effectId === "gan_ning_qixi")
+      : [];
+    if (proofs.length !== 1) return null;
+    const proof = proofs[0];
+    const materials = Array.isArray(proof?.materials) ? proof.materials.map(record) : [];
+    const [material] = materials;
+    return proof?.semantics === "PROVEN" && proof.eventId === event.id
+      && proof.effectClass === "CONVERSION" && proof.activationOwnerId === sourceId
+      && proof.targetId === targetId && proof.resultingCardKind === "Dismantle"
+      && proof.outcome === "AS_DISMANTLE" && materials.length === 1
+      && material?.cardId === rootPhysicalCardId && material.ownerId === sourceId
+      && material.fromZone === "HAND" && material.toZone === "DISCARD"
+      && (!stringValue(continuation.resolutionId) || event.resolutionId === continuation.resolutionId)
+      ? { eventId: event.id, resolutionId: event.resolutionId }
+      : null;
+  })();
+  const captivatingConversionRootEvent = (() => {
+    if (expectedRootCardKind !== "Overindulgence" || !sourceId || !targetId || !rootPhysicalCardId) return null;
+    const matches = timeline.filter((candidate) => candidate.type === "card" && candidate.action === "play"
+      && candidate.presentation !== false && typeof candidate.privateToPlayerId !== "string"
+      && candidate.playedAs === undefined && candidate.card?.id === rootPhysicalCardId
+      && candidate.card.kind !== expectedRootCardKind && candidate.card.suit === "♦"
+      && typeof candidate.id === "string" && candidate.id.length > 0
+      && typeof candidate.resolutionId === "string" && candidate.resolutionId.length > 0
+      && (!stringValue(continuation.resolutionId) || candidate.resolutionId === continuation.resolutionId));
+    if (matches.length !== 1 || timeline.filter((candidate) => candidate.id === matches[0].id).length !== 1) return null;
+    const event = matches[0];
+    const proofs = Array.isArray(event.publicCardEffects)
+      ? event.publicCardEffects.map(record).filter((proof) => proof?.effectId === "daqiao_captivating")
+      : [];
+    if (proofs.length !== 1) return null;
+    const proof = proofs[0];
+    const materials = Array.isArray(proof?.materials) ? proof.materials.map(record) : [];
+    const [material] = materials;
+    return proof?.semantics === "PROVEN" && proof.eventId === event.id
+      && proof.effectClass === "CONVERSION" && proof.activationOwnerId === sourceId
+      && proof.targetId === targetId && proof.resultingCardKind === "Overindulgence"
+      && proof.outcome === "AS_OVERINDULGENCE" && materials.length === 1
+      && material?.cardId === rootPhysicalCardId && material.ownerId === sourceId
+      && material.fromZone === "HAND" && material.toZone === "PUBLIC_PLAY"
+      && (!stringValue(continuation.resolutionId) || event.resolutionId === continuation.resolutionId)
+      ? { eventId: event.id, resolutionId: event.resolutionId }
+      : null;
+  })();
   const duelPending = record(effect?.pending);
   const duelContinuation = record(duelPending?.continuation);
   const duelPendingCausal = record(duelPending?.causal);
@@ -1983,7 +2317,8 @@ function reactionChainFor(
     && scene.participantRoles.originalTargetIds[0] === targetId && scene.participantRoles.originalTargetIds[1] === sourceId
     && scene.participantRoles.currentParticipantId === targetId
     && scene.activeResolverId === item.actorId && scene.decisionActorId === item.actorId);
-  const isProvenSingleTargetRoot = Boolean(expectedRootCardKind && rootCardKind === expectedRootCardKind
+  const isProvenSingleTargetRoot = Boolean(expectedRootCardKind
+    && (rootCardKind === expectedRootCardKind || ambushmentConversionRootEvent !== null || captivatingConversionRootEvent !== null)
     && sourceId && targetId && (effect?.kind === "duel"
       ? isProvenDuelNegationRoot
       : scene.continuity.relation === "ROOT_FRAME"
@@ -2003,24 +2338,14 @@ function reactionChainFor(
         && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === targetId
         && scene.participantRoles.originalTargetIds.length === 1 && scene.participantRoles.originalTargetIds[0] === targetId
         && scene.activeResolverId === item.actorId && scene.decisionActorId === item.actorId));
-  const rootCard = isProvenSingleTargetRoot && sourceId && targetId && CARD_KINDS.includes(rootCardKind as CardKind)
-    ? { interactionId: scene.interactionId, frameId: frame.frameId, sourceId, targetId, cardKind: rootCardKind as CardKind }
+  const rootCard = isProvenSingleTargetRoot && sourceId && targetId && expectedRootCardKind
+    && CARD_KINDS.includes(expectedRootCardKind)
+    ? { interactionId: scene.interactionId, frameId: frame.frameId, sourceId, targetId, cardKind: expectedRootCardKind }
     : null;
-  const heldRootCardIds = Array.isArray(continuation.heldCards)
-    ? continuation.heldCards.flatMap((value) => {
-      const card = record(value);
-      const id = stringValue(card?.id);
-      return card?.kind === rootCardKind && id ? [id] : [];
-    })
-    : [];
-  const effectRootCardId = stringValue(effect?.cardId);
-  const rootPhysicalCardId = heldRootCardIds.length === 1
-    && (!effectRootCardId || effectRootCardId === heldRootCardIds[0])
-    ? heldRootCardIds[0]
-    : heldRootCardIds.length === 0 ? effectRootCardId : null;
   const rootEvent = rootCard && expectedRootCardKind
     ? effect?.kind === "duel" ? duelRootEvent
-    : rootPhysicalCardId ? publicCardEventFor(rootPhysicalCardId, expectedRootCardKind) : null
+    : ambushmentConversionRootEvent ?? captivatingConversionRootEvent
+      ?? (rootPhysicalCardId ? publicCardEventFor(rootPhysicalCardId, expectedRootCardKind) : null)
     : null;
   const linkedNodeEvents = nodeEventLinks.filter((link): link is NonNullable<typeof link> => link !== null);
   const publicNodeEventIds = linkedNodeEvents.map(({ eventId }) => eventId);
@@ -2122,9 +2447,16 @@ function negationSettlementFor(
     || (value.presentationRevision as number) > envelope.presentationRevision) return null;
 
   const root = envelope.frames.find((frame) => frame.frameId === value.rootFrameId);
+  const isDuelRoot = value.rootCardKind === "Duel";
+  const originTargets = root?.origin.originalTargetIds;
+  const originTargetsMatch = isDuelRoot
+    ? originTargets?.length === 2 && originTargets[0] === value.targetId && originTargets[1] === value.sourceId
+    : originTargets?.length === 1 && originTargets[0] === value.targetId;
+  const originEffectMatches = isDuelRoot
+    ? root?.origin.originEffect.toLowerCase() === "duel"
+    : true;
   if (!root || (root.parentFrameId !== undefined && root.parentFrameId !== null)
-    || root.origin.originSourceId !== value.sourceId
-    || root.origin.originalTargetIds.length !== 1 || root.origin.originalTargetIds[0] !== value.targetId) return null;
+    || root.origin.originSourceId !== value.sourceId || !originTargetsMatch || !originEffectMatches) return null;
 
   return {
     semantics: "PROVEN",
@@ -2231,10 +2563,50 @@ function eventForContext(context: Context | null, timeline: readonly Presentatio
   return null;
 }
 
+function borrowedSwordRootEventId(pending: unknown): string | null {
+  const item = record(pending);
+  const continuation = record(item?.continuation);
+  const effect = record(continuation?.effect);
+  if (item?.kind === "borrowed_sword") return stringValue(item.rootEventId);
+  if (continuation?.kind === "borrowed_sword_attack") return stringValue(continuation.rootEventId);
+  if (continuation?.kind === "negation" && effect?.kind === "borrowed_sword") return stringValue(continuation.rootEventId);
+  if (item?.kind === "negation_window") {
+    const windowContinuation = record(item.continuation);
+    if (record(windowContinuation?.effect)?.kind === "borrowed_sword") return stringValue(windowContinuation.rootEventId);
+  }
+  return null;
+}
+
 function uniqueTimelineEventById(eventId: string | null, timeline: readonly PresentationV2Event[]): PresentationV2Event | null {
   if (!eventId) return null;
   const matches = timeline.filter((event) => event.id === eventId);
   return matches.length === 1 ? matches[0] : null;
+}
+
+function serpentSpearAttackRootMaterials(
+  rootEvent: PresentationV2Event | null,
+  sourceId: string | null,
+  targetId: string | null,
+): [string, string] | null {
+  if (!rootEvent || rootEvent.type !== "cards" || rootEvent.action !== "play"
+    || rootEvent.playedAs !== "attack" || rootEvent.presentation === false || rootEvent.privateToPlayerId
+    || !sourceId || !targetId) return null;
+  const effects = Array.isArray(rootEvent.publicCardEffects)
+    ? rootEvent.publicCardEffects.map(record).filter((proof): proof is RecordLike => Boolean(proof)) : [];
+  const matchingEffects = effects.filter((proof) => proof.effectId === "serpent_spear_attack");
+  if (matchingEffects.length !== 1) return null;
+  const proof = matchingEffects[0];
+  const cards = Array.isArray(rootEvent.cards) ? rootEvent.cards.map(record).filter((entry): entry is RecordLike => Boolean(entry)) : [];
+  const materials = Array.isArray(proof.materials) ? proof.materials.map(record).filter((entry): entry is RecordLike => Boolean(entry)) : [];
+  const cardIds = cards.map((entry) => stringValue(entry.id));
+  if (proof.semantics !== "PROVEN" || proof.eventId !== rootEvent.id || proof.effectClass !== "CONVERSION"
+    || proof.activationOwnerId !== sourceId || proof.targetId !== targetId
+    || proof.resultingCardKind !== "Attack" || proof.outcome !== "AS_ATTACK"
+    || cards.length !== 2 || cardIds.some((cardId) => typeof cardId !== "string" || cardId.length === 0)
+    || new Set(cardIds).size !== 2 || materials.length !== 2
+    || materials.some((material, index) => material.cardId !== cardIds[index]
+      || material.ownerId !== sourceId || material.fromZone !== "HAND" || material.toZone !== "DISCARD")) return null;
+  return cardIds as [string, string];
 }
 
 function singleTargetAttackRootActionEvaluationFor(
@@ -2269,6 +2641,7 @@ function singleTargetAttackRootActionEvaluationFor(
     : physicalCardKind && physicalCardKind !== "Attack" && rootEvent?.playedAs === "attack"
       ? { physicalCardKind, playedAs: "attack" as const }
       : null;
+  const serpentSpearMaterialCardIds = serpentSpearAttackRootMaterials(rootEvent, sourceId, targetId);
 
   const checks: Record<string, boolean> = {
     pendingIsAuthorizedAttackStage: isAttackResponse || isAttackTargetTrigger,
@@ -2327,9 +2700,11 @@ function singleTargetAttackRootActionEvaluationFor(
     readyAfterEventPresent: Boolean(readyAfterEventId),
     rootEventIdentityPresent: Boolean(expectedRootEventId),
     rootEventMatchesExpectedIdentity: rootEvent?.id === expectedRootEventId,
-    rootEventIsPublicCardPlay: rootEvent?.type === "card" && rootEvent.presentation !== false && rootEvent.action === "play",
-    rootEventCardMatchesSequenceStart: Boolean(card && card.id === sequenceStartCardId),
-    rootEventHasPhysicalAttackProof: Boolean(physicalCardProof),
+    rootEventIsPublicCardPlay: (rootEvent?.type === "card" || rootEvent?.type === "cards")
+      && rootEvent.presentation !== false && rootEvent.action === "play" && !rootEvent.privateToPlayerId,
+    rootEventCardMatchesSequenceStart: Boolean(card && card.id === sequenceStartCardId
+      || serpentSpearMaterialCardIds?.includes(sequenceStartCardId ?? "")),
+    rootEventHasPhysicalAttackProof: Boolean(physicalCardProof || serpentSpearMaterialCardIds),
   };
   const rejectionReasons = Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name);
   const diagnostics: AttackRootProjectionDiagnostics = {
@@ -2352,7 +2727,8 @@ function singleTargetAttackRootActionEvaluationFor(
       rootEventCardKind: stringValue(card?.kind),
     },
   };
-  if (rejectionReasons.length > 0 || !envelope || !frame || !rootEvent || !sourceId || !targetId || !physicalCardProof) {
+  if (rejectionReasons.length > 0 || !envelope || !frame || !rootEvent || !sourceId || !targetId
+    || !physicalCardProof && !serpentSpearMaterialCardIds) {
     return { rootAction: null, diagnostics };
   }
 
@@ -2368,7 +2744,9 @@ function singleTargetAttackRootActionEvaluationFor(
     sourceId,
     targetId,
     cardKind: "Attack",
-    ...physicalCardProof,
+    ...(serpentSpearMaterialCardIds
+      ? { conversionId: "serpent_spear_attack" as const, materialCardIds: serpentSpearMaterialCardIds, playedAs: "attack" as const }
+      : physicalCardProof),
   }, diagnostics };
 }
 
@@ -2404,9 +2782,22 @@ function singleTargetTargetCardRootActionFor(
   const actorId = stringValue(item?.actorId);
   const targetId = stringValue(item?.targetId);
   const heldCards = Array.isArray(item?.heldCards) ? item.heldCards.map(record) : [];
-  const heldRootCards = heldCards.filter((heldCard) => heldCard?.kind === cardKind);
+  const rootCardId = stringValue(item?.rootCardId);
+  const heldRootCards = heldCards.filter((heldCard) => rootCardId
+    ? heldCard?.id === rootCardId
+    : heldCard?.kind === cardKind);
   const heldCard = heldRootCards.length === 1 ? heldRootCards[0] : null;
   const physicalCardId = stringValue(heldCard?.id);
+  const physicalCard = publicPhysicalCard(heldCard);
+  const expectedRootEventId = stringValue(item?.rootEventId);
+  const rootEvents = expectedRootEventId
+    ? timeline.filter((event) => event.id === expectedRootEventId)
+    : physicalCardId ? timeline.filter((event) => event.type === "card" && event.card?.id === physicalCardId) : [];
+  const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
+  const rootEventIsProven = Boolean(rootEvent && physicalCard
+    && (!stringValue(item?.rootCardKind) || physicalCard.kind === item?.rootCardKind)
+    && (!stringValue(item?.rootResolutionId) || rootEvent.resolutionId === item?.rootResolutionId)
+    && publicCardPlayProvesEffectiveKind(rootEvent, physicalCard, cardKind, sourceId ?? "", targetId ?? ""));
   const effectName = cardKind === "Dismantle" ? "Burning Bridges" : "Steal";
   const frame = envelope?.frames.find(({ frameId }) => frameId === envelope.activeFrameId) ?? null;
   const rootFrames = envelope?.frames.filter(({ parentFrameId }) => parentFrameId == null) ?? [];
@@ -2418,7 +2809,7 @@ function singleTargetTargetCardRootActionFor(
     || envelope.activeFrameId !== frame.frameId || envelope.checkpoint.frameId !== frame.frameId || envelope.checkpoint.stage !== "SETTLEMENT"
     || causal?.interactionId !== envelope.interactionId || causal.frameId !== frame.frameId
     || !sourceId || actorId !== sourceId || !targetId || sourceId === targetId
-    || heldCard?.kind !== cardKind || !physicalCardId
+    || !physicalCard || !physicalCardId || !rootEventIsProven
     || frame.origin.originSourceId !== sourceId || frame.origin.originEffect !== effectName
     || frame.origin.originalTargetIds.length !== 1 || frame.origin.originalTargetIds[0] !== targetId
     || frame.current.currentSourceId !== sourceId || frame.current.currentEffect !== effectName
@@ -2435,10 +2826,7 @@ function singleTargetTargetCardRootActionFor(
     || scene.participantRoles.decisionActorId !== sourceId || scene.participantRoles.activeResolverId !== sourceId
     || scene.decisionActorId !== sourceId || scene.activeResolverId !== sourceId) return null;
 
-  const rootEvents = timeline.filter((event) => event.presentation !== false && event.type === "card"
-    && event.action === "play" && event.card?.id === physicalCardId && event.card.kind === cardKind);
-  if (rootEvents.length !== 1 || timeline.filter((event) => event.id === rootEvents[0].id).length !== 1) return null;
-  const rootEvent = rootEvents[0];
+  if (!rootEvent || rootEvents.length !== 1 || timeline.filter((event) => event.id === rootEvent.id).length !== 1) return null;
   return {
     semantics: "PROVEN",
     interactionId: envelope.interactionId,
@@ -2696,6 +3084,37 @@ function diaoChanSkillNoticesFor(
   return notices;
 }
 
+function targetCardSettlementMovementFor(
+  proof: Record<string, unknown>,
+  event: PresentationV2Event,
+  effect: "Dismantle" | "Steal",
+  sourceId: string,
+  targetId: string,
+): PresentationTargetCardSettlementMovement | null {
+  const sourceZone = proof.sourceZone;
+  if (sourceZone !== "hand" && sourceZone !== "equipment" && sourceZone !== "judgement") return null;
+  const destinationZone = effect === "Dismantle" ? "discard" : "hand";
+  const destinationOwnerId = effect === "Dismantle" ? null : sourceId;
+  const affectedCardOwnerId = sourceZone === "judgement" ? null : targetId;
+  if (proof.destinationZone !== destinationZone || proof.destinationOwnerId !== destinationOwnerId
+    || proof.affectedCardOwnerId !== affectedCardOwnerId) return null;
+
+  const hasCardFace = Object.prototype.hasOwnProperty.call(proof, "affectedCardFace");
+  if (effect === "Dismantle") {
+    const affectedCardFace = publicPhysicalCard(proof.affectedCardFace);
+    const eventCardFace = publicPhysicalCard(event.card);
+    if (!hasCardFace || !affectedCardFace || !eventCardFace || !samePublicPhysicalCard(eventCardFace, affectedCardFace)) return null;
+    return { sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId, affectedCardFace };
+  }
+
+  if (sourceZone === "hand") return hasCardFace
+    ? null
+    : { sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId };
+  const affectedCardFace = publicPhysicalCard(proof.affectedCardFace);
+  if (!hasCardFace || !affectedCardFace) return null;
+  return { sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId, affectedCardFace };
+}
+
 function dismantleSettlementsFor(timeline: readonly PresentationV2Event[]): PresentationDismantleSettlement[] {
   const eventIdCounts = new Map<string, number>();
   const rootIdCounts = new Map<string, number>();
@@ -2715,23 +3134,42 @@ function dismantleSettlementsFor(timeline: readonly PresentationV2Event[]): Pres
     const sourceId = stringValue(proof?.sourceId);
     const targetId = stringValue(proof?.targetId);
     const discardedCard = record(event.card);
+    const movement = proof && sourceId && targetId ? targetCardSettlementMovementFor(proof, event, "Dismantle", sourceId, targetId) : null;
     if (!proof || !eventId || eventIdCounts.get(eventId) !== 1
       || !rootEventId || rootEventId === eventId || rootIdCounts.get(rootEventId) !== 1
       || !rootResolutionId || !sourceId || !targetId || sourceId === targetId
       || proof.semantics !== "PROVEN" || proof.outcome !== "DISMANTLE_RESOLVED"
       || event.type !== "card" || event.presentation === false || event.action !== "discard"
       || event.playedAs !== undefined || event.importance !== "essential" || event.finalResult !== true
-      || event.resolutionId !== rootResolutionId || !stringValue(discardedCard?.id) || !stringValue(discardedCard?.kind)) return [];
+      || event.resolutionId !== rootResolutionId || !stringValue(discardedCard?.id) || !stringValue(discardedCard?.kind)
+      || !movement) return [];
 
     const roots = timeline.filter((candidate) => candidate.id === rootEventId);
     const rootEvent = roots.length === 1 ? roots[0] : null;
-    const rootCard = record(rootEvent?.card);
-    if (!rootEvent || rootEvent.type !== "card" || rootEvent.presentation === false
-      || rootEvent.action !== "play" || rootEvent.playedAs !== undefined
-      || rootEvent.resolutionId !== rootResolutionId
-      || rootCard?.kind !== "Dismantle" || !stringValue(rootCard.id)) return [];
+    const rootCard = publicPhysicalCard(rootEvent?.card);
+    const rootPhysicalCard = publicPhysicalCard(proof.rootPhysicalCard);
+    const rootContractFields = ["rootInteractionId", "rootFrameId", "rootPhysicalCard", "resultingCardKind"];
+    const hasRootContract = rootContractFields.some((key) => Object.prototype.hasOwnProperty.call(proof, key));
+    const completeRootContract = typeof proof.rootInteractionId === "string" && proof.rootInteractionId.length > 0
+      && typeof proof.rootFrameId === "string" && proof.rootFrameId.length > 0
+      && rootPhysicalCard !== null && proof.resultingCardKind === "Dismantle";
+    const rootPlayIsProven = Boolean(rootEvent && rootCard && rootEvent.type === "card"
+      && rootEvent.presentation !== false && rootEvent.action === "play" && rootEvent.playedAs === undefined
+      && rootEvent.resolutionId === rootResolutionId
+      && (hasRootContract
+        ? completeRootContract && samePublicPhysicalCard(rootEvent.card, rootPhysicalCard)
+        : rootCard.kind === "Dismantle")
+      && publicCardPlayProvesEffectiveKind(rootEvent, rootPhysicalCard ?? rootCard, "Dismantle", sourceId, targetId));
+    if (!rootEvent || rootEvent.type !== "card" || rootEvent.presentation === false || !rootPlayIsProven) return [];
 
-    return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "DISMANTLE_RESOLVED" }];
+    return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "DISMANTLE_RESOLVED",
+      ...(completeRootContract ? {
+        rootInteractionId: proof.rootInteractionId as string,
+        rootFrameId: proof.rootFrameId as string,
+        rootPhysicalCard: rootPhysicalCard!,
+        resultingCardKind: "Dismantle" as const,
+      } : {}),
+      ...movement }];
   });
 }
 
@@ -2753,13 +3191,14 @@ function stealSettlementsFor(timeline: readonly PresentationV2Event[]): Presenta
     const rootResolutionId = stringValue(proof?.rootResolutionId);
     const sourceId = stringValue(proof?.sourceId);
     const targetId = stringValue(proof?.targetId);
+    const movement = proof && sourceId && targetId ? targetCardSettlementMovementFor(proof, event, "Steal", sourceId, targetId) : null;
     if (!proof || !eventId || eventIdCounts.get(eventId) !== 1
       || !rootEventId || rootEventId === eventId || rootIdCounts.get(rootEventId) !== 1
       || !rootResolutionId || !sourceId || !targetId || sourceId === targetId
       || proof.semantics !== "PROVEN" || proof.outcome !== "STEAL_RESOLVED"
       || event.type !== "message" || event.presentation === false || !stringValue(event.message)
       || event.importance !== "essential" || event.finalResult !== true
-      || event.resolutionId !== rootResolutionId) return [];
+      || event.resolutionId !== rootResolutionId || !movement) return [];
 
     const roots = timeline.filter((candidate) => candidate.id === rootEventId);
     const rootEvent = roots.length === 1 ? roots[0] : null;
@@ -2769,7 +3208,7 @@ function stealSettlementsFor(timeline: readonly PresentationV2Event[]): Presenta
       || rootEvent.resolutionId !== rootResolutionId
       || rootCard?.kind !== "Steal" || !stringValue(rootCard.id)) return [];
 
-    return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "STEAL_RESOLVED" }];
+    return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "STEAL_RESOLVED", ...movement }];
   });
 }
 
@@ -2802,10 +3241,14 @@ function attackHitSettlementsFor(timeline: readonly PresentationV2Event[]): Pres
     const roots = timeline.filter((candidate) => candidate.id === rootEventId);
     const rootEvent = roots.length === 1 ? roots[0] : null;
     const rootCard = record(rootEvent?.card);
-    if (!rootEvent || rootEvent.type !== "card" || rootEvent.presentation === false
-      || rootEvent.action !== "play" || rootEvent.playedAs !== undefined
-      || rootEvent.resolutionId !== rootResolutionId
-      || rootCard?.kind !== "Attack" || !stringValue(rootCard.id)) return [];
+    const serpentMaterials = serpentSpearAttackRootMaterials(rootEvent, sourceId, targetId);
+    const ordinaryAttackRoot = rootEvent?.type === "card" && rootEvent.playedAs === undefined
+      && rootCard?.kind === "Attack" && Boolean(stringValue(rootCard.id));
+    const serpentAttackRoot = rootEvent?.type === "cards" && Boolean(serpentMaterials);
+    if (!rootEvent || rootEvent.presentation === false || rootEvent.action !== "play"
+      || rootEvent.resolutionId !== rootResolutionId || !(ordinaryAttackRoot || serpentAttackRoot)
+      || rootEvent.type === "card" && rootEvent.playedAs !== undefined
+      || rootEvent.type === "cards" && rootEvent.playedAs !== "attack") return [];
 
     return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "ATTACK_DAMAGE_APPLIED" }];
   });
@@ -3188,17 +3631,21 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
     const rootCard = record(rootEvent?.card);
     const responseCard = record(event.card);
     const rootCardId = stringValue(rootCard?.id);
+    const serpentMaterialIds = serpentSpearAttackRootMaterials(rootEvent, rootSourceId, targetId);
     const responseCardId = stringValue(responseCard?.id);
+    const physicalAttackRoot = rootEvent.type === "card" && Boolean(rootCardId)
+      && cardIdCounts.get(rootCardId!) === 1
+      && (rootEvent.playedAs === undefined
+        ? rootCard?.kind === "Attack"
+        : rootEvent.playedAs === "attack" && typeof rootCard?.kind === "string" && rootCard.kind !== "Attack"
+          && CARD_KINDS.includes(rootCard.kind as CardKind));
+    const serpentSpearAttackRoot = Boolean(serpentMaterialIds?.every((cardId) => cardIdCounts.get(cardId) === 1));
     if (!eventId || eventCounts.get(eventId) !== 1 || !responseResolutionId
       || event.type !== "card" || event.presentation === false || event.action !== "play"
       || !attackDodgeResponseEventMatchesProof(proof, event) || !responseCardId || cardIdCounts.get(responseCardId) !== 1
       || proof.semantics !== "PROVEN" || proof.counterRelation !== "BLOCKS_TARGET_EFFECT"
-      || rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play"
-      || !rootCardId || cardIdCounts.get(rootCardId) !== 1
-      || (rootEvent.playedAs === undefined
-        ? rootCard?.kind !== "Attack"
-        : rootEvent.playedAs !== "attack" || typeof rootCard?.kind !== "string" || rootCard.kind === "Attack"
-          || !CARD_KINDS.includes(rootCard.kind as CardKind))
+      || rootEvent.presentation === false || rootEvent.privateToPlayerId || rootEvent.action !== "play"
+      || !(physicalAttackRoot || serpentSpearAttackRoot)
       || rootEvent.resolutionId !== rootResolutionId || responseResolutionId !== rootResolutionId
       || rootEventId === eventId || !rootResolutionId || !interactionId || !rootFrameId
       || !rootSourceId || !targetId || rootSourceId === targetId || responseActorId !== targetId
@@ -3217,6 +3664,10 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
       responseCardKind: "Dodge",
       responseEventId: eventId,
       responseResolutionId,
+      ...(proof.responseConversionEffectId === "zhen_ji_black_card_dodge"
+        && typeof proof.responsePhysicalCardKind === "string"
+        ? { responsePhysicalCardKind: proof.responsePhysicalCardKind as Card["kind"], responseConversionEffectId: "zhen_ji_black_card_dodge" as const }
+        : {}),
       ...(proof.responsePhysicalCardKind === "Attack" && proof.responsePlayedAs === "dodge"
         ? { responsePhysicalCardKind: "Attack" as const, responsePlayedAs: "dodge" as const }
         : {}),
@@ -3304,6 +3755,55 @@ function duelExchangeFor(
     const eventId = stringValue(event.id);
     if (eventId) eventIdCounts.set(eventId, (eventIdCounts.get(eventId) ?? 0) + 1);
   }
+  const negationResponses = (() => {
+    const history = continuation?.negationHistory;
+    if (!Array.isArray(history) || history.length === 0) return undefined;
+    const nodeIds = new Set<string>();
+    const responseEventIds = new Set<string>([rootEvent.id]);
+    const responseCardIds = new Set<string>([rootCardId]);
+    const responses: PresentationDuelNegationResponse[] = [];
+    let previousNodeId: string | null = null;
+    for (const [index, rawNode] of history.entries()) {
+      const node = record(rawNode);
+      const nodeId = stringValue(node?.nodeId);
+      const nodeInteractionId = stringValue(node?.interactionId);
+      const nodeFrameId = stringValue(node?.frameId);
+      const actorId = stringValue(node?.actorId);
+      const cardId = stringValue(node?.physicalCardId);
+      const responseEventId = stringValue(node?.publicEventId);
+      const causedByNodeId = node?.causedByNodeId === null ? null : stringValue(node?.causedByNodeId);
+      const matches = responseEventId ? timeline.filter((event) => event.id === responseEventId) : [];
+      const responseEvent = matches.length === 1 ? matches[0] : null;
+      const responseCard = responseEvent?.type === "card" ? responseEvent.card : null;
+      const responseResolutionId = stringValue(responseEvent?.resolutionId);
+      if (!nodeId || !nodeInteractionId || !nodeFrameId || !actorId || !cardId || !responseEventId
+        || node.kind !== "NEGATION_CARD" || nodeInteractionId !== envelope.interactionId || nodeFrameId !== frame.frameId
+        || causedByNodeId !== previousNodeId || nodeIds.has(nodeId)
+        || !responseEvent || eventIdCounts.get(responseEventId) !== 1
+        || responseEvent.type !== "card" || responseEvent.action !== "play" || responseEvent.presentation === false
+        || typeof responseEvent.privateToPlayerId === "string" || responseEvent.playedAs !== undefined
+        || !responseCard || responseCard.kind !== "Negation" || responseCard.id !== cardId
+        || !responseResolutionId || responseEventIds.has(responseEventId) || responseCardIds.has(cardId)) return undefined;
+      nodeIds.add(nodeId);
+      responseEventIds.add(responseEventId);
+      responseCardIds.add(cardId);
+      previousNodeId = nodeId;
+      responses.push({
+        semantics: "PROVEN",
+        relation: "DUEL_NEGATION",
+        interactionId: envelope.interactionId,
+        rootFrameId: frame.frameId,
+        rootEventId: rootEvent.id,
+        rootResolutionId,
+        ordinal: index + 1,
+        responseActorId: actorId,
+        responseCardId: cardId,
+        responseEventId,
+        responseResolutionId,
+      });
+    }
+    return responses;
+  })();
   const candidateResponses = timeline.flatMap((event) => {
     const proof = record(event.duelAttackResponse);
     return proof && (proof.interactionId === envelope.interactionId || proof.rootEventId === rootEvent.id)
@@ -3381,6 +3881,7 @@ function duelExchangeFor(
     checkpointId: envelope.checkpoint.checkpointId,
     presentationRevision: envelope.presentationRevision,
     root: { eventId: rootEvent.id, resolutionId: rootResolutionId, sourceId, targetId, cardKind: "Duel" },
+    ...(negationResponses?.length ? { negationResponses } : {}),
     responseCount: responseCount as number,
     responses,
     currentParticipantId: scene.currentParticipantId,
@@ -3403,11 +3904,34 @@ function lustDuelExchangeFor(
   const causal = record(item?.causal);
   const continuationCausal = record(continuation?.causal);
   const activeLustDuel = item?.kind === "response" && continuation?.kind === "duel" && activeLust !== null;
+  const now = Date.now();
   const terminalCandidates = diaoChanSkillNotices.filter((notice): notice is Extract<PresentationDiaoChanSkillNotice, { effectId: "diao_chan_lust"; notice: "DUEL_RESULT" }> =>
     notice.effectId === "diao_chan_lust" && notice.notice === "DUEL_RESULT"
       && Boolean(notice.interactionId && notice.rootFrameId && Number.isSafeInteger(notice.responseCount)
-        && notice.settledAt && Date.now() - notice.settledAt >= 0 && Date.now() - notice.settledAt < 2000));
-  const terminalResult = !item && !scene && terminalCandidates.length === 1 ? terminalCandidates[0] : null;
+        && notice.settledAt && now - notice.settledAt >= 0 && now - notice.settledAt < LUST_DUEL_SETTLEMENT_PROJECTION_RETENTION_MS));
+  const terminalCandidate = terminalCandidates.length === 1 ? terminalCandidates[0] : null;
+  const settlementTriggerContinuation = Boolean(item?.kind === "trigger" && terminalCandidate && envelope
+    && envelope.interactionId === terminalCandidate.interactionId
+    && envelope.checkpoint.stage === "DAMAGE" && envelope.checkpoint.frameId === envelope.activeFrameId
+    && envelope.frames.find((frame) => frame.frameId === envelope.activeFrameId)?.stage === "DAMAGE"
+    && envelope.frames.find((frame) => frame.frameId === terminalCandidate.rootFrameId)?.parentFrameId == null
+    && envelope.frames.find((frame) => frame.frameId === terminalCandidate.rootFrameId)?.stage === "DUEL_EXCHANGE"
+    && (() => {
+      let ancestor = envelope.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
+      const visited = new Set<string>();
+      while (ancestor?.parentFrameId && !visited.has(ancestor.frameId)) {
+        if (ancestor.parentFrameId === terminalCandidate.rootFrameId) return true;
+        visited.add(ancestor.frameId);
+        ancestor = envelope.frames.find((frame) => frame.frameId === ancestor?.parentFrameId) ?? null;
+      }
+      return false;
+    })()
+    && (!scene || scene.semantics === "PROVEN" && scene.interactionId === terminalCandidate.interactionId
+      && scene.rootFrameId === terminalCandidate.rootFrameId && scene.activeFrameId === envelope.activeFrameId
+      && scene.stage === "DAMAGE"));
+  const terminalResult = terminalCandidate && (settlementTriggerContinuation
+    || !item && !scene && (!envelope || envelope.interactionId === terminalCandidate.interactionId))
+    ? terminalCandidate : null;
   const terminalResultEvent = terminalResult ? uniqueTimelineEventById(terminalResult.eventId, timeline) : null;
   const terminalResultIsPublic = Boolean(terminalResultEvent?.type === "message" && terminalResultEvent.finalResult === true
     && terminalResultEvent.presentation !== false && typeof terminalResultEvent.privateToPlayerId !== "string");
@@ -3468,7 +3992,7 @@ function lustDuelExchangeFor(
     || scene.participantRoles.sourceId !== firstActorId
     || scene.participantRoles.currentParticipantId !== scene.currentParticipantId
     || scene.participantRoles.decisionActorId !== scene.decisionActorId)) return null;
-  if (settledLustDuel && (!terminalResult || !settledAt || readRemainingMs === null || readRemainingMs <= 0
+  if (settledLustDuel && (!terminalResult || !settledAt || readRemainingMs === null
     || !Number.isSafeInteger(responseCount) || (responseCount as number) < 0
     || !interactionId || !rootFrameId || !ownerId || !firstParticipantId || !secondParticipantId || !firstActorId
     || ownerId === firstParticipantId || ownerId === secondParticipantId || firstParticipantId === secondParticipantId
@@ -3674,7 +4198,12 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     : null;
   const barrierId = input.currentAction?.presentation?.readyAfterEventId ?? null;
   const legacyResolutionId = firstString(input.currentAction?.presentation?.resolutionId, active?.resolutionId, parent?.resolutionId, root?.resolutionId);
-  const rootEvent = eventForContext(root, input.timeline, barrierId) ?? eventForContext(active, input.timeline, barrierId);
+  const borrowedRootEventId = borrowedSwordRootEventId(input.pending);
+  const borrowedRootMatches = borrowedRootEventId ? input.timeline.filter((event) => event.id === borrowedRootEventId
+    && event.type === "card" && event.action === "play" && event.presentation !== false
+    && event.card?.kind === "BorrowedSword") : [];
+  const borrowedRootEvent = borrowedRootMatches.length === 1 ? borrowedRootMatches[0]! : null;
+  const rootEvent = borrowedRootEvent ?? eventForContext(root, input.timeline, barrierId) ?? eventForContext(active, input.timeline, barrierId);
   const activeEvent = eventForContext(active, input.timeline, barrierId);
   const parentEvent = eventForContext(parent, input.timeline, barrierId);
   const relevantIds = unique([rootEvent?.id, activeEvent?.id, parentEvent?.id, barrierId]);
@@ -3683,6 +4212,25 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const groupCardKind = group ? firstString(group.cardKind, group.kind === "group" ? "group" : null) : null;
   const groupValues = groupProjectionValues(envelope, input.pending, group);
   const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
+  const factIdentity = interactionScene?.semantics === "PROVEN" && interactionScene.interactionId && interactionScene.rootFrameId
+    && interactionScene.checkpointId && Number.isSafeInteger(interactionScene.presentationRevision)
+    ? { interactionId: interactionScene.interactionId, rootFrameId: interactionScene.rootFrameId,
+      checkpointId: interactionScene.checkpointId, presentationRevision: interactionScene.presentationRevision }
+    : null;
+  const publicEventFacts = factIdentity ? collectPublicPresentationEventFacts({
+    timeline: input.publicTimeline ?? input.timeline,
+    identity: factIdentity,
+    frames: envelope?.frames ?? [],
+    rootEventId: rootEvent?.id ?? null,
+  }) : [];
+  const retainedCandidate = input.retainPublicEventAtRest || envelope
+    ? retainedPublicEventFromTimeline(input.publicTimeline ?? input.timeline) : null;
+  const retainedMatchesEnvelope = Boolean(retainedCandidate && envelope && causalRootFrame
+    && retainedCandidate.event.identity.interactionId === envelope.interactionId
+    && retainedCandidate.event.identity.rootFrameId === causalRootFrame.frameId
+    && retainedCandidate.event.identity.presentationRevision <= envelope.presentationRevision);
+  const retainedPublicEvent = retainedCandidate && (input.retainPublicEventAtRest || retainedMatchesEnvelope)
+    ? retainedCandidate : null;
   const rootAction = attackRootProjectionEvaluationFor(input).rootAction
     ?? singleTargetTargetCardRootActionFor(envelope, interactionScene, input.pending, input.timeline, "Dismantle")
     ?? singleTargetTargetCardRootActionFor(envelope, interactionScene, input.pending, input.timeline, "Steal");
@@ -3757,6 +4305,8 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     decision: input.currentAction ? { kind: input.currentAction.kind, actorId: isBumperHarvestNegationPending(input.pending) ? null : input.currentAction.actorId, actionRevision: input.actionRevision, resolutionId: input.currentAction.presentation?.resolutionId ?? null, readyAfterEventId: barrierId, deadline: input.currentAction.deadline } : null,
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,
     transitionEvents: input.timeline.filter((event) => event.presentation !== false && relevantIds.includes(event.id)).map((event) => ({ eventId: event.id, type: event.type, resolutionId: event.resolutionId ?? null })),
+    publicEventFacts,
+    ...(retainedPublicEvent ? { retainedPublicEvent: retainedPublicEvent.event, retainedPublicEventFacts: retainedPublicEvent.facts } : {}),
     stableBoundary: stableBoundaryFor(interactionScene, input.pending, projectedBumperHarvestProgress),
   };
 }

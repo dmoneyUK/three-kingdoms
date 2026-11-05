@@ -16,6 +16,97 @@ export function normalizeCard(value) {
   return { ...value };
 }
 
+function normalizePhysicalCard(value) {
+  const card = normalizeCard(value);
+  const suits = ["♥", "♦", "♣", "♠"];
+  const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+  if (!card || !suits.includes(card.suit) || !ranks.includes(card.rank)) return null;
+  return { id: card.id, kind: card.kind, suit: card.suit, rank: card.rank };
+}
+
+function normalizePrivateStealResult(value, roomCode, viewerId) {
+  if (!isRecord(value) || value.semantics !== "PRIVATE_PROVEN" || value.roomCode !== roomCode
+    || typeof viewerId !== "string" || value.sourceId !== viewerId
+    || typeof value.eventId !== "string" || !value.eventId
+    || typeof value.rootEventId !== "string" || !value.rootEventId
+    || typeof value.rootResolutionId !== "string" || !value.rootResolutionId
+    || typeof value.targetId !== "string" || !value.targetId || value.targetId === viewerId
+    || value.sourceZone !== "hand") return null;
+  const card = normalizePhysicalCard(value.card);
+  return card ? {
+    semantics: "PRIVATE_PROVEN",
+    roomCode,
+    eventId: value.eventId,
+    rootEventId: value.rootEventId,
+    rootResolutionId: value.rootResolutionId,
+    sourceId: viewerId,
+    targetId: value.targetId,
+    sourceZone: "hand",
+    card,
+  } : null;
+}
+
+function normalizePrivateStealParticipantResult(value, roomCode, viewerId, serverNow) {
+  if (!isRecord(value) || value.semantics !== "PRIVATE_PROVEN" || value.roomCode !== roomCode
+    || typeof viewerId !== "string" || value.viewerId !== viewerId
+    || (value.role !== "TAKER" && value.role !== "FORMER_OWNER")
+    || typeof value.sourceId !== "string" || !value.sourceId
+    || typeof value.targetId !== "string" || !value.targetId || value.sourceId === value.targetId
+    || value.role === "TAKER" && viewerId !== value.sourceId
+    || value.role === "FORMER_OWNER" && viewerId !== value.targetId
+    || typeof value.settlementEventId !== "string" || !value.settlementEventId
+    || typeof value.rootEventId !== "string" || !value.rootEventId
+    || typeof value.rootResolutionId !== "string" || !value.rootResolutionId
+    || value.sourceZone !== "hand"
+    || !Number.isSafeInteger(value.committedAt) || !Number.isSafeInteger(value.eligibleUntil)
+    || value.eligibleUntil <= value.committedAt || value.eligibleUntil - value.committedAt > 15_000
+    || !Number.isFinite(serverNow) || value.eligibleUntil < serverNow) return null;
+  const card = normalizePhysicalCard(value.card);
+  if (!card || value.physicalCardId !== card.id) return null;
+  if (value.role === "TAKER" && (typeof value.transferId !== "string" || !value.transferId)) return null;
+  if (value.role === "FORMER_OWNER" && value.transferId !== undefined) return null;
+  return {
+    semantics: "PRIVATE_PROVEN",
+    roomCode,
+    viewerId,
+    role: value.role,
+    settlementEventId: value.settlementEventId,
+    rootEventId: value.rootEventId,
+    rootResolutionId: value.rootResolutionId,
+    sourceId: value.sourceId,
+    targetId: value.targetId,
+    sourceZone: "hand",
+    physicalCardId: card.id,
+    committedAt: value.committedAt,
+    eligibleUntil: value.eligibleUntil,
+    ...(value.role === "TAKER" ? { transferId: value.transferId } : {}),
+    card,
+  };
+}
+
+function normalizeTargetCardMovement(proof, event, effect) {
+  if (!isRecord(proof) || (proof.sourceZone !== "hand" && proof.sourceZone !== "equipment" && proof.sourceZone !== "judgement")
+    || typeof proof.targetId !== "string" || typeof proof.sourceId !== "string") return null;
+  const destinationZone = effect === "Dismantle" ? "discard" : "hand";
+  const destinationOwnerId = effect === "Dismantle" ? null : proof.sourceId;
+  const affectedCardOwnerId = proof.sourceZone === "judgement" ? null : proof.targetId;
+  if (proof.destinationZone !== destinationZone || proof.destinationOwnerId !== destinationOwnerId
+    || proof.affectedCardOwnerId !== affectedCardOwnerId) return null;
+  const hasCardFace = Object.prototype.hasOwnProperty.call(proof, "affectedCardFace");
+  if (effect === "Steal" && proof.sourceZone === "hand") return hasCardFace
+    ? null
+    : { sourceZone: proof.sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId };
+  const affectedCardFace = normalizePhysicalCard(proof.affectedCardFace);
+  if (!hasCardFace || !affectedCardFace) return null;
+  if (effect === "Dismantle") {
+    const eventCardFace = normalizePhysicalCard(event.card);
+    if (event.type !== "card" || event.action !== "discard" || !eventCardFace
+      || eventCardFace.id !== affectedCardFace.id || eventCardFace.kind !== affectedCardFace.kind
+      || eventCardFace.suit !== affectedCardFace.suit || eventCardFace.rank !== affectedCardFace.rank) return null;
+  }
+  return { sourceZone: proof.sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId, affectedCardFace };
+}
+
 function normalizeCards(value) {
   return Array.isArray(value) ? value.map(normalizeCard).filter(Boolean) : [];
 }
@@ -39,20 +130,38 @@ function normalizePresentationMeta(entry) {
   if (entry.effectNotice === true) metadata.effectNotice = true;
   if (entry.judgement === true) metadata.judgement = true;
   if (entry.initialDeal === true) metadata.initialDeal = true;
-  if (isRecord(entry.publicDismantleSettlement)
-    && entry.publicDismantleSettlement.semantics === "PROVEN"
-    && typeof entry.publicDismantleSettlement.rootEventId === "string"
-    && typeof entry.publicDismantleSettlement.rootResolutionId === "string"
-    && typeof entry.publicDismantleSettlement.sourceId === "string"
-    && typeof entry.publicDismantleSettlement.targetId === "string"
-    && entry.publicDismantleSettlement.outcome === "DISMANTLE_RESOLVED") {
+  const dismantleProof = isRecord(entry.publicDismantleSettlement) ? entry.publicDismantleSettlement : null;
+  const dismantleRootFields = ["rootInteractionId", "rootFrameId", "rootPhysicalCard", "resultingCardKind"];
+  const hasDismantleRootContract = dismantleProof && dismantleRootFields.some((field) => Object.prototype.hasOwnProperty.call(dismantleProof, field));
+  const dismantleRootPhysicalCard = dismantleProof ? normalizePhysicalCard(dismantleProof.rootPhysicalCard) : null;
+  const dismantleRootContractValid = !hasDismantleRootContract || Boolean(dismantleProof
+    && typeof dismantleProof.rootInteractionId === "string" && dismantleProof.rootInteractionId.length > 0
+    && typeof dismantleProof.rootFrameId === "string" && dismantleProof.rootFrameId.length > 0
+    && dismantleRootPhysicalCard && dismantleProof.resultingCardKind === "Dismantle");
+  if (dismantleProof
+    && dismantleProof.semantics === "PROVEN"
+    && typeof dismantleProof.rootEventId === "string"
+    && typeof dismantleProof.rootResolutionId === "string"
+    && typeof dismantleProof.sourceId === "string"
+    && typeof dismantleProof.targetId === "string"
+    && dismantleProof.outcome === "DISMANTLE_RESOLVED"
+    && dismantleRootContractValid
+    && normalizeTargetCardMovement(dismantleProof, entry, "Dismantle")) {
+    const movement = normalizeTargetCardMovement(dismantleProof, entry, "Dismantle");
     metadata.publicDismantleSettlement = {
       semantics: "PROVEN",
-      rootEventId: entry.publicDismantleSettlement.rootEventId,
-      rootResolutionId: entry.publicDismantleSettlement.rootResolutionId,
-      sourceId: entry.publicDismantleSettlement.sourceId,
-      targetId: entry.publicDismantleSettlement.targetId,
+      rootEventId: dismantleProof.rootEventId,
+      rootResolutionId: dismantleProof.rootResolutionId,
+      ...(hasDismantleRootContract ? {
+        rootInteractionId: dismantleProof.rootInteractionId,
+        rootFrameId: dismantleProof.rootFrameId,
+        rootPhysicalCard: dismantleRootPhysicalCard,
+        resultingCardKind: "Dismantle",
+      } : {}),
+      sourceId: dismantleProof.sourceId,
+      targetId: dismantleProof.targetId,
       outcome: "DISMANTLE_RESOLVED",
+      ...movement,
     };
   }
   if (isRecord(entry.publicStealSettlement)
@@ -61,7 +170,9 @@ function normalizePresentationMeta(entry) {
     && typeof entry.publicStealSettlement.rootResolutionId === "string"
     && typeof entry.publicStealSettlement.sourceId === "string"
     && typeof entry.publicStealSettlement.targetId === "string"
-    && entry.publicStealSettlement.outcome === "STEAL_RESOLVED") {
+    && entry.publicStealSettlement.outcome === "STEAL_RESOLVED"
+    && normalizeTargetCardMovement(entry.publicStealSettlement, entry, "Steal")) {
+    const movement = normalizeTargetCardMovement(entry.publicStealSettlement, entry, "Steal");
     metadata.publicStealSettlement = {
       semantics: "PROVEN",
       rootEventId: entry.publicStealSettlement.rootEventId,
@@ -69,6 +180,7 @@ function normalizePresentationMeta(entry) {
       sourceId: entry.publicStealSettlement.sourceId,
       targetId: entry.publicStealSettlement.targetId,
       outcome: "STEAL_RESOLVED",
+      ...movement,
     };
   }
   if (isRecord(entry.publicAttackHitSettlement)
@@ -248,6 +360,31 @@ function normalizeCurrentAction(value) {
     return [{ effectId: option.effectId, label: option.label, ...(typeof option.description === "string" ? { description: option.description } : {}), ...(option.allowDecline === false ? { allowDecline: false } : {}), ...(typeof option.timeoutChoiceId === "string" ? { timeoutChoiceId: option.timeoutChoiceId } : {}), selection }];
   }) : [];
   const playPhaseActions = Array.isArray(value.playPhaseActions) ? value.playPhaseActions.filter(isRecord).flatMap((action) => typeof action.cardId === "string" && action.canPlayAs === "attack" ? [{ cardId: action.cardId, canPlayAs: "attack" }] : []).filter((action, index, all) => all.findIndex((candidate) => candidate.cardId === action.cardId) === index) : [];
+  const playTargetEligibility = value.kind === "turn" && Array.isArray(value.legalActions)
+    && (value.legalActions.includes("play_card") || value.legalActions.includes("serpent_spear_attack"))
+    && Array.isArray(value.playTargetEligibility)
+    ? value.playTargetEligibility.filter(isRecord).slice(0, 64).flatMap((entry) => {
+      const mode = entry.mode === "card" || entry.mode === "serpent_spear_attack" ? entry.mode : null;
+      const effectiveKind = typeof entry.effectiveKind === "string" && CARD_KINDS.has(entry.effectiveKind) ? entry.effectiveKind : null;
+      const cardId = typeof entry.cardId === "string" && entry.cardId.length > 0 ? entry.cardId : null;
+      if (!mode || !effectiveKind || mode === "card" && !cardId || mode === "serpent_spear_attack" && (effectiveKind !== "Attack" || cardId)) return [];
+      const eligibleTargetIds = Array.isArray(entry.eligibleTargetIds)
+        ? [...new Set(entry.eligibleTargetIds.filter((id) => typeof id === "string" && id.length > 0))].slice(0, 32)
+        : [];
+      const eligible = new Set(eligibleTargetIds);
+      const rejectionCodes = new Set(["OUT_OF_RANGE", "TARGET_RESTRICTED", "NO_TARGETABLE_CARDS", "DUPLICATE_DELAYED_CARD", "NOT_ELIGIBLE", "ACTION_UNAVAILABLE"]);
+      const rejections = Array.isArray(entry.rejections)
+        ? entry.rejections.filter(isRecord).flatMap((rejection) => {
+          if (typeof rejection.targetId !== "string" || !rejection.targetId || eligible.has(rejection.targetId) || !rejectionCodes.has(rejection.code)) return [];
+          const distance = Number.isInteger(rejection.distance) && rejection.distance >= 0 && rejection.distance <= 99 ? rejection.distance : undefined;
+          const range = Number.isInteger(rejection.range) && rejection.range >= 0 && rejection.range <= 99 ? rejection.range : undefined;
+          if (rejection.code === "OUT_OF_RANGE" && (distance === undefined || range === undefined)) return [];
+          return [{ targetId: rejection.targetId, code: rejection.code, ...(distance === undefined ? {} : { distance }), ...(range === undefined ? {} : { range }) }];
+        }).filter((rejection, index, all) => all.findIndex((candidate) => candidate.targetId === rejection.targetId) === index).slice(0, 32)
+        : [];
+      return [{ mode, ...(cardId ? { cardId } : {}), effectiveKind, eligibleTargetIds, rejections }];
+    }).filter((entry, index, all) => all.findIndex((candidate) => candidate.mode === entry.mode && candidate.cardId === entry.cardId && candidate.effectiveKind === entry.effectiveKind) === index)
+    : [];
   const borrowedSwordTargets = Array.isArray(value.borrowedSwordTargets) ? value.borrowedSwordTargets.filter(isRecord).flatMap((target) => typeof target.cardId === "string" && Array.isArray(target.targetIds) ? [{ cardId: target.cardId, targetIds: target.targetIds.filter((id) => typeof id === "string") }] : []).filter((target, index, all) => all.findIndex((candidate) => candidate.cardId === target.cardId) === index) : [];
   const targetCardSelection = value.kind === "target_card"
     && typeof value.actorId === "string"
@@ -271,6 +408,7 @@ function normalizeCurrentAction(value) {
     legalActions: Array.isArray(value.legalActions) ? value.legalActions.filter((action) => typeof action === "string" && GAMEPLAY_ACTION_SET.has(action)) : [],
     ...(typeof value.canDeclareAttack === "boolean" ? { canDeclareAttack: value.canDeclareAttack } : {}),
     ...(playPhaseActions.length ? { playPhaseActions } : {}),
+    ...(playTargetEligibility.length ? { playTargetEligibility } : {}),
     ...(borrowedSwordTargets.length ? { borrowedSwordTargets } : {}),
     ...(targetCardSelection ? { targetCardSelection } : {}),
     ...(requirement ? { requirement, options, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
@@ -305,6 +443,8 @@ export function normalizeRoomData(value) {
     players: normalizePlayers(value.players),
     myHand: normalizeCards(value.myHand),
     timeline: normalizeTimeline(value.timeline),
+    privateStealResult: normalizePrivateStealResult(value.privateStealResult, value.code, value.meId),
+    privateStealParticipantResult: normalizePrivateStealParticipantResult(value.privateStealParticipantResult, value.code, value.meId, value.serverNow),
     publicHarvestPool: normalizePublicHarvestPool(value.publicHarvestPool),
     log: Array.isArray(value.log) ? value.log.filter((entry) => typeof entry === "string") : [],
     myHeroOptions: normalizeHeroes(value.myHeroOptions),

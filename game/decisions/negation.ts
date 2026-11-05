@@ -27,6 +27,7 @@ function validNegationHistory(value: unknown, interactionId: string, frameId: st
       || typeof node.actorId !== "string" || !node.actorId
       || typeof node.physicalCardId !== "string" || !node.physicalCardId
       || node.kind !== "NEGATION_CARD"
+      || node.publicEventId !== undefined && (typeof node.publicEventId !== "string" || !node.publicEventId)
       || nodeIds.has(node.nodeId) || physicalCardIds.has(node.physicalCardId)) return false;
     nodeIds.add(node.nodeId);
     physicalCardIds.add(node.physicalCardId);
@@ -41,6 +42,7 @@ export function applySuccessfulNegation(
   actor: NegationActor,
   consumedCards: Card[] = [],
   causalEnvelope: CausalEnvelope | null = null,
+  publicEventId?: string,
 ): NegationContinuation {
   const continuation = { ...pending } as NegationContinuation & { readyAfterEventId?: string };
   delete continuation.readyAfterEventId;
@@ -64,6 +66,7 @@ export function applySuccessfulNegation(
         causedByNodeId: previousNodeId,
         actorId: actor.id,
         physicalCardId: consumedCards[0].id,
+        ...(publicEventId ? { publicEventId } : {}),
         kind: "NEGATION_CARD",
       });
       continuation.negationHistory = history;

@@ -3,9 +3,12 @@ import type { CardKind } from "./model";
 
 export const TEST_HAND_PRESET_OPTIONS = [
   { id: "random", name: "Random Hands (Default)" },
-  { id: "attack_dodge", name: "Attack / Dodge Test" },
-  { id: "attack_negation", name: "Attack / Negation Test" },
-  { id: "duel_chain", name: "Duel / Attack Test" },
+  { id: "dismantle_steal", name: "Dismantle / Steal + Weapon & Delayed Stratagem" },
+  { id: "steal_dismantle_negation", name: "Steal / Dismantle + Negation Kit (4 players)" },
+  { id: "duel_chain", name: "Duel / Negation Counter Chain (4 players)" },
+  { id: "group_stratagem_negation", name: "Barbarian Invasion / Raining Arrows + Negation (4 players)" },
+  { id: "harvest_negation_chain", name: "Bumper Harvest + Negation Counter Chain (4 players)" },
+  { id: "lightning_overindulgence", name: "Lightning / Overindulgence Judgement (4–5 players)" },
   { id: "custom", name: "Custom Hands" },
 ] as const;
 
@@ -15,29 +18,94 @@ export type TestHandPreset = {
   handsBySeat: Record<number, CardKind[]>;
 };
 
+const FOUR_PLAYER_NEGATION_PRESET_IDS = new Set<TestHandPresetId>([
+  "steal_dismantle_negation",
+  "duel_chain",
+  "group_stratagem_negation",
+  "harvest_negation_chain",
+]);
+
+const ROSTER_MAPPED_PRESET_IDS = new Set<TestHandPresetId>([
+  ...FOUR_PLAYER_NEGATION_PRESET_IDS,
+  "lightning_overindulgence",
+]);
+
 export const STANDARD_PRESET_CARD_KINDS = Object.keys(STANDARD_DECK_COUNTS)
   .filter((kind) => (STANDARD_DECK_COUNTS[kind as CardKind] ?? 0) > 0) as CardKind[];
 
 const PRESET_HANDS: Record<Exclude<TestHandPresetId, "custom">, Record<number, CardKind[]>> = {
   random: {},
-  attack_dodge: { 0: ["Attack", "Attack"], 1: ["Dodge", "Dodge"] },
-  attack_negation: {
-    0: ["DrawTwo", "Attack", "Negation", "Negation"],
-    1: ["Negation", "Negation", "Dodge"],
+  dismantle_steal: {
+    0: ["Dismantle", "Steal", "ZhugeCrossbow", "Lightning"],
+    1: ["Dismantle", "Steal", "BlueSteelSword", "Overindulgence"],
+    2: ["Dismantle", "Steal", "YinYangSwords", "Lightning"],
+    3: ["Dismantle", "Steal", "FrostSword", "Overindulgence"],
+    4: ["Dismantle", "Steal", "RockCleavingAxe", "Overindulgence"],
   },
-  // Use real Standard copies only. Generated seats receive Duel and Attack;
-  // Dodge fills the remaining slots so this preset isolates Duel testing
-  // without requiring Negation cards in the controlled hands.
+  steal_dismantle_negation: {
+    0: ["Dismantle", "Negation", "ZhugeCrossbow", "Lightning"],
+    1: ["Steal", "Negation", "NioShield", "Overindulgence"],
+    2: ["Dismantle", "Negation", "BlueSteelSword", "Overindulgence"],
+    3: ["Steal", "Negation", "YinYangSwords", "Lightning"],
+  },
+  // Use real Standard copies only. The first three seats can initiate Duels,
+  // and all four seats can counter with Negation. Keep Attack and Dodge in each
+  // hand so existing Duel/response test flows remain usable.
   duel_chain: {
-    0: ["Attack", "Attack", "Attack", "Dodge"],
-    1: ["Duel", "Attack", "Attack", "Dodge"],
-    2: ["Duel", "Attack", "Attack", "Dodge"],
-    3: ["Duel", "Attack", "Attack", "Dodge"],
+    0: ["Duel", "Negation", "Attack", "Dodge"],
+    1: ["Duel", "Negation", "Attack", "Dodge"],
+    2: ["Duel", "Negation", "Attack", "Dodge"],
+    3: ["Negation", "Attack", "Attack", "Dodge"],
+  },
+  // Give the first two seats different group Stratagem roots. Every seat has
+  // one real Negation and the appropriate Attack/Dodge response cards.
+  group_stratagem_negation: {
+    0: ["BarbarianInvasion", "Negation", "Attack", "Dodge"],
+    1: ["RainingArrows", "Negation", "Attack", "Dodge"],
+    2: ["Negation", "Attack", "Dodge", "Peach"],
+    3: ["Negation", "Attack", "Dodge", "Peach"],
+  },
+  // The Harvest root can be tested alongside single-target and Duel roots;
+  // all four physical Negation copies are assigned for counter chains.
+  harvest_negation_chain: {
+    0: ["BumperHarvest", "Negation", "Attack", "Dodge"],
+    1: ["Dismantle", "Negation", "Attack", "Dodge"],
+    2: ["Steal", "Negation", "Attack", "Dodge"],
+    3: ["Duel", "Negation", "Attack", "Dodge"],
+  },
+  // Assign every seat one real delayed Stratagem. Four seats use two copies
+  // of each card; a fifth seat uses the remaining Overindulgence copy.
+  lightning_overindulgence: {
+    0: ["Lightning", "Attack", "Dodge", "Peach"],
+    1: ["Overindulgence", "Attack", "Dodge", "Peach"],
+    2: ["Lightning", "Attack", "Dodge", "Peach"],
+    3: ["Overindulgence", "Attack", "Dodge", "Peach"],
+    4: ["Overindulgence", "Attack", "Dodge", "Peach"],
   },
 };
 
-export function testHandPresetFor(id: Exclude<TestHandPresetId, "custom">): TestHandPreset {
-  return { id, handsBySeat: Object.fromEntries(Object.entries(PRESET_HANDS[id]).map(([seat, kinds]) => [Number(seat), [...kinds]])) };
+export function testHandPresetFor(id: Exclude<TestHandPresetId, "custom">, seatOrder?: readonly number[]): TestHandPreset {
+  const presetHands = PRESET_HANDS[id];
+  if (ROSTER_MAPPED_PRESET_IDS.has(id) && seatOrder) {
+    const templateSeats = Object.keys(presetHands).map(Number).sort((left, right) => left - right);
+    const seats = [...new Set(seatOrder)].sort((left, right) => left - right).slice(0, templateSeats.length);
+    return {
+      id,
+      handsBySeat: Object.fromEntries(seats.map((seat, index) => [seat, [...(presetHands[templateSeats[index]] ?? [])]])),
+    };
+  }
+  return { id, handsBySeat: Object.fromEntries(Object.entries(presetHands).map(([seat, kinds]) => [Number(seat), [...kinds]])) };
+}
+
+export function testHandPresetCompatibilityError(id: TestHandPresetId, availableSeats?: ReadonlySet<number>): string | null {
+  if (!availableSeats) return null;
+  if (FOUR_PLAYER_NEGATION_PRESET_IDS.has(id) && availableSeats.size !== 4) {
+    return "This scenario uses all four Standard Negation cards, so it requires exactly four players.";
+  }
+  if (id === "lightning_overindulgence" && (availableSeats.size < 4 || availableSeats.size > 5)) {
+    return "This scenario provides one Lightning or Overindulgence to each seat and requires four or five players.";
+  }
+  return null;
 }
 
 export function isTestHandPresetId(value: unknown): value is TestHandPresetId {
@@ -52,9 +120,11 @@ export function validateTestHandPreset(
   const input = value as Record<string, unknown>;
   if (!isTestHandPresetId(input.id)) return { preset: null, error: "Choose a valid starting-hand preset." };
   const id = input.id;
+  const compatibilityError = testHandPresetCompatibilityError(id, availableSeats);
+  if (compatibilityError) return { preset: null, error: compatibilityError };
   let handsBySeat: Record<number, CardKind[]>;
   if (id !== "custom") {
-    const expected = testHandPresetFor(id);
+    const expected = testHandPresetFor(id, availableSeats ? [...availableSeats] : undefined);
     if (input.handsBySeat !== undefined) {
       const provided = parseHandsBySeat(input.handsBySeat, availableSeats);
       if (provided.error) return provided;
@@ -80,6 +150,28 @@ export function validateTestHandPreset(
     if (count > available) return { preset: null, error: `The Standard deck contains only ${available} ${kind} card${available === 1 ? "" : "s"}; ${count} were requested.` };
   }
   return { preset: { id, handsBySeat }, error: null };
+}
+
+const RETIRED_TEST_HAND_PRESET_IDS = new Set(["attack_dodge", "attack_negation"]);
+
+/** Older open test rooms may still persist presets that were removed from the lobby. */
+export function validateStoredTestHandPreset(
+  value: unknown,
+  availableSeats?: ReadonlySet<number>,
+): { preset: TestHandPreset | null; error: string | null } {
+  const storedId = value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>).id
+    : null;
+  if (isTestHandPresetId(storedId) && ROSTER_MAPPED_PRESET_IDS.has(storedId)) {
+    const currentSeats = availableSeats ? [...availableSeats] : undefined;
+    // A lobby may gain or lose seats after saving. Rebuild this server-owned
+    // preset for its current roster so the host can still change the preset;
+    // save/start separately enforce each scenario's player-count requirement.
+    return { preset: testHandPresetFor(storedId, currentSeats), error: null };
+  }
+  return typeof storedId === "string" && RETIRED_TEST_HAND_PRESET_IDS.has(storedId)
+    ? validateTestHandPreset(testHandPresetFor("random"), availableSeats)
+    : validateTestHandPreset(value, availableSeats);
 }
 
 function parseHandsBySeat(value: unknown, availableSeats?: ReadonlySet<number>): { handsBySeat: Record<number, CardKind[]>; error: string | null } {

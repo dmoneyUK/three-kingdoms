@@ -382,7 +382,7 @@ test("real Da Qiao may discard equipped armor for Deflection", async ({ browser,
   await expect(publicCardDisplay).toHaveCount(1);
   await expect(publicCardDisplay).toHaveAttribute("data-public-card-id", equipmentCost.id);
   const deflectionAnnouncement = publicCardDisplay.locator('[data-public-card-announcement="true"]');
-  await expect(deflectionAnnouncement).toContainText("used Deflection");
+  await expect(deflectionAnnouncement).toContainText(/Deflection: .* redirected Attack to .*; discarded Eight Trigrams Formation\./);
   await expect(deflectionAnnouncement.locator("small,span,strong")).toHaveCount(0);
   const responder = await roomView(request, seed, 2);
   expect(responder.currentAction).toMatchObject({ kind: "response", actorId: seed.players[2].id, requirement: "dodge" });

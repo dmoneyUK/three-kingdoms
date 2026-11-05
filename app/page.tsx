@@ -1,34 +1,50 @@
 "use client";
 
-import { Component, FormEvent, PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Component, CSSProperties, FormEvent, KeyboardEventHandler, PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { cardDefinition, isAttackCard } from "../game/cards";
 import type { Card, CardKind } from "../game/model";
-import { STANDARD_PRESET_CARD_KINDS, TEST_HAND_PRESET_OPTIONS, testHandPresetFor, type TestHandPreset, type TestHandPresetId } from "../game/test-hand-presets";
-import { baselineHand, updatePrivateHand } from "../game/private-hand.js";
+import { MAX_AVAILABLE_CLASSIC_PLAYERS, roomAvailabilityLimit } from "../game/room-availability";
+import { STANDARD_PRESET_CARD_KINDS, TEST_HAND_PRESET_OPTIONS, testHandPresetCompatibilityError, testHandPresetFor, type TestHandPreset, type TestHandPresetId } from "../game/test-hand-presets";
+import { baselineHand, pendingPrivateHandCardIds, PRIVATE_HAND_REVEAL_DURATION_MS, updatePrivateHand } from "../game/private-hand.js";
 import { mergeEffectNoticeQueue, type EffectNoticeQueueEntry } from "./effect-notice-queue.js";
 import { getResponseOptions } from "../game/responses";
-import { HEROES, type HeroSkill } from "../game/heroes";
+import { HEROES, heroGender, type HeroSkill } from "../game/heroes";
 import { normalizeRoomData } from "../game/room-safety.js";
-import { canUseAction, type CurrentAction, type GameplayAction, type TriggerOptionView } from "../game/protocol.js";
+import { canUseAction, type CurrentAction, type GameplayAction, type PlayTargetRejectionView, type TriggerOptionView } from "../game/protocol.js";
+import { derivePrivateResponseGuidance } from "../game/private-response-guidance.ts";
 import { latestPublicMessages } from "../game/messages.js";
-import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice, PresentationSnapshotPublicCardEffect } from "../game/presentation-snapshot";
 import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationLustDuelAttackResponseProof, PresentationPublicCardEffectProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
-import { attackDodgeResponseEventMatchesProof } from "../game/presentation-v2";
+import type { PublicPhysicalZoneTransition, PublicPresentationEventFactDraft } from "../game/presentation-semantics";
+import { attackDodgeResponseEventMatchesProof, publicCardPlayProvesEffectiveKind } from "../game/presentation-v2";
 import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
 import { attackDodgePublicActionEvents, attackDodgeSettlementSupersessionReason, attackHitSettlementSupersessionReason, parseRetiredAttackDodgeCompositionSnapshot, persistRetiredAttackDodgeComposition, retiredAttackDodgeCompositionServerSnapshot, retiredAttackDodgeCompositionStorageSnapshot, subscribeRetiredAttackDodgeComposition, type AttackDodgeSettlementHoldIdentity, type AttackHitSettlementHoldIdentity } from "../game/attack-dodge-settlement-lifecycle";
 import { buildDyingHandoffView, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildPresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
-import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
+import { buildConsoleDecisionDisplay, triggerDecisionInstruction, viewerNegationAcknowledgement, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
-import { derivePublicActivityStatus } from "../game/public-activity";
+import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration } from "../game/public-activity";
 import { CardFace } from "./card-face";
+import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolZone } from "./card-pool-panel";
+import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
-import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, harvestNegationDecisionCopy, publicCardActionKey, type PublicCardDisplayAction, type PublicSkillEventAnnouncement } from "./public-card-display";
+import { PublicCardDisplay, PublicDiscardAnnouncementLayer, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, publicCardActionKey, publicCardJourneyOwnershipIdentity, publicCardMotionForCommittedCard, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
-import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
+import { PublicStageLayoutProvider } from "./public-stage-layout-context";
+import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, hasAttackDodgeUxTrace, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
+import { equipmentArrivalIdentity, pendingEquipmentArrivalIdentities as derivePendingEquipmentArrivalIdentities } from "../game/equipment-arrival.js";
+import { compactLustDuelOrderMessage, compactLustDuelResultMessage } from "./lust-public-copy";
+import { publicHeroCostAnnouncementLifecycle } from "../game/public-hero-cost-lifecycle";
+import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate } from "../game/public-announcement";
+import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
+import { isM2EquipmentTransitionEvent, routePublicEquipmentTransition } from "./public-equipment-transition";
+import { isM3JudgementTransitionEvent, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition, type PublicJudgementRevealRoute } from "./public-judgement-transition";
+import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
+import { layoutPublicResultCards, type PublicResultObstacle } from "./public-result-layout";
+import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
+import type { PublicPresentationRoute } from "./public-presentation-routing";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -45,13 +61,35 @@ type RetiredAttackDodgeComposition = { roomCode: string; eventIds: Set<string>; 
 type AttackDodgeObservedProof = { roomCode: string; proofKey: string; responseEventId: string };
 type ActivePublicNegationRead = { key: string; action: PublicCardDisplayAction; expiresAt: number; phase: "reading" | "elapsed" | "live" | "settlement-pending" | "exiting" };
 
+function finalizePublicNegationNarration(
+  narration: PublicNegationNarration,
+  outcome: "ROOT_CANCELLED" | "ROOT_RESTORED",
+  settlementEventId: string,
+): PublicNegationNarration {
+  const rootEffectState = outcome === "ROOT_CANCELLED" ? "BLOCKED" : "ACTIVE";
+  const disposition = outcome === "ROOT_CANCELLED" ? "cancelled" : "restored";
+  const publicHeadline = `The ${narration.rootLabel} is ${disposition}.`;
+  return {
+    ...narration,
+    eventId: settlementEventId,
+    phase: "FINAL",
+    rootEffectState,
+    headline: publicHeadline,
+    compactHeadline: publicHeadline,
+    supportingMessage: "",
+    compactSupportingMessage: "",
+    accessibleLabel: publicHeadline,
+  };
+}
+
 function persistAttackDodgeSettlementRetirement(held: ActiveAttackDodgeSettlement): RetiredAttackDodgeComposition {
   let storage: Storage | null = null;
   try {
     if (typeof window !== "undefined") storage = window.localStorage;
   } catch { /* In-memory retirement remains available when persistent storage is blocked. */ }
   const eventIds = [held.lifecycle.rootEventId, held.lifecycle.responseEventId];
-  const cardIds = [held.action.cardFace?.id, held.action.response?.cardFace?.id].filter((id): id is string => Boolean(id));
+  const cardIds = [held.action.cardFace?.id, ...(held.action.publicCardEffectFrame?.materials.map(({ card }) => card.id) ?? []), held.action.response?.cardFace?.id]
+    .filter((id): id is string => Boolean(id));
   const persisted = persistRetiredAttackDodgeComposition(storage, held.lifecycle.roomCode, eventIds, cardIds);
   return { roomCode: held.lifecycle.roomCode, eventIds: new Set(persisted.eventIds), cardIds: new Set(persisted.cardIds) };
 }
@@ -67,12 +105,83 @@ function persistAttackHitSettlementRetirement(held: AttackHitSettlementHoldIdent
 
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
 type PresentationImportance = "essential" | "informational";
-type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; privateToPlayerId?: string; publicDiaoChanNotice?: unknown; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
-type CardEvent = PresentationEventMeta & { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw"; drawPlayerId?: string; presentation?: boolean };
+type PresentationEventMeta = { resolutionId?: string; publicSequence?: number; importance?: PresentationImportance; finalResult?: boolean; actorId?: string; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; privateToPlayerId?: string; publicFact?: PublicPresentationEventFactDraft; publicZoneTransition?: PublicPhysicalZoneTransition; publicZoneTransitions?: readonly PublicPhysicalZoneTransition[]; publicDiaoChanNotice?: unknown; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PrivateHandTransfer = { semantics: "PRIVATE_PROVEN"; transferId: string; cardId: string; recipientId: string; sourceZone: "deck" | "hand" | "equipment" | "judgement" | "harvest_pool" | "damage_cards" | "distribution"; sourcePlayerId?: string; destinationZone: "hand"; committedAt: number; revealUntil: number; rootEventId?: string; rootResolutionId?: string; interactionId?: string; frameId?: string };
+type CardEvent = PresentationEventMeta & { id: string; player: string; actorId?: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw" | "private_loss"; drawPlayerId?: string; privateHandTransfer?: PrivateHandTransfer; presentation?: boolean };
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 
 type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | ({ type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean } & PresentationEventMeta);
 type EffectNoticeState = EffectNoticeQueueEntry;
+
+function privateHandTransferScope(roomCode: string, playerId: string) {
+  return `wtk:private-hand-arrivals:v1:${roomCode}:${playerId}`;
+}
+
+function readSeenPrivateHandTransfers(roomCode: string, playerId: string) {
+  try {
+    if (typeof window === "undefined") return new Set<string>();
+    const raw = window.sessionStorage.getItem(privateHandTransferScope(roomCode, playerId));
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : []);
+  } catch { return new Set<string>(); }
+}
+
+function rememberPrivateHandTransfers(roomCode: string, playerId: string, ids: readonly string[]) {
+  try {
+    if (typeof window === "undefined" || !ids.length) return;
+    const key = privateHandTransferScope(roomCode, playerId);
+    const existing = readSeenPrivateHandTransfers(roomCode, playerId);
+    for (const id of ids) existing.add(id);
+    window.sessionStorage.setItem(key, JSON.stringify([...existing].slice(-500)));
+  } catch { /* A blocked session store must not prevent the private Hand update. */ }
+}
+
+function privateHandTimelineEvents(timeline: readonly GameEvent[]) {
+  return timeline.flatMap((event) => event.type === "card" ? [event] : []);
+}
+
+type PrivateStealParticipantResult = {
+  semantics: "PRIVATE_PROVEN";
+  roomCode: string;
+  viewerId: string;
+  role: "TAKER" | "FORMER_OWNER";
+  settlementEventId: string;
+  rootEventId: string;
+  rootResolutionId: string;
+  sourceId: string;
+  targetId: string;
+  sourceZone: "hand";
+  physicalCardId: string;
+  committedAt: number;
+  eligibleUntil: number;
+  transferId?: string;
+  card: Card;
+};
+
+function privateStealParticipantScope(result: PrivateStealParticipantResult) {
+  return ["wtk:private-steal-result:v1", result.roomCode, result.viewerId, result.settlementEventId, result.role, result.physicalCardId]
+    .map((part) => encodeURIComponent(part)).join(":");
+}
+
+const seenPrivateStealResultScopes = new Set<string>();
+
+function privateStealResultWasSeen(scope: string) {
+  if (seenPrivateStealResultScopes.has(scope)) return true;
+  try {
+    if (typeof window === "undefined") return true;
+    if (window.sessionStorage.getItem(scope) === "1") {
+      seenPrivateStealResultScopes.add(scope);
+      return true;
+    }
+  } catch { return true; }
+  return false;
+}
+
+function markPrivateStealResultSeen(scope: string) {
+  seenPrivateStealResultScopes.add(scope);
+  try { if (typeof window !== "undefined") window.sessionStorage.setItem(scope, "1"); }
+  catch { /* A blocked session store must not prevent the settlement from resolving. */ }
+}
 
 function attackDodgeProofKeysFromTimeline(timeline: readonly GameEvent[]): Set<string> {
   return new Set(timeline.flatMap((event) => {
@@ -129,12 +238,1247 @@ type VerifiedLustCostFrameProof = {
   activation: LustActivationNotice & { costEventId: string };
   activationEvent: Extract<GameEvent, { type: "message" }>;
   costEvent: CardEvent | CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
   costCard: Card;
   owner: Player;
   firstParticipant: Player;
   secondParticipant: Player;
   firstActor: Player;
 };
+type VerifiedProdigalHealerCostFrameProof = {
+  costEvent: CardEvent | CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  costCard: Card;
+  owner: Player;
+  target: Player;
+};
+function verifiedProdigalHealerCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedProdigalHealerCostFrameProof | null {
+  const costMatches = timeline.filter((event) => event.id === eventId);
+  const costEvent = costMatches.length === 1 && (costMatches[0].type === "card" || costMatches[0].type === "cards")
+    ? costMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "discard" || !costEvent.resolutionId) return null;
+
+  const matchingEffects = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "hua_tuo_prodigal_healer" && effect.effectClass === "COST");
+  const matchingRawEffects = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "hua_tuo_prodigal_healer" && effect.effectClass === "COST");
+  if (matchingEffects.length !== 1 || matchingRawEffects.length !== 1) return null;
+  const effect = matchingEffects[0];
+  const rawEffect = matchingRawEffects[0];
+  const costCards = costEvent.type === "card" ? [costEvent.card] : costEvent.cards;
+  const [costCard] = costCards;
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const targetId = effect.targetId;
+  if (costCards.length !== 1 || !costCard || !material || !rawMaterial || !projectedCard
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "RECOVERY_APPLIED" || rawEffect.outcome !== "RECOVERY_APPLIED"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || material.cardId !== costCard.id || rawMaterial.cardId !== costCard.id || projectedCard.id !== costCard.id
+    || material.ownerId !== effect.activationOwnerId || rawMaterial.ownerId !== effect.activationOwnerId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+    || projectedCard.kind !== costCard.kind || projectedCard.suit !== costCard.suit || projectedCard.rank !== costCard.rank) return null;
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "hua-tuo");
+  const target = players.find((player) => player.id === targetId);
+  if (!owner?.name || !target?.name) return null;
+  return { costEvent, effect, costCard, owner, target };
+}
+type VerifiedDivineWisdomCostFrameProof = {
+  costEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  costCards: readonly Card[];
+  owner: Player;
+};
+function verifiedDivineWisdomCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedDivineWisdomCostFrameProof | null {
+  const costMatches = timeline.filter((event) => event.id === eventId);
+  const costEvent = costMatches.length === 1 && costMatches[0].type === "cards" ? costMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "discard" || !costEvent.resolutionId || costEvent.cards.length === 0) return null;
+
+  const matchingEffects = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "lady_gan_divine_wisdom" && effect.effectClass === "COST");
+  const matchingRawEffects = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "lady_gan_divine_wisdom" && effect.effectClass === "COST");
+  if (matchingEffects.length !== 1 || matchingRawEffects.length !== 1) return null;
+  const effect = matchingEffects[0];
+  const rawEffect = matchingRawEffects[0];
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "lady-gan");
+  if (!owner?.name || !costEvent.cards.every((card) => card.id)
+    || new Set(costEvent.cards.map((card) => card.id)).size !== costEvent.cards.length
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.outcome !== rawEffect.outcome
+    || (effect.outcome !== "RECOVERY_APPLIED" && effect.outcome !== "NO_RECOVERY")
+    || effect.cards.length !== costEvent.cards.length
+    || effect.materials.length !== costEvent.cards.length
+    || rawEffect.materials.length !== costEvent.cards.length) return null;
+
+  for (const [index, costCard] of costEvent.cards.entries()) {
+    const material = effect.materials[index];
+    const rawMaterial = rawEffect.materials[index];
+    const projectedCard = effect.cards[index];
+    if (!material || !rawMaterial || !projectedCard
+      || material.cardId !== costCard.id || rawMaterial.cardId !== costCard.id || projectedCard.id !== costCard.id
+      || material.ownerId !== owner.id || rawMaterial.ownerId !== owner.id
+      || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+      || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+      || projectedCard.kind !== costCard.kind || projectedCard.suit !== costCard.suit || projectedCard.rank !== costCard.rank) return null;
+  }
+  return { costEvent, effect, costCards: costEvent.cards, owner };
+}
+type VerifiedDauntlessCostFrameProof = {
+  costEvent: CardEvent | CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  costCard: Card;
+  owner: Player;
+  target: Player;
+};
+function verifiedDauntlessCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedDauntlessCostFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const costEvent = eventMatches.length === 1
+    && (eventMatches[0].type === "card" || eventMatches[0].type === "cards") ? eventMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "discard" || !costEvent.resolutionId) return null;
+
+  const matchingEffects = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "yue_jin_dauntless" && effect.effectClass === "COST");
+  const matchingRawEffects = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "yue_jin_dauntless" && effect.effectClass === "COST");
+  if (matchingEffects.length !== 1 || matchingRawEffects.length !== 1) return null;
+  const effect = matchingEffects[0];
+  const rawEffect = matchingRawEffects[0];
+  const costCards = costEvent.type === "card" ? [costEvent.card] : costEvent.cards;
+  const [costCard] = costCards;
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const targetId = effect.targetId;
+  if (costCards.length !== 1 || !costCard || cardDefinition(costCard.kind).category !== "basic"
+    || !material || !rawMaterial || !projectedCard
+    || effect.semantics !== "PROVEN"
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "ACTIVATION_COST" || rawEffect.outcome !== "ACTIVATION_COST"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || material.cardId !== costCard.id || rawMaterial.cardId !== costCard.id || projectedCard.id !== costCard.id
+    || material.ownerId !== effect.activationOwnerId || rawMaterial.ownerId !== effect.activationOwnerId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+    || projectedCard.kind !== costCard.kind || projectedCard.suit !== costCard.suit || projectedCard.rank !== costCard.rank) return null;
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "yue-jin");
+  const target = players.find((player) => player.id === targetId);
+  if (!owner?.name || !target?.name || owner.id === target.id) return null;
+  return { costEvent, effect, costCard, owner, target };
+}
+type VerifiedDauntlessEquipmentEffectFrameProof = {
+  effectEvent: CardEvent | CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  equipmentCard: Card;
+  activationOwner: Player;
+  materialOwner: Player;
+};
+function verifiedDauntlessEquipmentEffectFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedDauntlessEquipmentEffectFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const effectEvent = eventMatches.length === 1
+    && (eventMatches[0].type === "card" || eventMatches[0].type === "cards") ? eventMatches[0] : null;
+  if (!effectEvent || effectEvent.presentation === false || effectEvent.privateToPlayerId
+    || effectEvent.action !== "discard" || !effectEvent.resolutionId) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === effectEvent.id
+    && effect.effectId === "yue_jin_dauntless" && effect.effectClass === "EFFECT");
+  const rawMatches = (effectEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "yue_jin_dauntless" && effect.effectClass === "EFFECT");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const cards = eventCards(effectEvent);
+  const [equipmentCard] = cards;
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const targetId = effect.targetId;
+  if (cards.length !== 1 || !equipmentCard || cardDefinition(equipmentCard.kind).category !== "equipment"
+    || !material || !rawMaterial || !projectedCard
+    || effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== effectEvent.id || rawEffect.eventId !== effectEvent.id
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.rootEventId !== undefined || rawEffect.rootEventId !== undefined
+    || effect.rootResolutionId !== undefined || rawEffect.rootResolutionId !== undefined
+    || effect.interactionId !== undefined || rawEffect.interactionId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "DAMAGE_PREVENTED" || rawEffect.outcome !== "DAMAGE_PREVENTED"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || material.cardId !== equipmentCard.id || rawMaterial.cardId !== equipmentCard.id || projectedCard.id !== equipmentCard.id
+    || material.ownerId !== targetId || rawMaterial.ownerId !== targetId
+    || material.fromZone !== "EQUIPMENT" || rawMaterial.fromZone !== "EQUIPMENT"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+    || projectedCard.kind !== equipmentCard.kind || projectedCard.suit !== equipmentCard.suit
+    || projectedCard.rank !== equipmentCard.rank) return null;
+
+  const activationOwner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "yue-jin");
+  const materialOwner = players.find((player) => player.id === targetId);
+  if (!activationOwner?.name || !materialOwner?.name || activationOwner.id === materialOwner.id
+    || effectEvent.player !== materialOwner.name || effectEvent.target !== materialOwner.name) return null;
+  return { effectEvent, effect, equipmentCard, activationOwner, materialOwner };
+}
+type VerifiedBetrothmentCostFrameProof = {
+  costEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  costCards: readonly Card[];
+  owner: Player;
+  target: Player;
+  recoveryCopy: string;
+};
+function verifiedBetrothmentCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedBetrothmentCostFrameProof | null {
+  const costMatches = timeline.filter((event) => event.id === eventId);
+  const costEvent = costMatches.length === 1 && costMatches[0].type === "cards" ? costMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "discard" || !costEvent.resolutionId || costEvent.cards.length !== 2) return null;
+
+  const matchingEffects = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "sun_shangxiang_betrothment" && effect.effectClass === "COST");
+  const matchingRawEffects = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "sun_shangxiang_betrothment" && effect.effectClass === "COST");
+  if (matchingEffects.length !== 1 || matchingRawEffects.length !== 1) return null;
+  const effect = matchingEffects[0];
+  const rawEffect = matchingRawEffects[0];
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "sun-shangxiang");
+  const targetId = effect.targetId;
+  const target = targetId ? players.find((player) => player.id === targetId) : null;
+  if (!owner?.name || !target?.name || owner.id === target.id || heroGender(target.hero) !== "male"
+    || effect.semantics !== "PROVEN"
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.cards.length !== 2 || effect.materials.length !== 2 || rawEffect.materials.length !== 2
+    || !["SOURCE_AND_TARGET_RECOVERED", "TARGET_RECOVERED"].includes(effect.outcome ?? "")
+    || effect.outcome !== rawEffect.outcome) return null;
+
+  for (const [index, costCard] of costEvent.cards.entries()) {
+    const material = effect.materials[index];
+    const rawMaterial = rawEffect.materials[index];
+    const projectedCard = effect.cards[index];
+    if (!costCard?.id || !material || !rawMaterial || !projectedCard
+      || material.cardId !== costCard.id || rawMaterial.cardId !== costCard.id || projectedCard.id !== costCard.id
+      || material.ownerId !== owner.id || rawMaterial.ownerId !== owner.id
+      || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+      || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+      || projectedCard.kind !== costCard.kind || projectedCard.suit !== costCard.suit || projectedCard.rank !== costCard.rank) return null;
+  }
+
+  const recoveryCopy = effect.outcome === "SOURCE_AND_TARGET_RECOVERED"
+    ? `${owner.name} and ${target.name} each recovered 1 HP through Betrothment.`
+    : `${target.name} recovered 1 HP through ${owner.name}'s Betrothment.`;
+  return { costEvent, effect, costCards: costEvent.cards, owner, target, recoveryCopy };
+}
+type VerifiedEquilibriumCostFrameProof = {
+  costEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  costCards: readonly Card[];
+  owner: Player;
+};
+function verifiedEquilibriumCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedEquilibriumCostFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const costEvent = eventMatches.length === 1 && eventMatches[0].type === "cards" ? eventMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "discard" || !costEvent.resolutionId || costEvent.cards.length === 0
+    || costEvent.cards.some((card) => !card.id)
+    || new Set(costEvent.cards.map((card) => card.id)).size !== costEvent.cards.length) return null;
+
+  const matchingEffects = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "sun_quan_zhiheng" && effect.effectClass === "COST");
+  const matchingRawEffects = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "sun_quan_zhiheng" && effect.effectClass === "COST");
+  if (matchingEffects.length !== 1 || matchingRawEffects.length !== 1) return null;
+  const effect = matchingEffects[0];
+  const rawEffect = matchingRawEffects[0];
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "sun-quan");
+  if (!owner?.name || effect.semantics !== "PROVEN"
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.targetId || rawEffect.targetId || effect.targetIds?.length || rawEffect.targetIds?.length
+    || effect.outcome !== "DRAW_COUNT_MATCHES_DISCARDED" || rawEffect.outcome !== effect.outcome
+    || effect.cards.length !== costEvent.cards.length
+    || effect.materials.length !== costEvent.cards.length
+    || rawEffect.materials.length !== costEvent.cards.length) return null;
+
+  for (const [index, costCard] of costEvent.cards.entries()) {
+    const projectedCard = effect.cards[index];
+    const material = effect.materials[index];
+    const rawMaterial = rawEffect.materials[index];
+    if (!projectedCard || !material || !rawMaterial
+      || projectedCard.id !== costCard.id || projectedCard.kind !== costCard.kind
+      || projectedCard.suit !== costCard.suit || projectedCard.rank !== costCard.rank
+      || material.cardId !== costCard.id || rawMaterial.cardId !== costCard.id
+      || material.ownerId !== owner.id || rawMaterial.ownerId !== owner.id
+      || (material.fromZone !== "HAND" && material.fromZone !== "EQUIPMENT")
+      || rawMaterial.fromZone !== material.fromZone
+      || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD") return null;
+  }
+
+  return { costEvent, effect, costCards: costEvent.cards, owner };
+}
+type VerifiedFirstAidConversionFrameProof = {
+  conversionEvent: CardEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  sourceCard: Card;
+  owner: Player;
+  target: Player;
+};
+type AttackConversionFrameSpec = {
+  effectId: "guan_yu_red_card_attack" | "zhao_yun_dodge_as_attack";
+  hero: "guan-yu" | "zhao-yun";
+  skillName: "God of War" | "Braveheart";
+  title: "GOD OF WAR · AS ATTACK" | "BRAVEHEART · DODGE AS ATTACK";
+  titleParts: { skillName: "GOD OF WAR" | "BRAVEHEART"; effectLabel: "AS ATTACK" | "DODGE AS ATTACK" };
+  sourceKind: "RED_NON_ATTACK" | "DODGE";
+};
+type VerifiedAttackConversionFrameProof = {
+  conversionEvent: CardEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  sourceCard: Card;
+  owner: Player;
+  target: Player;
+  spec: AttackConversionFrameSpec;
+};
+type VerifiedSerpentSpearAttackFrameProof = {
+  conversionEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  sourceCards: readonly [Card, Card];
+  owner: Player;
+  target: Player;
+};
+type VerifiedBraveheartDodgeResponseFrameProof = {
+  responseEvent: CardEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  sourceCard: Card;
+  owner: Player;
+  target: Player;
+  attackSource: Player;
+};
+type VerifiedEmpressDowagerDodgeResponseFrameProof = VerifiedBraveheartDodgeResponseFrameProof;
+type VerifiedAmbushmentConversionFrameProof = {
+  conversionEvent: CardEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  sourceCard: Card;
+  owner: Player;
+  target: Player;
+};
+type VerifiedCaptivatingConversionFrameProof = VerifiedAmbushmentConversionFrameProof;
+function verifiedBraveheartDodgeResponseFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  responseProofs: readonly PresentationAttackDodgeResponse[],
+  players: readonly Player[],
+  rootEventId: string,
+  responseEventId: string,
+  expectedCardId: string,
+): VerifiedBraveheartDodgeResponseFrameProof | null {
+  const proofMatches = responseProofs.filter((proof) => proof.rootEventId === rootEventId
+    && proof.responseEventId === responseEventId
+    && proof.responsePhysicalCardKind === "Attack" && proof.responsePlayedAs === "dodge"
+    && proof.responseCardKind === "Dodge" && proof.responseActorId === proof.targetId);
+  if (proofMatches.length !== 1) return null;
+  const proof = proofMatches[0];
+  const rootMatches = timeline.filter((event) => event.id === proof.rootEventId);
+  const responseMatches = timeline.filter((event) => event.id === proof.responseEventId);
+  const rootEvent = rootMatches.length === 1 && rootMatches[0].type === "card" ? rootMatches[0] : null;
+  const responseEvent = responseMatches.length === 1 && responseMatches[0].type === "card" ? responseMatches[0] : null;
+  const rootIsAttack = rootEvent && (rootEvent.playedAs === undefined
+    ? rootEvent.card.kind === "Attack"
+    : rootEvent.playedAs === "attack" && rootEvent.card.kind !== "Attack");
+  if (!rootEvent || !responseEvent || rootEvent.action !== "play" || rootEvent.presentation === false
+    || rootEvent.privateToPlayerId || rootEvent.resolutionId !== proof.rootResolutionId || !rootIsAttack
+    || responseEvent.action !== "play" || responseEvent.presentation === false || responseEvent.privateToPlayerId
+    || responseEvent.playedAs !== "dodge" || responseEvent.card.kind !== "Attack"
+    || responseEvent.card.id !== expectedCardId || responseEvent.resolutionId !== proof.responseResolutionId
+    || !attackDodgeResponseEventMatchesProof(proof, responseEvent)) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === responseEvent.id && effect.effectId === "zhao_yun_attack_as_dodge");
+  const rawMatches = (responseEvent.publicCardEffects ?? []).filter((effect) => effect.effectId === "zhao_yun_attack_as_dodge");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const sourceCard = responseEvent.card;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.effectClass !== "CONVERSION" || rawEffect.effectClass !== "CONVERSION"
+    || effect.activationOwnerId !== proof.responseActorId || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.rootEventId !== proof.rootEventId || rawEffect.rootEventId !== proof.rootEventId
+    || effect.rootResolutionId !== proof.rootResolutionId || rawEffect.rootResolutionId !== proof.rootResolutionId
+    || effect.targetId !== proof.targetId || rawEffect.targetId !== proof.targetId
+    || effect.resultingCardKind !== "Dodge" || rawEffect.resultingCardKind !== "Dodge"
+    || effect.outcome !== "AS_DODGE" || rawEffect.outcome !== "AS_DODGE"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || sourceCard.id !== projectedCard.id || sourceCard.id !== material.cardId || sourceCard.id !== rawMaterial.cardId
+    || sourceCard.kind !== projectedCard.kind
+    || sourceCard.suit !== projectedCard.suit || sourceCard.rank !== projectedCard.rank
+    || material.ownerId !== proof.responseActorId || rawMaterial.ownerId !== proof.responseActorId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD") return null;
+
+  const owner = players.find((player) => player.id === proof.responseActorId && player.hero === "zhao-yun");
+  const target = players.find((player) => player.id === proof.targetId);
+  const attackSource = players.find((player) => player.id === proof.rootSourceId);
+  if (!owner?.name || !target?.name || !attackSource?.name || owner.id !== target.id
+    || attackSource.id === target.id || responseEvent.player !== owner.name || responseEvent.target !== attackSource.name
+    || rootEvent.player !== attackSource.name) return null;
+  return { responseEvent, effect, sourceCard, owner, target, attackSource };
+}
+function verifiedEmpressDowagerDodgeResponseFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  responseProofs: readonly PresentationAttackDodgeResponse[],
+  players: readonly Player[],
+  rootEventId: string,
+  responseEventId: string,
+  expectedCardId: string,
+): VerifiedEmpressDowagerDodgeResponseFrameProof | null {
+  const proofMatches = responseProofs.filter((proof) => proof.rootEventId === rootEventId
+    && proof.responseEventId === responseEventId
+    && proof.responseConversionEffectId === "zhen_ji_black_card_dodge"
+    && proof.responseCardKind === "Dodge" && proof.responseActorId === proof.targetId);
+  if (proofMatches.length !== 1) return null;
+  const proof = proofMatches[0];
+  const rootMatches = timeline.filter((event) => event.id === proof.rootEventId);
+  const responseMatches = timeline.filter((event) => event.id === proof.responseEventId);
+  const rootEvent = rootMatches.length === 1 && rootMatches[0].type === "card" ? rootMatches[0] : null;
+  const responseEvent = responseMatches.length === 1 && responseMatches[0].type === "card" ? responseMatches[0] : null;
+  const rootIsAttack = rootEvent && (rootEvent.playedAs === undefined
+    ? rootEvent.card.kind === "Attack"
+    : rootEvent.playedAs === "attack" && rootEvent.card.kind !== "Attack");
+  if (!rootEvent || !responseEvent || rootEvent.action !== "play" || rootEvent.presentation === false
+    || rootEvent.privateToPlayerId || rootEvent.resolutionId !== proof.rootResolutionId || !rootIsAttack
+    || responseEvent.action !== "play" || responseEvent.presentation === false || responseEvent.privateToPlayerId
+    || responseEvent.card.kind !== proof.responsePhysicalCardKind
+    || (responseEvent.card.suit !== "♠" && responseEvent.card.suit !== "♣")
+    || responseEvent.card.id !== expectedCardId || responseEvent.resolutionId !== proof.responseResolutionId
+    || !attackDodgeResponseEventMatchesProof(proof, responseEvent)) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === responseEvent.id && effect.effectId === "zhen_ji_black_card_dodge");
+  const rawMatches = (responseEvent.publicCardEffects ?? []).filter((effect) => effect.effectId === "zhen_ji_black_card_dodge");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const sourceCard = responseEvent.card;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.effectClass !== "CONVERSION" || rawEffect.effectClass !== "CONVERSION"
+    || effect.activationOwnerId !== proof.responseActorId || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.rootEventId !== proof.rootEventId || rawEffect.rootEventId !== proof.rootEventId
+    || effect.rootResolutionId !== proof.rootResolutionId || rawEffect.rootResolutionId !== proof.rootResolutionId
+    || effect.targetId !== proof.targetId || rawEffect.targetId !== proof.targetId
+    || effect.resultingCardKind !== "Dodge" || rawEffect.resultingCardKind !== "Dodge"
+    || effect.outcome !== "AS_DODGE" || rawEffect.outcome !== "AS_DODGE"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || sourceCard.id !== projectedCard.id || sourceCard.id !== material.cardId || sourceCard.id !== rawMaterial.cardId
+    || sourceCard.kind !== projectedCard.kind || sourceCard.suit !== projectedCard.suit || sourceCard.rank !== projectedCard.rank
+    || material.ownerId !== proof.responseActorId || rawMaterial.ownerId !== proof.responseActorId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD") return null;
+
+  const owner = players.find((player) => player.id === proof.responseActorId && player.hero === "zhen-ji");
+  const target = players.find((player) => player.id === proof.targetId);
+  const attackSource = players.find((player) => player.id === proof.rootSourceId);
+  if (!owner?.name || !target?.name || !attackSource?.name || owner.id !== target.id
+    || attackSource.id === target.id || responseEvent.player !== owner.name || responseEvent.target !== attackSource.name
+    || rootEvent.player !== attackSource.name) return null;
+  return { responseEvent, effect, sourceCard, owner, target, attackSource };
+}
+function verifiedAttackConversionFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+  spec: AttackConversionFrameSpec,
+): VerifiedAttackConversionFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const conversionEvent = eventMatches.length === 1 && eventMatches[0].type === "card" ? eventMatches[0] : null;
+  if (!conversionEvent || conversionEvent.action !== "play" || conversionEvent.presentation === false
+    || conversionEvent.privateToPlayerId || conversionEvent.playedAs !== "attack") return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === conversionEvent.id && effect.effectId === spec.effectId);
+  const rawMatches = (conversionEvent.publicCardEffects ?? []).filter((effect) => effect.effectId === spec.effectId);
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const sourceCard = conversionEvent.card;
+  const targetNames = conversionEvent.target.split(",").map((name) => name.trim()).filter(Boolean);
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.effectClass !== "CONVERSION" || rawEffect.effectClass !== "CONVERSION"
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.rootEventId !== undefined || rawEffect.rootEventId !== undefined
+    || effect.rootResolutionId !== undefined || rawEffect.rootResolutionId !== undefined
+    || effect.interactionId !== undefined || rawEffect.interactionId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.targetId !== rawEffect.targetId || !effect.targetId
+    || effect.resultingCardKind !== "Attack" || rawEffect.resultingCardKind !== "Attack"
+    || effect.outcome !== "AS_ATTACK" || rawEffect.outcome !== "AS_ATTACK"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || spec.sourceKind === "RED_NON_ATTACK" && (sourceCard.kind === "Attack" || sourceCard.suit !== "♥" && sourceCard.suit !== "♦")
+    || spec.sourceKind === "DODGE" && sourceCard.kind !== "Dodge"
+    || sourceCard.id !== projectedCard.id || sourceCard.id !== material.cardId || sourceCard.id !== rawMaterial.cardId
+    || sourceCard.kind !== projectedCard.kind || sourceCard.suit !== projectedCard.suit || sourceCard.rank !== projectedCard.rank
+    || material.ownerId !== effect.activationOwnerId || rawMaterial.ownerId !== effect.activationOwnerId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD") return null;
+
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === spec.hero);
+  const target = players.find((player) => player.id === effect.targetId);
+  if (!owner?.name || !target?.name || owner.id === target.id
+    || conversionEvent.player !== owner.name || targetNames[0] !== target.name) return null;
+  return { conversionEvent, effect, sourceCard, owner, target, spec };
+}
+function verifiedSerpentSpearAttackFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedSerpentSpearAttackFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const conversionEvent = eventMatches.length === 1 && eventMatches[0].type === "cards" ? eventMatches[0] : null;
+  if (!conversionEvent || conversionEvent.presentation === false || conversionEvent.privateToPlayerId
+    || conversionEvent.action !== "play" || conversionEvent.playedAs !== "attack"
+    || !conversionEvent.resolutionId || conversionEvent.cards.length !== 2
+    || new Set(conversionEvent.cards.map((card) => card.id)).size !== 2) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === conversionEvent.id
+    && effect.effectId === "serpent_spear_attack");
+  const rawMatches = (conversionEvent.publicCardEffects ?? []).filter((effect) => effect.effectId === "serpent_spear_attack");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const owner = players.find((player) => player.id === effect.activationOwnerId);
+  const target = players.find((player) => player.id === effect.targetId);
+  const projectedCards = effect.cards;
+  if (!owner?.name || !target?.name || owner.id === target.id
+    || effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== conversionEvent.id || rawEffect.eventId !== conversionEvent.id
+    || effect.effectClass !== "CONVERSION" || rawEffect.effectClass !== "CONVERSION"
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId || effect.activationOwnerId !== owner.id
+    || effect.targetId !== rawEffect.targetId || effect.targetId !== target.id
+    || effect.resultingCardKind !== "Attack" || rawEffect.resultingCardKind !== "Attack"
+    || effect.outcome !== "AS_ATTACK" || rawEffect.outcome !== "AS_ATTACK"
+    || effect.materials.length !== 2 || rawEffect.materials.length !== 2 || projectedCards.length !== 2) return null;
+
+  const materialsMatch = conversionEvent.cards.every((sourceCard, index) => {
+    const material = effect.materials[index];
+    const rawMaterial = rawEffect.materials[index];
+    const projectedCard = projectedCards[index];
+    return Boolean(material && rawMaterial && projectedCard
+      && sourceCard.id === material.cardId && sourceCard.id === rawMaterial.cardId && sourceCard.id === projectedCard.id
+      && sourceCard.kind === projectedCard.kind && sourceCard.suit === projectedCard.suit && sourceCard.rank === projectedCard.rank
+      && material.ownerId === owner.id && rawMaterial.ownerId === owner.id
+      && material.fromZone === "HAND" && rawMaterial.fromZone === "HAND"
+      && material.toZone === "DISCARD" && rawMaterial.toZone === "DISCARD");
+  });
+  if (!materialsMatch || conversionEvent.player !== owner.name || conversionEvent.target !== target.name) return null;
+  return { conversionEvent, effect, sourceCards: [conversionEvent.cards[0], conversionEvent.cards[1]], owner, target };
+}
+function publicSerpentSpearAttackFrame(
+  proof: VerifiedSerpentSpearAttackFrameProof,
+  players: readonly Player[],
+) {
+  const publicNotice = `${proof.owner.name} formed one Attack with Serpent Spear: two Hand cards AS ATTACK, targeting ${proof.target.name}.`;
+  const accessibleLabel = `${proof.owner.name} used Serpent Spear to form one Attack from two real Hand cards as Attack, targeting ${proof.target.name}.`;
+  const frame = createPublicCardEffectFrameView(proof.effect, {
+    title: "SERPENT SPEAR · AS ATTACK",
+    titleParts: { skillName: "SERPENT SPEAR", effectLabel: "AS ATTACK" },
+    accessibleLabel,
+    activationOwnerName: proof.owner.name,
+    ownerNamesById: Object.fromEntries(players.map((player) => [player.id, player.name])),
+  });
+  return frame ? { frame, publicNotice, accessibleLabel } : null;
+}
+function verifiedAmbushmentConversionFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+  expectedCardId: string,
+): VerifiedAmbushmentConversionFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const conversionEvent = eventMatches.length === 1 && eventMatches[0].type === "card" ? eventMatches[0] : null;
+  if (!conversionEvent || conversionEvent.action !== "play" || conversionEvent.presentation === false
+    || conversionEvent.playedAs !== undefined
+    || conversionEvent.privateToPlayerId || conversionEvent.card.id !== expectedCardId
+    || conversionEvent.card.suit !== "♣" && conversionEvent.card.suit !== "♠") return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === conversionEvent.id && effect.effectId === "gan_ning_qixi");
+  const rawMatches = (conversionEvent.publicCardEffects ?? []).filter((effect) => effect.effectId === "gan_ning_qixi");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const sourceCard = conversionEvent.card;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.effectClass !== "CONVERSION" || rawEffect.effectClass !== "CONVERSION"
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.targetId !== rawEffect.targetId || !effect.targetId
+    || effect.resultingCardKind !== "Dismantle" || rawEffect.resultingCardKind !== "Dismantle"
+    || effect.outcome !== "AS_DISMANTLE" || rawEffect.outcome !== "AS_DISMANTLE"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || sourceCard.id !== projectedCard.id || sourceCard.id !== material.cardId || sourceCard.id !== rawMaterial.cardId
+    || sourceCard.kind !== projectedCard.kind || sourceCard.suit !== projectedCard.suit || sourceCard.rank !== projectedCard.rank
+    || material.ownerId !== effect.activationOwnerId || rawMaterial.ownerId !== effect.activationOwnerId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD") return null;
+
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "gan-ning");
+  const target = players.find((player) => player.id === effect.targetId);
+  if (!owner?.name || !target?.name || owner.id === target.id
+    || conversionEvent.player !== owner.name || conversionEvent.target !== target.name) return null;
+  return { conversionEvent, effect, sourceCard, owner, target };
+}
+function verifiedCaptivatingConversionFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+  expectedCardId: string,
+): VerifiedCaptivatingConversionFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const conversionEvent = eventMatches.length === 1 && eventMatches[0].type === "card" ? eventMatches[0] : null;
+  if (!conversionEvent || conversionEvent.action !== "play" || conversionEvent.presentation === false
+    || conversionEvent.playedAs !== undefined || conversionEvent.privateToPlayerId
+    || conversionEvent.card.id !== expectedCardId || conversionEvent.card.suit !== "♦"
+    || !conversionEvent.resolutionId) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === conversionEvent.id && effect.effectId === "daqiao_captivating");
+  const rawMatches = (conversionEvent.publicCardEffects ?? []).filter((effect) => effect.effectId === "daqiao_captivating");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const sourceCard = conversionEvent.card;
+  const validDestination = material?.toZone === "PUBLIC_PLAY" || material?.toZone === "JUDGEMENT" || material?.toZone === "DISCARD";
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== conversionEvent.id || rawEffect.eventId !== conversionEvent.id
+    || effect.effectClass !== "CONVERSION" || rawEffect.effectClass !== "CONVERSION"
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.targetId !== rawEffect.targetId || !effect.targetId
+    || effect.resultingCardKind !== "Overindulgence" || rawEffect.resultingCardKind !== "Overindulgence"
+    || effect.outcome !== "AS_OVERINDULGENCE" || rawEffect.outcome !== "AS_OVERINDULGENCE"
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.rootEventId !== undefined || rawEffect.rootEventId !== undefined
+    || effect.rootResolutionId !== undefined || rawEffect.rootResolutionId !== undefined
+    || effect.interactionId !== undefined || rawEffect.interactionId !== undefined
+    || effect.rootFrameId !== undefined || rawEffect.rootFrameId !== undefined
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard || !validDestination
+    || rawMaterial.toZone !== material.toZone
+    || sourceCard.id !== projectedCard.id || sourceCard.id !== material.cardId || sourceCard.id !== rawMaterial.cardId
+    || sourceCard.kind !== projectedCard.kind || sourceCard.suit !== projectedCard.suit || sourceCard.rank !== projectedCard.rank
+    || material.ownerId !== effect.activationOwnerId || rawMaterial.ownerId !== effect.activationOwnerId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND") return null;
+
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "daqiao");
+  const target = players.find((player) => player.id === effect.targetId);
+  if (!owner?.name || !target?.name || owner.id === target.id
+    || conversionEvent.player !== owner.name || conversionEvent.target !== target.name) return null;
+  return { conversionEvent, effect, sourceCard, owner, target };
+}
+function verifiedFirstAidConversionFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedFirstAidConversionFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const conversionEvent = eventMatches.length === 1 && eventMatches[0].type === "card" ? eventMatches[0] : null;
+  if (!conversionEvent || conversionEvent.action !== "play" || conversionEvent.presentation === false
+    || conversionEvent.privateToPlayerId || conversionEvent.playedAs !== "peach") return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === conversionEvent.id && effect.effectId === "hua_tuo_first_aid");
+  const rawMatches = (conversionEvent.publicCardEffects ?? []).filter((effect) => effect.effectId === "hua_tuo_first_aid");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const sourceCard = conversionEvent.card;
+  if (effect.semantics !== "PROVEN" || effect.effectClass !== "CONVERSION" || rawEffect.effectClass !== "CONVERSION"
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.rootEventId !== undefined || rawEffect.rootEventId !== undefined
+    || effect.rootResolutionId !== undefined || rawEffect.rootResolutionId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.targetId !== rawEffect.targetId || !effect.targetId
+    || effect.resultingCardKind !== "Peach" || rawEffect.resultingCardKind !== "Peach"
+    || effect.outcome !== "AS_PEACH" || rawEffect.outcome !== "AS_PEACH"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || sourceCard.kind === "Peach" || (sourceCard.suit !== "♥" && sourceCard.suit !== "♦")
+    || sourceCard.id !== projectedCard.id || sourceCard.id !== material.cardId || sourceCard.id !== rawMaterial.cardId
+    || sourceCard.kind !== projectedCard.kind || sourceCard.suit !== projectedCard.suit || sourceCard.rank !== projectedCard.rank
+    || material.ownerId !== effect.activationOwnerId || rawMaterial.ownerId !== effect.activationOwnerId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "PUBLIC_PLAY" || rawMaterial.toZone !== "PUBLIC_PLAY") return null;
+
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "hua-tuo");
+  const target = players.find((player) => player.id === effect.targetId);
+  if (!owner?.name || !target?.name || owner.id === target.id
+    || conversionEvent.player !== owner.name || conversionEvent.target !== target.name) return null;
+  return { conversionEvent, effect, sourceCard, owner, target };
+}
+type VerifiedNecromancyJudgementFrameProof = {
+  replacementEvent: CardEvent & { type: "card" };
+  originalEvent: CardEvent & { type: "card" };
+  effect: PresentationSnapshotPublicCardEffect;
+  replacementCard: Card;
+  owner: Player;
+  target: Player;
+};
+function verifiedNecromancyJudgementFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedNecromancyJudgementFrameProof | null {
+  const replacementMatches = timeline.filter((event) => event.id === eventId);
+  const replacementEvent = replacementMatches.length === 1 && replacementMatches[0].type === "card"
+    ? replacementMatches[0] : null;
+  if (!replacementEvent || replacementEvent.action !== "reveal" || replacementEvent.judgement !== true
+    || replacementEvent.presentation === false || replacementEvent.privateToPlayerId || !replacementEvent.resolutionId) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === replacementEvent.id
+    && effect.effectId === "sima_yi_guicai" && effect.effectClass === "JUDGEMENT");
+  const rawMatches = (replacementEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "sima_yi_guicai" && effect.effectClass === "JUDGEMENT");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const replacementCard = replacementEvent.card;
+  const rootEventId = effect.rootEventId;
+  const rootResolutionId = effect.rootResolutionId;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.targetId !== rawEffect.targetId || !effect.targetId
+    || effect.outcome !== "REPLACED_JUDGEMENT" || rawEffect.outcome !== "REPLACED_JUDGEMENT"
+    || !rootEventId || rootEventId !== rawEffect.rootEventId || !rootResolutionId
+    || rootResolutionId !== rawEffect.rootResolutionId || replacementEvent.resolutionId !== rootResolutionId
+    || rootEventId === replacementEvent.id
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || material.cardId !== replacementCard.id || rawMaterial.cardId !== replacementCard.id
+    || projectedCard.id !== replacementCard.id || material.ownerId !== effect.activationOwnerId
+    || rawMaterial.ownerId !== effect.activationOwnerId || material.fromZone !== "HAND"
+    || rawMaterial.fromZone !== "HAND" || material.toZone !== "JUDGEMENT" || rawMaterial.toZone !== "JUDGEMENT"
+    || projectedCard.kind !== replacementCard.kind || projectedCard.suit !== replacementCard.suit
+    || projectedCard.rank !== replacementCard.rank) return null;
+
+  const originalMatches = timeline.filter((event) => event.id === rootEventId);
+  const originalEvent = originalMatches.length === 1 && originalMatches[0].type === "card"
+    ? originalMatches[0] : null;
+  if (!originalEvent || originalEvent.action !== "reveal" || originalEvent.judgement !== true
+    || originalEvent.presentation === false || originalEvent.privateToPlayerId
+    || !originalEvent.resolutionId || originalEvent.resolutionId !== rootResolutionId
+    || originalEvent.card.id === replacementCard.id) return null;
+
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "simayi");
+  const target = players.find((player) => player.id === effect.targetId);
+  if (!owner?.name || !target?.name || replacementEvent.player !== owner.name
+    || replacementEvent.target !== target.name) return null;
+  return { replacementEvent, originalEvent, effect, replacementCard, owner, target };
+}
+type VerifiedStauchnessCostFrameProof = {
+  costEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  rootEvent: CardEvent | CardGroupEvent;
+  costCards: readonly [Card, Card];
+  activationOwner: Player;
+  materialOwner: Player;
+};
+function verifiedStauchnessCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedStauchnessCostFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const costEvent = eventMatches.length === 1 && eventMatches[0].type === "cards"
+    ? eventMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "discard" || !costEvent.resolutionId || costEvent.cards.length !== 2
+    || new Set(costEvent.cards.map((card) => card.id)).size !== 2) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "xiahou_dun_ganglie" && effect.effectClass === "COST");
+  const rawMatches = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "xiahou_dun_ganglie" && effect.effectClass === "COST");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const rootEventId = effect.rootEventId;
+  const rootResolutionId = effect.rootResolutionId;
+  const targetId = effect.targetId;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== costEvent.id || rawEffect.eventId !== costEvent.id
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "SOURCE_DISCARDED_TWO" || rawEffect.outcome !== "SOURCE_DISCARDED_TWO"
+    || !rootEventId || rootEventId !== rawEffect.rootEventId || rootEventId === costEvent.id
+    || !rootResolutionId || rootResolutionId !== rawEffect.rootResolutionId
+    || effect.cards.length !== 2 || effect.materials.length !== 2
+    || rawEffect.materials.length !== 2) return null;
+
+  const materialsMatch = effect.materials.every((material, index) => {
+    const rawMaterial = rawEffect.materials[index];
+    const projectedCard = effect.cards[index];
+    const costCard = costEvent.cards[index];
+    return Boolean(rawMaterial && projectedCard && costCard
+      && material.cardId === costCard.id && rawMaterial.cardId === costCard.id
+      && projectedCard.id === costCard.id && projectedCard.kind === costCard.kind
+      && projectedCard.suit === costCard.suit && projectedCard.rank === costCard.rank
+      && material.ownerId === targetId && rawMaterial.ownerId === targetId
+      && material.fromZone === "HAND" && rawMaterial.fromZone === "HAND"
+      && material.toZone === "DISCARD" && rawMaterial.toZone === "DISCARD");
+  });
+  if (!materialsMatch) return null;
+
+  const rootMatches = timeline.filter((event) => event.id === rootEventId);
+  const rootEvent = rootMatches.length === 1 && (rootMatches[0].type === "card" || rootMatches[0].type === "cards")
+    ? rootMatches[0] : null;
+  if (!rootEvent || rootEvent.presentation === false || rootEvent.privateToPlayerId
+    || !rootEvent.resolutionId || rootEvent.resolutionId !== rootResolutionId) return null;
+
+  const activationOwner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "xiahou-dun");
+  const materialOwner = players.find((player) => player.id === targetId);
+  if (!activationOwner?.name || !materialOwner?.name || activationOwner.id === materialOwner.id
+    || costEvent.player !== materialOwner.name || costEvent.target !== materialOwner.name) return null;
+  return { costEvent, effect, rootEvent, costCards: [costEvent.cards[0], costEvent.cards[1]], activationOwner, materialOwner };
+}
+type VerifiedRockCleavingAxeCostFrameProof = {
+  costEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  rootEvent: CardEvent | CardGroupEvent;
+  costCards: readonly [Card, Card];
+  activationOwner: Player;
+  target: Player;
+};
+function verifiedRockCleavingAxeCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedRockCleavingAxeCostFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const costEvent = eventMatches.length === 1 && eventMatches[0].type === "cards"
+    ? eventMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "play" || !costEvent.resolutionId || costEvent.cards.length !== 2
+    || new Set(costEvent.cards.map((card) => card.id)).size !== 2) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "rock_cleaving_axe_attack_dodged" && effect.effectClass === "COST");
+  const rawMatches = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "rock_cleaving_axe_attack_dodged" && effect.effectClass === "COST");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const rootEventId = effect.rootEventId;
+  const rootResolutionId = effect.rootResolutionId;
+  const targetId = effect.targetId;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== costEvent.id || rawEffect.eventId !== costEvent.id
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "FORCED_HIT" || rawEffect.outcome !== "FORCED_HIT"
+    || !rootEventId || rootEventId !== rawEffect.rootEventId || rootEventId === costEvent.id
+    || !rootResolutionId || rootResolutionId !== rawEffect.rootResolutionId
+    || effect.cards.length !== 2 || effect.materials.length !== 2 || rawEffect.materials.length !== 2) return null;
+
+  const materialsMatch = effect.materials.every((material, index) => {
+    const rawMaterial = rawEffect.materials[index];
+    const projectedCard = effect.cards[index];
+    const costCard = costEvent.cards[index];
+    return Boolean(rawMaterial && projectedCard && costCard
+      && material.cardId === costCard.id && rawMaterial.cardId === costCard.id
+      && projectedCard.id === costCard.id && projectedCard.kind === costCard.kind
+      && projectedCard.suit === costCard.suit && projectedCard.rank === costCard.rank
+      && material.ownerId === effect.activationOwnerId && rawMaterial.ownerId === effect.activationOwnerId
+      && (material.fromZone === "HAND" || material.fromZone === "EQUIPMENT")
+      && rawMaterial.fromZone === material.fromZone
+      && material.toZone === "DISCARD" && rawMaterial.toZone === "DISCARD");
+  });
+  if (!materialsMatch) return null;
+
+  const rootMatches = timeline.filter((event) => event.id === rootEventId);
+  const rootEvent = rootMatches.length === 1 && (rootMatches[0].type === "card" || rootMatches[0].type === "cards")
+    ? rootMatches[0] : null;
+  if (!rootEvent || rootEvent.presentation === false || rootEvent.privateToPlayerId
+    || !rootEvent.resolutionId || rootEvent.resolutionId !== rootResolutionId || rootEvent.action !== "play") return null;
+
+  const activationOwner = players.find((player) => player.id === effect.activationOwnerId);
+  const target = players.find((player) => player.id === targetId);
+  const isAttackRoot = rootEvent.type === "card"
+    ? rootEvent.card.kind === "Attack" || rootEvent.playedAs === "attack"
+    : rootEvent.playedAs === "attack" && rootEvent.cards.length === 2
+      && (rootEvent.publicCardEffects ?? []).some((rootEffect) => rootEffect.semantics === "PROVEN"
+        && rootEffect.effectId === "serpent_spear_attack" && rootEffect.effectClass === "CONVERSION"
+        && rootEffect.resultingCardKind === "Attack" && rootEffect.outcome === "AS_ATTACK"
+        && rootEffect.activationOwnerId === activationOwner?.id && rootEffect.targetId === target?.id);
+  if (!activationOwner?.name || !target?.name || activationOwner.id === target.id || !isAttackRoot
+    || rootEvent.player !== activationOwner.name || rootEvent.target !== target.name
+    || costEvent.player !== activationOwner.name || costEvent.target !== target.name) return null;
+  return { costEvent, effect, rootEvent, costCards: [costEvent.cards[0], costEvent.cards[1]], activationOwner, target };
+}
+type VerifiedKirinBowEffectFrameProof = {
+  effectEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  rootEvent: CardEvent | CardGroupEvent;
+  mount: Card;
+  activationOwner: Player;
+  materialOwner: Player;
+};
+function verifiedKirinBowEffectFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedKirinBowEffectFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const effectEvent = eventMatches.length === 1 && eventMatches[0].type === "cards"
+    ? eventMatches[0] : null;
+  if (!effectEvent || effectEvent.presentation === false || effectEvent.privateToPlayerId
+    || effectEvent.action !== "discard" || !effectEvent.resolutionId || effectEvent.cards.length !== 1) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === effectEvent.id
+    && effect.effectId === "kirin_bow_damage_about_to_apply" && effect.effectClass === "EFFECT");
+  const rawMatches = (effectEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "kirin_bow_damage_about_to_apply" && effect.effectClass === "EFFECT");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const mount = effectEvent.cards[0];
+  const targetId = effect.targetId;
+  const rootEventId = effect.rootEventId;
+  const rootResolutionId = effect.rootResolutionId;
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const mountSlot = cardDefinition(mount.kind).equipmentSlot;
+  if ((mountSlot !== "offensiveHorse" && mountSlot !== "defensiveHorse")
+    || effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== effectEvent.id || rawEffect.eventId !== effectEvent.id
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "MOUNT_DISCARDED_DAMAGE_CONTINUES" || rawEffect.outcome !== "MOUNT_DISCARDED_DAMAGE_CONTINUES"
+    || !rootEventId || rootEventId !== rawEffect.rootEventId || rootEventId === effectEvent.id
+    || !rootResolutionId || rootResolutionId !== rawEffect.rootResolutionId
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || material.cardId !== mount.id || rawMaterial.cardId !== mount.id || projectedCard.id !== mount.id
+    || material.ownerId !== targetId || rawMaterial.ownerId !== targetId
+    || material.fromZone !== "EQUIPMENT" || rawMaterial.fromZone !== "EQUIPMENT"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+    || projectedCard.kind !== mount.kind || projectedCard.suit !== mount.suit || projectedCard.rank !== mount.rank) return null;
+
+  const rootMatches = timeline.filter((event) => event.id === rootEventId);
+  const rootEvent = rootMatches.length === 1 && (rootMatches[0].type === "card" || rootMatches[0].type === "cards")
+    ? rootMatches[0] : null;
+  if (!rootEvent || rootEvent.presentation === false || rootEvent.privateToPlayerId
+    || !rootEvent.resolutionId || rootEvent.resolutionId !== rootResolutionId || rootEvent.action !== "play") return null;
+
+  const activationOwner = players.find((player) => player.id === effect.activationOwnerId);
+  const materialOwner = players.find((player) => player.id === targetId);
+  const isAttackRoot = rootEvent.type === "card"
+    ? rootEvent.card.kind === "Attack" || rootEvent.playedAs === "attack"
+    : rootEvent.playedAs === "attack" && rootEvent.cards.length === 2
+      && (rootEvent.publicCardEffects ?? []).some((rootEffect) => rootEffect.semantics === "PROVEN"
+        && rootEffect.effectId === "serpent_spear_attack" && rootEffect.effectClass === "CONVERSION"
+        && rootEffect.resultingCardKind === "Attack" && rootEffect.outcome === "AS_ATTACK"
+        && rootEffect.activationOwnerId === activationOwner?.id && rootEffect.targetId === materialOwner?.id);
+  if (!activationOwner?.name || !materialOwner?.name || activationOwner.id === materialOwner.id || !isAttackRoot
+    || rootEvent.player !== activationOwner.name || rootEvent.target !== materialOwner.name
+    || effectEvent.player !== materialOwner.name || effectEvent.target !== materialOwner.name) return null;
+  return { effectEvent, effect, rootEvent, mount, activationOwner, materialOwner };
+}
+type VerifiedFrostSwordEffectFrameProof = {
+  effectEvent: CardGroupEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  rootEvent: CardEvent | CardGroupEvent;
+  discardedCards: readonly [Card, Card];
+  activationOwner: Player;
+  materialOwner: Player;
+};
+function verifiedFrostSwordEffectFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedFrostSwordEffectFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const effectEvent = eventMatches.length === 1 && eventMatches[0].type === "cards"
+    ? eventMatches[0] : null;
+  if (!effectEvent || effectEvent.presentation === false || effectEvent.privateToPlayerId
+    || effectEvent.action !== "discard" || !effectEvent.resolutionId || effectEvent.cards.length !== 2
+    || new Set(effectEvent.cards.map((card) => card.id)).size !== 2) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === effectEvent.id
+    && effect.effectId === "frost_sword_damage_about_to_apply" && effect.effectClass === "EFFECT");
+  const rawMatches = (effectEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "frost_sword_damage_about_to_apply" && effect.effectClass === "EFFECT");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const targetId = effect.targetId;
+  const rootEventId = effect.rootEventId;
+  const rootResolutionId = effect.rootResolutionId;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== effectEvent.id || rawEffect.eventId !== effectEvent.id
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "DAMAGE_PREVENTED" || rawEffect.outcome !== "DAMAGE_PREVENTED"
+    || !rootEventId || rootEventId !== rawEffect.rootEventId || rootEventId === effectEvent.id
+    || !rootResolutionId || rootResolutionId !== rawEffect.rootResolutionId
+    || effect.cards.length !== 2 || effect.materials.length !== 2 || rawEffect.materials.length !== 2) return null;
+
+  const materialsMatch = effect.materials.every((material, index) => {
+    const rawMaterial = rawEffect.materials[index];
+    const projectedCard = effect.cards[index];
+    const discardedCard = effectEvent.cards[index];
+    return Boolean(rawMaterial && projectedCard && discardedCard
+      && material.cardId === discardedCard.id && rawMaterial.cardId === discardedCard.id
+      && projectedCard.id === discardedCard.id && projectedCard.kind === discardedCard.kind
+      && projectedCard.suit === discardedCard.suit && projectedCard.rank === discardedCard.rank
+      && material.ownerId === targetId && rawMaterial.ownerId === targetId
+      && (material.fromZone === "HAND" || material.fromZone === "EQUIPMENT")
+      && rawMaterial.fromZone === material.fromZone
+      && material.toZone === "DISCARD" && rawMaterial.toZone === "DISCARD");
+  });
+  if (!materialsMatch) return null;
+
+  const rootMatches = timeline.filter((event) => event.id === rootEventId);
+  const rootEvent = rootMatches.length === 1 && (rootMatches[0].type === "card" || rootMatches[0].type === "cards")
+    ? rootMatches[0] : null;
+  if (!rootEvent || rootEvent.presentation === false || rootEvent.privateToPlayerId
+    || !rootEvent.resolutionId || rootEvent.resolutionId !== rootResolutionId || rootEvent.action !== "play") return null;
+
+  const activationOwner = players.find((player) => player.id === effect.activationOwnerId);
+  const materialOwner = players.find((player) => player.id === targetId);
+  const isAttackRoot = rootEvent.type === "card"
+    ? rootEvent.card.kind === "Attack" || rootEvent.playedAs === "attack"
+    : rootEvent.playedAs === "attack" && rootEvent.cards.length === 2
+      && (rootEvent.publicCardEffects ?? []).some((rootEffect) => rootEffect.semantics === "PROVEN"
+        && rootEffect.effectId === "serpent_spear_attack" && rootEffect.effectClass === "CONVERSION"
+        && rootEffect.resultingCardKind === "Attack" && rootEffect.outcome === "AS_ATTACK"
+        && rootEffect.activationOwnerId === activationOwner?.id && rootEffect.targetId === materialOwner?.id);
+  if (!activationOwner?.name || !materialOwner?.name || activationOwner.id === materialOwner.id || !isAttackRoot
+    || rootEvent.player !== activationOwner.name || rootEvent.target !== materialOwner.name
+    || effectEvent.player !== materialOwner.name || effectEvent.target !== materialOwner.name) return null;
+  return {
+    effectEvent, effect, rootEvent,
+    discardedCards: [effectEvent.cards[0], effectEvent.cards[1]],
+    activationOwner, materialOwner,
+  };
+}
+type VerifiedYinYangSwordsEffectFrameProof = {
+  effectEvent: CardEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  rootEvent: CardEvent | CardGroupEvent;
+  discardedCard: Card;
+  activationOwner: Player;
+  materialOwner: Player;
+};
+function verifiedYinYangSwordsEffectFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedYinYangSwordsEffectFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const effectEvent = eventMatches.length === 1 && eventMatches[0].type === "card"
+    ? eventMatches[0] : null;
+  if (!effectEvent || effectEvent.presentation === false || effectEvent.privateToPlayerId
+    || effectEvent.action !== "discard" || !effectEvent.resolutionId) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === effectEvent.id
+    && effect.effectId === "yin_yang_swords_attack_targeted" && effect.effectClass === "EFFECT");
+  const rawMatches = (effectEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "yin_yang_swords_attack_targeted" && effect.effectClass === "EFFECT");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const discardedCard = effectEvent.card;
+  const targetId = effect.targetId;
+  const rootEventId = effect.rootEventId;
+  const rootResolutionId = effect.rootResolutionId;
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== effectEvent.id || rawEffect.eventId !== effectEvent.id
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "TARGET_DISCARDED" || rawEffect.outcome !== "TARGET_DISCARDED"
+    || !rootEventId || rootEventId !== rawEffect.rootEventId || rootEventId === effectEvent.id
+    || !rootResolutionId || rootResolutionId !== rawEffect.rootResolutionId
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || material.cardId !== discardedCard.id || rawMaterial.cardId !== discardedCard.id || projectedCard.id !== discardedCard.id
+    || material.ownerId !== targetId || rawMaterial.ownerId !== targetId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+    || projectedCard.kind !== discardedCard.kind || projectedCard.suit !== discardedCard.suit
+    || projectedCard.rank !== discardedCard.rank) return null;
+
+  const rootMatches = timeline.filter((event) => event.id === rootEventId);
+  const rootEvent = rootMatches.length === 1 && (rootMatches[0].type === "card" || rootMatches[0].type === "cards")
+    ? rootMatches[0] : null;
+  if (!rootEvent || rootEvent.presentation === false || rootEvent.privateToPlayerId
+    || !rootEvent.resolutionId || rootEvent.resolutionId !== rootResolutionId || rootEvent.action !== "play") return null;
+
+  const activationOwner = players.find((player) => player.id === effect.activationOwnerId);
+  const materialOwner = players.find((player) => player.id === targetId);
+  const isAttackRoot = rootEvent.type === "card"
+    ? rootEvent.card.kind === "Attack" || rootEvent.playedAs === "attack"
+    : rootEvent.playedAs === "attack" && rootEvent.cards.length === 2
+      && (rootEvent.publicCardEffects ?? []).some((rootEffect) => rootEffect.semantics === "PROVEN"
+        && rootEffect.effectId === "serpent_spear_attack" && rootEffect.effectClass === "CONVERSION"
+        && rootEffect.resultingCardKind === "Attack" && rootEffect.outcome === "AS_ATTACK"
+        && rootEffect.activationOwnerId === activationOwner?.id && rootEffect.targetId === materialOwner?.id);
+  if (!activationOwner?.name || !materialOwner?.name || activationOwner.id === materialOwner.id || !isAttackRoot
+    || rootEvent.player !== activationOwner.name || rootEvent.target !== materialOwner.name
+    || effectEvent.player !== materialOwner.name || effectEvent.target !== materialOwner.name) return null;
+  return { effectEvent, effect, rootEvent, discardedCard, activationOwner, materialOwner };
+}
+type VerifiedGreenDragonBladeEffectFrameProof = {
+  effectEvent: CardEvent & { type: "card" };
+  effect: PresentationSnapshotPublicCardEffect;
+  rootEvent: CardEvent | CardGroupEvent;
+  followUpAttack: Card;
+  activationOwner: Player;
+  target: Player;
+};
+function verifiedGreenDragonBladeEffectFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedGreenDragonBladeEffectFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const effectEvent = eventMatches.length === 1 && eventMatches[0].type === "card"
+    ? eventMatches[0] : null;
+  if (!effectEvent || effectEvent.presentation === false || effectEvent.privateToPlayerId
+    || effectEvent.action !== "play" || !effectEvent.resolutionId
+    || effectEvent.card.kind !== "Attack" || (effectEvent.playedAs && effectEvent.playedAs !== "attack")) return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === effectEvent.id
+    && effect.effectId === "green_dragon_blade_attack_dodged" && effect.effectClass === "EFFECT");
+  const rawMatches = (effectEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "green_dragon_blade_attack_dodged" && effect.effectClass === "EFFECT");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const followUpAttack = effectEvent.card;
+  const rootEventId = effect.rootEventId;
+  const rootResolutionId = effect.rootResolutionId;
+  const targetId = effect.targetId;
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  if (effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
+    || effect.eventId !== effectEvent.id || rawEffect.eventId !== effectEvent.id
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || !targetId || targetId !== rawEffect.targetId
+    || effect.outcome !== "FOLLOW_UP_ATTACK_PLAYED" || rawEffect.outcome !== "FOLLOW_UP_ATTACK_PLAYED"
+    || !rootEventId || rootEventId !== rawEffect.rootEventId || rootEventId === effectEvent.id
+    || !rootResolutionId || rootResolutionId !== rawEffect.rootResolutionId
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || material.cardId !== followUpAttack.id || rawMaterial.cardId !== followUpAttack.id || projectedCard.id !== followUpAttack.id
+    || projectedCard.kind !== followUpAttack.kind || projectedCard.suit !== followUpAttack.suit || projectedCard.rank !== followUpAttack.rank
+    || material.ownerId !== effect.activationOwnerId || rawMaterial.ownerId !== effect.activationOwnerId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD") return null;
+
+  const rootMatches = timeline.filter((event) => event.id === rootEventId);
+  const rootEvent = rootMatches.length === 1 && (rootMatches[0].type === "card" || rootMatches[0].type === "cards")
+    ? rootMatches[0] : null;
+  if (!rootEvent || rootEvent.presentation === false || rootEvent.privateToPlayerId
+    || !rootEvent.resolutionId || rootEvent.resolutionId !== rootResolutionId
+    || rootEvent.action !== "play" || timeline.indexOf(rootEvent) >= timeline.indexOf(effectEvent)) return null;
+
+  const activationOwner = players.find((player) => player.id === effect.activationOwnerId);
+  const target = players.find((player) => player.id === targetId);
+  const rootIsAttack = rootEvent.type === "card"
+    ? rootEvent.playedAs === "attack" || rootEvent.card.kind === "Attack" && rootEvent.playedAs === undefined
+    : rootEvent.playedAs === "attack" && rootEvent.cards.length === 2
+      && new Set(rootEvent.cards.map((card) => card.id)).size === 2
+      && (rootEvent.publicCardEffects ?? []).filter((rootEffect) => rootEffect.semantics === "PROVEN"
+        && rootEffect.effectId === "serpent_spear_attack" && rootEffect.effectClass === "CONVERSION"
+        && rootEffect.resultingCardKind === "Attack" && rootEffect.outcome === "AS_ATTACK"
+        && rootEffect.activationOwnerId === activationOwner?.id && rootEffect.targetId === target?.id).length === 1;
+  if (!activationOwner?.name || !target?.name || activationOwner.id === target.id || !rootIsAttack
+    || rootEvent.player !== activationOwner.name || rootEvent.target !== target.name
+    || rootEvent.actorId && rootEvent.actorId !== activationOwner.id
+    || effectEvent.player !== activationOwner.name || effectEvent.target !== target.name
+    || effectEvent.actorId && effectEvent.actorId !== activationOwner.id) return null;
+  return { effectEvent, effect, rootEvent, followUpAttack, activationOwner, target };
+}
 function verifiedLustCostFrameForEvent(
   timeline: readonly GameEvent[],
   notices: readonly PresentationSnapshotDiaoChanSkillNotice[],
@@ -189,13 +1533,26 @@ function verifiedLustCostFrameForEvent(
   const secondParticipant = players.find((player) => player.id === activation.secondParticipantId);
   const firstActor = players.find((player) => player.id === activation.firstActorId);
   if (!owner?.name || !firstParticipant?.name || !secondParticipant?.name || !firstActor?.name) return null;
-  return { activation, activationEvent, costEvent, costCard, owner, firstParticipant, secondParticipant, firstActor };
+  return { activation, activationEvent, costEvent, effect, costCard, owner, firstParticipant, secondParticipant, firstActor };
+}
+
+function lustPublicCardEffectFrame(
+  proof: VerifiedLustCostFrameProof,
+  players: readonly Player[],
+  accessibleLabel: string,
+): PublicCardEffectFrameView | null {
+  return createPublicCardEffectFrameView(proof.effect, {
+    title: "LUST",
+    accessibleLabel,
+    activationOwnerName: proof.owner.name,
+    ownerNamesById: Object.fromEntries(players.map((player) => [player.id, player.name])),
+  });
 }
 type LocalTargetPreviewPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null };
 type LocalTargetPreviewSubmission = { targetId: string; presentationKey: string; actionRevision: string; currentActionKey: string };
 type LocalOpponentInspectionPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null; handCount: number; equipmentCards: Card[]; judgementCards: Card[] };
-type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; botDemoEnabled: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; latestNegationCardId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealEventId: string | null; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; complete: boolean; countdownUntil: number } | null; publicHarvestPool?: { semantics: "PROVEN"; rootEventId: string; revealEventId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[] } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
-
+type PrivateStealResult = { semantics: "PRIVATE_PROVEN"; roomCode: string; eventId: string; rootEventId: string; rootResolutionId: string; sourceId: string; targetId: string; sourceZone: "hand"; card: Card };
+type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; serverNow?: number; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; botDemoEnabled: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; privateStealResult: PrivateStealResult | null; privateStealParticipantResult: PrivateStealParticipantResult | null; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealEventId: string | null; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; complete: boolean; countdownUntil: number } | null; publicHarvestPool?: { semantics: "PROVEN"; rootEventId: string; revealEventId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[] } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
 export const HERO_ART_BY_ID: Record<string, string> = {
   "cao-cao": "/hero-cao-cao.jpg",
   "liu-bei": "/hero-liu-bei.jpg",
@@ -250,7 +1607,7 @@ function publicPlayerName(name: string) { return name; }
 function delayUntil(deadline: number) { return Math.max(0, deadline - Date.now()); }
 function suitColorClass(suit: Card["suit"]) { return suit === "♥" || suit === "♦" ? "red-suit" : "black-suit"; }
 
-function pendingTimelineSequence(room: Room) {
+function pendingSelfTargetActionWindow(room: Room) {
   const sourceId = room.pendingTargetCard?.sourceId ?? room.pendingNegation?.sourceId ?? room.pendingDuel?.sourceId ?? room.pendingAttack?.sourceId ?? room.pendingGreenDragon?.sourceId ?? room.pendingRockCleaving?.sourceId ?? room.pendingFrostSword?.sourceId ?? room.pendingGroup?.sourceId;
   const source = room.players.find((player) => player.id === sourceId);
   if (!source) return [];
@@ -264,24 +1621,23 @@ function pendingTimelineSequence(room: Room) {
   return room.timeline.slice(initiatingIndex).filter((event) => event.presentation !== false);
 }
 
-function timelineSequenceFrom(room: Room, startId: string) {
+function timelineEventsFrom(room: Room, startId: string) {
   const startIndex = room.timeline.findIndex((event) => event.id === startId);
   return startIndex < 0 ? [] : room.timeline.slice(startIndex).filter((event) => event.presentation !== false);
 }
 
 function eventCards(event: GameEvent) { return event.type === "card" ? [event.card] : event.type === "cards" ? event.cards : []; }
 function movesDirectlyToDiscard(event: GameEvent) {
-  return event.type === "cards" ? event.action === "discard" : event.type === "card" ? event.action === "discard" || event.action === "reveal" : false;
+  return event.type === "cards" ? event.action === "discard" : event.type === "card" ? event.action === "discard" || event.action === "reveal" && event.judgement === true : false;
 }
 function settlesInJudgement(event: GameEvent | null | undefined) {
   return Boolean(event && event.type === "card" && !event.playedAs && event.action === "play" && ["Overindulgence", "Lightning", "RationsDepleted"].includes(event.card.kind));
 }
 function retainsAtPlayer(event: GameEvent) {
-  // Equipment is committed to the owner's rack by the API before its public
-  // presentation is emitted. Keep the centre reveal, but do not also retain a
-  // numbered copy in the settled sequence; that duplicate made an equipped
-  // card appear to return to the player's hand before settling.
-  return eventCards(event).length === 0 || (!movesDirectlyToDiscard(event) && !(event.type === "card" && (event.action === "gain" || event.action === "equip")));
+  // Keep only public events that can still identify a fresh, self-target
+  // action inside its current resolution window. Equipment, gain and reveal
+  // events are owned by their proven zone/pool presenters.
+  return eventCards(event).length === 0 || (!movesDirectlyToDiscard(event) && !(event.type === "card" && (event.action === "gain" || event.action === "equip" || event.action === "reveal")));
 }
 function isJudgementReveal(event: GameEvent | null | undefined) {
   return Boolean(event && event.type === "card" && event.action === "reveal" && event.judgement);
@@ -308,12 +1664,15 @@ const UI_TIMING = {
   playedCard: 4000,
   // Judgement cards need about two extra seconds for every seat to read the result.
   judgementCard: 4000,
-  privateDraw: 3000,
+  privateDraw: PRIVATE_HAND_REVEAL_DURATION_MS,
   effectNotice: 2400,
   effectNoticeExit: 160,
-  sequenceDiscard: 700,
+  selfTargetWindowClose: 700,
   interactionSettlement: 600,
   interactionSettlementReduced: 120,
+  // The selected-card result and its settlement copy need three full seconds
+  // of actual visible reading time, independent of polling and reduced motion.
+  publicTargetCardSettlementRead: 3_000,
   // Group outcomes are public to every seat; keep the shared result visible
   // across the active-game polling interval so remote viewers can read it.
   groupSettlementRead: 2400,
@@ -330,7 +1689,6 @@ const NO_SKILL_EFFECT_SETTLEMENTS = [] as const;
 const NO_DISMANTLE_SETTLEMENTS = [] as const;
 const NO_STEAL_SETTLEMENTS = [] as const;
 const NO_ATTACK_HIT_SETTLEMENTS = [] as const;
-const EMPTY_STRING_SET: ReadonlySet<string> = new Set();
 
 async function readApiJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -345,6 +1703,11 @@ async function readApiJson<T>(response: Response): Promise<T> {
   }
 }
 
+function clearSavedGameSession() {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.removeItem("three-realms-session"); } catch { /* A blocked storage API must not prevent leaving the room. */ }
+}
+
 export default function Home() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -353,6 +1716,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [traceAvailable, setTraceAvailable] = useState(false);
   const [pageVisible, setPageVisible] = useState(true);
   const [publicCounterReadUntil, setPublicCounterReadUntil] = useState(0);
   const stateEpoch = useRef(0);
@@ -363,6 +1727,10 @@ export default function Home() {
   const testViewerRoomCodeRef = useRef<string | null>(null);
   const testViewerRevisionRef = useRef(0);
   const pendingTestViewerFocusIdRef = useRef<string | null>(null);
+  const harvestCompletionWatcherRef = useRef<{ key: string; attempt: number; timer: number | null } | null>(null);
+  const harvestCompletionRequestInFlightRef = useRef(false);
+
+  useEffect(() => { setTraceAvailable(hasAttackDodgeUxTrace()); }, []);
 
   const fetchRoom = useCallback(async function fetchRoomRequest(roomCode: string, playerToken: string, quiet = false, requestedViewerId?: string) {
     if (testViewerRoomCodeRef.current !== roomCode) {
@@ -428,15 +1796,24 @@ export default function Home() {
         }
         setRoom(nextRoom as Room);
       }
-      return true;
+      return nextRoom as Room;
     } catch (cause) {
       if (uxTraceId) recordAttackDodgeUxTrace("room-poll-failure", { traceId: uxTraceId, kind: cause instanceof Error ? cause.name : "unknown" });
-      if (cause instanceof Error && /Previous game data|no longer available|session is no longer valid/.test(cause.message)) {
+      const sessionUnavailable = cause instanceof Error
+        && /Previous game data|no longer available|session is no longer valid/.test(cause.message);
+      if (sessionUnavailable && epoch === stateEpoch.current) {
         stopAttackDodgeUxTrace("room-session-unavailable");
-        localStorage.removeItem("three-realms-session");
-        if (epoch === stateEpoch.current) { setRoom(null); setCode(""); setToken(""); }
+        clearSavedGameSession();
+        setRoom(null);
+        setCode("");
+        setToken("");
+        setTraceAvailable(hasAttackDodgeUxTrace());
+        setError(cause.message === "Room is no longer available."
+          ? "This game has expired or is no longer available. Start or join another game below."
+          : "This player session is no longer valid. Start or join another game below.");
+      } else if (!quiet && epoch === stateEpoch.current) {
+        setError(cause instanceof Error ? cause.message : "Could not reach the room.");
       }
-      if (!quiet) setError(cause instanceof Error ? cause.message : "Could not reach the room.");
       return false;
     }
   }, []);
@@ -488,7 +1865,8 @@ export default function Home() {
 
   async function send(action: "create" | "join" | "start" | "add_test_players" | "enable_test_room" | "configure_test_hands" | "add_bot" | "remove_bot" | "choose_hero" | "heartbeat" | "expire_inactive_room" | GameplayAction, extra: Record<string, unknown> = {}) {
     const backgroundPreview = action === "preview_harvest" || action === "heartbeat";
-    const nonBlocking = backgroundPreview;
+    const maintenanceAction = action === "advance_timers";
+    const nonBlocking = backgroundPreview || maintenanceAction;
     const mutationKey = `${action}:${room?.actionRevision ?? room?.phase ?? "landing"}`;
     if (!nonBlocking && mutationInFlight.current === mutationKey) return false;
     if (!nonBlocking && mutationInFlight.current) return false;
@@ -505,7 +1883,7 @@ export default function Home() {
           if (session?.code === code && session.token && await fetchRoom(code, session.token, true)) return true;
         } catch { localStorage.removeItem("three-realms-session"); }
       }
-      const context = room && !["create", "join", "start", "add_test_players", "enable_test_room", "configure_test_hands", "add_bot", "remove_bot", "choose_hero", "heartbeat"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId, ...(room.currentAction?.negationWindowId ? { windowId: room.currentAction.negationWindowId } : {}) } : undefined;
+      const context = room && !["create", "join", "start", "add_test_players", "enable_test_room", "configure_test_hands", "add_bot", "remove_bot", "choose_hero", "heartbeat", "advance_timers"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId, ...(room.currentAction?.negationWindowId ? { windowId: room.currentAction.negationWindowId } : {}) } : undefined;
       if (uxTraceId) recordAttackDodgeUxTrace("gameplay-action-request", { traceId: uxTraceId, action, hasRevisionContext: Boolean(context?.actionRevision) });
       const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token, ...(context ? { context } : {}), ...(uxTraceId ? { uxTraceId } : {}), ...extra }) });
       const rawData = await readApiJson<{ error?: string; token?: string; room?: unknown; stale?: boolean; attackDodgeUxTrace?: Record<string, unknown> }>(response);
@@ -555,7 +1933,8 @@ export default function Home() {
       }
       if (data.room && !preserveTestViewer) recordPublicGameRoomSnapshot(data.room, "action");
       if (data.room?.status === "finished") stopAttackDodgeUxTrace("game-finished");
-      if (data.room && !preserveTestViewer && mutationSequence >= latestAppliedMutation.current && (nonBlocking || epoch === stateEpoch.current)) { latestAppliedMutation.current = Math.max(latestAppliedMutation.current, mutationSequence); setToken(data.token ?? token); setRoom(data.room); setCode(data.room.code); }
+      const responseMayApply = maintenanceAction ? epoch === stateEpoch.current : nonBlocking || epoch === stateEpoch.current;
+      if (data.room && !preserveTestViewer && mutationSequence >= latestAppliedMutation.current && responseMayApply) { latestAppliedMutation.current = Math.max(latestAppliedMutation.current, mutationSequence); setToken(data.token ?? token); setRoom(data.room); setCode(data.room.code); }
       if (!response.ok || action !== "heartbeat" && !data.room) throw new Error(data.error ?? "Something went wrong.");
       if (action === "heartbeat") return true;
       const nextToken = data.token ?? token;
@@ -564,7 +1943,8 @@ export default function Home() {
       return true;
     } catch (cause) {
       if (uxTraceId) recordAttackDodgeUxTrace("gameplay-action-failure", { traceId: uxTraceId, action, kind: cause instanceof Error ? cause.name : "unknown" });
-      if (!backgroundPreview) setError(cause instanceof Error ? cause.message : "Something went wrong.");
+      if (maintenanceAction) console.warn("Harvest completion maintenance did not advance; checking the authoritative room state.");
+      else if (!backgroundPreview) setError(cause instanceof Error ? cause.message : "Something went wrong.");
       return false;
     }
     finally { if (!nonBlocking) { if (mutationInFlight.current === mutationKey) mutationInFlight.current = null; setBusy(false); setBusyAction(null); } }
@@ -605,15 +1985,96 @@ export default function Home() {
   }, [roomCode, token]);
 
   const harvestDeadline = room?.pendingHarvest?.complete ? room.pendingHarvest.countdownUntil : 0;
-  const harvestRevision = room?.actionRevision ?? "";
+  const harvestComplete = room?.phase === "response" && room.pendingHarvest?.complete === true;
+  const harvestRevealEventId = room?.pendingHarvest?.revealEventId ?? "";
   useEffect(() => {
-    if (!roomCode || !token || !pageVisible || !harvestDeadline) return;
-    const timer = setTimeout(() => { void send("advance_timers"); }, Math.max(0, harvestDeadline - Date.now()));
-    return () => clearTimeout(timer);
-  // Only the final result-hold deadline advances Harvest state. The active
-  // chooser's 60-second timer is display-only and does not auto-select a card.
+    if (!roomCode || !token || !harvestComplete || !harvestDeadline) {
+      const existing = harvestCompletionWatcherRef.current;
+      if (existing?.timer !== null && existing?.timer !== undefined) clearTimeout(existing.timer);
+      harvestCompletionWatcherRef.current = null;
+      return;
+    }
+    const viewerId = room?.meId ?? "";
+    const key = `${roomCode}|${harvestRevealEventId}|${harvestDeadline}|${viewerId}`;
+    let watcher = harvestCompletionWatcherRef.current;
+    if (!watcher || watcher.key !== key) {
+      if (watcher?.timer !== null && watcher?.timer !== undefined) clearTimeout(watcher.timer);
+      watcher = { key, attempt: 0, timer: null };
+      harvestCompletionWatcherRef.current = watcher;
+    }
+    let cancelled = false;
+    const retryDelays = [1_000, 2_000, 4_000, 8_000, 15_000];
+    const sameExpiredHarvest = (fresh: Room | false): fresh is Room => Boolean(fresh
+      && fresh.code === roomCode
+      && fresh.meId === viewerId
+      && fresh.phase === "response"
+      && fresh.pendingHarvest?.complete === true
+      && fresh.pendingHarvest.revealEventId === harvestRevealEventId
+      && fresh.pendingHarvest.countdownUntil === harvestDeadline);
+    const schedule = (delay: number) => {
+      if (watcher!.timer !== null) clearTimeout(watcher!.timer);
+      watcher!.timer = window.setTimeout(() => { void checkAndAdvance(); }, Math.max(0, delay));
+    };
+    const scheduleRetry = () => {
+      watcher!.attempt += 1;
+      const delay = retryDelays[Math.min(watcher!.attempt - 1, retryDelays.length - 1)];
+      console.warn(`Harvest completion state could not be confirmed; the next room check is in ${delay} ms.`);
+      schedule(delay);
+    };
+    const refresh = () => fetchRoom(
+      roomCode,
+      token,
+      true,
+      room?.isTestController ? testViewerIdRef.current ?? viewerId : undefined,
+    );
+    const checkAndAdvance = async () => {
+      watcher!.timer = null;
+      if (cancelled || !pageVisible || harvestCompletionWatcherRef.current !== watcher) return;
+      if (harvestCompletionRequestInFlightRef.current) {
+        schedule(1_000);
+        return;
+      }
+      harvestCompletionRequestInFlightRef.current = true;
+      try {
+        const fresh = await refresh();
+        if (cancelled || harvestCompletionWatcherRef.current !== watcher) return;
+        if (fresh === false) {
+          scheduleRetry();
+          return;
+        }
+        if (!sameExpiredHarvest(fresh)) return;
+        if (fresh.pendingHarvest.countdownUntil > Date.now()) {
+          schedule(fresh.pendingHarvest.countdownUntil - Date.now());
+          return;
+        }
+        await send("advance_timers");
+        const after = await refresh();
+        if (cancelled || harvestCompletionWatcherRef.current !== watcher) return;
+        if (after === false) {
+          scheduleRetry();
+          return;
+        }
+        if (!sameExpiredHarvest(after)) return;
+        if (after.pendingHarvest.countdownUntil > Date.now()) {
+          schedule(after.pendingHarvest.countdownUntil - Date.now());
+          return;
+        }
+        scheduleRetry();
+      } finally {
+        harvestCompletionRequestInFlightRef.current = false;
+      }
+    };
+    if (pageVisible) schedule(Math.max(0, harvestDeadline - Date.now()));
+    return () => {
+      cancelled = true;
+      if (watcher!.timer !== null) clearTimeout(watcher!.timer);
+      watcher!.timer = null;
+    };
+  // Only the final result-hold deadline advances Harvest state. Each attempt
+  // first refreshes authoritative room state and retries only the same expired
+  // completion. Chooser countdown expiry never selects a card automatically.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCode, token, pageVisible, harvestDeadline, harvestRevision]);
+  }, [roomCode, token, pageVisible, harvestComplete, harvestDeadline, harvestRevealEventId, room?.meId, room?.isTestController, fetchRoom]);
   const negationDeadline = room?.pendingNegation?.deadline ?? 0;
   useEffect(() => {
     if (!roomCode || !token || !pageVisible || !negationDeadline) return;
@@ -626,10 +2087,12 @@ export default function Home() {
 
   function leave() {
     stopAttackDodgeUxTrace("player-left-game");
+    clearSavedGameSession();
+    setTraceAvailable(hasAttackDodgeUxTrace());
     testViewerIdRef.current = null;
     testViewerRoomCodeRef.current = null;
     testViewerRevisionRef.current += 1;
-    stateEpoch.current += 1; setRoom(null); setError(""); setPublicCounterReadUntil(0); lastPublicCounterReadIdentity.current = null;
+    stateEpoch.current += 1; setRoom(null); setCode(""); setToken(""); setError(""); setPublicCounterReadUntil(0); lastPublicCounterReadIdentity.current = null;
   }
 
   const presentationView = room ? buildPresentationClientView(room.presentationSnapshot, room.meId) : null;
@@ -650,7 +2113,7 @@ export default function Home() {
           <div className="role-row"><Role title="Lord" glyph="主" /><Role title="Loyalist" glyph="忠" /><Role title="Rebel" glyph="反" /><Role title="Spy" glyph="内" /></div>
         </div>
         <div className="entry-card">
-          <div className="entry-title"><span>ENTER THE REALM</span><small>4–8 players</small></div>
+          <div className="entry-title"><span>ENTER THE REALM</span><small>4–6 players</small></div>
           <label className="test-player-name"><span>PLAYER NAME</span><input value={name} onChange={(event) => setName(event.target.value.slice(0, 20))} maxLength={20} placeholder="Enter your name" autoComplete="nickname" /></label>
           <button className="gold-button" disabled={busy || name.trim().length < 2} onClick={() => send("create")}>{busy ? "Preparing…" : "Host Game"}</button>
           <div className="divider"><span>OR JOIN A GAME</span></div>
@@ -659,6 +2122,7 @@ export default function Home() {
             <button className="outline-button" disabled={busy || name.trim().length < 2 || code.length !== 5}>Join Game</button>
           </form>
           {error && <p className="error" role="alert">{error}</p>}
+          {traceAvailable && <div className="trace-download-entry"><small>A game UX trace is available in this tab.</small><TraceDownloadControl buttonClassName="outline-button trace-download-landing" fallbackClassName="outline-button trace-download-landing trace-download-fallback" /></div>}
           <small className="privacy-note">Your secret role and player key stay private on this device.</small>
         </div>
       </section>
@@ -697,10 +2161,13 @@ export function WaitingRoom(props: WaitingRoomProps) {
 
 function WaitingRoomEditor({ room, busy, error, onStart, onAddTestPlayers, onAddBot, onRemoveBot, onEnableTestRoom, onConfigureTestHands, onLeave }: WaitingRoomProps) {
   const share = async () => { await navigator.clipboard?.writeText(room.code); };
-  const canStart = room.players.length >= 4 && room.players.length <= room.maxPlayers;
-  const availableTestPlayerSeats = Math.max(0, room.maxPlayers - room.players.length);
+  const playerLimit = roomAvailabilityLimit(room.maxPlayers);
+  const displaySeatCount = Math.max(playerLimit, ...room.players.map((player) => player.seat + 1));
+  const overCapacityLegacyLobby = room.status === "lobby" && room.maxPlayers > MAX_AVAILABLE_CLASSIC_PLAYERS && room.players.length > MAX_AVAILABLE_CLASSIC_PLAYERS;
+  const canStart = room.players.length >= 4 && room.players.length <= playerLimit;
+  const availableTestPlayerSeats = Math.max(0, playerLimit - room.players.length);
   const botCount = room.players.filter((player) => player.isBot).length;
-  const availableBotSeats = Math.max(0, Math.min(room.maxPlayers - room.players.length, 3 - botCount));
+  const availableBotSeats = Math.max(0, Math.min(playerLimit - room.players.length, 3 - botCount));
   const canManageBotSeats = room.isHost && room.botDemoEnabled && !room.isTestRoom;
   const showTestPlayerControls = room.isHost && !room.botDemoEnabled && !room.players.some((player) => player.isBot);
   const [testPlayerCount, setTestPlayerCount] = useState(() => Math.max(1, Math.min(3, 4 - room.players.length)));
@@ -708,11 +2175,15 @@ function WaitingRoomEditor({ room, busy, error, onStart, onAddTestPlayers, onAdd
   const savedPreset = room.testHandPreset;
   const [selectedPreset, setSelectedPreset] = useState<TestHandPresetId>(savedPreset?.id ?? "random");
   const [customDraft, setCustomDraft] = useState<TestHandDraft>(() => testHandDraftFrom(savedPreset?.id === "custom" ? savedPreset : null));
+  const currentSeatOrder = room.players.map((player) => player.seat).sort((left, right) => left - right);
+  const currentSeats = new Set(currentSeatOrder);
 
   const customHands = Object.fromEntries(Object.entries(customDraft)
     .map(([seat, kinds]) => [Number(seat), kinds.filter((kind): kind is CardKind => Boolean(kind))])
     .filter(([, kinds]) => (kinds as CardKind[]).length > 0)) as Record<number, CardKind[]>;
-  const handsForPreview = selectedPreset === "custom" ? customHands : testHandPresetFor(selectedPreset).handsBySeat;
+  const handsForPreview = selectedPreset === "custom" ? customHands : testHandPresetFor(selectedPreset, currentSeatOrder).handsBySeat;
+  const selectedPresetCompatibilityError = testHandPresetCompatibilityError(selectedPreset, currentSeats);
+  const savedPresetCompatibilityError = savedPreset ? testHandPresetCompatibilityError(savedPreset.id, currentSeats) : null;
   const savedCustomHands = savedPreset?.id === "custom" ? savedPreset.handsBySeat : {};
   const presetDirty = room.isTestRoom && (selectedPreset !== (savedPreset?.id ?? "random")
     || selectedPreset === "custom" && JSON.stringify(customHands) !== JSON.stringify(savedCustomHands));
@@ -725,18 +2196,21 @@ function WaitingRoomEditor({ room, busy, error, onStart, onAddTestPlayers, onAdd
       return { ...current, [seat]: kinds };
     });
   };
-  const savePreset = () => onConfigureTestHands(selectedPreset, selectedPreset === "custom" ? customHands : testHandPresetFor(selectedPreset).handsBySeat, savedPreset?.revision ?? 0);
+  const savePreset = () => onConfigureTestHands(selectedPreset, selectedPreset === "custom" ? customHands : handsForPreview, savedPreset?.revision ?? 0);
 
   return <main className="lobby-shell"><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><button className="text-button" onClick={onLeave}>Leave room</button></header>
-    <section className="lobby-content"><div className="lobby-heading"><span className="eyebrow">THE GENERALS ASSEMBLE</span><h1>Waiting room</h1>{room.isTestRoom && <span className="test-game-label">TEST GAME · HOST CONTROLLED</span>}<p>Share this code with your friends. The game can start when 4–8 players have joined.</p><button className="copy-code" onClick={share}><span>{room.code}</span><small>Tap to copy room code</small></button></div>
-      <div className="seat-grid">{Array.from({ length: room.maxPlayers }, (_, seat) => { const player = room.players.find((item) => item.seat === seat); return <div className={`seat ${player ? "filled" : ""} ${player?.isBot ? "bot-seat" : ""}`} key={seat}>{player ? <><span className="seat-number">{seat + 1}</span><div className="seal">{player.name[0].toUpperCase()}</div><b>{player.name}</b><small>{player.isBot ? "BOT" : player.isHost ? "HOST" : player.isTestPlayer ? "TEST PLAYER" : "PLAYER"}</small>{player.isBot && canManageBotSeats && <button type="button" className="bot-seat-remove" aria-label={`Remove bot ${player.name}`} disabled={busy} onClick={() => onRemoveBot(player.id)}>Remove</button>}</> : <><span className="seat-number">{seat + 1}</span><div className="empty-seal">+</div><b>Open seat</b><small>WAITING FOR PLAYER</small></>}</div>; })}</div>
-      <div className="lobby-actions"><span>{room.players.length} / {room.maxPlayers} players</span><div className="host-actions">{room.isHost && <>{canManageBotSeats && availableBotSeats > 0 && <button type="button" className="bot-add-button" disabled={busy} onClick={onAddBot}>+ Bot</button>}{showTestPlayerControls && availableTestPlayerSeats > 0 && <div className="test-player-add-control"><label className="test-player-count-label"><span>TEST PLAYERS TO ADD</span><select aria-label="Test players to add" value={selectedTestPlayerCount} disabled={busy} onChange={(event) => setTestPlayerCount(Number(event.target.value))}>{Array.from({ length: availableTestPlayerSeats }, (_, index) => index + 1).map((count) => <option value={count} key={count}>{count} player{count === 1 ? "" : "s"}</option>)}</select></label><button className="test-button" disabled={busy || selectedTestPlayerCount < 1} onClick={() => onAddTestPlayers(selectedTestPlayerCount)}>+ Add {selectedTestPlayerCount} Test Player{selectedTestPlayerCount === 1 ? "" : "s"}</button></div>}{showTestPlayerControls && !room.isTestRoom && <button className="test-mode-button" disabled={busy || !canStart} onClick={onEnableTestRoom}>Enable Test Game</button>}<button className="gold-button" disabled={busy || !canStart || room.isTestRoom && (!savedPreset || presetDirty)} onClick={onStart}>{busy ? "Preparing…" : room.players.length < 4 ? `Need ${4 - room.players.length} more` : "Start game"}</button></>}{!room.isHost && <p>Waiting for the host to start…</p>}</div></div>
+    <section className="lobby-content"><div className="lobby-heading"><span className="eyebrow">THE GENERALS ASSEMBLE</span><h1>Waiting room</h1>{room.isTestRoom && <span className="test-game-label">TEST GAME · HOST CONTROLLED</span>}<p>Share this code with your friends. The game can start when 4–6 players have joined.</p><button className="copy-code" onClick={share}><span>{room.code}</span><small>Tap to copy room code</small></button></div>
+      {overCapacityLegacyLobby && <p className="room-cap-notice" role="status">This legacy lobby has more than six players. Starting and new joins are disabled under the current 4–6 player limit; all existing players remain listed.</p>}
+      <div className="seat-grid">{Array.from({ length: displaySeatCount }, (_, seat) => { const player = room.players.find((item) => item.seat === seat); return <div className={["seat", player && "filled", player?.isBot && "bot-seat"].filter(Boolean).join(" ")} key={seat}>{player ? <><span className="seat-number">{seat + 1}</span><div className="seal">{player.name[0].toUpperCase()}</div><b>{player.name}</b><small>{player.isBot ? "BOT" : player.isHost ? "HOST" : player.isTestPlayer ? "TEST PLAYER" : "PLAYER"}</small>{player.isBot && canManageBotSeats && <button type="button" className="bot-seat-remove" aria-label={`Remove bot ${player.name}`} disabled={busy} onClick={() => onRemoveBot(player.id)}>Remove</button>}</> : <><span className="seat-number">{seat + 1}</span><div className="empty-seal">+</div><b>Open seat</b><small>WAITING FOR PLAYER</small></>}</div>; })}</div>
+      <div className="lobby-actions"><span>{room.players.length} / {playerLimit} players</span><div className="host-actions">{room.isHost && <>{canManageBotSeats && availableBotSeats > 0 && <button type="button" className="bot-add-button" disabled={busy} onClick={onAddBot}>+ Bot</button>}{showTestPlayerControls && availableTestPlayerSeats > 0 && <div className="test-player-add-control"><label className="test-player-count-label"><span>TEST PLAYERS TO ADD</span><select aria-label="Test players to add" value={selectedTestPlayerCount} disabled={busy} onChange={(event) => setTestPlayerCount(Number(event.target.value))}>{Array.from({ length: availableTestPlayerSeats }, (_, index) => index + 1).map((count) => <option value={count} key={count}>{count} player{count === 1 ? "" : "s"}</option>)}</select></label><button className="test-button" disabled={busy || selectedTestPlayerCount < 1} onClick={() => onAddTestPlayers(selectedTestPlayerCount)}>+ Add {selectedTestPlayerCount} Test Player{selectedTestPlayerCount === 1 ? "" : "s"}</button></div>}{showTestPlayerControls && !room.isTestRoom && <button className="test-mode-button" disabled={busy || !canStart} onClick={onEnableTestRoom}>Enable Test Game</button>}<button className="gold-button" disabled={busy || !canStart || room.isTestRoom && (!savedPreset || presetDirty || Boolean(savedPresetCompatibilityError))} onClick={onStart}>{busy ? "Preparing…" : room.players.length < 4 ? `Need ${4 - room.players.length} more` : "Start game"}</button></>}{!room.isHost && <p>Waiting for the host to start…</p>}</div></div>
       {room.isTestRoom && room.isHost && savedPreset && <section className="test-preset-panel" aria-label="Preset Hands configuration">
         <div className="test-preset-heading"><div><span className="eyebrow">HOST TEST CONTROLS</span><h2>Preset Hands</h2></div><span className="preset-revision">Saved · v{savedPreset.revision}</span></div>
         <label className="preset-select-label"><span>STARTING-HAND SCENARIO</span><select aria-label="Preset Hands" value={selectedPreset} disabled={busy} onChange={(event) => setSelectedPreset(event.target.value as TestHandPresetId)}>{TEST_HAND_PRESET_OPTIONS.map((option) => <option value={option.id} key={option.id}>{option.name}</option>)}</select></label>
+        {selectedPresetCompatibilityError && <p className="preset-summary-warning" role="status">{selectedPresetCompatibilityError}</p>}
+        {savedPresetCompatibilityError && !selectedPresetCompatibilityError && <p className="preset-summary-warning" role="status">{savedPresetCompatibilityError} Choose and save another scenario before starting.</p>}
         {selectedPreset === "custom" ? <div className="preset-seat-grid">{room.players.map((player) => <fieldset className="preset-seat" key={player.id}><legend>Seat {player.seat + 1} · {player.name}</legend>{Array.from({ length: 4 }, (_, slot) => <label key={slot}><span>Card {slot + 1}</span><select aria-label={`${player.name} starting card ${slot + 1}`} value={customDraft[player.seat]?.[slot] ?? ""} disabled={busy} onChange={(event) => updateCustomCard(player.seat, slot, event.target.value)}><option value="">Fill randomly</option>{STANDARD_PRESET_CARD_KINDS.map((kind) => <option value={kind} key={kind}>{cardDefinition(kind).name}</option>)}</select></label>)}</fieldset>)}</div>
           : <div className="preset-seat-grid preset-summary">{selectedPreset === "random" ? <p>All four opening cards per player are dealt randomly from the shuffled Standard deck.</p> : room.players.filter((player) => handsForPreview[player.seat]?.length).map((player) => <div className="preset-seat-summary" key={player.id}><b>Seat {player.seat + 1} · {player.name}</b><span>{handLabel(handsForPreview[player.seat] ?? [])}</span></div>)}</div>}
-        <div className="preset-actions"><p>Specified cards keep their real Standard-deck suit, rank and physical ID. Unspecified slots are dealt randomly.</p><button className="test-button" disabled={busy || !presetDirty} onClick={savePreset}>{busy ? "Saving…" : "Save Preset"}</button></div>
+        <div className="preset-actions"><p>Specified cards keep their real Standard-deck suit, rank and physical ID. Unspecified slots are dealt randomly.</p><button className="test-button" disabled={busy || !presetDirty || Boolean(selectedPresetCompatibilityError)} onClick={savePreset}>{busy ? "Saving…" : "Save Preset"}</button></div>
       </section>}
       {room.isTestRoom && !room.isHost && <p className="test-room-note">This is a host-controlled TEST GAME. Starting-hand configuration is private to the host.</p>}
       {error && <p className="error" role="alert">{error}</p>}</section></main>;
@@ -853,33 +2327,18 @@ export function HeroDetailsPreview({ hero, onClose, returnFocusTo }: { hero: Her
 
 function heroName(id?: string | null) { return id ? id.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") : "Unknown"; }
 function lustDuelOrderMessage(
+  first: { id: string; name: string; hero?: string | null },
+  second: { id: string; name: string; hero?: string | null },
+  firstActor: { id: string; name: string; hero?: string | null },
+) {
+  return compactLustDuelOrderMessage(first, second, firstActor) ?? "LUST Duel order unavailable.";
+}
+function lustDuelOrderAccessibleMessage(
   first: { name: string; hero?: string | null },
   second: { name: string; hero?: string | null },
   firstActor: { name: string; hero?: string | null },
 ) {
   return `${first.name} vs. ${second.name} · ${firstActor.name} attacks first.`;
-}
-function compactLustPlayerName(name: string) {
-  const normalized = name.trim();
-  const characters = Array.from(normalized);
-  return characters.length <= 10 ? normalized : `${characters.slice(0, 9).join("").trimEnd()}…`;
-}
-function lustDuelCompactOrderMessage(
-  first: Pick<Player, "id" | "name">,
-  second: Pick<Player, "id" | "name">,
-  firstActor: Pick<Player, "id" | "name">,
-) {
-  const firstActorIsFirst = firstActor.id === first.id;
-  return firstActorIsFirst
-    ? `${compactLustPlayerName(first.name)} first · ${compactLustPlayerName(second.name)} second.`
-    : `${compactLustPlayerName(first.name)} second · ${compactLustPlayerName(second.name)} first.`;
-}
-function lustDuelCompactResultMessage(failedName: string | undefined, damageSourceName: string | undefined, damageAmount: number) {
-  if (!failedName) return undefined;
-  const failed = compactLustPlayerName(failedName);
-  if (damageAmount === 0) return `${failed} failed to play Attack; Duel damage was prevented.`;
-  if (!damageSourceName) return undefined;
-  return `${failed} failed to play Attack; ${damageAmount} Duel damage from ${compactLustPlayerName(damageSourceName)} applies.`;
 }
 function heroSkillNames(hero: Pick<Hero, "id" | "skills">) { return hero.skills?.map((skill) => skill.name) ?? [heroSkillName(hero.id) ?? "Hero"]; }
 function heroSkillName(id?: string | null) { return id ? HEROES.find((hero) => hero.id === id)?.skills[0]?.name ?? null : null; }
@@ -891,17 +2350,47 @@ function heroDefinition(id?: string | null): Hero | null {
   return hero ? { id: hero.id, name: hero.name, faction: hero.faction, hp: hero.hp, ability: hero.ability, skills: hero.skills, skill: heroSkillName(hero.id) ?? undefined } : null;
 }
 
+function playTargetRejectionMessage(cardKind: CardKind, targetName: string, rejection: PlayTargetRejectionView | undefined) {
+  if (!rejection) return "Target eligibility is unavailable. Refresh the game state before choosing.";
+  const cardName = cardDefinition(cardKind).name;
+  if (rejection.code === "OUT_OF_RANGE" && Number.isFinite(rejection.distance) && Number.isFinite(rejection.range)) {
+    const rangeName = cardKind === "Attack" ? "Attack" : cardName;
+    return cardKind === "Attack"
+      ? `Cannot attack ${targetName} — distance ${rejection.distance}; Attack range ${rejection.range}.`
+      : `Cannot use ${rangeName} on ${targetName} — distance ${rejection.distance}; ${rangeName} range ${rejection.range}.`;
+  }
+  if (rejection.code === "NO_TARGETABLE_CARDS") return `Cannot use ${cardName} on ${targetName} — no removable cards are available.`;
+  if (rejection.code === "DUPLICATE_DELAYED_CARD") return `Cannot use ${cardName} on ${targetName} — that card is already in their Judgement Zone.`;
+  if (rejection.code === "TARGET_RESTRICTED") return `Cannot target ${targetName} with ${cardName} because of a target restriction.`;
+  if (rejection.code === "ACTION_UNAVAILABLE") return `Target selection for ${cardName} is unavailable right now.`;
+  return `Cannot target ${targetName} with ${cardName} right now.`;
+}
+
+type LocalPlayTargetNotice = {
+  roomCode: string;
+  viewerId: string;
+  actionRevision: string;
+  modeKey: string;
+  targetId: string;
+  message: string;
+  stale?: boolean;
+};
+
 type OpponentPlayerCardProps = {
   totalPlayers: number;
   player: Player;
   viewerId: string;
   playerHero: Hero | null;
   relativeIndex: number;
+  mobileSeatRing: { enabled: boolean; topCapacity: number; boardWidth: number; seatWidth: number; seatHeight: number; gap: number; leftInset: number; topStep: number };
   isTurn: boolean;
   isSelectedTarget: boolean;
   isGroupPreview: boolean;
   interactionRoles: InteractionSeatSemanticRoles;
   targetSelectionActive: boolean;
+  showSeparateInspectAffordance: boolean;
+  targetAttemptEnabled: boolean;
+  targetAttemptDescription: string | null;
   isInspected: boolean;
   targetablePlayer: boolean;
   daqiaoDeflectionTargetMode: boolean;
@@ -918,14 +2407,36 @@ type OpponentPlayerCardProps = {
   onToggleEquipment: (cardId: string) => void;
 };
 
-export function projectSideColumnSeat(totalPlayers: number, relativeIndex: number): { side: "left" | "right"; row: number; rowCount: number } | null {
+const subscribeToPhoneViewport = (onChange: () => void) => {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => undefined;
+  const query = window.matchMedia("(max-width: 520px)");
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+};
+
+const getPhoneViewportSnapshot = () => typeof window !== "undefined"
+  && typeof window.matchMedia === "function"
+  && window.matchMedia("(max-width: 520px)").matches;
+
+export function projectSideColumnSeat(totalPlayers: number, relativeIndex: number, options: { topCapacity?: number } = {}): { side: "left" | "right" | "top"; row: number; rowCount: number; topIndex?: number; topCount?: number } | null {
   if (!Number.isInteger(totalPlayers) || !Number.isInteger(relativeIndex) || totalPlayers < 5 || totalPlayers > 10 || relativeIndex < 1 || relativeIndex >= totalPlayers) return null;
   const opponentCount = totalPlayers - 1;
-  const rightCount = Math.ceil(opponentCount / 2);
-  const leftCount = opponentCount - rightCount;
-  return relativeIndex <= rightCount
-    ? { side: "right", row: rightCount - relativeIndex + 1, rowCount: rightCount }
-    : { side: "left", row: leftCount - (relativeIndex - rightCount) + 1, rowCount: rightCount };
+  const requestedTopCapacity = Number.isFinite(options.topCapacity) ? Math.trunc(options.topCapacity ?? 0) : 0;
+  const topCount = Math.max(0, Math.min(opponentCount, totalPlayers === 7 ? 4 : totalPlayers === 8 ? 5 : opponentCount, requestedTopCapacity));
+  const sideCount = opponentCount - topCount;
+  const leftCount = Math.floor(sideCount / 2);
+  const rightCount = sideCount - leftCount;
+  const rowCount = Math.max(leftCount, rightCount);
+
+  // Walk the visual ring from the local viewer: left-bottom upward, across
+  // the top from left to right, then down the right edge toward the viewer.
+  if (relativeIndex <= leftCount) {
+    return { side: "left", row: rowCount - relativeIndex + 1, rowCount, topCount };
+  }
+  if (relativeIndex <= leftCount + topCount) {
+    return { side: "top", row: 0, rowCount: 0, topIndex: relativeIndex - leftCount - 1, topCount };
+  }
+  return { side: "right", row: relativeIndex - leftCount - topCount, rowCount, topCount };
 }
 
 function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
@@ -940,8 +2451,23 @@ function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
   return <span className="opponent-equipment-horse-mark" aria-hidden="true">{slot === "defensiveHorse" ? "+1" : "−1"}</span>;
 }
 
-function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, isInspected, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
-  const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex);
+function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, mobileSeatRing, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, showSeparateInspectAffordance, targetAttemptEnabled, targetAttemptDescription, isInspected, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
+  const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex, {
+    topCapacity: mobileSeatRing.enabled ? mobileSeatRing.topCapacity : 0,
+  });
+  const seatPlacementStyle: CSSProperties | undefined = sideColumnSeat
+    ? sideColumnSeat.side === "top"
+      ? {
+        left: `${mobileSeatRing.leftInset + (sideColumnSeat.topIndex ?? 0) * mobileSeatRing.topStep}px`,
+        top: "0px",
+        width: mobileSeatRing.seatWidth,
+        height: mobileSeatRing.seatHeight,
+        gridRow: "1",
+        gridColumn: "1 / -1",
+        transform: "none",
+      }
+      : { gridRow: sideColumnSeat.row + (mobileSeatRing.enabled && (sideColumnSeat.topCount ?? 0) > 0 ? 1 : 0) }
+    : undefined;
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
   for (const equipment of player.equipmentCards) {
     const slot = cardDefinition(equipment.kind).equipmentSlot;
@@ -949,18 +2475,28 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
   }
   const equipmentSummary = LOCAL_EQUIPMENT_SLOTS.map(({ key, label }) => {
     const equipment = equipmentBySlot.get(key);
-    if (!equipment) return <span className="opponent-equipment-slot is-empty" data-slot={key} data-occupied="false" aria-hidden="true" key={key} />;
+    if (!equipment) return <span className="opponent-equipment-slot is-empty" data-slot={key} data-player-equipment-slot-owner={player.id} data-occupied="false" aria-hidden="true" key={key} />;
     const equipmentName = cardDefinition(equipment.kind).name;
     const accessibleSlotLabel = key === "defensiveHorse" ? "Plus-one horse" : key === "offensiveHorse" ? "Minus-one horse" : label;
-    return <span className="opponent-equipment-slot is-occupied" data-slot={key} data-occupied="true" key={key}><span className="opponent-equipment-indicator" data-slot={key} data-equipment-id={equipment.id} data-card-kind={equipment.kind} role="img" aria-label={`${accessibleSlotLabel} equipped: ${equipmentName}`} title={`${label}: ${equipmentName}`}><OpponentEquipmentGlyph slot={key} /></span></span>;
+    return <span className="opponent-equipment-slot is-occupied" data-slot={key} data-player-equipment-slot-owner={player.id} data-occupied="true" key={key}><span className="opponent-equipment-indicator" data-slot={key} data-equipment-id={equipment.id} data-card-kind={equipment.kind} role="img" aria-label={`${accessibleSlotLabel} equipped: ${equipmentName}`} title={`${label}: ${equipmentName}`}><OpponentEquipmentGlyph slot={key} /></span></span>;
   });
-  const miniJudgement = player.judgementCards.map((judgement) => <span className="mini-zone-card judgement-mini" data-judgement-id={judgement.id} key={judgement.id} style={{ visibility: judgementInFlight.has(judgement.id) ? "hidden" : "visible" }}>
-    <span><small>{judgement.rank}{judgement.suit}</small><b>{cardDefinition(judgement.kind).name}</b></span>
-    <button type="button" className="zone-info-button" aria-label={`Inspect ${player.name} to explain ${cardDefinition(judgement.kind).name}`} onClick={(event) => { event?.stopPropagation(); onInspect(event?.currentTarget ?? null); }}>i</button>
+  const visibleJudgement = player.judgementCards.filter((card) => !judgementInFlight.has(card.id));
+  const visibleJudgementCount = visibleJudgement.length;
+  const judgementIndicators = visibleJudgement.map((judgement) => <span
+    className="opponent-judgement-indicator" data-judgement-id={judgement.id} data-card-kind={judgement.kind}
+    key={judgement.id}
+    role="img" aria-label={`${cardDefinition(judgement.kind).name} in ${player.name}'s Judgement zone`}
+    title={cardDefinition(judgement.kind).name}>
+    {judgement.kind === "Lightning" ? "⚡" : judgement.kind === "Overindulgence"
+      ? <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2h10l-1 4a4 4 0 0 1-3.5 3v3h3v2h-7v-2h3V9A4 4 0 0 1 4 6L3 2Z" fill="currentColor" /></svg>
+      : "◆"}
   </span>);
-  const targetButtonDisabled = targetSelectionActive && (!targetablePlayer || !player.alive);
+  const targetButtonDisabled = targetSelectionActive && !targetAttemptEnabled && (!targetablePlayer || !player.alive);
+  const seatInspectorActive = targetSelectionActive && showSeparateInspectAffordance;
   const deflectionTargetSelectable = daqiaoDeflectionTargetMode && targetSelectionActive && targetablePlayer && player.alive;
-  const targetButtonLabel = daqiaoDeflectionTargetMode && targetSelectionActive
+  const targetButtonLabel = targetAttemptEnabled && !targetablePlayer
+    ? `Check ${player.name}${targetAttemptDescription ? ` — ${targetAttemptDescription}` : ""}`
+    : daqiaoDeflectionTargetMode && targetSelectionActive
     ? deflectionTargetSelectable
       ? `${isSelectedTarget ? "Deselect" : "Select"} ${player.name} as Deflection target`
       : `${player.name}, not an eligible Deflection target`
@@ -972,30 +2508,29 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
         : player.botStatus === "error" ? "ERROR" : null;
   const botStatusAccessibleLabel = player.botStatus === "waiting_for_human" ? "Bot waiting for a human"
     : player.botStatus ? `Bot ${player.botStatus.replaceAll("_", " ")}` : "Bot seat";
-  return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${targetSelectionActive && targetablePlayer && player.alive ? "targetable-target" : ""} ${isGroupPreview ? "local-group-preview" : ""} ${interactionRoles.isInteractionSource ? "interaction-seat-source" : ""} ${interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : ""} ${interactionRoles.isActiveTarget ? "interaction-seat-active-target" : ""} ${interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : ""} ${interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : ""} ${interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : ""} ${interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : ""} ${!player.alive ? "defeated-square" : ""}`} data-side-column={sideColumnSeat?.side} data-side-row={sideColumnSeat?.row} style={sideColumnSeat ? { gridRow: sideColumnSeat.row } : undefined} data-player-anchor={player.id} data-target-selectable={targetSelectionActive && targetablePlayer && player.alive ? "true" : undefined} data-deflection-targetable={deflectionTargetSelectable ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined}>
+  return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${targetSelectionActive && targetablePlayer && player.alive ? "targetable-target" : ""} ${isGroupPreview ? "local-group-preview" : ""} ${interactionRoles.isInteractionSource ? "interaction-seat-source" : ""} ${interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : ""} ${interactionRoles.isActiveTarget ? "interaction-seat-active-target" : ""} ${interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : ""} ${interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : ""} ${interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : ""} ${interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : ""} ${!player.alive ? "defeated-square" : ""}`} data-side-column={sideColumnSeat?.side} data-side-row={sideColumnSeat?.row} data-top-seat-index={sideColumnSeat?.topIndex} data-top-seat-count={sideColumnSeat?.topCount} style={seatPlacementStyle} data-player-anchor={player.id} data-target-selectable={targetSelectionActive && targetablePlayer && player.alive ? "true" : undefined} data-deflection-targetable={deflectionTargetSelectable ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined}>
       <div className="opponent-public-zones">
-      <div className="player-hero-card opponent-hero-card">
+      <div className={`player-hero-card opponent-hero-card${seatInspectorActive ? " is-targeting-with-seat-inspector" : ""}`}>
+        {playerHero && <span className="player-square-portrait opponent-hero-portrait" data-hero-id={playerHero.id} aria-hidden="true"><HeroPortrait hero={playerHero} /></span>}
         <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={targetButtonLabel} aria-pressed={targetSelectionActive ? isSelectedTarget : isInspected} aria-expanded={isInspected} onClick={(event) => {
           const trigger = event?.currentTarget ?? null;
           return targetSelectionActive ? onTarget(trigger) : onInspect(trigger);
-        }}>
-          {playerHero && <span className="player-square-portrait opponent-hero-portrait" data-hero-id={playerHero.id}><HeroPortrait hero={playerHero} /></span>}
-        </button>
+        }} />
         <div className="opponent-hero-overlay">
           {player.isBot && <span role="status" className="bot-status-chip" data-bot-status={player.botStatus ?? "waiting_for_human"} data-testid={`bot-status-${player.id}`} aria-label={botStatusAccessibleLabel}>BOT{botStatusLabel ? ` · ${botStatusLabel}` : ""}</span>}
-          <span className="opponent-player-name" aria-label={player.name} title={player.name}>{player.name}</span>
-          {targetSelectionActive && <button type="button" className="opponent-hero-inspect-name opponent-seat-inspect-button" aria-label={`Inspect ${player.name}`} aria-pressed={isInspected} aria-expanded={isInspected} title={`Inspect ${player.name}`} onClick={(event) => { event.stopPropagation(); onInspect(event.currentTarget); }}><span aria-hidden="true">i</span></button>}
+          {!seatInspectorActive && <span className="opponent-player-name" aria-label={player.name} title={player.name}>{player.name}</span>}
         </div>
         {playerHero && (player.isTestPlayer || player.isHost) && testViewerController && <button type="button" className="test-view-switch-button" data-testid={`test-view-switch-${player.id}`} data-test-viewer-id={player.id} aria-label={`Switch to ${player.name}`} title={`Switch to ${player.name}`} onClick={(event) => { event.stopPropagation(); onSwitchTestViewer(player.id); }}>SWITCH</button>}
       </div>
-      <div className="opponent-status-equipment-strip">
+      <div className={`opponent-status-equipment-strip${seatInspectorActive ? " has-seat-inspector" : ""}`}>
         <span className="opponent-hp-chip" aria-label={`HP ${player.hp ?? 0} of ${player.maxHp ?? 0}`}>HP {player.hp ?? 0}/{player.maxHp ?? 0}</span>
+        {visibleJudgementCount > 0 && <div className="opponent-judgement-status" data-judgement-owner-id={player.id} data-multiple={visibleJudgementCount > 1 ? "true" : undefined} role="group" aria-label={`${player.name} Judgement zone`}>
+          <span className="opponent-judgement-indicators">{judgementIndicators}</span>
+          {visibleJudgementCount > 1 && <span className="opponent-judgement-overflow" role="img" aria-label={`${visibleJudgementCount} Judgement cards; inspect ${player.name} for details`}>{visibleJudgementCount}</span>}
+        </div>}
         <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count={equipmentBySlot.size}>{equipmentSummary}</div>
+        {seatInspectorActive && <button type="button" className="opponent-hero-inspect-name opponent-seat-inspect-button" aria-label={`Inspect ${player.name}`} aria-pressed={isInspected} aria-expanded={isInspected} title={`Inspect ${player.name}`} onClick={(event) => { event.stopPropagation(); onInspect(event.currentTarget); }}><span className="opponent-player-name" aria-hidden="true">{player.name}</span></button>}
       </div>
-      {player.judgementCards.length > 0 && <section className="opponent-judgement-zone" aria-label="Judgement Zone">
-        <span className="opponent-zone-label">Judgement</span>
-        <div className="opponent-judgement-cards">{miniJudgement}</div>
-      </section>}
     </div>
   </article>;
 }
@@ -1067,7 +2602,7 @@ function supportsLocalEquipmentTargetSelection(selection: PublicTargetCardSelect
   return selection.eligibleKeys.length >= selection.min && selection.eligibleKeys.every((key) => equipmentIds.has(key));
 }
 
-function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDismissRef }: { player: LocalOpponentInspectionPresentation; judgementInFlight?: ReadonlySet<string>; nestedCardDetailDismissRef?: InspectorCardDetailDismissRef }) {
+function OpponentPublicInspector({ player, playerCount, judgementInFlight, equipmentArrivalPendingIds, nestedCardDetailDismissRef }: { player: LocalOpponentInspectionPresentation; playerCount: number; judgementInFlight?: ReadonlySet<string>; equipmentArrivalPendingIds?: ReadonlySet<string>; nestedCardDetailDismissRef?: InspectorCardDetailDismissRef }) {
   const [expandedSkillName, setExpandedSkillName] = useState<string | null>(null);
   const [selectedCardDetail, setSelectedCardDetail] = useState<Card | null>(null);
   const [skillDescriptionScrollable, setSkillDescriptionScrollable] = useState(false);
@@ -1162,14 +2697,211 @@ function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDi
     const dock = document.querySelector<HTMLElement>(".local-player-dock");
     const hand = document.querySelector<HTMLElement>(".local-hand-rail");
     const activityChip = table.querySelector<HTMLElement>(".public-activity-chip");
-    const stageSystemCluster = table.querySelector<HTMLElement>(".stage-system-cluster");
-    const stageObstacles = [activityChip, ...table.querySelectorAll<HTMLElement>(".visible-countdown")].filter((element): element is HTMLElement => Boolean(element));
-    const seats = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"));
+    const playerBoard = table.querySelector<HTMLElement>(".player-board");
+    const obstacleSelector = [
+      ".public-activity-chip",
+      ".stage-system-cluster",
+      ".visible-countdown",
+      "[data-public-card-announcement='true']",
+      ".public-card-journey-card[data-public-card-journey-phase='reveal']",
+      ".public-card-journey-card[data-public-card-journey-phase='move']",
+      ".harvest-choice-panel",
+      ".target-card-picker-overlay",
+      ".target-card-picker-panel",
+    ].join(",");
+    let seats = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"));
     const visualViewport = window.visualViewport;
+    const mobileFiveSeat = () => window.matchMedia("(max-width: 520px)").matches
+      && playerBoard?.dataset.playerCount === "5"
+      && table.dataset.seatTopology === "side-column";
+    let queuedFrame = 0;
+    let observedResizeTargets = new Set<Element>();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => scheduleMeasure());
+    const visibleRect = (element: HTMLElement | null | undefined) => {
+      if (!element) return null;
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0
+        || rect.width <= 0 || rect.height <= 0) return null;
+      return rect;
+    };
+    let revealSuspended = false;
+    let revealFocusReturn: HTMLElement | null = null;
+    let revealFocusProxy: HTMLElement | null = null;
+    const setRevealSuspended = (next: boolean) => {
+      if (next === revealSuspended) return;
+      if (next) {
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && shell.contains(active)) {
+          revealFocusReturn = active;
+          const currentSeat = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"))
+            .find((seat) => seat.dataset.playerAnchor === player.id);
+          revealFocusProxy = currentSeat?.querySelector<HTMLElement>(
+            ".opponent-seat-inspect-button:not([disabled]), .opponent-hero-target:not([disabled])",
+          ) ?? null;
+          if (revealFocusProxy) revealFocusProxy.focus({ preventScroll: true });
+          else active.blur();
+        }
+        layer.dataset.publicRevealSuspended = "true";
+        layer.setAttribute("aria-hidden", "true");
+        layer.inert = true;
+        revealSuspended = true;
+        return;
+      }
+      delete layer.dataset.publicRevealSuspended;
+      layer.removeAttribute("aria-hidden");
+      layer.inert = false;
+      revealSuspended = false;
+      const currentInspector = layer.querySelector<HTMLElement>(".opponent-inspection-panel");
+      if (revealFocusReturn?.isConnected && revealFocusProxy?.isConnected
+        && document.activeElement === revealFocusProxy
+        && currentInspector?.dataset.inspectPlayerId === player.id) {
+        revealFocusReturn.focus({ preventScroll: true });
+      }
+      revealFocusReturn = null;
+      revealFocusProxy = null;
+    };
+    const updateRevealPriority = () => {
+      const shellStyle = window.getComputedStyle(shell);
+      const shellRect = shell.getBoundingClientRect();
+      const shellAvailable = shellStyle.display !== "none"
+        && (revealSuspended || shellStyle.visibility !== "hidden" && Number(shellStyle.opacity) !== 0)
+        && shellRect.width > 0 && shellRect.height > 0;
+      const shouldSuspend = shellAvailable && Array.from(table.querySelectorAll<HTMLElement>(
+        '.public-card-journey-card[data-public-card-journey-phase="reveal"]',
+      )).some((card) => {
+        const cardStyle = window.getComputedStyle(card);
+        const cardRect = card.getBoundingClientRect();
+        return cardStyle.display !== "none" && cardStyle.visibility !== "hidden" && Number(cardStyle.opacity) !== 0
+          && cardRect.width > 0 && cardRect.height > 0
+          && cardRect.left < shellRect.right && shellRect.left < cardRect.right
+          && cardRect.top < shellRect.bottom && shellRect.top < cardRect.bottom;
+      });
+      setRevealSuspended(shouldSuspend);
+    };
+    const observeCurrentTargets = () => {
+      seats = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"));
+      if (!observer) return;
+      const targets = new Set<Element>([
+        table,
+        layer,
+        stage,
+        playerBoard,
+        dock,
+        hand,
+        ...seats,
+        ...Array.from(table.querySelectorAll<HTMLElement>(obstacleSelector)),
+      ].filter((element): element is HTMLElement => Boolean(element)));
+      for (const target of observedResizeTargets) if (!targets.has(target)) observer.unobserve(target);
+      for (const target of targets) if (!observedResizeTargets.has(target)) observer.observe(target);
+      observedResizeTargets = targets;
+    };
+    const scheduleMeasure = () => {
+      if (queuedFrame) return;
+      queuedFrame = requestAnimationFrame(() => {
+        queuedFrame = 0;
+        observeCurrentTargets();
+        measure();
+      });
+    };
     const measure = () => {
+      // TEST SWITCH can reuse the seat nodes while changing their projected
+      // player anchors in place. Always resolve the selected Hero from the
+      // current DOM instead of retaining a prior viewer's seat list.
+      seats = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"));
       const layerRect = layer.getBoundingClientRect();
       const viewportTop = visualViewport?.offsetTop ?? 0;
       const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight);
+      const targetSeat = seats.find((seat) => seat.dataset.playerAnchor === player.id) ?? null;
+      if (mobileFiveSeat() && targetSeat) {
+        shell.style.marginTop = "0px";
+        shell.style.position = "absolute";
+        shell.style.right = "auto";
+        shell.style.bottom = "auto";
+        shell.style.transform = "none";
+        shell.style.maxHeight = "";
+        inspector.style.maxHeight = "";
+
+        const naturalShellRect = shell.getBoundingClientRect();
+        const seatRect = targetSeat.getBoundingClientRect();
+        const side = targetSeat.dataset.sideColumn;
+        const inspectButtonRect = visibleRect(targetSeat.querySelector<HTMLElement>(".opponent-seat-inspect-button"));
+        const viewLeft = visualViewport?.offsetLeft ?? 0;
+        const viewRight = viewLeft + (visualViewport?.width ?? window.innerWidth);
+        const safeLeft = Math.max(layerRect.left + 2, viewLeft + 2);
+        const safeRight = Math.min(layerRect.right - 2, viewRight - 2);
+        const safeTop = Math.max(layerRect.top - 8, viewportTop);
+        const safeBottom = Math.min(
+          layerRect.bottom,
+          viewportBottom - 4,
+          (visibleRect(dock)?.top ?? Number.POSITIVE_INFINITY) - 8,
+          (visibleRect(hand)?.top ?? Number.POSITIVE_INFINITY) - 8,
+        );
+        const shellWidth = naturalShellRect.width;
+        const horizontalGap = 6;
+        const preferredLeft = side === "left"
+          ? Math.max(seatRect.right, inspectButtonRect?.right ?? seatRect.right) + horizontalGap
+          : Math.min(seatRect.left, inspectButtonRect?.left ?? seatRect.left) - horizontalGap - shellWidth;
+        const minLeft = safeLeft;
+        const maxLeft = safeRight - shellWidth;
+        const shellLeft = Math.min(Math.max(preferredLeft, minLeft), maxLeft);
+        const idealTop = seatRect.top + seatRect.height / 2 - naturalShellRect.height / 2;
+        const obstacles = Array.from(table.querySelectorAll<HTMLElement>(obstacleSelector)).flatMap((element) => {
+          const rect = visibleRect(element);
+          return rect && rect.right > shellLeft + 2 && rect.left < shellLeft + shellWidth - 2 ? [rect] : [];
+        });
+        const fullHeight = naturalShellRect.height;
+        const availableTop = Math.min(Math.max(safeTop, viewportTop), safeBottom);
+        const availableBottom = Math.max(availableTop, safeBottom);
+        let verticalSpaces: Array<{ top: number; bottom: number }> = [{ top: availableTop, bottom: availableBottom }];
+        for (const rect of obstacles) {
+          const blockedTop = Math.max(availableTop, rect.top - 8);
+          const blockedBottom = Math.min(availableBottom, rect.bottom + 8);
+          if (blockedBottom <= blockedTop) continue;
+          verticalSpaces = verticalSpaces.flatMap((space) => {
+            if (blockedBottom <= space.top || blockedTop >= space.bottom) return [space];
+            const remaining: Array<{ top: number; bottom: number }> = [];
+            if (blockedTop > space.top) remaining.push({ top: space.top, bottom: blockedTop });
+            if (blockedBottom < space.bottom) remaining.push({ top: blockedBottom, bottom: space.bottom });
+            return remaining;
+          });
+        }
+        const fullPanelSpaces = verticalSpaces.filter((space) => space.bottom - space.top >= fullHeight);
+        const placementOptions = fullPanelSpaces.length
+          ? fullPanelSpaces.map((space) => ({
+            top: Math.min(Math.max(idealTop, space.top), space.bottom - fullHeight),
+            height: fullHeight,
+          }))
+          : verticalSpaces.map((space) => {
+            const height = Math.max(0, space.bottom - space.top);
+            return { top: Math.min(Math.max(idealTop, space.top), space.bottom - height), height };
+          });
+        const placement = placementOptions.sort((a, b) => (
+          Math.abs(a.top - idealTop) - Math.abs(b.top - idealTop)
+        ))[0] ?? { top: availableTop, height: 0 };
+        const safePanelHeight = Math.min(fullHeight, placement.height);
+        shell.style.left = `${shellLeft - layerRect.left}px`;
+        shell.style.top = `${placement.top - layerRect.top}px`;
+        shell.style.maxHeight = `${safePanelHeight}px`;
+        const shellStyle = window.getComputedStyle(shell);
+        const shellVerticalInsets = [
+          shellStyle.borderTopWidth,
+          shellStyle.borderBottomWidth,
+          shellStyle.paddingTop,
+          shellStyle.paddingBottom,
+        ].reduce((total, value) => total + (Number.parseFloat(value) || 0), 0);
+        inspector.style.maxHeight = `${Math.max(0, safePanelHeight - shellVerticalInsets)}px`;
+        updateRevealPriority();
+        return;
+      }
+
+      shell.style.position = "";
+      shell.style.left = "";
+      shell.style.top = "";
+      shell.style.right = "";
+      shell.style.bottom = "";
+      shell.style.transform = "";
+      shell.style.marginTop = "";
       let panelTop = Math.max(layerRect.top + 4, viewportTop + 12);
       if (table.dataset.seatTopology === "top-row") {
         for (const seat of seats) panelTop = Math.max(panelTop, seat.getBoundingClientRect().bottom + 12);
@@ -1177,11 +2909,9 @@ function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDi
       const shellRect = shell.getBoundingClientRect();
       const shellLeft = layerRect.left + (layerRect.width - shellRect.width) / 2;
       const shellRight = shellLeft + shellRect.width;
-      const obstacleRects = stageObstacles.flatMap((element) => {
-        const style = window.getComputedStyle(element);
-        const rect = element.getBoundingClientRect();
-        if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0
-          || rect.width <= 0 || rect.height <= 0 || rect.right <= shellLeft || rect.left >= shellRight) return [];
+      const obstacleRects = [activityChip, ...table.querySelectorAll<HTMLElement>(".visible-countdown")].flatMap((element) => {
+        const rect = visibleRect(element);
+        if (!rect || rect.right <= shellLeft || rect.left >= shellRight) return [];
         return [rect];
       });
       for (const rect of obstacleRects) {
@@ -1190,15 +2920,15 @@ function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDi
       const obstacleBottomLimit = obstacleRects.reduce((limit, rect) => (
         rect.top > panelTop ? Math.min(limit, rect.top - 8) : limit
       ), Number.POSITIVE_INFINITY);
-      const safeBottom = Math.min(
+      const safePanelBottom = Math.min(
         layerRect.bottom - 12,
         (dock?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY) - 12,
         (hand?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY) - 12,
         viewportBottom - 12,
         obstacleBottomLimit,
       );
+      const safePanelHeight = Math.max(0, safePanelBottom - panelTop);
       shell.style.marginTop = `${Math.max(0, panelTop - (layerRect.top + 4))}px`;
-      const safePanelHeight = Math.max(0, safeBottom - panelTop);
       shell.style.maxHeight = `${safePanelHeight}px`;
       const shellStyle = window.getComputedStyle(shell);
       const shellVerticalInsets = [
@@ -1208,21 +2938,48 @@ function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDi
         shellStyle.paddingBottom,
       ].reduce((total, value) => total + (Number.parseFloat(value) || 0), 0);
       inspector.style.maxHeight = `${Math.max(0, safePanelHeight - shellVerticalInsets)}px`;
+      updateRevealPriority();
     };
 
+    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => scheduleMeasure());
+    if (playerBoard) {
+      mutationObserver?.observe(playerBoard, {
+        attributes: true,
+        subtree: true,
+        childList: true,
+        attributeFilter: ["data-player-anchor", "data-player-count", "data-side-column", "data-side-row", "style"],
+      });
+    }
+    mutationObserver?.observe(table, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-seat-topology", "data-public-card-journey-phase"],
+    });
     measure();
     const frame = requestAnimationFrame(measure);
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    for (const element of [table, layer, dock, hand, stageSystemCluster, activityChip, ...seats]) if (element) observer?.observe(element);
-    window.addEventListener("resize", measure);
-    visualViewport?.addEventListener("resize", measure);
-    visualViewport?.addEventListener("scroll", measure);
+    observeCurrentTargets();
+    window.addEventListener("resize", scheduleMeasure);
+    window.addEventListener("orientationchange", scheduleMeasure);
+    visualViewport?.addEventListener("resize", scheduleMeasure);
+    visualViewport?.addEventListener("scroll", scheduleMeasure);
     return () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(queuedFrame);
       observer?.disconnect();
-      window.removeEventListener("resize", measure);
-      visualViewport?.removeEventListener("resize", measure);
-      visualViewport?.removeEventListener("scroll", measure);
+      mutationObserver?.disconnect();
+      if (revealSuspended) {
+        delete layer.dataset.publicRevealSuspended;
+        layer.removeAttribute("aria-hidden");
+        layer.inert = false;
+        revealSuspended = false;
+        revealFocusReturn = null;
+        revealFocusProxy = null;
+      }
+      window.removeEventListener("resize", scheduleMeasure);
+      window.removeEventListener("orientationchange", scheduleMeasure);
+      visualViewport?.removeEventListener("resize", scheduleMeasure);
+      visualViewport?.removeEventListener("scroll", scheduleMeasure);
     };
   }, [player.id]);
   const inspectionEquipmentSlots = [
@@ -1242,24 +2999,29 @@ function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDi
   const overflowJudgementCards = player.judgementCards.slice(2);
   const renderInspectionCard = (card: Card, { hidden = false, equipmentMiniature = false, inspectionSlot }: { hidden?: boolean; equipmentMiniature?: boolean; inspectionSlot?: string } = {}) => {
     const selected = selectedCardDetail?.id === card.id;
-    return <button key={card.id} type="button" className={`opponent-inspection-card${equipmentMiniature ? " opponent-inspection-equipment-card" : ""}`} data-inspector-slot={inspectionSlot} style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} aria-controls={detailsId} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); openCardDetail(card, event.currentTarget); }}><CardFace card={card} /></button>;
+    const arrivalPending = equipmentMiniature && Boolean(equipmentArrivalPendingIds?.has(card.id));
+    return <button key={card.id} type="button" className={`opponent-inspection-card${equipmentMiniature ? " opponent-inspection-equipment-card" : ""}${arrivalPending ? " equipment-arrival-pending" : ""}`} data-inspector-slot={inspectionSlot} data-equipment-arrival-pending={arrivalPending ? "true" : undefined} style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} aria-controls={detailsId} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); openCardDetail(card, event.currentTarget); }}><CardFace card={card} /></button>;
   };
-  return <section ref={inspectorRef} key={player.id} id={baseId} className="hero-focus hero-focus-inspect opponent-inspection-panel" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id} data-inspector-layout="content-wrapped">
+  const identityCaption = <div className="hero-focus-inspect-identity-caption">
+    <div className="hero-focus-identity-row">
+      <span className="hero-focus-identity-name hero-focus-identity-hero" aria-label={hero?.name ?? "Unknown Hero"} title={hero?.name ?? "Unknown Hero"}>{hero?.name ?? "Unknown Hero"}</span>
+      <small className="hero-focus-identity-stat">HP {player.hp ?? "?"}/{player.maxHp ?? "?"}</small>
+    </div>
+    <div className="hero-focus-identity-row">
+      <span className="hero-focus-identity-name hero-focus-identity-player" aria-label={player.name} title={player.name}>{player.name}</span>
+      <small className="hero-focus-identity-stat" data-public-hand-count={player.handCount}>Hand · {player.handCount}</small>
+    </div>
+  </div>;
+  return <section ref={inspectorRef} key={player.id} id={baseId} className="hero-focus hero-focus-inspect opponent-inspection-panel" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id} data-inspector-layout="content-wrapped" data-inspector-player-count={playerCount}>
     <div className="hero-focus-body">
       <div className="hero-focus-inspect-portrait-column">
         <span className={hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={hero?.id}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
-        <div className="hero-focus-inspect-identity-caption">
-          <span className="hero-focus-identity-hero" aria-label={hero?.name ?? "Unknown Hero"} title={hero?.name ?? "Unknown Hero"}>{hero?.name ?? "Unknown Hero"}</span>
-          <span className="hero-focus-identity-player" aria-label={player.name} title={player.name}>{player.name}</span>
-        </div>
       </div>
       <div className="hero-focus-inspect-main">
         <div className="hero-focus-inspect-upper">
           <div className="hero-focus-identity">
             <div className="hero-focus-inspect-profile">
-              <div className="hero-focus-identity-line">
-                <div className="hero-focus-identity-stats"><small>HP {player.hp ?? "?"}/{player.maxHp ?? "?"}</small><small data-public-hand-count={player.handCount}>Hand · {player.handCount}</small></div>
-              </div>
+              {identityCaption}
               <section className="opponent-inspection-zone hero-focus-inspect-public-skills" aria-label="Public Skills">
                 <h3>Public Skills</h3>
                 <div className="hero-focus-inspect-skills">{skills.length ? skills.map((skill) => {
@@ -1280,6 +3042,8 @@ function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDi
               </section>
             </div>
           </div>
+        </div>
+        <div className="hero-focus-inspect-public-zones">
           <section className="opponent-inspection-zone hero-focus-inspect-judgement" aria-label="Judgement Zone">
             <h3>Judgement</h3>
             <div className="opponent-inspection-card-row opponent-inspection-slot-row opponent-inspection-judgement-slots">
@@ -1297,24 +3061,24 @@ function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDi
               </div>
             </details>}
           </section>
-        </div>
-        <section className="opponent-inspection-zone hero-focus-inspect-equipment" aria-label="Equipment">
-          <h3>Equipment</h3>
-          <div className="opponent-inspection-card-row opponent-inspection-slot-row opponent-inspection-equipment-slots">
-            {inspectionEquipmentSlots.map(({ slot, label }) => {
-              const card = inspectionEquipmentBySlot.get(slot);
-              return card
-                ? renderInspectionCard(card, { equipmentMiniature: true, inspectionSlot: slot })
-                : <span key={`equipment-empty-${slot}`} className="opponent-inspection-empty-slot" data-inspector-slot={slot} role="img" aria-label={`Empty ${label} slot`} />;
-            })}
-          </div>
-          {extraEquipmentCards.length > 0 && <details className="opponent-inspection-overflow">
-            <summary aria-label={`Show ${extraEquipmentCards.length} more Equipment cards`}>+{extraEquipmentCards.length}</summary>
-            <div className="opponent-inspection-overflow-row">
-              {extraEquipmentCards.map((card) => renderInspectionCard(card, { equipmentMiniature: true }))}
+          <section className="opponent-inspection-zone hero-focus-inspect-equipment" aria-label="Equipment">
+            <h3>Equipment</h3>
+            <div className="opponent-inspection-card-row opponent-inspection-slot-row opponent-inspection-equipment-slots">
+              {inspectionEquipmentSlots.map(({ slot, label }) => {
+                const card = inspectionEquipmentBySlot.get(slot);
+                return card
+                  ? renderInspectionCard(card, { equipmentMiniature: true, inspectionSlot: slot })
+                  : <span key={`equipment-empty-${slot}`} className="opponent-inspection-empty-slot" data-inspector-slot={slot} role="img" aria-label={`Empty ${label} slot`} />;
+              })}
             </div>
-          </details>}
-        </section>
+            {extraEquipmentCards.length > 0 && <details className="opponent-inspection-overflow">
+              <summary aria-label={`Show ${extraEquipmentCards.length} more Equipment cards`}>+{extraEquipmentCards.length}</summary>
+              <div className="opponent-inspection-overflow-row">
+                {extraEquipmentCards.map((card) => renderInspectionCard(card, { equipmentMiniature: true }))}
+              </div>
+            </details>}
+          </section>
+        </div>
       </div>
     </div>
     <div ref={inspectDetailsRef} id={detailsId} className="hero-focus-inspect-details hero-focus-context">
@@ -1343,14 +3107,18 @@ export function InteractionStage({
   transitionKind = "NONE",
   resolvePlayerName,
   inspectPlayer = null,
+  inspectPlayerCount = 0,
   judgementInFlight,
+  equipmentArrivalPendingIds,
   nestedCardDetailDismissRef,
 }: {
   view: PresentationClientView;
   transitionKind?: PresentationTransitionKind;
   resolvePlayerName: (playerId: string) => string | null | undefined;
   inspectPlayer?: LocalOpponentInspectionPresentation | null;
+  inspectPlayerCount?: number;
   judgementInFlight?: ReadonlySet<string>;
+  equipmentArrivalPendingIds?: ReadonlySet<string>;
   nestedCardDetailDismissRef?: InspectorCardDetailDismissRef;
 }) {
   if (inspectPlayer) {
@@ -1358,7 +3126,7 @@ export function InteractionStage({
       <div className="opponent-inspection-layer">
         <div className="opponent-inspection-backdrop" aria-hidden="true" />
         <div className="opponent-inspection-floating-shell">
-        <OpponentPublicInspector key={inspectPlayer.id} player={inspectPlayer} judgementInFlight={judgementInFlight} nestedCardDetailDismissRef={nestedCardDetailDismissRef} />
+        <OpponentPublicInspector key={inspectPlayer.id} player={inspectPlayer} playerCount={inspectPlayerCount} judgementInFlight={judgementInFlight} equipmentArrivalPendingIds={equipmentArrivalPendingIds} nestedCardDetailDismissRef={nestedCardDetailDismissRef} />
         </div>
       </div>
     </section>;
@@ -1452,7 +3220,7 @@ function decisionLabel(action: CurrentAction, reason: string) {
 function decisionInstruction(action: CurrentAction, reason: string) {
   if (action.kind === "trigger") {
     const option = action.triggerOptions?.[0];
-    if (option) return `Your action · Use ${option.label}${option.description ? `: ${option.description.replace(/[.!?]\s*$/, "")}` : ""}${action.declineAction === "decline_trigger" || action.legalActions.includes("decline_trigger") ? ", or skip" : ""}`;
+    if (option) return triggerDecisionInstruction(option.label, option.description, action.declineAction === "decline_trigger" || action.legalActions.includes("decline_trigger"));
   }
   return reason || "Make the required choice.";
 }
@@ -1502,8 +3270,45 @@ function buildPresentationDecisionPresentation(
  * This deliberately does not inspect cards, heroes, or client selections to
  * decide legality; controls continue to use the projected capabilities below.
  */
-export function buildDecisionPresentation(room: Pick<Room, "players" | "meId" | "turnSeat" | "phase" | "status" | "actionPlayerId" | "actionReason" | "isMyAction" | "currentAction">, presentationView?: PresentationClientView): DecisionPresentation {
-  if (presentationView?.hasInteraction) return buildPresentationDecisionPresentation(room, presentationView);
+export function buildDecisionPresentation(room: Pick<Room, "players" | "meId" | "turnSeat" | "phase" | "status" | "actionPlayerId" | "actionReason" | "isMyAction" | "currentAction" | "pendingTargetCard">, presentationView?: PresentationClientView): DecisionPresentation {
+  const pendingTargetCard = room.pendingTargetCard;
+  const activeTargetCardChoice = pendingTargetCard !== undefined
+    && pendingTargetCard !== null
+    && pendingTargetCard.actorId === room.meId
+    && pendingTargetCard.sourceId === room.meId
+    && pendingTargetCard.targetId !== room.meId
+    && room.currentAction?.kind === "target_card"
+    && room.currentAction.actorId === room.meId
+    && room.currentAction.legalActions.includes("choose_target_card");
+  if (activeTargetCardChoice && pendingTargetCard) {
+    const target = projectedPlayerName(room, pendingTargetCard.targetId, "the target");
+    const operation = pendingTargetCard.cardKind === "Steal" ? "take" : "discard";
+    const guidance = `Choose one card to ${operation} from ${target}`;
+    const semantic = presentationView?.hasInteraction
+      ? buildPresentationDecisionPresentation(room, presentationView)
+      : null;
+    return {
+      phaseLabel: semantic?.phaseLabel ?? phaseName(room.phase) ?? "Response Phase",
+      turnOwner: semantic?.turnOwner ?? projectedPlayerName(room, room.players.find((player) => player.seat === room.turnSeat)?.id, "The current player"),
+      actionOwner: projectedPlayerName(room, room.currentAction.actorId, "You"),
+      primaryStatus: guidance,
+      supportingInstruction: guidance,
+      isViewerRequiredActor: true,
+      isWaiting: false,
+      isResolving: false,
+      isDecision: true,
+      interaction: semantic?.interaction,
+    };
+  }
+  // A turn action supersedes a retained public decision only when the
+  // authoritative actor has advanced beyond that decision's actor.
+  const currentTurnOwnerId = room.players.find((player) => player.seat === room.turnSeat)?.id ?? null;
+  const turnAdvancedPastInteraction = presentationView?.hasInteraction
+    && room.currentAction?.kind === "turn"
+    && currentTurnOwnerId !== presentationView.decisionActorId;
+  if (presentationView?.hasInteraction && !turnAdvancedPastInteraction) {
+    return buildPresentationDecisionPresentation(room, presentationView);
+  }
   const turnOwner = projectedPlayerName(room, room.players.find((player) => player.seat === room.turnSeat)?.id, "The current player");
   const action = room.currentAction;
   const actionOwner = projectedPlayerName(room, room.actionPlayerId ?? action?.actorId, "the acting player");
@@ -1557,13 +3362,13 @@ export class GameRoomErrorBoundary extends Component<{ room: Room; onRecover: ()
   }
 
   recover = () => {
-    localStorage.removeItem("three-realms-session");
+    clearSavedGameSession();
     this.props.onRecover();
   };
 
   render() {
     if (!this.state.failed) return this.props.children;
-    return <main className="landing-shell"><section className="entry-card recovery-card"><span className="eyebrow">GAME SCREEN ERROR</span><h1>The game screen encountered an error.</h1><p>Your room is protected. Start a new game to continue.</p><button className="gold-button" onClick={this.recover}>Start a new game</button></section></main>;
+    return <main className="landing-shell"><section className="entry-card recovery-card"><span className="eyebrow">GAME SCREEN ERROR</span><h1>The game screen encountered an error.</h1><p>Your room is protected. Return to the start screen to continue.</p><TraceDownloadControl buttonClassName="outline-button trace-download-landing" fallbackClassName="outline-button trace-download-landing trace-download-fallback" /><button className="gold-button" onClick={this.recover}>Return to start screen</button></section></main>;
   }
 }
 
@@ -1587,6 +3392,42 @@ function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuin
   </div>;
 }
 
+function TraceDownloadControl({ buttonClassName, fallbackClassName, onKeyDown }: {
+  buttonClassName: string;
+  fallbackClassName: string;
+  onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
+}) {
+  const [preparedFile, setPreparedFile] = useState<{ url: string; name: string } | null>(null);
+  const [traceNotice, setTraceNotice] = useState("");
+  useEffect(() => {
+    if (!preparedFile) return;
+    return () => URL.revokeObjectURL(preparedFile.url);
+  }, [preparedFile]);
+
+  const downloadTrace = () => {
+    try {
+      const name = `wtk-game-ux-trace-${new Date().toISOString().replaceAll(":", "-")}.json`;
+      const url = URL.createObjectURL(new Blob([exportAttackDodgeUxTrace()], { type: "application/json" }));
+      setPreparedFile({ url, name });
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTraceNotice("Download requested. If it did not appear, tap Save trace file below.");
+    } catch {
+      setTraceNotice("Could not prepare the UX trace in this browser.");
+    }
+  };
+
+  return <>
+    <button type="button" className={buttonClassName} onClick={downloadTrace} onKeyDown={onKeyDown}>Download UX trace</button>
+    {preparedFile && <a className={fallbackClassName} href={preparedFile.url} download={preparedFile.name}>Save trace file</a>}
+    {traceNotice && <small className="stage-system-diagnostics-status" role="status">{traceNotice}</small>}
+  </>;
+}
+
 function GameSystemMenu({ onLeave, messages, messagesCollapsed, onToggleMessages }: {
   onLeave: () => void;
   messages: readonly { id: string; message: string }[];
@@ -1594,7 +3435,6 @@ function GameSystemMenu({ onLeave, messages, messagesCollapsed, onToggleMessages
   onToggleMessages: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [traceNotice, setTraceNotice] = useState("");
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const confirmExit = () => {
     if (window.confirm("Exit this game?")) onLeave();
@@ -1606,20 +3446,6 @@ function GameSystemMenu({ onLeave, messages, messagesCollapsed, onToggleMessages
       menuButtonRef.current?.focus();
     }
   };
-  const downloadTrace = () => {
-    const blob = new Blob([exportAttackDodgeUxTrace()], { type: "application/json" });
-    const objectUrl = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = objectUrl;
-    link.download = `wtk-game-ux-trace-${new Date().toISOString().replaceAll(":", "-")}.json`;
-    link.style.display = "none";
-    document.body.append(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
-    setTraceNotice("Complete game UX trace downloaded to this device.");
-  };
-
   return <div className="stage-system-menu" data-system-menu-placement="guidance">
     <div id="stage-system-menu-actions" className="stage-system-menu-actions" role="group" aria-label="System menu actions" hidden={!menuOpen}>
       <small className="stage-system-build-sha" data-build-sha={BUILD_SHA}><span>BUILD {BUILD_LABEL}</span><code>GitHub Actions SHA · {BUILD_SHA}</code></small>
@@ -1629,8 +3455,7 @@ function GameSystemMenu({ onLeave, messages, messagesCollapsed, onToggleMessages
         </button></header>
         {!messagesCollapsed && <div id="stage-system-game-messages-list" className="stage-system-game-messages-list" aria-live="polite">{messages.length ? messages.map((entry, index) => <p className={index === messages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}
       </aside>
-      <button type="button" className="stage-system-diagnostics" onClick={downloadTrace} onKeyDown={closeMenuOnEscape}>Download UX trace</button>
-      {traceNotice && <small className="stage-system-diagnostics-status" role="status">{traceNotice}</small>}
+      <TraceDownloadControl buttonClassName="stage-system-diagnostics" fallbackClassName="stage-system-diagnostics stage-system-diagnostics-fallback" onKeyDown={closeMenuOnEscape} />
       <button type="button" className="stage-system-exit" onClick={confirmExit} onKeyDown={closeMenuOnEscape}>Exit Game</button>
     </div>
     <button ref={menuButtonRef} type="button" className="stage-system-menu-trigger" aria-label="System menu" aria-expanded={menuOpen} aria-controls="stage-system-menu-actions" onClick={() => setMenuOpen((open) => !open)} onKeyDown={closeMenuOnEscape}><span aria-hidden="true">⚙︎</span></button>
@@ -1772,12 +3597,13 @@ type LocalPlayerDockProps = {
   onInfoCard: (card: Card, trigger: HTMLElement) => void;
   equipmentSelection?: { eligibleIds: string[]; selectedIds: string[]; max: number; disabled: boolean; onToggle: (cardId: string) => void } | null;
   hiddenCardIds?: ReadonlySet<string>;
+  equipmentArrivalPendingIds?: ReadonlySet<string>;
   isGroupPreview?: boolean;
   preserveGuidanceHeight?: boolean;
   attackResponsePrompt?: boolean;
 };
 
-export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false, attackResponsePrompt = false }: LocalPlayerDockProps) {
+export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), equipmentArrivalPendingIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false, attackResponsePrompt = false }: LocalPlayerDockProps) {
   const dockRef = useRef<HTMLElement | null>(null);
   const guidanceHeightRef = useRef<number | null>(null);
   const preserveGuidanceHeightRef = useRef(preserveGuidanceHeight);
@@ -1850,8 +3676,9 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
   const renderZoneCard = (card: Card, selected = false, selectable = false) => {
     const definition = cardDefinition(card.kind);
     const isEquipment = Boolean(definition.equipmentSlot);
+    const equipmentArrivalPending = isEquipment && equipmentArrivalPendingIds.has(card.id);
     const inspect = (trigger: HTMLButtonElement) => onInfoCard(card, trigger);
-    return <div className={`local-zone-card ${suitColorClass(card.suit)} ${selectable ? "local-zone-card-selectable" : ""} ${selected ? "selected-cost" : ""}`} key={card.id} data-equipment-id={isEquipment ? card.id : undefined} data-judgement-id={!isEquipment ? card.id : undefined} style={{ visibility: hiddenCardIds.has(card.id) ? "hidden" : "visible" }}>
+    return <div className={`local-zone-card ${suitColorClass(card.suit)} ${selectable ? "local-zone-card-selectable" : ""} ${selected ? "selected-cost" : ""}${equipmentArrivalPending ? " equipment-arrival-pending" : ""}`} key={card.id} data-equipment-id={isEquipment ? card.id : undefined} data-equipment-arrival-pending={equipmentArrivalPending ? "true" : undefined} data-judgement-id={!isEquipment ? card.id : undefined} style={{ visibility: hiddenCardIds.has(card.id) ? "hidden" : "visible" }}>
       <CardFace card={card} />
       {selectable
         ? <button type="button" className="local-zone-card-button" aria-label={`Select ${definition.name}`} aria-pressed={selected} disabled={!equipmentSelection || equipmentSelection.disabled || !equipmentSelection.eligibleIds.includes(card.id)} onClick={() => equipmentSelection?.onToggle(card.id)} />
@@ -1872,7 +3699,11 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
             aria-label={selfTargetable ? `Select ${player?.name ?? "your character"}` : `Explain ${hero.name}`}
             aria-pressed={selfTargetable ? selfTargetSelected : undefined}
             onClick={(event) => selfTargetable ? onSelfTarget() : onHeroInfo(hero, event.currentTarget)}
-          ><span className="local-hero-portrait" data-hero-id={hero.id} aria-hidden="true"><HeroPortrait hero={hero} /><span className="local-hero-overlay"><span className="local-hero-label">{hero.name}</span><span className="local-hero-vitals"><strong className="local-hero-role">{player?.role ?? "Role pending"}</strong><span className="local-hero-hp">HP {player?.hp ?? 0}/{player?.maxHp ?? 0}</span><span className="local-hero-hearts">{hpDisplay(player?.hp ?? null)}</span></span></span></span></button>
+          ><span className="local-hero-portrait" data-hero-id={hero.id} aria-hidden="true"><HeroPortrait hero={hero} /></span></button>
+          <div className="local-hero-identity-footer" aria-label="Your role and health">
+            <span className="local-hero-role" aria-label={player?.role ? `Role: ${player.role}` : "Role pending"}>{player?.role ?? "Role pending"}</span>
+            <span className="local-hero-hp" aria-label={`HP ${player?.hp ?? 0} of ${player?.maxHp ?? 0}`}>HP {player?.hp ?? 0}/{player?.maxHp ?? 0}</span>
+          </div>
           {selfTargetable && <button type="button" className="hero-card-info-button local-hero-info-button" aria-label={`View ${hero.name} details`} onClick={(event) => { event.stopPropagation(); onHeroInfo(hero, event.currentTarget); }}><span aria-hidden="true">i</span></button>}
         </> : <div className="local-hero-card local-hero-card-empty" aria-label="Hero not selected"><span className="local-hero-portrait" aria-hidden="true"><span className="local-hero-label">HERO</span></span></div>}
         {judgementCards.length > 0 && <div ref={judgementRailRef} className="local-judgement-cards local-judgement-overlay" data-judgement-layout={judgementCardLayout.measured ? "measured" : "pending"} style={{ justifyContent: judgementCards.length === 1 ? "center" : "flex-start" }} role="group" aria-label="Persistent Judgement cards">
@@ -1883,7 +3714,7 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
     <div className="local-dock-zones" aria-label="Your status and equipment zones">
       <div className="local-status-panel" aria-label="Hero skills">{heroSkillControl ?? <section className="hero-skills local-hero-skills" aria-label="Hero skills">{fallbackSkills.map((skill) => <button type="button" className="hero-skill-button" key={skill.name} title={skill.description} disabled>{skill.name}</button>)}</section>}</div>
       <div className="local-equipment-panel" aria-label="Equipment">
-        <div className="local-equipment-slots">{LOCAL_EQUIPMENT_SLOTS.map(({ key }) => { const card = equipmentBySlot.get(key); const selectable = Boolean(card && equipmentSelection); return <div className="local-equipment-slot" key={key} data-slot={key} aria-label={`${slotLabel(key)} slot`} role="group">{card ? renderZoneCard(card, equipmentSelection?.selectedIds.includes(card.id), selectable) : <span className="local-zone-empty" aria-label={`${slotLabel(key)} empty`}><span className="local-zone-empty-label">{slotLabel(key)}</span></span>}</div>; })}</div>
+        <div className="local-equipment-slots">{LOCAL_EQUIPMENT_SLOTS.map(({ key }) => { const card = equipmentBySlot.get(key); const selectable = Boolean(card && equipmentSelection); return <div className="local-equipment-slot" key={key} data-slot={key} data-player-equipment-slot-owner={player?.id ?? undefined} aria-label={`${slotLabel(key)} slot`} role="group">{card ? renderZoneCard(card, equipmentSelection?.selectedIds.includes(card.id), selectable) : <span className="local-zone-empty" aria-label={`${slotLabel(key)} empty`}><span className="local-zone-empty-label">{slotLabel(key)}</span></span>}</div>; })}</div>
       </div>
     </div>
     {children}
@@ -1926,7 +3757,104 @@ function captureHandViewportSnapshot(rail: HTMLElement, viewerId: string | null)
 }
 
 export function GameRoom({ room, presentationView, busy, busyAction = null, error, onAction, onLeave, onPublicCounterReadVisible, onSwitchTestViewer = async () => undefined }: { room: Room; presentationView?: PresentationClientView; busy: boolean; busyAction?: string | null; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void; onSwitchTestViewer?: (playerId: string) => Promise<void> }) {
-  const initialPendingSequence = pendingTimelineSequence(room);
+  const endTurnConfirmationScope = [
+    room.code,
+    room.meId,
+    room.turnSeat ?? "",
+    room.phase ?? "",
+    room.actionRevision ?? "",
+    room.currentAction?.kind ?? "",
+    room.currentAction?.actorId ?? "",
+    room.currentAction?.legalActions?.join(",") ?? "",
+    room.isMyTurn ? "my-turn" : "not-my-turn",
+    room.isMyAction ? "my-action" : "not-my-action",
+  ].join("\u001f");
+  const [endTurnConfirmationIdentity, setEndTurnConfirmationIdentity] = useState<string | null>(null);
+  const [endTurnConfirmationSubmitting, setEndTurnConfirmationSubmitting] = useState(false);
+  const endTurnConfirmationScopeRef = useRef(endTurnConfirmationScope);
+  const endTurnConfirmationSubmissionRef = useRef(false);
+  const endTurnConfirmationButtonRef = useRef<HTMLButtonElement | null>(null);
+  const endTurnConfirmationCancelRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (endTurnConfirmationScopeRef.current === endTurnConfirmationScope) return;
+    endTurnConfirmationScopeRef.current = endTurnConfirmationScope;
+    endTurnConfirmationSubmissionRef.current = false;
+    setEndTurnConfirmationSubmitting(false);
+    setEndTurnConfirmationIdentity(null);
+  }, [endTurnConfirmationScope]);
+  const closeEndTurnConfirmation = useCallback((restoreFocus = false) => {
+    if (endTurnConfirmationSubmissionRef.current) return;
+    setEndTurnConfirmationIdentity(null);
+    setEndTurnConfirmationSubmitting(false);
+    if (restoreFocus) window.requestAnimationFrame(() => {
+      if (endTurnConfirmationButtonRef.current?.isConnected) endTurnConfirmationButtonRef.current.focus({ preventScroll: true });
+    });
+  }, []);
+  const isPhoneViewport = useSyncExternalStore(subscribeToPhoneViewport, getPhoneViewportSnapshot, () => false);
+  const playerBoardRef = useRef<HTMLDivElement | null>(null);
+  const [mobileSeatRingMetrics, setMobileSeatRingMetrics] = useState({ topCapacity: 0, boardWidth: 0, boardTopInset: 0, seatWidth: 0, seatHeight: 0, gap: 0, leftInset: 0, topStep: 0 });
+  useLayoutEffect(() => {
+    const totalPlayers = room.players.length;
+    const supportedMobileRing = isPhoneViewport && totalPlayers >= 5 && totalPlayers <= 10;
+    const resetMetrics = () => setMobileSeatRingMetrics((current) => Object.values(current).every((value) => value === 0)
+      ? current
+      : { topCapacity: 0, boardWidth: 0, boardTopInset: 0, seatWidth: 0, seatHeight: 0, gap: 0, leftInset: 0, topStep: 0 });
+    if (!supportedMobileRing) {
+      resetMetrics();
+      return;
+    }
+    const board = playerBoardRef.current;
+    if (!board) return;
+    const measure = () => {
+      const firstSeat = board.querySelector<HTMLElement>(".opponent-player-card");
+      const table = board.closest<HTMLElement>(".play-table");
+      if (!firstSeat || !table) return;
+      const boardRect = board.getBoundingClientRect();
+      const seatRect = firstSeat.getBoundingClientRect();
+      const boardStyle = getComputedStyle(board);
+      const gap = Math.min(12, Math.max(4, Number.parseFloat(boardStyle.rowGap) || 4));
+      const seatHeight = seatRect.height;
+      const borderLeft = Number.parseFloat(boardStyle.borderLeftWidth) || 0;
+      const borderRight = Number.parseFloat(boardStyle.borderRightWidth) || 0;
+      const paddingLeft = Number.parseFloat(boardStyle.paddingLeft) || 0;
+      const paddingRight = Number.parseFloat(boardStyle.paddingRight) || 0;
+      const horizontalBoxSpace = borderLeft + borderRight + paddingLeft + paddingRight;
+      const usableTopWidth = Math.max(0, boardRect.width - horizontalBoxSpace);
+      const minSafeSeatWidth = Math.max(56, Math.min(74, window.innerWidth * 0.155));
+      if (usableTopWidth <= 0 || seatHeight <= 0) return;
+      const opponentCount = totalPlayers - 1;
+      const topCapacity = Math.max(0, Math.min(opponentCount, Math.floor((usableTopWidth + gap) / (minSafeSeatWidth + gap))));
+      const topCount = Math.min(opponentCount, topCapacity, totalPlayers === 7 ? 4 : totalPlayers === 8 ? 5 : opponentCount);
+      const maxTopSeatWidth = Math.min(112, Math.max(88, window.innerWidth * 0.25));
+      const referenceTopCount = totalPlayers >= 5 && totalPlayers <= 8 ? 5 : Math.max(1, topCount);
+      const seatWidth = Math.min(maxTopSeatWidth, Math.max(minSafeSeatWidth, (usableTopWidth - gap * (referenceTopCount - 1)) / referenceTopCount));
+      const leftInset = paddingLeft + (topCount === 1 ? (usableTopWidth - seatWidth) / 2 : 0);
+      const topStep = topCount > 1 ? (usableTopWidth - seatWidth) / (topCount - 1) : 0;
+      const tableTopInset = Math.max(0, boardRect.top - table.getBoundingClientRect().top);
+      const next = {
+        topCapacity,
+        boardWidth: Math.round(boardRect.width * 4) / 4,
+        boardTopInset: Math.round(tableTopInset * 4) / 4,
+        seatWidth: Math.round(seatWidth * 4) / 4,
+        seatHeight: Math.round(seatHeight * 4) / 4,
+        gap: Math.round(gap * 4) / 4,
+        leftInset: Math.round(leftInset * 4) / 4,
+        topStep: Math.round(topStep * 4) / 4,
+      };
+      setMobileSeatRingMetrics((current) => Object.keys(next).every((key) => current[key] === next[key]) ? current : next);
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(board);
+    const firstSeat = board.querySelector<HTMLElement>(".opponent-player-card");
+    if (firstSeat) observer?.observe(firstSeat);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [isPhoneViewport, room.meId, room.players.length]);
+  const initialSelfTargetWindow = pendingSelfTargetActionWindow(room);
   const clientPresentation = useMemo(() => presentationView ?? buildPresentationClientView(room.presentationSnapshot ?? null, room.meId), [presentationView, room.presentationSnapshot, room.meId]);
   const skillEffectSettlements = clientPresentation.skillEffectSettlements ?? NO_SKILL_EFFECT_SETTLEMENTS;
   const dismantleSettlements = clientPresentation.dismantleSettlements ?? NO_DISMANTLE_SETTLEMENTS;
@@ -1937,13 +3865,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => {
     presentationTransitionStore.accept(clientPresentation);
   }, [clientPresentation, presentationTransitionStore]);
-  const [selected, setSelected] = useState(""); const [inspectOnlyHandCardId, setInspectOnlyHandCardId] = useState(""); const [wushengMode, setWushengMode] = useState<"play" | "response" | null>(null); const [longdanMode, setLongdanMode] = useState<"play" | "response" | null>(null); const [targetIds, setTargetIds] = useState<string[]>([]); const [borrowedSwordTargetId, setBorrowedSwordTargetId] = useState(""); const target = targetIds[0] ?? "";
+  const [selected, setSelected] = useState(""); const [inspectOnlyHandCardId, setInspectOnlyHandCardId] = useState(""); const [wushengMode, setWushengMode] = useState<"play" | "response" | null>(null); const [longdanMode, setLongdanMode] = useState<"play" | "response" | null>(null); const [targetIds, setTargetIds] = useState<string[]>([]); const [borrowedSwordTargetId, setBorrowedSwordTargetId] = useState(""); const [localPlayTargetNotice, setLocalPlayTargetNotice] = useState<LocalPlayTargetNotice | null>(null); const target = targetIds[0] ?? "";
+  const targetActionIdentityRef = useRef({ roomCode: room.code, viewerId: room.meId, actionRevision: room.actionRevision ?? "" });
   const handRailRef = useRef<HTMLDivElement | null>(null);
   const handViewportSnapshotRef = useRef<HandViewportSnapshot | null>(null);
   const [handRailWidth, setHandRailWidth] = useState(0);
   const [harvestDraft, setHarvestDraft] = useState<{ viewerId: string; actorId: string; actionRevision: string; cardId: string } | null>(null);
-  const harvestStageRef = useRef<HTMLDivElement | null>(null);
-  const [harvestStageTop, setHarvestStageTop] = useState<number | null>(null);
   const [harvestSubmitting, setHarvestSubmitting] = useState<{ cardId: string; playerId: string; playerName: string } | null>(null);
   const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
   const [optimisticPlay, setOptimisticPlay] = useState<GameEvent | null>(null);
@@ -1997,118 +3924,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const harvestReadOnlyDuringNegation = Boolean(room.publicHarvestPool && !room.pendingHarvest);
   const harvestPending = Boolean(harvestDisplay);
   const harvestActorId = room.pendingHarvest?.actorId ?? "";
-  useLayoutEffect(() => {
-    if (!harvestPending) return;
-    const stage = harvestStageRef.current;
-    const table = stage?.closest<HTMLElement>(".play-table");
-    if (!stage || !table) return;
-    let frame = 0;
-    const observed = new Set<Element>();
-    let observer: ResizeObserver | null = null;
-    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
-      observeLayout();
-      measure();
-    });
-    const protectedSelectors = [
-      ".player-board > .opponent-player-card",
-      ".public-card-display-journey-copy",
-      ".public-activity-chip",
-      "[data-public-activity-chip]",
-      ".visible-countdown",
-      ".stage-system-cluster",
-      ".opponent-inspection-floating-shell",
-      ".local-player-dock",
-      ".local-hand-section",
-      ".turn-controls",
-    ];
-    const observeLayout = () => {
-      for (const node of [table, stage, stage.querySelector(".harvest-choice-panel"), ...protectedSelectors.flatMap((selector) => [...document.querySelectorAll(selector)])]) {
-        if (!node || observed.has(node)) continue;
-        observed.add(node);
-        observer?.observe(node);
-      }
-    };
-    const measure = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        const tableRect = table.getBoundingClientRect();
-        const panel = stage.querySelector<HTMLElement>(".harvest-choice-panel");
-        if (!panel || tableRect.width <= 0 || tableRect.height <= 0) return;
-        const panelRect = panel.getBoundingClientRect();
-        if (panelRect.width <= 0 || panelRect.height <= 0) return;
-
-        const margin = 6;
-        const minimumTop = Math.max(tableRect.top + margin, margin);
-        const maximumTop = Math.min(tableRect.bottom, window.innerHeight) - panelRect.height - margin;
-        const obstacles = [...new Set(protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]))]
-          .filter((element) => element !== stage && !stage.contains(element))
-          .map((element) => ({ element, rect: element.getBoundingClientRect() }))
-          .filter(({ element, rect }) => {
-            const style = window.getComputedStyle(element);
-            return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
-              && panelRect.left < rect.right + margin && panelRect.right > rect.left - margin;
-          });
-
-        const desiredTop = minimumTop + Math.max(0, maximumTop - minimumTop) / 2;
-        let safeRanges = maximumTop >= minimumTop ? [{ minimum: minimumTop, maximum: maximumTop }] : [];
-        for (const { rect } of obstacles) {
-          const blockedMinimum = rect.top - panelRect.height - margin;
-          const blockedMaximum = rect.bottom + margin;
-          safeRanges = safeRanges.flatMap((range) => {
-            if (blockedMaximum <= range.minimum || blockedMinimum >= range.maximum) return [range];
-            return [
-              ...(range.minimum < blockedMinimum ? [{ minimum: range.minimum, maximum: Math.min(range.maximum, blockedMinimum) }] : []),
-              ...(range.maximum > blockedMaximum ? [{ minimum: Math.max(range.minimum, blockedMaximum), maximum: range.maximum }] : []),
-            ];
-          }).filter((range) => range.maximum >= range.minimum);
-        }
-
-        const nearestSafeTop = safeRanges
-          .map((range) => Math.max(range.minimum, Math.min(range.maximum, desiredTop)))
-          .sort((first, second) => Math.abs(first - desiredTop) - Math.abs(second - desiredTop))[0];
-        let top = nearestSafeTop;
-        if (top === undefined) {
-          const viewportMaximumTop = Math.max(margin, window.innerHeight - panelRect.height - margin);
-          const candidates = [
-            minimumTop,
-            maximumTop,
-            desiredTop,
-            tableRect.top + (tableRect.height - panelRect.height) / 2,
-            ...obstacles.flatMap(({ rect }) => [
-            rect.top - panelRect.height - margin,
-            rect.bottom + margin,
-            ]),
-          ].filter(Number.isFinite)
-            .map((candidate) => Math.max(margin, Math.min(viewportMaximumTop, candidate)));
-          const overlapArea = (candidateTop: number) => obstacles.reduce((total, { rect }) => {
-            const width = Math.max(0, Math.min(panelRect.right, rect.right) - Math.max(panelRect.left, rect.left));
-            const height = Math.max(0, Math.min(candidateTop + panelRect.height, rect.bottom) - Math.max(candidateTop, rect.top));
-            const weight = rect.width > 0 && rect.height > 0 ? 1 : 0;
-            return total + width * height * weight;
-          }, 0) + (Math.max(0, tableRect.top - candidateTop)
-            + Math.max(0, candidateTop + panelRect.height - tableRect.bottom)) * panelRect.width * 2;
-          top = candidates.sort((first, second) => overlapArea(first) - overlapArea(second)
-            || Math.abs(first - desiredTop) - Math.abs(second - desiredTop))[0];
-        }
-        if (top === undefined) top = Math.max(margin, Math.min(window.innerHeight - panelRect.height - margin, desiredTop));
-        const offset = Math.round(top - tableRect.top);
-        setHarvestStageTop((current) => current === offset ? current : offset);
-      });
-    };
-    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    observeLayout();
-    measure();
-    window.addEventListener("resize", measure);
-    window.visualViewport?.addEventListener("resize", measure);
-    mutationObserver?.observe(table, { childList: true, subtree: true, characterData: true });
-    return () => {
-      window.removeEventListener("resize", measure);
-      window.visualViewport?.removeEventListener("resize", measure);
-      observer?.disconnect();
-      mutationObserver?.disconnect();
-      window.cancelAnimationFrame(frame);
-    };
-  }, [harvestPending, harvestActorId, room.players.length, room.meId, expandedOpponentId]);
+  const harvestPlacement = useBattlefieldChoicePlacement({
+    enabled: harvestPending,
+    playerCount: room.players.length,
+    placementKey: [room.code, room.meId, harvestActorId, harvestDisplay?.revealEventId ?? "", expandedOpponentId ?? ""].join("\u001f"),
+  });
+  const harvestStageRef = harvestPlacement.ref;
+  const harvestStageTop = harvestPlacement.top;
+  const harvestStageInsets = harvestPlacement.insets;
   const cardInfoReturnFocusRef = useRef<HTMLElement | null>(null);
   const heroInfoReturnFocusRef = useRef<HTMLElement | null>(null);
   const closeCardDetails = useCallback((restoreFocus = true) => {
@@ -2178,17 +4001,31 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const automaticResponseTimeout = useRef("");
   const automaticRescueSkip = useRef("");
   const [turnNotice, setTurnNotice] = useState(""); const onActionRef = useRef(onAction);
-  const [privateDrawPresentation, setPrivateDrawPresentation] = useState<{ playerId: string; cards: Card[] }>({ playerId: room.meId, cards: [] });
-  const privateDrawCards = useMemo(() => privateDrawPresentation.playerId === room.meId ? privateDrawPresentation.cards : [], [privateDrawPresentation, room.meId]);
-  const hasInitialDeal = room.timeline.some((event) => event.type === "card" && event.initialDeal && event.drawPlayerId === room.meId);
-  const knownHandCards = useRef(baselineHand(room.meId, hasInitialDeal ? [] : room.myHand, hasInitialDeal ? [] : room.timeline));
+  const [privateDrawPresentation, setPrivateDrawPresentation] = useState<{ playerId: string; cards: Card[]; transferIds: string[] }>({ playerId: room.meId, cards: [], transferIds: [] });
+  const [privateStealViewerSwitchPending, setPrivateStealViewerSwitchPending] = useState(false);
+  const activePrivateStealParticipantResult = room.privateStealParticipantResult?.viewerId === room.meId
+    ? room.privateStealParticipantResult
+    : null;
+  const privateStealTransferId = activePrivateStealParticipantResult?.role === "TAKER" ? activePrivateStealParticipantResult.transferId : null;
+  const privateDrawCards = useMemo(() => privateStealViewerSwitchPending || privateDrawPresentation.playerId !== room.meId
+    ? []
+    : privateDrawPresentation.cards.filter((card) => !(activePrivateStealParticipantResult?.role === "TAKER" && card.id === activePrivateStealParticipantResult.physicalCardId)),
+  [activePrivateStealParticipantResult, privateDrawPresentation, privateStealViewerSwitchPending, room.meId]);
+  const privateHandEvents = useMemo(() => privateHandTimelineEvents(room.timeline).filter((event) => !privateStealTransferId || event.id !== privateStealTransferId), [privateStealTransferId, room.timeline]);
+  const knownHandCards = useRef<ReturnType<typeof baselineHand> | null>(null);
+  if (!knownHandCards.current) {
+    knownHandCards.current = baselineHand(room.meId, room.myHand, privateHandEvents, {
+      now: room.serverNow ?? Date.now(),
+      seenTransferIds: readSeenPrivateHandTransfers(room.code, room.meId),
+    });
+  }
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
   const effectNoticeScope = useRef(JSON.stringify([room.code, room.meId]));
   const pendingGroupSettlementEventIds = useRef(new Set<string>());
   const seenDiaoChanNoticeEventIds = useRef(new Set((room.presentationSnapshot?.diaoChanSkillNotices ?? []).map((notice) => notice.eventId)));
   const [activeSkillEffectSettlement, setActiveSkillEffectSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
-  const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{ eventId: string; exiting: boolean; journeySettled: boolean } | null>(null);
-  const [activeStealSettlement, setActiveStealSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
+  const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{ eventId: string; roomCode: string; exiting: boolean; journeySettled: boolean; h4VisibleSinceMs: number | null } | null>(null);
+  const [activeStealSettlement, setActiveStealSettlement] = useState<{ eventId: string; roomCode: string; exiting: boolean; journeySettled: boolean; h4VisibleSinceMs: number | null } | null>(null);
   const [activeAttackHitSettlement, setActiveAttackHitSettlement] = useState<{ eventId: string; exiting: boolean; firstRenderedAt: number | null; lifecycle: AttackHitSettlementHoldIdentity } | null>(null);
   const [activeGroupSettlement, setActiveGroupSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeBumperHarvestSettlement, setActiveBumperHarvestSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
@@ -2197,14 +4034,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [attackDodgeSettlementCapturedEventIdsSnapshot, setAttackDodgeSettlementCapturedEventIdsSnapshot] = useState<ReadonlySet<string>>(() => new Set());
   const attackDodgeSettlementRetirementLoggedEventIds = useRef(new Set<string>());
   const retiredAttackDodgeComposition = useRef<RetiredAttackDodgeComposition>({ roomCode: room.code, eventIds: new Set(), cardIds: new Set() });
-  const [retiredAttackDodgeCompositionSnapshot, setRetiredAttackDodgeCompositionSnapshot] = useState<RetiredAttackDodgeComposition>(() => ({ roomCode: room.code, eventIds: new Set(), cardIds: new Set() }));
   const publishRetiredAttackDodgeComposition = useCallback((composition: RetiredAttackDodgeComposition) => {
     retiredAttackDodgeComposition.current = composition;
-    setRetiredAttackDodgeCompositionSnapshot({
-      roomCode: composition.roomCode,
-      eventIds: new Set(composition.eventIds),
-      cardIds: new Set(composition.cardIds),
-    });
   }, []);
   const retiredAttackDodgeStorageRaw = useSyncExternalStore(
     useCallback((listener) => subscribeRetiredAttackDodgeComposition(room.code, listener), [room.code]),
@@ -2216,7 +4047,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     [retiredAttackDodgeStorageRaw, room.code],
   );
   const persistedRetiredAttackDodgeEvents = useMemo(() => new Set(persistedAttackDodgeComposition.eventIds), [persistedAttackDodgeComposition]);
-  const persistedRetiredAttackDodgeCards = useMemo(() => new Set(persistedAttackDodgeComposition.cardIds), [persistedAttackDodgeComposition]);
   const recordAttackHitSettlementRetirement = useCallback((hold: AttackHitSettlementHoldIdentity) => {
     const retired = persistAttackHitSettlementRetirement(hold);
     const prior = retiredAttackDodgeComposition.current.roomCode === hold.roomCode
@@ -2235,13 +4065,33 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // Events already present when the screen mounts have no new animation to
   // wait for. New event IDs enter this set only after their presentation ends.
   const [presentedEventIds, setPresentedEventIds] = useState<Set<string>>(() => new Set((room.timeline ?? []).map((event) => event.id)));
-  // The centre-to-seat card journey has its own lifecycle. The legacy event
-  // queue may finish its two-second read before the authoritative response
-  // projection is ready; that must not make the committed card look stale.
+  // The centre-to-seat card journey has its own lifecycle. The announcement
+  // queue may finish its read before the authoritative response projection is
+  // ready; that must not make the committed card look stale.
   const [publicCardJourneySeen, setPublicCardJourneySeen] = useState<{ roomCode: string; eventIds: Set<string> }>(() => ({
     roomCode: room.code,
     eventIds: new Set((room.timeline ?? []).map((event) => event.id)),
   }));
+  const [retiredProdigalHealerFrame, setRetiredProdigalHealerFrame] = useState<{
+    roomCode: string;
+    viewerId: string;
+    eventIds: Set<string>;
+  }>(() => ({ roomCode: room.code, viewerId: room.meId, eventIds: new Set((room.timeline ?? []).map((event) => event.id)) }));
+  if (retiredProdigalHealerFrame.roomCode !== room.code || retiredProdigalHealerFrame.viewerId !== room.meId) {
+    setRetiredProdigalHealerFrame({ roomCode: room.code, viewerId: room.meId, eventIds: new Set((room.timeline ?? []).map((event) => event.id)) });
+  }
+  const retiredProdigalHealerFrameEventIds = retiredProdigalHealerFrame.roomCode === room.code
+    && retiredProdigalHealerFrame.viewerId === room.meId
+    ? retiredProdigalHealerFrame.eventIds
+    : new Set((room.timeline ?? []).map((event) => event.id));
+  const markProdigalHealerFrameRead = useCallback((eventId: string) => {
+    setRetiredProdigalHealerFrame((current) => {
+      const inScope = current.roomCode === room.code && current.viewerId === room.meId;
+      const eventIds = inScope ? current.eventIds : new Set((room.timeline ?? []).map((event) => event.id));
+      if (inScope && eventIds.has(eventId)) return current;
+      return { roomCode: room.code, viewerId: room.meId, eventIds: new Set([...eventIds, eventId]) };
+    });
+  }, [room.code, room.meId, room.timeline]);
   const markPublicCardJourneyEventParked = useCallback((eventId: string) => {
     setPublicCardJourneySeen((current) => {
       const seen = current.roomCode === room.code
@@ -2251,24 +4101,121 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       return { roomCode: room.code, eventIds: new Set([...seen, eventId]) };
     });
   }, [room.code, room.timeline]);
+  const [publicCardJourneyOwnership, setPublicCardJourneyOwnership] = useState<{
+    roomCode: string;
+    viewerId: string;
+    actionKey: string;
+    scopeGeneration: string;
+    ready: boolean;
+    eventIds: Set<string>;
+    cardIds: Set<string>;
+  }>({ roomCode: "", viewerId: "", actionKey: "", scopeGeneration: "", ready: false, eventIds: new Set(), cardIds: new Set() });
+  const publicCardOwnershipViewerRef = useRef({ roomCode: room.code, viewerId: room.meId });
+  publicCardOwnershipViewerRef.current = { roomCode: room.code, viewerId: room.meId };
+  const expectedPublicCardOwnershipRef = useRef({ roomCode: "", viewerId: "", actionKey: "", scopeGeneration: "" });
+  const reportPublicCardJourneyOwnership = useCallback((
+    ownerRoomCode: string,
+    actionKey: string,
+    viewerId: string,
+    scopeGeneration: string,
+    ready: boolean,
+    cards: readonly { eventId: string; cardIds: readonly string[] }[],
+  ) => {
+    const currentViewer = publicCardOwnershipViewerRef.current;
+    if (ownerRoomCode !== currentViewer.roomCode || viewerId !== currentViewer.viewerId) return;
+    const expected = expectedPublicCardOwnershipRef.current;
+    if (ready && (expected.roomCode !== ownerRoomCode || expected.viewerId !== viewerId
+      || expected.actionKey !== actionKey || expected.scopeGeneration !== scopeGeneration)) return;
+    const eventIds = new Set(cards.map(({ eventId }) => eventId));
+    const cardIds = new Set(cards.flatMap(({ cardIds: ids }) => ids));
+    setPublicCardJourneyOwnership((current) => {
+      const matches = current.roomCode === ownerRoomCode && current.actionKey === actionKey
+        && current.scopeGeneration === scopeGeneration;
+      if (!ready && !canClearPublicJourneyOwnership(current, {
+        roomCode: ownerRoomCode,
+        viewerId,
+        actionKey,
+        scopeGeneration,
+      })) return current;
+      const sameSet = (left: Set<string>, right: Set<string>) => left.size === right.size && [...left].every((value) => right.has(value));
+      if (matches && current.viewerId === viewerId && current.ready === ready
+        && sameSet(current.eventIds, eventIds) && sameSet(current.cardIds, cardIds)) return current;
+      return { roomCode: ownerRoomCode, viewerId, actionKey, scopeGeneration, ready, eventIds, cardIds };
+    });
+  }, []);
   if (publicCardJourneySeen.roomCode !== room.code) {
     setPublicCardJourneySeen({ roomCode: room.code, eventIds: new Set((room.timeline ?? []).map((event) => event.id)) });
   }
   const publicCardJourneySeenEventIds = publicCardJourneySeen.roomCode === room.code
     ? publicCardJourneySeen.eventIds
     : new Set((room.timeline ?? []).map((event) => event.id));
-  const [resolutionEvents, setResolutionEvents] = useState<GameEvent[]>(initialPendingSequence);
-  const [resolutionClosing, setResolutionClosing] = useState(false);
-  const [sequenceScopeStartId, setSequenceScopeStartId] = useState(initialPendingSequence[0]?.id ?? "");
-  const resolutionRevision = useRef(0);
+  // Bounds public selfTargetActions to the live resolution window; this state
+  // is not a physical-card renderer or a second ownership path.
+  const [selfTargetWindowEvents, setSelfTargetWindowEvents] = useState<GameEvent[]>(initialSelfTargetWindow);
+  const [selfTargetWindowClosing, setSelfTargetWindowClosing] = useState(false);
+  const [selfTargetWindowStartId, setSelfTargetWindowStartId] = useState(initialSelfTargetWindow[0]?.id ?? "");
+  const selfTargetWindowRevision = useRef(0);
   const [processedTimelineKey, setProcessedTimelineKey] = useState(() => room.timeline.map((event) => event.id).join("|"));
   const card = room.myHand.find((item) => item.id === selected); const current = room.players.find((player) => player.seat === room.turnSeat); const me = room.players.find((player) => player.id === room.meId); const localHero = heroDefinition(me?.hero); const targetPlayer = room.players.find((player) => player.id === target); const pendingTargetPlayer = room.players.find((player) => player.id === room.pendingTargetCard?.targetId); const pickerTarget = pendingTargetPlayer ?? targetPlayer;
   const excessCards = Math.max(0, room.myHand.length - (me?.hp ?? 0));
+  // Zone-transition presenters index the server-ordered player snapshot.
+  // Keep that contract separate from the seat-sorted mobile projection below.
   const myTableIndex = Math.max(0, room.players.findIndex((player) => player.id === room.meId));
+  const seatRelativeIndices = useMemo(() => {
+    const seatRing = [...room.players].sort((left, right) => left.seat - right.seat || left.id.localeCompare(right.id));
+    const viewerRingIndex = seatRing.findIndex((player) => player.id === room.meId);
+    return new Map(seatRing.map((player, index) => [player.id, (index - viewerRingIndex + seatRing.length) % seatRing.length]));
+  }, [room.meId, room.players]);
+  const mobileSeatRingEnabled = isPhoneViewport && room.players.length >= 5 && room.players.length <= 10;
+  const mobileSeatTopCount = mobileSeatRingEnabled ? mobileSeatRingMetrics.topCapacity : 0;
+  const mobileSeatRenderedTopCount = mobileSeatRingEnabled ? Math.min(mobileSeatTopCount, room.players.length === 7 ? 4 : room.players.length === 8 ? 5 : room.players.length - 1) : 0;
+  const mobileSideSeatCount = mobileSeatRingEnabled ? Math.max(0, room.players.length - 1 - mobileSeatRenderedTopCount) : 0;
+  const mobileSideRowCount = Math.ceil(mobileSideSeatCount / 2);
+  const mobileSeatRingLayoutStyle: CSSProperties | undefined = mobileSeatRingEnabled ? {
+    "--mobile-seat-width": mobileSeatRingMetrics.seatWidth + "px",
+    "--mobile-seat-height": mobileSeatRingMetrics.seatHeight + "px",
+    "--mobile-seat-gap": mobileSeatRingMetrics.gap + "px",
+    "--mobile-seat-top-inset": mobileSeatRingMetrics.boardTopInset + "px",
+    "--mobile-seat-row-start-height": (mobileSeatRingMetrics.seatHeight + mobileSeatRingMetrics.gap) + "px",
+    "--mobile-seat-top-band-height": (mobileSeatRingMetrics.boardTopInset + mobileSeatRingMetrics.seatHeight + mobileSeatRingMetrics.gap) + "px",
+    "--mobile-seat-grid-rows": mobileSideRowCount > 0
+      ? `${mobileSeatRenderedTopCount > 0 ? "var(--mobile-seat-height) " : ""}repeat(${mobileSideRowCount}, max-content)`
+      : "none",
+  } as CSSProperties : undefined;
+  const playerBoardStyle: CSSProperties | undefined = mobileSeatRingEnabled ? {
+    "--seat-row-count": String(mobileSideRowCount),
+    ...mobileSeatRingLayoutStyle,
+  } as CSSProperties : undefined;
   const canPlay = room.phase?.startsWith("play") && room.status === "playing";
-  const canChooseHarvest = room.phase === "response" && Boolean(room.pendingHarvest) && !room.pendingHarvest?.complete && room.isMyAction;
+  const ordinaryTurnPlayAuthorized = Boolean(
+    canPlay
+    && room.isMyTurn
+    && room.isMyAction
+    && room.currentAction?.kind === "turn"
+    && room.currentAction.actorId === room.meId
+    && canUseAction(room.currentAction, "play_card"),
+  );
+  const harvestActionRevision = room.actionRevision ?? "";
+  const hasAvailableHarvestChoice = Boolean(room.pendingHarvest?.availableIds.some((availableId) =>
+    room.pendingHarvest?.revealed.some((choice) => choice.id === availableId)));
+  // CurrentAction is the server-owned permission for this viewer. Decorative
+  // timeline animation must not hide an already-authorized Harvest decision.
+  const canChooseHarvest = Boolean(room.phase === "response"
+    && room.pendingHarvest
+    && !room.pendingHarvest.complete
+    && room.pendingHarvest.actorId === room.meId
+    && room.isMyAction
+    && room.currentAction?.kind === "harvest"
+    && room.currentAction.actorId === room.pendingHarvest.actorId
+    && canUseAction(room.currentAction, "choose_harvest")
+    && harvestActionRevision.length > 0
+    && hasAvailableHarvestChoice);
   const canChooseTargetCard = room.phase === "response" && Boolean(room.pendingTargetCard) && room.isMyAction;
   const canChooseBorrowedSword = room.phase === "response" && room.isMyAction && room.pendingBorrowedSword?.stage === "choose_target";
+  const borrowedSwordForcedChoiceActive = Boolean(room.phase === "response" && room.isMyAction
+    && room.pendingBorrowedSword?.stage === "force_attack"
+    && room.pendingBorrowedSword.holderId === room.meId
+    && room.currentAction?.kind === "response" && room.currentAction.requirement === "attack");
   const pendingBorrowedSwordEligibleTargetIds = room.pendingBorrowedSword?.eligibleTargetIds;
   const borrowedSwordEligibleTargetIds = useMemo(() => pendingBorrowedSwordEligibleTargetIds ?? [], [pendingBorrowedSwordEligibleTargetIds]);
   // `currentAction` is the server's canonical response discriminator and
@@ -2393,15 +4340,153 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : activeSkillOption && activeSkillStateIsCurrent
       ? { providerId: activeSkillOption.effectId, ...(activeSkillTargetSelection && activeSkillTargetMax > 1 ? { targetIds: activeSkillSelectedTargetIds } : activeSkillTargetId ? { targetId: activeSkillTargetId } : {}) }
       : null;
-  const hasUnseenPresentations = room.timeline.some((event) => event.type !== "message" && event.presentation !== false && !presentedEventIds.has(event.id));
-  const presentationBusy = Boolean(optimisticPlay || activeEvent || eventQueue.length || resolutionClosing || turnNotice || privateDrawCards.length || hasUnseenPresentations);
+  const activeEquipmentArrival = activeEvent?.type === "card"
+    ? equipmentArrivalIdentity(activeEvent, room.players)
+    : null;
+  const activeEquipmentTransitionRoute = useMemo(() => {
+    if (!activeEvent || !isM2EquipmentTransitionEvent(activeEvent)) return null;
+    if (!room.presentationSnapshot) return { kind: "blocked-invalid-proof", reason: "missing-public-fact" } as const;
+    return routePublicEquipmentTransition({
+      event: activeEvent,
+      players: room.players,
+      snapshot: room.presentationSnapshot,
+      clientView: clientPresentation,
+      roomCode: room.code,
+      viewerId: room.meId,
+      retiredTransitionIds: [...presentedEventIds],
+    });
+  }, [activeEvent, room.players, room.presentationSnapshot, clientPresentation, room.code, room.meId, presentedEventIds]);
+  const activeEquipmentZoneTransition = activeEquipmentTransitionRoute?.kind === "zone-transition"
+    ? activeEquipmentTransitionRoute
+    : null;
+  const activeJudgementTransitionRoute = useMemo(() => {
+    if (!activeEvent || !isM3JudgementTransitionEvent(activeEvent) || !room.presentationSnapshot) return null;
+    return routePublicJudgementTransition({
+      event: activeEvent,
+      timeline: room.timeline,
+      snapshot: room.presentationSnapshot,
+      clientView: clientPresentation,
+      roomCode: room.code,
+      viewerId: room.meId,
+      retiredTransitionIds: [...presentedEventIds],
+    });
+  }, [activeEvent, room.timeline, room.presentationSnapshot, clientPresentation, room.code, room.meId, presentedEventIds]);
+  const activeJudgementZoneTransition = activeJudgementTransitionRoute?.kind === "zone-transition"
+    ? activeJudgementTransitionRoute
+    : null;
+  const activeJudgementTransitionCard = activeJudgementZoneTransition
+    ? room.timeline.find((event) => event.id === activeJudgementZoneTransition.sourceEventId && event.type === "card")?.card ?? null
+    : null;
+  const validatedJudgementTransitionSourceEventIds = useMemo(() => new Set(room.timeline.flatMap((event) => {
+    if (!isM3JudgementTransitionEvent(event) || !room.presentationSnapshot) return [];
+    const route = routePublicJudgementTransition({
+      event, timeline: room.timeline, snapshot: room.presentationSnapshot, clientView: clientPresentation,
+      roomCode: room.code, viewerId: room.meId,
+    });
+    const sourceEventId = publicJudgementTransitionSourceEventId(route);
+    return sourceEventId ? [sourceEventId] : [];
+  })), [room.timeline, room.presentationSnapshot, clientPresentation, room.code, room.meId]);
+  const activePublicDiscardTransition = useMemo(() => {
+    if (!activeEvent) return null;
+    return routePublicDiscardTransition({
+      event: activeEvent as PublicDiscardTimelineEvent,
+      timeline: room.timeline as readonly PublicDiscardTimelineEvent[],
+      roomCode: room.code,
+      viewerId: room.meId,
+      retiredTransitionIds: [...presentedEventIds],
+    });
+  }, [activeEvent, room.timeline, room.code, room.meId, presentedEventIds]);
+  const validatedPublicDiscardTransitionEventIds = useMemo(() => new Set(room.timeline.flatMap((event) => {
+    const route = routePublicDiscardTransition({
+      event: event as PublicDiscardTimelineEvent,
+      timeline: room.timeline as readonly PublicDiscardTimelineEvent[],
+      roomCode: room.code,
+      viewerId: room.meId,
+    });
+    return route ? [event.id] : [];
+  })), [room.timeline, room.code, room.meId]);
+  const latestPublicDiscardAnnouncement = useMemo(() => {
+    const event = room.timeline
+      .filter((candidate) => validatedPublicDiscardTransitionEventIds.has(candidate.id))
+      .sort((left, right) => (right.publicSequence ?? -1) - (left.publicSequence ?? -1))[0] as PublicDiscardTimelineEvent | undefined;
+    if (!event) return null;
+    const route = routePublicDiscardTransition({
+      event,
+      timeline: room.timeline as readonly PublicDiscardTimelineEvent[],
+      roomCode: room.code,
+      viewerId: room.meId,
+    });
+    return route ? publicDiscardAnnouncement({ event, route, players: room.players }) : null;
+  }, [room.timeline, room.code, room.meId, room.players, validatedPublicDiscardTransitionEventIds]);
+  const activePublicHandRevealTransition = useMemo(() => {
+    if (!activeEvent) return null;
+    return routePublicHandRevealTransition({
+      event: activeEvent as PublicHandRevealTimelineEvent,
+      timeline: room.timeline as readonly PublicHandRevealTimelineEvent[],
+      roomCode: room.code,
+      viewerId: room.meId,
+      retiredTransitionIds: [...presentedEventIds],
+    });
+  }, [activeEvent, room.timeline, room.code, room.meId, presentedEventIds]);
+  const validatedPublicHandRevealTransitionEventIds = useMemo(() => new Set(room.timeline.flatMap((event) => {
+    const route = routePublicHandRevealTransition({
+      event: event as PublicHandRevealTimelineEvent,
+      timeline: room.timeline as readonly PublicHandRevealTimelineEvent[],
+      roomCode: room.code,
+      viewerId: room.meId,
+    });
+    return route ? [event.id] : [];
+  })), [room.timeline, room.code, room.meId]);
+  const activeEquipmentArrivalEventId = activeEquipmentZoneTransition?.destination === "EQUIPMENT"
+    ? activeEquipmentZoneTransition.eventId
+    : null;
+  const activeEquipmentArrivalKey = activeEquipmentArrival && activeEquipmentArrivalEventId === activeEquipmentArrival.eventId
+    ? `${activeEquipmentArrival.eventId}|${activeEquipmentArrival.cardId}|${activeEquipmentArrival.ownerId}|${activeEquipmentArrival.slot}`
+    : "";
+  const activeEventTimerEventId = activeEvent?.id ?? "";
+  const activeEventTimerKind = activeEvent?.type === "card"
+    ? `card:${activeEvent.action}:${activeEvent.card.kind}`
+    : activeEvent?.type === "cards"
+      ? `cards:${activeEvent.action}:${activeEvent.cards.map((item) => item.kind).join(",")}`
+      : activeEvent ? "message" : "";
+  const activeEventTimerIdentity = activeEventTimerEventId ? `${activeEventTimerEventId}|${activeEventTimerKind}` : "";
+  const activeJudgementTransitionKey = activeJudgementZoneTransition?.claimId ?? "";
+  const activePublicDiscardTransitionKey = activePublicDiscardTransition?.claimId ?? "";
+  const activePublicHandRevealTransitionKey = activePublicHandRevealTransition?.claimId ?? "";
+  const activeEventDisplayDuration = activeJudgementZoneTransition ? UI_TIMING.judgementCard
+    : activeEvent?.type === "card" || activeEvent?.type === "cards"
+    ? isJudgementReveal(activeEvent) ? UI_TIMING.judgementCard : UI_TIMING.playedCard
+    : 0;
+  const hasUnseenPresentations = room.timeline.some((event) => (event.type !== "message" || isM3JudgementTransitionEvent(event)) && event.presentation !== false
+    && !presentedEventIds.has(event.id) && event.id !== activeEquipmentArrivalEventId);
+  const presentationBusyCauses = {
+    optimisticPlay: Boolean(optimisticPlay),
+    activeEvent: Boolean(activeEvent && !activeEquipmentArrivalEventId),
+    eventQueue: eventQueue.length > 0,
+    selfTargetWindowClosing,
+    turnNotice: Boolean(turnNotice),
+    privateDrawCards: privateDrawCards.length > 0,
+    hasUnseenPresentations,
+  };
+  const presentationBusy = Object.values(presentationBusyCauses).some(Boolean);
+  const presentationTimerDiagnosticContextRef = useRef<Record<string, unknown>>({});
+  presentationTimerDiagnosticContextRef.current = {
+    phase: room.phase ?? "unknown",
+    actionRevisionPresent: Boolean(room.actionRevision),
+    currentActionKind: room.currentAction?.kind ?? "none",
+    currentActionOwnedByViewer: room.currentAction?.actorId === room.meId && room.isMyAction,
+    networkBusy: busy,
+    presentationBusy,
+    presentationBusyCauses,
+    queueCount: eventQueue.length,
+  };
   // A target selection is already an explicit local boundary over the same
   // server-owned CurrentAction. A late card animation must not remove its
   // Confirm/Cancel controls after the player has selected legal Assault
   // targets; the server still revalidates the action and revision on submit.
-  // A server-authorized response must not inherit visual presentation busy
-  // state. Network `busy` still blocks duplicate submissions while a request
-  // is in flight; turn actions remain presentation-gated below.
+  // A server-authorized response and ordinary turn action must not inherit
+  // decorative presentation busy state. Network `busy` still blocks duplicate
+  // submissions, and special skill/response readiness stays independently gated.
   const activeSkillSelectionBusy = Boolean(presentationBusy && !activeSkillTargetMode && !sharedNegationWindow && !responseDecisionReady);
   // CurrentAction owns whether this local card may be played. The helper only
   // mirrors the already-public scope rule for a selected, legal group card.
@@ -2410,7 +4495,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     sourceId: room.meId,
     turnSeat: room.turnSeat,
     players: room.players,
-    playAuthorized: Boolean(room.isMyTurn && room.isMyAction && canPlay && !busy && !presentationBusy && room.currentAction?.actorId === room.meId && canUseAction(room.currentAction, "play_card")),
+    playAuthorized: ordinaryTurnPlayAuthorized && !busy,
   });
   const mandatoryChoiceTriggerOption = triggerOptions.find((option) => option.selection?.type === "choice" && option.allowDecline === false) ?? null;
   const genericChoiceTriggerOption = triggerOptions.find((option) => option.selection?.type === "choice" && !heroSkillEffectIds.has(option.effectId)) ?? null;
@@ -2542,7 +4627,41 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? room.currentAction.borrowedSwordTargets?.find((projection) => projection.cardId === card.id)?.targetIds ?? []
     : [];
   const halberdAttack = Boolean(canDeclareAttack && selectedCanPlayAsAttack && me?.equipmentCards.some((equipment) => equipment.kind === "SkyPiercingHalberd") && room.myHand.length === 1);
+  const targetEligibilityModeKey = serpentMode
+    ? "serpent_spear_attack:Attack"
+    : card
+      ? `card:${card.id}:${selectedCanPlayAsAttack ? "Attack" : card.kind}:${wushengMode ?? ""}:${longdanMode ?? ""}`
+      : "";
+  const targetEligibilityModeKeyRef = useRef(targetEligibilityModeKey);
+  useEffect(() => {
+    if (targetEligibilityModeKeyRef.current === targetEligibilityModeKey) return;
+    targetEligibilityModeKeyRef.current = targetEligibilityModeKey;
+    setLocalPlayTargetNotice((notice) => notice?.stale ? notice : null);
+  }, [targetEligibilityModeKey]);
+  const targetEligibilityActionAvailable = Boolean(
+    room.currentAction?.kind === "turn"
+    && room.currentAction.actorId === room.meId
+    && room.isMyAction
+    && canPlay
+    && (serpentMode
+      ? canUseAction(room.currentAction, "serpent_spear_attack")
+      : card && canUseAction(room.currentAction, "play_card")),
+  );
+  const currentPlayTargetEligibility = targetEligibilityActionAvailable
+    ? serpentMode
+      ? room.currentAction?.playTargetEligibility?.find((entry) => entry.mode === "serpent_spear_attack" && entry.effectiveKind === "Attack") ?? null
+      : card
+        ? room.currentAction?.playTargetEligibility?.find((entry) => entry.mode === "card" && entry.cardId === card.id && entry.effectiveKind === (selectedCanPlayAsAttack ? "Attack" : card.kind)) ?? null
+        : null
+    : null;
+  const playTargetEligibleIds = useMemo(() => new Set(currentPlayTargetEligibility?.eligibleTargetIds.filter((id) => (
+    room.players.some((player) => player.id === id && player.alive && player.id !== room.meId)
+    && (card?.kind !== "BorrowedSword" || room.currentAction?.borrowedSwordTargets?.find((projection) => projection.cardId === card.id)?.targetIds.includes(id))
+  )) ?? []), [currentPlayTargetEligibility, room.players, room.meId, card?.id, card?.kind, room.currentAction?.borrowedSwordTargets]);
+  const selectedPlayTargetsValid = Boolean(currentPlayTargetEligibility && targetIds.length > 0 && targetIds.every((id) => playTargetEligibleIds.has(id)));
+  const selectedCardNeedsTarget = Boolean(card && (selectedCanPlayAsAttack || ["Dismantle", "Steal", "Duel", "BorrowedSword", "Overindulgence", "RationsDepleted"].includes(card.kind)));
   const setTarget = (playerId: string) => {
+    setLocalPlayTargetNotice(null);
     if (!playerId) {
       setTargetIds([]);
       if (activeSkillStateIsCurrent) setActiveSkillSelectionState((state) => state ? { ...state, targetIds: [] } : state);
@@ -2584,7 +4703,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ? { ...state, cardIds: validIds.filter((id) => id !== cardId) }
       : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, cardId] } : { ...state, cardIds: validIds };
   });
-  const attackTargetsValid = targetIds.length > 0 && targetIds.every((id) => room.players.some((player) => player.id === id && player.alive && player.id !== room.meId && (player.distance ?? 99) <= (me?.attackRange ?? 1)));
+  const attackTargetsValid = selectedPlayTargetsValid;
   const canFormSerpentAttack = hasSerpentSpear && room.myHand.length >= 2 && room.isMyTurn && canPlay && canDeclareAttack;
   const responseDeadline = room.currentAction?.deadline ?? room.pendingNegation?.deadline ?? room.pendingGreenDragon?.deadline ?? room.pendingRockCleaving?.deadline ?? room.pendingDuel?.deadline ?? room.pendingAttack?.deadline ?? 0;
   const canRescue = room.phase === "dying" && room.isMyAction;
@@ -2658,18 +4777,47 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const triggerTargetMax = triggerTargetSelection?.max ?? 1;
   const triggerTargetMode = Boolean(triggerResponse && responseDecisionReady && triggerTargetSelection && responseProviderId === selectedTriggerOption?.effectId);
   const borrowedSwordTargetSelectionActive = Boolean(canChooseBorrowedSword && !presentationBusy);
-  const targetSelectionActive = Boolean(borrowedSwordTargetSelectionActive || triggerTargetMode || activeSkillTargetMode || room.isMyTurn && canPlay && (serpentMode || selectedCanPlayAsAttack || card && ["Dismantle", "Steal", "Duel", "BorrowedSword", "Overindulgence", "RationsDepleted"].includes(card.kind)));
+  const borrowedSwordContinuationConsole = borrowedSwordTargetSelectionActive || borrowedSwordForcedChoiceActive;
+  const normalTurnTargetSelectionActive = Boolean(ordinaryTurnPlayAuthorized
+    && (serpentMode || selectedCanPlayAsAttack || card && ["Dismantle", "Steal", "Duel", "BorrowedSword", "Overindulgence", "RationsDepleted"].includes(card.kind)));
+  const targetSelectionActive = Boolean(borrowedSwordTargetSelectionActive || triggerTargetMode || activeSkillTargetMode || normalTurnTargetSelectionActive);
   const triggerTargetComplete = Boolean(triggerTargetMode && targetIds.length >= triggerTargetMin && targetIds.length <= triggerTargetMax);
   const triggerSubmissionComplete = triggerSelectionComplete && (!triggerTargetSelection || triggerTargetComplete);
   const normalTargetSelectionActive = targetSelectionActive && !borrowedSwordTargetSelectionActive && !triggerTargetMode && !activeSkillTargetMode;
+  const simpleAttackTargetMode = Boolean(
+    room.isMyTurn
+    && canPlay
+    && normalTargetSelectionActive
+    && card?.kind === "Attack"
+    && selected === card.id
+    && !wushengMode
+    && !longdanMode
+    && !serpentMode,
+  );
+  const fiveSeatPhoneAttackMode = room.players.length === 5 && isPhoneViewport && simpleAttackTargetMode;
   const localTargetFlow: LocalTargetFlow | null = borrowedSwordTargetSelectionActive ? "borrowed-sword" : triggerTargetMode ? "trigger" : activeSkillTargetMode ? "active-skill" : serpentMode ? "serpent" : normalTargetSelectionActive ? "normal" : null;
-  const localTargetIds = borrowedSwordTargetSelectionActive ? (borrowedSwordTargetId ? [borrowedSwordTargetId] : []) : triggerTargetMode ? targetIds : activeSkillTargetMode ? activeSkillSelectedTargetIds : targetIds;
+  const localTargetIds = borrowedSwordTargetSelectionActive
+    ? (borrowedSwordTargetId ? [borrowedSwordTargetId] : [])
+    : triggerTargetMode
+      ? targetIds
+      : activeSkillTargetMode
+        ? activeSkillSelectedTargetIds
+        : normalTargetSelectionActive
+          ? targetIds.filter((id) => playTargetEligibleIds.has(id))
+          : targetIds;
   const localDockTargetIds = activeSkillTargetMode ? activeSkillTargetIds : triggerTargetMode ? triggerTargetSelection?.targetIds ?? [] : [];
   const localDockSelfTargetable = localDockTargetIds.includes(room.meId);
   const localDockSelfTargetSelected = localDockSelfTargetable && localTargetIds.includes(room.meId);
   const localTargetMin = borrowedSwordTargetSelectionActive ? 1 : triggerTargetMode ? triggerTargetMin : activeSkillTargetMode ? activeSkillTargetMin : 1;
   const localTargetMax = borrowedSwordTargetSelectionActive ? 1 : triggerTargetMode ? triggerTargetMax : activeSkillTargetMode ? activeSkillTargetMax : halberdAttack ? 3 : 1;
-  const localTargetCanConfirm = borrowedSwordTargetSelectionActive ? Boolean(borrowedSwordTargetId) : triggerTargetMode ? triggerTargetComplete : activeSkillTargetMode ? activeSkillComplete : serpentMode ? serpentSelected.length === 2 && attackTargetsValid : selectedCanPlayAsAttack ? attackTargetsValid : Boolean(target);
+  const localTargetCanConfirm = borrowedSwordTargetSelectionActive ? Boolean(borrowedSwordTargetId) : triggerTargetMode ? triggerTargetComplete : activeSkillTargetMode ? activeSkillComplete : serpentMode ? serpentSelected.length === 2 && attackTargetsValid : normalTargetSelectionActive ? selectedPlayTargetsValid : Boolean(target);
+  const activeLocalPlayTargetNotice = localPlayTargetNotice
+    && localPlayTargetNotice.roomCode === room.code
+    && localPlayTargetNotice.viewerId === room.meId
+    && localPlayTargetNotice.actionRevision === (room.actionRevision ?? "")
+    && (localPlayTargetNotice.stale || localPlayTargetNotice.modeKey === targetEligibilityModeKey)
+    ? localPlayTargetNotice
+    : null;
   const localSelectionHasInput = localTargetFlow === "borrowed-sword"
     ? Boolean(borrowedSwordTargetId)
     : localTargetFlow === "trigger"
@@ -2735,10 +4883,73 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && (room.pendingTargetCard?.cardKind === "Steal" || room.pendingTargetCard?.cardKind === "Dismantle")
   );
   const pendingTargetCardActionName = room.pendingTargetCard ? targetCardActionName(room.pendingTargetCard.cardKind) : null;
+  const pendingTargetCardPublicSource = room.pendingTargetCard
+    ? room.players.find((player) => player.id === room.pendingTargetCard?.sourceId)
+    : null;
+  const pendingTargetCardPublicTarget = room.pendingTargetCard
+    ? room.players.find((player) => player.id === room.pendingTargetCard?.targetId)
+    : null;
+  const pendingTargetCardPublicPool: PublicTargetPoolView | null = room.pendingTargetCard && pendingTargetCardPublicTarget
+    ? {
+      handCount: pendingTargetCardPublicTarget.handCount,
+      equipmentCards: pendingTargetCardPublicTarget.equipmentCards,
+      judgementCards: pendingTargetCardPublicTarget.judgementCards,
+    }
+    : null;
   const pendingTargetCardSelectedKey = targetCardZone === "hand" && targetCardIndex !== null
     ? `hand:${targetCardIndex}`
     : targetCardId;
   const pendingTargetCardSelectedKeys = pendingTargetCardSelectedKey ? [pendingTargetCardSelectedKey] : [];
+  const pendingTargetCardPoolZones: TargetCardPoolZone[] = pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget
+    && supportsAuthoritativeTargetCardSelection(pendingTargetCardSelectableSelection, pendingTargetCardSelectableTarget)
+    ? (() => {
+      const eligible = new Set(pendingTargetCardSelectableSelection.eligibleKeys);
+      const handKeys = pendingTargetCardSelectableSelection.eligibleKeys.filter((key) => /^hand:(0|[1-9]\d*)$/.test(key));
+      const handChoices = eligible.has("hand")
+        ? [{
+          type: "random-hand-zone" as const,
+          opaqueKey: "hand" as const,
+          accessibleLabel: `Choose one random card from Hand, ${pendingTargetCardSelectableTarget.handCount} cards`,
+          totalPublicHandCount: pendingTargetCardSelectableTarget.handCount,
+          state: pendingTargetCardSelectedKeys.includes("hand") ? "selected" as const : "available" as const,
+        }]
+        : handKeys.map((key) => {
+          const position = Number(key.slice(5));
+          return {
+            type: "concealed-position" as const,
+            opaqueKey: key,
+            accessibleLabel: `Choose hidden Hand position ${position + 1}`,
+            position,
+            state: pendingTargetCardSelectedKeys.includes(key) ? "selected" as const : "available" as const,
+          };
+        });
+      const equipmentChoices = pendingTargetCardSelectableTarget.equipmentCards
+        .filter((item) => eligible.has(item.id))
+        .map((publicCardFace) => ({
+          type: "public-card" as const,
+          eligibleKey: publicCardFace.id,
+          publicCardFace,
+          cardName: cardDefinition(publicCardFace.kind).name,
+          accessibleLabel: `Equipment: ${cardDefinition(publicCardFace.kind).name}`,
+          state: pendingTargetCardSelectedKeys.includes(publicCardFace.id) ? "selected" as const : "available" as const,
+        }));
+      const judgementChoices = pendingTargetCardSelectableTarget.judgementCards
+        .filter((item) => eligible.has(item.id))
+        .map((publicCardFace) => ({
+          type: "public-card" as const,
+          eligibleKey: publicCardFace.id,
+          publicCardFace,
+          cardName: cardDefinition(publicCardFace.kind).name,
+          accessibleLabel: `Judgement: ${cardDefinition(publicCardFace.kind).name}`,
+          state: pendingTargetCardSelectedKeys.includes(publicCardFace.id) ? "selected" as const : "available" as const,
+        }));
+      return [
+        ...(handChoices.length ? [{ id: "hand" as const, title: `HAND ${pendingTargetCardSelectableTarget.handCount}`, accessibleName: `Hand, ${pendingTargetCardSelectableTarget.handCount} cards`, choices: handChoices }] : []),
+        ...(equipmentChoices.length ? [{ id: "equipment" as const, title: `EQUIPMENT ${equipmentChoices.length}`, accessibleName: `Equipment, ${equipmentChoices.length} eligible cards`, choices: equipmentChoices }] : []),
+        ...(judgementChoices.length ? [{ id: "judgement" as const, title: `JUDGEMENT ${judgementChoices.length}`, accessibleName: `Judgement, ${judgementChoices.length} eligible cards`, choices: judgementChoices }] : []),
+      ];
+    })()
+    : [];
   const submitWithLocalTargetPreview = async (submit: () => Promise<boolean>) => {
     const targetId = [...localTargetSelection.selectedTargetIds].reverse().find((id) => id !== room.meId);
     if (!targetId) {
@@ -2760,6 +4971,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const triggerHasProviderCancelSurface = Boolean(triggerTargetMode && selectedTriggerOption && !heroTriggerEffectIds.has(selectedTriggerOption.effectId));
   const normalHasProviderCancelSurface = wushengMode === "play" || longdanMode === "play";
   const resetLocalTargetFlow = (flow: LocalTargetFlow) => {
+    setLocalPlayTargetNotice(null);
     closeOpponentInspection(false);
     setTargetIds([]);
     if (flow === "normal") {
@@ -2847,7 +5059,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const cancelLocalTargetSelection = () => {
     const responseTargetSelection = responseDecisionReady && (triggerResponse || canRespond)
       && (localTargetFlow === "trigger" || localTargetFlow === "active-skill");
-    if (!localTargetSelection.selectionActive || !localTargetFlow || busy || presentationBusy && !responseTargetSelection && !(localTargetFlow === "active-skill" && daqiaoDeflectionSelectionActive)) return;
+    const presentationBlocksCancel = presentationBusy
+      && !ordinaryTurnPlayAuthorized
+      && !responseTargetSelection
+      && !(localTargetFlow === "active-skill" && daqiaoDeflectionSelectionActive);
+    if (!localTargetSelection.selectionActive || !localTargetFlow || busy || presentationBlocksCancel) return;
     resetLocalTargetFlow(localTargetFlow);
   };
   const canUseLongdanInResponse = Boolean(me?.hero === "zhao-yun" && responseDecisionReady && longdanResponseOptions.length > 0);
@@ -2966,18 +5182,103 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (!accepted) setHarvestSubmitting(null);
   };
   const lastTimelineId = room.timeline.at(-1)?.id ?? "start";
-  const livePendingSequence = pendingTimelineSequence(room);
-  const livePendingStartId = livePendingSequence[0]?.id ?? "";
-  const effectiveSequenceStartId = livePendingStartId || sequenceScopeStartId;
-  const scopedTimelineEvents = (effectiveSequenceStartId ? timelineSequenceFrom(room, effectiveSequenceStartId) : livePendingSequence).filter(retainsAtPlayer);
-  const scopedEventIds = new Set(scopedTimelineEvents.map((event) => event.id));
-  const scopedCardIds = new Set(scopedTimelineEvents.flatMap(eventCards).map((item) => item.id));
-  const scopedLocalEvents = effectiveSequenceStartId ? resolutionEvents.filter((event) => scopedEventIds.has(event.id) || eventCards(event).some((item) => scopedCardIds.has(item.id)) || event.id === optimisticPlay?.id) : resolutionEvents;
-  const sequenceEvents = [...scopedTimelineEvents, ...scopedLocalEvents].filter(retainsAtPlayer).filter((event, index, all) => all.findIndex((candidate) => candidate.id === event.id || event.type === "card" && candidate.type === "card" && candidate.card.id === event.card.id) === index);
-  const displayedEvent = activeEvent ?? optimisticPlay;
+  const livePendingSelfTargetEvents = pendingSelfTargetActionWindow(room);
+  const livePendingSelfTargetStartId = livePendingSelfTargetEvents[0]?.id ?? "";
+  const effectiveSelfTargetStartId = livePendingSelfTargetStartId || selfTargetWindowStartId;
+  const scopedTimelineSelfTargetEvents = (effectiveSelfTargetStartId ? timelineEventsFrom(room, effectiveSelfTargetStartId) : livePendingSelfTargetEvents).filter(retainsAtPlayer);
+  const scopedSelfTargetEventIds = new Set(scopedTimelineSelfTargetEvents.map((event) => event.id));
+  const scopedSelfTargetCardIds = new Set(scopedTimelineSelfTargetEvents.flatMap(eventCards).map((item) => item.id));
+  const scopedLocalSelfTargetEvents = effectiveSelfTargetStartId
+    ? selfTargetWindowEvents.filter((event) => scopedSelfTargetEventIds.has(event.id)
+      || eventCards(event).some((item) => scopedSelfTargetCardIds.has(item.id))
+      || event.id === optimisticPlay?.id)
+    : selfTargetWindowEvents;
+  const publicJudgementCardIds = new Set(room.players.flatMap((player) => player.judgementCards.map((item) => item.id)));
+  const activeSelfTargetWindowEvents = [...scopedTimelineSelfTargetEvents, ...scopedLocalSelfTargetEvents].filter(retainsAtPlayer)
+    .filter((event) => !validatedJudgementTransitionSourceEventIds.has(event.id)
+      && !validatedPublicDiscardTransitionEventIds.has(event.id)
+      && !validatedPublicHandRevealTransitionEventIds.has(event.id)
+      && !eventCards(event).some((item) => publicJudgementCardIds.has(item.id)))
+    .filter((event, index, all) => all.findIndex((candidate) => candidate.id === event.id || event.type === "card" && candidate.type === "card" && candidate.card.id === event.card.id) === index);
+  const currentPublicEventPresentation = activeEvent ?? optimisticPlay;
   const processedEventIds = new Set(processedTimelineKey.split("|"));
   const pendingPresentationEvents = [optimisticPlay, activeEvent, ...eventQueue, ...room.timeline.filter((event) => !processedEventIds.has(event.id))].filter((event): event is GameEvent => Boolean(event));
-  const judgementInFlight = new Set(pendingPresentationEvents.flatMap((event) => settlesInJudgement(event) ? [event.card.id] : []));
+  const pendingEquipmentArrivals = derivePendingEquipmentArrivalIdentities(pendingPresentationEvents, room.players, presentedEventIds);
+  const pendingEquipmentArrivalCardIds = new Set(pendingEquipmentArrivals.map((identity) => identity.cardId));
+  const markPublicEquipmentTransitionPresented = useCallback((transition: Extract<PublicPresentationRoute, { kind: "zone-transition" }>) => {
+    if (transition.scope.roomCode !== room.code || transition.scope.viewerId !== room.meId
+      || !activeEvent || activeEvent.id !== transition.eventId || activeEvent.type !== "card"
+      || activeEvent.card.id !== transition.physicalCardId) return;
+    const refreshed = room.presentationSnapshot ? routePublicEquipmentTransition({
+      event: activeEvent,
+      players: room.players,
+      snapshot: room.presentationSnapshot,
+      clientView: clientPresentation,
+      roomCode: room.code,
+      viewerId: room.meId,
+      retiredTransitionIds: [...presentedEventIds],
+    }) : null;
+    if (refreshed?.kind !== "zone-transition" || refreshed.claimId !== transition.claimId
+      || refreshed.destination !== transition.destination || refreshed.ownerId !== transition.ownerId
+      || refreshed.slot !== transition.slot || refreshed.from?.zone !== transition.from?.zone
+      || refreshed.from?.ownerId !== transition.from?.ownerId || refreshed.from?.slot !== transition.from?.slot) return;
+    if (transition.destination === "EQUIPMENT") {
+      const proof = equipmentArrivalIdentity(activeEvent, room.players);
+      if (!proof || proof.eventId !== transition.eventId || proof.cardId !== transition.physicalCardId
+        || proof.ownerId !== transition.ownerId || proof.slot !== transition.slot) return;
+    } else if (activeEvent.publicZoneTransition?.eventId !== transition.eventId
+      || activeEvent.publicZoneTransition.physicalCardId !== transition.physicalCardId) return;
+    setPresentedEventIds((ids) => ids.has(transition.eventId) ? ids : new Set([...ids, transition.eventId]));
+    setActiveEvent((currentEvent) => currentEvent?.id === transition.eventId ? null : currentEvent);
+  }, [activeEvent, clientPresentation, presentedEventIds, room.code, room.meId, room.players, room.presentationSnapshot]);
+  const markPublicJudgementTransitionPresented = useCallback((transition: Extract<PublicPresentationRoute, { kind: "zone-transition" }>) => {
+    if (transition.scope.roomCode !== room.code || transition.scope.viewerId !== room.meId
+      || !activeEvent || activeEvent.id !== transition.eventId || !isM3JudgementTransitionEvent(activeEvent)) return;
+    const refreshed = room.presentationSnapshot ? routePublicJudgementTransition({
+      event: activeEvent, timeline: room.timeline, snapshot: room.presentationSnapshot, clientView: clientPresentation,
+      roomCode: room.code, viewerId: room.meId, retiredTransitionIds: [...presentedEventIds],
+    }) : null;
+    if (refreshed?.kind !== "zone-transition" || refreshed.claimId !== transition.claimId
+      || !publicJudgementTransitionMatches(activeEvent, transition)) return;
+    setPresentedEventIds((ids) => ids.has(transition.eventId) ? ids : new Set([...ids, transition.eventId]));
+    setActiveEvent((currentEvent) => currentEvent?.id === transition.eventId ? null : currentEvent);
+  }, [activeEvent, clientPresentation, presentedEventIds, room.code, room.meId, room.presentationSnapshot, room.timeline]);
+  const markPublicDiscardTransitionPresented = useCallback((transition: PublicDiscardTransitionRoute) => {
+    if (transition.scope.roomCode !== room.code || transition.scope.viewerId !== room.meId
+      || !activeEvent || activeEvent.id !== transition.eventId) return;
+    const refreshed = routePublicDiscardTransition({
+      event: activeEvent as PublicDiscardTimelineEvent,
+      timeline: room.timeline as readonly PublicDiscardTimelineEvent[],
+      roomCode: room.code,
+      viewerId: room.meId,
+      retiredTransitionIds: [...presentedEventIds],
+    });
+    if (!refreshed || refreshed.claimId !== transition.claimId
+      || JSON.stringify(refreshed.transitions) !== JSON.stringify(transition.transitions)) return;
+    setPresentedEventIds((ids) => ids.has(transition.eventId) ? ids : new Set([...ids, transition.eventId]));
+    setActiveEvent((currentEvent) => currentEvent?.id === transition.eventId ? null : currentEvent);
+  }, [activeEvent, presentedEventIds, room.code, room.meId, room.timeline]);
+  const markPublicHandRevealTransitionPresented = useCallback((transition: PublicHandRevealTransitionRoute) => {
+    if (transition.scope.roomCode !== room.code || transition.scope.viewerId !== room.meId
+      || !activeEvent || activeEvent.id !== transition.eventId) return;
+    const refreshed = routePublicHandRevealTransition({
+      event: activeEvent as PublicHandRevealTimelineEvent,
+      timeline: room.timeline as readonly PublicHandRevealTimelineEvent[],
+      roomCode: room.code,
+      viewerId: room.meId,
+      retiredTransitionIds: [...presentedEventIds],
+    });
+    if (!refreshed || refreshed.claimId !== transition.claimId
+      || refreshed.physicalCardId !== transition.physicalCardId
+      || refreshed.sourcePlayerId !== transition.sourcePlayerId
+      || refreshed.destinationPlayerId !== transition.destinationPlayerId) return;
+    setPresentedEventIds((ids) => ids.has(transition.eventId) ? ids : new Set([...ids, transition.eventId]));
+    setActiveEvent((currentEvent) => currentEvent?.id === transition.eventId ? null : currentEvent);
+  }, [activeEvent, presentedEventIds, room.code, room.meId, room.timeline]);
+  const judgementInFlight = new Set([
+    ...pendingPresentationEvents.flatMap((event) => settlesInJudgement(event) ? [event.card.id] : []),
+    ...(activeJudgementZoneTransition?.destination === "JUDGEMENT" ? [activeJudgementZoneTransition.physicalCardId] : []),
+  ]);
   const privateDrawVisible = privateDrawCards.length > 0 && !activeEvent && eventQueue.length === 0;
   const privateDrawTimer = privateDrawVisible
     ? <Countdown key={privateDrawCards.map((drawn) => drawn.id).join("-")} durationMs={UI_TIMING.privateDraw} label="Cards close in" compactEvent />
@@ -2993,21 +5294,31 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // Legacy seat positioning remains available through the "--countdown-x" and "--countdown-y" table tokens.
   useEffect(() => { onActionRef.current = onAction; }, [onAction]);
   useEffect(() => {
-    const events = room.timeline.map((event) => ({
-      id: event.id,
-      drawPlayerId: event.type === "message" ? event.drawPlayerId : event.type === "card" && "drawPlayerId" in event && typeof event.drawPlayerId === "string" ? event.drawPlayerId : undefined,
-      gainedCardIds: event.type === "card" && event.action === "gain" ? [event.card.id] : [],
-    }));
-    const result = updatePrivateHand(knownHandCards.current, room.meId, room.myHand, events);
+    const seenTransferIds = readSeenPrivateHandTransfers(room.code, room.meId);
+    const result = updatePrivateHand(knownHandCards.current ?? baselineHand(room.meId, [], []), room.meId, room.myHand, privateHandEvents, {
+      now: room.serverNow ?? Date.now(),
+      seenTransferIds,
+    });
     knownHandCards.current = result.baseline;
     if (result.switched) {
-      setPrivateDrawPresentation({ playerId: room.meId, cards: [] });
+      rememberPrivateHandTransfers(room.code, room.meId, result.ignoredTransferIds);
+      setPrivateDrawPresentation({ playerId: room.meId, cards: result.drawn, transferIds: result.presentedTransferIds });
       cardInfoReturnFocusRef.current = null;
       setInfoCard(null); setTriggerSelectedKeys([]);
       return;
     }
-    if (result.drawn.length) setPrivateDrawPresentation({ playerId: room.meId, cards: result.drawn });
-  }, [room.meId, room.myHand, room.timeline]);
+    if (result.drawn.length) {
+      setPrivateDrawPresentation((current) => {
+        const existing = current.playerId === room.meId ? current.cards : [];
+        const byId = new Map([...existing, ...result.drawn].map((card) => [card.id, card]));
+        return {
+          playerId: room.meId,
+          cards: [...byId.values()],
+          transferIds: [...new Set([...(current.playerId === room.meId ? current.transferIds : []), ...result.presentedTransferIds])],
+        };
+      });
+    }
+  }, [room.code, room.meId, room.myHand, room.serverNow, privateHandEvents]);
   useEffect(() => {
     const noticeScopeKey = JSON.stringify([room.code, room.meId]);
     if (effectNoticeScope.current !== noticeScopeKey) {
@@ -3050,7 +5361,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ? [proof]
         : [];
     });
-    if (freshDismantleSettlements.length === 1) setActiveDismantleSettlement({ eventId: freshDismantleSettlements[0].eventId, exiting: false, journeySettled: false });
+    if (freshDismantleSettlements.length === 1) setActiveDismantleSettlement({ eventId: freshDismantleSettlements[0].eventId, roomCode: room.code, exiting: false, journeySettled: false, h4VisibleSinceMs: null });
     const freshStealSettlements = fresh.flatMap((event) => {
       if (event.type !== "message") return [];
       const proofs = stealSettlements.filter((proof) => proof.eventId === event.id);
@@ -3063,7 +5374,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ? [proof]
         : [];
     });
-    if (freshStealSettlements.length === 1) setActiveStealSettlement({ eventId: freshStealSettlements[0].eventId, exiting: false });
+    if (freshStealSettlements.length === 1) setActiveStealSettlement({ eventId: freshStealSettlements[0].eventId, roomCode: room.code, exiting: false, journeySettled: false, h4VisibleSinceMs: null });
     const freshAttackHitSettlements = fresh.flatMap((event) => {
       if (event.type !== "message") return [];
       const proofs = attackHitSettlements.filter((proof) => proof.eventId === event.id);
@@ -3143,8 +5454,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         : [];
     });
     if (freshBumperHarvestSettlements.length === 1) setActiveBumperHarvestSettlement({ eventId: freshBumperHarvestSettlements[0].eventId, exiting: false });
-    const effect = fresh.filter((event) => event.type === "message" && event.effectNotice === true
-      && Boolean(event.id.trim()) && room.timeline.filter((candidate) => candidate.id === event.id).length === 1).at(-1);
     const projectedDiaoChanNotices = room.presentationSnapshot?.diaoChanSkillNotices ?? [];
     const queuedNotices = room.timeline.flatMap((event) => {
       if (event.type !== "message" || !event.id.trim()
@@ -3192,14 +5501,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           }];
         }
       }
-      return effect?.id === event.id ? [{ roomCode: room.code, viewerId: room.meId, eventId: event.id, heading: "EFFECT TRIGGERED", message: event.message, exiting: false }] : [];
+      return [];
     });
     if (queuedNotices.length) setEffectNotices((current) => mergeEffectNoticeQueue(current, queuedNotices));
     const immediatelyPresented = new Set<string>();
     const visible = fresh.filter((event) => {
       if (event.presentation === false) return false;
       // Informational text is not a blocking visual presentation.
-      if (event.type === "message") return false;
+      if (event.type === "message") return isM3JudgementTransitionEvent(event);
+      if (event.type === "card" && settlesInJudgement(event)
+        && validatedJudgementTransitionSourceEventIds.has(event.id)) {
+        // Its proven zone-transition owner presents the same physical card;
+        // the source event must not consume a separate invisible timer first.
+        immediatelyPresented.add(event.id);
+        optimisticallyPresentedCards.current.delete(event.card.id);
+        if (optimisticPlay?.type === "card" && optimisticPlay.card.id === event.card.id) setOptimisticPlay(null);
+        return false;
+      }
       if (event.type === "card" && optimisticallyPresentedCards.current.delete(event.card.id)) { immediatelyPresented.add(event.id); return false; }
       if (event.type === "cards" && event.action === "play") {
         const matched = event.cards.map((card) => optimisticallyPresentedCards.current.delete(card.id));
@@ -3209,22 +5527,22 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
     if (immediatelyPresented.size) setPresentedEventIds((ids) => new Set([...ids, ...immediatelyPresented]));
     if (visible.length) {
-      setResolutionClosing(false);
+      setSelfTargetWindowClosing(false);
       const cardsArrived = visible.some((event) => eventCards(event).length > 0);
-      if (cardsArrived) resolutionRevision.current += 1;
+      if (cardsArrived) selfTargetWindowRevision.current += 1;
       const latestResolutionId = visible.map((event) => event.resolutionId).filter(Boolean).at(-1);
       if (latestResolutionId && activeEvent?.resolutionId && activeEvent.resolutionId !== latestResolutionId && eventImportance(activeEvent) === "informational") setActiveEvent(null);
       if (!optimisticPlay && !activeEvent && eventQueue.length === 0) {
         const first = visible[0];
         if (first) {
           setActiveEvent(first);
-          if (retainsAtPlayer(first)) setResolutionEvents((events) => appendUniqueEvents(events, [first]));
+          if (retainsAtPlayer(first)) setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [first]));
         }
         setEventQueue(coalescePresentationQueue([], visible.slice(1)));
       } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, lustFramePresentationBlocked, optimisticPlay, activeEvent, activeGroupSettlement?.eventId, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements]);
+  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, lustFramePresentationBlocked, optimisticPlay, activeEvent, activeGroupSettlement?.eventId, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements, validatedJudgementTransitionSourceEventIds]);
   const effectNoticeEventId = effectNotice?.eventId ?? "";
   const effectNoticeProofEventId = effectNotice?.beautyProofEventId ?? effectNoticeEventId;
   const effectNoticeRoomCode = effectNotice?.roomCode ?? "";
@@ -3246,14 +5564,59 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     return () => { window.clearTimeout(exitTimer); window.clearTimeout(removeTimer); };
   }, [effectNoticeEventId, effectNoticeProofEventId, effectNoticeRoomCode, effectNoticeViewerId, room.code, room.meId]);
   useEffect(() => { if (!optimisticPlay) return; const timer = setTimeout(() => setOptimisticPlay(null), UI_TIMING.playedCard); return () => clearTimeout(timer); }, [optimisticPlay]);
-  useEffect(() => { if (!livePendingStartId || livePendingStartId === sequenceScopeStartId) return; const timer = setTimeout(() => setSequenceScopeStartId(livePendingStartId), 0); return () => clearTimeout(timer); }, [livePendingStartId, sequenceScopeStartId]);
+  useEffect(() => { if (!livePendingSelfTargetStartId || livePendingSelfTargetStartId === selfTargetWindowStartId) return; const timer = setTimeout(() => setSelfTargetWindowStartId(livePendingSelfTargetStartId), 0); return () => clearTimeout(timer); }, [livePendingSelfTargetStartId, selfTargetWindowStartId]);
   useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);
   useEffect(() => { const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || !room.phase?.startsWith("draw") || !canUseAction(room.currentAction, "draw") || activeEvent || eventQueue.length || hasUnseenPresentations || privateDrawCards.length || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey && canUseAction(room.currentAction, "draw")) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, UI_TIMING.turnDrawStart); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, room.currentAction, current?.name, lastTimelineId, hasUnseenPresentations, activeEvent, eventQueue.length, privateDrawCards.length]);
-  useEffect(() => { if (optimisticPlay || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { const next = eventQueue[0]; setActiveEvent(next); if (retainsAtPlayer(next)) setResolutionEvents((events) => appendUniqueEvents(events, [next])); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue]);
-  useEffect(() => { if (!activeEvent) return; const displayTime = activeEvent.type === "card" || activeEvent.type === "cards" ? isJudgementReveal(activeEvent) ? UI_TIMING.judgementCard : UI_TIMING.playedCard : 0; const timer = setTimeout(() => { setPresentedEventIds((ids) => ids.has(activeEvent.id) ? ids : new Set([...ids, activeEvent.id])); setActiveEvent(null); }, displayTime); return () => clearTimeout(timer); }, [activeEvent]);
-  useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || resolutionClosing || !resolutionEvents.length) return; const timer = setTimeout(() => setResolutionClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, resolutionClosing, resolutionEvents.length]);
-  useEffect(() => { if (!resolutionClosing) return; const closingRevision = resolutionRevision.current; const timer = setTimeout(() => { if (resolutionRevision.current !== closingRevision) { setResolutionClosing(false); return; } setResolutionEvents([]); setSequenceScopeStartId(""); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
-  useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawPresentation({ playerId: room.meId, cards: [] }), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, room.meId, activeEvent, eventQueue.length]);
+  useEffect(() => { if (optimisticPlay || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { const next = eventQueue[0]; setActiveEvent(next); if (retainsAtPlayer(next)) setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [next])); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue]);
+  useEffect(() => {
+    if (!activeEventTimerEventId) return;
+    const timerContext = presentationTimerDiagnosticContextRef.current;
+    const traceTimer = (status: "scheduled" | "cancelled" | "fired" | "equipment-arrival-exempt" | "zone-transition-exempt") => recordAttackDodgeUxTrace("public-event-presentation-timer", {
+      status,
+      eventId: activeEventTimerEventId,
+      eventKind: activeEventTimerKind,
+      stableIdentity: activeEventTimerIdentity,
+      durationMs: activeEventDisplayDuration,
+      timerMode: activeEquipmentArrivalKey ? "equipment-arrival" : activeJudgementTransitionKey || activePublicDiscardTransitionKey || activePublicHandRevealTransitionKey ? "zone-transition" : "timed-reveal",
+      equipmentArrivalIdentity: activeEquipmentArrivalKey || undefined,
+      ...timerContext,
+    });
+    if (activeEquipmentArrivalKey) {
+      traceTimer("equipment-arrival-exempt");
+      return;
+    }
+    if (activeJudgementTransitionKey) {
+      traceTimer("zone-transition-exempt");
+      return;
+    }
+    if (activePublicDiscardTransitionKey) {
+      traceTimer("zone-transition-exempt");
+      return;
+    }
+    if (activePublicHandRevealTransitionKey) {
+      traceTimer("zone-transition-exempt");
+      return;
+    }
+    let fired = false;
+    traceTimer("scheduled");
+    const timer = setTimeout(() => {
+      fired = true;
+      traceTimer("fired");
+      setPresentedEventIds((ids) => ids.has(activeEventTimerEventId) ? ids : new Set([...ids, activeEventTimerEventId]));
+      setActiveEvent((currentEvent) => currentEvent?.id === activeEventTimerEventId ? null : currentEvent);
+    }, activeEventDisplayDuration);
+    return () => {
+      clearTimeout(timer);
+      if (!fired) traceTimer("cancelled");
+    };
+  }, [activeEventTimerEventId, activeEventTimerKind, activeEventTimerIdentity, activeEventDisplayDuration, activeEquipmentArrivalKey, activeJudgementTransitionKey, activePublicDiscardTransitionKey, activePublicHandRevealTransitionKey]);
+  useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || selfTargetWindowClosing || !selfTargetWindowEvents.length) return; const timer = setTimeout(() => setSelfTargetWindowClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, selfTargetWindowClosing, selfTargetWindowEvents.length]);
+  useEffect(() => { if (!selfTargetWindowClosing) return; const closingRevision = selfTargetWindowRevision.current; const timer = setTimeout(() => { if (selfTargetWindowRevision.current !== closingRevision) { setSelfTargetWindowClosing(false); return; } setSelfTargetWindowEvents([]); setSelfTargetWindowStartId(""); setSelfTargetWindowClosing(false); }, UI_TIMING.selfTargetWindowClose); return () => clearTimeout(timer); }, [selfTargetWindowClosing]);
+  useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawPresentation({ playerId: room.meId, cards: [], transferIds: [] }), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, room.meId, activeEvent, eventQueue.length]);
+  useEffect(() => {
+    if (!privateDrawVisible || !privateDrawPresentation.transferIds.length) return;
+    rememberPrivateHandTransfers(room.code, room.meId, privateDrawPresentation.transferIds);
+  }, [privateDrawVisible, privateDrawPresentation.transferIds, room.code, room.meId]);
   useEffect(() => {
     if (infoCardSourceAvailable) return;
     const timer = window.setTimeout(() => closeCardDetails(false), 0);
@@ -3288,6 +5651,30 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // phase, or acting seat. The authoritative revision identifies that new
   // decision and prevents a previous provider/cost from leaking into it.
   useEffect(() => { const timer = setTimeout(() => { setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setResponseProviderId(""); setSelected(""); setTargetIds([]); setBorrowedSwordTargetId(""); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); targetCardSubmissionRef.current = ""; targetCardPickerSubmissionRef.current = ""; }, 0); return () => clearTimeout(timer); }, [room.actionRevision]);
+  useEffect(() => {
+    const nextIdentity = { roomCode: room.code, viewerId: room.meId, actionRevision: room.actionRevision ?? "" };
+    const previousIdentity = targetActionIdentityRef.current;
+    if (previousIdentity.roomCode === nextIdentity.roomCode && previousIdentity.viewerId === nextIdentity.viewerId && previousIdentity.actionRevision === nextIdentity.actionRevision) return;
+    targetActionIdentityRef.current = nextIdentity;
+    if (previousIdentity.roomCode !== nextIdentity.roomCode || previousIdentity.viewerId !== nextIdentity.viewerId) {
+      setLocalPlayTargetNotice(null);
+      return;
+    }
+    if (!normalTargetSelectionActive) {
+      setLocalPlayTargetNotice(null);
+      return;
+    }
+    const invalidatedTarget = targetIds.find((id) => !playTargetEligibleIds.has(id));
+    setLocalPlayTargetNotice(invalidatedTarget ? {
+      roomCode: room.code,
+      viewerId: room.meId,
+      actionRevision: nextIdentity.actionRevision,
+      modeKey: "stale",
+      targetId: invalidatedTarget,
+      message: "Target is no longer eligible. Select another target.",
+      stale: true,
+    } : null);
+  }, [room.code, room.meId, room.actionRevision, targetIds, playTargetEligibleIds, normalTargetSelectionActive]);
   useEffect(() => {
     if (!submittedTargetPreview) return;
     const presentationUnchanged = presentationViewKey(clientPresentation) === submittedTargetPreview.presentationKey;
@@ -3365,10 +5752,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     // A Negation submitted during the shared window is still a private intent.
     // Only the server-selected winner may create a public card presentation.
     const presentImmediately = Boolean(optimisticEvent && !room.currentAction?.negationWindowId && !optimisticPlay && !activeEvent && eventQueue.length === 0);
-    if (presentImmediately && optimisticEvent) { resolutionRevision.current += 1; materials.forEach((item) => optimisticallyPresentedCards.current.add(item.id)); setResolutionClosing(false); setResolutionEvents((events) => appendUniqueEvents(events, [optimisticEvent])); setOptimisticPlay(optimisticEvent); }
+    if (presentImmediately && optimisticEvent) { selfTargetWindowRevision.current += 1; materials.forEach((item) => optimisticallyPresentedCards.current.add(item.id)); setSelfTargetWindowClosing(false); setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [optimisticEvent])); setOptimisticPlay(optimisticEvent); }
     setResponseProviderId(""); setLongdanMode(null); setSelected(""); setSerpentSelected([]);
     const accepted = await onAction("respond", { providerId: provider.providerId, ...(selectedIds.length === 1 ? { cardId: selectedIds[0] } : selectedIds.length > 1 ? { cardIds: selectedIds } : {}) });
-    if (!accepted && presentImmediately && optimisticEvent) { materials.forEach((item) => optimisticallyPresentedCards.current.delete(item.id)); setOptimisticPlay(null); setResolutionEvents((events) => events.filter((event) => event.id !== optimisticEvent.id)); }
+    if (!accepted && presentImmediately && optimisticEvent) { materials.forEach((item) => optimisticallyPresentedCards.current.delete(item.id)); setOptimisticPlay(null); setSelfTargetWindowEvents((events) => events.filter((event) => event.id !== optimisticEvent.id)); }
   };
   const playSerpentAttack = async () => {
     if (!me || !canPlay || !canDeclareAttack || serpentSelected.length !== 2) return;
@@ -3380,16 +5767,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const optimisticEvent: CardGroupEvent = { id: `optimistic-serpent-${materials.map((item) => item.id).join("-")}`, type: "cards", player: me.name, target: displayTarget ?? me.name, cards: materials, action: "play" };
     const presentImmediately = !optimisticPlay && !activeEvent && eventQueue.length === 0;
     if (presentImmediately) {
-      resolutionRevision.current += 1;
+      selfTargetWindowRevision.current += 1;
       materials.forEach((item) => optimisticallyPresentedCards.current.add(item.id));
-      setResolutionClosing(false); setResolutionEvents((events) => appendUniqueEvents(events, [optimisticEvent])); setOptimisticPlay(optimisticEvent);
+      setSelfTargetWindowClosing(false); setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [optimisticEvent])); setOptimisticPlay(optimisticEvent);
     }
     const action = "serpent_spear_attack";
     setSerpentMode(false); setSerpentSelected([]); setSelected(""); setTargetIds([]);
     const accepted = await submitWithLocalTargetPreview(() => onAction(action, { cardIds: materials.map((item) => item.id), targetId: target }));
     if (!accepted && presentImmediately) {
       materials.forEach((item) => optimisticallyPresentedCards.current.delete(item.id));
-      setOptimisticPlay(null); setResolutionEvents((events) => events.filter((event) => event.id !== optimisticEvent.id));
+      setOptimisticPlay(null); setSelfTargetWindowEvents((events) => events.filter((event) => event.id !== optimisticEvent.id));
     }
   };
   const chooseBorrowedSwordTarget = (playerId: string) => { if (!borrowedSwordTargetSelectionActive || !borrowedSwordEligibleTargetIds.includes(playerId)) return; setBorrowedSwordTargetId((currentId) => currentId === playerId ? "" : playerId); };
@@ -3400,7 +5787,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     await submitWithLocalTargetPreview(() => onAction("choose_borrowed_sword_target", { targetId }));
   };
   const play = async () => {
-    if (!card || !me || (selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid)) || card.kind === "BorrowedSword" && (!target || !borrowedSwordPlayTargetIds.includes(target))) return;
+    if (!card || !me || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || card.kind === "BorrowedSword" && (!target || !borrowedSwordPlayTargetIds.includes(target))) return;
     const playedCard = card;
     const definition = cardDefinition(card.kind);
     const needsTarget = selectedCanPlayAsAttack || ["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind);
@@ -3416,11 +5803,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       action: definition.equipmentSlot && !selectedCanPlayAsAttack ? "equip" : "play",
       ...(selectedCanPlayAsAttack && !isAttackCard(card) ? { playedAs: "attack" } : {}),
     };
-    resolutionRevision.current += 1;
-    optimisticallyPresentedCards.current.add(playedCard.id);
-    setResolutionClosing(false);
-    setResolutionEvents(retainsAtPlayer(optimisticEvent) ? [optimisticEvent] : []);
-    setOptimisticPlay(optimisticEvent);
+    const serverCommittedEquipmentJourney = Boolean(definition.equipmentSlot && !selectedCanPlayAsAttack);
+    const presentImmediately = !serverCommittedEquipmentJourney && !optimisticPlay && !activeEvent && eventQueue.length === 0;
+    if (presentImmediately) {
+      selfTargetWindowRevision.current += 1;
+      optimisticallyPresentedCards.current.add(playedCard.id);
+      setSelfTargetWindowClosing(false);
+      setSelfTargetWindowEvents(retainsAtPlayer(optimisticEvent) ? [optimisticEvent] : []);
+      setOptimisticPlay(optimisticEvent);
+    }
     setSelected("");
     setTargetIds([]);
     const accepted = await submitWithLocalTargetPreview(() => onAction("play_card", {
@@ -3429,13 +5820,25 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ...(needsTarget ? { targetId: target, ...(halberdAttack ? { targetIds } : {}) } : {}),
     }));
     if (!accepted) {
-      optimisticallyPresentedCards.current.delete(playedCard.id);
-      setOptimisticPlay(null);
-      setResolutionEvents([]);
+      if (presentImmediately) {
+        optimisticallyPresentedCards.current.delete(playedCard.id);
+        setOptimisticPlay(null);
+        setSelfTargetWindowEvents([]);
+      }
     }
   };
   const decisionPresentation = buildDecisionPresentation(room, clientPresentation);
-  const publicActivityStatus = derivePublicActivityStatus(room);
+  const publicActivityStatus = derivePublicActivityStatus({
+    status: room.status,
+    phase: room.phase,
+    turnSeat: room.turnSeat,
+    players: room.players,
+    presentationSnapshot: room.presentationSnapshot,
+    activePublicJudgementEventId: activeEvent?.type === "card" && activeEvent.action === "reveal" && activeEvent.judgement
+      ? activeEvent.id : null,
+    pendingTargetCard: room.pendingTargetCard,
+    currentViewerNegationWindowId: room.currentAction?.negationWindowId ?? null,
+  });
   const publicActivitySeatLayoutKey = room.players.map((player) => `${player.id}:${player.seat}`).join("|");
   const currentActionOwnedByViewer = Boolean(room.currentAction?.actorId === room.meId && room.isMyAction && room.currentAction.kind !== "none");
   const targetCardPickerSelectedKeys = targetCardPickerSelection
@@ -3510,10 +5913,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const reasons: string[] = [];
     if (rootEvents.length !== 1) reasons.push(rootEvents.length === 0 ? "root-event-missing" : "root-event-duplicate");
     if (responseEvents.length !== 1) reasons.push(responseEvents.length === 0 ? "response-event-missing" : "response-event-duplicate");
-    if (!rootEvent || rootEvent.type !== "card" || rootEvent.action !== "play") reasons.push("root-event-not-public-card-play");
+    const serpentRootProof = rootEvent?.type === "cards"
+      ? verifiedSerpentSpearAttackFrameForEvent(room.timeline, room.presentationSnapshot?.publicCardEffects ?? [], room.players, rootEvent.id)
+      : null;
+    if (!rootEvent || (rootEvent.type !== "card" && rootEvent.type !== "cards") || rootEvent.action !== "play") reasons.push("root-event-not-public-card-play");
     else {
-      if (rootEvent.presentation === false) reasons.push("root-event-presentation-suppressed");
-      if (rootEvent.playedAs === undefined ? rootEvent.card.kind !== "Attack" : rootEvent.playedAs !== "attack" || rootEvent.card.kind === "Attack") reasons.push("root-event-not-attack");
+      if (rootEvent.presentation === false || rootEvent.privateToPlayerId) reasons.push("root-event-presentation-suppressed");
+      const isPhysicalAttack = rootEvent.type === "card"
+        && (rootEvent.playedAs === undefined ? rootEvent.card.kind === "Attack" : rootEvent.playedAs === "attack" && rootEvent.card.kind !== "Attack");
+      const isProvenSerpentSpearAttack = Boolean(serpentRootProof
+        && serpentRootProof.owner.id === proof.rootSourceId && serpentRootProof.target.id === proof.targetId);
+      if (!isPhysicalAttack && !isProvenSerpentSpearAttack) reasons.push("root-event-not-attack");
       if (rootEvent.resolutionId !== proof.rootResolutionId) reasons.push("root-resolution-mismatch");
     }
     if (!responseEvent || responseEvent.type !== "card" || responseEvent.action !== "play") reasons.push("response-event-not-public-card-play");
@@ -3550,15 +5960,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
     return { proof, rootEvent, responseEvent, reasons, lifecycleRetirementReason };
   });
-  const serverRetiredAttackDodgeEvents = new Set(attackDodgeResponseEvaluations
-    .filter(({ lifecycleRetirementReason }) => lifecycleRetirementReason !== null)
-    .flatMap(({ proof }) => [proof.rootEventId, proof.responseEventId]));
-  const serverRetiredAttackDodgeCards = new Set(attackDodgeResponseEvaluations
-    .filter(({ lifecycleRetirementReason }) => lifecycleRetirementReason !== null)
-    .flatMap(({ rootEvent, responseEvent }) => [rootEvent, responseEvent]
-      .flatMap((event) => event?.type === "card" ? [event.card.id] : [])));
   const attackDodgeResponseCandidates = attackDodgeResponseEvaluations.flatMap(({ proof, rootEvent, responseEvent, reasons }) =>
-    reasons.length === 0 && rootEvent?.type === "card" && responseEvent?.type === "card"
+    reasons.length === 0 && (rootEvent?.type === "card" || rootEvent?.type === "cards") && responseEvent?.type === "card"
       ? [{ proof, rootEvent, responseEvent }]
       : []);
   const attackDodgeHoldSupersessionReason = activeAttackDodgeSettlement
@@ -3578,9 +5981,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const attackDodgeResponsesForActiveSettlement = visibleActiveAttackDodgeSettlement
     ? attackDodgeResponseCandidates.filter(({ proof }) => attackDodgeResponseProofKey(proof) === activeAttackDodgeSettlementProofKey)
     : [];
-  const completedAttackDodgeSettlementCandidate = visibleActiveAttackDodgeSettlement?.phase === "complete" && activeAttackDodgeSettlementProofKey
-    ? attackDodgeResponseCandidates.find(({ proof }) => attackDodgeResponseProofKey(proof) === activeAttackDodgeSettlementProofKey) ?? null
-    : null;
   useEffect(() => {
     const observation = observedAttackDodgeProofs.current;
     if (!observation) return;
@@ -3644,6 +6044,22 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const source = room.players.find((player) => player.id === exchange.root.sourceId);
     const target = room.players.find((player) => player.id === exchange.root.targetId);
     if (!source?.name || !target?.name) return null;
+    const negationResponses = (exchange.negationResponses ?? []).flatMap((response, index) => {
+      if (response.ordinal !== index + 1 || response.relation !== "DUEL_NEGATION"
+        || response.interactionId !== exchange.interactionId || response.rootFrameId !== exchange.rootFrameId
+        || response.rootEventId !== exchange.root.eventId || response.rootResolutionId !== exchange.root.resolutionId) return [];
+      const responseMatches = room.timeline.filter((event) => event.id === response.responseEventId);
+      if (responseMatches.length !== 1) return [];
+      const responseEvent = responseMatches[0];
+      const responseActor = room.players.find((player) => player.id === response.responseActorId);
+      if (responseEvent.type !== "card" || responseEvent.action !== "play" || responseEvent.presentation === false
+        || typeof responseEvent.privateToPlayerId === "string" || responseEvent.playedAs !== undefined
+        || responseEvent.card.kind !== "Negation" || responseEvent.card.id !== response.responseCardId
+        || responseEvent.resolutionId !== response.responseResolutionId
+        || !responseActor?.name || responseEvent.player !== responseActor.name) return [];
+      return [{ response, responseEvent, responseActor }];
+    });
+    if (negationResponses.length !== (exchange.negationResponses?.length ?? 0)) return null;
     const responses = exchange.responses.flatMap((response, index) => {
       if (response.ordinal !== index + 1 || response.relation !== "DUEL_EXCHANGE"
         || response.rootEventId !== exchange.root.eventId || response.rootResolutionId !== exchange.root.resolutionId
@@ -3677,7 +6093,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (responses.length !== exchange.responseCount) return null;
     const latest = responses.at(-1) ?? null;
     return {
-      exchange, rootEvent, source, target, responses,
+      exchange, rootEvent, source, target, negationResponses, responses,
       response: latest?.response ?? null,
       responseEvent: latest?.responseEvent ?? null,
       responseActor: latest?.responseActor ?? null,
@@ -3786,7 +6202,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         || !diaoChanNoticeMatchesEvent(resultEvent.publicDiaoChanNotice, result)) return null;
       settlementNotice = result;
       settlementCopy = diaoChanNoticeCopy(result, room.players);
-      if (!settlementCopy || exchange.settlement.readRemainingMs <= 0) return null;
+      if (!settlementCopy) return null;
     } else if (exchange.currentParticipantId === null || exchange.decisionActorId === null) return null;
     return { exchange, costFrame, responses, settlementNotice, settlementCopy };
   })();
@@ -3808,9 +6224,41 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const rootEvents = room.timeline.filter((event) => event.id === links.root.eventId);
     if (rootEvents.length !== 1) return [];
     const rootEvent = rootEvents[0];
+    const ambushmentRootProof = root.cardKind === "Dismantle" && rootEvent.type === "card"
+      ? verifiedAmbushmentConversionFrameForEvent(
+        room.timeline,
+        room.presentationSnapshot?.publicCardEffects ?? [],
+        room.players,
+        rootEvent.id,
+        rootEvent.card.id,
+      )
+      : null;
+    const captivatingRootProof = root.cardKind === "Overindulgence" && rootEvent.type === "card"
+      ? verifiedCaptivatingConversionFrameForEvent(
+        room.timeline,
+        room.presentationSnapshot?.publicCardEffects ?? [],
+        room.players,
+        rootEvent.id,
+        rootEvent.card.id,
+      )
+      : null;
+    const isProvenAmbushmentRoot = Boolean(ambushmentRootProof
+      && ambushmentRootProof.owner.id === root.source.id
+      && ambushmentRootProof.target.id === root.targets[0]?.id);
+    const isProvenCaptivatingRoot = Boolean(captivatingRootProof
+      && captivatingRootProof.owner.id === root.source.id
+      && captivatingRootProof.target.id === root.targets[0]?.id);
     if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
-      || rootEvent.playedAs !== undefined || rootEvent.card?.kind !== root.cardKind
+      || ((rootEvent.playedAs !== undefined || rootEvent.card?.kind !== root.cardKind)
+        && !isProvenAmbushmentRoot && !isProvenCaptivatingRoot)
       || rootEvent.resolutionId !== links.root.resolutionId) return [];
+    const rootSource = root.source.id ? room.players.find((player) => player.id === root.source.id) : undefined;
+    const rootTarget = root.targets[0]?.id ? room.players.find((player) => player.id === root.targets[0]?.id) : undefined;
+    // Resolve this physical card through its committed public play event. The
+    // owner's viewer projection can also contain the same ID in the earlier
+    // private draw event, so timeline-wide card-ID uniqueness would make this
+    // public root appear only in some viewers' projections.
+    if (!rootSource?.name || !rootTarget?.name || rootEvent.player !== rootSource.name || !rootEvent.card.id) return [];
     const responseEventIds = new Set([rootEvent.id]);
     const responseCardIds = new Set([rootEvent.card.id]);
     const responseNodes = chain.negationNodes.flatMap((node, index) => {
@@ -3833,7 +6281,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       return [{ node, event: responseEvent, actor: responseActor }];
     });
     if (responseNodes.length !== chain.negationNodes.length) return [];
-    return [{ chain, root, rootEvent, responseNodes }];
+    return [{ chain, root, rootEvent, responseNodes, ambushmentRootProof, captivatingRootProof }];
   })();
   const singleTargetNegationProofCandidate = singleTargetNegationProofCandidates.length === 1
     ? singleTargetNegationProofCandidates[0]
@@ -3857,6 +6305,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && singleTargetNegationProofCandidate.chain.interactionId === clientPresentation.interactionId
     && singleTargetNegationProofCandidate.chain.publicEventLinks?.root.eventId === singleTargetNegationProofCandidate.rootEvent.id
     ? singleTargetNegationProofCandidate
+    : null;
+  const singleTargetNegationNarration = singleTargetNegationProofCandidate
+    && clientPresentation.stage === "NEGATION"
+    ? derivePublicNegationNarration({
+      snapshot: room.presentationSnapshot,
+      players: room.players,
+      rootEventId: singleTargetNegationProofCandidate.rootEvent.id,
+    })
     : null;
   const oathSimultaneousRootCandidate = (() => {
     const scope = clientPresentation.oathRecipientScope;
@@ -4103,6 +6559,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         : null;
     })()
     : null;
+  const harvestPublicNarration: PublicNegationNarration | null = bumperHarvestRootCandidate
+    ? derivePublicNegationNarration({
+      snapshot: room.presentationSnapshot,
+      players: room.players,
+      rootEventId: bumperHarvestRootCandidate.rootEvent.id,
+    })
+    : null;
   const halberdOrderedRootCandidate = (() => {
     const group = clientPresentation.groupResolution;
     const rootProof = group?.orderedAttackRoot;
@@ -4247,6 +6710,46 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
       || rootEvent.playedAs !== undefined || rootEvent.card.kind !== group.cardKind
       || rootEvent.card.id !== rootProof.rootCardId || rootEvent.resolutionId !== rootProof.rootEventResolutionId) return null;
+    const historyFacts = [...(room.presentationSnapshot?.publicEventFacts ?? [])]
+      .filter((fact) => fact.semantics === "PROVEN" && fact.visibility === "PUBLIC"
+        && fact.identity.interactionId === group.interactionId
+        && fact.identity.rootFrameId === group.groupFrameId
+        && fact.identity.presentationRevision <= group.presentationRevision
+        && fact.frameId === group.groupFrameId
+        && (!fact.rootEventId || fact.rootEventId === rootEvent.id)
+        && fact.category === "CARD_PLAYED"
+        && fact.effect?.kind === "card_play" && fact.effect.label === "Negation")
+      .sort((left, right) => left.order - right.order);
+    const responseHistory: { eventId: string; ordinal: number; actorId: string; actorName: string; cardFace: Card; cardLabel: string; ariaLabel: string }[] = [];
+    const historyEventIds = new Set<string>([rootEvent.id]);
+    const historyCardIds = new Set<string>([rootEvent.card.id]);
+    let responseHistoryIsValid = true;
+    for (const fact of historyFacts) {
+      const matches = room.timeline.filter((event) => event.id === fact.eventId);
+      const event = matches.length === 1 ? matches[0] : null;
+      const actor = fact.actorId ? room.players.find((player) => player.id === fact.actorId) : null;
+      if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
+        || typeof event.privateToPlayerId === "string" || event.playedAs !== undefined
+        || event.card?.kind !== "Negation" || !event.card.id || event.publicSequence !== fact.order
+        || !fact.actorId || !actor?.name || event.actorId !== fact.actorId || event.player !== actor.name
+        || event.resolutionId !== fact.resolutionId || !fact.frameId
+        || historyEventIds.has(event.id) || historyCardIds.has(event.card.id)) {
+        responseHistoryIsValid = false;
+        break;
+      }
+      historyEventIds.add(event.id);
+      historyCardIds.add(event.card.id);
+      responseHistory.push({
+        eventId: event.id,
+        ordinal: responseHistory.length + 1,
+        actorId: actor.id,
+        actorName: actor.name,
+        cardFace: event.card,
+        cardLabel: "NEGATION",
+        ariaLabel: `${actor.name} played Negation during ${cardDefinition(group.cardKind).name}.`,
+      });
+    }
+    if (!responseHistoryIsValid) responseHistory.length = 0;
     const responseEventIds = new Set([rootEvent.id]);
     const responseCardIds = new Set([rootEvent.card.id]);
     const responses = isGroupNegationScene ? negationChain!.negationNodes.map((node, index) => {
@@ -4297,8 +6800,89 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       targets: targets as NonNullable<(typeof targets)[number]>[],
       groupTargetEffectScope: isGroupNegationScene ? groupTargetEffectScope : null,
       responses: responses as NonNullable<(typeof responses)[number]>[],
+      responseHistory,
     };
   })();
+  const deriveGroupTargetNegationNarration = (candidate: NonNullable<typeof groupTargetBranchCandidate>): PublicNegationNarration | null => {
+    const scope = candidate.groupTargetEffectScope;
+    const depth = candidate.responses.length;
+    const latest = candidate.responses.at(-1);
+    if (!scope || !candidate.group.rootCardProof
+      || scope.semantics !== "PROVEN" || scope.interactionId !== candidate.group.interactionId
+      || scope.groupFrameId !== candidate.group.groupFrameId || scope.activeFrameId !== candidate.group.activeFrameId
+      || scope.checkpointId !== candidate.group.checkpointId || scope.presentationRevision !== candidate.group.presentationRevision
+      || scope.sourceId !== candidate.source.id || !candidate.group.targetIds.includes(scope.targetId)) return null;
+    const targetMatches = candidate.targets.filter((target) => target.playerId === scope.targetId);
+    const targetName = targetMatches.length === 1 ? targetMatches[0]?.playerName.trim() : "";
+    const sourceName = candidate.source.name.trim();
+    const rootLabel = cardDefinition(candidate.group.cardKind).name;
+    const targetIndex = candidate.group.targetIds.indexOf(scope.targetId);
+    const expectedEffectState = depth % 2 === 0 ? "ACTIVE" : "BLOCKED";
+    if (!targetName || !sourceName || scope.effectState !== expectedEffectState) return null;
+
+    if (depth === 0) {
+      const hasCompletedPriorTarget = targetIndex > 0
+        && candidate.group.participants.slice(0, targetIndex).every((participant) =>
+          participant.status === "RESOLVED" || participant.status === "NO_LONGER_APPLICABLE");
+      // Preserve the accepted root copy at the first target. Once a prior
+      // target is complete, replace any retained response copy with the new
+      // server-proven target and checkpoint while its Negation window is open.
+      if (!hasCompletedPriorTarget || scope.effectState !== "ACTIVE") return null;
+      const compactTarget = targetName.length <= 16 ? targetName : `Target ${targetIndex + 1}`;
+      const headline = `${rootLabel} · ${compactTarget} · Negation open`;
+      return {
+        rootLabel,
+        eventId: candidate.rootEvent.id,
+        checkpointId: scope.checkpointId,
+        phase: "WINDOW_OPEN",
+        rootEffectState: scope.effectState,
+        headline,
+        compactHeadline: headline,
+        supportingMessage: "",
+        compactSupportingMessage: "",
+        accessibleLabel: `CURRENT. Negation window open. ${rootLabel} effect is active for ${targetName}.`,
+      };
+    }
+
+    if (!latest) return null;
+
+    let headline: string;
+    let compactHeadline: string;
+    let supportingMessage: string;
+    let compactSupportingMessage: string;
+    if (depth === 1) {
+      if (latest.counterTarget?.kind !== "GROUP_TARGET_EFFECT" || latest.counterTarget.targetId !== scope.targetId) return null;
+      headline = `${latest.actorName}'s Negation counters ${rootLabel}.`;
+      compactHeadline = `Negation → ${rootLabel} · T${targetIndex + 1} · ${scope.effectState}`;
+      supportingMessage = `On ${targetName} · ${scope.effectState} · response open.`;
+      compactSupportingMessage = "";
+    } else {
+      const previous = candidate.responses[depth - 2];
+      if (!previous || latest.counterTarget?.kind !== "RESPONSE" || latest.counterTarget.index !== depth - 2) return null;
+      headline = `${latest.actorName} counters ${previous.actorName}'s Negation.`;
+      // Keep the immediate public counter target visible in the compact H4
+      // line too. The chronological card minis already carry the ordinal.
+      compactHeadline = `${latest.actorName} counters ${previous.actorName}'s Negation.`;
+      supportingMessage = `${rootLabel} on ${targetName} · ${scope.effectState} · response open.`;
+      compactSupportingMessage = `${rootLabel} · T${targetIndex + 1} ${scope.effectState} · open`;
+    }
+    return {
+      rootLabel,
+      eventId: latest.eventId,
+      latestCommittedEventId: latest.eventId,
+      checkpointId: scope.checkpointId,
+      phase: "WINDOW_OPEN",
+      rootEffectState: scope.effectState,
+      headline,
+      compactHeadline,
+      supportingMessage,
+      compactSupportingMessage,
+      accessibleLabel: `CURRENT, response still open. ${headline} ${supportingMessage}`,
+    };
+  };
+  const groupTargetNegationNarration = groupTargetBranchCandidate
+    ? deriveGroupTargetNegationNarration(groupTargetBranchCandidate)
+    : null;
   const groupSettlementCandidate = (() => {
     const settlement = clientPresentation.groupSettlements.find((candidate) => candidate.eventId === activeGroupSettlement?.eventId);
     if (!settlement || settlement.semantics !== "PROVEN") return null;
@@ -4432,13 +7016,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const dismantleSettlementCandidate = (() => {
     const settlement = dismantleSettlements.find((candidate) => candidate.eventId === activeDismantleSettlement?.eventId);
     if (!settlement || settlement.semantics !== "PROVEN" || settlement.outcome !== "DISMANTLE_RESOLVED") return null;
+    const liveRootEventId = clientPresentation.rootAction?.rootEventId;
+    if (liveRootEventId && liveRootEventId !== settlement.rootEventId) return null;
     const rootEvents = room.timeline.filter((event) => event.id === settlement.rootEventId);
     const settlementEvents = room.timeline.filter((event) => event.id === settlement.eventId);
     if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
     const rootEvent = rootEvents[0];
     const settlementEvent = settlementEvents[0];
     if (rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play"
-      || rootEvent.card.kind !== "Dismantle" || rootEvent.resolutionId !== settlement.rootResolutionId
+      || rootEvent.resolutionId !== settlement.rootResolutionId
       || settlementEvent.type !== "card" || settlementEvent.presentation === false || settlementEvent.action !== "discard"
       || settlementEvent.importance !== "essential" || settlementEvent.finalResult !== true
       || settlementEvent.resolutionId !== settlement.rootResolutionId
@@ -4447,15 +7033,43 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || settlementEvent.publicDismantleSettlement.rootResolutionId !== settlement.rootResolutionId
       || settlementEvent.publicDismantleSettlement.sourceId !== settlement.sourceId
       || settlementEvent.publicDismantleSettlement.targetId !== settlement.targetId
-      || settlementEvent.publicDismantleSettlement.outcome !== settlement.outcome) return null;
+      || settlementEvent.publicDismantleSettlement.outcome !== settlement.outcome
+      || settlementEvent.publicDismantleSettlement.sourceZone !== settlement.sourceZone
+      || settlementEvent.publicDismantleSettlement.affectedCardOwnerId !== settlement.affectedCardOwnerId
+      || settlementEvent.publicDismantleSettlement.destinationZone !== settlement.destinationZone
+      || settlementEvent.publicDismantleSettlement.destinationOwnerId !== settlement.destinationOwnerId
+      || settlementEvent.publicDismantleSettlement.rootInteractionId !== settlement.rootInteractionId
+      || settlementEvent.publicDismantleSettlement.rootFrameId !== settlement.rootFrameId
+      || settlementEvent.publicDismantleSettlement.rootPhysicalCard?.id !== settlement.rootPhysicalCard?.id
+      || settlementEvent.publicDismantleSettlement.rootPhysicalCard?.kind !== settlement.rootPhysicalCard?.kind
+      || settlementEvent.publicDismantleSettlement.rootPhysicalCard?.suit !== settlement.rootPhysicalCard?.suit
+      || settlementEvent.publicDismantleSettlement.rootPhysicalCard?.rank !== settlement.rootPhysicalCard?.rank
+      || settlementEvent.publicDismantleSettlement.resultingCardKind !== settlement.resultingCardKind
+      || settlementEvent.publicDismantleSettlement.affectedCardFace?.id !== settlement.affectedCardFace?.id
+      || settlementEvent.publicDismantleSettlement.affectedCardFace?.kind !== settlement.affectedCardFace?.kind
+      || settlementEvent.publicDismantleSettlement.affectedCardFace?.suit !== settlement.affectedCardFace?.suit
+      || settlementEvent.publicDismantleSettlement.affectedCardFace?.rank !== settlement.affectedCardFace?.rank
+      || settlementEvent.card.id !== settlement.affectedCardFace?.id
+      || settlementEvent.card.kind !== settlement.affectedCardFace?.kind
+      || settlementEvent.card.suit !== settlement.affectedCardFace?.suit
+      || settlementEvent.card.rank !== settlement.affectedCardFace?.rank) return null;
+    const rootPhysicalCard = settlement.rootPhysicalCard ?? rootEvent.card;
+    if (!rootPhysicalCard || !publicCardPlayProvesEffectiveKind(rootEvent, rootPhysicalCard, "Dismantle", settlement.sourceId, settlement.targetId)) return null;
     const source = room.players.find((player) => player.id === settlement.sourceId);
     const target = room.players.find((player) => player.id === settlement.targetId);
     if (!source?.name || !target?.name || source.id === target.id) return null;
-    return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeDismantleSettlement?.exiting === true };
+    return {
+      action: settlement, rootEvent, settlementEvent, source, target,
+      exiting: activeDismantleSettlement?.exiting === true,
+      journeySettled: activeDismantleSettlement?.journeySettled === true,
+      h4VisibleSinceMs: activeDismantleSettlement?.h4VisibleSinceMs ?? null,
+    };
   })();
   const stealSettlementCandidate = (() => {
     const settlement = stealSettlements.find((candidate) => candidate.eventId === activeStealSettlement?.eventId);
     if (!settlement || settlement.semantics !== "PROVEN" || settlement.outcome !== "STEAL_RESOLVED") return null;
+    const liveRootEventId = clientPresentation.rootAction?.rootEventId;
+    if (liveRootEventId && liveRootEventId !== settlement.rootEventId) return null;
     const rootEvents = room.timeline.filter((event) => event.id === settlement.rootEventId);
     const settlementEvents = room.timeline.filter((event) => event.id === settlement.eventId);
     if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
@@ -4471,12 +7085,76 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || settlementEvent.publicStealSettlement.rootResolutionId !== settlement.rootResolutionId
       || settlementEvent.publicStealSettlement.sourceId !== settlement.sourceId
       || settlementEvent.publicStealSettlement.targetId !== settlement.targetId
-      || settlementEvent.publicStealSettlement.outcome !== settlement.outcome) return null;
+      || settlementEvent.publicStealSettlement.outcome !== settlement.outcome
+      || settlementEvent.publicStealSettlement.sourceZone !== settlement.sourceZone
+      || settlementEvent.publicStealSettlement.affectedCardOwnerId !== settlement.affectedCardOwnerId
+      || settlementEvent.publicStealSettlement.destinationZone !== settlement.destinationZone
+      || settlementEvent.publicStealSettlement.destinationOwnerId !== settlement.destinationOwnerId
+      || settlementEvent.publicStealSettlement.affectedCardFace?.id !== settlement.affectedCardFace?.id
+      || settlementEvent.publicStealSettlement.affectedCardFace?.kind !== settlement.affectedCardFace?.kind
+      || settlementEvent.publicStealSettlement.affectedCardFace?.suit !== settlement.affectedCardFace?.suit
+      || settlementEvent.publicStealSettlement.affectedCardFace?.rank !== settlement.affectedCardFace?.rank) return null;
     const source = room.players.find((player) => player.id === settlement.sourceId);
     const target = room.players.find((player) => player.id === settlement.targetId);
     if (!source?.name || !target?.name || source.id === target.id) return null;
-    return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeStealSettlement?.exiting === true };
+    return {
+      action: settlement, rootEvent, settlementEvent, source, target,
+      exiting: activeStealSettlement?.exiting === true,
+      journeySettled: activeStealSettlement?.journeySettled === true,
+      h4VisibleSinceMs: activeStealSettlement?.h4VisibleSinceMs ?? null,
+    };
   })();
+  const privateStealSettlementParticipant = (() => {
+    const result = activePrivateStealParticipantResult;
+    const action = stealSettlementCandidate?.action;
+    if (privateStealViewerSwitchPending || !result || !action || !stealSettlementCandidate?.journeySettled
+      || result.roomCode !== room.code || result.viewerId !== room.meId
+      || result.settlementEventId !== action.eventId || result.rootEventId !== action.rootEventId
+      || result.rootResolutionId !== action.rootResolutionId || result.sourceId !== action.sourceId
+      || result.targetId !== action.targetId || action.sourceZone !== "hand"
+      || result.sourceZone !== "hand" || result.physicalCardId !== result.card.id
+      || (room.serverNow ?? Date.now()) > result.eligibleUntil
+      || result.role === "TAKER" && (room.meId !== action.sourceId || !result.transferId)
+      || result.role === "FORMER_OWNER" && room.meId !== action.targetId) return null;
+    return result;
+  })();
+  useEffect(() => {
+    const result = activePrivateStealParticipantResult;
+    if (privateStealViewerSwitchPending || !result || result.viewerId !== room.meId || result.roomCode !== room.code
+      || (room.serverNow ?? Date.now()) > result.eligibleUntil
+      || result.role === "TAKER" && (room.meId !== result.sourceId || !result.transferId)
+      || result.role === "FORMER_OWNER" && room.meId !== result.targetId
+      || privateStealResultWasSeen(privateStealParticipantScope(result))) return;
+    const settlements = room.presentationV2?.stealSettlements.filter((candidate) => candidate.eventId === result.settlementEventId) ?? [];
+    const settlement = settlements.length === 1 ? settlements[0] : null;
+    const rootEvents = room.timeline.filter((event) => event.id === result.rootEventId);
+    const settlementEvents = room.timeline.filter((event) => event.id === result.settlementEventId);
+    const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
+    const settlementEvent = settlementEvents.length === 1 ? settlementEvents[0] : null;
+    if (!settlement || settlement.semantics !== "PROVEN" || settlement.outcome !== "STEAL_RESOLVED"
+      || settlement.sourceZone !== "hand" || settlement.rootEventId !== result.rootEventId
+      || settlement.rootResolutionId !== result.rootResolutionId || settlement.sourceId !== result.sourceId
+      || settlement.targetId !== result.targetId || settlement.affectedCardFace
+      || rootEvent?.type !== "card" || rootEvent.action !== "play" || rootEvent.card.kind !== "Steal"
+      || rootEvent.resolutionId !== result.rootResolutionId
+      || settlementEvent?.type !== "message" || settlementEvent.finalResult !== true
+      || settlementEvent.publicStealSettlement?.semantics !== "PROVEN"
+      || settlementEvent.publicStealSettlement.rootEventId !== result.rootEventId
+      || settlementEvent.publicStealSettlement.rootResolutionId !== result.rootResolutionId
+      || settlementEvent.publicStealSettlement.sourceId !== result.sourceId
+      || settlementEvent.publicStealSettlement.targetId !== result.targetId
+      || settlementEvent.publicStealSettlement.sourceZone !== "hand") return;
+    setActiveStealSettlement((current) => {
+      if (current?.eventId === result.settlementEventId && !current.exiting) return current;
+      return {
+        eventId: result.settlementEventId,
+        roomCode: result.roomCode,
+        exiting: false,
+        journeySettled: current?.eventId === result.settlementEventId ? current.journeySettled : true,
+        h4VisibleSinceMs: null,
+      };
+    });
+  }, [activePrivateStealParticipantResult, privateStealViewerSwitchPending, room.code, room.meId, room.presentationV2?.stealSettlements, room.serverNow, room.timeline]);
   const attackHitSettlementRetirementReason = activeAttackHitSettlement
     ? attackHitSettlementSupersessionReason(activeAttackHitSettlement.lifecycle, {
       roomCode: room.code,
@@ -4498,8 +7176,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
     const rootEvent = rootEvents[0];
     const settlementEvent = settlementEvents[0];
-    if (rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play"
-      || rootEvent.card.kind !== "Attack" || rootEvent.playedAs !== undefined
+    const serpentSpearProof = rootEvent.type === "cards"
+      ? verifiedSerpentSpearAttackFrameForEvent(room.timeline, room.presentationSnapshot?.publicCardEffects ?? [], room.players, rootEvent.id)
+      : null;
+    const physicalAttackRoot = rootEvent.type === "card" && rootEvent.card.kind === "Attack" && rootEvent.playedAs === undefined;
+    const serpentAttackRoot = Boolean(serpentSpearProof
+      && serpentSpearProof.owner.id === settlement.sourceId && serpentSpearProof.target.id === settlement.targetId);
+    if ((rootEvent.type !== "card" && rootEvent.type !== "cards") || rootEvent.presentation === false || rootEvent.privateToPlayerId
+      || rootEvent.action !== "play" || !(physicalAttackRoot || serpentAttackRoot)
       || rootEvent.resolutionId !== settlement.rootResolutionId
       || settlementEvent.type !== "message" || settlementEvent.presentation === false
       || settlementEvent.importance !== "essential" || settlementEvent.finalResult !== true
@@ -4513,46 +7197,244 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const source = room.players.find((player) => player.id === settlement.sourceId);
     const target = room.players.find((player) => player.id === settlement.targetId);
     if (!source?.name || !target?.name || source.id === target.id) return null;
-    return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeAttackHitSettlement?.exiting === true };
+    return {
+      action: settlement, rootEvent, settlementEvent, source, target,
+      serpentSpearProof: serpentAttackRoot ? serpentSpearProof : null,
+      exiting: activeAttackHitSettlement?.exiting === true,
+    };
   })();
   const rootActionEvents = rootAction ? room.timeline.filter((event) => event.id === rootAction.rootEventId) : [];
   const rootActionEvent = rootAction ? rootActionEvents.length === 1 ? rootActionEvents[0] : null
     : oathSimultaneousRootCandidate?.rootEvent ?? bumperHarvestRootCandidate?.rootEvent ?? halberdOrderedRootCandidate?.rootEvent ?? groupTargetBranchCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? dismantleSettlementCandidate?.rootEvent ?? stealSettlementCandidate?.rootEvent ?? attackHitSettlementCandidate?.rootEvent ?? duelExchangeDisplayCandidate?.rootEvent ?? attackDodgeDisplayCandidate?.rootEvent ?? singleTargetNegationProofCandidate?.rootEvent ?? groupSettlementCandidate?.rootEvent ?? null;
-  const rootActionCardFace = rootAction && rootActionEvent?.type === "card"
+  const rootActionSerpentSpearProof = rootAction?.action === "ATTACK"
+    && "conversionId" in rootAction && rootAction.conversionId === "serpent_spear_attack"
+    ? verifiedSerpentSpearAttackFrameForEvent(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      room.players,
+      rootAction.rootEventId,
+    )
+    : null;
+  const rootActionMatchesSerpentSpearProof = Boolean(rootActionSerpentSpearProof && rootAction?.action === "ATTACK"
+    && "conversionId" in rootAction && rootAction.conversionId === "serpent_spear_attack"
+    && rootAction.sourceId === rootActionSerpentSpearProof.owner.id
+    && rootAction.targetId === rootActionSerpentSpearProof.target.id
+    && rootAction.materialCardIds.length === 2
+    && rootAction.materialCardIds.every((cardId, index) => cardId === rootActionSerpentSpearProof?.sourceCards[index]?.id));
+  const rootActionAmbushmentProof = rootAction?.action === "STRATAGEM" && rootAction.cardKind === "Dismantle"
+    && rootActionEvent?.type === "card"
+    ? verifiedAmbushmentConversionFrameForEvent(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      room.players,
+      rootAction.rootEventId,
+      rootActionEvent.card.id,
+    )
+    : null;
+  const rootActionCaptivatingProof = rootAction?.action === "STRATAGEM" && rootAction.cardKind === "Overindulgence"
+    && rootActionEvent?.type === "card"
+    ? verifiedCaptivatingConversionFrameForEvent(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      room.players,
+      rootAction.rootEventId,
+      rootActionEvent.card.id,
+    )
+    : null;
+  const rootActionMatchesAmbushmentProof = Boolean(rootActionAmbushmentProof
+    && rootActionAmbushmentProof.owner.id === rootAction?.sourceId
+    && rootActionAmbushmentProof.target.id === rootAction?.targetId);
+  const rootActionMatchesCaptivatingProof = Boolean(rootActionCaptivatingProof
+    && rootActionCaptivatingProof.owner.id === rootAction?.sourceId
+    && rootActionCaptivatingProof.target.id === rootAction?.targetId);
+  const rootActionSerpentSpearFrame = rootActionMatchesSerpentSpearProof && rootActionSerpentSpearProof
+    ? publicSerpentSpearAttackFrame(rootActionSerpentSpearProof, room.players)
+    : null;
+  const attackDodgeSerpentSpearProof = attackDodgeDisplayCandidate?.rootEvent.type === "cards"
+    ? verifiedSerpentSpearAttackFrameForEvent(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      room.players,
+      attackDodgeDisplayCandidate.rootEvent.id,
+    )
+    : null;
+  const attackDodgeMatchesSerpentSpearProof = Boolean(attackDodgeSerpentSpearProof && attackDodgeDisplayCandidate
+    && attackDodgeSerpentSpearProof.owner.id === attackDodgeDisplayCandidate.proof.rootSourceId
+    && attackDodgeSerpentSpearProof.target.id === attackDodgeDisplayCandidate.proof.targetId);
+  const attackDodgeSerpentSpearFrame = attackDodgeMatchesSerpentSpearProof && attackDodgeSerpentSpearProof
+    ? publicSerpentSpearAttackFrame(attackDodgeSerpentSpearProof, room.players)
+    : null;
+  const attackHitSerpentSpearFrame = attackHitSettlementCandidate?.serpentSpearProof
+    ? publicSerpentSpearAttackFrame(attackHitSettlementCandidate.serpentSpearProof, room.players)
+    : null;
+  const rootActionCardFace = rootActionSerpentSpearFrame && rootActionSerpentSpearProof
+    ? rootActionSerpentSpearProof.sourceCards[0]
+    : rootAction && rootActionEvent?.type === "card"
     && rootActionEvent.id === rootAction.rootEventId && rootActionEvent.action === "play"
     && rootActionEvent.presentation !== false
-    && rootActionEvent.card.kind === (rootAction.action === "ATTACK" ? rootAction.physicalCardKind : rootAction.cardKind)
-    && rootActionEvent.playedAs === (rootAction.action === "ATTACK" ? rootAction.playedAs : undefined)
+    && ((rootActionEvent.card.kind === (rootAction.action === "ATTACK" && "physicalCardKind" in rootAction ? rootAction.physicalCardKind : rootAction.cardKind)
+      && rootActionEvent.playedAs === (rootAction.action === "ATTACK" && "playedAs" in rootAction ? rootAction.playedAs : undefined))
+      || rootActionMatchesAmbushmentProof || rootActionMatchesCaptivatingProof)
     ? rootActionEvent.card : null;
   const selfTargetCandidates = rootAction || oathSimultaneousRootCandidate || bumperHarvestRootCandidate || halberdOrderedRootCandidate || groupTargetBranchCandidate || skillEffectActionCandidate || skillEffectSettlementCandidate || dismantleSettlementCandidate || stealSettlementCandidate || attackHitSettlementCandidate || duelExchangeDisplayCandidate || attackDodgeDisplayCandidate || singleTargetNegationProofCandidate || groupSettlementCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
       || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind
       || action.sourceId !== action.targetId) return [];
-    const matchingSequenceEvents = sequenceEvents.filter((candidate) => eventCards(candidate).some((card) => card.id === event.card.id));
-    if (matchingSequenceEvents.length !== 1) return [];
-    const isDisplayedEvent = Boolean(displayedEvent && eventCards(displayedEvent).some((card) => card.id === event.card.id));
-    const isSettledEvent = !displayedEvent && eventQueue.length === 0 && !hasUnseenPresentations;
+    const matchingSelfTargetEvents = activeSelfTargetWindowEvents.filter((candidate) => eventCards(candidate).some((card) => card.id === event.card.id));
+    if (matchingSelfTargetEvents.length !== 1) return [];
+    const isDisplayedEvent = Boolean(currentPublicEventPresentation && eventCards(currentPublicEventPresentation).some((card) => card.id === event.card.id));
+    const isSettledEvent = !currentPublicEventPresentation && eventQueue.length === 0 && !hasUnseenPresentations;
     if (eventQueue.length > 0 || !isDisplayedEvent && !isSettledEvent) return [];
     const source = room.players.find((player) => player.id === action.sourceId);
     if (!source) return [];
     return [{ action, event, source }];
   });
   const selfTargetCandidate = selfTargetCandidates.length === 1 ? selfTargetCandidates[0] : null;
-  const activeNegationReadIdentityMatches = Boolean(activePublicNegationRead
-    && (!clientPresentation.interactionId || clientPresentation.interactionId === activePublicNegationRead.action.interactionId)
-    && (!clientPresentation.rootFrameId || clientPresentation.rootFrameId === activePublicNegationRead.action.rootFrameId)
-    && (!rootAction || rootAction.rootEventId === activePublicNegationRead.action.rootEventId));
+  const publicNegationSettlementProof = room.presentationSnapshot?.settlement ?? clientPresentation.negationSettlement;
+  const activeReadMatchesFinalNegation = Boolean(activePublicNegationRead
+    && activePublicNegationRead.action.cardKind === "Duel"
+    && publicNegationSettlementProof?.semantics === "PROVEN"
+    && publicNegationSettlementProof.rootCardKind === "Duel"
+    && publicNegationSettlementProof.interactionId === activePublicNegationRead.action.interactionId
+    && publicNegationSettlementProof.rootFrameId === activePublicNegationRead.action.rootFrameId
+    && publicNegationSettlementProof.checkpointId === activePublicNegationRead.action.checkpointId
+    && publicNegationSettlementProof.presentationRevision === activePublicNegationRead.action.presentationRevision
+    && publicNegationSettlementProof.sourceId === activePublicNegationRead.action.sourceId
+    && publicNegationSettlementProof.targetId === activePublicNegationRead.action.targetId
+    && room.timeline.some((event) => event.id === publicNegationSettlementProof.eventId
+      && event.type === "message" && event.resolutionId === publicNegationSettlementProof.resolutionId
+      && event.finalResult === true && event.negationSettlement?.outcome === publicNegationSettlementProof.outcome)
+    && room.timeline.some((event) => event.id === activePublicNegationRead.action.rootEventId
+      && event.type === "card" && event.resolutionId === publicNegationSettlementProof.resolutionId));
   const activeNegationReadSettled = Boolean(activePublicNegationRead
     && room.presentationSnapshot?.interaction?.stage !== "NEGATION"
-    && clientPresentation.negationSettlement?.semantics === "PROVEN"
-    && clientPresentation.negationSettlement.interactionId === activePublicNegationRead.action.interactionId
-    && clientPresentation.negationSettlement.rootFrameId === activePublicNegationRead.action.rootFrameId
-    && clientPresentation.negationSettlement.rootCardKind === activePublicNegationRead.action.cardKind
-    && clientPresentation.negationSettlement.sourceId === activePublicNegationRead.action.sourceId
-    && clientPresentation.negationSettlement.targetId === activePublicNegationRead.action.targetId
+    && publicNegationSettlementProof?.semantics === "PROVEN"
+    && publicNegationSettlementProof.interactionId === activePublicNegationRead.action.interactionId
+    && publicNegationSettlementProof.rootFrameId === activePublicNegationRead.action.rootFrameId
+    && publicNegationSettlementProof.checkpointId === activePublicNegationRead.action.checkpointId
+    && publicNegationSettlementProof.presentationRevision === activePublicNegationRead.action.presentationRevision
+    && publicNegationSettlementProof.rootCardKind === activePublicNegationRead.action.cardKind
+    && publicNegationSettlementProof.sourceId === activePublicNegationRead.action.sourceId
+    && publicNegationSettlementProof.targetId === activePublicNegationRead.action.targetId
     && room.timeline.some((event) => event.id === activePublicNegationRead.action.rootEventId
-      && event.type === "card" && event.resolutionId === clientPresentation.negationSettlement?.resolutionId));
+      && event.type === "card" && event.resolutionId === publicNegationSettlementProof.resolutionId));
+  const provenDuelNegationSettlement = (() => {
+    // The final Negation disposition is still a public fact after an even
+    // chain advances into the Duel exchange frame. The client interaction
+    // view intentionally drops settlements that no longer belong to its
+    // active frame, so validate the proof from the public snapshot directly.
+    const proof = room.presentationSnapshot?.settlement ?? clientPresentation.negationSettlement;
+    if (proof?.semantics === "PROVEN" && proof.rootCardKind === "Duel") {
+      const roots = room.timeline.filter((event) => event.type === "card" && event.action === "play"
+      && event.presentation !== false && event.playedAs === undefined && event.card?.kind === "Duel"
+      && event.resolutionId === proof.resolutionId);
+      const settlements = room.timeline.filter((event) => event.id === proof.eventId);
+      if (roots.length === 1 && settlements.length === 1) {
+        const rootEvent = roots[0];
+        const settlementEvent = settlements[0];
+        const source = room.players.find((player) => player.id === proof.sourceId);
+        const target = room.players.find((player) => player.id === proof.targetId);
+        const eventProof = settlementEvent.type === "message"
+          ? settlementEvent.negationSettlement as { semantics?: unknown; outcome?: unknown; interactionId?: unknown; rootFrameId?: unknown; checkpointId?: unknown; presentationRevision?: unknown; resolutionId?: unknown; rootCardKind?: unknown; sourceId?: unknown; targetId?: unknown } | undefined
+          : undefined;
+        if (source?.name && target?.name && rootEvent.player === source.name && rootEvent.card?.id
+          && room.timeline.filter((event) => event.type === "card" && event.card?.id === rootEvent.card?.id).length === 1
+          && settlementEvent.type === "message" && settlementEvent.presentation !== false
+          && settlementEvent.importance === "essential" && settlementEvent.finalResult === true
+          && settlementEvent.resolutionId === proof.resolutionId
+          && eventProof?.semantics === proof.semantics && eventProof.outcome === proof.outcome
+          && eventProof.interactionId === proof.interactionId && eventProof.rootFrameId === proof.rootFrameId
+          && eventProof.checkpointId === proof.checkpointId && eventProof.presentationRevision === proof.presentationRevision
+          && eventProof.resolutionId === proof.resolutionId && eventProof.rootCardKind === proof.rootCardKind
+          && eventProof.sourceId === proof.sourceId && eventProof.targetId === proof.targetId) {
+          return { proof, rootEvent, settlementEvent, source, target };
+        }
+      }
+    }
+    return null;
+  })();
+  const duelPublicStageOwner = selectDuelPublicStageOwner({
+    knownPlayerIds: room.players.map((player) => player.id),
+    identity: room.presentationSnapshot?.identity ?? null,
+    interaction: room.presentationSnapshot?.interaction ?? null,
+    rootEventId: duelExchangeDisplayCandidate?.exchange.root.eventId
+      ?? duelNegationProofCandidate?.rootEvent.id
+      ?? provenDuelNegationSettlement?.rootEvent.id
+      ?? (activePublicNegationRead?.action.cardKind === "Duel" ? activePublicNegationRead.action.rootEventId : null),
+    negationProof: duelNegationProofCandidate ? {
+      semantics: "PROVEN",
+      interactionId: duelNegationProofCandidate.chain.interactionId!,
+      rootFrameId: clientPresentation.rootFrameId!,
+      checkpointId: clientPresentation.checkpointId!,
+      presentationRevision: clientPresentation.presentationRevision!,
+      rootEventId: duelNegationProofCandidate.rootEvent.id,
+      publicEventId: duelNegationProofCandidate.responseNodes.at(-1)?.event.id ?? duelNegationProofCandidate.rootEvent.id,
+      sourceId: duelNegationProofCandidate.root.source.id!,
+      targetId: duelNegationProofCandidate.root.targets[0]!.id!,
+      responseEventIds: duelNegationProofCandidate.responseNodes.map(({ event }) => event.id),
+      responseActorIds: duelNegationProofCandidate.responseNodes.map(({ actor }) => actor.id!),
+    } : null,
+    settlementProof: provenDuelNegationSettlement ? {
+      ...provenDuelNegationSettlement.proof,
+      rootEventId: provenDuelNegationSettlement.rootEvent.id,
+      rootCardKind: "Duel",
+      eventId: provenDuelNegationSettlement.settlementEvent.id,
+    } : null,
+    exchangeProof: duelExchangeDisplayCandidate ? {
+      semantics: "PROVEN",
+      interactionId: duelExchangeDisplayCandidate.exchange.interactionId,
+      rootFrameId: duelExchangeDisplayCandidate.exchange.rootFrameId,
+      checkpointId: duelExchangeDisplayCandidate.exchange.checkpointId,
+      presentationRevision: duelExchangeDisplayCandidate.exchange.presentationRevision,
+      rootEventId: duelExchangeDisplayCandidate.exchange.root.eventId,
+      sourceId: duelExchangeDisplayCandidate.exchange.root.sourceId,
+      targetId: duelExchangeDisplayCandidate.exchange.root.targetId,
+      currentParticipantId: duelExchangeDisplayCandidate.exchange.currentParticipantId,
+      decisionActorId: duelExchangeDisplayCandidate.exchange.decisionActorId,
+      responseEventIds: duelExchangeDisplayCandidate.exchange.responses.map((response) => response.responseEventId),
+      responseActorIds: duelExchangeDisplayCandidate.exchange.responses.map((response) => response.responseActorId),
+    } : null,
+  });
+  const duelExchangeAttackCopy = duelExchangeDisplayCandidate && duelPublicStageOwner.stageOwner === "DUEL_EXCHANGE"
+    ? duelExchangeAttackNarration({
+      stageOwner: duelPublicStageOwner.stageOwner,
+      identity: room.presentationSnapshot?.identity ?? null,
+      interaction: room.presentationSnapshot?.interaction ?? null,
+      rootEventId: duelExchangeDisplayCandidate.exchange.root.eventId,
+      exchange: {
+        semantics: "PROVEN",
+        interactionId: duelExchangeDisplayCandidate.exchange.interactionId,
+        rootFrameId: duelExchangeDisplayCandidate.exchange.rootFrameId,
+        rootEventId: duelExchangeDisplayCandidate.exchange.root.eventId,
+        rootResolutionId: duelExchangeDisplayCandidate.exchange.root.resolutionId,
+        sourceId: duelExchangeDisplayCandidate.exchange.root.sourceId,
+        targetId: duelExchangeDisplayCandidate.exchange.root.targetId,
+        checkpointId: duelExchangeDisplayCandidate.exchange.checkpointId,
+        presentationRevision: duelExchangeDisplayCandidate.exchange.presentationRevision,
+        responseCount: duelExchangeDisplayCandidate.exchange.responseCount,
+        currentParticipantId: duelExchangeDisplayCandidate.exchange.currentParticipantId,
+        decisionActorId: duelExchangeDisplayCandidate.exchange.decisionActorId,
+        responses: duelExchangeDisplayCandidate.exchange.responses,
+      },
+      players: room.players.map(({ id, name }) => ({ id, name })),
+    })
+    : null;
+  const activeDuelReadIdentityMatches = Boolean(activePublicNegationRead
+    && (duelPublicStageOwner.announcement === "NEGATION_OPEN"
+      ? activePublicNegationRead.action.interactionId === room.presentationSnapshot?.identity?.interactionId
+        && activePublicNegationRead.action.rootFrameId === room.presentationSnapshot?.interaction?.rootFrameId
+        && activePublicNegationRead.action.checkpointId === room.presentationSnapshot?.identity?.checkpointId
+        && activePublicNegationRead.action.presentationRevision === room.presentationSnapshot?.identity?.presentationRevision
+        && activePublicNegationRead.action.rootEventId === duelNegationProofCandidate?.rootEvent.id
+      : duelPublicStageOwner.announcement === "NEGATION_FINAL" && activeReadMatchesFinalNegation));
+  const activeNegationReadIdentityMatches = Boolean(activePublicNegationRead
+    && (activePublicNegationRead.action.cardKind === "Duel"
+      ? activeDuelReadIdentityMatches
+      : activeReadMatchesFinalNegation
+        || (!clientPresentation.interactionId || clientPresentation.interactionId === activePublicNegationRead.action.interactionId)
+          && (!clientPresentation.rootFrameId || clientPresentation.rootFrameId === activePublicNegationRead.action.rootFrameId)
+          && (!rootAction || rootAction.rootEventId === activePublicNegationRead.action.rootEventId)));
   const activeNegationReadStillLive = Boolean(activePublicNegationRead
     && room.presentationSnapshot?.interaction?.semantics === "PROVEN"
     && room.presentationSnapshot.interaction.stage === "NEGATION"
@@ -4562,23 +7444,38 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && room.presentationSnapshot.reactionChain.interactionId === activePublicNegationRead.action.interactionId
     && room.presentationSnapshot.reactionChain.frameId === activePublicNegationRead.action.rootFrameId
     && room.presentationSnapshot.reactionChain.publicEventLinks?.root.eventId === activePublicNegationRead.action.rootEventId);
-  const heldHarvestEffectRecipient = activePublicNegationRead?.action.cardKind === "BumperHarvest"
+  const heldHarvestRootMatches = activePublicNegationRead?.action.cardKind === "BumperHarvest"
     && bumperHarvestRootCandidate?.rootEvent.id === activePublicNegationRead.action.rootEventId
     && bumperHarvestRootCandidate.progress.interactionId === activePublicNegationRead.action.interactionId
-    && bumperHarvestRootCandidate.progress.rootFrameId === activePublicNegationRead.action.rootFrameId
-    ? harvestEffectRecipient
-    : null;
+    && bumperHarvestRootCandidate.progress.rootFrameId === activePublicNegationRead.action.rootFrameId;
+  const heldHarvestEffectRecipient = heldHarvestRootMatches ? harvestEffectRecipient : null;
   const heldPublicNegationReadAction = activeNegationReadIdentityMatches && activePublicNegationRead
     && (activeNegationReadStillLive || activeNegationReadSettled)
-    && !(activePublicNegationRead.action.cardKind === "Duel" && (duelNegationProofCandidate || duelExchangeDisplayCandidate))
+    && (activePublicNegationRead.action.cardKind !== "Duel"
+      || duelPublicStageOwner.announcement === "NEGATION_OPEN"
+      || duelPublicStageOwner.announcement === "NEGATION_FINAL" && activeReadMatchesFinalNegation)
+    && !(activePublicNegationRead.action.cardKind === "Duel"
+      && (duelNegationProofCandidate || duelExchangeDisplayCandidate && !activeReadMatchesFinalNegation))
     && (!singleTargetNegationActionKey || singleTargetNegationActionKey === activePublicNegationRead.key
       || activePublicNegationRead.action.cardKind === "Duel" && activePublicNegationRead.action.rootEventId === duelNegationProofCandidate?.rootEvent.id)
     ? {
       ...activePublicNegationRead.action,
+      ...(activePublicNegationRead.action.cardKind === "Duel"
+        && activePublicNegationRead.action.publicNegationNarration
+        && provenDuelNegationSettlement?.rootEvent.id === activePublicNegationRead.action.rootEventId
+        && provenDuelNegationSettlement.proof.interactionId === activePublicNegationRead.action.interactionId
+        ? { publicNegationNarration: finalizePublicNegationNarration(
+          activePublicNegationRead.action.publicNegationNarration,
+          provenDuelNegationSettlement.proof.outcome,
+          provenDuelNegationSettlement.settlementEvent.id,
+        ) }
+        : {}),
       ...(activePublicNegationRead.action.cardKind === "BumperHarvest" ? {
         // A retained root announcement must not retain a chooser name after
         // the live public participant proof becomes stale or mismatched.
         harvestEffectRecipient: heldHarvestEffectRecipient ?? undefined,
+        publicNegationNarration: heldHarvestRootMatches && (!activeNegationReadSettled || harvestPublicNarration?.phase === "FINAL")
+          ? harvestPublicNarration ?? undefined : undefined,
       } : {}),
       ...((activePublicNegationRead.action.motion?.type === "single-target" || activePublicNegationRead.action.motion?.type === "negation" || activePublicNegationRead.action.motion?.type === "group-root") && activeNegationReadSettled
         ? { phaseNotice: undefined }
@@ -4605,11 +7502,29 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || proof.rootFrameId !== clientPresentation.rootFrameId
       || proof.rootCardKind !== candidate.root.cardKind
       || proof.sourceId !== candidate.root.source.id
-      || proof.targetId !== candidate.root.targets[0]?.id) return null;
+      || proof.targetId !== candidate.root.targets[0]?.id
+      || proof.outcome !== "ROOT_CANCELLED" && proof.outcome !== "ROOT_RESTORED") return null;
+    const rootEvents = room.timeline.filter((event) => event.id === candidate.rootEvent.id);
     const settlementEvents = room.timeline.filter((event) => event.id === proof.eventId);
-    if (settlementEvents.length !== 1) return null;
+    if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
+    const rootEvent = rootEvents[0];
     const event = settlementEvents[0];
-    if (event.type !== "message" || event.presentation === false || event.resolutionId !== proof.resolutionId) return null;
+    const eventProof = event.type === "message" ? event.negationSettlement : undefined;
+    const rootIsProvenCaptivating = Boolean(candidate.captivatingRootProof
+      && candidate.captivatingRootProof.conversionEvent.id === rootEvent.id
+      && candidate.captivatingRootProof.owner.id === proof.sourceId
+      && candidate.captivatingRootProof.target.id === proof.targetId);
+    if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
+      || (rootEvent.playedAs !== undefined && !rootIsProvenCaptivating)
+      || (rootEvent.card?.kind !== proof.rootCardKind && !rootIsProvenCaptivating)
+      || rootEvent.resolutionId !== proof.resolutionId
+      || event.type !== "message" || event.presentation === false || event.importance !== "essential"
+      || event.finalResult !== true || event.resolutionId !== proof.resolutionId
+      || eventProof?.semantics !== proof.semantics || eventProof.outcome !== proof.outcome
+      || eventProof.interactionId !== proof.interactionId || eventProof.rootFrameId !== proof.rootFrameId
+      || eventProof.checkpointId !== proof.checkpointId || eventProof.presentationRevision !== proof.presentationRevision
+      || eventProof.resolutionId !== proof.resolutionId || eventProof.rootCardKind !== proof.rootCardKind
+      || eventProof.sourceId !== proof.sourceId || eventProof.targetId !== proof.targetId) return null;
     return { eventId: proof.eventId, outcome: proof.outcome };
   })();
   const singleTargetNegationResponses = singleTargetNegationProofCandidate?.responseNodes.map(({ event, node, actor }, index) => {
@@ -4638,16 +7553,25 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       sourceId: singleTargetNegationProofCandidate.root.source.id!,
       targetId: singleTargetNegationProofCandidate.root.targets[0]!.id!,
       cardKind: singleTargetNegationProofCandidate.root.cardKind!,
+      ...(singleTargetNegationUsesJourney ? { showNegationChainOrdinals: true } : {}),
       cardFace: singleTargetNegationProofCandidate.rootEvent.card,
       cardLabel: cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name.toUpperCase(),
       ariaLabel: `${singleTargetNegationProofCandidate.root.source.name} played ${cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name} targeting ${singleTargetNegationProofCandidate.root.targets[0]!.name}`,
-      phaseNotice: singleTargetNegationUsesJourney
+      ...(singleTargetNegationUsesJourney && singleTargetNegationNarration ? {
+        publicNegationNarration: singleTargetNegationSettlement
+          ? finalizePublicNegationNarration(singleTargetNegationNarration, singleTargetNegationSettlement.outcome, singleTargetNegationSettlement.eventId)
+          : singleTargetNegationNarration,
+      } : {}),
+      phaseNotice: singleTargetNegationUsesJourney && clientPresentation.stage === "NEGATION"
         ? singleTargetNegationSettlement ? undefined : singleTargetNegationResponses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED"
         : undefined,
       ...(singleTargetNegationUsesJourney ? {
         motion: {
-          type: singleTargetNegationProofCandidate.root.cardKind === "Dismantle" ? "single-target" as const : "negation" as const,
+          type: singleTargetNegationProofCandidate.root.cardKind === "Dismantle"
+            || singleTargetNegationProofCandidate.root.cardKind === "Steal"
+            || singleTargetNegationProofCandidate.root.cardKind === "BorrowedSword" ? "single-target" as const : "negation" as const,
           scopeKey: singleTargetNegationProofCandidate.root.cardKind === "Dismantle"
+            || singleTargetNegationProofCandidate.root.cardKind === "Steal"
             ? [room.code, singleTargetNegationProofCandidate.rootEvent.id].join(":")
             : [room.code, singleTargetNegationProofCandidate.chain.interactionId, singleTargetNegationProofCandidate.rootEvent.id].join(":"),
           freshEventIds: [singleTargetNegationProofCandidate.rootEvent.id, ...singleTargetNegationResponses.map((response) => response.eventId)]
@@ -4671,12 +7595,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       } : {}),
     }
     : null;
-  const duelNegationPublicAction: PublicCardDisplayAction | null = duelNegationProofCandidate
+  const duelNegationPublicAction: PublicCardDisplayAction | null = duelPublicStageOwner.announcement === "NEGATION_OPEN" && duelNegationProofCandidate
     ? {
       key: ["duel", duelNegationProofCandidate.chain.interactionId, clientPresentation.rootFrameId!,
         duelNegationProofCandidate.rootEvent.id, duelNegationProofCandidate.root.source.id!, duelNegationProofCandidate.root.targets[0]!.id!].join(":"),
       interactionId: duelNegationProofCandidate.chain.interactionId!,
       rootFrameId: clientPresentation.rootFrameId!,
+      checkpointId: clientPresentation.checkpointId ?? undefined,
+      presentationRevision: clientPresentation.presentationRevision ?? undefined,
       rootEventId: duelNegationProofCandidate.rootEvent.id,
       sourceId: duelNegationProofCandidate.root.source.id!,
       targetId: duelNegationProofCandidate.root.targets[0]!.id!,
@@ -4684,6 +7610,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: duelNegationProofCandidate.rootEvent.card,
       cardLabel: "DUEL",
       ariaLabel: `${duelNegationProofCandidate.root.source.name} played Duel targeting ${duelNegationProofCandidate.root.targets[0]!.name}`,
+      ...(singleTargetNegationNarration ? { publicNegationNarration: singleTargetNegationNarration } : {}),
       phaseNotice: duelNegationProofCandidate.responseNodes.length
         ? "NEGATION RESPONSE"
         : duelNegationProofCandidate.chain.rootEffectState === "BLOCKED" ? "DUEL NEGATED" : "NEGATION MAY BE PLAYED",
@@ -4727,7 +7654,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     targetId: null,
     cardFace: lustCostFrameCandidate.costCard,
     cardLabel: "LUST COST",
-    ariaLabel: `Diao Chan used Lust. ${lustCostFrameCandidate.firstParticipant.name} and ${lustCostFrameCandidate.secondParticipant.name} enter a Duel. ${lustCostFrameCandidate.firstActor.name} plays Attack first.`,
+    ariaLabel: `Diao Chan used Lust. ${lustDuelOrderAccessibleMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor)}`,
     motion: {
       type: "lust-cost",
       scopeKey: [room.code, lustCostFrameCandidate.activation.eventId, lustCostFrameCandidate.costEvent.id].join(":"),
@@ -4738,9 +7665,530 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       activationEventId: lustCostFrameCandidate.activation.eventId,
       title: "LUST",
       message: lustDuelOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor),
-      compactMessage: lustDuelCompactOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor),
+      accessibleMessage: lustDuelOrderAccessibleMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor),
+      compactMessage: compactLustDuelOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor) ?? undefined,
     },
+    publicCardEffectFrame: lustPublicCardEffectFrame(lustCostFrameCandidate, room.players,
+      lustDuelOrderAccessibleMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor)),
   } : null;
+  const prodigalHealerCostFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "hua_tuo_prodigal_healer"
+      && effect.effectClass === "COST")
+      .flatMap((effect) => {
+        const frame = verifiedProdigalHealerCostFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
+  })();
+  const prodigalHealerAnnouncementLifecycle = prodigalHealerCostFrameCandidate
+    ? publicHeroCostAnnouncementLifecycle({
+      roomCode: room.code,
+      candidateRoomCode: room.code,
+      candidateEventId: prodigalHealerCostFrameCandidate.costEvent.id,
+      timelineEventIds: room.timeline.map((event) => event.id),
+      retiredEventIds: retiredProdigalHealerFrameEventIds,
+      currentRootEventId: rootAction && rootActionCardFace ? rootAction.rootEventId : null,
+    })
+    : { status: "unavailable" as const };
+  const supersededProdigalHealerEventId = prodigalHealerAnnouncementLifecycle.status === "superseded"
+    ? prodigalHealerCostFrameCandidate?.costEvent.id ?? null
+    : null;
+  useEffect(() => {
+    if (!supersededProdigalHealerEventId) return;
+    markProdigalHealerFrameRead(supersededProdigalHealerEventId);
+  }, [markProdigalHealerFrameRead, supersededProdigalHealerEventId]);
+  const prodigalHealerCostFrameAction: PublicCardDisplayAction | null = prodigalHealerCostFrameCandidate ? {
+    key: ["prodigal-healer-cost", prodigalHealerCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: prodigalHealerCostFrameCandidate.costEvent.id,
+    sourceId: prodigalHealerCostFrameCandidate.owner.id,
+    targetId: prodigalHealerCostFrameCandidate.target.id,
+    cardFace: prodigalHealerCostFrameCandidate.costCard,
+    cardLabel: "PRODIGAL HEALER COST",
+    suppressAnnouncement: prodigalHealerAnnouncementLifecycle.status !== "active",
+    publicNotice: `${prodigalHealerCostFrameCandidate.owner.name} used Prodigal Healer on ${prodigalHealerCostFrameCandidate.target.name}, paying one Hand card.`,
+    publicNoticeCompact: `${prodigalHealerCostFrameCandidate.owner.name} · Prodigal Healer → ${prodigalHealerCostFrameCandidate.target.name}`,
+    ariaLabel: `${prodigalHealerCostFrameCandidate.owner.name} used Prodigal Healer on ${prodigalHealerCostFrameCandidate.target.name}, paying one Hand card.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "hua_tuo_prodigal_healer", prodigalHealerCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: retiredProdigalHealerFrameEventIds.has(prodigalHealerCostFrameCandidate.costEvent.id)
+        ? [] : [prodigalHealerCostFrameCandidate.costEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(prodigalHealerCostFrameCandidate.effect, {
+      title: "PRODIGAL HEALER",
+      accessibleLabel: `${prodigalHealerCostFrameCandidate.owner.name} paid one Hand card to use Prodigal Healer on ${prodigalHealerCostFrameCandidate.target.name}.`,
+      activationOwnerName: prodigalHealerCostFrameCandidate.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const divineWisdomCostFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "lady_gan_divine_wisdom"
+      && effect.effectClass === "COST")
+      .flatMap((effect) => {
+        const frame = verifiedDivineWisdomCostFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
+  })();
+  const divineWisdomCostFrameAction: PublicCardDisplayAction | null = divineWisdomCostFrameCandidate ? {
+    key: ["divine-wisdom-cost", divineWisdomCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: divineWisdomCostFrameCandidate.costEvent.id,
+    sourceId: divineWisdomCostFrameCandidate.owner.id,
+    targetId: null,
+    cardFace: divineWisdomCostFrameCandidate.costCards[0],
+    cardLabel: "DIVINE WISDOM COST",
+    ariaLabel: divineWisdomCostFrameCandidate.effect.outcome === "RECOVERY_APPLIED"
+      ? `${divineWisdomCostFrameCandidate.owner.name} used Divine Wisdom and discarded ${divineWisdomCostFrameCandidate.costCards.length} Hand cards, recovering 1 HP.`
+      : `${divineWisdomCostFrameCandidate.owner.name} used Divine Wisdom and discarded ${divineWisdomCostFrameCandidate.costCards.length} Hand cards. No HP was recovered.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "lady_gan_divine_wisdom", divineWisdomCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(divineWisdomCostFrameCandidate.costEvent.id)
+        ? [] : [divineWisdomCostFrameCandidate.costEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(divineWisdomCostFrameCandidate.effect, {
+      title: "DIVINE WISDOM",
+      accessibleLabel: `${divineWisdomCostFrameCandidate.owner.name} discarded all ${divineWisdomCostFrameCandidate.costCards.length} Hand cards for Divine Wisdom.${divineWisdomCostFrameCandidate.effect.outcome === "RECOVERY_APPLIED" ? " They recovered 1 HP." : " No HP was recovered."}`,
+      activationOwnerName: divineWisdomCostFrameCandidate.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const dauntlessCostFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "yue_jin_dauntless"
+      && effect.effectClass === "COST")
+      .flatMap((effect) => {
+        const frame = verifiedDauntlessCostFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
+  })();
+  const dauntlessCostFrameAction: PublicCardDisplayAction | null = dauntlessCostFrameCandidate ? {
+    key: ["dauntless-cost", dauntlessCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: dauntlessCostFrameCandidate.costEvent.id,
+    sourceId: dauntlessCostFrameCandidate.owner.id,
+    targetId: dauntlessCostFrameCandidate.target.id,
+    cardFace: dauntlessCostFrameCandidate.costCard,
+    cardLabel: "DAUNTLESS COST",
+    ariaLabel: `${dauntlessCostFrameCandidate.owner.name} used Dauntless on ${dauntlessCostFrameCandidate.target.name}, paying one Basic Hand card.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "yue_jin_dauntless", dauntlessCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(dauntlessCostFrameCandidate.costEvent.id)
+        ? [] : [dauntlessCostFrameCandidate.costEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(dauntlessCostFrameCandidate.effect, {
+      title: "DAUNTLESS",
+      accessibleLabel: `${dauntlessCostFrameCandidate.owner.name} paid one Basic Hand card to use Dauntless on ${dauntlessCostFrameCandidate.target.name}.`,
+      activationOwnerName: dauntlessCostFrameCandidate.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const dauntlessEquipmentEffectFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "yue_jin_dauntless"
+      && effect.effectClass === "EFFECT")
+      .flatMap((effect) => {
+        const frame = verifiedDauntlessEquipmentEffectFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.effectEvent) - room.timeline.indexOf(left.effectEvent))[0] ?? null;
+  })();
+  const dauntlessEquipmentEffectFrameAction: PublicCardDisplayAction | null = dauntlessEquipmentEffectFrameCandidate ? {
+    key: ["dauntless-equipment-effect", dauntlessEquipmentEffectFrameCandidate.effectEvent.id].join(":"),
+    rootEventId: dauntlessEquipmentEffectFrameCandidate.effectEvent.id,
+    sourceId: dauntlessEquipmentEffectFrameCandidate.materialOwner.id,
+    targetId: null,
+    cardFace: dauntlessEquipmentEffectFrameCandidate.equipmentCard,
+    cardLabel: "DAUNTLESS · EQUIPMENT EFFECT",
+    ariaLabel: dauntlessEquipmentEffectFrameCandidate.activationOwner.name + " used Dauntless on "
+      + dauntlessEquipmentEffectFrameCandidate.materialOwner.name + "; "
+      + dauntlessEquipmentEffectFrameCandidate.materialOwner.name + " discarded "
+      + cardDefinition(dauntlessEquipmentEffectFrameCandidate.equipmentCard.kind).name
+      + " from Equipment, preventing damage.",
+    publicNotice: dauntlessEquipmentEffectFrameCandidate.materialOwner.name + " discarded "
+      + cardDefinition(dauntlessEquipmentEffectFrameCandidate.equipmentCard.kind).name + " for "
+      + dauntlessEquipmentEffectFrameCandidate.activationOwner.name + "'s Dauntless; no damage was dealt.",
+    publicNoticeCompact: dauntlessEquipmentEffectFrameCandidate.materialOwner.name
+      + " discarded Equipment for Dauntless; damage prevented.",
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "yue_jin_dauntless-equipment-effect", dauntlessEquipmentEffectFrameCandidate.effectEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(dauntlessEquipmentEffectFrameCandidate.effectEvent.id)
+        ? [] : [dauntlessEquipmentEffectFrameCandidate.effectEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(dauntlessEquipmentEffectFrameCandidate.effect, {
+      title: "DAUNTLESS · EQUIPMENT EFFECT",
+      accessibleLabel: dauntlessEquipmentEffectFrameCandidate.activationOwner.name + " activated Dauntless. "
+        + dauntlessEquipmentEffectFrameCandidate.materialOwner.name + " discarded their "
+        + cardDefinition(dauntlessEquipmentEffectFrameCandidate.equipmentCard.kind).name
+        + " from Equipment, so no damage was dealt.",
+      activationOwnerName: dauntlessEquipmentEffectFrameCandidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const betrothmentCostFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "sun_shangxiang_betrothment"
+      && effect.effectClass === "COST")
+      .flatMap((effect) => {
+        const frame = verifiedBetrothmentCostFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
+  })();
+  const betrothmentCostFrameAction: PublicCardDisplayAction | null = betrothmentCostFrameCandidate ? {
+    key: ["betrothment-cost", betrothmentCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: betrothmentCostFrameCandidate.costEvent.id,
+    sourceId: betrothmentCostFrameCandidate.owner.id,
+    targetId: betrothmentCostFrameCandidate.target.id,
+    cardFace: betrothmentCostFrameCandidate.costCards[0],
+    cardLabel: "BETROTHMENT COST",
+    ariaLabel: `${betrothmentCostFrameCandidate.owner.name} used Betrothment on ${betrothmentCostFrameCandidate.target.name}, paying exactly two Hand cards. ${betrothmentCostFrameCandidate.recoveryCopy}`,
+    publicNotice: `${betrothmentCostFrameCandidate.owner.name} used Betrothment on ${betrothmentCostFrameCandidate.target.name}. ${betrothmentCostFrameCandidate.recoveryCopy}`,
+    publicNoticeCompact: betrothmentCostFrameCandidate.effect.outcome === "SOURCE_AND_TARGET_RECOVERED"
+      ? `Betrothment: ${betrothmentCostFrameCandidate.owner.name} and ${betrothmentCostFrameCandidate.target.name} both healed 1 HP.`
+      : `${betrothmentCostFrameCandidate.owner.name}'s Betrothment: ${betrothmentCostFrameCandidate.target.name} healed 1 HP.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "sun_shangxiang_betrothment", betrothmentCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(betrothmentCostFrameCandidate.costEvent.id)
+        ? [] : [betrothmentCostFrameCandidate.costEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(betrothmentCostFrameCandidate.effect, {
+      title: "BETROTHMENT",
+      accessibleLabel: `${betrothmentCostFrameCandidate.owner.name} discarded exactly two Hand cards for Betrothment on ${betrothmentCostFrameCandidate.target.name}. ${betrothmentCostFrameCandidate.recoveryCopy}`,
+      activationOwnerName: betrothmentCostFrameCandidate.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const equilibriumCostFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "sun_quan_zhiheng"
+      && effect.effectClass === "COST")
+      .flatMap((effect) => {
+        const frame = verifiedEquilibriumCostFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
+  })();
+  const equilibriumCostFrameAction: PublicCardDisplayAction | null = equilibriumCostFrameCandidate ? {
+    key: ["equilibrium-cost", equilibriumCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: equilibriumCostFrameCandidate.costEvent.id,
+    sourceId: equilibriumCostFrameCandidate.owner.id,
+    targetId: null,
+    cardFace: equilibriumCostFrameCandidate.costCards[0],
+    cardLabel: "EQUILIBRIUM COST",
+    ariaLabel: `${equilibriumCostFrameCandidate.owner.name} used Equilibrium, discarding ${equilibriumCostFrameCandidate.costCards.length} Hand or Equipment cards and privately drawing the same number of replacement cards.`,
+    publicNotice: `${equilibriumCostFrameCandidate.owner.name} used Equilibrium, discarding ${equilibriumCostFrameCandidate.costCards.length} cards and drawing the same number privately.`,
+    publicNoticeCompact: `Equilibrium: ${equilibriumCostFrameCandidate.owner.name} discarded ${equilibriumCostFrameCandidate.costCards.length} and privately drew ${equilibriumCostFrameCandidate.costCards.length}.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "sun_quan_zhiheng", equilibriumCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(equilibriumCostFrameCandidate.costEvent.id)
+        ? [] : [equilibriumCostFrameCandidate.costEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(equilibriumCostFrameCandidate.effect, {
+      title: "EQUILIBRIUM",
+      accessibleLabel: `${equilibriumCostFrameCandidate.owner.name} discarded ${equilibriumCostFrameCandidate.costCards.length} Hand and/or Equipment cards for Equilibrium, then drew the same number of private replacement cards. Replacement card identities are visible only to ${equilibriumCostFrameCandidate.owner.name}.`,
+      activationOwnerName: equilibriumCostFrameCandidate.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const firstAidConversionFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "hua_tuo_first_aid")
+      .flatMap((effect) => {
+        const frame = verifiedFirstAidConversionFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.conversionEvent) - room.timeline.indexOf(left.conversionEvent))[0] ?? null;
+  })();
+  const firstAidConversionFrameAction: PublicCardDisplayAction | null = firstAidConversionFrameCandidate ? {
+    key: ["first-aid-conversion", firstAidConversionFrameCandidate.conversionEvent.id].join(":"),
+    rootEventId: firstAidConversionFrameCandidate.conversionEvent.id,
+    sourceId: firstAidConversionFrameCandidate.owner.id,
+    targetId: firstAidConversionFrameCandidate.target.id,
+    cardKind: "Peach",
+    cardFace: firstAidConversionFrameCandidate.sourceCard,
+    cardLabel: "FIRST AID · AS PEACH",
+    ariaLabel: `${firstAidConversionFrameCandidate.owner.name} used First Aid to play ${cardDefinition(firstAidConversionFrameCandidate.sourceCard.kind).name} as Peach for ${firstAidConversionFrameCandidate.target.name}'s Dying response.`,
+    publicNotice: `${firstAidConversionFrameCandidate.owner.name} used First Aid to play ${cardDefinition(firstAidConversionFrameCandidate.sourceCard.kind).name} AS PEACH for ${firstAidConversionFrameCandidate.target.name}.`,
+    publicNoticeCompact: `First Aid: ${firstAidConversionFrameCandidate.owner.name} used ${cardDefinition(firstAidConversionFrameCandidate.sourceCard.kind).name} AS PEACH for ${firstAidConversionFrameCandidate.target.name}.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "hua_tuo_first_aid", firstAidConversionFrameCandidate.conversionEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(firstAidConversionFrameCandidate.conversionEvent.id)
+        ? [] : [firstAidConversionFrameCandidate.conversionEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(firstAidConversionFrameCandidate.effect, {
+      title: "FIRST AID · AS PEACH",
+      titleParts: { skillName: "FIRST AID", effectLabel: "AS PEACH" },
+      accessibleLabel: `${firstAidConversionFrameCandidate.owner.name} used First Aid. ${cardDefinition(firstAidConversionFrameCandidate.sourceCard.kind).name}, ${firstAidConversionFrameCandidate.sourceCard.rank} ${firstAidConversionFrameCandidate.sourceCard.suit}, was played as Peach for ${firstAidConversionFrameCandidate.target.name}'s Dying response.`,
+      activationOwnerName: firstAidConversionFrameCandidate.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const necromancyJudgementFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "sima_yi_guicai"
+      && effect.effectClass === "JUDGEMENT")
+      .flatMap((effect) => {
+        const frame = verifiedNecromancyJudgementFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.replacementEvent) - room.timeline.indexOf(left.replacementEvent))[0] ?? null;
+  })();
+  const necromancyJudgementFrameAction: PublicCardDisplayAction | null = necromancyJudgementFrameCandidate ? {
+    key: ["sima-yi-necromancy-judgement", necromancyJudgementFrameCandidate.originalEvent.id,
+      necromancyJudgementFrameCandidate.replacementEvent.id].join(":"),
+    rootEventId: necromancyJudgementFrameCandidate.replacementEvent.id,
+    sourceId: necromancyJudgementFrameCandidate.owner.id,
+    targetId: necromancyJudgementFrameCandidate.target.id,
+    cardFace: necromancyJudgementFrameCandidate.replacementCard,
+    cardLabel: "NECROMANCY · JUDGEMENT REPLACEMENT",
+    ariaLabel: `${necromancyJudgementFrameCandidate.owner.name} used Necromancy to replace ${necromancyJudgementFrameCandidate.target.name}'s Judgement: ${necromancyJudgementFrameCandidate.originalEvent.card.rank}${necromancyJudgementFrameCandidate.originalEvent.card.suit} → ${necromancyJudgementFrameCandidate.replacementCard.rank}${necromancyJudgementFrameCandidate.replacementCard.suit}.`,
+    publicNotice: `${necromancyJudgementFrameCandidate.owner.name} used Necromancy to replace ${necromancyJudgementFrameCandidate.target.name}'s Judgement: ${necromancyJudgementFrameCandidate.originalEvent.card.rank}${necromancyJudgementFrameCandidate.originalEvent.card.suit} → ${necromancyJudgementFrameCandidate.replacementCard.rank}${necromancyJudgementFrameCandidate.replacementCard.suit}.`,
+    publicNoticeCompact: `Necromancy replaced ${necromancyJudgementFrameCandidate.target.name}'s Judgement.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "sima_yi_guicai", necromancyJudgementFrameCandidate.originalEvent.id,
+        necromancyJudgementFrameCandidate.replacementEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(necromancyJudgementFrameCandidate.replacementEvent.id)
+        ? [] : [necromancyJudgementFrameCandidate.replacementEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(necromancyJudgementFrameCandidate.effect, {
+      title: "NECROMANCY · JUDGEMENT REPLACEMENT",
+      accessibleLabel: `${necromancyJudgementFrameCandidate.owner.name} used Necromancy to replace ${necromancyJudgementFrameCandidate.target.name}'s Judgement. Original: ${cardDefinition(necromancyJudgementFrameCandidate.originalEvent.card.kind).name}, ${necromancyJudgementFrameCandidate.originalEvent.card.rank}${necromancyJudgementFrameCandidate.originalEvent.card.suit}. Replacement: ${cardDefinition(necromancyJudgementFrameCandidate.replacementCard.kind).name}, ${necromancyJudgementFrameCandidate.replacementCard.rank}${necromancyJudgementFrameCandidate.replacementCard.suit}.`,
+      activationOwnerName: necromancyJudgementFrameCandidate.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const stauchnessCostFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "xiahou_dun_ganglie"
+      && effect.effectClass === "COST")
+      .flatMap((effect) => {
+        const frame = verifiedStauchnessCostFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
+  })();
+  const stauchnessCostFrameAction: PublicCardDisplayAction | null = stauchnessCostFrameCandidate ? {
+    key: ["stauchness-cost", stauchnessCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: stauchnessCostFrameCandidate.costEvent.id,
+    sourceId: stauchnessCostFrameCandidate.activationOwner.id,
+    targetId: stauchnessCostFrameCandidate.materialOwner.id,
+    cardFace: stauchnessCostFrameCandidate.costCards[0],
+    cardLabel: "STAUCHNESS · TWO HAND CARDS",
+    ariaLabel: `${stauchnessCostFrameCandidate.activationOwner.name} used Stauchness. ${stauchnessCostFrameCandidate.materialOwner.name}, the damage source, discarded exactly two Hand cards.`,
+    publicNotice: `${stauchnessCostFrameCandidate.activationOwner.name} used Stauchness. ${stauchnessCostFrameCandidate.materialOwner.name}, the damage source, discarded exactly two Hand cards.`,
+    publicNoticeCompact: `Stauchness: ${stauchnessCostFrameCandidate.activationOwner.name}; ${stauchnessCostFrameCandidate.materialOwner.name} discarded 2 Hand cards.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "xiahou_dun_ganglie", stauchnessCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(stauchnessCostFrameCandidate.costEvent.id)
+        ? [] : [stauchnessCostFrameCandidate.costEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(stauchnessCostFrameCandidate.effect, {
+      title: "STAUCHNESS",
+      accessibleLabel: `${stauchnessCostFrameCandidate.activationOwner.name} resolved Stauchness. ${stauchnessCostFrameCandidate.materialOwner.name}, the damage source, discarded exactly two Hand cards.`,
+      activationOwnerName: stauchnessCostFrameCandidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const rockCleavingAxeCostFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "rock_cleaving_axe_attack_dodged"
+      && effect.effectClass === "COST")
+      .flatMap((effect) => {
+        const frame = verifiedRockCleavingAxeCostFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
+  })();
+  const rockCleavingAxeCostFrameAction: PublicCardDisplayAction | null = rockCleavingAxeCostFrameCandidate ? {
+    key: ["rock-cleaving-axe-cost", rockCleavingAxeCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: rockCleavingAxeCostFrameCandidate.costEvent.id,
+    sourceId: rockCleavingAxeCostFrameCandidate.activationOwner.id,
+    targetId: rockCleavingAxeCostFrameCandidate.target.id,
+    cardFace: rockCleavingAxeCostFrameCandidate.costCards[0],
+    cardLabel: "ROCK CLEAVING AXE · TWO CARD COST",
+    ariaLabel: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} used Rock Cleaving Axe, paying two real cards to force the original Attack through after Dodge against ${rockCleavingAxeCostFrameCandidate.target.name}.`,
+    publicNotice: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} paid two cards with Rock Cleaving Axe to force the Attack through after Dodge against ${rockCleavingAxeCostFrameCandidate.target.name}.`,
+    publicNoticeCompact: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} used Rock Cleaving Axe · FORCE HIT on ${rockCleavingAxeCostFrameCandidate.target.name}.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "rock_cleaving_axe_attack_dodged", rockCleavingAxeCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(rockCleavingAxeCostFrameCandidate.costEvent.id)
+        ? [] : [rockCleavingAxeCostFrameCandidate.costEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(rockCleavingAxeCostFrameCandidate.effect, {
+      title: "ROCK CLEAVING AXE · FORCE HIT",
+      accessibleLabel: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} paid exactly two of their own Hand or Equipment cards. The original Attack on ${rockCleavingAxeCostFrameCandidate.target.name} continued to damage resolution after Dodge.`,
+      activationOwnerName: rockCleavingAxeCostFrameCandidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const kirinBowEffectFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "kirin_bow_damage_about_to_apply"
+      && effect.effectClass === "EFFECT")
+      .flatMap((effect) => {
+        const frame = verifiedKirinBowEffectFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.effectEvent) - room.timeline.indexOf(left.effectEvent))[0] ?? null;
+  })();
+  const kirinBowEffectFrameAction: PublicCardDisplayAction | null = kirinBowEffectFrameCandidate ? {
+    key: ["kirin-bow-effect", kirinBowEffectFrameCandidate.effectEvent.id].join(":"),
+    rootEventId: kirinBowEffectFrameCandidate.effectEvent.id,
+    sourceId: kirinBowEffectFrameCandidate.materialOwner.id,
+    targetId: null,
+    cardFace: kirinBowEffectFrameCandidate.mount,
+    cardLabel: "KIRIN BOW · MOUNT DISCARD",
+    ariaLabel: `${kirinBowEffectFrameCandidate.activationOwner.name} used Kirin Bow on ${kirinBowEffectFrameCandidate.materialOwner.name}. ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name} was discarded from the target's Equipment, and Attack damage continues.`,
+    publicNotice: `${kirinBowEffectFrameCandidate.activationOwner.name} used Kirin Bow to discard ${kirinBowEffectFrameCandidate.materialOwner.name}'s ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name}. Attack damage continues.`,
+    publicNoticeCompact: `Kirin Bow: ${kirinBowEffectFrameCandidate.materialOwner.name}'s Mount was discarded; Attack damage continues.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "kirin_bow_damage_about_to_apply", kirinBowEffectFrameCandidate.effectEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(kirinBowEffectFrameCandidate.effectEvent.id)
+        ? [] : [kirinBowEffectFrameCandidate.effectEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(kirinBowEffectFrameCandidate.effect, {
+      title: "KIRIN BOW · MOUNT EFFECT",
+      accessibleLabel: `${kirinBowEffectFrameCandidate.activationOwner.name} activated Kirin Bow. ${kirinBowEffectFrameCandidate.materialOwner.name}'s real equipped ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name} was discarded; Attack damage continues.`,
+      activationOwnerName: kirinBowEffectFrameCandidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const frostSwordEffectFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "frost_sword_damage_about_to_apply"
+      && effect.effectClass === "EFFECT")
+      .flatMap((effect) => {
+        const frame = verifiedFrostSwordEffectFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.effectEvent) - room.timeline.indexOf(left.effectEvent))[0] ?? null;
+  })();
+  const frostSwordEffectFrameAction: PublicCardDisplayAction | null = frostSwordEffectFrameCandidate ? {
+    key: ["frost-sword-effect", frostSwordEffectFrameCandidate.effectEvent.id].join(":"),
+    rootEventId: frostSwordEffectFrameCandidate.effectEvent.id,
+    sourceId: frostSwordEffectFrameCandidate.materialOwner.id,
+    targetId: null,
+    cardFace: frostSwordEffectFrameCandidate.discardedCards[0],
+    cardLabel: "FROST SWORD · TWO CARD DISCARD",
+    ariaLabel: `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword against ${frostSwordEffectFrameCandidate.materialOwner.name}. The target's two real cards were discarded and the Attack damage was prevented.`,
+    publicNotice: `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword. ${frostSwordEffectFrameCandidate.materialOwner.name} discarded two cards; Attack damage was prevented.`,
+    publicNoticeCompact: `Frost Sword: ${frostSwordEffectFrameCandidate.materialOwner.name} discarded two cards; damage prevented.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "frost_sword_damage_about_to_apply", frostSwordEffectFrameCandidate.effectEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(frostSwordEffectFrameCandidate.effectEvent.id)
+        ? [] : [frostSwordEffectFrameCandidate.effectEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(frostSwordEffectFrameCandidate.effect, {
+      title: "FROST SWORD · DAMAGE PREVENTED",
+      accessibleLabel: `${frostSwordEffectFrameCandidate.activationOwner.name} activated Frost Sword against ${frostSwordEffectFrameCandidate.materialOwner.name}. The target's committed cards, ${frostSwordEffectFrameCandidate.discardedCards.map((discardedCard) => `${cardDefinition(discardedCard.kind).name}, ${discardedCard.rank}${discardedCard.suit}`).join(" and ")}, were discarded; Attack damage was prevented.`,
+      activationOwnerName: frostSwordEffectFrameCandidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const yinYangSwordsEffectFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "yin_yang_swords_attack_targeted"
+      && effect.effectClass === "EFFECT")
+      .flatMap((effect) => {
+        const frame = verifiedYinYangSwordsEffectFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.effectEvent) - room.timeline.indexOf(left.effectEvent))[0] ?? null;
+  })();
+  const yinYangSwordsEffectFrameAction: PublicCardDisplayAction | null = yinYangSwordsEffectFrameCandidate ? {
+    key: ["yin-yang-swords-effect", yinYangSwordsEffectFrameCandidate.effectEvent.id].join(":"),
+    rootEventId: yinYangSwordsEffectFrameCandidate.effectEvent.id,
+    sourceId: yinYangSwordsEffectFrameCandidate.materialOwner.id,
+    targetId: null,
+    cardFace: yinYangSwordsEffectFrameCandidate.discardedCard,
+    cardLabel: "YIN-YANG SWORDS · HAND DISCARD",
+    ariaLabel: yinYangSwordsEffectFrameCandidate.activationOwner.name + " used Yin-Yang Swords against "
+      + yinYangSwordsEffectFrameCandidate.materialOwner.name + ". "
+      + cardDefinition(yinYangSwordsEffectFrameCandidate.discardedCard.kind).name + ", "
+      + yinYangSwordsEffectFrameCandidate.discardedCard.rank + yinYangSwordsEffectFrameCandidate.discardedCard.suit
+      + ", was discarded from the target's Hand; the Attack continues.",
+    publicNotice: yinYangSwordsEffectFrameCandidate.activationOwner.name + " used Yin-Yang Swords. "
+      + yinYangSwordsEffectFrameCandidate.materialOwner.name + " discarded a Hand card; the Attack continues.",
+    publicNoticeCompact: "Yin-Yang Swords: " + yinYangSwordsEffectFrameCandidate.materialOwner.name + " discarded a Hand card.",
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "yin_yang_swords_attack_targeted", yinYangSwordsEffectFrameCandidate.effectEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(yinYangSwordsEffectFrameCandidate.effectEvent.id)
+        ? [] : [yinYangSwordsEffectFrameCandidate.effectEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(yinYangSwordsEffectFrameCandidate.effect, {
+      title: "YIN-YANG SWORDS · TARGET DISCARD",
+      accessibleLabel: yinYangSwordsEffectFrameCandidate.activationOwner.name + " used Yin-Yang Swords against "
+        + yinYangSwordsEffectFrameCandidate.materialOwner.name + ". The target's committed Hand discard was "
+        + cardDefinition(yinYangSwordsEffectFrameCandidate.discardedCard.kind).name + ", "
+        + yinYangSwordsEffectFrameCandidate.discardedCard.rank + yinYangSwordsEffectFrameCandidate.discardedCard.suit
+        + "; the Attack continues.",
+      activationOwnerName: yinYangSwordsEffectFrameCandidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const greenDragonBladeEffectFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "green_dragon_blade_attack_dodged"
+      && effect.effectClass === "EFFECT")
+      .flatMap((effect) => {
+        const frame = verifiedGreenDragonBladeEffectFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.effectEvent) - room.timeline.indexOf(left.effectEvent))[0] ?? null;
+  })();
+  const greenDragonBladeEffectFrameAction: PublicCardDisplayAction | null = greenDragonBladeEffectFrameCandidate ? {
+    key: ["green-dragon-blade-follow-up", greenDragonBladeEffectFrameCandidate.effectEvent.id].join(":"),
+    rootEventId: greenDragonBladeEffectFrameCandidate.effectEvent.id,
+    sourceId: greenDragonBladeEffectFrameCandidate.activationOwner.id,
+    targetId: greenDragonBladeEffectFrameCandidate.target.id,
+    cardFace: greenDragonBladeEffectFrameCandidate.followUpAttack,
+    cardLabel: "GREEN DRAGON BLADE · FOLLOW-UP ATTACK",
+    ariaLabel: `${greenDragonBladeEffectFrameCandidate.activationOwner.name} used Green Dragon Blade after ${greenDragonBladeEffectFrameCandidate.target.name} dodged the original Attack. The real ${greenDragonBladeEffectFrameCandidate.followUpAttack.rank}${greenDragonBladeEffectFrameCandidate.followUpAttack.suit} Attack is a new follow-up, not a cost, and keeps its ordinary Dodge response.`,
+    publicNotice: `${greenDragonBladeEffectFrameCandidate.activationOwner.name} used Green Dragon Blade to play a new Attack on ${greenDragonBladeEffectFrameCandidate.target.name} after the original Attack was dodged.`,
+    publicNoticeCompact: `Green Dragon Blade: ${greenDragonBladeEffectFrameCandidate.activationOwner.name} played a new Attack on ${greenDragonBladeEffectFrameCandidate.target.name}.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "green_dragon_blade_attack_dodged", greenDragonBladeEffectFrameCandidate.effectEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(greenDragonBladeEffectFrameCandidate.effectEvent.id)
+        ? [] : [greenDragonBladeEffectFrameCandidate.effectEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(greenDragonBladeEffectFrameCandidate.effect, {
+      title: "GREEN DRAGON BLADE · FOLLOW-UP ATTACK",
+      accessibleLabel: `${greenDragonBladeEffectFrameCandidate.activationOwner.name} used Green Dragon Blade after ${greenDragonBladeEffectFrameCandidate.target.name} dodged the original Attack. This is a new physical Attack card, not a weapon cost; it keeps its ordinary Dodge response.`,
+      activationOwnerName: greenDragonBladeEffectFrameCandidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const latestHeroPublicCardEffectFrameAction = [
+    prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction,
+    dauntlessEquipmentEffectFrameAction, betrothmentCostFrameAction,
+    equilibriumCostFrameAction, firstAidConversionFrameAction, necromancyJudgementFrameAction,
+    stauchnessCostFrameAction, rockCleavingAxeCostFrameAction, kirinBowEffectFrameAction,
+    frostSwordEffectFrameAction,
+    yinYangSwordsEffectFrameAction,
+    greenDragonBladeEffectFrameAction,
+  ].filter((action): action is PublicCardDisplayAction => action !== null
+    && !(action.rootEventId === prodigalHealerCostFrameCandidate?.costEvent.id
+      && prodigalHealerAnnouncementLifecycle.status === "superseded"))
+    .reduce<PublicCardDisplayAction | null>((latest, action) => {
+      if (!latest) return action;
+      return room.timeline.findIndex((event) => event.id === action.rootEventId)
+        > room.timeline.findIndex((event) => event.id === latest.rootEventId) ? action : latest;
+    }, null);
   const lustDuelPublicAction: PublicCardDisplayAction | null = lustDuelExchangeDisplayCandidate ? {
     key: ["lust-duel", lustDuelExchangeDisplayCandidate.exchange.interactionId,
       lustDuelExchangeDisplayCandidate.exchange.rootFrameId,
@@ -4754,7 +8202,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     cardFace: lustDuelExchangeDisplayCandidate.costFrame.costCard,
     cardLabel: "LUST",
     ariaLabel: lustDuelExchangeDisplayCandidate.settlementCopy?.message
-      ?? `Diao Chan used Lust: ${lustDuelExchangeDisplayCandidate.costFrame.firstParticipant.name} and ${lustDuelExchangeDisplayCandidate.costFrame.secondParticipant.name} enter a Duel; ${lustDuelExchangeDisplayCandidate.costFrame.firstActor.name} plays Attack first.`,
+      ?? `Diao Chan used Lust: ${lustDuelOrderAccessibleMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor)}`,
     publicNotice: lustDuelExchangeDisplayCandidate.settlementCopy?.message
       ?? (lustDuelExchangeDisplayCandidate.responses.at(-1)?.responseEvent.type === "message"
       ? lustDuelExchangeDisplayCandidate.responses.at(-1)?.responseActor.name + " provided an Attack in the Lust Duel."
@@ -4772,10 +8220,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       activationEventId: lustDuelExchangeDisplayCandidate.exchange.root.activationEventId,
       title: "LUST",
       message: lustDuelOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor),
-      compactMessage: lustDuelCompactOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor),
+      accessibleMessage: lustDuelOrderAccessibleMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor),
+      compactMessage: compactLustDuelOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor) ?? undefined,
     },
+    publicCardEffectFrame: lustPublicCardEffectFrame(lustDuelExchangeDisplayCandidate.costFrame, room.players,
+      lustDuelOrderAccessibleMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor)),
     ...(lustDuelExchangeDisplayCandidate.exchange.settlement ? {
-      publicNoticeCompact: lustDuelCompactResultMessage(
+      publicNoticeCompact: compactLustDuelResultMessage(
         room.players.find((player) => player.id === lustDuelExchangeDisplayCandidate.exchange.settlement?.failedPlayerId)?.name,
         room.players.find((player) => player.id === lustDuelExchangeDisplayCandidate.exchange.settlement?.damageSourceId)?.name,
         lustDuelExchangeDisplayCandidate.exchange.settlement.damageAmount,
@@ -4806,9 +8257,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     } : {}),
   } : null;
   const singleTargetNegationOwnsRoot = Boolean(singleTargetNegationUsesJourney && singleTargetNegationProofCandidate
-    && (!rootAction || rootAction.rootEventId === singleTargetNegationProofCandidate.rootEvent.id)
-    && (clientPresentation.stage === "NEGATION" || singleTargetNegationProofCandidate.responseNodes.length > 0));
-  const livePublicCardAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
+    && (!rootAction || rootAction.rootEventId === singleTargetNegationProofCandidate.rootEvent.id));
+  const nonHeroLivePublicCardAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
     ? heldPublicNegationReadAction
     : lustDuelPublicAction
     ? lustDuelPublicAction
@@ -4873,9 +8323,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       rootEventId: bumperHarvestRootCandidate.rootEvent.id,
       interactionId: bumperHarvestRootCandidate.progress.interactionId,
       rootFrameId: bumperHarvestRootCandidate.progress.rootFrameId,
+      checkpointId: bumperHarvestRootCandidate.progress.checkpointId,
       sourceId: bumperHarvestRootCandidate.progress.sourceId,
       targetId: null,
       cardFace: bumperHarvestRootCandidate.rootEvent.card,
+      ...(harvestPublicNarration ? { publicNegationNarration: harvestPublicNarration } : {}),
       ...(bumperHarvestRootCandidate.publicResponseHistory.length ? {
         responseHistory: bumperHarvestRootCandidate.publicResponseHistory,
       } : {}),
@@ -4930,9 +8382,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         type: "group-root",
         scopeKey: [room.code, groupTargetBranchCandidate.group.interactionId,
           groupTargetBranchCandidate.group.groupFrameId, groupTargetBranchCandidate.rootEvent.id].join(":"),
-        freshEventIds: [groupTargetBranchCandidate.rootEvent.id, ...groupTargetBranchCandidate.responses.map((response) => response.eventId)]
+        freshEventIds: [groupTargetBranchCandidate.rootEvent.id,
+          ...groupTargetBranchCandidate.responseHistory.map((response) => response.eventId),
+          ...groupTargetBranchCandidate.responses.map((response) => response.eventId)]
           .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
       },
+      ...(groupTargetNegationNarration ? { publicNegationNarration: groupTargetNegationNarration } : {}),
+      ...(groupTargetBranchCandidate.responseHistory.length
+        ? { responseHistory: groupTargetBranchCandidate.responseHistory } : {}),
       ...(groupTargetBranchCandidate.groupTargetEffectScope ? {
         phaseNotice: groupTargetBranchCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",
         ...(groupTargetBranchCandidate.responses.length ? { responses: groupTargetBranchCandidate.responses } : {}),
@@ -4977,7 +8434,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           ? []
           : [dismantleSettlementCandidate.action.rootEventId],
       },
-      settlement: { eventId: dismantleSettlementCandidate.action.eventId, outcome: dismantleSettlementCandidate.action.outcome, exiting: dismantleSettlementCandidate.exiting },
+      settlement: {
+        eventId: dismantleSettlementCandidate.action.eventId,
+        outcome: dismantleSettlementCandidate.action.outcome,
+        exiting: dismantleSettlementCandidate.exiting,
+        targetCardMovement: {
+          sourceZone: dismantleSettlementCandidate.action.sourceZone,
+          affectedCardOwnerId: dismantleSettlementCandidate.action.affectedCardOwnerId,
+          destinationZone: dismantleSettlementCandidate.action.destinationZone,
+          destinationOwnerId: dismantleSettlementCandidate.action.destinationOwnerId,
+          ...(dismantleSettlementCandidate.action.affectedCardFace ? { affectedCardFace: dismantleSettlementCandidate.action.affectedCardFace } : {}),
+        },
+      },
     }
     : stealSettlementCandidate
     ? {
@@ -4989,7 +8457,26 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: stealSettlementCandidate.rootEvent.card,
       cardLabel: "STEAL",
       ariaLabel: `${stealSettlementCandidate.source.name} played Steal targeting ${stealSettlementCandidate.target.name}`,
-      settlement: { eventId: stealSettlementCandidate.action.eventId, outcome: stealSettlementCandidate.action.outcome, exiting: stealSettlementCandidate.exiting },
+      motion: {
+        type: "single-target",
+        scopeKey: [room.code, stealSettlementCandidate.action.rootEventId].join(":"),
+        freshEventIds: publicCardJourneySeenEventIds.has(stealSettlementCandidate.action.rootEventId)
+          ? []
+          : [stealSettlementCandidate.action.rootEventId],
+      },
+      settlement: {
+        eventId: stealSettlementCandidate.action.eventId,
+        rootResolutionId: stealSettlementCandidate.action.rootResolutionId,
+        outcome: stealSettlementCandidate.action.outcome,
+        exiting: stealSettlementCandidate.exiting,
+        targetCardMovement: {
+          sourceZone: stealSettlementCandidate.action.sourceZone,
+          affectedCardOwnerId: stealSettlementCandidate.action.affectedCardOwnerId,
+          destinationZone: stealSettlementCandidate.action.destinationZone,
+          destinationOwnerId: stealSettlementCandidate.action.destinationOwnerId,
+          ...(stealSettlementCandidate.action.affectedCardFace ? { affectedCardFace: stealSettlementCandidate.action.affectedCardFace } : {}),
+        },
+      },
     }
     : attackHitSettlementCandidate
     ? {
@@ -4998,9 +8485,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       sourceId: attackHitSettlementCandidate.action.sourceId,
       targetId: attackHitSettlementCandidate.action.targetId,
       cardKind: "Attack",
-      cardFace: attackHitSettlementCandidate.rootEvent.card,
-      cardLabel: "ATTACK",
-      ariaLabel: `${attackHitSettlementCandidate.source.name} played Attack targeting ${attackHitSettlementCandidate.target.name}`,
+      cardFace: attackHitSerpentSpearFrame && attackHitSettlementCandidate.serpentSpearProof
+        ? attackHitSettlementCandidate.serpentSpearProof.sourceCards[0]
+        : attackHitSettlementCandidate.rootEvent.type === "card" ? attackHitSettlementCandidate.rootEvent.card : undefined,
+      cardLabel: attackHitSerpentSpearFrame ? "SERPENT SPEAR · AS ATTACK" : "ATTACK",
+      ariaLabel: attackHitSerpentSpearFrame?.accessibleLabel
+        ?? `${attackHitSettlementCandidate.source.name} played Attack targeting ${attackHitSettlementCandidate.target.name}`,
+      ...(attackHitSerpentSpearFrame ? {
+        publicNotice: attackHitSerpentSpearFrame.publicNotice,
+        publicNoticeCompact: `${attackHitSettlementCandidate.source.name} used Serpent Spear · AS ATTACK.`,
+        publicCardEffectFrame: attackHitSerpentSpearFrame.frame,
+      } : {}),
       motion: {
         type: "attack-dodge",
         scopeKey: [room.code, attackHitSettlementCandidate.action.rootEventId].join(":"),
@@ -5012,11 +8507,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
     : duelNegationPublicAction && !duelExchangeDisplayCandidate
     ? duelNegationPublicAction
-    : duelExchangeDisplayCandidate
+    : duelExchangeDisplayCandidate && duelPublicStageOwner.stageOwner === "DUEL_EXCHANGE"
     ? {
       key: ["duel", duelExchangeDisplayCandidate.exchange.interactionId, duelExchangeDisplayCandidate.exchange.rootFrameId, duelExchangeDisplayCandidate.exchange.root.eventId, duelExchangeDisplayCandidate.exchange.root.sourceId, duelExchangeDisplayCandidate.exchange.root.targetId].join(":"),
       interactionId: duelExchangeDisplayCandidate.exchange.interactionId,
       rootFrameId: duelExchangeDisplayCandidate.exchange.rootFrameId,
+      checkpointId: duelExchangeDisplayCandidate.exchange.checkpointId,
+      presentationRevision: duelExchangeDisplayCandidate.exchange.presentationRevision,
       rootEventId: duelExchangeDisplayCandidate.exchange.root.eventId,
       sourceId: duelExchangeDisplayCandidate.exchange.root.sourceId,
       targetId: duelExchangeDisplayCandidate.exchange.root.targetId,
@@ -5024,26 +8521,43 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: duelExchangeDisplayCandidate.rootEvent.card,
       cardLabel: "DUEL",
       ariaLabel: `${duelExchangeDisplayCandidate.source.name} played Duel targeting ${duelExchangeDisplayCandidate.target.name}`,
+      suppressAnnouncement: !duelExchangeAttackCopy,
+      ...(duelExchangeAttackCopy ? {
+        publicNotice: duelExchangeAttackCopy.message,
+        publicNoticeCompact: duelExchangeAttackCopy.compactMessage,
+        publicNoticeEventId: duelExchangeAttackCopy.eventId,
+      } : {}),
       motion: {
         type: "duel",
         scopeKey: [room.code, duelExchangeDisplayCandidate.exchange.interactionId, duelExchangeDisplayCandidate.exchange.rootFrameId, duelExchangeDisplayCandidate.exchange.root.eventId].join(":"),
         freshEventIds: [
           duelExchangeDisplayCandidate.exchange.root.eventId,
+          ...duelExchangeDisplayCandidate.negationResponses.map(({ response }) => response.responseEventId),
           ...duelExchangeDisplayCandidate.responses.map(({ response }) => response.responseEventId),
         ].filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
       },
-      ...(duelExchangeDisplayCandidate.responses.length ? {
-        responses: duelExchangeDisplayCandidate.responses.map(({ response, responseEvent, responseActor, responseTarget }) => ({
-          eventId: response.responseEventId,
-          ordinal: response.ordinal,
-          actorId: response.responseActorId,
-          actorName: responseActor.name,
-          cardFace: responseEvent.card,
-          ...(responseEvent.card.kind !== "Attack" && responseEvent.playedAs?.toLowerCase() === "attack"
-            ? { semanticLabel: "AS ATTACK" }
-            : {}),
-          ariaLabel: `${responseActor.name} played Attack targeting ${responseTarget.name}`,
-        })),
+      ...(duelExchangeDisplayCandidate.negationResponses.length || duelExchangeDisplayCandidate.responses.length ? {
+        responses: [
+          ...duelExchangeDisplayCandidate.negationResponses.map(({ response, responseEvent, responseActor }) => ({
+            eventId: response.responseEventId,
+            ordinal: response.ordinal,
+            actorId: response.responseActorId,
+            actorName: responseActor.name,
+            cardFace: responseEvent.card,
+            ariaLabel: `${responseActor.name} played Negation during ${duelExchangeDisplayCandidate.source.name}'s Duel.`,
+          })),
+          ...duelExchangeDisplayCandidate.responses.map(({ response, responseEvent, responseActor, responseTarget }) => ({
+            eventId: response.responseEventId,
+            ordinal: duelExchangeDisplayCandidate.negationResponses.length + response.ordinal,
+            actorId: response.responseActorId,
+            actorName: responseActor.name,
+            cardFace: responseEvent.card,
+            ...(responseEvent.card.kind !== "Attack" && responseEvent.playedAs?.toLowerCase() === "attack"
+              ? { semanticLabel: "AS ATTACK" }
+              : {}),
+            ariaLabel: `${responseActor.name} played Attack targeting ${responseTarget.name}`,
+          })),
+        ],
       } : {}),
     }
     : singleTargetNegationOwnsRoot
@@ -5058,8 +8572,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       targetId: rootAction.targetId,
       cardKind: rootAction.cardKind,
       cardFace: rootActionCardFace,
-      cardLabel: rootActionName?.toUpperCase() ?? "ACTION",
-      ariaLabel: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "Unknown player"} played ${rootActionName ?? "an action"}${rootAction.targetId ? ` targeting ${room.players.find((player) => player.id === rootAction.targetId)?.name ?? "the target"}` : ""}`,
+      cardLabel: rootActionSerpentSpearFrame ? "SERPENT SPEAR · AS ATTACK" : rootActionName?.toUpperCase() ?? "ACTION",
+      ariaLabel: rootActionSerpentSpearFrame?.accessibleLabel
+        ?? `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "Unknown player"} played ${rootActionName ?? "an action"}${rootAction.targetId ? ` targeting ${room.players.find((player) => player.id === rootAction.targetId)?.name ?? "the target"}` : ""}`,
       ...(rootAction.action === "ATTACK" ? {
         motion: {
           type: "attack-dodge" as const,
@@ -5068,14 +8583,19 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           responseFresh: false,
           deflectionFresh: false,
         },
-        ...(rootAction.targetId === room.meId
+        ...(rootActionSerpentSpearFrame ? {
+          publicNotice: rootActionSerpentSpearFrame.publicNotice,
+          publicNoticeCompact: `${rootActionSerpentSpearProof?.owner.name ?? "A player"} used Serpent Spear · AS ATTACK.`,
+          publicCardEffectFrame: rootActionSerpentSpearFrame.frame,
+        } : {}),
+        ...(!rootActionSerpentSpearFrame && rootAction.targetId === room.meId
           && room.currentAction?.kind === "response"
           && room.currentAction.requirement === "dodge"
           && room.currentAction.actorId === room.meId
           && canUseAction(room.currentAction, "respond")
           ? { publicNotice: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "A player"} played Attack on you. Dodge or Skip.` }
           : {}),
-      } : rootAction.cardKind === "Dismantle" ? {
+      } : rootAction.cardKind === "Dismantle" || rootAction.cardKind === "Steal" ? {
         motion: {
           type: "single-target" as const,
           scopeKey: [room.code, rootAction.rootEventId].join(":"),
@@ -5092,9 +8612,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         sourceId: attackDodgeDisplayCandidate.proof.rootSourceId,
         targetId: attackDodgeDisplayCandidate.proof.targetId,
         cardKind: "Attack",
-        cardFace: attackDodgeDisplayCandidate.rootEvent.card,
-        cardLabel: "ATTACK",
-        ariaLabel: `${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.rootSourceId)?.name ?? "Unknown player"} played Attack targeting ${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.targetId)?.name ?? "unknown player"}`,
+        cardFace: attackDodgeSerpentSpearFrame && attackDodgeSerpentSpearProof
+          ? attackDodgeSerpentSpearProof.sourceCards[0]
+          : attackDodgeDisplayCandidate.rootEvent.type === "card" ? attackDodgeDisplayCandidate.rootEvent.card : undefined,
+        cardLabel: attackDodgeSerpentSpearFrame ? "SERPENT SPEAR · AS ATTACK" : "ATTACK",
+        ariaLabel: attackDodgeSerpentSpearFrame?.accessibleLabel
+          ?? `${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.rootSourceId)?.name ?? "Unknown player"} played Attack targeting ${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.targetId)?.name ?? "unknown player"}`,
+        ...(attackDodgeSerpentSpearFrame ? {
+          publicNotice: attackDodgeSerpentSpearFrame.publicNotice,
+          publicNoticeCompact: `${attackDodgeDisplayCandidate.proof.rootSourceId === attackDodgeSerpentSpearProof?.owner.id ? attackDodgeSerpentSpearProof.owner.name : "A player"} used Serpent Spear · AS ATTACK.`,
+          publicCardEffectFrame: attackDodgeSerpentSpearFrame.frame,
+        } : {}),
         motion: {
           type: "attack-dodge",
           scopeKey: [room.code, attackDodgeDisplayCandidate.proof.rootEventId].join(":"),
@@ -5136,6 +8664,34 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ariaLabel: `${selfTargetCandidate.source.name} used Peach on self`,
       }
       : null;
+  const publicCardActionCheckpointEventId = (action: PublicCardDisplayAction) =>
+    action.publicNegationNarration?.latestCommittedEventId
+    ?? action.settlement?.eventId
+    ?? action.responses?.at(-1)?.eventId
+    ?? action.response?.eventId
+    ?? action.publicCardEffectFrame?.eventId
+    ?? action.rootEventId;
+  const laterPublicCardPlayEventIds = room.timeline.flatMap((event) =>
+    event.type === "card" && event.action === "play" && event.presentation !== false && !event.privateToPlayerId
+      ? [event.id]
+      : []);
+  const livePublicCardAction = selectPublicAnnouncementCandidate([
+    ...(nonHeroLivePublicCardAction ? [{
+      value: nonHeroLivePublicCardAction,
+      rootEventId: nonHeroLivePublicCardAction.rootEventId,
+      checkpointEventId: publicCardActionCheckpointEventId(nonHeroLivePublicCardAction),
+      priority: 2,
+    }] : []),
+    ...(latestHeroPublicCardEffectFrameAction ? [{
+      value: latestHeroPublicCardEffectFrameAction,
+      rootEventId: latestHeroPublicCardEffectFrameAction.rootEventId,
+      checkpointEventId: publicCardActionCheckpointEventId(latestHeroPublicCardEffectFrameAction),
+      priority: 1,
+      // Retiring the public copy must not remove its proof-backed physical
+      // CardFace; suppressAnnouncement is handled by the shared renderer.
+      supersedeOnNewerPublicPlay: true,
+    }] : []),
+  ], room.timeline.filter((event) => event.presentation !== false && !event.privateToPlayerId).map((event) => event.id), laterPublicCardPlayEventIds);
   const heldAttackDodgeReadAction = visibleActiveAttackDodgeSettlement
     && visibleActiveAttackDodgeSettlement.phase !== "complete"
     && visibleActiveAttackDodgeSettlement.action.settlement?.eventId === visibleActiveAttackDodgeSettlement.eventId
@@ -5151,6 +8707,76 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const selectedPublicCardAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
     ?? heldAttackDodgeReadAction
     ?? livePublicCardAction;
+  const activeJudgementRevealRoute = useMemo(() => {
+    if (!activeEvent) return null;
+    const selectedActionCardIds = selectedPublicCardAction ? [
+      selectedPublicCardAction.cardFace?.id,
+      selectedPublicCardAction.response?.cardFace?.id,
+      selectedPublicCardAction.deflection?.cardFace.id,
+      ...(selectedPublicCardAction.responseHistory ?? []).flatMap((response) => [response.cardFace?.id, ...(response.cardFaces ?? []).map((card) => card.id)]),
+      ...(selectedPublicCardAction.responses ?? []).flatMap((response) => [response.cardFace?.id, ...(response.cardFaces ?? []).map((card) => card.id)]),
+    ].filter((cardId): cardId is string => Boolean(cardId)) : [];
+    return routePublicJudgementReveal({
+      event: activeEvent,
+      timeline: room.timeline,
+      roomCode: room.code,
+      viewerId: room.meId,
+      retiredEventIds: [...presentedEventIds],
+      existingOwners: selectedActionCardIds.map((physicalCardId) => ({
+        eventId: selectedPublicCardAction?.rootEventId ?? "",
+        physicalCardId,
+        owner: "PublicCardDisplay",
+      })),
+    });
+  }, [activeEvent, room.timeline, room.code, room.meId, presentedEventIds, selectedPublicCardAction]);
+  const selectedCardHasDedicatedZoneOwner = Boolean(selectedPublicCardAction?.cardFace && (
+    activeEquipmentZoneTransition?.physicalCardId === selectedPublicCardAction.cardFace.id
+    || activeJudgementZoneTransition?.physicalCardId === selectedPublicCardAction.cardFace.id
+    || activePublicDiscardTransition?.transitions.some((transition) => transition.physicalCardId === selectedPublicCardAction.cardFace?.id)
+    || activePublicHandRevealTransition?.physicalCardId === selectedPublicCardAction.cardFace.id
+  ));
+  const selectedActionIsNegationPresentation = Boolean(selectedPublicCardAction
+    && (selectedPublicCardAction.motion?.type === "negation"
+      || room.presentationSnapshot?.interaction?.stage === "NEGATION"));
+  const genericPublicFactNarration = selectedPublicCardAction && selectedActionIsNegationPresentation
+    ? derivePublicNegationNarration({
+      snapshot: room.presentationSnapshot,
+      players: room.players,
+      rootEventId: selectedPublicCardAction.rootEventId,
+    })
+    : null;
+  const narratableInteractionFacts = [
+    ...(room.presentationSnapshot?.publicEventFacts ?? []),
+    ...(room.presentationSnapshot?.retainedPublicEventFacts ?? []),
+  ].filter((fact) => fact.rootEventId && (
+        ["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED", "CARD_EQUIPPED"].includes(fact.category)
+        || fact.category === "CARD_PLAYED" && fact.eventId === fact.rootEventId
+          && fact.effect?.label === "Borrowed Sword"
+      ))
+    .sort((left, right) => left.order - right.order);
+  const currentInteractionFact = room.presentationSnapshot?.interaction?.stage !== "NEGATION"
+    ? (activeEvent ? narratableInteractionFacts.find((fact) => fact.eventId === activeEvent.id) : null)
+      ?? narratableInteractionFacts.at(-1)
+      ?? room.presentationSnapshot?.retainedPublicEvent
+    : null;
+  const publicDiscardOwnsAnnouncement = Boolean(latestPublicDiscardAnnouncement
+    && latestPublicDiscardAnnouncement.order > (currentInteractionFact?.order ?? -1));
+  const publicInteractionNarration = currentInteractionFact?.rootEventId
+    ? derivePublicInteractionNarration({
+      snapshot: room.presentationSnapshot,
+      players: room.players,
+      rootEventId: currentInteractionFact.rootEventId,
+      interactionId: currentInteractionFact.identity.interactionId,
+      rootFrameId: currentInteractionFact.identity.rootFrameId,
+      eventId: currentInteractionFact.eventId,
+    })
+    : null;
+  const interactionNarrationBelongsToAction = Boolean(publicInteractionNarration && selectedPublicCardAction
+    && !activeJudgementRevealRoute
+    && currentInteractionFact?.effect?.kind !== "judgement"
+    && selectedPublicCardAction.rootEventId === publicInteractionNarration.rootEventId
+    && selectedPublicCardAction.interactionId === publicInteractionNarration.interactionId
+    && selectedPublicCardAction.rootFrameId === publicInteractionNarration.rootFrameId);
   const deflectionForPublicAction = (action: PublicCardDisplayAction | null) => {
     if (!action || action.cardKind !== "Attack" || action.motion?.type !== "attack-dodge" || !action.targetId) return null;
     const proofs = clientPresentation.deflectionActions.filter((proof) => proof.semantics === "PROVEN"
@@ -5194,8 +8820,237 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     };
   };
   const activeDeflectionAction = deflectionForPublicAction(selectedPublicCardAction);
+  const selectedLustOrderOwnsActivityBand = Boolean(selectedPublicCardAction
+    && (selectedPublicCardAction.motion?.type === "lust-cost" || selectedPublicCardAction.motion?.type === "lust-duel")
+    && (publicActivityStatus.kind === "response" || publicActivityStatus.kind === "resolving"));
+  const attackConversionFrameCandidate = (() => {
+    if (!selectedPublicCardAction || selectedPublicCardAction.motion?.type !== "attack-dodge"
+      || selectedPublicCardAction.cardKind !== "Attack" || !selectedPublicCardAction.cardFace) return null;
+    const specs: readonly AttackConversionFrameSpec[] = [
+      { effectId: "guan_yu_red_card_attack", hero: "guan-yu", skillName: "God of War", title: "GOD OF WAR · AS ATTACK", titleParts: { skillName: "GOD OF WAR", effectLabel: "AS ATTACK" }, sourceKind: "RED_NON_ATTACK" },
+      { effectId: "zhao_yun_dodge_as_attack", hero: "zhao-yun", skillName: "Braveheart", title: "BRAVEHEART · DODGE AS ATTACK", titleParts: { skillName: "BRAVEHEART", effectLabel: "DODGE AS ATTACK" }, sourceKind: "DODGE" },
+    ];
+    const candidates = specs.flatMap((spec) => {
+      const proof = verifiedAttackConversionFrameForEvent(
+        room.timeline,
+        room.presentationSnapshot?.publicCardEffects ?? [],
+        room.players,
+        selectedPublicCardAction.rootEventId,
+        spec,
+      );
+      return proof && selectedPublicCardAction.sourceId === proof.owner.id
+        && selectedPublicCardAction.targetId === proof.target.id
+        && selectedPublicCardAction.cardFace.id === proof.sourceCard.id
+        ? [{ proof, spec }] : [];
+    });
+    if (candidates.length !== 1) return null;
+    const { proof, spec } = candidates[0];
+    const semanticCardName = spec.sourceKind === "DODGE" ? "Dodge" : cardDefinition(proof.sourceCard.kind).name;
+    const publicNotice = `${proof.owner.name} used ${spec.skillName}: ${semanticCardName} AS ATTACK, targeting ${proof.conversionEvent.target}.`;
+    const accessibleLabel = `${proof.owner.name} used ${spec.skillName}. ${cardDefinition(proof.sourceCard.kind).name}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Attack targeting ${proof.conversionEvent.target}.`;
+    const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
+      title: spec.title,
+      titleParts: spec.titleParts,
+      accessibleLabel,
+      activationOwnerName: proof.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    });
+    return publicCardEffectFrame ? { proof, spec, publicNotice, accessibleLabel, publicCardEffectFrame } : null;
+  })();
+  const ambushmentConversionFrameCandidate = (() => {
+    if (!selectedPublicCardAction || selectedPublicCardAction.cardKind !== "Dismantle" || !selectedPublicCardAction.cardFace) return null;
+    const proof = verifiedAmbushmentConversionFrameForEvent(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      room.players,
+      selectedPublicCardAction.rootEventId,
+      selectedPublicCardAction.cardFace.id,
+    );
+    if (!proof || selectedPublicCardAction.sourceId !== proof.owner.id
+      || selectedPublicCardAction.targetId !== proof.target.id) return null;
+    const cardName = cardDefinition(proof.sourceCard.kind).name;
+    const publicNotice = `${proof.owner.name} used Ambushment AS BURNING BRIDGES on ${proof.target.name}.`;
+    const accessibleLabel = `${proof.owner.name} used Ambushment. ${cardName}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Burning Bridges targeting ${proof.target.name}.`;
+    const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
+      title: "AMBUSHMENT · AS BURNING BRIDGES",
+      titleParts: { skillName: "AMBUSHMENT", effectLabel: "AS BURNING BRIDGES" },
+      accessibleLabel,
+      activationOwnerName: proof.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    });
+    return publicCardEffectFrame ? { proof, publicNotice, accessibleLabel, publicCardEffectFrame } : null;
+  })();
+  const captivatingConversionFrameCandidate = (() => {
+    if (!selectedPublicCardAction || selectedPublicCardAction.cardKind !== "Overindulgence"
+      || !selectedPublicCardAction.cardFace) return null;
+    const proof = verifiedCaptivatingConversionFrameForEvent(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      room.players,
+      selectedPublicCardAction.rootEventId,
+      selectedPublicCardAction.cardFace.id,
+    );
+    if (!proof || selectedPublicCardAction.sourceId !== proof.owner.id
+      || selectedPublicCardAction.targetId !== proof.target.id) return null;
+    const cardName = cardDefinition(proof.sourceCard.kind).name;
+    const publicNotice = `${proof.owner.name} used Captivating: ${cardName} ${proof.sourceCard.rank}${proof.sourceCard.suit} AS OVERINDULGENCE on ${proof.target.name}.`;
+    const accessibleLabel = `${proof.owner.name} used Captivating. ${cardName}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Overindulgence targeting ${proof.target.name}.`;
+    const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
+      title: "CAPTIVATING · AS OVERINDULGENCE",
+      titleParts: { skillName: "CAPTIVATING", effectLabel: "AS OVERINDULGENCE" },
+      accessibleLabel,
+      activationOwnerName: proof.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    });
+    return publicCardEffectFrame ? { proof, publicNotice, accessibleLabel, publicCardEffectFrame } : null;
+  })();
+  const braveheartDodgeResponseFrameCandidate = (() => {
+    const response = selectedPublicCardAction?.response;
+    if (!selectedPublicCardAction || selectedPublicCardAction.motion?.type !== "attack-dodge"
+      || !response?.cardFace) return null;
+    const proof = verifiedBraveheartDodgeResponseFrameForEvent(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      clientPresentation.attackDodgeResponses ?? [],
+      room.players,
+      selectedPublicCardAction.rootEventId,
+      response.eventId,
+      response.cardFace.id,
+    );
+    if (!proof || selectedPublicCardAction.sourceId !== proof.attackSource.id
+      || selectedPublicCardAction.targetId !== proof.target.id || response.actorId !== proof.owner.id) return null;
+    const publicNotice = `${proof.owner.name} used Braveheart: Attack AS DODGE against ${proof.attackSource.name}'s Attack.`;
+    const accessibleLabel = `${proof.owner.name} used Braveheart. Attack, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Dodge against ${proof.attackSource.name}'s Attack on ${proof.target.name}.`;
+    const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
+      title: "BRAVEHEART · ATTACK AS DODGE",
+      titleParts: { skillName: "BRAVEHEART", effectLabel: "ATTACK AS DODGE" },
+      accessibleLabel,
+      activationOwnerName: proof.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    });
+    return publicCardEffectFrame ? { proof, publicNotice, accessibleLabel, publicCardEffectFrame } : null;
+  })();
+  const empressDowagerDodgeResponseFrameCandidate = (() => {
+    const response = selectedPublicCardAction?.response;
+    if (!selectedPublicCardAction || selectedPublicCardAction.motion?.type !== "attack-dodge"
+      || !response?.cardFace) return null;
+    const proof = verifiedEmpressDowagerDodgeResponseFrameForEvent(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      clientPresentation.attackDodgeResponses ?? [],
+      room.players,
+      selectedPublicCardAction.rootEventId,
+      response.eventId,
+      response.cardFace.id,
+    );
+    if (!proof || selectedPublicCardAction.sourceId !== proof.attackSource.id
+      || selectedPublicCardAction.targetId !== proof.target.id || response.actorId !== proof.owner.id) return null;
+    const publicNotice = `${proof.owner.name} used Empress Dowager: ${cardDefinition(proof.sourceCard.kind).name} AS DODGE against ${proof.attackSource.name}'s Attack.`;
+    const accessibleLabel = `${proof.owner.name} used Empress Dowager. ${cardDefinition(proof.sourceCard.kind).name}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Dodge against ${proof.attackSource.name}'s Attack on ${proof.target.name}.`;
+    const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
+      title: "EMPRESS DOWAGER · AS DODGE",
+      titleParts: { skillName: "EMPRESS DOWAGER", effectLabel: "AS DODGE" },
+      accessibleLabel,
+      activationOwnerName: proof.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    });
+    return publicCardEffectFrame ? { proof, publicNotice, accessibleLabel, publicCardEffectFrame } : null;
+  })();
+  const publicAnnouncementIdentity = selectedPublicCardAction ? (() => {
+    const identity = room.presentationSnapshot?.identity;
+    const interaction = room.presentationSnapshot?.interaction;
+    if (!identity || !interaction || interaction.semantics !== "PROVEN"
+      || !interaction.stage || !interaction.interactionId || !interaction.rootFrameId
+      || identity.interactionId !== interaction.interactionId
+      || identity.checkpointId !== interaction.checkpointId
+      || identity.presentationRevision !== interaction.presentationRevision
+      || selectedPublicCardAction.interactionId !== interaction.interactionId
+      || selectedPublicCardAction.rootFrameId !== interaction.rootFrameId) return undefined;
+    const narration = (interactionNarrationBelongsToAction ? publicInteractionNarration : null) ?? genericPublicFactNarration ?? selectedPublicCardAction.publicNegationNarration;
+    const latestPublicEventId = narration?.phase === "FINAL"
+      ? narration.eventId
+      : narration?.latestCommittedEventId
+        ?? narration?.eventId
+        ?? selectedPublicCardAction.response?.eventId
+        ?? selectedPublicCardAction.responses?.at(-1)?.eventId
+        ?? selectedPublicCardAction.responseHistory?.at(-1)?.eventId
+        ?? selectedPublicCardAction.settlement?.eventId
+        ?? selectedPublicCardAction.rootEventId;
+    const latestPublicActorId = (interactionNarrationBelongsToAction ? publicInteractionNarration?.actorId : undefined) ?? [
+      ...(selectedPublicCardAction.response ? [selectedPublicCardAction.response] : []),
+      ...(selectedPublicCardAction.responses ?? []),
+      ...(selectedPublicCardAction.responseHistory ?? []),
+    ].find((response) => response.eventId === latestPublicEventId)?.actorId
+      ?? selectedPublicCardAction.sourceId;
+    return {
+      presentationStage: interaction.stage,
+      serverRevision: identity.presentationRevision,
+      selectedPresenterRevision: selectedPublicCardAction.presentationRevision ?? null,
+      semanticOwner: interaction.stage,
+      interactionId: interaction.interactionId,
+      rootFrameId: interaction.rootFrameId,
+      checkpointId: identity.checkpointId,
+      latestPublicEventId,
+      latestPublicActorId,
+    };
+  })() : undefined;
   const publicCardDisplayAction: PublicCardDisplayAction | null = selectedPublicCardAction ? {
     ...selectedPublicCardAction,
+    motion: publicCardMotionForCommittedCard(
+      selectedPublicCardAction,
+      room.code,
+      publicCardJourneySeenEventIds,
+      selectedCardHasDedicatedZoneOwner,
+    ) ?? undefined,
+    publicAnnouncementIdentity,
+    ...(interactionNarrationBelongsToAction && publicInteractionNarration ? { publicInteractionNarration, suppressAnnouncement: false }
+      : publicInteractionNarration ? { suppressAnnouncement: true } : {}),
+    ...(genericPublicFactNarration ? { publicNegationNarration: genericPublicFactNarration, suppressAnnouncement: false } : {}),
+    ...(attackConversionFrameCandidate ? {
+      cardLabel: attackConversionFrameCandidate.spec.title,
+      ariaLabel: attackConversionFrameCandidate.accessibleLabel,
+      publicNotice: attackConversionFrameCandidate.publicNotice,
+      publicNoticeCompact: `${attackConversionFrameCandidate.proof.owner.name} used ${attackConversionFrameCandidate.spec.skillName} AS ATTACK.`,
+      publicCardEffectFrame: attackConversionFrameCandidate.publicCardEffectFrame,
+    } : {}),
+    ...(ambushmentConversionFrameCandidate ? {
+      cardLabel: "AMBUSHMENT · AS BURNING BRIDGES",
+      ariaLabel: ambushmentConversionFrameCandidate.accessibleLabel,
+      publicNotice: ambushmentConversionFrameCandidate.publicNotice,
+      publicNoticeCompact: `${ambushmentConversionFrameCandidate.proof.owner.name} used Ambushment AS BURNING BRIDGES on ${ambushmentConversionFrameCandidate.proof.target.name}.`,
+      publicCardEffectFrame: ambushmentConversionFrameCandidate.publicCardEffectFrame,
+    } : {}),
+    ...(captivatingConversionFrameCandidate ? {
+      cardLabel: "CAPTIVATING · AS OVERINDULGENCE",
+      ariaLabel: captivatingConversionFrameCandidate.accessibleLabel,
+      publicNotice: captivatingConversionFrameCandidate.publicNotice,
+      publicNoticeCompact: `${captivatingConversionFrameCandidate.proof.owner.name} used Captivating AS OVERINDULGENCE on ${captivatingConversionFrameCandidate.proof.target.name}.`,
+      publicCardEffectFrame: captivatingConversionFrameCandidate.publicCardEffectFrame,
+    } : {}),
+    ...(braveheartDodgeResponseFrameCandidate && selectedPublicCardAction.response ? {
+      response: {
+        ...selectedPublicCardAction.response,
+        ariaLabel: braveheartDodgeResponseFrameCandidate.accessibleLabel,
+        semanticLabel: "ATTACK AS DODGE",
+      },
+      publicNotice: braveheartDodgeResponseFrameCandidate.publicNotice,
+      publicNoticeCompact: `${braveheartDodgeResponseFrameCandidate.proof.owner.name} used Braveheart · ATTACK AS DODGE.`,
+      publicCardEffectFrame: braveheartDodgeResponseFrameCandidate.publicCardEffectFrame,
+    } : {}),
+    ...(empressDowagerDodgeResponseFrameCandidate && selectedPublicCardAction.response ? {
+      response: {
+        ...selectedPublicCardAction.response,
+        ariaLabel: empressDowagerDodgeResponseFrameCandidate.accessibleLabel,
+        semanticLabel: "AS DODGE",
+      },
+      publicNotice: empressDowagerDodgeResponseFrameCandidate.publicNotice,
+      publicNoticeCompact: `${empressDowagerDodgeResponseFrameCandidate.proof.owner.name} used Empress Dowager · AS DODGE.`,
+      publicCardEffectFrame: empressDowagerDodgeResponseFrameCandidate.publicCardEffectFrame,
+    } : {}),
+    publicActivityMessage: selectedLustOrderOwnsActivityBand
+      ? publicActivityStatus.heading ?? publicActivityStatus.text : undefined,
+    publicActivityAccessibleMessage: selectedLustOrderOwnsActivityBand
+      ? [publicActivityStatus.text, publicActivityStatus.stage].filter(Boolean).join(" · ") : undefined,
     ...(selectedPublicCardAction.motion?.type === "attack-dodge" ? {
       motion: {
         ...selectedPublicCardAction.motion,
@@ -5204,6 +9059,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     } : {}),
     deflection: activeDeflectionAction ?? undefined,
   } : null;
+  const publicCardDisplayOwnershipIdentity = publicCardDisplayAction
+    ? publicCardJourneyOwnershipIdentity(publicCardDisplayAction, room.code)
+    : "";
+  const publicCardDisplayOwnershipScopeGeneration = publicCardDisplayAction
+    ? [publicCardDisplayOwnershipIdentity, publicCardDisplayAction.motion?.scopeKey ?? publicCardDisplayAction.rootEventId, room.meId].join("\u001f")
+    : "";
+  expectedPublicCardOwnershipRef.current = publicCardDisplayOwnershipIdentity
+    ? { roomCode: room.code, viewerId: room.meId, actionKey: publicCardDisplayOwnershipIdentity, scopeGeneration: publicCardDisplayOwnershipScopeGeneration }
+    : { roomCode: room.code, viewerId: room.meId, actionKey: "", scopeGeneration: "" };
+  const markPublicCardDisplayEventParked = useCallback((eventId: string) => {
+    markPublicCardJourneyEventParked(eventId);
+    if (publicCardDisplayAction?.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer"
+      && publicCardDisplayAction.rootEventId === eventId) {
+      markProdigalHealerFrameRead(eventId);
+    }
+  }, [markProdigalHealerFrameRead, markPublicCardJourneyEventParked,
+    publicCardDisplayAction?.publicCardEffectFrame?.effectId, publicCardDisplayAction?.rootEventId]);
   const rootActionSource = publicCardDisplayAction ? room.players.find((player) => player.id === publicCardDisplayAction.sourceId) : null;
   const rootActionTarget = publicCardDisplayAction ? room.players.find((player) => player.id === publicCardDisplayAction.targetId) : null;
   const compactPublicPlayerNamesById = Object.fromEntries(room.players.flatMap((player) => player.hero
@@ -5212,25 +9084,89 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const rootActionTemporarilyBlocked = Boolean(targetPreviewPresentation || opponentInspectionPresentation
     || targetCardPickerInModal && !skillEffectActionCandidate
     || expandedOpponentId || groupScopePreview.active);
-  const retainHarvestHistoryDuringInspection = Boolean(publicCardDisplayAction?.cardFace?.kind === "BumperHarvest"
-    && (opponentInspectionPresentation || expandedOpponentId)
+  const retainPublicCardHistoryDuringInspection = Boolean((opponentInspectionPresentation || expandedOpponentId)
     && !targetPreviewPresentation
     && !(targetCardPickerInModal && !skillEffectActionCandidate)
     && !groupScopePreview.active);
-  const publicCardDisplayEnabled = Boolean(publicCardDisplayAction && rootActionSource?.name
+  const retainHarvestHistoryDuringInspection = Boolean(publicCardDisplayAction?.cardFace?.kind === "BumperHarvest"
+    && retainPublicCardHistoryDuringInspection);
+  const retainDuelHistoryDuringInspection = Boolean(
+    (publicCardDisplayAction?.motion?.type === "duel" || publicCardDisplayAction?.motion?.type === "lust-duel")
+    && retainPublicCardHistoryDuringInspection);
+  const publicCardDisplayEnabled = Boolean(publicCardDisplayAction?.motion && rootActionSource?.name
     && (publicCardDisplayAction.targetId === null || rootActionTarget?.name)
     && !rootActionTemporarilyBlocked);
+  // The initial LUST order copy names the proven first actor, so it owns the
+  // centre band only until the first public Duel response is committed.
+  const lustOrderOwnsActivityBand = Boolean(publicCardDisplayEnabled && selectedLustOrderOwnsActivityBand);
   const publicCardDisplayReady = publicCardDisplayEnabled;
-  const activeLustDisplayAction = publicCardDisplayReady && publicCardDisplayAction?.lustCostFrame
-    && (publicCardDisplayAction.motion?.type === "lust-cost" || publicCardDisplayAction.motion?.type === "lust-duel")
+  const targetCardChoiceAnnouncement = publicCardDisplayAction && room.pendingTargetCard
+    && rootActionSource?.name && rootActionTarget?.name
+    && room.pendingTargetCard.actorId === room.meId
+    && room.currentAction?.kind === "target_card"
+    && room.currentAction.actorId === room.meId
+    && canUseAction(room.currentAction, "choose_target_card")
+    && publicCardDisplayAction.sourceId === room.pendingTargetCard.sourceId
+    && publicCardDisplayAction.targetId === room.pendingTargetCard.targetId
+    && publicCardDisplayAction.cardKind === room.pendingTargetCard.cardKind
+    ? `${rootActionSource.name} choosing a card to ${room.pendingTargetCard.cardKind === "Steal" ? "take" : "discard"} from ${rootActionTarget.name}.`
+    : null;
+  const targetCardChoiceMergeChecks = {
+    unified: pendingTargetCardUsesUnifiedModal,
+    pending: Boolean(room.pendingTargetCard),
+    actor: room.pendingTargetCard?.actorId === room.meId,
+    source: room.pendingTargetCard?.sourceId === room.meId,
+    actionOwner: room.isMyAction && room.currentAction?.actorId === room.meId,
+    legal: canUseAction(room.currentAction, "choose_target_card"),
+    target: pendingTargetCardSelectableSelection?.targetId === room.pendingTargetCard?.targetId,
+    display: publicCardDisplayReady,
+    event: Boolean(publicCardDisplayAction?.rootEventId),
+    publicSource: publicCardDisplayAction?.sourceId === room.pendingTargetCard?.sourceId,
+    publicTarget: publicCardDisplayAction?.targetId === room.pendingTargetCard?.targetId,
+    publicKind: publicCardDisplayAction?.cardKind === room.pendingTargetCard?.cardKind,
+    names: Boolean(rootActionSource?.name && rootActionTarget?.name),
+    announcement: Boolean(targetCardChoiceAnnouncement),
+  };
+  const targetCardChoiceMergeMiss = Object.entries(targetCardChoiceMergeChecks).filter(([, matches]) => !matches).map(([key]) => key).join(",");
+  const targetCardChoiceSharedCopyReady = Boolean(
+    room.pendingTargetCard
+    && publicCardDisplayAction
+    && publicCardDisplayAction?.rootEventId
+    && publicCardDisplayAction.sourceId === room.pendingTargetCard.sourceId
+    && publicCardDisplayAction.targetId === room.pendingTargetCard.targetId
+    && publicCardDisplayAction.cardKind === room.pendingTargetCard.cardKind
+    && rootActionSource?.name
+    && rootActionTarget?.name
+    && targetCardChoiceAnnouncement,
+  );
+  const pendingTargetCardPoolPlacement = useBattlefieldChoicePlacement({
+    enabled: pendingTargetCardUsesUnifiedModal && pendingTargetCardPoolZones.length > 0,
+    playerCount: room.players.length,
+    placementKey: [room.code, room.meId, room.actionRevision ?? "", pendingTargetCardSelectableSelection?.targetId ?? "", ...(pendingTargetCardSelectableSelection?.eligibleKeys ?? [])].join("\u001f"),
+    centralTargetLayout: pendingTargetCardUsesUnifiedModal,
+    rootEventId: targetCardChoiceSharedCopyReady ? publicCardDisplayAction?.rootEventId : undefined,
+  });
+  const targetCardPoolCompactLayout = Boolean(pendingTargetCardPoolPlacement.insets?.width);
+  const targetCardChoiceMergeActive = Boolean(targetCardChoiceSharedCopyReady && targetCardPoolCompactLayout && pendingTargetCardPoolPlacement.ready);
+  const targetCardChoiceStageTitle = targetCardChoiceSharedCopyReady && targetCardPoolCompactLayout && targetCardChoiceAnnouncement
+    ? targetCardChoiceAnnouncement
+    : room.pendingTargetCard && pendingTargetCardPublicSource && pendingTargetCardPublicTarget
+      ? `${room.pendingTargetCard.cardKind === "Steal" ? "STEAL" : "BURNING BRIDGES"} · ${pendingTargetCardPublicSource.name} → ${pendingTargetCardPublicTarget.name}`
+      : pendingTargetCardActionName ?? "Target card";
+  const targetCardChoiceInstruction = room.pendingTargetCard ? "Choose one card" : "Choose a target card";
+  const targetCardChoicePanelLabel = targetCardChoiceSharedCopyReady && targetCardPoolCompactLayout && targetCardChoiceAnnouncement
+    ? `${targetCardChoiceAnnouncement} Choose one card.`
+    : `${pendingTargetCardActionName ?? "Target card"} target card selection`;
+  const activePublicEffectFrameAction = publicCardDisplayReady && publicCardDisplayAction?.publicCardEffectFrame
     ? publicCardDisplayAction : null;
-  const activeLustPresentationEventIds = new Set([
-    activeLustDisplayAction?.rootEventId,
-    activeLustDisplayAction?.lustCostFrame?.activationEventId,
-    activeLustDisplayAction?.settlement?.eventId,
+  const activePublicEffectFrameEventIds = new Set([
+    activePublicEffectFrameAction?.publicCardEffectFrame?.eventId,
+    activePublicEffectFrameAction?.publicCardEffectFrame?.activationEventId,
+    activePublicEffectFrameAction?.settlement?.eventId,
   ].filter((eventId): eventId is string => Boolean(eventId)));
-  const effectNoticeOwnedByLustPresentation = Boolean(effectNotice
-    && activeLustPresentationEventIds.has(effectNotice.eventId));
+  const effectNoticeOwnedByPublicCardFrame = Boolean(effectNotice
+    && (activePublicEffectFrameEventIds.has(effectNotice.eventId)
+      || publicInteractionNarration?.eventId === effectNotice.eventId));
   const publicCardDisplayOwnsPresentation = Boolean(publicCardDisplayReady
     || publicCardDisplayAction?.motion?.type === "attack-dodge"
       && rootActionSource?.name
@@ -5256,6 +9192,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
     : null;
   const visibleBeautyAnnouncement = beautyNotice
+    && !publicDiscardOwnsAnnouncement
     && effectNotice?.roomCode === room.code
     && effectNotice.viewerId === room.meId
     && Boolean(beautyNotice.sourceId && beautyNotice.proofEventId)
@@ -5289,28 +9226,19 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   }, [room.code, room.timeline, publicCardDisplayAction?.motion?.type, publicCardDisplayReady, publicCardJourneyEventIdKey]);
   const duelJourneyOwnsRootAndAttacks = publicCardDisplayAction?.motion?.type === "duel"
     || publicCardDisplayAction?.motion?.type === "lust-duel";
-  const publicDisplayOwnedEventIds = publicCardDisplayOwnsPresentation && publicCardDisplayAction
-    ? [...new Set([
-      publicCardDisplayAction.rootEventId,
-      publicCardDisplayAction.lustCostFrame?.activationEventId,
-      publicCardDisplayAction.settlement?.eventId,
-      publicCardDisplayAction.deflection?.eventId,
-      ...(!duelJourneyOwnsRootAndAttacks ? [publicCardDisplayAction.response?.eventId, publicCardDisplayAction.publicCounterRead?.eventId] : []),
-      ...(publicCardDisplayAction.responses ?? [])
-        .filter((response) => !duelJourneyOwnsRootAndAttacks || Number.isInteger(response.ordinal))
-        .map((response) => response.eventId),
-    ].filter((eventId): eventId is string => Boolean(eventId)))]
+  const publicCardJourneyOwnershipReady = Boolean(publicCardDisplayAction
+    && publicCardJourneyOwnership.ready
+    && publicCardJourneyOwnership.roomCode === room.code
+    && publicCardJourneyOwnership.actionKey === publicCardDisplayOwnershipIdentity);
+  const publicDisplayOwnedResponseHistory = publicCardJourneyOwnershipReady && publicCardDisplayAction
+    ? (publicCardDisplayAction.responseHistory ?? []).filter((response) => {
+      const responseCards = response.cardFaces ?? (response.cardFace ? [response.cardFace] : []);
+      return publicCardJourneyOwnership.eventIds.has(response.eventId)
+        && responseCards.length > 0
+        && responseCards.every((card) => publicCardJourneyOwnership.cardIds.has(card.id))
+        && (!duelJourneyOwnsRootAndAttacks || Number.isInteger(response.ordinal));
+    })
     : [];
-  const publicDisplayOwnedPhysicalCardIds = new Set(publicCardDisplayOwnsPresentation && publicCardDisplayAction
-    ? [
-      publicCardDisplayAction.cardFace?.id,
-      publicCardDisplayAction.deflection?.cardFace.id,
-      ...(!duelJourneyOwnsRootAndAttacks ? [publicCardDisplayAction.response?.cardFace?.id] : []),
-      ...(publicCardDisplayAction.responses ?? [])
-        .filter((response) => !duelJourneyOwnsRootAndAttacks || Number.isInteger(response.ordinal))
-        .flatMap((response) => (response.cardFaces ?? (response.cardFace ? [response.cardFace] : [])).map((card) => card.id)),
-    ].filter((cardId): cardId is string => Boolean(cardId))
-    : []);
   const activePublicCardSettlementEventId = publicCardDisplayAction?.settlement?.eventId ?? null;
   const activePublicCardSettlementExiting = publicCardDisplayAction?.settlement?.exiting === true;
   const visibleNegationReadAction = singleTargetNegationActionKey
@@ -5405,7 +9333,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         && current.phase === "settlement-pending"
         ? reducedMotion ? null : { ...current, phase: "exiting" }
         : current);
-    }, UI_TIMING.publicCounterSettlementConfirm);
+    // Keep the proof-backed final H4 state available long enough to read before
+    // the existing short fade removes the retained public-card interaction.
+    }, Math.max(UI_TIMING.publicCounterRead, UI_TIMING.publicCounterSettlementConfirm));
     return () => window.clearTimeout(timer);
   }, [activeNegationReadIdentityMatches, activeNegationReadSettled, activePublicNegationRead]);
   useEffect(() => {
@@ -5428,51 +9358,171 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const timer = window.setTimeout(() => setActiveSkillEffectSettlement((current) => current?.eventId === activePublicCardSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
   }, [activePublicCardSettlementEventId, activePublicCardSettlementExiting, activeSkillEffectSettlement?.eventId]);
-  const activeDismantleSettlementEventId = publicCardDisplayAction?.settlement?.outcome === "DISMANTLE_RESOLVED"
-    ? publicCardDisplayAction.settlement.eventId
+  const activeTargetCardSettlementOutcome = publicCardDisplayAction?.settlement?.outcome === "DISMANTLE_RESOLVED"
+    || publicCardDisplayAction?.settlement?.outcome === "STEAL_RESOLVED"
+    ? publicCardDisplayAction.settlement.outcome
     : null;
-  const activeDismantleSettlementExiting = publicCardDisplayAction?.settlement?.outcome === "DISMANTLE_RESOLVED"
-    && publicCardDisplayAction.settlement.exiting;
+  const targetCardActivityOwnsPac = room.pendingTargetCard?.cardKind === "Dismantle"
+    || room.pendingTargetCard?.cardKind === "Steal"
+    || clientPresentation.rootAction?.cardKind === "Dismantle"
+    || clientPresentation.rootAction?.cardKind === "Steal"
+    || publicCardDisplayAction?.cardKind === "Dismantle"
+    || publicCardDisplayAction?.cardKind === "Steal"
+    || activeTargetCardSettlementOutcome !== null;
+  const activeTargetCardSettlementEventId = activeTargetCardSettlementOutcome ? publicCardDisplayAction?.settlement?.eventId ?? null : null;
+  const activeTargetCardSettlement = activeTargetCardSettlementOutcome === "DISMANTLE_RESOLVED"
+    ? activeDismantleSettlement
+    : activeTargetCardSettlementOutcome === "STEAL_RESOLVED" ? activeStealSettlement : null;
+  const activeTargetCardSettlementJourneySettled = Boolean(activeTargetCardSettlement?.eventId === activeTargetCardSettlementEventId
+    && activeTargetCardSettlement.journeySettled);
+  const activeTargetCardSettlementExiting = Boolean(activeTargetCardSettlement?.eventId === activeTargetCardSettlementEventId
+    && activeTargetCardSettlement.exiting);
+  const activeDismantleSettlementEventKey = activeDismantleSettlement?.eventId ?? null;
+  const activeStealSettlementEventKey = activeStealSettlement?.eventId ?? null;
   useEffect(() => {
-    if (!activeDismantleSettlementEventId || !publicCardDisplayReady || !activeDismantleSettlement
-      || activeDismantleSettlement.eventId !== activeDismantleSettlementEventId
-      || !activeDismantleSettlement.journeySettled || activeDismantleSettlement.exiting) return;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const timer = window.setTimeout(() => {
-      setActiveDismantleSettlement((current) => current?.eventId === activeDismantleSettlementEventId
-        ? reducedMotion ? null : { ...current, exiting: true }
-        : current);
-    }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
-    return () => window.clearTimeout(timer);
-  }, [activeDismantleSettlement?.eventId, activeDismantleSettlement?.exiting, activeDismantleSettlement?.journeySettled, activeDismantleSettlementEventId, publicCardDisplayReady]);
+    const liveRootEventId = clientPresentation.rootAction?.rootEventId;
+    if (!liveRootEventId) return;
+    const supersededDismantleEventId = activeDismantleSettlementEventKey
+      && dismantleSettlements.find((proof) => proof.eventId === activeDismantleSettlementEventKey)?.rootEventId !== liveRootEventId
+      ? activeDismantleSettlementEventKey
+      : null;
+    const supersededStealEventId = activeStealSettlementEventKey
+      && stealSettlements.find((proof) => proof.eventId === activeStealSettlementEventKey)?.rootEventId !== liveRootEventId
+      ? activeStealSettlementEventKey
+      : null;
+    if (supersededDismantleEventId) {
+      setActiveDismantleSettlement((current) => current?.eventId === supersededDismantleEventId ? null : current);
+    }
+    if (supersededStealEventId) {
+      setActiveStealSettlement((current) => current?.eventId === supersededStealEventId ? null : current);
+    }
+  }, [activeDismantleSettlementEventKey, activeStealSettlementEventKey, clientPresentation.rootAction?.rootEventId,
+    dismantleSettlements, stealSettlements]);
   useEffect(() => {
-    if (!activeDismantleSettlementExiting || !activeDismantleSettlementEventId
-      || activeDismantleSettlement?.eventId !== activeDismantleSettlementEventId) return;
-    const timer = window.setTimeout(() => setActiveDismantleSettlement((current) => current?.eventId === activeDismantleSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
-    return () => window.clearTimeout(timer);
-  }, [activeDismantleSettlement?.eventId, activeDismantleSettlementExiting, activeDismantleSettlementEventId]);
-  const activeStealSettlementEventId = publicCardDisplayAction?.settlement?.outcome === "STEAL_RESOLVED"
-    ? publicCardDisplayAction.settlement.eventId
-    : null;
-  const activeStealSettlementExiting = publicCardDisplayAction?.settlement?.outcome === "STEAL_RESOLVED"
-    && publicCardDisplayAction.settlement.exiting;
+    if (!activeTargetCardSettlementEventId || !activeTargetCardSettlementJourneySettled
+      || !publicCardDisplayReady || activeTargetCardSettlementExiting
+      || activeTargetCardSettlement?.roomCode !== room.code) return;
+    const eventId = activeTargetCardSettlementEventId;
+    const outcome = activeTargetCardSettlementOutcome;
+    let visibleSinceMs = activeTargetCardSettlement.h4VisibleSinceMs;
+    let visibleFrames = visibleSinceMs === null ? 0 : 2;
+    let unreadableSinceMs: number | null = null;
+    let frameId = 0;
+    const updateVisibleSince = (next: number | null) => {
+      if (outcome === "DISMANTLE_RESOLVED") {
+        setActiveDismantleSettlement((current) => current?.eventId === eventId && current.h4VisibleSinceMs !== next
+          ? { ...current, h4VisibleSinceMs: next }
+          : current);
+      } else {
+        setActiveStealSettlement((current) => current?.eventId === eventId && current.h4VisibleSinceMs !== next
+          ? { ...current, h4VisibleSinceMs: next }
+          : current);
+      }
+    };
+    const resetVisibleReadWhenHidden = () => {
+      if (document.visibilityState === "visible") return;
+      visibleSinceMs = null;
+      visibleFrames = 0;
+      unreadableSinceMs = null;
+      updateVisibleSince(null);
+    };
+    const isVisibleInViewport = (element: HTMLElement | null | undefined) => {
+      if (!element || !element.isConnected || document.visibilityState !== "visible") return false;
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) <= 0.01
+        || rect.width <= 0 || rect.height <= 0 || rect.left < 0 || rect.top < 0
+        || rect.right > window.innerWidth || rect.bottom > window.innerHeight) return false;
+      for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+        const parentStyle = window.getComputedStyle(parent);
+        if (parentStyle.display === "none" || parentStyle.visibility === "hidden" || Number(parentStyle.opacity) <= 0.01) return false;
+        if (parent.matches('[data-public-card-display="true"]')) break;
+      }
+      return true;
+    };
+    const hasReadableH4 = () => {
+      const display = [...document.querySelectorAll<HTMLElement>('[data-public-card-display="true"]')]
+        .find((element) => element.dataset.publicCardSettlementEventId === eventId
+          && element.dataset.publicCardSettlementOutcome === outcome
+          && element.dataset.publicCardReady === "true");
+      const copy = display?.querySelector<HTMLElement>('[data-public-card-announcement="true"]');
+      if (!display || !copy || copy.dataset.publicCardResult !== outcome
+        || copy.dataset.publicCardAnnouncementDelivery !== "VISIBLE" || !isVisibleInViewport(copy)) return false;
+      const concealedHandSteal = outcome === "STEAL_RESOLVED"
+        && stealSettlementCandidate?.action.eventId === eventId
+        && stealSettlementCandidate.action.sourceZone === "hand";
+      if (concealedHandSteal) {
+        const resultCard = [...document.querySelectorAll<HTMLElement>("[data-public-result-event-id]")]
+          .find((element) => element.dataset.publicResultEventId === eventId);
+        if (!resultCard || resultCard.dataset.publicResultLayout !== "placed" || !isVisibleInViewport(resultCard)) return false;
+      }
+      const copyRect = copy.getBoundingClientRect();
+      const blockingOverlay = [...document.querySelectorAll<HTMLElement>(
+        ".public-activity-chip, .visible-countdown, .opponent-inspection-floating-shell, .card-details-panel, .hero-details-panel, .card-pool-target-stage",
+      )].some((overlay) => {
+        const rect = overlay.getBoundingClientRect();
+        const style = window.getComputedStyle(overlay);
+        if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) <= 0.01 || rect.width <= 0 || rect.height <= 0) return false;
+        return copyRect.left < rect.right && copyRect.right > rect.left
+          && copyRect.top < rect.bottom && copyRect.bottom > rect.top;
+      });
+      return !blockingOverlay;
+    };
+    const sampleVisibleRead = (now: number) => {
+      if (!hasReadableH4()) {
+        if (visibleSinceMs !== null && unreadableSinceMs === null) unreadableSinceMs = now;
+        frameId = window.requestAnimationFrame(sampleVisibleRead);
+        return;
+      }
+      if (visibleSinceMs !== null && unreadableSinceMs !== null) {
+        visibleSinceMs += now - unreadableSinceMs;
+        unreadableSinceMs = null;
+        updateVisibleSince(visibleSinceMs);
+      }
+      visibleFrames += 1;
+      if (visibleSinceMs === null && visibleFrames >= 2) {
+        visibleSinceMs = now;
+        updateVisibleSince(now);
+      }
+      const turnReady = room.status === "playing" && publicActivityStatus.kind === "turn";
+      const concealedHandSteal = outcome === "STEAL_RESOLVED"
+        && stealSettlementCandidate?.action.eventId === eventId
+        && stealSettlementCandidate.action.sourceZone === "hand";
+      const requiredReadMs = concealedHandSteal ? UI_TIMING.publicTargetCardSettlementRead
+        : turnReady ? 2_000 : UI_TIMING.publicTargetCardSettlementRead;
+      if (visibleSinceMs !== null && now - visibleSinceMs >= requiredReadMs) {
+        if (outcome === "DISMANTLE_RESOLVED") {
+          setActiveDismantleSettlement((current) => current?.eventId === eventId ? { ...current, exiting: true } : current);
+        } else {
+          setActiveStealSettlement((current) => current?.eventId === eventId ? { ...current, exiting: true } : current);
+        }
+        return;
+      }
+      frameId = window.requestAnimationFrame(sampleVisibleRead);
+    };
+    document.addEventListener("visibilitychange", resetVisibleReadWhenHidden);
+    frameId = window.requestAnimationFrame(sampleVisibleRead);
+    return () => {
+      document.removeEventListener("visibilitychange", resetVisibleReadWhenHidden);
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [activeTargetCardSettlement?.eventId, activeTargetCardSettlement?.exiting, activeTargetCardSettlement?.journeySettled,
+    activeTargetCardSettlement?.h4VisibleSinceMs, activeTargetCardSettlement?.roomCode,
+    activeTargetCardSettlementEventId, activeTargetCardSettlementExiting, activeTargetCardSettlementJourneySettled,
+    activeTargetCardSettlementOutcome, publicActivityStatus.kind, publicCardDisplayReady, room.code, room.status,
+    stealSettlementCandidate?.action.eventId, stealSettlementCandidate?.action.sourceZone]);
   useEffect(() => {
-    if (!activeStealSettlementEventId || !publicCardDisplayReady
-      || activeStealSettlement?.eventId !== activeStealSettlementEventId || activeStealSettlement.exiting) return;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const timer = window.setTimeout(() => {
-      setActiveStealSettlement((current) => current?.eventId === activeStealSettlementEventId
-        ? reducedMotion ? null : { ...current, exiting: true }
-        : current);
-    }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
+    if (!activeDismantleSettlement?.exiting) return;
+    const eventId = activeDismantleSettlement.eventId;
+    const timer = window.setTimeout(() => setActiveDismantleSettlement((current) => current?.eventId === eventId ? null : current), UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
-  }, [activeStealSettlement?.eventId, activeStealSettlement?.exiting, activeStealSettlementEventId, publicCardDisplayReady]);
+  }, [activeDismantleSettlement?.eventId, activeDismantleSettlement?.exiting]);
   useEffect(() => {
-    if (!activeStealSettlementExiting || !activeStealSettlementEventId
-      || activeStealSettlement?.eventId !== activeStealSettlementEventId) return;
-    const timer = window.setTimeout(() => setActiveStealSettlement((current) => current?.eventId === activeStealSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
+    if (!activeStealSettlement?.exiting) return;
+    const eventId = activeStealSettlement.eventId;
+    const timer = window.setTimeout(() => setActiveStealSettlement((current) => current?.eventId === eventId ? null : current), UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
-  }, [activeStealSettlement?.eventId, activeStealSettlementExiting, activeStealSettlementEventId]);
+  }, [activeStealSettlement?.eventId, activeStealSettlement?.exiting]);
   const activeAttackHitSettlementEventId = publicCardDisplayAction?.settlement?.outcome === "ATTACK_DAMAGE_APPLIED"
     ? publicCardDisplayAction.settlement.eventId
     : null;
@@ -5794,54 +9844,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }, UI_TIMING.publicCounterFade);
     return () => window.clearTimeout(timer);
   }, [activeAttackDodgeSettlementExitingEventId]);
-  const completedAttackDodgeSequenceCandidate = visibleActiveAttackDodgeSettlement?.phase === "complete"
-    && completedAttackDodgeSettlementCandidate?.proof.responseEventId === visibleActiveAttackDodgeSettlement.eventId
-    ? completedAttackDodgeSettlementCandidate
-    : null;
-  const retiredAttackDodgeEvents = new Set([
-    ...persistedRetiredAttackDodgeEvents,
-    ...(retiredAttackDodgeCompositionSnapshot.roomCode === room.code ? retiredAttackDodgeCompositionSnapshot.eventIds : EMPTY_STRING_SET),
-    ...serverRetiredAttackDodgeEvents,
-    ...(attackHitSettlementSuperseded && activeAttackHitSettlement?.lifecycle.roomCode === room.code
-      ? [activeAttackHitSettlement.lifecycle.rootEventId, activeAttackHitSettlement.lifecycle.eventId]
-      : []),
-    ...(attackDodgeHoldSuperseded && activeAttackDodgeSettlement?.lifecycle.roomCode === room.code
-      ? [activeAttackDodgeSettlement.lifecycle.rootEventId, activeAttackDodgeSettlement.lifecycle.responseEventId]
-      : []),
-  ]);
-  const retiredAttackDodgeCards = new Set([
-    ...persistedRetiredAttackDodgeCards,
-    ...(retiredAttackDodgeCompositionSnapshot.roomCode === room.code ? retiredAttackDodgeCompositionSnapshot.cardIds : EMPTY_STRING_SET),
-    ...serverRetiredAttackDodgeCards,
-    ...(attackHitSettlementSuperseded && activeAttackHitSettlement?.lifecycle.roomCode === room.code
-      ? [activeAttackHitSettlement.lifecycle.rootCardId]
-      : []),
-    ...(attackDodgeHoldSuperseded && activeAttackDodgeSettlement?.lifecycle.roomCode === room.code
-      ? [activeAttackDodgeSettlement.action.cardFace?.id, activeAttackDodgeSettlement.action.response?.cardFace?.id].filter((id): id is string => Boolean(id))
-      : []),
-  ]);
-  const sequenceEventsWithoutRetiredAttackDodge = sequenceEvents.filter((event) =>
-    !retiredAttackDodgeEvents.has(event.id)
-    && !eventCards(event).some((card) => retiredAttackDodgeCards.has(card.id)));
-  const completedAttackDodgeEventIds = new Set(completedAttackDodgeSequenceCandidate
-    ? [completedAttackDodgeSequenceCandidate.proof.rootEventId, completedAttackDodgeSequenceCandidate.proof.responseEventId]
-    : []);
-  const completedAttackDodgeCardIds = new Set(completedAttackDodgeSequenceCandidate
-    ? [completedAttackDodgeSequenceCandidate.rootEvent.card.id, completedAttackDodgeSequenceCandidate.responseEvent.card.id]
-    : []);
-  const sequenceOwnerEventIds = publicCardDisplayOwnsPresentation ? new Set(publicDisplayOwnedEventIds) : completedAttackDodgeEventIds;
-  const sequenceOwnerCardIds = publicCardDisplayOwnsPresentation ? publicDisplayOwnedPhysicalCardIds : completedAttackDodgeCardIds;
-  const displayedSequenceEvents = sequenceEventsWithoutRetiredAttackDodge.filter((event) =>
-    !sequenceOwnerEventIds.has(event.id)
-    && !eventCards(event).some((card) => sequenceOwnerCardIds.has(card.id)));
-  const displayedEventOwnedByPublicCard = Boolean(publicCardDisplayOwnsPresentation && displayedEvent
-    && (sequenceOwnerEventIds.has(displayedEvent.id)
-      || eventCards(displayedEvent).some((card) => sequenceOwnerCardIds.has(card.id))));
-  const displayedEventIsRetiredAttackDodge = Boolean(displayedEvent
-    && (retiredAttackDodgeEvents.has(displayedEvent.id)
-      || eventCards(displayedEvent).some((card) => retiredAttackDodgeCards.has(card.id))));
-  const displayedTableEvent = displayedEventOwnedByPublicCard || displayedEventIsRetiredAttackDodge ? null : displayedEvent;
-  const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(displayedTableEvent && eventCards(displayedTableEvent).length);
   const attackDodgeTraceSeat = (playerId: string | null | undefined) => playerId
     ? room.players.find((player) => player.id === playerId)?.seat ?? null
     : null;
@@ -6012,7 +10014,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       candidateRendererKind: publicCardDisplayAction?.motion?.type === "attack-dodge" ? "attack-dodge-journey"
         : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation" || publicCardDisplayAction?.motion?.type === "group-root" || publicCardDisplayAction?.motion?.type === "lust-cost" ? "single-target-journey"
           : publicCardDisplayAction?.motion?.type === "duel" || publicCardDisplayAction?.motion?.type === "lust-duel" ? "duel-journey"
-            : "static-fallback",
+            : "no-public-card-renderer",
       candidateMotionType: publicCardDisplayAction?.motion?.type ?? null,
       revealDurationMs: publicCardDisplayAction?.motion ? 4_000 : null,
       moveDurationMs: publicCardDisplayAction?.motion ? 380 : null,
@@ -6045,7 +10047,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       enabled: publicCardDisplayEnabled,
       ready: publicCardDisplayReady,
       ownsPresentation: publicCardDisplayOwnsPresentation,
-      ownedEventCount: publicDisplayOwnedEventIds.length,
+      journeyOwnership: {
+        ready: publicCardJourneyOwnershipReady,
+        actionKey: publicCardJourneyOwnership.actionKey || null,
+        viewerMatches: publicCardJourneyOwnership.viewerId === room.meId,
+        eventIds: [...publicCardJourneyOwnership.eventIds],
+        cardIds: [...publicCardJourneyOwnership.cardIds],
+      },
+      responseHistoryEventIds: publicCardDisplayAction?.responseHistory?.map((response) => response.eventId) ?? [],
+      ownedEventCount: publicCardJourneyOwnership.eventIds.size,
       temporarilyBlockedBy: {
         targetPreview: Boolean(targetPreviewPresentation),
         opponentInspection: Boolean(opponentInspectionPresentation),
@@ -6053,8 +10063,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         expandedOpponent: expandedOpponentId !== null,
         groupScopePreview: groupScopePreview.active,
       },
-      legacySequenceEventCount: displayedSequenceEvents.length,
-      legacyTablePresentationVisible: tablePresentationVisible,
     },
     hold: {
       eventId: activeAttackDodgeSettlement?.eventId ?? null,
@@ -6191,11 +10199,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ".opponent-inspection-floating-shell",
       ".table-resolution-layer",
       ".active-table-reveal",
-      ".player-played-cards",
-      ".table-played-card",
       ".public-card-display",
       ".public-card-display .played-card",
-      ".public-card-display-static-card",
       "[data-public-card-journey-event-id]",
       "[data-public-card-announcement='true']",
       ".effect-notice",
@@ -6223,12 +10228,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       "data-public-card-viewer-id", "data-public-card-interaction-id", "data-public-card-root-frame-id", "data-public-card-checkpoint-id",
       "data-public-card-presentation-revision", "data-public-card-event-id", "data-public-card-root-event-id", "data-public-card-id",
       "data-public-card-actor-id", "data-public-card-source-id", "data-public-card-target-id", "data-public-card-settlement-event-id",
-      "data-public-card-settlement-outcome", "data-public-card-static-event-id", "data-public-card-static-card-id",
+      "data-public-card-settlement-outcome", "data-public-card-settlement-source-zone", "data-public-card-settlement-destination-zone",
+      "data-public-card-settlement-affected-card-owner-id", "data-public-card-settlement-destination-owner-id",
+      "data-public-card-settlement-card-id",
       "data-public-card-journey-event-id", "data-public-card-journey-actor-id", "data-public-card-journey-card-id",
       "data-public-card-journey-role", "data-public-card-journey-phase", "data-public-card-journey-size",
       "data-public-card-journey-layout-reason", "data-public-card-journey-reveal-started-at", "data-public-card-journey-target-left",
       "data-public-card-journey-target-top", "data-public-card-journey-target-width", "data-public-card-journey-target-height",
-      "data-settlement-event-id", "data-settlement-card-id", "data-player-settlement-id", "data-player-anchor",
+      "data-settlement-event-id", "data-settlement-card-id", "data-player-anchor",
       "data-public-card-announcement-key", "data-public-card-announcement-event-id", "data-public-card-copy-anchor-event-id",
       "data-effect-notice-event-id", "data-seat-topology", "data-countdown-urgency",
     ];
@@ -6246,7 +10253,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           attributes: attributesFor(current),
           rect: rectFor(current),
         });
-        if (current.matches("[data-public-card-display], .active-table-reveal, .table-played-card")) break;
+        if (current.matches("[data-public-card-display], .active-table-reveal")) break;
         current = current.parentElement;
       }
       return path;
@@ -6272,34 +10279,27 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         };
       });
       const cardElements = Array.from(shell.querySelectorAll<HTMLElement>([
-        "[data-public-card-static-event-id]",
         "[data-public-card-journey-event-id]",
         ".active-table-reveal [data-settlement-card-id]",
-        ".table-played-card[data-settlement-card-id]",
       ].join(",")));
       const cardInstances = cardElements.map((element) => {
         const journey = element.matches("[data-public-card-journey-event-id]");
         const activeReveal = element.closest(".active-table-reveal");
-        const settledCard = element.closest(".table-played-card");
         const owner = element.closest<HTMLElement>("[data-public-card-display]");
-        const playerSettlement = element.closest<HTMLElement>("[data-player-settlement-id]");
         const face = element.matches(".played-card") ? element : element.querySelector<HTMLElement>(".played-card") ?? element;
         const actualRect = rectFor(face);
         const width = actualRect?.width ?? 0;
         const eventId = element.dataset.publicCardJourneyEventId
-          ?? element.dataset.publicCardStaticEventId
-          ?? element.dataset.settlementEventId
           ?? activeReveal?.getAttribute("data-settlement-event-id")
           ?? null;
         const cardId = element.dataset.publicCardJourneyCardId
-          ?? element.dataset.publicCardStaticCardId
           ?? element.dataset.settlementCardId
           ?? null;
         const visualPhase = element.dataset.publicCardJourneyPhase
           ?? owner?.dataset.publicCardVisualPhase
-          ?? (settledCard ? "SETTLED" : activeReveal ? "TABLE_REVEAL" : "STATIC");
+          ?? (activeReveal ? "ZONE_TRANSITION_REVEAL" : "UNKNOWN");
         const rendererKind = owner?.dataset.publicCardRendererKind
-          ?? (settledCard ? "table-resolution-settled" : activeReveal ? "table-resolution-active" : "unknown");
+          ?? (activeReveal ? "public-zone-transition" : "unknown");
         const sizeClass = width >= 70 ? "FULL" : width <= 60 ? "PARKED" : "INTERMEDIATE";
         const targetRect = journey ? {
           left: Number(element.dataset.publicCardJourneyTargetLeft),
@@ -6311,7 +10311,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           eventId,
           publicCardId: cardId,
           publicActorId: element.dataset.publicCardJourneyActorId ?? owner?.dataset.publicCardActorId
-            ?? owner?.dataset.publicCardSourceId ?? playerSettlement?.dataset.playerSettlementId ?? null,
+            ?? owner?.dataset.publicCardSourceId ?? null,
           rendererKind,
           motionType: owner?.dataset.publicCardMotion ?? null,
           visualPhase,
@@ -6449,7 +10449,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         },
         layoutTransitionSample,
         stageMounted: Boolean(shell.querySelector(".interaction-stage")),
-        legacySequenceMounted: Boolean(shell.querySelector(".table-resolution-layer")),
+        publicZoneTransitionCount: shell.querySelectorAll(".public-zone-transition-layer").length,
         publicCardDisplayMounted: Boolean(shell.querySelector(".public-card-display")),
         geometry,
         cardInstances,
@@ -6488,7 +10488,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ? { eligibleIds: triggerCardOption?.selection?.type === "cards" ? triggerCardOption.selection.eligibleCardIds : [], selectedIds: triggerSelectedCardIds, max: triggerSelectionMax, disabled: busy || !responseDecisionReady, onToggle: (cardId: string) => setSerpentSelected((ids) => ids.includes(cardId) ? ids.filter((id) => id !== cardId) : ids.length < triggerSelectionMax ? [...ids, cardId] : ids) }
         : null;
   const consoleKind: ConsoleDecisionKind = canChooseTargetCard || targetCardPickerOption ? "target-card"
-    : borrowedSwordTargetSelectionActive ? "borrowed-sword"
+    : borrowedSwordTargetSelectionActive || borrowedSwordForcedChoiceActive ? "borrowed-sword"
     : activeSkillSelection || activeSkillTargetSelection ? "active-skill"
     : triggerResponse ? "trigger"
     : canRespond ? (room.currentAction?.requirement === "dodge" ? "response" : room.currentAction?.requirement === "attack" ? "duel" : room.currentAction?.requirement === "negate" ? "judgement" : "response")
@@ -6498,10 +10498,64 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : room.currentAction?.kind === "turn" && currentActionOwnedByViewer ? "turn"
     : room.currentAction?.kind === "none" || !room.currentAction ? "rest"
     : "waiting";
+  const endTurnConfirmationAuthorized = Boolean(
+    room.isMyTurn
+    && room.isMyAction
+    && canPlay
+    && consoleKind === "turn"
+    && room.currentAction?.kind === "turn"
+    && room.currentAction.actorId === room.meId
+    && canUseAction(room.currentAction, "end_turn"),
+  );
+  const endTurnConfirmationIsCurrent = Boolean(
+    endTurnConfirmationIdentity === endTurnConfirmationScope
+    && endTurnConfirmationAuthorized,
+  );
+  const endTurnConfirmationPlacement = useBattlefieldChoicePlacement({
+    enabled: endTurnConfirmationIsCurrent,
+    playerCount: room.players.length,
+    placementKey: endTurnConfirmationScope,
+    requireSafePlacement: true,
+    protectActiveReveal: true,
+  });
+  useEffect(() => {
+    if (!endTurnConfirmationIsCurrent || !endTurnConfirmationPlacement.ready) return;
+    window.requestAnimationFrame(() => endTurnConfirmationCancelRef.current?.focus({ preventScroll: true }));
+  }, [endTurnConfirmationIdentity, endTurnConfirmationIsCurrent, endTurnConfirmationPlacement.ready]);
+  useEffect(() => {
+    if (!endTurnConfirmationIsCurrent) return;
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || endTurnConfirmationSubmissionRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeEndTurnConfirmation(true);
+    };
+    window.addEventListener("keydown", dismissOnEscape, true);
+    return () => window.removeEventListener("keydown", dismissOnEscape, true);
+  }, [closeEndTurnConfirmation, endTurnConfirmationIsCurrent]);
+  const confirmEndTurn = async () => {
+    if (endTurnConfirmationSubmissionRef.current
+      || !endTurnConfirmationIsCurrent
+      || !endTurnConfirmationPlacement.ready
+      || busy
+      || presentationBusy && !ordinaryTurnPlayAuthorized
+      || !canUseAction(room.currentAction, "end_turn")) return;
+    endTurnConfirmationSubmissionRef.current = true;
+    setEndTurnConfirmationSubmitting(true);
+    const submitted = await onAction("end_turn");
+    if (submitted) {
+      setEndTurnConfirmationIdentity(null);
+      return;
+    }
+    endTurnConfirmationSubmissionRef.current = false;
+    setEndTurnConfirmationSubmitting(false);
+  };
   const consoleSelection: ConsoleSelectionFact | undefined = daqiaoDeflectionSelectionActive
     ? { active: true, hasInput: daqiaoDeflectionCardCount > 0 || daqiaoDeflectionTargetCount > 0, count: daqiaoDeflectionCardCount + daqiaoDeflectionTargetCount, min: 2, max: 2, summary: "" }
     : lustLocalSelectionActive && activeSkillSelection
       ? { active: true, hasInput: activeSkillSelectedCardIds.length > 0 || activeSkillSelectedTargetIds.length > 0, count: activeSkillSelectedCardIds.length + activeSkillSelectedTargetIds.length, min: activeSkillSelection.min + activeSkillTargetMin, max: activeSkillSelection.max + activeSkillTargetMax, summary: "" }
+    : borrowedSwordTargetSelectionActive
+      ? { active: true, hasInput: localTargetSelection.selectedTargetIds.length > 0, count: localTargetSelection.selectedTargetIds.length, min: 1, max: 1, summary: `${localTargetSelection.selectedTargetIds.length}/1 selected` }
     : localTargetSelection.selectionActive
       ? { active: true, hasInput: localTargetSelection.canCancel, count: localTargetSelection.selectedTargetIds.length, min: localTargetSelection.minTargetCount, max: localTargetSelection.maxTargetCount, summary: localTargetSelection.instruction }
     : activeSkillSelection && activeSkillStateIsCurrent
@@ -6525,38 +10579,38 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ...(dyingFirstAidSelectionActive ? [{ id: "first-aid", label: "Confirm", enabled: canUseAction(room.currentAction, "respond") && responseSelectionComplete, priority: 65 }] : []),
     ...(rescueDecisionReady && !canRespond ? [{ id: "rescue", label: "Peach", enabled: canUseAction(room.currentAction, "give_peach") && card?.kind === "Peach", priority: 60 }] : []),
     ...(room.isMyTurn && room.phase === "discard" && currentActionOwnedByViewer ? [{ id: "discard", label: `Discard ${excessCards} selected`, enabled: canUseAction(room.currentAction, "discard_cards") && discardSelected.length === excessCards, priority: 60 }] : []),
-    ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play", enabled: (canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack && attackTargetsValid) && (!(["Dodge", "Negation"].includes(card?.kind ?? "")) || selectedCanPlayAsAttack)), priority: 40 }] : []),
+    ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play", enabled: (canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack) && (!selectedCardNeedsTarget || selectedPlayTargetsValid) && (!(["Dodge", "Negation"].includes(card?.kind ?? "")) || selectedCanPlayAsAttack)), priority: 40 }] : []),
   ];
   const consoleIsDecisionActor = currentActionOwnedByViewer;
-  const rainingArrowsDamageDecline = Boolean(
-    currentActionOwnedByViewer
+  const currentPublicGroupResponse = (() => {
+    const group = clientPresentation.groupResolution;
+    if (!currentActionOwnedByViewer
+      || !clientPresentation.hasInteraction
+      || clientPresentation.stage !== "GROUP_RESOLUTION"
+      || !clientPresentation.interactionId
+      || !group
+      || group.interactionId !== clientPresentation.interactionId
+      || clientPresentation.currentParticipantId !== room.meId
+      || group.currentParticipantId !== room.meId
+      || !group.participants.some((participant) => participant.playerId === room.meId
+        && (participant.status === "CURRENT" || participant.status === "PAUSED"))) return null;
+    return group;
+  })();
+  const groupDamageResponseDecline = Boolean(
+    currentPublicGroupResponse
     && room.currentAction?.kind === "response"
-    && room.currentAction.requirement === "dodge"
-    && responseDamageAction === "decline_response"
-    && clientPresentation.stage === "GROUP_RESOLUTION"
-    && clientPresentation.groupResolution?.resolutionSemantics === "GROUP"
-    && clientPresentation.groupResolution.cardKind === "RainingArrows"
-    && clientPresentation.currentParticipantId === room.meId
-    && clientPresentation.groupParticipantProgress.some((participant) =>
-      participant.playerId === room.meId && (participant.status === "CURRENT" || participant.status === "PAUSED"),
-    ),
+    && (room.currentAction.requirement === "attack" || room.currentAction.requirement === "dodge")
+    && canUseAction(room.currentAction, "decline_response"),
   );
+  const privateResponseGuidance = derivePrivateResponseGuidance({
+    currentAction: room.currentAction,
+    viewerId: room.meId,
+    viewerIsDecisionActor: currentActionOwnedByViewer,
+    publicScene: clientPresentation,
+  });
   const negationWindowSubmitted = sharedNegationWindow && room.pendingNegation?.submitted === true;
   const responseRequirementForDecline = room.currentAction?.requirement;
   // Require a proven damage-causing interaction; the available response cards do not define the decline's consequence.
-  const groupDamageResponseDecline = (() => {
-    const group = clientPresentation.groupResolution;
-    const currentParticipant = group?.participants.find((participant) => participant.playerId === room.meId);
-    if (!group || clientPresentation.stage !== "GROUP_RESOLUTION"
-      || group.currentParticipantId !== room.meId
-      || (currentParticipant?.status !== "CURRENT" && currentParticipant?.status !== "PAUSED")) return false;
-    return (group.resolutionSemantics === "GROUP"
-      && group.cardKind === "BarbarianInvasion"
-      && responseRequirementForDecline === "attack")
-      || (group.resolutionSemantics === "ORDERED"
-        && group.cardKind === "SkyPiercingHalberdAttack"
-        && responseRequirementForDecline === "attack");
-  })();
   const attackDamageResponseDecline = Boolean(
     currentActionOwnedByViewer
     && room.currentAction?.kind === "response"
@@ -6584,9 +10638,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     currentActionOwnedByViewer
     && room.currentAction?.kind === "response"
     && canUseAction(room.currentAction, "decline_response")
-    && (attackDamageResponseDecline || duelDamageResponseDecline || rainingArrowsDamageDecline || groupDamageResponseDecline),
+    && (attackDamageResponseDecline || duelDamageResponseDecline || groupDamageResponseDecline),
   );
-  const responseDeclineLabel = declineAcceptsDamage ? "TAKE DAMAGE" : sharedNegationWindow ? "Pass" : "Skip";
+  const responseDeclineLabel = borrowedSwordForcedChoiceActive ? "Give up Weapon" : declineAcceptsDamage ? "TAKE DAMAGE" : sharedNegationWindow ? "Pass" : "Skip";
+  const rainingArrowsDamageDecline = Boolean(currentPublicGroupResponse?.cardKind === "RainingArrows"
+    && room.currentAction?.requirement === "dodge"
+    && canUseAction(room.currentAction, "decline_response"));
   const rainingArrowsDodgeProviderCardIds = new Set(
     rainingArrowsDamageDecline
       && responseSelection?.type === "cards"
@@ -6622,26 +10679,28 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && publicActivityStatus.kind !== "turn"
     && publicActivityStatus.kind !== "finished";
   const consoleAuthoritativeDecision = Boolean(room.currentAction && room.currentAction.kind !== "none" && (consoleIsDecisionActor || room.isMyTurn && room.currentAction.kind === "turn" && currentActionOwnedByViewer));
-  const consoleInstruction = localWaitAlreadyPublic
+  const privateNegationAcknowledgement = viewerNegationAcknowledgement(room.presentationSnapshot, room.currentAction?.negationWindowId, room.phase);
+  const consoleInstruction = privateNegationAcknowledgement ?? (borrowedSwordTargetSelectionActive
+    ? `Choose who ${room.players.find((player) => player.id === room.pendingBorrowedSword?.holderId)?.name ?? "the Weapon holder"} must Attack.`
+    : borrowedSwordForcedChoiceActive
+    ? `Play Attack on ${room.players.find((player) => player.id === room.pendingBorrowedSword?.targetId)?.name ?? "the selected target"}, or give up your Weapon.`
+    : localWaitAlreadyPublic
+    ? "No action needed."
+    : room.currentAction?.kind === "turn" && !currentActionOwnedByViewer
     ? "No action needed."
     : lustLocalSelectionActive && activeSkillSelection
     ? `Select ${activeSkillSelection.min} card${activeSkillSelection.min === 1 ? "" : "s"} and ${activeSkillTargetMin} Duel participant${activeSkillTargetMin === 1 ? "" : "s"}.`
     : sharedNegationWindow
-    ? negationResponseGuidance
-      && publicCardDisplayAction?.cardFace?.kind === "BumperHarvest"
-      && publicCardDisplayAction.motion?.type === "negation"
-      && !publicCardDisplayAction.settlement
-      ? harvestNegationDecisionCopy(publicCardDisplayAction)
-      : room.currentAction?.reason || "Negation response window"
+    ? room.currentAction?.reason || "Negation response window"
     : negationResponseGuidance
       ? "Play Negation or Skip."
-    : rainingArrowsDamageDecline
-      ? "Respond to Raining Arrows."
+    : privateResponseGuidance
+      ? privateResponseGuidance
     : consoleIsDecisionActor
     ? room.currentAction?.kind === "trigger" ? decisionInstruction(room.currentAction, room.currentAction.reason) : decisionPresentation.primaryStatus
     : decisionPresentation.isWaiting
       ? decisionPresentation.supportingInstruction
-      : room.currentAction?.reason || decisionPresentation.supportingInstruction;
+      : room.currentAction?.reason || decisionPresentation.supportingInstruction);
   const consoleDecline = responseDamageAction || triggerDeclineAction ? { label: responseDamageAction === "decline_response" ? responseDeclineLabel : "Skip", enabled: true } : null;
   const canClearTargetCardPickerSelection = Boolean(
     targetCardPickerOption
@@ -6654,8 +10713,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ...(canFormSerpentAttack ? [serpentMode ? "Normal" : "Spear"] : []),
     ...(room.isMyTurn && canPlay ? ["End"] : []),
   ].filter((label, index, all) => Boolean(label) && all.indexOf(label) === index);
-  const consoleLocalCancelVisible = !lustLocalSelectionActive && (
-    localTargetSelection.canCancel && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface
+  const ordinaryPlayTargetSelection = Boolean(
+    room.isMyTurn
+    && canPlay
+    && consoleKind === "turn"
+    && normalTargetSelectionActive
+    && !serpentMode
+    && !normalHasProviderCancelSurface,
+  );
+  const consoleLocalCancelVisible = !fiveSeatPhoneAttackMode && !lustLocalSelectionActive && (
+    localTargetSelection.canCancel && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface && !ordinaryPlayTargetSelection
     || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal)
     || canClearTargetCardPickerSelection
   );
@@ -6664,12 +10731,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal)
     || canClearTargetCardPickerSelection
   );
+  const ordinaryTurnDecisionSurface = consoleKind === "turn"
+    && ordinaryTurnPlayAuthorized
+    && !activeSkillSelection
+    && !activeSkillTargetSelection;
+  const consoleDecisionBusy = busy || activeSkillSelectionBusy && !ordinaryTurnDecisionSurface;
   const consoleDecision = buildConsoleDecisionDisplay({
     kind: consoleKind,
     instruction: consoleInstruction,
     viewerIsDecisionActor: consoleIsDecisionActor || consoleKind === "turn" && room.isMyTurn && currentActionOwnedByViewer,
     authoritativeDecision: consoleAuthoritativeDecision,
-    busy: busy || activeSkillSelectionBusy,
+    busy: consoleDecisionBusy,
     selection: consoleSelection,
     primaryCandidates: consolePrimaryCandidates,
     localCancel: { visible: consoleLocalCancelVisible, enabled: consoleLocalCancelEnabled },
@@ -6677,10 +10749,59 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     secondaryControls: consoleSecondaryControls,
   });
   const consolePrimaryId = consoleDecision.primary?.id ?? null;
-  return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div></header>
+  const harvestPoolProps: CardPoolPanelProps | null = harvestDisplay ? (() => {
+    const choices: PublicCardPoolChoice[] = harvestDisplay.revealed.map((choice) => {
+      const name = cardDefinition(choice.kind).name;
+      const takenBy = harvestDisplay.choices.find((entry) => entry.cardId === choice.id);
+      const submittedByMe = harvestSubmitting?.playerId === room.meId && harvestSubmitting.cardId === choice.id;
+      const available = harvestDisplay.availableIds.includes(choice.id);
+      const awaitingConfirmation = canChooseHarvest && !submittedByMe && activeHarvestSelection === choice.id;
+      return {
+        type: "public-card",
+        publicCardFace: choice,
+        cardName: name,
+        state: takenBy || submittedByMe ? "taken" : awaitingConfirmation ? "selected" : available ? "available" : "unavailable",
+        accessibleLabel: takenBy
+          ? `${name}, taken by ${takenBy.playerName}`
+          : submittedByMe
+            ? `${name}, your choice is submitting`
+            : `${name}, ${awaitingConfirmation ? "selected" : available ? "available" : "unavailable"}`,
+        statusLabel: takenBy
+          ? `Taken by ${takenBy.playerName}`
+          : submittedByMe
+            ? "Submitting"
+            : available
+              ? "Available"
+              : "Unavailable",
+        selectDisabled: Boolean(harvestSubmitting) || busy || !available,
+      };
+    });
+    const shared = {
+      title: "Bumper Harvest",
+      instruction: harvestReadOnlyDuringNegation
+        ? harvestEffectRecipient ? `Negation for ${harvestEffectRecipient.participantName} · Read-only` : "Read-only · Negation resolving"
+        : canChooseHarvest ? "Choose one revealed card" : room.pendingHarvest?.complete ? "Choices complete" : "Public cards · read-only",
+      accessibilityLabel: canChooseHarvest ? "Your Bumper Harvest choice" : "Public Bumper Harvest cards",
+      rowAccessibilityLabel: "Public revealed Harvest cards — scroll horizontally to browse",
+      choices,
+      scrollHint: room.players.length >= 5 && harvestDisplay.revealed.length >= 4 ? "Swipe to see all cards ↔" : undefined,
+      onInfo: (card: Card, trigger: HTMLButtonElement) => openCardDetails(card, "public-zone", trigger),
+    };
+    return canChooseHarvest
+      ? {
+        ...shared,
+        mode: "actor-select" as const,
+        selectionCount: harvestSelectedCard ? "1 selected" : "Choose 1 card",
+        confirmDisabled: busy || !harvestSelectedCard || Boolean(harvestSubmitting),
+        onToggle: toggleHarvestSelection,
+        onConfirm: confirmHarvestChoice,
+      }
+      : { ...shared, mode: "public-readonly" as const };
+  })() : null;
+  return <main className="game-shell" data-room-phase={room.phase} data-room-action-revision={room.actionRevision} data-current-action-actor-id={room.currentAction?.actorId ?? ""} data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
-    <section className={`play-table ${displayedSequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}>
-      <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} inspectPlayer={opponentInspectionPresentation} judgementInFlight={judgementInFlight} nestedCardDetailDismissRef={nestedInspectorCardDetailDismissRef} /><StageSystemCluster
+    <section className="play-table" data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-public-stage-layout-scope={publicCardDisplayAction?.rootEventId ?? undefined} data-public-card-journey-ownership-ready={publicCardJourneyOwnershipReady ? "true" : "false"} data-public-card-owned-history-count={publicDisplayOwnedResponseHistory.length} style={mobileSeatRingLayoutStyle}>
+      <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} inspectPlayer={opponentInspectionPresentation} inspectPlayerCount={room.players.length} judgementInFlight={judgementInFlight} equipmentArrivalPendingIds={pendingEquipmentArrivalCardIds} nestedCardDetailDismissRef={nestedInspectorCardDetailDismissRef} /><StageSystemCluster
         publicResponseTimerPending={seatCountdown?.kind === "response"}
         responseTimer={seatCountdown?.kind === "response"
           ? <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} responseTimer />
@@ -6689,108 +10810,146 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       />
       {effectNotice && effectNotice.roomCode === room.code && effectNotice.viewerId === room.meId
         && !effectNotice.beautyRootEventId
-        && !effectNoticeOwnedByLustPresentation
+        && !effectNoticeOwnedByPublicCardFrame
           && <div key={effectNotice.eventId} className={`effect-notice${effectNotice.exiting ? " is-exiting" : ""}`} role="status" aria-live="polite" aria-atomic="true" data-effect-notice-event-id={effectNotice.eventId} data-diao-chan-beauty-root-event-id={effectNotice.beautyRootEventId} data-diao-chan-beauty-source-id={effectNotice.beautySourceId} data-diao-chan-beauty-proof-event-id={effectNotice.beautyProofEventId} data-diao-chan-beauty-phase={effectNotice.beautyPhase}><span>{effectNotice.heading}</span><b>{effectNotice.message}</b></div>}
       </div>
-      {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
-      {canChooseBorrowedSword && <div className="turn-notice borrowed-sword-notice" role="status"><span>BORROWED SWORD</span><b>{borrowedSwordTargetId ? "Target selected · confirm below" : "Choose a legal Attack target"}</b></div>}
-      {privateDrawVisible && <div className="played-card-stage private-draw-stage" role="status"><div className="private-draw-content"><div className="card-action-title"><b>PRIVATE DRAW</b><span>Only you can see these cards</span></div><div className="private-draw-row" role="region" aria-label="Private drawn cards; scroll horizontally to view all" tabIndex={privateDrawCards.length > 3 ? 0 : undefined}>{privateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div></div>}
+      {turnNotice && !borrowedSwordContinuationConsole && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
+      {privateDrawVisible && <div className="played-card-stage private-draw-stage" role="status"><div className="private-draw-content"><div className="private-draw-row" role="region" aria-label="Private drawn cards; scroll horizontally to view all" tabIndex={privateDrawCards.length > 3 ? 0 : undefined}>{privateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div></div>}
       {privateDistribution && !presentationBusy && <PrivateCardDistributionDialog key={room.actionRevision} cards={privateDistribution.cards} players={room.players.filter((player) => privateDistribution.eligibleRecipientIds.includes(player.id) && player.alive)} disabled={busy} error={error} onSubmit={(assignments) => onAction("trigger", { providerId: "private_card_distribution", assignments })} />}
       {privateDeckReorder && <PrivateDeckReorderDialog key={room.actionRevision} cards={privateDeckReorder.cards} minTop={privateDeckReorder.minTop} maxTop={privateDeckReorder.maxTop} disabled={busy} error={error} onSubmit={(topCardIds, bottomCardIds) => onAction("trigger", { providerId: "private_deck_reorder", topCardIds, bottomCardIds })} />}
-      {tablePresentationVisible && <TableResolutionSequence events={displayedSequenceEvents} activeEvent={displayedTableEvent} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} />}
-      {harvestDisplay && <div
+      {activeJudgementRevealRoute && activeEvent?.type === "card" && <PublicJudgementOriginalReveal event={activeEvent} route={activeJudgementRevealRoute} />}
+      {activeEquipmentZoneTransition && activeEvent?.type === "card" && <PublicEquipmentCardTransition event={activeEvent} route={activeEquipmentZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicEquipmentTransitionPresented} />}
+      {activeJudgementZoneTransition && activeJudgementTransitionCard && activeEvent && <PublicJudgementCardTransition event={activeEvent} card={activeJudgementTransitionCard} route={activeJudgementZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicJudgementTransitionPresented} />}
+      {activePublicDiscardTransition && activeEvent && <PublicDiscardCardTransition event={activeEvent} route={activePublicDiscardTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicDiscardTransitionPresented} />}
+      {dismantleSettlementCandidate?.journeySettled && dismantleSettlementCandidate.action.affectedCardFace && <PublicSettlementCardResult key={`${dismantleSettlementCandidate.action.eventId}:public`} result={{
+        eventId: dismantleSettlementCandidate.action.eventId,
+        rootEventId: dismantleSettlementCandidate.action.rootEventId,
+        outcome: "discarded",
+        card: dismantleSettlementCandidate.action.affectedCardFace,
+        accessibleLabel: `Public discarded card from ${dismantleSettlementCandidate.target.name}`,
+      }} />}
+      {stealSettlementCandidate?.journeySettled && (stealSettlementCandidate.action.affectedCardFace || stealSettlementCandidate.action.sourceZone === "hand") && <PublicSettlementCardResult key={`${stealSettlementCandidate.action.eventId}:${privateStealSettlementParticipant ? privateStealParticipantScope(privateStealSettlementParticipant) : "anonymous"}`} result={{
+        eventId: stealSettlementCandidate.action.eventId,
+        rootEventId: stealSettlementCandidate.action.rootEventId,
+        outcome: "obtained",
+        ...(stealSettlementCandidate.action.affectedCardFace
+          ? { card: stealSettlementCandidate.action.affectedCardFace }
+          : privateStealSettlementParticipant
+            ? { card: privateStealSettlementParticipant.card, privateResultScope: privateStealParticipantScope(privateStealSettlementParticipant) }
+            : { anonymousHandBack: true }),
+        accessibleLabel: stealSettlementCandidate.action.affectedCardFace
+          ? `Public card obtained from ${stealSettlementCandidate.target.name}`
+          : privateStealSettlementParticipant?.role === "TAKER"
+            ? `Private Steal result: ${cardDefinition(privateStealSettlementParticipant.card.kind).name}, ${privateStealSettlementParticipant.card.rank} ${privateStealSettlementParticipant.card.suit}. The card was added to your Hand.`
+            : privateStealSettlementParticipant?.role === "FORMER_OWNER"
+              ? `Private Steal result: ${cardDefinition(privateStealSettlementParticipant.card.kind).name}, ${privateStealSettlementParticipant.card.rank} ${privateStealSettlementParticipant.card.suit}. The card was taken from your Hand.`
+              : `A concealed Hand card was obtained from ${stealSettlementCandidate.target.name}`,
+      }} />}
+      {activePublicHandRevealTransition && activeEvent?.type === "card" && <PublicHandRevealCardTransition event={activeEvent} route={activePublicHandRevealTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicHandRevealTransitionPresented} />}
+      {harvestDisplay && <BattlefieldChoiceStage
         key={harvestDisplay.revealEventId ?? "bumper-harvest-public-pool"}
         ref={harvestStageRef}
         className="game-event-stage harvest-choice-stage"
-        data-harvest-actor={canChooseHarvest && !presentationBusy ? room.meId : undefined}
-        data-harvest-readonly={canChooseHarvest && !presentationBusy ? undefined : "true"}
+        mode={canChooseHarvest ? "actor-select" : "public-readonly"}
+        accessibilityLabel={harvestReadOnlyDuringNegation ? "Bumper Harvest public cards during Negation" : "Bumper Harvest revealed cards"}
+        data-harvest-actor={canChooseHarvest ? room.meId : undefined}
+        data-harvest-readonly={canChooseHarvest ? undefined : "true"}
+        data-harvest-choice-authorized={canChooseHarvest ? "true" : "false"}
+        data-harvest-choice-action-revision={canChooseHarvest ? harvestActionRevision : undefined}
         data-harvest-root-event-id={room.publicHarvestPool?.rootEventId ?? room.presentationV2?.bumperHarvestProgress?.rootEventId}
         data-harvest-reveal-event-id={harvestDisplay.revealEventId ?? undefined}
         data-harvest-panel-top={harvestStageTop ?? undefined}
-        role="region"
-        aria-label={harvestReadOnlyDuringNegation ? "Bumper Harvest public cards during Negation" : "Bumper Harvest revealed cards"}
-        style={{ top: harvestStageTop === null ? undefined : `${harvestStageTop}px` }}
+        style={{
+          top: harvestStageTop === null ? undefined : `${harvestStageTop}px`,
+          left: harvestStageInsets ? `${harvestStageInsets.left}px` : undefined,
+          right: harvestStageInsets ? `${harvestStageInsets.right}px` : undefined,
+        }}
       >
-        <section className={`harvest-choice-panel${canChooseHarvest && !presentationBusy ? " harvest-choice-panel--actor" : ""}`} aria-label={canChooseHarvest && !presentationBusy ? "Your Bumper Harvest choice" : "Public Bumper Harvest cards"}>
-          <header className="harvest-choice-heading">
-            <b>Bumper Harvest</b>
-            <span>{harvestReadOnlyDuringNegation
-              ? harvestEffectRecipient ? `Negation for ${harvestEffectRecipient.participantName} · Read-only` : "Read-only · Negation resolving"
-              : canChooseHarvest && !presentationBusy ? "Choose one revealed card" : room.pendingHarvest?.complete ? "Choices complete" : "Public cards · read-only"}</span>
-          </header>
-          <div
-            className="harvest-card-row"
-            role="region"
-            aria-label="Public revealed Harvest cards — scroll horizontally to browse"
-            tabIndex={harvestDisplay.revealed.length > 1 ? 0 : undefined}
-          >
-            {harvestDisplay.revealed.map((choice) => {
-              const name = cardDefinition(choice.kind).name;
-              const takenBy = harvestDisplay.choices.find((entry) => entry.cardId === choice.id);
-              const submittedByMe = harvestSubmitting?.playerId === room.meId && harvestSubmitting.cardId === choice.id;
-              const available = harvestDisplay.availableIds.includes(choice.id);
-              const awaitingConfirmation = canChooseHarvest && !presentationBusy && !submittedByMe && activeHarvestSelection === choice.id;
-              const choiceLabel = takenBy
-                ? `${name}, taken by ${takenBy.playerName}`
-                : submittedByMe
-                  ? `${name}, your choice is submitting`
-                  : `${name}, ${awaitingConfirmation ? "selected" : available ? "available" : "unavailable"}`;
-              return <div
-                className={`harvest-card-choice${takenBy || submittedByMe ? " taken" : ""}${awaitingConfirmation ? " pending-choice" : ""}`}
-                data-harvest-card-id={choice.id}
-                data-harvest-card-state={takenBy || submittedByMe ? "taken" : awaitingConfirmation ? "selected" : available ? "available" : "unavailable"}
-                key={choice.id}
-              >
-                <CardFace card={choice} harvestChoice />
-                {canChooseHarvest && !presentationBusy && <button
-                  type="button"
-                  className="harvest-card-select"
-                  disabled={Boolean(harvestSubmitting) || busy || !available}
-                  aria-pressed={awaitingConfirmation}
-                  aria-label={choiceLabel}
-                  onClick={() => toggleHarvestSelection(choice.id)}
-                />}
-                {!canChooseHarvest || presentationBusy
-                  ? <span className="harvest-availability-label">{takenBy ? `Taken by ${takenBy.playerName}` : submittedByMe ? "Submitting" : available ? "Available" : "Unavailable"}</span>
-                  : null}
-                {awaitingConfirmation && <span className="harvest-pending-label">Selected</span>}
-                <button
-                  type="button"
-                  className="harvest-card-info"
-                  aria-label={`Details for ${name}`}
-                  title={`Details for ${name}`}
-                  onClick={(event) => openCardDetails(choice, "public-zone", event.currentTarget)}
-                >i</button>
-              </div>;
-            })}
-          </div>
-          {room.players.length >= 5 && harvestDisplay.revealed.length >= 4 && <span className="harvest-scroll-hint" aria-hidden="true">Swipe to see all cards ↔</span>}
-          {canChooseHarvest && !presentationBusy && <footer className="harvest-confirm-row">
-            <span className="harvest-selection-count" aria-live="polite">{harvestSelectedCard ? "1 selected" : "Choose 1 card"}</span>
-            <button type="button" className="primary" disabled={busy || !harvestSelectedCard || Boolean(harvestSubmitting)} onClick={confirmHarvestChoice}>Confirm choice</button>
-          </footer>}
-        </section>
-      </div>}
+        {harvestPoolProps && <CardPoolPanel {...harvestPoolProps} />}
+      </BattlefieldChoiceStage>}
       <div className="play-center" aria-hidden="true"><div className="draw-stack" data-draw-anchor="true" /><div className="discard-stack" data-discard-anchor="true" /></div>
-      {pendingTargetCardUsesUnifiedModal && pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget && supportsAuthoritativeTargetCardSelection(pendingTargetCardSelectableSelection, pendingTargetCardSelectableTarget) && room.pendingTargetCard && pendingTargetCardActionName && <TargetCardPicker option={null} presentationCopy={{ title: pendingTargetCardActionName, accessibleName: `${pendingTargetCardActionName} target card selection`, instruction: room.pendingTargetCard.cardKind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard", actionLabel: `Use ${pendingTargetCardActionName}` }} selection={pendingTargetCardSelectableSelection} target={pendingTargetCardSelectableTarget} selectedKeys={pendingTargetCardSelectedKeys} disabled={busy || presentationBusy || !canUseAction(room.currentAction, "choose_target_card")} canDecline={false} showCancel={false} allowPublicCardInfo error={error} onToggle={togglePendingTargetCardSelection} onUse={submitPendingTargetCardPicker} onCancel={clearPendingTargetCardSelection} onDecline={() => undefined} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} />}
+      {pendingTargetCardUsesUnifiedModal && pendingTargetCardPoolZones.length > 0 && pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget && pendingTargetCardPublicPool && room.pendingTargetCard && pendingTargetCardActionName && <BattlefieldChoiceStage
+        key={`${room.actionRevision ?? ""}:${pendingTargetCardSelectableTarget.id}`}
+        ref={pendingTargetCardPoolPlacement.ref}
+        className="game-event-stage harvest-choice-stage card-pool-target-stage"
+        mode="actor-target-select"
+        accessibilityLabel={`${pendingTargetCardActionName} target card selection`}
+        data-target-card-choice-actor={room.meId}
+        data-target-card-choice-target={pendingTargetCardSelectableTarget.id}
+        data-target-card-choice-action-revision={room.actionRevision ?? undefined}
+        data-target-card-pool-revision={room.actionRevision ?? undefined}
+        data-target-card-pool-top={pendingTargetCardPoolPlacement.top ?? undefined}
+        data-target-card-pool-layout="central"
+        data-target-card-pool-root-overlap={pendingTargetCardPoolPlacement.rootCardOverlap ? "true" : undefined}
+        data-target-card-pool-root-event-id={targetCardChoiceSharedCopyReady ? publicCardDisplayAction?.rootEventId : undefined}
+        data-target-card-pool-merge-miss={targetCardPoolCompactLayout ? undefined : targetCardChoiceMergeMiss}
+        data-target-card-pool-ready={pendingTargetCardPoolPlacement.ready ? "true" : "false"}
+        aria-hidden={!pendingTargetCardPoolPlacement.ready}
+        style={{
+          top: pendingTargetCardPoolPlacement.top === null ? undefined : `${pendingTargetCardPoolPlacement.top}px`,
+          left: pendingTargetCardPoolPlacement.insets ? `${pendingTargetCardPoolPlacement.insets.left}px` : undefined,
+          right: pendingTargetCardPoolPlacement.insets
+            ? pendingTargetCardPoolPlacement.insets.width ? "auto" : `${pendingTargetCardPoolPlacement.insets.right}px`
+            : undefined,
+          width: pendingTargetCardPoolPlacement.insets?.width ? `${pendingTargetCardPoolPlacement.insets.width}px` : undefined,
+        }}
+      >
+        <CardPoolPanel
+          mode="actor-target-select"
+          title={targetCardChoiceStageTitle}
+          instruction={targetCardChoiceInstruction}
+          accessibilityLabel={targetCardChoicePanelLabel}
+          publicTarget={pendingTargetCardPublicPool}
+          zones={pendingTargetCardPoolZones}
+          selectionCount={`${pendingTargetCardSelectedKeys.length} / ${pendingTargetCardSelectableSelection.max} selected`}
+          actionLabel={`Use ${pendingTargetCardActionName}`}
+          disabled={busy || !canUseAction(room.currentAction, "choose_target_card")}
+          confirmDisabled={busy || !pendingTargetCardSelectionComplete || !canUseAction(room.currentAction, "choose_target_card")}
+          error={error}
+          onToggle={togglePendingTargetCardSelection}
+          onConfirm={() => submitPendingTargetCardPicker(pendingTargetCardSelectedKeys)}
+          onInfo={(card, trigger) => openCardDetails(card, "public-zone", trigger)}
+        />
+      </BattlefieldChoiceStage>}
+      {endTurnConfirmationIsCurrent && <BattlefieldChoiceStage
+        ref={endTurnConfirmationPlacement.ref}
+        className="game-event-stage harvest-choice-stage end-turn-confirmation-stage"
+        mode="actor-select"
+        accessibilityLabel="End turn confirmation"
+        data-end-turn-confirmation="true"
+        data-end-turn-confirmation-ready={endTurnConfirmationPlacement.ready ? "true" : "false"}
+        aria-hidden={!endTurnConfirmationPlacement.ready}
+        style={{ top: endTurnConfirmationPlacement.top === null ? undefined : `${endTurnConfirmationPlacement.top}px` }}
+      >
+        <section className="card-pool-panel card-pool-panel--end-turn-confirmation harvest-choice-panel harvest-choice-panel--actor end-turn-confirmation-panel" role="dialog" aria-modal="false" aria-labelledby="end-turn-confirmation-title">
+          <header className="card-pool-panel__heading end-turn-confirmation__heading">
+            <b id="end-turn-confirmation-title">End your Play Phase?</b>
+          </header>
+          <footer className="card-pool-panel__footer end-turn-confirmation__actions">
+            <button ref={endTurnConfirmationCancelRef} type="button" className="end end-turn-confirmation__cancel" tabIndex={endTurnConfirmationPlacement.ready ? 0 : -1} disabled={endTurnConfirmationSubmitting} onClick={() => closeEndTurnConfirmation(true)}>Cancel</button>
+            <button type="button" className="primary end-turn-confirmation__confirm" tabIndex={endTurnConfirmationPlacement.ready ? 0 : -1} disabled={!endTurnConfirmationPlacement.ready || busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onClick={() => { void confirmEndTurn(); }}>Confirm End</button>
+          </footer>
+        </section>
+      </BattlefieldChoiceStage>}
       {targetCardPickerInModal && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && <TargetCardPicker option={targetCardPickerOption} compact={targetCardPickerOption.effectId === "sima_yi_fankui"} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={triggerControlsDisabled} canDecline={Boolean(consoleDecision.authoritativeDecline)} showCancel={targetCardPickerOption.effectId !== "sima_yi_fankui" && (targetCardPickerUsesUnifiedModal || consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId))} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={submitTargetCardPicker} onCancel={cancelTargetCardPicker} onDecline={() => onAction("decline_trigger")} />}
       {triggerResponse && responseDecisionReady && choiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={choiceTriggerOption} selection={choiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={triggerControlsDisabled} error={error} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => { const validKeys = triggerSelectedKeys.filter((selectedKey) => choiceTriggerOption.selection?.type === "choice" && choiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = choiceTriggerOption.selection?.type === "choice" ? choiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; setTriggerSelectedKeys(validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys); }} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: choiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}
       {groupScopePreview.active && <p className="group-scope-preview-label" data-group-scope-preview={groupScopePreview.cardKind ?? undefined} role="status">PREVIEW · {groupScopePreview.label}</p>}
-      <div className="player-board" aria-label="Players" data-player-count={room.players.length} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}>
+      <div ref={playerBoardRef} className="player-board" aria-label="Players" data-player-count={room.players.length} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-mobile-top-ring={mobileSeatRingEnabled ? "true" : undefined} data-mobile-top-capacity={mobileSeatRingEnabled ? mobileSeatRingMetrics.topCapacity : undefined} data-mobile-side-count={mobileSeatRingEnabled ? mobileSideSeatCount : undefined} data-measured-board-width={mobileSeatRingEnabled ? mobileSeatRingMetrics.boardWidth : undefined} style={playerBoardStyle}>
         {room.players.filter((player) => player.id !== room.meId).map((player) => {
-          const index = room.players.findIndex((candidate) => candidate.id === player.id);
-          const relativeIndex = (index - myTableIndex + room.players.length) % room.players.length;
-          const selectedTargetCardKind = selectedCanPlayAsAttack ? "Attack" : card?.kind;
-          const cardTargetLegal = Boolean(card && (card.kind === "BorrowedSword"
-            ? borrowedSwordPlayTargetIds.includes(player.id)
-            : selectedTargetCardKind && canTargetCharacter({ sourceId: room.meId, targetId: player.id, targetHero: player.hero, targetHandCount: player.handCount, cardKind: selectedTargetCardKind })));
+          const relativeIndex = seatRelativeIndices.get(player.id) ?? 0;
+          const playTargetRejection = currentPlayTargetEligibility?.rejections.find((entry) => entry.targetId === player.id);
+          const selectedPlayKind = serpentMode ? "Attack" : selectedCanPlayAsAttack ? "Attack" : card?.kind ?? "Attack";
           const targetablePlayer = Boolean(
             borrowedSwordTargetSelectionActive && borrowedSwordEligibleTargetIds.includes(player.id) && player.alive
             || activeSkillTargetMode && activeSkillTargetIds.includes(player.id) && player.alive
             || triggerTargetSelection?.targetIds.includes(player.id) && triggerTargetMode
-            || serpentMode && canPlay
-            || card && cardTargetLegal && (selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "BorrowedSword" || card.kind === "Overindulgence" || card.kind === "RationsDepleted"),
+            || normalTargetSelectionActive && playTargetEligibleIds.has(player.id),
+          );
+          const blockedTargetReason = playTargetRejectionMessage(
+            selectedPlayKind,
+            player.name,
+            player.alive ? playTargetRejection : { targetId: player.id, code: "NOT_ELIGIBLE" },
           );
           const interactionRoles = projectInteractionSeatRoles(clientPresentation, player.id);
           return <OpponentPlayerCard
@@ -6800,18 +10959,55 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             viewerId={room.meId}
             playerHero={heroDefinition(player.hero)}
             relativeIndex={relativeIndex}
+            mobileSeatRing={{ enabled: mobileSeatRingEnabled, topCapacity: mobileSeatTopCount, boardWidth: mobileSeatRingMetrics.boardWidth, seatWidth: mobileSeatRingMetrics.seatWidth, seatHeight: mobileSeatRingMetrics.seatHeight, gap: mobileSeatRingMetrics.gap, leftInset: mobileSeatRingMetrics.leftInset, topStep: mobileSeatRingMetrics.topStep }}
             isTurn={player.seat === room.turnSeat}
-            isSelectedTarget={borrowedSwordTargetId === player.id || (daqiaoDeflectionSelectionActive ? activeSkillSelectedTargetIds.includes(player.id) : targetIds.includes(player.id))}
+            isSelectedTarget={borrowedSwordTargetId === player.id || (daqiaoDeflectionSelectionActive ? activeSkillSelectedTargetIds.includes(player.id) : targetIds.includes(player.id) && (!normalTargetSelectionActive || playTargetEligibleIds.has(player.id)))}
             isGroupPreview={groupScopePreview.affectedPlayerIds.includes(player.id)}
             interactionRoles={interactionRoles}
             targetSelectionActive={targetSelectionActive}
+            showSeparateInspectAffordance={!fiveSeatPhoneAttackMode}
+            targetAttemptEnabled={normalTargetSelectionActive}
+            targetAttemptDescription={normalTargetSelectionActive && !targetablePlayer ? blockedTargetReason : null}
             isInspected={expandedOpponentId === player.id}
             targetablePlayer={targetablePlayer}
             daqiaoDeflectionTargetMode={daqiaoDeflectionSelectionActive}
             testViewerController={Boolean(room.isTestController)}
-            onTarget={(trigger) => { if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id); else { setTarget(player.id); setTargetCardIndex(null); } if (!daqiaoDeflectionSelectionActive) openOpponentInspection(player.id, trigger); }}
+            onTarget={(trigger) => {
+              if (normalTargetSelectionActive) {
+                if (!playTargetEligibleIds.has(player.id)) {
+                  setLocalPlayTargetNotice({
+                    roomCode: room.code,
+                    viewerId: room.meId,
+                    actionRevision: room.actionRevision ?? "",
+                    modeKey: targetEligibilityModeKey,
+                    targetId: player.id,
+                    message: blockedTargetReason,
+                  });
+                  if (fiveSeatPhoneAttackMode) openOpponentInspection(player.id, trigger);
+                  return;
+                }
+                setLocalPlayTargetNotice(null);
+                setTarget(player.id);
+                setTargetCardIndex(null);
+                openOpponentInspection(player.id, trigger);
+                return;
+              }
+              setLocalPlayTargetNotice(null);
+              if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id);
+              else { setTarget(player.id); setTargetCardIndex(null); }
+              if (!daqiaoDeflectionSelectionActive) openOpponentInspection(player.id, trigger);
+            }}
             onInspect={(trigger) => toggleOpponentInspection(player.id, trigger)}
-            onSwitchTestViewer={(playerId) => { setHarvestDraft(null); void onSwitchTestViewer(playerId); }}
+            onSwitchTestViewer={(playerId) => {
+              setPrivateStealViewerSwitchPending(true);
+              setPrivateDrawPresentation({ playerId, cards: [], transferIds: [] });
+              setHarvestDraft(null);
+              setInspectOnlyHandCardId("");
+              setSelected(""); setTargetIds([]); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId("");
+              setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice("");
+              closeCardDetails(false); closeHeroDetails(false); closeOpponentInspection(false);
+              void onSwitchTestViewer(playerId).finally(() => setPrivateStealViewerSwitchPending(false));
+            }}
             judgementInFlight={judgementInFlight}
             serpentSelected={serpentSelected}
             triggerResponse={triggerResponse}
@@ -6823,22 +11019,38 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         })}
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
-      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} retainHarvestHistory={retainHarvestHistoryDuringInspection} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardJourneyEventParked} onJourneySettled={(settlementEventId) => {
+      <PublicStageLayoutProvider roomId={room.code} scopeId={publicCardDisplayAction?.rootEventId ?? null} viewerId={room.meId} interactionId={publicCardDisplayAction?.interactionId ?? null}>
+      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} suppressAnnouncement={targetCardChoiceMergeActive || publicDiscardOwnsAnnouncement} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} responseHistoryOwnership={publicDisplayOwnedResponseHistory.map((response) => ({ eventId: response.eventId, cardIds: (response.cardFaces ?? [response.cardFace]).map((card) => card.id) }))} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardDisplayEventParked} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
         setActiveDismantleSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
           ? { ...current, journeySettled: true }
           : current);
+        setActiveStealSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
+          ? { ...current, journeySettled: true }
+          : current);
       }} />
-      {visibleBeautyAnnouncement && <PublicSkillEventAnnouncementLayer
+      {publicDiscardOwnsAnnouncement && latestPublicDiscardAnnouncement && <PublicDiscardAnnouncementLayer
+        announcement={latestPublicDiscardAnnouncement} roomCode={room.code} viewerId={room.meId}
+      />}
+      {!publicDiscardOwnsAnnouncement && publicInteractionNarration && (!interactionNarrationBelongsToAction || !publicCardDisplayEnabled) && <PublicInteractionAnnouncementLayer
+        narration={publicInteractionNarration} roomCode={room.code} viewerId={room.meId}
+      />}
+      {visibleBeautyAnnouncement && !publicInteractionNarration && <PublicSkillEventAnnouncementLayer
         announcement={visibleBeautyAnnouncement}
         roomCode={room.code}
         viewerId={room.meId}
       />}
-      <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey} harvestPoolReadOnly={harvestReadOnlyDuringNegation} />
+      {!targetCardChoiceMergeActive
+        && !(publicActivityStatus.kind === "target-card-choice" && room.pendingTargetCard?.actorId === room.meId)
+        && !lustOrderOwnsActivityBand
+        && <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey}
+          harvestPoolReadOnly={harvestReadOnlyDuringNegation}
+          stableLowerCenter={targetCardActivityOwnsPac} />}
+      </PublicStageLayoutProvider>
       {visibleInfoCard && <CardDetailsPreview card={visibleInfoCard} context={infoCardContext} onClose={closeCardDetails} returnFocusTo={cardInfoReturnFocusRef.current} />}
       {infoHero && me && <HeroDetailsPreview hero={infoHero} onClose={closeHeroDetails} returnFocusTo={heroInfoReturnFocusRef.current} />}
     </section>
     <footer className="play-command">
-    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { closeOpponentInspection(false); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={openHeroDetails} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} attackResponsePrompt={Boolean(rootAction?.action === "ATTACK" && rootActionCardFace && rootAction.targetId === room.meId && room.currentAction?.kind === "response" && room.currentAction.requirement === "dodge" && room.currentAction.actorId === room.meId && canUseAction(room.currentAction, "respond"))} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
+    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { closeOpponentInspection(false); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={openHeroDetails} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} equipmentArrivalPendingIds={pendingEquipmentArrivalCardIds} attackResponsePrompt={Boolean(rootAction?.action === "ATTACK" && rootActionCardFace && rootAction.targetId === room.meId && room.currentAction?.kind === "response" && room.currentAction.requirement === "dodge" && room.currentAction.actorId === room.meId && canUseAction(room.currentAction, "respond"))} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" data-hero-id={localHero?.id ?? undefined} aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive
@@ -6870,15 +11082,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               data-console-response-presentation-ready={responsePresentationReady ? "true" : "false"}
               data-console-response-decision-ready={responseDecisionReady ? "true" : "false"}
               data-console-presentation-busy={presentationBusy ? "true" : "false"}
+              data-console-presentation-busy-causes={JSON.stringify(presentationBusyCauses)}
+              data-console-ordinary-turn-play-authorized={ordinaryTurnPlayAuthorized ? "true" : "false"}
+              data-console-active-event-id={activeEventTimerEventId || undefined}
+              data-console-active-event-kind={activeEventTimerKind || undefined}
+              data-console-active-event-timer-mode={activeEventTimerEventId ? activeEquipmentArrivalKey ? "equipment-arrival" : "timed-reveal" : "idle"}
               data-console-active-skill-selection-busy={activeSkillSelectionBusy ? "true" : "false"}
               data-console-network-busy={busy ? "true" : "false"}
               data-lust-local-selection={lustLocalSelectionActive ? "true" : undefined}
+              data-local-target-notice={activeLocalPlayTargetNotice ? activeLocalPlayTargetNotice.stale ? "stale" : "rejected" : undefined}
               role="status"
               aria-live="polite"
               aria-atomic="true"
             >
-              {!lustLocalSelectionActive && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "RESPONSE SUBMITTED" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
-              <strong>{consoleDecision.instruction}</strong>
+              {!borrowedSwordContinuationConsole && !lustLocalSelectionActive && !privateNegationAcknowledgement && !localWaitAlreadyPublic && !(consoleIsDecisionActor && room.currentAction?.kind === "trigger") && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "WAITING FOR OTHERS" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
+              <strong>{activeLocalPlayTargetNotice?.message ?? consoleDecision.instruction}</strong>
               {lustTargetOrder && <em className="lust-order-guidance" data-testid="lust-order-guidance">
                 Attack order: <strong>{lustTargetOrder.firstName}</strong> first → <span className="lust-second-actor">{lustTargetOrder.secondName}</span> second.
               </em>}
@@ -6899,11 +11117,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           {invalidResponseState && <p className="error" role="status">Waiting for the latest response state…</p>}
         </div>
       }>
-        <div className="local-hand-section" data-raining-arrows-dodge-providers={rainingArrowsHasHandDodgeProvider ? "available" : undefined}>
+        <div className="local-hand-section" data-five-seat-phone-attack-mode={fiveSeatPhoneAttackMode ? "true" : undefined} data-raining-arrows-dodge-providers={rainingArrowsHasHandDodgeProvider ? "available" : undefined}>
           <div className="local-hand" data-card-origin-anchor={room.meId} aria-label="Your hand">{(() => {
             const multiSelectMode = room.phase === "discard" || Boolean(activeSkillSelection || serpentMode || responseSelectionMax > 1 || triggerSelectionMax > 1);
             const responseSelectionLimit = triggerResponse && triggerSelectionUsesCards ? triggerSelection.max : responseSelectionUsesCards ? responseSelection.max : 2;
             const toggleHandCard = (item: Card) => {
+              setLocalPlayTargetNotice(null);
               setInspectOnlyHandCardId("");
               if (infoCard && infoCardContext === "private-hand") closeCardDetails(false);
               const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1;
@@ -6934,9 +11153,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               return <div className={`card-slot ${singleSelected ? "single-selected" : ""} ${multiSelected ? "multi-selected" : ""} ${detailsSelected ? "details-selected" : ""} ${inspectFocused ? "inspect-focused" : ""}`} data-hand-card-id={item.id} data-card-selected={isSelected ? "true" : "false"} data-card-inspect-focused={inspectFocused ? "true" : "false"} key={`rail-${item.id}`} style={{ marginLeft: index === 0 ? 0 : `${handCardLayout.step - 68}px`, ...(multiSelected ? { zIndex: 100 + Math.max(0, selectedCardIds.length - multiSelectionOrder) } : {}) }}>
                 {(detailsSelected || inspectionDetailsSelected) && <span className="hand-card-details-frame" aria-hidden="true" />}
                 <div className="hand-card-visual">
-                  <button aria-pressed={isSelected} disabled={cardActionDisabled} onClick={() => { if (!cardActionDisabled) toggleHandCard(item); }} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}>
+                  <button aria-pressed={isSelected} aria-label={`${isSelected ? "Deselect" : "Select"} ${definition.name}`} disabled={cardActionDisabled} onClick={() => { if (!cardActionDisabled) toggleHandCard(item); }} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}>
                     <span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong>
                   </button>
+                  {fiveSeatPhoneAttackMode && singleSelected && item.kind === "Attack" && <button type="button" className="hand-card-retap-extension" aria-label={`Deselect ${definition.name}`} onClick={() => { if (!cardActionDisabled) toggleHandCard(item); }} />}
                   {inspectionAvailable && <button type="button" className="hand-card-inspection-action" data-testid="hand-card-inspection-action" aria-label={`Inspect ${definition.name}`} aria-pressed={inspectFocused} onClick={() => {
                     if (inspectFocused) {
                       setInspectOnlyHandCardId("");
@@ -6947,12 +11167,19 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                 </div>
               </div>;
             };
+            const pendingPrivateCards = pendingPrivateHandCardIds(room.meId, room.myHand, privateHandEvents, {
+              now: room.serverNow ?? Date.now(),
+              seenTransferIds: readSeenPrivateHandTransfers(room.code, room.meId),
+              initialDealOnly: knownHandCards.current?.playerId !== room.meId,
+            });
+            const activePrivateCardIds = new Set([...pendingPrivateCards, ...privateDrawCards.map((drawn) => drawn.id)]);
+            const handCardsInDock = room.myHand.filter((item) => !activePrivateCardIds.has(item.id));
             // The native scroll region needs keyboard focus; it has no custom selection role.
             // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-            return <div ref={handRailRef} onScroll={(event) => { handViewportSnapshotRef.current = captureHandViewportSnapshot(event.currentTarget, room.meId); }} className="local-hand-rail" data-hand-layout={handCardLayout.measured ? "measured" : "pending"} style={{ justifyContent: room.myHand.length === 1 ? "center" : "flex-start" }} data-hand-overflow={handOverflows ? "true" : "false"} tabIndex={handOverflows ? 0 : undefined} role="region" aria-label={handOverflows ? "Hand cards — scroll horizontally to browse" : "Hand cards"}>{room.myHand.map((item, index) => renderHandCard(item, index))}</div>;
+            return <div ref={handRailRef} onScroll={(event) => { handViewportSnapshotRef.current = captureHandViewportSnapshot(event.currentTarget, room.meId); }} className="local-hand-rail" data-hand-layout={handCardLayout.measured ? "measured" : "pending"} style={{ justifyContent: handCardsInDock.length === 1 ? "center" : "flex-start" }} data-hand-overflow={handOverflows ? "true" : "false"} tabIndex={handOverflows ? 0 : undefined} role="region" aria-label={handOverflows ? "Hand cards — scroll horizontally to browse" : "Hand cards"}>{handCardsInDock.map((item, index) => renderHandCard(item, index))}</div>;
           })()}</div>
         </div>
-      <div className="turn-controls" data-console-surface="local-operation" aria-label="Local operation console">
+      <div className="turn-controls" data-console-surface="local-operation" data-ordinary-play-target-selection={ordinaryPlayTargetSelection ? "true" : undefined} aria-label="Local operation console">
         <div data-action-extras="true">
           {triggerResponse && responseDecisionReady && inlineChoiceTriggerOption?.selection?.type === "choice" && inlineChoiceTriggerOption.selection.choices.map((choice) => <button type="button" key={`${inlineChoiceTriggerOption.effectId}:${choice.id}`} className="serpent-control" data-trigger-choice-provider={inlineChoiceTriggerOption.effectId} data-trigger-choice-action={choice.id} aria-label={`${inlineChoiceTriggerOption.label}: ${choice.label}`} disabled={responseControlsDisabled || !canUseAction(room.currentAction, "trigger")} onClick={() => void onAction("trigger", { providerId: inlineChoiceTriggerOption.effectId, choice: choice.id })}>{choice.label}</button>)}
           {triggerResponse && genericTriggerOptions.map((option) => option.selection?.type === "target_cards" || option.selection?.type === "choice" && option.allowDecline === false ? null : option.selection ? <button key={option.effectId} className={`serpent-control ${responseProviderId === option.effectId ? "active" : ""}`} disabled={triggerControlsDisabled} onClick={() => { const active = responseProviderId === option.effectId; if (active) resetLocalTargetFlow("trigger"); else { setResponseProviderId(option.effectId); setSelected(""); setTargetIds([]); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); } }}>{responseProviderId === option.effectId ? `Cancel ${option.label}` : option.selection.type === "target" ? `Use ${option.label}` : option.label}</button> : <button key={option.effectId} className="serpent-control" disabled={triggerControlsDisabled} onClick={() => onAction("trigger", { providerId: option.effectId })}>{`Use ${option.label}`}</button>)}
@@ -6965,7 +11192,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {targetCardPickerInLocalDock && canClearTargetCardPickerSelection && <button className="end local-target-cancel" disabled={responseControlsDisabled || !consoleDecision.localCancel.enabled} onClick={cancelTargetCardPicker}>Clear selection</button>}
             {triggerResponse && triggerTargetMode && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !triggerHasProviderCancelSurface && <button className="end local-target-cancel" disabled={responseControlsDisabled || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
             {(activeSkillSelection || activeSkillTargetSelection) && activeSkillTargetMode && consoleDecision.localCancel.visible && localTargetSelection.canCancel && <button className="end local-target-cancel" disabled={busy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && normalTargetSelectionActive && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !normalHasProviderCancelSurface && <button className="end local-target-cancel" disabled={busy || presentationBusy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && normalTargetSelectionActive && !ordinaryPlayTargetSelection && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !normalHasProviderCancelSurface && <button className="end local-target-cancel" disabled={busy || presentationBusy && !ordinaryTurnPlayAuthorized || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
           </div>
           <div data-action-slot="primary">
             {rescueDecisionReady && !canRespond && consolePrimaryId === "rescue" && <button className="primary" disabled={busy || card?.kind !== "Peach" || !consoleDecision.primary?.enabled} onClick={() => { if (card?.kind === "Peach") void onAction("give_peach", { cardId: card.id }); setSelected(""); }}>{busy ? "Playing…" : "Peach"}</button>}
@@ -6977,13 +11204,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {(activeSkillSelection || activeSkillTargetSelection) && consolePrimaryId === "active-skill" && <button className="primary" disabled={busy || !activeSkillConfirmEnabled || !consoleDecision.primary?.enabled} onClick={() => activeSkillSubmission && submitWithLocalTargetPreview(() => onAction("trigger", activeSkillSubmission))}>Confirm</button>}
             {canRespond && genericResponse && semanticResponseOptions.length > 0 && selectedResponseProvider && consolePrimaryId === "response" && <button className="primary" disabled={responseControlsDisabled || !responseSelectionComplete || !consoleDecision.primary?.enabled} onClick={() => submitResponseProvider()}>{busy ? "Confirming…" : "Confirm"}</button>}
             {room.isMyTurn && room.phase === "discard" && consolePrimaryId === "discard" && <button className="primary" disabled={busy || discardSelected.length !== excessCards || !consoleDecision.primary?.enabled} onClick={() => onAction("discard_cards", { cardIds: discardSelected })}>{busy ? "Discarding…" : `Discard ${excessCards} selected`}</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy || !card || selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid) || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play"}</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy && !ordinaryTurnPlayAuthorized || !card || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play"}</button>}
           </div>
           <div data-action-slot="decline">
             {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}
             {triggerResponse && triggerDeclineAction && (!targetCardPickerInModal || targetCardPickerInLocalDock) && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !consoleDecision.authoritativeDecline.enabled} onClick={() => onAction("decline_trigger")}>Skip</button>}
             {canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !responseDamageAction || !consoleDecision.authoritativeDecline.enabled} onClick={() => responseDamageAction && onAction(responseDamageAction)}>{responseDeclineLabel}</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && <button className="end" disabled={busy || presentationBusy} onClick={() => onAction("end_turn")}>{busy ? "Finishing…" : "End"}</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && <button ref={endTurnConfirmationButtonRef} className="end" disabled={busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onClick={() => { if (endTurnConfirmationAuthorized && !endTurnConfirmationSubmissionRef.current) setEndTurnConfirmationIdentity(endTurnConfirmationScope); }}>{busy ? "Finishing…" : "End"}</button>}
           </div>
         </div>
       </div>
@@ -7013,6 +11240,8 @@ type DeckDrag = {
   active: boolean;
   targetZone: DeckZone | null;
   insertionIndex: number | null;
+  touchScrollAxis?: "x" | "y";
+  scrolling?: boolean;
   sourceElement: HTMLElement;
 };
 type DeckEdgeScroll = { row: HTMLElement; zone: DeckZone; direction: -1 | 1; pointerId: number };
@@ -7177,10 +11406,18 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     const card = held.get(next.cardId);
     if (card) setAnnouncement("Picked up " + cardDefinition(card.kind).name + ". Move to a named zone, then release.");
   };
+  const scrollTouchGesture = (session: DeckDrag, deltaX: number, deltaY: number) => {
+    if (session.touchScrollAxis === "x") {
+      const row = session.sourceElement.closest<HTMLElement>(".deck-reorder-card-row");
+      if (row) row.scrollLeft -= deltaX;
+      return;
+    }
+    const scroller = dialogRef.current?.querySelector<HTMLElement>(".deck-reorder-sequences");
+    if (scroller) scroller.scrollTop -= deltaY;
+  };
   const beginDrag = (event: ReactPointerEvent<HTMLElement>, cardId: string, zone: DeckZone, index: number) => {
     if (disabled || !event.isPrimary || event.button !== 0 || dragRef.current) return;
     const eventTarget = event.target as Element;
-    if (event.pointerType === "touch" && !eventTarget.closest("[data-deck-touch-handle]")) return;
     if (event.pointerType !== "touch" && eventTarget.closest("button")) return;
     const face = event.currentTarget.matches(".deck-reorder-card-face")
       ? event.currentTarget
@@ -7223,7 +11460,21 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     if (!session.active) {
       const distance = Math.hypot(event.clientX - session.startX, event.clientY - session.startY);
       if (session.pointerType === "touch") {
-        if (distance > 12) clearDrag(session);
+        if (session.scrolling) {
+          scrollTouchGesture(session, event.clientX - session.clientX, event.clientY - session.clientY);
+          dragRef.current = { ...session, clientX: event.clientX, clientY: event.clientY };
+          return;
+        }
+        if (distance > 12) {
+          clearHoldTimer();
+          const next = {
+            ...session,
+            scrolling: true,
+            touchScrollAxis: Math.abs(event.clientX - session.startX) > Math.abs(event.clientY - session.startY) ? "x" as const : "y" as const,
+          };
+          scrollTouchGesture(next, event.clientX - session.clientX, event.clientY - session.clientY);
+          dragRef.current = { ...next, clientX: event.clientX, clientY: event.clientY };
+        }
         return;
       }
       if (distance < 5) return;
@@ -7372,7 +11623,7 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     onLostPointerCapture={(event) => finishPointer(event, true)}
     onKeyDown={(event) => { if (event.key === "Escape" && dragRef.current) { event.preventDefault(); cancelActiveDrag(); } else if (event.key === "Escape" && moveMenuCardId) { event.preventDefault(); setFocusCardId(moveMenuCardId); setMoveMenuCardId(null); } }}>
     <section ref={dialogRef} className="target-card-picker-panel choice-trigger-panel deck-reorder-panel" role="dialog" aria-modal="false" aria-label="Stargazing deck reorder" aria-describedby="stargazing-deck-instructions">
-      <header><strong id="stargazing-deck-title">STARGAZING</strong><span id="stargazing-deck-instructions">Touch and hold the grip, then drag. Use each card’s Move menu for keyboard and screen-reader controls.</span></header>
+      <header><strong id="stargazing-deck-title">STARGAZING</strong><span id="stargazing-deck-instructions">Hold and drag a card to Top or Bottom; drag again to change order. Use each card’s Move menu for keyboard and screen-reader controls.</span></header>
       <div className="deck-reorder-sequences">
         {renderZone("top")}
         {renderZone("unassigned")}
@@ -7497,65 +11748,55 @@ function findAnchor(root: ParentNode, attribute: string, value: string): HTMLEle
   return Array.from(root.querySelectorAll<HTMLElement>(`[${attribute}]`)).find((element) => element.dataset[dataKey] === value) ?? null;
 }
 
-function playerSettlementPoint(table: HTMLElement, anchor: HTMLElement): TablePoint {
-  const tableRect = table.getBoundingClientRect();
-  const anchorRect = anchor.getBoundingClientRect();
-  const center = centerRelativeToTable(table, anchor);
-  const tableCenterX = tableRect.width / 2;
-  if (anchorRect.top >= tableRect.bottom - tableRect.height * .2) return { x: tableCenterX, y: anchorRect.top - tableRect.top - 42 };
-  if (anchorRect.bottom <= tableRect.top + tableRect.height * .35) return { x: center.x, y: anchorRect.bottom - tableRect.top + 42 };
-  return anchorRect.left + anchorRect.width / 2 < tableRect.left + tableCenterX
-    ? { x: anchorRect.right - tableRect.left + 38, y: center.y }
-    : { x: anchorRect.left - tableRect.left - 38, y: center.y };
+function findEquipmentSlotAnchor(root: ParentNode, ownerId: string, slot: string): HTMLElement | null {
+  return Array.from(root.querySelectorAll<HTMLElement>("[data-player-equipment-slot-owner][data-slot]"))
+    .find((element) => element.dataset.playerEquipmentSlotOwner === ownerId && element.dataset.slot === slot) ?? null;
 }
 
-function TableResolutionSequence({ events, activeEvent, players, myTableIndex, concluding }: { events: GameEvent[]; activeEvent: GameEvent | null; players: Player[]; myTableIndex: number; concluding: boolean }) {
-  const cards = events.filter(retainsAtPlayer).flatMap((event) => event.type === "card" ? [{ event, card: event.card, key: event.id }] : event.type === "cards" ? event.cards.map((card) => ({ event, card, key: `${event.id}-${card.id}` })) : []);
-  const cardPlayers = players.filter((player) => cards.some(({ event }) => !settlesInJudgement(event) && publicPlayerName(event.player) === publicPlayerName(player.name)));
-  const activeCards = activeEvent?.type === "card" ? [activeEvent.card] : activeEvent?.type === "cards" ? activeEvent.cards : [];
-  const activeCardIds = new Set(activeCards.map((card) => card.id));
-  const equipmentFlightId = activeEvent?.type === "card" && activeEvent.action === "equip" && !activeEvent.playedAs ? activeEvent.card.id : null;
-  const judgementFlightId = activeEvent && settlesInJudgement(activeEvent) ? activeEvent.card.id : null;
-  const activePlayerId = activeEvent?.type === "card" || activeEvent?.type === "cards" ? players.find((player) => publicPlayerName(player.name) === publicPlayerName(activeEvent.player))?.id ?? "" : "";
-  const cardPlayerIds = cardPlayers.map((player) => player.id).join("|");
-  const directDiscard = Boolean(activeEvent && movesDirectlyToDiscard(activeEvent) && !events.some((event) => event.id === activeEvent.id));
+function PublicEquipmentCardTransition({ event, route, players, myTableIndex, onPresented }: {
+  event: CardEvent & { type: "card" };
+  route: Extract<PublicPresentationRoute, { kind: "zone-transition" }>;
+  players: Player[];
+  myTableIndex: number;
+  onPresented: (route: Extract<PublicPresentationRoute, { kind: "zone-transition" }>) => void;
+}) {
   const revealRef = useRef<HTMLDivElement>(null);
+  const toEquipment = route.destination === "EQUIPMENT";
+  const sourceOwnerId = toEquipment ? event.actorId ?? route.ownerId ?? "" : route.from?.ownerId ?? "";
+  const sourceSlot = toEquipment ? "" : route.from?.slot ?? "";
   useLayoutEffect(() => {
     const reveal = revealRef.current;
     const table = reveal?.closest<HTMLElement>(".play-table");
     const shell = table?.closest<HTMLElement>(".game-shell");
-    if (!reveal || !table || !shell || !activePlayerId) return;
+    if (!reveal || !table || !shell) return;
     const localPlayerId = players[myTableIndex]?.id;
-    const source = activePlayerId === localPlayerId
-      ? findAnchor(shell, "data-card-origin-anchor", activePlayerId) ?? findAnchor(shell, "data-player-anchor", activePlayerId)
-      : findAnchor(shell, "data-player-anchor", activePlayerId);
-    const destination = equipmentFlightId ? findAnchor(shell, "data-equipment-id", equipmentFlightId)
-      : judgementFlightId ? findAnchor(shell, "data-judgement-id", judgementFlightId)
-        : directDiscard ? findAnchor(shell, "data-discard-anchor", "true") : null;
+    const source = !toEquipment && sourceOwnerId && sourceSlot
+      ? findEquipmentSlotAnchor(shell, sourceOwnerId, sourceSlot)
+      : sourceOwnerId === localPlayerId
+        ? findAnchor(shell, "data-card-origin-anchor", sourceOwnerId) ?? findAnchor(shell, "data-player-anchor", sourceOwnerId)
+        : sourceOwnerId ? findAnchor(shell, "data-player-anchor", sourceOwnerId) : null;
+    const destination = toEquipment && route.ownerId && route.slot
+      ? findEquipmentSlotAnchor(shell, route.ownerId, route.slot)
+      : !toEquipment ? findAnchor(shell, "data-discard-anchor", "true") : null;
     const face = reveal.querySelector<HTMLElement>(".played-card");
     if (!face) return;
     const measure = () => {
       const origin = source ? centerRelativeToTable(table, source) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
       reveal.style.setProperty("--origin-x", origin.x + "px");
       reveal.style.setProperty("--origin-y", origin.y + "px");
-      if (equipmentFlightId || judgementFlightId) {
+      if (toEquipment) {
         const point = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
-        reveal.style.setProperty(equipmentFlightId ? "--equipment-x" : "--judgement-x", point.x + "px");
-        reveal.style.setProperty(equipmentFlightId ? "--equipment-y" : "--judgement-y", point.y + "px");
+        reveal.style.setProperty("--equipment-x", point.x + "px");
+        reveal.style.setProperty("--equipment-y", point.y + "px");
         if (destination) {
           const rect = destination.getBoundingClientRect();
-          reveal.style.setProperty(equipmentFlightId ? "--equipment-scale-x" : "--judgement-scale-x", String(rect.width / face.offsetWidth));
-          reveal.style.setProperty(equipmentFlightId ? "--equipment-scale-y" : "--judgement-scale-y", String(rect.height / face.offsetHeight));
+          reveal.style.setProperty("--equipment-scale-x", String(rect.width / face.offsetWidth));
+          reveal.style.setProperty("--equipment-scale-y", String(rect.height / face.offsetHeight));
         }
-      } else if (directDiscard) {
+      } else {
         const point = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
         reveal.style.setProperty("--discard-x", point.x + "px");
         reveal.style.setProperty("--discard-y", point.y + "px");
-      } else {
-        const anchor = findAnchor(shell, "data-player-anchor", activePlayerId);
-        const point = anchor ? playerSettlementPoint(table, anchor) : origin;
-        reveal.style.setProperty("--settle-x", point.x + "px");
-        reveal.style.setProperty("--settle-y", point.y + "px");
       }
     };
     measure();
@@ -7564,41 +11805,408 @@ function TableResolutionSequence({ events, activeEvent, players, myTableIndex, c
     if (source) observer.observe(source);
     if (destination) observer.observe(destination);
     return () => observer.disconnect();
-  }, [activeEvent?.id, activePlayerId, directDiscard, equipmentFlightId, judgementFlightId, myTableIndex, players]);
+  }, [event.id, myTableIndex, players, route.destination, route.ownerId, route.slot, sourceOwnerId, sourceSlot, toEquipment]);
+
+  const expectedAnimation = toEquipment ? "equipmentCardToSlot" : "revealedCardsToDiscard";
+  return <div className="table-resolution-layer public-zone-transition-layer" role="status">
+    <div ref={revealRef} className={`active-table-reveal ${toEquipment ? "equipment-flight" : "direct-discard"}`}
+      data-settlement-event-id={event.id} data-public-zone-transition-event-id={route.eventId}
+      data-public-zone-transition-card-id={route.physicalCardId} data-public-zone-transition-destination={route.destination}
+      key={route.claimId} onAnimationEnd={(animation) => {
+        if (animation.target !== animation.currentTarget || animation.animationName !== expectedAnimation) return;
+        onPresented(route);
+      }}><div><CardFace card={event.card} settlementCardId={event.card.id} /></div></div>
+  </div>;
+}
+
+function JudgementCardFace({ card }: { card: Card }) {
+  return <CardFace card={card} settlementCardId={card.id} />;
+}
+
+function PublicJudgementOriginalReveal({ event, route }: {
+  event: Extract<GameEvent, { type: "card" }>;
+  route: PublicJudgementRevealRoute;
+}) {
+  if (event.id !== route.eventId || event.card.id !== route.physicalCardId) return null;
+  return <div className="table-resolution-layer public-judgement-reveal-layer" role="status" aria-label="Public Judgement card revealed">
+    <div className="active-table-reveal public-judgement-original-reveal" key={route.claimId}
+      data-public-card-owner={route.claimedBy}
+      data-public-judgement-reveal-event-id={route.eventId}
+      data-public-judgement-reveal-card-id={route.physicalCardId}
+      data-public-judgement-reveal-sequence={route.publicSequence}>
+      <div><JudgementCardFace card={event.card} /></div>
+    </div>
+  </div>;
+}
+
+function PublicJudgementCardTransition({ event, card, route, players, myTableIndex, onPresented }: {
+  event: GameEvent;
+  card: Card;
+  route: Extract<PublicPresentationRoute, { kind: "zone-transition" }>;
+  players: Player[];
+  myTableIndex: number;
+  onPresented: (route: Extract<PublicPresentationRoute, { kind: "zone-transition" }>) => void;
+}) {
+  const revealRef = useRef<HTMLDivElement>(null);
+  const silentlyRetiredClaimId = useRef<string | null>(null);
+  const arrivingInJudgement = route.destination === "JUDGEMENT";
+  const alreadyShownFromDeck = publicJudgementTransitionUsesExistingRevealOwner(route);
+  const sourceOwnerId = route.from?.ownerId ?? "";
   useLayoutEffect(() => {
     const reveal = revealRef.current;
     const table = reveal?.closest<HTMLElement>(".play-table");
     const shell = table?.closest<HTMLElement>(".game-shell");
     if (!reveal || !table || !shell) return;
-    const nodes = Array.from(reveal.querySelectorAll<HTMLElement>("[data-player-settlement-id]"));
-    const anchors = nodes.map((node) => findAnchor(shell, "data-player-anchor", node.dataset.playerSettlementId ?? ""));
-    const discard = findAnchor(shell, "data-discard-anchor", "true");
-    const measure = () => nodes.forEach((node, index) => {
-      const anchor = anchors[index];
-      if (!anchor) return;
-      const point = playerSettlementPoint(table, anchor);
-      node.style.setProperty("--settle-x", point.x + "px");
-      node.style.setProperty("--settle-y", point.y + "px");
-      if (discard) {
-        const discardPoint = centerRelativeToTable(table, discard);
-        node.style.setProperty("--discard-x", discardPoint.x + "px");
-        node.style.setProperty("--discard-y", discardPoint.y + "px");
+    const localPlayerId = players[myTableIndex]?.id;
+    const source = route.from?.zone === "DECK"
+      ? findAnchor(shell, "data-draw-anchor", "true")
+      : route.from?.zone === "JUDGEMENT"
+        ? findAnchor(shell, "data-judgement-id", card.id) ?? (sourceOwnerId ? findAnchor(shell, "data-player-anchor", sourceOwnerId) : null)
+        : sourceOwnerId === localPlayerId
+          ? findAnchor(shell, "data-card-origin-anchor", sourceOwnerId) ?? findAnchor(shell, "data-player-anchor", sourceOwnerId)
+          : sourceOwnerId ? findAnchor(shell, "data-player-anchor", sourceOwnerId) : null;
+    const destination = arrivingInJudgement
+      ? findAnchor(shell, "data-judgement-id", card.id)
+      : findAnchor(shell, "data-discard-anchor", "true");
+    const face = reveal.querySelector<HTMLElement>(".played-card");
+    if (!face) return;
+    const measure = () => {
+      const origin = source ? centerRelativeToTable(table, source) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+      reveal.style.setProperty("--origin-x", origin.x + "px");
+      reveal.style.setProperty("--origin-y", origin.y + "px");
+      const point = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+      if (arrivingInJudgement) {
+        reveal.style.setProperty("--judgement-x", point.x + "px");
+        reveal.style.setProperty("--judgement-y", point.y + "px");
+        if (destination) {
+          const rect = destination.getBoundingClientRect();
+          reveal.style.setProperty("--judgement-scale-x", String(rect.width / face.offsetWidth));
+          reveal.style.setProperty("--judgement-scale-y", String(rect.height / face.offsetHeight));
+        }
+      } else {
+        reveal.style.setProperty("--discard-x", point.x + "px");
+        reveal.style.setProperty("--discard-y", point.y + "px");
       }
-    });
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(table);
-    if (discard) observer.observe(discard);
-    anchors.forEach((anchor) => { if (anchor) observer.observe(anchor); });
+    if (source) observer.observe(source);
+    if (destination) observer.observe(destination);
     return () => observer.disconnect();
-  }, [cardPlayerIds, myTableIndex, players]);
-  return <div className={`table-resolution-layer ${concluding ? "concluding" : ""}`} role="status">
-    {activeCards.length > 0 && !concluding && <div ref={revealRef} className={`active-table-reveal ${equipmentFlightId ? "equipment-flight" : ""} ${judgementFlightId ? "judgement-flight" : ""} ${isJudgementReveal(activeEvent) ? "judgement-reveal" : ""} ${directDiscard ? "direct-discard" : ""}`} data-settlement-event-id={activeEvent?.id} key={activeEvent?.id}><div>{activeCards.map((shown) => <CardFace card={shown} settlementCardId={shown.id} key={shown.id} />)}</div></div>}
-    {cardPlayers.map((player) => {
-      const playerCards = cards.filter(({ event }) => !settlesInJudgement(event) && publicPlayerName(event.player) === publicPlayerName(player.name));
-      const equipmentOnly = playerCards.every(({ event }) => event.type === "card" && event.action === "equip");
-      return <div className={`player-played-cards ${equipmentOnly ? "equipment-only" : ""}`} data-player-settlement-id={player.id} key={player.id}><span>{publicPlayerName(player.name)}</span><div>{playerCards.map(({ event, card, key }, index) => activeCardIds.has(card.id) ? null : <div className="table-played-card settled" data-settlement-event-id={event.id} data-settlement-card-id={card.id} key={key}><em>{index + 1}</em><CardFace card={card} /></div>)}</div></div>;
-    })}
+  }, [arrivingInJudgement, card.id, myTableIndex, players, route.destination, route.from, sourceOwnerId]);
+
+  useEffect(() => {
+    if (!alreadyShownFromDeck || event.id !== route.eventId || silentlyRetiredClaimId.current === route.claimId) return;
+    silentlyRetiredClaimId.current = route.claimId;
+    onPresented(route);
+  }, [alreadyShownFromDeck, event.id, onPresented, route]);
+
+  if (alreadyShownFromDeck) return null;
+
+  const expectedAnimation = arrivingInJudgement ? "judgementCardToZone" : "revealedCardsToDiscard";
+  const isPublicJudgementDiscard = route.from?.zone === "JUDGEMENT" && route.destination === "DISCARD";
+  return <div className="table-resolution-layer public-zone-transition-layer" role="status">
+    <div ref={revealRef} className={`active-table-reveal ${arrivingInJudgement ? "judgement-flight" : "direct-discard"}${isPublicJudgementDiscard ? " public-discard-neutral" : ""}`}
+      data-settlement-event-id={event.id} data-public-zone-transition-event-id={route.eventId}
+      data-public-zone-transition-card-id={route.physicalCardId} data-public-zone-transition-destination={route.destination}
+      key={route.claimId} onAnimationEnd={(animation) => {
+        if (animation.target !== animation.currentTarget || animation.animationName !== expectedAnimation) return;
+        onPresented(route);
+      }}><div><JudgementCardFace card={card} /></div></div>
+  </div>;
+}
+
+const PUBLIC_RESULT_PROTECTED_SELECTORS = [
+  ".opponent-player-card", ".player-card[data-player-anchor]", "[data-player-anchor]", ".player-square", ".player-square-target", ".play-seat",
+  ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip",
+  ".public-card-display-journey-copy", ".public-card-journey-card", ".harvest-choice-stage", ".card-pool-target-stage",
+  ".opponent-inspection-floating-shell", ".local-player-dock", ".local-hand-rail", ".console-guidance", ".turn-controls", ".turn-notice",
+].join(",");
+
+function publicResultObstacles(table: HTMLElement): PublicResultObstacle[] {
+  const tableRect = table.getBoundingClientRect();
+  return Array.from(document.querySelectorAll<HTMLElement>(PUBLIC_RESULT_PROTECTED_SELECTORS)).flatMap((element) => {
+    if (element.closest(".public-result-card-layer")) return [];
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    if (style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0) return [];
+    return [{
+      left: rect.left - tableRect.left,
+      top: rect.top - tableRect.top,
+      right: rect.right - tableRect.left,
+      bottom: rect.bottom - tableRect.top,
+    }];
+  });
+}
+
+function PublicDiscardCardTransition({ event, route, players, myTableIndex, onPresented }: {
+  event: GameEvent;
+  route: PublicDiscardTransitionRoute;
+  players: Player[];
+  myTableIndex: number;
+  onPresented: (route: PublicDiscardTransitionRoute) => void;
+}) {
+  const items = useMemo(() => {
+    const cardsById = new Map(eventCards(event).map((card) => [card.id, card]));
+    return route.transitions.flatMap((transition) => {
+      const card = cardsById.get(transition.physicalCardId);
+      return card ? [{ transition, card }] : [];
+    });
+  }, [event, route.transitions]);
+  const revealRefs = useRef(new Map<string, HTMLDivElement>());
+  const groupRef = useRef<HTMLDivElement>(null);
+  const completedRef = useRef<{ claimId: string; cardIds: Set<string> }>({ claimId: route.claimId, cardIds: new Set() });
+
+  useLayoutEffect(() => {
+    completedRef.current = { claimId: route.claimId, cardIds: new Set() };
+  }, [route.claimId]);
+
+  useLayoutEffect(() => {
+    const table = Array.from(revealRefs.current.values())[0]?.closest<HTMLElement>(".play-table");
+    const shell = table?.closest<HTMLElement>(".game-shell");
+    if (!table || !shell) return;
+    const localPlayerId = players[myTableIndex]?.id;
+    const discard = findAnchor(shell, "data-discard-anchor", "true");
+    const sources = items.map(({ transition, card }) => {
+      if (transition.from.zone === "EQUIPMENT") {
+        return transition.from.slot ? findEquipmentSlotAnchor(shell, transition.from.ownerId, transition.from.slot) : null;
+      }
+      if (transition.from.zone === "JUDGEMENT") {
+        return findAnchor(shell, "data-judgement-id", card.id)
+          ?? findAnchor(shell, "data-player-anchor", transition.from.ownerId);
+      }
+      return transition.from.ownerId === localPlayerId
+        ? findAnchor(shell, "data-hand-card-id", card.id)
+          ?? findAnchor(shell, "data-card-origin-anchor", transition.from.ownerId)
+          ?? findAnchor(shell, "data-player-anchor", transition.from.ownerId)
+        : findAnchor(shell, "data-player-anchor", transition.from.ownerId);
+    });
+    const measure = () => {
+      const layout = layoutPublicResultCards(items.length, { width: table.clientWidth, height: table.clientHeight }, publicResultObstacles(table));
+      if (groupRef.current) groupRef.current.dataset.publicDiscardLayout = layout ? `${layout.rows}-rows` : "blocked";
+      items.forEach(({ card }, itemIndex) => {
+        const reveal = revealRefs.current.get(card.id);
+        const placement = layout?.placements[itemIndex];
+        if (!reveal) return;
+        if (!layout || !placement) {
+          reveal.style.visibility = "hidden";
+          return;
+        }
+        reveal.style.visibility = "visible";
+        const source = sources[itemIndex];
+        const origin = source ? centerRelativeToTable(table, source) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+        const destination = discard ? centerRelativeToTable(table, discard) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+        reveal.style.setProperty("--origin-x", `${origin.x}px`);
+        reveal.style.setProperty("--origin-y", `${origin.y}px`);
+        reveal.style.setProperty("--discard-reveal-x", `${placement.centerX}px`);
+        reveal.style.setProperty("--discard-reveal-y", `${placement.centerY}px`);
+        reveal.style.setProperty("--discard-card-width", `${layout.cardWidth}px`);
+        reveal.style.setProperty("--discard-card-height", `${layout.cardHeight}px`);
+        reveal.style.setProperty("--discard-x", `${destination.x}px`);
+        reveal.style.setProperty("--discard-y", `${destination.y}px`);
+      });
+    };
+    measure();
+    const resizeObserver = new ResizeObserver(measure);
+    const mutationObserver = new MutationObserver(measure);
+    const treeObserver = new MutationObserver(measure);
+    resizeObserver.observe(table);
+    if (discard) resizeObserver.observe(discard);
+    sources.forEach((source) => { if (source) resizeObserver.observe(source); });
+    for (const element of document.querySelectorAll<HTMLElement>(PUBLIC_RESULT_PROTECTED_SELECTORS)) {
+      if (element.closest(".public-result-card-layer")) continue;
+      resizeObserver.observe(element);
+      mutationObserver.observe(element, { attributes: true, attributeFilter: ["class", "style", "data-public-activity-layout"] });
+    }
+    treeObserver.observe(table, { childList: true, subtree: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      treeObserver.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [items, myTableIndex, players]);
+
+  if (items.length !== route.transitions.length) return null;
+  return <div ref={groupRef} className="table-resolution-layer public-zone-transition-layer public-discard-transition-group" role="status" aria-label="Public discarded cards">
+    {items.map(({ card }) => <div
+      ref={(node) => { if (node) revealRefs.current.set(card.id, node); else revealRefs.current.delete(card.id); }}
+      className="active-table-reveal direct-discard public-discard-neutral"
+      data-settlement-event-id={event.id}
+      data-public-zone-transition-event-id={route.eventId}
+      data-public-zone-transition-card-id={card.id}
+      data-public-zone-transition-destination="DISCARD"
+      key={`${route.claimId}:${card.id}`}
+      onAnimationEnd={(animation) => {
+        if (animation.target !== animation.currentTarget || animation.animationName !== "revealedCardsToDiscard") return;
+        if (completedRef.current.claimId !== route.claimId) completedRef.current = { claimId: route.claimId, cardIds: new Set() };
+        if (completedRef.current.cardIds.has(card.id)) return;
+        completedRef.current.cardIds.add(card.id);
+        if (completedRef.current.cardIds.size === items.length) onPresented(route);
+      }}><div><CardFace card={card} settlementCardId={card.id} /></div>
+    </div>)}
+  </div>;
+}
+
+type PublicSettlementCardResult = {
+  eventId: string;
+  rootEventId: string;
+  outcome: "discarded" | "obtained";
+  card?: Card;
+  anonymousHandBack?: boolean;
+  privateResultScope?: string;
+  accessibleLabel: string;
+};
+
+function PublicSettlementCardResult({ result }: { result: PublicSettlementCardResult }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [privateFaceState, setPrivateFaceState] = useState(() => ({
+    scope: result.privateResultScope ?? null,
+    visible: Boolean(result.privateResultScope && !privateStealResultWasSeen(result.privateResultScope)),
+  }));
+  const privateFaceVisible = Boolean(result.privateResultScope
+    && privateFaceState.scope === result.privateResultScope && privateFaceState.visible);
+  const renderedCard = result.privateResultScope ? privateFaceVisible ? result.card : undefined : result.card;
+  const showAnonymousBack = result.anonymousHandBack || Boolean(result.privateResultScope && !privateFaceVisible);
+
+  useEffect(() => {
+    const scope = result.privateResultScope;
+    if (!scope || !privateFaceVisible) return;
+    let elapsedVisibleMs = 0;
+    let previousFrameAt: number | null = null;
+    let markedSeen = false;
+    let frame = 0;
+    const sample = (now: number) => {
+      const card = cardRef.current;
+      const bounds = card?.getBoundingClientRect();
+      const style = card ? window.getComputedStyle(card) : null;
+      const visible = Boolean(card && card.isConnected && card.dataset.publicResultLayout === "placed"
+        && document.visibilityState === "visible" && style?.display !== "none" && style?.visibility !== "hidden"
+        && Number(style?.opacity ?? 0) > 0.01 && bounds && bounds.width > 0 && bounds.height > 0
+        && bounds.left >= 0 && bounds.top >= 0 && bounds.right <= window.innerWidth && bounds.bottom <= window.innerHeight);
+      if (!visible) previousFrameAt = null;
+      else {
+        if (!markedSeen) {
+          markPrivateStealResultSeen(scope);
+          markedSeen = true;
+        }
+        if (previousFrameAt !== null) elapsedVisibleMs += Math.min(100, Math.max(0, now - previousFrameAt));
+        previousFrameAt = now;
+        if (elapsedVisibleMs >= UI_TIMING.publicTargetCardSettlementRead) {
+          setPrivateFaceState((current) => current.scope === scope && current.visible ? { ...current, visible: false } : current);
+          return;
+        }
+      }
+      frame = window.requestAnimationFrame(sample);
+    };
+    frame = window.requestAnimationFrame(sample);
+    return () => window.cancelAnimationFrame(frame);
+  }, [privateFaceVisible, result.privateResultScope]);
+
+  useLayoutEffect(() => {
+    const cardElement = cardRef.current;
+    const table = cardElement?.closest<HTMLElement>(".play-table");
+    if (!cardElement || !table) return;
+    const measure = () => {
+      const layout = layoutPublicResultCards(1, { width: table.clientWidth, height: table.clientHeight }, publicResultObstacles(table), {
+        maxCardWidth: 90,
+        minCardWidth: 42,
+      });
+      const placement = layout?.placements[0];
+      cardElement.dataset.publicResultLayout = layout ? "placed" : "blocked";
+      cardElement.style.visibility = layout && placement ? "visible" : "hidden";
+      if (!layout || !placement) return;
+      cardElement.style.left = `${placement.centerX}px`;
+      cardElement.style.top = `${placement.centerY}px`;
+      cardElement.style.width = `${layout.cardWidth}px`;
+      cardElement.style.height = `${layout.cardHeight}px`;
+    };
+    measure();
+    const resizeObserver = new ResizeObserver(measure);
+    const mutationObserver = new MutationObserver(measure);
+    const treeObserver = new MutationObserver(measure);
+    resizeObserver.observe(table);
+    for (const element of document.querySelectorAll<HTMLElement>(PUBLIC_RESULT_PROTECTED_SELECTORS)) {
+      if (element.closest(".public-result-card-layer")) continue;
+      resizeObserver.observe(element);
+      mutationObserver.observe(element, { attributes: true, attributeFilter: ["class", "style", "data-public-activity-layout"] });
+    }
+    treeObserver.observe(table, { childList: true, subtree: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      treeObserver.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [result.eventId, result.rootEventId]);
+
+  const accessibleLabel = result.privateResultScope && !privateFaceVisible
+    ? "Concealed Hand card result; identity hidden"
+    : result.accessibleLabel;
+  return <div className="table-resolution-layer public-result-card-layer" role="img" aria-label={accessibleLabel}>
+    <div ref={cardRef}
+      className="public-result-card public-discard-neutral"
+      data-public-result-event-id={result.eventId}
+      data-public-result-root-event-id={result.rootEventId}
+      data-public-result-outcome={result.outcome}
+      data-public-result-face={result.privateResultScope ? privateFaceVisible ? "private" : "anonymous-back" : renderedCard ? "public" : "anonymous-back"}
+      {...(renderedCard ? { "data-public-result-card-id": renderedCard.id } : {})}
+    >
+      {renderedCard
+        ? <CardFace card={renderedCard} settlementCardId={renderedCard.id} />
+        : showAnonymousBack
+          ? <div className="public-card-result-back" aria-label="Card back; identity hidden" />
+          : null}
+    </div>
+  </div>;
+}
+
+function PublicHandRevealCardTransition({ event, route, players, myTableIndex, onPresented }: {
+  event: CardEvent & { type: "card" };
+  route: PublicHandRevealTransitionRoute;
+  players: Player[];
+  myTableIndex: number;
+  onPresented: (route: PublicHandRevealTransitionRoute) => void;
+}) {
+  const revealRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const reveal = revealRef.current;
+    const table = reveal?.closest<HTMLElement>(".play-table");
+    const shell = table?.closest<HTMLElement>(".game-shell");
+    if (!reveal || !table || !shell) return;
+    const localPlayerId = players[myTableIndex]?.id;
+    const playerAnchor = (playerId: string) => playerId === localPlayerId
+      ? findAnchor(shell, "data-card-origin-anchor", playerId) ?? findAnchor(shell, "data-player-anchor", playerId)
+      : findAnchor(shell, "data-player-anchor", playerId);
+    const source = playerAnchor(route.sourcePlayerId);
+    const destination = playerAnchor(route.destinationPlayerId);
+    const measure = () => {
+      const origin = source ? centerRelativeToTable(table, source) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+      const target = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+      reveal.style.setProperty("--origin-x", `${origin.x}px`);
+      reveal.style.setProperty("--origin-y", `${origin.y}px`);
+      reveal.style.setProperty("--hand-x", `${target.x}px`);
+      reveal.style.setProperty("--hand-y", `${target.y}px`);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(table);
+    if (source) observer.observe(source);
+    if (destination) observer.observe(destination);
+    return () => observer.disconnect();
+  }, [myTableIndex, players, route.destinationPlayerId, route.sourcePlayerId]);
+
+  return <div className="table-resolution-layer public-zone-transition-layer" role="status" aria-label="Publicly revealed card transferred to hand">
+    <div ref={revealRef} className="active-table-reveal public-hand-transfer"
+      data-settlement-event-id={event.id} data-public-zone-transition-event-id={route.eventId}
+      data-public-zone-transition-card-id={route.physicalCardId} data-public-zone-transition-destination="HAND"
+      key={route.claimId} onAnimationEnd={(animation) => {
+        if (animation.target !== animation.currentTarget || animation.animationName !== "revealedCardToHand") return;
+        onPresented(route);
+      }}><div><CardFace card={event.card} settlementCardId={route.physicalCardId} /></div></div>
   </div>;
 }
 

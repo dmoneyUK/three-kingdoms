@@ -13,7 +13,7 @@ const card = (id, kind = "Attack", suit = "♠") => ({ id, kind, suit, rank: "A"
 
 function installRenderEnvironment() {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-  globalThis.window = { addEventListener: () => {}, removeEventListener: () => {}, setInterval, clearInterval };
+  globalThis.window = { addEventListener: () => {}, removeEventListener: () => {}, setInterval, clearInterval, confirm: () => false };
   globalThis.document = { visibilityState: "visible", addEventListener: () => {}, removeEventListener: () => {} };
   globalThis.getComputedStyle = () => ({ getPropertyValue: () => "" });
   globalThis.ResizeObserver = class { observe() {} disconnect() {} };
@@ -85,7 +85,21 @@ function normalHalberdTargetRoom() {
       { id: "p3", name: "SECOND TARGET", seat: 2, hero: "sun-quan", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
     ],
     myHand: [card("halberd-attack", "Attack")], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play a card", isMyAction: true,
-    actionRevision: "halberd-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: "halberd-attack", canPlayAs: "attack" }] },
+    actionRevision: "halberd-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card", "end_turn"], canDeclareAttack: true, playPhaseActions: [{ cardId: "halberd-attack", canPlayAs: "attack" }], playTargetEligibility: [{ mode: "card", cardId: "halberd-attack", effectiveKind: "Attack", eligibleTargetIds: ["p2", "p3"], rejections: [] }] },
+  });
+}
+
+function normalStealTargetRoom() {
+  const steal = card("steal-card", "Steal", "♦");
+  const dismantle = card("dismantle-card", "Dismantle", "♣");
+  return normalizeRoomData({
+    code: "STEAL-TARGET-UI", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "SOURCE", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "LEGAL TARGET", seat: 1, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    ],
+    myHand: [steal, dismantle], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play a card", isMyAction: true,
+    actionRevision: "steal-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card", "end_turn"], playTargetEligibility: [{ mode: "card", cardId: "steal-card", effectiveKind: "Steal", eligibleTargetIds: ["p2"], rejections: [] }, { mode: "card", cardId: "dismantle-card", effectiveKind: "Dismantle", eligibleTargetIds: ["p2"], rejections: [] }] },
   });
 }
 
@@ -97,7 +111,7 @@ function normalWushengTargetRoom() {
       { id: "p2", name: "TARGET", seat: 1, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
     ],
     myHand: [{ id: "wusheng-card", kind: "Dodge", suit: "♥", rank: "Q" }], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play a card", isMyAction: true,
-    actionRevision: "wusheng-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: "wusheng-card", canPlayAs: "attack" }] },
+    actionRevision: "wusheng-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: "wusheng-card", canPlayAs: "attack" }], playTargetEligibility: [{ mode: "card", cardId: "wusheng-card", effectiveKind: "Attack", eligibleTargetIds: ["p2"], rejections: [] }] },
   });
 }
 
@@ -109,7 +123,7 @@ function serpentTargetRoom() {
       { id: "p2", name: "TARGET", seat: 1, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
     ],
     myHand: [card("serpent-cost-one", "Peach"), card("serpent-cost-two", "Dodge")], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play a card", isMyAction: true,
-    actionRevision: "serpent-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [] },
+    actionRevision: "serpent-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card", "serpent_spear_attack"], canDeclareAttack: true, playPhaseActions: [], playTargetEligibility: [{ mode: "serpent_spear_attack", effectiveKind: "Attack", eligibleTargetIds: ["p2"], rejections: [] }] },
   });
 }
 
@@ -217,6 +231,7 @@ async function gameTree(skill, onAction) {
 function buttons(renderer, props) { return renderer.root.findAllByType("button").filter((button) => Object.entries(props).every(([key, value]) => button.props[key] === value)); }
 function button(renderer, props) { const matches = buttons(renderer, props); assert.equal(matches.length, 1, `expected one button ${JSON.stringify(props)}, got ${matches.length}; buttons=${renderer.root.findAllByType("button").map((entry) => String(entry.props.children)).join(" | ")}`); return matches[0]; }
 function nodeWith(renderer, prop, value) { const matches = renderer.root.findAll((node) => node.props?.[prop] === value); assert.equal(matches.length, 1, `expected one node ${prop}=${value}, got ${matches.length}`); return matches[0]; }
+function nodeWithClass(renderer, className) { const matches = renderer.root.findAll((node) => typeof node.type === "string" && node.props?.className?.split(/\s+/).includes(className)); assert.equal(matches.length, 1, `expected one node class=${className}, got ${matches.length}`); return matches[0]; }
 function opponentHeroButton(renderer, playerId) {
   const seat = nodeWith(renderer, "data-player-anchor", playerId);
   const matches = seat.findAllByType("button").filter((entry) => entry.props.className?.split(/\s+/).includes("opponent-hero-target"));
@@ -413,6 +428,13 @@ test("normal deferred multi-target selection is local until ordered Confirm", as
   assert.equal(consoleButtons(renderer).filter((node) => node.props.children === "End").length, 1, "ordinary turn retains independent End");
   assert.equal(consoleButtons(renderer).filter((node) => node.props.children === "Confirm").length, 0, "ordinary turn does not expose a response Confirm");
   await act(async () => { handCardButton(renderer, "halberd-attack").props.onClick(); });
+  assert.equal(handCardButton(renderer, "halberd-attack").props["aria-pressed"], true);
+  assert.equal(handCardButton(renderer, "halberd-attack").props["aria-label"], "Deselect Attack");
+  await act(async () => { handCardButton(renderer, "halberd-attack").props.onClick(); });
+  assert.equal(handCardButton(renderer, "halberd-attack").props["aria-pressed"], false, "retapping a selected physical card clears its local selection");
+  assert.equal(handCardButton(renderer, "halberd-attack").props["aria-label"], "Select Attack");
+  assert.equal(actionCalls.length, 0, "select and deselect remain local");
+  await act(async () => { handCardButton(renderer, "halberd-attack").props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select FIRST TARGET" }).props.onClick(); });
   assert.equal(actionCalls.length, 0, "normal seat selection remains local");
   await act(async () => { button(renderer, { "aria-label": "Select FIRST TARGET" }).props.onClick(); });
@@ -421,17 +443,85 @@ test("normal deferred multi-target selection is local until ordered Confirm", as
   await act(async () => { button(renderer, { "aria-label": "Select FIRST TARGET" }).props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select SECOND TARGET" }).props.onClick(); });
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
-  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
-  assert.equal(actionCalls.length, 0, "Halberd Cancel sends no action");
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "ordinary Hand-card target selection has no redundant Cancel");
+  assert.equal(nodeWith(renderer, "data-console-local-cancel", "false").props["data-console-local-cancel"], "false", "ordinary Play guidance does not advertise LOCAL CANCEL");
+  await act(async () => { handCardButton(renderer, "halberd-attack").props.onClick(); });
+  assert.equal(actionCalls.length, 0, "retapping the selected card sends no action");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
   assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), false);
-  assert.equal(handCardButton(renderer, "halberd-attack").props.className.includes("selected"), false, "Halberd Cancel clears the card selection");
+  assert.equal(handCardButton(renderer, "halberd-attack").props.className.includes("selected"), false, "same-card retap clears the card selection");
+  assert.equal(button(renderer, { children: "Play" }).props.disabled, true, "retapping resets Play readiness");
   await act(async () => { handCardButton(renderer, "halberd-attack").props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select FIRST TARGET" }).props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select SECOND TARGET" }).props.onClick(); });
   await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
   assert.deepEqual(actionCalls.at(-1), ["play_card", { cardId: "halberd-attack", playAs: "attack", targetId: "p2", targetIds: ["p2", "p3"] }]);
   await act(async () => { renderer.unmount(); });
+});
+
+test("ordinary target Stratagem has no Cancel and same-card retap clears target before authorized Confirm", async () => {
+  const room = normalStealTargetRoom();
+  const actionCalls = [];
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+  const cancelSurface = nodeWith(renderer, "data-console-surface", "local-operation");
+  await act(async () => { handCardButton(renderer, "steal-card").props.onClick(); });
+  assert.equal(cancelSurface.props["data-ordinary-play-target-selection"], "true");
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "ordinary target-card selection has no Cancel button");
+  assert.equal(renderer.root.findAll((node) => node.props?.["data-local-target-selection"] === "true").length, 0, "ordinary target-card selection has no Cancel guidance");
+  await act(async () => { targetButton(renderer, "p2").props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), true);
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
+  assert.equal(actionCalls.length, 0, "selecting the card and target remains a local draft");
+
+  await act(async () => { handCardButton(renderer, "dismantle-card").props.onClick(); });
+  assert.equal(handCardButton(renderer, "steal-card").props["aria-pressed"], false, "selecting another physical card replaces the previous selection");
+  assert.equal(handCardButton(renderer, "dismantle-card").props["aria-pressed"], true);
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "selecting another card clears the old target draft");
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "switching cards resets Confirm readiness");
+  assert.equal(actionCalls.length, 0, "switching the selected card sends no gameplay action");
+
+  await act(async () => { handCardButton(renderer, "dismantle-card").props.onClick(); });
+  assert.equal(handCardButton(renderer, "dismantle-card").props["aria-pressed"], false, "retapping the selected physical card deselects it");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "retapping clears its target draft");
+  assert.equal(button(renderer, { children: "Play" }).props.disabled, true, "retapping resets Play readiness");
+  assert.equal(actionCalls.length, 0, "retapping sends no gameplay action");
+
+  await act(async () => { handCardButton(renderer, "steal-card").props.onClick(); });
+  await act(async () => { targetButton(renderer, "p2").props.onClick(); });
+  await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
+  assert.deepEqual(actionCalls, [["play_card", { cardId: "steal-card", targetId: "p2" }]], "only the server-authorized Confirm submits the card");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("End Turn opens the in-battlefield confirmation and preserves legal action authority", async () => {
+  const room = normalHalberdTargetRoom();
+  const actionCalls = [];
+  let browserConfirmCalls = 0;
+  let renderer;
+  globalThis.window.confirm = () => { browserConfirmCalls += 1; return true; };
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const endTurn = button(renderer, { children: "End" });
+  assert.equal(endTurn.props.disabled, false, "the authoritative End Turn action remains available");
+  await act(async () => { endTurn.props.onClick(); });
+  const stage = nodeWithClass(renderer, "end-turn-confirmation-stage");
+  assert.equal(renderedNodeText(stage).includes("End your Play Phase?"), true);
+  assert.equal(browserConfirmCalls, 0, "End Turn no longer opens a browser confirmation");
+  assert.equal(actionCalls.length, 0, "opening the confirmation does not submit end_turn");
+  const confirmEnd = button(renderer, { children: "Confirm End" });
+  assert.equal(confirmEnd.props.disabled, true, "confirmation stays unavailable until the battlefield placement is measured");
+  const previousRequestAnimationFrame = globalThis.window.requestAnimationFrame;
+  globalThis.window.requestAnimationFrame = (callback) => setTimeout(() => callback(Date.now()), 0);
+  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
+  globalThis.window.requestAnimationFrame = previousRequestAnimationFrame;
+  assert.equal(renderer.root.findAll((node) => node.type === "div" && node.props?.["data-end-turn-confirmation"] === "true").length, 0, "Cancel closes the in-battlefield confirmation");
+  assert.equal(actionCalls.length, 0, "Cancel sends no gameplay action");
+  assert.equal(browserConfirmCalls, 0);
+  await act(async () => { renderer.unmount(); });
+  globalThis.window.confirm = () => false;
 });
 
 test("converted Attack Cancel clears Wusheng mode, card, and target without acting", async () => {
@@ -518,7 +608,7 @@ test("Borrowed Sword local target clears when the authoritative revision changes
   await act(async () => { renderer.unmount(); });
 });
 
-test("pending Dismantle modal keeps opaque selection local across Use and retap deselect", async () => {
+test("pending Dismantle shared choice keeps opaque selection local across Use and retap deselect", async () => {
   const room = pendingTargetCardRoom("target-card-revision", { withFocusProjection: true });
   const actionCalls = [];
   const action = async (...args) => { actionCalls.push(args); return true; };
@@ -527,21 +617,31 @@ test("pending Dismantle modal keeps opaque selection local across Use and retap 
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const mainBefore = { kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] };
   const publicRolesBefore = nodeWith(renderer, "data-player-anchor", "p2").props["data-interaction-roles"];
-  assert.ok(renderer.root.findByProps({ role: "dialog", "aria-label": "Burning Bridge target card selection" }));
-  assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false);
+  const stage = nodeWithClass(renderer, "card-pool-target-stage");
+  assert.equal(stage.props.role, "region", "the shared card pool stays nonmodal");
+  assert.equal(stage.props["aria-label"], "Burning Bridge target card selection");
+  assert.equal(nodeWithClass(renderer, "card-pool-panel--actor-target-select").props["aria-label"], "Burning Bridge target card selection");
+  assert.equal(renderer.root.findAll((node) => node.props?.role === "dialog").length, 0, "target selection no longer creates a fullscreen dialog");
+  assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], false);
   assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, true, "the effect-specific action waits for an eligible selection");
   assert.equal(buttons(renderer, { children: "Cancel" }).length, 0, "mandatory discard has no Cancel control");
-  assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "dialog-owned target-card submission is not duplicated in the footer");
-  await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
+  assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "shared-pool submission is not duplicated in the Local Dock");
+  await act(async () => { button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props.onClick(); });
   assert.equal(actionCalls.length, 0, "private hand-card selection sends no action");
-  assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], true);
+  assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], true);
   assert.deepEqual({ kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] }, mainBefore, "local private selection does not alter public presentation attributes");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props["data-interaction-roles"], publicRolesBefore, "private card selection does not change public seat roles");
   assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, false);
-  await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Judgement (1)" }).props.onClick(); });
+  assert.equal(text(renderer, "Selection retained · HAND 2").length, 1, "tab changes retain a legal private selection");
+  assert.equal(button(renderer, { "aria-label": "Judgement: Lightning" }).props["aria-pressed"], false);
+  await act(async () => { button(renderer, { "aria-label": "Hand (2)" }).props.onClick(); });
+  assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], true, "returning to the Hand tab preserves its local selection");
+  await act(async () => { button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props.onClick(); });
   assert.equal(actionCalls.length, 0, "retap deselect sends no gameplay or decline action");
-  assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false, "retap clears the opaque card selection");
+  assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], false, "retap clears the opaque card selection");
   assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, true);
+  await act(async () => { button(renderer, { "aria-label": "Equipment (1)" }).props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Equipment: Nio Shield" }).props.onClick(); });
   await act(async () => { button(renderer, { children: "Use Burning Bridge" }).props.onClick(); });
   assert.deepEqual(actionCalls, [["choose_target_card", { targetCardZone: "equipment", targetCardId: "target-armor" }]], "Confirm preserves the existing action and payload exactly once");
@@ -549,45 +649,53 @@ test("pending Dismantle modal keeps opaque selection local across Use and retap 
 });
 
 for (const cardKind of ["Steal", "Dismantle"]) {
-test(`${cardKind} pending card choice uses the shared modal without Cancel or duplicate Local Dock controls`, async () => {
+test(`${cardKind} pending card choice uses the nonmodal shared pool without Cancel or duplicate Local Dock controls`, async () => {
     const room = pendingTargetCardRoom("target-card-focus", { cardKind, withFocusProjection: true });
     const actionName = cardKind === "Dismantle" ? "Burning Bridge" : cardKind;
-    const title = cardKind === "Dismantle" ? "BURNING BRIDGE" : "STEAL";
-    const instruction = cardKind === "Dismantle" ? "Choose 1 card to discard" : "Choose 1 card to obtain";
+    const title = cardKind === "Dismantle" ? "BURNING BRIDGES · SOURCE → TARGET" : "STEAL · SOURCE → TARGET";
+    const instruction = "Choose one card";
     const useLabel = `Use ${actionName}`;
     const actionCalls = [];
     let renderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
-    const modal = renderer.root.findByProps({ role: "dialog", "aria-label": `${actionName} target card selection` });
-    assert.ok(modal, "the proven external choice uses the shared accessible modal");
-    assert.equal(text(renderer, title).length, 1);
-    assert.equal(text(renderer, instruction).length, 1);
-    assert.equal(renderer.root.findAll((node) => node.props?.role === "dialog").length, 1);
+    const stage = nodeWithClass(renderer, "card-pool-target-stage");
+    assert.equal(stage.props.role, "region", "the proven external choice uses the shared nonmodal stage");
+    assert.equal(stage.props["aria-label"], `${actionName} target card selection`);
+    const sharedPanel = nodeWithClass(renderer, "card-pool-panel--actor-target-select");
+    assert.equal(sharedPanel.findAll((node) => node.props?.className?.split(/\s+/).includes("card-pool-panel__target-public-zone-title")).length, 0, "actor tabs are the only visible zone labels in both Steal and Burning Bridge");
+    assert.equal(nodeWithClass(renderer, "card-pool-panel__target-public-hand").props["aria-label"], "Hand: 2 face-down cards", "removing the duplicate visual label preserves the semantic public count");
+    const emptySelectionMessage = nodeWithClass(renderer, "card-pool-panel__selected-zone");
+    assert.match(emptySelectionMessage.props.className, /\bis-empty\b/, "an empty status row is marked for zero-height layout");
+    assert.equal(emptySelectionMessage.props["aria-hidden"], "true");
+    assert.equal(renderedNodeText(nodeWithClass(renderer, "card-pool-panel__title")), title);
+    assert.equal(renderedNodeText(nodeWithClass(renderer, "card-pool-panel__instruction")), instruction);
+    assert.equal(renderer.root.findAll((node) => node.props?.role === "dialog").length, 0);
     assert.equal(renderer.root.findAll((node) => node.props?.["data-hero-focus-mode"] === "SELECTABLE DETAIL").length, 0, "the choice is not duplicated in Hero Focus");
-    assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["data-target-card-zone"], "hand-position");
-    assert.equal(button(renderer, { "aria-label": "Judgement: Lightning" }).props["data-target-card-zone"], "judgement");
-    assert.equal(button(renderer, { "aria-label": "Equipment: Nio Shield" }).props["data-target-card-zone"], "equipment");
-    assert.equal(button(renderer, { children: useLabel }).props.disabled, true, "modal confirmation waits for one eligible selection");
+    const hiddenHandChoice = button(renderer, { "aria-label": "Choose hidden Hand position 1" });
+    assert.equal(hiddenHandChoice.props["data-target-card-zone"], undefined, "hidden choices expose no physical zone-card identity");
+    assert.equal(hiddenHandChoice.props["aria-pressed"], false);
+    assert.equal(button(renderer, { children: useLabel }).props.disabled, true, "Use waits for one eligible selection");
     assert.equal(buttons(renderer, { children: "Confirm" }).length, 0, "no duplicate footer Confirm is rendered");
     assert.equal(consoleButtons(renderer).filter((node) => node.props.children === "Cancel").length, 0, "no duplicate footer Cancel is rendered");
     assert.equal(buttons(renderer, { children: "Cancel" }).length, 0, "mandatory card choice has no Cancel button");
     const mainBefore = { kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] };
 
-    await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
+    await act(async () => { button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props.onClick(); });
     assert.equal(actionCalls.length, 0, "hidden-position selection remains local");
-    assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], true);
+    assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], true);
     assert.equal(button(renderer, { children: useLabel }).props.disabled, false);
     assert.deepEqual({ kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] }, mainBefore, "private choice does not mutate public presentation");
 
-    await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
-    assert.equal(actionCalls.length, 0, "retap deselect remains local");
-    assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false);
-    assert.equal(button(renderer, { children: useLabel }).props.disabled, true);
+    await act(async () => { button(renderer, { "aria-label": "Equipment (1)" }).props.onClick(); });
+    assert.equal(text(renderer, "Selection retained · HAND 2").length, 1, "changing zones preserves the legal private selection");
+    assert.equal(button(renderer, { "aria-label": "Equipment: Nio Shield" }).props["aria-pressed"], false);
     await act(async () => { button(renderer, { "aria-label": "Equipment: Nio Shield" }).props.onClick(); });
+    assert.equal(button(renderer, { "aria-label": "Equipment: Nio Shield" }).props["aria-pressed"], true, "a new legal choice replaces the prior one-card selection");
+    assert.equal(actionCalls.length, 0, "tab and card selection remain local until Use");
     await act(async () => { button(renderer, { children: useLabel }).props.onClick(); });
-    assert.deepEqual(actionCalls, [["choose_target_card", { targetCardZone: "equipment", targetCardId: "target-armor" }]], "modal action keeps the existing public-card payload exactly once");
+    assert.deepEqual(actionCalls, [["choose_target_card", { targetCardZone: "equipment", targetCardId: "target-armor" }]], "shared-pool action keeps the existing public-card payload exactly once");
     assert.equal(text(renderer, "target-armor").length, 0, "physical object IDs are not rendered as player-facing text");
     await act(async () => { renderer.unmount(); });
 });
@@ -595,18 +703,18 @@ test(`${cardKind} pending card choice uses the shared modal without Cancel or du
 
 test("pending target-card routing requires valid CurrentAction authority but not Stage Hero Focus", async () => {
   const cases = [
-    { room: pendingTargetCardRoom(), modal: false, label: "missing target-card projection" },
-    { room: pendingTargetCardRoom("target-card-unfocused", { withFocusProjection: true, focusTarget: false }), modal: true, label: "valid authority without external Hero Focus" },
-    { room: pendingTargetCardRoom("target-card-invalid-key", { withFocusProjection: true, eligibleKeys: ["hand:99"] }), modal: false, label: "invalid eligible position" },
+    { room: pendingTargetCardRoom(), selectable: false, label: "missing target-card projection" },
+    { room: pendingTargetCardRoom("target-card-unfocused", { withFocusProjection: true, focusTarget: false }), selectable: true, label: "valid authority without external Hero Focus" },
+    { room: pendingTargetCardRoom("target-card-invalid-key", { withFocusProjection: true, eligibleKeys: ["hand:99"] }), selectable: false, label: "invalid eligible position" },
   ];
-  for (const { room, modal, label } of cases) {
+  for (const { room, selectable, label } of cases) {
     let renderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    assert.equal(renderer.root.findAll((node) => node.props?.role === "dialog" && node.props?.className?.includes("target-card-picker")).length, modal ? 1 : 0, `${label}: only valid server-projected eligibility reaches the unified modal`);
+    assert.equal(renderer.root.findAll((node) => typeof node.type === "string" && node.props?.className?.split(/\s+/).includes("card-pool-target-stage")).length, selectable ? 1 : 0, `${label}: only valid server-projected eligibility reaches the shared choice stage`);
     assert.equal(renderer.root.findAll((node) => node.props?.className?.includes("table-hidden-card-picker")).length, 0, `${label}: no unrelated legacy picker is restored as fallback`);
     assert.equal(renderer.root.findAll((node) => node.props?.["data-hero-focus-mode"] === "SELECTABLE DETAIL").length, 0, `${label}: selection does not fall back to Hero Focus`);
-    if (!modal) assert.equal(renderer.root.findAll((node) => node.props?.["aria-label"]?.startsWith("Hidden hand card")).length, 0, `${label}: missing/invalid authority fails closed`);
+    if (!selectable) assert.equal(renderer.root.findAll((node) => node.props?.["aria-label"]?.startsWith("Choose hidden Hand position")).length, 0, `${label}: missing/invalid authority fails closed`);
     await act(async () => { renderer.unmount(); });
   }
 });
@@ -621,7 +729,7 @@ test("target-card trigger picker adds local Cancel while preserving Skip and opa
   const actionCountBeforeSelection = actionCalls.length;
   assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "an empty mandatory picker does not present Cancel as if the trigger could be declined");
   assert.equal(buttonsContaining(renderer, "Skip").length, 1, "Skip remains the separate authoritative action");
-  assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "dialog-owned target-card trigger submission is not duplicated in the footer");
+  assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "trigger-owned target-card submission is not duplicated in the footer");
   assert.equal(button(renderer, { children: "Use Future Target Cards" }).props.disabled, true);
   await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
   assert.equal(actionCalls.length, actionCountBeforeSelection, "target-card trigger selection sends no action");
@@ -643,12 +751,12 @@ test("pending target-card selection clears when authoritative availability chang
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  await act(async () => { button(renderer, { "aria-label": "Hidden hand card 2" }).props.onClick(); });
-  assert.equal(button(renderer, { "aria-label": "Hidden hand card 2" }).props["aria-pressed"], true);
+  await act(async () => { button(renderer, { "aria-label": "Choose hidden Hand position 2" }).props.onClick(); });
+  assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 2" }).props["aria-pressed"], true);
   const changed = pendingTargetCardRoom(room.actionRevision, { handCount: 1, withFocusProjection: true });
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: changed, onRecover: () => {} }, React.createElement(GameRoom, { room: changed, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false, "availability change clears stale opaque selection");
+  assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], false, "availability change clears stale opaque selection");
   assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, true);
   await act(async () => { renderer.unmount(); });
 });
@@ -838,7 +946,7 @@ test("Cultivation trigger has a routed skill control, generic prompt, and contin
 
     const cultivation = button(renderer, { "aria-label": "Cultivation" });
     assert.equal(cultivation.props.disabled, false, "Cultivation exposes a Skills-panel control");
-    assert.equal(text(renderer, "Your action · Use Cultivation: Draw 1 card after using a Stratagem, or skip").length, 1, "Cultivation uses the trigger-specific prompt");
+    assert.equal(text(renderer, "Use Cultivation: Draw 1 card after using a Stratagem, or Skip.").length, 1, "Cultivation uses the trigger-specific prompt");
     assert.equal(button(renderer, { children: "Skip" }).props.disabled, false, "Cultivation keeps the optional skip action");
     await act(async () => { cultivation.props.onClick(); });
     assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "huang_yueying_cultivation" }]);
@@ -854,7 +962,7 @@ test("Cultivation trigger has a routed skill control, generic prompt, and contin
     let opponentRenderer;
     await act(async () => { opponentRenderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: opponentRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: opponentRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("NO ACTION NEEDED")).length, 1, "the public plaque owns the waiting actor while the non-actor Local Dock stays concise");
+    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("No action needed.")).length, 1, "the public plaque owns the waiting actor while the non-actor Local Dock stays concise");
     assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Waiting for the target to answer the attacker")).length, 0, "the Attack fallback prompt is absent");
     assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Use Cultivation")).length, 0, "Cultivation remains private");
     assert.equal(opponentRoom.actionPlayerId, "p1");

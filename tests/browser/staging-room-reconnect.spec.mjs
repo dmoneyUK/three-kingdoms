@@ -110,7 +110,7 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
   } else {
     await page.getByRole("button", { name: /Add 3 Test Players/ }).click();
   }
-  await expect(page.locator(".lobby-actions")).toContainText("4 / 8 players");
+  await expect(page.locator(".lobby-actions")).toContainText("4 / 6 players");
   await page.getByRole("button", { name: "Start game" }).click();
 
   let currentRoom;
@@ -174,6 +174,11 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
         botCycleLogStart = (currentRoom.log ?? []).length;
         const endResponsePromise = page.waitForResponse((response) => isPostAction(response, "end_turn"));
         await page.getByRole("button", { name: "End", exact: true }).click();
+        const endConfirmation = page.getByRole("dialog", { name: "End your Play Phase?" });
+        await expect(endConfirmation).toBeVisible();
+        const confirmEnd = endConfirmation.getByRole("button", { name: "Confirm End" });
+        await expect(confirmEnd).toBeEnabled({ timeout: 15_000 });
+        await confirmEnd.click();
         expect((await endResponsePromise).status()).toBe(200);
         endTurnSubmitted = true;
       } else {

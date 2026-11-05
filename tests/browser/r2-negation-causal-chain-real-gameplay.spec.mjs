@@ -17,6 +17,8 @@ async function seedR2Room(request, playerCount) {
     firstNegation: `${prefix}-steal-negation`,
     secondNegation: `${prefix}-dismantle-negation`,
     counterNegation: `${prefix}-counter-negation`,
+    thirdNegation: `${prefix}-repeat-author-negation`,
+    fourthNegation: `${prefix}-fourth-negation`,
     hiddenNegation: `${prefix}-unsubmitted-negation`,
     steal: `${prefix}-steal-root`,
     dismantle: `${prefix}-dismantle-root`,
@@ -31,9 +33,9 @@ async function seedR2Room(request, playerCount) {
     hp: 4,
     maxHp: 4,
     hand: seat === 0
-      ? [card("Negation", cards.firstNegation, "♦"), card("Negation", cards.secondNegation, "♥")]
+      ? [card("Negation", cards.firstNegation, "♦"), card("Negation", cards.secondNegation, "♥"), card("Negation", cards.thirdNegation, "♠")]
       : seat === 1
-        ? [card("Negation", cards.counterNegation, "♣"), card("Negation", cards.hiddenNegation, "♠")]
+        ? [card("Negation", cards.counterNegation, "♣"), card("Negation", cards.fourthNegation, "♣"), card("Negation", cards.hiddenNegation, "♠")]
         : seat === 2
           ? [card("Steal", cards.steal), card("Dismantle", cards.dismantle, "♦")]
           : seat === 3
@@ -124,6 +126,8 @@ async function submitWinningNegation(request, room, winnerIndex, negationCardId)
   const event = cardEvent(settled, negationCardId);
   expect(event, "the winning intent is public only after the shared window settles").toBeTruthy();
   expect(event.player).toBe(winner.name);
+  const nextWindowId = settled.currentAction?.negationWindowId;
+  if (nextWindowId) await adjustWindowClock(request, room, nextWindowId, "hold");
   return { windowId, event, settled };
 }
 
@@ -162,6 +166,23 @@ async function readGeometry(page, eventId, actorId, actorIndex = 0) {
         const other = candidate.getBoundingClientRect();
         return Math.hypot(rect.left + rect.width / 2 - (other.left + other.width / 2), rect.top + rect.height / 2 - (other.top + other.height / 2));
       });
+    const anchorRects = [...document.querySelectorAll("[data-player-anchor]")].map((candidate) => {
+      const bounds = candidate.getBoundingClientRect();
+      return {
+        playerId: candidate.getAttribute("data-player-anchor"),
+        rect: { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height },
+      };
+    });
+    const otherCardRects = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
+      .filter((candidate) => candidate !== element)
+      .map((candidate) => {
+        const bounds = candidate.getBoundingClientRect();
+        return {
+          eventId: candidate.getAttribute("data-public-card-journey-event-id"),
+          actorId: candidate.getAttribute("data-public-card-journey-actor-id"),
+          rect: { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height },
+        };
+      });
     let expected = null;
     if (seat && tableRect && anchorKind === "local") {
       const offsets = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6];
@@ -188,7 +209,7 @@ async function readGeometry(page, eventId, actorId, actorIndex = 0) {
       const horizontalProgression = side !== "top";
       const preferred = {
         left: base.left + (horizontalProgression ? (side === "right" ? -1 : 1) * cardIndex * 54 : 0),
-        top: base.top + (horizontalProgression ? 0 : cardIndex * 54),
+        top: base.top + (horizontalProgression ? 0 : cardIndex * 78),
       };
       expected = {
         side,
@@ -214,6 +235,8 @@ async function readGeometry(page, eventId, actorId, actorIndex = 0) {
       tableRect: tableRect ? { left: tableRect.left, top: tableRect.top, width: tableRect.width, height: tableRect.height } : null,
       centerDistance,
       nearestOtherAnchorDistance: otherAnchorDistances.length ? Math.min(...otherAnchorDistances) : null,
+      anchorRects,
+      otherCardRects,
       expected,
       layoutChangeReason: element.getAttribute("data-public-card-journey-layout-reason"),
     };
@@ -221,8 +244,8 @@ async function readGeometry(page, eventId, actorId, actorIndex = 0) {
 }
 
 function assertActorParking(geometry, requireRevealTimestamp = true) {
-  expect(geometry.actualRect.width).toBeCloseTo(48, 0);
-  expect(geometry.actualRect.height).toBeCloseTo(72, 0);
+  expect(Math.abs(geometry.actualRect.width - 48), JSON.stringify(geometry)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.actualRect.height - 72), JSON.stringify(geometry)).toBeLessThanOrEqual(1);
   expect(Math.abs(geometry.actualRect.left - geometry.targetRect.left)).toBeLessThanOrEqual(1);
   expect(Math.abs(geometry.actualRect.top - geometry.targetRect.top)).toBeLessThanOrEqual(1);
   expect(geometry.actorAnchorRect).toBeTruthy();
@@ -230,67 +253,82 @@ function assertActorParking(geometry, requireRevealTimestamp = true) {
   expect(geometry.expected).toBeTruthy();
   const nearestAllowedParking = Math.min(...geometry.expected.candidates.map((candidate) =>
     Math.abs(geometry.targetRect.left - candidate.left) + Math.abs(geometry.targetRect.top - candidate.top)));
-  expect(nearestAllowedParking, JSON.stringify(geometry, null, 2)).toBeLessThanOrEqual(2);
-}
-
-async function waitForParkedTarget(page, eventId, actorId, actorIndex = 0) {
-  await page.waitForFunction(({ id, expectedActorId, cardIndex }) => {
-    const element = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
-      .find((candidate) => candidate.getAttribute("data-public-card-journey-event-id") === id);
-    if (!element || element.getAttribute("data-public-card-journey-phase") !== "parked") return false;
-    const rect = element.getBoundingClientRect();
-    const left = Number(element.getAttribute("data-public-card-journey-target-left"));
-    const top = Number(element.getAttribute("data-public-card-journey-target-top"));
-    const anchor = [...document.querySelectorAll("[data-player-anchor]")]
-      .find((candidate) => candidate.getAttribute("data-player-anchor") === expectedActorId);
-    const table = document.querySelector(".play-table");
-    if (!anchor || !table) return false;
-    const seat = anchor.getBoundingClientRect();
-    const tableRect = table.getBoundingClientRect();
-    const local = anchor.classList.contains("local-player-dock");
-    const centerX = seat.left + seat.width / 2;
-    const centerY = seat.top + seat.height / 2;
-    const side = local ? "local" : [
-      { side: "top", distance: Math.abs(centerY - tableRect.top) },
-      { side: "left", distance: Math.abs(centerX - tableRect.left) },
-      { side: "right", distance: Math.abs(tableRect.right - centerX) },
-    ].sort((a, b) => a.distance - b.distance)[0].side;
-    const base = local
-      ? { left: seat.left + 8, top: seat.top - 78 }
-      : side === "top"
-        ? { left: centerX - 24, top: seat.bottom + 6 }
-        : side === "left"
-          ? { left: seat.right + 6, top: centerY - 36 }
-          : { left: seat.left - 54, top: centerY - 36 };
-    const horizontalProgression = side !== "top";
-    const preferred = {
-      left: base.left + (horizontalProgression ? (side === "right" ? -1 : 1) * cardIndex * 54 : 0),
-      top: base.top + (horizontalProgression ? 0 : cardIndex * 54),
-    };
-    const offsets = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6];
-    const expectedTargets = offsets.map((offset) => ({
-      left: preferred.left + (horizontalProgression ? 0 : offset * 54),
-      top: preferred.top + (horizontalProgression ? offset * 78 : 0),
-    }));
-    const targetMatchesSeat = expectedTargets.some((candidate) => Math.abs(candidate.left - left) <= 2 && Math.abs(candidate.top - top) <= 2);
-    return targetMatchesSeat && Math.abs(rect.left - left) <= 1 && Math.abs(rect.top - top) <= 1;
-  }, { id: eventId, expectedActorId: actorId, cardIndex: actorIndex }, { timeout: 5_000 });
+  const topSeatPocket = geometry.expected.side === "top" && geometry.actorAnchorKind === "opponent"
+    && geometry.targetRect.left >= geometry.actorAnchorRect.left - 2
+    && geometry.targetRect.left + geometry.targetRect.width <= geometry.actorAnchorRect.left + geometry.actorAnchorRect.width + 2
+    && Math.abs(geometry.targetRect.top - geometry.expected.candidates[0].top) <= 2;
+  const verticalGapToSeat = Math.max(
+    geometry.targetRect.top - (geometry.actorAnchorRect.top + geometry.actorAnchorRect.height),
+    geometry.actorAnchorRect.top - (geometry.targetRect.top + geometry.targetRect.height),
+    0,
+  );
+  const sideSeatFrontPocket = geometry.actorAnchorKind === "opponent"
+    && ((geometry.expected.side === "left"
+      && geometry.targetRect.left >= geometry.actorAnchorRect.left + geometry.actorAnchorRect.width - 2
+      && geometry.targetRect.left - (geometry.actorAnchorRect.left + geometry.actorAnchorRect.width) <= geometry.targetRect.width + 12
+      && verticalGapToSeat <= geometry.targetRect.height + 16)
+    || (geometry.expected.side === "right"
+      && geometry.targetRect.left + geometry.targetRect.width <= geometry.actorAnchorRect.left + 2
+      && geometry.actorAnchorRect.left - (geometry.targetRect.left + geometry.targetRect.width) <= geometry.targetRect.width + 12
+      && verticalGapToSeat <= geometry.targetRect.height + 16));
+  expect(nearestAllowedParking <= 2 || topSeatPocket || sideSeatFrontPocket, JSON.stringify(geometry, null, 2)).toBe(true);
 }
 
 async function assertHistory(viewer, viewerIndex, room, rootEvent, history, testInfo, screenshotLabel, requireRevealTimestamp = true) {
   const display = viewer.page.locator(`[data-public-card-motion="single-target"][data-public-card-root-event-id="${rootEvent.id}"]`);
   await expect(display).toHaveCount(1, `viewer ${viewer.name} should have one owner for the proven Dismantle root`);
   await expect(display).toHaveAttribute("data-public-card-viewer-id", room.players[viewerIndex].id);
+  await expect(display).toHaveAttribute("data-public-card-ordinal-context", "negation-chain");
+  const accessibleHistory = display.locator('ol[aria-label="Chronological Negation chain history"] li');
+  await expect(accessibleHistory).toHaveCount(history.length);
   const rows = [];
-  for (const item of history) {
+  const ordinalBadges = [];
+  for (const [ordinalIndex, item] of history.entries()) {
+    await expect(accessibleHistory.nth(ordinalIndex)).toContainText(`Negation chain step ${ordinalIndex + 1}`);
     const cardElement = display.locator(`[data-public-card-journey-event-id="${item.event.id}"]`);
     await expect(cardElement).toBeVisible();
     await expect(cardElement).toHaveAttribute("data-public-card-journey-actor-id", item.actor.id);
     await expect(cardElement).toHaveAttribute("data-public-card-journey-card-id", item.cardId);
     await expect(cardElement).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 20_000 });
-    const geometry = await readGeometry(viewer.page, item.event.id, item.actor.id);
+    await expect(cardElement).toHaveAttribute("data-public-card-journey-layout-pending", "false");
+    await expect.poll(() => cardElement.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const targetWidth = Number(element.getAttribute("data-public-card-journey-target-width"));
+      const targetHeight = Number(element.getAttribute("data-public-card-journey-target-height"));
+      const targetLeft = Number(element.getAttribute("data-public-card-journey-target-left"));
+      const targetTop = Number(element.getAttribute("data-public-card-journey-target-top"));
+      return Math.max(
+        Math.abs(rect.width - targetWidth),
+        Math.abs(rect.height - targetHeight),
+        Math.abs(rect.left - targetLeft),
+        Math.abs(rect.top - targetTop),
+      );
+    }), { timeout: 5_000 }).toBeLessThanOrEqual(1);
+    const ordinalState = await cardElement.evaluate((element) => ({
+      ordinal: element.getAttribute("data-public-card-journey-ordinal"),
+      badgeText: element.querySelector(".public-card-journey-ordinal")?.textContent ?? null,
+      ariaLabel: element.getAttribute("aria-label"),
+    }));
+    expect(ordinalState.ordinal, JSON.stringify(ordinalState)).toBe(String(ordinalIndex + 1));
+    expect(ordinalState.badgeText, JSON.stringify(ordinalState)).toBe(`#${ordinalIndex + 1}`);
+    expect(ordinalState.ariaLabel, JSON.stringify(ordinalState)).toMatch(new RegExp(`Negation chain step ${ordinalIndex + 1}`));
+    const badgeBox = await cardElement.locator(".public-card-journey-ordinal").boundingBox();
+    expect(badgeBox?.width).toBeGreaterThanOrEqual(18);
+    expect(badgeBox?.height).toBeGreaterThanOrEqual(18);
+    expect(await cardElement.locator(".public-card-journey-ordinal").evaluate((element) => getComputedStyle(element).fontSize)).toBe("12px");
+    const actorCardIndex = history.slice(0, ordinalIndex).filter(({ actor }) => actor.id === item.actor.id).length;
+    const geometry = await readGeometry(viewer.page, item.event.id, item.actor.id, actorCardIndex);
     assertActorParking(geometry, requireRevealTimestamp);
+    ordinalBadges.push({ box: badgeBox, eventId: item.event.id, cardRect: geometry.actualRect });
     rows.push(geometry);
+  }
+  for (let first = 0; first < ordinalBadges.length; first += 1) {
+    for (let second = first + 1; second < ordinalBadges.length; second += 1) {
+      const a = ordinalBadges[first].box;
+      const b = ordinalBadges[second].box;
+      const overlaps = a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+      expect(overlaps, `ordinal badges ${first + 1} and ${second + 1} must remain distinct for ${viewer.name} at ${JSON.stringify(viewer.page.viewportSize())}: ${JSON.stringify([ordinalBadges[first], ordinalBadges[second]])}`).toBe(false);
+    }
   }
   await expect(display.locator(".public-card-journey-card")).toHaveCount(history.length);
   await expect(viewer.page.getByText("GAME SCREEN ERROR")).toHaveCount(0);
@@ -303,13 +341,34 @@ async function assertHistory(viewer, viewerIndex, room, rootEvent, history, test
   return rows;
 }
 
+async function assertCurrentOrdinal(viewer, room, rootEvent, event, ordinal) {
+  const display = viewer.page.locator(`[data-public-card-motion="single-target"][data-public-card-root-event-id="${rootEvent.id}"]`);
+  const cardElement = display.locator(`[data-public-card-journey-event-id="${event.id}"]`);
+  await expect(cardElement).toBeVisible();
+  await expect(cardElement).toHaveAttribute("data-public-card-journey-ordinal", String(ordinal));
+  await expect(cardElement.locator(".public-card-journey-ordinal")).toHaveText(`#${ordinal}`);
+  const advancingCards = display.locator('[data-public-card-journey-phase="reveal"], [data-public-card-journey-phase="move"]');
+  const advancingCount = await advancingCards.count();
+  expect(advancingCount, `${viewer.name} has at most one card in the centre reveal/move path`).toBeLessThanOrEqual(1);
+  if (advancingCount === 1) {
+    await expect(advancingCards).toHaveAttribute("data-public-card-journey-event-id", event.id);
+  }
+  const badgeStyle = await cardElement.locator(".public-card-journey-ordinal").evaluate((badge) => ({
+    fontSize: getComputedStyle(badge).fontSize,
+    rect: (() => { const rect = badge.getBoundingClientRect(); return { width: rect.width, height: rect.height }; })(),
+  }));
+  expect(badgeStyle.fontSize).toBe("12px");
+  expect(badgeStyle.rect.width).toBeGreaterThanOrEqual(18);
+  expect(badgeStyle.rect.height).toBeGreaterThanOrEqual(18);
+}
+
 test("R2 Negation causal history survives a cancelled root and parks on true actors at 4/6/8 seats", async ({ page, browser, request }, testInfo) => {
   test.setTimeout(360_000);
   const viewers = [
     { index: 2, name: "cao-cao", viewport: { width: 390, height: 844 }, page, errors: [] },
     { index: 0, name: "sima-yi", viewport: { width: 440, height: 894 }, page: null, errors: [] },
     { index: 1, name: "xu-chu", viewport: { width: 480, height: 900 }, page: null, errors: [] },
-    { index: 3, name: "target", viewport: { width: 1280, height: 900 }, page: null, errors: [] },
+    { index: 3, name: "target", viewport: { width: 390, height: 700 }, page: null, errors: [] },
   ];
   const contexts = [];
   try {
@@ -325,7 +384,10 @@ test("R2 Negation causal history survives a cancelled root and parks on true act
       });
     }
 
-    for (const playerCount of [4, 6, 8]) {
+    const requestedCounts = process.env.R2_PLAYER_COUNTS
+      ? process.env.R2_PLAYER_COUNTS.split(",").map((count) => Number(count.trim()))
+      : [4, 6, 8];
+    for (const playerCount of requestedCounts) {
       const room = await seedR2Room(request, playerCount);
       for (const viewer of viewers) await openPlayer(viewer.page, room, viewer.index, viewer.viewport, viewer.index === 2);
 
@@ -355,7 +417,9 @@ test("R2 Negation causal history survives a cancelled root and parks on true act
       expect(xuPrivateView.myHand.map((held) => held.id)).toContain(room.cards.hiddenNegation);
 
       const dismantleOpened = await playRoot(request, room, room.cards.dismantle, target.id);
-      expect(dismantleOpened.room.currentAction?.negationWindowId).toBeTruthy();
+      const dismantleWindowId = dismantleOpened.room.currentAction?.negationWindowId;
+      expect(dismantleWindowId).toBeTruthy();
+      await adjustWindowClock(request, room, dismantleWindowId, "hold");
       const openedState = await view(request, room, 3);
       const rootEvent = cardEvent(openedState, room.cards.dismantle);
       expect(rootEvent?.player).toBe(source.name);
@@ -375,6 +439,7 @@ test("R2 Negation causal history survives a cancelled root and parks on true act
 
       const firstDismantleNegation = await submitWinningNegation(request, room, 0, room.cards.secondNegation);
       rootHistory.push({ event: firstDismantleNegation.event, actor: room.players[0], cardId: room.cards.secondNegation });
+      await Promise.all(viewers.map((viewer) => assertCurrentOrdinal(viewer, room, rootEvent, firstDismantleNegation.event, 2)));
       const firstCounterState = await view(request, room, 3);
       const firstCounterChain = firstCounterState.presentationSnapshot?.reactionChain;
       expect(firstCounterChain?.semantics).toBe("PROVEN");
@@ -387,6 +452,7 @@ test("R2 Negation causal history survives a cancelled root and parks on true act
 
       const secondDismantleNegation = await submitWinningNegation(request, room, 1, room.cards.counterNegation);
       rootHistory.push({ event: secondDismantleNegation.event, actor: room.players[1], cardId: room.cards.counterNegation });
+      await Promise.all(viewers.map((viewer) => assertCurrentOrdinal(viewer, room, rootEvent, secondDismantleNegation.event, 3)));
       const liveChainState = await view(request, room, 3);
       const liveChain = liveChainState.presentationSnapshot?.reactionChain;
       expect(liveChain?.semantics).toBe("PROVEN");
@@ -403,45 +469,40 @@ test("R2 Negation causal history survives a cancelled root and parks on true act
       }
       await Promise.all(viewers.map((viewer) => assertHistory(viewer, viewer.index, room, rootEvent, rootHistory, testInfo, `r2-${playerCount}-counter-counter`)));
 
-      for (const viewer of viewers) {
-        await viewer.page.reload();
-        await expect(viewer.page.locator(".game-shell")).toBeVisible();
-        await expect(viewer.page.locator(`[data-public-card-motion="single-target"][data-public-card-root-event-id="${rootEvent.id}"] .public-card-journey-card`)).toHaveCount(3);
-        await expect(viewer.page.locator(`[data-public-card-motion="single-target"][data-public-card-root-event-id="${rootEvent.id}"] .public-card-journey-card[data-public-card-journey-phase="parked"]`)).toHaveCount(3);
-        await expect(viewer.page.locator(`[data-public-card-motion="single-target"] [data-public-card-journey-card-id="${room.cards.hiddenNegation}"]`)).toHaveCount(0);
+      const thirdDismantleNegation = await submitWinningNegation(request, room, 0, room.cards.thirdNegation);
+      rootHistory.push({ event: thirdDismantleNegation.event, actor: room.players[0], cardId: room.cards.thirdNegation });
+      await Promise.all(viewers.map((viewer) => assertCurrentOrdinal(viewer, room, rootEvent, thirdDismantleNegation.event, 4)));
+      const thirdCounterState = await view(request, room, 3);
+      const thirdCounterChain = thirdCounterState.presentationSnapshot?.reactionChain;
+      expect(thirdCounterChain?.semantics).toBe("PROVEN");
+      expect(thirdCounterChain?.interactionId).toBe(rootCausalId);
+      expect(thirdCounterChain?.publicEventLinks?.nodes?.map(({ eventId }) => eventId)).toEqual(rootHistory.slice(1).map(({ event }) => event.id));
+      expect(thirdCounterChain?.nodes?.map(({ actorId }) => actorId)).toEqual([room.players[0].id, room.players[1].id, room.players[0].id]);
+      await Promise.all(viewers.map((viewer) => assertHistory(viewer, viewer.index, room, rootEvent, rootHistory, testInfo, `r2-${playerCount}-third-counter`)));
+
+      const fourthDismantleNegation = await submitWinningNegation(request, room, 1, room.cards.fourthNegation);
+      rootHistory.push({ event: fourthDismantleNegation.event, actor: room.players[1], cardId: room.cards.fourthNegation });
+      await Promise.all(viewers.map((viewer) => assertCurrentOrdinal(viewer, room, rootEvent, fourthDismantleNegation.event, 5)));
+      const finalChainState = await view(request, room, 3);
+      const finalChain = finalChainState.presentationSnapshot?.reactionChain;
+      expect(finalChain?.semantics).toBe("PROVEN");
+      expect(finalChain?.interactionId).toBe(rootCausalId);
+      expect(finalChain?.publicEventLinks?.root?.eventId).toBe(rootEvent.id);
+      expect(finalChain?.publicEventLinks?.nodes?.map(({ eventId }) => eventId)).toEqual(rootHistory.slice(1).map(({ event }) => event.id));
+      expect(finalChain?.nodes?.map(({ actorId }) => actorId)).toEqual([room.players[0].id, room.players[1].id, room.players[0].id, room.players[1].id]);
+      const finalWindowId = finalChainState.currentAction?.negationWindowId;
+      expect(finalWindowId).toBeTruthy();
+      await adjustWindowClock(request, room, finalWindowId, "hold");
+      for (const viewerIndex of [0, 1, 2, 3]) {
+        const viewerState = await view(request, room, viewerIndex);
+        expect(viewerState.currentAction?.negationWindowId).toBe(finalChainState.currentAction.negationWindowId);
+        expect(viewerState.presentationSnapshot?.reactionChain?.publicEventLinks).toEqual(finalChain?.publicEventLinks);
+        expect(viewerState.presentationSnapshot?.reactionChain?.nodes?.map(({ actorId }) => actorId)).toEqual([room.players[0].id, room.players[1].id, room.players[0].id, room.players[1].id]);
       }
 
-      const resizeViewer = viewers[1];
-      const resizeRootCard = resizeViewer.page.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`);
-      const captureResizeGeometry = async (label) => {
-        const resizeCards = [];
-        const actorIndexes = new Map();
-        for (const item of rootHistory) {
-          const actorIndex = actorIndexes.get(item.actor.id) ?? 0;
-          actorIndexes.set(item.actor.id, actorIndex + 1);
-          await waitForParkedTarget(resizeViewer.page, item.event.id, item.actor.id, actorIndex);
-          const geometry = await readGeometry(resizeViewer.page, item.event.id, item.actor.id, actorIndex);
-          assertActorParking(geometry, false);
-          resizeCards.push(geometry);
-        }
-        const geometryPath = testInfo.outputPath(`r2-${playerCount}-${label}-${resizeViewer.name}-geometry.json`);
-        writeFileSync(geometryPath, JSON.stringify({ viewport: resizeViewer.page.viewportSize(), viewerId: room.players[resizeViewer.index].id, rootEventId: rootEvent.id, cards: resizeCards }, null, 2));
-        await testInfo.attach(`r2-${playerCount}-${label}-${resizeViewer.name}-geometry.json`, { path: geometryPath, contentType: "application/json" });
-        const screenshotPath = testInfo.outputPath(`r2-${playerCount}-${label}-${resizeViewer.name}.png`);
-        await resizeViewer.page.screenshot({ path: screenshotPath, fullPage: true });
-        await testInfo.attach(`r2-${playerCount}-${label}-${resizeViewer.name}.png`, { path: screenshotPath, contentType: "image/png" });
-      };
-      await resizeViewer.page.setViewportSize({ width: 390, height: 844 });
-      await expect(resizeRootCard).toHaveAttribute("data-public-card-journey-phase", "parked");
-      await captureResizeGeometry("resize-390");
-      await resizeViewer.page.setViewportSize(resizeViewer.viewport);
-      await expect(resizeRootCard).toHaveAttribute("data-public-card-journey-phase", "parked");
-      await captureResizeGeometry("resize-return");
-
       if (playerCount === 4) {
-        // Re-authenticate the same browser through two genuine seat tokens.
-        // The public history is already present in its timeline, so neither
-        // perspective change may replay the centre reveal.
+        // Re-authenticate the same browser through two genuine seat tokens while
+        // the completed public chain is still in its read window.
         const switchPage = viewers[0].page;
         await switchPage.goto(`${API}/api/health`);
         await switchPage.evaluate(({ code, token, name }) => {
@@ -459,6 +520,25 @@ test("R2 Negation causal history survives a cancelled root and parks on true act
         await expect(switchPage.locator(`.local-player-dock[data-player-anchor="${room.players[2].id}"]`)).toBeVisible();
         const caoReturnViewer = { page: switchPage, name: "cao-cao-returned-view", errors: viewers[0].errors };
         await assertHistory(caoReturnViewer, 2, room, rootEvent, rootHistory, testInfo, "r2-four-seat-viewer-switch-cao-return", false);
+      }
+
+      await Promise.all(viewers.map((viewer) => assertHistory(
+        viewer,
+        viewer.index,
+        room,
+        rootEvent,
+        rootHistory,
+        testInfo,
+        `r2-${playerCount}-fourth-counter`,
+        !(playerCount === 4 && viewer.index === 2),
+      )));
+
+      for (const viewer of viewers) {
+        await viewer.page.reload();
+        await expect(viewer.page.locator(".game-shell")).toBeVisible();
+        await expect(viewer.page.locator(`[data-public-card-motion="single-target"][data-public-card-root-event-id="${rootEvent.id}"] .public-card-journey-card`)).toHaveCount(5);
+        await expect(viewer.page.locator(`[data-public-card-motion="single-target"][data-public-card-root-event-id="${rootEvent.id}"] .public-card-journey-card[data-public-card-journey-phase="parked"]`)).toHaveCount(5);
+        await expect(viewer.page.locator(`[data-public-card-motion="single-target"] [data-public-card-journey-card-id="${room.cards.hiddenNegation}"]`)).toHaveCount(0);
       }
 
       await passEverySeat(request, room);

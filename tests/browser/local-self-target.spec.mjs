@@ -15,6 +15,10 @@ test("CurrentAction self target is selectable, inspectable, and submitted from t
   await skill.click();
 
   const selfTarget = page.getByRole("button", { name: "Select Player 1" });
+  const actionsBeforeFooterTap = await page.evaluate(() => window.__browserActions.length);
+  await dock.locator(".local-hero-identity-footer").click();
+  await expect(selfTarget).toHaveAttribute("aria-pressed", "false");
+  expect(await page.evaluate(() => window.__browserActions.length)).toBe(actionsBeforeFooterTap);
   const opponentTarget = page.getByRole("button", { name: "Select Player 2" });
   const opponentSeat = page.locator('.opponent-player-card[data-player-anchor="p2"]');
   await expect(selfTarget).toHaveAttribute("aria-pressed", "false");

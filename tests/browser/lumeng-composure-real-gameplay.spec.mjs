@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { acceptEndTurnConfirmation } from "./end-turn-confirmation.mjs";
 
 const API = "http://127.0.0.1:3137";
 const card = (kind, id, suit = "♠") => ({ id, kind, suit, rank: "7" });
@@ -44,6 +45,7 @@ test("real Composure CurrentAction activates from the Skills band exactly once",
     try { return JSON.parse(response.request().postData() ?? "{}").action === "end_turn"; }
     catch { return false; }
   });
+  acceptEndTurnConfirmation(page);
   await dock.locator('[data-action-slot="decline"] button').getByText("End", { exact: true }).click();
   const opened = await endTurnResponse;
   expect(opened.ok()).toBeTruthy();

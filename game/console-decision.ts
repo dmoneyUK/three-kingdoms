@@ -1,3 +1,6 @@
+import { publicDecisionFromPresentationSnapshot } from "./presentation-semantics.ts";
+import type { PresentationSnapshot } from "./presentation-snapshot";
+
 /**
  * Pure display model for the local operation console.
  *
@@ -111,4 +114,24 @@ export function buildConsoleDecisionDisplay(facts: ConsoleDecisionFacts): Consol
     controlsVisible,
     coherent,
   };
+}
+
+/** Acknowledges only this viewer's authenticated, current-window submission. */
+export function viewerNegationAcknowledgement(snapshot: PresentationSnapshot | null, windowId: string | null | undefined, phase: string | null): string | null {
+  const decision = publicDecisionFromPresentationSnapshot(snapshot);
+  const choice = snapshot?.viewerNegationChoice;
+  if (phase !== "response" || !windowId || choice?.windowId !== windowId || choice.locked !== true
+    || decision?.visibility !== "PUBLIC" || decision.stageLabel !== "Negation" || decision.responseWindowOpen !== true) return null;
+  if (choice.choice === "pass") return "You passed. Waiting for the other players.";
+  if (choice.choice === "negation_intent") return "You chose to play Negation. Waiting for the other players.";
+  return null;
+}
+
+export function triggerDecisionInstruction(label: string, description: string | undefined, canSkip: boolean): string {
+  const text = (description ?? "").trim().replace(/[.!?]\s*$/, "");
+  const concise = text.replace(/^(Obtain the card that caused the damage), if it is still available$/i, "$1");
+  const detail = /^Obtain the card that caused the damage$/i.test(concise)
+    ? ` to ${concise.charAt(0).toLowerCase()}${concise.slice(1)}`
+    : concise ? `: ${concise}` : "";
+  return `Use ${label}${detail}${canSkip ? ", or Skip" : ""}.`;
 }

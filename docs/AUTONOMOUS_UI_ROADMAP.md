@@ -3084,3 +3084,401 @@ Profile command measurements:
   `{"ok":true,"worker":"available"}`. **IMPLEMENTED / DEPLOYED — PENDING
   OWNER PHONE REVIEW**, not accepted. The next separately bounded item is
   INS5-2; no code for INS5-2 or BH5-1 is included.
+
+### UX2 §10.13.4.2 E1-F — Equipment miniature waits for physical arrival — 2026-10-23
+
+- Feature implementation `7745c6fc312687cb59858fb04f8470a9e614cb46` gates
+  public Equipment miniatures on the committed card journey's actual arrival
+  at the matching owner and slot. The central physical CardFace remains the
+  same card, server Equipment ownership/effect is immediate, stable empty slot
+  anchors preserve real destinations, and the legal Local Dock controls stay
+  usable during this Equipment-only flight. Identity/arrival logic is isolated
+  in `game/equipment-arrival.js` and its public Equip actor is server-derived.
+- Focused local evidence: the four-player Worker/D1 mobile browser suite passed
+  7/7 with an owner and independently authenticated observer, including public
+  event/card/actor identity, no premature or duplicated miniature, exact target
+  slot, settled refresh without replay, Reduced Motion, Armor/Horses,
+  replacement, and 4/6/8/10-seat layouts. Equipment API tests passed 20/20;
+  arrival identity unit tests passed 4/4; build and targeted ESLint passed.
+- Feature-only exact-SHA Actions run [`39904085359`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39904085359)
+  exposed two stale source assertions in the room-render fast suite. The
+  test-only correction `3142f7b7eb718f15a7260471b573ef37590b7605` updates those
+  assertions to the current empty-slot anchor and Equipment-arrival busy-state
+  contracts; it does not change product behavior. The final deployed head
+  passed every required exact-SHA job in [Actions 39904467908](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39904467908):
+  browser startup/room smoke, lint/build/fast (292/292), API tests, D1 migration,
+  Worker deployment and production smoke. Worker version
+  `502ad7b4-63d8-4548-b877-0be433e2cc05`; direct production
+  `/api/health` returned `{"ok":true,"worker":"available"}`.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. No user
+  acceptance is inferred from automated or CI results.
+
+### UX2 §10.7.2.1 R2-D — proven single-target Negation chronology — 2026-10-23
+
+- Source commit `cd8615cd74fbc3c3a83343db6788bf0bf2c1b899` adds visible
+  `#1…#N` badges to physical cards in a fully proven single-target Negation
+  chain. The root and committed responses retain their genuine event, card and
+  author identities; only the current card reveals large at centre, and
+  previously committed cards stay at their actual author Seats. Group/Duel
+  ordinal compatibility is preserved. Server legality, shared Negation timing,
+  privacy and card identities are unchanged.
+- Focused mobile Worker/D1 browser proof passed root plus four physical
+  Negations in 4/6/8-seat rooms and four viewer identities, including refresh,
+  TEST SWITCH, new-root reset and one-card-at-centre behavior. Duel/Group
+  regression passed 6/6; focused presentation/client tests 9/9; API engine
+  tests 45/45; full API suite 301/301 locally; build passed.
+- The first exact-SHA workflow attempt recorded a Wrangler internal error in
+  API shard 1 after that Worker stopped serving requests; the other shard
+  passed 132/132 and the same full API suite passed locally. Re-running the
+  same SHA as workflow attempt 2 passed all required jobs and deployed Worker
+  `c291a53d-bd7b-490c-919c-55b3a4a15946` in Actions
+  [`39912653852`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39912653852).
+  Production `/api/health` returned `{"ok":true,"worker":"available"}`.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. No desktop
+  UX review or user acceptance is inferred.
+
+### UX2 §10.12.4.1 L4-F — retain Duel history during opponent Inspector — 2026-10-23
+
+- Source commit `74b344d5b298907744918c6eb96ec5f8375e1484` keeps already parked,
+  publicly proven Duel/LUST history mounted as a passive read-only presentation
+  while an opponent Inspector is open. It preserves genuine event/card/actor
+  identities and does not surface a new central reveal or announcement during
+  inspection. Closing Inspect returns to the existing journey without replay.
+- Mobile browser proof passed printed Duel Inspect→close→TEST SWITCH→refresh,
+  the LUST-cost Inspector case, and a four-viewer LUST exchange with one genuine
+  skill cost and three alternating Attacks at 390×844 and 440×894. All four
+  viewers retained identical public history/author anchors, private Peach
+  identity remained owner-only, Inspector operations sent no room POST, Skip
+  stayed usable, and settled history retired after its read window.
+- Focused local build and targeted ESLint passed (0 errors; 15 existing Hook
+  warnings). Exact-SHA Actions
+  [`39917886113`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39917886113)
+  passed required browser startup/room smoke, lint/build/fast, API tests, D1
+  migration, Worker deploy and production smoke. Worker version
+  `23a48b13-c48b-409d-a388-741d3d8b26bf`; production `/` and `/api/health`
+  returned 200, with health `{"ok":true,"worker":"available"}`.
+- Adjacent phone-regression guards: ordinary Attack/Dodge and the proven
+  single-target Negation history/narration check passed. The Da Qiao browser
+  check reached correct current public copy but has an outdated `used
+  Deflection` assertion (source renders `Deflection: DA QIAO redirected Attack
+  to REPLACEMENT; discarded Eight Trigrams Formation.`). The four-viewer
+  Group/Negation guard surfaced a separate U13-B-G status-chip placement issue
+  before any Inspector interaction: at 390×844 the 249×44 chip is hidden
+  because its 6px clearance rejects a measured non-overlapping 4.5px gap below
+  the central CardFace. This independent follow-up is recorded in
+  `docs/UX2-refine.md` §10.13.2.2 and HANDOVER; it is not part of L4's Inspector
+  gate.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. CI and
+  browser checks do not constitute owner acceptance; no desktop or real-phone
+  review is claimed.
+
+
+### UX2 §10.13.2.2 U13-B-G — Group/Negation activity-chip clearance correction — 2026-10-23
+
+- Source commit `b70c003eca12e5097e75201f95b8b1faabedce72` uses a 2px
+  collision clearance for the public activity plaque while retaining the
+  existing 6px Harvest-pool clearance. At 390×844, this accepts the measured
+  4.5px real gap below the current centre CardFace instead of hiding the shared
+  waiting status. H4/card geometry, public identity/projection, gameplay, chip
+  typography and touch behavior are unchanged.
+- Focused mobile proof: the existing four-viewer Group/Negation guard passed at
+  390×700, 390×844, 440×894 and 480×900; all four screenshots show the same
+  status plaque visible without collision with the centre CardFace or Local
+  Dock. The existing activity-chip mobile suite passed 4/4, covering the
+  original 440×766 Duel parking case (12px offset, no 102.5px jump) and 4/6/8/10
+  player arrangements. Targeted ESLint, build and `git diff --check` passed.
+- Exact-SHA [Actions 39920246252](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39920246252)
+  passed lint/build/fast, API, browser startup/room smoke, D1 migration, Worker
+  deployment and production smoke. Worker version
+  `cec77337-1ca5-412a-8120-b3468ec6d57b`; direct production `/` and
+  `/api/health` returned 200, with health
+  `{"ok":true,"worker":"available"}`.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. No user
+  phone acceptance is inferred.
+
+### UX2 §10.11 G1 — Stargazing whole-card touch origin — 2026-10-23
+
+- Source commit `deab81974aa08ea8335579d058e0237a3494261f` removes the tiny-grip
+  prerequisite for a touch drag. The whole private CardFace now captures touch;
+  a 260ms hold activates drag, while pre-hold movement scrolls its card row or
+  the three-zone sequence in the gesture's dominant direction. The Move menu,
+  keyboard fallback, local-only arrangement and server submission contract are
+  unchanged.
+- Focused real Worker/D1 browser checks passed 3/3 at 390×844, 390×700 and
+  320×640. They cover non-grip art touch, hold/move/drop, insertion/highlight,
+  quick tap, horizontal swipe, pointer cancellation, Move-menu arrangement,
+  card conservation and no request before explicit completion. Build and
+  targeted ESLint passed; ESLint reported 3 existing React Hook warnings in
+  `app/page.tsx` outside this change. Host WebKit validation was attempted but
+  could not start because its Page protocol rejected `PushAPIEnabled`; no native
+  Safari result is claimed.
+- Exact-SHA [Actions 39922538234](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39922538234)
+  passed lint/build/fast, API, browser startup/room smoke, D1 migration, Worker
+  deployment and production smoke. Worker `e9a0cf99-5e4b-4213-8374-93fc0664beaf`;
+  production `/api/health` returned `{"ok":true,"worker":"available"}`.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. G2
+  all-zone/order/privacy end-to-end remains a separate uncompleted slice; no
+  phone acceptance is inferred.
+
+### UX2 §10.11 G2 — Stargazing all-zone ordering and privacy proof — 2026-10-23
+
+- Source/test commit `ca82a1d340d979f30d4ca12c61afedd9701fccbc` converts the
+  authenticated Stargazing end-to-end coverage to real mobile touch input.
+  Against Worker/D1 it proves middle-to-Top/Bottom, Top↔Bottom, ordered
+  insertion within both zones, Bottom reorder, Return to middle, empty zones,
+  invalid drop/cancel, horizontal edge scrolling, rapid operations, exact
+  submitted arrays, one-each identity conservation, `minTop/maxTop`,
+  Complete-disabled safety and no server update before explicit completion.
+- An independent-token viewer's raw room projection and visible DOM remain
+  free of the owner's private card IDs and rearranged order. Focused browser
+  coverage passed 5/5 across 390×844, 390×700, 440×894, 480×900 and the 320×640
+  edge-scroll case; focused API tests passed 8/8. Build, targeted ESLint,
+  syntax and diff checks passed. No desktop checks were run.
+- Exact-SHA [Actions 39925022548](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39925022548)
+  passed browser smoke, API, lint/fast, D1 migration, Worker deployment and
+  production smoke. Worker version
+  `c95b877a-b54d-459c-869c-6c281ddc8e78`; direct
+  `/api/health` returned `{"ok":true,"worker":"available"}`.
+- The installed host WebKit runner still fails before page setup with
+  `Page.overrideSetting: Unknown setting: PushAPIEnabled`; no native Safari
+  evidence is claimed. G1/G2 status: **IMPLEMENTED / DEPLOYED — PENDING USER
+  PHONE RE-REVIEW**. No user acceptance is inferred.
+
+### UX2 §10.10 T1 — Shared Steal/Burning Bridges choosing progress — 2026-10-23
+
+- Source commit `5f6c2f76b3bc263739da33776e4dee0760367267` adds a public,
+  server-proven choosing cue shared across the actor, target and unaffected
+  viewers. The actor-only target-card picker remains private; selection zones,
+  card identities, indexes and unconfirmed intent remain hidden. The cue is
+  absent before Negation settles, after cancellation and once the choice
+  settles.
+- Four authenticated Worker/D1 mobile views passed focused browser coverage
+  4/4 at 390×844 for Steal and Burning Bridges; focused API cue/privacy checks
+  passed 9/9. Targeted ESLint, build, browser syntax and diff checks passed.
+- Exact-SHA [Actions 39928183907](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39928183907)
+  passed browser startup/room smoke, lint/fast, API, D1 migrations, Worker
+  deployment and production smoke. Worker
+  `6ae645da-7bff-4089-9ec6-0c7470ae9c0f`; live `/api/health` returned
+  `{"ok":true,"worker":"available"}`.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. T2's
+  public destination/real-card proof and T3's responsive end-to-end regression
+  remain separate; no desktop or owner-phone acceptance is inferred.
+
+### UX2 §10.10 T2 — Public target-card source/destination proof — 2026-10-23
+
+- Source commit `8f4b13524236f2187217ffa85399584a2a7deea2` adds validated
+  public source-zone, affected-owner and destination evidence for Steal and
+  Burning Bridges. Hidden-Hand Steal never includes the selected CardFace;
+  public Equipment/Judgement transfers and committed public discards retain
+  the genuine authorized face. Presentation and timeline normalization fail
+  closed on incomplete or mismatched proof.
+- All six effect × source-zone cases passed the focused real Worker/D1 API
+  matrix (29/29) and four-independent-viewer mobile browser matrix (one test,
+  six cases at 390×844), including equal viewer proofs, actor-only picker
+  privacy, public result attributes, reload, and Hand privacy. Focused copy and
+  room-safety tests passed 14/14; targeted ESLint had zero errors and 15
+  existing Hook dependency warnings; local build, browser syntax and diff
+  checks passed. No desktop or owner-phone review is claimed.
+- Exact-SHA [Actions 39932636158](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39932636158)
+  passed browser startup/room smoke, lint/build/fast, API, D1 migration,
+  Worker deployment and production smoke. Worker version
+  `7fabca04-b429-46e2-8794-6d020cac85ef`; direct production `/api/health`
+  returned `{"ok":true,"worker":"available"}`.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. T3
+  responsive end-to-end regression is the next independent slice.
+
+### UX2 §10.10 T3 — Responsive target-card end-to-end regression — 2026-10-23
+
+- Source commit `2ccbd7bfd772c2a713c94bb37fbab614f5ada19d` fixes the
+  `CurrentAction` target-card picker gate that disabled a valid restored Steal
+  choice during root-card presentation, and keeps shared settlement readable
+  across phone viewports. The real Worker/D1 mobile browser matrix passed four
+  scenarios: 4 seats at 390×844 (Steal/Hand and fast next root), 6 seats at
+  440×894 (Burning Bridges/Equipment and long names), 8 seats at 480×900
+  (Steal/Judgement, reduced motion, reconnect/viewer switch), and 4 seats at
+  390×700 (one-card Hand). A separate four-viewer 390×844 counter-Negation
+  scenario verifies that cancelled roots do not expose the chooser, restored
+  Steal stays legally selectable, and no target Hand identity leaks. All
+  independent observers retained equivalent public proof and one authentic
+  root card; the actor retained the private picker. Existing mobile
+  Negated-Steal/Dismantle and Inspector/SWITCH regressions also passed.
+- Local focused validation included API shard 1 (171/171, reproducing the
+  transient first-attempt CI `fetch failed` as a clean pass), targeted mobile
+  browser cases, build, ESLint, browser syntax, and `git diff --check`. The
+  same-SHA rerun of exact Actions
+  [39939272435](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39939272435)
+  passed all required jobs and deployed Worker
+  `dfcc8ba6-57e9-4fbd-b5e0-4f3afde9efe1`; production smoke and direct
+  `/api/health` (`{"ok":true,"worker":"available"}`) passed.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. This
+  completes T3 technically; T1/T2/T3 remain independently reviewable and no
+  owner phone acceptance is inferred.
+
+### UX2 §10.15 Q3 — Viewer/layout rebase without motion — 2026-10-23
+
+- Source commit `1a0a5dc6185334353ab7e6148df4239c317888ef` adds the viewer/layout
+  epoch barrier for parked public-card Journeys. A parked card is withheld
+  until the current viewer's true-author anchor is measured, then snaps into
+  place without replaying its reveal or animating from another viewer's old
+  geometry. New committed-card REVEAL→MOVE behavior and game rules remain
+  unchanged.
+- Five focused mobile browser regressions passed across targeted runs:
+  Group-root history, Attack/Dodge with an unmeasured author anchor,
+  authenticated viewer change with single-target Negation history, Duel
+  history through SWITCH/resize, and Lust's first visible frame. The checks
+  confirmed current-view anchors, no stale first paint or transition, no
+  reveal reset, and privacy of losing Negation cards. Focused build, lint,
+  browser syntax and diff checks passed; no desktop or owner-phone acceptance
+  is claimed.
+- Exact-SHA [Actions 39945676809](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39945676809)
+  passed API, browser startup/room smoke, lint/fast, D1 migration, Worker
+  deployment and production smoke for this source SHA. Worker version
+  `f7278550-b125-4c0a-9e25-667fc3eb9b97`; direct production `/api/health`
+  returned `{"ok":true,"worker":"available"}`.
+- Status at Q3 delivery: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**. Q4 was subsequently completed and is recorded in the current design status index; no user acceptance is inferred.
+
+### UX2 §10.19 NEG-A1 — Harvest choice recovery and Negation identity dedup — 2026-10-23
+
+- P0 `UX2-10.19-NEG-A1-F1-HARVEST-CHOICE-UNBLOCK` restores the authentic server-authorized Bumper Harvest choice after a shared Negation window. An authenticated four-viewer Worker/D1 game proved card selection/deselection, one successful `choose_harvest`, refresh recovery, spectator read-only state, and authority moving to only the next chooser. P0 exact-SHA [Actions 40014350901](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40014350901) passed required CI and deployment; Worker `6a2b406b-82d7-4040-ae39-09178148d39f`.
+- F2 `UX2-10.19-NEG-A1-F2-NEGATION-CARD-DEDUP` first source `7944ff26b59f259c1d67926ddaa3288f141bca10` validated public event/card identity across `responses` and `responseHistory`, but did not pass owner phone review. Continuous animation-frame capture later reproduced the remaining transition race: the same event/card appeared in both legacy `settled-table-card` and Journey `parked` renderers before parent ownership acknowledgement.
+- Corrected F2 source `f392c463b0ceaa6563812a8d9ef5b1ea41c81d0f` passes exact authenticated public `responseHistoryOwnership` event/card IDs into the Journey and gates the response-history mini until the parent confirms ownership, aligning legacy removal with mini visibility in one render. The existing focused mobile regression captured all frames across four authenticated viewers, a two-counter chain, late refresh, readonly active-counter pool and legal next chooser/TEST SWITCH; three runs recorded zero duplicate physical-card frames. Focused local build, ESLint (0 errors; 15 existing Hook warnings) and `git diff --check` passed. No game rules, privacy, actual public card identity, desktop UX or accepted Harvest geometry changed.
+- Corrected F2 passed every required exact-SHA CI and deployment job in [Actions 40025900210](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40025900210). Worker version `c2860e1b-39a6-4bdb-82f0-6474b449328a`; direct production `/api/health` returned `{"ok":true,"worker":"available"}`. **P0, P1 and parent NEG-A1 status: IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE RE-REVIEW; the owner's previous acceptance remains NOT PASSED.** No desktop UX review was run.
+
+
+### UX2 §10.19.4.1a P0 F1-R2 — Harvest terminal finalization after final Negation — 2026-10-23
+
+
+- Production repair source `11cb6ab00228a0adffbf5372fd42289e63843fd5` makes `advance_timers` an authenticated, membership-checked maintenance action while preserving playing-state validation, the authoritative completion deadline and existing D1 CAS. It adds sanitized mismatch/deadline/CAS diagnostics, omits viewer action context from the client maintenance request, and retries only after refreshing the same expired completed Harvest with bounded, single-flight recovery.
+- That implementation passed exact-SHA [Actions 40032054377](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40032054377); deployed Worker `7991772e-b65e-456f-8986-94558b332611`; direct production `/api/health` returned `{"ok":true,"worker":"available"}`. Focused local API tests passed 45/45, Stratagem API 29/29, build passed, focused ESLint had zero errors and three existing Hook warnings, and the original Harvest browser file passed 3/3.
+- Follow-up browser coverage commit `65e58acc8fb8b05cd6615f1b503228d03937f953` adds the four phone viewport sizes 390×700, 390×844, 440×956 and 440×766 while the completed hold persists, plus refresh, hidden→visible recovery and TEST SWITCH while a timer request is in flight. The full focused Harvest browser file passed 3/3 locally; ESLint and `git diff --check` passed. Exact-SHA [Actions 40034117287](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40034117287) passed all required jobs (API, lint/fast, browser smoke, deployment and production smoke); Worker `4fab79d8-f52b-466e-a311-0e251e3ec306`; direct production `/api/health` returned `{"ok":true,"worker":"available"}`.
+- Status remains **IMPLEMENTED / DEPLOYED — PENDING OWNER REAL-PHONE RE-REVIEW**. The owner's 2026-10-23 acceptance remains failed pending fresh phone review; no desktop or real-phone acceptance is inferred. The separate Harvest miniature parking observations remain outside this gameplay repair.
+
+### UX2 §10.23 P0 — Play-Phase action liveness — 2026-10-24
+
+- F1 stabilizes the public-event presentation timer on genuine event identity and safely retires only the matching event. F2 lets an authorized ordinary turn Play/Confirm/End proceed independently of an older decorative reveal while preserving `CurrentAction`, target eligibility, request-busy and server validation. Source `fcc35a9be3365193996e603cbf2a624eb9626b68` passed exact-SHA [Actions 40038794768](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40038794768); Worker `502d9941-4f90-4317-ab04-8a0a3f0651b3`.
+- On descendant `099a77c30352774511d07bfd5ade43460f9875ab`, the focused real Worker/D1 browser command `npm run test:browser -- --grep 'P0 F[12]:' --workers=1` passed 2/2, covering repeated harmless polling and Halberd / Overindulgence submission during an older committed reveal. The same descendant passed exact-SHA [Actions 40040588051](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40040588051) and deployed Worker `7d52ff19-48de-41b6-9ca7-7e13e2db7acc`; direct production `/api/health` returned `{"ok":true,"worker":"available"}` and `/` returned 200.
+- Status is **IMPLEMENTED / DEPLOYED — PENDING OWNER REAL-iPHONE RE-REVIEW**. This focused regression is not a claim of a fresh owner phone replay of the complete Duel/Retaliation sequence.
+
+### UX2 §10.22 S1 — Reusable Harvest stage shell and placement — 2026-10-24
+
+- Source `099a77c30352774511d07bfd5ade43460f9875ab` extracts Harvest's pure lane/top placement helpers and `BattlefieldChoiceStage` wrapper while preserving the existing adapter, controls and event flow. The 390×700 before/after phone geometry for table/stage/panel/H4/timer matched; focused real-Worker Harvest choice and reveal/MOVE browser checks passed. Targeted build passed; ESLint had zero errors and three existing Hook warnings.
+- Exact-SHA [Actions 40040588051](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40040588051) passed API, lint/fast, browser startup/room smoke, deployment and production smoke. Worker `7d52ff19-48de-41b6-9ca7-7e13e2db7acc`; direct `/api/health` returned `{"ok":true,"worker":"available"}`. Known Harvest geometry failures were reproduced unchanged on base `9cc450b`; they remain limitations, not S1 changes.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**. S2 is the next bounded task; no owner phone acceptance is inferred.
+
+### UX2 §10.22 S2 — Reusable public CardPoolPanel — 2026-10-24
+
+- Source `3b75703b354676036d0955856a71bb018a136a48` extracts Harvest's public-card row, available/taken/selected state, independent Info control, optional swipe cue and pinned Confirm footer into `app/card-pool-panel.tsx`. Harvest supplies only projected public CardFaces and retains `CurrentAction`-gated selection and submit callbacks. Existing Harvest classes, IDs, card geometry, status labels and CSS are preserved; no gameplay or permission behavior changed.
+- Mobile browser evidence: five/eight-seat public pool geometry, touch swipe and Info passed 1/1 using the existing Harvest density scenario narrowed to these phone cases; real server chooser/Confirm and four-viewer NEG-A1 readonly/identity checks passed 2/2. The broader pre-existing density scenario still fails at the first 4-seat/390×700 one-card case on the documented 1px pool/timer overlap reproduced on base `9cc450b`; this S2 extraction changes no geometry and leaves that assertion intact. Production build passed; targeted ESLint had 0 errors and 3 existing Hook warnings.
+- Exact-SHA [Actions `40042140294`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40042140294) passed API, lint/fast, browser startup/room smoke, deploy and production smoke. Worker `89e4983f-f811-47bb-a64c-1fd9c1745aa6`; direct production `/api/health` returned `{"ok":true,"worker":"available"}` and `/` returned HTTP 200.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**. S3 is next; owner acceptance is not inferred.
+
+### UX2 §10.21 TGT-A2 — five-seat mobile ordinary Attack affordance — 2026-10-24
+
+- The approved five-seat phone behavior is implemented in `a9fccfa73dc82edc9e30f4ba992132ac2ece20eb` and present in deployed descendant `9912674ec273c1f0940c9c694c7611e896202b49`. Exact-SHA [Actions 40052561794](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40052561794) passed lint/fast, API, browser smoke, deployment and production smoke; deployed Worker `6e6d4350-88d3-4015-bc99-4dab9c529861`.
+- The focused mobile Playwright group passed 13/13 across 390×700, 390×844, 440×766, 440×894 and 480×900, covering target selection/retap, invalid-target rejection, Inspector/Details, TEST SWITCH and four/six/eight-seat control retention. The current suite's obsolete central Attack Response assertion was updated to verify local Inspector closure and authoritative response actor transfer. This status is **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**; no phone acceptance is inferred.
+
+### UX2 §10.17.3 BCP-3 — Sima Yi Retaliation selection and Skip controls — 2026-10-24
+
+- Existing implementation `f0df9b6` provides the compact phone picker, retap-to-deselect, no redundant Cancel, legal Use/Skip side-by-side, and actor-only opaque hand-position choices. Focused real Worker/D1 Playwright tests passed 2/2 at 390×700 and 440×766, proving authorized selection/Skip, privacy, inspection without action, and single submit.
+- Exact-SHA [Actions 40054343222](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40054343222) passed lint/fast, API, browser smoke, deployment and production smoke for descendant `e6c8551850be0a6f6af2178498b7379a4e240b8a`; Worker `cfaf3ef0-5e32-4e16-8520-37f887812bc1`, production `/api/health` and `/` returned 200. Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**; no acceptance is inferred.
+
+### UX2 §10.17.4 HUD-4 — fixed opponent Equipment slots and diagonal sword — 2026-10-24
+
+- Fixed four-slot footprints were implemented in `5a8505e`; the clearer diagonal blade/crossguard/grip/pommel glyph was refined in `e2e645f`. The focused `tests/browser/u13-d-f-opponent-hp-gear.spec.mjs` passed 47/47, covering 0–4 equipment, horse-only/weapon-only, equip/replace/discard, five phone sizes from 390–480px, 6/8/10-seat side columns and sword geometry.
+- Both changes are present in deployed descendant `e6c8551850be0a6f6af2178498b7379a4e240b8a`; exact-SHA [Actions 40054343222](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40054343222) passed all required checks and deployed Worker `cfaf3ef0-5e32-4e16-8520-37f887812bc1`; production health/root returned HTTP 200. Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**, not accepted.
+
+### UX2 §10.12.6 L5-F — generated-Duel result lifetime through damage triggers — 2026-10-24
+
+- Current Worker/D1 reproduction used authenticated four-viewer mobile games and reproduced both the committed-Attack chain and immediate decline→damage→Legacy Skip gaps. Root cause crossed the public settlement projection, same-root damage continuation, delayed first-paint expiration and H4 placement after mobile reflow.
+- The source fix retains only the exact public settlement through a bounded 8-second reconnect buffer and proven child DAMAGE continuation, gives each viewer a two-second hold from its first visible paint, recalculates mobile H4 geometry after the centre card clears, and lets a newer committed root supersede the result. It does not change game deadlines, legality, privacy or card conservation.
+- Three authenticated Worker/D1 repeats passed all 9 focused L5 cases. Normal first paint was 12–983ms; late reconnect first paint was 2,543–2,577ms and stayed visible 2,014–2,027ms. The decline/damage/Skip branch painted across four phone sizes at 390×700–440×956 for 2,002–2,041ms with 0–36ms maximum hidden gap. Four viewers received the same public proof; the unspent Peach remained owner-private. The fixture exposes no Standard LUST damage-prevention provider, so no prevented-damage game result is claimed.
+- Exact deployed source `c0529f3c197fafcac628b2843085f70ffd969685` passed [Actions 40073732791](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40073732791), including API, lint/fast, browser smoke and Worker deployment. Worker `766e3ff0-d7de-4eb4-a891-a924396c8a73`; production health and root returned HTTP 200. **IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE RE-REVIEW**; no user acceptance is inferred.
+
+### UX2 §10.9 W2 — shared proof-fed public Card Frames — 2026-10-24
+
+- Source `2b99e7b4e05dc41b86c81185b83ca6e22e76fdad` adds a validated public-proof view and reusable responsive 1/2/N CardFace frame, event/card/activation/material-owner identifiers, accessible frame details, and exact-event duplicate notice suppression. Diao Chan's existing LUST cost frame uses it as the first baseline. For supported single-owner groups, physical history follows the actual material owner's Seat.
+- Authenticated Worker/D1 mobile L5 passed across four concurrent viewers at 390×700, 390×844, 440×766 and 480×900, plus a 440×894 late join with reduced motion. It checked public card identity and owner parity, the genuine one-card frame, owner-seat parking, retained history through refresh/reconnect, rapid real Duel responses, and the legal next response. The narrow-phone terminal result keeps the established center while increasing from 224px to 260px where the earlier width no longer fits the final copy. Focused Deflection regressions passed 2/2; frame layout/factory tests passed 4/4; production build and `git diff --check` passed. Focused ESLint reported zero errors and 16 Hook-dependency warnings.
+- Exact-SHA [Actions 40080892236](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40080892236) passed lint/fast, API, browser startup/room smoke, D1 migration, Worker deployment and production smoke. Worker `dcc9d350-68bf-4fb5-b262-02784f714eb3`; direct production `/api/health` returned `{"ok":true,"worker":"available"}` and `/` returned HTTP 200. Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**. W3 is the next bounded §10.9 slice; no user acceptance is inferred.
+
+### UX2 §10.9 W4 — Hua Tuo First Aid AS PEACH conversion frame — 2026-10-24
+
+- Source `f8d002f9b03331f57e6d7585cf43dcc8313c6c74` adds a proof-gated W2 Frame for the exact public First Aid conversion event, retaining the genuine red non-Peach physical card, Hua Tuo as activation/material owner, actual Dying target, and AS PEACH meaning. It changes no server rule or legal response path and fabricates no Peach CardFace.
+- Four authenticated Worker/D1 viewers passed the focused mobile browser scenario (1/1) at 390×844 and 440×894. It verified matching public identity/frame/narration, actual rescue completion, true actor Seat/Dock parking, one announcement and private unspent Hand identity. `npm run build` and `git diff --check` passed.
+- Exact release SHA `48e2853c6ee5c87e29892967f7bdfbeabb7e16ca` passed [Actions `40120389446`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40120389446), including lint/fast, API, browser smoke, D1 migration, Worker deployment and production smoke. Worker `e060f574-06ec-4662-ae85-153b977c3126`; direct production `/` and `/api/health` returned HTTP 200 with `{"ok":true,"worker":"available"}`. Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**; no acceptance inferred.
+
+### UX2 §10.9 W4-F2 — Braveheart Dodge AS ATTACK — 2026-10-25
+
+- Exact source SHA `ee45af2e8b1df7039db821e8edce7e54bc89f0fb` adds the proof-gated `BRAVEHEART · DODGE AS ATTACK` frame only for the real Zhao Yun Dodge card used as an Attack in the active Play Phase. The public source/target and existing authoritative response remain intact; ordinary or mismatched proof stays on the generic Attack presentation.
+- Focused authenticated mobile browser regression passed 2/2 at 390×844 for Zhao Yun and an independent observer, verifying the identical physical Dodge CardFace/frame/narration, legal target Dodge, privacy and announcement geometry. Build passed.
+- Exact-SHA [Actions `40149627373`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40149627373) passed lint/fast, API, browser startup/room smoke, D1 migration, Worker deployment and production smoke. Worker `cc6b2005-d6fc-4ac6-b1cd-dc41b76fca31`; production `/` and `/api/health` returned HTTP 200, health `{"ok":true,"worker":"available"}`. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**; no acceptance inferred.
+
+### UX2 §10.9 W4-F3 — Braveheart Attack AS DODGE in Attack response — 2026-10-25
+
+- Exact source SHA `5967adb3e8808f189bd5caaf56f42671009bedcb` proof-gates the `BRAVEHEART · ATTACK AS DODGE` Frame to the genuine Zhao Yun physical Attack card played as Dodge, its exact committed response event, and the server-proven original Attack root/target. Existing authoritative response, card identity, source/target, privacy and turn flow are unchanged.
+- Focused authenticated phone browser regression passed 1/1 at 390×844 with Zhao Yun and an independent observer. Both saw the same real Attack CardFace, conversion Frame/narration and legal response; unspent Hand identity stayed private and announcement did not overlap the frame. `npm run build` passed.
+- Exact-SHA [Actions `40150717558`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40150717558) passed API, lint/fast, browser startup/room smoke, D1 migration, Worker deployment and production smoke. Worker `c48a01ed-934d-4070-b567-49f832cb706d`; direct production `/` and `/api/health` returned HTTP 200, health `{"ok":true,"worker":"available"}`. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**; no owner acceptance inferred.
+
+### UX2 §10.9 W4-F6 — Da Qiao Captivating AS OVERINDULGENCE — 2026-10-25
+
+- Source `6a80c7c5f60730c56a46bba699af3cc66932f92a` binds the authentic Diamond play and Da Qiao's public conversion proof to the semantic Overindulgence Negation root, keeping the actual target and final Judgement/Discard lifecycle. The shared Frame/narration appears consistently for actor, target and observer. No gameplay rule or legal-action change.
+- Da Qiao API coverage passed 16/16. Focused mobile browser passed 1/1 at 390×844 across three viewer identities; the public projection kept private hand IDs absent while the responding observer retained their own legal Negation option. Build, targeted ESLint (zero errors; three existing Hook warnings), and `git diff --check` passed.
+- Exact-SHA [Actions `40160617069`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40160617069) passed API, lint/fast, browser startup/room smoke, D1 migration, Worker deployment and production smoke. Worker `29a86931-2b47-4d81-af75-91d00218d4cf`; direct production `/` and `/api/health` returned HTTP 200 with `{"ok":true,"worker":"available"}`. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**; no acceptance inferred.
+
+### UX2 §10.9 W4-F7 — Yue Jin Dauntless target Equipment EFFECT frame — 2026-10-25
+
+- Source `2131052c4967e7d83053ce30a1b9d2092cd25f4c` adds a separate proof-gated public Frame for the target's committed Equipment discard. It validates the unique event and snapshot proofs, exact Equipment CardFace and Equipment→Discard material, Yue Jin activation owner, affected-player material owner, and `DAMAGE_PREVENTED`; the genuine card parks at the affected player's Seat/Dock. No server rule, choice, privacy, or legality changed.
+- The existing four-viewer mobile Dauntless browser test passed 1/1 at 390×844, including the target-owned EFFECT Frame, Seat/Dock parking, no-damage outcome and private unspent Hands. `npm run build` passed; targeted ESLint had zero errors and three existing Hook warnings; `git diff --check` passed.
+- Exact-SHA [Actions `40161339965`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40161339965) passed API, lint/fast, browser startup/room smoke, D1 migration, Worker deployment and production smoke. Worker `981c8d60-d419-4546-b635-e77f2970f547`; Actions smoke passed production `/` and `/api/health`. Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**; no phone acceptance is inferred.
+
+### UX2 §10.9 W4-F8 — Sima Yi Necromancy JUDGEMENT replacement frame — 2026-10-25
+
+- Source `5275756d2a79d39c411b6a11f994f9ca0610c41d` shows only the genuine committed replacement CardFace under the proven `sima_yi_guicai` JUDGEMENT proof and shared W2 frame. Original/replacement Judgement identities, authoritative final Judgement/Discard transitions, privacy and one revelation are preserved; game rules are unchanged.
+- Focused authenticated mobile browser regression passed 1/1 at 390×844 with Sima Yi and an independent observer, checking matching real CardFace/frame/owner, one announcement, no overlap, and hidden-Hand privacy. Build, focused ESLint (0 errors; 16 existing Hook-dependency warnings) and `git diff --check` passed.
+- Exact-SHA [Actions `40163024440`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40163024440) passed API, lint/fast, browser startup/room smoke, D1 migration, Worker deployment and production smoke. Worker `2e82235b-687c-49bd-b958-2b5d65422b8e`; direct production `/` and `/api/health` returned HTTP 200, health `{"ok":true,"worker":"available"}`. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**; no acceptance inferred.
+
+### UX2 §10.9 W4 — Xiahou Dun Stauchness discard COST frame — 2026-10-25
+
+- Source `b9b207699e54c22f9f81af8d1658168ae29ec6d8` shows the two genuine Hand CardFaces only after the unique public `xiahou_dun_ganglie` COST proof confirms the linked root, actual source-owned Hand→Discard movement and `SOURCE_DISCARDED_TWO` outcome. Xiahou Dun remains the skill actor; the damage source owns and parks the materials. The take-damage branch has no fabricated cost Frame; gameplay authority and rules are unchanged.
+- Focused real-gameplay mobile regression passed 2/2 at 390×844, covering both choices and all three relevant viewers (skill actor, payer and observer), exact card identities/owners, one announcement and private-Hand isolation. Local build and `git diff --check` passed; targeted ESLint had zero errors and three existing Hook-dependency warnings.
+- Exact-SHA [Actions `40164369644`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40164369644) passed lint/fast, API, browser startup/room smoke, D1 migrations, Worker deployment and production smoke. Worker `f2cea127-8470-495e-a707-ba016b0f5521`; direct production `/` and `/api/health` returned HTTP 200 with `{"ok":true,"worker":"available"}`. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**; no owner acceptance inferred.
+### UX2 §10.9 W5 — Rock Cleaving Axe two-card COST Frame — 2026-10-25
+
+- Source `ae0ae940aad953b9d1764881a91d78365017c5e0` adds a fail-closed shared W2 Frame for the unique proven `rock_cleaving_axe_attack_dodged` COST event, validating the linked Attack root, true activation owner and target, and both genuine Hand/Equipment→Discard CardFaces. It preserves the original Attack/Dodge and force-hit continuation, the equipped Axe, and private unspent Hands; no gameplay rules changed.
+- The focused authenticated mobile real-gameplay regression passed 1/1 at 390×844 for attacker, target and observer, including identical two-card frame/narration, true Dodge and HP result, and privacy. Build and `git diff --check` passed; targeted ESLint had zero errors and three Hook-dependency warnings.
+- Exact-SHA [Actions `40165496466`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40165496466) passed lint/fast, API, browser startup/room smoke, D1 migrations, Worker deployment and production smoke. Worker `7f8f06e4-a0fe-4abb-8263-b4c9da156c38`; direct production `/api/health` returned `{"ok":true,"worker":"available"}` and `/` returned HTTP 200. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**; no user acceptance inferred.
+
+### UX2 §10.9 W5 — Kirin Bow target-Mount EFFECT Frame — 2026-10-25
+
+- Source `39b44e16eb75697d3eb204821319414238cc5c1d` admits only a unique committed target-owned Equipment→Discard Mount event whose raw and projected `kirin_bow_damage_about_to_apply` proofs match the genuine original Attack/root resolution, activation owner, target and `MOUNT_DISCARDED_DAMAGE_CONTINUES` outcome. The shared W2 Frame shows the real Mount and truthful damage continuation while parking it at the target-owner Seat; gameplay, legal responses and private Hands are unchanged.
+- Focused authenticated mobile real-gameplay regression passed 1/1 at 390×844 for attacker, target and observer: all saw the same Shadowrunner Frame and announcement, the target lost the Mount, damage resolved and unspent Hands stayed private. Build passed; targeted ESLint had zero errors and three existing Hook warnings; `git diff --check` passed.
+- Exact-SHA [Actions `40166206959`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40166206959) passed lint/fast, API, browser startup/room smoke, D1 migrations, Worker deployment and production smoke. Worker `93b8cd79-e36b-46aa-8dae-9da2ba111c51`; direct production `/api/health` returned `{"ok":true,"worker":"available"}` and `/` returned HTTP 200. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**; no user acceptance inferred.
+
+### UX2 §10.9 W5 — Yin-Yang Swords target-discard EFFECT Frame — 2026-10-25
+
+- Source `1edee84047f76966880c6cc7949e4167c5886df4` gates the public Frame on the exact committed target-owned Hand→Discard proof linked to the real Attack root in both raw event and projected snapshot. It presents the genuine discarded CardFace at the target's Seat after commit; the unchosen Hand identity and attacker's private Draw 1 remain private. Game rules, legal Dodge and server authority are unchanged.
+- Focused authenticated Worker/D1 mobile regression passed 1/1 at 390×844: attacker, target and observer saw the same CardFace/frame/announcement; pre-commit and remaining Hand identities stayed private; the target completed the real Dodge response without damage. Build passed; targeted ESLint had 0 errors and three existing Hook warnings; `git diff --check` passed.
+- Exact-SHA [Actions `40167157872`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40167157872) passed lint/fast, API, browser startup/room smoke, D1 migration, Worker deployment and production smoke. Worker `000ac9fe-ba4e-4406-a9ca-36392a07d4db`; production `/` returned HTTP 200 and `/api/health` returned `{"ok":true,"worker":"available"}`. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**; no owner acceptance inferred.
+
+### UX2 §10.9 W3-F2-R1 — committed Negation chain during TEST SWITCH — 2026-10-25
+
+- Focused authenticated Worker/D1 mobile regression on a real committed Negation/counter-Negation chain during viewer switching reproduced the public announcement becoming hidden after the viewer layout changed. The correction invalidates stale viewer geometry and reruns the existing bounded safe-placement search only when the layout viewer changes; card ownership, event identity, legal responses, privacy and gameplay rules are unchanged.
+- Code source `94a3297206be4027331d6849aa22e7c79b42994a`; a subsequent lint-only repair removes an unused test callback argument at `9770ca21f53bc5a33bbbd2a732aab33b81fa98ea`. The exact source SHA's [Actions `40169042442`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40169042442) passed lint/fast, API, browser startup/room smoke, D1 migration, deployment and production smoke. Worker `1a379b16-5f3a-4c3c-8e4e-f6fc2e64f2ba`; production `/` and `/api/health` returned HTTP 200, with `{"ok":true,"worker":"available"}`.
+- `npm run build`, `node --check tests/browser/test-mode-viewer-switch-real-gameplay.spec.mjs`, targeted ESLint and `git diff --check` passed. The focused regression failed before the correction and captured the unsafe announcement state; post-fix focused browser verification was **SKIPPED — five-minute local UI limit reached**. GitHub's browser smoke covers room startup, not this new regression. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW; post-fix visual behavior remains unverified.**
+
+### UX2 §10.9 W5 — Serpent Spear AS ATTACK conversion Frame — 2026-10-25
+
+- Feature source `1be2e8c79fed2658797a66c97f7c1c5e1afababd` presents the two genuine Hand materials as one Serpent Spear `AS ATTACK` Frame, without an invented physical Attack CardFace. Proof gates preserve the actual root source/target, normal Dodge continuation, real card identities/owners and private remaining Hands; no server rules or legal actions changed.
+- Focused authenticated Worker/D1 phone-viewport browser regression passed 1/1 at 390×844 across actor, target and observer, including the target's real Dodge and public/private identity checks. Build and focused API equipment tests passed; the mobile browser run stayed within the five-minute UI-test cap.
+- The feature commit's initial Actions run `40170719201` failed lint and API tests. Two lint errors were corrected in `a742f0aba4137c42e91fdea35c35fbe55611b48b`; exact-SHA [Actions `40170972100`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40170972100) then passed lint/fast, API, browser startup/room smoke, Worker deployment and production smoke. Deployed Worker `fb48eb68-1fb8-481e-8227-612396af93cf`; direct production `/` returned HTTP 200 and `/api/health` returned `{"ok":true,"worker":"available"}`. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**; no acceptance inferred.
+
+### UX2 §10.9 W5 — Frost Sword target-forced DISCARD EFFECT Frame — 2026-10-25
+
+- Source `cc77190b41fef0199d7092349d48b239917ef3ed` admits only the matching committed raw-event and projected `PROVEN` effects for the unique two-card target-owned Hand/Equipment→Discard event, linked to the exact real Attack root/resolution and `DAMAGE_PREVENTED` outcome. The Frame uses those two physical CardFaces, attributes activation to the Frost Sword owner, parks the cards with their target-owner journey, and keeps both players' unspent Hand identities private; no gameplay/rules/legality changed.
+- Focused authenticated Worker/D1 mobile browser regression passed 1/1 at 390×844 for attacker, target and observer, checking exact card IDs, shared narration, damage prevention and private Hands. Local build, `node --check`, targeted ESLint (0 errors; 3 existing Hook warnings) and `git diff --check` passed.
+- Exact-SHA [Actions `40172211440`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40172211440) passed browser startup/room smoke, API, lint/fast, Worker deployment and production smoke. Worker version `8877dc17-a9b6-4279-ac00-5132d1688eee`; direct production `/` and `/api/health` returned HTTP 200 with `{"ok":true,"worker":"available"}`. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**; no owner acceptance inferred.
+
+### UX2 §10.8.2.2 H2-G3 F2-R2 — fixed-size mobile Inspector (technical delivery; owner review pending) — 2026-10-28
+
+- Source `35a785364cd893049b4bff186f72b7ee324fb40c` moves the 6/8-seat phone Inspector identity and skills beside a taller genuine portrait and aligns the two Judgement plus four Equipment slots in a shared lower strip, preserving the original outer frame. It changes no seat direction, game rules, server authority or privacy projection.
+- Focused phone-sized checks passed at 390×700 (six-seat long names/skills and Inspector geometry) and 390×844 (eight-seat Inspector geometry); both frames stayed within 0.15 CSS px of their baseline and six slot sizes matched within 1 px. Build and diff check passed; targeted ESLint had zero errors and two existing Hook warnings.
+- Exact-SHA [Actions `40606189056`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40606189056) passed browser startup/room smoke, lint/fast, API, D1 migration, Worker deploy and production smoke. Worker `344ea0ab-8dfb-429c-8ed8-b89d3a3991bf`; production `/` and `/api/health` returned HTTP 200. Status: **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**; no owner acceptance inferred.

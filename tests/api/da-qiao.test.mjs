@@ -2,6 +2,8 @@ import test from "node:test";
 import { attackRootProjectionDiagnosticsFor, projectPresentationV2 } from "../../game/presentation-v2.ts";
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
+import { derivePublicActivityStatus, derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { publicDiscardAnnouncement, routePublicDiscardTransition } from "../../app/public-discard-transition.ts";
 import {
   advanceNegationWindow, assert, card, createHumanGame, discardIds, passNegationWindows, query, quote, request, requestAndSettle, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state,
 } from "./test-support.mjs";
@@ -142,6 +144,15 @@ test("Captivating uses one Diamond hand card as Overindulgence and preserves its
   const used = await requestAndSettle("trigger", { code: game.code, token: daqiaoMember.token, providerId: "daqiao_captivating", cardIds: [diamond.id], targetId: target.id });
   assert.equal(used.status, 200, JSON.stringify(used.data));
   const captivatingEvent = used.data.room.timeline.find((event) => event.type === "card" && event.card?.id === diamond.id);
+  const attachedTransition = used.data.room.timeline.find((event) => event.publicZoneTransition?.physicalCardId === diamond.id
+    && event.publicZoneTransition.to?.zone === "JUDGEMENT");
+  assert.ok(attachedTransition, "the committed delayed card gets one public transition into Judgement");
+  assert.deepEqual(attachedTransition.publicZoneTransition.from, { zone: "HAND", ownerId: daqiao.id });
+  assert.deepEqual(attachedTransition.publicZoneTransition.to, { zone: "JUDGEMENT", ownerId: target.id });
+  assert.equal(attachedTransition.publicZoneTransition.sourceEventId, captivatingEvent.id,
+    "the real committed source card supplies the public CardFace");
+  assert.equal(attachedTransition.publicFact?.category, "STAGE_COMPLETED");
+  assert.equal(attachedTransition.publicFact?.rootEventId, attachedTransition.publicZoneTransition.rootEventId);
   assert.deepEqual(captivatingEvent.publicCardEffects?.[0]?.materials, [{ cardId: diamond.id, ownerId: daqiao.id, fromZone: "HAND", toZone: "JUDGEMENT" }],
     "the committed conversion proof settles to the delayed card's actual Judgement Zone");
   assert.equal(captivatingEvent.publicCardEffects?.[0]?.activationOwnerId, daqiao.id);
@@ -150,18 +161,207 @@ test("Captivating uses one Diamond hand card as Overindulgence and preserves its
   const placed = (await state(game.code, targetMember.token)).data;
   const delayed = placed.players.find((player) => player.id === target.id).judgementCards;
   assert.deepEqual(delayed, [{ ...diamond, kind: "Overindulgence" }]);
+  const allViewerStates = await Promise.all(game.members.map((member) => state(game.code, member.token)));
+  for (const viewerResponse of allViewerStates) {
+    const viewer = viewerResponse.data;
+    assert.deepEqual(viewer.timeline.find((event) => event.id === attachedTransition.id)?.publicZoneTransition, attachedTransition.publicZoneTransition,
+      "all viewers receive the same committed public attachment proof");
+  }
   assert.equal(placed.players.find((player) => player.id === daqiao.id).handCount, 1);
   assert.equal(discardIds(game.code).includes(diamond.id), false);
   assert.equal(countCardInZones(game.code, diamond.id), 1);
 
   setTurn(game.code, target.seat, "draw");
-  setDeck(game.code, [{ ...card("Dodge", "captivating-black-judge"), suit: "♠", rank: "9" }, card("Attack", "captivating-draw-a"), card("Dodge", "captivating-draw-b")]);
+  const judgeCard = { ...card("Dodge", "captivating-black-judge"), suit: "♠", rank: "9" };
+  setDeck(game.code, [judgeCard, card("Attack", "captivating-draw-a"), card("Dodge", "captivating-draw-b")]);
   const resolved = await requestAndSettle("draw", { code: game.code, token: targetMember.token });
   assert.equal(resolved.status, 200, JSON.stringify(resolved.data));
   assert.equal(resolved.data.room.phase, "discard", "a black Overindulgence judgement skips the target's Play Phase");
   assert.equal(resolved.data.room.players.find((player) => player.id === target.id).judgementCards.length, 0);
+  const revealedEvent = resolved.data.room.timeline.find((event) => event.type === "card" && event.action === "reveal"
+    && event.judgement === true && event.card?.id === judgeCard.id);
+  assert.ok(revealedEvent, "the real Deck card is committed as the public Judgement reveal");
+  const publicFacts = [
+    ...(resolved.data.room.presentationSnapshot?.publicEventFacts ?? []),
+    ...(resolved.data.room.presentationSnapshot?.retainedPublicEventFacts ?? []),
+  ];
+  const revealFact = publicFacts.find((fact) => fact.eventId === revealedEvent.id);
+  assert.equal(revealFact?.category, "EFFECT_APPLIED");
+  assert.equal(revealFact?.actorId, target.id);
+  assert.equal(revealFact?.effect?.kind, "judgement");
+  assert.equal(derivePublicActivityStatus({ ...resolved.data.room, status: "playing", activePublicJudgementEventId: revealedEvent.id }).kind,
+    "judgement", "PAC follows the exact public reveal while that event is presented");
+  const judgementResultEvent = resolved.data.room.timeline.find((event) => event.type === "message"
+    && event.publicFact?.effect?.kind === "judgement" && event.publicFact?.outcomeLabel?.includes(`${target.name} revealed`));
+  assert.ok(judgementResultEvent, "the committed result has a typed public Judgement fact");
+  const resultFact = publicFacts.find((fact) => fact.eventId === judgementResultEvent.id);
+  assert.equal(resultFact?.outcomeLabel, `${target.name} revealed 9♠ Dodge. The result is not a Heart, so the Play Phase is skipped. Overindulgence ends.`);
+  const resultNarration = derivePublicInteractionNarration({
+    snapshot: resolved.data.room.presentationSnapshot,
+    players: resolved.data.room.players,
+    rootEventId: resultFact.rootEventId,
+    interactionId: resultFact.identity.interactionId,
+    rootFrameId: resultFact.identity.rootFrameId,
+    eventId: resultFact.eventId,
+  });
+  assert.equal(resultNarration?.headline, resultFact.outcomeLabel,
+    "H4 names the committed result and skips Play Phase without waiting for the discard route");
+  const viewerStates = await Promise.all(game.members.map((member) => state(game.code, member.token)));
+  for (const viewerResponse of viewerStates) {
+    const viewerTimeline = viewerResponse.data.timeline;
+    assert.equal(viewerTimeline.filter((event) => event.type === "card" && event.action === "reveal"
+      && event.judgement === true && event.card?.id === revealedEvent.card.id).length, 1,
+    "all viewers receive one public reveal for the same physical Judgement card");
+    assert.deepEqual(viewerTimeline.find((event) => event.id === judgementResultEvent.id)?.publicFact,
+      resolved.data.room.timeline.find((event) => event.id === judgementResultEvent.id)?.publicFact,
+    "all viewers receive the same public result fact");
+  }
+  const settledTransition = resolved.data.room.timeline.find((event) => event.publicZoneTransition?.physicalCardId === diamond.id
+    && event.publicZoneTransition.from?.zone === "JUDGEMENT" && event.publicZoneTransition.to?.zone === "DISCARD");
+  assert.ok(settledTransition, "later public Judgement resolution proves the delayed card's committed Discard destination");
+  assert.deepEqual(settledTransition.publicZoneTransition.from, { zone: "JUDGEMENT", ownerId: target.id });
+  assert.deepEqual(settledTransition.publicZoneTransition.to, { zone: "DISCARD", ownerId: null });
+  const reloaded = (await state(game.code, game.members[2].token)).data;
+  assert.equal(reloaded.timeline.filter((event) => event.id === settledTransition.id).length, 1,
+    "a reconnect-style state reload retains exactly one copy of the committed transition");
+  assert.deepEqual(reloaded.timeline.find((event) => event.id === settledTransition.id)?.publicZoneTransition,
+    settledTransition.publicZoneTransition, "replay keeps the same public source and destination proof");
   assert.ok(discardIds(game.code).includes(diamond.id), "the converted physical card is discarded after resolution");
   assert.equal(countCardInZones(game.code, diamond.id), 1);
+});
+
+test("Diao Qiao Overindulgence publishes a single 2 club reveal with current PAC and truthful H4", async () => {
+  const game = await createHumanGame();
+  const [source, daqiao, third, fourth] = game.room.players;
+  const [sourceMember, daqiaoMember] = [game.members[0], game.members[1]];
+  sql(`UPDATE players SET hero='cao-cao', hp=4, max_hp=4 WHERE id=${quote(source.id)}`);
+  sql(`UPDATE players SET hero='daqiao', hp=3, max_hp=3 WHERE id=${quote(daqiao.id)}`);
+  sql(`UPDATE players SET hero='zhao-yun', hp=4, max_hp=4 WHERE id=${quote(third.id)}`);
+  sql(`UPDATE players SET hero='lü-meng', hp=4, max_hp=4 WHERE id=${quote(fourth.id)}`);
+  const delayed = card("Overindulgence", "t7-daqiao-overindulgence");
+  setHand(source.id, [delayed], 4, 4);
+  setHand(daqiao.id, [], 3, 3); setHand(third.id, [], 4, 4); setHand(fourth.id, [], 4, 4);
+  for (const player of [source, daqiao, third, fourth]) { setEquipment(player.id); setJudgement(player.id, []); }
+  setTurn(game.code, source.seat, "play");
+  const played = await requestAndSettle("play_card", {
+    code: game.code, token: sourceMember.token, cardId: delayed.id, targetId: daqiao.id,
+  });
+  assert.equal(played.status, 200, JSON.stringify(played.data));
+
+  setTurn(game.code, daqiao.seat, "draw");
+  const judgeCard = { ...card("Attack", "t7-daqiao-2-club-attack"), suit: "♣", rank: "2" };
+  setDeck(game.code, [judgeCard, card("Dodge", "t7-daqiao-draw-a"), card("Peach", "t7-daqiao-draw-b")]);
+  const settled = await requestAndSettle("draw", { code: game.code, token: daqiaoMember.token });
+  assert.equal(settled.status, 200, JSON.stringify(settled.data));
+  assert.equal(settled.data.room.phase, "discard");
+
+  const reveal = settled.data.room.timeline.find((event) => event.type === "card" && event.action === "reveal"
+    && event.judgement === true && event.card?.id === judgeCard.id);
+  assert.ok(reveal, "the physical 2 club Attack is the committed public reveal");
+  assert.equal(settled.data.room.timeline.filter((event) => event.type === "card" && event.action === "reveal"
+    && event.judgement === true && event.card?.id === judgeCard.id).length, 1);
+  const snapshot = settled.data.room.presentationSnapshot;
+  const facts = [...(snapshot.publicEventFacts ?? []), ...(snapshot.retainedPublicEventFacts ?? [])];
+  const revealFact = facts.find((fact) => fact.eventId === reveal.id);
+  assert.equal(revealFact?.actorId, daqiao.id);
+  assert.equal(revealFact?.outcomeLabel, `${daqiao.name} revealed 2♣ Attack for Overindulgence.`);
+  assert.equal(derivePublicActivityStatus({ ...settled.data.room, status: "playing", activePublicJudgementEventId: reveal.id }).text,
+    `${daqiao.name} is judging Overindulgence.`);
+
+  const resultFact = facts.find((fact) => fact.eventId !== reveal.id && fact.effect?.kind === "judgement"
+    && fact.outcomeLabel?.includes(`${daqiao.name} revealed 2♣ Attack`));
+  assert.ok(resultFact, "the committed outcome survives with the public Judgement fact chain");
+  assert.equal(resultFact.outcomeLabel, `${daqiao.name} revealed 2♣ Attack. The result is not a Heart, so the Play Phase is skipped. Overindulgence ends.`);
+  assert.equal(derivePublicInteractionNarration({ snapshot, players: settled.data.room.players,
+    rootEventId: resultFact.rootEventId, interactionId: resultFact.identity.interactionId,
+    rootFrameId: resultFact.identity.rootFrameId, eventId: resultFact.eventId })?.headline, resultFact.outcomeLabel);
+  const delayedDiscard = settled.data.room.timeline.find((event) => event.publicZoneTransition?.physicalCardId === delayed.id
+    && event.publicZoneTransition.from?.zone === "JUDGEMENT" && event.publicZoneTransition.to?.zone === "DISCARD");
+  assert.ok(delayedDiscard, "the separate Overindulgence card retains its true Discard transition");
+
+  for (const member of game.members) {
+    const viewer = (await state(game.code, member.token)).data;
+    assert.deepEqual(viewer.timeline.find((event) => event.id === reveal.id)?.publicFact, reveal.publicFact);
+    assert.deepEqual(viewer.timeline.find((event) => event.id === resultFact.eventId)?.publicFact,
+      settled.data.room.timeline.find((event) => event.id === resultFact.eventId)?.publicFact);
+    assert.deepEqual(viewer.timeline.find((event) => event.id === delayedDiscard.id)?.publicZoneTransition, delayedDiscard.publicZoneTransition);
+  }
+});
+
+test("E15: committed discard supersedes the completed Overindulgence Judgement for every viewer", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [sima, next, third, fourth] = game.room.players;
+  const [simaMember, nextMember] = game.members;
+  sql(`UPDATE players SET hero='simayi', hp=3, max_hp=4 WHERE id=${quote(sima.id)}`);
+  for (const player of [next, third, fourth]) sql(`UPDATE players SET hp=4, max_hp=4 WHERE id=${quote(player.id)}`);
+  const replacement = { ...card("Attack", "e15-necromancy-replacement"), suit: "♠", rank: "K" };
+  const retained = [card("Dodge", "e15-retained-a"), card("Peach", "e15-retained-b"), card("Steal", "e15-retained-c")];
+  const delayed = { ...card("Overindulgence", "e15-overindulgence"), suit: "♣", rank: "6" };
+  const original = { ...card("Dodge", "e15-original-judgement"), suit: "♦", rank: "K" };
+  const draws = [card("Attack", "e15-draw-a"), card("Duel", "e15-draw-b")];
+  setHand(sima.id, [replacement, ...retained], 3, 4);
+  for (const player of [next, third, fourth]) setHand(player.id, [], 4, 4);
+  for (const player of game.room.players) { setEquipment(player.id); setJudgement(player.id, []); }
+  setJudgement(sima.id, [delayed]);
+  setDeck(game.code, [original, ...draws]);
+  setTurn(game.code, sima.seat, "draw");
+
+  const opened = await request("draw", { code: game.code, token: simaMember.token });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  await passNegationWindows(game.code, game.members);
+  const judgementDecision = (await state(game.code, simaMember.token)).data;
+  assert.equal(judgementDecision.currentAction.actorId, sima.id);
+  assert.equal(judgementDecision.currentAction.triggerEvent, "judgement_revealed");
+  const replaced = await requestAndSettle("trigger", { code: game.code, token: simaMember.token,
+    providerId: "sima_yi_guicai", cardId: replacement.id });
+  assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
+  assert.equal(replaced.data.room.phase, "discard");
+  assert.equal(replaced.data.room.currentAction.actorId, sima.id);
+  assert.equal(replaced.data.room.currentAction.reason, "Discard down to the hand limit");
+  assert.equal(replaced.data.room.myHand.length, 5);
+  const judgementResult = [
+    ...(replaced.data.room.presentationSnapshot?.publicEventFacts ?? []),
+    ...(replaced.data.room.presentationSnapshot?.retainedPublicEventFacts ?? []),
+  ]
+    .find((fact) => fact.effect?.kind === "judgement" && fact.outcomeLabel?.includes("Overindulgence ends."));
+  assert.ok(judgementResult, "the final Judgement is a committed public fact before discard");
+
+  const discarded = await requestAndSettle("discard_cards", { code: game.code, token: simaMember.token,
+    cardIds: [retained[0].id, retained[1].id] });
+  assert.equal(discarded.status, 200, JSON.stringify(discarded.data));
+  const discardEvent = discarded.data.room.timeline.find((event) => event.type === "cards" && event.action === "discard"
+    && event.cards.length === 2 && event.cards.some((held) => held.id === retained[0].id));
+  assert.ok(discardEvent, "the two-card discard is one committed public event");
+  const route = routePublicDiscardTransition({ event: discardEvent, timeline: discarded.data.room.timeline,
+    roomCode: game.code, viewerId: sima.id });
+  assert.ok(route);
+  const announcement = publicDiscardAnnouncement({ event: discardEvent, route, players: discarded.data.room.players });
+  assert.deepEqual(announcement, {
+    eventId: discardEvent.id, actorId: sima.id, order: discardEvent.publicSequence, count: 2,
+    headline: `${sima.name} discarded 2 cards.`, accessibleLabel: `${sima.name} discarded 2 cards.`,
+  });
+  assert.ok(discardEvent.publicSequence > judgementResult.order, "the committed discard supersedes the earlier Judgement H4");
+  assert.equal(discarded.data.room.phase, "draw");
+  assert.equal(discarded.data.room.turnSeat, next.seat);
+  const local = (await state(game.code, simaMember.token)).data;
+  const observer = (await state(game.code, nextMember.token)).data;
+  for (const viewer of [local, observer]) {
+    const sameDiscard = viewer.timeline.find((event) => event.id === discardEvent.id);
+    const viewerRoute = routePublicDiscardTransition({ event: sameDiscard, timeline: viewer.timeline,
+      roomCode: game.code, viewerId: viewer.meId });
+    assert.ok(viewerRoute);
+    assert.deepEqual(publicDiscardAnnouncement({ event: sameDiscard, route: viewerRoute, players: viewer.players }), announcement,
+      "all viewers derive the same public discard H4 from the same event identity");
+    assert.equal(viewer.phase, "draw");
+    assert.equal(viewer.currentAction.actorId, next.id, "private Console authority follows the next viewer-specific action");
+    assert.equal(viewer.actionRevision, discarded.data.room.actionRevision);
+  }
+  const pac = derivePublicActivityStatus({ ...local, status: "playing", activePublicJudgementEventId: null });
+  assert.equal(pac.kind, "turn");
+  assert.equal(pac.text, `${next.name}'s turn`);
+  assert.deepEqual(discardEvent.cards.map(({ id }) => id).sort(), [retained[0].id, retained[1].id].sort());
+  assert.equal(observer.myHand.some((held) => [retained[0].id, retained[1].id].includes(held.id)), false,
+    "discarded card identities are public through the committed transition, not copied into another Hand");
 });
 
 test("Captivating enters the ordinary Overindulgence Negation lifecycle", async () => {
@@ -173,7 +373,12 @@ test("Captivating enters the ordinary Overindulgence Negation lifecycle", async 
   assert.equal(pending.currentAction.requirement, "negate");
   assert.equal(pending.pendingNegation.cardName, "Overindulgence");
   assert.equal(pending.players.find((player) => player.id === opened.target.id).judgementCards.length, 0);
+  assert.equal(JSON.stringify(pending.timeline).includes("negation-captivating-negation"), false,
+    "an uncommitted response card identity is absent from the public timeline");
   const pendingCaptivating = pending.timeline.find((event) => event.type === "card" && event.card?.id === opened.diamond.id);
+  assert.equal(pending.presentationSnapshot.reactionChain?.publicEventLinks?.root?.eventId, pendingCaptivating.id,
+    "the semantic Overindulgence Negation chain links to Captivating's real Diamond play event");
+  assert.equal(pending.presentationSnapshot.reactionChain?.rootCard?.cardKind, "Overindulgence");
   assert.equal(pendingCaptivating.publicCardEffects?.[0]?.materials[0]?.toZone, "PUBLIC_PLAY",
     "the committed card remains in its public resolution stage while Negation is open");
   assert.equal(pending.presentationSnapshot.publicCardEffects.find((proof) => proof.effectId === "daqiao_captivating")?.materials[0]?.toZone, "PUBLIC_PLAY",
@@ -188,6 +393,9 @@ test("Captivating enters the ordinary Overindulgence Negation lifecycle", async 
   const settledCaptivating = negated.data.room.timeline.find((event) => event.type === "card" && event.card?.id === opened.diamond.id);
   assert.equal(settledCaptivating.publicCardEffects?.[0]?.materials[0]?.toZone, "DISCARD",
     "a negated conversion settles to discard instead of claiming Judgement placement");
+  assert.equal(negated.data.room.timeline.some((event) => event.publicZoneTransition?.physicalCardId === opened.diamond.id
+    && event.publicZoneTransition.to?.zone === "JUDGEMENT"), false,
+  "a cancelled placement never emits a false Judgement arrival");
   assert.equal(negated.data.room.presentationSnapshot.publicCardEffects.find((proof) => proof.effectId === "daqiao_captivating")?.materials[0]?.toZone, "DISCARD");
   assert.equal(discardIds(opened.game.code).filter((id) => id === opened.diamond.id).length, 1);
   assert.equal(discardIds(opened.game.code).filter((id) => id === "negation-captivating-negation").length, 1);
@@ -252,6 +460,8 @@ test("Captivating uses Sima Yi's final replacement Judgement result in both dire
     assert.equal(revealed.status, 200, JSON.stringify(revealed.data));
     assert.equal(revealed.data.room.currentAction.triggerEvent, "judgement_revealed");
     assert.equal(revealed.data.room.actionPlayerId, opened.other.id);
+    assert.equal(JSON.stringify(revealed.data.room.timeline).includes(replacement.id), false,
+      "the replacement card remains private while Sima Yi is only being offered the decision");
     const replaced = await requestAndSettle("trigger", { code: opened.game.code, token: opened.otherMember.token, providerId: "sima_yi_guicai", cardId: replacement.id });
     assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
     assert.equal(replaced.data.room.phase, expectedPhase);
@@ -259,6 +469,12 @@ test("Captivating uses Sima Yi's final replacement Judgement result in both dire
     assert.ok(discardIds(opened.game.code).includes(opened.diamond.id));
     assert.ok(discardIds(opened.game.code).includes(original.id));
     assert.ok(discardIds(opened.game.code).includes(replacement.id));
+    const replacedCardTransition = replaced.data.room.timeline.find((event) => event.publicZoneTransition?.physicalCardId === replacement.id
+      && event.publicZoneTransition.from?.zone === "HAND" && event.publicZoneTransition.to?.zone === "DISCARD");
+    assert.ok(replacedCardTransition, "a committed public Sima Yi replacement can be proved into Discard");
+    const revealedCardTransition = replaced.data.room.timeline.find((event) => event.publicZoneTransition?.physicalCardId === original.id
+      && event.publicZoneTransition.from?.zone === "DECK" && event.publicZoneTransition.to?.zone === "DISCARD");
+    assert.ok(revealedCardTransition, "the original public deck reveal is separately proved into Discard");
     assert.equal(countCardInZones(opened.game.code, opened.diamond.id), 1);
   }
 });

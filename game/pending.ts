@@ -45,9 +45,9 @@ export type HarvestParticipantProgress = {
   publicNegationResponses?: HarvestNegationResponseRecord[];
 };
 export type HarvestPending = CausalFields & { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; revealEventId?: string; availableIds?: string[]; choices?: HarvestChoice[]; participantProgress?: HarvestParticipantProgress; previewCardId?: string; choiceDeadlineAt?: number; completeAt?: number; resumePhase: string; reason: string; heldCards?: Card[] };
-export type TargetCardPending = CausalFields & { kind: "target_card"; sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal"; resumePhase: string; reason: string; heldCards?: Card[] };
-export type BorrowedSwordPending = CausalFields & { kind: "borrowed_sword"; sourceId: string; actorId: string; targetId: string; holderId: string; resumePhase: string; reason: string; deadline?: number; weaponId?: string; stage: "choose_target" | "force_attack" };
-export type BorrowedSwordAttackContinuation = CausalFields & { kind: "borrowed_sword_attack"; sourceId: string; holderId: string; targetId: string; resumePhase: string; resumePlayerId: string; weaponId: string; origin: "borrowed_sword" };
+export type TargetCardPending = CausalFields & { kind: "target_card"; sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal"; resumePhase: string; reason: string; heldCards?: Card[]; rootEventId?: string; rootResolutionId?: string; rootCardId?: string; rootCardKind?: CardKind };
+export type BorrowedSwordPending = CausalFields & { kind: "borrowed_sword"; sourceId: string; actorId: string; targetId: string; holderId: string; resumePhase: string; reason: string; deadline?: number; weaponId?: string; rootEventId?: string; rootResolutionId?: string; rootCardId?: string; negationHistory?: NegationHistoryRecord[]; stage: "choose_target" | "force_attack" };
+export type BorrowedSwordAttackContinuation = CausalFields & { kind: "borrowed_sword_attack"; sourceId: string; holderId: string; targetId: string; resumePhase: string; resumePlayerId: string; weaponId: string; rootEventId?: string; rootResolutionId?: string; rootCardId?: string; negationHistory?: NegationHistoryRecord[]; origin: "borrowed_sword" };
 export type DeferredStratagem =
   | { kind: "draw_two"; cardId: string } | { kind: "oath" } | { kind: "harvest"; chooserIds: string[]; rootEventId: string; rootResolutionId: string; rootCardId: string } | { kind: "harvest_target"; pending: HarvestPending } | { kind: "borrowed_sword"; targetId: string }
   | { kind: "dismantle"; targetId: string } | { kind: "steal"; targetId: string } | { kind: "duel"; pending: ResponsePending } | { kind: "group"; pending: GroupResponsePending }
@@ -99,7 +99,7 @@ export function isGroupParticipantProgressOutcomeAllowed(
   if (outcome === "DEFEATED") return cardKind === "RainingArrows" || cardKind === "BarbarianInvasion";
   return false;
 }
-export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; /** Count of server-accepted Attack responses; absent on legacy persisted Duels. */ attackResponseCount?: number; wushuangPlayerId?: string; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } & CausalFields;
+export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; /** Committed originating event, when known. */ rootEventId?: string; damageCards?: Card[]; requiredAttackCount?: number; /** Count of server-accepted Attack responses; absent on legacy persisted Duels. */ attackResponseCount?: number; /** Exact, committed Negation card history carried from the same printed Duel root. */ negationHistory?: NegationHistoryRecord[]; wushuangPlayerId?: string; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } & CausalFields;
 export type NegationHistoryRecord = {
   nodeId: string;
   interactionId: string;
@@ -107,9 +107,11 @@ export type NegationHistoryRecord = {
   causedByNodeId: string | null;
   actorId: string;
   physicalCardId: string;
+  /** Public play event for a physical Negation card, when its commit has a direct event identity. */
+  publicEventId?: string;
   kind: "NEGATION_CARD";
 };
-export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; /** Public root identity from the actual server-owned effective Stratagem card; legacy continuations may omit it. */ rootCardKind?: CardKind; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string; negationHistory?: NegationHistoryRecord[] } & CausalFields;
+export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; /** Public root identity from the actual server-owned effective Stratagem card; legacy continuations may omit it. */ rootCardKind?: CardKind; /** Exact committed event that opened this effect's Negation chain. */ rootEventId?: string; rootResolutionId?: string; rootCardId?: string; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string; negationHistory?: NegationHistoryRecord[] } & CausalFields;
 /** One durable, shared Negation window. Private submissions live in D1 rows keyed by window/player, never in public Pending. */
 export type NegationWindowPending = CausalFields & {
   kind: "negation_window";

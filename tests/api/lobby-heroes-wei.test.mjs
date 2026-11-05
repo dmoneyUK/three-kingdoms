@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { projectPresentationV2 } from "../../game/presentation-v2.ts";
 import {
-  assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, runBotStep, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
+  assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, runBotStep, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
 
 test("test controller accepts displayed Lord and non-first candidates through the normal selection flow", async () => {
@@ -68,10 +69,10 @@ test("Duel test preset keeps physical Standard inventory and test-view selection
   const configured = await requestAndSettle("configure_test_hands", { code, token, presetId: "duel_chain", expectedRevision: 0 });
   assert.equal(configured.status, 200, JSON.stringify(configured.data));
   assert.deepEqual(configured.data.room.testHandPreset.handsBySeat, {
-    0: ["Attack", "Attack", "Attack", "Dodge"],
-    1: ["Duel", "Attack", "Attack", "Dodge"],
-    2: ["Duel", "Attack", "Attack", "Dodge"],
-    3: ["Duel", "Attack", "Attack", "Dodge"],
+    0: ["Duel", "Negation", "Attack", "Dodge"],
+    1: ["Duel", "Negation", "Attack", "Dodge"],
+    2: ["Duel", "Negation", "Attack", "Dodge"],
+    3: ["Negation", "Attack", "Attack", "Dodge"],
   });
 
   let room = (await requestAndSettle("start", { code, token })).data.room;
@@ -91,10 +92,10 @@ test("Duel test preset keeps physical Standard inventory and test-view selection
   assert.equal(room.deckCount + allHandCards.length, 108, "opening hand allocation conserves all 108 Standard cards");
   for (const held of allHandCards) assert.equal(roomCardCount(code, held.id), 1, `${held.id} appears in exactly one live room zone`);
   const presetBySeat = {
-    0: ["Attack", "Attack", "Attack", "Dodge"],
-    1: ["Duel", "Attack", "Attack", "Dodge"],
-    2: ["Duel", "Attack", "Attack", "Dodge"],
-    3: ["Duel", "Attack", "Attack", "Dodge"],
+    0: ["Duel", "Negation", "Attack", "Dodge"],
+    1: ["Duel", "Negation", "Attack", "Dodge"],
+    2: ["Duel", "Negation", "Attack", "Dodge"],
+    3: ["Negation", "Attack", "Attack", "Dodge"],
   };
   for (const [seatText, kinds] of Object.entries(presetBySeat)) {
     const seat = Number(seatText);
@@ -339,6 +340,11 @@ test("Guo Jia Jealousy of God waits for the final Judgment card and handles Necr
   const acceptedResult = await requestAndSettle("trigger", { code: accepted.game.code, token: accepted.guoMember.token, providerId: "guo_jia_jealousy_of_god" });
   assert.equal(acceptedResult.status, 200, JSON.stringify(acceptedResult.data));
   assert.ok(acceptedResult.data.room.myHand.some((held) => held.id === replacement.id), "the replacement Judgment card enters Guo Jia's hand");
+  const jealousyArrival = acceptedResult.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === replacement.id);
+  assert.equal(jealousyArrival?.privateHandTransfer?.sourceZone, "judgement");
+  assert.equal(jealousyArrival?.privateHandTransfer?.recipientId, accepted.guo.id);
+  const jealousyObserver = (await state(accepted.game.code, accepted.simaMember.token)).data;
+  assert.equal(jealousyObserver.timeline.some((event) => event.privateHandTransfer), false, "only Guo Jia receives the private Hand arrival receipt");
   assert.equal(roomCardCount(accepted.game.code, original.id), 1, "the original revealed card remains exactly once after normal discard/reshuffle processing");
   assert.equal(roomCardCount(accepted.game.code, replacement.id), 1, "the obtained replacement remains exactly once");
   assert.equal(JSON.parse(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(accepted.sima.id)} AND json_extract(value,'$.id')=${quote(replacement.id)}`)), 0, "Necromancy removes the replacement from Sima Yi");
@@ -522,6 +528,14 @@ test("Legacy privately distributes top two cards and repeats once per damage poi
   assert.equal(settled.room.players.find((player) => player.id === one.guo.id).hp, 3);
   assert.equal(settled.room.causalEnvelope, null);
   assert.deepEqual(settled.room.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
+  const legacyOwner = (await state(one.game.code, one.guoMember.token)).data;
+  const legacyObserver = (await state(one.game.code, one.game.members[2].token)).data;
+  const legacyArrivals = legacyOwner.timeline.filter((event) => event.type === "card" && event.privateHandTransfer);
+  assert.deepEqual(legacyArrivals.map((event) => event.privateHandTransfer.cardId), [firstCards[0].id, firstCards[1].id]);
+  assert.ok(legacyArrivals.every((event) => event.privateHandTransfer.sourceZone === "distribution"
+    && event.privateHandTransfer.recipientId === one.guo.id));
+  assert.equal(legacyObserver.timeline.some((event) => event.privateHandTransfer), false);
+  assert.equal(JSON.stringify(legacyObserver).includes(firstCards[0].id), false);
   assert.equal((await requestAndSettle("trigger", { code: one.game.code, token: one.guoMember.token, providerId: "private_card_distribution", assignments: [] })).status, 409, "stale distribution cannot replay cards");
   assert.ok(privateView.currentAction.triggerOptions.every((option) => option.effectId === "guo_jia_legacy"));
   void otherView;
@@ -758,7 +772,7 @@ test("bot operations reject a full lobby and cannot mutate seats after start", a
   sql("DELETE FROM bot_demo_rate_limits");
   const full = await requestAndSettle("create", { name: "Full Lobby Host" });
   assert.equal(full.status, 201);
-  for (let index = 0; index < 7; index++) {
+  for (let index = 0; index < 5; index++) {
     const joined = await requestAndSettle("join", { code: full.data.room.code, name: `Human ${index + 1}` });
     assert.equal(joined.status, 201, JSON.stringify(joined.data));
   }
@@ -941,25 +955,29 @@ test("host test seats remain controllable without exposing a mixed human seat", 
   assert.equal(aliceTurnHostView.isMyTurn, false);
 });
 
-test("normal role allocation preserves the exact Standard sets for four through eight players", async () => {
+test("ROOM-6P-GATE-01 new rooms start with the exact Standard role sets for four through six players", async () => {
   const expected = {
     4: { Lord: 1, Loyalist: 1, Rebel: 1, Spy: 1 },
     5: { Lord: 1, Loyalist: 1, Rebel: 2, Spy: 1 },
     6: { Lord: 1, Loyalist: 1, Rebel: 3, Spy: 1 },
-    7: { Lord: 1, Loyalist: 2, Rebel: 3, Spy: 1 },
-    8: { Lord: 1, Loyalist: 2, Rebel: 4, Spy: 1 },
   };
   let hostWasNotLord = false;
-  for (const count of [4, 5, 6, 7, 8]) {
-    const created = await requestAndSettle("create", { name: `Host${count}` });
+  for (const count of [4, 5, 6]) {
+    const created = await requestAndSettle("create", { name: `Host${count}`, maxPlayers: 10 });
     assert.equal(created.status, 201);
+    assert.equal(created.data.room.maxPlayers, 6, "new rooms enforce the current availability cap, ignoring client capacity values");
     const members = [{ name: `Host${count}`, token: created.data.token }];
     for (let seat = 1; seat < count; seat++) {
       const joined = await requestAndSettle("join", { code: created.data.room.code, name: `Player${count}-${seat}` });
       assert.equal(joined.status, 201);
       members.push({ name: `Player${count}-${seat}`, token: joined.data.token });
     }
-    if (count === 8) assert.equal((await requestAndSettle("join", { code: created.data.room.code, name: "TooMany" })).status, 409, "room maximum remains eight");
+    if (count === 6) {
+      const rejected = await requestAndSettle("join", { code: created.data.room.code, name: "Seventh Player" });
+      assert.equal(rejected.status, 409, "the seventh independent player is rejected");
+      assert.match(rejected.data.error, /6-player limit/);
+      assert.equal((await state(created.data.room.code, members[0].token)).data.players.length, 6, "the room stays at six players after a rejected join");
+    }
     const started = await requestAndSettle("start", { code: created.data.room.code, token: members[0].token });
     assert.equal(started.status, 200, JSON.stringify(started.data));
     const views = await Promise.all(members.map((member) => state(created.data.room.code, member.token)));
@@ -974,7 +992,75 @@ test("normal role allocation preserves the exact Standard sets for four through 
     }
     if (views[0].data.myRole !== "Lord") hostWasNotLord = true;
   }
+  // Role assignment is intentionally shuffled, so the three size samples above
+  // can all place the host in the Lord seat by chance. Only sample additional
+  // four-player rooms when that rare outcome occurs, with a bounded retry count.
+  for (let attempt = 1; !hostWasNotLord && attempt <= 8; attempt++) {
+    const created = await requestAndSettle("create", { name: `Role Shuffle Retry ${attempt}` });
+    assert.equal(created.status, 201);
+    for (let seat = 1; seat < 4; seat++) {
+      const joined = await requestAndSettle("join", { code: created.data.room.code, name: `Role Shuffle Player ${attempt}-${seat}` });
+      assert.equal(joined.status, 201);
+    }
+    const started = await requestAndSettle("start", { code: created.data.room.code, token: created.data.token });
+    assert.equal(started.status, 200, JSON.stringify(started.data));
+    const hostView = await state(created.data.room.code, created.data.token);
+    hostWasNotLord = hostView.data.myRole !== "Lord";
+  }
   assert.equal(hostWasNotLord, true, "the host is not forced to be Lord");
+});
+
+test("ROOM-6P-GATE-01 concurrent joins cannot use the last seat twice", async () => {
+  const created = await requestAndSettle("create", { name: "Concurrent Gate Host" });
+  for (let seat = 1; seat < 5; seat++) {
+    const joined = await requestAndSettle("join", { code: created.data.room.code, name: `Concurrent Player ${seat}` });
+    assert.equal(joined.status, 201);
+  }
+  const finalJoins = await Promise.all([
+    requestAndSettle("join", { code: created.data.room.code, name: "Concurrent Player A" }),
+    requestAndSettle("join", { code: created.data.room.code, name: "Concurrent Player B" }),
+  ]);
+  assert.deepEqual(finalJoins.map(({ status }) => status).sort(), [201, 409]);
+  assert.equal((await state(created.data.room.code, created.data.token)).data.players.length, 6);
+});
+
+test("ROOM-6P-GATE-01 test seats stop at six, legacy oversized lobbies cannot start, and started eight-player games remain playable", async () => {
+  const testRoom = await requestAndSettle("create", { name: "Six Seat Host", maxPlayers: 8 });
+  assert.equal(testRoom.data.room.maxPlayers, 6);
+  const sixSeats = await requestAndSettle("add_test_players", { code: testRoom.data.room.code, token: testRoom.data.token, count: 5 });
+  assert.equal(sixSeats.status, 200, JSON.stringify(sixSeats.data));
+  assert.equal(sixSeats.data.room.players.length, 6);
+  const seventhTestSeat = await requestAndSettle("add_test_players", { code: testRoom.data.room.code, token: testRoom.data.token, count: 1 });
+  assert.equal(seventhTestSeat.status, 409);
+  assert.equal((await state(testRoom.data.room.code, testRoom.data.token)).data.players.length, 6, "a rejected test-seat request does not partially add players");
+
+  for (const count of [7, 8]) {
+    const legacy = await requestAndSettle("create", { name: `Legacy ${count}` });
+    const roomId = query(`SELECT id FROM rooms WHERE code=${quote(legacy.data.room.code)}`);
+    sql(`UPDATE rooms SET max_players=8 WHERE id=${quote(roomId)}`);
+    for (let seat = 1; seat < count; seat++) {
+      const playerId = `legacy-${legacy.data.room.code}-${seat}`;
+      sql(`INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (${quote(playerId)}, ${quote(roomId)}, ${quote(`Legacy Player ${seat + 1}`)}, ${quote(`legacy-token-${seat}`)}, ${seat}, ${Date.now()})`);
+    }
+    const lobby = await state(legacy.data.room.code, legacy.data.token);
+    assert.equal(lobby.data.players.length, count, "legacy participants remain visible");
+    const rejectedStart = await requestAndSettle("start", { code: legacy.data.room.code, token: legacy.data.token });
+    assert.equal(rejectedStart.status, 409);
+    assert.match(rejectedStart.data.error, /4–6 players/);
+    const rejectedJoin = await requestAndSettle("join", { code: legacy.data.room.code, name: "Blocked New Join" });
+    assert.equal(rejectedJoin.status, 409, "legacy rooms do not admit another participant after the six-player cap");
+  }
+
+  const roles = ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"];
+  const heroes = ["guan-yu", "simayi", "zhao-yun", "xiahou-dun", "zhang-liao", "cao-cao", "zhen-ji", "xu-chu"];
+  const startedLegacy = await seedPlayingGame({ players: roles.map((role, index) => ({ role, hero: heroes[index] })) });
+  assert.equal(startedLegacy.room.players.length, 8);
+  const stillReadable = await state(startedLegacy.code, startedLegacy.members[0].token);
+  assert.equal(stillReadable.data.status, "playing");
+  assert.equal(stillReadable.data.players.length, 8);
+  const action = await requestAndSettle("end_turn", { code: startedLegacy.code, token: startedLegacy.members[0].token });
+  assert.equal(action.status, 200, JSON.stringify(action.data));
+  assert.equal(action.data.room.status, "playing", "the cap does not gate already-started legacy gameplay");
 });
 
 test("Wu hero skills complete through the normal semantic API", async () => {
@@ -987,8 +1073,23 @@ test("Wu hero skills complete through the normal semantic API", async () => {
   assert.deepEqual(qixiEvent.publicCardEffects?.[0]?.materials, [{ cardId: blackCard.id, ownerId: qixiSource.id, fromZone: "HAND", toZone: "DISCARD" }]);
   assert.equal(qixiEvent.publicCardEffects?.[0]?.resultingCardKind, "Dismantle");
   assert.equal(qixiEvent.publicCardEffects?.[0]?.outcome, "AS_DISMANTLE");
+  assert.equal(qixi.data.room.presentationV2.rootAction?.rootEventId, qixiEvent.id, "the effective Dismantle action remains linked to the real public Qixi play");
+  assert.equal(qixi.data.room.presentationV2.rootAction?.cardKind, "Dismantle");
   const qixiChosen = await requestAndSettle("choose_target_card", { code: qixiGame.code, token: qixiGame.members[0].token, targetCardZone: "hand", targetCardIndex: 0 });
   assert.equal(qixiChosen.status, 200, JSON.stringify(qixiChosen.data)); assert.ok(discardIds(qixiGame.code).includes(blackCard.id)); assert.ok(!JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(qixiTarget.id)}`)).some((item) => item.id === targetCard.id));
+  const qixiSettlement = qixiChosen.data.room.presentationV2.dismantleSettlements[0];
+  assert.equal(qixiSettlement.rootEventId, qixiEvent.id);
+  assert.equal(qixiSettlement.rootResolutionId, qixiEvent.resolutionId);
+  assert.equal(qixiSettlement.rootInteractionId, qixi.data.room.presentationV2.rootAction.interactionId);
+  assert.equal(qixiSettlement.rootFrameId, qixi.data.room.presentationV2.rootAction.rootFrameId);
+  assert.deepEqual(qixiSettlement.rootPhysicalCard, blackCard, "the committed settlement carries the actual physical conversion card");
+  assert.equal(qixiSettlement.resultingCardKind, "Dismantle");
+  const qixiObserver = (await state(qixiGame.code, qixiGame.members[1].token)).data;
+  assert.deepEqual(qixiObserver.presentationSnapshot.dismantleSettlements, qixiChosen.data.room.presentationSnapshot.dismantleSettlements, "the proven converted settlement is identical for observers");
+  assert.equal(qixiObserver.presentationSnapshot.dismantleSettlements[0].rootPhysicalCard.id, blackCard.id);
+  const qixiSettledInput = { pending: null, currentAction: null, actionRevision: "", timeline: qixiChosen.data.room.timeline };
+  assert.deepEqual(projectPresentationV2({ ...qixiSettledInput, timeline: qixiSettledInput.timeline.map((event) => event.id === qixiEvent.id ? { ...event, publicCardEffects: [] } : event) }).dismantleSettlements, [], "a converted root without its committed effect proof fails closed");
+  assert.deepEqual(projectPresentationV2({ ...qixiSettledInput, timeline: qixiSettledInput.timeline.map((event) => event.id === qixiEvent.id ? { ...event, publicCardEffects: event.publicCardEffects.map((effect) => ({ ...effect, resultingCardKind: "Steal" })) } : event) }).dismantleSettlements, [], "a conversion proof for another effective kind cannot own the Dismantle settlement");
 
   const kejiGame = await createHumanGame(); const kejiSource = kejiGame.room.players[0]; const oversized = [card("Peach", "keji-1"), card("Peach", "keji-2"), card("Peach", "keji-3")];
   sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(kejiSource.id)}`); setHand(kejiSource.id, oversized, 2, 4); setTurn(kejiGame.code, kejiSource.seat);

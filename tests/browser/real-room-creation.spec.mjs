@@ -3,13 +3,17 @@ import { expect, test } from "@playwright/test";
 const API = "http://127.0.0.1:3137";
 
 test("Host Game reaches the production page with server-generated match authority", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${API}/`);
+  await expect(page.locator(".entry-title")).toContainText("4–6 players");
   await page.getByPlaceholder("Enter your name").fill("ROOM FLOW TEST");
   await page.getByRole("button", { name: "Host Game" }).click();
 
   await expect(page.locator(".lobby-shell")).toBeVisible();
+  await expect(page.locator(".seat-grid .seat")).toHaveCount(6);
+  await expect(page.locator(".lobby-actions")).toContainText("1 / 6 players");
   await page.getByRole("button", { name: /Add 3 Test Players/ }).click();
-  await expect(page.locator(".lobby-actions")).toContainText("4 / 8 players");
+  await expect(page.locator(".lobby-actions")).toContainText("4 / 6 players");
   await page.getByRole("button", { name: "Start game" }).click();
   await expect(page.locator(".hero-shell")).toBeVisible();
 

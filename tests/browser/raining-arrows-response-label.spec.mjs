@@ -11,6 +11,7 @@ for (const viewport of [
 
     const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
     const decline = dock.locator('[data-action-slot="decline"] button');
+    const instruction = dock.locator('[data-console-decision-kind] > strong');
     const action = await page.evaluate(() => window.__browserRoom.currentAction);
     const snapshot = await page.evaluate(() => window.__browserRoom.presentationSnapshot);
 
@@ -22,9 +23,11 @@ for (const viewport of [
     expect(snapshot.groupParticipantProgress.currentParticipantId).toBe("p1");
 
     await expect(dock.locator('[data-action-slot="primary"] button')).toHaveCount(0);
+    await expect(instruction).toHaveText("No Dodge response available. Choose TAKE DAMAGE to continue.");
     await expect(decline).toHaveText("TAKE DAMAGE");
     await expect(decline).toBeEnabled();
 
+    expect(await page.evaluate(() => window.__browserActions.map(({ action }) => action).filter((action) => action === "respond" || action === "decline_response"))).toEqual([]);
     await decline.click();
     expect(await page.evaluate(() => window.__browserActions.map(({ action: submitted }) => submitted).filter((submitted) => submitted !== "start_response_timer"))).toEqual(["decline_response"]);
   });
@@ -35,6 +38,7 @@ test("Raining Arrows labels a legal Dodge decline by its damage consequence with
   await page.goto("/tests/browser/fixture.html?state=raining-arrows-response&groupProgress=valid");
 
   const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
+  const instruction = dock.locator('[data-console-decision-kind] > strong');
   const decline = dock.locator('[data-action-slot="decline"] button');
   const confirm = dock.locator('[data-action-slot="primary"] button');
   const action = await page.evaluate(() => window.__browserRoom.currentAction);
@@ -45,12 +49,17 @@ test("Raining Arrows labels a legal Dodge decline by its damage consequence with
   expect(action.options).toHaveLength(1);
   expect(action.options[0].selection.eligibleCardIds).toEqual(["browser-raining-arrows-dodge"]);
 
+  await expect(instruction).toHaveText("Play Dodge to avoid Raining Arrows, or choose TAKE DAMAGE.");
   await expect(decline).toHaveText("TAKE DAMAGE");
   await expect(confirm).toHaveText("Confirm");
   await expect(confirm).toBeDisabled();
+  expect(await page.evaluate(() => window.__browserActions.map(({ action }) => action).filter((action) => action === "respond" || action === "decline_response"))).toEqual([]);
   await page.locator('[data-hand-card-id="browser-raining-arrows-dodge"] .game-card').click();
   await expect(confirm).toBeEnabled();
   await expect(decline).toHaveText("TAKE DAMAGE");
+  expect(await page.evaluate(() => window.__browserActions.map(({ action }) => action).filter((action) => action === "respond" || action === "decline_response"))).toEqual([]);
+  await confirm.click();
+  await expect.poll(() => page.evaluate(() => window.__browserActions.map(({ action }) => action).filter((action) => action === "respond" || action === "decline_response"))).toEqual(["respond"]);
 });
 
 test("damage labels fail closed without public cause proof; Negation and optional triggers keep their labels", async ({ page }) => {

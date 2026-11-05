@@ -12,6 +12,7 @@ import { BUILD_SHA } from "../app/build-info.ts";
 
 const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
 const gameRoomSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+const publicCardDisplaySource = readFileSync(new URL("../app/public-card-display.tsx", import.meta.url), "utf8");
 const globalStyleSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
 
@@ -61,6 +62,7 @@ const presentationPlayers = [
 const presentationRoom = (overrides = {}) => ({
   players: presentationPlayers, meId: "p1", turnSeat: 0, phase: "play", status: "playing",
   actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
+  pendingTargetCard: null,
   currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"] },
   ...overrides,
 });
@@ -244,6 +246,35 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.equal(localDock(legacyMismatchHtml), localDock(html), "legacy room fields cannot change local semantic roles");
 });
 
+test("authorized Steal and Burning Bridges choices override stale Settlement wording only for their actor", () => {
+  const staleSettlementView = {
+    hasInteraction: true, stage: "SETTLEMENT", stableKind: "SETTLEMENT", sourceId: "p1",
+    currentParticipantId: null, decisionActorId: null, activeResolverId: null,
+    isLocalDecisionActor: false, hasLocalControl: false,
+  };
+  for (const [cardKind, operation] of [["Steal", "take"], ["Dismantle", "discard"]]) {
+    const currentAction = { version: 3, kind: "target_card", actorId: "p1", deadline: 0, reason: "Choose one current card", legalActions: ["choose_target_card"] };
+    const pendingTargetCard = { sourceId: "p1", actorId: "p1", targetId: "p2", cardKind };
+    const actor = buildDecisionPresentation(presentationRoom({ phase: "response", isMyAction: false, currentAction, pendingTargetCard }), staleSettlementView);
+    assert.equal(actor.primaryStatus, `Choose one card to ${operation} from Zhao Yun`);
+    assert.equal(actor.supportingInstruction, `Choose one card to ${operation} from Zhao Yun`);
+    assert.equal(actor.isViewerRequiredActor, true);
+    assert.equal(actor.isWaiting, false);
+
+    const spectator = buildDecisionPresentation(presentationRoom({
+      meId: "p2", isMyAction: false, actionPlayerId: "p1", phase: "response", currentAction, pendingTargetCard,
+    }), staleSettlementView);
+    assert.equal(spectator.primaryStatus, "Settlement");
+    assert.equal(spectator.isViewerRequiredActor, false);
+  }
+  const unauthorized = buildDecisionPresentation(presentationRoom({
+    phase: "response",
+    currentAction: { version: 3, kind: "target_card", actorId: "p1", deadline: 0, reason: "Choose one current card", legalActions: [] },
+    pendingTargetCard: { sourceId: "p1", actorId: "p1", targetId: "p2", cardKind: "Steal" },
+  }), staleSettlementView);
+  assert.equal(unauthorized.primaryStatus, "Settlement");
+});
+
 test("local operation console composes one authority-first decision display", () => {
   const display = (facts) => buildConsoleDecisionDisplay({ instruction: "Make the current choice", viewerIsDecisionActor: true, authoritativeDecision: true, busy: false, ...facts });
   assert.equal(display({ kind: "turn", primaryCandidates: [{ id: "play", label: "Play", enabled: true, priority: 40 }] }).primary.label, "Play");
@@ -388,6 +419,22 @@ test("AI Staging bot lobby controls are host-only and hidden in default or Test 
   assert.doesNotMatch(defaultHtml, /\+ Bot|Remove bot/);
   const testGameHtml = renderToStaticMarkup(React.createElement(WaitingRoom, { ...props, room: makeRoom({ isHost: true, botDemoEnabled: true, isTestRoom: true }) }));
   assert.doesNotMatch(testGameHtml, /\+ Bot|Remove bot/);
+});
+
+test("waiting room preserves every existing player in an over-capacity legacy lobby and disables starting", () => {
+  const room = normalizeRoomData({
+    code: "LEGAC6", status: "lobby", maxPlayers: 8, isHost: true, meId: "legacy-0",
+    players: Array.from({ length: 7 }, (_, seat) => ({
+      id: `legacy-${seat}`, name: `Legacy Player ${seat + 1}`, seat, isHost: seat === 0, isTestPlayer: false,
+    })),
+  });
+  const html = renderToStaticMarkup(React.createElement(WaitingRoom, { room, busy: false, error: "", onStart: () => {}, onAddTestPlayers: () => {}, onEnableTestRoom: () => {}, onConfigureTestHands: () => {}, onLeave: () => {} }));
+  assert.match(html, /4–6 players have joined/);
+  assert.match(html, /This legacy lobby has more than six players/);
+  assert.match(html, /7 \/ 6 players/);
+  assert.equal((html.match(/class="seat filled"/g) ?? []).length, 7, "every actual legacy participant remains visible");
+  assert.doesNotMatch(html, /Open seat/, "the disabled 7th/8th availability is not presented as an open choice");
+  assert.match(html, /<button class="gold-button" disabled="">Start game<\/button>/);
 });
 
 test("hero selection shows the effective viewer's private role", () => {
@@ -549,8 +596,9 @@ test("UI-11 keeps one local dock and stable opponent anchors across supported pl
   for (const [playerCount, rows] of [[5, 2], [6, 3], [8, 4], [10, 5]]) {
     assert.match(sequenceStyleSource, new RegExp(`data-player-count="${playerCount}"[\\s\\S]*--seat-row-count: ${rows}`), `${playerCount}-player topology declares its side-column row budget`);
   }
-  assert.match(sequenceStyleSource, /\.game-shell \.play-table\[data-seat-topology="side-column"\]\s*\{[^}]*--side-safe-thumb-width: clamp\(74px, 13vw, 86px\);[^}]*--side-safe-edge: calc\([^\n]*var\(--side-safe-thumb-width\)/, "desktop seat sizing reserves the same width in the Interaction Safe Zone");
-  assert.match(sequenceStyleSource, /@media \(max-width: 650px\)\s*\{\s*\.game-shell \.play-table\[data-seat-topology="side-column"\]\s*\{[^}]*--side-safe-thumb-width: clamp\(56px, 15\.5vw, 74px\);/, "mobile Side Column keeps a bounded responsive seat width");
+  assert.match(sequenceStyleSource, /\.game-shell \.play-table\s*\{[^}]*--target-pool-side-seat-width: clamp\(74px, 13vw, 86px\);/, "desktop seats use the shared measured width");
+  assert.match(sequenceStyleSource, /\.game-shell \.play-table\[data-seat-topology="side-column"\]\s*\{[^}]*--side-safe-thumb-width: var\(--target-pool-side-seat-width\);[^}]*--side-safe-edge: calc\([^\n]*var\(--side-safe-thumb-width\)/, "desktop seat sizing reserves the same shared width in the Interaction Safe Zone");
+  assert.match(sequenceStyleSource, /@media \(max-width: 650px\)\s*\{\s*\.game-shell \.play-table\s*\{[^}]*--target-pool-side-seat-width: clamp\(56px, 15\.5vw, 74px\);/, "mobile seats use the bounded responsive width shared with the safe-zone geometry");
   assert.match(sequenceStyleSource, /\.game-shell \.player-board\[data-seat-topology="side-column"\] > \.opponent-player-card\s*\{[^}]*width: var\(--side-safe-thumb-width\);[^}]*height: min\(128px, 100%\);[^}]*min-height: 0;/, "side seats use the width included in safe-zone geometry");
 });
 
@@ -596,7 +644,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /class="opponent-status-equipment-strip"[\s\S]*class="opponent-hp-chip" aria-label="HP 3 of 4">HP 3\/4<\/span>[\s\S]*class="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count="1"[\s\S]*data-slot="weapon"[^>]*>/, "authoritative HP precedes real public Equipment in one lower band");
   assert.doesNotMatch(html, /class="opponent-hand-footer"|class="player-hand-count"/);
   assert.match(html, /class="opponent-equipment-indicator"[^>]*title="Weapon: Blue Steel Sword"/);
-  assert.match(html, /class="mini-zone-card judgement-mini"[^>]*data-judgement-id="opponent-judgement"/);
+  assert.match(html, /class="opponent-judgement-indicator" data-judgement-id="opponent-judgement" data-card-kind="Lightning"[^>]*role="img"/, "the public Judgement indicator preserves the true card identity");
   assert.match(html, /class="local-hand"[^>]*data-card-origin-anchor="p1"/);
   assert.match(html, /class="play-center" aria-hidden="true"><div class="draw-stack" data-draw-anchor="true"><\/div><div class="discard-stack" data-discard-anchor="true"><\/div><\/div>/, "card-flight anchors contain no visible pile content");
   assert.doesNotMatch(html, /class="player-square player-square-0/);
@@ -611,7 +659,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /\.opponent-hero-portrait \.hero-art-image \{[^}]*object-fit: cover; object-position: center top;/, "opponent artwork uses cover framing");
   assert.doesNotMatch(globalStyleSource, /\.player-square-target \.player-square-portrait \{[^}]*height: clamp\(44px, 8vw, 92px\)/, "opponent portraits do not regress to the shallow mobile rule");
   assert.match(gameRoomSource, /<HeroPortrait hero=\{playerHero\} \/>/, "opponents use the shared HeroPortrait renderer");
-  assert.match(html, /class="local-hero-card"[\s\S]*class="local-hero-label">Cao Cao<\/span>[\s\S]*class="local-hero-role">Lord<\/strong>[\s\S]*class="local-hero-hp">HP 4\/4<\/span>[\s\S]*class="local-hero-hearts">♥♥♥♥<\/span>/, "local hero card orders name, role, HP, and hearts");
+  assert.match(html, /class="local-hero-card"[\s\S]*class="local-hero-portrait"[^>]*data-hero-id="cao-cao"[\s\S]*<\/button><div class="local-hero-identity-footer" aria-label="Your role and health"><span class="local-hero-role" aria-label="Role: Lord">Lord<\/span><span class="local-hero-hp" aria-label="HP 4 of 4">HP 4\/4<\/span><\/div>/, "local identity footer follows the genuine portrait and keeps role before numeric HP");
+  assert.doesNotMatch(html, /class="local-hero-overlay"|class="local-hero-hearts"/, "local artwork has no identity overlay or heart markers");
   assert.equal(hpDisplay(5), "♥♥♥♥♥");
   assert.equal(hpDisplay(4), "♥♥♥♥");
   assert.equal(hpDisplay(1), "♥");
@@ -620,7 +669,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
     const hpRoom = normalizeRoomData({ ...payload, code: `DOCK-HP-${current}-${max}`, players: players.map((player) => player.id === "p1" ? { ...player, hp: current, maxHp: max } : player) });
     assert.ok(hpRoom);
     const hpHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: hpRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
-    assert.match(hpHtml, new RegExp(`class="local-hero-hp">HP ${current}/${max}<\\/span>[\\s\\S]*class="local-hero-hearts">${"♥".repeat(current)}<\\/span>`), `${current}/${max} renders one heart per current HP`);
+    assert.match(hpHtml, new RegExp(`class="local-hero-identity-footer"[\\s\\S]*class="local-hero-hp" aria-label="HP ${current} of ${max}">HP ${current}/${max}<\\/span>`), `${current}/${max} renders the authoritative numeric HP in the external footer`);
+    assert.doesNotMatch(hpHtml, /class="local-hero-hearts"/, "numeric HP does not duplicate decorative hearts");
   }
   assert.match(html, /class="local-status-panel"[\s\S]*class="hero-skills local-hero-skills"[\s\S]*>Treachery<\/button>[\s\S]*>Entourage<\/button>/, "local skills move into the flexible top panel");
   assert.doesNotMatch(html, /class="local-status-panel"[\s\S]*local-status-hp|class="local-status-panel"[\s\S]*local-status-hearts|class="local-status-panel"[\s\S]*local-status-role/);
@@ -635,7 +685,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.equal((html.match(/class="local-equipment-panel"/g) ?? []).length, 1);
   assert.equal((html.match(/class="local-judgement-panel"/g) ?? []).length, 0, "persistent Judgement has no independent Dock panel");
   assert.equal((html.match(/class="local-judgement-cards local-judgement-overlay"/g) ?? []).length, 1, "local Judgement is overlaid on the Hero");
-  assert.match(html, /class="local-hero-anchor"[\s\S]*?class="local-hero-card"[\s\S]*?<\/button><div[^>]*class="local-judgement-cards local-judgement-overlay"/, "overlay controls are siblings of the Hero button");
+  assert.match(html, /class="local-hero-anchor"[\s\S]*?class="local-hero-card"[\s\S]*?<\/button><div class="local-hero-identity-footer"[\s\S]*?<\/div>[\s\S]*?class="local-judgement-cards local-judgement-overlay"/, "identity footer and persistent Judgement stay outside the Hero button in the existing anchor");
   assert.equal((html.match(/data-judgement-id="lightning"/g) ?? []).length, 1, "the local physical Judgement card renders once");
   assert.equal((html.match(/data-judgement-id="overindulgence"/g) ?? []).length, 1, "the second local physical Judgement card renders once");
   assert.equal((html.match(/class="local-judgement-cards local-judgement-overlay[\s\S]*?class="local-judgement-card-slot"/g) ?? []).length, 1, "the overlay contains its existing physical-card slots");
@@ -665,7 +715,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.equal((html.match(/class="opponent-equipment-slot is-empty"/g) ?? []).length, 11, "all remaining public Equipment positions stay reserved as neutral empty slots");
   assert.equal((html.match(/class="opponent-equipment-summary"/g) ?? []).length, 3, "each opponent reserves the same row height even when no public slot is occupied");
   assert.equal((html.match(/data-slot-count="0"/g) ?? []).length, 2, "empty rows expose no fake equipment glyphs");
-  assert.match(html, /class="opponent-judgement-zone"[\s\S]*data-judgement-id="opponent-judgement"/, "Judgement is a separate side zone with its card anchor");
+  assert.match(html, /class="opponent-judgement-status" data-judgement-owner-id="p3"[\s\S]*data-judgement-id="opponent-judgement"/, "the real owner carries the Judgement marker inside the status bar");
+  assert.doesNotMatch(html, /class="opponent-judgement-zone"|class="mini-zone-card judgement-mini"/, "no detached full-card Judgement rail remains on opponent Seats");
   assert.doesNotMatch(html, /class="opponent-card-zones"/, "the old portrait-overlay zone wrapper is removed");
   assert.match(gameRoomSource, /const renderZoneCard[\s\S]*<CardFace card=\{card\}/, "local zones reuse the shared card artwork renderer");
   assert.match(html, /class="local-hand"/); assert.match(html, /class="local-hand-rail"/);
@@ -702,9 +753,19 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(html, /data-discard-kind=/, "permanent Discard identity is no longer rendered into the battlefield");
   assert.match(html, /title="After you take damage, you may obtain the card that caused damage on you\."/);
   assert.doesNotMatch(html, /private-opponent-card/);
-  const sequenceSource = gameRoomSource.slice(gameRoomSource.indexOf("function TableResolutionSequence"), gameRoomSource.indexOf("function CardFace"));
-  assert.doesNotMatch(sequenceSource, /Math\.(sin|cos)|activeAngle|activeRadians|--seat-[xy]/, "resolution placement is not circular seat geometry");
-  assert.match(sequenceSource, /centerRelativeToTable/);
+  assert.doesNotMatch(gameRoomSource, /function TableResolutionSequence|player-played-cards|table-played-card/, "the retired centre/settled-card renderer has no production owner");
+  assert.match(gameRoomSource, /function PublicEquipmentCardTransition/);
+  assert.match(gameRoomSource, /function PublicJudgementCardTransition/);
+  assert.match(gameRoomSource, /function PublicDiscardCardTransition/);
+  assert.match(gameRoomSource, /function PublicHandRevealCardTransition/);
+  assert.doesNotMatch(gameRoomSource, /tablePresentationVisible|displayedSequenceEvents/);
+  assert.doesNotMatch(publicCardDisplaySource, /static-fallback|public-card-display-static-card/, "public CardFace display fails closed without a typed Journey owner");
+  assert.doesNotMatch(globalStyleSource, /player-played-cards|table-played-card|public-card-display-static-card|activeCardJourney|sequenceCardsToDiscard/);
+  assert.doesNotMatch(sequenceStyleSource, /player-played-cards|table-played-card|sequenceCardToOwner|sequenceCardsToDiscard/);
+  assert.match(sequenceStyleSource, /\.active-table-reveal\.equipment-flight/);
+  assert.match(sequenceStyleSource, /\.active-table-reveal\.judgement-flight/);
+  assert.match(sequenceStyleSource, /\.active-table-reveal\.direct-discard/);
+  assert.match(sequenceStyleSource, /\.active-table-reveal\.public-hand-transfer/);
   const sharedPanelChrome = sequenceStyleSource.match(/\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-status-panel,\s*\.local-equipment-panel,\s*\.local-hand-section,\s*\.local-player-dock \.console-guidance,\s*\.local-player-dock \.turn-controls\s*\{([^}]*)\}/)?.[1] ?? "";
   assert.match(sharedPanelChrome, /border: 1px solid #765f3c99;/);
   assert.match(sharedPanelChrome, /background: #0e120dcc;/);
@@ -767,8 +828,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /@media \(max-width: 360px\)[\s\S]*grid-template-columns: 64px minmax\(0, 1fr\)/);
   assert.match(sequenceStyleSource, /\.local-hero-anchor\s*\{[^}]*width: min\(100%, 72px\)[^}]*max-width: 72px/);
   assert.match(sequenceStyleSource, /\.local-hero-card\s*\{[\s\S]*width: 100%[\s\S]*height: auto[\s\S]*aspect-ratio: 2 \/ 3/);
-  assert.match(sequenceStyleSource, /\.local-hero-overlay\s*\{[\s\S]*background: linear-gradient/);
-  assert.match(sequenceStyleSource, /\.local-hero-vitals\s*\{[\s\S]*flex-direction: column/);
+  assert.match(sequenceStyleSource, /\.local-hero-identity-footer\s*\{[\s\S]*display: grid[\s\S]*width: 100%/);
+  assert.match(sequenceStyleSource, /\.local-hero-role,[\s\S]*\.local-hero-hp\s*\{[\s\S]*background: #0b100de8[\s\S]*text-align: center/);
   assert.match(sequenceStyleSource, /\.local-status-panel\s*\{[\s\S]*align-items: stretch[\s\S]*overflow: visible/);
   assert.match(sequenceStyleSource, /\.local-hero-skills\s*\{[\s\S]*flex-direction: column/);
   assert.match(sequenceStyleSource, /\.player-board \{ grid-template-rows: minmax\(100px, 1fr\) auto minmax\(70px, \.35fr\); \}/, "mobile board gives less unused space below the side opponents");
@@ -781,13 +842,15 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /\.game-shell \.play-center \{[\s\S]*top: clamp\(290px, 66%, 520px\)/, "nonvisual discard flights keep their lower-middle anchor");
   assert.match(sequenceStyleSource, /\.game-shell \.play-center > \.draw-stack,[\s\S]*?\.game-shell \.play-center > \.discard-stack \{[^}]*width: 1px;[^}]*height: 1px;[^}]*opacity: 0;[^}]*pointer-events: none;/, "Deck/Discard geometry targets are tiny, invisible and noninteractive");
   assert.match(gameRoomSource, /className="opponent-equipment-summary"[\s\S]*\{equipmentSummary\}/, "opponent equipment is summarized by its public slots");
-  assert.match(gameRoomSource, /className="opponent-equipment-slot is-empty" data-slot=\{key\} data-occupied="false" aria-hidden="true"/, "empty public Equipment positions reserve space without rendering fake equipped art");
+  assert.match(gameRoomSource, /className="opponent-equipment-slot is-empty" data-slot=\{key\} data-player-equipment-slot-owner=\{player\.id\} data-occupied="false" aria-hidden="true"/, "empty public Equipment positions keep a real owner-slot anchor without rendering fake equipped art");
   assert.match(gameRoomSource, /className="opponent-equipment-indicator" data-slot=\{key\} data-equipment-id=\{equipment\.id\} data-card-kind=\{equipment\.kind\} role="img"/, "equipment indicators retain the projected physical card identity and slot");
   assert.match(gameRoomSource, /function OpponentEquipmentGlyph/, "each equipment slot has its own compact visual glyph");
   assert.match(sequenceStyleSource, /UX2 §10\.8\.2\.2 H2-G1[\s\S]*?\.game-shell \.player-board \.opponent-status-equipment-strip\s*\{[\s\S]*?flex: 0 0 20px[\s\S]*?data-seat-topology="side-column"[\s\S]*?\.opponent-status-equipment-strip\s*\{[\s\S]*?flex-basis: 18px/, "the final seat rules use a compact shared HP/equipment band at both top and side seats");
-  assert.match(sequenceStyleSource, /\.opponent-seat-inspect-button\s*\{[\s\S]*?width: 44px[\s\S]*?height: 44px[\s\S]*?pointer-events: auto/, "target selection keeps a separate accessible Inspect hit target");
-  assert.match(sequenceStyleSource, /\.opponent-judgement-zone \{[\s\S]*left: calc\(100% \+ 4px\)/, "Judgement is visually distinct and offset to the side");
-  assert.match(sequenceStyleSource, /\.opponent-judgement-cards \.mini-zone-card \+ \.mini-zone-card \{[\s\S]*margin-left: -45%/i, "multiple Judgement cards use controlled overlap");
+  assert.match(sequenceStyleSource, /\.opponent-seat-inspect-button\s*\{[\s\S]*?height: 44px[\s\S]*?background: transparent[\s\S]*?pointer-events: auto/, "target selection keeps a transparent 44px name-band Inspector hit target without a painted icon");
+  assert.match(sequenceStyleSource, /\.opponent-hero-card\.is-targeting-with-seat-inspector \.opponent-hero-target\s*\{[\s\S]*?inset: 0 0 var\(--opponent-seat-inspect-portrait-reserve, 24px\)/, "legal portrait target ends before the independent Inspector hit region");
+  assert.match(sequenceStyleSource, /\.opponent-player-card\s*\{\s*--opponent-seat-inspect-portrait-reserve: 26px/, "side-column Inspect geometry accounts for its measured 18px status band");
+  assert.match(sequenceStyleSource, /\.opponent-judgement-status[\s\S]*\.opponent-judgement-indicators[\s\S]*display: flex/, "Judgement markers use the shared status band");
+  assert.match(sequenceStyleSource, /@container opponent-status \(max-width: 82px\)[\s\S]*\.opponent-judgement-overflow \{ display: grid; \}/, "narrow Seats retain a bounded count summary");
   assert.match(gameRoomSource, /const \[expandedOpponentId, setExpandedOpponentId\] = useState<string \| null>\(null\)/, "inspection is presentation-local state");
   assert.match(gameRoomSource, /targetSelectionActive \? onTarget\(trigger\) : onInspect\(trigger\)/, "target selection takes priority over inspection while inspection retains its opener for focus return");
   // Inspect placement, projected public details, and concealed-hand redaction are behavior-tested in tests/browser/opponent-inspect-hero-focus.spec.mjs.
@@ -800,7 +863,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   const switchedHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: switched, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((switchedHtml.match(/class="player-square opponent-player-card/g) ?? []).length, 3, "switching the controlled seat keeps three opponents on the board");
   assert.match(switchedHtml, /data-hero-id="zhang-fei"/);
-  assert.match(switchedHtml, /class="local-hero-card"[\s\S]*class="local-hero-role">Loyalist<\/strong>/);
+  assert.match(switchedHtml, /class="local-hero-identity-footer"[\s\S]*class="local-hero-role" aria-label="Role: Loyalist">Loyalist<\/span>/, "TEST SWITCH updates the private role footer for the controlled viewer");
   assert.match(switchedHtml, /Dodge/);
 });
 
@@ -1168,7 +1231,10 @@ test("every card-and-target active hero skill has a valid empty-selection UI con
     assert.doesNotMatch(html, /GAME SCREEN ERROR|Previous game data is no longer compatible/, `${activeSkill.effectId} does not render recovery UI`);
   }
 
-  assert.match(gameRoomSource, /const presentationBusy = Boolean\(optimisticPlay \|\| activeEvent \|\| eventQueue\.length/);
+  assert.match(gameRoomSource, /activeEvent: Boolean\(activeEvent && !activeEquipmentArrivalEventId\)/,
+    "a committed Equipment arrival remains exempt while other public event animations remain busy");
+  assert.match(gameRoomSource, /const presentationBusy = Object\.values\(presentationBusyCauses\)\.some\(Boolean\)/,
+    "all explicit presentation busy causes still compose into one status");
   assert.match(gameRoomSource, /const activeSkillTargetIds = activeSkillSelection\?\.targetIds \?\? activeSkillTargetSelection\?\.targetIds \?\? \[\]/);
   assert.match(gameRoomSource, /const activeSkillSelectedTargetIds = activeSkillStateIsCurrent \? \(activeSkillSelectionState\?\.targetIds \?\? \[\]\)/);
 
@@ -1187,4 +1253,40 @@ test("every card-and-target active hero skill has a valid empty-selection UI con
     assert.match(html, new RegExp(`data-hand-card-id="${conversion.cardId}"`), `${conversion.hero} conversion card renders`);
     assert.doesNotMatch(html, /GAME SCREEN ERROR|Previous game data is no longer compatible/);
   }
+});
+
+test("play-target CurrentAction normalization keeps bounded verdicts only during legal play turns", () => {
+  const payload = {
+    code: "TARGET-VIEW", status: "playing", maxPlayers: 2, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "ACTOR", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "NEAR", seat: 1, hero: "liu-bei", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    ],
+    myHand: [card("private-target-card", "Attack")], turnSeat: 0, phase: "play", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
+    currentAction: {
+      version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"],
+      playTargetEligibility: [
+        { mode: "card", cardId: "private-target-card", effectiveKind: "Attack", eligibleTargetIds: ["p2", "p2", ""], rejections: [
+          { targetId: "p3", code: "OUT_OF_RANGE", distance: 2, range: 1 },
+          { targetId: "p4", code: "OUT_OF_RANGE", distance: 2 },
+          { targetId: "p2", code: "TARGET_RESTRICTED" },
+          { targetId: "p5", code: "UNKNOWN_CODE" },
+        ] },
+        { mode: "serpent_spear_attack", effectiveKind: "Attack", eligibleTargetIds: ["p2"], rejections: [] },
+      ],
+    },
+  };
+  const room = normalizeRoomData(payload);
+  assert.ok(room);
+  assert.deepEqual(room.currentAction.playTargetEligibility, [
+    { mode: "card", cardId: "private-target-card", effectiveKind: "Attack", eligibleTargetIds: ["p2"], rejections: [{ targetId: "p3", code: "OUT_OF_RANGE", distance: 2, range: 1 }] },
+    { mode: "serpent_spear_attack", effectiveKind: "Attack", eligibleTargetIds: ["p2"], rejections: [] },
+  ]);
+
+  const responseRoom = normalizeRoomData({
+    ...payload,
+    currentAction: { ...payload.currentAction, kind: "response", legalActions: ["respond"] },
+  });
+  assert.ok(responseRoom);
+  assert.equal(responseRoom.currentAction.playTargetEligibility, undefined, "a stale play-target map is dropped outside a legal play turn");
 });

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { acceptEndTurnConfirmation } from "./end-turn-confirmation.mjs";
 
 const API = "http://127.0.0.1:3137";
 const MOBILE_VIEWPORTS = [
@@ -63,6 +64,7 @@ test("Beauty's public result stays identical and its drawn Q♥ stays owner-priv
     expect(initialViews.map((view) => view.meId)).toEqual(room.players.map(({ id }) => id));
 
     const owner = pages[0];
+    acceptEndTurnConfirmation(owner);
     const dock = owner.locator(`.local-player-dock[data-player-anchor="${room.players[0].id}"]`);
     const endTurn = dock.locator('[data-action-slot="decline"] button').getByText("End", { exact: true });
     const endedResponse = owner.waitForResponse((response) => response.url() === `${API}/api/rooms`

@@ -341,9 +341,18 @@ function reactionChainForSnapshot(
 ): PresentationSnapshot["reactionChain"] {
   const chain = snapshot.reactionChain;
   const identity = snapshot.identity;
-  if (!chain || !identity || scene.stage !== "NEGATION" || chain.semantics !== "PROVEN"
+  const rawRootCard: unknown = chain && (chain as { rootCard?: unknown }).rootCard;
+  const rootCardCandidate = rawRootCard && typeof rawRootCard === "object" && !Array.isArray(rawRootCard)
+    ? rawRootCard as Record<string, unknown>
+    : null;
+  const borrowedSwordStage = rootCardCandidate?.cardKind === "BorrowedSword"
+    && (scene.stage === "NEGATION" || scene.stage === "SEQUENTIAL_CHOICE" || scene.stage === "FORCED_ACTION");
+  const chainFrameId = borrowedSwordStage && scene.continuity.relation === "CHILD_FRAME"
+    ? scene.rootFrameId
+    : scene.activeFrameId;
+  if (!chain || !identity || (scene.stage !== "NEGATION" && !borrowedSwordStage) || chain.semantics !== "PROVEN"
     || chain.interactionId !== identity.interactionId || chain.interactionId !== scene.interactionId
-    || chain.frameId !== scene.activeFrameId || !Array.isArray(chain.nodes)) return null;
+    || chain.frameId !== chainFrameId || !Array.isArray(chain.nodes)) return null;
 
   const nodes: NonNullable<PresentationSnapshot["reactionChain"]>["nodes"][number][] = [];
   const nodeIds = new Set<string>();
@@ -351,7 +360,7 @@ function reactionChainForSnapshot(
   for (const value of chain.nodes) {
     if (!value || typeof value !== "object") return null;
     const node = value as NonNullable<PresentationSnapshot["reactionChain"]>["nodes"][number];
-    if (!isString(node.nodeId) || node.interactionId !== identity.interactionId || node.frameId !== scene.activeFrameId
+    if (!isString(node.nodeId) || node.interactionId !== identity.interactionId || node.frameId !== chainFrameId
       || node.causedByNodeId !== previousNodeId || !isString(node.actorId)
       || node.kind !== "CARD_PLAY" || node.object?.type !== "card" || node.object.cardKind !== "Negation"
       || nodeIds.has(node.nodeId)) return null;
@@ -367,11 +376,20 @@ function reactionChainForSnapshot(
       object: { type: "card", cardKind: "Negation" },
     });
   }
-  const rawRootCard: unknown = (chain as { rootCard?: unknown }).rootCard;
   let rootCard: NonNullable<PresentationSnapshot["reactionChain"]>["rootCard"] = null;
-  if (rawRootCard && typeof rawRootCard === "object" && !Array.isArray(rawRootCard)) {
-    const candidate = rawRootCard as Record<string, unknown>;
+  if (rootCardCandidate) {
+    const candidate = rootCardCandidate;
     const targetId = scene.targetIds.length === 1 ? scene.targetIds[0] : null;
+    const borrowedRootSourceId = scene.continuity.relation === "CHILD_FRAME" ? scene.rootOrigin?.sourceId : scene.sourceId;
+    const borrowedRootTargetId = scene.continuity.relation === "CHILD_FRAME"
+      ? scene.rootOrigin?.targetIds.length === 1 ? scene.rootOrigin.targetIds[0] : null
+      : scene.participantRoles.originalTargetIds.length === 1 ? scene.participantRoles.originalTargetIds[0] : null;
+    const borrowedSwordRoot = borrowedSwordStage && scene.rootFrameId === candidate.frameId
+      && candidate.sourceId === borrowedRootSourceId && candidate.targetId === borrowedRootTargetId
+      && (scene.continuity.relation === "CHILD_FRAME"
+        ? scene.rootOrigin?.effect === "Borrowed Sword" && scene.parentFrameId === scene.rootFrameId
+        : scene.continuity.relation === "ROOT_FRAME" && candidate.sourceId === scene.sourceId
+          && candidate.targetId === targetId && scene.effect === "Borrowed Sword");
     const singleTargetRoot = targetId !== null
       && candidate.targetId === targetId
       && scene.participantRoles.originalTargetIds.length === 1
@@ -385,16 +403,18 @@ function reactionChainForSnapshot(
       && scene.participantRoles.originalTargetIds[0] === candidate.targetId
       && scene.participantRoles.originalTargetIds[1] === candidate.sourceId
       && scene.currentParticipantId === candidate.targetId;
-    if (candidate.interactionId === identity.interactionId
-      && candidate.frameId === scene.rootFrameId && candidate.frameId === scene.activeFrameId
+    const ordinaryRoot = candidate.frameId === scene.rootFrameId && candidate.frameId === scene.activeFrameId
       && scene.rootFrameId === scene.activeFrameId && scene.continuity.relation === "ROOT_FRAME"
-      && typeof candidate.sourceId === "string" && candidate.sourceId === scene.sourceId && candidate.sourceId === scene.activeSourceId
-      && typeof candidate.targetId === "string" && (singleTargetRoot || duelNegationRoot)
-      && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === candidate.targetId
+      && candidate.sourceId === scene.sourceId && candidate.sourceId === scene.activeSourceId
+      && (singleTargetRoot || duelNegationRoot)
+      && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === candidate.targetId;
+    if (candidate.interactionId === identity.interactionId
+      && (ordinaryRoot || borrowedSwordRoot)
+      && typeof candidate.sourceId === "string" && typeof candidate.targetId === "string"
       && typeof candidate.cardKind === "string" && CARD_KINDS.includes(candidate.cardKind as CardKind)) {
       rootCard = {
         interactionId: identity.interactionId,
-        frameId: scene.activeFrameId as string,
+        frameId: chainFrameId as string,
         sourceId: candidate.sourceId,
         targetId: candidate.targetId,
         cardKind: candidate.cardKind as CardKind,
@@ -461,7 +481,7 @@ function reactionChainForSnapshot(
     || (rawGroupTargetEffectScope !== undefined && (!groupTargetEffectScope || rootCard !== null))
     || (bumperNegation && (!publicNodeEventLinks || publicNodeEventLinks.length !== nodes.length || rootCard !== null))) return null;
   return {
-    semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
+    semantics: "PROVEN", interactionId: identity.interactionId, frameId: chainFrameId as string, rootCard, nodes,
     ...(groupTargetEffectScope ? { groupTargetEffectScope } : {}),
     ...(publicNodeEventLinks ? { publicNodeEventLinks } : {}),
     ...(publicEventLinks ? { publicEventLinks } : {}),
@@ -764,6 +784,10 @@ function rootActionForSnapshot(
     sourceId: action.sourceId,
     targetId: action.targetId,
   };
+  if (action.action === "ATTACK" && "conversionId" in action && action.conversionId === "serpent_spear_attack") return {
+    ...common, action: "ATTACK", cardKind: "Attack", conversionId: "serpent_spear_attack",
+    materialCardIds: [...action.materialCardIds] as [string, string], playedAs: "attack",
+  };
   if (action.action === "ATTACK" && action.physicalCardKind === "Attack") return {
     ...common, action: "ATTACK", cardKind: "Attack", physicalCardKind: "Attack",
   };
@@ -891,6 +915,8 @@ export function buildInteractionStageView(
   view: PresentationClientView,
   resolvePlayerName: PresentationPlayerNameResolver,
 ): InteractionStageView {
+  const borrowedSwordChainStage = view.reactionChain?.rootCard?.cardKind === "BorrowedSword"
+    && (view.stage === "NEGATION" || view.stage === "SEQUENTIAL_CHOICE" || view.stage === "FORCED_ACTION");
   const source = displayIdentity(view.sourceId, "Unknown source", resolvePlayerName);
   const originalTargets = view.originalTargetIds.map((id) => displayIdentity(id, "Unknown target", resolvePlayerName));
   const activeTargets = view.activeTargetIds.map((id) => displayIdentity(id, "Unknown target", resolvePlayerName));
@@ -927,7 +953,7 @@ export function buildInteractionStageView(
         publicNegationResponses: view.bumperHarvestProgress.publicNegationResponses.map((response) => ({ ...response })),
       } : {}),
     } : null,
-    reactionChainNegationNodes: view.stage === "NEGATION"
+    reactionChainNegationNodes: view.stage === "NEGATION" || borrowedSwordChainStage
       ? (view.reactionChain?.nodes ?? []).map((node, index) => {
         const publicEventLink = view.reactionChain?.publicNodeEventLinks?.find((link) => link.nodeId === node.nodeId)
           ?? view.reactionChain?.publicEventLinks?.nodes.find((link) => link.nodeId === node.nodeId);
@@ -950,10 +976,10 @@ export function buildInteractionStageView(
         };
       })
       : [],
-    reactionChainRootCard: view.stage === "NEGATION" ? view.reactionChain?.rootCard ?? null : null,
-    reactionChainPublicEventLinks: view.stage === "NEGATION" ? view.reactionChain?.publicEventLinks ?? null : null,
-    reactionChainRootEffectState: view.stage === "NEGATION" ? view.reactionChain?.rootEffectState ?? null : null,
-    reactionChainGroupTargetEffectScope: view.stage === "NEGATION" ? view.reactionChain?.groupTargetEffectScope ?? null : null,
+    reactionChainRootCard: view.stage === "NEGATION" || borrowedSwordChainStage ? view.reactionChain?.rootCard ?? null : null,
+    reactionChainPublicEventLinks: view.stage === "NEGATION" || borrowedSwordChainStage ? view.reactionChain?.publicEventLinks ?? null : null,
+    reactionChainRootEffectState: view.stage === "NEGATION" || borrowedSwordChainStage ? view.reactionChain?.rootEffectState ?? null : null,
+    reactionChainGroupTargetEffectScope: view.stage === "NEGATION" || borrowedSwordChainStage ? view.reactionChain?.groupTargetEffectScope ?? null : null,
     ...(view.rootOrigin ? {
       rootOrigin: {
         frameId: view.rootOrigin.frameId,
@@ -979,9 +1005,15 @@ export function buildInteractionStageView(
  * opportunities and passes never manufacture graph nodes.
  */
 export function buildReactionChainView(stage: InteractionStageView): ReactionChainView {
-  if (!stage.visible || stage.stage !== "NEGATION" || !stage.effect || !stage.source.id) {
+  const borrowedSword = stage.reactionChainRootCard?.cardKind === "BorrowedSword"
+    && (stage.stage === "NEGATION" || stage.stage === "SEQUENTIAL_CHOICE" || stage.stage === "FORCED_ACTION");
+  if (!stage.visible || stage.stage !== "NEGATION" && !borrowedSword || !stage.effect) {
     return { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, rootEffectState: null, groupTargetEffectScope: null, root: null, active: null };
   }
+  const nestedBorrowedRoot = borrowedSword && stage.continuity.relation === "CHILD_FRAME" ? stage.rootOrigin : null;
+  const rootSource = nestedBorrowedRoot?.source ?? stage.source;
+  const rootTargets = nestedBorrowedRoot?.targets ?? stage.originalTargets;
+  if (!rootSource.id) return { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, rootEffectState: null, groupTargetEffectScope: null, root: null, active: null };
   return {
     visible: true,
     interactionId: stage.interactionId,
@@ -993,10 +1025,10 @@ export function buildReactionChainView(stage: InteractionStageView): ReactionCha
     rootEffectState: stage.reactionChainRootEffectState,
     groupTargetEffectScope: stage.reactionChainGroupTargetEffectScope ? { ...stage.reactionChainGroupTargetEffectScope } : null,
     root: {
-      effect: stage.effect,
+      effect: nestedBorrowedRoot?.effect ?? stage.effect,
       cardKind: stage.reactionChainRootCard?.cardKind ?? null,
-      source: stage.source,
-      targets: stage.originalTargets,
+      source: rootSource,
+      targets: rootTargets,
     },
     active: {
       label: "Negation response",
@@ -1048,7 +1080,7 @@ function displayNames(identities: readonly PresentationDisplayIdentity[], emptyL
 
 export function isProvenBorrowedSwordForcedAttack(stage: InteractionStageView): boolean {
   return Boolean(stage.visible
-    && stage.stage === "ATTACK_RESPONSE"
+    && stage.stage === "FORCED_ACTION"
     && stage.effect === "borrowed_sword_attack"
     && stage.continuity.relation === "CHILD_FRAME"
     && stage.rootOrigin

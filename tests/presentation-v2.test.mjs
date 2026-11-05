@@ -249,6 +249,66 @@ test("single-target Negation exposes only an authoritative root card identity", 
   assert.equal(project({ continuation: { effect: { kind: "group", pending: {} }, rootCardKind: "BarbarianInvasion" } }).reactionChain, null, "an unproven Group target-effect association withholds the reaction chain");
 });
 
+test("Gan Ning Ambushment binds its physical black card to the semantic Burning Bridges Negation root", () => {
+  const interactionId = "qixi-negation-interaction";
+  const frameId = "qixi-negation-frame";
+  const physicalCard = { id: "qixi-black-dodge", kind: "Dodge", suit: "♣", rank: "7" };
+  const rootEvent = {
+    id: "qixi-root-event", type: "card", action: "play", presentation: true,
+    resolutionId: "qixi-root-resolution", player: "GAN NING", target: "TARGET", card: physicalCard,
+    publicCardEffects: [{
+      semantics: "PROVEN", effectId: "gan_ning_qixi", effectClass: "CONVERSION",
+      eventId: "qixi-root-event", activationOwnerId: "A", targetId: "C",
+      resultingCardKind: "Dismantle", outcome: "AS_DISMANTLE",
+      materials: [{ cardId: physicalCard.id, ownerId: "A", fromZone: "HAND", toZone: "DISCARD" }],
+    }],
+  };
+  const frame = {
+    frameId, parentFrameId: null, stage: "NEGATION",
+    origin: { originSourceId: "A", originEffect: "Burning Bridges", originalTargetIds: ["C"] },
+    current: { currentSourceId: "A", currentEffect: "Burning Bridges", currentTargetIds: ["C"], resolvingPlayerId: "B" },
+  };
+  const continuation = {
+    kind: "negation", sourceId: "A", effectTargetId: "C", rootCardKind: "Dodge",
+    cardName: "Burning Bridges", resolutionId: "qixi-root-resolution", remainingIds: [],
+    negated: false, chainDepth: 0, effect: { kind: "dismantle", targetId: "C" },
+    heldCards: [physicalCard], causal: { interactionId, frameId },
+  };
+  const ownersEarlierPrivateDraw = {
+    id: "qixi-earlier-private-draw", type: "card", action: "draw", privateToPlayerId: "A",
+    player: "GAN NING", card: physicalCard,
+  };
+  const project = (event = rootEvent, continuationOverrides = {}) => projectPresentationV2({
+    pending: { kind: "response", actorId: "B", causal: { interactionId, frameId }, continuation: { ...continuation, ...continuationOverrides } },
+    currentAction: action({ actorId: "B", resolutionId: "qixi-root-resolution" }),
+    actionRevision: "qixi-negation",
+    timeline: [ownersEarlierPrivateDraw, event],
+    causalEnvelope: {
+      version: 1, interactionId, frames: [frame], activeFrameId: frameId,
+      checkpoint: { checkpointId: "qixi-negation-checkpoint", frameId, stage: "NEGATION" }, presentationRevision: 1,
+    },
+  });
+
+  const proven = project().reactionChain;
+  assert.deepEqual(proven?.rootCard, {
+    interactionId, frameId, sourceId: "A", targetId: "C", cardKind: "Dismantle",
+  }, "the chain carries the semantic Burning Bridges root while retaining the real physical card only in its event link");
+  assert.deepEqual(proven?.publicEventLinks, {
+    root: { eventId: rootEvent.id, resolutionId: rootEvent.resolutionId }, nodes: [],
+  });
+  assert.equal(proven?.rootEffectState, "ACTIVE");
+  assert.equal(JSON.stringify(proven).includes(physicalCard.id), false, "the public reaction-chain proof does not expose physical card IDs");
+
+  const wrongTarget = { ...rootEvent, publicCardEffects: [{ ...rootEvent.publicCardEffects[0], targetId: "other-target" }] };
+  assert.equal(project(wrongTarget).reactionChain?.rootCard, null, "a conversion proof for a different target fails closed");
+  const redCard = { ...rootEvent, card: { ...physicalCard, suit: "♥" } };
+  assert.equal(project(redCard).reactionChain?.rootCard, null, "a non-black physical card cannot prove Ambushment");
+  const missingProof = { ...rootEvent, publicCardEffects: [] };
+  assert.equal(project(missingProof).reactionChain?.rootCard, null, "a missing public conversion proof fails closed");
+  assert.equal(project(rootEvent, { resolutionId: "other-resolution" }).reactionChain?.rootCard, null,
+    "a root from another resolution cannot bind to this Negation window");
+});
+
 test("Duel Negation binds its existing public root without opening Duel exchange early", () => {
   const interactionId = "duel-negation-interaction";
   const frameId = "duel-negation-frame";

@@ -2,10 +2,12 @@ import { expect, test } from "@playwright/test";
 
 const API = "http://127.0.0.1:3137";
 
-test("Host Game creates a real room and reaches the server-authoritative game page", async ({ page, request }) => {
+test("ROOM-6P-GATE-01 mobile room creation offers six seats and reaches a server-authoritative game", async ({ page, request }) => {
   const playerName = "P1 REAL HOST";
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${API}/`);
   await expect(page.getByPlaceholder("Enter your name")).toBeVisible();
+  await expect(page.locator(".entry-title")).toContainText("4–6 players");
   await page.getByPlaceholder("Enter your name").fill(playerName);
   await expect(page.getByRole("button", { name: "Host Game", exact: true })).toBeEnabled();
 
@@ -20,14 +22,15 @@ test("Host Game creates a real room and reaches the server-authoritative game pa
 
   const body = await response.json();
   expect(body.token).toEqual(expect.any(String));
-  expect(body.room).toMatchObject({ status: "lobby", isHost: true, maxPlayers: 8 });
+  expect(body.room).toMatchObject({ status: "lobby", isHost: true, maxPlayers: 6 });
   expect(body.room.players).toHaveLength(1);
   expect(body.room.players[0]).toMatchObject({ id: body.room.meId, name: playerName, isHost: true });
 
   await expect(page.getByRole("heading", { name: "Waiting room" })).toBeVisible();
+  await expect(page.locator(".seat-grid .seat")).toHaveCount(6);
   await expect(page.locator(".room b")).toHaveText(body.room.code);
   await expect(page.locator(".seat.filled b")).toHaveText(playerName);
-  await expect(page.locator(".lobby-actions")).toContainText("1 / 8 players");
+  await expect(page.locator(".lobby-actions")).toContainText("1 / 6 players");
 
   const submitted = JSON.parse(response.request().postData());
   expect(submitted).toMatchObject({ action: "create", name: playerName });
@@ -45,7 +48,7 @@ test("Host Game creates a real room and reaches the server-authoritative game pa
   expect(projection.players[0]).toMatchObject({ id: body.room.meId, name: playerName });
 
   await page.getByRole("button", { name: /Add 3 Test Players/ }).click();
-  await expect(page.locator(".lobby-actions")).toContainText("4 / 8 players");
+  await expect(page.locator(".lobby-actions")).toContainText("4 / 6 players");
   await page.getByRole("button", { name: "Start game" }).click();
   await expect(page.locator(".hero-shell")).toBeVisible();
 
