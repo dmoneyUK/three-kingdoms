@@ -7719,3 +7719,129 @@
     gap: 2px;
   }
 }
+
+/* UX2 §10.39 — scale CardFace text from each already-sized face, not from the
+   viewport. These owners have definite dimensions; the rules below only fit
+   their authentic name/category text and leave the micro-card owners alone. */
+.public-result-card,
+.active-table-reveal .played-card,
+.private-draw-row .played-card,
+.public-card-journey-card,
+.public-card-effect-frame-material,
+.target-card-picker-card,
+.local-hand-rail .card-slot,
+.card-details-illustration,
+.deck-reorder-card-face,
+.discard-card-row .played-card {
+  container-type: inline-size;
+}
+
+.public-result-card > .played-card .card-name-mark,
+.active-table-reveal .played-card .card-name-mark,
+.active-table-reveal.direct-discard .played-card .card-name-mark,
+.active-table-reveal.public-judgement-original-reveal .played-card .card-name-mark,
+.private-draw-row .played-card .card-name-mark,
+.private-draw-row .played-card.drawtwo .card-name-mark,
+.private-draw-row .played-card.dismantle .card-name-mark,
+.public-card-journey-card[data-public-card-journey-size="reveal"] > .played-card .card-name-mark,
+.public-card-journey-card[data-public-card-journey-size="duel-reveal"] .public-card-duel-physical-face > .played-card .card-name-mark,
+.public-card-effect-frame-material > .played-card .card-name-mark,
+.target-card-picker-card .played-card .card-name-mark,
+.target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"] .played-card .card-name-mark,
+.target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] .played-card .card-name-mark,
+.card-details-illustration > .played-card .card-name-mark,
+.deck-reorder-card-face > .played-card .card-name-mark,
+.discard-card-row .played-card .card-name-mark {
+  max-width: 88%;
+  font-size: clamp(7px, 3vw, 16px);
+  line-height: 1.04;
+  letter-spacing: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: auto;
+}
+
+.public-result-card > .played-card > strong,
+.active-table-reveal .played-card > strong,
+.private-draw-row .played-card > strong,
+.public-card-journey-card[data-public-card-journey-size="reveal"] > .played-card > strong,
+.public-card-journey-card[data-public-card-journey-size="duel-reveal"] .public-card-duel-physical-face > .played-card > strong,
+.public-card-effect-frame-material > .played-card > strong,
+.target-card-picker-card .played-card > strong,
+.target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"] .played-card > strong,
+.target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] .played-card > strong,
+.card-details-illustration > .played-card > strong,
+.deck-reorder-card-face > .played-card > strong,
+.discard-card-row .played-card > strong {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 4px;
+  font-size: clamp(4px, 1.8vw, 8px);
+  line-height: 1;
+  letter-spacing: .035em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* The local Hand is only 68px wide on supported phone layouts. Keep full
+   names readable within that existing footprint while preserving hit areas. */
+.local-hand-rail .card-slot .game-card .card-name-mark {
+  max-width: 92%;
+  font-size: clamp(7px, 2.8vw, 11px) !important;
+  line-height: 1;
+  letter-spacing: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: auto;
+}
+.local-hand-rail .card-slot .game-card > strong {
+  width: 100%;
+  max-width: 100%;
+  font-size: clamp(4px, 1.3vw, 5.5px);
+  line-height: 1;
+  letter-spacing: .035em;
+  white-space: nowrap;
+}
+
+/* Container-query sizing follows the measured card face in modern browsers;
+   the viewport-based declarations above remain a compatible fallback. */
+@supports (font-size: 1cqi) {
+  .public-result-card > .played-card .card-name-mark,
+  .active-table-reveal .played-card .card-name-mark,
+  .active-table-reveal.direct-discard .played-card .card-name-mark,
+  .active-table-reveal.public-judgement-original-reveal .played-card .card-name-mark,
+  .private-draw-row .played-card .card-name-mark,
+  .private-draw-row .played-card.drawtwo .card-name-mark,
+  .private-draw-row .played-card.dismantle .card-name-mark,
+  .public-card-journey-card[data-public-card-journey-size="reveal"] > .played-card .card-name-mark,
+  .public-card-journey-card[data-public-card-journey-size="duel-reveal"] .public-card-duel-physical-face > .played-card .card-name-mark,
+  .public-card-effect-frame-material > .played-card .card-name-mark,
+  .target-card-picker-card .played-card .card-name-mark,
+  .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"] .played-card .card-name-mark,
+  .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] .played-card .card-name-mark,
+  .card-details-illustration > .played-card .card-name-mark,
+  .deck-reorder-card-face > .played-card .card-name-mark,
+  .discard-card-row .played-card .card-name-mark {
+    font-size: clamp(6px, 10.5cqi, 22px);
+  }
+  .public-result-card > .played-card > strong,
+  .active-table-reveal .played-card > strong,
+  .private-draw-row .played-card > strong,
+  .public-card-journey-card[data-public-card-journey-size="reveal"] > .played-card > strong,
+  .public-card-journey-card[data-public-card-journey-size="duel-reveal"] .public-card-duel-physical-face > .played-card > strong,
+  .public-card-effect-frame-material > .played-card > strong,
+  .target-card-picker-card .played-card > strong,
+  .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"] .played-card > strong,
+  .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] .played-card > strong,
+  .card-details-illustration > .played-card > strong,
+  .deck-reorder-card-face > .played-card > strong,
+  .discard-card-row .played-card > strong {
+    font-size: clamp(4px, 7.5cqi, 10px);
+  }
+  .local-hand-rail .card-slot .game-card .card-name-mark {
+    font-size: clamp(6px, 12cqi, 13px) !important;
+  }
+  .local-hand-rail .card-slot .game-card > strong {
+    font-size: clamp(4px, 7.5cqi, 8px);
+  }
+}
