@@ -597,7 +597,7 @@ test("Barbarian Invasion Treachery does not obtain an earlier Negation card", { 
   assert.equal(roomCardCount(game.code, invasion.id), 1);
 });
 
-test("an unavailable Treachery damage card cannot strand the response room in resolving", { timeout: 30_000 }, async () => {
+test("Treachery only opens while the exact damage card has one recoverable physical location", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [sourceMember, caoMember] = game.members;
   const source = game.room.players.find((player) => player.name === "Host");
@@ -618,6 +618,20 @@ test("an unavailable Treachery damage card cannot strand the response room in re
   assert.equal(damaged.data.room.currentAction.triggerEvent, "damage_suffered");
   assert.ok(damaged.data.room.currentAction.triggerOptions.some((option) => option.effectId === "cao_cao_jianxiong"));
   const pendingBefore = query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`);
+
+  setHand(cao.id, [attack], 4, 4);
+  const ambiguousLocation = await state(game.code, caoMember.token);
+  assert.equal(ambiguousLocation.data.currentAction.triggerOptions.some((option) => option.effectId === "cao_cao_jianxiong"), false,
+    "the provider closes when the same physical ID is present in Hand and Discard");
+  assert.equal((await state(game.code, game.members[2].token)).data.currentAction.triggerOptions?.some((option) => option.effectId === "cao_cao_jianxiong"), false,
+    "observers receive the same public absence of an invalid option");
+  const ambiguousSubmit = await requestAndSettle("trigger", { code: game.code, token: caoMember.token, providerId: "cao_cao_jianxiong" });
+  assert.equal(ambiguousSubmit.status, 409);
+  assert.equal(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`), pendingBefore, "a rejected ambiguous choice leaves the pending event unchanged");
+
+  setHand(cao.id, [], 4, 4);
+  assert.ok((await state(game.code, caoMember.token)).data.currentAction.triggerOptions.some((option) => option.effectId === "cao_cao_jianxiong"),
+    "the genuine Discard copy becomes eligible again after the duplicate location is removed");
   sql(`UPDATE rooms SET discard_json='[]' WHERE code=${quote(game.code)}`);
   assert.equal(discardIds(game.code).includes(attack.id), false);
 
@@ -627,6 +641,8 @@ test("an unavailable Treachery damage card cannot strand the response room in re
   assert.equal(afterRejected.data.phase, "response");
   assert.equal(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`), pendingBefore, "a failed ownership validation leaves the exact active decision intact");
   assert.equal(afterRejected.data.currentAction.triggerEvent, "damage_suffered");
+  assert.equal(afterRejected.data.currentAction.triggerOptions.some((option) => option.effectId === "cao_cao_jianxiong"), false,
+    "a refresh removes the option after the card leaves all recoverable zones");
 
   const declined = await requestAndSettle("decline_trigger", { code: game.code, token: caoMember.token });
   assert.equal(declined.status, 200, JSON.stringify(declined.data));

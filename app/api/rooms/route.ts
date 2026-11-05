@@ -249,7 +249,12 @@ function damageTriggerContext(source: PlayerRow, target: PlayerRow) {
     targetEquipment: equipmentCards(target),
   };
 }
-function damageSufferedTriggerContext(source: PlayerRow | null, target: PlayerRow, amount: number, judgementCard?: Card, damageCards: Card[] = [], damageCause: DamageCause = "other", physicalSuit?: Card["suit"], skillState: KingSkillState = {}, playPhase = false) {
+function recoverableDamageCardIdsFor(damageCards: Card[], discard: Card[], continuation: DamageSufferedTriggerContinuation, players: PlayerRow[], deck: Card[]) {
+  const cardIds = damageCards.map((card) => card.id);
+  if (!cardIds.length || cardIds.some((cardId) => !cardId) || new Set(cardIds).size !== cardIds.length) return [];
+  return takeDamageCardsForGain(cardIds, discard, continuation, players, deck) ? cardIds : [];
+}
+function damageSufferedTriggerContext(source: PlayerRow | null, target: PlayerRow, amount: number, judgementCard?: Card, damageCards: Card[] = [], damageCause: DamageCause = "other", physicalSuit?: Card["suit"], skillState: KingSkillState = {}, playPhase = false, recoverableCardIds: string[] = []) {
   return {
     event: "damage_suffered" as const,
     ...(source ? { sourceId: source.id } : {}),
@@ -264,6 +269,7 @@ function damageSufferedTriggerContext(source: PlayerRow | null, target: PlayerRo
     targetHero: target.hero,
     damageAmount: amount,
     damageCards,
+    recoverableDamageCardIds: recoverableCardIds,
     damageCause,
     ...(skillState.turnPlayerId ? { turnPlayerId: skillState.turnPlayerId } : {}),
     playPhase,
@@ -290,11 +296,11 @@ function turnEndTriggerContext(actor: PlayerRow, endingPlayer: PlayerRow, stage:
 function damageTriggerOptions(source?: PlayerRow | null, target?: PlayerRow | null) {
   return source && target ? getTriggeredEffects(damageTriggerContext(source, target)) : [];
 }
-function damageSufferedTriggerOptions(source: PlayerRow | null | undefined, target?: PlayerRow | null, amount = 1, judgementCard?: Card, resolvedEffectIds: readonly string[] = [], damageCards: Card[] = [], resolvedDamagePointEffectIds: readonly string[] = [], damageCause: DamageCause = "other", physicalSuit?: Card["suit"], skillState: KingSkillState = {}, playPhase = false) {
-  return target ? getTriggeredEffects(damageSufferedTriggerContext(source ?? null, target, amount, judgementCard, damageCards, damageCause, physicalSuit, skillState, playPhase), resolvedEffectIds, resolvedDamagePointEffectIds) : [];
+function damageSufferedTriggerOptions(source: PlayerRow | null | undefined, target?: PlayerRow | null, amount = 1, judgementCard?: Card, resolvedEffectIds: readonly string[] = [], damageCards: Card[] = [], resolvedDamagePointEffectIds: readonly string[] = [], damageCause: DamageCause = "other", physicalSuit?: Card["suit"], skillState: KingSkillState = {}, playPhase = false, recoverableCardIds: string[] = []) {
+  return target ? getTriggeredEffects(damageSufferedTriggerContext(source ?? null, target, amount, judgementCard, damageCards, damageCause, physicalSuit, skillState, playPhase, recoverableCardIds), resolvedEffectIds, resolvedDamagePointEffectIds) : [];
 }
-function damageSufferedActorId(source: PlayerRow | null | undefined, target: PlayerRow, amount: number, damageCards: Card[] = [], resolvedEffectIds: readonly string[] = [], resolvedDamagePointEffectIds: readonly string[] = [], damageCause: DamageCause = "other", physicalSuit?: Card["suit"], skillState: KingSkillState = {}, playPhase = false) {
-  const context = damageSufferedTriggerContext(source ?? null, target, amount, undefined, damageCards, damageCause, physicalSuit, skillState, playPhase);
+function damageSufferedActorId(source: PlayerRow | null | undefined, target: PlayerRow, amount: number, damageCards: Card[] = [], resolvedEffectIds: readonly string[] = [], resolvedDamagePointEffectIds: readonly string[] = [], damageCause: DamageCause = "other", physicalSuit?: Card["suit"], skillState: KingSkillState = {}, playPhase = false, recoverableCardIds: string[] = []) {
+  const context = damageSufferedTriggerContext(source ?? null, target, amount, undefined, damageCards, damageCause, physicalSuit, skillState, playPhase, recoverableCardIds);
   const options = getTriggeredEffects(context, resolvedEffectIds, resolvedDamagePointEffectIds);
   return options.map((option) => triggerActorId(option.effectId, context) ?? target.id).find((actorId) => actorId === target.id || actorId === source?.id) ?? null;
 }
@@ -327,7 +333,7 @@ function damageSufferedTriggerPending(source: PlayerRow | null, target: PlayerRo
   };
   return { value: readyAfterEventId ? withPresentationBarrier(pending, [], readyAfterEventId) : pending, createdEnvelope: root?.envelope ?? null };
 }
-function triggerContextFor(pending: TriggerPending, players: PlayerRow[]) {
+function triggerContextFor(pending: TriggerPending, players: PlayerRow[], room?: RoomRow) {
   const continuation = pending.continuation;
   if (continuation.kind === "hero_choice_event") {
     const source = players.find((player) => player.id === continuation.sourceId && player.alive);
@@ -424,7 +430,11 @@ function triggerContextFor(pending: TriggerPending, players: PlayerRow[]) {
   if (continuation.kind === "damage_suffered_event") {
     const source = continuation.sourceId ? players.find((player) => player.id === continuation.sourceId && player.alive) ?? null : null;
     const target = players.find((player) => player.id === continuation.targetId && player.alive) ?? null;
-    return target ? { ...damageSufferedTriggerContext(source, target, continuation.amount, continuation.judgementCard, continuation.damageCards ?? [], continuation.damageCause ?? "other", continuation.physicalSuit), event: pending.event } : null;
+    const damageCards = continuation.damageCards ?? [];
+    const recoverableCardIds = room
+      ? recoverableDamageCardIdsFor(damageCards, parse<Card[]>(room.discard_json, []), continuation, players, parse<Card[]>(room.deck_json, []))
+      : [];
+    return target ? { ...damageSufferedTriggerContext(source, target, continuation.amount, continuation.judgementCard, damageCards, continuation.damageCause ?? "other", continuation.physicalSuit, {}, false, recoverableCardIds), event: pending.event } : null;
   }
   const source = players.find((player) => player.id === continuation.sourceId) ?? null;
   const target = players.find((player) => player.id === continuation.targetId) ?? null;
@@ -439,8 +449,8 @@ function triggerContextFor(pending: TriggerPending, players: PlayerRow[]) {
     sourceGender: heroGender(source.hero), targetGender: heroGender(target.hero),
   };
 }
-function triggerOptionsFor(pending: TriggerPending, players: PlayerRow[]) {
-  const context = triggerContextFor(pending, players);
+function triggerOptionsFor(pending: TriggerPending, players: PlayerRow[], room?: RoomRow) {
+  const context = triggerContextFor(pending, players, room);
   const secondary = pending.continuation.kind === "damage_suffered_event" && pending.continuation.stage === "secondary";
   const damagePointIds = pending.continuation.kind === "damage_suffered_event"
     ? pending.continuation.resolvedDamagePointEffectIds ?? []
@@ -784,13 +794,13 @@ function publicTriggerOutcomeSummary(outcome: { kind: string }): PublicTriggerOu
   }
 }
 
-function publicTriggerFactFor(trigger: TriggerPending, players: PlayerRow[], effectId: string, outcome: { kind: string }, envelope: CausalEnvelope | null): PublicPresentationEventFactDraft | undefined {
-  const context = triggerContextFor(trigger, players);
+function publicTriggerFactFor(trigger: TriggerPending, players: PlayerRow[], effectId: string, outcome: { kind: string }, envelope: CausalEnvelope | null, room?: RoomRow): PublicPresentationEventFactDraft | undefined {
+  const context = triggerContextFor(trigger, players, room);
   if (!context || triggerAvailability(effectId, context) !== "public") return undefined;
   const continuation = trigger.continuation as unknown as Record<string, unknown>;
   const rootEventId = typeof continuation.rootEventId === "string" ? continuation.rootEventId : undefined;
   const actorId = triggerActorId(effectId, context) ?? trigger.actorId;
-  const option = triggerOptionsFor(trigger, players).find((candidate) => candidate.effectId === effectId);
+  const option = triggerOptionsFor(trigger, players, room).find((candidate) => candidate.effectId === effectId);
   const summary = publicTriggerOutcomeSummary(outcome);
   return publicFactFor(trigger.causal, "SKILL_USED", {
     actorId, ...(rootEventId ? { rootEventId } : {}),
@@ -2279,7 +2289,8 @@ async function resolveAutomaticDamageSufferedTrigger(room: RoomRow, continuation
   const nextContinuation = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), execution.effectId])], stage: "reaction" as const, secondaryEffectId: undefined, judgementCard: undefined };
   const notice = addTriggeredEffectNotice(log, source?.name ?? target.name, execution.presentation?.label ?? "a passive post-damage effect");
   let nextLog = notice.log;
-  const context = damageSufferedTriggerContext(source, target, continuation.amount, undefined, continuation.damageCards ?? [], continuation.damageCause ?? "other", continuation.physicalSuit, state, continuation.resumePhase.startsWith("play"));
+  const recoverableCardIds = recoverableDamageCardIdsFor(continuation.damageCards ?? [], discard, continuation, players, deck);
+  const context = damageSufferedTriggerContext(source, target, continuation.amount, undefined, continuation.damageCards ?? [], continuation.damageCause ?? "other", continuation.physicalSuit, state, continuation.resumePhase.startsWith("play"), recoverableCardIds);
   const committedFact = (outcomeLabel: string, amount: number) => {
     if (triggerAvailability(execution.effectId, context) !== "public") return undefined;
     return publicFactFor(continuation.causal, "SKILL_USED", {
@@ -2347,14 +2358,15 @@ async function continueDamageSufferedEvent(room: RoomRow, continuation: DamageSu
   const target = players.find((player) => player.id === continuation.targetId && player.alive) ?? null;
   const skillState = parse<KingSkillState>(room.skill_state_json, {});
   const playPhase = continuation.resumePhase.startsWith("play");
-  const options = target?.alive ? damageSufferedTriggerOptions(source?.alive ? source : null, target, continuation.amount, undefined, continuation.resolvedEffectIds, continuation.damageCards ?? [], continuation.resolvedDamagePointEffectIds, continuation.damageCause ?? "other", continuation.physicalSuit, skillState, playPhase) : [];
+  const recoverableCardIds = recoverableDamageCardIdsFor(continuation.damageCards ?? [], discard, continuation, players, deck);
+  const options = target?.alive ? damageSufferedTriggerOptions(source?.alive ? source : null, target, continuation.amount, undefined, continuation.resolvedEffectIds, continuation.damageCards ?? [], continuation.resolvedDamagePointEffectIds, continuation.damageCause ?? "other", continuation.physicalSuit, skillState, playPhase, recoverableCardIds) : [];
   const baseContinuation: DamageSufferedTriggerContinuation = {
     ...continuation,
     stage: "reaction",
     judgementCard: undefined,
     secondaryEffectId: undefined,
   };
-  const context = target ? damageSufferedTriggerContext(source?.alive ? source : null, target, continuation.amount, undefined, continuation.damageCards ?? [], continuation.damageCause ?? "other", continuation.physicalSuit, skillState, playPhase) : null;
+  const context = target ? damageSufferedTriggerContext(source?.alive ? source : null, target, continuation.amount, undefined, continuation.damageCards ?? [], continuation.damageCause ?? "other", continuation.physicalSuit, skillState, playPhase, recoverableCardIds) : null;
   const automaticOption = options.find((option) => option.allowDecline === false && option.selection === null);
   if (automaticOption && context) {
     const execution = resolveTriggeredEffect(automaticOption.effectId, context, {});
@@ -2364,7 +2376,7 @@ async function continueDamageSufferedEvent(room: RoomRow, continuation: DamageSu
     }
   }
   if (target && options.length) {
-    const context = damageSufferedTriggerContext(source?.alive ? source : null, target, continuation.amount, undefined, continuation.damageCards ?? [], continuation.damageCause ?? "other", continuation.physicalSuit, skillState, playPhase);
+    const context = damageSufferedTriggerContext(source?.alive ? source : null, target, continuation.amount, undefined, continuation.damageCards ?? [], continuation.damageCause ?? "other", continuation.physicalSuit, skillState, playPhase, recoverableCardIds);
     const actorId = options.map((option) => triggerActorId(option.effectId, context) ?? target.id).find((candidate) => candidate === target.id || candidate === source?.id) ?? target.id;
     const actor = players.find((player) => player.id === actorId && player.alive) ?? target;
     const presentation = addLogWithId(log, `${actor.name} may use another post-damage reaction, or skip.`);
@@ -2887,16 +2899,28 @@ type DamageCardGain = { cards: Card[]; discard: Card[]; continuation: DamageSuff
  * it must be removed from that held list when Cao Cao obtains it. The logical
  * group continues through its separate sequenceStartCardId metadata.
  */
-function takeDamageCardsForGain(cardIds: string[], discard: Card[], continuation: DamageSufferedTriggerContinuation): DamageCardGain | null {
+function takeDamageCardsForGain(cardIds: string[], discard: Card[], continuation: DamageSufferedTriggerContinuation, players: PlayerRow[] = [], deck: Card[] = []): DamageCardGain | null {
+  if (!cardIds.length || cardIds.some((cardId) => !cardId) || new Set(cardIds).size !== cardIds.length) return null;
   let nextDiscard = [...discard];
   let nextContinuation = continuation;
   let group = continuation.resumeGroup;
   let held = group?.continuation.heldCards ? [...group.continuation.heldCards] : [];
+  const otherPhysicalCards = [
+    ...deck,
+    ...players.flatMap((player) => [
+      ...parse<Card[]>(player.hand_json, []),
+      ...equipmentCards(player),
+      ...parse<Card[]>(player.judgement_json, []),
+    ]),
+  ];
   const cards: Card[] = [];
   for (const cardId of cardIds) {
-    const discardCard = nextDiscard.find((card) => card.id === cardId);
-    const heldCard = held.find((card) => card.id === cardId);
-    if ((discardCard && heldCard) || (!discardCard && !heldCard)) return null;
+    const discardMatches = nextDiscard.filter((card) => card.id === cardId);
+    const heldMatches = held.filter((card) => card.id === cardId);
+    const otherMatches = otherPhysicalCards.filter((card) => card.id === cardId);
+    if (discardMatches.length + heldMatches.length !== 1 || discardMatches.length + heldMatches.length + otherMatches.length !== 1) return null;
+    const discardCard = discardMatches[0];
+    const heldCard = heldMatches[0];
     const card = discardCard ?? heldCard;
     if (!card) return null;
     cards.push(card);
@@ -5281,12 +5305,13 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     ...(resumeTurnEnd ? { resumeTurnEnd } : {}),
     ...(inheritedCausal ? { causal: inheritedCausal } : {}),
   };
+  const recoverableCardIds = recoverableDamageCardIdsFor(damageCards, discard, damageContinuation, players, deck);
   if (isDying(hp)) {
     const resumePlayer = players.find((player) => player.id === (resumePlayerId ?? source?.id)) ?? source ?? target;
     const dyingTarget = { ...target, hp } satisfies PlayerRow;
     const dyingSource = source && source.id === target.id ? dyingTarget : source;
     const pendingPostDamageOptions = target.alive
-      ? damageSufferedTriggerOptions(dyingSource?.alive ? dyingSource : null, dyingTarget, finalAmount, undefined, [], damageCards, [], cause, physicalSuit, skillState, playPhase)
+      ? damageSufferedTriggerOptions(dyingSource?.alive ? dyingSource : null, dyingTarget, finalAmount, undefined, [], damageCards, [], cause, physicalSuit, skillState, playPhase, recoverableCardIds)
       : [];
     const needsPostDamageResume = pendingPostDamageOptions.length > 0 || Boolean(effectiveResumeGroup || resumeDamageSuffered || resumeTurnEnd);
     await startDyingRescue(room, source, dyingTarget, players, deck, discard, damageLog, writes, resumePlayer, resumePhase, effectiveResumePending, hp, origin, needsPostDamageResume ? damageContinuation : undefined, undefined, inheritedCausal);
@@ -5296,11 +5321,11 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
   const updatedTarget = { ...target, hp } satisfies PlayerRow;
   const updatedPlayers = players.map((player) => player.id === target.id ? updatedTarget : player);
   const updatedSource = source && source.id === target.id ? updatedTarget : source;
-  const postDamageOptions = target.alive ? damageSufferedTriggerOptions(updatedSource?.alive ? updatedSource : null, updatedTarget, finalAmount, undefined, [], damageCards, [], cause, physicalSuit, skillState, playPhase) : [];
+  const postDamageOptions = target.alive ? damageSufferedTriggerOptions(updatedSource?.alive ? updatedSource : null, updatedTarget, finalAmount, undefined, [], damageCards, [], cause, physicalSuit, skillState, playPhase, recoverableCardIds) : [];
   if (postDamageOptions.length) {
     const automaticOption = postDamageOptions.find((option) => option.allowDecline === false && option.selection === null);
     if (automaticOption) {
-      const context = damageSufferedTriggerContext(updatedSource?.alive ? updatedSource : null, updatedTarget, finalAmount, undefined, damageCards, cause, physicalSuit, skillState, playPhase);
+      const context = damageSufferedTriggerContext(updatedSource?.alive ? updatedSource : null, updatedTarget, finalAmount, undefined, damageCards, cause, physicalSuit, skillState, playPhase, recoverableCardIds);
       const execution = resolveTriggeredEffect(automaticOption.effectId, context, {});
       if (execution) {
         await db().batch([...writes, db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id)]);
@@ -5308,7 +5333,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
         return { kind: "reaction_pending" };
       }
     }
-    const actorId = damageSufferedActorId(updatedSource?.alive ? updatedSource : null, updatedTarget, finalAmount, damageCards, [], [], cause, physicalSuit, skillState, playPhase) ?? updatedTarget.id;
+    const actorId = damageSufferedActorId(updatedSource?.alive ? updatedSource : null, updatedTarget, finalAmount, damageCards, [], [], cause, physicalSuit, skillState, playPhase, recoverableCardIds) ?? updatedTarget.id;
     const actor = players.find((player) => player.id === actorId && player.alive) ?? updatedTarget;
     const presentation = addLogWithId(damageLog, `${actor.name} may use a post-damage reaction, or skip.`);
     const pendingResult = damageSufferedTriggerPending(source, updatedTarget, finalAmount, resumePhase, sequenceStartCardId, presentation.eventId, origin, resumePlayerId, effectiveResumeGroup, resumeDamageSuffered, damageCards, resumeTurnEnd, cause, physicalSuit, actor.id, inheritedCausal, rootEventId);
@@ -6215,7 +6240,7 @@ function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: P
     }
     const trigger = asTriggerPending(pending);
     if (trigger) {
-      const options = triggerOptionsFor(trigger, players);
+      const options = triggerOptionsFor(trigger, players, room);
       return [...(options.length === 0 || options.some(triggerAllowsDecline) ? ["decline_trigger"] : []), ...(options.length ? ["trigger"] : [])] as GameplayAction[];
     }
     switch (pending.kind) {
@@ -6405,8 +6430,8 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const responseDeadline = negationWindow?.deadline ?? (pending && "deadline" in pending ? pending.deadline ?? 0 : 0);
   const responseCountdownVisibleAt = negationWindow?.openedAt ?? (room.phase === "response" && responseDeadline ? responseDeadline - HUMAN_RESPONSE_TIMEOUT_MS : 0);
   const actionPlayerId = room.status === "heroes" ? projectedActionPlayerId : negationWindow ? null : negationWaitingForOther || room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
-  const currentTriggerContext = triggerPending ? triggerContextFor(triggerPending, players) : null;
-  const currentTriggerOptions = triggerPending ? triggerOptionsFor(triggerPending, players) : [];
+  const currentTriggerContext = triggerPending ? triggerContextFor(triggerPending, players, room) : null;
+  const currentTriggerOptions = triggerPending ? triggerOptionsFor(triggerPending, players, room) : [];
   const privateTriggerDecision = Boolean(triggerPending && currentTriggerContext
     && (currentTriggerOptions.some((option) => triggerAvailability(option.effectId, currentTriggerContext) === "private")
       || privateOpportunityWindowEffectIds(currentTriggerContext, triggerPending.resolvedEffectIds).length > 0));
@@ -6450,7 +6475,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     ? currentTriggerOptions
     : me?.id === actualActionPlayerId ? activeHeroSkillOptions(me, room, players) : [];
   const legacyFrostAvailable = triggerPending?.event === "damage_about_to_apply"
-    && triggerOptionsFor(triggerPending, players).some((option) => option.effectId === "frost_sword_damage_about_to_apply");
+    && triggerOptionsFor(triggerPending, players, room).some((option) => option.effectId === "frost_sword_damage_about_to_apply");
   const presentation = room.phase === "response" && pending
     ? { resolutionId: decisionResponsePending?.resolutionId ?? triggerPending?.resolutionId ?? latestResolutionId(rawLog), readyAfterEventId: decisionResponsePending?.readyAfterEventId ?? triggerPending?.readyAfterEventId ?? null }
     : undefined;
@@ -7375,9 +7400,9 @@ export async function POST(request: Request) {
     if (action === "decline_trigger" || action === "trigger") {
       const trigger = asTriggerPending(pendingForController);
       if (!trigger || !me) return json({ error: "There is no trigger decision available.", stale: true, room: await roomState(code, token) }, 409);
-      const context = triggerContextFor(trigger, allRoomPlayers);
+      const context = triggerContextFor(trigger, allRoomPlayers, room);
       const triggerId = String(body.providerId ?? "");
-      const available = triggerOptionsFor(trigger, allRoomPlayers);
+      const available = triggerOptionsFor(trigger, allRoomPlayers, room);
       if (action === "decline_trigger" && available.length > 0 && !available.some(triggerAllowsDecline)) {
         return json({ error: "This trigger decision must be resolved; it cannot be skipped." }, 409);
       }
@@ -7389,7 +7414,7 @@ export async function POST(request: Request) {
         const selectedOption = available.find((option) => option.effectId === triggerId);
         triggerExecution = { ...triggerExecution, presentation: selectedOption ? { label: selectedOption.label } : undefined };
         if (triggerExecution.outcome.kind !== "continue_event") {
-          triggerPublicFact = publicTriggerFactFor(trigger, allRoomPlayers, triggerId, triggerExecution.outcome, parseCausalEnvelope(room.causal_envelope_json));
+          triggerPublicFact = publicTriggerFactFor(trigger, allRoomPlayers, triggerId, triggerExecution.outcome, parseCausalEnvelope(room.causal_envelope_json), room);
         }
       }
       if (action === "trigger" && !triggerExecution) return json({ error: "That trigger option is no longer available.", stale: true, room: await roomState(code, token) }, 409);
@@ -7418,7 +7443,7 @@ export async function POST(request: Request) {
     const players = rows.results ?? [];
     const next = continueTriggerEvent(trigger, triggerExecution, nextResponseDeadline(players.find((player) => player.id === trigger.actorId)));
     if (!next) return json({ error: "That triggered effect cannot continue this event.", stale: true, room: await roomState(code, token) }, 409);
-    const remaining = triggerOptionsFor(next, players);
+    const remaining = triggerOptionsFor(next, players, liveRoom);
     const resumed = resumeTriggerContinuation(trigger, triggerExecution, remaining.length > 0, nextResponseDeadline(players.find((player) => player.id === trigger.actorId)));
     if (!resumed) return json({ error: "That triggered effect cannot continue this event.", stale: true, room: await roomState(code, token) }, 409);
     // The generic continue outcome reports no committed effect; preserve the
@@ -7447,7 +7472,7 @@ export async function POST(request: Request) {
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
       const players = rows.results ?? [];
       const recoveredPlayer = players.find((player) => player.id === continuation.recovery.playerId && player.alive);
-      const available = recoveredPlayer ? triggerOptionsFor(trigger, players) : [];
+      const available = recoveredPlayer ? triggerOptionsFor(trigger, players, liveRoom) : [];
       if (!recoveredPlayer || !available.length) return json({ error: "That recovery decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       if (action === "apply_trigger" && (!triggerExecution || triggerExecution.outcome.kind !== "draw_target_cards" || !available.some((option) => option.effectId === triggerExecution!.effectId))) {
         return json({ error: "That Prudence decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
@@ -7493,7 +7518,7 @@ export async function POST(request: Request) {
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
       const players = rows.results ?? [];
       const owner = players.find((player) => player.id === continuation.loss.playerId && player.alive);
-      const available = owner ? triggerOptionsFor(trigger, players) : [];
+      const available = owner ? triggerOptionsFor(trigger, players, liveRoom) : [];
       if (!owner || !available.length) return json({ error: "That Equipment-loss decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       if (action === "apply_trigger" && (!triggerExecution || triggerExecution.outcome.kind !== "draw_cards" || triggerExecution.outcome.amount !== 2 || !available.some((option) => option.effectId === triggerExecution!.effectId))) {
         return json({ error: "That Daredevil decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
@@ -7524,7 +7549,7 @@ export async function POST(request: Request) {
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
       const players = rows.results ?? [];
       const source = players.find((player) => player.id === continuation.sourceId && player.alive);
-      const available = triggerOptionsFor(trigger, players);
+      const available = triggerOptionsFor(trigger, players, liveRoom);
       if (!source || !available.length) return json({ error: "That Stratagem-use decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       if (action === "apply_trigger" && (!triggerExecution || !available.some((option) => option.effectId === triggerExecution.effectId) || triggerExecution.outcome.kind !== "draw_cards" || triggerExecution.outcome.amount !== 1)) {
         return json({ error: "That Cultivation decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
@@ -7561,7 +7586,7 @@ export async function POST(request: Request) {
         ? players.find((player) => player.id === continuation.sourceId && player.alive) ?? null
         : players.find((player) => player.id === trigger.actorId && player.alive) ?? null;
       if (!endingPlayer || !source) return json({ error: "That turn-end decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-      const context = triggerContextFor(trigger, players);
+      const context = triggerContextFor(trigger, players, liveRoom);
       const available = context ? getTriggeredEffects(context, trigger.resolvedEffectIds) : [];
       if (action === "apply_trigger" && (!triggerExecution || !available.some((option) => option.effectId === triggerExecution.effectId))) return json({ error: "That turn-end decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       if (action === "apply_trigger" && continuation.stage === "activation" && triggerExecution.outcome.kind !== "draw_cards" && (triggerExecution.outcome.kind !== "discard_cards" || triggerExecution.outcome.targetId !== source.id || triggerExecution.outcome.targetCardIds.length !== 1)) return json({ error: "Select exactly 1 Basic card for Dauntless.", stale: true, room: await roomState(code, token) }, 409);
@@ -7701,7 +7726,7 @@ export async function POST(request: Request) {
         return json({ error: "That Composure decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       }
       const player = (await db.prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(continuation.playerId, room.id).first<PlayerRow>()) ?? null;
-      const context = triggerContextFor(trigger, allRoomPlayers);
+      const context = triggerContextFor(trigger, allRoomPlayers, liveRoom);
       if (!player || !player.alive || !context || getTriggeredEffects(context).length === 0) return json({ error: "That Composure decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Composure decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
@@ -7770,8 +7795,8 @@ export async function POST(request: Request) {
           || target.id !== me.id) {
           return json({ error: "That Sowing Distrust choice is stale.", stale: true, room: await roomState(code, token) }, 409);
         }
-        const liveContext = triggerContextFor(livePending, players);
-        const liveOption = triggerOptionsFor(livePending, players).find((option) => option.effectId === "zhou_yu_fanjian_choice");
+        const liveContext = triggerContextFor(livePending, players, liveRoom);
+        const liveOption = triggerOptionsFor(livePending, players, liveRoom).find((option) => option.effectId === "zhou_yu_fanjian_choice");
         const liveExecution = liveContext && liveOption
           ? resolveTriggeredEffect("zhou_yu_fanjian_choice", liveContext, { choice: body.choice, cardKeys: body.cardKeys })
           : null;
@@ -7992,7 +8017,7 @@ export async function POST(request: Request) {
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Draw Phase decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
       let log = parse<string[]>(liveRoom.log_json, []);
-      const optionLabel = triggerExecution?.presentation?.label ?? triggerOptionsFor(trigger, players)[0]?.label ?? "Draw Phase effect";
+      const optionLabel = triggerExecution?.presentation?.label ?? triggerOptionsFor(trigger, players, liveRoom)[0]?.label ?? "Draw Phase effect";
       if (action === "apply_trigger") log = addTriggeredEffectNotice(log, player.name, optionLabel, triggerPublicFact).log;
       else log = addLog(log, `${player.name} declines ${optionLabel}; normal Draw Phase draw continues.`);
       if (replacementTargets) {
@@ -8089,7 +8114,7 @@ export async function POST(request: Request) {
       const players = rows.results ?? []; const source = players.find((player) => player.id === continuation.declaration.sourceId && player.alive); const target = players.find((player) => player.id === continuation.declaration.targetId && player.alive);
       if (!source || !target) return json({ error: "That Attack target is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       const execution = triggerExecution;
-      const available = triggerOptionsFor(trigger, players);
+      const available = triggerOptionsFor(trigger, players, liveRoom);
       if (action === "apply_trigger" && (!execution || !available.some((option) => option.effectId === execution.effectId) || (execution.outcome.kind !== "target_discard" && execution.outcome.kind !== "attacker_draw" && execution.outcome.kind !== "judgement" && execution.outcome.kind !== "redirect_attack"))) return json({ error: "That target decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       let discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []); let continuationPlayers = players;
       let discardCard: Card | null = null;
@@ -8255,7 +8280,7 @@ export async function POST(request: Request) {
         if (action === "apply_trigger" && execution?.outcome.kind === "gain_damage_cards") {
           const outcome = execution.outcome;
           if (outcome.targetId !== target.id || !outcome.cardIds.length || new Set(outcome.cardIds).size !== outcome.cardIds.length) return json({ error: "The Treachery cards are no longer available.", stale: true, room: await roomState(code, token) }, 409);
-          damageGain = takeDamageCardsForGain(outcome.cardIds, discard, continuation);
+          damageGain = takeDamageCardsForGain(outcome.cardIds, discard, continuation, players, parse<Card[]>(liveRoom.deck_json, []));
           if (!damageGain) return json({ error: "The card that caused the damage is no longer available.", stale: true, room: await roomState(code, token) }, 409);
         }
         if (action === "apply_trigger" && execution?.outcome.kind === "gain_target_card") {
@@ -8277,7 +8302,7 @@ export async function POST(request: Request) {
         if (action === "decline_trigger_effect") {
           const decliningPlayer = trigger.actorId === source?.id ? source : target;
           log = addLog(log, `${decliningPlayer.name} declines the optional post-damage reaction. Normal processing resumes.`);
-          const declinedOptions = triggerOptionsFor(trigger, players);
+          const declinedOptions = triggerOptionsFor(trigger, players, liveRoom);
           const resolvedEffectIds = [...new Set([...(continuation.resolvedEffectIds ?? []), ...declinedOptions.filter((option) => !triggerRepeatsPerDamagePoint(option.effectId)).map((option) => option.effectId)])];
           await finishDamageSufferedEvent(liveRoom, { ...continuation, resolvedEffectIds }, players, parse<Card[]>(liveRoom.deck_json, []), discard, log);
           return json({ room: await roomState(code, token) });

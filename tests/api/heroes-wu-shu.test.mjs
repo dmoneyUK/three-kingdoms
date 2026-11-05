@@ -64,6 +64,38 @@ test("Fanjian validates target ownership, empty hands, matching suits, once-per-
   assert.equal(lethal.status, 200, JSON.stringify(lethal.data)); assert.equal(lethal.data.room.phase, "dying"); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(dyingTarget.id)}`)).map((item) => item.id), [dyingCard.id]);
 });
 
+test("Fanjian mismatch against Cao Cao keeps the revealed physical card without offering unavailable Treachery", async () => {
+  const game = await createHumanGame();
+  const source = game.room.players[0];
+  const target = game.room.players[1];
+  const concealed = card("Peach", "fanjian-cao-cao-mismatch", "♥");
+  sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(source.id)}`);
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(target.id)}`);
+  setHand(source.id, [concealed], 3, 3);
+  setHand(target.id, [], 4, 4);
+  setTurn(game.code, source.seat);
+
+  const opened = await requestAndSettle("trigger", { code: game.code, token: game.members[0].token, providerId: "zhou_yu_fanjian", targetId: target.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const resolved = await requestAndSettle("trigger", { code: game.code, token: game.members[1].token, providerId: "zhou_yu_fanjian_choice", choice: "♠", cardKeys: ["hand:0"] });
+  assert.equal(resolved.status, 200, JSON.stringify(resolved.data));
+  assert.equal(resolved.data.room.players.find((player) => player.id === target.id).hp, 3, "the mismatched suit still commits one damage");
+  assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(target.id)}`)).map((held) => held.id), [concealed.id], "Cao Cao keeps the genuine Fanjian card exactly once");
+  assert.equal(roomCardCount(game.code, concealed.id), 1);
+  assert.equal(resolved.data.room.phase, "play");
+  assert.equal(resolved.data.room.pending, null);
+  assert.equal(resolved.data.room.currentAction?.triggerEvent === "damage_suffered", false);
+  assert.equal(Boolean(resolved.data.room.currentAction?.triggerOptions?.some((option) => option.effectId === "cao_cao_jianxiong")), false,
+    "a non-turn viewer receives no viewer-local Cao Cao response options");
+
+  const sourceView = await state(game.code, game.members[0].token);
+  assert.equal(Boolean(sourceView.data.currentAction.triggerOptions?.some((option) => option.effectId === "cao_cao_jianxiong")), false,
+    "the resumed active player receives no false Cao Cao response");
+  const observer = await state(game.code, game.members[2].token);
+  assert.equal(observer.data.currentAction.triggerEvent === "damage_suffered", false, "other viewers receive no false public Treachery wait");
+  assert.equal(Boolean(observer.data.currentAction.triggerOptions?.some((option) => option.effectId === "cao_cao_jianxiong")), false);
+});
+
 test("an already-open legacy Fanjian suit/card pending can still finish", async () => {
   const game = await createHumanGame(); const source = game.room.players[0]; const target = game.room.players[1]; const concealed = card("Dodge", "fanjian-legacy-pending", "♠");
   sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(source.id)}`); setHand(source.id, [concealed], 3, 3); setHand(target.id, [], 4, 4); setTurn(game.code, source.seat);
