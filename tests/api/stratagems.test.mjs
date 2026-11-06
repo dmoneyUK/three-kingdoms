@@ -1322,7 +1322,20 @@ test("Lu Xun's Second Wind is a private once-per-loss continuation", { timeout: 
   const discarded = await requestAndSettle("discard_cards", { code: discardGame.code, token: discardGame.members[1].token, cardIds: discardCards.map((held) => held.id) });
   assert.equal(discarded.status, 200, JSON.stringify(discarded.data)); assert.equal(discarded.data.room.currentAction.triggerOptions.length, 1, "losing multiple cards together opens one Second Wind decision");
   const discardedDecline = await requestAndSettle("decline_trigger", { code: discardGame.code, token: discardGame.members[1].token });
-  assert.equal(discardedDecline.status, 200, JSON.stringify(discardedDecline.data)); assert.equal(discardedDecline.data.room.currentAction.kind, "turn");
+  assert.equal(discardedDecline.status, 200, JSON.stringify(discardedDecline.data));
+  assert.equal(discardedDecline.data.room.phase, "resolving", "declining Second Wind completes the end-turn trigger before the public handoff");
+  assert.equal(discardedDecline.data.room.publicDiscardHandoff?.cardCount, 2);
+  assert.equal(discardedDecline.data.room.currentAction.kind, "none", "the next turn stays unavailable while the committed Discard is presented");
+  assert.deepEqual(discardedDecline.data.room.currentAction.legalActions, []);
+  const nextSeatMember = discardGame.members[2];
+  const earlyNextDraw = await request("draw", { code: discardGame.code, token: nextSeatMember.token });
+  assert.equal(earlyNextDraw.status, 409, "the next seat cannot act before the Discard handoff deadline");
+  sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.deadline',${Date.now() - 1}) WHERE code=${quote(discardGame.code)} AND json_extract(pending_json,'$.kind')='discard_turn_handoff'`);
+  const afterHandoff = (await state(discardGame.code, nextSeatMember.token)).data;
+  assert.equal(afterHandoff.currentAction.kind, "turn", "the authenticated next-seat read resumes the turn after the deadline");
+  assert.equal(afterHandoff.currentAction.actorId, discardGame.room.players[2].id);
+  const resumedDraw = await request("draw", { code: discardGame.code, token: nextSeatMember.token });
+  assert.equal(resumedDraw.status, 200, JSON.stringify(resumedDraw.data));
 
   const removedGame = await createHumanGame(); const removedSource = removedGame.room.players[0]; const removedLu = removedGame.room.players[1];
   sql(`UPDATE players SET hero='lu-xun' WHERE id=${quote(removedLu.id)}`);
