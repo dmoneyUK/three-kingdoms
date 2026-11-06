@@ -211,9 +211,12 @@ test("engine-backed Sowing Distrust exposes its public Effect root during one pr
   assert.equal(started.status, 200, JSON.stringify(started.data));
   const choiceView = await assertProjectionMatchesEngine(game.code, targetMember.token);
   const rootPending = authoritativePending(game.code);
+  const activationEvent = choiceView.timeline.find((event) => event.id === rootPending.continuation.effectRoot.rootEventId);
+  const activationFact = activationEvent?.publicFact;
+  assert.equal(activationFact?.category, "SKILL_USED");
   const effectAction = {
     semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId: rootPending.continuation.effectRoot.rootEventId,
-    sourceId: source.id, targetId: target.id,
+    sourceId: source.id, targetId: target.id, interactionId: activationFact.interactionId, rootFrameId: activationFact.frameId,
   };
   assert.deepEqual(choiceView.presentationV2.skillEffectAction, effectAction);
   assert.deepEqual(choiceView.presentationSnapshot.skillEffectAction, effectAction);
@@ -222,6 +225,7 @@ test("engine-backed Sowing Distrust exposes its public Effect root during one pr
   assert.equal(choiceView.currentAction.triggerOptions[0].selection.choices.length, 4);
   assert.deepEqual(choiceView.currentAction.triggerOptions[0].selection.eligibleKeys, ["hand:0"]);
   assert.equal(JSON.stringify(choiceView.currentAction).includes(hiddenCard.id), false);
+  assert.equal(choiceView.timeline.some((event) => event.type === "card" && event.card.id === hiddenCard.id), false, "the source Hand face is not public before the combined choice commits");
   assert.equal(choiceView.presentationSnapshot.publicNextDecision?.visibility, "PUBLIC");
   assert.deepEqual(choiceView.presentationSnapshot.publicNextDecision?.actorIds, [target.id]);
   assert.deepEqual(choiceView.presentationSnapshot.publicNextDecision?.actionLabels, ["Choose a suit and a card"]);
@@ -259,9 +263,14 @@ test("engine-backed Sowing Distrust exposes its public Effect root during one pr
   const settledView = await assertProjectionMatchesEngine(game.code, targetMember.token);
   const settlement = settledView.presentationV2.skillEffectSettlements;
   assert.equal(settlement.length, 1);
+  const revealEvent = settledView.timeline.find((event) => event.id === settlement[0].revealEventId);
+  const damageEvent = settledView.timeline.find((event) => event.id === settlement[0].damage.eventId);
   assert.deepEqual(settlement[0], {
     semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId: effectAction.rootEventId,
     sourceId: source.id, targetId: target.id, outcome: "SUITS_DIFFERED",
+    interactionId: effectAction.interactionId, rootFrameId: effectAction.rootFrameId,
+    guess: "♥", revealEventId: revealEvent.id, physicalCardId: hiddenCard.id,
+    damage: { outcome: "DAMAGE_APPLIED", amount: 1, eventId: damageEvent.id },
     eventId: settledView.timeline.find((event) => event.publicSkillEffectSettlement)?.id,
   });
   assert.deepEqual(settledView.presentationSnapshot.skillEffectSettlements, settlement);
@@ -270,9 +279,12 @@ test("engine-backed Sowing Distrust exposes its public Effect root during one pr
   assert.equal(settlementEvent.importance, "essential");
   assert.equal(settlementEvent.finalResult, true);
   assert.equal(settlementEvent.publicSkillEffectSettlement.rootEventId, effectAction.rootEventId);
+  assert.equal(revealEvent.card.id, hiddenCard.id);
+  assert.equal(revealEvent.publicZoneTransition.from.ownerId, source.id);
+  assert.equal(revealEvent.publicZoneTransition.to.ownerId, target.id);
   assert.equal(settledView.timeline.some((event) => event.type === "card" && event.card.id === hiddenCard.id), true, "the card identity becomes public only through the game's reveal event");
   assert.equal(settledView.timeline.filter((event) => event.type === "card" && event.action === "reveal" && event.card.id === hiddenCard.id).length, 1, "the real selected card is publicly revealed once");
-  assert.equal(JSON.stringify(settlement).includes(hiddenCard.id), false, "the semantic settlement proof contains no physical-card identity");
+  assert.equal(JSON.stringify(settlement).includes(hiddenCard.id), true, "the postcommit proof points to the already-public physical card");
 
   const settledObserver = (await state(game.code, observerMember.token)).data;
   assert.deepEqual(settledObserver.presentationSnapshot.skillEffectSettlements, settlement);
@@ -316,7 +328,13 @@ function expectSettlement(view, sourceId, targetId, hiddenCardId, outcome) {
   assert.equal(settlement.outcome, outcome);
   assert.equal(settlement.sourceId, sourceId);
   assert.equal(settlement.targetId, targetId);
-  assert.equal(JSON.stringify(settlement).includes(hiddenCardId), false);
+  assert.equal(settlement.physicalCardId, hiddenCardId);
+  assert.equal(settlement.guess, view.timeline.find((candidate) => candidate.id === settlement.eventId)?.publicSkillEffectSettlement?.guess);
+  const reveal = view.timeline.find((candidate) => candidate.id === settlement.revealEventId);
+  assert.equal(reveal?.type, "card");
+  assert.equal(reveal?.card?.id, hiddenCardId);
+  assert.equal(settlement.damage.outcome, "NO_DAMAGE");
+  assert.equal(settlement.damage.amount, 0);
   const event = view.timeline.find((candidate) => candidate.id === settlement.eventId);
   assert.equal(event?.publicSkillEffectSettlement?.outcome, outcome);
   assert.equal(event?.importance, "essential");

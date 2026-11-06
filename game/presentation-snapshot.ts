@@ -1,5 +1,5 @@
 import type { CurrentAction } from "./protocol";
-import { CARD_KINDS, type Card, type CardKind } from "./model";
+import { CARD_KINDS, type Card, type CardKind, type CardSuit } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestParticipantProgressStatus } from "./pending";
 import { isProvenOrderedAttackRootProof, isProvenRootActionCardProof } from "./presentation-v2";
 import type {
@@ -350,24 +350,37 @@ export function provenDeflectionActions(value: unknown): PresentationSnapshotDef
 export function provenSkillEffectAction(value: unknown): PresentationSnapshotSkillEffectAction | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const action = value as Partial<PresentationSnapshotSkillEffectAction>;
+  const hasIdentity = nonEmptyString(action.interactionId) && nonEmptyString(action.rootFrameId);
   return action.semantics === "PROVEN" && action.effectId === "zhou_yu_fanjian"
     && nonEmptyString(action.rootEventId) && nonEmptyString(action.sourceId)
     && nonEmptyString(action.targetId) && action.sourceId !== action.targetId
-    ? { semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId: action.rootEventId, sourceId: action.sourceId, targetId: action.targetId }
+    && (action.interactionId === undefined && action.rootFrameId === undefined || hasIdentity)
+    ? { semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId: action.rootEventId, sourceId: action.sourceId, targetId: action.targetId,
+      ...(hasIdentity ? { interactionId: action.interactionId!, rootFrameId: action.rootFrameId! } : {}) }
     : null;
 }
 
 export function provenSkillEffectSettlements(value: unknown): PresentationSnapshotSkillEffectSettlement[] {
   if (!Array.isArray(value)) return [];
-  const settlements = value.filter((candidate): candidate is PresentationSnapshotSkillEffectSettlement => Boolean(candidate && typeof candidate === "object" && !Array.isArray(candidate)
-    && (candidate as PresentationSnapshotSkillEffectSettlement).semantics === "PROVEN"
-    && (candidate as PresentationSnapshotSkillEffectSettlement).effectId === "zhou_yu_fanjian"
-    && nonEmptyString((candidate as PresentationSnapshotSkillEffectSettlement).eventId)
-    && nonEmptyString((candidate as PresentationSnapshotSkillEffectSettlement).rootEventId)
-    && nonEmptyString((candidate as PresentationSnapshotSkillEffectSettlement).sourceId)
-    && nonEmptyString((candidate as PresentationSnapshotSkillEffectSettlement).targetId)
-    && (candidate as PresentationSnapshotSkillEffectSettlement).sourceId !== (candidate as PresentationSnapshotSkillEffectSettlement).targetId
-    && ((candidate as PresentationSnapshotSkillEffectSettlement).outcome === "SUITS_MATCHED" || (candidate as PresentationSnapshotSkillEffectSettlement).outcome === "SUITS_DIFFERED")));
+  const settlements = value.filter((candidate): candidate is PresentationSnapshotSkillEffectSettlement => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+    const proof = candidate as PresentationSnapshotSkillEffectSettlement;
+    const validSuit = proof.guess === "♥" || proof.guess === "♦" || proof.guess === "♣" || proof.guess === "♠";
+    const damage = proof.damage;
+    const validDamage = Boolean(damage && Number.isSafeInteger(damage.amount) && damage.amount >= 0
+      && (damage.outcome === "NO_DAMAGE" && proof.outcome === "SUITS_MATCHED" && damage.amount === 0
+        && damage.eventId === undefined
+        || damage.outcome === "DAMAGE_APPLIED" && proof.outcome === "SUITS_DIFFERED" && damage.amount > 0 && nonEmptyString(damage.eventId)
+        || damage.outcome === "DAMAGE_PREVENTED" && proof.outcome === "SUITS_DIFFERED" && damage.amount === 0 && nonEmptyString(damage.eventId)));
+    return proof.semantics === "PROVEN" && proof.effectId === "zhou_yu_fanjian"
+      && nonEmptyString(proof.eventId) && nonEmptyString(proof.rootEventId)
+      && nonEmptyString(proof.sourceId) && nonEmptyString(proof.targetId)
+      && nonEmptyString(proof.interactionId) && nonEmptyString(proof.rootFrameId)
+      && proof.sourceId !== proof.targetId
+      && (proof.outcome === "SUITS_MATCHED" || proof.outcome === "SUITS_DIFFERED")
+      && validSuit && nonEmptyString(proof.revealEventId) && nonEmptyString(proof.physicalCardId)
+      && validDamage;
+  });
   const eventCounts = new Map<string, number>();
   const rootCounts = new Map<string, number>();
   settlements.forEach((settlement) => {
@@ -382,6 +395,12 @@ export function provenSkillEffectSettlements(value: unknown): PresentationSnapsh
     sourceId: settlement.sourceId,
     targetId: settlement.targetId,
     outcome: settlement.outcome,
+    interactionId: settlement.interactionId,
+    rootFrameId: settlement.rootFrameId,
+    guess: settlement.guess as CardSuit,
+    revealEventId: settlement.revealEventId,
+    physicalCardId: settlement.physicalCardId,
+    damage: { ...settlement.damage },
   }));
 }
 

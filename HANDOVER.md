@@ -1,34 +1,25 @@
-# HANDOVER — 当前执行交接
+# HANDOVER — 当前唯一执行任务
 
-## 当前唯一交付边界：DISCARD-TURN-HANDOFF-UX-01 / §10.40
+## ZHOU-YU-FANJIAN-UX-01 / §10.37
 
-**状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW；未标记 USER-ACCEPTED。** 实现 SHA `aa6544d96ee54cb8e10255e045be93d4150c4a47`，CI 回归修复 SHA `90273b87e1753168c69416d1f03b1312582e21bc`；该精确 SHA 的 [GitHub Actions 42137720792](https://github.com/dmoneyUK/three-kingdoms/actions/runs/42137720792) 全部成功。Cloudflare Worker 版本 `08ab7795-52a9-44c3-af48-802f5e9e572d`；部署 smoke 与直接线上 `/api/health` 均通过（`{"ok":true,"worker":"available"}`）。
+**状态：本地实现和聚焦验证完成；待提交、精确 SHA CI/Worker 部署及 Owner iPhone 复审。未验收。** 工作树分支 `codex/ux2-judgement-seat-01`，基线/当前 `origin/ux-v2` 为 `42c89d9e8db5d36fde7be8cd34e63d1dfdd6bc1f`。依据远端设计修订 `2026-11-05 23:50 UTC` §10.37。保留已验收 E16 的真实单牌 REVEAL→MOVE→PARKED 与 HAND→HAND；未改游戏规则、合法性或隐私。
 
-## 最新设计复核
+### 已实现
 
-最新远端设计内容修订为 `docs/UX2-refine.md` **2026-11-05 23:50 UTC**；远端 Table A/B 状态已随本交付更新。§10.40 保持原批准设计：H4 只列具备公开证明的弃牌名称、点数、花色；H4 与同事件灰白弃牌组同步退场；正常回合末弃牌才使用有限服务端交接门闩；PAC 描述真实交接；私有 Console 依据 viewer 的 `CurrentAction.legalActions`。不改规则、卡牌移动、隐私或已验收行为。§10.37 是独立修正项，文档注明不自动启动；本轮没有开始。
+- Fanjian 使用一个紧凑组合选择面板：四个仅显示花色符号的可访问按钮、紧邻的 Hand 数量和匿名牌背；前四张完整显示，其余横向滑动；单次 Confirm。保留选择重按取消和旧 `suit`/`card` 进行中兼容。
+- 激活 H4 只在服务端提交后显示；等待期间 PAC 保持目标正在选择花色和手牌位置，不暴露未提交选择。服务端 settlement proof 现在绑定最终猜测、唯一真实 reveal/physicalCardId、HAND→HAND、结果及实际伤害/防止伤害事件。
+- 结算 H4 报告猜测花色、真实牌、匹配结果及实际效果。删去冗余来源手牌短语以适配紧凑一至两行；H4 优先位于原牌面上方，并保护各上排座位首张真实停放缩略牌。
+- 修复 Confirm 被中央牌池窄屏规则覆盖的问题；实测宽度落在 80–110px、触控高度至少 44px。
 
-## 实施与验证
+### 当前验证记录
 
-- H4 精确绑定一笔已提交 `eventId`、物理牌身份和顺序；身份不完整时安全退回数量文案。灰白牌组最后一张退场、被中断或触发有界 fallback 时，共享状态同步退休 H4。
-- 仅正常结束回合的 `discard_cards` 创建有限服务端门闩。先完成回合结束技能、死亡与胜负处理；门闩期间 `CurrentAction` 无合法行动，提前提交返回 409；截止后由认证读取/动作幂等推进下一座位。
-- PAC 显示“某玩家正在完成回合交接”；门闩结束后才显示下一回合。私有行动提示仍来自当前 viewer 的服务器合法行动投影。
-- 本地：`npm run build` 通过；`tests/api/da-qiao.test.mjs` 18/18；`tests/public-discard-transition.test.mjs` 9/9；`tests/api/stratagems.test.mjs` 30/30；`git diff --check` 通过。目标 ESLint 0 errors、15 条 React hook dependency warnings。唯一手机尺寸浏览器场景为 390×844，最终两次通过（16.6s、16.5s）；此前 fixture 点数错误及测试身份未授权均已修正；累计 UI/browser 约 2分20秒，不再运行。
-- 首次精确 SHA Actions `42136833330`（SHA `aa6544d9`）lint/fast、browser smoke 通过，API job 仅因一条旧 Lu Xun Second Wind 断言要求弃牌后立即开放下一回合而失败，部署跳过。修正为验证回合结束技能后仍受门闩保护、提前 Draw 被拒、到期后认证 GET 恢复行动；未新增测试条目、未改生产代码。聚焦 API 文件 30/30 后提交修复 SHA `90273b87`。
-- 精确 SHA Actions `42137720792`：lint/fast tests、API tests、browser smoke、数据库迁移、Worker 部署和 production smoke 全部通过。Worker version ID 与线上健康结果见上方。
+记录时间 **2026-11-06 02:34 UTC**；工具未提供各命令的独立开始时间，故不补造时间点。
 
-## 当前任务操作记录（UTC）
+- 390×844 单一浏览器场景：Confirm 曾实测 47px，已修正专属选择器优先级；最终中央 reveal 帧实测断言通过，CardFace 为 108×156px、水平居中，H4 与牌面间距在 0–32px，单场景 1/1 通过（7.9s）。此前发现过 4.6px 重叠，根因是 H4 多写了来源手牌文字、增加了高度；缩短为批准示例语义后复测通过。该单场景累计远低于 5 分钟。
+- 聚焦 PresentationV2/public-activity API 测试：64/64 通过，用时 8.32s；覆盖匹配/不匹配结算、公开投影一致性及私密选择边界。
+- `npm run build` 和 `git diff --check` 通过。构建仅报告已有的大 bundle、Node `module.register()` 弃用和 Vite 动态路由分类警告。
+- 提交前检查：最新相关成功 Actions 为 `42137720792`，SHA `90273b87e1753168c69416d1f03b1312582e21bc`。当前 `42c89d9e` 是之后的 Markdown-only 设计/交接更新（部署 workflow 对 `*.md` 使用 `paths-ignore`，该 SHA 没有单独 run）；本任务修改均尚未 push，因此本任务 exact-SHA CI、Worker 部署及生产 smoke 仍待验证。
 
-- **2026-11-05 23:38** — 检查隔离 worktree 干净，同步当时 `origin/ux-v2` 的 `e8eaef020749a17bf3c87743a36edddee9131ffc`；阅读 AGENTS、HANDOVER、工作流、完整 §10.40 与相关源码。
-- **23:47** — 确认回合末事件可暂停并恢复；交接门闩需等待触发、死亡和胜负结算后才生效；过期请求不可重放。
-- **2026-11-06 00:11–00:16** — 实现 A/B 并完成上述聚焦构建、API、单测、lint、差异检查及手机尺寸浏览器验证。首次测试错误与修正过程详见当前实现提交。
-- **00:19:07** — 建立初版本地提交 `29b4c504`；推送被拒时发现远端前进，保留本地工作，没有覆盖远端。
-- **00:22–00:23** — 拉取远端 docs-only 更新 `6e888bde`、`997b66f6`；复核新增 M4 E16 PASS 与 §10.37 修正，没有源代码冲突。只在 `docs/UX2-refine.md` 解决状态冲突，保留远端决策后完成 rebase。
-- **00:26:14** — 推送实现 SHA `aa6544d9`。Actions 42136833330 因上述过期断言失败，部署跳过；定位到 `tests/api/stratagems.test.mjs:1325`。
-- **00:31–00:33** — 修正既有断言并运行整份窄范围 API 文件，30/30 通过；更新 Handover/设计状态；提交 CI 修复 SHA `90273b87`，于 **00:33:44** 触发 Actions 42137720792。
-- **00:36:03** — lint/fast tests 成功；**00:35:20** browser smoke 成功；**00:37:25** API tests 成功；**00:38:55** Worker 部署和 production smoke 成功。部署版本 `08ab7795-52a9-44c3-af48-802f5e9e572d`。
-- **00:39:48** — 直接读取线上 `/api/health`，返回 `{"ok":true,"worker":"available"}`。验收边界停在 owner iPhone 复核。
+### 下一步 / 复审边界
 
-## 验收边界
-
-保留 §10.40 约定的范围排除项；禁止从技术交付推断 iPhone 验收。当前只等待 owner 对本任务进行手机复核；没有开始其它任务。
+只提交本任务文件到 `ux-v2`，等待 exact-SHA 所有必需 Actions、Cloudflare Worker 部署和生产 `/api/health` smoke 结果；在 Handover 补记真实 SHA/run/version。交付状态为 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**，不得自验收。之后停在 Owner iPhone 复审边界。

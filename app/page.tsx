@@ -25,7 +25,7 @@ import { buildPresentationTransition, type PresentationTransitionKind } from "..
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, triggerDecisionInstruction, viewerNegationAcknowledgement, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
-import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration } from "../game/public-activity";
+import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, type PublicInteractionNarration } from "../game/public-activity";
 import { CardFace } from "./card-face";
 import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
@@ -7001,6 +7001,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || rootEvent.publicSkillEffect?.effectId !== action.effectId
       || rootEvent.publicSkillEffect.sourceId !== action.sourceId
       || rootEvent.publicSkillEffect.targetId !== action.targetId) return null;
+    const rootFact = rootEvent.publicFact;
+    const rootIdentity = rootFact?.committedIdentity;
+    if (action.interactionId && (rootFact?.semantics !== "PROVEN" || rootFact.visibility !== "PUBLIC"
+      || rootFact.category !== "SKILL_USED" || rootFact.rootEventId !== rootEvent.id
+      || rootFact.actorId !== action.sourceId || rootFact.affectedPlayerIds?.length !== 1
+      || rootFact.affectedPlayerIds[0] !== action.targetId || rootFact.effect?.kind !== "targeted_skill"
+      || rootFact.interactionId !== action.interactionId || rootFact.frameId !== action.rootFrameId
+      || rootIdentity?.interactionId !== action.interactionId || rootIdentity.rootFrameId !== action.rootFrameId)) return null;
     const source = room.players.find((player) => player.id === action.sourceId);
     const target = room.players.find((player) => player.id === action.targetId);
     if (!source?.name || !target?.name) return null;
@@ -7014,22 +7022,64 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
     const rootEvent = rootEvents[0];
     const settlementEvent = settlementEvents[0];
+    const revealEvents = room.timeline.filter((event) => event.id === settlement.revealEventId);
+    const revealEvent = revealEvents.length === 1 ? revealEvents[0] : null;
+    const transition = revealEvent?.type === "card" ? revealEvent.publicZoneTransition : null;
+    const rootFact = rootEvent.type === "message" ? rootEvent.publicFact : undefined;
+    const rootIdentity = rootFact?.committedIdentity;
+    const resultProof = settlementEvent.type === "message" ? settlementEvent.publicSkillEffectSettlement : undefined;
     if (rootEvent.type !== "message" || rootEvent.presentation === false
       || rootEvent.publicSkillEffect?.effectId !== settlement.effectId
       || rootEvent.publicSkillEffect.sourceId !== settlement.sourceId
       || rootEvent.publicSkillEffect.targetId !== settlement.targetId
+      || rootFact?.semantics !== "PROVEN" || rootFact.visibility !== "PUBLIC" || rootFact.category !== "SKILL_USED"
+      || rootFact.rootEventId !== settlement.rootEventId || rootFact.actorId !== settlement.sourceId
+      || rootFact.affectedPlayerIds?.length !== 1 || rootFact.affectedPlayerIds[0] !== settlement.targetId
+      || rootFact.effect?.kind !== "targeted_skill" || rootFact.interactionId !== settlement.interactionId
+      || rootIdentity?.interactionId !== settlement.interactionId || rootIdentity.rootFrameId !== settlement.rootFrameId
       || settlementEvent.type !== "message" || settlementEvent.presentation === false
       || settlementEvent.importance !== "essential" || settlementEvent.finalResult !== true
-      || settlementEvent.publicSkillEffectSettlement?.semantics !== settlement.semantics
-      || settlementEvent.publicSkillEffectSettlement.effectId !== settlement.effectId
-      || settlementEvent.publicSkillEffectSettlement.rootEventId !== settlement.rootEventId
-      || settlementEvent.publicSkillEffectSettlement.sourceId !== settlement.sourceId
-      || settlementEvent.publicSkillEffectSettlement.targetId !== settlement.targetId
-      || settlementEvent.publicSkillEffectSettlement.outcome !== settlement.outcome) return null;
+      || resultProof?.semantics !== settlement.semantics || resultProof.effectId !== settlement.effectId
+      || resultProof.rootEventId !== settlement.rootEventId || resultProof.sourceId !== settlement.sourceId
+      || resultProof.targetId !== settlement.targetId || resultProof.outcome !== settlement.outcome
+      || resultProof.interactionId !== settlement.interactionId || resultProof.rootFrameId !== settlement.rootFrameId
+      || resultProof.guess !== settlement.guess || resultProof.revealEventId !== settlement.revealEventId
+      || resultProof.physicalCardId !== settlement.physicalCardId
+      || resultProof.damage?.outcome !== settlement.damage.outcome || resultProof.damage?.amount !== settlement.damage.amount
+      || resultProof.damage?.eventId !== settlement.damage.eventId
+      || revealEvents.length !== 1 || revealEvent?.type !== "card" || revealEvent.presentation === false
+      || revealEvent.privateToPlayerId || revealEvent.action !== "reveal"
+      || revealEvent.card.id !== settlement.physicalCardId
+      || settlement.outcome === "SUITS_MATCHED" && revealEvent.card.suit !== settlement.guess
+      || settlement.outcome === "SUITS_DIFFERED" && revealEvent.card.suit === settlement.guess
+      || transition?.semantics !== "PROVEN" || transition.visibility !== "PUBLIC"
+      || transition.eventId !== settlement.revealEventId || transition.physicalCardId !== settlement.physicalCardId
+      || transition.rootEventId !== settlement.rootEventId
+      || transition.from.zone !== "HAND" || transition.from.ownerId !== settlement.sourceId
+      || transition.to.zone !== "HAND" || transition.to.ownerId !== settlement.targetId
+      || room.timeline.indexOf(revealEvent) >= room.timeline.indexOf(settlementEvent)) return null;
+    if (settlement.damage.outcome === "NO_DAMAGE") {
+      if (settlement.outcome !== "SUITS_MATCHED" || settlement.guess !== revealEvent.card.suit
+        || settlement.damage.amount !== 0 || settlement.damage.eventId) return null;
+    } else {
+      const damageEvent = room.timeline.find((event) => event.id === settlement.damage.eventId);
+      const damageFact = damageEvent?.publicFact;
+      const damageIdentity = damageFact?.committedIdentity;
+      const category = settlement.damage.outcome;
+      if (settlement.outcome !== "SUITS_DIFFERED" || settlement.guess === revealEvent.card.suit
+        || !damageEvent || damageEvent.type !== "message" || damageEvent.presentation === false || damageEvent.privateToPlayerId
+        || damageFact?.semantics !== "PROVEN" || damageFact.visibility !== "PUBLIC"
+        || damageFact.category !== category || damageFact.interactionId !== settlement.interactionId
+        || damageFact.frameId !== settlement.rootFrameId || damageIdentity?.interactionId !== settlement.interactionId
+        || damageIdentity.rootFrameId !== settlement.rootFrameId || damageFact.actorId !== settlement.sourceId
+        || damageFact.affectedPlayerIds?.length !== 1 || damageFact.affectedPlayerIds[0] !== settlement.targetId
+        || damageFact.amount !== settlement.damage.amount
+        || room.timeline.indexOf(damageEvent) <= room.timeline.indexOf(settlementEvent)) return null;
+    }
     const source = room.players.find((player) => player.id === settlement.sourceId);
     const target = room.players.find((player) => player.id === settlement.targetId);
     if (!source?.name || !target?.name) return null;
-    return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeSkillEffectSettlement?.exiting === true };
+    return { action: settlement, rootEvent, settlementEvent, revealEvent, source, target, exiting: activeSkillEffectSettlement?.exiting === true };
   })();
   const dismantleSettlementCandidate = (() => {
     const settlement = dismantleSettlements.find((candidate) => candidate.eventId === activeDismantleSettlement?.eventId);
@@ -8784,7 +8834,31 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && !presentedEventIds.has(latestPublicDiscardAnnouncement.eventId)
     && !activeEventSupersedesDiscard
     && latestPublicDiscardAnnouncement.order > (currentInteractionFact?.order ?? -1));
-  const publicInteractionNarration = currentInteractionFact?.rootEventId
+  const fanjianSettlementNarration: PublicInteractionNarration | null = skillEffectSettlementCandidate ? (() => {
+    const settlement = skillEffectSettlementCandidate.action;
+    const card = skillEffectSettlementCandidate.revealEvent.card;
+    const firstLine = `${skillEffectSettlementCandidate.target.name} guessed ${settlement.guess}; revealed ${card.rank}${card.suit} ${cardDefinition(card.kind).name}.`;
+    const effectLine = settlement.outcome === "SUITS_MATCHED"
+      ? "Suits match; no damage."
+      : settlement.damage.outcome === "DAMAGE_PREVENTED"
+        ? `Suits differ; ${skillEffectSettlementCandidate.target.name}'s damage was prevented.`
+        : `Suits differ; ${skillEffectSettlementCandidate.target.name} takes ${settlement.damage.amount} damage.`;
+    return {
+      eventId: settlement.eventId,
+      rootEventId: settlement.rootEventId,
+      interactionId: settlement.interactionId,
+      rootFrameId: settlement.rootFrameId,
+      actorId: settlement.targetId,
+      headline: firstLine,
+      compactHeadline: firstLine,
+      accessibleLabel: `${firstLine} ${effectLine}`,
+      supportingMessage: effectLine,
+      compactSupportingMessage: effectLine,
+      latestCommittedEventId: settlement.damage.eventId ?? settlement.eventId,
+      phase: "FINAL",
+    };
+  })() : null;
+  const publicInteractionNarration = fanjianSettlementNarration ?? (currentInteractionFact?.rootEventId
     ? derivePublicInteractionNarration({
       snapshot: room.presentationSnapshot,
       players: room.players,
@@ -8793,7 +8867,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       rootFrameId: currentInteractionFact.identity.rootFrameId,
       eventId: currentInteractionFact.eventId,
     })
-    : null;
+    : null);
   const interactionNarrationBelongsToAction = Boolean(publicInteractionNarration && selectedPublicCardAction
     && !activeJudgementRevealRoute
     && currentInteractionFact?.effect?.kind !== "judgement"
@@ -10958,9 +11032,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           publicTarget={combinedChoicePoolTarget}
           zones={combinedChoicePoolZones}
           handCountHeading={`Hand (${combinedChoiceSelection.eligibleKeys.length})`}
+          handRailDescription={combinedChoiceSelection.eligibleKeys.length > 4 ? "Swipe horizontally to reach all hidden Hand positions." : undefined}
           selectionControls={<div className="fanjian-combined-controls">
             <fieldset className="fanjian-combined-suits">
-              <legend>Choose a suit</legend>
+              <legend className="card-details-sr-only">Choose a suit</legend>
               <div role="group" aria-label="Choose a suit" className="fanjian-combined-suit-options">
                 {combinedChoiceSelection.choices.map((choice) => <button
                   key={choice.id}
@@ -10968,13 +11043,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                   className={triggerChoice === choice.id ? "selected" : ""}
                   disabled={triggerControlsDisabled}
                   aria-pressed={triggerChoice === choice.id}
+                  aria-label={choice.label.replace(/^[^\s]+\s*/, "")}
                   onClick={() => setTriggerChoice(choice.id)}
-                >{choice.label}</button>)}
+                >{choice.id}</button>)}
               </div>
             </fieldset>
-            <h3>Choose one hidden card</h3>
           </div>}
-          scrollHint={combinedChoiceSelection.eligibleKeys.length > 4 ? "Swipe for more" : undefined}
           selectionCount=""
           actionLabel="Confirm"
           disabled={triggerControlsDisabled}
@@ -11153,6 +11227,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       />}
       {!publicDiscardOwnsAnnouncement && publicInteractionNarration && (!interactionNarrationBelongsToAction || !publicCardDisplayEnabled) && <PublicInteractionAnnouncementLayer
         narration={publicInteractionNarration} roomCode={room.code} viewerId={room.meId}
+        anchorEventId={fanjianSettlementNarration ? skillEffectSettlementCandidate?.revealEvent.id : null}
+        protectFirstParkedMiniature={Boolean(skillEffectActionCandidate || skillEffectSettlementCandidate)}
+        keepCenterAnchorClear={Boolean(fanjianSettlementNarration)}
+        preferredVerticalMode={fanjianSettlementNarration ? "above" : undefined}
       />}
       {visibleBeautyAnnouncement && !publicInteractionNarration && <PublicSkillEventAnnouncementLayer
         announcement={visibleBeautyAnnouncement}
@@ -12356,7 +12434,7 @@ function PublicHandRevealCardTransition({ event, route, players, myTableIndex, o
       key={route.claimId} onAnimationEnd={(animation) => {
         if (animation.target !== animation.currentTarget || animation.animationName !== "revealedCardToHand") return;
         onPresented(route);
-      }}><div><CardFace card={event.card} settlementCardId={route.physicalCardId} /></div></div>
+      }}><div data-public-card-copy-anchor-event-id={event.id}><CardFace card={event.card} settlementCardId={route.physicalCardId} /></div></div>
   </div>;
 }
 

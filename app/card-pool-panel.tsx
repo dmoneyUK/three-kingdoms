@@ -82,6 +82,7 @@ type TargetSelectProps = SharedProps & {
   selectionControls?: ReactNode;
   scrollHint?: string;
   handCountHeading?: string;
+  handRailDescription?: string;
   selectionCount: string;
   actionLabel: string;
   disabled: boolean;
@@ -252,7 +253,9 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
       {(!actorTargetProps || activeTargetZoneTab.id === "hand") && <div
         className="card-pool-panel__target-public-zone card-pool-panel__target-public-hand"
         data-target-card-public-zone="hand"
+        role={actorTargetProps?.handRailDescription ? "group" : undefined}
         aria-label={`Hand: ${targetPublicHandCount} face-down cards`}
+        aria-description={actorTargetProps?.handRailDescription}
       >
         {(!actorTargetProps || !showActorTargetZoneTabs) && <b className="card-pool-panel__target-public-zone-title">{actorTargetProps?.handCountHeading ?? `HAND · ${targetPublicHandCount}`}</b>}
         {actorTargetProps?.scrollHint && targetPublicHandCount > 4 && <small className="card-pool-panel__scroll-hint" aria-hidden="true">{actorTargetProps.scrollHint}</small>}

@@ -374,6 +374,11 @@ test("generic H4 retains damage through Skip and formats committed public or hid
   const input = (facts) => ({ snapshot: snapshot({ stage: "DAMAGE", actorId: "p2", publicEventFacts: facts }),
     players, rootEventId: "root-event", interactionId: "interaction-1", rootFrameId: "root-1" });
   assert.equal(derivePublicInteractionNarration(input([root, damage]))?.headline, "Test Player 1 dealt 1 damage to Test Player 2.");
+  const fanjianActivation = fact("fanjian-activation", 2, "SKILL_USED", {
+    actorId: "p1", affectedPlayerIds: ["p2"], label: "Sowing Distrust", effect: { kind: "targeted_skill" },
+  });
+  assert.equal(derivePublicInteractionNarration(input([root, fanjianActivation]))?.headline,
+    "Test Player 1 used Sowing Distrust on Test Player 2.");
   // A Skip adds no skill fact, including when a later decision uses the same causal root.
   assert.equal(derivePublicInteractionNarration(input([root, damage]))?.eventId, "damage");
   const hidden = fact("hidden", 3, "SKILL_USED", { actorId: "p2", affectedPlayerIds: ["p1"], label: "Retaliation", outcomeLabel: "obtained one card", effect: { kind: "gain_target_card" } });

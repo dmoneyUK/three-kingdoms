@@ -2,7 +2,7 @@ import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
 import { collectPublicPresentationEventFacts, retainedPublicEventFromTimeline, type PublicPresentationEvent, type PublicPresentationEventFactDraft } from "./presentation-semantics";
 import { CARD_DEFINITIONS } from "./cards";
-import { CARD_KINDS, type Card, type CardKind } from "./model";
+import { CARD_KINDS, type Card, type CardKind, type CardSuit } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestNegationResponseRecord, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type NegationHistoryRecord } from "./pending";
 
 const LUST_DUEL_SETTLEMENT_PROJECTION_RETENTION_MS = 8_000;
@@ -34,6 +34,8 @@ export type PresentationV2Event = {
   lustDuelAttackResponse?: unknown;
   effectNotice?: unknown;
   publicSkillEffect?: { effectId?: unknown; sourceId?: unknown; targetId?: unknown };
+  publicFact?: unknown;
+  publicZoneTransition?: unknown;
   publicDiaoChanNotice?: unknown;
   publicDeflectionAction?: unknown;
   publicCardEffects?: unknown;
@@ -180,6 +182,8 @@ export type PresentationSkillEffectAction = {
   rootEventId: string;
   sourceId: string;
   targetId: string;
+  interactionId?: string;
+  rootFrameId?: string;
 };
 
 export type PresentationSkillEffectActionEvent = Pick<PresentationSkillEffectAction, "effectId" | "sourceId" | "targetId">;
@@ -191,6 +195,16 @@ export type PresentationSkillEffectSettlementProof = {
   sourceId: string;
   targetId: string;
   outcome: "SUITS_MATCHED" | "SUITS_DIFFERED";
+  interactionId: string;
+  rootFrameId: string;
+  guess: CardSuit;
+  revealEventId: string;
+  physicalCardId: string;
+  damage: {
+    outcome: "NO_DAMAGE" | "DAMAGE_APPLIED" | "DAMAGE_PREVENTED";
+    amount: number;
+    eventId?: string;
+  };
 };
 
 export type PresentationSkillEffectSettlement = PresentationSkillEffectSettlementProof & {
@@ -2889,7 +2903,20 @@ function skillEffectActionFor(input: PresentationV2Input): PresentationSkillEffe
     || publicEffect.sourceId !== sourceId || publicEffect.targetId !== targetId
     || !barrierEventId || !barrierEvent || barrierEvent.presentation === false) return null;
 
-  return { semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId, sourceId, targetId };
+  const publicFact = record(rootEvent.publicFact);
+  const committedIdentity = record(publicFact?.committedIdentity);
+  const publicIdentity = publicFact?.semantics === "PROVEN" && publicFact.visibility === "PUBLIC"
+    && publicFact.category === "SKILL_USED" && publicFact.interactionId === committedIdentity?.interactionId
+    && publicFact.frameId === committedIdentity?.rootFrameId && publicFact.rootEventId === rootEventId
+    && publicFact.actorId === sourceId && Array.isArray(publicFact.affectedPlayerIds)
+    && publicFact.affectedPlayerIds.length === 1 && publicFact.affectedPlayerIds[0] === targetId
+    && record(publicFact.effect)?.kind === "targeted_skill"
+    ? { interactionId: publicFact.interactionId as string, rootFrameId: publicFact.frameId as string }
+    : null;
+  return {
+    semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId, sourceId, targetId,
+    ...(publicIdentity ? publicIdentity : {}),
+  };
 }
 
 function skillEffectSettlementsFor(input: PresentationV2Input): PresentationSkillEffectSettlement[] {
@@ -2916,19 +2943,79 @@ function skillEffectSettlementsFor(input: PresentationV2Input): PresentationSkil
     const rootEventId = stringValue(proof?.rootEventId);
     const sourceId = stringValue(proof?.sourceId);
     const targetId = stringValue(proof?.targetId);
+    const guess = stringValue(proof?.guess);
+    const revealEventId = stringValue(proof?.revealEventId);
+    const physicalCardId = stringValue(proof?.physicalCardId);
+    const damage = record(proof?.damage);
     if (!eventId || eventIdCounts.get(eventId) !== 1 || !rootEventId || rootIdCounts.get(rootEventId) !== 1
       || !sourceId || !targetId || sourceId === targetId
       || proof?.semantics !== "PROVEN" || proof.effectId !== "zhou_yu_fanjian"
       || proof.outcome !== "SUITS_MATCHED" && proof.outcome !== "SUITS_DIFFERED"
+      || !guess || !PHYSICAL_CARD_SUITS.has(guess) || !revealEventId || eventIdCounts.get(revealEventId) !== 1
+      || !physicalCardId || !damage
+      || !Number.isSafeInteger(damage.amount) || (damage.amount as number) < 0
+      || damage.outcome !== "NO_DAMAGE" && damage.outcome !== "DAMAGE_APPLIED" && damage.outcome !== "DAMAGE_PREVENTED"
+      || damage.outcome === "NO_DAMAGE" && (proof.outcome !== "SUITS_MATCHED" || damage.amount !== 0)
+      || damage.outcome === "DAMAGE_APPLIED" && (proof.outcome !== "SUITS_DIFFERED" || (damage.amount as number) <= 0)
+      || damage.outcome === "DAMAGE_PREVENTED" && (proof.outcome !== "SUITS_DIFFERED" || damage.amount !== 0)
       || event.type !== "message" || event.presentation === false || event.importance !== "essential" || event.finalResult !== true
       || activeRootEventId === rootEventId) return [];
 
     const rootEvents = input.timeline.filter((candidate) => candidate.id === rootEventId);
     const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
+    const revealEvents = input.timeline.filter((candidate) => candidate.id === revealEventId);
+    const revealEvent = revealEvents.length === 1 ? revealEvents[0] : null;
+    const transition = record(revealEvent?.publicZoneTransition);
+    const from = record(transition?.from);
+    const to = record(transition?.to);
+    const revealCard = record(revealEvent?.card);
+    const rootFact = record(rootEvent?.publicFact);
+    const committedIdentity = record(rootFact?.committedIdentity);
     const publicEffect = record(rootEvent?.publicSkillEffect);
     if (!rootEvent || rootEvent.type !== "message" || rootEvent.presentation === false
       || publicEffect?.effectId !== "zhou_yu_fanjian"
-      || publicEffect.sourceId !== sourceId || publicEffect.targetId !== targetId) return [];
+      || publicEffect.sourceId !== sourceId || publicEffect.targetId !== targetId
+      || rootFact?.semantics !== "PROVEN" || rootFact.visibility !== "PUBLIC" || rootFact.category !== "SKILL_USED"
+      || rootFact.rootEventId !== rootEventId || rootFact.actorId !== sourceId
+      || !Array.isArray(rootFact.affectedPlayerIds) || rootFact.affectedPlayerIds.length !== 1 || rootFact.affectedPlayerIds[0] !== targetId
+      || record(rootFact.effect)?.kind !== "targeted_skill"
+      || proof.interactionId !== rootFact.interactionId || proof.rootFrameId !== committedIdentity?.rootFrameId
+      || rootFact.interactionId !== committedIdentity?.interactionId
+      || !revealEvent || revealEvent.type !== "card" || revealEvent.action !== "reveal"
+      || revealEvent.presentation === false || typeof revealEvent.privateToPlayerId === "string"
+      || revealCard?.id !== physicalCardId
+      || proof.outcome === "SUITS_MATCHED" && revealCard.suit !== guess
+      || proof.outcome === "SUITS_DIFFERED" && revealCard.suit === guess
+      || transition?.semantics !== "PROVEN" || transition.visibility !== "PUBLIC"
+      || transition.eventId !== revealEventId || transition.physicalCardId !== physicalCardId
+      || transition.rootEventId !== rootEventId
+      || from?.zone !== "HAND" || from.ownerId !== sourceId
+      || to?.zone !== "HAND" || to.ownerId !== targetId
+      || input.timeline.indexOf(revealEvent) >= input.timeline.indexOf(event)
+      || proof.outcome === "SUITS_MATCHED" && guess !== revealCard.suit
+      || proof.outcome === "SUITS_DIFFERED" && guess === revealCard.suit) return [];
+
+    const damageEventId = stringValue(damage.eventId);
+    if (damage.outcome === "NO_DAMAGE") {
+      if (damageEventId) return [];
+    } else {
+      const expectedCategory = damage.outcome === "DAMAGE_APPLIED" ? "DAMAGE_APPLIED" : "DAMAGE_PREVENTED";
+      const damageEvents = input.timeline.filter((candidate) => {
+        const fact = record(candidate.publicFact);
+        const factIdentity = record(fact?.committedIdentity);
+        const affectedPlayerIds = fact?.affectedPlayerIds;
+        return candidate.id === damageEventId && candidate.type === "message" && candidate.presentation !== false
+          && typeof candidate.privateToPlayerId !== "string"
+          && fact?.semantics === "PROVEN" && fact.visibility === "PUBLIC" && fact.category === expectedCategory
+          && fact.interactionId === proof.interactionId && fact.frameId === proof.rootFrameId
+          && factIdentity?.interactionId === proof.interactionId && factIdentity.rootFrameId === proof.rootFrameId
+          && fact.actorId === sourceId && Array.isArray(affectedPlayerIds)
+          && affectedPlayerIds.length === 1 && affectedPlayerIds[0] === targetId
+          && fact.amount === damage.amount;
+      });
+      const damageIndex = damageEventId ? input.timeline.findIndex((candidate) => candidate.id === damageEventId) : -1;
+      if (damageEvents.length !== 1 || damageIndex <= input.timeline.indexOf(event)) return [];
+    }
 
     return [{
       semantics: "PROVEN",
@@ -2937,6 +3024,16 @@ function skillEffectSettlementsFor(input: PresentationV2Input): PresentationSkil
       sourceId,
       targetId,
       outcome: proof.outcome,
+      interactionId: proof.interactionId as string,
+      rootFrameId: proof.rootFrameId as string,
+      guess: guess as CardSuit,
+      revealEventId,
+      physicalCardId,
+      damage: {
+        outcome: damage.outcome as PresentationSkillEffectSettlementProof["damage"]["outcome"],
+        amount: damage.amount as number,
+        ...(damageEventId ? { eventId: damageEventId } : {}),
+      },
       eventId,
     }];
   });

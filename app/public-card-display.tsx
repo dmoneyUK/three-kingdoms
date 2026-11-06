@@ -2199,6 +2199,7 @@ function PublicCardAnnouncement({
   viewerGeometryReady = true,
   preferredVerticalMode,
   privateDrawAware = false,
+  protectFirstParkedMiniature = false,
 }: {
   eventId: string;
   anchorEventId?: string | null;
@@ -2230,6 +2231,7 @@ function PublicCardAnnouncement({
   viewerGeometryReady?: boolean;
   preferredVerticalMode?: "above" | "below";
   privateDrawAware?: boolean;
+  protectFirstParkedMiniature?: boolean;
 }) {
   const sharedPublicStage = usePublicStageLayout();
   const copyRef = useRef<HTMLDivElement>(null);
@@ -2289,7 +2291,7 @@ function PublicCardAnnouncement({
     phase, heading, message, compactMessage, accessibleLabel, dismantleCardFace, supportingMessage, compactSupportingMessage,
     presentationNarration, negationNarration, fallbackCardRect: stableFallbackCardRect, phaseNotice, outcome, negationWaiting,
     stableCenterAnchor, keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, clearCenterAnchorWhenParked,
-    viewerGeometryReady, preferredVerticalMode, privateDrawAware,
+    viewerGeometryReady, preferredVerticalMode, privateDrawAware, protectFirstParkedMiniature,
   };
   const latestInputsRef = useRef(latestInputs);
   const placementInputKey = JSON.stringify(latestInputs);
@@ -2351,18 +2353,21 @@ function PublicCardAnnouncement({
     if (geometryChanged) lastGeometryKeyRef.current = geometryKey;
 
     const copyAnchorEventId = anchorEventId === null ? "" : anchorEventId ?? eventId;
-    const getAnchor = () => copyAnchorEventId
-      ? Array.from(display.querySelectorAll<HTMLElement>("[data-public-card-copy-anchor-event-id]"))
-        .find((element) => element !== copy && element.dataset.publicCardCopyAnchorEventId === copyAnchorEventId) ?? null
-      : null;
+    const getAnchor = () => {
+      if (!copyAnchorEventId) return null;
+      const table = display.closest<HTMLElement>(".play-table");
+      return (table ? Array.from(table.querySelectorAll<HTMLElement>("[data-public-card-copy-anchor-event-id]")) : [])
+        .find((element) => element !== copy && element.dataset.publicCardCopyAnchorEventId === copyAnchorEventId) ?? null;
+    };
     const toCardRect = (rect: DOMRect): CardRect => ({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     let resizeObserver: ResizeObserver | null = null;
     let mutationObserver: MutationObserver | null = null;
     let anchorObserver: MutationObserver | null = null;
     let frame = 0;
     let placementFailureTimer: number | null = null;
+    let revealAnchorFollowTimer: number | null = null;
     let currentGeometryIdentity = "";
-    const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-row"] : [])].join(", ");
+    const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-row"] : []), ...(protectFirstParkedMiniature ? ['.public-card-journey-card[data-public-card-journey-phase="parked"]'] : [])].join(", ");
     const setData = (name: string, value: string | undefined) => {
       const current = copy.getAttribute(name);
       if (value === undefined) {
@@ -2449,7 +2454,7 @@ function PublicCardAnnouncement({
         accessibleLabel, supportingMessage, compactSupportingMessage, presentationNarration, negationNarration,
         fallbackCardRect: currentFallbackCardRect, outcome, stableCenterAnchor,
         keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, viewerGeometryReady, preferredVerticalMode,
-        privateDrawAware, dismantleCardFace,
+    privateDrawAware, protectFirstParkedMiniature, dismantleCardFace,
       } = latestInputsRef.current;
       const copySignature = JSON.stringify([
         eventCopyKey, heading, message, compactMessage, accessibleLabel, dismantleCardFace, supportingMessage, compactSupportingMessage,
@@ -2586,6 +2591,35 @@ function PublicCardAnnouncement({
           || left.rect.left - right.rect.left || left.rect.top - right.rect.top);
       const isLargeRevealAnchor = phase === "reveal" && !stableCenterAnchor
         && actualRect && actualRect.width > 0 && actualRect.height > 0;
+      const protectedParkedMiniatures = new Set<HTMLElement>();
+      if (protectFirstParkedMiniature) {
+        const visibleSeats = [...shell.querySelectorAll<HTMLElement>("[data-player-anchor]")].flatMap((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = window.getComputedStyle(element);
+          return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
+            ? [{ id: element.dataset.playerAnchor ?? "", top: rect.top }]
+            : [];
+        });
+        const topRowStart = Math.min(...visibleSeats.map((seat) => seat.top));
+        const upperSeatIds = new Set(visibleSeats.filter((seat) => seat.top <= topRowStart + 24).map((seat) => seat.id));
+        const firstByActor = new Map<string, { element: HTMLElement; ordinal: number; order: number }>();
+        const playTable = display.closest<HTMLElement>(".play-table");
+        [...(playTable?.querySelectorAll<HTMLElement>('[data-public-card-journey-phase="parked"]') ?? [])]
+          .forEach((element, order) => {
+            const actorId = element.dataset.publicCardJourneyActorId ?? "";
+            if (!actorId || !upperSeatIds.has(actorId)) return;
+            const rect = element.getBoundingClientRect();
+            const style = window.getComputedStyle(element);
+            if (style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0) return;
+            const ordinalValue = Number(element.dataset.publicCardJourneyOrdinal);
+            const candidate = { element, ordinal: Number.isFinite(ordinalValue) ? ordinalValue : Number.MAX_SAFE_INTEGER, order };
+            const prior = firstByActor.get(actorId);
+            if (!prior || candidate.ordinal < prior.ordinal || candidate.ordinal === prior.ordinal && candidate.order < prior.order) {
+              firstByActor.set(actorId, candidate);
+            }
+          });
+        firstByActor.forEach(({ element }) => protectedParkedMiniatures.add(element));
+      }
       const obstacles: Array<{ element: HTMLElement | null; rect: DOMRect }> = [...document.querySelectorAll<HTMLElement>(
         [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-row"] : [])].join(", "),
       )].flatMap((element) => {
@@ -2601,6 +2635,12 @@ function PublicCardAnnouncement({
           ? []
           : [{ element, rect }];
       });
+      for (const element of protectedParkedMiniatures) {
+        const rect = element.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0 && !obstacles.some((obstacle) => obstacle.element === element)) {
+          obstacles.push({ element, rect });
+        }
+      }
       const protectedGeometry: PublicAnnouncementProtectedGeometry[] = obstacles.map(({ element, rect }) => ({
         kind: element?.className?.toString() ?? "journey-target",
         identity: element?.dataset.publicCardCopyAnchorEventId ?? element?.dataset.playerAnchor ?? "",
@@ -2859,9 +2899,9 @@ function PublicCardAnnouncement({
         return linesFor(textElement) + linesFor(supportElement);
       };
       let selected: { left: number; top: number; width: number; height: number; lines: number; message: string; supporting: string; compact: boolean } | null = null;
-      let verticalMode: "above" | "below" = placementBand && centerCardStillOccupiesStage
+      let verticalMode: "above" | "below" = preferredVerticalMode ?? (placementBand && centerCardStillOccupiesStage
         ? placementBand.centerY >= centerCardRect.top + centerCardRect.height / 2 ? "below" : "above"
-        : placementBand?.verticalMode ?? preferredVerticalMode ?? "above";
+        : placementBand?.verticalMode ?? "above");
       // Keep the established H4 centre within its accepted 16px vertical
       // tolerance while allowing a small obstacle-clearing adjustment. A
       // narrow phone can otherwise have no legal fit between parked history
@@ -3228,6 +3268,19 @@ function PublicCardAnnouncement({
     const anchor = getAnchor();
     anchorObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
     if (anchor) anchorObserver?.observe(anchor, { attributes: true, attributeFilter: ["style", "data-harvest-root-parked"] });
+    const revealTransfer = anchor?.closest<HTMLElement>(".public-hand-transfer") ?? null;
+    if (revealTransfer && phase === "reveal") {
+      const followDeadline = performance.now() + 5_000;
+      const followRevealAnchor = () => {
+        if (placementGeneration !== placementGenerationRef.current) return;
+        schedule();
+        const animationRunning = revealTransfer.getAnimations().some((animation) => animation.playState === "running" || animation.playState === "pending");
+        if (animationRunning && performance.now() < followDeadline) {
+          revealAnchorFollowTimer = window.setTimeout(followRevealAnchor, 80);
+        }
+      };
+      revealAnchorFollowTimer = window.setTimeout(followRevealAnchor, 0);
+    }
     const harvestStage = display.closest<HTMLElement>(".play-table")?.querySelector<HTMLElement>(".harvest-choice-stage");
     if (harvestStage) anchorObserver?.observe(harvestStage, { attributes: true, attributeFilter: ["style"], childList: stableHarvestAnchor, subtree: stableHarvestAnchor });
     anchorObserver?.observe(display, { attributes: true, attributeFilter: ["data-public-card-layout-pending"] });
@@ -3247,17 +3300,24 @@ function PublicCardAnnouncement({
       const harvestPool = table?.querySelector<HTMLElement>(".harvest-choice-panel");
       if (harvestPool) resizeObserver?.observe(harvestPool);
     }
-    if (privateDrawAware && typeof MutationObserver !== "undefined") {
+    if ((privateDrawAware || protectFirstParkedMiniature) && typeof MutationObserver !== "undefined") {
       mutationObserver = new MutationObserver((records) => {
-        const affectsPrivateDraw = records.some((record) => {
+        const affectsPrivateDraw = privateDrawAware && records.some((record) => {
           const target = record.target instanceof Element ? record.target : record.target.parentElement;
           if (target?.closest(".public-skill-event-announcement")) return false;
           if (target?.closest(".private-draw-row")) return true;
           return [...record.addedNodes, ...record.removedNodes].some((node) => node instanceof Element
             && (node.matches(".private-draw-row") || Boolean(node.querySelector(".private-draw-row"))));
         });
-        if (!affectsPrivateDraw) return;
-        for (const element of document.querySelectorAll<HTMLElement>(".private-draw-row")) resizeObserver?.observe(element);
+        const affectsParkedCard = protectFirstParkedMiniature && records.some((record) => {
+          const target = record.target instanceof Element ? record.target : record.target.parentElement;
+          return Boolean(target?.closest(".public-card-journey-card")
+            || [...record.addedNodes, ...record.removedNodes].some((node) => node instanceof Element
+              && (node.matches(".public-card-journey-card") || Boolean(node.querySelector(".public-card-journey-card")))));
+        });
+        if (!affectsPrivateDraw && !affectsParkedCard) return;
+        if (privateDrawAware) for (const element of document.querySelectorAll<HTMLElement>(".private-draw-row")) resizeObserver?.observe(element);
+        if (protectFirstParkedMiniature) for (const element of document.querySelectorAll<HTMLElement>('.public-card-journey-card[data-public-card-journey-phase="parked"]')) resizeObserver?.observe(element);
         schedule();
       });
       // Observe only actual private-draw changes; rewriting this live region's
@@ -3275,9 +3335,10 @@ function PublicCardAnnouncement({
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
       anchorObserver?.disconnect();
+      if (revealAnchorFollowTimer !== null) window.clearTimeout(revealAnchorFollowTimer);
       window.cancelAnimationFrame(frame);
     };
-  }, [anchorEventId, eventCopyKey, eventId, geometryKey, privateDrawAware, reportH4Placement, sharedPublicStage, stableHarvestAnchor]);
+  }, [anchorEventId, eventCopyKey, eventId, geometryKey, privateDrawAware, protectFirstParkedMiniature, reportH4Placement, sharedPublicStage, stableHarvestAnchor]);
 
   useLayoutEffect(() => {
     latestInputsRef.current = latestInputs;
@@ -3389,10 +3450,22 @@ export function PublicSkillEventAnnouncementLayer({
 }
 
 /** H4 for a proven outcome whose originating physical-card journey has ended. */
-export function PublicInteractionAnnouncementLayer({ narration, roomCode, viewerId }: {
+export function PublicInteractionAnnouncementLayer({
+  narration,
+  roomCode,
+  viewerId,
+  anchorEventId = null,
+  protectFirstParkedMiniature = false,
+  keepCenterAnchorClear = false,
+  preferredVerticalMode,
+}: {
   narration: PublicInteractionNarration;
   roomCode: string;
   viewerId: string;
+  anchorEventId?: string | null;
+  protectFirstParkedMiniature?: boolean;
+  keepCenterAnchorClear?: boolean;
+  preferredVerticalMode?: "above" | "below";
 }) {
   const [expiredEventId, setExpiredEventId] = useState<string | null>(null);
   useEffect(() => {
@@ -3406,7 +3479,7 @@ export function PublicInteractionAnnouncementLayer({ narration, roomCode, viewer
     data-public-interaction-event-id={narration.eventId} data-public-event-root-id={narration.rootEventId}>
     <PublicCardAnnouncement
       eventId={narration.eventId}
-      anchorEventId={null}
+      anchorEventId={anchorEventId}
       eventCopyKey={buildPublicAnnouncementEventCopyKey({
         roomCode, rootEventId: narration.rootEventId, checkpointEventId: narration.eventId,
         proofEventId: narration.eventId, actorId: narration.actorId ?? "public", actionClass: "interaction-outcome",
@@ -3416,13 +3489,18 @@ export function PublicInteractionAnnouncementLayer({ narration, roomCode, viewer
       copyLifecycleStage="ACTIVE"
       placementKey={`${roomCode}:public-interaction-event-band`}
       viewerLayoutKey={viewerId}
-      phase="static"
+      phase={anchorEventId ? "reveal" : "static"}
       message={narration.headline}
       compactMessage={narration.compactHeadline}
       accessibleLabel={narration.accessibleLabel}
       presentationNarration={narration}
+      supportingMessage={narration.supportingMessage}
+      compactSupportingMessage={narration.compactSupportingMessage}
       fallbackCardRect={null}
-      stableCenterAnchor
+      stableCenterAnchor={!anchorEventId}
+      keepCenterAnchorClear={keepCenterAnchorClear}
+      preferredVerticalMode={preferredVerticalMode}
+      protectFirstParkedMiniature={protectFirstParkedMiniature}
       ignoreJourneyLayoutPending
     />
   </section>;

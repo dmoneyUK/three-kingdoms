@@ -227,6 +227,19 @@ export function derivePublicInteractionNarration(input: {
   } else if (latest.category === "SKILL_USED") {
     const skill = latest.label?.trim().replace(/^Use\s+/i, "") || "a skill";
     const effectKind = latest.effect?.kind;
+    if (effectKind === "targeted_skill" && target) {
+      headline = `${actor ? `${actor} used` : "A player used"} ${skill} on ${target}.`;
+      return {
+        eventId: latest.eventId,
+        rootEventId: input.rootEventId,
+        interactionId: input.interactionId,
+        rootFrameId: input.rootFrameId,
+        ...(latest.actorId ? { actorId: latest.actorId } : {}),
+        headline,
+        compactHeadline: headline,
+        accessibleLabel: headline,
+      };
+    }
     const defaultOutcome = effectKind === "gain_target_card" ? "obtained one card"
       : effectKind === "gain_damage_cards" ? "obtained the card that caused the damage"
         : effectKind === "legacy_distribution" ? "began a card distribution"
