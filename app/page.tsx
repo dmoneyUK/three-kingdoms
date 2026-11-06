@@ -4,6 +4,7 @@ import { Component, CSSProperties, FormEvent, KeyboardEventHandler, PointerEvent
 import { cardDefinition, isAttackCard } from "../game/cards";
 import type { Card, CardKind } from "../game/model";
 import { MAX_AVAILABLE_CLASSIC_PLAYERS, roomAvailabilityLimit } from "../game/room-availability";
+import { PUBLIC_DISCARD_CARD_DISPLAY_MS, PUBLIC_DISCARD_HANDOFF_MS } from "../game/public-discard-handoff";
 import { STANDARD_PRESET_CARD_KINDS, TEST_HAND_PRESET_OPTIONS, testHandPresetCompatibilityError, testHandPresetFor, type TestHandPreset, type TestHandPresetId } from "../game/test-hand-presets";
 import { baselineHand, pendingPrivateHandCardIds, PRIVATE_HAND_REVEAL_DURATION_MS, updatePrivateHand } from "../game/private-hand.js";
 import { mergeEffectNoticeQueue, type EffectNoticeQueueEntry } from "./effect-notice-queue.js";
@@ -1552,7 +1553,7 @@ type LocalTargetPreviewPresentation = { id: string; name: string; hero: Hero | n
 type LocalTargetPreviewSubmission = { targetId: string; presentationKey: string; actionRevision: string; currentActionKey: string };
 type LocalOpponentInspectionPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null; handCount: number; equipmentCards: Card[]; judgementCards: Card[] };
 type PrivateStealResult = { semantics: "PRIVATE_PROVEN"; roomCode: string; eventId: string; rootEventId: string; rootResolutionId: string; sourceId: string; targetId: string; sourceZone: "hand"; card: Card };
-type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; serverNow?: number; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; privateStealResult: PrivateStealResult | null; privateStealParticipantResult: PrivateStealParticipantResult | null; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealEventId: string | null; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; complete: boolean; countdownUntil: number } | null; publicHarvestPool?: { semantics: "PROVEN"; rootEventId: string; revealEventId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[] } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
+type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; serverNow?: number; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; privateStealResult: PrivateStealResult | null; privateStealParticipantResult: PrivateStealParticipantResult | null; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; publicDiscardHandoff?: { eventId: string; actorId: string; cardCount: number } | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealEventId: string | null; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; complete: boolean; countdownUntil: number } | null; publicHarvestPool?: { semantics: "PROVEN"; rootEventId: string; revealEventId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[] } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
 
 export const HERO_ART_BY_ID: Record<string, string> = {
   "cao-cao": "/hero-cao-cao.jpg",
@@ -1662,7 +1663,7 @@ const UI_TIMING = {
   presenceHeartbeat: 60000,
   inactivityCheck: 60000,
   turnDrawStart: 100,
-  playedCard: 4000,
+  playedCard: PUBLIC_DISCARD_CARD_DISPLAY_MS,
   // Judgement cards need about two extra seconds for every seat to read the result.
   judgementCard: 4000,
   privateDraw: PRIVATE_HAND_REVEAL_DURATION_MS,
@@ -4404,9 +4405,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       timeline: room.timeline as readonly PublicDiscardTimelineEvent[],
       roomCode: room.code,
       viewerId: room.meId,
+      retiredTransitionIds: [...presentedEventIds],
     });
     return route ? publicDiscardAnnouncement({ event, route, players: room.players }) : null;
-  }, [room.timeline, room.code, room.meId, room.players, validatedPublicDiscardTransitionEventIds]);
+  }, [room.timeline, room.code, room.meId, room.players, presentedEventIds, validatedPublicDiscardTransitionEventIds]);
   const activePublicHandRevealTransition = useMemo(() => {
     if (!activeEvent) return null;
     return routePublicHandRevealTransition({
@@ -5262,6 +5264,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     setPresentedEventIds((ids) => ids.has(transition.eventId) ? ids : new Set([...ids, transition.eventId]));
     setActiveEvent((currentEvent) => currentEvent?.id === transition.eventId ? null : currentEvent);
   }, [activeEvent, presentedEventIds, room.code, room.meId, room.timeline]);
+  useEffect(() => {
+    const announcement = latestPublicDiscardAnnouncement;
+    const current = activeEvent as (GameEvent & { publicSequence?: number }) | null;
+    if (!announcement || !current || current.id === announcement.eventId
+      || !Number.isSafeInteger(current.publicSequence) || (current.publicSequence ?? -1) <= announcement.order
+      || current.type === "message" || presentedEventIds.has(announcement.eventId)) return;
+    setPresentedEventIds((ids) => ids.has(announcement.eventId) ? ids : new Set([...ids, announcement.eventId]));
+  }, [activeEvent, latestPublicDiscardAnnouncement, presentedEventIds]);
   const markPublicHandRevealTransitionPresented = useCallback((transition: PublicHandRevealTransitionRoute) => {
     if (transition.scope.roomCode !== room.code || transition.scope.viewerId !== room.meId
       || !activeEvent || activeEvent.id !== transition.eventId) return;
@@ -5845,6 +5855,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ? activeEvent.id : null,
     pendingTargetCard: room.pendingTargetCard,
     currentViewerNegationWindowId: room.currentAction?.negationWindowId ?? null,
+    publicDiscardHandoff: room.publicDiscardHandoff ?? null,
   });
   const publicActivitySeatLayoutKey = room.players.map((player) => `${player.id}:${player.seat}`).join("|");
   const currentActionOwnedByViewer = Boolean(room.currentAction?.actorId === room.meId && room.isMyAction && room.currentAction.kind !== "none");
@@ -8766,7 +8777,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ?? narratableInteractionFacts.at(-1)
       ?? room.presentationSnapshot?.retainedPublicEvent
     : null;
+  const activeEventSupersedesDiscard = Boolean(activeEvent && activeEvent.id !== latestPublicDiscardAnnouncement?.eventId
+    && Number.isSafeInteger((activeEvent as GameEvent & { publicSequence?: number }).publicSequence)
+    && ((activeEvent as GameEvent & { publicSequence?: number }).publicSequence ?? -1) > (latestPublicDiscardAnnouncement?.order ?? -1));
   const publicDiscardOwnsAnnouncement = Boolean(latestPublicDiscardAnnouncement
+    && !presentedEventIds.has(latestPublicDiscardAnnouncement.eventId)
+    && !activeEventSupersedesDiscard
     && latestPublicDiscardAnnouncement.order > (currentInteractionFact?.order ?? -1));
   const publicInteractionNarration = currentInteractionFact?.rootEventId
     ? derivePublicInteractionNarration({
@@ -10710,10 +10726,26 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && publicActivityStatus.kind !== "finished";
   const consoleAuthoritativeDecision = Boolean(room.currentAction && room.currentAction.kind !== "none" && (consoleIsDecisionActor || room.isMyTurn && room.currentAction.kind === "turn" && currentActionOwnedByViewer));
   const privateNegationAcknowledgement = viewerNegationAcknowledgement(room.presentationSnapshot, room.currentAction?.negationWindowId, room.phase);
+  const privateTurnGuidance = (() => {
+    const action = room.currentAction;
+    if (!action || action.kind !== "turn" || !currentActionOwnedByViewer) return null;
+    if (room.phase?.startsWith("draw") && canUseAction(action, "draw")) return "Draw your cards.";
+    if (!room.phase?.startsWith("play")) return null;
+    const canPlayCard = canUseAction(action, "play_card");
+    const canUseHeroSkill = canUseAction(action, "trigger") && Boolean(action.triggerOptions?.length);
+    const canEndPlay = canUseAction(action, "end_turn");
+    const available = [canPlayCard ? "Play an eligible card" : "", canUseHeroSkill ? "use an available Hero skill" : ""]
+      .filter(Boolean);
+    if (available.length) return `${available.join(" or ")}${canEndPlay ? ", or end the Play Phase" : ""}.`;
+    if (canEndPlay) return "Finish the Play Phase.";
+    return null;
+  })();
   const consoleInstruction = privateNegationAcknowledgement ?? (borrowedSwordTargetSelectionActive
     ? `Choose who ${room.players.find((player) => player.id === room.pendingBorrowedSword?.holderId)?.name ?? "the Weapon holder"} must Attack.`
     : borrowedSwordForcedChoiceActive
     ? `Play Attack on ${room.players.find((player) => player.id === room.pendingBorrowedSword?.targetId)?.name ?? "the selected target"}, or give up your Weapon.`
+    : room.publicDiscardHandoff
+    ? "No action needed."
     : localWaitAlreadyPublic
     ? "No action needed."
     : room.currentAction?.kind === "turn" && !currentActionOwnedByViewer
@@ -10727,10 +10759,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : privateResponseGuidance
       ? privateResponseGuidance
     : consoleIsDecisionActor
-    ? room.currentAction?.kind === "trigger" ? decisionInstruction(room.currentAction, room.currentAction.reason) : decisionPresentation.primaryStatus
+    ? room.currentAction?.kind === "trigger" ? decisionInstruction(room.currentAction, room.currentAction.reason) : privateTurnGuidance ?? decisionPresentation.primaryStatus
     : decisionPresentation.isWaiting
       ? decisionPresentation.supportingInstruction
-      : room.currentAction?.reason || decisionPresentation.supportingInstruction);
+      : privateTurnGuidance || room.currentAction?.reason || decisionPresentation.supportingInstruction);
   const consoleDecline = responseDamageAction || triggerDeclineAction ? { label: responseDamageAction === "decline_response" ? responseDeclineLabel : "Skip", enabled: true } : null;
   const canClearTargetCardPickerSelection = Boolean(
     targetCardPickerOption
@@ -12045,6 +12077,30 @@ function PublicDiscardCardTransition({ event, route, players, myTableIndex, onPr
   const revealRefs = useRef(new Map<string, HTMLDivElement>());
   const groupRef = useRef<HTMLDivElement>(null);
   const completedRef = useRef<{ claimId: string; cardIds: Set<string> }>({ claimId: route.claimId, cardIds: new Set() });
+  const latestPresentationRef = useRef({ route, onPresented });
+
+  useEffect(() => {
+    latestPresentationRef.current = { route, onPresented };
+  }, [onPresented, route]);
+
+  useEffect(() => {
+    let retired = false;
+    const retire = () => {
+      if (retired) return;
+      retired = true;
+      const current = latestPresentationRef.current;
+      current.onPresented(current.route);
+    };
+    const fallback = window.setTimeout(retire, PUBLIC_DISCARD_HANDOFF_MS);
+    const visibilityChanged = () => {
+      if (document.visibilityState !== "visible") retire();
+    };
+    document.addEventListener("visibilitychange", visibilityChanged);
+    return () => {
+      window.clearTimeout(fallback);
+      document.removeEventListener("visibilitychange", visibilityChanged);
+    };
+  }, [route.claimId]);
 
   useLayoutEffect(() => {
     completedRef.current = { claimId: route.claimId, cardIds: new Set() };
@@ -12096,6 +12152,11 @@ function PublicDiscardCardTransition({ event, route, players, myTableIndex, onPr
       });
     };
     measure();
+    const blockedFallback = window.requestAnimationFrame(() => {
+      if (groupRef.current?.dataset.publicDiscardLayout === "blocked") {
+        latestPresentationRef.current.onPresented(latestPresentationRef.current.route);
+      }
+    });
     const resizeObserver = new ResizeObserver(measure);
     const mutationObserver = new MutationObserver(measure);
     const treeObserver = new MutationObserver(measure);
@@ -12114,6 +12175,7 @@ function PublicDiscardCardTransition({ event, route, players, myTableIndex, onPr
       mutationObserver.disconnect();
       treeObserver.disconnect();
       window.removeEventListener("resize", measure);
+      window.cancelAnimationFrame(blockedFallback);
     };
   }, [items, myTableIndex, players]);
 

@@ -1,6 +1,8 @@
 import type { PublicPhysicalZoneTransition, PublicZoneEndpoint } from "../game/presentation-semantics";
+import { cardDefinition } from "../game/cards";
+import type { CardKind, CardRank, CardSuit } from "../game/model";
 
-type PublicDiscardCard = { id: string; kind: string };
+type PublicDiscardCard = { id: string; kind: string; rank?: string; suit?: string };
 export type PublicDiscardTimelineEvent = {
   id: string;
   type: "card" | "cards" | "message";
@@ -33,6 +35,7 @@ export type PublicDiscardAnnouncement = {
   actorId: string;
   order: number;
   count: number;
+  cards: readonly { id: string; name: string; rank: CardRank; suit: CardSuit }[] | null;
   headline: string;
   accessibleLabel: string;
 };
@@ -85,7 +88,7 @@ export function routePublicDiscardTransition(input: {
 
   const cards = eventCards(event);
   const committedCards = eventCards(sameEvent[0]);
-  const cardIdentity = (items: readonly PublicDiscardCard[]) => items.map(({ id, kind }) => `${id}\u001f${kind}`).sort().join("\u001e");
+  const cardIdentity = (items: readonly PublicDiscardCard[]) => items.map(({ id, kind, rank, suit }) => `${id}\u001f${kind}\u001f${rank ?? ""}\u001f${suit ?? ""}`).join("\u001e");
   if (!cards.length || cards.some((card) => !card || typeof card.id !== "string" || !card.id || typeof card.kind !== "string")
     || committedCards.some((card) => !card || typeof card.id !== "string" || !card.id || typeof card.kind !== "string")
     || cardIdentity(cards) !== cardIdentity(committedCards)) return null;
@@ -94,6 +97,7 @@ export function routePublicDiscardTransition(input: {
     || new Set(cards.map((card) => card.id)).size !== cards.length
     || transitions.length !== cards.length || new Set(transitions.map((transition) => transition.physicalCardId)).size !== transitions.length) return null;
   const byCardId = new Map(cards.map((card) => [card.id, card]));
+  if (cards.some((card, index) => transitions[index]?.physicalCardId !== card.id)) return null;
   const routed = transitions.map((transition) => {
     if (!transition || typeof transition !== "object") return null;
     const card = byCardId.get(transition.physicalCardId);
@@ -129,6 +133,17 @@ export function publicDiscardAnnouncement(input: {
   const actor = input.players.find((player) => player.id === event.actorId)?.name.trim();
   if (!actor) return null;
   const count = route.transitions.length;
-  const headline = `${actor} discarded ${count} ${count === 1 ? "card" : "cards"}.`;
-  return { eventId: event.id, actorId: event.actorId!, order: event.publicSequence!, count, headline, accessibleLabel: headline };
+  const ranks = new Set<CardRank>(["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]);
+  const suits = new Set<CardSuit>(["♥", "♦", "♣", "♠"]);
+  const cards = eventCards(event).map((card) => {
+    if (!ranks.has(card.rank as CardRank) || !suits.has(card.suit as CardSuit)) return null;
+    const definition = cardDefinition(card.kind as CardKind);
+    return definition ? { id: card.id, name: definition.name, rank: card.rank as CardRank, suit: card.suit as CardSuit } : null;
+  });
+  const hasCompleteIdentity = cards.length === count && cards.every((card) => card !== null);
+  const cardList = hasCompleteIdentity ? cards as Array<{ id: string; name: string; rank: CardRank; suit: CardSuit }> : null;
+  const headline = cardList
+    ? `${actor} discarded ${count} ${count === 1 ? "card" : "cards"}: ${cardList.map((card) => `${card.rank}${card.suit} ${card.name}`).join(" · ")}.`
+    : `${actor} discarded ${count} ${count === 1 ? "card" : "cards"}.`;
+  return { eventId: event.id, actorId: event.actorId!, order: event.publicSequence!, count, cards: cardList, headline, accessibleLabel: headline };
 }

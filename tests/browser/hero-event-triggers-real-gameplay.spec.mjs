@@ -238,6 +238,10 @@ test("E15: final Judgement, two-card discard and next-turn status stay coherent 
     data: { code: game.code, hostToken: game.players[0].token, targetPlayerId: game.players[2].id },
   });
   expect(enabledController.ok(), await enabledController.text()).toBeTruthy();
+  const enabledNextTurnController = await request.post(`${API}/__test/enable-seeded-controller`, {
+    data: { code: game.code, hostToken: game.players[0].token, targetPlayerId: game.players[1].id },
+  });
+  expect(enabledNextTurnController.ok(), await enabledNextTurnController.text()).toBeTruthy();
   const dismantled = await request.post(`${API}/api/rooms`, { data: { action: "choose_target_card", code: game.code,
     token: game.players[3].token, targetCardZone: "hand", targetCardIndex: 0 } });
   expect(dismantled.ok(), await dismantled.text()).toBeTruthy();
@@ -297,7 +301,9 @@ test("E15: final Judgement, two-card discard and next-turn status stay coherent 
   const committed = await discardResponse;
   expect(committed.ok(), await committed.text()).toBeTruthy();
   const committedRoom = (await committed.json()).room;
-  expect(committedRoom.currentAction.kind).toBe("turn");
+  expect(committedRoom.currentAction).toMatchObject({ kind: "none", actorId: null, legalActions: [] });
+  expect(committedRoom.publicDiscardHandoff).toMatchObject({ actorId: actor.id, cardCount: 2 });
+  expect(committedRoom.phase).toBe("resolving");
   await expect(page.locator(".game-shell")).toHaveAttribute("data-room-phase", committedRoom.phase);
   await expect(page.locator(".game-shell")).toHaveAttribute("data-room-action-revision", committedRoom.actionRevision);
   await expect(page.locator(".game-shell")).toHaveAttribute("data-current-action-actor-id", committedRoom.currentAction.actorId ?? "");
@@ -309,13 +315,36 @@ test("E15: final Judgement, two-card discard and next-turn status stay coherent 
 
   const discardH4 = page.locator(`[data-public-discard-announcement-event-id="${discardEvent.id}"]`);
   await expect(discardH4).toBeVisible({ timeout: 15_000 });
-  await expect(discardH4).toContainText("SIMA YI discarded 2 cards.");
+  await expect(discardH4).toContainText("SIMA YI discarded 2 cards: 7♠ Dodge · 7♠ Peach.");
+  await expect(discardH4).toHaveAttribute("data-public-discard-announcement-card-ids", discarded.map((card) => card.id).join(","));
+  const discardCards = page.locator(`[data-public-zone-transition-event-id="${discardEvent.id}"][data-public-zone-transition-destination="DISCARD"]`);
+  await expect(discardCards).toHaveCount(2);
+  expect(await discardCards.evaluateAll((elements) => elements.map((element) => element.getAttribute("data-public-zone-transition-card-id")).sort()))
+    .toEqual(discarded.map((card) => card.id).sort());
   await expect(discardH4.locator('[data-public-card-announcement-event-id="' + discardEvent.id + '"]')).toHaveAttribute(
     "data-public-card-announcement-delivery", "VISIBLE");
   await expect(page.locator('[data-public-card-announcement="true"]')).not.toContainText("The result is not a Heart, so the Play Phase is skipped");
 
   const chip = page.locator('[data-public-activity-chip="true"]');
-  await expect(chip).toHaveAttribute("data-public-activity-kind", "turn");
+  await expect(chip).toHaveAttribute("data-public-activity-kind", "discard-handoff");
+  await expect(chip).toContainText("SIMA YI discarded 2 cards — finishing the turn.");
+  const observer = game.players[2];
+  await page.getByTestId(`test-view-switch-${observer.id}`).click();
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${observer.id}"]`)).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(`[data-public-discard-announcement-event-id="${discardEvent.id}"]`)).toContainText("7♠ Dodge · 7♠ Peach");
+  await expect(page.locator('[data-public-activity-chip="true"]')).toHaveAttribute("data-public-activity-kind", "discard-handoff");
+  await expect(page.locator(".console-guidance")).toContainText("No action needed.");
+  await expect(discardCards).toHaveCount(2);
+  await expect(discardCards).toHaveCount(0, { timeout: 8_000 });
+  await expect(discardH4).toHaveCount(0, { timeout: 2_000 });
+  await expect.poll(async () => (await view(request, game, 0)).phase).not.toBe("resolving");
+  await expect(page.locator('[data-public-activity-chip="true"]')).toHaveAttribute("data-public-activity-kind", "turn");
+  await page.getByTestId(`test-view-switch-${game.players[1].id}`).click();
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${game.players[1].id}"]`)).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(".console-guidance")).toContainText(/Play an eligible card|Finish the Play Phase|Draw your cards\./);
+  await expect(page.locator(".console-guidance")).not.toContainText("Hero skill");
+  await page.getByTestId(`test-view-switch-${observer.id}`).click();
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${observer.id}"]`)).toBeVisible({ timeout: 15_000 });
   const chipState = () => chip.evaluate((element) => {
     const style = getComputedStyle(element);
     const rect = element.getBoundingClientRect();
@@ -352,14 +381,11 @@ test("E15: final Judgement, two-card discard and next-turn status stay coherent 
   expect(geometry).toMatchObject({ visible: true, consoleOverlap: false, seatOverlaps: 0, width: 390, height: 844 });
   expect(geometry.centerOffsetX).toBeLessThan(2);
 
-  const observer = game.players[2];
-  await page.getByTestId(`test-view-switch-${observer.id}`).click();
-  await expect(page.locator(`.local-player-dock[data-player-anchor="${observer.id}"]`)).toBeVisible({ timeout: 15_000 });
   const observerState = await view(request, game, 2);
   await expect(page.locator(".game-shell")).toHaveAttribute("data-room-phase", observerState.phase);
   await expect(page.locator(".game-shell")).toHaveAttribute("data-room-action-revision", observerState.actionRevision);
   await expect(page.locator(".game-shell")).toHaveAttribute("data-current-action-actor-id", game.players[1].id);
-  await expect(page.locator(`[data-public-discard-announcement-event-id="${discardEvent.id}"]`)).toContainText("SIMA YI discarded 2 cards.");
+  await expect(page.locator(`[data-public-discard-announcement-event-id="${discardEvent.id}"]`)).toHaveCount(0);
   await expect(page.locator('[data-public-activity-chip="true"]')).toHaveAttribute("data-public-activity-kind", "turn");
   await expect(page.locator(".console-guidance")).not.toContainText("2 of 2 selected");
   await expect(page.locator(".console-guidance")).toContainText("No action needed.");

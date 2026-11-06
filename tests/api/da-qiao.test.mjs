@@ -338,10 +338,12 @@ test("E15: committed discard supersedes the completed Overindulgence Judgement f
   const announcement = publicDiscardAnnouncement({ event: discardEvent, route, players: discarded.data.room.players });
   assert.deepEqual(announcement, {
     eventId: discardEvent.id, actorId: sima.id, order: discardEvent.publicSequence, count: 2,
-    headline: `${sima.name} discarded 2 cards.`, accessibleLabel: `${sima.name} discarded 2 cards.`,
+    cards: retained.slice(0, 2).map((held) => ({ id: held.id, name: held.kind, rank: held.rank, suit: held.suit })),
+    headline: `${sima.name} discarded 2 cards: A♠ Dodge · A♠ Peach.`,
+    accessibleLabel: `${sima.name} discarded 2 cards: A♠ Dodge · A♠ Peach.`,
   });
   assert.ok(discardEvent.publicSequence > judgementResult.order, "the committed discard supersedes the earlier Judgement H4");
-  assert.equal(discarded.data.room.phase, "draw");
+  assert.equal(discarded.data.room.phase, "resolving");
   assert.equal(discarded.data.room.turnSeat, next.seat);
   const local = (await state(game.code, simaMember.token)).data;
   const observer = (await state(game.code, nextMember.token)).data;
@@ -352,13 +354,25 @@ test("E15: committed discard supersedes the completed Overindulgence Judgement f
     assert.ok(viewerRoute);
     assert.deepEqual(publicDiscardAnnouncement({ event: sameDiscard, route: viewerRoute, players: viewer.players }), announcement,
       "all viewers derive the same public discard H4 from the same event identity");
-    assert.equal(viewer.phase, "draw");
-    assert.equal(viewer.currentAction.actorId, next.id, "private Console authority follows the next viewer-specific action");
+    assert.equal(viewer.phase, "resolving");
+    assert.deepEqual(viewer.publicDiscardHandoff, { eventId: discardEvent.id, actorId: sima.id, cardCount: 2 });
+    assert.equal(viewer.currentAction.kind, "none");
+    assert.equal(viewer.currentAction.actorId, null, "the next actor has no legal turn action during the handoff");
+    assert.deepEqual(viewer.currentAction.legalActions, []);
     assert.equal(viewer.actionRevision, discarded.data.room.actionRevision);
   }
   const pac = derivePublicActivityStatus({ ...local, status: "playing", activePublicJudgementEventId: null });
-  assert.equal(pac.kind, "turn");
-  assert.equal(pac.text, `${next.name}'s turn`);
+  assert.equal(pac.kind, "discard-handoff");
+  assert.equal(pac.text, `${sima.name} discarded 2 cards — finishing the turn.`);
+  const earlyDraw = await request("draw", { code: game.code, token: nextMember.token });
+  assert.equal(earlyDraw.status, 409, "a next-seat Draw POST cannot cross the active server handoff");
+  assert.equal(earlyDraw.data.room.phase, "resolving");
+  sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.deadline',${Date.now() - 1}) WHERE code=${quote(game.code)}`);
+  const resumed = (await state(game.code, nextMember.token)).data;
+  assert.equal(resumed.phase, "draw", "an authenticated room read idempotently expires the elapsed handoff");
+  assert.equal(resumed.currentAction.actorId, next.id);
+  const postDeadlineDraw = await request("draw", { code: game.code, token: nextMember.token });
+  assert.equal(postDeadlineDraw.status, 200, JSON.stringify(postDeadlineDraw.data));
   assert.deepEqual(discardEvent.cards.map(({ id }) => id).sort(), [retained[0].id, retained[1].id].sort());
   assert.equal(observer.myHand.some((held) => [retained[0].id, retained[1].id].includes(held.id)), false,
     "discarded card identities are public through the committed transition, not copied into another Hand");

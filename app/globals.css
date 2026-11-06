@@ -1363,6 +1363,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-display-journey.is-viewer-layout-pending .public-card-journey-card{visibility:hidden!important}
 .public-card-display-journey.is-exiting{animation:none;opacity:0;transition:opacity .18s ease}
 .public-card-display-journey-copy[data-public-card-announcement-positioned="true"]{height:auto}
+.public-discard-announcement .public-card-display-journey-copy>b{display:block;overflow:visible;-webkit-box-orient:initial;-webkit-line-clamp:unset;white-space:normal;overflow-wrap:anywhere}
 @media(min-width:801px){.public-card-display-journey-copy>b{font-size:16px}.public-card-display-journey-copy.is-negation-narration>b{font-size:16px}.public-card-display-journey-copy>.public-negation-narration-support{font-size:14px}}
 @media(max-width:420px){.public-card-display-journey-copy{padding:5px 8px}.public-card-display-journey-copy.is-negation-waiting{padding:5px 8px}.public-card-display-journey-copy.is-negation-narration{padding:5px 8px}}
 @media(max-width:480px) and (max-height:740px){.public-card-display-journey-copy.is-negation-narration>b{line-height:1}.public-card-display-journey-copy.is-negation-narration>.public-negation-narration-support{line-height:1.08}}

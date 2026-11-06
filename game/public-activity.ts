@@ -28,10 +28,12 @@ export type PublicActivityInput = {
   pendingTargetCard?: PublicPendingTargetCard | null;
   /** Viewer-local server identity for the currently open Negation window. */
   currentViewerNegationWindowId?: string | null;
+  /** Server-safe stage for the finite end-of-turn public Discard handoff. */
+  publicDiscardHandoff?: { actorId: string; cardCount: number } | null;
 };
 
 export type PublicActivityStatus = {
-  kind: "turn" | "discard" | "response" | "negation" | "judgement" | "target-card-choice" | "resolving" | "finished";
+  kind: "turn" | "discard" | "discard-handoff" | "response" | "negation" | "judgement" | "target-card-choice" | "resolving" | "finished";
   text: string;
   heading?: string;
   stage?: string;
@@ -426,6 +428,16 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
         : "";
       const waiting = `Waiting for ${actor}${actionCopy}`;
       return { kind: "response", text: waiting, heading: waiting, stage: nextDecision.stageLabel };
+    }
+  }
+
+  if (input.status === "playing" && input.phase === "resolving" && input.publicDiscardHandoff
+    && Number.isSafeInteger(input.publicDiscardHandoff.cardCount) && input.publicDiscardHandoff.cardCount > 0) {
+    const actor = input.players.find((candidate) => candidate.id === input.publicDiscardHandoff?.actorId);
+    if (actor?.name.trim()) {
+      const count = input.publicDiscardHandoff.cardCount;
+      const text = `${actor.name.trim()} discarded ${count === 1 ? "a card" : `${count} cards`} — finishing the turn.`;
+      return { kind: "discard-handoff", text, heading: text, stage: "Turn handoff" };
     }
   }
 

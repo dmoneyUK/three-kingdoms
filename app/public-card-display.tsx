@@ -3435,7 +3435,9 @@ export function PublicDiscardAnnouncementLayer({ announcement, roomCode, viewerI
   viewerId: string;
 }) {
   return <section className="public-card-display public-card-display-journey public-interaction-event-announcement public-discard-announcement"
-    data-public-discard-announcement-event-id={announcement.eventId}>
+    data-public-discard-announcement-event-id={announcement.eventId}
+    data-public-discard-announcement-card-ids={announcement.cards?.map((card) => card.id).join(",") ?? ""}
+    data-public-discard-announcement-card-count={announcement.count}>
     <PublicCardAnnouncement
       eventId={announcement.eventId}
       anchorEventId={null}

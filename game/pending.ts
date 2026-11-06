@@ -254,6 +254,8 @@ export type TurnEndTriggerContinuation = {
   sourceId?: string;
   targetId?: string;
   resolvedEffectIds?: string[];
+  /** Only a normally committed end-turn Discard owns this finite public handoff. */
+  discardHandoff?: { eventId: string; actorId: string; cardCount: number; deadline: number };
 };
 export type JudgementResponseResume = {
   kind: "response";
