@@ -1,30 +1,34 @@
 # HANDOVER — 当前执行交接
 
-## 最近交付
+## 当前唯一交付边界：DISCARD-TURN-HANDOFF-UX-01 / §10.40
 
-**CARD-FACE-TYPOGRAPHY-UX-01 / §10.39：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。** 代码 SHA `9a677d4e20d3f5908b912855c94c1f54ad2b3042` 的精确 SHA Actions 41949962764 全绿，Worker 版本 `66545868-d849-4627-a499-34d62540dd4a`，线上 `/api/health` 正常；未标记 USER-ACCEPTED。
+**状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW；未标记 USER-ACCEPTED。** 实现 SHA `aa6544d96ee54cb8e10255e045be93d4150c4a47`，CI 回归修复 SHA `90273b87e1753168c69416d1f03b1312582e21bc`；该精确 SHA 的 [GitHub Actions 42137720792](https://github.com/dmoneyUK/three-kingdoms/actions/runs/42137720792) 全部成功。Cloudflare Worker 版本 `08ab7795-52a9-44c3-af48-802f5e9e572d`；部署 smoke 与直接线上 `/api/health` 均通过（`{"ok":true,"worker":"available"}`）。
 
 ## 最新设计复核
 
-复核 `origin/ux-v2` HEAD `997b66f62439205d76a7db13b9c5a55a9d974202`，`docs/UX2-refine.md` 最新设计修订为 **2026-11-05 23:50 UTC**。新增远端提交只调整 M4 E16 已验收状态和 §10.37 的独立修正要求；§10.40 合同未变，且与当前任务兼容。远端 HEAD 无对应 Actions，因为提交仅改 Markdown 且 workflow 配置 `**/*.md` 为 `paths-ignore`；最近相关成功 run 41949962764 对应旧代码 SHA `9a677d4e`，不作为本任务验证证据。
+最新远端设计内容修订为 `docs/UX2-refine.md` **2026-11-05 23:50 UTC**；远端 Table A/B 状态已随本交付更新。§10.40 保持原批准设计：H4 只列具备公开证明的弃牌名称、点数、花色；H4 与同事件灰白弃牌组同步退场；正常回合末弃牌才使用有限服务端交接门闩；PAC 描述真实交接；私有 Console 依据 viewer 的 `CurrentAction.legalActions`。不改规则、卡牌移动、隐私或已验收行为。§10.37 是独立修正项，文档注明不自动启动；本轮没有开始。
 
-## 当前唯一任务：DISCARD-TURN-HANDOFF-UX-01 / §10.40
+## 实施与验证
 
-**状态：实现已推送；精确 SHA CI 42136833330 的 API tests 失败、部署跳过。已修正旧断言并通过聚焦复现，待提交 CI 修复及重跑精确 SHA CI。最终状态目标：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。**
+- H4 精确绑定一笔已提交 `eventId`、物理牌身份和顺序；身份不完整时安全退回数量文案。灰白牌组最后一张退场、被中断或触发有界 fallback 时，共享状态同步退休 H4。
+- 仅正常结束回合的 `discard_cards` 创建有限服务端门闩。先完成回合结束技能、死亡与胜负处理；门闩期间 `CurrentAction` 无合法行动，提前提交返回 409；截止后由认证读取/动作幂等推进下一座位。
+- PAC 显示“某玩家正在完成回合交接”；门闩结束后才显示下一回合。私有行动提示仍来自当前 viewer 的服务器合法行动投影。
+- 本地：`npm run build` 通过；`tests/api/da-qiao.test.mjs` 18/18；`tests/public-discard-transition.test.mjs` 9/9；`tests/api/stratagems.test.mjs` 30/30；`git diff --check` 通过。目标 ESLint 0 errors、15 条 React hook dependency warnings。唯一手机尺寸浏览器场景为 390×844，最终两次通过（16.6s、16.5s）；此前 fixture 点数错误及测试身份未授权均已修正；累计 UI/browser 约 2分20秒，不再运行。
+- 首次精确 SHA Actions `42136833330`（SHA `aa6544d9`）lint/fast、browser smoke 通过，API job 仅因一条旧 Lu Xun Second Wind 断言要求弃牌后立即开放下一回合而失败，部署跳过。修正为验证回合结束技能后仍受门闩保护、提前 Draw 被拒、到期后认证 GET 恢复行动；未新增测试条目、未改生产代码。聚焦 API 文件 30/30 后提交修复 SHA `90273b87`。
+- 精确 SHA Actions `42137720792`：lint/fast tests、API tests、browser smoke、数据库迁移、Worker 部署和 production smoke 全部通过。Worker version ID 与线上健康结果见上方。
 
-步骤 A 将 H4 的完整弃牌名、点数、花色绑定到同一已提交 `eventId` 和真实物理牌顺序；缺少身份凭证时退回数量文案；灰白弃牌牌组与 H4 共用退休/中断状态。步骤 B 仅为正常回合结束 `discard_cards` 增加有限服务端交接门闩；先按原顺序完成回合结束触发、死亡与胜负处理，再开放下一座位行动。PAC 报告真实交接；私有 Console 只按该 viewer 的 `CurrentAction.legalActions` 提示。没有改游戏规则、卡牌移动、隐私或已验收行为。
+## 当前任务操作记录（UTC）
 
-### 当前任务操作记录（UTC）
+- **2026-11-05 23:38** — 检查隔离 worktree 干净，同步当时 `origin/ux-v2` 的 `e8eaef020749a17bf3c87743a36edddee9131ffc`；阅读 AGENTS、HANDOVER、工作流、完整 §10.40 与相关源码。
+- **23:47** — 确认回合末事件可暂停并恢复；交接门闩需等待触发、死亡和胜负结算后才生效；过期请求不可重放。
+- **2026-11-06 00:11–00:16** — 实现 A/B 并完成上述聚焦构建、API、单测、lint、差异检查及手机尺寸浏览器验证。首次测试错误与修正过程详见当前实现提交。
+- **00:19:07** — 建立初版本地提交 `29b4c504`；推送被拒时发现远端前进，保留本地工作，没有覆盖远端。
+- **00:22–00:23** — 拉取远端 docs-only 更新 `6e888bde`、`997b66f6`；复核新增 M4 E16 PASS 与 §10.37 修正，没有源代码冲突。只在 `docs/UX2-refine.md` 解决状态冲突，保留远端决策后完成 rebase。
+- **00:26:14** — 推送实现 SHA `aa6544d9`。Actions 42136833330 因上述过期断言失败，部署跳过；定位到 `tests/api/stratagems.test.mjs:1325`。
+- **00:31–00:33** — 修正既有断言并运行整份窄范围 API 文件，30/30 通过；更新 Handover/设计状态；提交 CI 修复 SHA `90273b87`，于 **00:33:44** 触发 Actions 42137720792。
+- **00:36:03** — lint/fast tests 成功；**00:35:20** browser smoke 成功；**00:37:25** API tests 成功；**00:38:55** Worker 部署和 production smoke 成功。部署版本 `08ab7795-52a9-44c3-af48-802f5e9e572d`。
+- **00:39:48** — 直接读取线上 `/api/health`，返回 `{"ok":true,"worker":"available"}`。验收边界停在 owner iPhone 复核。
 
-- **2026-11-05 23:38** — 检查任务 worktree 干净；同步到当时 `origin/ux-v2` 的 `e8eaef020749a17bf3c87743a36edddee9131ffc`。重读 AGENTS、完整 HANDOVER、UI 工作流、§10.40 及相关源码/历史记录。将当前唯一交付边界设为 §10.40。
-- **23:47** — 追踪 `discard_cards → beginTurnEnd → next seat/phase → roomState/CurrentAction`；确认回合结束触发可持久化暂停。确定下一座位门闩必须等触发、死亡和胜负结算后才建立，且过期/重连不能重放旧请求。
-- **2026-11-06 00:11–00:16** — 实现 A/B。`npm run build` 通过；聚焦 `tests/api/da-qiao.test.mjs` 最终 **18/18**；`tests/public-discard-transition.test.mjs` **9/9**；目标 ESLint **0 errors**，有 15 条 React hook 依赖 warnings；`git diff --check` 通过。浏览器仅跑一个 390×844 场景，最终通过两次（16.6s、16.5s）；前置失败分别为 fixture 点数预期错误和未授权下一回合玩家 TEST SWITCH，均修正后复跑。UI/browser 累计约 **2分20秒**，低于单任务 5 分钟上限；不再启动 UI 测试。构建另有 bundle 大小和 API 动态路由提示。
-- **00:19:07** — 建立本地实现提交 `29b4c50416e2db51d00e87879f6b50e243d7a4e6`。推送被 GitHub 拒绝：远端 `ux-v2` 已前进，未覆盖远端或其他工作。
-- **00:22** — fetch 并检查远端 `ux-v2` 新增提交 `6e888bde`、`997b66f6`；仅 `docs/UX2-refine.md` 有变更。确认 M4 E16 已 USER-ACCEPTED、§10.37 新增独立修正，§10.40 未变。检查当前远端 SHA 的 Actions 列表为空（Markdown 被路径过滤）；最近旧代码 SHA 的成功 run 不代表本任务通过。
-- **00:22–00:23** — 将本地提交 rebase 到 `997b66f6`。唯一冲突是 `docs/UX2-refine.md` 的任务状态行；保留远端全部 §10.37/M4 决定，并把 §10.40 标记为本地已实现、CI/部署待验证。rebase 于 **00:23:06** 完成；生产代码及测试改动与原本地验证提交相同。此时精确 SHA CI、部署与线上 smoke尚未运行。
-- **00:26:14** — 最终任务提交 `aa6544d96ee54cb8e10255e045be93d4150c4a47` 推送至 `ux-v2`。精确 SHA Actions [42136833330](https://github.com/dmoneyUK/three-kingdoms/actions/runs/42136833330)：lint/fast tests 成功，browser room smoke 成功；API tests 失败，deploy 因依赖失败而跳过。
-- **00:29–00:30** — 检查 API 失败日志，唯一失败为 `tests/api/stratagems.test.mjs:1325` 的 Second Wind 弃牌 continuation，旧断言要求拒绝触发后立即 `currentAction.kind === "turn"`。新 §10.40 合同正确要求 `resolving`、无合法行动，等门闩到期后再开放下一座位。已改为验证门闩、提前 Draw 返回 409、认证 GET 到期推进及到期后 Draw 可提交。**00:31–00:32** 聚焦重跑 `GAME_TEST_FILES=tests/api/stratagems.test.mjs node tests/run-tests.mjs`，30/30 通过（15.85s）；只调整既有断言为验证新门闩，不新增测试条目。修复代码与 HANDOVER/设计状态待作为独立 CI 修复提交。
+## 验收边界
 
-### 验收边界
-
-不改 Dismantle、装备替换、技能成本弃牌、响应、零张弃牌跳过或无匹配证明的旧存档。保留 T6/T7B/M3/M5/M6/§10.36.1 验收边界。CI/部署仅在观察到精确 SHA 结果后记录；产品状态保持待 owner iPhone 复核，不推断用户验收。
+保留 §10.40 约定的范围排除项；禁止从技术交付推断 iPhone 验收。当前只等待 owner 对本任务进行手机复核；没有开始其它任务。
