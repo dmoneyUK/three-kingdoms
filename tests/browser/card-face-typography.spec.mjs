@@ -94,10 +94,14 @@ test("CardFace names and type labels fit their existing phone card sizes", async
   }
 
   const handName = await nameMetrics(page.locator(".local-hand-rail .game-card .card-name-mark"));
-  expect(handName.fontSize).toBeLessThanOrEqual(9);
+  expect(handName.fontSize).toBeGreaterThanOrEqual(10);
+  expect(handName.fontSize).toBeLessThanOrEqual(11);
   expect(handName.lines).toBeLessThanOrEqual(2);
   expect(handName.clipped).toBe(false);
   const handCategory = page.locator(".local-hand-rail .game-card > strong");
+  const handCategoryFontSize = await handCategory.evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize));
+  expect(handCategoryFontSize).toBeGreaterThanOrEqual(5.8);
+  expect(handCategoryFontSize).toBeLessThanOrEqual(6.5);
   await expect(handCategory).toHaveCSS("white-space", "nowrap");
   expect(await handCategory.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   const revealName = await nameMetrics(page.locator(".active-table-reveal .played-card .card-name-mark"));

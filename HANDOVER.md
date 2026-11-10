@@ -1,25 +1,23 @@
 # HANDOVER — 当前唯一任务
 
-## ZHOU-YU-FANJIAN-UX-01 / §10.37
+## CARD-FACE-TYPOGRAPHY-UX-01 / §10.39 — local Hand text legibility follow-up
 
-**状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW。** 本地分支 `codex/ux2-judgement-seat-01` 与 `origin/ux-v2` 当前代码 SHA 均为 `72f721cc3ed5ce38df584110bc04f5d5cc58ae17`。依据 `docs/UX2-refine.md` §10.37（工作时所读最新远端修订：2026-11-05 23:50 UTC）。没有标记 USER-ACCEPTED。独立已验收的 M4 E16 真实 HAND→HAND reveal 保持不变。
+**状态：本地实现已提交；待推送、精确 SHA CI/部署。** Owner 于 2026-11-10 直接要求增大手牌文案。工作树 `/Users/jingedai/.codex/worktrees/ux2-judgement-seat-01`，分支 `codex/ux2-judgement-seat-01`；开始时干净并位于 `origin/ux-v2` / `2ddb2fd04f5096547bc45484041dcae3c5eaa55d`。工作期间远端推进至 `27bdd62420f63fd3a5ff514498cfbc8023d3d0bf`；已在安全 rebase 中保留并合入远端新增的 §10.37 部分验收结论，当前提交基于该最新 SHA。主目录另有无关未提交改动，未触碰。已阅读当前 `AGENTS.md`、`HANDOVER.md`、`README.md`、`docs/AUTONOMOUS_UI_ROADMAP.md` 与最新远端 `docs/UX2-refine.md`。保留原 §10.39 ID，只修手牌文字。
 
-### 已交付
+### 已确认原因与批准范围
 
-- Fanjian 使用紧凑的单次组合提交：四个花色符号按钮、相邻 Hand 数量和匿名牌背，前四张完整显示并支持横向滑动；保留重按取消和旧进行中 `suit`/`card` 状态兼容。
-- H4 仅根据服务端已提交事件显示激活与最终结算；结算事实绑定最终猜测、唯一真实 reveal/physicalCardId、HAND→HAND 转移、匹配结果及真实伤害/防止伤害。未提交的花色或牌位不进入公开信息。
-- H4 现在说明猜测花色、真实揭示牌、是否匹配和实际结果。调整 H4 与原始 CardFace 的位置关系，保留上排英雄下方第一张真实停放缩略牌。
-- 修正手机端 Confirm 的宽度/触控高度样式优先级。未改游戏规则、合法性、时限或隐私边界。
+- `app/sequence-overrides.css` 给 `.local-hand-rail .card-slot` 设 `container-type:inline-size`。现代浏览器末段容器规则原为名称 `12cqi`、分类 `7.5cqi`；标准 68px 卡宽分别仅约 **8.16px** 与 **5.1px**，并覆盖较早的 Hand 文字规则。
+- 在保持现有 68×102px 手牌尺寸下，将名称调整为约 10.5px、分类约 6px；名称最多两行、分类一行。只改本地手牌字号；不动公共/中尺寸牌、微缩牌、卡图、卡牌身份、游戏规则或隐私。
+- 现有 `tests/browser/card-face-typography.spec.mjs` 的手牌字号断言已改为名称 10–11px、分类 5.8–6.5px，并保留两行/单行与不卡字断言。
+- 已在 `docs/UX2-refine.md` 将此直接反馈记录为 §10.39 的当前修正，并将原任务身份移回 Table A；此前 §10.39 部署只作为既有基线。
 
-### 主要操作与验证记录（UTC）
+### 操作记录（UTC）
 
-- **2026-11-06 02:34**：本地聚焦验证记录。390×844 浏览器场景最终 1/1 通过（7.9 秒）；断言原始 CardFace 为 108×156px、居中，H4 与牌面间距 0–32px。此前发现 4.6px 重叠，定位为 H4 多余来源文字增加高度；按批准语义缩短后复测通过。Confirm 宽 80–110px、高至少 44px。UI 测试累计低于 5 分钟。
-- 同一验证阶段：聚焦 PresentationV2/public-activity API 测试 64/64 通过（8.32 秒）；`npm run build` 与 `git diff --check` 通过。构建仅报告已有 bundle、Node 弃用及 Vite 路由分类警告。
-- **2026-11-06 02:35:05**：源代码提交 `72f721cc3ed5ce38df584110bc04f5d5cc58ae17`；提交后 `origin/ux-v2` 指向同一 SHA。
-- **2026-11-06 02:35–02:45**：精确 SHA [GitHub Actions 42151263086](https://github.com/dmoneyUK/three-kingdoms/actions/runs/42151263086) 全部成功：Lint/fast tests、API tests、browser startup/room smoke、deploy。
-- **2026-11-06 02:45:12**：Cloudflare Worker 部署和生产 smoke 成功；Worker version `eb588f46-b9f4-4798-802c-2a661aec100c`。
-- **2026-11-06 02:46**：独立生产 `/api/health` 检查返回 `{"ok":true,"worker":"available"}`。
+- **2026-11-10 23:37**：检查 `origin/ux-v2`、工作树、当前 HANDOVER、§10.39 和 CardFace/Hand DOM。确认 CSS 容器单位造成 68px 手牌名称仅约 8.16px；现有 `tests/browser/card-face-typography.spec.mjs` 将字号上限固定为 9px。
+- **2026-11-10 23:37**：更新 `docs/UX2-refine.md` 与本 HANDOVER，按用户反馈限定为 local Hand 名称/分类字号修正。
+- **2026-11-10 23:39**：更新 `app/sequence-overrides.css` 的 Hand 名称/分类字号，保留尺寸容器适配；同步更新原有 typography 回归阈值。`git diff --check` 通过。未运行本地自动化测试。
+- **2026-11-10 23:46**：远端更新至 `27bdd624` 后，安全 rebase 并完成 §10.37 与 §10.39 文档合并；源码无冲突。重新检查提交差异，`git diff HEAD^ HEAD --check` 通过。提交已在本地生成，等待推送以触发精确 SHA CI。
 
-### 当前唯一下一步
+### 下一步
 
-等待 Owner 在 iPhone 上复审 §10.37：检查紧凑组合面板、激活等待期间的 H4/PAC、最终花色/真牌/匹配及效果说明、H4 与中央牌面和上排首张停放牌的布局，以及原 E16 单一真实 reveal。Owner 明确 PASS 前保持 **PENDING OWNER iPHONE RE-REVIEW**；Table A 当前没有其他已排队的实现任务。
+推送当前实现至 `ux-v2`，等待精确 SHA GitHub Actions 与 Worker 部署结果，再补记实际结果。此项未验收；技术部署后仍需 Owner iPhone 复审。

@@ -7787,7 +7787,7 @@
    names readable within that existing footprint while preserving hit areas. */
 .local-hand-rail .card-slot .game-card .card-name-mark {
   max-width: 92%;
-  font-size: clamp(7px, 2.8vw, 11px) !important;
+  font-size: clamp(8px, 2.8vw, 11px) !important;
   line-height: 1;
   letter-spacing: normal;
   overflow-wrap: normal;
@@ -7797,7 +7797,7 @@
 .local-hand-rail .card-slot .game-card > strong {
   width: 100%;
   max-width: 100%;
-  font-size: clamp(4px, 1.3vw, 5.5px);
+  font-size: clamp(5.5px, 1.5vw, 6.5px);
   line-height: 1;
   letter-spacing: .035em;
   white-space: nowrap;
@@ -7839,10 +7839,10 @@
     font-size: clamp(4px, 7.5cqi, 10px);
   }
   .local-hand-rail .card-slot .game-card .card-name-mark {
-    font-size: clamp(6px, 12cqi, 13px) !important;
+    font-size: clamp(8px, 15.5cqi, 13px) !important;
   }
   .local-hand-rail .card-slot .game-card > strong {
-    font-size: clamp(4px, 7.5cqi, 8px);
+    font-size: clamp(5.5px, 8.8cqi, 8px);
   }
 }
 
