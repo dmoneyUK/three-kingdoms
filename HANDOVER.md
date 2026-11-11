@@ -2,18 +2,19 @@
 
 ## ZHOU-YU-FANJIAN-UX-01 / §10.37 — 完成部分验收后的两项修正
 
-**状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW；OWNER 对原始四项仍为部分验收，剩余第 2、4 项待复审。** 实现提交 `6f037170d4c1ddeece98be7907ceea9cae3ea824`；精确 SHA Actions [43000485333](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43000485333) 全绿，Worker version `1ce240dd-e04c-4af4-8ac7-911fb7b9fdc9`，生产 `/api/health` 返回 `{"ok":true,"worker":"available"}`。Owner 于 2026-11-11 指示继续。基线 `origin/ux-v2` / `f149a672b4ba6523e00cf28c0741f1b4ae1c575c`；当前工作分支 `codex/ux2-judgement-seat-01`。最新产品设计已于 2026-11-11 10:11 UTC 更新，仅反映交付状态；主目录的其他未提交文件未触碰。
+**状态：§10.37 新报告修正已本地实现；Focused mobile path、build、diff check 通过；精确 SHA CI/部署待提交。** 已部署基线 `6f037170d4c1ddeece98be7907ceea9cae3ea824`；其 Actions [43000485333](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43000485333) 全绿，Worker version `1ce240dd-e04c-4af4-8ac7-911fb7b9fdc9`，生产 `/api/health` 返回 `{"ok":true,"worker":"available"}`。当前已同步基线 `origin/ux-v2` / `316a88cbc6f9ac1a1aa70afb06147b0d585e87b5`；工作分支 `codex/ux2-judgement-seat-01`。最新设计修订为 2026-11-11 11:12 UTC。主目录其他未提交文件未触碰。
 
 ### 固定验收边界
 
 - 原检查 1（激活 H4/PAC）与 3（提交后的猜测花色、真实牌、匹配与效果叙述）已通过，作为回归合同保持不变。
 - **剩余项 2：**只紧凑 Fanjian 合并选牌面板：花色行至 `Hand (N)` 约 4–8 CSS px、标题至牌背约 2–4px、牌背至 Confirm 约 4–8px；视觉按钮紧凑但真实触控区 ≥44px；四个花色按钮、匿名牌背、七牌横向滚动、单次提交和无身份泄漏不变。
 - **剩余项 4：**固定 H4 在上排座位首张停放缩略牌深度下方。首张真实缩略牌保持可见；第二张及后续可被 H4 覆盖。H4 不随选牌面板、公开牌面、PAC 或后续缩略牌下移。面板/真实中央牌面适配固定 H4，PAC、Console、Dock 与控制保持可用。
+- 新报告补充：合并卡池只能向当前服务器授权的 Fanjian 决策玩家显示。非决策者看不到匿名位置选择控件是隐私要求；**决策者必须看到并能使用该卡池**，这是当前修正要恢复的行为。
 - §10.38 曹操奸雄、§10.39 字体、§10.40 弃牌交接及已接受 E16 展示/游戏规则不在本任务范围。
 
 ### 复现与验证边界
 
-- 先用一个脱敏 390×844几何记录确认 H4、上排英雄/首张缩略牌、当前选牌/公开牌、PAC 与候选阻挡关系；不依截图推测偏移。
+- 本轮用 trace 中实测 `440×474` 战场几何诊断短屏安全区，并保留已有脱敏 390×844手机场景做回归；不要扩为多设备/多玩家矩阵。
 - 只跑必要的 focused 单元/API 检查及最多一条 Fanjian 手机浏览器路径；本地 UI/浏览器及重试总计 ≤5 分钟，不做桌面或多设备矩阵。
 - 验证固定座位下 H4 跨选择/结算及 Duel 0/1/2+ 停放历史的 top 波动 ≤8px；TEST SWITCH 视为座位几何重定位。
 - 技术交付后仅标记 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**；需 Owner 明确通过剩余第 2、4 项才能关闭。
@@ -29,8 +30,10 @@
 - **2026-11-11 09:52–09:54 UTC 本地检查：**最终 focused Playwright `fanjian-combined-choice.spec.mjs` 1 项通过（8.2秒）；`public-card-announcement.test.mjs` 与 `public-stage-layout.test.mjs` 共 38 项通过；`npx eslint` 覆盖本次 4 个源码/浏览器测试文件，0 errors、16 条 hook-dependency warnings；`npm run build` 通过（构建工具报告大 bundle 与动态路由分类 warning）；`git diff --check` 通过。提交前检查最新远端 Actions：远端头 `f149a672` 后续到最近代码 push SHA `22a425d01dc48870da3507253151f885983e9e4e` 仅有 `HANDOVER.md`、`docs/UX2-refine.md` 文档差异；该 SHA 的 run `42926203575` 中 API、lint/fast tests、browser smoke、deploy 与 production smoke 全成功。本修正尚未 commit/push，新的精确 SHA CI 与部署待完成。
 - **2026-11-11 10:02–10:03 UTC 首槽竞态修正：**复查后发现首张真实牌处于 `queued` 时会被几何收集器忽略；若第二张已 `parked`，H4 会错误采用第二张位置，违反“暂未停放的首牌也预留等高槽位”。现已将 `queued` 纳入首牌按 ordinal 选择，读取其 reservation/target 或座位槽位回退；同时观察 queued 牌尺寸和 reservation 几何属性。把这一情况并入既有唯一手机浏览器场景（首牌 queued、第二牌 parked）。该场景 1/1 通过（8.2秒）；38 项相关快速单测通过；定向 ESLint 0 errors、16 warnings；`npm run build` 与 `git diff --check` 通过。UI 累计仍少于5分钟。最新远端相关 CI 仍为 SHA `22a425d01dc48870da3507253151f885983e9e4e` / run `42926203575` 全绿，远端 `f149a672` 仅跟有文档更新；本次修正尚未提交推送，精确 SHA 验证待进行。
 - **2026-11-11 10:04–10:09 UTC 提交、推送及部署：**实现 SHA `6f037170d4c1ddeece98be7907ceea9cae3ea824` 已推送至 `ux-v2`。精确 SHA run [43000485333](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43000485333) 的 Lint/fast tests、API tests、browser startup/room smoke、D1 migrations、Worker deploy、production smoke 全成功。日志中的 Worker version 为 `1ce240dd-e04c-4af4-8ac7-911fb7b9fdc9`；额外线上 `/api/health` 返回 `{"ok":true,"worker":"available"}`。技术完成；Owner 手机复审剩余验收第 2、4 项前，不得标记用户验收或开始其他编码任务。
-- **2026-11-11 10:19–10:24 UTC “卡池没有了”截图/trace 诊断：**trace build SHA 为已部署修复 `6f037170`。截图本地英雄是 Sima Yi；trace 中 roster seat 1 为 Sima Yi，而当前 Fanjian `decisionActorSeat/targetSeat` 为 seat 0（BCD/Cao Cao）；对应查看记录约在 84.9s 时 `viewerSeat=1`, `actorSeat=0`。§10.37 明确要求目标玩家的私有选牌面板是唯一决策 UI；`roomState` 对非决策者隐藏 `triggerOptions`，故该截图视角不显示卡池符合隐私设计。H4/PAC 的等待文案是公开信息，仍正确显示。trace 未记录 seat 0 的 picker DOM，不能据此判定 BCD 自己的视角也缺卡池；未修改代码或放宽私有投影。
+- **2026-11-11 10:19–10:24 UTC 截图/trace 初查及纠正：**trace build SHA 为已部署 `6f037170`。截图是 Sima Yi（seat 1）旁观视角，Fanjian 决策者/目标是 BCD（seat 0）；因此该截图单独不应显示私有位置控件。初次回答误把“截图视角不显示”当成完整解释。Owner 明确补充：包括决策者在内的所有视角都看不到池，故初次结论撤回。trace 在 `viewerSeat=0`、`actorSeat=0`、`SEQUENTIAL_CHOICE` 时确有决策者视角，但没有记录 picker DOM/readiness；不能据它声称在该视角实测到了隐藏状态。
+- **2026-11-11 11:12 UTC 首因与本地修正：**trace 的可见布局几何为战场 `440×474`、H4 `y=186..216`、PAC `y=412..478.7`。固定两者与算法的上下各 `6px` 间距后，卡池最多可高 `184px`；先前手机记录中的面板约 `209px`。`findBattlefieldChoiceSafeTopOffset()` 无安全位置时把 `ready` 设为 false，舞台通过 `aria-hidden` 与 CSS `visibility:hidden` 隐藏，所以实际决策者也失去面板。修正仅压缩 Fanjian 专属标题/说明排列、面板空隙和内边距；匿名牌背为 `44×60px`，对应选择按钮仍覆盖完整牌背；花色按钮保持 `44×44px`。H4/PAC位置、服务器授权和私有投影未变。
+- **2026-11-11 11:12 UTC 验证：**现有 Playwright `fanjian-combined-choice.spec.mjs` 手机流程 `1/1` 通过，`10.2s`；`npm run build` 通过，含既有 bundle-size 与动态路由分类 warning；`git diff --check` 通过。未跑新的 440×474浏览器场景，也未跑宽泛测试矩阵。代码、设计记录与本 HANDOVER 当前仍本地未提交；精确 SHA CI/Worker 部署待执行。
 
 ### 唯一后续
 
-唯一待办：请 Owner 在手机上复审 §10.37 检查 2（紧凑合并选牌面板）与检查 4（H4 固定在首张上排缩略牌预留槽下方）。在收到验收结论前保持 **PENDING OWNER iPHONE RE-REVIEW**，不自我验收，不启动其他任务。
+唯一待办：提交并推送本次 §10.37 修正，等待其精确 SHA Actions、Worker 部署及 smoke 结果；交付后请 Owner 手机上复审检查 2/4，并专门确认当前决策者能看到并使用卡池、非决策视角仍不泄漏隐藏手牌位置。在收到结论前保持 **PENDING OWNER iPHONE RE-REVIEW**，不自我验收，不启动其他任务。

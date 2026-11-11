@@ -7846,30 +7846,36 @@
   }
 }
 
-/* §10.37 phone correction: keep the combined Fanjian choice panel content-led
-   while preserving four 44px controls and complete anonymous hand backs. */
+/* §10.37: preserve the chooser controls while fitting the combined panel into
+   the short mobile battlefield corridor between fixed H4 and PAC. */
 .game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select {
-  gap: 3px;
-  padding: 4px;
+  gap: 1px;
+  padding: 1px;
 }
 .game-shell .fanjian-combined-stage .card-pool-panel__heading {
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 2px;
+  align-items: baseline;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 4px;
   min-height: 0;
 }
 .game-shell .fanjian-combined-stage .card-pool-panel__title {
   max-width: 100%;
   overflow: visible;
-  font-size: 10px;
+  flex: 0 0 auto;
+  font-size: 9px;
+  line-height: 1;
   white-space: nowrap;
 }
 .game-shell .fanjian-combined-stage .card-pool-panel__instruction {
+  flex: 1 1 auto;
   width: auto;
   max-width: 100%;
   overflow: visible;
-  text-align: left;
   text-overflow: clip;
+  font-size: 7px;
+  line-height: 1.1;
+  text-align: right;
   white-space: normal;
 }
 .game-shell .fanjian-combined-stage .fanjian-combined-controls {
@@ -7893,8 +7899,11 @@
 }
 .game-shell .fanjian-combined-stage .card-pool-panel__target-public-backs {
   width: min(100%, 182px);
-  min-height: 66px;
+  min-height: 60px;
   gap: 2px;
+}
+.game-shell .fanjian-combined-stage .card-pool-panel__target-public-position {
+  height: 60px;
 }
 .game-shell .fanjian-combined-stage .card-pool-panel__footer {
   justify-content: flex-end;
