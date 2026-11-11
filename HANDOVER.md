@@ -2,7 +2,7 @@
 
 ## ZHOU-YU-FANJIAN-UX-01 / §10.37 — 完成部分验收后的两项修正
 
-**状态：IMPLEMENTED LOCALLY / LOCAL CHECKS PASS — EXACT-SHA CI/DEPLOYMENT PENDING；OWNER PARTIALLY ACCEPTED，剩余第 2、4 项待 iPhone 复审。** Owner 于 2026-11-11 明确要求继续。基线 `origin/ux-v2` / `f149a672b4ba6523e00cf28c0741f1b4ae1c575c`；当前分支 `codex/ux2-judgement-seat-01`。最新设计 `docs/UX2-refine.md` §10.37 已复核（2026-11-10 23:53 UTC 版本）。主目录存在其他未提交文件，本任务仅在隔离工作树操作。
+**状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW；OWNER 对原始四项仍为部分验收，剩余第 2、4 项待复审。** 实现提交 `6f037170d4c1ddeece98be7907ceea9cae3ea824`；精确 SHA Actions [43000485333](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43000485333) 全绿，Worker version `1ce240dd-e04c-4af4-8ac7-911fb7b9fdc9`，生产 `/api/health` 返回 `{"ok":true,"worker":"available"}`。Owner 于 2026-11-11 指示继续。基线 `origin/ux-v2` / `f149a672b4ba6523e00cf28c0741f1b4ae1c575c`；当前工作分支 `codex/ux2-judgement-seat-01`。最新产品设计已于 2026-11-11 10:11 UTC 更新，仅反映交付状态；主目录的其他未提交文件未触碰。
 
 ### 固定验收边界
 
@@ -16,7 +16,7 @@
 - 先用一个脱敏 390×844几何记录确认 H4、上排英雄/首张缩略牌、当前选牌/公开牌、PAC 与候选阻挡关系；不依截图推测偏移。
 - 只跑必要的 focused 单元/API 检查及最多一条 Fanjian 手机浏览器路径；本地 UI/浏览器及重试总计 ≤5 分钟，不做桌面或多设备矩阵。
 - 验证固定座位下 H4 跨选择/结算及 Duel 0/1/2+ 停放历史的 top 波动 ≤8px；TEST SWITCH 视为座位几何重定位。
-- 完成后仅标记 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**；需 Owner 明确通过剩余第 2、4 项才能关闭。
+- 技术交付后仅标记 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**；需 Owner 明确通过剩余第 2、4 项才能关闭。
 
 ### 操作记录（UTC）
 
@@ -28,7 +28,8 @@
 - **2026-11-11 09:52–09:54 UTC 修复与验证：**按现有设计完成两项修正。首轮浏览器回归仍失败（牌池 `data-target-card-pool-ready=false`）：实际 H4 由 `PublicInteractionAnnouncementLayer` 拥有，当前公共事实是已提交 `SKILL_USED`，旧传参只看具体候选布尔值，未给该共享公告开启固定上锚。改用与当前公开 narration 同 root 的已提交 `SKILL_USED` 事实或已验证候选开启同一固定布局，复跑后牌池可见。第二轮失败暴露花色行到 `Hand (7)` 为 `16px`；DOMRect/计算样式显示标题默认 `margin-top:12px`，移除此 Fanjian 范围内边距后实测缩至 `4px`，面板高度减少 `12px`。一次中间断言要求面板与 PAC 至少 6px，实测为 `5.78px` 且无相交；按设计“保持间隔、不碰撞”将测试改为最低 4px，而非要求未定义的 6px。最终同一条 390×844 场景通过：H4 top `186px`，首槽 `106–178px`；选牌面板约 `250–459px`，PAC 从 `465px` 开始；Hand→牌背约 `1px`、牌背→Confirm `4px`，Confirm `96×44px`。同场景确认 H4 在插入 1、2 张上排历史缩略牌后仍在 8px 容差内；花色按钮、7张匿名牌背、选择/取消和单次提交回归通过。此前三次中间失败均在本条场景内诊断并修正；总 UI 时间低于 5 分钟。
 - **2026-11-11 09:52–09:54 UTC 本地检查：**最终 focused Playwright `fanjian-combined-choice.spec.mjs` 1 项通过（8.2秒）；`public-card-announcement.test.mjs` 与 `public-stage-layout.test.mjs` 共 38 项通过；`npx eslint` 覆盖本次 4 个源码/浏览器测试文件，0 errors、16 条 hook-dependency warnings；`npm run build` 通过（构建工具报告大 bundle 与动态路由分类 warning）；`git diff --check` 通过。提交前检查最新远端 Actions：远端头 `f149a672` 后续到最近代码 push SHA `22a425d01dc48870da3507253151f885983e9e4e` 仅有 `HANDOVER.md`、`docs/UX2-refine.md` 文档差异；该 SHA 的 run `42926203575` 中 API、lint/fast tests、browser smoke、deploy 与 production smoke 全成功。本修正尚未 commit/push，新的精确 SHA CI 与部署待完成。
 - **2026-11-11 10:02–10:03 UTC 首槽竞态修正：**复查后发现首张真实牌处于 `queued` 时会被几何收集器忽略；若第二张已 `parked`，H4 会错误采用第二张位置，违反“暂未停放的首牌也预留等高槽位”。现已将 `queued` 纳入首牌按 ordinal 选择，读取其 reservation/target 或座位槽位回退；同时观察 queued 牌尺寸和 reservation 几何属性。把这一情况并入既有唯一手机浏览器场景（首牌 queued、第二牌 parked）。该场景 1/1 通过（8.2秒）；38 项相关快速单测通过；定向 ESLint 0 errors、16 warnings；`npm run build` 与 `git diff --check` 通过。UI 累计仍少于5分钟。最新远端相关 CI 仍为 SHA `22a425d01dc48870da3507253151f885983e9e4e` / run `42926203575` 全绿，远端 `f149a672` 仅跟有文档更新；本次修正尚未提交推送，精确 SHA 验证待进行。
+- **2026-11-11 10:04–10:09 UTC 提交、推送及部署：**实现 SHA `6f037170d4c1ddeece98be7907ceea9cae3ea824` 已推送至 `ux-v2`。精确 SHA run [43000485333](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43000485333) 的 Lint/fast tests、API tests、browser startup/room smoke、D1 migrations、Worker deploy、production smoke 全成功。日志中的 Worker version 为 `1ce240dd-e04c-4af4-8ac7-911fb7b9fdc9`；额外线上 `/api/health` 返回 `{"ok":true,"worker":"available"}`。技术完成；Owner 手机复审剩余验收第 2、4 项前，不得标记用户验收或开始其他编码任务。
 
 ### 唯一后续
 
-将本地实现及验证结果提交推送到 `ux-v2`；等待实现精确 SHA 的 GitHub Actions、Worker 部署及生产 smoke 全绿。再把实际 SHA/run/Worker 结果写入本 HANDOVER 与设计状态，交 Owner iPhone 复审；不得自我验收或启动其他任务。
+唯一待办：请 Owner 在手机上复审 §10.37 检查 2（紧凑合并选牌面板）与检查 4（H4 固定在首张上排缩略牌预留槽下方）。在收到验收结论前保持 **PENDING OWNER iPHONE RE-REVIEW**，不自我验收，不启动其他任务。
