@@ -70,6 +70,99 @@ test("Fanjian cancels on skill retap and submits one compact combined choice on 
   await expect(stage).toHaveAttribute("data-choice-mode", "actor-target-select");
   await expect(stage.getByText("SOWING DISTRUST", { exact: true })).toBeVisible();
   await expect(stage.getByText("Choose a suit and one hidden card.", { exact: true })).toBeVisible();
+  const activationGeometry = await page.evaluate(() => {
+    const rect = (element) => {
+      if (!element) return null;
+      const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+      return Object.fromEntries(Object.entries({ left, top, right, bottom, width, height }).map(([key, value]) => [key, Math.round(value * 2) / 2]));
+    };
+    const table = document.querySelector(".play-table");
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      table: rect(table),
+      seats: [...(table?.querySelectorAll(".player-board > [data-player-anchor]") ?? [])].map((seat, index) => ({ index, side: seat.dataset.sideColumn ?? "top", rect: rect(seat) })),
+      firstHistoryCards: [...(table?.querySelectorAll(".public-card-journey-card[data-public-card-journey-phase]") ?? [])].map((card) => ({
+        phase: card.dataset.publicCardJourneyPhase,
+        ordinal: card.dataset.publicCardJourneyOrdinal,
+        rect: rect(card),
+        target: { top: card.dataset.publicCardJourneyTargetTop ?? null, height: card.dataset.publicCardJourneyTargetHeight ?? null },
+      })),
+      h4: [...(table?.querySelectorAll("[data-public-card-announcement='true']") ?? [])].map((copy) => ({ rect: rect(copy), visibility: getComputedStyle(copy).visibility, position: copy.dataset.publicCardAnnouncementPlacement ?? null })),
+      picker: rect(table?.querySelector("[data-fanjian-combined-choice='true']")),
+      pickerParts: (() => {
+        const stage = table?.querySelector("[data-fanjian-combined-choice='true']");
+        const box = (element) => rect(element);
+        return stage ? {
+          controls: box(stage.querySelector(".fanjian-combined-controls")),
+          suitsFieldset: box(stage.querySelector(".fanjian-combined-suits")),
+          suits: rect(stage.querySelector(".fanjian-combined-suit-options")),
+          zones: box(stage.querySelector(".card-pool-panel__target-public-zones")),
+          hand: box(stage.querySelector(".card-pool-panel__target-public-hand")),
+          handCount: rect(stage.querySelector(".card-pool-panel__target-public-zone-title")),
+          backs: rect(stage.querySelector(".card-pool-panel__target-public-backs")),
+          confirm: rect(stage.querySelector(".card-pool-panel__confirm")),
+        } : null;
+      })(),
+      pac: rect(table?.querySelector("[data-public-activity-chip='true']")),
+      dock: rect(document.querySelector(".local-player-dock")),
+    };
+  });
+  const h4Copy = page.locator('.public-interaction-event-announcement[data-public-interaction-event-id="browser-fanjian-committed-activation"] .public-card-display-journey-copy');
+  const noHistoryH4Top = await h4Copy.evaluate((copy) => copy.getBoundingClientRect().top);
+  expect(noHistoryH4Top).toBeCloseTo(activationGeometry.seats.reduce((bottom, seat) => Math.max(bottom, seat.rect.bottom), 0) + 6 + 72 + 8, 0);
+  expect(activationGeometry.pickerParts.suits.bottom).toBeLessThanOrEqual(activationGeometry.pickerParts.handCount.top);
+  expect(activationGeometry.pickerParts.handCount.top - activationGeometry.pickerParts.suits.bottom).toBeGreaterThanOrEqual(4);
+  expect(activationGeometry.pickerParts.handCount.top - activationGeometry.pickerParts.suits.bottom).toBeLessThanOrEqual(8);
+  const fixedBandGeometry = await page.evaluate(() => {
+    const table = document.querySelector(".play-table");
+    const h4 = table?.querySelector("[data-public-card-announcement-fixed-upper='true'][data-public-card-announcement-positioned='true']");
+    const stage = table?.querySelector("[data-fanjian-combined-choice='true']");
+    const pac = table?.querySelector("[data-public-activity-chip='true']");
+    const h4Rect = h4?.getBoundingClientRect();
+    const panelRect = stage?.getBoundingClientRect();
+    const pacRect = pac?.getBoundingClientRect();
+    return h4Rect && panelRect && pacRect ? {
+      h4PanelGap: panelRect.top - h4Rect.bottom,
+      panelPacGap: pacRect.top - panelRect.bottom,
+      h4: { top: h4Rect.top, bottom: h4Rect.bottom },
+      panel: { top: panelRect.top, bottom: panelRect.bottom },
+      pac: { top: pacRect.top, bottom: pacRect.bottom },
+    } : null;
+  });
+  expect(fixedBandGeometry, JSON.stringify(fixedBandGeometry)).not.toBeNull();
+  expect(fixedBandGeometry.h4PanelGap).toBeGreaterThanOrEqual(6);
+  expect(fixedBandGeometry.panelPacGap).toBeGreaterThanOrEqual(4);
+
+  await page.evaluate(() => {
+    const table = document.querySelector(".play-table");
+    const topSeats = [...(table?.querySelectorAll(".player-board > [data-player-anchor]") ?? [])]
+      .sort((left, right) => left.getBoundingClientRect().top - right.getBoundingClientRect().top)
+      .filter((seat, _, all) => seat.getBoundingClientRect().top <= all[0].getBoundingClientRect().top + 24);
+    const seat = topSeats[0];
+    if (!table || !seat) throw new Error("Expected a visible top-row player seat");
+    const seatRect = seat.getBoundingClientRect();
+    const addHistory = (ordinal, phase, top) => {
+      const card = document.createElement("div");
+      card.className = "public-card-journey-card";
+      card.dataset.publicCardJourneyEventId = `geometry-history-${ordinal}`;
+      card.dataset.publicCardJourneyActorId = seat.dataset.playerAnchor;
+      card.dataset.publicCardJourneyOrdinal = `${ordinal}`;
+      card.dataset.publicCardJourneyPhase = phase;
+      card.style.cssText = `position:fixed;left:${seatRect.left + seatRect.width / 2 - 24}px;top:${top}px;width:48px;height:72px;opacity:0;pointer-events:none`;
+      if (phase === "queued") {
+        card.dataset.publicCardJourneyAuthorReservationLeft = `${seatRect.left + seatRect.width / 2 - 24}`;
+        card.dataset.publicCardJourneyAuthorReservationTop = `${seatRect.bottom + 6}`;
+        card.dataset.publicCardJourneyAuthorReservationWidth = "48";
+        card.dataset.publicCardJourneyAuthorReservationHeight = "72";
+      }
+      table.append(card);
+    };
+    addHistory(1, "queued", seatRect.bottom + 6);
+    addHistory(2, "parked", 250);
+  });
+  await expect.poll(() => h4Copy.evaluate((copy) => copy.getBoundingClientRect().top)).toBeCloseTo(noHistoryH4Top, 0);
+  const twoHistoryH4Top = await h4Copy.evaluate((copy) => copy.getBoundingClientRect().top);
+  expect(Math.abs(twoHistoryH4Top - noHistoryH4Top)).toBeLessThanOrEqual(8);
 
   const suitGroup = stage.getByRole("group", { name: "Choose a suit" });
   const suitButtons = suitGroup.getByRole("button");

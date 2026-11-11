@@ -127,7 +127,7 @@
 
 @keyframes revealedCardToHand {
   0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
-  10%, 85% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  10%, 85% { left: var(--public-reveal-x, 50%); top: var(--public-reveal-y, 50%); opacity: 1; transform: scale(1); }
   100% { left: var(--hand-x, 50%); top: var(--hand-y, 50%); opacity: 0; transform: scale(.12); }
 }
 
@@ -7888,6 +7888,7 @@
   gap: 1px;
 }
 .game-shell .fanjian-combined-stage .card-pool-panel__target-public-zone-title {
+  margin: 0;
   font-size: 7px;
 }
 .game-shell .fanjian-combined-stage .card-pool-panel__target-public-backs {

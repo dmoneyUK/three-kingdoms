@@ -8874,6 +8874,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && selectedPublicCardAction.rootEventId === publicInteractionNarration.rootEventId
     && selectedPublicCardAction.interactionId === publicInteractionNarration.interactionId
     && selectedPublicCardAction.rootFrameId === publicInteractionNarration.rootFrameId);
+  const protectPublicInteractionUpperH4 = Boolean(publicInteractionNarration && (
+    skillEffectActionCandidate || skillEffectSettlementCandidate
+    || currentInteractionFact?.category === "SKILL_USED"
+      && currentInteractionFact.rootEventId === publicInteractionNarration.rootEventId
+  ));
   const deflectionForPublicAction = (action: PublicCardDisplayAction | null) => {
     if (!action || action.cardKind !== "Attack" || action.motion?.type !== "attack-dodge" || !action.targetId) return null;
     const proofs = clientPresentation.deflectionActions.filter((proof) => proof.semantics === "PROVEN"
@@ -11214,7 +11219,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
       <PublicStageLayoutProvider roomId={room.code} scopeId={publicCardDisplayAction?.rootEventId ?? null} viewerId={room.meId} interactionId={publicCardDisplayAction?.interactionId ?? null}>
-      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} suppressAnnouncement={targetCardChoiceMergeActive || publicDiscardOwnsAnnouncement} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} responseHistoryOwnership={publicDisplayOwnedResponseHistory.map((response) => ({ eventId: response.eventId, cardIds: (response.cardFaces ?? [response.cardFace]).map((card) => card.id) }))} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardDisplayEventParked} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
+      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} suppressAnnouncement={targetCardChoiceMergeActive || publicDiscardOwnsAnnouncement} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} protectFirstParkedMiniature={protectPublicInteractionUpperH4} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} responseHistoryOwnership={publicDisplayOwnedResponseHistory.map((response) => ({ eventId: response.eventId, cardIds: (response.cardFaces ?? [response.cardFace]).map((card) => card.id) }))} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardDisplayEventParked} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
         setActiveDismantleSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
           ? { ...current, journeySettled: true }
           : current);
@@ -11228,7 +11233,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {!publicDiscardOwnsAnnouncement && publicInteractionNarration && (!interactionNarrationBelongsToAction || !publicCardDisplayEnabled) && <PublicInteractionAnnouncementLayer
         narration={publicInteractionNarration} roomCode={room.code} viewerId={room.meId}
         anchorEventId={fanjianSettlementNarration ? skillEffectSettlementCandidate?.revealEvent.id : null}
-        protectFirstParkedMiniature={Boolean(skillEffectActionCandidate || skillEffectSettlementCandidate)}
+        protectFirstParkedMiniature={protectPublicInteractionUpperH4}
         keepCenterAnchorClear={Boolean(fanjianSettlementNarration)}
         preferredVerticalMode={fanjianSettlementNarration ? "above" : undefined}
       />}
@@ -12414,17 +12419,72 @@ function PublicHandRevealCardTransition({ event, route, players, myTableIndex, o
     const measure = () => {
       const origin = source ? centerRelativeToTable(table, source) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
       const target = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+      const revealCard = reveal.querySelector<HTMLElement>(".played-card");
+      const revealCardStyle = revealCard ? window.getComputedStyle(revealCard) : null;
+      const cardHeight = Number.parseFloat(revealCardStyle?.height ?? "") || 156;
+      const tableRect = table.getBoundingClientRect();
+      const upperH4 = table.querySelector<HTMLElement>("[data-public-card-announcement-fixed-upper='true'][data-public-card-announcement-positioned='true']");
+      const h4Rect = upperH4?.getBoundingClientRect();
+      const pac = table.querySelector<HTMLElement>("[data-public-activity-chip='true']");
+      const pacStyle = pac ? window.getComputedStyle(pac) : null;
+      const pacRect = pac?.getBoundingClientRect();
+      let revealCenter = { x: table.clientWidth / 2, y: table.clientHeight / 2 };
+      if (h4Rect && h4Rect.width > 0 && h4Rect.height > 0) {
+        const requestedCardTop = h4Rect.bottom + 8;
+        const safeBottom = Math.min(tableRect.bottom - 8,
+          pacRect && pacStyle?.display !== "none" && pacStyle?.visibility !== "hidden" && pacRect.width > 0 && pacRect.height > 0
+            ? pacRect.top - 8 : tableRect.bottom - 8);
+        // Keep the authentic reveal directly below the fixed H4 band. On a
+        // constrained phone, preserve the H4/PAC boundaries and allow H4 to
+        // paint over the card if there is not room for its full height.
+        const cardTop = Math.min(requestedCardTop, safeBottom - cardHeight);
+        revealCenter = {
+          x: table.clientWidth / 2,
+          y: cardTop + cardHeight / 2 - tableRect.top,
+        };
+        reveal.dataset.publicRevealFixedH4Top = `${Math.round(h4Rect.top * 2) / 2}`;
+        reveal.dataset.publicRevealH4Gap = `${Math.round((cardTop - h4Rect.bottom) * 2) / 2}`;
+      } else {
+        delete reveal.dataset.publicRevealFixedH4Top;
+        delete reveal.dataset.publicRevealH4Gap;
+      }
       reveal.style.setProperty("--origin-x", `${origin.x}px`);
       reveal.style.setProperty("--origin-y", `${origin.y}px`);
       reveal.style.setProperty("--hand-x", `${target.x}px`);
       reveal.style.setProperty("--hand-y", `${target.y}px`);
+      reveal.style.setProperty("--public-reveal-x", `${revealCenter.x}px`);
+      reveal.style.setProperty("--public-reveal-y", `${revealCenter.y}px`);
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(table);
     if (source) observer.observe(source);
     if (destination) observer.observe(destination);
-    return () => observer.disconnect();
+    let observedH4: HTMLElement | null = null;
+    const observeH4 = () => {
+      const current = table.querySelector<HTMLElement>("[data-public-card-announcement-fixed-upper='true']");
+      if (!current || current === observedH4) return;
+      observedH4 = current;
+      observer.observe(current);
+    };
+    const h4MutationObserver = new MutationObserver((records) => {
+      const h4Selector = "[data-public-card-announcement-fixed-upper='true']";
+      const h4Changed = records.some((record) => {
+        const target = record.target instanceof Element ? record.target : record.target.parentElement;
+        if (target?.matches(h4Selector) || target?.closest(h4Selector)) return true;
+        return [...record.addedNodes, ...record.removedNodes].some((node) => node instanceof Element
+          && (node.matches(h4Selector) || Boolean(node.querySelector(h4Selector))));
+      });
+      if (!h4Changed) return;
+      observeH4();
+      measure();
+    });
+    h4MutationObserver.observe(table, { attributes: true, attributeFilter: ["style", "data-public-card-announcement-fixed-upper", "data-public-card-announcement-positioned"], childList: true, subtree: true });
+    observeH4();
+    return () => {
+      observer.disconnect();
+      h4MutationObserver.disconnect();
+    };
   }, [myTableIndex, players, route.destinationPlayerId, route.sourcePlayerId]);
 
   return <div className="table-resolution-layer public-zone-transition-layer" role="status" aria-label="Publicly revealed card transferred to hand">

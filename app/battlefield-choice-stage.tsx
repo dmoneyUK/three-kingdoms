@@ -168,6 +168,19 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
           .filter((rect): rect is DOMRect => Boolean(rect));
         const mobileCentralTarget = centralTargetLayout && (targetCardSelect || targetCardReadOnly) && window.matchMedia("(max-width: 520px)").matches;
         if (mobileCentralTarget) {
+          const isFanjianCombinedChoice = stage.dataset.fanjianCombinedChoice === "true";
+          const fixedUpperH4 = isFanjianCombinedChoice
+            ? table.querySelector<HTMLElement>("[data-public-card-announcement-fixed-upper='true'][data-public-card-announcement-positioned='true']")
+            : null;
+          if (isFanjianCombinedChoice && !fixedUpperH4) {
+            setTop(null);
+            setReady(false);
+            setRootCardOverlap(false);
+            return;
+          }
+          const fixedUpperH4Rect = fixedUpperH4?.getBoundingClientRect();
+          const pacForGeometry = table.querySelector<HTMLElement>("[data-public-activity-chip='true']");
+          const pacGeometryRect = pacForGeometry?.getBoundingClientRect();
           const board = table.querySelector<HTMLElement>(".player-board");
           const leftSeats = [...(board?.querySelectorAll<HTMLElement>(":scope > [data-side-column='left']") ?? [])]
             .map((seat) => seat.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
@@ -221,6 +234,8 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
             window.innerWidth, window.innerHeight,
             visualViewport?.offsetTop ?? 0, visualViewport?.height ?? window.innerHeight,
             panelRect.width, panelRect.height,
+            ...(fixedUpperH4Rect ? [fixedUpperH4Rect.left, fixedUpperH4Rect.top, fixedUpperH4Rect.width, fixedUpperH4Rect.height] : []),
+            ...(pacGeometryRect ? [pacGeometryRect.left, pacGeometryRect.top, pacGeometryRect.width, pacGeometryRect.height] : []),
             nextInsets.left, nextInsets.right, nextInsets.width ?? 0,
             ...playerSeatGeometry,
             ...leftSeats.flatMap((rect) => [rect.left, rect.top, rect.width, rect.height]),
@@ -238,7 +253,8 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
               || !element.matches(".public-card-journey-card")
               || !measuredRootEventId
               || element.dataset.publicCardJourneyEventId === measuredRootEventId)
-            .filter((element) => !element.matches(".public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip]"))
+            .filter((element) => isFanjianCombinedChoice
+              || !element.matches(".public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip]"))
             .map((element) => ({ element, rect: element.getBoundingClientRect() }))
             .filter(({ element, rect }) => {
               const style = window.getComputedStyle(element);
@@ -255,6 +271,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
             panel: panelRect,
             obstacles: obstacleRects,
             viewportHeight: viewportBottom,
+            minimumTop: fixedUpperH4Rect ? fixedUpperH4Rect.bottom + margin : undefined,
             margin,
           };
           const safeTop = findBattlefieldChoiceSafeTopOffset(safePlacement);
@@ -329,17 +346,31 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
 
         const obstacles = [...new Set(protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]))]
           .filter((element) => element !== stage && !stage.contains(element))
+          .filter((element) => stage.dataset.fanjianCombinedChoice === "true"
+            || !element.matches(".public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip]"))
           .map((element) => ({ element, rect: element.getBoundingClientRect() }))
           .filter(({ element, rect }) => {
             const style = window.getComputedStyle(element);
             return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
               && panelRect.left < rect.right + margin && panelRect.right > rect.left - margin;
           });
+        const isFanjianCombinedChoice = stage.dataset.fanjianCombinedChoice === "true";
+        const fixedUpperH4 = isFanjianCombinedChoice
+          ? table.querySelector<HTMLElement>("[data-public-card-announcement-fixed-upper='true'][data-public-card-announcement-positioned='true']")
+          : null;
+        if (isFanjianCombinedChoice && !fixedUpperH4) {
+          setTop(null);
+          setReady(false);
+          setRootCardOverlap(false);
+          return;
+        }
+        const fixedUpperH4Rect = fixedUpperH4?.getBoundingClientRect();
         const verticalPlacement = {
           table: tableRect,
           panel: panelRect,
           obstacles: [...obstacles.map(({ rect }) => rect), ...measureAuthorReservationRects()],
           viewportHeight: Math.min(window.innerHeight, (window.visualViewport?.offsetTop ?? 0) + (window.visualViewport?.height ?? window.innerHeight)),
+          minimumTop: fixedUpperH4Rect ? fixedUpperH4Rect.bottom + margin : undefined,
           margin,
         };
         const safeOffset = requireSafePlacement ? findBattlefieldChoiceSafeTopOffset(verticalPlacement) : null;
@@ -465,6 +496,7 @@ type VerticalPlacementInput = {
   panel: BattlefieldChoiceRect;
   obstacles: readonly BattlefieldChoiceRect[];
   viewportHeight: number;
+  minimumTop?: number;
   margin?: number;
 };
 
@@ -474,9 +506,10 @@ export function findBattlefieldChoiceSafeTopOffset({
   panel,
   obstacles,
   viewportHeight,
+  minimumTop: requestedMinimumTop,
   margin = 6,
 }: VerticalPlacementInput): number | null {
-  const minimumTop = Math.max(table.top + margin, margin);
+  const minimumTop = Math.max(table.top + margin, margin, requestedMinimumTop ?? -Infinity);
   const maximumTop = Math.min(table.bottom, viewportHeight) - panel.height - margin;
   if (maximumTop < minimumTop) return null;
   let safeRanges = [{ minimum: minimumTop, maximum: maximumTop }];
