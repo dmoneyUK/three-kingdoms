@@ -857,7 +857,7 @@ function browserRoom({ state, count, handSize, handKind, targetHandCount, target
     hero: index === 0 && heroOverride ? heroOverride : index === 1 && targetHeroOverride ? targetHeroOverride : index === 0 && state.startsWith("sun-shangxiang-") ? "sun-shangxiang" : index === 0 && (state === "confirm-cancel-skip" || state === "long-guidance") ? "zhang-liao" : HERO_IDS[index],
     generalReady: true,
     ready: true,
-    ...(playerNamePrefix && index > 0 ? { isTestPlayer: true } : {}),
+    ...(playerNamePrefix && index > 0 || state === "fanjian-combined" ? { isTestPlayer: true } : {}),
     hp: oathNegationFixture ? id === "p1" ? 3 : id === "p2" ? 2 : id === "p4" ? 0 : denseOathScope && Number(id.slice(1)) >= 5 ? 3 : 4 : id === defeatedSeat ? 0 : id === lowHpSeat ? 1 : 4,
     maxHp: 4,
     alive: oathNegationFixture ? id !== "p4" : id !== defeatedSeat,
@@ -1042,6 +1042,7 @@ let fixtureRoom = browserRoom({ state, count, handSize, handKind, targetHandCoun
 window.__browserActions = [];
 window.__browserLeaves = 0;
 window.__browserRoom = fixtureRoom;
+const fanjianCombinedActorAction = state === "fanjian-combined" ? fixtureRoom.currentAction : null;
 const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false} error="" onAction={async (action, extra) => {
   window.__browserActions.push({ action, extra });
   const targetId = typeof extra?.targetId === "string" ? extra.targetId : null;
@@ -1068,13 +1069,19 @@ const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false
     throw new Error("TEST SWITCH requires a known player in this fixture.");
   }
   const selectedViewer = fixtureRoom.players.find((player) => player.id === playerId);
+  const switchedCurrentAction = fanjianCombinedActorAction
+    ? playerId === fanjianCombinedActorAction.actorId
+      ? fanjianCombinedActorAction
+      : { ...fanjianCombinedActorAction, legalActions: [], triggerOptions: [] }
+    : fixtureRoom.currentAction;
   fixtureRoom = {
     ...fixtureRoom,
     meId: playerId,
     myRole: selectedViewer?.role ?? null,
     myHand: [],
     isMyTurn: selectedViewer?.seat === fixtureRoom.turnSeat,
-    isMyAction: fixtureRoom.currentAction?.actorId === playerId,
+    isMyAction: switchedCurrentAction?.actorId === playerId,
+    currentAction: switchedCurrentAction,
   };
   window.__browserRoom = fixtureRoom;
   renderFixture();

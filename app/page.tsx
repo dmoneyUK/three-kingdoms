@@ -11027,7 +11027,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           left: combinedChoicePlacement.insets ? `${combinedChoicePlacement.insets.left}px` : undefined,
           right: combinedChoicePlacement.insets?.width ? "auto" : combinedChoicePlacement.insets ? `${combinedChoicePlacement.insets.right}px` : undefined,
           width: combinedChoicePlacement.insets?.width ? `${combinedChoicePlacement.insets.width}px` : undefined,
-        }}
+          "--fanjian-combined-max-height": combinedChoicePlacement.maxHeight === null ? undefined : `${combinedChoicePlacement.maxHeight}px`,
+        } as CSSProperties}
       >
         <CardPoolPanel
           mode="actor-target-select"

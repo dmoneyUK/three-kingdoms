@@ -7848,18 +7848,21 @@
 
 /* §10.37: preserve the chooser controls while fitting the combined panel into
    the short mobile battlefield corridor between fixed H4 and PAC. */
-.game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel--actor-target-select.harvest-choice-panel {
   gap: 1px;
   padding: 1px;
 }
-.game-shell .fanjian-combined-stage .card-pool-panel__heading {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__heading {
   align-items: baseline;
   flex-direction: row;
+  flex-wrap: nowrap;
   justify-content: space-between;
   gap: 4px;
+  width: 100%;
   min-height: 0;
 }
-.game-shell .fanjian-combined-stage .card-pool-panel__title {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__title {
+  width: auto;
   max-width: 100%;
   overflow: visible;
   flex: 0 0 auto;
@@ -7867,7 +7870,8 @@
   line-height: 1;
   white-space: nowrap;
 }
-.game-shell .fanjian-combined-stage .card-pool-panel__instruction {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__instruction {
+  min-width: 0;
   flex: 1 1 auto;
   width: auto;
   max-width: 100%;
@@ -7878,34 +7882,34 @@
   text-align: right;
   white-space: normal;
 }
-.game-shell .fanjian-combined-stage .fanjian-combined-controls {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-controls {
   gap: 2px;
 }
-.game-shell .fanjian-combined-stage .fanjian-combined-suits legend {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suits legend {
   margin: 0;
 }
-.game-shell .fanjian-combined-stage .fanjian-combined-suit-options button {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button {
   font: 700 25px/1 Arial, sans-serif;
 }
-.game-shell .fanjian-combined-stage .card-pool-panel__target-public-zones {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-zones {
   gap: 1px;
 }
-.game-shell .fanjian-combined-stage .card-pool-panel__target-public-hand {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-hand {
   gap: 1px;
 }
-.game-shell .fanjian-combined-stage .card-pool-panel__target-public-zone-title {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-zone-title {
   margin: 0;
   font-size: 7px;
 }
-.game-shell .fanjian-combined-stage .card-pool-panel__target-public-backs {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-backs {
   width: min(100%, 182px);
-  min-height: 60px;
+  min-height: 52px;
   gap: 2px;
 }
-.game-shell .fanjian-combined-stage .card-pool-panel__target-public-position {
-  height: 60px;
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-position {
+  height: 52px;
 }
-.game-shell .fanjian-combined-stage .card-pool-panel__footer {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__footer {
   justify-content: flex-end;
   gap: 2px;
   min-height: 44px;
@@ -7918,6 +7922,19 @@
   max-width: 110px;
   min-height: 44px;
   padding-inline: 6px;
+}
+.game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select {
+  max-height: var(--fanjian-combined-max-height, none);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-padding-block: 6px;
+  scrollbar-width: thin;
+}
+.game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select > .card-pool-panel__heading,
+.game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select > .fanjian-combined-controls,
+.game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select > .card-pool-panel__target-public-zones,
+.game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select > .card-pool-panel__footer {
+  flex-shrink: 0;
 }
 @media (max-width: 360px) {
   .game-shell .fanjian-combined-stage .fanjian-combined-suit-options {

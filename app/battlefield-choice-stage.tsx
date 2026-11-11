@@ -64,6 +64,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
   const ref = useRef<HTMLDivElement | null>(null);
   const [top, setTop] = useState<number | null>(null);
   const [insets, setInsets] = useState<BattlefieldChoiceInsets | null>(null);
+  const [boundedPanelHeight, setBoundedPanelHeight] = useState<{ placementKey: string; height: number } | null>(null);
   const [readiness, setReadiness] = useState<{ placementKey: string; ready: boolean }>(() => ({ placementKey, ready: false }));
   const ready = readiness.placementKey === placementKey && readiness.ready;
   const setReady = useCallback((nextReady: boolean) => setReadiness({ placementKey, ready: nextReady }), [placementKey]);
@@ -297,6 +298,37 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
           const overlapsRootCard = Boolean(rootCard && resolvedPanelTop !== null
             && panelRect.left < rootCard.rect.right && panelRect.right > rootCard.rect.left
             && resolvedPanelTop < rootCard.rect.bottom && resolvedPanelTop + panelRect.height > rootCard.rect.top);
+          const currentBoundedHeight = boundedPanelHeight?.placementKey === placementKey ? boundedPanelHeight.height : null;
+          const naturalPanelHeight = Math.max(panelRect.height, panel.scrollHeight);
+          if (isFanjianCombinedChoice && currentBoundedHeight !== null && resolvedTop !== null) {
+            const naturalTop = findBattlefieldChoiceSafeTopOffset({
+              ...safePlacement,
+              panel: { ...panelRect, height: naturalPanelHeight },
+            });
+            if (naturalTop !== null) {
+              setBoundedPanelHeight(null);
+              setTop(null);
+              setReady(false);
+              setRootCardOverlap(false);
+              return;
+            }
+          }
+          if (isFanjianCombinedChoice && requireSafePlacement && resolvedTop === null) {
+            const maxHeight = findBattlefieldChoiceMaximumHeight({
+              table: tableRect,
+              obstacles: obstacleRects,
+              viewportHeight: viewportBottom,
+              minimumTop: fixedUpperH4Rect ? fixedUpperH4Rect.bottom + margin : undefined,
+              margin,
+            });
+            if (maxHeight >= 44 && (currentBoundedHeight === null || Math.abs(currentBoundedHeight - maxHeight) > 0.5)) {
+              setBoundedPanelHeight({ placementKey, height: maxHeight });
+              setTop(null);
+              setReady(false);
+              setRootCardOverlap(false);
+              return;
+            }
+          }
           setTop((current) => current === resolvedTop ? current : resolvedTop);
           setReady(resolvedTop !== null);
           setRootCardOverlap(overlapsRootCard);
@@ -452,9 +484,9 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
       cancelFrame(resetFrame);
       targetWidthProbe?.remove();
     };
-  }, [centralTargetLayout, enabled, playerCount, placementKey, protectActiveReveal, requireSafePlacement, setReady]);
+  }, [boundedPanelHeight, centralTargetLayout, enabled, playerCount, placementKey, protectActiveReveal, requireSafePlacement, setReady]);
 
-  return { ref, top, insets, ready, rootCardOverlap };
+  return { ref, top, insets, ready, rootCardOverlap, maxHeight: boundedPanelHeight?.placementKey === placementKey ? boundedPanelHeight.height : null };
 }
 
 type SideLanePlacementInput = {
@@ -529,6 +561,36 @@ export function findBattlefieldChoiceSafeTopOffset({
     .map((range) => Math.max(range.minimum, Math.min(range.maximum, desiredTop)))
     .sort((first, second) => Math.abs(first - desiredTop) - Math.abs(second - desiredTop))[0];
   return nearestSafeTop === undefined ? null : Math.round(nearestSafeTop - table.top);
+}
+
+/** Finds the tallest free vertical band for a private choice panel without moving its protected neighbours. */
+export function findBattlefieldChoiceMaximumHeight({
+  table,
+  obstacles,
+  viewportHeight,
+  minimumTop: requestedMinimumTop,
+  margin = 6,
+}: Pick<VerticalPlacementInput, "table" | "obstacles" | "viewportHeight" | "minimumTop" | "margin">): number {
+  const minimumTop = Math.max(table.top + margin, margin, requestedMinimumTop ?? -Infinity);
+  const maximumBottom = Math.min(table.bottom, viewportHeight) - margin;
+  if (maximumBottom <= minimumTop) return 0;
+  const orderedObstacles = obstacles
+    .map((rect) => ({ top: rect.top - margin, bottom: rect.bottom + margin }))
+    .filter((rect) => rect.bottom > minimumTop && rect.top < maximumBottom)
+    .sort((first, second) => first.top - second.top);
+  let cursor = minimumTop;
+  let maximumGap = 0;
+  for (const obstacle of orderedObstacles) {
+    const obstacleTop = Math.max(minimumTop, obstacle.top);
+    const obstacleBottom = Math.min(maximumBottom, obstacle.bottom);
+    maximumGap = Math.max(maximumGap, obstacleTop - cursor);
+    cursor = Math.max(cursor, obstacleBottom);
+    if (cursor >= maximumBottom) break;
+  }
+  maximumGap = Math.max(maximumGap, maximumBottom - cursor);
+  // Leave a pixel of placement tolerance so a mathematically exact edge fit
+  // still produces a non-empty safe range after fractional DOM rounding.
+  return Math.max(0, Math.floor(maximumGap * 2) / 2 - 1);
 }
 
 /** Reuses Harvest's current safe-range and least-overlap fallback verbatim. */

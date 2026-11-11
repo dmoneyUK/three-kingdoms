@@ -1,34 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("Fanjian cancels on skill retap and submits one compact combined choice on mobile", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/tests/browser/fixture.html?state=zhou-yu-sowing-distrust&count=4&hero=zhou-yu");
-
-  const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
-  const skill = dock.locator(".local-hero-skills").getByRole("button", { name: "Sowing Distrust", exact: true });
-  await expect(skill).toBeEnabled();
-  await page.evaluate(() => { window.__browserActions = []; });
-
-  await skill.click();
-  await expect(skill).toHaveAttribute("aria-pressed", "true");
-  const target = page.locator('[data-player-anchor="p2"] .opponent-hero-target');
-  await expect(target).toBeEnabled();
-  await target.click();
-  await expect(page.locator('[data-console-surface="local-operation"] button.primary')).toHaveText("Confirm");
-
-  await skill.click();
-  await expect(skill).toHaveAttribute("aria-pressed", "false");
-  await expect(page.locator('[data-player-anchor="p2"][data-target-selectable="true"]')).toHaveCount(0);
-  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
-
-  await skill.click();
-  await target.click();
-  await page.locator('[data-console-surface="local-operation"] button.primary').click();
-  await expect.poll(() => page.evaluate(() => window.__browserActions)).toEqual([
-    { action: "trigger", extra: { providerId: "zhou_yu_fanjian", targetId: "p2" } },
-  ]);
-
-  await page.goto("/tests/browser/fixture.html?state=fanjian-combined&count=4&targetHandCount=7&hero=zhou-yu");
+async function publishFanjianActivation(page) {
   await page.evaluate(() => {
     const room = window.__browserRoom;
     const snapshot = room.presentationSnapshot;
@@ -63,6 +35,38 @@ test("Fanjian cancels on skill retap and submits one compact combined choice on 
     }];
     window.__updateBrowserRoom(room);
   });
+}
+
+test("Fanjian cancels on skill retap and submits one compact combined choice on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tests/browser/fixture.html?state=zhou-yu-sowing-distrust&count=4&hero=zhou-yu");
+
+  const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
+  const skill = dock.locator(".local-hero-skills").getByRole("button", { name: "Sowing Distrust", exact: true });
+  await expect(skill).toBeEnabled();
+  await page.evaluate(() => { window.__browserActions = []; });
+
+  await skill.click();
+  await expect(skill).toHaveAttribute("aria-pressed", "true");
+  const target = page.locator('[data-player-anchor="p2"] .opponent-hero-target');
+  await expect(target).toBeEnabled();
+  await target.click();
+  await expect(page.locator('[data-console-surface="local-operation"] button.primary')).toHaveText("Confirm");
+
+  await skill.click();
+  await expect(skill).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator('[data-player-anchor="p2"][data-target-selectable="true"]')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+
+  await skill.click();
+  await target.click();
+  await page.locator('[data-console-surface="local-operation"] button.primary').click();
+  await expect.poll(() => page.evaluate(() => window.__browserActions)).toEqual([
+    { action: "trigger", extra: { providerId: "zhou_yu_fanjian", targetId: "p2" } },
+  ]);
+
+  await page.goto("/tests/browser/fixture.html?state=fanjian-combined&count=4&targetHandCount=7&hero=zhou-yu");
+  await publishFanjianActivation(page);
   const stage = page.locator('[data-fanjian-combined-choice="true"]');
   await expect(stage).toBeVisible();
   const activationH4 = page.locator('.public-interaction-event-announcement[data-public-interaction-event-id="browser-fanjian-committed-activation"]');
@@ -111,8 +115,8 @@ test("Fanjian cancels on skill retap and submits one compact combined choice on 
   const noHistoryH4Top = await h4Copy.evaluate((copy) => copy.getBoundingClientRect().top);
   expect(noHistoryH4Top).toBeCloseTo(activationGeometry.seats.reduce((bottom, seat) => Math.max(bottom, seat.rect.bottom), 0) + 6 + 72 + 8, 0);
   expect(activationGeometry.pickerParts.suits.bottom).toBeLessThanOrEqual(activationGeometry.pickerParts.handCount.top);
-  expect(activationGeometry.pickerParts.handCount.top - activationGeometry.pickerParts.suits.bottom).toBeGreaterThanOrEqual(4);
-  expect(activationGeometry.pickerParts.handCount.top - activationGeometry.pickerParts.suits.bottom).toBeLessThanOrEqual(8);
+  expect(activationGeometry.pickerParts.handCount.top - activationGeometry.pickerParts.suits.bottom).toBeGreaterThanOrEqual(0);
+  expect(activationGeometry.pickerParts.handCount.top - activationGeometry.pickerParts.suits.bottom).toBeLessThanOrEqual(4);
   const fixedBandGeometry = await page.evaluate(() => {
     const table = document.querySelector(".play-table");
     const h4 = table?.querySelector("[data-public-card-announcement-fixed-upper='true'][data-public-card-announcement-positioned='true']");
@@ -342,4 +346,130 @@ test("Fanjian cancels on skill retap and submits one compact combined choice on 
   expect(h4AndRevealRects.centerOffset, JSON.stringify(h4AndRevealRects)).toBeLessThanOrEqual(12);
   expect(h4AndRevealRects.gap, JSON.stringify(h4AndRevealRects)).toBeGreaterThanOrEqual(0);
   expect(h4AndRevealRects.gap, JSON.stringify(h4AndRevealRects)).toBeLessThanOrEqual(32);
+});
+
+test("Fanjian chooser stays usable in the 440x766 H4-to-PAC corridor and private on TEST SWITCH", async ({ page }) => {
+  await page.setViewportSize({ width: 440, height: 766 });
+  await page.goto("/tests/browser/fixture.html?state=fanjian-combined&count=4&targetHandCount=7&hero=zhou-yu");
+  await page.addStyleTag({ content: ".play-table { height: 474px !important; min-height: 474px !important; max-height: 474px !important; } .public-activity-chip[data-public-activity-chip='true'] { height: 67px !important; min-height: 67px !important; }" });
+  await publishFanjianActivation(page);
+  const stage = page.locator('[data-fanjian-combined-choice="true"]');
+  await expect(stage).toHaveAttribute("data-target-card-pool-ready", "true", { timeout: 3000 });
+  await expect(stage).toBeVisible();
+
+  const diagnostic = await page.evaluate(() => {
+    const table = document.querySelector(".play-table");
+    const stage = table?.querySelector("[data-fanjian-combined-choice='true']");
+    const panel = stage?.querySelector(".card-pool-panel");
+    const h4 = table?.querySelector("[data-public-card-announcement-fixed-upper='true']");
+    const pac = table?.querySelector("[data-public-activity-chip='true']");
+    const rect = (element) => {
+      if (!element) return null;
+      const { x, y, left, top, right, bottom, width, height } = element.getBoundingClientRect();
+      return Object.fromEntries(Object.entries({ x, y, left, top, right, bottom, width, height })
+        .map(([key, value]) => [key, Math.round(value * 2) / 2]));
+    };
+    const style = (element) => element ? {
+      display: getComputedStyle(element).display,
+      visibility: getComputedStyle(element).visibility,
+      position: getComputedStyle(element).position,
+      opacity: getComputedStyle(element).opacity,
+    } : null;
+    const option = window.__browserRoom.currentAction?.triggerOptions?.find((item) => item.selection?.type === "choice_and_target_cards");
+    const panelRect = rect(panel);
+    const h4Rect = rect(h4);
+    const pacRect = rect(pac);
+    const panelParts = panel ? Object.fromEntries([
+      ["heading", panel.querySelector(".card-pool-panel__heading")],
+      ["controls", panel.querySelector(".fanjian-combined-controls")],
+      ["suits", panel.querySelector(".fanjian-combined-suit-options")],
+      ["zones", panel.querySelector(".card-pool-panel__target-public-zones")],
+      ["hand", panel.querySelector(".card-pool-panel__target-public-hand")],
+      ["handCount", panel.querySelector(".card-pool-panel__target-public-zone-title")],
+      ["backs", panel.querySelector(".card-pool-panel__target-public-backs")],
+      ["footer", panel.querySelector(".card-pool-panel__footer")],
+      ["confirm", panel.querySelector(".card-pool-panel__confirm")],
+    ].map(([key, element]) => [key, { rect: rect(element), flex: element ? getComputedStyle(element).flex : null, position: element ? getComputedStyle(element).position : null }])) : null;
+    const panelScroll = panel ? { clientHeight: panel.clientHeight, scrollHeight: panel.scrollHeight, scrollTop: panel.scrollTop } : null;
+    const minimumPanelTop = h4Rect ? h4Rect.bottom + 6 : null;
+    const maximumPanelTop = panelRect && pacRect ? pacRect.top - panelRect.height - 6 : null;
+    return {
+      viewport: { width: innerWidth, height: innerHeight, visual: window.visualViewport ? { width: window.visualViewport.width, height: window.visualViewport.height, offsetTop: window.visualViewport.offsetTop } : null },
+      viewerId: window.__browserRoom.meId,
+      action: { kind: window.__browserRoom.currentAction?.kind ?? null, actorId: window.__browserRoom.currentAction?.actorId ?? null, viewerIsActor: window.__browserRoom.meId === window.__browserRoom.currentAction?.actorId, legalActions: window.__browserRoom.currentAction?.legalActions ?? [], selectionType: option?.selection?.type ?? null, optionEnabled: Boolean(option && window.__browserRoom.currentAction?.legalActions?.includes("trigger")), allowDecline: option?.allowDecline ?? null, choiceCount: option?.selection?.choices?.length ?? null, eligiblePositionCount: option?.selection?.eligibleKeys?.length ?? null },
+      table: rect(table),
+      stage: { present: Boolean(stage), ready: stage?.dataset.targetCardPoolReady ?? null, ariaHidden: stage?.getAttribute("aria-hidden") ?? null, placementTop: stage?.dataset.targetCardPoolTop ?? null, rect: rect(stage), style: style(stage) },
+      panel: { rect: panelRect, parts: panelParts, scroll: panelScroll, style: style(panel) },
+      h4: { fixed: Boolean(h4), positioned: h4?.dataset.publicCardAnnouncementPositioned ?? null, rect: h4Rect, style: style(h4) },
+      pac: { rect: pacRect, style: style(pac) },
+      console: rect(document.querySelector(".local-player-dock")),
+      safeCorridor: h4Rect && pacRect && panelRect ? { h4BottomToPacTop: Math.round((pacRect.top - h4Rect.bottom) * 2) / 2, panelHeight: panelRect.height, naturalPanelHeight: panelScroll?.scrollHeight ?? null, requiredWithMargins: Math.round((panelRect.height + 12) * 2) / 2, minimumPanelTop, maximumPanelTop, naturalPanelCannotFit: (panelScroll?.scrollHeight ?? 0) + 12 > pacRect.top - h4Rect.bottom } : null,
+    };
+  });
+  console.log(`FANJIAN_440X766_BOUNDED_PANEL ${JSON.stringify(diagnostic)}`);
+  expect(diagnostic.action.viewerIsActor).toBe(true);
+  expect(diagnostic.action.selectionType).toBe("choice_and_target_cards");
+  expect(diagnostic.action.optionEnabled).toBe(true);
+  expect(diagnostic.action.choiceCount).toBe(4);
+  expect(diagnostic.action.eligiblePositionCount).toBe(7);
+  expect(diagnostic.stage.present).toBe(true);
+  expect(diagnostic.stage.ready, JSON.stringify(diagnostic)).toBe("true");
+  expect(diagnostic.stage.ariaHidden).toBe("false");
+  expect(diagnostic.panel.scroll.clientHeight).toBeGreaterThanOrEqual(diagnostic.panel.scroll.scrollHeight);
+  expect(diagnostic.safeCorridor.naturalPanelCannotFit, JSON.stringify(diagnostic)).toBe(false);
+  expect(diagnostic.panel.rect.top).toBeGreaterThanOrEqual(diagnostic.safeCorridor.minimumPanelTop);
+  expect(diagnostic.panel.rect.bottom).toBeLessThanOrEqual(diagnostic.pac.rect.top - 6);
+  expect(diagnostic.panel.rect.bottom).toBeLessThanOrEqual(diagnostic.console.top - 6);
+  expect(diagnostic.panel.parts.zones.rect.bottom).toBeLessThanOrEqual(diagnostic.panel.parts.footer.rect.top);
+  expect(diagnostic.panel.parts.confirm.rect.bottom).toBeLessThanOrEqual(diagnostic.panel.rect.bottom);
+
+  const fixedH4TopBeforeResize = diagnostic.h4.rect.top;
+  await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+  await expect(stage).toHaveAttribute("data-target-card-pool-ready", "true", { timeout: 3000 });
+  const fixedH4TopAfterResize = await page.locator("[data-public-card-announcement-fixed-upper='true']").evaluate((element) => element.getBoundingClientRect().top);
+  expect(Math.abs(fixedH4TopAfterResize - fixedH4TopBeforeResize)).toBeLessThanOrEqual(8);
+
+  const actorSuitGroup = stage.getByRole("group", { name: "Choose a suit" });
+  const actorSuitButtons = actorSuitGroup.getByRole("button");
+  await expect(actorSuitButtons).toHaveCount(4);
+  const suitHitTargets = await actorSuitButtons.evaluateAll((buttons) => buttons.map((button) => {
+    const { width, height } = button.getBoundingClientRect();
+    return { width, height };
+  }));
+  expect(suitHitTargets.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
+  const actorRail = stage.locator(".card-pool-panel__target-public-backs");
+  await expect(actorRail.locator(".card-pool-panel__target-public-position")).toHaveCount(7);
+  await actorSuitGroup.getByRole("button", { name: "Heart", exact: true }).click();
+  await actorRail.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
+  const finalActorPosition = actorRail.getByRole("button", { name: "Choose hidden Hand position 7" });
+  await finalActorPosition.click();
+  await expect(finalActorPosition).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByTestId("test-view-switch-p3").click();
+  await expect(stage).toHaveCount(0);
+  await expect(page.getByText("Hand (7)", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Choose a suit" })).toHaveCount(0);
+  const spectatorProjection = await page.evaluate(() => ({
+    viewerId: window.__browserRoom.meId,
+    actorId: window.__browserRoom.currentAction?.actorId ?? null,
+    triggerOptionCount: window.__browserRoom.currentAction?.triggerOptions?.length ?? 0,
+  }));
+  expect(spectatorProjection).toMatchObject({ viewerId: "p3", actorId: "p2", triggerOptionCount: 0 });
+  await expect(page.locator('.public-interaction-event-announcement[data-public-interaction-event-id="browser-fanjian-committed-activation"]')).toBeVisible();
+  await expect(page.locator("[data-public-activity-chip='true']")).toBeVisible();
+
+  await page.getByTestId("test-view-switch-p2").click();
+  await expect(stage).toHaveAttribute("data-target-card-pool-ready", "true", { timeout: 3000 });
+  const currentSuitGroup = stage.getByRole("group", { name: "Choose a suit" });
+  await currentSuitGroup.getByRole("button", { name: "Heart", exact: true }).click();
+  const currentRail = stage.locator(".card-pool-panel__target-public-backs");
+  await currentRail.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
+  await currentRail.getByRole("button", { name: "Choose hidden Hand position 7" }).click();
+  const confirm = stage.getByRole("button", { name: "Confirm", exact: true });
+  await expect(confirm).toBeEnabled();
+  await page.evaluate(() => { window.__browserActions = []; });
+  await confirm.click();
+  await expect.poll(() => page.evaluate(() => window.__browserActions)).toEqual([
+    { action: "trigger", extra: { providerId: "zhou_yu_fanjian_choice", choice: "♥", cardKeys: ["hand:6"] } },
+  ]);
 });
