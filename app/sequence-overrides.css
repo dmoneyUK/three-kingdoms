@@ -7799,7 +7799,7 @@
   max-width: 100%;
   font-size: clamp(5.5px, 1.5vw, 6.5px);
   line-height: 1;
-  letter-spacing: .035em;
+  letter-spacing: normal;
   white-space: nowrap;
 }
 
