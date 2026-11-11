@@ -2,7 +2,7 @@
 
 ## CARD-FACE-TYPOGRAPHY-UX-01 / §10.39 — 手牌类别单行适配
 
-**状态：本地修正完成，focused 手机回归通过；精确 SHA CI/部署待提交。** 已部署字号基线 `22a425d01dc48870da3507253151f885983e9e4e`；精确 SHA Actions [42926203575](https://github.com/dmoneyUK/three-kingdoms/actions/runs/42926203575) 全绿，Worker version `9de9ee02-85d6-4990-b256-5f3f9ed8bb74`。当前分支 `codex/ux2-judgement-seat-01`，远端 `ux-v2` 文档头 `a8704453ead6ed33f4ece1fac2d8f9fa9cde43a1`。最新设计已于 2026-11-11 19:57 UTC 复习。
+**状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。** 实现 SHA `1ba12c3f8cf506cd508cd31c434b6f4194a04856`；精确 SHA [Actions 43092308224](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43092308224) 全绿（首次 API job 因 `fetch failed` 失败，重跑全部通过）；Worker version `b43fe132-1839-4d44-924c-b26c6bd7ed4c`；部署 smoke 与单独线上 `/api/health` 均通过，返回 `{"ok":true,"worker":"available"}`。已部署字号基线 `22a425d01dc48870da3507253151f885983e9e4e`；Actions [42926203575](https://github.com/dmoneyUK/three-kingdoms/actions/runs/42926203575) 全绿，Worker `9de9ee02-85d6-4990-b256-5f3f9ed8bb74`。当前分支 `codex/ux2-judgement-seat-01`，远端 `ux-v2`；设计状态已更新到 2026-11-11 20:10 UTC。用户手机验收仍待完成。
 
 ### 目标与边界
 
@@ -15,7 +15,10 @@
 
 - **2026-11-11 19:56 UTC**：核对最新 §10.39 与已部署 `22a425d`。运行现有 `tests/browser/card-face-typography.spec.mjs`，手机 390×844 场景失败：字号调大后 `STRATAGEM CARD` 的 `scrollWidth` 超出可用宽度。
 - **2026-11-11 19:57 UTC**：按 §10.39 “先收紧字距，不扩大卡牌”将本地 Hand 类别字距改为 `normal`；同一手机浏览器场景通过 1/1（5.5s）。没有运行多设备/多玩家矩阵。当前未新增测试。
+- **2026-11-11 19:59 UTC**：`git diff --check` 通过；提交并推送 `1ba12c3f8cf506cd508cd31c434b6f4194a04856`。精确 SHA Actions `43092308224` 已启动，等待必需 job、部署及 production smoke。
+- **2026-11-11 20:02 UTC**：Actions 首次运行的 API job 失败，多条无关 API 用例统一报 `fetch failed`，部署未运行；未改动或放宽测试。
+- **2026-11-11 20:04–20:09 UTC**：重跑同一 SHA 的全部 workflow 后 lint/fast、API、浏览器启动烟测、Worker 部署及 production smoke 全部通过。Worker version `b43fe132-1839-4d44-924c-b26c6bd7ed4c`；独立线上 health 检查通过。
 
 ### 唯一后续
 
-检查本次最小 diff 与 `git diff --check`，提交并推送到 `ux-v2`；等待该实现 SHA 的必需 Actions、Worker 部署及 production smoke。随后保持 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**，等待 Owner 复审，不自行标记 USER-ACCEPTED。
+等待 Owner 对已部署 §10.39 手机效果复审；不得自行标记 USER-ACCEPTED。实现与交付已完成。
