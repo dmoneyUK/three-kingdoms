@@ -2,7 +2,7 @@
 
 ## ZHOU-YU-FANJIAN-UX-01 / §10.37 — 完成部分验收后的两项修正
 
-**状态：§10.37 新报告修正已本地实现；Focused mobile path、build、diff check 通过；精确 SHA CI/部署待提交。** 已部署基线 `6f037170d4c1ddeece98be7907ceea9cae3ea824`；其 Actions [43000485333](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43000485333) 全绿，Worker version `1ce240dd-e04c-4af4-8ac7-911fb7b9fdc9`，生产 `/api/health` 返回 `{"ok":true,"worker":"available"}`。当前已同步基线 `origin/ux-v2` / `316a88cbc6f9ac1a1aa70afb06147b0d585e87b5`；工作分支 `codex/ux2-judgement-seat-01`。最新设计修订为 2026-11-11 11:12 UTC。主目录其他未提交文件未触碰。
+**状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW。** 修正提交 `7f6f059d604dca16db5384ab2eacb36b251e5f51` 已推送到 `origin/ux-v2`，远端头相同。精确 SHA Actions [43010495614](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43010495614) 的 lint/fast tests、browser startup smoke、API tests（首次 shard-1 Wrangler 服务错误；同一失败 job 重跑后通过）、D1 migration、Worker deploy、production smoke 均通过。Worker version `309f0b81-9e0a-4126-b6d4-1bf692b183a3`；线上 `/api/health` 返回 `{"ok":true,"worker":"available"}`。工作分支 `codex/ux2-judgement-seat-01`。最新设计修订已更新为 2026-11-11 11:30 UTC。主目录其他未提交文件未触碰。
 
 ### 固定验收边界
 
@@ -33,7 +33,9 @@
 - **2026-11-11 10:19–10:24 UTC 截图/trace 初查及纠正：**trace build SHA 为已部署 `6f037170`。截图是 Sima Yi（seat 1）旁观视角，Fanjian 决策者/目标是 BCD（seat 0）；因此该截图单独不应显示私有位置控件。初次回答误把“截图视角不显示”当成完整解释。Owner 明确补充：包括决策者在内的所有视角都看不到池，故初次结论撤回。trace 在 `viewerSeat=0`、`actorSeat=0`、`SEQUENTIAL_CHOICE` 时确有决策者视角，但没有记录 picker DOM/readiness；不能据它声称在该视角实测到了隐藏状态。
 - **2026-11-11 11:12 UTC 首因与本地修正：**trace 的可见布局几何为战场 `440×474`、H4 `y=186..216`、PAC `y=412..478.7`。固定两者与算法的上下各 `6px` 间距后，卡池最多可高 `184px`；先前手机记录中的面板约 `209px`。`findBattlefieldChoiceSafeTopOffset()` 无安全位置时把 `ready` 设为 false，舞台通过 `aria-hidden` 与 CSS `visibility:hidden` 隐藏，所以实际决策者也失去面板。修正仅压缩 Fanjian 专属标题/说明排列、面板空隙和内边距；匿名牌背为 `44×60px`，对应选择按钮仍覆盖完整牌背；花色按钮保持 `44×44px`。H4/PAC位置、服务器授权和私有投影未变。
 - **2026-11-11 11:12 UTC 验证：**现有 Playwright `fanjian-combined-choice.spec.mjs` 手机流程 `1/1` 通过，`10.2s`；`npm run build` 通过，含既有 bundle-size 与动态路由分类 warning；`git diff --check` 通过。未跑新的 440×474浏览器场景，也未跑宽泛测试矩阵。代码、设计记录与本 HANDOVER 当前仍本地未提交；精确 SHA CI/Worker 部署待执行。
+- **2026-11-11 11:15–11:28 UTC 精确 SHA 验证与部署：**初次 run `43010495614` 中 API shard-1 的 Wrangler 测试服务出现无详情 `ERROR`；其后 152 个请求报 `fetch failed`，API shard-2 的 155 项、lint/fast tests、browser startup smoke 均通过，deploy 因依赖失败而跳过。11:22 UTC 只重跑失败 API job；重跑通过，GitHub 随后继续原 SHA 的 deploy。D1 migration、Worker deploy、production smoke 全通过，Worker version `309f0b81-9e0a-4126-b6d4-1bf692b183a3`；11:29 UTC 直接 `/api/health` 返回 `{"ok":true,"worker":"available"}`。失败属瞬时 Wrangler 测试服务故障证据；未改测试或降低断言。
+- **当前交付边界：**面板现在仅对服务端当前授权的 Fanjian 决策者显示；其他玩家仍隐藏匿名手牌位置控件，以维持私密性。现有 390×844 手机路径 1/1 通过；没有新增 440×474 浏览器或多人矩阵。请 Owner 在最新部署上检查真实决策者视角的卡池是否恢复；原 §10.37 检查 2、4 仍待手机复审，不自我验收。
 
 ### 唯一后续
 
-唯一待办：提交并推送本次 §10.37 修正，等待其精确 SHA Actions、Worker 部署及 smoke 结果；交付后请 Owner 手机上复审检查 2/4，并专门确认当前决策者能看到并使用卡池、非决策视角仍不泄漏隐藏手牌位置。在收到结论前保持 **PENDING OWNER iPHONE RE-REVIEW**，不自我验收，不启动其他任务。
+唯一待办：Owner 手机上复审 §10.37：确认当前决策者能看到、选择并提交卡池，同时非决策视角不暴露匿名手牌位置；一并检查原第 2、4 项的面板紧凑度与固定 H4/首张缩略牌层级。保持 **PENDING OWNER iPHONE RE-REVIEW**，不自我验收，不启动其他任务。
