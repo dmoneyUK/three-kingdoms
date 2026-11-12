@@ -1,6 +1,6 @@
 # WTK UX2 — Simplified Public Card UX
 
-**Revision:** 2026-11-12 19:34 UTC (New owner iPhone trace on deployed `0581448e` demonstrates a separate same-Fanjian-result H4 flicker/hide/regression plus requested smaller-profile chooser and a first-*miniature*-slot H4 geometry clarification. Added two serial, unimplemented, bounded §10.42 and §10.43 tasks; §10.42 is the next execution task. §10.41 remains IMPLEMENTED/DEPLOYED — PENDING OWNER iPHONE REVIEW (no new Attack→Steal verification), §§10.37/10.39 remain USER-ACCEPTED/CLOSED, §§10.38/10.40 unchanged. No code deployment implied.) · **Branch:** `ux-v2` · **Status authority:** latest owner verdict, original-task sections and Tables A/B/C; CI/deployment is not owner acceptance.
+**Revision:** 2026-11-12 21:30 UTC (§10.42 implemented/deployed and pending owner iPhone review; §10.43 is now the next bounded implementation task. §10.41 remains independently pending owner review; §§10.37/10.39 remain USER-ACCEPTED/CLOSED; §§10.38/10.40 unchanged. Deployment does not imply owner acceptance.) · **Branch:** `ux-v2` · **Status authority:** latest owner verdict, original-task sections and Tables A/B/C; CI/deployment is not owner acceptance.
 
 This file is the **single active UX2 product/design authority**. It replaces the superseded, much longer UX2 design; previous revisions exist only in Git history. Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmap records, old tests and screenshots are references to prior implementation, **not** permission to reinstate old visual requirements.
 
@@ -8,7 +8,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 **Editorial cleanup (2026-10-30; R6 consolidation 22:27 UTC):** Closed items now retain only the final approved UX contract, explicit owner verdict and essential privacy/interaction boundaries. Historical implementation details and superseded plans remain accessible at the immutable [pre-cleanup revision](https://github.com/dmoneyUK/three-kingdoms/blob/b86c7a781468094fc844fe67b4ffda4e5b9a8d36/docs/UX2-refine.md). Delivered-but-unaccepted and active work remain independently reviewable; this editorial edit is **not** a new coding task or user acceptance.
 
-## UX2 CURRENT canonical work index — 2026-11-12 19:34 UTC (new §10.42 H4 settlement coherency and §10.43 chooser polish; §10.41 deployed/pending owner; §§10.37/39 accepted/closed; §§10.38/40 independent phone-pending)
+## UX2 CURRENT canonical work index — 2026-11-12 21:30 UTC (§10.42 deployed/pending owner; §10.43 chooser polish is the next implementation task; §10.41 independently pending owner; §§10.37/39 accepted/closed; §§10.38/40 independent phone-pending)
 
 **AUTHORITATIVE STATUS INDEX / NO DUPLICATE EXECUTION:** Tables A–C and the latest explicit owner verdict in the original feature sections govern current work. Dated pre-cleanup snapshots and superseded repairs were removed from this active file but remain [archived in Git](#appendix-a--historical-ux2-status-snapshots-archive-only). A delivered feature awaiting human review belongs in Table B, **not** the development queue; USER-ACCEPTED/CLOSED and SUPERSEDED items in C are not active tasks. Keep one implementation identity per distinct defect.
 
@@ -26,12 +26,13 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 | Authorized correction (new, serial) | State / order |
 | --- | --- |
-| **FANJIAN-PUBLIC-H4-SETTLEMENT-CONTINUITY-01 / §10.42 — same-result H4 consolidation and first-mini-slot geometry** | **NEXT / OWNER REPORTED — NOT IMPLEMENTED (2026-11-12 19:34 UTC).** Reproduced owner trace on deployed `0581448e`: one Fanjian commit yields H4 keys damage→complete result→hidden→reveal→damage inside seconds; full result shows ~0.17s before a no-safe-placement hide. Correct semantic consolidation and collision-free, stable upper placement based on the **first parked miniature**, not Hand/full reveal. Implement first, with exact trace/boundary tests. |
-| **FANJIAN-CHOOSER-VISUAL-POLISH-01 / §10.43 — selected suit and Confirm visual height** | **QUEUED AFTER §10.42 — OWNER REPORTED / NOT IMPLEMENTED.** Increase selected red/black suit visual contrast (black ♣/♠ light backgrounds currently override generic selected paint); shrink **visible** gold Confirm height to ~2/3 existing (44→~29–30px) while preserving ≥44px effective touch target, unchanged legality/privacy/compact rail. Keep separate implementation evidence and owner iPhone verdict. |
+| **FANJIAN-CHOOSER-VISUAL-POLISH-01 / §10.43 — selected suit and Confirm visual height** | **NEXT IMPLEMENTATION — OWNER REPORTED / NOT IMPLEMENTED (2026-11-12 21:30 UTC).** Increase selected red/black suit visual contrast (black ♣/♠ light backgrounds currently override generic selected paint); shrink **visible** gold Confirm height to ~2/3 existing (44→~29–30px) while preserving ≥44px effective touch target, unchanged legality/privacy/compact rail. Keep separate implementation evidence and owner iPhone verdict. |
 
 **Already delivered, separate owner review:** M4 E15/E16 and §10.36.1 remain USER-ACCEPTED/CLOSED. **§10.37 and §10.39 were explicitly USER-ACCEPTED/CLOSED by owner on 2026-11-12 09:07 UTC and moved to Table C, with original normative sections condensed under §6B.** Newly observed cross-scene H4/CardFace recency regression is **independent §10.41**, not a retroactive refusal of Fanjian/typography. §§10.38 and 10.40 remain implemented/deployed and individually pending owner phone review. HANDOVER's separately active execution state is not replaced by a design revision.
 
 ### B. Other technically deployed scopes awaiting owner phone review
+
+**FANJIAN-PUBLIC-H4-SETTLEMENT-CONTINUITY-01 / §10.42:** **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW.** Commit `4bd532e697c7bf51445d231a75921bad499692a0`; exact-SHA [Actions 43309874718](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43309874718) passed API, lint/fast tests, browser startup smoke, D1 migration, Worker deployment and production smoke. Worker version `2d6cb510-04ea-4daf-9a4a-fed1daa6ec8e`; live `/api/health` returned `{"ok":true,"worker":"available"}`. The final same-root Fanjian result remains the H4 owner after the settlement card frame fades; the authentic E16 HAND→HAND CardFace takes a measured safe route around fixed H4 and the first parked miniature. Focused 440×474 browser regression and existing §10.41 Attack/Steal takeover regression passed; announcement selector tests passed 28/28. No gameplay, privacy or legality changes. **This is technical delivery only, not owner phone acceptance.**
 
 
 
@@ -1120,7 +1121,7 @@ H4 and PAC retain distinct roles. Do not guess source, target, card identity, re
 
 **Reusable presentation principle:** A no-card public result must not hold current display ownership by waiting for a physical CardFace readiness signal. Unique server-committed event identity and chronology determine recency; H4 and physical-card routing advance together. Technical delivery is not owner acceptance.
 
-### 10.42 FANJIAN-PUBLIC-H4-SETTLEMENT-CONTINUITY-01 — one stable public result; protect precisely the first parked miniature (**OWNER REPORTED / NEXT IMPLEMENTATION — 2026-11-12 19:34 UTC; NOT IMPLEMENTED**)
+### 10.42 FANJIAN-PUBLIC-H4-SETTLEMENT-CONTINUITY-01 — one stable public result; protect precisely the first parked miniature (**IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW; 2026-11-12 21:30 UTC**)
 
 **Owner's iPhone evidence:** Screenshot `IMG_4257.jpeg` and JSON trace `wtk-game-ux-trace-2026-11-12T19-29-11.327Z.json` captured from genuine iPhone Chrome (440px CSS width, 440×592 layout viewport, 440×453 visual viewport, actual battlefield approximately 440×474), deployed build `0581448e906ae7406c24e98b525f4ab5e9f031be`. Trace has two *separate* four-player test sessions, no dropped entries. The genuine server records a single combined Fanjian response and one physical public reveal, result message, damage fact. Owner saw H4 text flash/replace three times during this *single resolution*; the complete result was not readable, while the final `takes 1 damage` stayed.
 

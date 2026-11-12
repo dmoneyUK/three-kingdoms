@@ -1,36 +1,23 @@
 # HANDOVER — 当前唯一任务
 
-## FANJIAN-PUBLIC-H4-SETTLEMENT-CONTINUITY-01 / §10.42
+上一任务 §10.42 于 2026-11-12 已交付：commit `4bd532e697c7bf51445d231a75921bad499692a0`；精确 SHA [Actions 43309874718](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43309874718) 全绿；Worker `2d6cb510-04ea-4daf-9a4a-fed1daa6ec8e` 已部署，生产 smoke 和 `/api/health` 通过。状态：`IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`，未自行验收。
 
-**状态：实现和聚焦验证完成；待精确 SHA CI、Worker 部署及生产 smoke。** 交付状态须为 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`。未做 owner iPhone 验收。
+## FANJIAN-CHOOSER-VISUAL-POLISH-01 / §10.43
 
-**设计基线：** `docs/UX2-refine.md` §10.42，revision `2026-11-12 19:34 UTC`。分支：`codex/ux2-judgement-seat-01`，目标远端 `origin/ux-v2`。代码基线 `5d434b9e1868d761d99e69b043748141fafac240`。实现尚未提交。
+**状态：当前唯一执行任务；尚未开始代码修改。**
 
-### 根因
+**设计依据：** 最新 `docs/UX2-refine.md` revision `2026-11-12 21:30 UTC`，§10.43。分支 `codex/ux2-judgement-seat-01`，目标 `origin/ux-v2`；当前基线 `4bd532e697c7bf51445d231a75921bad499692a0`。
 
-1. 真实 E16 HAND→HAND 卡牌从来源座位直线飞入中央，轨迹穿过首张缩略卡区域及固定 H4。碰撞求解器因此短暂找不到可用 H4 落点，隐藏 H4；卡牌离开后 H4 又出现。owner trace 记录隐藏区间约 0.17 秒，障碍类型为三个 `journey-target`。
-2. 最终反间 H4 只跟随 `activeSkillEffectSettlement` 的 600ms 技能卡框清理。当状态清除后，同一 root 中较晚的 damage fact 重新成为 H4，令完整结果退回伤害文案。
-3. 440px / 474px fixture 中的首停车位回退几何为 top=186px、slot bottom=178px、间隙8px。该 fixture 没有预存 parked miniature；存在实际 parked miniature 时，现有定位器读取其真实 DOMRect。本任务没有把原本正确的回退值误判为完整卡牌尺寸。
+### 必须完成的修正
 
-### 已完成修改
+- 四个花色按钮在红/深色与黑/浅色背景上均须有一眼可辨的选中状态：至少约 2px 高对比边框/焦点环，并带选中符号；不能只靠颜色。保持 `aria-pressed`、键盘 `focus-visible`、disabled 与标签可访问性。检查最终 CSS cascade，确保黑色花色基础背景规则不会盖掉选中样式。
+- 只将可见金色 Confirm 面缩至当前约 2/3，即约 29–30px 高；实际可点 hit region 仍至少 44px 高，不能透明覆盖手牌轨或相邻控制。保留 disabled/loading/pressed 可读状态和现有紧凑布局、牌背与行动权限。
+- 保持四列适配及短屏 440×474 放置，不加 Cancel/Clear，不改变花色/手牌位置选择、隐私、服务器权限或游戏规则。
 
-- settlement 卡框在 600ms 后结束视觉展示，但保留已验证的 settlement owner；完整 H4 持续使用同一结算 proof，不退回 damage/reveal 事实。更新的独立公开出牌仍通过原 arbitration 接管 H4。未改 `CurrentAction`、服务器规则、行动权限、私密信息或游戏计时。
-- 有固定上部 H4 时，真实 HAND→HAND 卡牌按 H4 与上排首张真实 miniature/停车位边界计算可用侧道；卡牌以缩略比例绕过，再在 H4 下方中央放大展示，之后从安全侧边进入收件人手牌。保持真实卡牌身份和单一 E16 transition owner；空间不足时保留原安全路径。
+### 验证与交付
 
-### 执行与验证记录（UTC）
+- 仅一个 440px 手机浏览器场景，检查红黑花色选中/未选状态、可访问属性、Confirm 可见高度与实际触控边界、手牌区无拦截；仅在两项授权选择均完整后做一次真实提交验证。
+- 所有本地 UI/browser 测试累计最多 5 分钟；超时即停止并记为 SKIPPED。附带最小相关单测、差异检查；提交前核查远端最新 CI，提交后验证精确 SHA 全部 Actions、部署及生产 smoke。
+- 交付标记 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`；不得自行验收。
 
-- 20:53 — 首次浏览器命令漏传仓库 Playwright config，因缺少 `baseURL` 在导航前失败，未启动页面。修正配置后复现 H4 闪隐；随后修正测试中 transition DOM 属性的选择器，才采集真实卡牌几何。
-- 约21:10 — 440px 宽、474px 战场单场测试通过：H4 最终文案与 copy key 稳定超过3秒并在3.5秒采样末仍可见；首停车位间距满足4–8px；真实 E16 CardFace 全程绕过 H4 和首张 miniature，无重叠；切换旁观玩家后文案和 copy key 不变。
-- 约21:11 — 既有 §10.41 Attack/Steal takeover 浏览器回归通过，较新的公开出牌仍接管 H4。
-- 约21:17 — 收敛 settlement 保留状态后重跑上述两个浏览器用例：分别 9.5 秒、5.9 秒，均通过。整个任务本地 UI/browser 测试总计不到1分钟，低于5分钟上限。
-- 约21:18 — `node --import tsx --test tests/public-card-announcement.test.mjs`：28/28通过，覆盖公开出牌接管 Fanjian 结果。
-- 约21:18 — `npx eslint app/page.tsx` 通过，0 errors、2 warnings。基线临时副本同样为0 errors、2 warnings。此前第一次针对性 lint 因在巨型 `GameRoom` 控制流图新增条件而触发 `react-hooks/rules-of-hooks` 栈溢出；已简化该状态控制并再次 lint 成功。临时副本已删除。
-- 21:20 — 再次 fetch `origin/ux-v2`，远端仍为基线 `5d434b9e`，没有代码漂移；提交前 `git diff --check` 通过。最新 push-triggered Actions 已完成且成功，但只验证旧部署代码 SHA `0581448e906ae7406c24e98b525f4ab5e9f031be`（[run 43195310553](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43195310553)）；本任务 SHA 尚无 CI 结果。
-
-### 当前交付状态
-
-任务文件仅为 `app/page.tsx`、`app/sequence-overrides.css`、`tests/browser/public-h4-cardface-recency.spec.mjs` 和本 HANDOVER。尚未提交或 push。最近远端代码 SHA `0581448e906ae7406c24e98b525f4ab5e9f031be` 的 Actions 成功；本任务 SHA 尚不存在。Build、精确 SHA Actions、Worker version/deployment、生产 health smoke 均未验证。
-
-### 唯一下一步
-
-复核最终差异并执行 `git diff --check`；确认提交前 CI 状态仍健康；提交并推送 §10.42。等待该精确 SHA 所有 GitHub Actions、Worker 部署和生产 health smoke 完成。成功后更新设计状态及本 HANDOVER 为 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`，再按用户指示创建 §10.43 的单任务交接。
+**恢复点：** 检查 Fanjian 组合选择器的 JSX/辅助属性，以及 `app/sequence-overrides.css` 中花色 selected 与 black-base 的实际级联顺序；从当前已部署基线实现，不重做 §10.42。
