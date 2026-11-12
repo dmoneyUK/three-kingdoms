@@ -374,6 +374,20 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
   const interaction = snapshot?.interaction;
   const nextDecision = publicDecisionFromPresentationSnapshot(snapshot);
 
+  const drawDecision = snapshot?.publicDrawPhaseDecision;
+  if (input.status === "playing" && input.phase === "response"
+    && drawDecision?.semantics === "PROVEN" && drawDecision.visibility === "PUBLIC"
+    && typeof drawDecision.actorId === "string" && typeof drawDecision.allowSkip === "boolean"
+    && Array.isArray(drawDecision.actionLabels) && drawDecision.actionLabels.length > 0
+    && drawDecision.actionLabels.every((label) => typeof label === "string" && label.trim().length > 0 && label.length <= 160)) {
+    const actor = input.players.find((candidate) => candidate.id === drawDecision.actorId && candidate.seat === input.turnSeat && candidate.alive);
+    if (actor?.name.trim()) {
+      const turn = `${actor.name.trim()}'s turn`;
+      const actions = drawDecision.allowSkip ? [...drawDecision.actionLabels, "Skip"] : drawDecision.actionLabels;
+      return { kind: "response", text: turn, heading: turn, stage: `Waiting for ${actor.name.trim()} to use ${actionList(actions)}.` };
+    }
+  }
+
   if (input.status === "playing" && input.phase === "response" && nextDecision?.stageLabel === "Negation") {
     return {
       kind: "negation",

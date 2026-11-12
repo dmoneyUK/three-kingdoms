@@ -176,6 +176,34 @@ function assertGeometry(result) {
   expect(result.scrollWidth).toBeLessThanOrEqual(result.viewportWidth);
 }
 
+test("Heroic Draw Phase shows the same turn and waiting copy on mobile", async ({ browser, request }) => {
+  const players = ["zhou-yu", "cao-cao", "simayi", "xiahou-dun"].map((hero, index) => ({
+    name: `Test Player ${index + 1}`, role: ROLES[4][index], hero, hp: 3, maxHp: 3, hand: [],
+  }));
+  const seeded = await request.post(`${API}/__test/seed-playing-game`, { data: { phase: "draw", turnSeat: 0, players } });
+  expect(seeded.ok()).toBeTruthy();
+  const room = await seeded.json();
+  const opened = await action(request, room, 0, "draw");
+  expect(opened.room.myHand).toHaveLength(0);
+  const contexts = [];
+  try {
+    for (const index of [0, 1]) {
+      const context = await browser.newContext({ viewport: { width: 440, height: 766 } });
+      contexts.push(context);
+      const page = await context.newPage();
+      await openPlayer(page, room, index, { width: 440, height: 766 });
+      const chip = page.locator("[data-public-activity-chip]");
+      await expect(chip.locator("[data-public-activity-heading]")).toHaveText("Test Player 1's turn");
+      await expect(chip.locator("[data-public-activity-stage]")).toHaveText("Waiting for Test Player 1 to use Heroic or Skip.");
+      const chipBox = await chip.boundingBox();
+      const dockBox = await page.locator(".local-player-dock").boundingBox();
+      expect(chipBox.y + chipBox.height).toBeLessThanOrEqual(dockBox.y + 0.5);
+    }
+  } finally {
+    await Promise.all(contexts.map((context) => context.close()));
+  }
+});
+
 test("four authenticated viewers share the same public turn, Negation, and Duel activity", async ({ browser, request }, testInfo) => {
   const room = await seed(request, 4, true);
   const contexts = [];

@@ -43,6 +43,22 @@ test("public activity uses the public turn seat and fails closed for an absent s
   assert.deepEqual(derivePublicActivityStatus(room({ turnSeat: 99 })), { kind: "resolving", text: "Resolving…" });
 });
 
+test("public Draw Phase choice shows the turn and server-proven decision", () => {
+  const current = snapshot({ stage: "SKILL_DECISION" });
+  current.publicDrawPhaseDecision = { semantics: "PROVEN", visibility: "PUBLIC", actorId: "p1", actionLabels: ["Heroic"], allowSkip: true };
+  const input = room({ phase: "response", presentationSnapshot: current });
+  assert.deepEqual(derivePublicActivityStatus(input), {
+    kind: "response", text: "Test Player 1's turn", heading: "Test Player 1's turn",
+    stage: "Waiting for Test Player 1 to use Heroic or Skip.",
+  });
+  assert.equal(derivePublicActivityStatus({ ...input, turnSeat: 1 }).kind, "resolving");
+  assert.equal(derivePublicActivityStatus({ ...input, phase: "play" }).kind, "turn");
+  current.publicDrawPhaseDecision.visibility = "REDACTED";
+  assert.equal(derivePublicActivityStatus(input).kind, "resolving");
+  current.publicDrawPhaseDecision = { semantics: "PROVEN", visibility: "PUBLIC", actorId: "p1", actionLabels: null, allowSkip: true };
+  assert.equal(derivePublicActivityStatus(input).kind, "resolving", "malformed public projections fail closed");
+});
+
 test("public next-decision copy narrates a combined suit and hidden-card choice", () => {
   const current = snapshot({ stage: "SEQUENTIAL_CHOICE", actorId: "p2", stableKind: "CHOICE", actionLabels: ["Choose a suit and a card"] });
   current.publicNextDecision.stageLabel = "Skill decision";

@@ -98,6 +98,13 @@ export type PresentationSnapshotLustDuelExchange = PresentationLustDuelExchange;
 export type PresentationSnapshotSelfTargetAction = PresentationSelfTargetAction;
 export type PresentationSnapshotDeflectionAction = PresentationDeflectionAction;
 export type PresentationSnapshotPublicCardEffect = PresentationPublicCardEffect;
+export type PresentationPublicDrawPhaseDecision = {
+  semantics: "PROVEN";
+  visibility: "PUBLIC";
+  actorId: string;
+  actionLabels: readonly string[];
+  allowSkip: boolean;
+};
 
 export type PresentationSnapshot = {
   identity: PresentationSnapshotIdentity | null;
@@ -132,6 +139,8 @@ export type PresentationSnapshot = {
   retainedPublicEventFacts?: readonly PublicPresentationEvent[];
   /** Server-authored current public decision; never reconstructed from viewer CurrentAction. */
   publicNextDecision: PublicPresentationDecision | null;
+  /** Server-proven public Draw Phase choice when no interaction frame exists. */
+  publicDrawPhaseDecision?: PresentationPublicDrawPhaseDecision | null;
   /** Current viewer's private Negation choice category only. */
   viewerNegationChoice: ViewerNegationChoice | null;
   /** Reserved until durable public transition occurrences are accepted. */

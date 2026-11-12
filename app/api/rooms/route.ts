@@ -28,7 +28,7 @@ import { evaluatePlayTarget, type PlayTargetEligibilityPlayer, type PlayTargetMo
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
 import { attackRootProjectionDiagnosticsFor, projectPresentationV2, publicCardPlayProvesEffectiveKind, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
-import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
+import { composePresentationSnapshot, type PresentationPublicDrawPhaseDecision } from "../../../game/presentation-snapshot";
 import type { PublicPhysicalZoneTransition, PublicPresentationDecision, PublicPresentationEventFactDraft, PublicZoneEndpoint, ViewerNegationChoice } from "../../../game/presentation-semantics";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
@@ -6754,7 +6754,18 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const attackDodgeProjectionDiagnostics = includeAttackDodgeDiagnostics
     ? attackRootProjectionDiagnosticsFor(presentationInput)
     : null;
-  const presentationSnapshot = composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null, publicNextDecision, viewerNegationChoice });
+  const publicDrawPhaseDecision: PresentationPublicDrawPhaseDecision | null = room.status === "playing" && room.phase === "response"
+    && triggerPending?.event === "draw_phase" && triggerPending.continuation.kind === "draw_phase_event"
+    && triggerPending.actorId === triggerPending.continuation.playerId
+    && players.some((player: PlayerRow) => player.id === triggerPending.actorId && player.alive && player.seat === room.turn_seat)
+    && currentTriggerContext && !privateTriggerDecision && currentTriggerOptions.length > 0
+    && currentTriggerOptions.every((option) => triggerAvailability(option.effectId, currentTriggerContext) === "public"
+      && option.label.trim().length > 0 && option.label.length <= 160)
+    ? { semantics: "PROVEN", visibility: "PUBLIC", actorId: triggerPending.actorId,
+      actionLabels: currentTriggerOptions.map((option) => option.label.trim()),
+      allowSkip: currentTriggerOptions.some(triggerAllowsDecline) }
+    : null;
+  const presentationSnapshot = { ...composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null, publicNextDecision, viewerNegationChoice }), publicDrawPhaseDecision };
   return {
     ...(attackDodgeProjectionDiagnostics ? { attackDodgeProjectionDiagnostics } : {}),
     serverNow,
