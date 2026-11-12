@@ -6723,6 +6723,88 @@
   }
 }
 
+/* §10.43: keep the selected suit unmistakable after the later per-color base
+   paint, while the visible Confirm face stays compact inside a 44px target. */
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button[aria-pressed="true"] {
+  position: relative;
+  z-index: 1;
+  border: 2px solid #fff0bf;
+  background: #302411;
+  color: #fff4d1;
+  box-shadow: 0 0 0 2px #17150f, 0 0 0 4px #e6c267;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button[aria-pressed="true"]::after {
+  content: "✓";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  width: 13px;
+  height: 13px;
+  place-items: center;
+  border-radius: 50%;
+  background: #f2ca65;
+  box-shadow: 0 0 0 1px #17150f;
+  color: #17150f;
+  font: 700 10px/1 Arial, sans-serif;
+  pointer-events: none;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button:focus-visible {
+  z-index: 2;
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  flex: 0 0 64px;
+  width: 64px;
+  min-width: 64px;
+  max-width: 64px;
+  height: 44px;
+  min-height: 44px;
+  max-height: 44px;
+  place-items: center;
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: #17150f;
+  font-size: 7px;
+  line-height: 1.05;
+  opacity: 1;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset-inline: 0;
+  top: 50%;
+  height: 30px;
+  transform: translateY(-50%);
+  border: 1px solid #d1b06d;
+  border-radius: 4px;
+  background: #b9934e;
+  pointer-events: none;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:disabled {
+  color: #ead9b2;
+  cursor: not-allowed;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:disabled::before {
+  border-color: #756744;
+  background: #51452e;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:focus-visible {
+  outline: 3px solid #fff0bf;
+  outline-offset: 2px;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:active:not(:disabled)::before {
+  transform: translateY(-50%) scale(.97);
+  background: #d0a64f;
+}
+
 .game-shell .play-table:has(> .card-pool-target-stage[data-choice-mode="actor-target-select"]) > .interaction-safe-zone:has(> .interaction-stage-inspect-only),
 .game-shell .play-table:has(> .card-pool-target-stage[data-choice-mode="target-readonly"]) > .interaction-safe-zone:has(> .interaction-stage-inspect-only) {
   z-index: 40;
@@ -7929,6 +8011,11 @@
 .game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button[data-suit-color="black"] {
   color: #171717;
   background: #f4ead5;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button[data-suit-color="red"][aria-pressed="true"],
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button[data-suit-color="black"][aria-pressed="true"] {
+  background: #302411;
+  color: #fff4d1;
 }
 .game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-zones {
   gap: 1px;

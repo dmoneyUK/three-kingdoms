@@ -357,6 +357,59 @@ test("Fanjian chooser stays usable in the 440x766 H4-to-PAC corridor and private
   await expect(stage).toHaveAttribute("data-target-card-pool-ready", "true", { timeout: 3000 });
   await expect(stage).toBeVisible();
 
+  const chooserSuitGroup = stage.getByRole("group", { name: "Choose a suit" });
+  const heartSuit = chooserSuitGroup.getByRole("button", { name: "Heart", exact: true });
+  const spadeSuit = chooserSuitGroup.getByRole("button", { name: "Spade", exact: true });
+  await heartSuit.click();
+  const redSelectedStyle = await heartSuit.evaluate((button) => {
+    const style = getComputedStyle(button);
+    return {
+      pressed: button.getAttribute("aria-pressed"),
+      background: style.backgroundColor,
+      color: style.color,
+      borderWidth: style.borderTopWidth,
+      marker: getComputedStyle(button, "::after").content.replace(/[\"']/g, ""),
+    };
+  });
+  await spadeSuit.click();
+  const blackSelectedStyle = await spadeSuit.evaluate((button) => {
+    const style = getComputedStyle(button);
+    return {
+      pressed: button.getAttribute("aria-pressed"),
+      background: style.backgroundColor,
+      color: style.color,
+      borderWidth: style.borderTopWidth,
+      marker: getComputedStyle(button, "::after").content.replace(/[\"']/g, ""),
+    };
+  });
+  expect(redSelectedStyle).toEqual({ pressed: "true", background: "rgb(48, 36, 17)", color: "rgb(255, 244, 209)", borderWidth: "2px", marker: "✓" });
+  expect(blackSelectedStyle).toEqual(redSelectedStyle);
+  await spadeSuit.focus();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  const spadeKeyboardFocus = await spadeSuit.evaluate((button) => ({
+    active: document.activeElement === button,
+    visible: button.matches(":focus-visible"),
+    outline: getComputedStyle(button).outlineWidth,
+  }));
+  expect(spadeKeyboardFocus).toEqual({ active: true, visible: true, outline: "3px" });
+  await heartSuit.click();
+
+  const disabledConfirmGeometry = await stage.getByRole("button", { name: "Confirm", exact: true }).evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    const face = getComputedStyle(button, "::before");
+    const rail = button.closest(".card-pool-panel")?.querySelector(".card-pool-panel__target-public-backs")?.getBoundingClientRect();
+    return {
+      disabled: (button).disabled,
+      hitHeight: rect.height,
+      faceHeight: Number.parseFloat(face.height),
+      faceBackground: face.backgroundColor,
+      labelOpacity: getComputedStyle(button).opacity,
+      overlapsHandRail: Boolean(rail && rect.left < rail.right && rect.right > rail.left && rect.top < rail.bottom && rect.bottom > rail.top),
+    };
+  });
+  expect(disabledConfirmGeometry).toEqual({ disabled: true, hitHeight: 44, faceHeight: 30, faceBackground: "rgb(81, 69, 46)", labelOpacity: "1", overlapsHandRail: false });
+
   const diagnostic = await page.evaluate(() => {
     const table = document.querySelector(".play-table");
     const stage = table?.querySelector("[data-fanjian-combined-choice='true']");
