@@ -7891,6 +7891,13 @@
 .game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button {
   font: 700 25px/1 Arial, sans-serif;
 }
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button[data-suit-color="red"] {
+  color: #ff6670;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button[data-suit-color="black"] {
+  color: #171717;
+  background: #f4ead5;
+}
 .game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-zones {
   gap: 1px;
 }
@@ -7903,11 +7910,11 @@
 }
 .game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-backs {
   width: min(100%, 182px);
-  min-height: 52px;
+  min-height: 66px;
   gap: 2px;
 }
 .game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-position {
-  height: 52px;
+  height: 66px;
 }
 .game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__footer {
   justify-content: flex-end;
@@ -7916,10 +7923,10 @@
 }
 .game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm {
   box-sizing: border-box;
-  flex: 0 0 96px;
-  width: 96px;
-  min-width: 80px;
-  max-width: 110px;
+  flex: 0 0 64px;
+  width: 64px;
+  min-width: 64px;
+  max-width: 64px;
   min-height: 44px;
   padding-inline: 6px;
 }

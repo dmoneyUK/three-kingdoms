@@ -11046,6 +11046,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                 {combinedChoiceSelection.choices.map((choice) => <button
                   key={choice.id}
                   type="button"
+                  data-suit-color={choice.id === "♥" || choice.id === "♦" ? "red" : "black"}
                   className={triggerChoice === choice.id ? "selected" : ""}
                   disabled={triggerControlsDisabled}
                   aria-pressed={triggerChoice === choice.id}

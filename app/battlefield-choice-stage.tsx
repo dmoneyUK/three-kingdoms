@@ -273,6 +273,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
             obstacles: obstacleRects,
             viewportHeight: viewportBottom,
             minimumTop: fixedUpperH4Rect ? fixedUpperH4Rect.bottom + margin : undefined,
+            preferUpper: isFanjianCombinedChoice,
             margin,
           };
           const safeTop = findBattlefieldChoiceSafeTopOffset(safePlacement);
@@ -529,6 +530,7 @@ type VerticalPlacementInput = {
   obstacles: readonly BattlefieldChoiceRect[];
   viewportHeight: number;
   minimumTop?: number;
+  preferUpper?: boolean;
   margin?: number;
 };
 
@@ -539,6 +541,7 @@ export function findBattlefieldChoiceSafeTopOffset({
   obstacles,
   viewportHeight,
   minimumTop: requestedMinimumTop,
+  preferUpper = false,
   margin = 6,
 }: VerticalPlacementInput): number | null {
   const minimumTop = Math.max(table.top + margin, margin, requestedMinimumTop ?? -Infinity);
@@ -556,7 +559,7 @@ export function findBattlefieldChoiceSafeTopOffset({
       ];
     }).filter((range) => range.maximum >= range.minimum);
   }
-  const desiredTop = minimumTop + Math.max(0, maximumTop - minimumTop) / 2;
+  const desiredTop = minimumTop + (preferUpper ? 0 : Math.max(0, maximumTop - minimumTop) / 2);
   const nearestSafeTop = safeRanges
     .map((range) => Math.max(range.minimum, Math.min(range.maximum, desiredTop)))
     .sort((first, second) => Math.abs(first - desiredTop) - Math.abs(second - desiredTop))[0];

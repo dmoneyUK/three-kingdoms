@@ -237,8 +237,8 @@ test("Fanjian cancels on skill retap and submits one compact combined choice on 
   await expect(stage.getByRole("button", { name: "Confirm", exact: true })).toHaveCount(1);
   await expect(confirm).toBeDisabled();
   const confirmGeometry = await confirm.boundingBox();
-  expect(confirmGeometry.width).toBeGreaterThanOrEqual(80);
-  expect(confirmGeometry.width).toBeLessThanOrEqual(110);
+  expect(confirmGeometry.width).toBeGreaterThanOrEqual(60);
+  expect(confirmGeometry.width).toBeLessThanOrEqual(70);
   expect(confirmGeometry.height).toBeGreaterThanOrEqual(44);
   await suitGroup.getByRole("button", { name: "Heart", exact: true }).click();
   await expect(confirm).toBeDisabled();
