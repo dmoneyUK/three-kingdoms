@@ -244,3 +244,112 @@ test("new public Attack and Steal replace settled Fanjian H4/CardFace ownership 
   await expect(page.locator(".public-card-display-journey-copy")).toContainText("Player 1 played Steal on Player 2.");
   await expect(page.locator('.public-interaction-event-announcement[data-public-interaction-event-id="browser-fanjian-settlement"]')).toHaveCount(0);
 });
+
+test("one committed Fanjian result stays visible for three seconds without hiding its reveal", async ({ page }) => {
+  await page.setViewportSize({ width: 440, height: 766 });
+  await page.goto("/tests/browser/fixture.html?state=fanjian-combined&count=4&targetHandCount=7&hero=zhou-yu");
+  await page.addStyleTag({ content: ".play-table { height: 474px !important; min-height: 474px !important; max-height: 474px !important; }" });
+  await publishFanjianActivation(page);
+  await publishFanjianSettlement(page);
+
+  const result = page.locator('.public-interaction-event-announcement[data-public-interaction-event-id="browser-fanjian-settlement"]');
+  await expect(result).toContainText("Player 2 guessed ♦; revealed 2♣ Nio Shield.");
+  const samples = await page.evaluate(async () => {
+    const startedAt = performance.now();
+    const rows = [];
+    while (performance.now() - startedAt < 3_500) {
+      const section = document.querySelector('[data-public-interaction-event-id="browser-fanjian-settlement"]');
+      const copy = section?.querySelector('[data-public-card-announcement="true"]');
+      const rect = (element) => {
+        if (!element) return null;
+        const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+        return { left, top, right, bottom, width, height };
+      };
+      const overlapsRects = (a, b) => Boolean(a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
+      const style = copy ? getComputedStyle(copy) : null;
+      const topSeats = [...(document.querySelectorAll(".play-table .player-board > [data-player-anchor]") ?? [])]
+        .map((seat) => ({ element: seat, rect: seat.getBoundingClientRect() }))
+        .filter(({ rect }) => rect.width > 0 && rect.height > 0)
+        .sort((first, second) => first.rect.top - second.rect.top);
+      const upperSeats = topSeats.filter(({ rect }) => rect.top <= topSeats[0]?.rect.top + 24);
+      const upperSlotBottom = Math.max(0, ...upperSeats.map(({ rect }) => rect.bottom + 6 + 72));
+      const parkedMiniatures = [...document.querySelectorAll('.play-table .public-card-journey-card[data-public-card-journey-phase="parked"]')]
+        .map((card) => ({ element: card, rect: card.getBoundingClientRect(), actorId: card.dataset.publicCardJourneyActorId ?? "" }))
+        .filter(({ rect, actorId }) => rect.width > 0 && rect.height > 0 && upperSeats.some(({ element }) => element.dataset.playerAnchor === actorId))
+        .sort((first, second) => Number(first.element.dataset.publicCardJourneyOrdinal ?? 0) - Number(second.element.dataset.publicCardJourneyOrdinal ?? 0));
+      const actualFirstMiniBottom = parkedMiniatures.length
+        ? Math.max(...upperSeats.map(({ element }) => {
+          const actorMini = parkedMiniatures.find((mini) => mini.actorId === element.dataset.playerAnchor);
+          return actorMini?.rect.bottom ?? element.getBoundingClientRect().bottom + 6 + 72;
+        }))
+        : upperSlotBottom;
+      const firstMiniRects = upperSeats.map(({ element }) => {
+        const actorMini = parkedMiniatures.find((mini) => mini.actorId === element.dataset.playerAnchor);
+        if (actorMini) return actorMini.rect;
+        const seatRect = element.getBoundingClientRect();
+        const left = seatRect.left + seatRect.width / 2 - 24;
+        const top = seatRect.bottom + 6;
+        return { left, top, right: left + 48, bottom: top + 72 };
+      });
+      const card = document.querySelector('.public-zone-transition-layer .active-table-reveal[data-public-zone-transition-event-id="browser-fanjian-public-reveal"]');
+      const cardRect = rect(card);
+      const h4Rect = rect(copy);
+      rows.push({
+        elapsed: performance.now() - startedAt,
+        visible: Boolean(copy && style?.visibility === "visible" && style.display !== "none" && h4Rect?.width > 0 && h4Rect?.height > 0),
+        key: copy?.dataset.publicCardAnnouncementCopyKey ?? null,
+        h4Rect,
+        firstMiniBottom: actualFirstMiniBottom,
+        firstMiniSource: parkedMiniatures.length ? "parked-dom" : "reserved-slot",
+        cardRect,
+        cardOpacity: card ? Number(getComputedStyle(card).opacity) : null,
+        cardRoute: card?.dataset.publicRevealH4Route ?? null,
+        cardOverlapsH4: overlapsRects(h4Rect, cardRect),
+        cardOverlapsMini: firstMiniRects.some((mini) => overlapsRects(mini, cardRect)),
+        h4Delivery: copy?.dataset.publicCardAnnouncementDelivery ?? null,
+        h4Placement: copy?.dataset.publicCardAnnouncementPlacement ?? null,
+        h4Stability: copy?.dataset.publicCardAnnouncementStability ?? null,
+        h4FailureReason: copy?.dataset.publicCardAnnouncementFailureReason ?? null,
+        h4FailureObstacles: copy?.dataset.publicCardAnnouncementFailureObstacles ?? null,
+        pacRect: rect(document.querySelector("[data-public-activity-chip='true']")),
+      });
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    return rows;
+  });
+  const visibleRows = samples.filter((sample) => sample.visible);
+  const firstVisible = visibleRows[0];
+  const sustained = firstVisible
+    ? samples.filter((sample) => sample.elapsed >= firstVisible.elapsed && sample.elapsed <= firstVisible.elapsed + 3_000)
+    : [];
+  const keys = [...new Set(visibleRows.map((sample) => sample.key))];
+  const finalVisible = samples.at(-1)?.visible ?? false;
+  const h4MiniGap = firstVisible?.h4Rect ? firstVisible.h4Rect.top - firstVisible.firstMiniBottom : null;
+  const stableRevealSamples = samples.filter((sample) => sample.visible && sample.elapsed > 700 && sample.cardOpacity !== null && sample.cardOpacity > 0.95);
+  const overlaps = (a, b) => Boolean(a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
+  const revealH4Overlap = stableRevealSamples.some((sample) => overlaps(sample.h4Rect, sample.cardRect));
+
+  expect(sustained.length, JSON.stringify({ firstVisible, tail: samples.slice(-6) })).toBeGreaterThan(100);
+  expect(sustained.every((sample) => sample.visible), JSON.stringify(sustained.filter((sample) => !sample.visible).slice(0, 8))).toBe(true);
+  expect(keys, JSON.stringify(keys)).toHaveLength(1);
+  expect(finalVisible, JSON.stringify(samples.slice(-6))).toBe(true);
+  expect(h4MiniGap, JSON.stringify({ firstVisible, h4MiniGap })).toBeGreaterThanOrEqual(4);
+  expect(h4MiniGap, JSON.stringify({ firstVisible, h4MiniGap })).toBeLessThanOrEqual(8);
+  expect(revealH4Overlap, JSON.stringify(stableRevealSamples.filter((sample) => overlaps(sample.h4Rect, sample.cardRect)).slice(0, 4))).toBe(false);
+  const visibleRevealSamples = samples.filter((sample) => sample.cardOpacity !== null && sample.cardOpacity > 0.05);
+  expect(visibleRevealSamples.every((sample) => !sample.cardOverlapsH4), JSON.stringify(visibleRevealSamples.filter((sample) => sample.cardOverlapsH4).slice(0, 8))).toBe(true);
+  expect(visibleRevealSamples.every((sample) => !sample.cardOverlapsMini), JSON.stringify(visibleRevealSamples.filter((sample) => sample.cardOverlapsMini).slice(0, 8))).toBe(true);
+  expect(visibleRevealSamples.every((sample) => sample.cardRoute === "left" || sample.cardRoute === "right"), JSON.stringify(visibleRevealSamples.slice(0, 8).map((sample) => sample.cardRoute))).toBe(true);
+
+  const originalViewerId = await page.evaluate(() => window.__browserRoom.meId);
+  await page.evaluate(() => window.__updateBrowserRoom((room) => ({
+    ...room,
+    meId: room.players.find((player) => player.id !== room.meId)?.id ?? room.meId,
+    myHand: [],
+    isMyAction: false,
+  })));
+  const switchedH4 = page.locator('.public-interaction-event-announcement[data-public-interaction-event-id="browser-fanjian-settlement"] [data-public-card-announcement="true"]');
+  await expect(switchedH4).toBeVisible();
+  await expect(switchedH4).toHaveAttribute("data-public-card-announcement-copy-key", keys[0]);
+  await page.evaluate((viewerId) => window.__updateBrowserRoom((room) => ({ ...room, meId: viewerId })), originalViewerId);
+});

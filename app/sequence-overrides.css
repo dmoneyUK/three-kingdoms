@@ -80,6 +80,9 @@
 .active-table-reveal.public-hand-transfer {
   animation: revealedCardToHand var(--played-card-display) ease-in-out both !important;
 }
+.active-table-reveal.public-hand-transfer.public-hand-transfer-avoids-h4 {
+  animation-name: revealedCardToHandAroundH4 !important;
+}
 
 /* A single visible equipment card flies to the measured rack slot. The rack
    placeholder retains its dimensions but stays hidden until the reveal ends. */
@@ -128,6 +131,16 @@
 @keyframes revealedCardToHand {
   0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
   10%, 85% { left: var(--public-reveal-x, 50%); top: var(--public-reveal-y, 50%); opacity: 1; transform: scale(1); }
+  100% { left: var(--hand-x, 50%); top: var(--hand-y, 50%); opacity: 0; transform: scale(.12); }
+}
+
+@keyframes revealedCardToHandAroundH4 {
+  0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
+  5% { left: var(--public-h4-bypass-x, 50%); top: var(--origin-y, 50%); opacity: 1; transform: scale(.25); }
+  10%, 88% { left: var(--public-h4-bypass-x, 50%); top: var(--public-h4-bypass-y, 50%); opacity: 1; transform: scale(.25); }
+  15% { left: var(--public-reveal-x, 50%); top: var(--public-h4-bypass-y, 50%); opacity: 1; transform: scale(.25); }
+  25%, 85% { left: var(--public-reveal-x, 50%); top: var(--public-reveal-y, 50%); opacity: 1; transform: scale(1); }
+  93% { left: var(--public-h4-bypass-x, 50%); top: var(--public-h4-exit-y, 50%); opacity: 1; transform: scale(.25); }
   100% { left: var(--hand-x, 50%); top: var(--hand-y, 50%); opacity: 0; transform: scale(.12); }
 }
 
