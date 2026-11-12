@@ -368,7 +368,7 @@ test("Fanjian chooser stays usable in the 440x766 H4-to-PAC corridor and private
       background: style.backgroundColor,
       color: style.color,
       borderWidth: style.borderTopWidth,
-      marker: getComputedStyle(button, "::after").content.replace(/[\"']/g, ""),
+      marker: getComputedStyle(button, "::after").content.replace(/["']/g, ""),
     };
   });
   await spadeSuit.click();
@@ -379,7 +379,7 @@ test("Fanjian chooser stays usable in the 440x766 H4-to-PAC corridor and private
       background: style.backgroundColor,
       color: style.color,
       borderWidth: style.borderTopWidth,
-      marker: getComputedStyle(button, "::after").content.replace(/[\"']/g, ""),
+      marker: getComputedStyle(button, "::after").content.replace(/["']/g, ""),
     };
   });
   expect(redSelectedStyle).toEqual({ pressed: "true", background: "rgb(48, 36, 17)", color: "rgb(255, 244, 209)", borderWidth: "2px", marker: "✓" });

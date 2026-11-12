@@ -4,9 +4,9 @@
 
 ## FANJIAN-CHOOSER-VISUAL-POLISH-01 / §10.43
 
-**状态：当前唯一执行任务；实现和聚焦验证完成，代码尚未提交。**
+**状态：当前唯一执行任务；实现和聚焦验证通过。精确 SHA `164d7ebc` CI 仅 Lint job 失败，API/browser job 通过、deploy 因 lint 被跳过；多余正则转义已修复， targeted ESLint 通过，待 push 最小 CI 修复。**
 
-**设计依据：** 最新 `docs/UX2-refine.md` revision `2026-11-12 21:30 UTC`，§10.43。分支 `codex/ux2-judgement-seat-01`，目标 `origin/ux-v2`；当前基线 `4bd532e697c7bf51445d231a75921bad499692a0`。
+**设计依据：** 最新 `docs/UX2-refine.md` revision `2026-11-12 21:30 UTC`，§10.43。分支 `codex/ux2-judgement-seat-01`，目标 `origin/ux-v2`；当前基线 `ddbded696133c4f49d4c8a2e35691f89558cf137`。
 
 ### 必须完成的修正
 
@@ -20,7 +20,7 @@
 - 所有本地 UI/browser 测试累计最多 5 分钟；超时即停止并记为 SKIPPED。附带最小相关单测、差异检查；提交前核查远端最新 CI，提交后验证精确 SHA 全部 Actions、部署及生产 smoke。
 - 交付标记 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`；不得自行验收。
 
-**恢复点：** 检查 Fanjian 组合选择器的 JSX/辅助属性，以及 `app/sequence-overrides.css` 中花色 selected 与 black-base 的实际级联顺序；从当前已部署基线实现，不重做 §10.42。
+**恢复点：** 差异检查并提交/push 最小 lint 修复；等待修复 SHA 的全部 required jobs、Worker deployment 和生产 smoke，记录实际 Worker version。完成后标记为 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW` 并停止本次指定序列。
 
 ### 本任务进度（UTC）
 
@@ -29,4 +29,7 @@
 - 21:41 — 同一 440×474 单场回归第3次运行 7.29 秒，通过。红/黑按钮均验证深底、浅字、2px边框、勾号和 `aria-pressed`；键盘焦点为可见 3px outline；禁用 Confirm 外框44px、可见金色面30px、透明按钮底层不覆盖手牌轨；TEST SWITCH 观察者隐私正常，选择花色与1张隐藏位置后仅提交一次。累计本地 UI/browser 约21.42秒。
 - 21:42 — 将选中红/黑的 `aria-pressed=true` 最终覆盖移至黑色基础样式之后，符合规定 cascade 顺序；第四次同一场景运行 7.58 秒通过。当前累计本地 UI/browser 约29.00秒，低于五分钟上限。
 - 21:43 — 提交前 fetch 确认远端仍为 `ddbded69`，工作树只含本任务 CSS/浏览器用例/HANDOVER，`git diff --check` 通过。最新应用代码 push-run `43309874718`（`4bd532e6`）全绿并已部署；其后 `ddbded69` 只改 Markdown，依 workflow `paths-ignore: **/*.md` 未触发新 run。此次将含应用代码变化并触发精确 SHA CI。
+- 21:43 — §10.43 commit `164d7ebc30e687f21269d89086407261db6f8924` 已 push 到 `ux-v2`；精确 SHA Actions [43313051528](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43313051528) 已启动，CI、Worker version 与生产 smoke 待结果。
+- 21:45 — 精确 SHA Actions [43313051528](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43313051528) 完结失败：Lint 因新回归用例的两处无用转义报 no-useless-escape；API 与 browser smoke 成功，deploy 跳过。
+- 21:46 — 将正则改为 `/["']/g`；`npx eslint tests/browser/fanjian-combined-choice.spec.mjs` 退出码0。只改测试源码断言写法，不改 UI/行为；本地 UI/browser 测试仍共约29秒。
 - 当前任务基线含文档交接提交 `ddbded696133c4f49d4c8a2e35691f89558cf137`（Markdown-only，Action workflow 按 `**/*.md` 忽略）；应用代码验证基线为已全绿部署的 `4bd532e697c7bf51445d231a75921bad499692a0`。下一步复核最终差异/`git diff --check`，提交前再次核对远端头部和最近 push-triggered CI；提交 §10.43 后等待其精确 SHA 完整 CI、Worker 部署及生产 smoke。
