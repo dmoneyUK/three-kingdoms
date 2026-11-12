@@ -1,5 +1,7 @@
 # WTK Autonomous UI / Layout Roadmap and History
 
+2026-11-12: §10.39 phone typography follow-up shipped in `954bc9ff88b83e2de516fb5f3a958be2f3120dc6`. The focused 390×844 case passed, including Borrowed Sword word boundaries and long-name fit. Exact-SHA [Actions 43129437252](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43129437252) passed Lint/fast, API, browser smoke, D1, deployment and production smoke; Worker `866114ae-e87a-4e1b-8ec9-225e094fc9cc`, direct health available. **PENDING OWNER iPHONE REVIEW.**
+
 2026-11-12: §10.37 phone feedback (red/black suits, 44×66 anonymous backs, 64×44 Confirm, safe upper placement) shipped in `cb162664550f81d6a6aa783a06d5bc7842709737`. The focused 390×844 and 440×766 browser cases passed 2/2. Exact-SHA [Actions 43127473342](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43127473342) passed on attempt 2 after the first API shard's Wrangler error and cascading `fetch failed`; deployment and production smoke passed, Worker `8758068c-f848-4d1b-bc04-95321c2edee8`, direct health available. **PENDING OWNER iPHONE REVIEW.**
 
 Repository: `dmoneyUK/three-kingdoms`  
