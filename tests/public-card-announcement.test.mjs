@@ -434,6 +434,27 @@ test("public announcement arbitration uses unique committed checkpoints and reti
   ], [...timeline, "hero-cost"]), null);
 });
 
+test("a Fanjian result remains readable until a later unique public card play", () => {
+  const result = { id: "fanjian-result" };
+  const timeline = ["fanjian-root", "fanjian-reveal", "fanjian-result", "fanjian-damage"];
+  const candidate = {
+    value: result,
+    rootEventId: "fanjian-root",
+    checkpointEventId: "fanjian-damage",
+    priority: 0,
+    supersedeOnNewerPublicPlay: true,
+  };
+
+  assert.equal(selectPublicAnnouncementCandidate([candidate], timeline), result,
+    "the public result remains current without a later committed card play");
+  assert.equal(selectPublicAnnouncementCandidate([candidate], [...timeline, "informational-note"]), result,
+    "informational messages do not retire the result");
+  assert.equal(selectPublicAnnouncementCandidate([candidate], [...timeline, "attack-root"], ["attack-root"]), null,
+    "a unique later public Attack or Steal root retires the old result");
+  assert.equal(selectPublicAnnouncementCandidate([candidate], [...timeline, "attack-root", "attack-root"], ["attack-root"]), result,
+    "ambiguous duplicate event identity cannot be used as chronology proof");
+});
+
 test("announcement copy identity is viewer-independent while geometry identity is viewer-scoped", () => {
   const identity = {
     roomCode: "ROOM",

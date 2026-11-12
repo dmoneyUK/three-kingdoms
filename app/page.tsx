@@ -7014,6 +7014,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (!source?.name || !target?.name) return null;
     return { action, rootEvent, source, target };
   })();
+  const publicAnnouncementTimelineEventIds = room.timeline
+    .filter((event) => event.presentation !== false && !event.privateToPlayerId)
+    .map((event) => event.id);
+  const laterPublicCardPlayEventIds = room.timeline.flatMap((event) =>
+    event.type === "card" && event.action === "play" && event.presentation !== false && !event.privateToPlayerId
+      ? [event.id]
+      : []);
   const skillEffectSettlementCandidate = (() => {
     const settlement = skillEffectSettlements.find((candidate) => candidate.eventId === activeSkillEffectSettlement?.eventId);
     if (!settlement || settlement.semantics !== "PROVEN" || settlement.effectId !== "zhou_yu_fanjian") return null;
@@ -7079,6 +7086,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const source = room.players.find((player) => player.id === settlement.sourceId);
     const target = room.players.find((player) => player.id === settlement.targetId);
     if (!source?.name || !target?.name) return null;
+    const currentSettlementEventId = selectPublicAnnouncementCandidate([
+      {
+        value: settlement.eventId,
+        rootEventId: settlement.rootEventId,
+        checkpointEventId: settlement.damage.eventId ?? settlement.eventId,
+        priority: 0,
+        supersedeOnNewerPublicPlay: true,
+      },
+    ], publicAnnouncementTimelineEventIds, laterPublicCardPlayEventIds);
+    if (currentSettlementEventId !== settlement.eventId) return null;
     return { action: settlement, rootEvent, settlementEvent, revealEvent, source, target, exiting: activeSkillEffectSettlement?.exiting === true };
   })();
   const dismantleSettlementCandidate = (() => {
@@ -8739,10 +8756,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ?? action.response?.eventId
     ?? action.publicCardEffectFrame?.eventId
     ?? action.rootEventId;
-  const laterPublicCardPlayEventIds = room.timeline.flatMap((event) =>
-    event.type === "card" && event.action === "play" && event.presentation !== false && !event.privateToPlayerId
-      ? [event.id]
-      : []);
   const livePublicCardAction = selectPublicAnnouncementCandidate([
     ...(nonHeroLivePublicCardAction ? [{
       value: nonHeroLivePublicCardAction,
@@ -8759,7 +8772,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       // CardFace; suppressAnnouncement is handled by the shared renderer.
       supersedeOnNewerPublicPlay: true,
     }] : []),
-  ], room.timeline.filter((event) => event.presentation !== false && !event.privateToPlayerId).map((event) => event.id), laterPublicCardPlayEventIds);
+  ], publicAnnouncementTimelineEventIds, laterPublicCardPlayEventIds);
   const heldAttackDodgeReadAction = visibleActiveAttackDodgeSettlement
     && visibleActiveAttackDodgeSettlement.phase !== "complete"
     && visibleActiveAttackDodgeSettlement.action.settlement?.eventId === visibleActiveAttackDodgeSettlement.eventId
@@ -8822,10 +8835,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           && fact.effect?.label === "Borrowed Sword"
       ))
     .sort((left, right) => left.order - right.order);
-  const currentInteractionFact = room.presentationSnapshot?.interaction?.stage !== "NEGATION"
+  const currentInteractionFactCandidate = room.presentationSnapshot?.interaction?.stage !== "NEGATION"
     ? (activeEvent ? narratableInteractionFacts.find((fact) => fact.eventId === activeEvent.id) : null)
       ?? narratableInteractionFacts.at(-1)
       ?? room.presentationSnapshot?.retainedPublicEvent
+    : null;
+  const currentInteractionFact = currentInteractionFactCandidate
+    ? selectPublicAnnouncementCandidate([
+      {
+        value: currentInteractionFactCandidate,
+        rootEventId: currentInteractionFactCandidate.rootEventId ?? currentInteractionFactCandidate.eventId,
+        checkpointEventId: currentInteractionFactCandidate.eventId,
+        priority: 1,
+        supersedeOnNewerPublicPlay: true,
+      },
+    ], publicAnnouncementTimelineEventIds, laterPublicCardPlayEventIds)
     : null;
   const activeEventSupersedesDiscard = Boolean(activeEvent && activeEvent.id !== latestPublicDiscardAnnouncement?.eventId
     && Number.isSafeInteger((activeEvent as GameEvent & { publicSequence?: number }).publicSequence)
@@ -9364,8 +9388,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         && (!duelJourneyOwnsRootAndAttacks || Number.isInteger(response.ordinal));
     })
     : [];
-  const activePublicCardSettlementEventId = publicCardDisplayAction?.settlement?.eventId ?? null;
-  const activePublicCardSettlementExiting = publicCardDisplayAction?.settlement?.exiting === true;
   const visibleNegationReadAction = singleTargetNegationActionKey
     && (publicCardDisplayAction?.key === singleTargetNegationActionKey
       || publicCardDisplayAction?.cardKind === "Duel" && publicCardDisplayAction.rootEventId === duelNegationProofCandidate?.rootEvent.id)
@@ -9469,20 +9491,22 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     return () => window.clearTimeout(timer);
   }, [activeNegationReadSettled, activePublicNegationRead]);
   useEffect(() => {
-    if (!activePublicCardSettlementEventId || !publicCardDisplayReady || activeSkillEffectSettlement?.eventId !== activePublicCardSettlementEventId || activeSkillEffectSettlement.exiting) return;
+    const settlementEventId = activeSkillEffectSettlement?.eventId;
+    if (!settlementEventId || activeSkillEffectSettlement.exiting) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const timer = window.setTimeout(() => {
-      setActiveSkillEffectSettlement((current) => current?.eventId === activePublicCardSettlementEventId
+      setActiveSkillEffectSettlement((current) => current?.eventId === settlementEventId
         ? reducedMotion ? null : { ...current, exiting: true }
         : current);
     }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
-  }, [activePublicCardSettlementEventId, activeSkillEffectSettlement?.eventId, activeSkillEffectSettlement?.exiting, publicCardDisplayReady]);
+  }, [activeSkillEffectSettlement?.eventId, activeSkillEffectSettlement?.exiting]);
   useEffect(() => {
-    if (!activePublicCardSettlementExiting || !activePublicCardSettlementEventId || activeSkillEffectSettlement?.eventId !== activePublicCardSettlementEventId) return;
-    const timer = window.setTimeout(() => setActiveSkillEffectSettlement((current) => current?.eventId === activePublicCardSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
+    const settlementEventId = activeSkillEffectSettlement?.eventId;
+    if (!settlementEventId || !activeSkillEffectSettlement.exiting) return;
+    const timer = window.setTimeout(() => setActiveSkillEffectSettlement((current) => current?.eventId === settlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
-  }, [activePublicCardSettlementEventId, activePublicCardSettlementExiting, activeSkillEffectSettlement?.eventId]);
+  }, [activeSkillEffectSettlement?.eventId, activeSkillEffectSettlement?.exiting]);
   const activeTargetCardSettlementOutcome = publicCardDisplayAction?.settlement?.outcome === "DISMANTLE_RESOLVED"
     || publicCardDisplayAction?.settlement?.outcome === "STEAL_RESOLVED"
     ? publicCardDisplayAction.settlement.outcome
