@@ -6765,7 +6765,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
       actionLabels: currentTriggerOptions.map((option) => option.label.trim()),
       allowSkip: currentTriggerOptions.some(triggerAllowsDecline) }
     : null;
-  const presentationSnapshot = { ...composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null, publicNextDecision, viewerNegationChoice }), publicDrawPhaseDecision };
+  const presentationSnapshot = composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null, publicNextDecision, publicDrawPhaseDecision, viewerNegationChoice });
   return {
     ...(attackDodgeProjectionDiagnostics ? { attackDodgeProjectionDiagnostics } : {}),
     serverNow,

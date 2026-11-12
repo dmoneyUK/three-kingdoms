@@ -70,6 +70,7 @@ function assertProjectionMatchesEngine(code, token) {
       actionRevision: view.actionRevision,
       viewerId: view.meId,
       publicNextDecision: serverDecision,
+      publicDrawPhaseDecision: view.presentationSnapshot.publicDrawPhaseDecision,
       viewerNegationChoice: view.presentationSnapshot.viewerNegationChoice,
     });
     assert.deepEqual(view.presentationSnapshot, expectedSnapshot, "route PresentationSnapshot is composed from the persisted engine projection");

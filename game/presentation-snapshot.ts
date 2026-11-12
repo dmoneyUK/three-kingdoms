@@ -153,6 +153,7 @@ export type PresentationSnapshotInput = {
   actionRevision: string | null;
   viewerId?: string | null;
   publicNextDecision?: unknown;
+  publicDrawPhaseDecision?: unknown;
   viewerNegationChoice?: unknown;
 };
 
@@ -166,6 +167,17 @@ const REST_BOUNDARY: PresentationStableBoundary = {
 
 function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
+}
+
+function provenPublicDrawPhaseDecision(value: unknown): PresentationPublicDrawPhaseDecision | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Partial<PresentationPublicDrawPhaseDecision>;
+  if (candidate.semantics !== "PROVEN" || candidate.visibility !== "PUBLIC"
+    || !nonEmptyString(candidate.actorId) || typeof candidate.allowSkip !== "boolean"
+    || !Array.isArray(candidate.actionLabels) || candidate.actionLabels.length === 0
+    || !candidate.actionLabels.every((label) => typeof label === "string" && label.trim().length > 0 && label.length <= 160)) return null;
+  return { semantics: "PROVEN", visibility: "PUBLIC", actorId: candidate.actorId,
+    actionLabels: candidate.actionLabels.map((label) => label.trim()), allowSkip: candidate.allowSkip };
 }
 
 function nonNegativeInteger(value: unknown): value is number {
@@ -1704,6 +1716,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
         retainedPublicEventFacts: (input.presentationV2.retainedPublicEventFacts ?? [])
           .map(validateRetainedPublicEvent).filter((fact): fact is PublicPresentationEvent => Boolean(fact)) } : {}),
     publicNextDecision: semantic.nextDecision,
+    publicDrawPhaseDecision: provenPublicDrawPhaseDecision(input.publicDrawPhaseDecision),
     viewerNegationChoice: acceptedViewerNegationChoice,
     transitionEvents: [],
   };
