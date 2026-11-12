@@ -1,7 +1,5 @@
 # HANDOVER — 当前唯一任务
 
-§10.42 最近交付：commit `4bd532e697c7bf51445d231a75921bad499692a0`；Actions 43309874718 全绿；Worker `2d6cb510-04ea-4daf-9a4a-fed1daa6ec8e`，生产 smoke 通过；待 owner iPhone 复审。
-
 ## FANJIAN-CHOOSER-VISUAL-POLISH-01 / §10.43
 
 **状态：当前唯一交接项；IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。** 最终代码 SHA `965bd5d7c86a0ef1eda10aadc2d47c7f5a3a7d9c` 已推送并部署；未标记验收通过。
@@ -37,3 +35,4 @@
 - 21:56 — Actions [43313687891](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43313687891) 的 attempt 2 中，API tests 通过；Lint 与 Browser startup/room smoke 通过；同一 SHA 的 deploy job 已开始。下一步核实 deploy 结果、Worker version 和生产 smoke。
 - 21:58 — 精确 SHA Actions `43313687891` attempt 2 全部 required jobs 通过。deploy 日志记录 Worker `ff22e13c-5290-449b-9eef-c3ba9178e7d6`，GitHub 生产 smoke 通过；21:58:59 UTC 直查 `/` HTTP 200、`/api/health` HTTP 200 / `ok:true`。
 - §10.43 交付代码由 `164d7ebc30e687f21269d89086407261db6f8924` 与 lint 修正 `965bd5d7c86a0ef1eda10aadc2d47c7f5a3a7d9c` 组成；焦点浏览器回归 7.58 秒通过，全部本地 UI 时间约29秒。§10.43 已从设计 Table A 移至 Table B，状态待 owner iPhone 复审；路线图已记录实际结果。本文件只保留此交接项，不选择下一任务。
+- 22:02 — 设计 Table A/B、§10.43 状态、路线图及当时的 HANDOVER 版本已通过 Markdown-only commit `c9f7097820dbbcaa4d46732a8d5957fd42181b73` 推送。`ux-v2` Actions 列表没有为该提交生成新 run（工作流忽略 Markdown）；精确代码 SHA `965bd5d7…` 的 Actions `43313687891` attempt 2 是本任务最后一次且全绿的 required CI/deploy。随后清理本文件，仅保留当前 §10.43 交接项。
