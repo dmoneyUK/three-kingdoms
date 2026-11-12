@@ -14,7 +14,7 @@ export function CardFace({ card, settlementCardId, harvestChoice = false, public
   const displayName = harvestChoice && card.kind === "Overindulgence"
     ? "Overindul\u00adgence"
     : definition.name;
-  return <div className={`played-card ${card.kind.toLowerCase()} ${suitColorClass(card.suit)}`} data-settlement-card-id={settlementCardId} data-public-card-effect-frame-card-id={publicEffectFrameCardId}>
+  return <div className={`played-card ${card.kind.toLowerCase()} ${suitColorClass(card.suit)}`} data-card-title-fit={definition.name.length > 20 ? "long" : undefined} data-settlement-card-id={settlementCardId} data-public-card-effect-frame-card-id={publicEffectFrameCardId}>
     <i>{card.rank}<small>{card.suit}</small></i>
     <b className="card-name-mark">{displayName}</b>
     <strong>{definition.category} card</strong>

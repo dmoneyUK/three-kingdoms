@@ -7752,13 +7752,18 @@
 .card-details-illustration > .played-card .card-name-mark,
 .deck-reorder-card-face > .played-card .card-name-mark,
 .discard-card-row .played-card .card-name-mark {
-  max-width: 88%;
+  max-width: 96%;
   font-size: clamp(7px, 3vw, 16px);
   line-height: 1.04;
   letter-spacing: normal;
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
   word-break: normal;
-  hyphens: auto;
+  hyphens: none;
+}
+
+.played-card[data-card-title-fit="long"] { --card-title-cqi: 10.5; }
+:is(.public-result-card, .active-table-reveal, .public-card-journey-card[data-public-card-journey-size="reveal"], .public-card-effect-frame-material, .target-card-picker-card, .card-details-illustration, .deck-reorder-card-face, .discard-card-row) .played-card[data-card-title-fit="long"] .card-name-mark {
+  -webkit-line-clamp: 4;
 }
 
 .public-result-card > .played-card > strong,
@@ -7786,14 +7791,16 @@
 /* The local Hand is only 68px wide on supported phone layouts. Keep full
    names readable within that existing footprint while preserving hit areas. */
 .local-hand-rail .card-slot .game-card .card-name-mark {
-  max-width: 92%;
+  max-width: 100%;
   font-size: clamp(8px, 2.8vw, 11px) !important;
   line-height: 1;
   letter-spacing: normal;
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
   word-break: normal;
-  hyphens: auto;
+  hyphens: none;
+  -webkit-line-clamp: 4;
 }
+.local-hand-rail .card-slot .game-card { padding-inline: 2px; }
 .local-hand-rail .card-slot .game-card > strong {
   width: 100%;
   max-width: 100%;
@@ -7822,7 +7829,7 @@
   .card-details-illustration > .played-card .card-name-mark,
   .deck-reorder-card-face > .played-card .card-name-mark,
   .discard-card-row .played-card .card-name-mark {
-    font-size: clamp(6px, 10.5cqi, 22px);
+    font-size: clamp(6px, calc(var(--card-title-cqi, 13) * 1cqi), 22px);
   }
   .public-result-card > .played-card > strong,
   .active-table-reveal .played-card > strong,
@@ -7839,10 +7846,22 @@
     font-size: clamp(4px, 7.5cqi, 10px);
   }
   .local-hand-rail .card-slot .game-card .card-name-mark {
-    font-size: clamp(8px, 15.5cqi, 13px) !important;
+    font-size: clamp(10px, 17cqi, 13px) !important;
+  }
+  .private-draw-row .played-card .card-name-mark {
+    font-size: clamp(10px, 18cqi, 18px);
+  }
+  .private-draw-row .played-card[data-card-title-fit="long"] .card-name-mark {
+    font-size: clamp(9px, 14cqi, 16px);
+    -webkit-line-clamp: 4;
+  }
+  .private-draw-row .played-card > strong {
+    font-size: clamp(5.5px, 9cqi, 9px);
+    letter-spacing: normal;
   }
   .local-hand-rail .card-slot .game-card > strong {
-    font-size: clamp(5.5px, 8.8cqi, 8px);
+    font-size: clamp(6px, 9.2cqi, 7.5px);
+    letter-spacing: -.03em;
   }
 }
 
