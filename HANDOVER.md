@@ -1,26 +1,26 @@
 # HANDOVER — 当前唯一任务
 
-上一任务 §10.42 于 2026-11-12 已交付：commit `4bd532e697c7bf51445d231a75921bad499692a0`；精确 SHA [Actions 43309874718](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43309874718) 全绿；Worker `2d6cb510-04ea-4daf-9a4a-fed1daa6ec8e` 已部署，生产 smoke 和 `/api/health` 通过。状态：`IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`，未自行验收。
+§10.42 最近交付：commit `4bd532e697c7bf51445d231a75921bad499692a0`；Actions 43309874718 全绿；Worker `2d6cb510-04ea-4daf-9a4a-fed1daa6ec8e`，生产 smoke 通过；待 owner iPhone 复审。
 
 ## FANJIAN-CHOOSER-VISUAL-POLISH-01 / §10.43
 
-**状态：当前唯一执行任务；实现和聚焦验证通过。精确 SHA `164d7ebc` CI 仅 Lint job 失败，API/browser job 通过、deploy 因 lint 被跳过；多余正则转义已修复， targeted ESLint 通过，待 push 最小 CI 修复。**
+**状态：当前唯一交接项；IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。** 最终代码 SHA `965bd5d7c86a0ef1eda10aadc2d47c7f5a3a7d9c` 已推送并部署；未标记验收通过。
 
-**设计依据：** 最新 `docs/UX2-refine.md` revision `2026-11-12 21:30 UTC`，§10.43。分支 `codex/ux2-judgement-seat-01`，目标 `origin/ux-v2`；当前基线 `ddbded696133c4f49d4c8a2e35691f89558cf137`。
+**设计依据：** 最新 `docs/UX2-refine.md` revision `2026-11-12 21:58 UTC`，§10.43。分支 `codex/ux2-judgement-seat-01`，目标 `origin/ux-v2`；代码已部署至生产。
 
-### 必须完成的修正
+### 已实现的修正
 
 - 四个花色按钮在红/深色与黑/浅色背景上均须有一眼可辨的选中状态：至少约 2px 高对比边框/焦点环，并带选中符号；不能只靠颜色。保持 `aria-pressed`、键盘 `focus-visible`、disabled 与标签可访问性。检查最终 CSS cascade，确保黑色花色基础背景规则不会盖掉选中样式。
 - 只将可见金色 Confirm 面缩至当前约 2/3，即约 29–30px 高；实际可点 hit region 仍至少 44px 高，不能透明覆盖手牌轨或相邻控制。保留 disabled/loading/pressed 可读状态和现有紧凑布局、牌背与行动权限。
 - 保持四列适配及短屏 440×474 放置，不加 Cancel/Clear，不改变花色/手牌位置选择、隐私、服务器权限或游戏规则。
 
-### 验证与交付
+### 验证与交付结果
 
 - 仅一个 440px 手机浏览器场景，检查红黑花色选中/未选状态、可访问属性、Confirm 可见高度与实际触控边界、手牌区无拦截；仅在两项授权选择均完整后做一次真实提交验证。
 - 所有本地 UI/browser 测试累计最多 5 分钟；超时即停止并记为 SKIPPED。附带最小相关单测、差异检查；提交前核查远端最新 CI，提交后验证精确 SHA 全部 Actions、部署及生产 smoke。
-- 交付标记 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`；不得自行验收。
+- 最终状态 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`；不得自行验收。
 
-**恢复点：** 差异检查并提交/push 最小 lint 修复；等待修复 SHA 的全部 required jobs、Worker deployment 和生产 smoke，记录实际 Worker version。完成后标记为 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW` 并停止本次指定序列。
+**交付证据：** 最终 SHA 的精确 Actions [43313687891](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43313687891) attempt 2 全绿：API、Lint/fast、Browser startup/room smoke、deploy、生产 smoke。Worker `ff22e13c-5290-449b-9eef-c3ba9178e7d6`；直接首页 HTTP 200，`/api/health` 为 `{"ok":true,"worker":"available"}`。当前没有下一项已授权的实现任务；§10.43 等待 owner iPhone 复审。
 
 ### 本任务进度（UTC）
 
@@ -32,4 +32,8 @@
 - 21:43 — §10.43 commit `164d7ebc30e687f21269d89086407261db6f8924` 已 push 到 `ux-v2`；精确 SHA Actions [43313051528](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43313051528) 已启动，CI、Worker version 与生产 smoke 待结果。
 - 21:45 — 精确 SHA Actions [43313051528](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43313051528) 完结失败：Lint 因新回归用例的两处无用转义报 no-useless-escape；API 与 browser smoke 成功，deploy 跳过。
 - 21:46 — 将正则改为 `/["']/g`；`npx eslint tests/browser/fanjian-combined-choice.spec.mjs` 退出码0。只改测试源码断言写法，不改 UI/行为；本地 UI/browser 测试仍共约29秒。
-- 当前任务基线含文档交接提交 `ddbded696133c4f49d4c8a2e35691f89558cf137`（Markdown-only，Action workflow 按 `**/*.md` 忽略）；应用代码验证基线为已全绿部署的 `4bd532e697c7bf51445d231a75921bad499692a0`。下一步复核最终差异/`git diff --check`，提交前再次核对远端头部和最近 push-triggered CI；提交 §10.43 后等待其精确 SHA 完整 CI、Worker 部署及生产 smoke。
+- 21:47 — lint 修复 commit `965bd5d7c86a0ef1eda10aadc2d47c7f5a3a7d9c` 已 push；精确 SHA Actions [43313687891](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43313687891) 结束失败。
+- 21:51 — 检查精确 SHA API job：shard 1 的装备测试从 `equipment.test.mjs:599` 起连续出现 `fetch failed`，之后的 setup 请求也立即失败；shard 2 全部 155 项通过，Lint、Browser smoke 通过。失败是 API harness/Worker 服务连接中断，不是 UI CSS 或测试断言；部署被跳过。按证据仅重跑该失败 job，确认能否恢复。
+- 21:56 — Actions [43313687891](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43313687891) 的 attempt 2 中，API tests 通过；Lint 与 Browser startup/room smoke 通过；同一 SHA 的 deploy job 已开始。下一步核实 deploy 结果、Worker version 和生产 smoke。
+- 21:58 — 精确 SHA Actions `43313687891` attempt 2 全部 required jobs 通过。deploy 日志记录 Worker `ff22e13c-5290-449b-9eef-c3ba9178e7d6`，GitHub 生产 smoke 通过；21:58:59 UTC 直查 `/` HTTP 200、`/api/health` HTTP 200 / `ok:true`。
+- §10.43 交付代码由 `164d7ebc30e687f21269d89086407261db6f8924` 与 lint 修正 `965bd5d7c86a0ef1eda10aadc2d47c7f5a3a7d9c` 组成；焦点浏览器回归 7.58 秒通过，全部本地 UI 时间约29秒。§10.43 已从设计 Table A 移至 Table B，状态待 owner iPhone 复审；路线图已记录实际结果。本文件只保留此交接项，不选择下一任务。
