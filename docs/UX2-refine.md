@@ -1037,6 +1037,8 @@ H4 and PAC retain distinct roles. Do not guess source, target, card identity, re
 
 ### 10.37 ZHOU-YU-FANJIAN-UX-01 — combined Fanjian choice: **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW** (same original task; prior phone failure corrected)
 
+**Owner phone follow-up, 2026-11-12:** Suit symbols must use recognizable red and black, with a light background for black symbols; anonymous cards retain portrait card proportions. The Confirm control is visually narrower while retaining a 44px touch height, and the choice panel prefers a safe upper position clear of H4 and PAC. Correction deployed; these refinements remain **PENDING OWNER iPHONE REVIEW**.
+
 **OWNER PHONE FAIL (2026-11-11 22:54 UTC; historical trigger for this correction):** IMG_4248.jpeg around 19:55 UTC showed the public activation H4 and waiting PAC but no visible combined pool even for the authorized chooser. The attached trace recorded the chooser seat and the 440×474 battlefield plus H4/PAC bounds, but not stage DOM/readiness or its private option. The focused reproduction below subsequently separated those facts and identified the blocking presentation gate. The earlier deployed SHA `7f6f059d` and its CI record do not establish acceptance; the independent M4 E16 physical reveal remains USER-ACCEPTED/CLOSED.
 
 **Pre-correction source diagnosis (baseline `7f6f059d`; corrected by the delivery below):**
@@ -1146,6 +1148,8 @@ C. Small geometry/unit/DOM tests: fixed seat geometry and first-card slot, H4 st
 
 
 ### 10.39 CARD-FACE-TYPOGRAPHY-UX-01 — fit genuine card names and type labels on all card-face surfaces (IMPLEMENTED / DEPLOYED; PENDING OWNER iPHONE REVIEW)
+
+**Owner phone follow-up, 2026-11-12 — CORRECTION REQUIRED:** Names and labels on displayed cards and Hand cards remain too small. Increase legibility using the actual card footprint; preserve complete names and natural word boundaries. Do not hyphenate or split a word that fits, and do not truncate a name such as `Borrowed Sword` while usable space remains. Keep card identities, proportions, selection and privacy intact. This reopens the existing §10.39 correction and remains pending implementation and owner review.
 
 **One NEW independently reviewable UI task, not a revision of §10.36.1:** Owner's actual four-player iPhone screenshot `IMG_4148.jpeg` (00:30 UTC) shows a real **neutral Steal-result** CardFace: its long card name is oversized, visibly broken/clipped despite two lines, and the bottom `STRATAGEM CARD` category is oversized/visually cramped. The current dock also shows multiple compressed names, but the independently proposed large-Hand scroll/overlap correction remains a **different unapproved design change**, not part of this task. The owner explicitly requests an audit of **all situations where card-face text is rendered**, reducing typography relative to **actual card size** so the full printed name and the card-type line are clear. Prior §10.36.1 Steal behavior is **USER-ACCEPTED/CLOSED** and must not be reopened; E15/E16 independently USER-ACCEPTED/CLOSED, while §10.37's correction is implemented and pending owner phone re-review, and §10.38 remains independent.
 
