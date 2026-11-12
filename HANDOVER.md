@@ -2,7 +2,7 @@
 
 ## 周瑜英姿 — 摸牌阶段公开等待提示
 
-**状态：已推送；CI 的 API job 失败，部署被跳过，正在修复。** 源提交 `a7d3163e8129a36598c0760999747dcc4dad5016`，精确 SHA [Actions 43130769779](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43130769779)。用户要求英姿决策期间所有玩家看到周瑜的回合和等待其使用技能或跳过；`docs/UX2-refine.md` §10.37 的 2026-11-12 用户要求已记录。主目录原有未提交文件未触碰。
+**状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。** 实现提交 `a7d3163e8129a36598c0760999747dcc4dad5016`；修复提交 `945bbe87a14f4630e956e34a6132c463c4f7e40a`，精确 SHA [Actions 43131527006](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43131527006) 全部通过并部署 Worker `e75fb436-9301-4eeb-b138-f38c49d234ae`；线上 `/api/health` 返回 `{"ok":true,"worker":"available"}`。主目录原有未提交文件未触碰。
 
 **研究结果与方案：** 仓库规则和 `beginDrawPhaseDecision()` 已在服务器打开真正的摸牌阶段决定；既有 API 测试覆盖未决时不摸、接受英姿摸三张、跳过摸两张。截图中的 `Resolving…` 是公开决策投影缺少该阶段的证明。由服务器从当前 `draw_phase` pending、玩家、公开能力选项及隐私规则生成共享的、最小的公开决策投影；PAC 显示真实回合玩家与“等待使用公开技能或 Skip”，所有玩家一致。只展示公开能力，私有机会及手牌信息不得泄露；法律动作、计时和摸牌规则保持服务器权威。
 
@@ -11,3 +11,7 @@
 **00:54 UTC：** 已提交并推送。**00:57 UTC：** Lint/fast 与 Browser smoke 通过，API job 失败、部署跳过：普通场景中路由额外附加 `publicDrawPhaseDecision: null`，但 `composePresentationSnapshot()` 不包含该字段，破坏既有快照一致性断言。需将该公开字段纳入统一快照组合与验证，重跑受影响 API 文件后提交 CI 修复；CI 未恢复前不得开始其他任务。
 
 **01:00 UTC CI 修复：** 公开 Draw Phase 字段现由统一快照组合函数校验、复制且剔除额外私有字段；路由通过该函数传入。重新 build 成功；快照与公共提示快速测试 44/44 通过；失败的引擎投影文件及周瑜所在 API 文件共 71/71 通过（13.98 秒）。待提交此修复并等待新 SHA 全部必需 CI/部署。
+
+**01:01 UTC：** 修复 `945bbe87` 已提交推送；等待 [Actions 43131527006](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43131527006) 完成，部署尚未确认。
+
+**01:06 UTC：** 精确 SHA 的 Lint/fast、API、Browser smoke、D1、Worker 部署与 production smoke 全部通过；独立线上 health 通过。设计文档已标记待 Owner iPhone 审核，HANDOVER 只保留此任务。最终在手机检查双方视角的回合和等待文案，以及使用/跳过后的摸牌结果；不得自行标记 USER-ACCEPTED。
