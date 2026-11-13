@@ -3360,7 +3360,7 @@ export class GameRoomErrorBoundary extends Component<{ room: Room; onRecover: ()
   }
 }
 
-function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuing in", responseTimer = false, compactEvent = false }: { durationMs: number; deadline?: number; visibleAt?: number; label?: string; responseTimer?: boolean; compactEvent?: boolean }) {
+export function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuing in", responseTimer = false, compactEvent = false, suppressed = false }: { durationMs: number; deadline?: number; visibleAt?: number; label?: string; responseTimer?: boolean; compactEvent?: boolean; suppressed?: boolean }) {
   const [remainingMs, setRemainingMs] = useState(durationMs);
   const [visible, setVisible] = useState(visibleAt === 0);
   useEffect(() => {
@@ -3373,11 +3373,16 @@ function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuin
   const remainingSeconds = Math.ceil(remainingMs / 1000);
   const urgency = remainingSeconds <= 5 ? "critical" : remainingSeconds <= 10 ? "urgent" : "calm";
   const countdownLabel = responseTimer ? "Response Time" : label;
-  if (!visible) return null;
+  if (!visible || suppressed) return null;
   return <div className={`visible-countdown ${responseTimer ? "visible-countdown-response" : ""} ${compactEvent ? "visible-countdown-event" : ""}`} role={responseTimer || compactEvent ? "timer" : undefined} aria-label={`${countdownLabel} ${remainingSeconds} seconds`} data-countdown-urgency={responseTimer || compactEvent ? urgency : undefined}>
     {responseTimer ? <i className="countdown-hourglass" aria-hidden="true">⌛</i> : compactEvent ? null : <span>{countdownLabel}</span>}
     <b>{remainingSeconds}s</b>
   </div>;
+}
+
+function PrivateDrawCountdown({ cards, visible, seat }: { cards: readonly Card[]; visible: boolean; seat: { kind: "response" | "harvest" | "rescue" } | null }) {
+  if (!visible) return null;
+  return <Countdown key={cards.map((card) => card.id).join("-")} durationMs={UI_TIMING.privateDraw} label="Cards close in" compactEvent suppressed={seat?.kind === "response" || seat?.kind === "harvest"} />;
 }
 
 function TraceDownloadControl({ buttonClassName, fallbackClassName, onKeyDown }: {
@@ -5306,14 +5311,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ...(activeJudgementZoneTransition?.destination === "JUDGEMENT" ? [activeJudgementZoneTransition.physicalCardId] : []),
   ]);
   const privateDrawVisible = privateDrawCards.length > 0 && !activeEvent && eventQueue.length === 0;
-  const privateDrawTimer = privateDrawVisible
-    ? <Countdown key={privateDrawCards.map((drawn) => drawn.id).join("-")} durationMs={UI_TIMING.privateDraw} label="Cards close in" compactEvent />
-    : null;
   const publicResponseWindow = room.phase === "response" && responseDeadline > 0 && (room.currentAction?.kind === "response" || responseDecisionReady && Boolean(room.actionPlayerId));
   const seatCountdown = publicResponseWindow ? { kind: "response" as const, key: `response-${responseDeadline}`, durationMs: 0, deadline: responseDeadline, label: "Response Time" }
     : room.pendingHarvest?.countdownUntil ? { kind: "harvest" as const, playerId: room.pendingHarvest.actorId, key: `harvest-${room.pendingHarvest.actorId}-${room.pendingHarvest.countdownUntil}`, durationMs: 0, deadline: room.pendingHarvest.countdownUntil, label: room.pendingHarvest.complete ? "Closing" : "Choosing" }
     : rescueDecisionReady && room.pendingDying?.deadline ? { kind: "rescue" as const, playerId: room.actionPlayerId ?? room.meId, key: `rescue-${room.pendingDying.deadline}`, durationMs: 0, deadline: room.pendingDying.deadline, label: "Rescue" }
     : null;
+  // Keep the private presentation clock mounted while a real response or
+  // Harvest deadline owns the one visible countdown; never restart its clock.
+  const privateDrawTimer = <PrivateDrawCountdown cards={privateDrawCards} visible={privateDrawVisible} seat={seatCountdown} />;
   const harvestEventTimer = seatCountdown?.kind === "harvest"
     ? <Countdown key={seatCountdown.key} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} compactEvent />
     : null;

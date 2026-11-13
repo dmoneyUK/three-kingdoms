@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
-import { GameRoom, GameRoomErrorBoundary, HERO_PASSIVE_SKILL_NAMES, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS } from "../app/page.tsx";
+import { Countdown, GameRoom, GameRoomErrorBoundary, HERO_PASSIVE_SKILL_NAMES, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS } from "../app/page.tsx";
 import { normalizeRoomData } from "../game/room-safety.js";
 import { buildPresentationClientView } from "../game/presentation-client.ts";
 import { buildGroupScopePreview } from "../game/group-scope-preview.ts";
@@ -1519,5 +1519,21 @@ test("mounted Judgement focus and controls ignore legacy owners and require an a
     && node.props.className.split(/\s+/u).includes("played-card")
     && node.props.className.split(/\s+/u).includes("dodge"));
   assert.equal(renderedDodgeCards.length, 0, "no Dodge card face is rendered without the server reveal event");
+  await act(async () => { renderer.unmount(); });
+});
+
+
+test("suppressed presentation countdown keeps its clock while response owns the visible timer", async () => {
+  let renderer;
+  const render = (response) => React.createElement(React.Fragment, null,
+    React.createElement(Countdown, { key: "event", durationMs: 1200, label: "Cards close in", compactEvent: true, suppressed: response }),
+    response ? React.createElement(Countdown, { key: "response", durationMs: 0, deadline: Date.now() + 30000, responseTimer: true }) : null);
+  await act(async () => { renderer = TestRenderer.create(render(true)); });
+  assert.equal(renderer.root.findAllByProps({ role: "timer" }).length, 1);
+  assert.match(renderer.root.findByProps({ role: "timer" }).props["aria-label"], /^Response Time /);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
+  await act(async () => { renderer.update(render(false)); });
+  const eventTimer = renderer.root.findByProps({ role: "timer" });
+  assert.match(eventTimer.props["aria-label"], /^Cards close in 1 seconds$/);
   await act(async () => { renderer.unmount(); });
 });
