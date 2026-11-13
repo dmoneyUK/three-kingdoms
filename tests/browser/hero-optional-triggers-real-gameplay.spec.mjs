@@ -73,6 +73,11 @@ for (const scenario of [
     const result = await activated.json();
     expect(result.room.myHand).toHaveLength(scenario.expectedHand);
     expect(result.room.players.find((player) => player.id === seedData.players[0].id).handCount).toBe(scenario.expectedHand);
+    if (scenario.hero === "zhou-yu") {
+      const h4 = page.locator("[data-public-interaction-event-id]");
+      await expect(h4).toContainText("SKILL USER used Heroic and drew one additional card.");
+      await expect(h4.locator("[data-public-card-announcement]")).toBeVisible();
+    }
   });
 }
 

@@ -7030,7 +7030,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     .filter((event) => event.presentation !== false && !event.privateToPlayerId)
     .map((event) => event.id);
   const laterPublicCardPlayEventIds = room.timeline.flatMap((event) =>
-    event.type === "card" && event.action === "play" && event.presentation !== false && !event.privateToPlayerId
+    event.type === "card" && (event.action === "play" || event.action === "equip") && event.presentation !== false && !event.privateToPlayerId
       ? [event.id]
       : []);
   const skillEffectSettlementCandidate = (() => {

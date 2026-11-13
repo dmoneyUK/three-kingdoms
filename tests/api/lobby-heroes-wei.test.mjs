@@ -903,6 +903,15 @@ test("Wu hero skills complete through the normal semantic API", async () => {
   await requestAndSettle("draw", { code: acceptedGame.code, token: acceptedGame.members[0].token });
   const acceptedYingzi = await requestAndSettle("trigger", { code: acceptedGame.code, token: acceptedGame.members[0].token, providerId: "zhou_yu_yingzi" }); assert.equal(acceptedYingzi.status, 200, JSON.stringify(acceptedYingzi.data)); assert.equal(acceptedYingzi.data.room.myHand.length, 3, "accepting Yingzi draws exactly three normal cards"); assert.equal(acceptedYingzi.data.room.phase, "play");
   assert.equal(acceptedYingzi.data.room.presentationSnapshot.publicDrawPhaseDecision, null);
+  const heroicFact = acceptedYingzi.data.room.presentationSnapshot.retainedPublicEvent;
+  assert.equal(heroicFact?.category, "SKILL_USED");
+  assert.equal(heroicFact?.actorId, acceptedSource.id);
+  assert.equal(heroicFact?.label, "Heroic");
+  assert.equal(heroicFact?.outcomeLabel, "drew one additional card");
+  const heroicObserver = await state(acceptedGame.code, acceptedGame.members[1].token);
+  assert.deepEqual(heroicObserver.data.presentationSnapshot.retainedPublicEvent, heroicFact);
+  assert.equal(JSON.stringify(heroicObserver.data.presentationSnapshot).includes("yingzi-a"), false, "private draw identities stay private");
+  assert.notEqual(skippedYingzi.data.room.presentationSnapshot.retainedPublicEvent?.label, "Heroic", "declining does not publish Heroic success");
 
   const fanjianGame = await createHumanGame(); const fanjianSource = fanjianGame.room.players[0]; const fanjianTarget = fanjianGame.room.players[1]; const concealed = card("Peach", "fanjian-card", "♥"); const spare = card("Dodge", "fanjian-spare", "♠");
   sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(fanjianSource.id)}`); setHand(fanjianSource.id, [concealed, spare], 3, 3); setHand(fanjianTarget.id, [], 4, 4); setTurn(fanjianGame.code, fanjianSource.seat);

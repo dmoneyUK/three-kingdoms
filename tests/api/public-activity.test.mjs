@@ -469,13 +469,13 @@ test("Equipment H4 uses the exact committed owner and card name for active and r
     stableKind: "REST", publicEventFacts: [equip] })));
   assert.equal(active?.headline, "Test Player 1 equipped Frost Sword.");
   assert.equal(active?.eventId, equip.eventId);
-  assert.equal(active?.readDurationMs, 2_600);
+  assert.equal(active?.readDurationMs, 4_000);
 
   const retainedSnapshot = { identity: null, interaction: null, stable: { kind: "REST" },
     retainedPublicEvent: equip, retainedPublicEventFacts: [equip], publicEventFacts: [] };
   const retained = derivePublicInteractionNarration(input(retainedSnapshot));
   assert.equal(retained?.headline, active?.headline);
   assert.equal(retained?.eventId, active?.eventId);
-  assert.equal(retained?.readDurationMs, 2_600);
+  assert.equal(retained?.readDurationMs, 4_000);
   assert.equal(derivePublicInteractionNarration({ ...input(retainedSnapshot), interactionId: "different-interaction" }), null);
 });

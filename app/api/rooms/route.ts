@@ -2104,7 +2104,7 @@ function drawPhaseTriggerContext(player: PlayerRow, players: PlayerRow[] = []) {
 }
 
 /** Resolves only the normal Draw Phase draw; card effects use their own paths. */
-async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePhase: string, additionalCards: number, deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = []) {
+async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePhase: string, additionalCards: number, deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], publicDrawSkill?: { label: string; amount: number; baseline: number }) {
   const flags = drawPhaseFlags(resumePhase);
   let drawnCards: Card[] = [];
   if (flags.skipDraw) {
@@ -2115,7 +2115,16 @@ async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePh
     deck = draw.deck;
     discard = draw.discard;
     drawnCards = draw.drawn;
-    log = addHistory(draw.log, `${target.name} draws ${draw.drawn.length} cards.`, target.id);
+    log = draw.log;
+    if (publicDrawSkill) {
+      const root = createCausalRoot({ stage: "SETTLEMENT", origin: { originSourceId: target.id, originEffect: "draw_phase_modifier", originalTargetIds: [target.id] }, current: { currentSourceId: target.id, currentEffect: "draw_phase_modifier", currentTargetIds: [target.id], resolvingPlayerId: target.id } });
+      const extraDrawn = Math.min(publicDrawSkill.amount, Math.max(0, draw.drawn.length - publicDrawSkill.baseline));
+      const fact = publicFactFor(root.context, "SKILL_USED", { actorId: target.id, label: publicDrawSkill.label,
+        ...(extraDrawn > 0 ? { outcomeLabel: `drew ${extraDrawn === 1 ? "one additional card" : `${extraDrawn} additional cards`}`, amount: extraDrawn } : {}),
+        effect: { kind: "draw_phase_modifier" } }, root.envelope);
+      log = addTriggeredEffectNotice(log, target.name, publicDrawSkill.label, fact).log;
+    }
+    log = addHistory(log, `${target.name} draws ${draw.drawn.length} cards.`, target.id);
     for (const drawn of drawnCards) log = addPrivateDrawEvent(log, target, drawn);
     const hand = [...parse<Card[]>(target.hand_json, []), ...draw.drawn];
     writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), target.id));
@@ -8238,14 +8247,19 @@ export async function POST(request: Request) {
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Draw Phase decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
       let log = parse<string[]>(liveRoom.log_json, []);
       const optionLabel = triggerExecution?.presentation?.label ?? triggerOptionsFor(trigger, players, liveRoom)[0]?.label ?? "Draw Phase effect";
-      if (action === "apply_trigger") log = addTriggeredEffectNotice(log, player.name, optionLabel, triggerPublicFact).log;
-      else log = addLog(log, `${player.name} declines ${optionLabel}; normal Draw Phase draw continues.`);
+      const drawModifier = action === "apply_trigger" && triggerExecution?.outcome.kind === "draw_phase_modifier" ? triggerExecution.outcome : null;
+      const publicContext = triggerContextFor(trigger, players, liveRoom);
+      const publicDrawSkill = drawModifier && drawModifier.amount > 0 && triggerExecution && publicContext
+        && triggerAvailability(triggerExecution.effectId, publicContext) === "public"
+        ? { label: optionLabel, amount: drawModifier.amount, baseline: Math.max(0, 2 + (continuation.additionalCards ?? 0)) } : undefined;
+      if (action === "apply_trigger" && !publicDrawSkill) log = addTriggeredEffectNotice(log, player.name, optionLabel, triggerPublicFact).log;
+      else if (action !== "apply_trigger") log = addLog(log, `${player.name} declines ${optionLabel}; normal Draw Phase draw continues.`);
       if (replacementTargets) {
         const transferred = await resolveDrawPhaseReplacement(liveRoom, player, replacementTargets, continuation.resumePhase, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log);
         if (!transferred) return json({ error: "Assault could not be settled safely.", stale: true, room: await roomState(code, token) }, 409);
         return json({ room: await roomState(code, token), gainedCards: transferred });
       }
-      const modifier = action === "apply_trigger" && triggerExecution?.outcome.kind === "draw_phase_modifier" ? triggerExecution.outcome : null;
+      const modifier = drawModifier;
       const modifierWrites: D1PreparedStatement[] = [];
       if (modifier?.modifierId === "bared_bodied") {
         const skillState = parse<KingSkillState>(liveRoom.skill_state_json, {});
@@ -8253,7 +8267,7 @@ export async function POST(request: Request) {
         log = addHistory(log, `${player.name} activates Bared Bodied and draws 1 fewer card.`, player.id);
       }
       const additionalCards = (continuation.additionalCards ?? 0) + (modifier?.amount ?? 0);
-      const drawn = await resolveNormalDrawPhase(liveRoom, player, continuation.resumePhase, additionalCards, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log, modifierWrites);
+      const drawn = await resolveNormalDrawPhase(liveRoom, player, continuation.resumePhase, additionalCards, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log, modifierWrites, publicDrawSkill);
       return json({ room: await roomState(code, token), ...(drawn.length ? { drawnCards: drawn } : {}) });
     }
     if (liveRoom && trigger && continuation?.kind === "turn_start_event" && trigger.actorId === me.id) {

@@ -275,7 +275,7 @@ export function derivePublicInteractionNarration(input: {
     headline,
     compactHeadline: headline,
     accessibleLabel: headline,
-    ...(latest.category === "CARD_EQUIPPED" ? { readDurationMs: 2_600 } : {}),
+    ...(latest.category === "CARD_EQUIPPED" || latest.category === "SKILL_USED" && latest.effect?.kind === "draw_phase_modifier" ? { readDurationMs: 4_000 } : {}),
     checkpointId: latest.identity.checkpointId,
   };
 }
