@@ -2865,7 +2865,17 @@ function PublicCardAnnouncement({
       // A fixed-upper result can outlive its explicitly identified reveal.
       // Once that actual anchor is gone, its cached rectangle is no longer a
       // live obstacle; still protect every current Seat, miniature and control.
-      const centerCardStillOccupiesStage = keepCenterAnchorClear
+      // Only the matching committed Hand-to-Hand reveal may cross H4 in
+      // flight. Its stationary centre remains a protected card rectangle.
+      const handReveal = protectFirstParkedMiniature && anchor
+        ? anchor.closest<HTMLElement>(".public-hand-transfer") : null;
+      const handAnimation = handReveal?.getAnimations().find((animation) =>
+        "animationName" in animation && animation.animationName === "revealedCardToHand");
+      const timing = handAnimation?.effect?.getComputedTiming();
+      const progress = timing?.progress;
+      const isHandRevealFlight = Boolean(handReveal && (handReveal.classList.contains("public-hand-transfer-preflight")
+        || (typeof progress === "number" && (progress < 0.08 || progress > 0.92))));
+      const centerCardStillOccupiesStage = keepCenterAnchorClear && !isHandRevealFlight
         && !(protectFirstParkedMiniature && Boolean(copyAnchorEventId) && !anchor && !currentFallbackCardRect);
 
       const gap = protectFirstParkedMiniature && window.matchMedia("(max-width: 700px)").matches

@@ -132,6 +132,8 @@ test("real Fanjian reveal lifecycle records public animation and geometry", asyn
   console.log("FANJIAN_LIFECYCLE", JSON.stringify({ revealId: reveal.id, physicalCardId, changes, samples }));
   expect(changes.filter((entry) => entry.kind === "mount")).toHaveLength(1);
   expect(changes.filter((entry) => entry.kind === "animationstart")).toHaveLength(1);
+  expect(changes.find((entry) => entry.kind === "animationstart").name).toBe("revealedCardToHand");
+  expect(changes.every((entry) => !entry.className.includes("public-hand-transfer-avoids-h4"))).toBeTruthy();
   expect(changes.filter((entry) => entry.kind === "animationend")).toHaveLength(switchDuring ? 0 : 1);
   if (!switchDuring) {
     expect(changes.filter((entry) => entry.kind === "animationcancel")).toHaveLength(0);
