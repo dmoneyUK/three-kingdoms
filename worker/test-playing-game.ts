@@ -16,6 +16,7 @@ type SeedPlayer = {
 
 export type SeedPlayingGameInput = {
   players?: SeedPlayer[];
+  testController?: boolean;
   turnSeat?: number;
   phase?: Extract<GamePhase, "draw" | "play" | "discard">;
   deck?: Card[];
@@ -152,15 +153,15 @@ export async function seedPlayingGame(db: D1Database, input: SeedPlayingGameInpu
     const statements = [
       db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at, turn_seat, phase, deck_json, discard_json, log_json, pending_json, skill_state_json, last_activity_at) VALUES (?, ?, ?, 'playing', ?, ?, ?, ?, ?, ?, '[]', NULL, ?, ?)")
         .bind(roomId, code, host.id, players.length, createdAt, turnSeat, phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify({ turnPlayerId: credentials[turnSeat].id }), createdAt),
-      ...credentials.map((player) => db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, role, ready, hero, hp, max_hp, hero_options_json, hand_json, judgement_json, equipment_json, alive, connected_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, '[]', ?, ?, ?, ?, ?)")
-        .bind(player.id, roomId, player.name, player.tokenHash, player.seat, player.role, player.hero, player.hp, player.maxHp, JSON.stringify(player.hand), JSON.stringify(player.judgement), JSON.stringify(player.equipment), player.alive ? 1 : 0, createdAt)),
+      ...credentials.map((player) => db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, role, ready, hero, hp, max_hp, hero_options_json, hand_json, judgement_json, equipment_json, alive, connected_at, is_test_player) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?)")
+        .bind(player.id, roomId, player.name, input.testController ? host.tokenHash : player.tokenHash, player.seat, player.role, player.hero, player.hp, player.maxHp, JSON.stringify(player.hand), JSON.stringify(player.judgement), JSON.stringify(player.equipment), player.alive ? 1 : 0, createdAt, input.testController && player.id !== host.id ? 1 : 0)),
     ];
     try {
       await db.batch(statements);
       return {
         code,
         roomId,
-        players: credentials.map(({ id, name, seat, role, hero, token }) => ({ id, name, seat, role, hero, token })),
+        players: credentials.map(({ id, name, seat, role, hero, token }) => ({ id, name, seat, role, hero, token: input.testController ? host.token : token })),
       };
     } catch (error) {
       if (!isRoomCodeConflict(error) || attempt === MAX_ROOM_CODE_ATTEMPTS - 1) throw error;

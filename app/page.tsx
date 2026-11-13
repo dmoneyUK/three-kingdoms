@@ -4054,6 +4054,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // Events already present when the screen mounts have no new animation to
   // wait for. New event IDs enter this set only after their presentation ends.
   const [presentedEventIds, setPresentedEventIds] = useState<Set<string>>(() => new Set((room.timeline ?? []).map((event) => event.id)));
+  const startedPublicHandRevealKeys = useRef(new Set<string>());
+  const claimPublicHandRevealStart = useCallback((transition: PublicHandRevealTransitionRoute) => {
+    const key = `${transition.scope.roomCode}\u001f${transition.eventId}\u001f${transition.physicalCardId}`;
+    if (startedPublicHandRevealKeys.current.has(key)) return false;
+    startedPublicHandRevealKeys.current.add(key);
+    if (startedPublicHandRevealKeys.current.size > 500) {
+      const oldest = startedPublicHandRevealKeys.current.values().next().value;
+      if (oldest) startedPublicHandRevealKeys.current.delete(oldest);
+    }
+    return true;
+  }, []);
   // The centre-to-seat card journey has its own lifecycle. The announcement
   // queue may finish its read before the authoritative response projection is
   // ready; that must not make the committed card look stale.
@@ -5286,6 +5297,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || refreshed.physicalCardId !== transition.physicalCardId
       || refreshed.sourcePlayerId !== transition.sourcePlayerId
       || refreshed.destinationPlayerId !== transition.destinationPlayerId) return;
+    recordAttackDodgeUxTrace("public-hand-reveal-lifecycle", { status: "retired", roomCode: room.code, viewerId: room.meId, eventId: transition.eventId, physicalCardId: transition.physicalCardId, claimId: transition.claimId });
     setPresentedEventIds((ids) => ids.has(transition.eventId) ? ids : new Set([...ids, transition.eventId]));
     setActiveEvent((currentEvent) => currentEvent?.id === transition.eventId ? null : currentEvent);
   }, [activeEvent, presentedEventIds, room.code, room.meId, room.timeline]);
@@ -11004,7 +11016,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               ? `Private Steal result: ${cardDefinition(privateStealSettlementParticipant.card.kind).name}, ${privateStealSettlementParticipant.card.rank} ${privateStealSettlementParticipant.card.suit}. The card was taken from your Hand.`
               : `A concealed Hand card was obtained from ${stealSettlementCandidate.target.name}`,
       }} />}
-      {activePublicHandRevealTransition && activeEvent?.type === "card" && <PublicHandRevealCardTransition event={activeEvent} route={activePublicHandRevealTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicHandRevealTransitionPresented} />}
+      {activePublicHandRevealTransition && activeEvent?.type === "card" && <PublicHandRevealCardTransition key={activePublicHandRevealTransition.claimId} event={activeEvent} route={activePublicHandRevealTransition} players={room.players} myTableIndex={myTableIndex} claimStart={claimPublicHandRevealStart} onPresented={markPublicHandRevealTransitionPresented} />}
       {harvestDisplay && <BattlefieldChoiceStage
         key={harvestDisplay.revealEventId ?? "bumper-harvest-public-pool"}
         ref={harvestStageRef}
@@ -12417,20 +12429,57 @@ function PublicSettlementCardResult({ result }: { result: PublicSettlementCardRe
   </div>;
 }
 
-function PublicHandRevealCardTransition({ event, route, players, myTableIndex, onPresented }: {
+function PublicHandRevealCardTransition({ event, route, players, myTableIndex, claimStart, onPresented }: {
   event: CardEvent & { type: "card" };
   route: PublicHandRevealTransitionRoute;
   players: Player[];
   myTableIndex: number;
+  claimStart: (route: PublicHandRevealTransitionRoute) => boolean;
   onPresented: (route: PublicHandRevealTransitionRoute) => void;
 }) {
   const revealRef = useRef<HTMLDivElement>(null);
+  const currentInputsRef = useRef({ players, myTableIndex, route, claimStart, onPresented });
+  useLayoutEffect(() => {
+    currentInputsRef.current = { players, myTableIndex, route, claimStart, onPresented };
+  }, [players, myTableIndex, route, claimStart, onPresented]);
+  const completedRef = useRef(false);
+  const initialViewerRef = useRef(route.scope.viewerId);
+  const complete = useCallback(() => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    const current = currentInputsRef.current;
+    recordAttackDodgeUxTrace("public-hand-reveal-lifecycle", { status: "completion-requested", roomCode: current.route.scope.roomCode, viewerId: current.route.scope.viewerId, eventId: current.route.eventId, physicalCardId: current.route.physicalCardId, claimId: current.route.claimId });
+    current.onPresented(current.route);
+  }, []);
+  useLayoutEffect(() => {
+    if (initialViewerRef.current === route.scope.viewerId) return;
+    recordAttackDodgeUxTrace("public-hand-reveal-lifecycle", { status: "viewer-layout-interrupted", roomCode: route.scope.roomCode, viewerId: route.scope.viewerId, eventId: route.eventId, physicalCardId: route.physicalCardId, claimId: route.claimId });
+    complete();
+  }, [complete, route.claimId, route.eventId, route.physicalCardId, route.scope.roomCode, route.scope.viewerId]);
   useLayoutEffect(() => {
     const reveal = revealRef.current;
     const table = reveal?.closest<HTMLElement>(".play-table");
     const shell = table?.closest<HTMLElement>(".game-shell");
     if (!reveal || !table || !shell) return;
-    const localPlayerId = players[myTableIndex]?.id;
+    const trace = (status: string, animation?: AnimationEvent) => {
+      if (!isAttackDodgeUxTraceActive()) return;
+      const current = currentInputsRef.current.route;
+      const rect = (element: Element | null) => {
+        if (!element) return null;
+        const bounds = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, visibility: style.visibility, display: style.display };
+      };
+      recordAttackDodgeUxTrace("public-hand-reveal-lifecycle", {
+        status, roomCode: current.scope.roomCode, viewerId: current.scope.viewerId, eventId: current.eventId, physicalCardId: current.physicalCardId, claimId: current.claimId,
+        animationName: animation?.animationName, elapsed: animation?.elapsedTime, className: reveal.className,
+        animations: typeof reveal.getAnimations === "function" ? reveal.getAnimations().map((item) => ({ name: "animationName" in item ? String(item.animationName) : "", state: item.playState, time: typeof item.currentTime === "number" ? item.currentTime : null })) : [],
+        card: rect(reveal.querySelector(".played-card")), h4: rect(table.querySelector("[data-public-card-announcement-fixed-upper='true']")), pac: rect(table.querySelector("[data-public-activity-chip='true']")),
+      });
+    };
+    trace("layout-setup");
+    const { players: initialPlayers, myTableIndex: initialIndex } = currentInputsRef.current;
+    const localPlayerId = initialPlayers[initialIndex]?.id;
     const playerAnchor = (playerId: string) => playerId === localPlayerId
       ? findAnchor(shell, "data-card-origin-anchor", playerId) ?? findAnchor(shell, "data-player-anchor", playerId)
       : findAnchor(shell, "data-player-anchor", playerId);
@@ -12441,8 +12490,8 @@ function PublicHandRevealCardTransition({ event, route, players, myTableIndex, o
       const target = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
       const revealCard = reveal.querySelector<HTMLElement>(".played-card");
       const revealCardStyle = revealCard ? window.getComputedStyle(revealCard) : null;
-      const cardWidth = Number.parseFloat(revealCardStyle?.width ?? "") || 108;
-      const cardHeight = Number.parseFloat(revealCardStyle?.height ?? "") || 156;
+      let cardWidth = Number.parseFloat(revealCardStyle?.width ?? "") || 108;
+      let cardHeight = Number.parseFloat(revealCardStyle?.height ?? "") || 156;
       const tableRect = table.getBoundingClientRect();
       const upperH4 = table.querySelector<HTMLElement>("[data-public-card-announcement-fixed-upper='true'][data-public-card-announcement-positioned='true']");
       const h4Rect = upperH4?.getBoundingClientRect();
@@ -12451,14 +12500,32 @@ function PublicHandRevealCardTransition({ event, route, players, myTableIndex, o
       const pacRect = pac?.getBoundingClientRect();
       let revealCenter = { x: table.clientWidth / 2, y: table.clientHeight / 2 };
       if (h4Rect && h4Rect.width > 0 && h4Rect.height > 0) {
-        const requestedCardTop = h4Rect.bottom + 8;
+        const fixedTop = Number(upperH4?.dataset.publicCardAnnouncementFixedUpperTop);
+        const plannedH4Top = Number.isFinite(fixedTop) ? fixedTop : h4Rect.top;
+        const isShortPhone = window.matchMedia("(max-width: 400px) and (max-height: 740px)").matches;
+        const localMiniRect = shell.querySelector<HTMLElement>(".local-equipment-slot")?.getBoundingClientRect();
+        const fallbackMiniWidth = localMiniRect && localMiniRect.width > 0
+          ? localMiniRect.width : isShortPhone ? 24 : Math.min(34, Math.max(28, window.innerWidth * 0.076));
+        const plannedH4Bottom = plannedH4Top + h4Rect.height;
+        const requestedCardTop = plannedH4Bottom + 4;
         const safeBottom = Math.min(tableRect.bottom - 8,
           pacRect && pacStyle?.display !== "none" && pacStyle?.visibility !== "hidden" && pacRect.width > 0 && pacRect.height > 0
             ? pacRect.top - 8 : tableRect.bottom - 8);
-        // Keep the authentic reveal directly below the fixed H4 band. On a
-        // constrained phone, preserve the H4/PAC boundaries and allow H4 to
-        // paint over the card if there is not room for its full height.
-        const cardTop = Math.min(requestedCardTop, safeBottom - cardHeight);
+        // Fit the complete card proportionally into the measured corridor;
+        // never move its top back across the H4 boundary to make it fit.
+        const availableHeight = safeBottom - requestedCardTop;
+        if (availableHeight > 0 && availableHeight < cardHeight) {
+          const scale = availableHeight / cardHeight;
+          cardWidth *= scale;
+          cardHeight *= scale;
+          reveal.style.setProperty("--public-hand-reveal-width", `${cardWidth}px`);
+          reveal.style.setProperty("--public-hand-reveal-height", `${cardHeight}px`);
+        }
+        if (availableHeight <= 0) {
+          reveal.dataset.publicRevealH4Route = "no-safe-corridor";
+          return false;
+        }
+        const cardTop = requestedCardTop;
         revealCenter = {
           x: table.clientWidth / 2,
           y: cardTop + cardHeight / 2 - tableRect.top,
@@ -12470,7 +12537,7 @@ function PublicHandRevealCardTransition({ event, route, players, myTableIndex, o
         // first miniature row: shrink it, route around the nearer outer edge,
         // and return to the shared centre below the H4 band.
         const routeScale = 0.25;
-        const routeClearance = 8;
+        const routeClearance = 4;
         const halfRouteWidth = cardWidth * routeScale / 2;
         const halfRouteHeight = cardHeight * routeScale / 2;
         const topSeats = [...table.querySelectorAll<HTMLElement>(".player-board > [data-player-anchor]")]
@@ -12502,7 +12569,7 @@ function PublicHandRevealCardTransition({ event, route, players, myTableIndex, o
           const left = targetLeft !== null ? tableRect.left + targetLeft
             : reservedLeft !== null ? tableRect.left + reservedLeft : null;
           const width = readFinite(firstCard, "data-public-card-journey-target-width")
-            ?? readFinite(firstCard, "data-public-card-journey-author-reservation-width") ?? 48;
+            ?? readFinite(firstCard, "data-public-card-journey-author-reservation-width") ?? fallbackMiniWidth;
           return left === null
             ? { left: rect.left + rect.width / 2 - width / 2, right: rect.left + rect.width / 2 + width / 2 }
             : { left, right: left + width };
@@ -12518,7 +12585,7 @@ function PublicHandRevealCardTransition({ event, route, players, myTableIndex, o
           ...(fitsRight ? [{ side: "right", x: rightBypassX }] : []),
         ].sort((left, right) => Math.abs(left.x - origin.x) - Math.abs(right.x - origin.x));
         const bypass = bypasses[0];
-        const bypassY = h4Rect.bottom - tableRect.top + halfRouteHeight + routeClearance;
+        const bypassY = plannedH4Bottom - tableRect.top + halfRouteHeight + routeClearance;
         const aboveY = h4Rect.top - tableRect.top - halfRouteHeight - routeClearance;
         const exitY = target.y < h4Rect.top - tableRect.top ? aboveY : bypassY;
         const routeFitsVertically = bypassY + halfRouteHeight <= table.clientHeight - 4
@@ -12551,47 +12618,67 @@ function PublicHandRevealCardTransition({ event, route, players, myTableIndex, o
       reveal.style.setProperty("--hand-y", `${target.y}px`);
       reveal.style.setProperty("--public-reveal-x", `${revealCenter.x}px`);
       reveal.style.setProperty("--public-reveal-y", `${revealCenter.y}px`);
+      return true;
     };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(table);
-    if (source) observer.observe(source);
-    if (destination) observer.observe(destination);
-    let observedH4: HTMLElement | null = null;
-    const observeH4 = () => {
-      const current = table.querySelector<HTMLElement>("[data-public-card-announcement-fixed-upper='true']");
-      if (!current || current === observedH4) return;
-      observedH4 = current;
-      observer.observe(current);
-    };
-    const h4MutationObserver = new MutationObserver((records) => {
-      const h4Selector = "[data-public-card-announcement-fixed-upper='true']";
-      const h4Changed = records.some((record) => {
-        const target = record.target instanceof Element ? record.target : record.target.parentElement;
-        if (target?.matches(h4Selector) || target?.closest(h4Selector)) return true;
-        return [...record.addedNodes, ...record.removedNodes].some((node) => node instanceof Element
-          && (node.matches(h4Selector) || Boolean(node.querySelector(h4Selector))));
+    // Let the committed H4 reach its first layout, then select one immutable
+    // route before enabling the CSS animation. Polls must not retarget it.
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        if (!reveal.isConnected || completedRef.current) return;
+        if (!measure()) {
+          trace("no-safe-corridor");
+          complete();
+          return;
+        }
+        if (!currentInputsRef.current.claimStart(currentInputsRef.current.route)) {
+          trace("duplicate-start-suppressed");
+          complete();
+          return;
+        }
+        trace("route-locked");
+        reveal.classList.remove("public-hand-transfer-preflight");
       });
-      if (!h4Changed) return;
-      observeH4();
-      measure();
     });
-    h4MutationObserver.observe(table, { attributes: true, attributeFilter: ["style", "data-public-card-announcement-fixed-upper", "data-public-card-announcement-positioned"], childList: true, subtree: true });
-    observeH4();
-    return () => {
-      observer.disconnect();
-      h4MutationObserver.disconnect();
+    const initialViewport = [window.innerWidth, window.innerHeight, window.visualViewport?.width, window.visualViewport?.height];
+    const settleInterrupted = () => {
+      const next = [window.innerWidth, window.innerHeight, window.visualViewport?.width, window.visualViewport?.height];
+      if (next.some((value, index) => value !== initialViewport[index])) complete();
     };
-  }, [myTableIndex, players, route.destinationPlayerId, route.sourcePlayerId]);
+    const settleCancelled = (event: AnimationEvent) => {
+      if (event.target === reveal && ["revealedCardToHand", "revealedCardToHandAroundH4"].includes(event.animationName)) { trace("animationcancel", event); complete(); }
+    };
+    const traceAnimation = (event: AnimationEvent) => { if (event.target === reveal) trace(event.type, event); };
+    reveal.addEventListener("animationstart", traceAnimation);
+    reveal.addEventListener("animationend", traceAnimation);
+    const settleHidden = () => { if (document.hidden) complete(); };
+    reveal.addEventListener("animationcancel", settleCancelled);
+    window.addEventListener("resize", settleInterrupted);
+    window.visualViewport?.addEventListener("resize", settleInterrupted);
+    document.addEventListener("visibilitychange", settleHidden);
+    if (document.hidden) complete();
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+      trace("layout-cleanup");
+      reveal.removeEventListener("animationstart", traceAnimation);
+      reveal.removeEventListener("animationend", traceAnimation);
+      reveal.removeEventListener("animationcancel", settleCancelled);
+      window.removeEventListener("resize", settleInterrupted);
+      window.visualViewport?.removeEventListener("resize", settleInterrupted);
+      document.removeEventListener("visibilitychange", settleHidden);
+      queueMicrotask(() => { if (!reveal.isConnected) complete(); });
+    };
+  }, [complete, route.eventId, route.physicalCardId, route.destinationPlayerId, route.sourcePlayerId]);
 
   return <div className="table-resolution-layer public-zone-transition-layer" role="status" aria-label="Publicly revealed card transferred to hand">
-    <div ref={revealRef} className="active-table-reveal public-hand-transfer"
+    <div ref={revealRef} className="active-table-reveal public-hand-transfer public-hand-transfer-preflight"
       data-settlement-event-id={event.id} data-public-zone-transition-event-id={route.eventId}
       data-public-zone-transition-card-id={route.physicalCardId} data-public-zone-transition-destination="HAND"
-      key={route.claimId} onAnimationEnd={(animation) => {
+      onAnimationEnd={(animation) => {
         if (animation.target !== animation.currentTarget
           || !["revealedCardToHand", "revealedCardToHandAroundH4"].includes(animation.animationName)) return;
-        onPresented(route);
+        complete();
       }}><div data-public-card-copy-anchor-event-id={event.id}><CardFace card={event.card} settlementCardId={route.physicalCardId} /></div></div>
   </div>;
 }

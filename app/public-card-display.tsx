@@ -459,7 +459,7 @@ function PublicJourneyCard({
     data-public-card-journey-author-reservation-width={authorReservation?.width}
     data-public-card-journey-author-reservation-height={authorReservation?.height}
     data-public-card-harvest-history-parked={harvestHistory && card.phase === "parked" ? "true" : undefined}
-    data-public-card-compact-response={(harvestHistory || card.role === "response") && card.rect.width < PARKED_CARD.width ? "true" : undefined}
+    data-public-card-compact-response={(harvestHistory || card.role === "response") && card.rect.width < parkedCardSize().width ? "true" : undefined}
     data-harvest-root-parked={harvestRootParked ? "true" : undefined}
     data-public-card-journey-phase={card.phase}
     data-public-card-journey-size={size}
@@ -615,6 +615,17 @@ function withFirstQueuedAttackDodgeReveal(cards: JourneyCard[], center: CardRect
 const REVEAL_CARD = { width: 90, height: 135 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
 const PARKED_CARD = { width: 48, height: 72 };
+function parkedCardSize() {
+  if (typeof window === "undefined" || !window.matchMedia("(max-width: 700px)").matches) return PARKED_CARD;
+  // Use the same actual miniature footprint as the local Equipment slots.
+  // The first upper-seat reservation and the visible parked card must agree.
+  const slot = document.querySelector<HTMLElement>(".local-player-dock .local-equipment-slot");
+  const rect = slot?.getBoundingClientRect();
+  if (rect && rect.width > 0 && rect.height > 0) return { width: rect.width, height: rect.height };
+  const shortPhone = window.matchMedia("(max-width: 400px) and (max-height: 740px)").matches;
+  const width = shortPhone ? 24 : Math.min(34, Math.max(28, window.innerWidth * 0.076));
+  return { width, height: width * 1.5 };
+}
 const HARVEST_MOBILE_RESPONSE_CARD = { width: 32, height: 48 };
 const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 520;
 // Two 15px mobile lines at 1.2 line-height plus 4px vertical padding and
@@ -944,7 +955,7 @@ function actorParkedCard(actorId: string, cardIndex = 0, preferLocalAuthorDock =
   if (bounds.width <= 0 || bounds.height <= 0) return null;
 
   if (anchor.classList.contains("local-player-dock")) {
-    return boundCardRect(bounds.left + 8 + cardIndex * (PARKED_CARD.width + 6), bounds.top - PARKED_CARD.height - 6, PARKED_CARD.width, PARKED_CARD.height);
+    return boundCardRect(bounds.left + 8 + cardIndex * (parkedCardSize().width + 6), bounds.top - parkedCardSize().height - 6, parkedCardSize().width, parkedCardSize().height);
   }
 
   const table = document.querySelector<HTMLElement>(".play-table");
@@ -958,18 +969,19 @@ function actorParkedCard(actorId: string, cardIndex = 0, preferLocalAuthorDock =
   const isUpperSeat = tableBounds ? anchorCenterY < tableBounds.top + tableBounds.height * 0.38 : anchorCenterY < boardCenterY;
 
   if (isUpperSeat) {
-    return boundCardRect(anchorCenterX - PARKED_CARD.width / 2 + cardIndex * (PARKED_CARD.width + 6), bounds.bottom + 6, PARKED_CARD.width, PARKED_CARD.height);
+    const topGap = window.matchMedia("(max-width: 700px)").matches ? 0 : 6;
+    return boundCardRect(anchorCenterX - parkedCardSize().width / 2 + cardIndex * (parkedCardSize().width + 6), bounds.bottom + topGap, parkedCardSize().width, parkedCardSize().height);
   }
 
   if (Math.abs(anchorCenterX - boardCenterX) > Math.abs(anchorCenterY - boardCenterY)) {
     const facesCenterFromLeft = anchorCenterX < boardCenterX;
     const left = facesCenterFromLeft
-      ? bounds.right + 6 + cardIndex * (PARKED_CARD.width + 6)
-      : bounds.left - PARKED_CARD.width - 6 - cardIndex * (PARKED_CARD.width + 6);
-    return boundCardRect(left, anchorCenterY - PARKED_CARD.height / 2, PARKED_CARD.width, PARKED_CARD.height);
+      ? bounds.right + 6 + cardIndex * (parkedCardSize().width + 6)
+      : bounds.left - parkedCardSize().width - 6 - cardIndex * (parkedCardSize().width + 6);
+    return boundCardRect(left, anchorCenterY - parkedCardSize().height / 2, parkedCardSize().width, parkedCardSize().height);
   }
 
-  return boundCardRect(anchorCenterX - PARKED_CARD.width / 2 + cardIndex * (PARKED_CARD.width + 6), bounds.top - PARKED_CARD.height - 6, PARKED_CARD.width, PARKED_CARD.height);
+  return boundCardRect(anchorCenterX - parkedCardSize().width / 2 + cardIndex * (parkedCardSize().width + 6), bounds.top - parkedCardSize().height - 6, parkedCardSize().width, parkedCardSize().height);
 }
 
 type SeatHistoryCardParking = { rect: CardRect; side: "local" | "top" | "left" | "right" };
@@ -1085,7 +1097,7 @@ function seatHistoryCardParking(
     reportEarlyFailure("author-anchor-or-table-has-no-size", { actorRect: { left: seat.left, top: seat.top, width: seat.width, height: seat.height }, tableRect: { left: tableRect.left, top: tableRect.top, width: tableRect.width, height: tableRect.height } });
     return null;
   }
-  const cardSize = options.cardSize ?? PARKED_CARD;
+  const cardSize = options.cardSize ?? parkedCardSize();
   const isLocalAnchor = anchor.classList.contains("local-player-dock");
   if (options.protectInteractionControls && options.anchorLocalHero) {
     const authorHero = anchor.querySelector<HTMLElement>(isLocalAnchor ? ".local-hero-card" : ".opponent-hero-card");
@@ -1154,15 +1166,16 @@ function seatHistoryCardParking(
     const isFree = (candidate: CardRect) => {
       const visible = visibleFront(candidate);
       if (!visible) return false;
+      const seatClearance = window.matchMedia("(max-width: 700px)").matches && candidate.top >= seat.bottom - 0.5 ? 0 : 2;
       return inViewport(candidate)
-        && !rectsOverlap(heroRect, visible.rect, 2)
-        && (!authorSeatRect || !rectsOverlap(authorSeatRect, visible.rect, 2))
+        && !rectsOverlap(heroRect, visible.rect, seatClearance)
+        && (!authorSeatRect || !rectsOverlap(authorSeatRect, visible.rect, seatClearance))
         && !occupied.some((rect) => rectsOverlap(rect, candidate, 2))
         && obstacles.every((rect) => !rectsOverlap(rect, visible.rect, 2))
         && otherAnchors.every((rect) => !rectsOverlap(rect, visible.rect, 2));
     };
     const belowSeatCandidates = (left: number): CardRect[] => {
-      const firstTop = seat.bottom + gap + cascade;
+      const firstTop = seat.bottom + (window.matchMedia("(max-width: 700px)").matches ? 0 : gap) + cascade;
       const tops = new Set([firstTop]);
       // A response mini must stay visibly attached to its real author. Do not
       // keep walking below obstacles (especially the Harvest pool), where a
@@ -1579,7 +1592,7 @@ function seatHistoryCardParking(
     side = edgeDistances[0].side;
     if (side === "top") {
       baseLeft = seatCenterX - cardSize.width / 2;
-      baseTop = seat.bottom + gap;
+      baseTop = seat.bottom + (window.matchMedia("(max-width: 700px)").matches ? 0 : gap);
     } else if (side === "left") {
       baseLeft = seat.right + gap;
       baseTop = seatCenterY - cardSize.height / 2;
@@ -1722,7 +1735,7 @@ function seatHistoryCardParking(
     verticalBounds: candidate.top >= (localAnchor ? 4 : safeTop)
       && candidate.top <= (localAnchor ? window.innerHeight - cardSize.height - 4 : safeBottom),
     actorSeat: (!(options.extendNegationChainCollisionSlots || options.protectInteractionControls)
-      || !rectsOverlap(candidate, seat, 2)),
+      || !rectsOverlap(candidate, seat, side === "top" && window.matchMedia("(max-width: 700px)").matches ? 0 : 2)),
     occupiedCards: occupied.filter((rect) => rectsOverlap(rect, new DOMRect(candidate.left, candidate.top, candidate.width, candidate.height), 4)),
     otherSeats: anchors.filter((obstacle) => rectsOverlap(candidate, obstacle, 3)),
     protectedObstacles: protectedObstacles.filter((obstacle) => rectsOverlap(candidate, obstacle, 2)),
@@ -2173,16 +2186,16 @@ function fixedUpperHistoryAnnouncementAnchor(table: HTMLElement): { top: number;
     return {
       actorId: id,
       rect: {
-        left: seatRect.left + seatRect.width / 2 - PARKED_CARD.width / 2,
-        top: seatRect.bottom + 6,
-        width: PARKED_CARD.width,
-        height: PARKED_CARD.height,
+        left: seatRect.left + seatRect.width / 2 - parkedCardSize().width / 2,
+        top: seatRect.bottom + (window.matchMedia("(max-width: 700px)").matches ? 0 : 6),
+        width: parkedCardSize().width,
+        height: parkedCardSize().height,
       },
       element: null,
     };
   });
   return slots.length > 0
-    ? { top: Math.max(...slots.map(({ rect }) => rect.top + rect.height)) + 8, slots }
+    ? { top: Math.max(...slots.map(({ rect }) => rect.top + rect.height)) + (window.matchMedia("(max-width: 700px)").matches ? 0 : 8), slots }
     : null;
 }
 
@@ -2767,7 +2780,7 @@ function PublicCardAnnouncement({
         protectedRects: [],
       })}:${stableHarvestAnchor ? "harvest" : "public"}${fixedUpperTop === null ? "" : `:upper-${Math.round(fixedUpperTop * 2) / 2}`}`;
       const geometryEpoch = `${layoutEpoch}:${publicAnnouncementTraceHash(currentGeometryIdentity)}`;
-      if (!viewerGeometryReady) {
+      if (!viewerGeometryReady && fixedUpperTop === null) {
         if (copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
         setDelivery("PENDING_PLACEMENT", currentEventCopyKey);
         setData("data-public-card-announcement-stability", "waiting-current-viewer-geometry");
@@ -2849,10 +2862,17 @@ function PublicCardAnnouncement({
       // parked by its real seat and independently reserved as an obstacle.
       // Public REVEAL and authentic PARKED miniatures remain allowed beneath
       // H4. A centre frame explicitly marked to stay clear remains protected.
-      const centerCardStillOccupiesStage = keepCenterAnchorClear;
+      // A fixed-upper result can outlive its explicitly identified reveal.
+      // Once that actual anchor is gone, its cached rectangle is no longer a
+      // live obstacle; still protect every current Seat, miniature and control.
+      const centerCardStillOccupiesStage = keepCenterAnchorClear
+        && !(protectFirstParkedMiniature && Boolean(copyAnchorEventId) && !anchor && !currentFallbackCardRect);
 
-      const gap = PUBLIC_CARD_ANNOUNCEMENT_GAP;
-      const obstacleClearance = (element: HTMLElement | null) => privateDrawAware && element?.matches(".private-draw-row")
+      const gap = protectFirstParkedMiniature && window.matchMedia("(max-width: 700px)").matches
+        ? 3 : PUBLIC_CARD_ANNOUNCEMENT_GAP;
+      const obstacleClearance = (element: HTMLElement | null) => protectFirstParkedMiniature && window.matchMedia("(max-width: 700px)").matches
+        && upperHistoryAnchor?.slots.some((slot) => slot.element === element) ? 0
+        : privateDrawAware && element?.matches(".private-draw-row")
         ? 10
         : compactMobileLustFrame && element?.matches(".public-activity-chip") ? 6
           : element?.matches(".opponent-player-card, .player-square") ? 0 : 2;
@@ -3362,6 +3382,9 @@ function PublicCardAnnouncement({
       });
     };
     schedulePlacementRef.current = schedule;
+    // Resolve the new viewer geometry in the same layout commit, before paint.
+    // The solver still hides the announcement if the new bounds are unsafe.
+    if (geometryChanged && protectFirstParkedMiniature) place();
     const anchor = getAnchor();
     anchorObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
     if (anchor) anchorObserver?.observe(anchor, { attributes: true, attributeFilter: ["style", "data-harvest-root-parked"] });
@@ -4439,8 +4462,8 @@ function singleTargetJourneyEvents(action: PublicCardDisplayAction, sourceName: 
     role: "root",
     globalOrdinal: 1,
     phase: "parked",
-    rect: { left: 0, top: 0, ...PARKED_CARD },
-    target: { left: 0, top: 0, ...PARKED_CARD },
+    rect: { left: 0, top: 0, ...parkedCardSize() },
+    target: { left: 0, top: 0, ...parkedCardSize() },
   });
   const responseByEventId = new Map<string, PublicCardDisplayResponseNode>();
   for (const response of action.responseHistory ?? []) responseByEventId.set(response.eventId, response);
@@ -4464,8 +4487,8 @@ function singleTargetJourneyEvents(action: PublicCardDisplayAction, sourceName: 
       role: "response",
       globalOrdinal: response.ordinal + 1,
       phase: "parked",
-      rect: { left: 0, top: 0, ...PARKED_CARD },
-      target: { left: 0, top: 0, ...PARKED_CARD },
+      rect: { left: 0, top: 0, ...parkedCardSize() },
+      target: { left: 0, top: 0, ...parkedCardSize() },
     });
   }
   return events.sort((left, right) => (left.globalOrdinal ?? 0) - (right.globalOrdinal ?? 0));
@@ -4497,7 +4520,7 @@ function singleTargetParkingOptions(
     ...(action.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer" ? { avoidAuthorSeat: true } : {}),
     // All parked Harvest history (root and committed responses) uses the
     // same footprint. The 90×135 reveal remains a separate live phase.
-    cardSize: compactHarvestMini ? HARVEST_MOBILE_RESPONSE_CARD : PARKED_CARD,
+    cardSize: compactHarvestMini ? HARVEST_MOBILE_RESPONSE_CARD : parkedCardSize(),
     ...(harvest ? {
       anchorLocalHero: true,
       avoidAuthorSeat: event.role !== "response",
@@ -4714,7 +4737,7 @@ function SingleTargetCardJourney({
           ?? (!parkingOptions.protectInteractionControls
             ? actorParkedCard(event.actorId, actorIndex, event.actorId === viewerId)
             : null));
-      const parkedSize = parkingOptions.cardSize ?? PARKED_CARD;
+      const parkedSize = parkingOptions.cardSize ?? parkedCardSize();
       // Retain the last real author target while a same-viewer measurement is
       // pending. A first-time missing target remains an unproven centre-sized
       // placeholder and is never treated as a valid parked position.
@@ -5156,7 +5179,7 @@ function SingleTargetCardJourney({
             occupied,
             parkingOptions,
           )?.rect;
-          const parkedSize = parkingOptions.cardSize ?? PARKED_CARD;
+          const parkedSize = parkingOptions.cardSize ?? parkedCardSize();
           const renderedRect = card.phase === "move" ? renderedJourneyCardRect(card.eventId) : null;
           const target = measuredTarget
             ?? (card.phase === "move" ? renderedRect ?? card.rect : { left: card.target.left, top: card.target.top, ...parkedSize });
