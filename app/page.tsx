@@ -27,6 +27,7 @@ import { buildConsoleDecisionDisplay, triggerDecisionInstruction, viewerNegation
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, type PublicInteractionNarration } from "../game/public-activity";
 import { CardFace } from "./card-face";
+import { fixedUpperHistoryAnnouncementAnchor, publicH4ReservedHeight } from "./public-upper-anchor";
 import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
@@ -8915,11 +8916,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && selectedPublicCardAction.rootEventId === publicInteractionNarration.rootEventId
     && selectedPublicCardAction.interactionId === publicInteractionNarration.interactionId
     && selectedPublicCardAction.rootFrameId === publicInteractionNarration.rootFrameId);
-  const protectPublicInteractionUpperH4 = Boolean(publicInteractionNarration && (
-    skillEffectActionCandidate || skillEffectSettlementCandidate
-    || currentInteractionFact?.category === "SKILL_USED"
-      && currentInteractionFact.rootEventId === publicInteractionNarration.rootEventId
-  ));
+  const protectPublicInteractionUpperH4 = Boolean(publicInteractionNarration);
   const deflectionForPublicAction = (action: PublicCardDisplayAction | null) => {
     if (!action || action.cardKind !== "Attack" || action.motion?.type !== "attack-dodge" || !action.targetId) return null;
     const proofs = clientPresentation.deflectionActions.filter((proof) => proof.semantics === "PROVEN"
@@ -11916,13 +11913,13 @@ function RetaliationCardPool({ selection, target, selectedKeys, playerCount, sco
   onToggle: (key: string) => void; onConfirm: () => void; onDecline: () => void; onInfo: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
   const zones = retaliationTargetZones(selection, target, selectedKeys);
-  const { ref: stageRef, top, insets, ready } = useBattlefieldChoicePlacement({ enabled: zones.length > 0, playerCount,
-    placementKey: [scope, selection.targetId, ...selection.eligibleKeys].join("\u001f"), centralTargetLayout: true });
+  const { ref: stageRef, top, insets, ready, maxHeight } = useBattlefieldChoicePlacement({ enabled: zones.length > 0, playerCount,
+    placementKey: [scope, selection.targetId, ...selection.eligibleKeys].join("\u001f"), centralTargetLayout: true, requireSafePlacement: true });
   if (!zones.length) return null;
   return <BattlefieldChoiceStage ref={stageRef} className="game-event-stage harvest-choice-stage card-pool-target-stage"
-    mode="actor-target-select" accessibilityLabel="Retaliation target card selection" data-target-card-pool-layout="central"
+    mode="actor-target-select" accessibilityLabel="Retaliation target card selection" data-retaliation-pool="true" data-target-card-pool-layout="central"
     data-target-card-pool-ready={ready ? "true" : "false"} aria-hidden={!ready}
-    style={{ top: top === null ? undefined : `${top}px`, left: insets ? `${insets.left}px` : undefined, right: insets?.width ? "auto" : insets ? `${insets.right}px` : undefined, width: insets?.width ? `${insets.width}px` : undefined }}>
+    style={{ top: top === null ? undefined : `${top}px`, left: insets ? `${insets.left}px` : undefined, right: insets?.width ? "auto" : insets ? `${insets.right}px` : undefined, width: insets?.width ? `${insets.width}px` : undefined, "--retaliation-pool-max-height": maxHeight === null ? undefined : `${maxHeight}px` } as CSSProperties}>
     <CardPoolPanel mode="actor-target-select" title="RETALIATION" instruction="Choose 1 card to obtain" accessibilityLabel="Retaliation target card selection"
       publicTarget={{ handCount: target.handCount, equipmentCards: target.equipmentCards, judgementCards: target.judgementCards }} zones={zones}
       selectionCount={`${selectedKeys.length} / ${selection.max} selected`} actionLabel="Use Retaliation" disabled={disabled}
@@ -12065,6 +12062,14 @@ function PublicEquipmentCardTransition({ event, route, players, myTableIndex, on
       reveal.style.setProperty("--origin-x", origin.x + "px");
       reveal.style.setProperty("--origin-y", origin.y + "px");
       if (toEquipment) {
+        const upper = fixedUpperHistoryAnnouncementAnchor(table);
+        const h4 = table.querySelector<HTMLElement>("[data-public-card-announcement]");
+        if (upper && h4) {
+          const tableRect = table.getBoundingClientRect();
+          const cardTop = upper.top + publicH4ReservedHeight(h4) + 4;
+          reveal.style.setProperty("--public-reveal-x", `${table.clientWidth / 2}px`);
+          reveal.style.setProperty("--public-reveal-y", `${cardTop + face.offsetHeight / 2 - tableRect.top}px`);
+        }
         const point = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
         reveal.style.setProperty("--equipment-x", point.x + "px");
         reveal.style.setProperty("--equipment-y", point.y + "px");
@@ -12547,7 +12552,7 @@ function PublicHandRevealCardTransition({ event, route, players, myTableIndex, c
       if (h4Rect && h4Rect.width > 0 && h4Rect.height > 0) {
         const fixedTop = Number(upperH4?.dataset.publicCardAnnouncementFixedUpperTop);
         const plannedH4Top = Number.isFinite(fixedTop) ? fixedTop : h4Rect.top;
-        const plannedH4Bottom = plannedH4Top + h4Rect.height;
+        const plannedH4Bottom = plannedH4Top + publicH4ReservedHeight(upperH4!);
         const requestedCardTop = plannedH4Bottom + 4;
         const safeBottom = Math.min(tableRect.bottom - 8,
           pacRect && pacStyle?.display !== "none" && pacStyle?.visibility !== "hidden" && pacRect.width > 0 && pacRect.height > 0

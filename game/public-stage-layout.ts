@@ -28,6 +28,7 @@ export type PublicStageLayoutInput = {
   compactAnnouncement?: PublicStageSize;
   obstacles: readonly { id: string; rect: PublicStageRect }[];
   phaseRects?: { card: PublicStageRect; activity: PublicStageRect; announcement?: PublicStageRect };
+  upperH4?: { top: number; reservedHeight: number; gap: number };
   announcementCardGap?: number;
   cardActivityGap?: number;
 };
@@ -146,6 +147,24 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     safeBounds.bottom - activity.height,
     activity,
   );
+  if (input.upperH4) {
+    const { top, reservedHeight, gap } = input.upperH4;
+    if (![top, reservedHeight, gap].every(Number.isFinite) || reservedHeight < announcement.height || gap < 0) {
+      return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
+    }
+    const centerX = (safeBounds.left + safeBounds.right) / 2;
+    const h4 = makeRect(centerX, top, announcement);
+    const activityRect = input.scene.phase === "REVEAL" || input.activityBottom !== undefined ? anchoredActivity : input.phaseRects!.activity;
+    const cardRect = input.scene.phase === "REVEAL" ? makeRect(centerX, top + reservedHeight + gap, card) : input.phaseRects!.card;
+    const stageRects = input.scene.phase === "REVEAL" ? [h4, cardRect, activityRect] : [h4, activityRect];
+    if (stageRects.some((rect) => rect.left < safeBounds.left || rect.right > safeBounds.right || rect.top < safeBounds.top || rect.bottom > safeBounds.bottom
+      || input.obstacles.some((obstacle) => overlaps(rect, obstacle.rect)))
+      || overlaps(h4, activityRect) || input.scene.phase === "REVEAL" && (overlaps(h4, cardRect) || cardRect.bottom + cardActivityGap > activityRect.top)) {
+      return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
+    }
+    return { status: "placed", layout: { identity, variant: input.scene.phase === "REVEAL" ? "stack" : input.scene.phase === "MOVE" ? "move" : "parked", generation: input.scene.generation, scene: input.scene, safeBounds,
+      protectedRects: input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })), announcement: h4, card: { ...cardRect }, activity: { ...activityRect }, cardActivityGap: activityRect.top - cardRect.bottom } };
+  }
   if (input.scene.phase !== "REVEAL") {
     const phaseRects = input.phaseRects!;
     const gap = Math.max(8, announcementCardGap);

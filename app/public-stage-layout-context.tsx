@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { fixedUpperHistoryAnnouncementAnchor, publicH4ReservedHeight } from "./public-upper-anchor";
 import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 import {
   calculatePublicStageLayout,
@@ -227,6 +228,8 @@ export function PublicStageLayoutProvider({
         bottom: (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight),
       };
       const tableBounds = rectOf(table);
+      const upper = fixedUpperHistoryAnnouncementAnchor(table);
+      const upperH4 = upper ? { top: upper.top, reservedHeight: publicH4ReservedHeight(announcement), gap: 4 } : undefined;
       const obstacles = [...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)]
         .filter((element) => element !== primary && element !== announcement && element !== chip
           && !primary.contains(element) && !announcement.contains(element) && !chip.contains(element)
@@ -309,12 +312,15 @@ export function PublicStageLayoutProvider({
         viewport: roundedRect(viewport),
         table: roundedRect(tableBounds),
         consoleGuidance: roundedRect(consoleBounds),
+        upperH4,
         primary: signatureCardSize,
         // REVEAL may move once from its preferred anchor to the shared safe
         // stack. That owned placement must not mint a second generation.
         primaryRect: phase === "REVEAL" ? null : roundedRect(signatureCardRect),
         primaryOffset: phase === "MOVE" ? { left: 0, top: 0 } : primaryOffset,
-        announcement: measuredSize(announcementRect),
+        // H4 copy can grow downwards without creating a new physical card
+        // generation; its reserved maximum is stable for this geometry.
+        announcement: upperH4 ? { width: announcementRect.width, height: upperH4.reservedHeight } : measuredSize(announcementRect),
         activity: measuredSize(activityRect),
         obstacles: obstacles.map(({ id, rect }) => [id, roundedRect(rect)])
           .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
@@ -348,6 +354,7 @@ export function PublicStageLayoutProvider({
           top: Math.max(safeTop, Math.min(safeBottom - cardSize.height, visualPrimary.top)),
         },
         card: cardSize,
+        upperH4,
         announcement: measuredSize(announcementRect),
         compactAnnouncement,
         activity: measuredSize(activityRect),

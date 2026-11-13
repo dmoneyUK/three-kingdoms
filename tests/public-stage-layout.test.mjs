@@ -244,3 +244,31 @@ test("short mobile stage fits a measured wrapped announcement beside the full ca
   assert.equal((activity.left + activity.right) / 2, 195);
   assert.ok(card.top >= 94 && activity.bottom <= result.layout.safeBounds.bottom);
 });
+
+test("measured upper H4 and reserved text height pin the reveal across text changes", () => {
+  const geometry = { viewport: { left: 0, top: 0, right: 440, bottom: 766 }, table: { left: 0, top: 0, right: 440, bottom: 474 }, activityBottom: 479,
+    upperH4: { top: 150.15625, reservedHeight: 70.5, gap: 4 }, activity: { width: 340, height: 67 }, obstacles: [] };
+  const short = calculatePublicStageLayout(input({ ...geometry, announcement: { width: 340, height: 30 } }));
+  const long = calculatePublicStageLayout(input({ ...geometry, announcement: { width: 340, height: 70.5 } }));
+  assert.equal(short.status, "placed"); assert.equal(long.status, "placed");
+  assert.equal(short.layout.announcement.top, 150.15625);
+  assert.deepEqual(short.layout.card, long.layout.card);
+  assert.equal(long.layout.card.top - long.layout.announcement.bottom, 4);
+  assert.ok(long.layout.card.bottom + 8 <= long.layout.activity.top);
+});
+
+test("measured upper H4 remains fixed during move and parked phases", () => {
+  const upperH4 = { top: 150, reservedHeight: 71, gap: 4 };
+  const viewport = { left: 0, top: 0, right: 440, bottom: 766 };
+  const table = { left: 0, top: 0, right: 440, bottom: 474 };
+  const activity = { left: 50, top: 412, right: 390, bottom: 479 };
+  const card = { left: 60, top: 100, right: 94, bottom: 150 };
+  for (const phase of ["MOVE", "PARKED"]) {
+    const result = calculatePublicStageLayout(input({ scene: { ...scene, phase }, viewport, table, activityBottom: 479,
+      upperH4, announcement: { width: 340, height: 48 }, activity: { width: 340, height: 67 },
+      phaseRects: { card, activity, announcement: { left: 50, top: 150, right: 390, bottom: 198 } } }));
+    assert.equal(result.status, "placed");
+    assert.equal(result.layout.announcement.top, 150);
+    assert.deepEqual(result.layout.card, card);
+  }
+});

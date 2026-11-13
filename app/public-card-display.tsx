@@ -1,5 +1,7 @@
 "use client";
 
+import { fixedUpperHistoryAnnouncementAnchor, parkedCardSize } from "./public-upper-anchor";
+
 import { publicCorridorWidth } from "./public-corridor";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -614,18 +616,6 @@ function withFirstQueuedAttackDodgeReveal(cards: JourneyCard[], center: CardRect
 // readable before it shrinks to the 48×72 parked thumbnail.
 const REVEAL_CARD = { width: 90, height: 135 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
-const PARKED_CARD = { width: 48, height: 72 };
-function parkedCardSize() {
-  if (typeof window === "undefined" || !window.matchMedia("(max-width: 700px)").matches) return PARKED_CARD;
-  // Use the same actual miniature footprint as the local Equipment slots.
-  // The first upper-seat reservation and the visible parked card must agree.
-  const slot = document.querySelector<HTMLElement>(".local-player-dock .local-equipment-slot");
-  const rect = slot?.getBoundingClientRect();
-  if (rect && rect.width > 0 && rect.height > 0) return { width: rect.width, height: rect.height };
-  const shortPhone = window.matchMedia("(max-width: 400px) and (max-height: 740px)").matches;
-  const width = shortPhone ? 24 : Math.min(34, Math.max(28, window.innerWidth * 0.076));
-  return { width, height: width * 1.5 };
-}
 const HARVEST_MOBILE_RESPONSE_CARD = { width: 32, height: 48 };
 const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 520;
 // Two 15px mobile lines at 1.2 line-height plus 4px vertical padding and
@@ -2120,85 +2110,6 @@ type PublicCardAnnouncementBand = {
 
 const publicCardAnnouncementBands = new Map<string, PublicCardAnnouncementBand>();
 
-type UpperHistorySlot = { actorId: string; rect: CardRect; element: HTMLElement | null };
-
-/** Reserves the first public-history miniature slot below each upper seat. */
-function fixedUpperHistoryAnnouncementAnchor(table: HTMLElement): { top: number; slots: UpperHistorySlot[] } | null {
-  const visibleSeats = [...table.querySelectorAll<HTMLElement>(".player-board > [data-player-anchor]")]
-    .flatMap((element) => {
-      const rect = element.getBoundingClientRect();
-      const style = window.getComputedStyle(element);
-      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
-        ? [{ id: element.dataset.playerAnchor ?? "", rect }]
-        : [];
-    })
-    .filter((seat) => Boolean(seat.id));
-  if (visibleSeats.length === 0) return null;
-  const firstTop = Math.min(...visibleSeats.map(({ rect }) => rect.top));
-  const upperSeats = visibleSeats.filter(({ rect }) => rect.top <= firstTop + 24);
-  const cardsByActor = new Map<string, Array<{ element: HTMLElement; ordinal: number; order: number }>>();
-  [...table.querySelectorAll<HTMLElement>("[data-public-card-journey-event-id][data-public-card-journey-phase]")]
-    .forEach((element, order) => {
-      const actorId = element.dataset.publicCardJourneyActorId ?? "";
-      const phase = element.dataset.publicCardJourneyPhase;
-      if (!actorId || !upperSeats.some((seat) => seat.id === actorId)
-        || !(phase === "queued" || phase === "reveal" || phase === "move" || phase === "parked")) return;
-      const rawOrdinal = Number(element.dataset.publicCardJourneyOrdinal);
-      const cards = cardsByActor.get(actorId) ?? [];
-      cards.push({ element, ordinal: Number.isFinite(rawOrdinal) ? rawOrdinal : Number.MAX_SAFE_INTEGER, order });
-      cardsByActor.set(actorId, cards);
-    });
-
-  const readDataNumber = (element: HTMLElement, key: string): number | null => {
-    const value = element.getAttribute(key);
-    if (!value?.trim()) return null;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-  const slots = upperSeats.map(({ id, rect: seatRect }): UpperHistorySlot => {
-    const firstCard = (cardsByActor.get(id) ?? []).sort((left, right) => left.ordinal - right.ordinal || left.order - right.order)[0]?.element;
-    if (firstCard) {
-      const phase = firstCard.dataset.publicCardJourneyPhase;
-      const cardRect = firstCard.getBoundingClientRect();
-      const style = window.getComputedStyle(firstCard);
-      if (phase === "parked" && style.display !== "none" && style.visibility !== "hidden" && cardRect.width > 0 && cardRect.height > 0) {
-        return { actorId: id, rect: { left: cardRect.left, top: cardRect.top, width: cardRect.width, height: cardRect.height }, element: firstCard };
-      }
-      const target = {
-        left: readDataNumber(firstCard, "data-public-card-journey-target-left"),
-        top: readDataNumber(firstCard, "data-public-card-journey-target-top"),
-        width: readDataNumber(firstCard, "data-public-card-journey-target-width"),
-        height: readDataNumber(firstCard, "data-public-card-journey-target-height"),
-      };
-      if (Object.values(target).every((value) => value !== null) && target.width! > 0 && target.height! > 0) {
-        return { actorId: id, rect: target as CardRect, element: null };
-      }
-      const reserved = {
-        left: readDataNumber(firstCard, "data-public-card-journey-author-reservation-left"),
-        top: readDataNumber(firstCard, "data-public-card-journey-author-reservation-top"),
-        width: readDataNumber(firstCard, "data-public-card-journey-author-reservation-width"),
-        height: readDataNumber(firstCard, "data-public-card-journey-author-reservation-height"),
-      };
-      if (Object.values(reserved).every((value) => value !== null) && reserved.width! > 0 && reserved.height! > 0) {
-        return { actorId: id, rect: reserved as CardRect, element: null };
-      }
-    }
-    return {
-      actorId: id,
-      rect: {
-        left: seatRect.left + seatRect.width / 2 - parkedCardSize().width / 2,
-        top: seatRect.bottom + (window.matchMedia("(max-width: 700px)").matches ? 0 : 6),
-        width: parkedCardSize().width,
-        height: parkedCardSize().height,
-      },
-      element: null,
-    };
-  });
-  return slots.length > 0
-    ? { top: Math.max(...slots.map(({ rect }) => rect.top + rect.height)) + (window.matchMedia("(max-width: 700px)").matches ? 0 : 8), slots }
-    : null;
-}
-
 function setAnnouncementMessageText(
   element: HTMLElement,
   message: string,
@@ -2617,6 +2528,18 @@ function PublicCardAnnouncement({
         setData("data-public-stage-layout-identity", currentSharedStage.layout.identity);
         setData("data-public-card-announcement-placement", `shared-${currentSharedStage.layout.scene.phase.toLowerCase()}`);
         setData("data-public-card-announcement-positioned", "true");
+        const sharedUpper = sharedTable ? fixedUpperHistoryAnnouncementAnchor(sharedTable) : null;
+        const matchesUpper = sharedUpper && Math.abs(sharedUpper.top - rect.top) <= 0.5;
+        setData("data-public-card-announcement-fixed-upper", matchesUpper ? "true" : undefined);
+        setData("data-public-card-announcement-fixed-upper-top", matchesUpper ? `${Math.round(rect.top * 2) / 2}` : undefined);
+        setData("data-public-card-announcement-width", `${Math.round(rect.right - rect.left)}`);
+        const text = copy.querySelector("b");
+        if (text) {
+          const range = document.createRange();
+          range.selectNodeContents(text);
+          const lines = new Set([...range.getClientRects()].map((line) => Math.round(line.top)));
+          setData("data-public-card-announcement-lines", `${Math.max(1, lines.size)}`);
+        }
         if (copy.style.visibility !== "visible") copy.style.visibility = "visible";
         setDelivery("VISIBLE", currentEventCopyKey);
         reportH4Placement({
@@ -2641,6 +2564,46 @@ function PublicCardAnnouncement({
             copy.dataset.publicCardAnnouncementAnchorEventId ?? "",
           ],
         }));
+      if (sharedStageCandidate && sharedTable && copy.style.visibility === "visible") {
+        // A measured viewport reflow can briefly outpace the shared context.
+        // Keep the same committed copy visible only after validating its new
+        // upper anchor, the current real card and every visible control.
+        const upper = fixedUpperHistoryAnnouncementAnchor(sharedTable);
+        const tableBounds = sharedTable.getBoundingClientRect();
+        const viewportLeft = window.visualViewport?.offsetLeft ?? 0;
+        const viewportRight = viewportLeft + (window.visualViewport?.width ?? window.innerWidth);
+        const safeLeft = Math.max(tableBounds.left, viewportLeft) + 8;
+        const safeRight = Math.min(tableBounds.right, viewportRight) - 8;
+        const width = Math.min(copy.getBoundingClientRect().width, safeRight - safeLeft);
+        if (upper && width > 0) {
+          setPx("left", (safeLeft + safeRight - width) / 2);
+          setPx("top", upper.top);
+          setPx("width", width);
+          const rect = copy.getBoundingClientRect();
+          const currentCard = display.querySelector<HTMLElement>('.public-card-journey-card[data-public-card-journey-phase="reveal"]');
+          const controls = [...sharedTable.querySelectorAll<HTMLElement>(".player-square, .public-activity-chip, .visible-countdown, .stage-system-cluster, .card-pool-target-stage")];
+          const collision = (element: HTMLElement) => {
+            const style = window.getComputedStyle(element);
+            const other = element.getBoundingClientRect();
+            return style.display !== "none" && style.visibility !== "hidden" && other.width > 0 && other.height > 0
+              && rect.left < other.right && rect.right > other.left && rect.top < other.bottom && rect.bottom > other.top;
+          };
+          const cardRect = currentCard?.getBoundingClientRect();
+          const safeCard = !cardRect || cardRect.width <= 0 || rect.bottom + 3 <= cardRect.top;
+          const safeSlots = upper.slots.every(({ rect: slot }) => rect.top >= slot.top + slot.height - 0.5);
+          if (rect.left >= safeLeft - 0.5 && rect.right <= safeRight + 0.5 && safeCard && safeSlots && !controls.some(collision)) {
+            setData("data-public-card-announcement-positioned", "true");
+            setData("data-public-card-announcement-fixed-upper", "true");
+            setData("data-public-card-announcement-fixed-upper-top", `${Math.round(upper.top * 2) / 2}`);
+            setData("data-public-card-announcement-width", `${Math.round(rect.width)}`);
+            setData("data-public-card-announcement-placement", "measured-upper-reflow");
+            setDelivery("VISIBLE", currentEventCopyKey);
+            reportH4Placement({ geometryEpoch: null, obstacleIds: [], decision: "reuse", reason: "measured-upper-reflow-before-shared-generation", compact: null,
+              rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height }, visible: true });
+            return;
+          }
+        }
+      }
       if (sharedStageCandidate) {
         // The provider publishes a new generation before React delivers its
         // matching context value. Never expose the prior H4 placement or fall
@@ -2678,7 +2641,7 @@ function PublicCardAnnouncement({
         return;
       }
       const table = display.closest<HTMLElement>(".play-table")!;
-      const upperHistoryAnchor = protectFirstParkedMiniature ? fixedUpperHistoryAnnouncementAnchor(table) : null;
+      const upperHistoryAnchor = fixedUpperHistoryAnnouncementAnchor(table);
       const fixedUpperTop = upperHistoryAnchor?.top ?? null;
       setData("data-public-card-announcement-fixed-upper", fixedUpperTop === null ? undefined : "true");
       setData("data-public-card-announcement-fixed-upper-top", fixedUpperTop === null ? undefined : `${Math.round(fixedUpperTop * 2) / 2}`);
@@ -2878,9 +2841,9 @@ function PublicCardAnnouncement({
       const centerCardStillOccupiesStage = keepCenterAnchorClear && !isHandRevealFlight
         && !(protectFirstParkedMiniature && Boolean(copyAnchorEventId) && !anchor && !currentFallbackCardRect);
 
-      const gap = protectFirstParkedMiniature && window.matchMedia("(max-width: 700px)").matches
+      const gap = upperHistoryAnchor && window.matchMedia("(max-width: 700px)").matches
         ? 3 : PUBLIC_CARD_ANNOUNCEMENT_GAP;
-      const obstacleClearance = (element: HTMLElement | null) => protectFirstParkedMiniature && window.matchMedia("(max-width: 700px)").matches
+      const obstacleClearance = (element: HTMLElement | null) => Boolean(upperHistoryAnchor) && window.matchMedia("(max-width: 700px)").matches
         && upperHistoryAnchor?.slots.some((slot) => slot.element === element) ? 0
         : privateDrawAware && element?.matches(".private-draw-row")
         ? 10

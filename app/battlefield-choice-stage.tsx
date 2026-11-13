@@ -170,7 +170,8 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
         const mobileCentralTarget = centralTargetLayout && (targetCardSelect || targetCardReadOnly) && window.matchMedia("(max-width: 520px)").matches;
         if (mobileCentralTarget) {
           const isFanjianCombinedChoice = stage.dataset.fanjianCombinedChoice === "true";
-          const fixedUpperH4 = isFanjianCombinedChoice
+          const protectUpperH4 = isFanjianCombinedChoice || stage.dataset.retaliationPool === "true";
+          const fixedUpperH4 = protectUpperH4
             ? table.querySelector<HTMLElement>("[data-public-card-announcement-fixed-upper='true'][data-public-card-announcement-positioned='true']")
             : null;
           if (isFanjianCombinedChoice && !fixedUpperH4) {
@@ -254,7 +255,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
               || !element.matches(".public-card-journey-card")
               || !measuredRootEventId
               || element.dataset.publicCardJourneyEventId === measuredRootEventId)
-            .filter((element) => isFanjianCombinedChoice
+            .filter((element) => protectUpperH4
               || !element.matches(".public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip]"))
             .map((element) => ({ element, rect: element.getBoundingClientRect() }))
             .filter(({ element, rect }) => {
@@ -273,7 +274,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
             obstacles: obstacleRects,
             viewportHeight: viewportBottom,
             minimumTop: fixedUpperH4Rect ? fixedUpperH4Rect.bottom + margin : undefined,
-            preferUpper: isFanjianCombinedChoice,
+            preferUpper: protectUpperH4,
             margin,
           };
           const safeTop = findBattlefieldChoiceSafeTopOffset(safePlacement);
@@ -301,7 +302,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
             && resolvedPanelTop < rootCard.rect.bottom && resolvedPanelTop + panelRect.height > rootCard.rect.top);
           const currentBoundedHeight = boundedPanelHeight?.placementKey === placementKey ? boundedPanelHeight.height : null;
           const naturalPanelHeight = Math.max(panelRect.height, panel.scrollHeight);
-          if (isFanjianCombinedChoice && currentBoundedHeight !== null && resolvedTop !== null) {
+          if (protectUpperH4 && currentBoundedHeight !== null && resolvedTop !== null) {
             const naturalTop = findBattlefieldChoiceSafeTopOffset({
               ...safePlacement,
               panel: { ...panelRect, height: naturalPanelHeight },
@@ -314,7 +315,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
               return;
             }
           }
-          if (isFanjianCombinedChoice && requireSafePlacement && resolvedTop === null) {
+          if (protectUpperH4 && requireSafePlacement && resolvedTop === null) {
             const maxHeight = findBattlefieldChoiceMaximumHeight({
               table: tableRect,
               obstacles: obstacleRects,

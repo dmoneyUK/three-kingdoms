@@ -85,13 +85,13 @@
   visibility: hidden;
 }
 @media (max-width: 700px) {
-  .active-table-reveal.public-hand-transfer .played-card {
+  .active-table-reveal.public-hand-transfer .played-card, .active-table-reveal.equipment-flight .played-card {
     width: var(--public-hand-reveal-width, 90px) !important;
     height: var(--public-hand-reveal-height, 135px) !important;
   }
 }
 @media (max-width: 400px) and (max-height: 740px) {
-  .active-table-reveal.public-hand-transfer .played-card {
+  .active-table-reveal.public-hand-transfer .played-card, .active-table-reveal.equipment-flight .played-card {
     width: var(--public-hand-reveal-width, 72px) !important;
     height: var(--public-hand-reveal-height, 108px) !important;
   }
@@ -107,7 +107,7 @@
 }
 @keyframes equipmentCardToSlot {
   0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
-  10%, 85% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  10%, 85% { left: var(--public-reveal-x, 50%); top: var(--public-reveal-y, 50%); opacity: 1; transform: scale(1); }
   100% { left: var(--equipment-x, 50%); top: var(--equipment-y, 50%); opacity: 1; transform: scale(var(--equipment-scale-x, .4), var(--equipment-scale-y, .4)); }
 }
 @keyframes judgementCardToZone {
@@ -8080,4 +8080,11 @@
   .game-shell .fanjian-combined-stage .fanjian-combined-suit-options {
     grid-template-columns: repeat(2, minmax(44px, 1fr));
   }
+}
+
+.game-shell [data-retaliation-pool="true"] .card-pool-panel--actor-target-select {
+  max-height: var(--retaliation-pool-max-height, none);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-padding-block: 6px;
 }

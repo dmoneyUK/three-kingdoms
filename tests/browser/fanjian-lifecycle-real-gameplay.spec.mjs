@@ -100,6 +100,18 @@ test("real Fanjian reveal lifecycle records public animation and geometry", asyn
   const targetViewResponse = await request.get(`${API}/api/rooms?code=${room.code}&token=${room.players[1].token}`);
   const targetView = await targetViewResponse.json();
   expect(targetView.currentAction.triggerOptions.map((option) => option.effectId)).toContain("sima_yi_fankui");
+  const retaliation = page.locator(`.local-player-dock[data-player-anchor="${room.players[1].id}"]`).getByRole("button", { name: "Retaliation", exact: true });
+  await expect(retaliation).toBeEnabled(); await retaliation.click();
+  const retaliationPool = page.locator('[data-retaliation-pool="true"]');
+  await expect(retaliationPool).toBeVisible();
+  const resultH4 = page.locator('[data-public-card-announcement-fixed-upper="true"]').filter({ hasText: "revealed J♣ Attack" });
+  await expect(resultH4).toBeVisible();
+  console.log("H4_METRICS", JSON.stringify(await resultH4.evaluate((node) => { const b = node.querySelector("b"); const support = node.querySelector(".public-negation-narration-support"); const sample = (el) => el ? { text: el.textContent, rect: el.getBoundingClientRect().toJSON(), fontSize: getComputedStyle(el).fontSize, lineHeight: getComputedStyle(el).lineHeight, marginTop: getComputedStyle(el).marginTop } : null; return { h4: sample(node), b: sample(b), support: sample(support) }; })));
+
+  const h4Bounds = await resultH4.boundingBox(); const poolBounds = await retaliationPool.boundingBox();
+  expect(h4Bounds).not.toBeNull(); expect(poolBounds).not.toBeNull();
+  expect(poolBounds.y).toBeGreaterThanOrEqual(h4Bounds.y + h4Bounds.height + 4);
+  await retaliation.click();
   await page.waitForTimeout(1000);
   await page.screenshot({ path: testInfo.outputPath("fanjian-reveal.png") });
   const skipped = await request.post(`${API}/api/rooms`, { data: { action: "decline_trigger", code: room.code, token: room.players[1].token } });
