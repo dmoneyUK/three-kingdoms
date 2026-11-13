@@ -8,7 +8,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 **Editorial cleanup (2026-10-30; R6 consolidation 22:27 UTC):** Closed items now retain only the final approved UX contract, explicit owner verdict and essential privacy/interaction boundaries. Historical implementation details and superseded plans remain accessible at the immutable [pre-cleanup revision](https://github.com/dmoneyUK/three-kingdoms/blob/b86c7a781468094fc844fe67b4ffda4e5b9a8d36/docs/UX2-refine.md). Delivered-but-unaccepted and active work remain independently reviewable; this editorial edit is **not** a new coding task or user acceptance.
 
-## UX2 CURRENT canonical work index — 2026-11-13 (one open implementation, seven technically deployed awaiting owner phone review)
+## UX2 CURRENT canonical work index — 2026-11-13 (no open implementation, eight technically deployed awaiting owner phone review)
 
 **AUTHORITATIVE STATUS INDEX / NO DUPLICATE EXECUTION:** Tables A–C and the latest explicit owner verdict in the original feature sections govern current work. Dated pre-cleanup snapshots and superseded repairs were removed from this active file but remain [archived in Git](#appendix-a--historical-ux2-status-snapshots-archive-only). A delivered feature awaiting human review belongs in Table B, **not** the development queue; USER-ACCEPTED/CLOSED and SUPERSEDED items in C are not active tasks. Keep one implementation identity per distinct defect.
 
@@ -16,15 +16,11 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 **Current precedence:** Original explicit USER-ACCEPTED verdicts close their exact reviewed scope. Prior 2026-11-02/03 partially accepted/failed snapshots and now-superseded task scheduling remain in [immutable Git history](https://github.com/dmoneyUK/three-kingdoms/blob/eb8b3a8bf91564b1c9c01bbf449bf63d55adbce4/docs/UX2-refine.md), not active work. New Classic rooms support only 4–6 players; unfinished 7/8-player UI work is out of scope.
 
-### A. Current owner-authorized correction — only one unimplemented bounded task
+### A. Current owner-authorized correction
 
-| Authorized correction | Verified current boundary |
-| --- | --- |
-| **PUBLIC-CARDFACE-STABLE-CENTRE-01 / §10.45** | **DESIGN DECISION RESOLVED 2026-11-13 18:07 UTC / NOT IMPLEMENTED / NOT USER-ACCEPTED.** One measured upper H4 top shared by all genuine public events, one stable readable H4-aware stationary CardFace below it, and genuine Retaliation CardPoolPanel below H4, never overlapping PAC/Console/Seats or invalidating §10.42 straight Fanjian flight. Latest full design and focused acceptance are only in original §10.45. |
+No implementation task is currently open. §10.45 is deployed and awaits owner iPhone review in Table B.
 
-§§10.44, 10.46, 10.47 are **technically delivered**, and have been moved to Table B. `HANDOVER.md` still references the old 12:29 UTC design blocker; Coding Agent should re-read this 18:07 UTC decision at its permitted safe resume/planning boundary. Planner does not modify Agent-owned HANDOVER.
-
-### B. Implemented / deployed — PENDING OWNER iPHONE REVIEW (7 independent scopes)
+### B. Implemented / deployed — PENDING OWNER iPHONE REVIEW (8 independent scopes)
 
 These are **not** new execution tasks. CI success and Worker deployment are not owner acceptance. See each original numbered section for actual human review checks.
 
@@ -35,6 +31,7 @@ These are **not** new execution tasks. CI success and Worker deployment are not 
 | **§10.41 PUBLIC-H4-CARDFACE-RECENCY-REGRESSION-01** | Later committed Attack/Steal supersedes older Fanjian public ownership. Source `0581448e`; [Actions 43195310553](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43195310553) SUCCESS. |
 | **§10.43 FANJIAN-CHOOSER-VISUAL-POLISH-01** | High-contrast selected suit, compact visible Confirm with real ≥44px hit area; source `965bd5d7`, [Actions 43313687891](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43313687891) SUCCESS on retry. |
 | **§10.44 PUBLIC-SKILL-EQUIP-H4-REGRESSION-01** | Server-proven Heroic draw and genuine Equipment play produce one correct H4. Source `f1276391`; [Actions 43427126439](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43427126439) SUCCESS. |
+| **§10.45 PUBLIC-CARDFACE-STABLE-CENTRE-01** | Measured fixed upper H4 and stable public CardFace centre; Retaliation pool below H4. Source `2612e930`; [Actions 43490834638](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43490834638) SUCCESS. Real iPhone review remains required. |
 | **§10.46 RETALIATION-SHARED-TARGET-CARD-POOL-01** | Real actor-only Retaliation uses shared picker with legal Use/Skip and hidden-Hand protection. Final test repair `ef06bc29`; [Actions 43430097121](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43430097121) SUCCESS (earlier `0b17a59a` run failed). |
 | **§10.47 RESPONSE-EVENT-COUNTDOWN-PRIORITY-01** | One displayed primary timer gives authentic response deadline priority without changing original timers. Source `77f212bb`; [Actions 43432016093](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43432016093) SUCCESS. |
 
@@ -866,7 +863,7 @@ An original delayed Overindulgence attaches to its real target; during later Jud
 - Regression: Heroic accept vs decline, private owner vs TEST SWITCH observer, genuine one Weapon Equip with H4 and correct slot, later genuine public Equip superseding old Fanjian, no duplicate result/physical face, same-event poll no replay, unrelated independent later public action supersedes correctly. Preserve \`CurrentAction\` legality, original identities, §10.42 closed behaviour, §10.41 independently pending and §10.43 chooser. Focused source/API/selector tests plus at most one representative mobile ~440px browser journey; comply with the project's cumulative bounded local UI/browser-test policy (no reset-per-retry); exact-SHA CI/deploy and **owner iPhone acceptance** are separate gates.
 - **STOP/REPORT:** If the screenshot cannot prove an event happened or an H4 should still be visible at capture time, state this uncertainty and show the actual event/visibility timeline; never declare root cause from the static image. Only verified code/tests may yield \`IMPLEMENTED / PENDING OWNER iPHONE REVIEW\`, not \`USER-ACCEPTED\`.
 
-### 10.45 PUBLIC-CARDFACE-STABLE-CENTRE-01 — one non-drifting public reveal centre (**OWNER-AUTHORIZED CORRECTION — NOT IMPLEMENTED / NOT ACCEPTED**)
+### 10.45 PUBLIC-CARDFACE-STABLE-CENTRE-01 — one non-drifting public reveal centre (**IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW; NOT USER-ACCEPTED**)
 
 **OWNER PHONE FAIL + REVIEWER DECISION — 2026-11-13 18:07 UTC. THIS SUPERCEDES THE OLD "DESIGN DECISION NEEDED" BLOCKER, INSIDE THE SAME ORIGINAL §10.45.** Owner-supplied iPhone photos (18:04–18:06) show three distinct problems: genuine Q♠ Serpent Spear Equipment H4 drawn across the stationary real card face, genuine Sima Yi post-damage Retaliation H4 laid over the active shared CardPoolPanel, and J♣ Attack's public H4 placed much too low. They reject the H4 vertical layout, **not** the already accepted §10.42 Fanjian straight-line card transfer. The matching complete user trace (wtk-game-ux-trace-2026-11-13T18-06-47.188Z.json, build 77f212bb99e91ea8f186cef9c5c2440307c6b42b, 742 entries/zero dropped, 440 CSS px and ~474px play-table) establishes this as **three inconsistent frontend placement paths**, not merely subjective screenshot scaling.
 
