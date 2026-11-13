@@ -85,6 +85,7 @@ type TargetSelectProps = SharedProps & {
   handRailDescription?: string;
   selectionCount: string;
   actionLabel: string;
+  secondaryAction?: { label: string; disabled: boolean; onClick: () => void };
   disabled: boolean;
   confirmDisabled: boolean;
   error?: string;
@@ -334,6 +335,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
       {actorTargetProps && <>
         <footer className="card-pool-panel__footer harvest-confirm-row">
           <span className="card-pool-panel__selection-count harvest-selection-count" aria-live="polite">{actorTargetProps.selectionCount}</span>
+          {actorTargetProps.secondaryAction && <button type="button" className="end card-pool-panel__secondary" disabled={actorTargetProps.secondaryAction.disabled} onClick={actorTargetProps.secondaryAction.onClick}>{actorTargetProps.secondaryAction.label}</button>}
           <button type="button" className="primary card-pool-panel__confirm" disabled={actorTargetProps.confirmDisabled} onClick={actorTargetProps.onConfirm}>{actorTargetProps.actionLabel}</button>
         </footer>
         {actorTargetProps.error && <p className="card-pool-panel__error error" role="alert">{actorTargetProps.error}</p>}

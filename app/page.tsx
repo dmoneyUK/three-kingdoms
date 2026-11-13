@@ -11162,7 +11162,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           </footer>
         </section>
       </BattlefieldChoiceStage>}
-      {targetCardPickerInModal && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && <TargetCardPicker option={targetCardPickerOption} compact={targetCardPickerOption.effectId === "sima_yi_fankui"} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={triggerControlsDisabled} canDecline={Boolean(consoleDecision.authoritativeDecline)} showCancel={targetCardPickerOption.effectId !== "sima_yi_fankui" && (targetCardPickerUsesUnifiedModal || consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId))} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={submitTargetCardPicker} onCancel={cancelTargetCardPicker} onDecline={() => onAction("decline_trigger")} />}
+      {targetCardPickerInModal && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && <TargetCardPicker poolPlayerCount={room.players.length} poolScope={[room.code, room.meId, room.actionRevision ?? ""].join("\u001f")} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} option={targetCardPickerOption} compact={targetCardPickerOption.effectId === "sima_yi_fankui" && targetCardPickerUsesUnifiedModal} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={triggerControlsDisabled} canDecline={Boolean(consoleDecision.authoritativeDecline)} showCancel={targetCardPickerOption.effectId !== "sima_yi_fankui" && (targetCardPickerUsesUnifiedModal || consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId))} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={submitTargetCardPicker} onCancel={cancelTargetCardPicker} onDecline={() => onAction("decline_trigger")} />}
       {triggerResponse && responseDecisionReady && choiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={choiceTriggerOption} selection={choiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={triggerControlsDisabled} error={error} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => { const validKeys = triggerSelectedKeys.filter((selectedKey) => choiceTriggerOption.selection?.type === "choice" && choiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = choiceTriggerOption.selection?.type === "choice" ? choiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; setTriggerSelectedKeys(validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys); }} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: choiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}
       {groupScopePreview.active && <p className="group-scope-preview-label" data-group-scope-preview={groupScopePreview.cardKind ?? undefined} role="status">PREVIEW · {groupScopePreview.label}</p>}
@@ -11906,7 +11906,47 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
   </section></div>;
 }
 
-function TargetCardPicker({ option, presentationCopy, compact = false, selection, target, selectedKeys, disabled, canDecline, showCancel, allowPublicCardInfo = false, error, onToggle, onUse, onCancel, onDecline, onInfoCard }: { option: TriggerOptionView | null; presentationCopy?: { title: string; accessibleName: string; instruction: string; actionLabel: string }; compact?: boolean; selection: PublicTargetCardSelection; target: Player; selectedKeys: string[]; disabled: boolean; canDecline: boolean; showCancel: boolean; allowPublicCardInfo?: boolean; error: string; onToggle: (key: string) => void; onUse: (keys: string[]) => void; onCancel: () => void; onDecline: () => void; onInfoCard?: (card: Card, trigger: HTMLButtonElement) => void }) {
+function RetaliationCardPool({ selection, target, selectedKeys, playerCount, scope, disabled, canDecline, error, onToggle, onConfirm, onDecline, onInfo }: {
+  selection: PublicTargetCardSelection; target: Player; selectedKeys: string[]; playerCount: number; scope: string; disabled: boolean; canDecline: boolean; error: string;
+  onToggle: (key: string) => void; onConfirm: () => void; onDecline: () => void; onInfo: (card: Card, trigger: HTMLButtonElement) => void;
+}) {
+  const zones = retaliationTargetZones(selection, target, selectedKeys);
+  const { ref: stageRef, top, insets, ready } = useBattlefieldChoicePlacement({ enabled: zones.length > 0, playerCount,
+    placementKey: [scope, selection.targetId, ...selection.eligibleKeys].join("\u001f"), centralTargetLayout: true });
+  if (!zones.length) return null;
+  return <BattlefieldChoiceStage ref={stageRef} className="game-event-stage harvest-choice-stage card-pool-target-stage"
+    mode="actor-target-select" accessibilityLabel="Retaliation target card selection" data-target-card-pool-layout="central"
+    data-target-card-pool-ready={ready ? "true" : "false"} aria-hidden={!ready}
+    style={{ top: top === null ? undefined : `${top}px`, left: insets ? `${insets.left}px` : undefined, right: insets?.width ? "auto" : insets ? `${insets.right}px` : undefined, width: insets?.width ? `${insets.width}px` : undefined }}>
+    <CardPoolPanel mode="actor-target-select" title="RETALIATION" instruction="Choose 1 card to obtain" accessibilityLabel="Retaliation target card selection"
+      publicTarget={{ handCount: target.handCount, equipmentCards: target.equipmentCards, judgementCards: target.judgementCards }} zones={zones}
+      selectionCount={`${selectedKeys.length} / ${selection.max} selected`} actionLabel="Use Retaliation" disabled={disabled}
+      confirmDisabled={disabled || selectedKeys.length < selection.min || selectedKeys.length > selection.max}
+      secondaryAction={canDecline ? { label: "Skip", disabled, onClick: onDecline } : undefined}
+      error={error} onToggle={onToggle} onConfirm={onConfirm} onInfo={onInfo} />
+  </BattlefieldChoiceStage>;
+}
+
+function retaliationTargetZones(selection: PublicTargetCardSelection, target: Player, selectedKeys: string[]): TargetCardPoolZone[] {
+    const eligible = new Set(selection.eligibleKeys);
+    const handChoices: TargetCardPoolChoice[] = eligible.has("hand")
+      ? [{ type: "random-hand-zone", opaqueKey: "hand", accessibleLabel: `Choose one random Hand card, ${target.handCount} cards`, totalPublicHandCount: target.handCount, state: selectedKeys.includes("hand") ? "selected" : "available" }]
+      : selection.eligibleKeys.filter((key) => /^hand:(0|[1-9]\d*)$/.test(key)).map((key) => ({ type: "concealed-position" as const, opaqueKey: key, position: Number(key.slice(5)), accessibleLabel: `Choose hidden Hand position ${Number(key.slice(5)) + 1}`, state: selectedKeys.includes(key) ? "selected" as const : "available" as const }));
+    const publicChoices = (cards: Card[], zone: string): TargetCardPoolChoice[] => cards.filter((card) => eligible.has(card.id)).map((card) => ({ type: "public-card", eligibleKey: card.id, publicCardFace: card, cardName: cardDefinition(card.kind).name, accessibleLabel: `${zone}: ${cardDefinition(card.kind).name}`, state: selectedKeys.includes(card.id) ? "selected" : "available" }));
+    const equipment = publicChoices(target.equipmentCards, "Equipment");
+    const judgement = publicChoices(target.judgementCards, "Judgement");
+    return [
+      ...(handChoices.length ? [{ id: "hand" as const, title: `HAND ${target.handCount}`, accessibleName: `Hand, ${target.handCount} cards`, choices: handChoices }] : []),
+      ...(equipment.length ? [{ id: "equipment" as const, title: "EQUIPMENT", accessibleName: "Equipment", choices: equipment }] : []),
+      ...(judgement.length ? [{ id: "judgement" as const, title: "JUDGEMENT", accessibleName: "Judgement", choices: judgement }] : []),
+    ];
+}
+
+function TargetCardPicker({ option, presentationCopy, compact = false, selection, target, selectedKeys, disabled, canDecline, showCancel, allowPublicCardInfo = false, error, onToggle, onUse, onCancel, onDecline, onInfoCard, poolPlayerCount = 0, poolScope = "" }: { poolPlayerCount?: number; poolScope?: string; option: TriggerOptionView | null; presentationCopy?: { title: string; accessibleName: string; instruction: string; actionLabel: string }; compact?: boolean; selection: PublicTargetCardSelection; target: Player; selectedKeys: string[]; disabled: boolean; canDecline: boolean; showCancel: boolean; allowPublicCardInfo?: boolean; error: string; onToggle: (key: string) => void; onUse: (keys: string[]) => void; onCancel: () => void; onDecline: () => void; onInfoCard?: (card: Card, trigger: HTMLButtonElement) => void }) {
+  if (option?.effectId === "sima_yi_fankui" && compact) return <RetaliationCardPool selection={selection} target={target}
+    selectedKeys={selectedKeys.filter((key) => selection.eligibleKeys.includes(key))} playerCount={poolPlayerCount} scope={poolScope}
+    disabled={disabled} canDecline={canDecline} error={error} onToggle={onToggle} onConfirm={() => onUse(selectedKeys.filter((key) => selection.eligibleKeys.includes(key)))}
+    onDecline={onDecline} onInfo={(card, trigger) => onInfoCard?.(card, trigger)} />;
   const validSelectedKeys = selectedKeys.filter((key) => selection.eligibleKeys.includes(key));
   const randomHandZone = selection.eligibleKeys.includes("hand");
   const handKeys = selection.eligibleKeys
