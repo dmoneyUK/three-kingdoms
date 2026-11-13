@@ -1,9 +1,9 @@
 # HANDOVER — 当前唯一任务
 
-## PUBLIC-CARDFACE-STABLE-CENTRE-01 / §10.45
+## 五谷丰登 H4 / PAC 文案核对
 
-状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW；不得标记用户接受。已复习最新设计 `2ca7c5db`；代码 `2612e9308fd6bf2f308861a9490916b791be3f4e` 已推送，精确 SHA 的 Actions `43490834638` 全部通过并成功部署。Worker `ddf4c342-8594-444b-96e9-fb38443d75e0`，生产 `/api/health` 返回 ok。
+状态：已完成诊断，发现不符合设计；未修改游戏代码，未声称验收。依据远端设计 `5c00b58814639eef9ef77cb6c5e1482b8bff982b` §10.25.2，应用代码与已部署 `2612e9308fd6bf2f308861a9490916b791be3f4e` 一致（其后远端仅文档提交）。使用本地真实 Worker/D1、440×766、四人服务端身份、一个浏览器视角；测试能力仅用于保持/提交真实无懈响应，未操作线上游戏。
 
-同一真实上排缩略牌锚点供通用 H4 和共享展示使用；按真实字体测量最长 H4 所需高度，为公共牌锁定稳定中央位置。反间保留原直线动画，装备使用相同 90×135 移动端比例并到达真实槽，反馈共享牌池位于 H4 下方。
+根牌阶段 47 次约 100ms 采样：H4 可见 0 次；前 20 次 PAC 显示玩家回合，此后 PAC 和 H4 均 hidden，布局状态分别 `pending-shared-stage-layout`、`awaiting-current-shared-stage-layout`。首次无懈提交后，H4 显示 `PLAYER 2 played Negation to counter Bumper Harvest's effect on PLAYER 1`，未明确已阻止该玩家选牌；PAC 仍 hidden，其 DOM 文案为 `Waiting for counter responses / Another Negation can restore the Bumper Harvest effect on PLAYER 1.`。真实反制后 H4 显示 `PLAYER 3 played Negation to counter Negation 1`，缺少前一个玩家和选牌已恢复；PAC 仍 hidden，其 DOM 文案泛指 `Negation can cancel the Bumper Harvest effect on PLAYER 1.`。各结果与 §10.25.2 的 H4 已提交事实/PAC 当前单人选牌可能性模板不一致；布局状态是可观察证据，具体根因尚未完成诊断。
 
-验证：46 项相关单元测试、构建、目标 lint 和最终 Attack/Dodge 手机回归通过；真实 440×766 反间→反馈面板、装备原牌到槽通过。实测 H4 顶约 150.16px，反间牌 top≈224.59px、装备牌 top=224.75px；Attack 440 手机牌 top=224.75px。早期连续切换 viewport 时两次出现定位状态竞争，安全重排后最终回归通过；浏览器测试累计低于 5 分钟。用户需在真实 iPhone 检查 H4、牌面、反馈面板及切换视角；未声称用户通过。
+首次可见性断言失败；后续诊断采样正常结束，仅记录事实，不等于设计断言通过。共约 45 秒手机浏览器时间，未超五分钟；日志 `/tmp/wtk-harvest-copy-diag4.log`。删除本次临时测试文件，未改动产品实现。继续之前应根据用户指示处理发现的问题。
