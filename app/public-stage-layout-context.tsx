@@ -230,14 +230,33 @@ export function PublicStageLayoutProvider({
       const tableBounds = rectOf(table);
       const upper = fixedUpperHistoryAnnouncementAnchor(table);
       const upperH4 = upper ? { top: upper.top, reservedHeight: publicH4ReservedHeight(announcement), gap: 4 } : undefined;
+      const harvestPoolWrapper = [...table.querySelectorAll<HTMLElement>(".battlefield-choice-stage")]
+        .find((element) => element.dataset.harvestRootEventId === scopeId) ?? null;
+      const harvestPoolPanel = harvestPoolWrapper?.querySelector<HTMLElement>(".harvest-choice-panel") ?? null;
+      const harvestRootPoolOverlap = Boolean(harvestPoolWrapper && harvestPoolPanel && visibleObstacle(harvestPoolPanel)
+        && display.dataset.publicCardKind === "BumperHarvest"
+        && display.dataset.publicCardHarvestActive === "true"
+        && display.dataset.publicCardRootEventId === scopeId
+        && display.dataset.publicCardRootCardId === cardId
+        && display.dataset.publicCardInteractionId === interactionId
+        && primary.dataset.publicCardJourneyRole === "root"
+        && primary.dataset.publicCardJourneyEventId === scopeId
+        && primary.dataset.publicCardJourneyCardId === cardId
+        && (phase === "REVEAL" || phase === "MOVE"));
       const obstacles = [...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)]
         .filter((element) => element !== primary && element !== announcement && element !== chip
+          && !(harvestRootPoolOverlap && element === harvestPoolWrapper)
           && !primary.contains(element) && !announcement.contains(element) && !chip.contains(element)
           && visibleObstacle(element))
         .map((element, index) => ({
-          id: element.dataset.playerAnchor || element.id || String(element.className).slice(0, 48) + ":" + index,
+          id: harvestRootPoolOverlap && element === harvestPoolPanel
+            ? "harvest-choice-panel"
+            : element.dataset.playerAnchor || element.id || String(element.className).slice(0, 48) + ":" + index,
           rect: rectOf(element),
         }));
+      if (harvestRootPoolOverlap && harvestPoolPanel && !obstacles.some(({ id }) => id === "harvest-choice-panel")) {
+        obstacles.push({ id: "harvest-choice-panel", rect: rectOf(harvestPoolPanel) });
+      }
       const cardSize = { width: visualPrimary.right - visualPrimary.left, height: visualPrimary.bottom - visualPrimary.top };
       const measuredCardRect = { left: visualPrimary.left, top: visualPrimary.top, right: visualPrimary.right, bottom: visualPrimary.bottom };
       const phaseRects = phase === "REVEAL" ? undefined : {
@@ -360,6 +379,16 @@ export function PublicStageLayoutProvider({
         activity: measuredSize(activityRect),
         activityBottom: consoleBounds.top,
         obstacles,
+        ...(harvestRootPoolOverlap ? { harvestRootPoolOverlap: {
+          semantics: "PROVEN" as const,
+          scopeId,
+          rootEventId: display.dataset.publicCardRootEventId!,
+          interactionId: display.dataset.publicCardInteractionId!,
+          eventId,
+          cardId,
+          poolRootEventId: harvestPoolWrapper?.dataset.harvestRootEventId ?? "",
+          phase: phase as "REVEAL" | "MOVE",
+        } } : {}),
         phaseRects,
       });
       if (result.status !== "placed") {

@@ -2808,6 +2808,11 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.deepEqual(initialProgress?.participants.map(({ status }) => status), ["CURRENT", "PENDING", "PENDING", "PENDING"]);
   assert.equal(initialProgress?.currentParticipantId, source.id);
   assert.equal(firstWindow.presentationV2.interactionScene?.stage, "NEGATION");
+  const rootFact = firstWindow.presentationSnapshot.publicEventFacts.filter((fact) => fact.eventId === initialProgress?.rootEventId);
+  assert.equal(rootFact.length, 1, "nested Harvest Negation retains its validated original root in public event facts");
+  assert.deepEqual({ category: rootFact[0]?.category, actorId: rootFact[0]?.actorId, rootEventId: rootFact[0]?.rootEventId }, {
+    category: "CARD_PLAYED", actorId: source.id, rootEventId: initialProgress?.rootEventId,
+  });
   const firstPublicPool = firstWindow.publicHarvestPool;
   assert.equal(firstWindow.pendingHarvest, null, "the public Negation pool does not promote a chooser action");
   assert.equal(firstPublicPool?.semantics, "PROVEN");
@@ -2848,6 +2853,15 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(counterWindow.presentationSnapshot.bumperHarvestProgress?.currentEffectState, "BLOCKED", "a committed public Negation blocks only the current Bumper participant branch");
   assert.deepEqual(counterWindow.presentationSnapshot.reactionChain?.nodes.map(({ actorId }) => actorId), [first.id], "only the submitted Negation appears in public history");
   assert.equal(counterWindow.presentationSnapshot.reactionChain?.publicNodeEventLinks?.length, 1, "the public Negation node links to its exact played card event");
+  const committedHarvestFacts = counterWindow.presentationSnapshot.publicEventFacts;
+  const firstNegationFact = committedHarvestFacts.find((fact) => fact.eventId === counterWindow.presentationSnapshot.reactionChain?.publicNodeEventLinks?.[0]?.eventId);
+  assert.deepEqual({ category: firstNegationFact?.category, actorId: firstNegationFact?.actorId, label: firstNegationFact?.label }, {
+    category: "CARD_PLAYED", actorId: first.id, label: "Negation",
+  });
+  assert.ok(committedHarvestFacts.some((fact) => fact.category === "EFFECT_CANCELLED"
+    && fact.actorId === first.id && fact.rootEventId === initialProgress?.rootEventId
+    && fact.affectedPlayerIds.length === 1 && fact.affectedPlayerIds[0] === source.id),
+  "the committed response fact proves which current participant's pick was blocked");
   assert.equal(counterWindow.presentationSnapshot.reactionChain?.rootCard, null, "Bumper Harvest response history does not acquire a single-target root card");
   assert.equal("physicalCardId" in counterWindow.presentationSnapshot.reactionChain.nodes[0], false);
   assert.equal(counterWindow.presentationV2.interactionScene?.decisionActorId, null);

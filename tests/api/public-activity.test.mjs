@@ -38,6 +38,95 @@ function room(overrides = {}) {
   return { status: "playing", phase: "play", turnSeat: 0, players, presentationSnapshot: null, ...overrides };
 }
 
+function harvestSnapshot({ responseCount = 0, stage = "NEGATION", effectState = "ACTIVE", nextEffectKind, responseWindowOpen = true } = {}) {
+  const interactionId = "harvest-interaction";
+  const rootFrameId = "harvest-root-frame";
+  const responseFrameId = "harvest-negation-frame";
+  const activeFrameId = stage === "NEGATION" ? responseFrameId : rootFrameId;
+  const checkpointId = `checkpoint-${stage}-${responseCount}`;
+  const presentationRevision = responseCount + (stage === "NEGATION" ? 1 : 2);
+  const identity = { interactionId, checkpointId, presentationRevision };
+  const semanticIdentity = { ...identity, rootFrameId };
+  const responses = [];
+  const facts = [{
+    semantics: "PROVEN", visibility: "PUBLIC", identity: semanticIdentity,
+    eventId: "harvest-root-event", resolutionId: "harvest-root-resolution", order: 1,
+    frameId: rootFrameId, rootEventId: "harvest-root-event", category: "CARD_PLAYED",
+    actorId: "p1", affectedPlayerIds: ["p2", "p3"], label: "BumperHarvest",
+    effect: { kind: "card_play", label: "BumperHarvest" },
+  }];
+  const nodes = [];
+  for (let index = 0; index < responseCount; index++) {
+    const actorId = index === 0 ? "p3" : "p4";
+    const nodeId = `harvest-negation-node-${index + 1}`;
+    const response = {
+      semantics: "PROVEN", order: index + 1, interactionId, rootFrameId,
+      rootEventId: "harvest-root-event", rootResolutionId: "harvest-root-resolution",
+      rootCardId: "harvest-root-card", effectParticipantId: "p2", parentFrameId: rootFrameId,
+      frameId: responseFrameId, nodeId, causedByNodeId: index === 0 ? null : nodes[index - 1].nodeId,
+      actorId, cardId: `harvest-negation-card-${index + 1}`,
+      eventId: `harvest-negation-event-${index + 1}`, resolutionId: `harvest-negation-resolution-${index + 1}`,
+    };
+    responses.push(response);
+    nodes.push({ nodeId, interactionId, frameId: responseFrameId, causedByNodeId: response.causedByNodeId, actorId, kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } });
+    facts.push({
+      semantics: "PROVEN", visibility: "PUBLIC", identity: semanticIdentity,
+      eventId: response.eventId, resolutionId: response.resolutionId, order: index * 2 + 2,
+      frameId: responseFrameId, parentFrameId: rootFrameId, rootEventId: "harvest-root-event",
+      category: "CARD_PLAYED", actorId, affectedPlayerIds: ["p2"], label: "Negation",
+      effect: { kind: "card_play", label: "Negation" },
+    });
+    facts.push({
+      semantics: "PROVEN", visibility: "PUBLIC", identity: semanticIdentity,
+      eventId: `harvest-negation-outcome-${index + 1}`, resolutionId: response.resolutionId, order: index * 2 + 3,
+      frameId: responseFrameId, parentFrameId: rootFrameId, rootEventId: "harvest-root-event",
+      category: index === 0 ? "EFFECT_CANCELLED" : "EFFECT_RESTORED", actorId, affectedPlayerIds: ["p2"],
+      effect: { kind: index === 0 ? "cancel_effect" : "restore_effect", label: "BumperHarvest" },
+    });
+  }
+  const decisionActorId = stage === "SEQUENTIAL_CHOICE" ? "p2" : null;
+  const currentEffectState = stage === "NEGATION" ? effectState : undefined;
+  const chain = stage === "NEGATION" ? {
+    semantics: "PROVEN", interactionId, frameId: responseFrameId, rootCard: null, nodes,
+    publicNodeEventLinks: responses.map((response) => ({ nodeId: response.nodeId, eventId: response.eventId, resolutionId: response.resolutionId })),
+  } : null;
+  return {
+    identity,
+    stable: { kind: stage === "NEGATION" ? "SPECIAL" : "CHOICE", interactionId, checkpointId, presentationRevision, decisionActorId },
+    interaction: {
+      semantics: "PROVEN", interactionId, rootFrameId, activeFrameId, parentFrameId: stage === "NEGATION" ? rootFrameId : null,
+      checkpointId, presentationRevision, stage, sourceId: "p1", effect: "BumperHarvest", targetIds: ["p2", "p3"],
+      currentParticipantId: "p2", decisionActorId, activeResolverId: decisionActorId,
+      activeSourceId: "p1", activeTargetIds: ["p2"], participantIds: ["p1", "p2", "p3"],
+      participantRoles: { sourceId: "p1", originalTargetIds: ["p2", "p3"], activeTargetIds: ["p2"], currentParticipantId: "p2", decisionActorId, activeResolverId: decisionActorId, parentParticipantId: null, participantIds: ["p1", "p2", "p3"] },
+      continuity: { relation: stage === "NEGATION" ? "CHILD_FRAME" : "ROOT_FRAME", parentFrameId: stage === "NEGATION" ? rootFrameId : null },
+    },
+    publicNextDecision: {
+      semantics: "PROVEN", visibility: "PUBLIC", identity: semanticIdentity,
+      decisionId: `decision-${stage}-${responseCount}`, stage,
+      stageLabel: stage === "NEGATION" ? "Negation" : "Sequential Choice",
+      actorIds: decisionActorId ? [decisionActorId] : [],
+      actionLabels: decisionActorId ? ["Choose one revealed card"] : ["Negation"],
+      ...(stage === "NEGATION" ? { nextEffect: { kind: nextEffectKind ?? (effectState === "BLOCKED" ? "restore_effect" : "cancel_effect"), label: "BumperHarvest" } } : {}),
+      responseWindowOpen: stage === "NEGATION" ? responseWindowOpen : false,
+    },
+    bumperHarvestProgress: {
+      semantics: "PROVEN", interactionId, rootFrameId, activeFrameId, checkpointId, presentationRevision,
+      sourceId: "p1", rootEventId: "harvest-root-event", rootResolutionId: "harvest-root-resolution",
+      rootCardId: "harvest-root-card", targetIds: ["p2", "p3"], currentParticipantId: "p2",
+      ...(currentEffectState ? { currentEffectState } : {}),
+      participants: [
+        { playerId: "p2", order: 1, status: "CURRENT" },
+        { playerId: "p3", order: 2, status: "PENDING" },
+      ],
+      publicNegationResponses: responses,
+    },
+    publicEventFacts: facts,
+    reactionChain: chain,
+    viewerNegationChoice: null,
+  };
+}
+
 test("public activity uses the public turn seat and fails closed for an absent seat", () => {
   assert.deepEqual(derivePublicActivityStatus(room({ turnSeat: 1 })), { kind: "turn", text: "Test Player 2's turn" });
   assert.deepEqual(derivePublicActivityStatus(room({ turnSeat: 99 })), { kind: "resolving", text: "Resolving…" });
@@ -132,6 +221,64 @@ test("Negation PAC names only the publicly proven effect and counter direction",
   const unprovenDirection = snapshot({ stage: "NEGATION", effect: "Duel", nextEffect: { kind: "unknown" } });
   assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: unprovenDirection })).stage,
     "A Negation response is available.");
+});
+
+test("Bumper Harvest H4 and PAC follow committed recipient Negation facts through the real pick stage", () => {
+  const initial = harvestSnapshot();
+  const initialH4 = derivePublicNegationNarration({ snapshot: initial, players, rootEventId: "harvest-root-event" });
+  assert.equal(initialH4?.headline, "Test Player 1 played Bumper Harvest.");
+  assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: initial })).stage,
+    "Negation can prevent Test Player 2 from picking.");
+
+  const cancelled = harvestSnapshot({ responseCount: 1, effectState: "BLOCKED", nextEffectKind: "restore_effect" });
+  assert.equal(derivePublicNegationNarration({ snapshot: cancelled, players, rootEventId: "harvest-root-event" })?.headline,
+    "Test Player 3's Negation blocks Test Player 2's pick.");
+  assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: cancelled })).stage,
+    "Another Negation can restore Test Player 2's pick.");
+
+  const restored = harvestSnapshot({ responseCount: 2, effectState: "ACTIVE", nextEffectKind: "cancel_effect" });
+  const restoredH4 = derivePublicNegationNarration({ snapshot: restored, players, rootEventId: "harvest-root-event" });
+  assert.equal(restoredH4?.headline,
+    "Test Player 4 counters Test Player 3's Negation. Test Player 2's pick is restored.");
+  assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: restored })).stage,
+    "Another Negation can prevent Test Player 2 from picking.");
+
+  const picking = harvestSnapshot({ responseCount: 2, stage: "SEQUENTIAL_CHOICE" });
+  assert.equal(derivePublicNegationNarration({ snapshot: picking, players, rootEventId: "harvest-root-event" })?.headline,
+    restoredH4?.headline);
+  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: picking })), {
+    kind: "response", text: "Waiting for Test Player 2 to pick a card", heading: "Waiting for Test Player 2 to pick a card",
+  });
+  const pickedCard = {
+    semantics: "PROVEN", visibility: "PUBLIC",
+    identity: { ...picking.identity, rootFrameId: "harvest-root-frame" },
+    eventId: "harvest-picked-card", resolutionId: "harvest-pick-resolution", order: 6,
+    frameId: "harvest-root-frame", parentFrameId: undefined, rootEventId: "harvest-root-event",
+    category: "CARD_OBTAINED", actorId: "p2", affectedPlayerIds: ["p2"], label: "Dodge",
+    effect: { kind: "obtain_card", label: "Dodge" },
+  };
+  assert.equal(derivePublicNegationNarration({
+    snapshot: { ...picking, publicEventFacts: [...picking.publicEventFacts, pickedCard] },
+    players, rootEventId: "harvest-root-event",
+  }), null, "a later public card receipt retires the earlier Negation H4");
+});
+
+test("Bumper Harvest public copy fails closed for missing outcome proof and ignores private viewer choices", () => {
+  const committed = harvestSnapshot({ responseCount: 1, effectState: "BLOCKED", nextEffectKind: "restore_effect" });
+  const hiddenOutcome = { ...committed, publicEventFacts: committed.publicEventFacts.filter((fact) => fact.category !== "EFFECT_CANCELLED") };
+  assert.equal(derivePublicNegationNarration({ snapshot: hiddenOutcome, players, rootEventId: "harvest-root-event" })?.headline,
+    "Test Player 1 played Bumper Harvest.");
+  const baseStatus = derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: hiddenOutcome }));
+  assert.equal(baseStatus.stage, "Waiting for Negation responses");
+  for (const choice of ["pass", "negation_intent"]) {
+    const viewerSnapshot = { ...committed, viewerNegationChoice: { windowId: "private-window", locked: true, choice } };
+    assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: viewerSnapshot })),
+      derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: committed })));
+    assert.doesNotMatch(JSON.stringify(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: viewerSnapshot }))),
+      /private-window|negation_intent|cardId|card-1/);
+  }
+  const stale = { ...committed, interaction: { ...committed.interaction, presentationRevision: 99 } };
+  assert.equal(derivePublicNegationNarration({ snapshot: stale, players, rootEventId: "harvest-root-event" }), null);
 });
 
 test("local Negation Pass and intent acknowledgements are current-window and viewer-private", () => {

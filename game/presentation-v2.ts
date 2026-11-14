@@ -4314,11 +4314,15 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     ? { interactionId: interactionScene.interactionId, rootFrameId: interactionScene.rootFrameId,
       checkpointId: interactionScene.checkpointId, presentationRevision: interactionScene.presentationRevision }
     : null;
+  const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene, input.timeline);
   const publicEventFacts = factIdentity ? collectPublicPresentationEventFacts({
     timeline: input.publicTimeline ?? input.timeline,
     identity: factIdentity,
     frames: envelope?.frames ?? [],
-    rootEventId: rootEvent?.id ?? null,
+    // A nested Harvest Negation Pending does not carry the physical root in
+    // PendingContext. Use the already-validated server progress link so the
+    // committed root remains available to the shared public fact projection.
+    rootEventId: projectedBumperHarvestProgress?.rootEventId ?? rootEvent?.id ?? null,
   }) : [];
   const retainedCandidate = input.retainPublicEventAtRest || envelope
     ? retainedPublicEventFromTimeline(input.publicTimeline ?? input.timeline) : null;
@@ -4345,7 +4349,6 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const selfTargetActions = selfTargetActionsFor(input.timeline);
   const deflectionActions = deflectionActionsFor(input);
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
-  const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene, input.timeline);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
   const groupRootCardProof = groupRootCardProofFor(envelope, group, groupValues, interactionScene, projectedGroupParticipantProgress, input.timeline);
   const orderedAttackRoot = orderedAttackRootProofFor(envelope, group, groupValues, interactionScene, projectedGroupParticipantProgress, input.timeline);

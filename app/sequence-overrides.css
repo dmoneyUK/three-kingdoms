@@ -5293,6 +5293,14 @@
 .game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-public-card-journey-phase="move"] {
   z-index: 36;
 }
+/* §10.48: only the exact original Harvest root sits beneath its own pool.
+   Negation response CardFaces keep their established foreground layer. */
+.game-shell .public-card-display-journey.is-harvest-pool-active[data-public-card-kind="BumperHarvest"]
+  > .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-phase="reveal"],
+.game-shell .public-card-display-journey.is-harvest-pool-active[data-public-card-kind="BumperHarvest"]
+  > .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-phase="move"] {
+  z-index: 24;
+}
 .game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-display-journey-copy {
   z-index: 38;
 }

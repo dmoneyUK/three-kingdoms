@@ -55,12 +55,13 @@ type BattlefieldChoicePlacementOptions = {
   rootEventId?: string;
   requireSafePlacement?: boolean;
   protectActiveReveal?: boolean;
+  protectSharedPublicStage?: boolean;
 };
 
 type ScheduledBattlefieldFrame = { kind: "animation"; id: number } | { kind: "timeout"; id: ReturnType<typeof setTimeout> };
 
 /** Measures the shared panel and places it in Harvest's current safe battlefield corridor. */
-export function useBattlefieldChoicePlacement({ enabled, playerCount, placementKey, centralTargetLayout = false, rootEventId, requireSafePlacement = false, protectActiveReveal = false }: BattlefieldChoicePlacementOptions) {
+export function useBattlefieldChoicePlacement({ enabled, playerCount, placementKey, centralTargetLayout = false, rootEventId, requireSafePlacement = false, protectActiveReveal = false, protectSharedPublicStage = false }: BattlefieldChoicePlacementOptions) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [top, setTop] = useState<number | null>(null);
   const [insets, setInsets] = useState<BattlefieldChoiceInsets | null>(null);
@@ -170,7 +171,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
         const mobileCentralTarget = centralTargetLayout && (targetCardSelect || targetCardReadOnly) && window.matchMedia("(max-width: 520px)").matches;
         if (mobileCentralTarget) {
           const isFanjianCombinedChoice = stage.dataset.fanjianCombinedChoice === "true";
-          const protectUpperH4 = isFanjianCombinedChoice || stage.dataset.retaliationPool === "true";
+          const protectUpperH4 = protectSharedPublicStage || isFanjianCombinedChoice || stage.dataset.retaliationPool === "true";
           const fixedUpperH4 = protectUpperH4
             ? table.querySelector<HTMLElement>("[data-public-card-announcement-fixed-upper='true'][data-public-card-announcement-positioned='true']")
             : null;
@@ -378,9 +379,11 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
           setInsets((current) => current ? null : current);
         }
 
+        const isFanjianCombinedChoice = stage.dataset.fanjianCombinedChoice === "true";
+        const protectPublicStage = protectSharedPublicStage || isFanjianCombinedChoice;
         const obstacles = [...new Set(protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]))]
           .filter((element) => element !== stage && !stage.contains(element))
-          .filter((element) => stage.dataset.fanjianCombinedChoice === "true"
+          .filter((element) => protectPublicStage
             || !element.matches(".public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip]"))
           .map((element) => ({ element, rect: element.getBoundingClientRect() }))
           .filter(({ element, rect }) => {
@@ -388,8 +391,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
             return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
               && panelRect.left < rect.right + margin && panelRect.right > rect.left - margin;
           });
-        const isFanjianCombinedChoice = stage.dataset.fanjianCombinedChoice === "true";
-        const fixedUpperH4 = isFanjianCombinedChoice
+        const fixedUpperH4 = protectPublicStage
           ? table.querySelector<HTMLElement>("[data-public-card-announcement-fixed-upper='true'][data-public-card-announcement-positioned='true']")
           : null;
         if (isFanjianCombinedChoice && !fixedUpperH4) {
@@ -407,14 +409,15 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
           minimumTop: fixedUpperH4Rect ? fixedUpperH4Rect.bottom + margin : undefined,
           margin,
         };
-        const safeOffset = requireSafePlacement ? findBattlefieldChoiceSafeTopOffset(verticalPlacement) : null;
-        if (requireSafePlacement && safeOffset === null) {
+        const mustPlaceSafely = requireSafePlacement || protectPublicStage;
+        const safeOffset = mustPlaceSafely ? findBattlefieldChoiceSafeTopOffset(verticalPlacement) : null;
+        if (mustPlaceSafely && safeOffset === null) {
           setTop(null);
           setReady(false);
           setRootCardOverlap(false);
           return;
         }
-        const offset = requireSafePlacement ? safeOffset! : chooseBattlefieldChoiceTopOffset(verticalPlacement);
+        const offset = mustPlaceSafely ? safeOffset! : chooseBattlefieldChoiceTopOffset(verticalPlacement);
         setTop((current) => current === offset ? current : offset);
         setReady(true);
         setRootCardOverlap(false);
@@ -486,7 +489,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
       cancelFrame(resetFrame);
       targetWidthProbe?.remove();
     };
-  }, [boundedPanelHeight, centralTargetLayout, enabled, playerCount, placementKey, protectActiveReveal, requireSafePlacement, setReady]);
+  }, [boundedPanelHeight, centralTargetLayout, enabled, playerCount, placementKey, protectActiveReveal, protectSharedPublicStage, requireSafePlacement, setReady]);
 
   return { ref, top, insets, ready, rootCardOverlap, maxHeight: boundedPanelHeight?.placementKey === placementKey ? boundedPanelHeight.height : null };
 }

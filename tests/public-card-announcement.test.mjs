@@ -738,19 +738,32 @@ test("Bumper Harvest announcement fails closed without a proven narration", () =
     firstNegation,
     "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3",
     "Test Player 4", "JD", null,
-  ), "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3");
+  ), "JD played Bumper Harvest.");
   assert.equal(publicCardAnnouncement(
     { ...firstNegation, harvestEffectRecipient: undefined },
     "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3",
     "Test Player 4", "JD", null,
-  ), "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3");
+  ), "JD played Bumper Harvest.");
 
   const counterNotice = "Test Player 2 played Negation to counter Negation 1";
   assert.equal(publicCardAnnouncement(
     { ...firstNegation, responses: [firstNegation.responses[0], { eventId: "counter-event", ordinal: 2, actorId: "responder-2", actorName: "Test Player 2" }] },
     counterNotice, "Test Player 2", "JD", null,
-  ), counterNotice);
-  assert.equal(publicCardAnnouncement({ ...firstNegation, settlement: { eventId: "settled", outcome: "ROOT_CANCELLED", exiting: false } }, "", "Test Player 4", "JD", null), "Test Player 4's Negation cancelled JD's Bumper Harvest.");
+  ), "JD played Bumper Harvest.");
+  const committedCounterCopy = "Test Player 2 counters Test Player 4's Negation. Test Player 3's pick is restored.";
+  const committedNarration = {
+    rootLabel: "Bumper Harvest", eventId: "counter-settlement", latestCommittedEventId: "counter-settlement",
+    checkpointId: "checkpoint-counter", phase: "FINAL", rootEffectState: "ACTIVE",
+    headline: committedCounterCopy, compactHeadline: committedCounterCopy, supportingMessage: "",
+    compactSupportingMessage: "", accessibleLabel: committedCounterCopy,
+  };
+  const renderedCopy = publicCardCommittedFactCopy({ ...firstNegation, publicNegationNarration: committedNarration }, {
+    message: counterNotice, compactMessage: counterNotice,
+  });
+  assert.deepEqual(renderedCopy, {
+    message: committedCounterCopy, compactMessage: committedCounterCopy, accessibleLabel: committedCounterCopy,
+  });
+  assert.equal(publicCardAnnouncement({ ...firstNegation, settlement: { eventId: "settled", outcome: "ROOT_CANCELLED", exiting: false } }, "", "Test Player 4", "JD", null), "JD played Bumper Harvest.");
 });
 
 test("Duel H4 copy contains committed facts only", () => {

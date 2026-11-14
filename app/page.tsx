@@ -3923,6 +3923,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     enabled: harvestPending,
     playerCount: room.players.length,
     placementKey: [room.code, room.meId, harvestActorId, harvestDisplay?.revealEventId ?? "", expandedOpponentId ?? ""].join("\u001f"),
+    protectSharedPublicStage: true,
   });
   const harvestStageRef = harvestPlacement.ref;
   const harvestStageTop = harvestPlacement.top;
@@ -9106,7 +9107,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || identity.presentationRevision !== interaction.presentationRevision
       || selectedPublicCardAction.interactionId !== interaction.interactionId
       || selectedPublicCardAction.rootFrameId !== interaction.rootFrameId) return undefined;
-    const narration = (interactionNarrationBelongsToAction ? publicInteractionNarration : null) ?? genericPublicFactNarration ?? selectedPublicCardAction.publicNegationNarration;
+    const harvestNarration = selectedPublicCardAction.cardKind === "BumperHarvest"
+      ? selectedPublicCardAction.publicNegationNarration : undefined;
+    const narration = harvestNarration
+      ?? (interactionNarrationBelongsToAction ? publicInteractionNarration : null)
+      ?? genericPublicFactNarration
+      ?? selectedPublicCardAction.publicNegationNarration;
     const latestPublicEventId = narration?.phase === "FINAL"
       ? narration.eventId
       : narration?.latestCommittedEventId

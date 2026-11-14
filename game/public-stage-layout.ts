@@ -27,6 +27,17 @@ export type PublicStageLayoutInput = {
   activityBottom?: number;
   compactAnnouncement?: PublicStageSize;
   obstacles: readonly { id: string; rect: PublicStageRect }[];
+  /** Exact proof for the owner-approved Harvest root-under-same-pool overlap. */
+  harvestRootPoolOverlap?: {
+    semantics: "PROVEN";
+    scopeId: string;
+    rootEventId: string;
+    interactionId: string;
+    eventId: string;
+    cardId: string;
+    poolRootEventId: string;
+    phase: "REVEAL" | "MOVE";
+  };
   phaseRects?: { card: PublicStageRect; activity: PublicStageRect; announcement?: PublicStageRect };
   upperH4?: { top: number; reservedHeight: number; gap: number };
   announcementCardGap?: number;
@@ -131,6 +142,19 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
   }
 
   const activityBottom = Math.min(viewport.bottom, input.activityBottom ?? Math.min(viewport.bottom, table.bottom) - 8);
+  const rootPoolProof = input.harvestRootPoolOverlap;
+  const mayCoverHarvestPool = Boolean(rootPoolProof?.semantics === "PROVEN"
+    && (input.scene.phase === "REVEAL" || input.scene.phase === "MOVE")
+    && rootPoolProof.phase === input.scene.phase
+    && rootPoolProof.scopeId === input.scene.scopeId
+    && rootPoolProof.rootEventId === input.scene.scopeId
+    && rootPoolProof.poolRootEventId === input.scene.scopeId
+    && rootPoolProof.eventId === input.scene.eventId
+    && rootPoolProof.eventId === rootPoolProof.rootEventId
+    && rootPoolProof.cardId === input.scene.cardId
+    && Boolean(input.scene.interactionId)
+    && rootPoolProof.interactionId === input.scene.interactionId);
+  const cardObstacles = input.obstacles.filter(({ id }) => !(mayCoverHarvestPool && id === "harvest-choice-panel"));
   const safeBounds: PublicStageRect = {
     left: Math.max(viewport.left, table.left) + 8,
     top: Math.max(viewport.top, table.top) + 8,
@@ -157,8 +181,8 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     const activityRect = input.scene.phase === "REVEAL" || input.activityBottom !== undefined ? anchoredActivity : input.phaseRects!.activity;
     const cardRect = input.scene.phase === "REVEAL" ? makeRect(centerX, top + reservedHeight + gap, card) : input.phaseRects!.card;
     const stageRects = input.scene.phase === "REVEAL" ? [h4, cardRect, activityRect] : [h4, activityRect];
-    if (stageRects.some((rect) => rect.left < safeBounds.left || rect.right > safeBounds.right || rect.top < safeBounds.top || rect.bottom > safeBounds.bottom
-      || input.obstacles.some((obstacle) => overlaps(rect, obstacle.rect)))
+    if (stageRects.some((rect, index) => rect.left < safeBounds.left || rect.right > safeBounds.right || rect.top < safeBounds.top || rect.bottom > safeBounds.bottom
+      || (input.scene.phase === "REVEAL" && index === 1 ? cardObstacles : input.obstacles).some((obstacle) => overlaps(rect, obstacle.rect)))
       || overlaps(h4, activityRect) || input.scene.phase === "REVEAL" && (overlaps(h4, cardRect) || cardRect.bottom + cardActivityGap > activityRect.top)) {
       return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
     }
@@ -304,7 +328,7 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     maxCenterX,
   ]);
   const tops = new Set<number>([maxCardTop]);
-  for (const obstacle of input.obstacles) {
+  for (const obstacle of cardObstacles) {
     centers.add(clamp(obstacle.rect.left - stackWidth / 2, minCenterX, maxCenterX));
     centers.add(clamp(obstacle.rect.right + stackWidth / 2, minCenterX, maxCenterX));
     // Keep H4 and the genuine card together above or below each blocker; PAC
@@ -326,7 +350,8 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     const stackRects = [announcementRect, cardRect, activityRect];
     if (stackRects.some((rect) => rect.left < safeBounds.left || rect.right > safeBounds.right
       || rect.top < safeBounds.top || rect.bottom > safeBounds.bottom)) continue;
-    if (stackRects.some((rect) => input.obstacles.some((obstacle) => overlaps(rect, obstacle.rect)))) continue;
+    if (stackRects.some((rect, index) => (index === 1 ? cardObstacles : input.obstacles)
+      .some((obstacle) => overlaps(rect, obstacle.rect)))) continue;
     return {
       status: "placed",
       layout: {
@@ -372,8 +397,9 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
           const announcementLeft = rowLeft + (cardOnLeft ? card.width + gap : 0);
           const cardRect = makeRect(cardLeft + card.width / 2, top, card);
           const announcementRect = makeRect(announcementLeft + compact.width / 2, top, compact);
-          if ([cardRect, announcementRect, activityRect].some((rect) =>
-            input.obstacles.some((obstacle) => overlaps(rect, obstacle.rect)))) continue;
+          if (cardObstacles.some((obstacle) => overlaps(cardRect, obstacle.rect))
+            || [announcementRect, activityRect].some((rect) =>
+              input.obstacles.some((obstacle) => overlaps(rect, obstacle.rect)))) continue;
           return { status: "placed", layout: {
             identity, variant: "compact-split", generation: input.scene.generation,
             scene: input.scene, safeBounds: compactBounds,

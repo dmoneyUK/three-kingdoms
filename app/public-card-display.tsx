@@ -1805,6 +1805,11 @@ export function publicCardAnnouncement(
     : "one card";
   const dismantleFaceCopy = publicDismantleCardFaceCopy(action, sourceName, targetName, action.settlement?.eventId);
 
+  if ((action.cardKind === "BumperHarvest" || action.cardFace?.kind === "BumperHarvest")
+    && action.motion?.type === "negation" && !action.publicNegationNarration) {
+    return action.ariaLabel;
+  }
+
   switch (outcome) {
     case "ATTACK_DAMAGE_APPLIED":
       return targetName ? `${targetName} took damage from ${source}'s Attack.` : notice;
@@ -5529,6 +5534,7 @@ function SingleTargetCardJourney({
     data-public-card-ordinal-context={showNegationChainOrdinals ? "negation-chain" : undefined}
     data-public-card-event-id={activeEventId}
     data-public-card-root-event-id={action.rootEventId}
+    data-public-card-root-card-id={action.cardFace?.id}
     data-public-card-id={currentPublicCard?.id}
     data-public-card-actor-id={currentCard?.actorId ?? action.sourceId}
     data-public-card-source-id={action.sourceId}

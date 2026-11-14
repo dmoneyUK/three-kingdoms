@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { findBattlefieldChoiceSafeTopOffset } from "../app/battlefield-choice-stage.tsx";
 import { calculatePublicStageLayout, publicStageSceneIdentity } from "../game/public-stage-layout.ts";
 
 const scene = {
@@ -41,6 +42,27 @@ test("public stage identity is scoped to proven event, physical card, viewer, ph
   assert.equal(publicStageSceneIdentity({ ...scene, semantics: "INFERRED" }), null);
   assert.equal(publicStageSceneIdentity({ ...scene, cardId: "" }), null);
   assert.notEqual(publicStageSceneIdentity({ ...scene, scopeId: "root-event-2" }), identity);
+});
+
+test("Harvest pool uses the measured central band below H4 and above PAC", () => {
+  const table = { left: 0, top: 0, right: 440, bottom: 470.5, width: 440, height: 470.5 };
+  const panel = { left: 66.5, top: 171, right: 373.5, bottom: 299, width: 307, height: 128 };
+  const h4 = { left: 12, top: 154, right: 428, bottom: 183.5, width: 416, height: 29.5 };
+  const pac = { left: 50, top: 413, right: 390, bottom: 475.5, width: 340, height: 62.5 };
+  const top = findBattlefieldChoiceSafeTopOffset({
+    table,
+    panel,
+    obstacles: [h4, pac],
+    viewportHeight: 766,
+    minimumTop: h4.bottom + 6,
+    margin: 6,
+  });
+
+  assert.notEqual(top, null);
+  assert.equal(top, 263, "the measured pool settles centrally in the available H4-to-PAC band");
+  assert.ok(top >= h4.bottom + 6, "the card pool stays below the fixed H4");
+  assert.ok(top + panel.height <= pac.top - 6, "the card pool leaves the PAC clear");
+  assert.ok(top + panel.height <= table.bottom, "the full card pool stays inside the battlefield");
 });
 
 test("reveal layout keeps H4, full-size card and PAC in order with the measured minimum gap", () => {
@@ -270,5 +292,61 @@ test("measured upper H4 remains fixed during move and parked phases", () => {
     assert.equal(result.status, "placed");
     assert.equal(result.layout.announcement.top, 150);
     assert.deepEqual(result.layout.card, card);
+  }
+});
+
+test("only a proven same-root Harvest CardFace may overlap its pool, while H4 and PAC stay protected", () => {
+  const harvestScene = { ...scene, interactionId: "interaction-1", eventId: "root-event-1" };
+  const pool = { id: "harvest-choice-panel", rect: { left: 66, top: 237, right: 374, bottom: 365 } };
+  const rootPoolProof = {
+    semantics: "PROVEN", scopeId: "root-event-1", rootEventId: "root-event-1", poolRootEventId: "root-event-1",
+    interactionId: "interaction-1", eventId: "root-event-1", cardId: "card-1", phase: "REVEAL",
+  };
+  const geometry = {
+    scene: harvestScene,
+    viewport: { left: 0, top: 0, right: 440, bottom: 766 },
+    table: { left: 0, top: 0, right: 440, bottom: 474 },
+    activityBottom: 479,
+    preferredCard: { left: 175, top: 265 },
+    card: { width: 90, height: 135 },
+    announcement: { width: 340, height: 40 },
+    activity: { width: 340, height: 60 },
+    upperH4: { top: 160, reservedHeight: 40, gap: 4 },
+    obstacles: [pool],
+  };
+  const placed = calculatePublicStageLayout(input({ ...geometry, harvestRootPoolOverlap: rootPoolProof }));
+  assert.equal(placed.status, "placed");
+  if (placed.status !== "placed") return;
+  assert.equal(placed.layout.card.top, 204);
+  assert.equal(placed.layout.card.bottom, 339);
+  assert.equal(placed.layout.card.left < pool.rect.right && placed.layout.card.right > pool.rect.left
+    && placed.layout.card.top < pool.rect.bottom && placed.layout.card.bottom > pool.rect.top, true);
+  assert.equal(placed.layout.announcement.top < pool.rect.bottom && placed.layout.announcement.bottom > pool.rect.top, false);
+  assert.equal(placed.layout.activity.top < pool.rect.bottom && placed.layout.activity.bottom > pool.rect.top, false);
+  assert.deepEqual(placed.layout.protectedRects, [pool]);
+
+  for (const proof of [undefined, { ...rootPoolProof, rootEventId: "other-root", poolRootEventId: "other-root" }]) {
+    const rejected = calculatePublicStageLayout(input({ ...geometry, harvestRootPoolOverlap: proof }));
+    assert.equal(rejected.status, "unavailable");
+    if (rejected.status === "unavailable") assert.equal(rejected.reason, "NO_SAFE_STAGE_BAND");
+  }
+
+  const responseCard = calculatePublicStageLayout(input({
+    ...geometry,
+    scene: { ...harvestScene, eventId: "negation-event", cardId: "negation-card", phase: "REVEAL" },
+    harvestRootPoolOverlap: rootPoolProof,
+  }));
+  assert.equal(responseCard.status, "unavailable", "the original root exception cannot exempt a Negation response");
+
+  for (const rect of [
+    { left: 66, top: 160, right: 374, bottom: 220 },
+    { left: 66, top: 420, right: 374, bottom: 480 },
+  ]) {
+    const blocked = calculatePublicStageLayout(input({
+      ...geometry,
+      obstacles: [{ id: "harvest-choice-panel", rect }],
+      harvestRootPoolOverlap: rootPoolProof,
+    }));
+    assert.equal(blocked.status, "unavailable", "the pool remains a blocker for H4 and PAC");
   }
 });

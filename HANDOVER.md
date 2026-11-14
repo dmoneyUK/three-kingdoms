@@ -2,6 +2,28 @@
 
 ## HARVEST-H4-PAC-VISIBILITY-COPY-01 / §10.48
 
-状态：进行中，未验收。2026-11-13：同步并复习远端设计 `b99246466e7b7729c64c103b20da4785c0c12181`；先用一次有界真实场景确定共享布局首个失败环节，再按公开权威证据修正文案。保留 §10.45 及已验收五谷丰登交互；手机浏览器测试总限时五分钟。
+**状态：** 本地实现已完成；CI、部署与手机验收待完成。未验收 / 未接受。
 
-2026-11-13 23:20 UTC：本地 Worker/D1 四人、440×766 的单次根牌诊断（9.1 秒）获得首个失败结果 `NO_SAFE_STAGE_BAND`，当前主卡证明和 `layoutPending=false`；H4 `PENDING_PLACEMENT`、PAC `pending-shared-stage-layout`，两者均 hidden。战场 [0,0,440,474]，Console [6,479,434,535]，真实展示牌 [175,265.5,265,400.5]，透明 choice-stage [0,237,440,365]，真实 Harvest 面板 [66.5,237,373.5,365]，响应计时 [393,431,433,469]。现有 solver 将透明外层作为障碍；实际牌池也与中央展示牌相交，单纯忽略外层不能证明安全，不能移除真实控件障碍或隐藏牌池。需要先得到满足 §10.48/§10.45 的实测安全排布，再修复文案并跑完整指定场景；现阶段 BLOCKED / NOT VERIFIED，没有源码修改、未验证 CI/部署或手机验收。临时诊断文件已删除。
+**设计版本：** `docs/UX2-refine.md`，当前基线 `6e5da8ecaf322519d63855a0c2bf5f309d23db57`（2026-11-13 23:35 UTC）。
+
+**目标分支：** `ux-v2`。工作树分支 `codex/ux2-judgement-seat-01`；改动尚未提交，`origin/ux-v2` 仍在基线 SHA。
+
+### 已完成修改
+
+- `game/public-activity.ts`、`app/page.tsx`：Harvest H4/PAC 使用当前已验证的根事件、Negation 阶段、公开参与者与承诺结果；缺少证明时不猜测。Harvest 的已证明文案优先于通用 Negation/响应回退文案。
+- `game/presentation-v2.ts`：从已验证的 Harvest 进度投影取得真实根事件 ID，避免嵌套 Negation 阶段丢失公开事件事实。
+- `game/public-stage-layout.ts`、`app/public-stage-layout-context.tsx`、`app/sequence-overrides.css`：只允许同一真实 Harvest 根牌与同根牌池按 §10.48 遮叠；H4、PAC 和真实交互控件仍受保护。
+- `app/battlefield-choice-stage.tsx`、`app/page.tsx`：Harvest 牌池改用实测共享 H4/PAC 安全区求解器；尺寸不变，只在 H4 下方、PAC 上方的可用带内放置，空间不足则关闭而不压住公共信息。
+- 增加公开文案、隐私、根牌/反制证明及实测几何回归断言。
+
+### 验证记录（2026-11-14 00:20–00:26 UTC）
+
+- 定向单元/语义/布局测试：128/128 通过；新增 Harvest 几何断言复跑：15/15 通过。
+- `npm run build`：通过；有既有 chunk 大小及 Vinext 动态路由分类警告。
+- 定向 ESLint：0 errors、16 warnings（React Hook 依赖警告）；`git diff --check` 通过。
+- 最后一次 440×766 Worker/D1 浏览器场景发生在最终牌池定位改动之前：文案已正确，但共享布局报 `NO_SAFE_STAGE_BAND`，PAC 隐藏。诊断矩形：H4 `[12,154,428,183.5]`，牌池 `[66.5,171,373.5,299]`，PAC `[50,413,390,475.5]`，战场 `[0,0,440,470.5]`。已据此将牌池切换至安全区求解器；纯几何回归证明牌池 top 为 263px，可完整放在 H4 与 PAC 间并留出 6px。遵守本任务浏览器测试预算，不再启动本地浏览器重试；最终源码尚无真实浏览器通过证据。
+- 当前尚未提交 / 推送；最新基线 CI `43490834638` 的成功结果只适用于基线，不代表本改动。无新 Worker 部署或生产验证。
+
+### 唯一后续步骤
+
+审阅本任务完整差异，提交并推送到 `ux-v2`；等待该精确 SHA 的全部 GitHub Actions、Worker 部署和生产 smoke 结果。结果继续标记为 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**，不得标为用户验收通过。若 CI 或部署失败，先修复本任务引入的问题再继续。

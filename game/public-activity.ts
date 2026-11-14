@@ -112,6 +112,147 @@ function publicNegationEffectCopy(input: PublicActivityInput, decision: NonNulla
   return `${hasCommittedCounter ? "Another Negation" : "Negation"} can ${direction} ${effectText}${target ? ` on ${target}` : ""}.`;
 }
 
+type ProvenHarvestResponseCopy = {
+  response: NonNullable<NonNullable<PresentationSnapshot["bumperHarvestProgress"]>["publicNegationResponses"]>[number];
+  fact: PresentationSnapshot["publicEventFacts"][number];
+};
+
+function provenHarvestPresentation(snapshot: PresentationSnapshot | null, players: readonly PublicActivityPlayer[]) {
+  const progress = snapshot?.bumperHarvestProgress;
+  const interaction = snapshot?.interaction;
+  const identity = snapshot?.identity;
+  const decision = publicDecisionFromPresentationSnapshot(snapshot);
+  if (!snapshot || !progress || progress.semantics !== "PROVEN" || !interaction || interaction.semantics !== "PROVEN"
+    || !identity || interaction.interactionId !== identity.interactionId
+    || interaction.checkpointId !== identity.checkpointId || interaction.presentationRevision !== identity.presentationRevision
+    || progress.interactionId !== interaction.interactionId || progress.rootFrameId !== interaction.rootFrameId
+    || progress.activeFrameId !== interaction.activeFrameId || progress.checkpointId !== interaction.checkpointId
+    || progress.presentationRevision !== interaction.presentationRevision || progress.sourceId !== interaction.sourceId
+    || progress.currentParticipantId !== interaction.currentParticipantId
+    || interaction.effect !== "BumperHarvest"
+    || interaction.stage !== "NEGATION" && interaction.stage !== "SEQUENTIAL_CHOICE"
+    || decision?.stage !== interaction.stage) return null;
+  const current = progress.participants.filter((participant) => participant.status === "CURRENT");
+  if (!progress.currentParticipantId || current.length !== 1 || current[0]?.playerId !== progress.currentParticipantId
+    || !progress.targetIds.includes(progress.currentParticipantId)
+    || progress.participants.length !== progress.targetIds.length
+    || progress.participants.some((participant, index) => participant.playerId !== progress.targetIds[index]
+      || participant.order !== index + 1)) return null;
+  const source = players.find((player) => player.id === progress.sourceId)?.name.trim();
+  const recipient = players.find((player) => player.id === progress.currentParticipantId)?.name.trim();
+  if (!source || !recipient) return null;
+  const facts = snapshot.publicEventFacts.filter((fact) => fact.semantics === "PROVEN" && fact.visibility === "PUBLIC"
+    && fact.identity.interactionId === progress.interactionId && fact.identity.rootFrameId === progress.rootFrameId
+    && fact.rootEventId === progress.rootEventId);
+  const rootFacts = facts.filter((fact) => fact.eventId === progress.rootEventId && fact.rootEventId === progress.rootEventId
+    && fact.frameId === progress.rootFrameId && fact.category === "CARD_PLAYED"
+    && fact.resolutionId === progress.rootResolutionId
+    && fact.actorId === progress.sourceId && effectLabel(fact.label) === "Bumper Harvest");
+  if (rootFacts.length !== 1) return null;
+  const rootFact = rootFacts[0]!;
+  const responses = progress.publicNegationResponses;
+  if (responses !== undefined && (!Array.isArray(responses) || responses.some((response, index) =>
+    response.semantics !== "PROVEN" || response.order !== index + 1
+      || response.interactionId !== progress.interactionId || response.rootFrameId !== progress.rootFrameId
+      || response.rootEventId !== progress.rootEventId || response.rootResolutionId !== progress.rootResolutionId
+      || response.rootCardId !== progress.rootCardId || !progress.targetIds.includes(response.effectParticipantId)))) return null;
+
+  const responseFacts: ProvenHarvestResponseCopy[] = [];
+  for (const response of responses ?? []) {
+    const cardFacts = facts.filter((fact) => fact.eventId === response.eventId && fact.resolutionId === response.resolutionId
+      && fact.frameId === response.frameId && fact.parentFrameId === response.parentFrameId
+      && fact.category === "CARD_PLAYED" && fact.actorId === response.actorId
+      && fact.rootEventId === progress.rootEventId && effectLabel(fact.label) === "Negation");
+    if (cardFacts.length !== 1) return null;
+    const cardFact = cardFacts[0]!;
+    const nextResponseOrder = (responses ?? []).filter((candidate) => candidate.effectParticipantId === response.effectParticipantId
+      && candidate.frameId === response.frameId && candidate.order > response.order)
+      .map((candidate) => facts.find((fact) => fact.eventId === candidate.eventId)?.order ?? Number.MAX_SAFE_INTEGER)
+      .sort((left, right) => left - right)[0] ?? Number.MAX_SAFE_INTEGER;
+    const matchingOutcomes = facts.filter((fact) => fact.order > cardFact.order && fact.order < nextResponseOrder
+      && fact.frameId === response.frameId
+      && (fact.category === "EFFECT_CANCELLED" || fact.category === "EFFECT_RESTORED")
+      && fact.rootEventId === progress.rootEventId && fact.actorId === response.actorId
+      && fact.affectedPlayerIds.length === 1 && fact.affectedPlayerIds[0] === response.effectParticipantId
+      && fact.effect !== undefined
+      && (fact.effect.kind === "cancel_effect" || fact.effect.kind === "restore_effect")
+      && effectLabel(fact.effect.label) === "Bumper Harvest");
+    if (matchingOutcomes.length !== 1) return null;
+    responseFacts.push({ response, fact: matchingOutcomes[0]! });
+  }
+
+  if (interaction.stage === "NEGATION") {
+    const chain = snapshot.reactionChain;
+    const currentResponses = (responses ?? []).filter((response) => response.effectParticipantId === progress.currentParticipantId
+      && response.frameId === progress.activeFrameId);
+    if (!chain || chain.semantics !== "PROVEN" || chain.rootCard !== null
+      || chain.interactionId !== progress.interactionId || chain.frameId !== progress.activeFrameId
+      || !Array.isArray(chain.publicNodeEventLinks) || chain.publicNodeEventLinks.length !== chain.nodes.length
+      || currentResponses.length !== chain.nodes.length
+      || currentResponses.some((response, index) => {
+        const node = chain.nodes[index];
+        const link = chain.publicNodeEventLinks?.[index];
+        return !node || !link || node.nodeId !== response.nodeId || node.actorId !== response.actorId
+          || node.causedByNodeId !== response.causedByNodeId || link.nodeId !== response.nodeId
+          || link.eventId !== response.eventId || link.resolutionId !== response.resolutionId;
+      })
+      || currentResponses.some((response, index) => response.actorId !== chain.nodes[index]?.actorId
+        || response.causedByNodeId !== chain.nodes[index]?.causedByNodeId)) return null;
+    const latestCurrent = responseFacts.filter(({ response }) => response.effectParticipantId === progress.currentParticipantId
+      && response.frameId === progress.activeFrameId).at(-1);
+    if (latestCurrent) {
+      const expectedState = latestCurrent.fact.category === "EFFECT_CANCELLED" ? "BLOCKED" : "ACTIVE";
+      if (progress.currentEffectState !== expectedState) return null;
+    } else if (currentResponses.length !== 0 || progress.currentEffectState !== "ACTIVE"
+      || decision.nextEffect?.kind !== "cancel_effect") return null;
+  }
+  return { progress, interaction, identity, decision, source, recipient, rootFact, responseFacts };
+}
+
+function provenHarvestRootCopy(snapshot: PresentationSnapshot | null, players: readonly PublicActivityPlayer[], rootEventId: string) {
+  const progress = snapshot?.bumperHarvestProgress;
+  const interaction = snapshot?.interaction;
+  const identity = snapshot?.identity;
+  if (!snapshot || !progress || progress.semantics !== "PROVEN" || !interaction || interaction.semantics !== "PROVEN"
+    || !identity || progress.rootEventId !== rootEventId || progress.interactionId !== interaction.interactionId
+    || progress.rootFrameId !== interaction.rootFrameId || interaction.effect !== "BumperHarvest"
+    || identity.interactionId !== interaction.interactionId || identity.checkpointId !== interaction.checkpointId
+    || identity.presentationRevision !== interaction.presentationRevision) return null;
+  const roots = snapshot.publicEventFacts.filter((fact) => fact.semantics === "PROVEN" && fact.visibility === "PUBLIC"
+    && fact.identity.interactionId === progress.interactionId && fact.identity.rootFrameId === progress.rootFrameId
+    && fact.eventId === rootEventId && fact.rootEventId === rootEventId && fact.frameId === progress.rootFrameId
+    && fact.category === "CARD_PLAYED" && fact.actorId === progress.sourceId
+    && effectLabel(fact.label) === "Bumper Harvest");
+  const source = players.find((player) => player.id === progress.sourceId)?.name.trim();
+  if (roots.length !== 1 || !source) return null;
+  return { progress, interaction, identity, rootFact: roots[0]!, source };
+}
+
+function harvestNegationPossibility(snapshot: PresentationSnapshot | null, players: readonly PublicActivityPlayer[]): string | null {
+  const state = provenHarvestPresentation(snapshot, players);
+  if (!state || state.interaction.stage !== "NEGATION" || state.decision.responseWindowOpen !== true) return null;
+  const currentResponses = state.responseFacts.filter(({ response }) => response.effectParticipantId === state.progress.currentParticipantId
+    && response.frameId === state.progress.activeFrameId);
+  const nextEffect = state.decision.nextEffect;
+  if (state.progress.currentEffectState === "ACTIVE" && nextEffect?.kind === "cancel_effect"
+    && (!currentResponses.length || currentResponses.at(-1)?.fact.category === "EFFECT_RESTORED")) {
+    return `${currentResponses.length ? "Another Negation" : "Negation"} can prevent ${state.recipient} from picking.`;
+  }
+  if (state.progress.currentEffectState === "BLOCKED" && nextEffect?.kind === "restore_effect"
+    && currentResponses.at(-1)?.fact.category === "EFFECT_CANCELLED") {
+    return `Another Negation can restore ${state.recipient}'s pick.`;
+  }
+  return null;
+}
+
+function harvestChoiceInstruction(input: PublicActivityInput, decision: NonNullable<ReturnType<typeof publicDecisionFromPresentationSnapshot>>): string | null {
+  const state = provenHarvestPresentation(input.presentationSnapshot, input.players);
+  if (!state || state.interaction.stage !== "SEQUENTIAL_CHOICE"
+    || decision.actorIds.length !== 1 || decision.actorIds[0] !== state.progress.currentParticipantId
+    || !decision.actionLabels.some((label) => /(?:choose|pick).*(?:card|revealed)/i.test(label))) return null;
+  return `Waiting for ${state.recipient} to pick a card`;
+}
+
 function actionList(labels: readonly string[]): string {
   const unique = [...new Set(labels.map((label) => label.trim()).filter(Boolean))];
   if (unique.length < 2) return unique[0] ?? "";
@@ -287,6 +428,68 @@ export function derivePublicNegationNarration(input: {
   rootEventId: string;
 }): PublicNegationNarration | null {
   const snapshot = input.snapshot;
+  if (snapshot?.bumperHarvestProgress?.rootEventId === input.rootEventId
+    || snapshot?.interaction?.effect === "BumperHarvest") {
+    const root = provenHarvestRootCopy(snapshot, input.players, input.rootEventId);
+    if (!root) return null;
+    const state = provenHarvestPresentation(snapshot, input.players);
+    const ownedResponseEventIds = new Set(state?.responseFacts.flatMap(({ response, fact }) => [response.eventId, fact.eventId]) ?? []);
+    const latestOwnedOrder = state?.responseFacts.at(-1)?.fact.order ?? root.rootFact.order;
+    const laterPublicFact = snapshot?.publicEventFacts.some((fact) => fact.semantics === "PROVEN"
+      && fact.visibility === "PUBLIC" && fact.identity.interactionId === root.progress.interactionId
+      && fact.identity.rootFrameId === root.progress.rootFrameId && fact.rootEventId === input.rootEventId
+      && fact.order > latestOwnedOrder && !ownedResponseEventIds.has(fact.eventId)
+      && !(fact.category === "CARD_PLAYED" && effectLabel(fact.label) === "Negation")
+      && !((fact.category === "EFFECT_CANCELLED" || fact.category === "EFFECT_RESTORED")
+        && effectLabel(fact.effect?.label) === "Bumper Harvest"));
+    if (laterPublicFact) return null;
+    const latest = state?.responseFacts.at(-1);
+    const actor = latest ? input.players.find((player) => player.id === latest.response.actorId)?.name.trim() : null;
+    const recipientId = latest?.response.effectParticipantId;
+    const recipient = recipientId ? input.players.find((player) => player.id === recipientId)?.name.trim() : null;
+    const prior = latest?.response.causedByNodeId
+      ? state?.responseFacts.find(({ response }) => response.nodeId === latest.response.causedByNodeId
+        && response.effectParticipantId === latest.response.effectParticipantId
+        && response.frameId === latest.response.frameId)
+      : null;
+    let headline = `${root.source} played Bumper Harvest.`;
+    let eventId = root.rootFact.eventId;
+    let checkpointId = root.rootFact.identity.checkpointId;
+    let rootEffectState: "ACTIVE" | "BLOCKED" = "ACTIVE";
+    if (latest && actor && recipient) {
+      if (latest.fact.category === "EFFECT_RESTORED" && prior) {
+        const priorActor = input.players.find((player) => player.id === prior.response.actorId)?.name.trim();
+        if (priorActor) {
+          headline = `${actor} counters ${priorActor}'s Negation. ${recipient}'s pick is restored.`;
+          rootEffectState = "ACTIVE";
+        }
+      } else if (latest.fact.category === "EFFECT_CANCELLED") {
+        if (!prior) {
+          headline = `${actor}'s Negation blocks ${recipient}'s pick.`;
+        }
+        if (headline !== `${root.source} played Bumper Harvest.`) rootEffectState = "BLOCKED";
+      }
+      if (headline !== `${root.source} played Bumper Harvest.`) {
+        eventId = latest.fact.eventId;
+        checkpointId = latest.fact.identity.checkpointId;
+      }
+    }
+    const phase = state?.interaction.stage === "NEGATION" && state.decision.responseWindowOpen === true
+      ? "WINDOW_OPEN" as const : "FINAL" as const;
+    return {
+      rootLabel: "Bumper Harvest",
+      eventId,
+      latestCommittedEventId: eventId,
+      checkpointId,
+      phase,
+      rootEffectState,
+      headline,
+      compactHeadline: headline,
+      supportingMessage: "",
+      compactSupportingMessage: "",
+      accessibleLabel: headline,
+    };
+  }
   const interaction = snapshot?.interaction;
   const identity = snapshot?.identity;
   if (!snapshot || !identity || !interaction || interaction.semantics !== "PROVEN"
@@ -389,11 +592,27 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
   }
 
   if (input.status === "playing" && input.phase === "response" && nextDecision?.stageLabel === "Negation") {
+    const harvestScene = snapshot?.bumperHarvestProgress !== null && snapshot?.bumperHarvestProgress !== undefined
+      || interaction?.effect === "BumperHarvest";
+    if (harvestScene) {
+      const specific = harvestNegationPossibility(snapshot, input.players);
+      return {
+        kind: "negation",
+        text: "Waiting for counter responses",
+        stage: specific ?? (nextDecision.responseWindowOpen === true ? "Waiting for Negation responses" : "Resolving…"),
+      };
+    }
     return {
       kind: "negation",
       text: "Waiting for counter responses",
       stage: publicNegationEffectCopy(input, nextDecision),
     };
+  }
+
+  if (input.status === "playing" && input.phase === "response" && nextDecision
+    && interaction?.effect === "BumperHarvest") {
+    const instruction = harvestChoiceInstruction(input, nextDecision);
+    if (instruction) return { kind: "response", text: instruction, heading: instruction };
   }
 
   const targetCard = input.pendingTargetCard;

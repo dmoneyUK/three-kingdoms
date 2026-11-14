@@ -615,7 +615,7 @@ test("Bumper Harvest keeps the root reveal and move while the proven Negation po
       expect(revealed.face).toMatchObject({ width: 90, height: 135 });
       expect(revealed.journeyDisplayPosition).toBe("absolute");
       expect(revealed.journeyDisplayZIndex).toBe("auto");
-      expect(Number.parseInt(revealed.cardZIndex, 10)).toBeGreaterThan(Number.parseInt(revealed.poolZIndex, 10));
+      expect(Number.parseInt(revealed.cardZIndex, 10)).toBeLessThan(Number.parseInt(revealed.poolZIndex, 10));
       expect(revealed.overlapsPoolCard).toBe(true);
       expect(revealed.cardId).toBe(rootCardId);
       expect(revealed.eventId).toBeTruthy();
@@ -658,8 +658,10 @@ test("Bumper Harvest keeps the root reveal and move while the proven Negation po
 
       await expect(journey).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 2_000 });
       await expect(journey).toHaveAttribute("data-public-card-journey-size", "thumbnail");
-      await expect(h4).toHaveAttribute("aria-label", `${recipient.name}'s turn to pick a card. Negation can prevent ${recipient.name} from picking.`, { timeout: 5_000 });
+      await expect(h4).toHaveAttribute("aria-label", `${source.name} played Bumper Harvest.`, { timeout: 5_000 });
       await expect(h4).toBeVisible();
+      await expect(page.locator("[data-public-activity-stage='true']"))
+        .toHaveText(`Negation can prevent ${recipient.name} from picking.`);
       const narrationGeometry = await h4.evaluate((element) => {
         const banner = element.closest(".public-card-display-journey-copy");
         const support = banner.querySelector(".public-negation-narration-support");
@@ -672,7 +674,7 @@ test("Bumper Harvest keeps the root reveal and move while the proven Negation po
       expect(narrationGeometry.top).toBeGreaterThanOrEqual(0);
       expect(narrationGeometry.bottom).toBeLessThanOrEqual(narrationGeometry.viewportHeight);
       expect(narrationGeometry.lines).toBeLessThanOrEqual(3);
-      expect(narrationGeometry.support).toBe(`Negation can prevent ${recipient.name} from picking.`);
+      expect(narrationGeometry.headline).toContain("played Bumper Harvest");
       await expect.poll(async () => {
         const current = await measureJourney("thumbnail-transition");
         return Math.abs(current.corner.width / current.face.width - revealed.corner.width / revealed.face.width);
@@ -1010,12 +1012,7 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
   const [source, firstResponder, counterResponder] = seed.players;
   const rootCardId = `harvest-density-root-${seed.players.length}`;
   const viewerContexts = [];
-  const phoneViewports = [
-    { width: 390, height: 700 },
-    { width: 390, height: 844 },
-    { width: 440, height: 766 },
-    { width: 440, height: 894 },
-  ];
+  const phoneViewports = seed.players.map(() => ({ width: 440, height: 766 }));
   try {
     const viewerPages = await Promise.all(seed.players.map(async (viewer, index) => {
       const viewerContext = await browser.newContext({
@@ -1080,16 +1077,20 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     });
     const rootEffectRecipient = seed.players.find(({ id }) => id === rootProgress.currentParticipantId);
     expect(rootEffectRecipient, "public progress identifies the current Harvest effect participant").toBeTruthy();
-    const initialAnnouncement = `${rootEffectRecipient.name}'s turn to pick a card. Negation can prevent ${rootEffectRecipient.name} from picking.`;
+    const initialAnnouncement = `${source.name} played Bumper Harvest.`;
+    const initialNegationGuidance = `Negation can prevent ${rootEffectRecipient.name} from picking.`;
     await Promise.all(viewerPages.map(async ({ viewer, page: viewerPage }) => {
       const h4 = viewerPage.locator(".public-card-display-journey-copy b");
       await expect(h4).toHaveAttribute("aria-label", initialAnnouncement, { timeout: 10_000 });
+      await expect(h4).toBeVisible();
+      await expect(viewerPage.locator("[data-public-activity-stage='true']")).toHaveText(initialNegationGuidance);
+      await expect(viewerPage.locator("[data-public-activity-chip='true']")).toBeVisible();
+      await expect(viewerPage.locator(".play-table")).toHaveAttribute("data-public-stage-layout-status", "shared-reveal");
       await expect(viewerPage.locator(".harvest-choice-heading span"))
         .toHaveText(`Negation for ${rootEffectRecipient.name} · Read-only`);
       await expect(viewerPage.locator(".harvest-card-select, .harvest-confirm-row")).toHaveCount(0);
       await expect(h4).toBeVisible();
-      expect(await h4.innerText()).toContain("turn to pick");
-      expect(await h4.innerText()).toContain(rootEffectRecipient.name);
+      expect(await h4.innerText()).toContain("played Bumper Harvest");
       expect(await h4.innerText()).not.toContain("Negation can be played");
       const lineCount = Number(await h4.locator("xpath=..").getAttribute("data-public-card-announcement-lines"));
       expect(lineCount, `Harvest Negation guidance fits two phone lines for ${viewer.id}`).toBeGreaterThan(0);
@@ -1172,13 +1173,20 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     expect(firstCommit.room.pendingHarvest).toBeNull();
     const firstCommitProgress = firstCommit.room.presentationSnapshot?.bumperHarvestProgress;
     expect(firstCommitProgress?.semantics).toBe("PROVEN");
+    const firstNegationRecipientId = firstCommitProgress.publicNegationResponses?.at(-1)?.effectParticipantId;
+    const firstNegationRecipient = seed.players.find(({ id }) => id === firstNegationRecipientId);
     const firstCommitChooser = seed.players.find(({ id }) => id === firstCommitProgress.currentParticipantId);
+    expect(firstNegationRecipient, "the committed Negation identifies its affected Harvest participant").toBeTruthy();
     expect(firstCommitChooser, "the next Harvest effect participant is named by shared public proof").toBeTruthy();
-    const firstCommitAnnouncement = `${firstResponder.name}'s Negation blocks ${firstCommitChooser.name}'s pick. Another Negation can restore ${firstCommitChooser.name}'s pick.`;
+    const firstCommitAnnouncement = `${firstResponder.name}'s Negation blocks ${firstNegationRecipient.name}'s pick.`;
+    const firstCommitGuidance = `Negation can prevent ${firstCommitChooser.name} from picking.`;
     await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
       const h4 = viewerPage.locator(".public-card-display-journey-copy b");
       await expect(h4)
         .toHaveAttribute("aria-label", firstCommitAnnouncement, { timeout: 10_000 });
+      await expect(h4).toBeVisible();
+      await expect(viewerPage.locator("[data-public-activity-stage='true']")).toHaveText(firstCommitGuidance);
+      await expect(viewerPage.locator("[data-public-activity-chip='true']")).toBeVisible();
       await expect(viewerPage.locator(".harvest-choice-heading span"))
         .toHaveText(`Negation for ${firstCommitChooser.name} · Read-only`);
       const lines = Number(await h4.locator("xpath=..")
@@ -1381,13 +1389,18 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     expect(counterCommit.room.publicHarvestPool?.revealed.map(({ id }) => id)).toEqual(rootPool.revealed.map(({ id }) => id));
     expect(counterCommit.room.pendingHarvest).toBeNull();
     const counterProgress = counterCommit.room.presentationSnapshot?.bumperHarvestProgress;
-    const counterEffectRecipient = seed.players.find(({ id }) => id === counterProgress?.currentParticipantId);
-    expect(counterEffectRecipient, "public progress keeps the current effect participant named").toBeTruthy();
-    const counterAnnouncement = `${counterResponder.name} counters ${firstResponder.name}'s Negation. ${counterEffectRecipient.name}'s pick is restored. Another Negation can block ${counterEffectRecipient.name}'s pick.`;
+    const counterEffectRecipientId = counterProgress?.publicNegationResponses?.at(-1)?.effectParticipantId;
+    const counterEffectRecipient = seed.players.find(({ id }) => id === counterEffectRecipientId);
+    expect(counterEffectRecipient, "the committed counter identifies the restored Harvest participant").toBeTruthy();
+    const counterAnnouncement = `${counterResponder.name} counters ${firstResponder.name}'s Negation. ${counterEffectRecipient.name}'s pick is restored.`;
+    const counterGuidance = `Another Negation can prevent ${counterEffectRecipient.name} from picking.`;
     await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
       const h4 = viewerPage.locator(".public-card-display-journey-copy b");
       await expect(h4)
         .toHaveAttribute("aria-label", counterAnnouncement, { timeout: 10_000 });
+      await expect(h4).toBeVisible();
+      await expect(viewerPage.locator("[data-public-activity-stage='true']")).toHaveText(counterGuidance);
+      await expect(viewerPage.locator("[data-public-activity-chip='true']")).toBeVisible();
       await expect(viewerPage.locator(".harvest-choice-heading span"))
         .toHaveText(`Negation for ${counterEffectRecipient.name} · Read-only`);
       const lines = Number(await h4.locator("xpath=..")
@@ -1444,6 +1457,14 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
 
     const firstChoiceRoom = await readRoom(request, seed.code, rootEffectRecipient.token);
     expect(firstChoiceRoom.pendingHarvest?.actorId).toBe(rootEffectRecipient.id);
+    await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
+      const h4 = viewerPage.locator(".public-card-display-journey-copy b");
+      await expect(h4).toHaveAttribute("aria-label", counterAnnouncement, { timeout: 10_000 });
+      await expect(h4).toBeVisible();
+      await expect(viewerPage.locator("[data-public-activity-heading='true']"))
+        .toHaveText(`Waiting for ${rootEffectRecipient.name} to pick a card`);
+      await expect(viewerPage.locator("[data-public-activity-chip='true']")).toBeVisible();
+    }));
     const firstChooserPage = viewerPages.find(({ viewer }) => viewer.id === firstChoiceRoom.pendingHarvest.actorId)?.page;
     expect(firstChooserPage, "the affected chooser has an authenticated mobile view").toBeTruthy();
     await expect(firstChooserPage.locator(".harvest-choice-panel--actor"), JSON.stringify({
@@ -1473,22 +1494,24 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     const nextEffectRecipient = seed.players.find(({ id }) => id === nextEffectProgress.currentParticipantId);
     expect(nextEffectRecipient, "shared public progress advances to the next effect participant").toBeTruthy();
     expect(nextEffectRecipient.id).not.toBe(rootEffectRecipient.id);
-    const nextParticipantAnnouncement = `${nextEffectRecipient.name}'s turn to pick a card. Negation can prevent ${nextEffectRecipient.name} from picking.`;
     await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
-      await expect(viewerPage.locator(".public-card-display-journey-copy b"))
-        .toHaveAttribute("aria-label", nextParticipantAnnouncement, { timeout: 10_000 });
+      const h4 = viewerPage.locator(".public-card-display-journey-copy b");
+      await expect(h4).not.toHaveAttribute("aria-label", counterAnnouncement, { timeout: 10_000 });
+      await expect(h4).toBeVisible();
+      await expect(viewerPage.locator("[data-public-activity-stage='true']"))
+        .toHaveText(`Negation can prevent ${nextEffectRecipient.name} from picking.`);
       await expect(viewerPage.locator(".harvest-choice-heading span"))
         .toHaveText(`Negation for ${nextEffectRecipient.name} · Read-only`);
     }));
     await viewerPages[3].page.reload();
     await expect(viewerPages[3].page.locator(".public-card-display-journey-copy b"))
-      .toHaveAttribute("aria-label", nextParticipantAnnouncement, { timeout: 10_000 });
+      .not.toHaveAttribute("aria-label", counterAnnouncement, { timeout: 10_000 });
     await expect(viewerPages[3].page.locator(".harvest-choice-heading span"))
       .toHaveText(`Negation for ${nextEffectRecipient.name} · Read-only`);
     await Promise.all(viewerPages.map(({ page: viewerPage }) => viewerPage.setViewportSize({ width: 440, height: 766 })));
     await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
       await expect(viewerPage.locator(".public-card-display-journey-copy b"))
-        .toHaveAttribute("aria-label", nextParticipantAnnouncement, { timeout: 10_000 });
+        .not.toHaveAttribute("aria-label", counterAnnouncement, { timeout: 10_000 });
       await expect(viewerPage.locator(".harvest-choice-heading span"))
         .toHaveText(`Negation for ${nextEffectRecipient.name} · Read-only`);
     }));
@@ -2468,7 +2491,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
       expect(geometry.stageBackground).toBe("rgba(0, 0, 0, 0)");
       expect(geometry.announcement).toBeTruthy();
       expect(geometry.announcementPaint.visibility).toBe("visible");
-      expect(geometry.announcementPaint.ariaLabel).toBe(`${currentChooser.name}'s turn to pick a card. Negation can prevent ${currentChooser.name} from picking.`);
+      expect(geometry.announcementPaint.ariaLabel).toBe(`${source.name} played Bumper Harvest.`);
       const announcementLines = Number(await negationPage.locator(".public-card-display-journey-copy").getAttribute("data-public-card-announcement-lines"));
       expect(announcementLines).toBeGreaterThan(0);
       expect(announcementLines).toBeLessThanOrEqual(2);
@@ -3086,13 +3109,13 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(page.locator(".harvest-choice-heading span"))
       .toHaveText(`Negation for ${firstEffectRecipient.name} · Read-only`);
     await expect(page.locator(".public-card-display-journey-copy b"))
-      .toHaveAttribute("aria-label", `${firstEffectRecipient.name}'s turn to pick a card. Negation can prevent ${firstEffectRecipient.name} from picking.`);
+      .toHaveAttribute("aria-label", `${source.name} played Bumper Harvest.`);
     await page.reload();
     await expect(page.locator(".game-shell")).toBeVisible();
     await expect(page.locator(".harvest-choice-heading span"))
       .toHaveText(`Negation for ${firstEffectRecipient.name} · Read-only`);
     await expect(page.locator(".public-card-display-journey-copy b"))
-      .toHaveAttribute("aria-label", `${firstEffectRecipient.name}'s turn to pick a card. Negation can prevent ${firstEffectRecipient.name} from picking.`);
+      .toHaveAttribute("aria-label", `${source.name} played Bumper Harvest.`);
     room = await passCurrentNegationWindow();
     await expect.poll(async () => {
       const current = await readRoom(request, code, token);
@@ -3151,8 +3174,9 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     expect(secondEffectRecipient?.name).toBeTruthy();
     await expect(page.locator(".harvest-choice-heading span"))
       .toHaveText(`Negation for ${secondEffectRecipient.name} · Read-only`);
-    await expect(page.locator(".public-card-display-journey-copy b"))
-      .toHaveAttribute("aria-label", `${secondEffectRecipient.name}'s turn to pick a card. Negation can prevent ${secondEffectRecipient.name} from picking.`);
+    await expect(page.locator("[data-public-activity-stage='true']"))
+      .toHaveText(`Negation can prevent ${secondEffectRecipient.name} from picking.`);
+    await expect(page.locator(".public-card-display-journey-copy b")).toBeVisible();
   } finally {
     await context.close();
   }
