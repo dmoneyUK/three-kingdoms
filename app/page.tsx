@@ -3865,7 +3865,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const handViewportSnapshotRef = useRef<HandViewportSnapshot | null>(null);
   const [handRailWidth, setHandRailWidth] = useState(0);
   const [harvestDraft, setHarvestDraft] = useState<{ viewerId: string; actorId: string; actionRevision: string; cardId: string } | null>(null);
-  const [harvestSubmitting, setHarvestSubmitting] = useState<{ cardId: string; playerId: string; playerName: string } | null>(null);
+  const [harvestSubmitting, setHarvestSubmitting] = useState<{ roomCode: string; viewerId: string; actorId: string; actionRevision: string; cardId: string; playerId: string; playerName: string } | null>(null);
+  const harvestLocalIdentityRef = useRef({ roomCode: room.code, viewerId: room.meId });
   const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
   const [optimisticPlay, setOptimisticPlay] = useState<GameEvent | null>(null);
   const [serpentMode, setSerpentMode] = useState(false); const [serpentSelected, setSerpentSelected] = useState<string[]>([]);
@@ -5185,6 +5186,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && room.pendingHarvest?.availableIds.includes(harvestDraft.cardId)
     ? harvestDraft.cardId
     : "";
+  const activeHarvestSubmission = canChooseHarvest
+    && harvestSubmitting?.roomCode === room.code
+    && harvestSubmitting.viewerId === room.meId
+    && harvestSubmitting.actorId === room.pendingHarvest?.actorId
+    && harvestSubmitting.actionRevision === (room.actionRevision ?? "")
+    ? harvestSubmitting
+    : null;
   const harvestSelectedCard = room.pendingHarvest?.revealed.find((choice) => choice.id === activeHarvestSelection);
   const toggleHarvestSelection = (cardId: string) => {
     const pending = room.pendingHarvest;
@@ -5199,7 +5207,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   };
   const confirmHarvestChoice = async () => {
     if (!canChooseHarvest || !harvestSelectedCard || !me) return;
-    const submission = { cardId: harvestSelectedCard.id, playerId: me.id, playerName: me.name };
+    const submission = {
+      roomCode: room.code,
+      viewerId: room.meId,
+      actorId: room.pendingHarvest!.actorId,
+      actionRevision: room.actionRevision ?? "",
+      cardId: harvestSelectedCard.id,
+      playerId: me.id,
+      playerName: me.name,
+    };
     setHarvestSubmitting(submission);
     setHarvestDraft(null);
     const accepted = await onAction("choose_harvest", { cardId: submission.cardId });
@@ -5598,7 +5614,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   }, [effectNoticeEventId, effectNoticeProofEventId, effectNoticeRoomCode, effectNoticeViewerId, room.code, room.meId]);
   useEffect(() => { if (!optimisticPlay) return; const timer = setTimeout(() => setOptimisticPlay(null), UI_TIMING.playedCard); return () => clearTimeout(timer); }, [optimisticPlay]);
   useEffect(() => { if (!livePendingSelfTargetStartId || livePendingSelfTargetStartId === selfTargetWindowStartId) return; const timer = setTimeout(() => setSelfTargetWindowStartId(livePendingSelfTargetStartId), 0); return () => clearTimeout(timer); }, [livePendingSelfTargetStartId, selfTargetWindowStartId]);
-  useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);
+  useEffect(() => {
+    if (!harvestSubmitting) return;
+    const stale = harvestSubmitting.roomCode !== room.code
+      || harvestSubmitting.viewerId !== room.meId
+      || harvestSubmitting.actionRevision !== (room.actionRevision ?? "")
+      || room.pendingHarvest?.actorId !== harvestSubmitting.actorId
+      || room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId);
+    if (!stale) return;
+    const timer = setTimeout(() => setHarvestSubmitting((current) => current === harvestSubmitting ? null : current), 0);
+    return () => clearTimeout(timer);
+  }, [harvestSubmitting, room.actionRevision, room.code, room.meId, room.pendingHarvest]);
   useEffect(() => { const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || !room.phase?.startsWith("draw") || !canUseAction(room.currentAction, "draw") || activeEvent || eventQueue.length || hasUnseenPresentations || privateDrawCards.length || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey && canUseAction(room.currentAction, "draw")) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, UI_TIMING.turnDrawStart); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, room.currentAction, current?.name, lastTimelineId, hasUnseenPresentations, activeEvent, eventQueue.length, privateDrawCards.length]);
   useEffect(() => { if (optimisticPlay || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { const next = eventQueue[0]; setActiveEvent(next); if (retainsAtPlayer(next)) setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [next])); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue]);
   useEffect(() => {
@@ -10843,6 +10869,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && publicActivityStatus.kind !== "finished";
   const consoleAuthoritativeDecision = Boolean(room.currentAction && room.currentAction.kind !== "none" && (consoleIsDecisionActor || room.isMyTurn && room.currentAction.kind === "turn" && currentActionOwnedByViewer));
   const privateNegationAcknowledgement = viewerNegationAcknowledgement(room.presentationSnapshot, room.currentAction?.negationWindowId, room.phase);
+  const privateHarvestChoiceGuidance = canChooseHarvest
+    ? activeHarvestSubmission
+      ? "Submitting your Bumper Harvest choice…"
+      : activeHarvestSelection
+        ? "1 card selected in Bumper Harvest. Tap Confirm choice."
+        : "Choose 1 card from Bumper Harvest, then tap Confirm choice."
+    : null;
   const privateTurnGuidance = (() => {
     const action = room.currentAction;
     if (!action || action.kind !== "turn" || !currentActionOwnedByViewer) return null;
@@ -10857,7 +10890,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (canEndPlay) return "Finish the Play Phase.";
     return null;
   })();
-  const consoleInstruction = privateNegationAcknowledgement ?? (borrowedSwordTargetSelectionActive
+  const consoleInstruction = privateNegationAcknowledgement ?? privateHarvestChoiceGuidance ?? (borrowedSwordTargetSelectionActive
     ? `Choose who ${room.players.find((player) => player.id === room.pendingBorrowedSword?.holderId)?.name ?? "the Weapon holder"} must Attack.`
     : borrowedSwordForcedChoiceActive
     ? `Play Attack on ${room.players.find((player) => player.id === room.pendingBorrowedSword?.targetId)?.name ?? "the selected target"}, or give up your Weapon.`
@@ -10932,7 +10965,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const choices: PublicCardPoolChoice[] = harvestDisplay.revealed.map((choice) => {
       const name = cardDefinition(choice.kind).name;
       const takenBy = harvestDisplay.choices.find((entry) => entry.cardId === choice.id);
-      const submittedByMe = harvestSubmitting?.playerId === room.meId && harvestSubmitting.cardId === choice.id;
+      const submittedByMe = activeHarvestSubmission?.cardId === choice.id;
       const available = harvestDisplay.availableIds.includes(choice.id);
       const awaitingConfirmation = canChooseHarvest && !submittedByMe && activeHarvestSelection === choice.id;
       return {
@@ -10952,7 +10985,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             : available
               ? "Available"
               : "Unavailable",
-        selectDisabled: Boolean(harvestSubmitting) || busy || !available,
+        selectDisabled: Boolean(activeHarvestSubmission) || busy || !available,
       };
     });
     const shared = {
@@ -10971,7 +11004,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ...shared,
         mode: "actor-select" as const,
         selectionCount: harvestSelectedCard ? "1 selected" : "Choose 1 card",
-        confirmDisabled: busy || !harvestSelectedCard || Boolean(harvestSubmitting),
+        confirmDisabled: busy || !harvestSelectedCard || Boolean(activeHarvestSubmission),
         onToggle: toggleHarvestSelection,
         onConfirm: confirmHarvestChoice,
       }

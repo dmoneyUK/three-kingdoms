@@ -1,20 +1,27 @@
 # HANDOVER — 当前唯一任务
 
-## HARVEST-H4-PAC-VISIBILITY-COPY-01 / §10.48
+## §10.49 HARVEST-CHOICE-CONTINUITY-01
 
-**状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW；未标记验收通过。**
+**状态：源代码与定向验证已完成，分阶段本地提交进行中；尚未推送、部署或验收。**
 
-### 实现与交付
+**设计权威：** `docs/UX2-refine.md` §10.49，最新远端设计 SHA `7511f0ce16ac3bf688df37d32c03b25a2215f996`。该版本要求五阶段顺序实施。当前隔离工作树 `codex/ux2-10-49-harvest-20261114` 从此 SHA 建立；先前工作树及主目录既有未提交内容均保留。
 
-- 修复 Harvest 根牌、Negation 阶段与参与者的公开证据传递；H4/PAC 现在按已验证根事件、当前参与者及承诺的取消/恢复状态生成文案，缺少证明时安全回退。
-- Harvest 牌池继续保持原尺寸与中央可操作状态；定位使用实测 H4/PAC 安全区。仅同一已证明 Harvest 根牌允许被自己的同根牌池覆盖；H4、PAC 与交互控件仍受保护。
-- 根事件 ID 现在随已验证 Harvest Negation continuation 传递，使已提交的取消/恢复事实可关联原根牌。未改游戏规则、合法操作或私密手牌权限。
-- 实现提交：[`63324ed589892e84c43930e1dac88d410e0ddf7a`](https://github.com/dmoneyUK/three-kingdoms/commit/63324ed589892e84c43930e1dac88d410e0ddf7a)；前一实现提交：[`1cfd37badfa36eaf2769fc1b1da2af06f1e865f3`](https://github.com/dmoneyUK/three-kingdoms/commit/1cfd37badfa36eaf2769fc1b1da2af06f1e865f3)。均已推送 `ux-v2`。
-- 精确 SHA CI：[43535359348](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43535359348) 成功：Lint/fast、API、基础浏览器 smoke、Cloudflare 部署均通过。Worker Version ID：`2e0431fb-dc04-4d53-80d0-b51d637e4882`。
-- 部署 smoke 对生产首页与 `/api/health` 请求成功；2026-11-14 00:42 UTC 额外检查 `/api/health` 得 HTTP 200，返回 `{"ok":true,"worker":"available"}`。
+**实现范围：** 当前合法 Harvest chooser 得到私有选择/确认指引；本地提交状态绑定 room、viewer、actor 与 action revision；服务器只在真实选牌提交且 Harvest 根牌、公开揭示、参与者和精确卡面证明完整时追加一条公共选牌事实，并与手牌/待处理状态共用持久化路径；H4 更新到已选公开牌，原牌池槽位继续显示 `Taken by`；牌池为真实 Confirm 栏预留高度，在相同根事件、揭示事件、viewer 和安全几何下复用定位，有障碍变化时重新求解；TEST SWITCH 保留公开时间线、按真实作者 Seat 重锚根缩略牌，旧 viewer 的私有选择/提交状态清除；无关历史缩略牌未测量不再单独隐藏当前主卡 H4/PAC。没有游戏规则、服务端权限、手牌隐私或公共决定语义变化。
 
-### 验证边界与当前交接
+**阶段进度：**
+- Stage 1 私有 chooser 指引及 viewer/actionRevision 绑定：实现完成，当前在本地提交批次中。
+- Stage 2 原子公共选牌事实与 H4：实现和针对性事实/文案测试完成，尚未提交。
+- Stage 3 稳定池顶与真实安全几何：实现和纯几何测试完成，尚未提交。
+- Stage 4 viewer 重锚、公共状态一致性及私有 Pass：实现/浏览器回归已编写，尚未由 CI 执行。
+- Stage 5 精确 SHA CI、Worker 部署与生产 smoke：未执行。
 
-- 本地定向语义/布局测试 128/128、Harvest 几何测试 15/15、Worker/D1 API 文件 45/45 通过；构建成功；定向 ESLint 0 errors、16 个既有 React Hook warnings；`git diff --check` 通过。
-- 最后的 440×766 Worker/D1 可视场景运行于最终安全落点改动之前，记录了 H4 `[12,154,428,183.5]` 与牌池 `[66.5,171,373.5,299]` 重叠、PAC `[50,413,390,475.5]` 被共享布局隐藏。安全求解器的实测几何回归给出牌池 top `263px`，位于 H4 与 PAC 之间并留有 6px。受本任务五分钟 UI 测试上限约束，最终几何改动后未再运行专用真实浏览器 Harvest 场景；CI 浏览器 job 是基础建房 smoke，不等同于该场景验收。
-- 当前唯一后续步骤：由负责人在 iPhone 复验 §10.48 的 Harvest 根牌、首次 Negation、链接反制、FINAL 与合法选牌中的 H4/PAC 文案及可见性；在收到明确通过前，本任务保持待验收。
+**实际验证（2026-11-14 16:34 UTC）：**
+- 在远端最新设计基线 `7511f0c` 对应工作树运行 `node --import tsx --test --test-concurrency=1 tests/public-stage-layout.test.mjs tests/api/presentation-semantics.test.mjs tests/api/public-activity.test.mjs`：58/58 通过。
+- `npm run build` 成功；仅有 500KB chunk 及 Vite 动态 API 分类提示。
+- `node --check tests/browser/bumper-harvest-touch-pass-through-real-gameplay.spec.mjs` 与 `git diff --check` 通过。
+- §10.49 唯一四人 440×766 Worker/D1 浏览器预算已用完（两次本地尝试，均不能作为源码验证）：它们使用 `2026-11-14 00:35` 的旧 `dist`；首轮只读池 panel 顶端 y=263、actor-select y=243，第二轮仍是旧构建。之后已针对源码对齐 Harvest stage 顶部并重建成功；严格不再本地启动 UI/browser。更新后的真实场景已在现有浏览器测试中，必须以精确 SHA CI 结果判定。
+- 远端 `ux-v2` 最近一次已完成 Action 是 run `43535359348`，SHA `63324ed589892e84c43930e1dac88d410e0ddf7a`，成功；文档更新 SHA `7511f0c` 没有对应 Action。推送前还需复查当前 Actions。
+
+**当前检查点：** Stage 1 改动已按 §10.49 顺序暂存；源码其他阶段暂留工作树，未丢弃。此次计划在所有阶段和定向验证完成后一次性推送分阶段提交；此前 Action 健康，但最终 CI/部署尚无证据。
+
+**下一步（仍是 §10.49）：** 提交 Stage 1 本地批次；继续 Stage 2（公共选牌事实/H4）→ Stage 3（稳定定位）→ Stage 4（viewer 重锚/私有确认）→ Stage 5（精确 SHA CI、Worker 部署、生产 smoke）。交付状态只能为 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`，不得标为 `USER-ACCEPTED`。
