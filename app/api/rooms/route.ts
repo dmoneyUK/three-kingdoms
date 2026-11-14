@@ -6300,6 +6300,19 @@ async function beginHarvestTarget(room: RoomRow, pending: HarvestPending, player
     causalEnvelope = child.envelope;
     negationCausal = child.context;
   }
+  const rootProgress = pending.participantProgress;
+  const harvestRootIdentity = rootChoiceEnvelope && rootProgress?.version === 2
+    && rootProgress.interactionId === rootChoiceEnvelope.interactionId
+    && rootProgress.rootFrameId === rootChoiceEnvelope.activeFrameId
+    && rootProgress.currentParticipantId === actor.id
+    && rootProgress.rootEventId && rootProgress.rootResolutionId && rootProgress.rootCardId
+    ? {
+      rootEventId: rootProgress.rootEventId,
+      rootResolutionId: rootProgress.rootResolutionId,
+      rootCardId: rootProgress.rootCardId,
+      rootCardKind: "BumperHarvest" as const,
+    }
+    : null;
   const negationContinuation: NegationContinuation = {
     kind: "negation",
     sourceId: pending.sourceId,
@@ -6311,6 +6324,7 @@ async function beginHarvestTarget(room: RoomRow, pending: HarvestPending, player
     effectTargetId: actor.id,
     resumePhase: pending.resumePhase,
     effect: { kind: "harvest_target", pending },
+    ...(harvestRootIdentity ?? {}),
     heldCards: pending.heldCards,
     ...(negationCausal ? { causal: negationCausal } : {}),
   };

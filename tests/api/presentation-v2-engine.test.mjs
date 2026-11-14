@@ -2854,6 +2854,8 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.deepEqual(counterWindow.presentationSnapshot.reactionChain?.nodes.map(({ actorId }) => actorId), [first.id], "only the submitted Negation appears in public history");
   assert.equal(counterWindow.presentationSnapshot.reactionChain?.publicNodeEventLinks?.length, 1, "the public Negation node links to its exact played card event");
   const committedHarvestFacts = counterWindow.presentationSnapshot.publicEventFacts;
+  const committedHarvestFactSummary = committedHarvestFacts.map(({ eventId, category, frameId, parentFrameId, rootEventId, actorId, affectedPlayerIds, effect }) =>
+    ({ eventId, category, frameId, parentFrameId, rootEventId, actorId, affectedPlayerIds, effect }));
   const firstNegationFact = committedHarvestFacts.find((fact) => fact.eventId === counterWindow.presentationSnapshot.reactionChain?.publicNodeEventLinks?.[0]?.eventId);
   assert.deepEqual({ category: firstNegationFact?.category, actorId: firstNegationFact?.actorId, label: firstNegationFact?.label }, {
     category: "CARD_PLAYED", actorId: first.id, label: "Negation",
@@ -2861,7 +2863,7 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.ok(committedHarvestFacts.some((fact) => fact.category === "EFFECT_CANCELLED"
     && fact.actorId === first.id && fact.rootEventId === initialProgress?.rootEventId
     && fact.affectedPlayerIds.length === 1 && fact.affectedPlayerIds[0] === source.id),
-  "the committed response fact proves which current participant's pick was blocked");
+  `the committed response fact proves which current participant's pick was blocked: ${JSON.stringify(committedHarvestFactSummary)}`);
   assert.equal(counterWindow.presentationSnapshot.reactionChain?.rootCard, null, "Bumper Harvest response history does not acquire a single-target root card");
   assert.equal("physicalCardId" in counterWindow.presentationSnapshot.reactionChain.nodes[0], false);
   assert.equal(counterWindow.presentationV2.interactionScene?.decisionActorId, null);
