@@ -192,7 +192,10 @@ export function PublicStageLayoutProvider({
 
       const announcements = [...display.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
         .filter((announcement) => announcement.dataset.publicCardAnnouncementEventId === eventId
-          || announcement.dataset.publicCardAnnouncementAnchorEventId === eventId);
+          || announcement.dataset.publicCardAnnouncementAnchorEventId === eventId
+          || (display.dataset.publicCardKind === "BumperHarvest"
+            && Boolean(interactionId)
+            && announcement.dataset.publicCardStagePrimaryEventId === eventId));
       const chip = table.querySelector<HTMLElement>("[data-public-activity-chip='true']");
       if (announcements.length !== 1 || !chip) {
         clear();

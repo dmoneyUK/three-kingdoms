@@ -2,16 +2,13 @@
 
 ## §10.48 HARVEST-H4-PAC-VISIBILITY-COPY-01
 
-状态：修正进行中；先前部署未通过用户验收，不能标记完成。
+状态：两文件修正已实现，基本验证通过，待推送及新版本部署；未验收。
+设计版本：`5af6d2bf` 新版 §10.48。按用户最新指示，直接实施，不检查/等待先前 CI。
 
-设计版本：origin/ux-v2 `b9e541ae`，已 fast-forward 同步。原 §10.49 已合并回本任务。
+改动：PublicCardAnnouncement 新增独立 stagePrimaryEventId；仅在真实 Harvest 根牌、当前 scope/viewer、真实当前 root/response 匹配时提供。provider 在现有同 root/interaction/viewer 且布局非 pending 的 display 内，接受此实体事件关联，仍要求唯一 H4。保留 H4 最新事实 ID、copyKey、空物理锚点及全部几何碰撞校验。未修改 PAC 组件、服务器或游戏规则。
 
-当前进展：重新阅读最新 G1–G4。已确认源码中 H4 选牌事实 ID 与共享布局要求的实体牌事件 ID 不一致；牌池显示时 anchorEventId=null，provider 的 announcements 过滤因此缺少匹配路径。此为源码确认，真实运行首个失败检查仍未验证。
+清理：删除本 Agent 前一版新增的无用诊断 workflow 和 browser 日志采样；原有浏览器回归保留。
 
-下一执行点：G1 在精确源码 SHA 的 Worker/D1 场景捕获首个失败检查；再按 G2 加入独立 stagePrimaryEventId 关联、G3 重新发布当前布局、G4 实际执行连续多领取者及 TEST SWITCH 浏览器回归。不得跳过运行证据。
+实际检查：相关现有单测 68/68 通过；npm run build、git diff --check、browser spec 语法检查通过。未运行 UI/browser。构建只有已知大 chunk / 动态 API 分类警告。
 
-验证约束：本地原任务五分钟 UI 预算已耗尽；使用定向远端 CI 执行真实浏览器场景。原通用 startup smoke 未执行该场景，不能作为通过依据。
-
-上次部署：源码 `532ced390aaba5203458c8945bf9a0d1933bcc8d`，Actions 43618989702 成功，Worker `b43c9f12-e9c5-4ee8-a61b-0993e4432437`；该部署不是新反馈修复的证据。
-
-本轮仅同步最新设计并更新当前任务记录；尚无新的生产代码修复、提交或部署。
+下一步：提交推送本修正，按正常部署交付并记录实际结果。无手机或专用浏览器通过声明，等待 OWNER iPHONE REVIEW。

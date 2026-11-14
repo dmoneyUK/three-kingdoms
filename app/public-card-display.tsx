@@ -2207,6 +2207,7 @@ function publicAnnouncementTraceHash(value: string) {
 function PublicCardAnnouncement({
   eventId,
   anchorEventId,
+  stagePrimaryEventId,
   eventCopyKey,
   announcementIdentity,
   geometryKey,
@@ -2239,6 +2240,7 @@ function PublicCardAnnouncement({
 }: {
   eventId: string;
   anchorEventId?: string | null;
+  stagePrimaryEventId?: string | null;
   eventCopyKey: string;
   announcementIdentity?: PublicCardAnnouncementIdentity;
   geometryKey: string;
@@ -3473,6 +3475,7 @@ function PublicCardAnnouncement({
     data-public-card-announcement-copy-key={eventCopyKey}
     data-public-card-announcement-geometry-key={geometryKey}
     data-public-card-announcement-event-id={displayedCopy.eventId}
+    data-public-card-stage-primary-event-id={stagePrimaryEventId ?? undefined}
     data-public-card-announcement-anchor-event-id={anchorEventId === null ? undefined : anchorEventId ?? eventId}
     data-public-negation-latest-event-id={displayedCopy.latestCommittedEventId}
     data-public-negation-checkpoint-id={displayedCopy.checkpointId}
@@ -4890,6 +4893,19 @@ function SingleTargetCardJourney({
     ?? [...journey.cards].reverse().find((card) => card.phase !== "queued")?.eventId
     ?? action.rootEventId;
   const primaryJourneyCard = journey.cards.find((card) => card.eventId === activeEventId);
+  // The latest H4 fact can be a pick without owning a physical card Journey.
+  // Associate it with this viewer's proven root/response only for stage layout.
+  const harvestStagePrimaryEventId = harvestPoolVisible
+    && action.cardKind === "BumperHarvest" && Boolean(action.interactionId)
+    && journey.scopeKey === scopeKey && journey.viewerId === viewerId
+    && journey.cards.some((card) => card.role === "root"
+      && card.eventId === action.rootEventId && card.actorId === action.sourceId
+      && card.cardFace.id === action.cardFace?.id)
+    && primaryJourneyCard && primaryJourneyCard.eventId === activeEventId
+    && incoming.some((card) => card.eventId === primaryJourneyCard.eventId
+      && card.actorId === primaryJourneyCard.actorId && card.cardFace.id === primaryJourneyCard.cardFace.id)
+    ? primaryJourneyCard.eventId
+    : undefined;
   // Shared H4/PAC placement belongs to the current primary card. An unrelated
   // older parked author's unmeasured Seat may keep that one miniature hidden,
   // but it must not make an otherwise measured current public stage disappear.
@@ -5604,6 +5620,7 @@ function SingleTargetCardJourney({
       </li>)}
     </ol>
     {!historyOnly && !suppressAnnouncement && <PublicCardAnnouncement
+      stagePrimaryEventId={harvestStagePrimaryEventId}
       eventId={dismantleFaceCopy?.settlementEventId ?? negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId)}
       eventCopyKey={publicCardAnnouncementCopyKey(
         action,
