@@ -1,3 +1,4 @@
+import { provenEntourageDecision, type EntourageInvocation, type EntourageHelper } from "../../../game/entourage-presentation";
 import { env } from "cloudflare:workers";
 import { cardDefinition, effectivePhysicalSuit, isAttackCard, makeDeck, shuffle } from "../../../game/cards";
 import { CARD_KINDS, type Card, type CardSuit, type EquipmentZone } from "../../../game/model";
@@ -42,7 +43,7 @@ export const runtime = "edge";
 type TargetCardZone = "hand" | "equipment" | "judgement";
 const PRIVATE_STEAL_RESULT_WINDOW_MS = 12_000;
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; actorId?: string; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicFact?: PublicPresentationEventFactDraft; publicZoneTransition?: PublicPhysicalZoneTransition; publicZoneTransitions?: readonly PublicPhysicalZoneTransition[]; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PresentationMeta = { entourageInvocation?: EntourageInvocation; resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; actorId?: string; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicFact?: PublicPresentationEventFactDraft; publicZoneTransition?: PublicPhysicalZoneTransition; publicZoneTransitions?: readonly PublicPhysicalZoneTransition[]; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type AttackDodgeProofDiagnostic = {
   result: "PROVEN" | "REJECTED" | "NOT_ATTEMPTED";
   reason: string;
@@ -494,6 +495,9 @@ function delegatedResponseReason(response: ResponsePending, viewer: PlayerRow | 
   const providerName = delegation.providerId === "cao_cao_hujia" ? "Entourage" : delegation.providerId === "liu_bei_jijiang" ? "Influencing" : "this delegation";
   const requiredName = response.requirement.kind === "dodge" ? "Dodge" : "Attack";
   const prompt = requester ? heroDisplayName(requester) + " asks you to provide " + requiredName + " with " + providerName + "." : "You have been asked to provide " + requiredName + " with " + providerName + ".";
+  if (viewer?.id === response.actorId && delegation.providerId === "cao_cao_hujia" && response.requirement.kind === "dodge") {
+    return "Cao Cao asked you to provide Dodge with Entourage. Play Dodge or Skip.";
+  }
   if (viewer?.id !== response.actorId) return prompt;
   const options = responseDecisionFor(response, responseContext(viewer, players))?.options ?? [];
   return options.length ? prompt + " Play " + requiredName + " or decline." : prompt;
@@ -761,7 +765,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
+  return { ...(meta?.entourageInvocation ? { entourageInvocation: meta.entourageInvocation } : {}), resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
 function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "amount" | "effect" | "bumperHarvestPickProof">> = {}, envelope?: CausalEnvelope | null): PublicPresentationEventFactDraft | undefined {
   if (!causal?.interactionId || !causal.frameId) return undefined;
@@ -870,7 +874,13 @@ function publicNextDecisionFor(presentation: PresentationV2, pending: Pending | 
   let nextEffect: PublicPresentationDecision["nextEffect"];
   let visibility: PublicPresentationDecision["visibility"] = "PUBLIC";
   let responseWindowOpen: boolean | null = Boolean(pending);
-  if (borrowedTargetChoice) {
+  const entourage = presentation.entourageDecision;
+  if (entourage && entourage.helperActorId === scene.decisionActorId
+    && entourage.identity.checkpointId === scene.checkpointId && entourage.identity.presentationRevision === scene.presentationRevision) {
+    actorIds = [entourage.helperActorId];
+    actionLabels = ["Dodge", "Decline"];
+    stageLabel = "Entourage";
+  } else if (borrowedTargetChoice) {
     actorIds = [pending.actorId];
     actionLabels = ["Choose Attack target"];
     stageLabel = "Borrowed Sword target choice";
@@ -1584,6 +1594,8 @@ function attackDodgeResponseProof(
   responseCard: Card | undefined,
   responseExecution: ResponseExecution | null,
   responderHero: string | null,
+  entourage: EntourageHelper | null = null,
+  responseEventId?: string,
 ): AttackDodgeProofEvaluation {
   const attack = attackResponse(response);
   const causal = response.causal;
@@ -1634,8 +1646,8 @@ function attackDodgeResponseProof(
     [baseChecks.requiredDodgeCountIsOne, "required-dodge-count-is-not-one"],
     [baseChecks.sourcePresent, "attack-source-missing"],
     [baseChecks.sourceDiffersFromTarget, "attack-is-self-targeted"],
-    [baseChecks.responseActorIsTarget, "response-actor-is-not-attack-target"],
-    [baseChecks.submitterIsTarget, "submitter-is-not-attack-target"],
+    [baseChecks.responseActorIsTarget || Boolean(entourage && entourage.helperActorId === response.actorId), "response-actor-is-not-attack-target"],
+    [baseChecks.submitterIsTarget || Boolean(entourage && entourage.helperActorId === responderId), "submitter-is-not-attack-target"],
     [baseChecks.requirementIsDodge, "response-requirement-is-not-dodge"],
     [baseChecks.requirementTargetIsTarget, "response-requirement-target-mismatch"],
     [baseChecks.sequenceStartCardPresent, "attack-sequence-card-missing"],
@@ -1722,6 +1734,7 @@ function attackDodgeResponseProof(
     rootSourceId: continuation.sourceId,
     targetId: continuation.targetId,
     responseActorId: responderId,
+    ...(entourage && responseEventId && responseCard ? { entourage: { ...entourage, responseEventId, responseCardId: responseCard.id } } : {}),
     rootCardKind: "Attack",
     responseCardKind: "Dodge",
     ...(baseChecks.authoritativeLongdanAttackAsDodge
@@ -7206,7 +7219,19 @@ export async function POST(request: Request) {
         });
         if (nextId) {
           const next = { ...response, actorId: nextId, deadline: 0, delegation: { ...response.delegation, remainingActorIds: response.delegation.remainingActorIds.filter((candidateId) => candidateId !== nextId) } };
-          const log = addLog(parse<string[]>(room.log_json, []), `${me?.name ?? "The current character"} declines the delegated response; action passes to the next faction character.`);
+          let log = addLog(parse<string[]>(room.log_json, []), `${me?.name ?? "The current character"} declines the delegated response; action passes to the next faction character.`);
+          if (response.delegation.publicEntourage) {
+            const helper = allRoomPlayers.find((player) => player.id === nextId);
+            next.delegation.publicEntourage = helper?.hero
+              && STANDARD_HEROES.some((hero) => hero.id === helper.hero && hero.faction === "Wei")
+              ? { ...response.delegation.publicEntourage, helperActorId: nextId, helperHeroId: helper.hero }
+              : undefined;
+            const fact = publicFactFor(response.causal, "ACTION_DECLINED", { rootEventId: response.delegation.publicEntourage.rootEventId,
+              actorId: response.actorId, affectedPlayerIds: [response.delegation.requesterId], label: "Entourage",
+              outcomeLabel: "declined Entourage", effect: { kind: "entourage_declined" } }, parseCausalEnvelope(room.causal_envelope_json));
+            if (fact?.committedIdentity) log = addLogWithId(log, `${me?.name ?? "The current helper"} declined Entourage.`, undefined,
+              { publicFact: fact, resolutionId: response.delegation.publicEntourage.rootResolutionId, importance: "essential" }).log;
+          }
           const claim = await db.prepare("UPDATE rooms SET pending_json = ?, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(serializePending(next), JSON.stringify(log), room.id, room.pending_json).run();
           if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That response has already advanced.", stale: true, room: await roomState(code, token) }, 409);
           return json({ room: await roomState(code, token) });
@@ -7220,7 +7245,15 @@ export async function POST(request: Request) {
         const requesterId = response.delegation.requesterId;
         const disabledProviderIds = [...new Set([...(response.disabledProviderIds ?? []), response.delegation.providerId])];
         const withoutDelegation = { ...response, delegation: undefined, actorId: requesterId, deadline: 0, disabledProviderIds } satisfies ResponsePending;
-        const claim = await db.prepare("UPDATE rooms SET pending_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(serializePending(withoutDelegation), room.id, room.pending_json).run();
+        let returnLog = parse<string[]>(room.log_json, []);
+        const entourage = response.delegation.publicEntourage;
+        const declineFact = entourage ? publicFactFor(response.causal, "ACTION_DECLINED", {
+          rootEventId: entourage.rootEventId, actorId: response.actorId, affectedPlayerIds: [requesterId],
+          label: "Entourage", effect: { kind: "entourage_declined" },
+        }, parseCausalEnvelope(room.causal_envelope_json)) : undefined;
+        if (declineFact?.committedIdentity) returnLog = addLogWithId(returnLog, `${me?.name ?? "The current helper"} declined Entourage.`, undefined,
+          { resolutionId: entourage!.rootResolutionId, importance: "essential", publicFact: declineFact }).log;
+        const claim = await db.prepare("UPDATE rooms SET pending_json = ?, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(serializePending(withoutDelegation), JSON.stringify(returnLog), room.id, room.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That response has already advanced.", stale: true, room: await roomState(code, token) }, 409);
         return json({ room: await roomState(code, token) });
       }
@@ -7255,8 +7288,36 @@ export async function POST(request: Request) {
           return Boolean(candidate);
         });
         if (!nextId) return json({ error: "No eligible faction character can provide that response.", stale: true, room: await roomState(code, token) }, 409);
-        const next = { ...responsePending, actorId: nextId, deadline: 0, delegation: { kind: responsePending.requirement.kind as "attack" | "dodge", requesterId: me?.id ?? responsePending.actorId, providerId: responseExecution.providerId, remainingActorIds: responseExecution.delegateIds.filter((candidateId) => candidateId !== nextId) } } satisfies ResponsePending;
-        const log = addLog(parse<string[]>(room.log_json, []), `${me?.name ?? "The current character"} invokes ${responseExecution.providerId === "cao_cao_hujia" ? "Entourage" : "Influencing"}; action passes to a faction character.`);
+        const next: ResponsePending = { ...responsePending, actorId: nextId, deadline: 0, delegation: { kind: responsePending.requirement.kind as "attack" | "dodge", requesterId: me?.id ?? responsePending.actorId, providerId: responseExecution.providerId, remainingActorIds: responseExecution.delegateIds.filter((candidateId) => candidateId !== nextId) } } satisfies ResponsePending;
+        let log = addLog(parse<string[]>(room.log_json, []), `${me?.name ?? "The current character"} invokes ${responseExecution.providerId === "cao_cao_hujia" ? "Entourage" : "Influencing"}; action passes to a faction character.`);
+        if (responseExecution.providerId === "cao_cao_hujia" && me?.hero === "cao-cao" && me.role === "Lord"
+          && responsePending.continuation.kind === "attack" && responsePending.continuation.targetId === me.id) {
+          const c = responsePending.continuation;
+          const root = publicRootLink(log, c.rootEventId);
+          const envelope = parseCausalEnvelope(room.causal_envelope_json);
+          const helper = allRoomPlayers.find((player) => player.id === nextId && player.alive);
+          const fact = publicFactFor(responsePending.causal, "SKILL_USED", {
+            rootEventId: root?.rootEventId, actorId: me.id, affectedPlayerIds: [me.id],
+            label: "Entourage", effect: { kind: "entourage_invocation" },
+          }, envelope);
+          if (root && fact?.committedIdentity && c.sequenceStartCardId && helper?.hero
+            && STANDARD_HEROES.some((hero) => hero.id === helper.hero && hero.faction === "Wei")) {
+            const invocationEventId = crypto.randomUUID();
+            const invocation: EntourageInvocation = { semantics: "PROVEN", providerId: "cao_cao_hujia", invocationEventId,
+              requesterId: me.id, requesterHeroId: "cao-cao", requesterRole: "Lord", sourceId: c.sourceId,
+              ...root, rootCardId: c.sequenceStartCardId, interactionId: fact.committedIdentity.interactionId,
+              rootFrameId: fact.committedIdentity.rootFrameId, committedIdentity: fact.committedIdentity };
+            const candidate = { ...next, delegation: { ...next.delegation!,
+              publicEntourage: { ...invocation, helperActorId: helper.id, helperHeroId: helper.hero } } };
+            const committedLog = addLogWithId(log, `${me.name} (Cao Cao) used Entourage.`, undefined,
+              { resolutionId: root.rootResolutionId, importance: "essential", actorId: me.id,
+                publicFact: fact, entourageInvocation: invocation }, invocationEventId).log;
+            if (provenEntourageDecision(candidate, envelope, gameTimeline(committedLog))) {
+              next.delegation!.publicEntourage = candidate.delegation.publicEntourage;
+              log = committedLog;
+            }
+          }
+        }
         const claim = await db.prepare("UPDATE rooms SET pending_json = ?, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(serializePending(next), JSON.stringify(log), room.id, room.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That delegated response has already advanced.", stale: true, room: await roomState(code, token) }, 409);
         return json({ room: await roomState(code, token) });
@@ -9627,12 +9688,20 @@ export async function POST(request: Request) {
         responseEventId = crypto.randomUUID();
         attackDodgeEvaluation = attackDodgeResponseProof(
           log, attack.response, me.id, liveRoom.turn_seat, dodgeCards[0], responseExecution, me.hero,
+          provenEntourageDecision(attack.response, parseCausalEnvelope(liveRoom.causal_envelope_json), gameTimeline(log)), responseEventId,
         );
         const attackDodgeResponse = attackDodgeEvaluation.proof ?? undefined;
         const conversion = publicConversionDraft(responseExecution?.providerId, me.id, [dodgeCards[0]], { playerId: me.id, hand: handBeforeResponse, equipment: equipmentCards(me) }, semanticTarget.id, "Dodge");
         const responseRoot = publicRootLink(log, continuation.rootEventId);
         const provenConversion = conversion ? { ...conversion, ...(responseRoot ?? {}) } : null;
+        const entourageFact = attackDodgeResponse?.entourage ? publicFactFor(response.causal, "EFFECT_APPLIED", {
+          rootEventId: attackDodgeResponse.rootEventId, actorId: me.id, affectedPlayerIds: [semanticTarget.id],
+          label: "Dodge", effect: { kind: "entourage_dodge" },
+          outcomeLabel: `played Dodge for ${semanticTarget.name} using Entourage`,
+        }, parseCausalEnvelope(liveRoom.causal_envelope_json)) : undefined;
         const responseMeta: PresentationMeta = {
+          actorId: me.id,
+          ...(entourageFact?.committedIdentity ? { publicFact: entourageFact } : {}),
           ...(attackDodgeResponse ? { resolutionId: attackDodgeResponse.rootResolutionId } : {}),
           ...(responseExecution?.playedAs ? { playedAs: responseExecution.playedAs } : {}),
           ...(attackDodgeResponse ? { attackDodgeResponse } : {}),

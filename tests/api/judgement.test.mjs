@@ -417,3 +417,47 @@ test("turn engine completes repeated rounds, rejects duplicate actions, and skip
   const invalidState = await requestAndSettle("draw", { code: game.code, token: defeated.member.token });
   assert.equal(invalidState.status, 409); assert.match(invalidState.data.error, /Game state check failed: The active turn does not belong to a living player/);
 });
+
+test("Entourage publishes the current helper and one original-target Dodge proof without exposing Hands", async () => {
+  const dodge = card("Dodge", "entourage-public-proof");
+  const game = await openHujiaScenario({ delegateHero: "simayi", delegateCards: [dodge] });
+  const invoked = await requestAndSettle("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia", preserveResponse: true });
+  assert.equal(invoked.status, 200, JSON.stringify(invoked.data));
+  const snapshot = invoked.data.room.presentationSnapshot;
+  assert.equal(snapshot.entourageDecision?.helperActorId, game.delegate.id, JSON.stringify(snapshot));
+  assert.equal(snapshot.entourageDecision?.requesterId, game.cao.id);
+  assert.equal(snapshot.interaction.decisionActorId, game.delegate.id);
+  assert.equal(snapshot.publicNextDecision?.stageLabel, "Entourage");
+  assert.ok(snapshot.publicEventFacts.some((fact) => fact.category === "SKILL_USED" && fact.label === "Entourage"));
+  const observer = await state(game.code, game.sourceMember.token);
+  assert.deepEqual(observer.data.presentationSnapshot.entourageDecision, snapshot.entourageDecision);
+  assert.equal(JSON.stringify(snapshot.entourageDecision).includes(dodge.id), false);
+  const answered = await requestAndSettle("respond", { code: game.code, token: game.delegateMember.token, providerId: "card", cardId: dodge.id });
+  assert.equal(answered.status, 200, JSON.stringify(answered.data));
+  const proofs = answered.data.room.presentationSnapshot.attackDodgeResponses ?? [];
+  assert.equal(proofs.length, 1, JSON.stringify(answered.data.room.presentationSnapshot));
+  assert.equal(proofs[0].responseActorId, game.delegate.id);
+  assert.equal(proofs[0].targetId, game.cao.id);
+  assert.equal(proofs[0].entourage.responseCardId, dodge.id);
+  assert.equal(answered.data.room.players.find((player) => player.id === game.cao.id).hp, 4);
+  const helper = await state(game.code, game.delegateMember.token);
+  assert.equal(helper.data.myHand.some((held) => held.id === dodge.id), false);
+  assert.equal(discardIds(game.code).filter((held) => held === dodge.id).length, 1);
+  const repeated = await request("respond", { code: game.code, token: game.delegateMember.token, providerId: "card", cardId: dodge.id });
+  assert.notEqual(repeated.status, 200);
+});
+
+test("Entourage helper decline advances only the public current helper then returns to Cao Cao", async () => {
+  const game = await openHujiaScenario({ delegateHero: "simayi", delegateCards: [card("Dodge", "entourage-decline-one")], thirdHero: "zhen-ji", thirdCards: [card("Dodge", "entourage-decline-two")] });
+  const invoked = await requestAndSettle("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia", preserveResponse: true });
+  assert.equal(invoked.status, 200);
+  const declined = await requestAndSettle("decline_response", { code: game.code, token: game.delegateMember.token, preserveResponse: true });
+  assert.equal(declined.status, 200, JSON.stringify(declined.data));
+  assert.equal(declined.data.room.presentationSnapshot.entourageDecision?.helperActorId, game.third.id);
+  assert.equal(JSON.stringify(declined.data.room.presentationSnapshot.entourageDecision).includes("remainingActorIds"), false);
+  const returned = await requestAndSettle("decline_response", { code: game.code, token: game.thirdMember.token, preserveResponse: true });
+  assert.equal(returned.status, 200, JSON.stringify(returned.data));
+  assert.equal(returned.data.room.presentationSnapshot.entourageDecision, null);
+  assert.equal(returned.data.room.currentAction.actorId, game.cao.id);
+  assert.equal(returned.data.room.players.find((player) => player.id === game.cao.id).hp, 4);
+});

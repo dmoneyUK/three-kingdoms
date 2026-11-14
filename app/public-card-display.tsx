@@ -138,6 +138,8 @@ export type PublicCardDisplayAction = {
     eventId: string;
     /** Authenticated root proof used to match an actor-private Steal result. */
     rootResolutionId?: string;
+    /** Verified resolution copy; does not create a physical card or animation. */
+    publicOutcomeMessage?: string;
     outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "GROUP_RESOLVED" | "BUMPER_HARVEST_RESOLVED" | "ROOT_CANCELLED" | "ROOT_RESTORED" | "LUST_DUEL_DAMAGE_APPLIED" | "LUST_DUEL_DAMAGE_PREVENTED";
     exiting: boolean;
     /** Server-derived remaining portion of a proof-backed public-card read, when supplied. */
@@ -3699,8 +3701,15 @@ function AttackDodgeCardJourney({
   const activeActorName = activeJourneyCard?.actorName ?? latestResponse?.actorName ?? latestDeflection?.actorName ?? sourceName;
   const activeRevealStartedAtMs = activeJourneyCard?.revealStartedAtMs ?? null;
   const activeRevealRemainingMs = activeJourneyCard?.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS;
-  const announcementCopy = publicCardAnnouncementCopy(action, activeNotice, activeActorName, activeActorId, sourceName, targetName, compactPlayerNamesById, activeEventId);
-  const committedFactCopy = publicCardCommittedFactCopy(action, announcementCopy);
+  const settledOutcomeMessage = activeJourneyCard?.phase === "parked"
+    && activeJourneyCard.eventId === action.response?.eventId
+    ? action.settlement?.publicOutcomeMessage : undefined;
+  const publicNarration = settledOutcomeMessage && action.publicInteractionNarration
+    ? { ...action.publicInteractionNarration, headline: settledOutcomeMessage, compactHeadline: settledOutcomeMessage, accessibleLabel: settledOutcomeMessage }
+    : action.publicInteractionNarration;
+  const announcementAction = publicNarration ? { ...action, publicInteractionNarration: publicNarration } : action;
+  const announcementCopy = publicCardAnnouncementCopy(announcementAction, activeNotice, activeActorName, activeActorId, sourceName, targetName, compactPlayerNamesById, activeEventId);
+  const committedFactCopy = publicCardCommittedFactCopy(announcementAction, announcementCopy);
   const negationNarration = action.publicNegationNarration;
   const announcementPhaseNotice = action.settlement || action.publicInteractionNarration || negationNarration ? undefined : action.phaseNotice;
   const announcement = committedFactCopy.message;
@@ -4394,7 +4403,7 @@ function AttackDodgeCardJourney({
       message={announcement}
       compactMessage={compactAnnouncement}
       accessibleLabel={committedFactCopy.accessibleLabel}
-      presentationNarration={negationNarration ? undefined : action.publicInteractionNarration}
+      presentationNarration={negationNarration ? undefined : publicNarration}
       negationNarration={negationNarration}
       fallbackCardRect={publicEffectFrameOwnsAnnouncementAnchor && journey.center && action.publicCardEffectFrame
         ? battlefieldPublicEffectFrame(journey.center, action.publicCardEffectFrame) : journey.center}

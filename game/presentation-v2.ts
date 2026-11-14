@@ -1,3 +1,4 @@
+import { provenEntourageDecision, isEntourageDodgeFor, entourageInvocationMatchesTimeline, type EntourageDodge, type EntourageDecision } from "./entourage-presentation";
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
 import { collectPublicPresentationEventFacts, retainedPublicEventFromTimeline, type PublicPresentationEvent, type PublicPresentationEventFactDraft, type PublicPresentationEventFactProjection } from "./presentation-semantics";
@@ -29,6 +30,8 @@ export type PresentationV2Event = {
   judgement?: boolean;
   negationSettlement?: unknown;
   selfTargetAction?: unknown;
+  entourageInvocation?: unknown;
+  actorId?: string;
   attackDodgeResponse?: unknown;
   duelAttackResponse?: unknown;
   lustDuelAttackResponse?: unknown;
@@ -677,6 +680,7 @@ type PresentationAttackDodgeResponseProofBase = {
   rootSourceId: string;
   targetId: string;
   responseActorId: string;
+  entourage?: EntourageDodge;
   rootCardKind: "Attack";
   /** Semantic response kind; may differ from the actual public CardFace below. */
   responseCardKind: "Dodge";
@@ -698,7 +702,7 @@ export type PresentationAttackDodgeResponse = PresentationAttackDodgeResponsePro
 /** Only these server-authored physical/effective pairings can prove an Attack block. */
 export function isSupportedAttackDodgeResponseProof(value: unknown): value is PresentationAttackDodgeResponseProof {
   const proof = record(value);
-  if (!proof) return false;
+  if (!proof || (proof.entourage !== undefined && !isEntourageDodgeFor(proof))) return false;
   const hasPhysicalKind = Object.prototype.hasOwnProperty.call(proof, "responsePhysicalCardKind");
   const hasPlayedAs = Object.prototype.hasOwnProperty.call(proof, "responsePlayedAs");
   const hasConversionEffect = Object.prototype.hasOwnProperty.call(proof, "responseConversionEffectId");
@@ -713,9 +717,11 @@ export function isSupportedAttackDodgeResponseProof(value: unknown): value is Pr
 /** Cross-checks a typed server proof against the exact public physical response event. */
 export function attackDodgeResponseEventMatchesProof(
   value: unknown,
-  event: Pick<PresentationV2Event, "id" | "card" | "playedAs" | "publicCardEffects">,
+  event: Pick<PresentationV2Event, "id" | "card" | "playedAs" | "publicCardEffects" | "actorId">,
 ): boolean {
   if (!isSupportedAttackDodgeResponseProof(value)) return false;
+  if (value.entourage && (value.entourage.responseEventId !== event.id
+    || value.entourage.responseCardId !== event.card?.id || value.entourage.helperActorId !== event.actorId)) return false;
   if (value.responseConversionEffectId === "zhen_ji_black_card_dodge") {
     const card = event.card;
     if (!card?.id || card.kind !== value.responsePhysicalCardKind
@@ -930,6 +936,7 @@ export type PresentationV2 = {
   negationSettlement: PresentationNegationSettlement | null;
   oathRecipientScope: PresentationOathRecipientScope | null;
   bumperHarvestProgress: PresentationBumperHarvestProgress | null;
+  entourageDecision?: EntourageDecision | null;
   attackDodgeResponses?: readonly PresentationAttackDodgeResponse[];
   groupResolution: {
     semantics: "PROVEN" | "UNPROVEN";
@@ -1214,8 +1221,9 @@ function sourceOwnedTriggerDecisionActorId(envelope: CausalEnvelope | null, pend
  * Attack-targeted exception above. CurrentAction remains a viewer-specific
  * control projection and is deliberately not evidence here.
  */
-function semanticDecisionActorId(envelope: CausalEnvelope | null, pending: unknown, activeFrame: CausalFrame | null, dyingProof: DyingDecisionProof | null): string | null {
+function semanticDecisionActorId(envelope: CausalEnvelope | null, pending: unknown, activeFrame: CausalFrame | null, dyingProof: DyingDecisionProof | null, entourageDecision: EntourageDecision | null): string | null {
   if (dyingProof) return stringValue(dyingProof.pending.actorId);
+  if (entourageDecision) return entourageDecision.helperActorId;
   const item = record(pending);
   const actorId = stringValue(item?.actorId);
   const causal = record(item?.causal);
@@ -1379,6 +1387,7 @@ function interactionSceneFor(
   envelope: CausalEnvelope | null,
   groupValues: GroupProjectionValues | null,
   pending: unknown,
+  entourageDecision: EntourageDecision | null = null,
 ): PresentationInteractionScene | null {
   const activeFrame = groupValues?.activeFrame ?? envelope?.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
   if (!groupValues && !envelope) return null;
@@ -1394,7 +1403,7 @@ function interactionSceneFor(
   const currentParticipantId = groupValues?.currentParticipantId ?? firstString(activeCurrent?.currentTargetIds[0]);
   const dyingProof = dyingDecisionProof(envelope, pending);
   const sourceOwnedAttackTargetActorId = proven ? sourceOwnedTriggerDecisionActorId(envelope, pending, activeFrame) : null;
-  const semanticDecisionActor = semanticDecisionActorId(envelope, pending, activeFrame, dyingProof);
+  const semanticDecisionActor = semanticDecisionActorId(envelope, pending, activeFrame, dyingProof, entourageDecision);
   const publicActiveResolverId = isBumperHarvestNegationPending(pending) ? null : activeCurrent?.resolvingPlayerId ?? null;
   const relation: InteractionSceneContinuity["relation"] = !proven
     ? "UNPROVEN"
@@ -2629,6 +2638,7 @@ function singleTargetAttackRootActionEvaluationFor(
   pending: unknown,
   rootContext: Context | null,
   rootEvent: PresentationV2Event | null,
+  entourageDecision: EntourageDecision | null,
 ): { rootAction: PresentationRootAction | null; diagnostics: AttackRootProjectionDiagnostics } {
   const item = record(pending);
   const continuation = record(item?.continuation);
@@ -2681,7 +2691,7 @@ function singleTargetAttackRootActionEvaluationFor(
       || declarationCausal?.interactionId === envelope?.interactionId && declarationCausal.frameId === frame?.frameId,
     distinctSourceAndTargetPresent: Boolean(sourceId && targetId && sourceId !== targetId),
     decisionActorIsAuthorized: isAttackResponse
-      ? item?.actorId === targetId
+      ? item?.actorId === targetId || Boolean(entourageDecision && entourageDecision.helperActorId === item?.actorId && entourageDecision.requesterId === targetId)
       : isAttackTargetTrigger && (item?.actorId === sourceId || item?.actorId === targetId),
     sceneDecisionActorMatchesPending: scene?.decisionActorId === item?.actorId,
     frameOriginSourceMatches: frame?.origin.originSourceId === sourceId,
@@ -2704,7 +2714,8 @@ function singleTargetAttackRootActionEvaluationFor(
     participantRoleCurrentParticipantIsTarget: scene?.participantRoles.currentParticipantId === targetId,
     participantRoleDecisionActorMatchesPending: scene?.participantRoles.decisionActorId === item?.actorId,
     participantRoleResolverIsTarget: scene?.participantRoles.activeResolverId === targetId,
-    sceneDecisionActorIsAuthorized: scene?.decisionActorId === targetId || scene?.decisionActorId === sourceId,
+    sceneDecisionActorIsAuthorized: scene?.decisionActorId === targetId || scene?.decisionActorId === sourceId
+      || Boolean(entourageDecision && scene?.decisionActorId === entourageDecision.helperActorId && entourageDecision.requesterId === targetId),
     sceneResolverIsTarget: scene?.activeResolverId === targetId,
     rootContextIsAuthorizedAttackStage: rootContext?.kind === "response"
       || rootContext?.kind === "trigger" && rootContext.stage === "attack_targeted",
@@ -2769,13 +2780,13 @@ function attackRootProjectionEvaluationFor(input: PresentationV2Input) {
   const group = directGroup ?? typedGroupContinuation(input.pending);
   const envelope = input.causalEnvelope ?? null;
   const groupValues = groupProjectionValues(envelope, input.pending, group);
-  const scene = interactionSceneFor(envelope, groupValues, input.pending);
+  const scene = interactionSceneFor(envelope, groupValues, input.pending, provenEntourageDecision(input.pending, envelope, input.publicTimeline ?? input.timeline));
   const pendingItem = record(input.pending);
   const pendingContinuation = record(pendingItem?.continuation);
   const pendingDeclaration = record(pendingContinuation?.declaration);
   const expectedRootEventId = firstString(pendingContinuation?.rootEventId, pendingDeclaration?.rootEventId);
   const rootEvent = uniqueTimelineEventById(expectedRootEventId, input.timeline);
-  return singleTargetAttackRootActionEvaluationFor(envelope, scene, input.pending, root, rootEvent);
+  return singleTargetAttackRootActionEvaluationFor(envelope, scene, input.pending, root, rootEvent, provenEntourageDecision(input.pending, envelope, input.publicTimeline ?? input.timeline));
 }
 
 /** Trace-only diagnostics for the existing server-authoritative Attack root proof gate. */
@@ -3730,6 +3741,10 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
     const rootCardId = stringValue(rootCard?.id);
     const serpentMaterialIds = serpentSpearAttackRootMaterials(rootEvent, rootSourceId, targetId);
     const responseCardId = stringValue(responseCard?.id);
+    const delegated = isEntourageDodgeFor(proof) && proof.entourage as EntourageDodge | false;
+    const delegatedProven = Boolean(delegated && entourageInvocationMatchesTimeline(delegated, timeline)
+      && delegated.responseEventId === eventId && delegated.responseCardId === responseCardId
+      && event.actorId === delegated.helperActorId);
     const physicalAttackRoot = rootEvent.type === "card" && Boolean(rootCardId)
       && cardIdCounts.get(rootCardId!) === 1
       && (rootEvent.playedAs === undefined
@@ -3745,7 +3760,7 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
       || !(physicalAttackRoot || serpentSpearAttackRoot)
       || rootEvent.resolutionId !== rootResolutionId || responseResolutionId !== rootResolutionId
       || rootEventId === eventId || !rootResolutionId || !interactionId || !rootFrameId
-      || !rootSourceId || !targetId || rootSourceId === targetId || responseActorId !== targetId
+      || !rootSourceId || !targetId || rootSourceId === targetId || (responseActorId !== targetId && !delegatedProven)
       || proof.rootCardKind !== "Attack" || proof.responseCardKind !== "Dodge") return [];
     return [{
       semantics: "PROVEN",
@@ -3757,6 +3772,7 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
       rootSourceId,
       targetId,
       responseActorId,
+      ...(delegatedProven ? { entourage: delegated as EntourageDodge } : {}),
       rootCardKind: "Attack",
       responseCardKind: "Dodge",
       responseEventId: eventId,
@@ -4308,7 +4324,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   if (settlementEvent) relevantIds.push(settlementEvent.id);
   const groupCardKind = group ? firstString(group.cardKind, group.kind === "group" ? "group" : null) : null;
   const groupValues = groupProjectionValues(envelope, input.pending, group);
-  const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
+  const interactionScene = interactionSceneFor(envelope, groupValues, input.pending, provenEntourageDecision(input.pending, envelope, input.publicTimeline ?? input.timeline));
   const factIdentity = interactionScene?.semantics === "PROVEN" && interactionScene.interactionId && interactionScene.rootFrameId
     && interactionScene.checkpointId && Number.isSafeInteger(interactionScene.presentationRevision)
     ? { interactionId: interactionScene.interactionId, rootFrameId: interactionScene.rootFrameId,
@@ -4379,6 +4395,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     ? { kind: parent?.kind ?? causalParentFrame.stage, sourceId: parent?.sourceId ?? causalParentFrame.origin.originSourceId, targetIds: parent?.targetIds ?? causalParentFrame.origin.originalTargetIds, resumeKind: parent?.kind ?? causalParentFrame.stage }
     : parent ? { kind: parent.kind, sourceId: parent.sourceId, targetIds: parent.targetIds, resumeKind: parent.kind } : null;
   return {
+    entourageDecision: provenEntourageDecision(input.pending, envelope, input.publicTimeline ?? input.timeline),
     rootContext,
     activeContext,
     parentContext,

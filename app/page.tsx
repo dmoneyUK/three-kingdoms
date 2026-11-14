@@ -1,5 +1,7 @@
 "use client";
 
+import { isEntourageDodgeFor } from "../game/entourage-presentation";
+
 import { Component, CSSProperties, FormEvent, KeyboardEventHandler, PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { cardDefinition, isAttackCard } from "../game/cards";
 import type { Card, CardKind } from "../game/model";
@@ -616,7 +618,7 @@ function verifiedBraveheartDodgeResponseFrameForEvent(
   const proofMatches = responseProofs.filter((proof) => proof.rootEventId === rootEventId
     && proof.responseEventId === responseEventId
     && proof.responsePhysicalCardKind === "Attack" && proof.responsePlayedAs === "dodge"
-    && proof.responseCardKind === "Dodge" && proof.responseActorId === proof.targetId);
+    && proof.responseCardKind === "Dodge" && (proof.responseActorId === proof.targetId || isEntourageDodgeFor(proof)));
   if (proofMatches.length !== 1) return null;
   const proof = proofMatches[0];
   const rootMatches = timeline.filter((event) => event.id === proof.rootEventId);
@@ -662,7 +664,7 @@ function verifiedBraveheartDodgeResponseFrameForEvent(
   const owner = players.find((player) => player.id === proof.responseActorId && player.hero === "zhao-yun");
   const target = players.find((player) => player.id === proof.targetId);
   const attackSource = players.find((player) => player.id === proof.rootSourceId);
-  if (!owner?.name || !target?.name || !attackSource?.name || owner.id !== target.id
+  if (!owner?.name || !target?.name || !attackSource?.name || (owner.id !== target.id && !isEntourageDodgeFor(proof))
     || attackSource.id === target.id || responseEvent.player !== owner.name || responseEvent.target !== attackSource.name
     || rootEvent.player !== attackSource.name) return null;
   return { responseEvent, effect, sourceCard, owner, target, attackSource };
@@ -679,7 +681,7 @@ function verifiedEmpressDowagerDodgeResponseFrameForEvent(
   const proofMatches = responseProofs.filter((proof) => proof.rootEventId === rootEventId
     && proof.responseEventId === responseEventId
     && proof.responseConversionEffectId === "zhen_ji_black_card_dodge"
-    && proof.responseCardKind === "Dodge" && proof.responseActorId === proof.targetId);
+    && proof.responseCardKind === "Dodge" && (proof.responseActorId === proof.targetId || isEntourageDodgeFor(proof)));
   if (proofMatches.length !== 1) return null;
   const proof = proofMatches[0];
   const rootMatches = timeline.filter((event) => event.id === proof.rootEventId);
@@ -725,7 +727,7 @@ function verifiedEmpressDowagerDodgeResponseFrameForEvent(
   const owner = players.find((player) => player.id === proof.responseActorId && player.hero === "zhen-ji");
   const target = players.find((player) => player.id === proof.targetId);
   const attackSource = players.find((player) => player.id === proof.rootSourceId);
-  if (!owner?.name || !target?.name || !attackSource?.name || owner.id !== target.id
+  if (!owner?.name || !target?.name || !attackSource?.name || (owner.id !== target.id && !isEntourageDodgeFor(proof))
     || attackSource.id === target.id || responseEvent.player !== owner.name || responseEvent.target !== attackSource.name
     || rootEvent.player !== attackSource.name) return null;
   return { responseEvent, effect, sourceCard, owner, target, attackSource };
@@ -3750,6 +3752,23 @@ function captureHandViewportSnapshot(rail: HTMLElement, viewerId: string | null)
   };
 }
 
+function entouragePrivateConsoleInstruction(room: Room): string | null {
+  const action = room.currentAction;
+  if (!room.isMyAction || action?.actorId !== room.meId || action?.kind !== "response"
+    || room.presentationSnapshot?.entourageDecision?.helperActorId !== room.meId) return null;
+  return canUseAction(action, "respond") || canUseAction(action, "decline_response") ? action.reason : null;
+}
+function privateResponseGuidanceForRoom(room: Room, input: Parameters<typeof derivePrivateResponseGuidance>[0]) {
+  return entouragePrivateConsoleInstruction(room) ?? derivePrivateResponseGuidance(input);
+}
+function entourageAttackBlockMessage(proof: PresentationAttackDodgeResponse, players: readonly Player[]): string | undefined {
+  if (!isEntourageDodgeFor(proof)) return undefined;
+  const source = players.find((player) => player.id === proof.rootSourceId)?.name;
+  const target = players.find((player) => player.id === proof.targetId)?.name;
+  const helper = players.find((player) => player.id === proof.responseActorId)?.name;
+  return source && target && helper ? `${source}'s Attack on ${target} was blocked by ${helper}'s Dodge.` : undefined;
+}
+
 export function GameRoom({ room, presentationView, busy, busyAction = null, error, onAction, onLeave, onPublicCounterReadVisible, onSwitchTestViewer = async () => undefined }: { room: Room; presentationView?: PresentationClientView; busy: boolean; busyAction?: string | null; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void; onSwitchTestViewer?: (playerId: string) => Promise<void> }) {
   const endTurnConfirmationScope = [
     room.code,
@@ -6008,7 +6027,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       if (responseEvent.resolutionId !== proof.responseResolutionId) reasons.push("response-resolution-mismatch");
     }
     if (proof.counterRelation !== "BLOCKS_TARGET_EFFECT") reasons.push("counter-relation-mismatch");
-    if (proof.responseActorId !== proof.targetId) reasons.push("responder-target-mismatch");
+    if (proof.responseActorId !== proof.targetId && !isEntourageDodgeFor(proof)) reasons.push("responder-target-mismatch");
     let lifecycleRetirementReason: ReturnType<typeof attackDodgeSettlementSupersessionReason> = null;
     if (reasons.length === 0) {
       const responsePublicAction = attackDodgePublicActions.find((event) => event.eventId === proof.responseEventId);
@@ -8775,6 +8794,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         settlement: {
           eventId: attackDodgeDisplayCandidate.proof.responseEventId,
           outcome: "ATTACK_BLOCKED_BY_DODGE",
+          publicOutcomeMessage: entourageAttackBlockMessage(attackDodgeDisplayCandidate.proof, room.players),
           exiting: visibleActiveAttackDodgeSettlement?.eventId === attackDodgeDisplayCandidate.proof.responseEventId
             && visibleActiveAttackDodgeSettlement.phase === "exiting",
         },
@@ -8784,7 +8804,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           actorName: room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.responseActorId)?.name ?? "Unknown player",
           cardFace: attackDodgeDisplayCandidate.responseEvent.card,
           semanticAction: "DODGE",
-          ...(attackDodgeDisplayCandidate.proof.responsePhysicalCardKind === "Attack" && attackDodgeDisplayCandidate.proof.responsePlayedAs === "dodge"
+          ...((attackDodgeDisplayCandidate.proof.responsePhysicalCardKind === "Attack" && attackDodgeDisplayCandidate.proof.responsePlayedAs === "dodge")
+            || attackDodgeDisplayCandidate.proof.responseConversionEffectId === "zhen_ji_black_card_dodge"
             ? { semanticLabel: "AS DODGE" }
             : {}),
           ariaLabel: attackDodgeDisplayCandidate.proof.responsePhysicalCardKind === "Attack"
@@ -8888,6 +8909,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ...(room.presentationSnapshot?.retainedPublicEventFacts ?? []),
   ].filter((fact) => fact.rootEventId && (
         ["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED", "CARD_EQUIPPED"].includes(fact.category)
+        || fact.category === "ACTION_DECLINED" && fact.effect?.kind === "entourage_declined"
         || fact.category === "CARD_PLAYED" && fact.eventId === fact.rootEventId
           && fact.effect?.label === "Borrowed Sword"
       ))
@@ -10803,7 +10825,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && (room.currentAction.requirement === "attack" || room.currentAction.requirement === "dodge")
     && canUseAction(room.currentAction, "decline_response"),
   );
-  const privateResponseGuidance = derivePrivateResponseGuidance({
+  const privateResponseGuidance = privateResponseGuidanceForRoom(room, {
     currentAction: room.currentAction,
     viewerId: room.meId,
     viewerIsDecisionActor: currentActionOwnedByViewer,

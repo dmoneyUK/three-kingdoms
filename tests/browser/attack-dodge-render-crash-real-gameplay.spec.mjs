@@ -594,3 +594,77 @@ test("authorized Quick Test viewers switch manually at 440x894", async ({ page, 
   expect(errors.boundaryErrors).toEqual([]);
   expect(errors.runtimeErrors).toEqual([]);
 });
+
+test("§10.50 Entourage keeps public helper PAC, private prompt and one real helper Dodge", async ({ page, request }, testInfo) => {
+  test.setTimeout(90_000);
+  const attack = card("Attack", "entourage-ui-attack");
+  const dodge = card("Dodge", "entourage-ui-dodge", "♥");
+  const seeded = await request.post(`${API}/__test/seed-playing-game`, { data: {
+    phase: "play", turnSeat: 0, testController: true,
+    players: [
+      { name: "ATTACKER", hero: "sun-quan", role: "Rebel", hp: 4, maxHp: 4, hand: [attack] },
+      { name: "LORD", hero: "cao-cao", role: "Lord", hp: 4, maxHp: 4, hand: [] },
+      { name: "HELPER", hero: "simayi", role: "Loyalist", hp: 3, maxHp: 3, hand: [dodge] },
+      { name: "OBSERVER", hero: "liu-bei", role: "Renegade", hp: 4, maxHp: 4, hand: [] },
+    ],
+  } });
+  expect(seeded.ok(), await seeded.text()).toBeTruthy();
+  const room = await seeded.json();
+  const [, lord, helper] = room.players;
+  await openPlayer(page, room, 0);
+  await page.setViewportSize({ width: 440, height: 766 });
+  await page.locator(`[data-hand-card-id="${attack.id}"] .game-card`).click();
+  await page.getByRole("button", { name: "Select LORD", exact: true }).click({ position: { x: 40, y: 45 } });
+  await expect(page.locator('.local-player-dock [data-console-surface="local-operation"] button.primary')).toBeEnabled();
+  await page.locator('.local-player-dock [data-console-surface="local-operation"] button.primary').click();
+  await page.getByTestId(`test-view-switch-${lord.id}`).click();
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${lord.id}"]`)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Entourage", exact: true })).toBeEnabled();
+  const invokeResponse = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+    && response.request().method() === "POST" && response.request().postDataJSON()?.providerId === "cao_cao_hujia");
+  await page.getByRole("button", { name: "Entourage", exact: true }).click();
+  const invokeConfirm = page.locator('.local-player-dock [data-console-surface="local-operation"] button.primary');
+  await expect(invokeConfirm).toBeEnabled();
+  await invokeConfirm.click();
+  const invoked = await invokeResponse;
+  expect(invoked.ok()).toBeTruthy();
+  const pac = page.locator('[data-public-activity-chip="true"]');
+  await expect(pac).toBeVisible();
+  await expect(pac).toContainText("Waiting for HELPER to provide Dodge for LORD.");
+  await expect(page.locator('.public-card-display-journey-copy b')).toHaveText("LORD (Cao Cao) used Entourage.");
+  await page.getByTestId(`test-view-switch-${helper.id}`).click();
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${helper.id}"]`)).toBeVisible();
+  await expect(pac).toBeVisible();
+  await expect(pac).toContainText("Waiting for HELPER to provide Dodge for LORD.");
+  await expect(page.locator('.local-player-dock .console-guidance')).toContainText("Cao Cao asked you to provide Dodge with Entourage. Play Dodge or Skip.");
+  await expect(page.locator('.visible-countdown')).toBeVisible();
+  await page.locator(`[data-hand-card-id="${dodge.id}"] .game-card`).click();
+  const confirm = page.locator('.local-player-dock [data-console-surface="local-operation"] button.primary');
+  await expect(confirm).toBeEnabled();
+  const answerResponse = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+    && response.request().method() === "POST" && response.request().postDataJSON()?.action === "respond"
+    && response.request().postDataJSON()?.cardId === dodge.id);
+  await confirm.click();
+  const answered = await answerResponse;
+  expect(answered.ok()).toBeTruthy();
+  const result = await answered.json();
+  expect(result.room.presentationSnapshot.attackDodgeResponses).toHaveLength(1);
+  expect(result.room.presentationSnapshot.attackDodgeResponses[0]).toMatchObject({ responseActorId: helper.id, targetId: lord.id });
+  expect(result.room.players.find((player) => player.id === lord.id).hp).toBe(4);
+  const physical = page.locator(`[data-public-card-journey-card-id="${dodge.id}"]`);
+  await expect(physical).toHaveCount(1);
+  await expect(physical).toBeVisible();
+  await expect(physical).toHaveAttribute('data-public-card-journey-actor-id', helper.id);
+  await expect(page.locator('.public-card-display-journey-copy b')).toHaveText("HELPER played Dodge for LORD using Entourage.");
+  await expect(physical).toHaveAttribute('data-public-card-journey-phase', 'parked', { timeout: 10_000 });
+  await expect(page.locator('.public-card-display-journey-copy b')).toHaveText("ATTACKER's Attack on LORD was blocked by HELPER's Dodge.");
+  const geometry = await physical.evaluate((element) => {
+    const card = element.getBoundingClientRect();
+    const dock = document.querySelector('.local-player-dock').getBoundingClientRect();
+    return { card: card.toJSON(), dock: dock.toJSON(), visibility: getComputedStyle(element).visibility };
+  });
+  expect(geometry.visibility).toBe('visible');
+  expect(geometry.card.bottom).toBeLessThanOrEqual(geometry.dock.top + 2);
+  await testInfo.attach('entourage-helper-parking', { body: JSON.stringify(geometry), contentType: 'application/json' });
+  await page.screenshot({ path: testInfo.outputPath('entourage-440x766.png') });
+});

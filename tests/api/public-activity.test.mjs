@@ -667,3 +667,26 @@ test("Equipment H4 uses the exact committed owner and card name for active and r
   assert.equal(retained?.readDurationMs, 4_000);
   assert.equal(derivePublicInteractionNarration({ ...input(retainedSnapshot), interactionId: "different-interaction" }), null);
 });
+
+test("Entourage PAC follows only the current public helper checkpoint and H4 reports committed invocation", () => {
+  const current = snapshot({ stage: "ATTACK_RESPONSE", actorId: "p3", effect: "Attack" });
+  const identity = { ...current.identity, rootFrameId: "root-1" };
+  current.entourageDecision = { semantics: "PROVEN", providerId: "cao_cao_hujia", invocationEventId: "invoke", requesterId: "p2", requesterHeroId: "cao-cao", requesterRole: "Lord", rootEventId: "attack", rootCardId: "card", rootResolutionId: "res", sourceId: "p1", interactionId: "interaction-1", rootFrameId: "root-1", committedIdentity: identity, helperActorId: "p3", helperHeroId: "simayi", stage: "ATTACK_RESPONSE", identity };
+  current.publicNextDecision.stageLabel = "Entourage";
+  current.publicNextDecision.actionLabels = ["Dodge", "Decline"];
+  const input = { status: "playing", phase: "response", turnSeat: 0, players, presentationSnapshot: current };
+  assert.equal(derivePublicActivityStatus(input).text, "Waiting for Test Player 3 to provide Dodge for Test Player 2.");
+  for (const key of ["requesterId", "helperActorId", "rootFrameId"]) {
+    const changed = structuredClone(current); changed.entourageDecision[key] = "wrong";
+    assert.notEqual(derivePublicActivityStatus({ ...input, presentationSnapshot: changed }).text, "Waiting for Test Player 3 to provide Dodge for Test Player 2.");
+  }
+  const stale = structuredClone(current); stale.entourageDecision.identity.presentationRevision++;
+  assert.notEqual(derivePublicActivityStatus({ ...input, presentationSnapshot: stale }).text, "Waiting for Test Player 3 to provide Dodge for Test Player 2.");
+  current.publicEventFacts = [{ semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "invoke", order: 2, frameId: "root-1", rootEventId: "attack", category: "SKILL_USED", actorId: "p2", affectedPlayerIds: ["p2"], label: "Entourage", effect: { kind: "entourage_invocation" } }];
+  const narration = () => derivePublicInteractionNarration({ snapshot: current, players, rootEventId: "attack", interactionId: "interaction-1", rootFrameId: "root-1" });
+  assert.equal(narration().headline, "Test Player 2 (Cao Cao) used Entourage.");
+  current.publicEventFacts.push({ ...current.publicEventFacts[0], eventId: "decline", order: 3, category: "ACTION_DECLINED", actorId: "p3", effect: { kind: "entourage_declined" } });
+  assert.equal(narration().headline, "Test Player 3 declined Entourage for Test Player 2.");
+  current.publicEventFacts.push({ ...current.publicEventFacts[0], eventId: "dodge", order: 4, category: "EFFECT_APPLIED", actorId: "p4", effect: { kind: "entourage_dodge" }, outcomeLabel: "played Dodge for Test Player 2 using Entourage" });
+  assert.equal(narration().headline, "Test Player 4 played Dodge for Test Player 2 using Entourage.");
+});

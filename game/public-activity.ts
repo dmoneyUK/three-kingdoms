@@ -1,3 +1,4 @@
+import { entourageDecisionMatchesSnapshot } from "./entourage-presentation";
 import type { PresentationSnapshot } from "./presentation-snapshot";
 import { publicDecisionFromPresentationSnapshot } from "./presentation-semantics.ts";
 import { CARD_DEFINITIONS } from "./cards";
@@ -331,7 +332,7 @@ export function derivePublicInteractionNarration(input: {
     const rootCategories = new Set(["CARD_PLAYED", "CARD_EQUIPPED"]);
     const narratable = facts.filter((fact) => fact.eventId === input.rootEventId
       ? rootCategories.has(fact.category) || outcomeCategories.has(fact.category)
-      : fact.order > rootOrder && outcomeCategories.has(fact.category));
+      : fact.order > rootOrder && (outcomeCategories.has(fact.category) || fact.category === "ACTION_DECLINED" && fact.effect?.kind === "entourage_declined"));
     latest = input.eventId
       ? narratable.find((fact) => fact.eventId === input.eventId)
       : narratable.at(-1);
@@ -339,7 +340,7 @@ export function derivePublicInteractionNarration(input: {
     const narratable = snapshot.retainedPublicEventFacts?.filter((fact) => fact.rootEventId === input.rootEventId
       && fact.identity.interactionId === input.interactionId && fact.identity.rootFrameId === input.rootFrameId
       && (fact.category === "CARD_PLAYED" || fact.category === "CARD_EQUIPPED" || fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED"
-        || fact.category === "SKILL_USED" || fact.category === "EFFECT_APPLIED" || fact.category === "CARD_OBTAINED" || fact.category === "CARD_TRANSFERRED"))
+        || fact.category === "SKILL_USED" || fact.category === "EFFECT_APPLIED" || fact.category === "CARD_OBTAINED" || fact.category === "CARD_TRANSFERRED" || fact.category === "ACTION_DECLINED"))
       .sort((left, right) => left.order - right.order);
     latest = input.eventId
       ? narratable?.find((fact) => fact.eventId === input.eventId)
@@ -368,7 +369,9 @@ export function derivePublicInteractionNarration(input: {
   } else if (latest.category === "SKILL_USED") {
     const skill = latest.label?.trim().replace(/^Use\s+/i, "") || "a skill";
     const effectKind = latest.effect?.kind;
-    if (effectKind === "targeted_skill" && target) {
+    if (effectKind === "entourage_invocation" && actor) {
+      headline = `${actor} (Cao Cao) used Entourage.`;
+    } else if (effectKind === "targeted_skill" && target) {
       headline = `${actor ? `${actor} used` : "A player used"} ${skill} on ${target}.`;
       return {
         eventId: latest.eventId,
@@ -381,13 +384,17 @@ export function derivePublicInteractionNarration(input: {
         accessibleLabel: headline,
       };
     }
-    const defaultOutcome = effectKind === "gain_target_card" ? "obtained one card"
-      : effectKind === "gain_damage_cards" ? "obtained the card that caused the damage"
-        : effectKind === "legacy_distribution" ? "began a card distribution"
-          : null;
-    let outcome = latest.outcomeLabel?.trim() || defaultOutcome;
-    if (effectKind === "gain_target_card" && target && outcome) outcome = `${outcome} from ${target}`;
-    headline = `${actor ? `${actor} used` : "A player used"} ${skill}${outcome ? ` and ${outcome}` : ""}.`;
+    if (effectKind !== "entourage_invocation") {
+      const defaultOutcome = effectKind === "gain_target_card" ? "obtained one card"
+        : effectKind === "gain_damage_cards" ? "obtained the card that caused the damage"
+          : effectKind === "legacy_distribution" ? "began a card distribution"
+            : null;
+      let outcome = latest.outcomeLabel?.trim() || defaultOutcome;
+      if (effectKind === "gain_target_card" && target && outcome) outcome = `${outcome} from ${target}`;
+      headline = `${actor ? `${actor} used` : "A player used"} ${skill}${outcome ? ` and ${outcome}` : ""}.`;
+    }
+  } else if (latest.category === "ACTION_DECLINED" && latest.effect?.kind === "entourage_declined" && actor && target) {
+    headline = `${actor} declined Entourage for ${target}.`;
   } else if (latest.category === "CARD_OBTAINED" || latest.category === "CARD_TRANSFERRED") {
     const outcome = latest.outcomeLabel?.trim();
     headline = outcome
@@ -607,6 +614,21 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
   const snapshot = input.presentationSnapshot;
   const interaction = snapshot?.interaction;
   const nextDecision = publicDecisionFromPresentationSnapshot(snapshot);
+
+  const entourage = snapshot?.entourageDecision;
+  if (input.status === "playing" && input.phase === "response" && entourage
+    && entourageDecisionMatchesSnapshot(entourage, snapshot?.identity, interaction)
+    && nextDecision?.stageLabel === "Entourage" && nextDecision.responseWindowOpen === true
+    && snapshot?.identity?.interactionId === entourage.identity.interactionId
+    && snapshot.identity.checkpointId === entourage.identity.checkpointId
+    && snapshot.identity.presentationRevision === entourage.identity.presentationRevision
+    && interaction?.decisionActorId === entourage.helperActorId
+    && interaction.targetIds.length === 1 && interaction.targetIds[0] === entourage.requesterId
+    && nextDecision.actorIds.length === 1 && nextDecision.actorIds[0] === entourage.helperActorId) {
+    const helper = playerName(input, entourage.helperActorId);
+    const requester = playerName(input, entourage.requesterId);
+    if (helper && requester) return { kind: "response", text: `Waiting for ${helper} to provide Dodge for ${requester}.` };
+  }
 
   const drawDecision = snapshot?.publicDrawPhaseDecision;
   if (input.status === "playing" && input.phase === "response"

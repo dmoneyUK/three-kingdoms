@@ -1,3 +1,4 @@
+import { isEntourageDodgeFor, entourageDecisionMatchesSnapshot, type EntourageDecision } from "./entourage-presentation";
 import type { CurrentAction } from "./protocol";
 import { CARD_KINDS, type Card, type CardKind, type CardSuit } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestParticipantProgressStatus } from "./pending";
@@ -108,6 +109,7 @@ export type PresentationPublicDrawPhaseDecision = {
 };
 
 export type PresentationSnapshot = {
+  entourageDecision?: EntourageDecision | null;
   identity: PresentationSnapshotIdentity | null;
   stable: PresentationStableBoundary;
   interaction: PresentationSnapshotInteraction | null;
@@ -704,7 +706,7 @@ export function provenAttackDodgeResponses(value: unknown): PresentationSnapshot
     && nonEmptyString((candidate as PresentationSnapshotAttackDodgeResponse).rootSourceId)
     && nonEmptyString((candidate as PresentationSnapshotAttackDodgeResponse).targetId)
     && (candidate as PresentationSnapshotAttackDodgeResponse).rootSourceId !== (candidate as PresentationSnapshotAttackDodgeResponse).targetId
-    && (candidate as PresentationSnapshotAttackDodgeResponse).responseActorId === (candidate as PresentationSnapshotAttackDodgeResponse).targetId
+    && ((candidate as PresentationSnapshotAttackDodgeResponse).responseActorId === (candidate as PresentationSnapshotAttackDodgeResponse).targetId || isEntourageDodgeFor(candidate))
     && (candidate as PresentationSnapshotAttackDodgeResponse).rootCardKind === "Attack"
     && (candidate as PresentationSnapshotAttackDodgeResponse).responseCardKind === "Dodge"
     && ((candidate as PresentationSnapshotAttackDodgeResponse).turnSeatAtCommit === undefined
@@ -721,6 +723,7 @@ export function provenAttackDodgeResponses(value: unknown): PresentationSnapshot
     rootSourceId: response.rootSourceId,
     targetId: response.targetId,
     responseActorId: response.responseActorId,
+    ...(response.entourage ? { entourage: response.entourage } : {}),
     rootCardKind: "Attack",
     responseCardKind: "Dodge",
     responseEventId: response.responseEventId,
@@ -1688,6 +1691,8 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     reactionChain,
     rootAction: authority ? rootActionFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
     skillEffectAction: provenSkillEffectAction(input.presentationV2.skillEffectAction),
+    entourageDecision: authority && entourageDecisionMatchesSnapshot(input.presentationV2.entourageDecision, authority.identity, authority.scene)
+      ? input.presentationV2.entourageDecision : null,
     skillEffectSettlements: provenSkillEffectSettlements(input.presentationV2.skillEffectSettlements),
     diaoChanSkillNotices: provenDiaoChanSkillNotices(input.presentationV2.diaoChanSkillNotices, publicCardEffects),
     dismantleSettlements: provenDismantleSettlements(input.presentationV2.dismantleSettlements),

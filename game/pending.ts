@@ -1,3 +1,4 @@
+import type { EntourageHelper } from "./entourage-presentation";
 import type { Card, CardKind } from "./model";
 import type { ActionRequirement } from "./responses";
 import type { JudgementPurpose } from "./decisions/judgement";
@@ -142,7 +143,7 @@ export type ResponsePending = CausalFields & {
   resolutionId?: string;
   readyAfterEventId?: string;
   disabledProviderIds?: string[];
-  delegation?: { kind: "attack" | "dodge"; requesterId: string; providerId: string; remainingActorIds: string[] };
+  delegation?: { kind: "attack" | "dodge"; requesterId: string; providerId: string; remainingActorIds: string[]; publicEntourage?: EntourageHelper };
   continuation: ResponseContinuation;
 };
 export type GroupResponsePending = Omit<ResponsePending, "continuation"> & { continuation: GroupContinuation };
