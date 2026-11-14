@@ -20,7 +20,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 | Current ONE bounded authorized task | Status |
 | --- | --- |
-| **§10.48 HARVEST-H4-PAC-VISIBILITY-COPY-01** | **OWNER-AUTHORIZED / CORRECTION REQUIRED; NOT IMPLEMENTED / NOT USER-ACCEPTED.** Repair measured shared-stage H4/PAC visibility (A), then verified one-recipient-pick Negation grammar (B) in one focused real Harvest scenario. Coding Agent owns code/tests/CI/deploy. Accepted §10.19 / §10.25 foundations stay closed and §10.45 separately remains Table B. |
+| **§10.48 HARVEST-H4-PAC-VISIBILITY-COPY-01** | **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW; NOT USER-ACCEPTED.** Repair measured shared-stage H4/PAC visibility (A), then verified one-recipient-pick Negation grammar (B) in one focused real Harvest scenario. Accepted §10.19 / §10.25 foundations stay closed and §10.45 separately remains Table B. |
 
 Only this scoped correction is currently open for implementation; never revive closed/archived tasks.
 
@@ -816,7 +816,7 @@ Original T6 phone PASS included the public H4/PAC/physical Frame stage, accepted
 
 **Regression:** Real Fanjian→Sima Yi Retaliation with 1–2s public event and ~50–60s response: exactly one visible correctly ticking deadline with proper accessibility, no restart across viewer/poll, correct timeout/Skip. Normal public event without response, Harvest selection and expired timer display correctly; PAC/Console/clock do not overlap legitimate controls.
 
-### 10.48 HARVEST-H4-PAC-VISIBILITY-COPY-01 — Harvest H4/PAC visibility and recipient-pick grammar (**OWNER-AUTHORIZED CORRECTION; NOT IMPLEMENTED / NOT USER-ACCEPTED**)
+### 10.48 HARVEST-H4-PAC-VISIBILITY-COPY-01 — Harvest H4/PAC visibility and recipient-pick grammar (**IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW; NOT USER-ACCEPTED**)
 
 **Identity and boundary:** Owner requested a single repair task on 2026-11-13 for missing and inaccurate 五谷丰登 / Bumper Harvest public information. Treat it as **one bounded regression fix with ordered parts A (visibility/layout) and B (public wording)**. The genuinely accepted shared Harvest, Negation Plan A and CardPool chooser in §§9/10.17/10.19/10.25 and Table C stay CLOSED; the separately delivered §10.45 fixed-upper-H4 CardFace/picker geometry stays PENDING OWNER iPHONE REVIEW. This scope corrects a newly observed card-specific regression under already normative R2, §10.25.2, and §10.45, not a new renderer or new gameplay rule.
 
