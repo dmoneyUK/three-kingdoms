@@ -4223,6 +4223,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && canUseAction(room.currentAction, "choose_harvest")
     && harvestActionRevision.length > 0
     && hasAvailableHarvestChoice);
+  useEffect(() => {
+    const previous = harvestLocalIdentityRef.current;
+    if (previous.roomCode === room.code && previous.viewerId === room.meId) return;
+    harvestLocalIdentityRef.current = { roomCode: room.code, viewerId: room.meId };
+    setHarvestDraft(null);
+    setHarvestSubmitting(null);
+  }, [room.code, room.meId]);
   const canChooseTargetCard = room.phase === "response" && Boolean(room.pendingTargetCard) && room.isMyAction;
   const canChooseBorrowedSword = room.phase === "response" && room.isMyAction && room.pendingBorrowedSword?.stage === "choose_target";
   const borrowedSwordForcedChoiceActive = Boolean(room.phase === "response" && room.isMyAction

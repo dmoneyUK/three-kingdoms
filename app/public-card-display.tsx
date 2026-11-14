@@ -4889,6 +4889,11 @@ function SingleTargetCardJourney({
   const activeEventId = activeCard?.eventId
     ?? [...journey.cards].reverse().find((card) => card.phase !== "queued")?.eventId
     ?? action.rootEventId;
+  const primaryJourneyCard = journey.cards.find((card) => card.eventId === activeEventId);
+  // Shared H4/PAC placement belongs to the current primary card. An unrelated
+  // older parked author's unmeasured Seat may keep that one miniature hidden,
+  // but it must not make an otherwise measured current public stage disappear.
+  const sharedStageLayoutPending = !journey.center || !primaryJourneyCard || primaryJourneyCard.layoutPending;
   const activePhase = activeCard?.phase ?? null;
   useEffect(() => {
     if (!journeyEnabled || !documentVisible || journey.scopeKey !== scopeKey || !activeCard || !activePhase) return;
@@ -5527,7 +5532,7 @@ function SingleTargetCardJourney({
     data-public-card-motion={motion?.type ?? "single-target"}
     data-public-card-kind={action.cardKind}
     data-public-card-viewer-id={viewerId}
-    data-public-card-layout-pending={journey.layoutPending || viewerLayoutPending ? "true" : "false"}
+    data-public-card-layout-pending={sharedStageLayoutPending || viewerLayoutPending ? "true" : "false"}
     data-public-card-layout-viewer-id={journey.viewerId || undefined}
     data-public-card-harvest-active={harvestRootPoolVisible ? "true" : undefined}
     data-public-card-harvest-history-passive={historyOnly ? "true" : undefined}
