@@ -670,6 +670,16 @@ test("§10.49 Harvest choice stays anchored, private and continuous across TEST 
     expect(pick.outcomeLabel).toBe(`${source.name} took ${selected.rank}${selected.suit} ${selected.kind} from Bumper Harvest`);
     const expectedH4 = `${source.name} took ${typedPick.chosenFace.rank}${typedPick.chosenFace.suit} ${typedPick.chosenFace.kind} from Bumper Harvest.`;
 
+    const proofBeforeRefresh = await page.evaluate(() => {
+      const display = document.querySelector('[data-public-card-display="true"]');
+      const h4 = display?.querySelector('[data-public-card-announcement="true"]');
+      const primary = display?.querySelector('[data-public-card-primary-card="true"]');
+      const pac = document.querySelector('[data-public-activity-chip="true"]');
+      const sample = (element) => element ? { data: { ...element.dataset }, visibility: getComputedStyle(element).visibility, rect: element.getBoundingClientRect().toJSON(), text: element.textContent } : null;
+      return { display: sample(display), h4: sample(h4), primary: sample(primary), pac: sample(pac) };
+    });
+    console.log("HARVEST_FIRST_PICK_LAYOUT_PROOF", JSON.stringify(proofBeforeRefresh));
+    await testInfo.attach("first-pick-layout-proof", { body: JSON.stringify(proofBeforeRefresh), contentType: "application/json" });
     await page.reload();
     await expect(page.locator(".game-shell")).toBeVisible();
     await expect(page.locator('.harvest-choice-stage[data-harvest-readonly="true"]')).toBeVisible();
