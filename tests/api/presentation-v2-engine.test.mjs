@@ -47,6 +47,7 @@ function assertProjectionMatchesEngine(code, token) {
       currentAction: view.currentAction,
       actionRevision: view.actionRevision,
       timeline: view.timeline,
+      publicTimeline: view.timeline.filter((event) => event.presentation !== false && typeof event.privateToPlayerId !== "string"),
       causalEnvelope: view.causalEnvelope,
       retainPublicEventAtRest: view.status === "playing" && !storedPending && !view.causalEnvelope && view.currentAction?.kind === "turn",
       oathRecipientIds: oathRecipientIds(view.players.map((player) => ({ id: player.id, alive: player.alive, hp: player.hp, maxHp: player.maxHp }))),
@@ -2959,6 +2960,18 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.deepEqual(nextWindow.publicHarvestPool?.choices, [{ cardId: chosen, playerId: first.id, playerName: first.name }]);
   assert.deepEqual(nextWindow.publicHarvestPool?.availableIds, availableBeforeExpiry.filter((id) => id !== chosen));
   assert.equal(nextWindow.pendingHarvest, null, "the next Negation stays read-only until that branch settles");
+  const typedPick = nextWindow.presentationSnapshot.bumperHarvestPicks[0];
+  assert.equal(nextWindow.presentationSnapshot.bumperHarvestPicks.length, 1);
+  assert.equal(typedPick?.eventId, nextWindow.presentationSnapshot.publicEventFacts
+    .find((fact) => fact.effect?.kind === "bumper_harvest_pick")?.eventId);
+  assert.equal(typedPick?.order, nextWindow.presentationSnapshot.publicEventFacts
+    .find((fact) => fact.effect?.kind === "bumper_harvest_pick")?.order);
+  assert.deepEqual({ actorId: typedPick?.actorId, rootEventId: typedPick?.rootEventId,
+    chosenCardId: typedPick?.chosenCardId, chosenFace: typedPick?.chosenFace }, {
+    actorId: first.id, rootEventId: firstPublicPool.rootEventId, chosenCardId: chosen,
+    chosenFace: { kind: "Attack", suit: "♠", rank: "A" },
+  }, "the next Negation projection carries the exact committed public pick face and owner");
+  assert.ok(typedPick?.committedIdentity?.checkpointId, "the public pick retains its real server commit checkpoint");
   progress = nextWindow.presentationSnapshot.bumperHarvestProgress;
   assert.equal(progress?.participants[1].status, "RESOLVED");
   assert.equal(progress?.participants[1].outcome, "CHOSE_CARD");

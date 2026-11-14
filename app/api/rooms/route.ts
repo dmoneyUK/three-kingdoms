@@ -763,7 +763,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
   return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
-function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "amount" | "effect">> = {}, envelope?: CausalEnvelope | null): PublicPresentationEventFactDraft | undefined {
+function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "amount" | "effect" | "bumperHarvestPickProof">> = {}, envelope?: CausalEnvelope | null): PublicPresentationEventFactDraft | undefined {
   if (!causal?.interactionId || !causal.frameId) return undefined;
   const roots = envelope?.frames.filter((frame) => !frame.parentFrameId) ?? [];
   const frame = envelope?.frames.find((candidate) => candidate.frameId === causal.frameId);
@@ -6347,7 +6347,52 @@ async function resolveHarvestChoice(room: RoomRow, pending: HarvestPending, acto
     ...(pending.causal?.interactionId ? { interactionId: pending.causal.interactionId } : {}),
     ...(pending.causal?.frameId ? { frameId: pending.causal.frameId } : {}),
   });
-  log = addHistory(log, `${actor.name} chooses ${chosen.rank}${chosen.suit} ${cardDefinition(chosen.kind).name} from Bumper Harvest.`);
+  const choiceEnvelope = progress?.version === 2 ? harvestChoiceEnvelope(room, pending, actor.id) : null;
+  const pickEventId = crypto.randomUUID();
+  const cardName = cardDefinition(chosen.kind).name;
+  const outcomeLabel = `${actor.name} took ${chosen.rank}${chosen.suit} ${cardName} from Bumper Harvest`;
+  const revealedMatches = pending.revealed.filter((card) => card.id === chosen.id && card.kind === chosen.kind
+    && card.suit === chosen.suit && card.rank === chosen.rank);
+  const pickProof = progress?.version === 2 && revealedMatches.length === 1
+    && progress.rootEventId && progress.rootResolutionId && progress.rootCardId && progress.interactionId
+    && progress.rootFrameId && pending.revealEventId
+    ? {
+      semantics: "PROVEN" as const,
+      eventId: pickEventId,
+      interactionId: progress.interactionId,
+      rootFrameId: progress.rootFrameId,
+      rootEventId: progress.rootEventId,
+      rootResolutionId: progress.rootResolutionId,
+      rootCardId: progress.rootCardId,
+      revealEventId: pending.revealEventId,
+      sourceId: pending.sourceId,
+      actorId: actor.id,
+      card: { id: chosen.id, kind: chosen.kind, suit: chosen.suit, rank: chosen.rank },
+    }
+    : null;
+  const pickFact = pickProof && pending.causal && choiceEnvelope
+    ? publicFactFor(pending.causal, "CARD_OBTAINED", {
+      rootEventId: pickProof.rootEventId,
+      actorId: actor.id,
+      affectedPlayerIds: [actor.id],
+      label: cardName,
+      outcomeLabel,
+      effect: { kind: "bumper_harvest_pick", label: "Bumper Harvest" },
+      bumperHarvestPickProof: pickProof,
+    }, choiceEnvelope)
+    : undefined;
+  if (pickFact?.committedIdentity && pickProof) {
+    log = addLogWithId(log, outcomeLabel, undefined, {
+      resolutionId: pickProof.rootResolutionId,
+      actorId: actor.id,
+      importance: "essential",
+      publicFact: pickFact,
+    }, pickEventId).log;
+  } else {
+    // The authoritative pick still resolves if legacy state lacks causal proof;
+    // keep the record private-to-presentation rather than guessing a public H4.
+    log = addHistory(log, `${actor.name} chooses ${chosen.rank}${chosen.suit} ${cardName} from Bumper Harvest.`);
+  }
   let remainingPending: HarvestPending = {
     ...pending,
     availableIds: harvestAvailableIds(pending).filter((id) => id !== chosen.id),

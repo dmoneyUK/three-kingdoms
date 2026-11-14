@@ -208,7 +208,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
             aria-label={choice.accessibleLabel}
             onClick={() => props.onToggle(choice.publicCardFace.id)}
           />}
-          {!actorSelect && <span className="card-pool-panel__status harvest-availability-label">{choice.statusLabel}</span>}
+          {(!actorSelect || choice.state === "taken") && <span className="card-pool-panel__status harvest-availability-label">{choice.statusLabel}</span>}
           {choice.state === "selected" && <span className="card-pool-panel__selected harvest-pending-label">Selected</span>}
           <button
             type="button"

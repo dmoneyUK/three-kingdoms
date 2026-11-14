@@ -1,6 +1,6 @@
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
-import { collectPublicPresentationEventFacts, retainedPublicEventFromTimeline, type PublicPresentationEvent, type PublicPresentationEventFactDraft } from "./presentation-semantics";
+import { collectPublicPresentationEventFacts, retainedPublicEventFromTimeline, type PublicPresentationEvent, type PublicPresentationEventFactDraft, type PublicPresentationEventFactProjection } from "./presentation-semantics";
 import { CARD_DEFINITIONS } from "./cards";
 import { CARD_KINDS, type Card, type CardKind, type CardSuit } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestNegationResponseRecord, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type NegationHistoryRecord } from "./pending";
@@ -959,7 +959,7 @@ export type PresentationV2 = {
   decision: { kind: CurrentAction["kind"] | null; actorId: string | null; actionRevision: string; resolutionId: string | null; readyAfterEventId: string | null; deadline: number } | null;
   settlement: { eventId: string; resolutionId: string | null } | null;
   transitionEvents: readonly { eventId: string; type: string; resolutionId: string | null }[];
-  publicEventFacts: readonly PublicPresentationEventFactDraft[];
+  publicEventFacts: readonly PublicPresentationEventFactProjection[];
   retainedPublicEvent?: PublicPresentationEvent | null;
   retainedPublicEventFacts?: readonly PublicPresentationEvent[];
   stableBoundary: PresentationStableBoundary;
@@ -4315,8 +4315,11 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
       checkpointId: interactionScene.checkpointId, presentationRevision: interactionScene.presentationRevision }
     : null;
   const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene, input.timeline);
+  const publicHarvestRevealEvidence = input.timeline.filter((event) => event.type === "cards"
+    && event.action === "reveal" && event.presentation === false && typeof event.privateToPlayerId !== "string");
   const publicEventFacts = factIdentity ? collectPublicPresentationEventFacts({
     timeline: input.publicTimeline ?? input.timeline,
+    supportingPublicEvents: publicHarvestRevealEvidence,
     identity: factIdentity,
     frames: envelope?.frames ?? [],
     // A nested Harvest Negation Pending does not carry the physical root in

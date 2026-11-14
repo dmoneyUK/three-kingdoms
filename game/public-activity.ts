@@ -435,10 +435,36 @@ export function derivePublicNegationNarration(input: {
     const state = provenHarvestPresentation(snapshot, input.players);
     const ownedResponseEventIds = new Set(state?.responseFacts.flatMap(({ response, fact }) => [response.eventId, fact.eventId]) ?? []);
     const latestOwnedOrder = state?.responseFacts.at(-1)?.fact.order ?? root.rootFact.order;
+    const publicEventFacts = snapshot?.publicEventFacts ?? [];
+    const harvestPicks = (snapshot?.bumperHarvestPicks ?? []).flatMap((pick) => {
+      const fact = publicEventFacts.find((candidate) => candidate.eventId === pick.eventId);
+      const actor = input.players.find((player) => player.id === pick.actorId)?.name.trim();
+      const card = CARD_DEFINITIONS[pick.chosenFace.kind];
+      const factMatches = fact?.semantics === "PROVEN" && fact.visibility === "PUBLIC"
+        && fact.identity.interactionId === root.progress.interactionId
+        && fact.identity.rootFrameId === root.progress.rootFrameId && fact.rootEventId === input.rootEventId
+        && fact.frameId === root.progress.rootFrameId && fact.resolutionId === root.progress.rootResolutionId
+        && fact.category === "CARD_OBTAINED" && fact.effect?.kind === "bumper_harvest_pick"
+        && fact.order === pick.order && fact.actorId === pick.actorId
+        && fact.affectedPlayerIds.length === 1 && fact.affectedPlayerIds[0] === pick.actorId
+        && fact.bumperHarvestPick?.chosenCardId === pick.chosenCardId
+        && fact.bumperHarvestPick?.committedIdentity.interactionId === pick.committedIdentity.interactionId
+        && fact.bumperHarvestPick?.committedIdentity.rootFrameId === pick.committedIdentity.rootFrameId;
+      return pick.semantics === "PROVEN" && pick.visibility === "PUBLIC"
+        && pick.committedIdentity.interactionId === root.progress.interactionId
+        && pick.committedIdentity.rootFrameId === root.progress.rootFrameId
+        && pick.committedIdentity.presentationRevision <= (snapshot.identity?.presentationRevision ?? -1)
+        && pick.rootEventId === input.rootEventId && pick.order > root.rootFact.order
+        && factMatches && actor && card
+        ? [{ pick, actor, cardName: card.name }]
+        : [];
+    }).sort((left, right) => left.pick.order - right.pick.order);
+    const latestPick = harvestPicks.at(-1);
     const laterPublicFact = snapshot?.publicEventFacts.some((fact) => fact.semantics === "PROVEN"
       && fact.visibility === "PUBLIC" && fact.identity.interactionId === root.progress.interactionId
       && fact.identity.rootFrameId === root.progress.rootFrameId && fact.rootEventId === input.rootEventId
       && fact.order > latestOwnedOrder && !ownedResponseEventIds.has(fact.eventId)
+      && !harvestPicks.some(({ pick }) => pick.eventId === fact.eventId)
       && !(fact.category === "CARD_PLAYED" && effectLabel(fact.label) === "Negation")
       && !((fact.category === "EFFECT_CANCELLED" || fact.category === "EFFECT_RESTORED")
         && effectLabel(fact.effect?.label) === "Bumper Harvest"));
@@ -456,7 +482,12 @@ export function derivePublicNegationNarration(input: {
     let eventId = root.rootFact.eventId;
     let checkpointId = root.rootFact.identity.checkpointId;
     let rootEffectState: "ACTIVE" | "BLOCKED" = "ACTIVE";
-    if (latest && actor && recipient) {
+    if (latestPick && latestPick.pick.order > latestOwnedOrder) {
+      headline = `${latestPick.actor} took ${latestPick.pick.chosenFace.rank}${latestPick.pick.chosenFace.suit} ${latestPick.cardName} from Bumper Harvest.`;
+      eventId = latestPick.pick.eventId;
+      checkpointId = publicEventFacts.find((fact) => fact.eventId === latestPick.pick.eventId)?.identity.checkpointId ?? checkpointId;
+      rootEffectState = state?.progress.currentEffectState === "BLOCKED" ? "BLOCKED" : "ACTIVE";
+    } else if (latest && actor && recipient) {
       if (latest.fact.category === "EFFECT_RESTORED" && prior) {
         const priorActor = input.players.find((player) => player.id === prior.response.actorId)?.name.trim();
         if (priorActor) {

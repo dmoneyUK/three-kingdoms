@@ -28,6 +28,7 @@ function snapshot({ stage, actorId = null, stableKind = actorId ? "CHOICE" : "SP
       responseWindowOpen: true,
     },
     publicEventFacts,
+    bumperHarvestPicks: [],
     viewerNegationChoice,
     duelExchange,
     lustDuelExchange,
@@ -122,6 +123,7 @@ function harvestSnapshot({ responseCount = 0, stage = "NEGATION", effectState = 
       publicNegationResponses: responses,
     },
     publicEventFacts: facts,
+    bumperHarvestPicks: [],
     reactionChain: chain,
     viewerNegationChoice: null,
   };
@@ -261,6 +263,45 @@ test("Bumper Harvest H4 and PAC follow committed recipient Negation facts throug
     snapshot: { ...picking, publicEventFacts: [...picking.publicEventFacts, pickedCard] },
     players, rootEventId: "harvest-root-event",
   }), null, "a later public card receipt retires the earlier Negation H4");
+});
+
+test("a committed public Harvest pick owns the newest H4 through the next Negation window", () => {
+  const base = harvestSnapshot({ stage: "NEGATION", responseCount: 2, effectState: "ACTIVE", nextEffectKind: "cancel_effect" });
+  const chosenCard = {
+    semantics: "PROVEN", visibility: "PUBLIC",
+    identity: { ...base.publicEventFacts[0].identity },
+    eventId: "harvest-choice-commit", resolutionId: "harvest-root-resolution", order: 6,
+    frameId: "harvest-root-frame", rootEventId: "harvest-root-event",
+    category: "CARD_OBTAINED", actorId: "p2", affectedPlayerIds: ["p2"], label: "Overindulgence",
+    outcomeLabel: "Test Player 2 took 6♠ Overindulgence from Bumper Harvest",
+    effect: { kind: "bumper_harvest_pick", label: "Bumper Harvest" },
+  };
+  const pick = {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: chosenCard.eventId, order: chosenCard.order,
+    actorId: chosenCard.actorId, rootEventId: chosenCard.rootEventId, chosenCardId: "public-overindulgence-6-spade",
+    chosenFace: { kind: "Overindulgence", suit: "♠", rank: "6" },
+    committedIdentity: { ...chosenCard.identity },
+  };
+  chosenCard.bumperHarvestPick = pick;
+  const snapshotWithPick = { ...base, publicEventFacts: [...base.publicEventFacts, chosenCard], bumperHarvestPicks: [pick] };
+  const narration = derivePublicNegationNarration({ snapshot: snapshotWithPick, players, rootEventId: "harvest-root-event" });
+  assert.equal(narration?.headline, "Test Player 2 took 6♠ Overindulgence from Bumper Harvest.");
+  assert.equal(narration?.eventId, chosenCard.eventId);
+  assert.equal(narration?.phase, "WINDOW_OPEN");
+  assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: snapshotWithPick })).stage,
+    "Another Negation can prevent Test Player 2 from picking.",
+  "the public next action describes the current open response independently of the committed-pick H4");
+
+  const staleMismatchedPick = { ...chosenCard, rootEventId: "another-root" };
+  assert.notEqual(derivePublicNegationNarration({
+    snapshot: { ...base, publicEventFacts: [...base.publicEventFacts, staleMismatchedPick], bumperHarvestPicks: [{ ...pick, rootEventId: "another-root" }] },
+    players, rootEventId: "harvest-root-event",
+  })?.headline, staleMismatchedPick.outcomeLabel + ".");
+  const privateLikePick = { ...chosenCard, visibility: "LOCAL" };
+  assert.notEqual(derivePublicNegationNarration({
+    snapshot: { ...base, publicEventFacts: [...base.publicEventFacts, privateLikePick], bumperHarvestPicks: [{ ...pick, visibility: "LOCAL" }] },
+    players, rootEventId: "harvest-root-event",
+  })?.headline, privateLikePick.outcomeLabel + ".");
 });
 
 test("Bumper Harvest public copy fails closed for missing outcome proof and ignores private viewer choices", () => {

@@ -33,7 +33,7 @@ import type {
   PresentationV2,
 } from "./presentation-v2";
 import { isProvenGroupRootCardProof, isSupportedAttackDodgeResponseProof } from "./presentation-v2";
-import { projectPublicPresentationSemantics, validateRetainedPublicEvent, type PublicPresentationDecision, type PublicPresentationEvent, type ViewerNegationChoice } from "./presentation-semantics";
+import { projectPublicPresentationSemantics, validateRetainedPublicEvent, type PublicBumperHarvestPick, type PublicPresentationDecision, type PublicPresentationEvent, type ViewerNegationChoice } from "./presentation-semantics";
 
 /** The only public identity a future presentation client may use. */
 export type PresentationSnapshotIdentity = {
@@ -83,6 +83,7 @@ export type PresentationSnapshotGroupProgress = {
 
 export type PresentationSnapshotOathRecipientScope = PresentationOathRecipientScope;
 export type PresentationSnapshotBumperHarvestProgress = PresentationBumperHarvestProgress;
+export type PresentationSnapshotBumperHarvestPick = PublicBumperHarvestPick;
 export type PresentationSnapshotRootAction = PresentationRootAction;
 export type PresentationSnapshotSkillEffectAction = PresentationSkillEffectAction;
 export type PresentationSnapshotSkillEffectSettlement = PresentationSkillEffectSettlement;
@@ -113,6 +114,8 @@ export type PresentationSnapshot = {
   groupParticipantProgress: PresentationSnapshotGroupProgress | null;
   oathRecipientScope: PresentationSnapshotOathRecipientScope | null;
   bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
+  /** Independently validated committed picks from the public Harvest reveal. */
+  bumperHarvestPicks: readonly PresentationSnapshotBumperHarvestPick[];
   reactionChain: PresentationReactionChain | null;
   rootAction: PresentationSnapshotRootAction | null;
   skillEffectAction: PresentationSnapshotSkillEffectAction | null;
@@ -1681,6 +1684,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     groupParticipantProgress,
     oathRecipientScope: authority ? oathRecipientScopeFor(input.presentationV2, authority.scene, authority.identity, reactionChain) : null,
     bumperHarvestProgress: authority ? bumperHarvestProgressFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
+    bumperHarvestPicks: semantic.events.flatMap((fact) => fact.bumperHarvestPick ? [fact.bumperHarvestPick] : []),
     reactionChain,
     rootAction: authority ? rootActionFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
     skillEffectAction: provenSkillEffectAction(input.presentationV2.skillEffectAction),
