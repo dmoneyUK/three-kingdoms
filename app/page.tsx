@@ -3919,12 +3919,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const harvestDisplay = room.pendingHarvest ?? room.publicHarvestPool;
   const harvestReadOnlyDuringNegation = Boolean(room.publicHarvestPool && !room.pendingHarvest);
   const harvestPending = Boolean(harvestDisplay);
-  const harvestActorId = room.pendingHarvest?.actorId ?? "";
+  const harvestRootEventId = room.publicHarvestPool?.rootEventId
+    ?? clientPresentation.bumperHarvestProgress?.rootEventId
+    ?? room.presentationSnapshot?.bumperHarvestProgress?.rootEventId
+    ?? "";
   const harvestPlacement = useBattlefieldChoicePlacement({
     enabled: harvestPending,
     playerCount: room.players.length,
-    placementKey: [room.code, room.meId, harvestActorId, harvestDisplay?.revealEventId ?? "", expandedOpponentId ?? ""].join("\u001f"),
+    placementKey: [room.code, harvestRootEventId, harvestDisplay?.revealEventId ?? "", room.meId].join("\u001f"),
     protectSharedPublicStage: true,
+    reserveHarvestFooterFootprint: true,
+    stableHarvestTop: true,
   });
   const harvestStageRef = harvestPlacement.ref;
   const harvestStageTop = harvestPlacement.top;
@@ -11072,6 +11077,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         data-harvest-reveal-event-id={harvestDisplay.revealEventId ?? undefined}
         data-harvest-panel-top={harvestStageTop ?? undefined}
         style={{
+          // The safe-placement hook computes this stage top as the panel's
+          // actual top. Do not vertically recenter the panel in the remaining
+          // full-height grid, or a 40px chooser footer shifts it by 20px.
+          alignItems: "start",
           top: harvestStageTop === null ? undefined : `${harvestStageTop}px`,
           left: harvestStageInsets ? `${harvestStageInsets.left}px` : undefined,
           right: harvestStageInsets ? `${harvestStageInsets.right}px` : undefined,

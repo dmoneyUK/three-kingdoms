@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { findBattlefieldChoiceSafeTopOffset } from "../app/battlefield-choice-stage.tsx";
+import { findBattlefieldChoiceSafeTopOffset, harvestChoicePlacementPanelRect, isBattlefieldChoiceTopOffsetSafe } from "../app/battlefield-choice-stage.tsx";
 import { calculatePublicStageLayout, publicStageSceneIdentity } from "../game/public-stage-layout.ts";
 
 const scene = {
@@ -63,6 +63,47 @@ test("Harvest pool uses the measured central band below H4 and above PAC", () =>
   assert.ok(top >= h4.bottom + 6, "the card pool stays below the fixed H4");
   assert.ok(top + panel.height <= pac.top - 6, "the card pool leaves the PAC clear");
   assert.ok(top + panel.height <= table.bottom, "the full card pool stays inside the battlefield");
+});
+
+test("Harvest reserves the real Confirm footer so read-only and actor pool tops stay fixed", () => {
+  const table = { left: 0, top: 0, right: 440, bottom: 520, width: 440, height: 520 };
+  const obstacles = [
+    { left: 12, top: 90, right: 428, bottom: 128, width: 416, height: 38 },
+    { left: 50, top: 450, right: 390, bottom: 510, width: 340, height: 60 },
+  ];
+  const readOnlyPanel = { left: 40, top: 0, right: 400, bottom: 160, width: 360, height: 160 };
+  const actorPanel = { ...readOnlyPanel, height: 200 };
+  const readOnlyPlacement = harvestChoicePlacementPanelRect(readOnlyPanel, false);
+  const actorPlacement = harvestChoicePlacementPanelRect(actorPanel, true);
+  const placementTop = (panel) => findBattlefieldChoiceSafeTopOffset({
+    table, panel, obstacles, viewportHeight: 520, minimumTop: 134, margin: 6,
+  });
+
+  assert.equal(readOnlyPlacement.height, actorPlacement.height);
+  assert.equal(placementTop(readOnlyPlacement), placementTop(actorPlacement));
+  assert.equal(readOnlyPanel.height, 160, "read-only mode does not insert a fake footer or resize its visible panel");
+  assert.equal(harvestChoicePlacementPanelRect(readOnlyPanel, false, false).height, readOnlyPanel.height);
+});
+
+test("a cached Harvest top is reused only while the full reserved panel clears measured obstacles", () => {
+  const placement = {
+    table: { left: 0, top: 100, right: 440, bottom: 620, width: 440, height: 520 },
+    panel: { left: 40, top: 0, right: 400, bottom: 0, width: 360, height: 200 },
+    obstacles: [
+      { left: 10, top: 150, right: 430, bottom: 190, width: 420, height: 40 },
+      { left: 50, top: 480, right: 390, bottom: 510, width: 340, height: 30 },
+    ],
+    viewportHeight: 700,
+    minimumTop: 200,
+    margin: 6,
+  };
+  const safe = findBattlefieldChoiceSafeTopOffset(placement);
+  assert.ok(safe !== null);
+  assert.equal(isBattlefieldChoiceTopOffsetSafe({ ...placement, offset: safe }), true);
+  assert.equal(isBattlefieldChoiceTopOffsetSafe({ ...placement, offset: safe + 1 }), false,
+    "a cached location is rejected if the measured full-height panel no longer clears the next obstacle");
+  assert.equal(isBattlefieldChoiceTopOffsetSafe({ ...placement, panel: { ...placement.panel, height: 420 }, offset: safe }), false,
+    "actor-select growth cannot reuse a cached read-only location without reserved height");
 });
 
 test("reveal layout keeps H4, full-size card and PAC in order with the measured minimum gap", () => {
