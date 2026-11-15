@@ -16,7 +16,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 **Current precedence:** Original explicit USER-ACCEPTED verdicts close their exact reviewed scope. Prior 2026-11-02/03 partially accepted/failed snapshots and now-superseded task scheduling remain in [immutable Git history](https://github.com/dmoneyUK/three-kingdoms/blob/eb8b3a8bf91564b1c9c01bbf449bf63d55adbce4/docs/UX2-refine.md), not active work. New Classic rooms support only 4–6 players; unfinished 7/8-player UI work is out of scope.
 
-### A. Authorized work — single redesigned §10.49; active independent Agent §§10.52–10.53 delivery protected
+### A. Authorized work — single redesigned §10.49; §§10.51–10.53 delivered for separate owner review
 
 **§10.49 CAO-CAO-ENTOURAGE-SIMULTANEOUS-WEI-DODGE-01 — OWNER-AUTHORIZED / NOT IMPLEMENTED / ONE WINNER PER ROUND (latest owner decision 2026-11-15 01:07 UTC).** Shared 8s private intent collection selects ONE real response. Cao Cao/Wei → nearest real Dodge. Liu Bei/Shu → forward-seat real Attack. Dying/Peach → first real valid Peach in ORIGINAL rescue order, other cards remain in Hand; run existing full single-Peach HP/recovery/trigger resolution, then NEW window only if actual HP still ≤0. Existing Negation is preserved; no old multi-donor Peach queue/cursor. Detailed instructions §10.49 below; Coding Agent implements, does not reanalyse.
 
@@ -26,23 +26,28 @@ This file is the **single active UX2 product/design authority**. It replaces the
 | --- | --- |
 | **§10.49 (ONE redesigned task)** | ONE generic private 8s window/D1 CAS and domain-specific one valid winner; only that selected card goes to old resolver. Dying triggers original complete one-Peach recovery, then if still Dying a fresh window. Losing intents never pay. Preserve Negation and all old saves. Full exact steps in §10.49; one final integrated delivery. |
 
-**Current Agent protection:** Latest HANDOVER read at this reviewer edit reports §10.53 locally implemented with §10.52+§10.53 combined final CI/deploy pending, and an independently preserved older §10.49 worktree. §10.51 Worker deploy was reported successful by Agent. This design-only change does **NOT** replace current HANDOVER or interrupt finishing §10.52/§10.53. At next clean boundary Agent executes ONE newly redesigned §10.49 using its preserved work, and owns later HANDOVER changes; no new analysis or old video reproduction.
+**Current Agent protection:** §§10.51–10.53 have completed technical delivery and remain PENDING OWNER iPHONE REVIEW (Table B). The older §10.49 worktree is preserved. Its new ONE-WINNER design remains the next separate authorized implementation boundary; no §10.49 source is included in the delivered corrections.
 
 
-**Independent §§10.51–10.53 scope is retained and not re-opened here.** Agent HANDOVER currently reports §10.51 technical deployment and §10.52/§10.53 local work pending combined final CI/deploy; no reviewer/owner PASS is inferred. Finish already-started work safely, preserve all worktrees and handoff. Then the updated single §10.49 is ready for implementation; no change to §§10.51–10.53 requirements.
+**Independent §§10.51–10.53 scope remains separate from §10.49.** At the owner’s direct instruction, §10.52 and §10.53 were implemented serially and delivered together. Their required CI, Worker deployment and production smoke have passed; this is not reviewer or owner acceptance. Accepted §10.45, §10.48 and historical §10.50 remain CLOSED.
 
 | Status and task order | Exact scope | Execution gate |
 | --- | --- | --- |
 | **NEXT §10.49 — OWNER-AUTHORIZED / NOT IMPLEMENTED** | One unified Shared Response Window, STRICT one winner per round; Dying opens next fresh window only after accepted Peach's full existing game effects | Execute after active Agent safe handoff; retain §10.49 partial work |
-| **§10.51 ROOM-POLL-TRANSIENT-503-RECOVERY-01** | Agent reports exact-SHA CI/Worker deployment; independently tracked | Not changed/accepted by §10.49 redesign |
-| **§10.52 PAC-CONSOLE-PUBLIC-STATE-COPY-01** | Agent reports locally completed, pending combined CI/deploy at this check | Preserve current work and separate acceptance |
-| **§10.53 MOBILE-H4-COMPACT-PLAYER-COPY-01** | Agent reports locally completed, combined final CI/deploy pending | Preserve ongoing delivery; finish before switching task |
 
 **Mandatory review-and-cleanup gate requested by owner:** After **each** task's actual Agent delivery, the independent Reviewer verifies exact source/test diff, SHA-matched Actions, Worker and production smoke where applicable, then obtains the owner's real-iPhone verdict. On explicit PASS, in the **same** scoped UX2 design update: move only that original ID from A/B to C; retain its final authoritative UX/architecture/semantic/privacy rules and regression tests; condense its redundant implementation instructions, stale statuses and duplicate cross-references; link old detail to immutable Git history. On FAIL/PARTIAL, keep the **same** open task ID, preserve passed portions and replace old repair drafts with one current corrective prescription. Never delete accepted §10.45, §10.48, historical §10.50 or ongoing §10.49, never revive Appendix A / archived tasks, and never treat an Agent PASS or CI as the owner's phone acceptance. Planner does not change HANDOVER, code, tests or deployment merely to perform this documentation clean-up.
 
-### B. Technically delivered — PENDING OWNER iPHONE REVIEW (none)
+### B. Technically delivered — PENDING OWNER iPHONE REVIEW
 
-**No independent technically delivered item awaits a new owner iPhone verdict.** §10.45's previously outstanding shared H4/centre placement was explicitly USER-ACCEPTED/CLOSED by the owner on 2026-11-15 at 00:29 UTC; see Table C and its original retained section. A green CI is not the acceptance; the owner's present explicit PASS is. The newly authorized §10.49 is **not implemented** and remains in Table A.
+**IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW.** Final exact source `29c6b391dc2c2840bfd38bce7cd432cfbfca9373`; [Actions 43662122233](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43662122233) passed all required checks, D1 migration, Worker deployment and production smoke. Worker `71a6efb5-935b-4e81-9ba0-8ae1aac833c0`; direct health check passed. No owner phone acceptance is inferred.
+
+| Original task | Independent owner phone scope |
+| --- | --- |
+| **§10.51 ROOM-POLL-TRANSIENT-503-RECOVERY-01** | Temporary failures preserve session/viewer and recover safely; genuine invalidity still retires the session. Upstream 503 origin remains UNKNOWN — LOGS UNAVAILABLE. |
+| **§10.52 PAC-CONSOLE-PUBLIC-STATE-COPY-01** | Proven public next action only; safe PAC absence; neutral private Console and no LOCAL CANCEL explanation; real cancel/selection behavior retained. |
+| **§10.53 MOBILE-H4-COMPACT-PLAYER-COPY-01** | Mobile H4 ≤340px with safe gutters; proven player-name styling; truthful short Axe cost summary with full accessible narration; accepted CardFace geometry retained. |
+
+§10.49 remains NOT IMPLEMENTED in Table A. Previously accepted §10.45 remains CLOSED.
 
 ### C. Owner-accepted / closed decisions — status index, not duplicated design
 
@@ -936,7 +941,7 @@ All public copy uses **player** identities from proven IDs. No public list of wh
 
 **One bounded mobile UI verification only:** one actual four-player simultaneous window (prefer Cao Cao with two real Wei Dodge intents submitted reverse seat priority), including shared timer, private controls/locked submits, one true CardFace at winner Seat/Dock and public H4/PAC. Total local browser/UI runtime ≤5 minutes, including retries; otherwise record `UNVERIFIED`. Full Liu Bei and Dying multiple-round flow/zero loser cost/trigger resume MUST be proved in targeted API tests, **not** a three-feature browser matrix. Preserve currently in-flight independent Agent work/HANDOVER, use exact-SHA CI/migration/Worker/health to claim technical delivery, and do not self-declare OWNER PASS; stop with precise blocker rather than alternative analysis or weak privacy/card conservation checks.
 
-### 10.51 ROOM-POLL-TRANSIENT-503-RECOVERY-01 — recover room after transient backend failure (**OWNER-AUTHORIZED NEW P0 / QUEUED; NOT IMPLEMENTED; PHONE REVIEW REQUIRED**)
+### 10.51 ROOM-POLL-TRANSIENT-503-RECOVERY-01 — recover room after transient backend failure (**IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**)
 
 **Owner incident and evidence (2026-11-15 ~00:15 UTC):** In an authenticated four-player iPhone Classic test, Cao Cao had committed the real Barbarian Invasion / 南蛮入侵; after the counter window, Lü Bu/WCC reached an Attack-required response. The client UX trace reviewed in this session showed the previous room GET succeeded, then a room GET received **HTTP 503**, followed immediately by the client ending its local game session. It did **not** prove that Lü Bu committed an Attack before the failure. Do not diagnose the server's 503 cause from this incomplete client trace or claim an Attack rules crash. Screenshot(s) and reported 2026-11-15 trace are incident evidence, not proof of a particular Worker/D1 exception.
 
@@ -954,7 +959,7 @@ All public copy uses **player** identities from proven IDs. No public list of wh
 
 **Delivery:** First verify exact modified source and realistic test results; then normal build/lint, required exact-SHA Actions/Worker production smoke (no forced deployment by Planner). Record actual HTTP classification, tests PASS/FAIL/SKIPPED, whether upstream logs were available, exact SHA and production verdict. Keep source and test changes inside this incident. Agent may not mark USER-ACCEPTED. **Owner iPhone acceptance:** temporary error does not eject them or erase the room, recovery resumes the genuine current turn/response, genuine 404/invalid session still ends appropriately. The original upstream 503 cause remains explicitly UNKNOWN unless independently evidenced.
 
-### 10.52 PAC-CONSOLE-PUBLIC-STATE-COPY-01 — truthful activity and user-language Console (**OWNER-AUTHORIZED NEW P1 / QUEUED; NOT IMPLEMENTED; PHONE REVIEW REQUIRED**)
+### 10.52 PAC-CONSOLE-PUBLIC-STATE-COPY-01 — truthful activity and user-language Console (**IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**)
 
 **Observed phone defects:** During a proven Attack → Dodge public sequence, PAC showed only generic `Resolving…`, giving no useful current step; in Zhang Liao Assault target selection, the viewer's private Console displayed `LOCAL CANCEL — Change your selection before submitting.`. Both screens are from the current four-player iPhone session. This task is a **new global wording improvement / regression** against §R2, §10.12, §10.13 U13-B and accepted §10.26; do not reopen those CLOSED identities.
 
@@ -976,7 +981,7 @@ All public copy uses **player** identities from proven IDs. No public list of wh
 
 **Human acceptance:** In real iPhone Attack→Dodge and Barbarian Invasion response, H4 reports true committed facts; PAC names only actual public next step or is cleanly absent; no ambiguous resolving text or stale previously shown action. Assault private selection shows actionable instruction/buttons without `LOCAL CANCEL`. No regressions in prior owner-accepted Harvest, Negation, legitimate no-action, genuine countdown, privacy, button permissions or §10.49 future helper response. Implement and deploy one scoped task; reviewer validates; owner decides PASS.
 
-### 10.53 MOBILE-H4-COMPACT-PLAYER-COPY-01 — safe width and compact factual H4 (**OWNER-AUTHORIZED NEW P1 / QUEUED; NOT IMPLEMENTED; PHONE REVIEW REQUIRED**)
+### 10.53 MOBILE-H4-COMPACT-PLAYER-COPY-01 — safe width and compact factual H4 (**IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**)
 
 **Owner screenshot and review:** Four-player iPhone H4 spans practically the entire screen and the Rock Cleaving Axe / Dodge message consumes three long lines. Owner wants clear side gutters, generally **one or two lines**, and visually recognizable **smaller PLAYER names** (font and/or colour) distinct from card/skill text. This is a **new post-acceptance refinement / current R2 width-regression**, **NOT** a reversal of §10.45's explicitly USER-ACCEPTED 2026-11-15 00:29 upper anchor, genuine 90×135 centre CardFace or Retaliation/Inspector clearance.
 
