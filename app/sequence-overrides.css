@@ -8215,3 +8215,11 @@
   min-width: 0;
   padding-inline: 6px;
 }
+
+/* UX2 §10.56: on the phone top row, the explicitly opened Inspector may
+   overlap the existing H4 copy. Raise only that Inspector stacking context;
+   H4 geometry, lifetime, and all CardFace reveal behavior remain owned by
+   the public-card display layer. */
+.game-shell .play-table[data-seat-topology="top-row"]:has(> .public-card-display-journey > [data-public-card-announcement="true"]) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+  z-index: 40;
+}

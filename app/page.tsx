@@ -2855,7 +2855,7 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
     const hand = document.querySelector<HTMLElement>(".local-hand-rail");
     const activityChip = table.querySelector<HTMLElement>(".public-activity-chip");
     const playerBoard = table.querySelector<HTMLElement>(".player-board");
-    const obstacleSelector = [
+    const obstacleSelectors = [
       ".public-activity-chip",
       ".stage-system-cluster",
       ".visible-countdown",
@@ -2867,7 +2867,14 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
       ".harvest-choice-panel",
       ".target-card-picker-overlay",
       ".target-card-picker-panel",
-    ].join(",");
+    ];
+    const obstacleSelector = obstacleSelectors.join(",");
+    // In the phone top-row layout, the owner-approved Inspector anchor may
+    // cover H4 narration. Keep H4 observed and keep it as a side-column
+    // obstacle, but don't push the top-row panel below it.
+    const topRowObstacleSelector = obstacleSelectors
+      .filter((selector) => selector !== "[data-public-card-announcement='true']")
+      .join(",");
     let seats = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"));
     const visualViewport = window.visualViewport;
     const mobilePhone = () => window.matchMedia("(max-width: 520px)").matches;
@@ -3010,7 +3017,7 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
           (visibleRect(hand)?.top ?? Number.POSITIVE_INFINITY) - 8,
         ));
         const obstacleElements = [
-          ...Array.from(table.querySelectorAll<HTMLElement>(obstacleSelector)),
+          ...Array.from(table.querySelectorAll<HTMLElement>(topRowObstacleSelector)),
           ...seats.filter((seat) => seat !== targetSeat),
         ];
         const obstacles = obstacleElements.flatMap((element) => {

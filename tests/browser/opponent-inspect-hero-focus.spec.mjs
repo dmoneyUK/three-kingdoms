@@ -1378,18 +1378,49 @@ test("§10.56 440px phone Inspector anchors under the selected top-row Seat", as
   const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
   const page = await context.newPage();
   try {
-    await loadFixture(page, { ...viewport, count: 5, state: "rest", equipmentCase: "ins5PhoneDetails", playerNamePrefix: "Inspector" });
+    await loadFixture(page, { ...viewport, count: 5, state: "rest", equipmentCase: "ins5PhoneDetails", targetHero: "xiahou-dun", playerNamePrefix: "Inspector" });
     const topSeats = page.locator('.player-board [data-side-column="top"]');
     const topSeatIds = await topSeats.evaluateAll((seats) => seats.map((seat) => ({
       id: seat.dataset.playerAnchor,
+      heroId: seat.querySelector(".opponent-hero-portrait")?.dataset.heroId,
       x: seat.getBoundingClientRect().left,
     })).sort((a, b) => a.x - b.x));
     expect(topSeatIds.length, "Expected left, centre, and right Seats in the five-player top row").toBeGreaterThanOrEqual(3);
-    const chosen = [topSeatIds[0], topSeatIds[Math.floor((topSeatIds.length - 1) / 2)], topSeatIds.at(-1)];
+    const xiahouDunSeat = topSeatIds.find((seat) => seat.heroId === "xiahou-dun");
+    expect(xiahouDunSeat, "The approved five-player fixture must place Xiahou Dun in the phone top row").toBeTruthy();
+    const otherTopSeats = topSeatIds.filter((seat) => seat !== xiahouDunSeat);
+    const chosen = [otherTopSeats[0], xiahouDunSeat, otherTopSeats.at(-1)];
     const distinctTargets = [...new Map(chosen.map((seat) => [seat.id, seat])).values()];
     expect(distinctTargets).toHaveLength(3);
 
-    const measureAnchor = async (id) => {
+    const measureAnchor = async (id, { visibleH4 = false } = {}) => {
+      if (visibleH4) {
+        await page.evaluate((subjectId) => {
+          const table = document.querySelector(".play-table");
+          const seat = [...document.querySelectorAll(".player-board [data-player-anchor]")]
+            .find((element) => element.dataset.playerAnchor === subjectId);
+          if (!table || !seat) throw new Error("Inspector H4 fixture requires the selected top-row Seat");
+          document.querySelector(".test-inspector-h4")?.remove();
+          const root = document.createElement("section");
+          root.className = "public-card-display public-card-display-journey test-inspector-h4";
+          root.setAttribute("data-public-interaction-event-id", "fixture-inspector-h4");
+          const copy = document.createElement("div");
+          copy.className = "public-card-display-copy public-card-display-journey-copy public-event-announcement-copy";
+          copy.dataset.publicCardAnnouncement = "true";
+          copy.setAttribute("role", "status");
+          const text = document.createElement("b");
+          text.textContent = "Test Player 4 used Self Sacrifice.";
+          copy.append(text);
+          const seatBox = seat.getBoundingClientRect();
+          copy.style.top = `${seatBox.bottom + 44}px`;
+          copy.style.left = "8px";
+          copy.style.width = "min(calc(100vw - 16px), 520px)";
+          root.append(copy);
+          table.append(root);
+          const { left, top, right, bottom, width, height } = copy.getBoundingClientRect();
+          copy.dataset.testInitialRect = JSON.stringify({ left, top, right, bottom, width, height });
+        }, id);
+      }
       const opener = page.locator(`.player-board [data-player-anchor="${id}"] .opponent-hero-target`);
       const panel = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
       if (await panel.count() !== 1 || await panel.getAttribute("data-inspect-player-id") !== id) await opener.tap();
@@ -1414,7 +1445,7 @@ test("§10.56 440px phone Inspector anchors under the selected top-row Seat", as
           .find((element) => element.dataset.playerAnchor === subjectId);
         const selectors = [
           ".public-activity-chip", ".stage-system-cluster", ".visible-countdown", ".effect-notice", ".turn-notice",
-          "[data-public-card-announcement='true']", ".public-card-journey-card", ".played-card-stage",
+          ".public-card-journey-card", ".played-card-stage",
           ".harvest-choice-panel", ".target-card-picker-overlay", ".target-card-picker-panel",
         ].join(",");
         const otherSeats = [...document.querySelectorAll(".player-board [data-player-anchor]")].filter((element) => element !== seat);
@@ -1427,6 +1458,11 @@ test("§10.56 440px phone Inspector anchors under the selected top-row Seat", as
         const tableBox = rect(table);
         const shellBox = rect(shell);
         const seatBox = rect(seat);
+        const h4 = document.querySelector(".test-inspector-h4 [data-public-card-announcement='true']");
+        const h4Root = h4?.closest(".test-inspector-h4");
+        const safeZone = shell?.closest(".interaction-safe-zone");
+        const h4Box = rect(h4);
+        const initialH4Box = h4?.dataset.testInitialRect ? JSON.parse(h4.dataset.testInitialRect) : null;
         const safeLeft = Math.max(tableBox.left + 8, viewportLeft + 8);
         const safeRight = Math.min(tableBox.right - 8, viewportRight - 8);
         const preferredLeft = seatBox.left + seatBox.width / 2 - shellBox.width / 2;
@@ -1438,6 +1474,11 @@ test("§10.56 440px phone Inspector anchors under the selected top-row Seat", as
           expectedLeft,
           safeLeft,
           safeRight,
+          h4: h4Box,
+          h4Text: h4?.textContent ?? null,
+          initialH4: initialH4Box,
+          h4RootZ: h4Root ? Number(getComputedStyle(h4Root).zIndex) : null,
+          inspectorLayerZ: safeZone ? Number(getComputedStyle(safeZone).zIndex) : null,
           protected: protectedNodes.map(rect),
         };
       }, id);
@@ -1448,14 +1489,24 @@ test("§10.56 440px phone Inspector anchors under the selected top-row Seat", as
       expect(geometry.shell.right, JSON.stringify(geometry)).toBeLessThanOrEqual(geometry.safeRight + 1);
       expect(Math.abs(geometry.shell.left - geometry.expectedLeft), JSON.stringify(geometry)).toBeLessThanOrEqual(1);
       expect(geometry.shell.top, JSON.stringify(geometry)).toBeGreaterThanOrEqual(geometry.seat.bottom + 7);
+      if (visibleH4) {
+        expect(Math.abs(geometry.shell.top - (geometry.seat.bottom + 8)), JSON.stringify(geometry)).toBeLessThanOrEqual(2);
+        expect(overlaps(geometry.shell, geometry.h4), JSON.stringify(geometry)).toBe(true);
+        expect(geometry.h4Text).toContain("Test Player 4 used Self Sacrifice.");
+        expect(Math.abs(geometry.h4.top - geometry.initialH4.top), JSON.stringify(geometry)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.h4.left - geometry.initialH4.left), JSON.stringify(geometry)).toBeLessThanOrEqual(1);
+        expect(geometry.h4RootZ, JSON.stringify(geometry)).toBe(34);
+        expect(geometry.inspectorLayerZ, JSON.stringify(geometry)).toBeGreaterThan(geometry.h4RootZ);
+      }
       expect(Math.min(geometry.shell.right, geometry.seat.right), JSON.stringify(geometry))
         .toBeGreaterThan(Math.max(geometry.shell.left, geometry.seat.left));
       for (const protectedBox of geometry.protected) {
         expect(overlaps(geometry.shell, protectedBox), JSON.stringify({ id, geometry, protectedBox })).toBe(false);
       }
+      if (visibleH4) await page.locator(".test-inspector-h4").evaluate((element) => element.remove());
     };
 
-    for (const seat of distinctTargets) await measureAnchor(seat.id);
+    for (const seat of distinctTargets) await measureAnchor(seat.id, { visibleH4: seat.id === xiahouDunSeat.id });
 
     const selectedId = distinctTargets[1].id;
     await measureAnchor(selectedId);
