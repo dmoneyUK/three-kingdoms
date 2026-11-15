@@ -4716,6 +4716,7 @@ function SingleTargetCardJourney({
   onInspectCard,
   onJourneySettled,
   onJourneyEventParked,
+  onJourneyRevealCompleted,
   onJourneyOwnershipChange,
 }: {
   action: PublicCardDisplayAction;
@@ -4734,6 +4735,7 @@ function SingleTargetCardJourney({
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneySettled?: (settlementEventId: string) => void;
   onJourneyEventParked?: (eventId: string) => void;
+  onJourneyRevealCompleted?: (eventId: string, physicalCardId: string) => void;
   onJourneyOwnershipChange?: (
     roomCode: string,
     actionKey: string,
@@ -4774,6 +4776,7 @@ function SingleTargetCardJourney({
   const [documentVisible, setDocumentVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
   const notifiedSettlementEventIdRef = useRef<string | null>(null);
   const parkedNotifiedEventIdsRef = useRef(new Set<string>());
+  const completedRevealNotifiedKeysRef = useRef(new Set<string>());
   const traceSignaturesRef = useRef(new Map<string, string>());
   const parkingFailureSignaturesRef = useRef(new Map<string, string>());
   const placementFailureReporter = useCallback((event: JourneyCard): SeatHistoryCardParkingOptions => {
@@ -5097,6 +5100,19 @@ function SingleTargetCardJourney({
           - Math.max(0, performance.now() - card.revealStartedAtMs));
         return [window.setTimeout(() => {
           if (!mountedRef.current) return;
+          const current = journeyRef.current;
+          const completedCard = current.cards.find((candidate) => candidate.eventId === card.eventId);
+          if (current.scopeKey !== scopeKey || current.viewerId !== viewerIdRef.current || current.viewerId !== viewerId
+            || !completedCard || completedCard.phase !== "reveal") return;
+          const completionKey = `${roomCode}\u001f${viewerId}\u001f${completedCard.eventId}\u001f${completedCard.cardFace.id}`;
+          if (!completedRevealNotifiedKeysRef.current.has(completionKey)) {
+            completedRevealNotifiedKeysRef.current.add(completionKey);
+            if (completedRevealNotifiedKeysRef.current.size > 500) {
+              const oldest = completedRevealNotifiedKeysRef.current.values().next().value;
+              if (oldest) completedRevealNotifiedKeysRef.current.delete(oldest);
+            }
+            onJourneyRevealCompleted?.(completedCard.eventId, completedCard.cardFace.id);
+          }
           setJourney((current) => {
             const currentCard = current.cards.find((candidate) => candidate.eventId === card.eventId);
             if (current.scopeKey !== scopeKey || !currentCard || currentCard.phase !== "reveal") return current;
@@ -5219,7 +5235,8 @@ function SingleTargetCardJourney({
       journeyRef.current = next;
       if (mountedRef.current) setJourney(next);
     };
-  }, [journeyEnabled, documentVisible, journey.cards, journey.scopeKey, scopeKey, activeCard?.eventId, activePhase]);
+  }, [journeyEnabled, documentVisible, journey.cards, journey.scopeKey, scopeKey, activeCard?.eventId, activePhase,
+    roomCode, viewerId, onJourneyRevealCompleted]);
 
   useEffect(() => {
     if (!journeyEnabled || !documentVisible || journey.scopeKey !== scopeKey || !journey.center || !activeCard || activeCard.phase !== "reveal"
@@ -6806,6 +6823,7 @@ export function PublicCardDisplay({
   responseHistoryOwnership = [],
   onInspectCard,
   onJourneyEventParked,
+  onJourneyRevealCompleted,
   onJourneySettled,
   onJourneyOwnershipChange,
 }: {
@@ -6827,6 +6845,7 @@ export function PublicCardDisplay({
   responseHistoryOwnership?: readonly { eventId: string; cardIds: readonly string[] }[];
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneyEventParked?: (eventId: string) => void;
+  onJourneyRevealCompleted?: (eventId: string, physicalCardId: string) => void;
   onJourneySettled?: (settlementEventId: string) => void;
   onJourneyOwnershipChange?: (
     roomCode: string,
@@ -6843,7 +6862,7 @@ export function PublicCardDisplay({
   }
   if (action.motion?.type === "single-target" || action.motion?.type === "negation"
     || action.motion?.type === "group-root" || action.motion?.type === "lust-cost") {
-    return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHarvestHistory={retainHarvestHistory} protectFirstParkedMiniature={protectFirstParkedMiniature} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
+    return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHarvestHistory={retainHarvestHistory} protectFirstParkedMiniature={protectFirstParkedMiniature} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyRevealCompleted={onJourneyRevealCompleted} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
   }
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {
     return <DuelCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHistoryDuringInspection={retainDuelHistoryDuringInspection} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;

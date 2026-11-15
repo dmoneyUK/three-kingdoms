@@ -29,6 +29,40 @@ export type PublicJudgementRevealRoute = {
   publicSequence: number;
 };
 
+/** A viewer-scoped record that the real public card finished its centre reveal. */
+export type PublicCardRevealCompletion = {
+  owner: "PublicCardDisplay";
+  roomCode: string;
+  viewerId: string;
+  sourceEventId: string;
+  physicalCardId: string;
+};
+
+/** Build completion proof only from the exact committed public source event. */
+export function publicCardRevealCompletionFromCommittedEvent(input: {
+  roomCode: string;
+  viewerId: string;
+  sourceEventId: string;
+  physicalCardId: string;
+  timeline: readonly PublicJudgementTimelineEvent[];
+}): PublicCardRevealCompletion | null {
+  if (!input.roomCode || !input.viewerId || !input.sourceEventId || !input.physicalCardId) return null;
+  const matches = input.timeline.filter((candidate) => candidate.id === input.sourceEventId);
+  if (matches.length !== 1) return null;
+  const source = matches[0];
+  if (source.type !== "card" || source.presentation === false || typeof source.privateToPlayerId === "string"
+    || !Number.isSafeInteger(source.publicSequence) || !source.card?.id || source.card.id !== input.physicalCardId
+    || !source.card.kind || !source.card.rank || !source.card.suit
+    || !["play", "activate", "reveal"].includes(source.action ?? "")) return null;
+  return {
+    owner: "PublicCardDisplay",
+    roomCode: input.roomCode,
+    viewerId: input.viewerId,
+    sourceEventId: source.id,
+    physicalCardId: source.card.id,
+  };
+}
+
 /** Claims only the active, server-committed public original Judgement card. */
 export function routePublicJudgementReveal(input: {
   event: PublicJudgementTimelineEvent;
@@ -120,7 +154,7 @@ export function routePublicJudgementTransition(input: {
   if (sourceMatches.length !== 1) return { kind: "blocked-invalid-proof", reason: "timeline-proof-mismatch" };
   const source = sourceMatches[0];
   if (source.type !== "card" || source.presentation === false || source.privateToPlayerId
-    || source.card?.id !== transition.physicalCardId
+    || source.card?.id !== transition.physicalCardId || !source.card.kind || !source.card.rank || !source.card.suit
     || source.action !== "play" && source.action !== "activate" && source.action !== "reveal") {
     return { kind: "blocked-invalid-proof", reason: "timeline-proof-mismatch" };
   }
@@ -128,6 +162,12 @@ export function routePublicJudgementTransition(input: {
   if (factRows.length !== 1 || factRows[0].category !== "STAGE_COMPLETED"
     || factRows[0].rootEventId !== transition.rootEventId || factRows[0].actorId !== fact.actorId
     || factRows[0].order !== event.publicSequence) return { kind: "blocked-invalid-proof", reason: factRows.length ? "conflicting-public-facts" : "missing-public-fact" };
+  if (transition.from.zone === "HAND" && transition.to.zone === "JUDGEMENT"
+    && (transition.from.ownerId !== factRows[0].actorId
+      || Boolean(source.actorId && source.actorId !== transition.from.ownerId)
+      || !factRows[0].affectedPlayerIds.includes(transition.to.ownerId))) {
+    return { kind: "blocked-invalid-proof", reason: "timeline-proof-mismatch" };
+  }
 
   const zone: PublicZoneProjection = {
     semantics: "PROVEN", visibility: "PUBLIC", eventId: event.id,
@@ -177,6 +217,21 @@ export function publicJudgementTransitionSourceEventId(route: PublicPresentation
 export function publicJudgementTransitionUsesExistingRevealOwner(route: PublicPresentationRoute): boolean {
   return route.kind === "zone-transition" && route.from?.zone === "DECK"
     && route.destination === "DISCARD" && Boolean(route.sourceEventId && route.physicalCardId);
+}
+
+/** Suppress a second centre reveal only for the exact viewed HAND card and attachment proof. */
+export function publicJudgementTransitionUsesCompletedPriorReveal(
+  route: PublicPresentationRoute,
+  completion: PublicCardRevealCompletion | null | undefined,
+): boolean {
+  return Boolean(completion?.owner === "PublicCardDisplay"
+    && route.kind === "zone-transition"
+    && route.scope.roomCode === completion.roomCode
+    && route.scope.viewerId === completion.viewerId
+    && route.from?.zone === "HAND"
+    && route.destination === "JUDGEMENT"
+    && route.sourceEventId === completion.sourceEventId
+    && route.physicalCardId === completion.physicalCardId);
 }
 
 export function publicJudgementTransitionMatches(event: PublicJudgementTimelineEvent, route: PublicPresentationRoute): boolean {

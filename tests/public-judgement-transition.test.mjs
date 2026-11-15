@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isM3JudgementTransitionEvent, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition } from "../app/public-judgement-transition.ts";
+import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEvent, publicJudgementTransitionUsesCompletedPriorReveal, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition } from "../app/public-judgement-transition.ts";
 
 const card = { id: "physical-delayed-card", kind: "Overindulgence", rank: "4", suit: "♥" };
 const ownerId = "player-1";
@@ -86,6 +86,36 @@ test("committed delayed-card attachment routes the exact real card into the reci
   assert.equal(result.ownerId, targetId);
 });
 
+test("only this viewer's completed public source-card reveal suppresses its matching HAND-to-JUDGEMENT centre reveal", () => {
+  const input = setup({ from: { zone: "HAND", ownerId }, to: { zone: "JUDGEMENT", ownerId: targetId } });
+  const routeResult = route(input);
+  const completion = publicCardRevealCompletionFromCommittedEvent({
+    roomCode: "ROOM", viewerId: "viewer-1", sourceEventId: input.source.id,
+    physicalCardId: card.id, timeline: input.timeline,
+  });
+  assert.equal(completion?.owner, "PublicCardDisplay");
+  assert.equal(publicJudgementTransitionUsesCompletedPriorReveal(routeResult, completion), true);
+  assert.equal(publicJudgementTransitionUsesCompletedPriorReveal(routeResult, null), false, "cold viewers retain one full-size read");
+  assert.equal(publicJudgementTransitionUsesCompletedPriorReveal(routeResult, { ...completion, roomCode: "OTHER" }), false);
+  assert.equal(publicJudgementTransitionUsesCompletedPriorReveal(routeResult, { ...completion, viewerId: "viewer-2" }), false);
+  assert.equal(publicJudgementTransitionUsesCompletedPriorReveal(routeResult, { ...completion, sourceEventId: "another-event" }), false);
+  assert.equal(publicJudgementTransitionUsesCompletedPriorReveal(routeResult, { ...completion, physicalCardId: "another-card" }), false);
+  const deckReveal = route(setup({ from: { zone: "DECK", ownerId: null }, to: { zone: "DISCARD", ownerId: null }, sourceAction: "reveal" }));
+  assert.equal(publicJudgementTransitionUsesCompletedPriorReveal(deckReveal, completion), false, "a distinct later Deck Judgement keeps its own reveal");
+  const judgementDiscard = route(setup({ from: { zone: "JUDGEMENT", ownerId: targetId }, to: { zone: "DISCARD", ownerId: null }, sourceAction: "activate" }));
+  assert.equal(publicJudgementTransitionUsesCompletedPriorReveal(judgementDiscard, completion), false, "JUDGEMENT-to-DISCARD keeps its own terminal presentation");
+});
+
+test("a reveal completion record requires one exact committed public source CardFace", () => {
+  const input = setup({ from: { zone: "HAND", ownerId }, to: { zone: "JUDGEMENT", ownerId: targetId } });
+  const valid = { roomCode: "ROOM", viewerId: "viewer-1", sourceEventId: input.source.id, physicalCardId: card.id, timeline: input.timeline };
+  assert.ok(publicCardRevealCompletionFromCommittedEvent(valid));
+  assert.equal(publicCardRevealCompletionFromCommittedEvent({ ...valid, physicalCardId: "different-card" }), null);
+  assert.equal(publicCardRevealCompletionFromCommittedEvent({ ...valid, timeline: [...input.timeline, input.source] }), null, "duplicate event IDs are ambiguous");
+  assert.equal(publicCardRevealCompletionFromCommittedEvent({ ...valid, timeline: [{ ...input.source, presentation: false }, input.event] }), null);
+  assert.equal(publicCardRevealCompletionFromCommittedEvent({ ...valid, timeline: [{ ...input.source, privateToPlayerId: "viewer-1" }, input.event] }), null);
+});
+
 test("later Judgement settlement routes from the real Judgement owner to public Discard", () => {
   const input = setup({ from: { zone: "JUDGEMENT", ownerId: targetId }, to: { zone: "DISCARD", ownerId: null }, sourceAction: "activate" });
   const result = route(input);
@@ -116,6 +146,14 @@ test("cancelled placement and private, mismatched, or replayed proof never creat
   const mismatched = setup({ from: { zone: "HAND", ownerId }, to: { zone: "JUDGEMENT", ownerId: targetId } });
   mismatched.event.publicZoneTransition.physicalCardId = "another-card";
   assert.deepEqual(route(mismatched), { kind: "blocked-invalid-proof", reason: "timeline-proof-mismatch" });
+
+  const wrongAuthor = setup({ from: { zone: "HAND", ownerId }, to: { zone: "JUDGEMENT", ownerId: targetId } });
+  wrongAuthor.event.publicZoneTransition.from.ownerId = "player-3";
+  assert.deepEqual(route(wrongAuthor), { kind: "blocked-invalid-proof", reason: "timeline-proof-mismatch" });
+
+  const wrongRecipient = setup({ from: { zone: "HAND", ownerId }, to: { zone: "JUDGEMENT", ownerId: targetId } });
+  wrongRecipient.event.publicZoneTransition.to.ownerId = "player-3";
+  assert.deepEqual(route(wrongRecipient), { kind: "blocked-invalid-proof", reason: "timeline-proof-mismatch" });
 
   const replayed = setup({ from: { zone: "HAND", ownerId }, to: { zone: "JUDGEMENT", ownerId: targetId } });
   assert.deepEqual(routePublicJudgementTransition({ ...replayed, roomCode: "ROOM", viewerId: "viewer-1", retiredTransitionIds: [replayed.event.id] }), {
