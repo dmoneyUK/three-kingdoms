@@ -327,9 +327,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     await expect(layer.locator(".opponent-inspection-backdrop")).toBeVisible();
     expect(await inspect.evaluate((element) => /\b(Lord|Loyalist|Rebel|Renegade|Spy)\b/.test(element.textContent ?? ""))).toBe(false);
 
-    const [stageBox, safeBox, shellBox, inspectBox, backdropBox, bodyBox, portraitColumnBox, portraitBox, captionBox, identityBox, identityType, menuBox, guidanceBox, dockOpen, activityBox] = await Promise.all([
+    const [stageBox, safeBox, tableBox, shellBox, inspectBox, backdropBox, bodyBox, portraitColumnBox, portraitBox, captionBox, identityBox, identityType, menuBox, guidanceBox, dockOpen, activityBox] = await Promise.all([
       stage.boundingBox(),
       page.locator(".interaction-safe-zone").boundingBox(),
+      page.locator(".play-table").boundingBox(),
       shell.boundingBox(),
       inspect.boundingBox(),
       layer.locator(".opponent-inspection-backdrop").boundingBox(),
@@ -357,7 +358,19 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     expect(Math.abs(backdropBox.y - stageBox.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(backdropBox.width - stageBox.width)).toBeLessThanOrEqual(1);
     expect(Math.abs(backdropBox.height - stageBox.height)).toBeLessThanOrEqual(1);
-    expect(Math.abs((shellBox.x + shellBox.width / 2) - (stageBox.x + stageBox.width / 2))).toBeLessThanOrEqual(1);
+    if (viewport.width <= 520) {
+      const expectedLeft = await page.evaluate(({ seatId, tableLeft, tableWidth, panelWidth }) => {
+        const seat = document.querySelector(`[data-player-anchor="${seatId}"]`).getBoundingClientRect();
+        const viewportLeft = window.visualViewport?.offsetLeft ?? 0;
+        const viewportRight = viewportLeft + (window.visualViewport?.width ?? innerWidth);
+        const safeLeft = Math.max(tableLeft + 8, viewportLeft + 8);
+        const safeRight = Math.min(tableLeft + tableWidth - 8, viewportRight - 8);
+        return Math.min(Math.max(seat.left + seat.width / 2 - panelWidth / 2, safeLeft), safeRight - panelWidth);
+      }, { seatId: "p2", tableLeft: tableBox.x, tableWidth: tableBox.width, panelWidth: shellBox.width });
+      expect(Math.abs(shellBox.x - expectedLeft)).toBeLessThanOrEqual(1);
+    } else {
+      expect(Math.abs((shellBox.x + shellBox.width / 2) - (stageBox.x + stageBox.width / 2))).toBeLessThanOrEqual(1);
+    }
     expect(shellBox.y).toBeGreaterThanOrEqual(stageBox.y + 2);
     expect(shellBox.y).toBeGreaterThanOrEqual(Math.max(...before.map(({ y, height }) => y + height)) + 8);
     expect(shellBox.y + shellBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height - 10);
@@ -376,9 +389,6 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     if (viewport.width <= 520) {
       expect(portraitBox.width).toBeGreaterThanOrEqual(viewport.count <= 4 ? 58 : 50);
       expect(shellBox.width / stageBox.width).toBeLessThanOrEqual(0.92);
-      const leftInset = shellBox.x - stageBox.x;
-      const rightInset = stageBox.x + stageBox.width - shellBox.x - shellBox.width;
-      expect(Math.abs(leftInset - rightInset)).toBeLessThanOrEqual(1);
     }
     const heroNameBox = await inspect.locator(".hero-focus-identity-row").nth(0).locator(".hero-focus-identity-name").boundingBox();
     const hpBox = await inspect.locator(".hero-focus-identity-row").nth(0).locator(".hero-focus-identity-stat").boundingBox();
@@ -816,7 +826,24 @@ for (const viewport of ins5Viewports) {
     for (const box of [inspectBox, bodyBox, portraitColumnBox, portraitBox, captionBox, mainBox, upperBox, identityBox, skillsBox, publicZonesBox, judgementBox, equipmentBox, panelBox, stageBox, dockBox, handBox]) expect(box).not.toBeNull();
     expect(Math.abs(panelBox.width - inspectBox.width)).toBeLessThanOrEqual(8);
     expect(inspectBox.width).toBeLessThanOrEqual(bodyBox.width + captionBox.width * 0.01 + 2);
-    expect(Math.abs(panelBox.x + panelBox.width / 2 - (stageBox.x + stageBox.width / 2))).toBeLessThanOrEqual(1);
+    const inspectedSide = await page.locator('.player-board [data-player-anchor="p2"]').getAttribute("data-side-column");
+    if (viewport.width <= 520 && viewport.count <= 6 && (viewport.count === 4 || inspectedSide === "top")) {
+      const anchor = await page.evaluate(() => {
+        const table = document.querySelector(".play-table").getBoundingClientRect();
+        const seat = document.querySelector('.player-board [data-player-anchor="p2"]').getBoundingClientRect();
+        const shell = document.querySelector(".opponent-inspection-floating-shell").getBoundingClientRect();
+        const viewportLeft = window.visualViewport?.offsetLeft ?? 0;
+        const viewportRight = viewportLeft + (window.visualViewport?.width ?? innerWidth);
+        const safeLeft = Math.max(table.left + 8, viewportLeft + 8);
+        const safeRight = Math.min(table.right - 8, viewportRight - 8);
+        const preferredLeft = seat.left + seat.width / 2 - shell.width / 2;
+        return { expectedLeft: Math.min(Math.max(preferredLeft, safeLeft), safeRight - shell.width), seatBottom: seat.bottom };
+      });
+      expect(Math.abs(panelBox.x - anchor.expectedLeft)).toBeLessThanOrEqual(1);
+      expect(panelBox.y).toBeGreaterThanOrEqual(anchor.seatBottom + 7);
+    } else {
+      expect(Math.abs(panelBox.x + panelBox.width / 2 - (stageBox.x + stageBox.width / 2))).toBeLessThanOrEqual(1);
+    }
     expect(portraitColumnBox.x).toBeGreaterThanOrEqual(bodyBox.x - 1);
     expect(portraitColumnBox.x + portraitColumnBox.width).toBeLessThanOrEqual(bodyBox.x + bodyBox.width + 1);
     expect(portraitBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.25);
@@ -1225,6 +1252,12 @@ test("INS5-2 five-seat phone Inspector follows each actual Hero Seat across mobi
             .find((seat) => seat.dataset.playerAnchor === subjectId);
           const shellBox = rect(shell);
           const subjectBox = rect(subject);
+          const tableBox = rect(table);
+          const viewportLeft = visualViewport?.offsetLeft ?? 0;
+          const viewportRight = viewportLeft + (visualViewport?.width ?? innerWidth);
+          const safeLeft = Math.max(tableBox.left + 8, viewportLeft + 8);
+          const safeRight = Math.min(tableBox.right - 8, viewportRight - 8);
+          const preferredLeft = subjectBox.left + subjectBox.width / 2 - shellBox.width / 2;
           const obstacleSelector = [
             ".public-activity-chip", ".stage-system-cluster", ".visible-countdown",
             "[data-public-card-announcement='true']",
@@ -1236,6 +1269,7 @@ test("INS5-2 five-seat phone Inspector follows each actual Hero Seat across mobi
             viewport: { width: innerWidth, height: innerHeight },
             subjectId,
             side: subject?.dataset.sideColumn,
+            expectedLeft: Math.min(Math.max(preferredLeft, safeLeft), safeRight - shellBox.width),
             seat: subjectBox,
             layer: rect(layer),
             shell: shellBox,
@@ -1256,9 +1290,16 @@ test("INS5-2 five-seat phone Inspector follows each actual Hero Seat across mobi
         expect(geometry.shell.top).toBeGreaterThanOrEqual(0);
         expect(geometry.shell.bottom).toBeLessThanOrEqual(viewport.height);
         expect(geometry.documentWidth).toBeLessThanOrEqual(viewport.width);
-        expect(geometry.verticalCenterDelta, JSON.stringify(geometry)).toBeLessThanOrEqual(24);
-        if (geometry.side === "left") expect(geometry.shell.left).toBeGreaterThanOrEqual(geometry.seat.right + 2);
-        else expect(geometry.shell.right).toBeLessThanOrEqual(geometry.seat.left - 2);
+        if (geometry.side === "top") {
+          expect(Math.abs(geometry.shell.left - geometry.expectedLeft), JSON.stringify(geometry)).toBeLessThanOrEqual(1);
+          expect(geometry.shell.top, JSON.stringify(geometry)).toBeGreaterThanOrEqual(geometry.seat.bottom + 7);
+          expect(Math.min(geometry.shell.right, geometry.seat.right), JSON.stringify(geometry))
+            .toBeGreaterThan(Math.max(geometry.shell.left, geometry.seat.left));
+        } else {
+          expect(geometry.verticalCenterDelta, JSON.stringify(geometry)).toBeLessThanOrEqual(24);
+          if (geometry.side === "left") expect(geometry.shell.left).toBeGreaterThanOrEqual(geometry.seat.right + 2);
+          else expect(geometry.shell.right).toBeLessThanOrEqual(geometry.seat.left - 2);
+        }
         for (const seat of geometry.seats) expect(overlaps(geometry.shell, seat)).toBe(false);
         expect(overlaps(geometry.shell, geometry.dock)).toBe(false);
         expect(overlaps(geometry.shell, geometry.hand)).toBe(false);
@@ -1281,14 +1322,21 @@ test("INS5-2 five-seat phone Inspector follows each actual Hero Seat across mobi
           const seatBox = seat?.getBoundingClientRect();
           const shellBox = shell?.getBoundingClientRect();
           return {
+            side: seat?.dataset.sideColumn,
             seatCenter: seatBox ? seatBox.top + seatBox.height / 2 : null,
             shellCenter: shellBox ? shellBox.top + shellBox.height / 2 : null,
+            seatBottom: seatBox?.bottom ?? null,
+            shellTop: shellBox?.top ?? null,
             shell: shellBox ? { left: shellBox.left, top: shellBox.top, right: shellBox.right, bottom: shellBox.bottom } : null,
             viewport: { width: innerWidth, height: innerHeight },
           };
         });
         expect(resized.viewport).toEqual({ width: 390, height: 844 });
-        expect(Math.abs(resized.shellCenter - resized.seatCenter), JSON.stringify(resized)).toBeLessThanOrEqual(24);
+        if (resized.side === "top") {
+          expect(resized.shellTop, JSON.stringify(resized)).toBeGreaterThanOrEqual(resized.seatBottom + 7);
+        } else {
+          expect(Math.abs(resized.shellCenter - resized.seatCenter), JSON.stringify(resized)).toBeLessThanOrEqual(24);
+        }
       }
       await lastHero.focus();
       await page.keyboard.press("Escape");
@@ -1323,6 +1371,114 @@ test("INS5-2 five-seat phone Inspector follows each actual Hero Seat across mobi
     verticalCenterDelta,
   }))));
   expect(measurements).toHaveLength(20);
+});
+
+test("§10.56 440px phone Inspector anchors under the selected top-row Seat", async ({ browser }) => {
+  const viewport = { width: 440, height: 894 };
+  const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+  const page = await context.newPage();
+  try {
+    await loadFixture(page, { ...viewport, count: 5, state: "rest", equipmentCase: "ins5PhoneDetails", playerNamePrefix: "Inspector" });
+    const topSeats = page.locator('.player-board [data-side-column="top"]');
+    const topSeatIds = await topSeats.evaluateAll((seats) => seats.map((seat) => ({
+      id: seat.dataset.playerAnchor,
+      x: seat.getBoundingClientRect().left,
+    })).sort((a, b) => a.x - b.x));
+    expect(topSeatIds.length, "Expected left, centre, and right Seats in the five-player top row").toBeGreaterThanOrEqual(3);
+    const chosen = [topSeatIds[0], topSeatIds[Math.floor((topSeatIds.length - 1) / 2)], topSeatIds.at(-1)];
+    const distinctTargets = [...new Map(chosen.map((seat) => [seat.id, seat])).values()];
+    expect(distinctTargets).toHaveLength(3);
+
+    const measureAnchor = async (id) => {
+      const opener = page.locator(`.player-board [data-player-anchor="${id}"] .opponent-hero-target`);
+      const panel = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
+      if (await panel.count() !== 1 || await panel.getAttribute("data-inspect-player-id") !== id) await opener.tap();
+      await expect(panel).toHaveAttribute("data-inspect-player-id", id);
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const geometry = await page.evaluate((subjectId) => {
+        const rect = (element) => {
+          if (!element) return null;
+          const { x, y, left, right, top, bottom, width, height } = element.getBoundingClientRect();
+          return { x, y, left, right, top, bottom, width, height };
+        };
+        const visible = (element) => {
+          if (!element) return false;
+          const style = getComputedStyle(element);
+          const box = element.getBoundingClientRect();
+          return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0
+            && box.width > 0 && box.height > 0;
+        };
+        const table = document.querySelector(".play-table");
+        const shell = document.querySelector(".opponent-inspection-floating-shell");
+        const seat = [...document.querySelectorAll(".player-board [data-player-anchor]")]
+          .find((element) => element.dataset.playerAnchor === subjectId);
+        const selectors = [
+          ".public-activity-chip", ".stage-system-cluster", ".visible-countdown", ".effect-notice", ".turn-notice",
+          "[data-public-card-announcement='true']", ".public-card-journey-card", ".played-card-stage",
+          ".harvest-choice-panel", ".target-card-picker-overlay", ".target-card-picker-panel",
+        ].join(",");
+        const otherSeats = [...document.querySelectorAll(".player-board [data-player-anchor]")].filter((element) => element !== seat);
+        const protectedNodes = [
+          ...table.querySelectorAll(selectors), ...otherSeats,
+          document.querySelector(".local-player-dock"), document.querySelector(".local-hand-rail"),
+        ].filter(visible);
+        const viewportLeft = window.visualViewport?.offsetLeft ?? 0;
+        const viewportRight = viewportLeft + (window.visualViewport?.width ?? innerWidth);
+        const tableBox = rect(table);
+        const shellBox = rect(shell);
+        const seatBox = rect(seat);
+        const safeLeft = Math.max(tableBox.left + 8, viewportLeft + 8);
+        const safeRight = Math.min(tableBox.right - 8, viewportRight - 8);
+        const preferredLeft = seatBox.left + seatBox.width / 2 - shellBox.width / 2;
+        const expectedLeft = Math.min(Math.max(preferredLeft, safeLeft), safeRight - shellBox.width);
+        return {
+          id: document.querySelector(".hero-focus-inspect")?.dataset.inspectPlayerId,
+          shell: shellBox,
+          seat: seatBox,
+          expectedLeft,
+          safeLeft,
+          safeRight,
+          protected: protectedNodes.map(rect),
+        };
+      }, id);
+      expect(geometry.id).toBe(id);
+      expect(geometry.shell.width, JSON.stringify(geometry)).toBeGreaterThanOrEqual(250);
+      expect(geometry.shell.width, JSON.stringify(geometry)).toBeLessThanOrEqual(280);
+      expect(geometry.shell.left, JSON.stringify(geometry)).toBeGreaterThanOrEqual(geometry.safeLeft - 1);
+      expect(geometry.shell.right, JSON.stringify(geometry)).toBeLessThanOrEqual(geometry.safeRight + 1);
+      expect(Math.abs(geometry.shell.left - geometry.expectedLeft), JSON.stringify(geometry)).toBeLessThanOrEqual(1);
+      expect(geometry.shell.top, JSON.stringify(geometry)).toBeGreaterThanOrEqual(geometry.seat.bottom + 7);
+      expect(Math.min(geometry.shell.right, geometry.seat.right), JSON.stringify(geometry))
+        .toBeGreaterThan(Math.max(geometry.shell.left, geometry.seat.left));
+      for (const protectedBox of geometry.protected) {
+        expect(overlaps(geometry.shell, protectedBox), JSON.stringify({ id, geometry, protectedBox })).toBe(false);
+      }
+    };
+
+    for (const seat of distinctTargets) await measureAnchor(seat.id);
+
+    const selectedId = distinctTargets[1].id;
+    await measureAnchor(selectedId);
+    const switchTo = await page.evaluate((targetId) => {
+      const target = window.__browserRoom.players.find((player) => player.id === targetId);
+      const players = window.__browserRoom.players;
+      return [...document.querySelectorAll(".test-view-switch-button")].map((button) => button.dataset.testViewerId)
+        .find((viewerId) => {
+          const viewer = players.find((player) => player.id === viewerId);
+          const relative = (target.seat - viewer.seat + players.length) % players.length;
+          return viewerId !== targetId && relative > 0 && relative < 4;
+        }) ?? null;
+    }, selectedId);
+    expect(switchTo, "TEST SWITCH should retain the chosen Hero as a top-row opponent").not.toBeNull();
+    const viewerName = await page.evaluate((id) => window.__browserRoom.players.find((player) => player.id === id)?.name, switchTo);
+    await page.getByRole("button", { name: `Switch to ${viewerName}`, exact: true }).tap();
+    await expect(page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel')).toHaveCount(0);
+    await measureAnchor(selectedId);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await measureAnchor(selectedId);
+  } finally {
+    await context.close();
+  }
 });
 
 test("INS5-2 five-seat Inspector preserves a live local target and Card Details through touch", async ({ browser }) => {

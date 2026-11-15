@@ -2,12 +2,19 @@
 
 ## §10.56 OPPONENT-INSPECTOR-SEAT-ANCHOR-01
 
-**状态：** 当前任务；尚未实现；需要用户手机复验。
+**状态：** 本地实现完成，聚焦验证通过；尚未提交/推送，CI 与 Worker 部署待执行；需要用户手机复验。
 
-**最新设计：** `docs/UX2-refine.md` revision `2026-11-15 20:02 UTC`。本任务只按 §10.56 执行，支持 4–6 人局。手机顶排 Inspector 应根据实际选中玩家座位的实时 DOMRect，尽可能紧贴其下方；保留侧边座位现有行为、隐私、详情内容和操作。
+**最新设计：** `docs/UX2-refine.md` revision `2026-11-15 20:02 UTC`，§10.56。手机 4–6 人局顶排 Inspector 按选中真实座位实时锚定，优先显示在该座位下方；水平位置按视口/战场安全边界作最近可行夹取；避开 H4/PAC、活动 CardFace、其他玩家座位及本地 Dock/手牌。保留现有左右侧座位布局和 TEST SWITCH 隐私边界。
 
-**§10.49 / §10.51 复审结果：** 两项源码复审已完成，但 owner 报告的失败仍为 OPEN / NOT ACCEPTED。§10.49 的修复已在生产代码中；过期恢复单测 4/4、共享响应 API 14/14 通过。§10.51 的 GET 恢复与 React 拥有 H4 节点的约束已落实；room-poll 恢复单测 4/4、错误画面恢复单测 3/3 通过。现有 §10.49 视频属于修复前 SHA；两项均未提供修复后的失败 trace。不得推断新原因或自行标记验收；仅在拿到当前失败步骤的证据后回到对应原任务。
+**原因与修改：** `OpponentPublicInspector.measure()` 原先只让五人局左右侧 Seat 进入相对定位分支；顶排 Seat 因 `data-side-column="top"` 未匹配而走全局居中分支。现在新增 4–6 人手机顶排分支，以真实 Seat DOMRect、`.play-table` 和 `visualViewport` 计算位置，检测实际公告、公开活动、CardFace、倒计时、选择面板和其他 Seats；空间不足时限制面板高度，让公开详情区域滚动。TEST SWITCH 按原 viewer 隔离行为关闭 Inspector；重新打开时重新测量新座位。同步更新 4 人和 5 人几何回归断言。
 
-**§10.58 最近交付：** commit `4164b5eba9ec3501cdf95f0cdad1e8eb1f9c6ace`；[精确 SHA Actions 43754584146](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43754584146) 全部必需 job 通过；Worker `2f2ea283-d616-4201-a800-792d606924fe`；生产 `/` 和 `/api/health` smoke 通过。状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。
+**验证记录（2026-11-15 UTC）：**
 
-**本任务步骤：** 检查 `OpponentPublicInspector` 的测量代码和已有手机几何测试。新增或调整一个聚焦的 4–6 人顶排行为分支：使用当前选中真实座位的 DOMRect、viewport 安全边界和现有遮挡物进行锚定；保持侧边座位分支不变。必要时仅运行 440px 左/中/右座位场景，单任务本地 UI/浏览器测试总计不超过 5 分钟。完成聚焦验证和 `git diff --check` 后，提交推送并核实精确 SHA Actions、Worker 部署及生产健康检查。不得声称用户手机验收通过。
+- 聚焦浏览器命令：`npx playwright test --config tests/browser/playwright.config.mjs tests/browser/opponent-inspect-hero-focus.spec.mjs --grep '§10.56|opponent Inspect uses the measured Stage safe zone at 480px' --workers=1`。
+- 两次初始尝试失败于旧断言：其一仍要求手机 Inspector 全局居中，其二错误假设 TEST SWITCH 保留跨 viewer 的 Inspector。保留的身份隔离会关闭面板；已将验证改为切换后重新打开并核实新锚点。
+- 最后一次聚焦运行：2/2 通过，约 8.4 秒；包括 4 人 480px 回归，以及 5 人 440px 顶排左/中/右、TEST SWITCH 和视口缩放。三次浏览器进程累计约 33 秒，低于每任务 5 分钟上限。
+- `git diff --check`、浏览器规格 `node --check` 已在回归断言最终调整前通过；需要在提交前重跑静态差异/语法检查。浏览器页面通过 Vite 加载并执行。本地未运行整套测试或桌面检查。
+
+**当前工作树：** 隔离工作树 `/Users/jingedai/.codex/worktrees/ux2-1049-expiry-20261115`，分支 `codex/ux2-1049-expiry-20261115`，基线 `7561fae7766736f97c1ff9cc3bc6bc28c431bddf`。只包含本任务 `app/page.tsx` 与相关 Inspector 浏览器几何断言的改动，以及 3 个 Inspector 几何回归规格和本 handover。
+
+**下一步：** 重跑 `git diff --check` 与三个修改过的 `.spec.mjs` 语法检查；确认远端 `ux-v2` 未前进且改动范围仅属本任务，再提交/推送。之后等待该实现精确 SHA 的所有必需 Actions、Worker 部署和生产 `/`、`/api/health` smoke。成功后在设计文档将 §10.56 标为 IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW，并以 §10.57 作为唯一后续任务；不得标记用户验收通过。
