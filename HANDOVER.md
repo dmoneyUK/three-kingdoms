@@ -1,17 +1,20 @@
 # HANDOVER — 当前唯一任务
 
-## §10.55 OVERINDULGENCE-ONE-PHYSICAL-REVEAL-01
+## §10.58 SERPENT-SPEAR-FULL-CONTROL-LABEL-01
 
-**状态：** IMPLEMENTED LOCALLY / FOCUSED VALIDATION PASSED — 尚未提交、推送或部署；交付后等待用户 iPhone 复审。
+**状态（2026-11-15 19:47 UTC）：** IMPLEMENTED LOCALLY / FOCUSED VALIDATION PASSED / REMOTE DELIVERY PENDING. 不代表用户验收。
 
-**设计：** `docs/UX2-refine.md` revision `2026-11-15 18:02 UTC`。该版目录仍将 §10.55 列为已授权排队项，§10.49 列为 P0 当前；本工作依用户先完成当前任务的直接指示继续 §10.55，不改变设计文档状态。
+**设计版本：** `docs/UX2-refine.md` revision `2026-11-15 19:47 UTC`。仅修复真实武器名称呈现与手机按钮可读性；玩法、服务端权限、手牌身份和合法两卡 `AS ATTACK` 不变。完整执行要求仍见 §10.58。
 
-**实现：** `PublicCardDisplay` 只在真实中央 reveal 计时完成后，依据唯一、公开且已提交的 timeline 事件记录房间/观察者/事件/实体牌 ID。仅当此证明与服务端 `PROVEN` HAND→JUDGEMENT 的 source、physical card、作者和目标都精确吻合时，才省略第二次中央大牌；显示真实目标判定缩略牌，并等其真实 DOM 锚点可见后退休迁移。无证明的冷观察者、不同的 DECK 判定牌及 JUDGEMENT→DISCARD 保留原路由。没有卡名分支或规则变化。
+**实现：** `app/page.tsx` 从 `cardDefinition("SerpentSpear").name` 统一完整名称，修复 response/provider 标签、Console 摘要与 Play 阶段模式按钮；模式按钮有明确的 `Use Serpent Spear` / `Exit Serpent Spear mode` accessible label 和 `aria-pressed`。`app/sequence-overrides.css` 只为该武器按钮允许自然换行并保持最小 44px 高度。未改服务器和规则。
 
-**验证，2026-11-15 19:06 UTC：** `node --import tsx --test tests/public-judgement-transition.test.mjs` 8/8 通过；`npm run build` 通过（仅有既有大 chunk 提示）；`git diff --check` 通过。唯一手机 Playwright 场景因 `127.0.0.1:3137` 测试 API 未启动而未进入场景，未重试。本地 UI 测试仍在 5 分钟上限内。
+**验证时间线（UTC，按实际执行顺序）：**
 
-**远端门禁：** 当前 `origin/ux-v2` 与基线 SHA `a88becfd2706413c09873c75313a1cc49a73070d` 一致；提交前最新该 SHA Actions `43746723435` 为 success。实现尚未推送，故没有实现 SHA 的 CI/部署结果。
+- 19:40 前后，第一次 Playwright 场景失败：Worker fixture 使用构建产物 `dist`，测试当时读到旧按钮 “Spear”。
+- 随后 `npm run build` 通过；仅有既存大 chunk 与动态路由分类提示。
+- 第二次 Playwright 探索扩展场景失败在额外构造的 Duel fixture：该夹具没有生成投影的 `serpent_spear_attack` 选项。移除此不代表真实服务端状态的补充场景，将 provider 标签覆盖移到 GameRoom 组件测试；未改造规则或降低现有 API 断言。
+- `node --import tsx --test --test-name-pattern='Serpent Spear' tests/active-skill-interactions.test.mjs`：2/2 通过；覆盖模式的完整/退出名称、pressed 状态、真实两卡流程保留，以及 CurrentAction 未投影时不自行生成响应入口。
+- 最终手机浏览器场景：`npx playwright test --config tests/browser/playwright.config.mjs tests/browser/hero-event-triggers-real-gameplay.spec.mjs --grep 'Serpent Spear presents two real cards as one Attack' --workers=1`：1/1 通过，390×844；确认完整名称、44px 高度、≥7px 字号、无文字溢出、模式切换状态、未装备玩家无按钮，既有真实两张手牌组成 Attack 与响应权限保持通过。三次浏览器启动总耗时约 32 秒，低于每任务 5 分钟上限。
+- `git diff --check` 在最后文档更新前通过；需再对最终 diff 运行一次。
 
-**最近相关验收状态：** 用户报告 §10.49、§10.51 验收失败；截至本次复核，已有针对性浏览器场景分别通过，但没有复现用户当前失败画面，已请求最新失败步骤/trace。不得据此宣称用户验收通过；当前仅执行 §10.55。
-
-**下一步（本任务）：** 复核最终 diff，提交并推送 `ux-v2`，核对实现精确 SHA 的 Actions、Worker 部署和生产 smoke，再将状态标为 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW`。不得自我验收。
+**下步（本任务仍未交付）：** 复核最终 diff 与最新 `origin/ux-v2` HEAD 的 Actions；提交并推送本任务文件，等待实现精确 SHA 的全部 CI、Worker 部署及生产 smoke。用户最新指示称 §10.49 与 §10.51 均验收失败；本 handover 不提前切换任务，完成 §10.58 交付后按顺序重审 §10.49、§10.51。两者的最新失败细节尚未包含在当前指示中，不作猜测性修复。手机验收仍待用户进行。

@@ -548,7 +548,14 @@ test("Serpent Spear Cancel clears mode, both cost cards, and target", async () =
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  await act(async () => { button(renderer, { children: "Spear" }).props.onClick(); });
+  const modeButton = button(renderer, { "data-serpent-spear-control": "true" });
+  assert.equal(renderedNodeText(modeButton), "Serpent Spear");
+  assert.equal(modeButton.props["aria-label"], "Use Serpent Spear");
+  assert.equal(modeButton.props["aria-pressed"], false);
+  await act(async () => { modeButton.props.onClick(); });
+  assert.equal(renderedNodeText(button(renderer, { "data-serpent-spear-control": "true" })), "Normal");
+  assert.equal(button(renderer, { "data-serpent-spear-control": "true" }).props["aria-label"], "Exit Serpent Spear mode");
+  assert.equal(button(renderer, { "data-serpent-spear-control": "true" }).props["aria-pressed"], true);
   await act(async () => { handCardButton(renderer, "serpent-cost-one").props.onClick(); });
   await act(async () => { handCardButton(renderer, "serpent-cost-two").props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select TARGET" }).props.onClick(); });
@@ -556,10 +563,41 @@ test("Serpent Spear Cancel clears mode, both cost cards, and target", async () =
   await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
   const actionCountBeforeCancel = actionCalls.length;
   assert.equal(actionCountBeforeCancel, 0);
-  assert.equal(button(renderer, { children: "Spear" }).props.className.includes("active"), false);
+  assert.equal(button(renderer, { "data-serpent-spear-control": "true" }).props.className.includes("active"), false);
+  assert.equal(button(renderer, { "data-serpent-spear-control": "true" }).props["aria-pressed"], false);
   assert.equal(handCardButton(renderer, "serpent-cost-one").props.className.includes("selected"), false);
   assert.equal(handCardButton(renderer, "serpent-cost-two").props.className.includes("selected"), false);
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
+  await act(async () => { renderer.unmount(); });
+});
+
+test("Serpent Spear response option keeps the full projected weapon name", async () => {
+  const roomWithoutProvider = duelResponseRoom();
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: roomWithoutProvider, onRecover: () => {} }, React.createElement(GameRoom, { room: roomWithoutProvider, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(renderer.root.findAllByType("button").filter((node) => renderedNodeText(node).includes("Serpent Spear")).length, 0, "the response label is not invented when CurrentAction omits the provider");
+  await act(async () => { renderer.unmount(); });
+
+  const responseCards = [card("spear-response-peach", "Peach"), card("spear-response-dodge", "Dodge")];
+  const room = duelResponseRoom();
+  room.myHand = responseCards;
+  room.players = room.players.map((player) => player.id === room.meId
+    ? { ...player, handCount: responseCards.length, equipmentCards: [card("spear-response-equipment", "SerpentSpear")] }
+    : player);
+  room.currentAction = {
+    ...room.currentAction,
+    options: [
+      ...(room.currentAction.options ?? []),
+      { providerId: "serpent_spear_attack", satisfies: "attack", label: "Use Serpent Spear", description: "Use Serpent Spear", activation: "explicit", selection: { type: "cards", min: 2, max: 2, eligibleCardIds: responseCards.map((item) => item.id) } },
+    ],
+  };
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const spearProviderButton = button(renderer, { children: "Serpent Spear" });
+  assert.match(spearProviderButton.props.className, /serpent-control/);
+  await act(async () => { spearProviderButton.props.onClick(); });
+  assert.match(button(renderer, { children: "Cancel Serpent Spear" }).props.className, /active/);
   await act(async () => { renderer.unmount(); });
 });
 

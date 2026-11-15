@@ -2502,8 +2502,9 @@ function lustDuelOrderAccessibleMessage(
 }
 function heroSkillNames(hero: Pick<Hero, "id" | "skills">) { return hero.skills?.map((skill) => skill.name) ?? [heroSkillName(hero.id) ?? "Hero"]; }
 function heroSkillName(id?: string | null) { return id ? HEROES.find((hero) => hero.id === id)?.skills[0]?.name ?? null : null; }
+const SERPENT_SPEAR_LABEL = cardDefinition("SerpentSpear").name;
 function conciseActionLabel(label: string) {
-  return ({ "Play Attack": "Attack", "Play Dodge": "Dodge", "Play Negation": "Negate", "Use Serpent Spear": "Spear" } as Record<string, string>)[label] ?? label;
+  return ({ "Play Attack": "Attack", "Play Dodge": "Dodge", "Play Negation": "Negate", "Use Serpent Spear": SERPENT_SPEAR_LABEL } as Record<string, string>)[label] ?? label;
 }
 function heroDefinition(id?: string | null): Hero | null {
   const hero = HEROES.find((candidate) => candidate.id === id);
@@ -11286,7 +11287,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const consoleSecondaryControls = [
     ...(genericTriggerOptions.map((option) => option.label)),
     ...(genericResponseOptions.map((option) => option.label)),
-    ...(canFormSerpentAttack ? [serpentMode ? "Normal" : "Spear"] : []),
+    ...(canFormSerpentAttack ? [serpentMode ? "Normal" : SERPENT_SPEAR_LABEL] : []),
     ...(room.isMyTurn && canPlay ? ["End"] : []),
   ].filter((label, index, all) => Boolean(label) && all.indexOf(label) === index);
   const ordinaryPlayTargetSelection = Boolean(
@@ -11852,7 +11853,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           {triggerResponse && responseDecisionReady && inlineChoiceTriggerOption?.selection?.type === "choice" && inlineChoiceTriggerOption.selection.choices.map((choice) => <button type="button" key={`${inlineChoiceTriggerOption.effectId}:${choice.id}`} className="serpent-control" data-trigger-choice-provider={inlineChoiceTriggerOption.effectId} data-trigger-choice-action={choice.id} aria-label={`${inlineChoiceTriggerOption.label}: ${choice.label}`} disabled={responseControlsDisabled || !canUseAction(room.currentAction, "trigger")} onClick={() => void onAction("trigger", { providerId: inlineChoiceTriggerOption.effectId, choice: choice.id })}>{choice.label}</button>)}
           {triggerResponse && genericTriggerOptions.map((option) => option.selection?.type === "target_cards" || option.selection?.type === "choice" && option.allowDecline === false ? null : option.selection ? <button key={option.effectId} className={`serpent-control ${responseProviderId === option.effectId ? "active" : ""}`} disabled={triggerControlsDisabled} onClick={() => { const active = responseProviderId === option.effectId; if (active) resetLocalTargetFlow("trigger"); else { setResponseProviderId(option.effectId); setSelected(""); setTargetIds([]); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); } }}>{responseProviderId === option.effectId ? `Cancel ${option.label}` : option.selection.type === "target" ? `Use ${option.label}` : option.label}</button> : <button key={option.effectId} className="serpent-control" disabled={triggerControlsDisabled} onClick={() => onAction("trigger", { providerId: option.effectId })}>{`Use ${option.label}`}</button>)}
           {canRespond && genericResponse && semanticResponseOptions.length > 0 && genericResponseOptions.map((option) => option.selection ? <button key={option.providerId} className={`serpent-control ${responseProviderId === option.providerId ? "active" : ""}`} disabled={physicalResponseControlsDisabled} onClick={() => { const active = responseProviderId === option.providerId; setResponseProviderId(active ? "" : option.providerId); setSelected(""); setSerpentSelected([]); }}>{responseProviderId === option.providerId ? `Cancel ${option.label}` : option.label}</button> : <button key={option.providerId} className="serpent-control" disabled={physicalResponseControlsDisabled} onClick={() => submitResponseProvider(option)}>{busy ? "Resolving…" : option.label}</button>)}
-          {room.isMyTurn && canPlay && consoleKind === "turn" && canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} onClick={() => { setSerpentMode((active) => !active); setSerpentSelected([]); setSelected(""); setTarget(""); }}>{serpentMode ? "Normal" : "Spear"}</button>}
+          {room.isMyTurn && canPlay && consoleKind === "turn" && canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} data-serpent-spear-control="true" aria-label={serpentMode ? "Exit Serpent Spear mode" : "Use Serpent Spear"} aria-pressed={serpentMode} onClick={() => { setSerpentMode((active) => !active); setSerpentSelected([]); setSelected(""); setTarget(""); }}>{serpentMode ? "Normal" : SERPENT_SPEAR_LABEL}</button>}
         </div>
         <div data-action-slots="true">
           <div data-action-slot="cancel">

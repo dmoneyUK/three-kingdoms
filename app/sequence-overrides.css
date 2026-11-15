@@ -8139,6 +8139,21 @@
   font-weight: 600;
   letter-spacing: -0.05em;
 }
+.game-shell .local-player-dock .turn-controls > [data-action-extras="true"] > .serpent-control[data-serpent-spear-control="true"] {
+  box-sizing: border-box;
+  min-width: 78px;
+  max-width: 104px;
+  min-height: 44px;
+  padding: 6px 8px;
+  overflow: visible;
+  text-align: center;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  line-height: 1.1;
+  flex: 0 1 auto;
+}
 @media (max-width: 520px) {
   .game-shell .local-player-dock .console-guidance .decision-status strong .message-player-name,
   .game-shell .local-player-dock .console-guidance .decision-status em .message-player-name {

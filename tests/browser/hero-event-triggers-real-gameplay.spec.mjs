@@ -1547,6 +1547,39 @@ test("Serpent Spear presents two real cards as one Attack for actor, target and 
 
   try {
     await Promise.all([openPlayer(page, seedData, 0), openPlayer(targetPage, seedData, 1), openPlayer(observerPage, seedData, 2)]);
+    const actorDock = page.locator(`.local-player-dock[data-player-anchor="${seedData.players[0].id}"]`);
+    const spearToggle = actorDock.locator('button[data-serpent-spear-control="true"]');
+    await expect(spearToggle).toHaveText("Serpent Spear");
+    await expect(spearToggle).toHaveAttribute("aria-label", "Use Serpent Spear");
+    await expect(spearToggle).toHaveAttribute("aria-pressed", "false");
+    const toggleGeometry = await spearToggle.evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      const style = getComputedStyle(button);
+      return {
+        width: rect.width,
+        height: rect.height,
+        fontSize: Number.parseFloat(style.fontSize),
+        whiteSpace: style.whiteSpace,
+        textOverflow: style.textOverflow,
+        text: button.textContent,
+        scrollWidth: button.scrollWidth,
+        clientWidth: button.clientWidth,
+      };
+    });
+    expect(toggleGeometry).toMatchObject({ text: "Serpent Spear", whiteSpace: "normal", textOverflow: "clip" });
+    expect(toggleGeometry.width).toBeGreaterThanOrEqual(64);
+    expect(toggleGeometry.height).toBeGreaterThanOrEqual(44);
+    expect(toggleGeometry.fontSize).toBeGreaterThanOrEqual(7);
+    expect(toggleGeometry.scrollWidth).toBeLessThanOrEqual(toggleGeometry.clientWidth + 1);
+    await spearToggle.click();
+    await expect(spearToggle).toHaveText("Normal");
+    await expect(spearToggle).toHaveAttribute("aria-label", "Exit Serpent Spear mode");
+    await expect(spearToggle).toHaveAttribute("aria-pressed", "true");
+    await spearToggle.click();
+    await expect(spearToggle).toHaveText("Serpent Spear");
+    await expect(targetPage.locator('button[data-serpent-spear-control="true"]')).toHaveCount(0);
+    await expect(observerPage.locator('button[data-serpent-spear-control="true"]')).toHaveCount(0);
+
     const formed = await request.post(`${API}/api/rooms`, {
       data: { action: "serpent_spear_attack", code: seedData.code, token: seedData.players[0].token, cardIds: [firstMaterial.id, secondMaterial.id], targetId: seedData.players[1].id },
     });
@@ -1606,6 +1639,7 @@ test("Serpent Spear presents two real cards as one Attack for actor, target and 
     for (const { viewerPage, privateCards } of viewers) {
       for (const privateCard of privateCards) await expect(viewerPage.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(0);
     }
+
   } finally {
     await targetPage.close();
     await observerPage.close();
