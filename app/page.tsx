@@ -1,5 +1,7 @@
 "use client";
 
+import { classifyRoomGetFailure, RoomGetError, RoomPollRecovery } from "../game/room-poll-recovery";
+
 import { isEntourageDodgeFor } from "../game/entourage-presentation";
 
 import { Component, CSSProperties, FormEvent, KeyboardEventHandler, PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -1721,6 +1723,8 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [connectionInterrupted, setConnectionInterrupted] = useState(false);
+  const pollRecovery = useRef(new RoomPollRecovery());
   const [traceAvailable, setTraceAvailable] = useState(false);
   const [pageVisible, setPageVisible] = useState(true);
   const [publicCounterReadUntil, setPublicCounterReadUntil] = useState(0);
@@ -1746,16 +1750,22 @@ export default function Home() {
     const epoch = stateEpoch.current;
     const testViewerRevision = testViewerRevisionRef.current;
     const selectedTestViewerId = requestedViewerId ?? testViewerIdRef.current;
+    const requestKey = `${roomCode}:${epoch}:${testViewerRevision}:${selectedTestViewerId ?? ""}`;
+    pollRecovery.current.activate(requestKey);
+    if (!pollRecovery.current.begin(requestKey)) return false;
+    const isCurrent = () => epoch === stateEpoch.current && testViewerRevision === testViewerRevisionRef.current;
     const uxTraceId = getAttackDodgeUxTraceId();
     try {
       if (uxTraceId) recordAttackDodgeUxTrace("room-poll-request", { traceId: uxTraceId });
       const query = new URLSearchParams({ code: roomCode, token: playerToken });
       if (selectedTestViewerId) query.set("testViewerId", selectedTestViewerId);
       if (uxTraceId) query.set("uxTraceId", uxTraceId);
-      const response = await fetch(`/api/rooms?${query.toString()}`, { cache: "no-store" });
+      const response = await fetch(`/api/rooms?${query.toString()}`, { cache: "no-store", signal: AbortSignal.timeout(15_000) });
       if (uxTraceId) recordAttackDodgeUxTrace("room-poll-response", { traceId: uxTraceId, status: response.status, ok: response.ok });
-      if (!response.ok) throw new Error("Room is no longer available.");
-      const rawData = await readApiJson<unknown>(response);
+      let rawData: unknown;
+      try { rawData = await response.json(); } catch { throw new RoomGetError("temporary", response.status); }
+      if (!response.ok) throw new RoomGetError(classifyRoomGetFailure(response.status, rawData), response.status);
+      if (!isCurrent()) return false;
       let roomPayload = rawData;
       let serverDiagnostic: Record<string, unknown> | null = null;
       if (uxTraceId && rawData && typeof rawData === "object" && !Array.isArray(rawData)) {
@@ -1766,8 +1776,8 @@ export default function Home() {
         }
       }
       const nextRoom = normalizeRoomData(roomPayload) as Room | null;
-      if (!nextRoom || !nextRoom.meId) throw new Error("Your player session is no longer valid.");
-      if (selectedTestViewerId && nextRoom.meId !== selectedTestViewerId) throw new Error("The selected test-player view is no longer available.");
+      if (!nextRoom || !nextRoom.meId) throw new RoomGetError("temporary", response.status);
+      if (selectedTestViewerId && nextRoom.meId !== selectedTestViewerId) throw new RoomGetError("unavailable-viewer", response.status);
       // Test controllers follow the server-selected seat while choosing
       // Generals, then start gameplay from HOST until a SWITCH button is
       // explicitly used. Do not let the default action-player projection
@@ -1789,6 +1799,7 @@ export default function Home() {
           [playerToken, ...nextRoom.myHand.map((card) => card.id)],
         ) as Record<string, unknown>);
       }
+      if (!isCurrent()) return false;
       recordPublicGameRoomSnapshot(nextRoom, "poll");
       if (nextRoom.status === "finished") stopAttackDodgeUxTrace("game-finished");
       if (epoch === stateEpoch.current && testViewerRevision === testViewerRevisionRef.current) {
@@ -1799,27 +1810,38 @@ export default function Home() {
           testViewerRoomCodeRef.current = nextRoom.code;
           testViewerIdRef.current = null;
         }
+        if (pollRecovery.current.stale) recordAttackDodgeUxTrace("room-connection-recovered", { status: response.status });
+        pollRecovery.current.recover(requestKey);
+        setConnectionInterrupted(false);
         setRoom(nextRoom as Room);
       }
       return nextRoom as Room;
     } catch (cause) {
-      if (uxTraceId) recordAttackDodgeUxTrace("room-poll-failure", { traceId: uxTraceId, kind: cause instanceof Error ? cause.name : "unknown" });
-      const sessionUnavailable = cause instanceof Error
-        && /Previous game data|no longer available|session is no longer valid/.test(cause.message);
-      if (sessionUnavailable && epoch === stateEpoch.current) {
+      if (!isCurrent()) return false;
+      const category = cause instanceof RoomGetError ? cause.category : "temporary";
+      recordAttackDodgeUxTrace("room-poll-failure", { category, status: cause instanceof RoomGetError ? cause.status : null });
+      if (category === "missing-room" || category === "invalid-session") {
+        stateEpoch.current += 1;
+        pollRecovery.current.reset();
+        setConnectionInterrupted(false);
         stopAttackDodgeUxTrace("room-session-unavailable");
         clearSavedGameSession();
-        setRoom(null);
-        setCode("");
-        setToken("");
+        setRoom(null); setCode(""); setToken("");
         setTraceAvailable(hasAttackDodgeUxTrace());
-        setError(cause.message === "Room is no longer available."
+        setError(category === "missing-room"
           ? "This game has expired or is no longer available. Start or join another game below."
           : "This player session is no longer valid. Start or join another game below.");
-      } else if (!quiet && epoch === stateEpoch.current) {
-        setError(cause instanceof Error ? cause.message : "Could not reach the room.");
+      } else {
+        pollRecovery.current.fail(requestKey);
+        setConnectionInterrupted(true);
+        if (category === "unavailable-viewer") {
+          testViewerIdRef.current = null;
+          testViewerRevisionRef.current += 1;
+        }
       }
       return false;
+    } finally {
+      pollRecovery.current.end(requestKey);
     }
   }, []);
 
@@ -1849,7 +1871,7 @@ export default function Home() {
     return () => document.removeEventListener("visibilitychange", updateVisibility);
   }, []);
 
-  const roomCode = room?.code;
+  const roomCode = room?.code ?? (token ? code : undefined);
   useEffect(() => {
     if (!roomCode || !token || busy) return;
     const publicReadActive = publicCounterReadUntil > Date.now();
@@ -1857,8 +1879,15 @@ export default function Home() {
       : room?.phase === "response" || room?.phase === "dying" || publicReadActive
         ? UI_TIMING.activePoll
         : room?.status === "playing" ? UI_TIMING.activeGamePoll : UI_TIMING.roomPoll;
-    const timer = setInterval(() => fetchRoom(roomCode, token, true), interval);
-    return () => clearInterval(timer);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      if (cancelled) return;
+      const delay = pollRecovery.current.stale ? pollRecovery.current.retryDelay(!pageVisible) : interval;
+      timer = setTimeout(async () => { await fetchRoom(roomCode, token, true); schedule(); }, delay);
+    };
+    schedule();
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [roomCode, token, busy, pageVisible, fetchRoom, room?.phase, room?.status, publicCounterReadUntil]);
   useEffect(() => {
     if (!publicCounterReadUntil) return;
@@ -1868,6 +1897,7 @@ export default function Home() {
   }, [publicCounterReadUntil]);
 
   async function send(action: "create" | "join" | "start" | "add_test_players" | "enable_test_room" | "configure_test_hands" | "choose_hero" | "heartbeat" | "expire_inactive_room" | GameplayAction, extra: Record<string, unknown> = {}) {
+    if (pollRecovery.current.stale && action !== "create" && action !== "join") return false;
     const backgroundPreview = action === "preview_harvest" || action === "heartbeat";
     const maintenanceAction = action === "advance_timers";
     const nonBlocking = backgroundPreview || maintenanceAction;
@@ -1957,6 +1987,8 @@ export default function Home() {
   async function switchTestViewer(playerId: string) {
     const targetPlayer = room?.players.find((player) => player.id === playerId);
     if (!room?.isTestController || !targetPlayer || (!targetPlayer.isTestPlayer && !targetPlayer.isHost) || targetPlayer.id === room.meId) return;
+    pollRecovery.current.stale = true;
+    setConnectionInterrupted(true);
     testViewerRoomCodeRef.current = room.code;
     testViewerIdRef.current = playerId;
     testViewerRevisionRef.current += 1;
@@ -2090,6 +2122,8 @@ export default function Home() {
   }, [roomCode, token, pageVisible, negationDeadline]);
 
   function leave() {
+    pollRecovery.current.reset();
+    setConnectionInterrupted(false);
     stopAttackDodgeUxTrace("player-left-game");
     clearSavedGameSession();
     setTraceAvailable(hasAttackDodgeUxTrace());
@@ -2100,13 +2134,15 @@ export default function Home() {
   }
 
   const presentationView = room ? buildPresentationClientView(room.presentationSnapshot, room.meId) : null;
+  const connectionStatus = <div role="status" className="room-connection-status" hidden={!connectionInterrupted}>Connection interrupted. Reconnecting…</div>;
 
-  if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <GameRoomErrorBoundary room={room} onRecover={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy} busyAction={busyAction} error={error} onAction={send} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary>;
-  if (room?.status === "heroes") return <HeroSelection room={room} busy={busy} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} />;
-  if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onAddTestPlayers={(count) => send("add_test_players", { count })} onEnableTestRoom={() => send("enable_test_room")} onConfigureTestHands={(presetId, handsBySeat, expectedRevision) => send("configure_test_hands", { presetId, handsBySeat, expectedRevision })} onLeave={leave} />;
+  if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <>{connectionStatus}<GameRoomErrorBoundary room={room} onRecover={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy || connectionInterrupted} busyAction={busyAction} error={error} onAction={send} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary></>;
+  if (room?.status === "heroes") return <>{connectionStatus}<HeroSelection room={room} busy={busy || connectionInterrupted} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} /></>;
+  if (room) return <>{connectionStatus}<WaitingRoom room={room} busy={busy || connectionInterrupted} error={error} onStart={() => send("start")} onAddTestPlayers={(count) => send("add_test_players", { count })} onEnableTestRoom={() => send("enable_test_room")} onConfigureTestHands={(presetId, handsBySeat, expectedRevision) => send("configure_test_hands", { presetId, handsBySeat, expectedRevision })} onLeave={leave} /></>;
 
   return (
     <main className="landing-shell">
+      {connectionInterrupted && <p role="status">Connection interrupted. Reconnecting…</p>}
       <div className="mist mist-one" /><div className="mist mist-two" />
       <header className="landing-nav"><Brand /><span>CLASSIC HIDDEN-ROLE MODE</span></header>
       <section className="landing-grid">
