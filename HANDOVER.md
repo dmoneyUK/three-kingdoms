@@ -1,20 +1,13 @@
 # HANDOVER — 当前唯一任务
 
-## §10.58 SERPENT-SPEAR-FULL-CONTROL-LABEL-01
+## §10.56 OPPONENT-INSPECTOR-SEAT-ANCHOR-01
 
-**状态（2026-11-15 19:47 UTC）：** IMPLEMENTED LOCALLY / FOCUSED VALIDATION PASSED / REMOTE DELIVERY PENDING. 不代表用户验收。
+**状态：** 当前任务；尚未实现；需要用户手机复验。
 
-**设计版本：** `docs/UX2-refine.md` revision `2026-11-15 19:47 UTC`。仅修复真实武器名称呈现与手机按钮可读性；玩法、服务端权限、手牌身份和合法两卡 `AS ATTACK` 不变。完整执行要求仍见 §10.58。
+**最新设计：** `docs/UX2-refine.md` revision `2026-11-15 20:02 UTC`。本任务只按 §10.56 执行，支持 4–6 人局。手机顶排 Inspector 应根据实际选中玩家座位的实时 DOMRect，尽可能紧贴其下方；保留侧边座位现有行为、隐私、详情内容和操作。
 
-**实现：** `app/page.tsx` 从 `cardDefinition("SerpentSpear").name` 统一完整名称，修复 response/provider 标签、Console 摘要与 Play 阶段模式按钮；模式按钮有明确的 `Use Serpent Spear` / `Exit Serpent Spear mode` accessible label 和 `aria-pressed`。`app/sequence-overrides.css` 只为该武器按钮允许自然换行并保持最小 44px 高度。未改服务器和规则。
+**§10.49 / §10.51 复审结果：** 两项源码复审已完成，但 owner 报告的失败仍为 OPEN / NOT ACCEPTED。§10.49 的修复已在生产代码中；过期恢复单测 4/4、共享响应 API 14/14 通过。§10.51 的 GET 恢复与 React 拥有 H4 节点的约束已落实；room-poll 恢复单测 4/4、错误画面恢复单测 3/3 通过。现有 §10.49 视频属于修复前 SHA；两项均未提供修复后的失败 trace。不得推断新原因或自行标记验收；仅在拿到当前失败步骤的证据后回到对应原任务。
 
-**验证时间线（UTC，按实际执行顺序）：**
+**§10.58 最近交付：** commit `4164b5eba9ec3501cdf95f0cdad1e8eb1f9c6ace`；[精确 SHA Actions 43754584146](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43754584146) 全部必需 job 通过；Worker `2f2ea283-d616-4201-a800-792d606924fe`；生产 `/` 和 `/api/health` smoke 通过。状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。
 
-- 19:40 前后，第一次 Playwright 场景失败：Worker fixture 使用构建产物 `dist`，测试当时读到旧按钮 “Spear”。
-- 随后 `npm run build` 通过；仅有既存大 chunk 与动态路由分类提示。
-- 第二次 Playwright 探索扩展场景失败在额外构造的 Duel fixture：该夹具没有生成投影的 `serpent_spear_attack` 选项。移除此不代表真实服务端状态的补充场景，将 provider 标签覆盖移到 GameRoom 组件测试；未改造规则或降低现有 API 断言。
-- `node --import tsx --test --test-name-pattern='Serpent Spear' tests/active-skill-interactions.test.mjs`：2/2 通过；覆盖模式的完整/退出名称、pressed 状态、真实两卡流程保留，以及 CurrentAction 未投影时不自行生成响应入口。
-- 最终手机浏览器场景：`npx playwright test --config tests/browser/playwright.config.mjs tests/browser/hero-event-triggers-real-gameplay.spec.mjs --grep 'Serpent Spear presents two real cards as one Attack' --workers=1`：1/1 通过，390×844；确认完整名称、44px 高度、≥7px 字号、无文字溢出、模式切换状态、未装备玩家无按钮，既有真实两张手牌组成 Attack 与响应权限保持通过。三次浏览器启动总耗时约 32 秒，低于每任务 5 分钟上限。
-- `git diff --check` 在最后文档更新前通过；需再对最终 diff 运行一次。
-
-**下步（本任务仍未交付）：** 复核最终 diff 与最新 `origin/ux-v2` HEAD 的 Actions；提交并推送本任务文件，等待实现精确 SHA 的全部 CI、Worker 部署及生产 smoke。用户最新指示称 §10.49 与 §10.51 均验收失败；本 handover 不提前切换任务，完成 §10.58 交付后按顺序重审 §10.49、§10.51。两者的最新失败细节尚未包含在当前指示中，不作猜测性修复。手机验收仍待用户进行。
+**本任务步骤：** 检查 `OpponentPublicInspector` 的测量代码和已有手机几何测试。新增或调整一个聚焦的 4–6 人顶排行为分支：使用当前选中真实座位的 DOMRect、viewport 安全边界和现有遮挡物进行锚定；保持侧边座位分支不变。必要时仅运行 440px 左/中/右座位场景，单任务本地 UI/浏览器测试总计不超过 5 分钟。完成聚焦验证和 `git diff --check` 后，提交推送并核实精确 SHA Actions、Worker 部署及生产健康检查。不得声称用户手机验收通过。
