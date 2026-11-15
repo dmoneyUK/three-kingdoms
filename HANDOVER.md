@@ -2,35 +2,28 @@
 
 ## 最近完成的相关交付
 
-**§10.49 Shared Response Window 到期结算 P0**：提交 `3053d209aba640ff8280f43f3e4feff91be0a646` 已推送到 `ux-v2`。精确 SHA 的 [GitHub Actions 43726390974](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43726390974) 全部通过，Worker 部署成功，Version ID `fccb97eb-20dd-480e-ba45-aa8f33182896`；线上首页与 `/api/health` 为 HTTP 200。状态仍为 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW**。
+- **§10.51 ROOM-POLL-TRANSIENT-503-RECOVERY-01：** H4 DOM 所有权修复已部署，提交 `6bcef5a3169746edae3edbfc0eab66108f1952b9`；[精确 SHA Actions 43729279654](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43729279654) 全部通过，Worker `22d8cce3-b1cc-4b2d-afcc-8ade1be6d355` 已部署，生产 smoke 与直接首页/health 检查通过。状态 **PENDING OWNER iPHONE RE-REVIEW**。
+- **§10.49 CAO-CAO-ENTOURAGE-SIMULTANEOUS-WEI-DODGE-01：** 8 秒共享窗口到期修复已部署，提交 `3053d209aba640ff8280f43f3e4feff91be0a646`；[精确 SHA Actions 43726390974](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43726390974) 全部通过，Worker `fccb97eb-20dd-480e-ba45-aa8f33182896` 已部署。原 owner 手机失败记录保留，状态 **PENDING OWNER iPHONE RE-REVIEW**。
 
-## 当前唯一任务：§10.51 ROOM-POLL-TRANSIENT-503-RECOVERY-01
+两项修复均未标记 USER-ACCEPTED。另一个旧 §10.49 worktree `/Users/jingedai/.codex/worktrees/ux2-10-49-harvest-20261114` 有未提交原型改动，已检查并保持原样；不得重置、覆盖或未经审阅直接移植。
 
-**状态：** 修复已在本地实现；待提交、精确 SHA CI、部署与生产 smoke。**不代表用户验收通过。**
+## 当前唯一任务：§10.53-F1 — H4、PAC 与私有 Console 的验证玩家姓名样式
 
-**设计依据：** `docs/UX2-refine.md` revision `2026-11-15 12:40 UTC`，远端基线 `3053d209aba640ff8280f43f3e4feff91be0a646`。
+**状态：** 已获 owner 授权；尚未实施。当前远端基线 `ux-v2`：`6bcef5a3169746edae3edbfc0eab66108f1952b9`。设计依据：`docs/UX2-refine.md` revision `2026-11-15 15:32 UTC`，§10.53-F1 A–D。
 
-### 复现与根因
+### 唯一任务范围
 
-- 在同一真实挂载的手机尺寸 GameRoom 中执行四人局路径：司马懿使用南蛮入侵、曹操使用杀、夏侯惇实际选择“受伤”；服务端确认 HP 4→3、`currentAction.kind=trigger`、`triggerEvent=damage_suffered` 与夏侯惇刚烈选项。
-- 修复前捕获到原始本地异常：`NotFoundError: Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of this node.` React 栈 `span → b → div` 对应 H4。随后复现并证实：H4 布局测量曾直接改写 React 管理的 `<b>` / `<span>` 子树，触发 DOM 所有权冲突；不是服务端伤害或技能规则故障。
+1. 建立可复用的 typed verified-player-copy helper：片段携带权威 `playerId` 与精确姓名；仅当片段拼接后与原消息完全相等时才渲染，否则保留原始完整纯文本。保留 H4 现有 API 与无障碍文案。
+2. 在 PAC 生成时用已验证身份构造 heading/stage/text 片段，并在 React 中呈现姓名；不得扫描任意文案、推测身份或泄露 §10.49 私有提交信息。
+3. 为 viewer-private Console 的既有权威 actor/借刀 holder 与 target/乐不思蜀顺序参与者添加可验证片段；不解析 `CurrentAction.reason` 或任意技能文案，不改服务端合法性、原字符串、按钮或 aria-live。
+4. 用同一 shared player-name class 与 approved muted-gold 字体规则统一 H4/PAC/Console；保持字间距与字词可读，不改三块区域几何布局。
 
-### 实施
+### 验证与交付
 
-- `app/public-card-display.tsx`：H4 候选文案现于带 `aria-hidden`、不可交互的离屏测量副本中排版和测量；实时 React 文案树不再被 `replaceChildren` 或 `textContent` 改写，真实 H4 仍由 React 渲染，布局逻辑只调整几何样式。
-- 增加定向 H4 所有权不变量检查和真实游戏路径浏览器回归。浏览器回归在修复后通过夏侯惇真实“受伤”→展示 H4/刚烈决策→点击 Skip/`decline_trigger`，房间保持挂载，无错误恢复屏。
+- 运行纯片段边界测试、PAC API 隐私/文案测试、定向 Console/H4 测试、构建、diff/lint。
+- 最多一个 440px 四人手机浏览器场景；所有本地 UI/browser 运行累计不超过 5 分钟。必要时将未覆盖浏览器面验证记为 SKIPPED，不能扩展测试矩阵。
+- 只提交当前任务文件；提交前核对当前 `ux-v2` 最新 Actions。推送后验证精确 SHA 的全部 required CI、部署与生产 smoke；结果保持 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**。
 
-### 本轮验证
+### 恢复点
 
-- 定向 `tests/public-card-announcement.test.mjs`：32/32 通过。
-- 手机浏览器场景：440×894，1/1 通过；包含修复前原始异常复现与修复后实际 Skip。累计本地 UI/browser 测试约 3 分钟，未超过 5 分钟上限。
-- `npm run build`：通过。
-- 定向 ESLint：0 errors，14 条 React Hooks exhaustive-deps warnings。
-- `git diff --check`：通过。
-- 提交前 `ux-v2` 最新 SHA `3053d209...` 的 Actions 43726390974 为 completed/success；该结果只验证此前提交，不替代本修复提交的精确 SHA CI。
-
-### 唯一待办 / 恢复点
-
-复核当前四个任务文件的差异，只提交 §10.51 相关文件；推送到 `ux-v2`，等待新提交精确 SHA 的全部 GitHub Actions、Worker 部署和生产健康检查。记录真实 SHA、CI 链接、Worker 版本与 smoke 结果。最终状态为 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW**，不得自行标记验收通过。
-
-**本任务不改变**伤害、刚烈、服务器权限、响应/计时规则、卡牌身份或私有信息。§10.49 保持独立，不在本次扩大或重开。
+安全边界已按最新设计重审 §10.49 和 §10.51：两者修复均已技术交付，但都仍待 owner 手机复验。开始 §10.53-F1 前，基于 `6bcef5a` 检查干净任务工作树及 `game/public-h4-copy.ts`、`game/public-activity.ts`、`app/public-activity-chip.tsx`、`app/page.tsx` 的现状；不要沿用旧版 UI 或重做已交付修复。
