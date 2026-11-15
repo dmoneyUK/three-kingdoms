@@ -113,6 +113,8 @@ export type PublicCardDisplayAction = {
   /** Current server-proven public stage identity, separate from card motion and viewer layout. */
   publicAnnouncementIdentity?: PublicCardAnnouncementIdentity;
   sourceId: string;
+  physicalActorId?: string;
+  physicalActorName?: string;
   targetId: string | null;
   cardKind?: CardKind;
   cardLabel: string;
@@ -3803,8 +3805,8 @@ function AttackDodgeCardJourney({
     const previous = sameInteraction ? previousState.cards : [];
     const root = currentAction.cardFace && currentSourceName ? [{
       eventId: currentAction.rootEventId,
-      actorId: currentAction.sourceId,
-      actorName: currentSourceName,
+      actorId: currentAction.physicalActorId ?? currentAction.sourceId,
+      actorName: currentAction.physicalActorName ?? currentSourceName,
       cardFace: currentAction.cardFace,
       ariaLabel: currentAction.ariaLabel,
       semanticLabel: undefined,

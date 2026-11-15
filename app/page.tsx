@@ -1,5 +1,6 @@
 "use client";
 
+import { sharedResponseContributions } from "../game/shared-response-contribution";
 import { publicH4Copy } from "../game/public-h4-copy";
 import { classifyRoomGetFailure, RoomGetError, RoomPollRecovery } from "../game/room-poll-recovery";
 
@@ -1563,6 +1564,41 @@ type LocalOpponentInspectionPresentation = { id: string; name: string; hero: Her
 type PrivateStealResult = { semantics: "PRIVATE_PROVEN"; roomCode: string; eventId: string; rootEventId: string; rootResolutionId: string; sourceId: string; targetId: string; sourceZone: "hand"; card: Card };
 type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; serverNow?: number; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; privateStealResult: PrivateStealResult | null; privateStealParticipantResult: PrivateStealParticipantResult | null; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; publicDiscardHandoff?: { eventId: string; actorId: string; cardCount: number } | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealEventId: string | null; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; complete: boolean; countdownUntil: number } | null; publicHarvestPool?: { semantics: "PROVEN"; rootEventId: string; revealEventId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[] } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
 
+function sharedContributionDisplayAction(room: Room, domainPublicCardDisplayAction: PublicCardDisplayAction | null,
+  currentFact: { eventId: string; order: number } | null, seenEventIds: ReadonlySet<string>): PublicCardDisplayAction | null {
+    const proofs = sharedResponseContributions(room.timeline).filter((proof) =>
+      room.presentationSnapshot?.sharedResponseContributions?.some((server) => server.eventId === proof.eventId
+        && server.actorId === proof.actorId && server.windowId === proof.windowId));
+    const proof = proofs.at(-1);
+    if (!proof
+      || domainPublicCardDisplayAction?.rootEventId === proof.eventId
+      || domainPublicCardDisplayAction?.response?.eventId === proof.eventId
+      || domainPublicCardDisplayAction?.responses?.some((response) => response.eventId === proof.eventId)
+      || room.presentationSnapshot?.attackDodgeResponses?.some((response) => response.responseEventId === proof.eventId)) return null;
+    const event = room.timeline.find((entry) => entry.id === proof.eventId);
+    const face = event?.type === "card" ? event.card : event?.type === "cards" ? event.cards[0] : null;
+    if (!event || !face || !room.players.some((player) => player.id === proof.actorId)) return null;
+    // Recency is the durable committed server sequence, never a client clock.
+    const laterPhysicalPlay = room.timeline.some((entry) => (entry.type === "card" || entry.type === "cards")
+      && entry.presentation !== false && !entry.privateToPlayerId && ["play", "equip", "activate"].includes(entry.action)
+      && (entry.publicSequence ?? -1) > (event.publicSequence ?? -1));
+    if (laterPhysicalPlay) return null;
+    const nextFact = currentFact;
+    if (nextFact && nextFact.eventId !== proof.eventId && nextFact.order > (event.publicSequence ?? -1)) return null;
+    const conversion = room.presentationSnapshot?.publicCardEffects.find((effect) => effect.eventId === proof.eventId
+      && effect.effectClass === "CONVERSION" && effect.activationOwnerId === proof.actorId);
+    return { key: `shared-contribution:${proof.eventId}`, rootEventId: proof.eventId,
+      sourceId: proof.actorId, targetId: proof.requesterId, cardFace: face,
+      cardKind: proof.effectiveKind, cardLabel: proof.effectiveKind.toUpperCase(), ariaLabel: proof.message,
+      publicNotice: proof.message, publicNoticeEventId: proof.eventId,
+      ...(conversion ? { publicCardEffectFrame: createPublicCardEffectFrameView(conversion, {
+        title: `AS ${proof.effectiveKind.toUpperCase()}`, accessibleLabel: proof.message,
+        activationOwnerName: room.players.find((player) => player.id === proof.actorId)?.name ?? "A player",
+        ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+      }) ?? undefined } : {}),
+      motion: { type: "single-target", scopeKey: `${room.code}:shared-contribution:${proof.eventId}`, freshEventIds: seenEventIds.has(proof.eventId) ? [] : [proof.eventId] } };
+}
+
 export const HERO_ART_BY_ID: Record<string, string> = {
   "cao-cao": "/hero-cao-cao.jpg",
   "liu-bei": "/hero-liu-bei.jpg",
@@ -1920,7 +1956,7 @@ export default function Home() {
           if (session?.code === code && session.token && await fetchRoom(code, session.token, true)) return true;
         } catch { localStorage.removeItem("three-realms-session"); }
       }
-      const context = room && !["create", "join", "start", "add_test_players", "enable_test_room", "configure_test_hands", "choose_hero", "heartbeat", "advance_timers"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId, ...(room.currentAction?.negationWindowId ? { windowId: room.currentAction.negationWindowId } : {}) } : undefined;
+      const context = room && !["create", "join", "start", "add_test_players", "enable_test_room", "configure_test_hands", "choose_hero", "heartbeat", "advance_timers"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId, ...((room.currentAction?.sharedWindow?.windowId ?? room.currentAction?.negationWindowId) ? { windowId: room.currentAction?.sharedWindow?.windowId ?? room.currentAction?.negationWindowId } : {}) } : undefined;
       if (uxTraceId) recordAttackDodgeUxTrace("gameplay-action-request", { traceId: uxTraceId, action, hasRevisionContext: Boolean(context?.actionRevision) });
       const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token, ...(context ? { context } : {}), ...(uxTraceId ? { uxTraceId } : {}), ...extra }) });
       const rawData = await readApiJson<{ error?: string; token?: string; room?: unknown; stale?: boolean; attackDodgeUxTrace?: Record<string, unknown> }>(response);
@@ -7417,7 +7453,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : null;
   const rootActionMatchesSerpentSpearProof = Boolean(rootActionSerpentSpearProof && rootAction?.action === "ATTACK"
     && "conversionId" in rootAction && rootAction.conversionId === "serpent_spear_attack"
-    && rootAction.sourceId === rootActionSerpentSpearProof.owner.id
+    && (rootAction.physicalActorId ?? rootAction.sourceId) === rootActionSerpentSpearProof.owner.id
     && rootAction.targetId === rootActionSerpentSpearProof.target.id
     && rootAction.materialCardIds.length === 2
     && rootAction.materialCardIds.every((cardId, index) => cardId === rootActionSerpentSpearProof?.sourceCards[index]?.id));
@@ -8769,6 +8805,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       rootFrameId: rootAction.rootFrameId,
       rootEventId: rootAction.rootEventId,
       sourceId: rootAction.sourceId,
+      physicalActorId: rootAction.physicalActorId,
+      physicalActorName: room.players.find((player) => player.id === rootAction.physicalActorId)?.name,
+      ...(room.presentationSnapshot?.sharedResponseContributions?.find((proof) => proof.eventId === rootAction.rootEventId)
+        ? { publicNotice: room.presentationSnapshot.sharedResponseContributions.find((proof) => proof.eventId === rootAction.rootEventId)!.message } : {}),
       targetId: rootAction.targetId,
       cardKind: rootAction.cardKind,
       cardFace: rootActionCardFace,
@@ -9078,7 +9118,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         selectedPublicCardAction.rootEventId,
         spec,
       );
-      return proof && selectedPublicCardAction.sourceId === proof.owner.id
+      return proof && (selectedPublicCardAction.physicalActorId ?? selectedPublicCardAction.sourceId) === proof.owner.id
         && selectedPublicCardAction.targetId === proof.target.id
         && selectedPublicCardAction.cardFace.id === proof.sourceCard.id
         ? [{ proof, spec }] : [];
@@ -9239,7 +9279,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       latestPublicActorId,
     };
   })() : undefined;
-  const publicCardDisplayAction: PublicCardDisplayAction | null = selectedPublicCardAction ? {
+  const domainPublicCardDisplayAction: PublicCardDisplayAction | null = selectedPublicCardAction ? {
     ...selectedPublicCardAction,
     motion: publicCardMotionForCommittedCard(
       selectedPublicCardAction,
@@ -9304,6 +9344,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     } : {}),
     deflection: activeDeflectionAction ?? undefined,
   } : null;
+  const sharedContributionAction = sharedContributionDisplayAction(room, domainPublicCardDisplayAction, currentInteractionFact, publicCardJourneySeenEventIds);
+  const publicCardDisplayAction = sharedContributionAction ?? domainPublicCardDisplayAction;
   const publicCardDisplayOwnershipIdentity = publicCardDisplayAction
     ? publicCardJourneyOwnershipIdentity(publicCardDisplayAction, room.code)
     : "";
@@ -10965,7 +11007,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (canEndPlay) return "Finish the Play Phase.";
     return null;
   })();
-  const consoleInstruction = privateNegationAcknowledgement ?? privateHarvestChoiceGuidance ?? (borrowedSwordTargetSelectionActive
+  const privateSharedAcknowledgement = room.currentAction?.sharedWindow?.locked
+    ? room.currentAction.sharedWindow.choice === "pass" ? "Skipped. Waiting for the window to resolve." : "Response submitted. Waiting for the window to resolve." : null;
+  const privateSharedGuidance = room.currentAction?.sharedWindow ? room.currentAction.reason : null;
+  const consoleInstruction = privateSharedAcknowledgement ?? privateSharedGuidance ?? privateNegationAcknowledgement ?? privateHarvestChoiceGuidance ?? (borrowedSwordTargetSelectionActive
     ? `Choose who ${room.players.find((player) => player.id === room.pendingBorrowedSword?.holderId)?.name ?? "the Weapon holder"} must Attack.`
     : borrowedSwordForcedChoiceActive
     ? `Play Attack on ${room.players.find((player) => player.id === room.pendingBorrowedSword?.targetId)?.name ?? "the selected target"}, or give up your Weapon.`
@@ -11382,7 +11427,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {publicDiscardOwnsAnnouncement && latestPublicDiscardAnnouncement && <PublicDiscardAnnouncementLayer
         announcement={latestPublicDiscardAnnouncement} roomCode={room.code} viewerId={room.meId}
       />}
-      {!publicDiscardOwnsAnnouncement && publicInteractionNarration && (!interactionNarrationBelongsToAction || !publicCardDisplayEnabled) && <PublicInteractionAnnouncementLayer
+      {!sharedContributionAction && !publicDiscardOwnsAnnouncement && publicInteractionNarration && (!interactionNarrationBelongsToAction || !publicCardDisplayEnabled) && <PublicInteractionAnnouncementLayer
         narration={publicInteractionNarration} roomCode={room.code} viewerId={room.meId}
         anchorEventId={fanjianSettlementNarration ? skillEffectSettlementCandidate?.revealEvent.id : null}
         protectFirstParkedMiniature={protectPublicInteractionUpperH4}

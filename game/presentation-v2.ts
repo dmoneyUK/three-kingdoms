@@ -1,3 +1,5 @@
+import { sharedResponseContributions, type SharedResponseContribution } from "./shared-response-contribution";
+import { normalizePublicSharedWindow, type PublicSharedResponseWindow } from "./shared-response-presentation";
 import { provenEntourageDecision, isEntourageDodgeFor, entourageInvocationMatchesTimeline, type EntourageDodge, type EntourageDecision } from "./entourage-presentation";
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
@@ -382,6 +384,7 @@ export type PresentationNegationSettlement = PresentationNegationSettlementProof
 };
 
 export type PresentationV2Input = {
+  sharedResponseWindow?: PublicSharedResponseWindow | null;
   pending: unknown | null;
   currentAction: Pick<CurrentAction, "kind" | "actorId" | "reason" | "deadline" | "declineAction" | "presentation"> | null;
   actionRevision: string;
@@ -546,6 +549,8 @@ export type PresentationReactionChain = {
 };
 
 type PresentationRootActionBase = {
+  /** Committed physical payer, distinct from the semantic source when delegated. */
+  physicalActorId?: string;
   semantics: "PROVEN";
   interactionId: string;
   rootFrameId: string;
@@ -912,6 +917,9 @@ export type PresentationStableBoundary = {
 };
 
 export type PresentationV2 = {
+  sharedResponseContributions?: readonly SharedResponseContribution[];
+  sharedResponseRecovery?: { eventId: string; targetId: string };
+  sharedResponseWindow?: PublicSharedResponseWindow | null;
   rootContext: { eventId: string | null; kind: string | null; sourceId: string | null; originalTargetIds: readonly string[]; resolutionId: string | null } | null;
   activeContext: { kind: string | null; stage: string | null; sourceId: string | null; currentTargetIds: readonly string[]; eventIds: readonly string[]; resolutionId: string | null } | null;
   parentContext: { kind: string | null; sourceId: string | null; targetIds: readonly string[]; resumeKind: string | null } | null;
@@ -1403,7 +1411,8 @@ function interactionSceneFor(
   const currentParticipantId = groupValues?.currentParticipantId ?? firstString(activeCurrent?.currentTargetIds[0]);
   const dyingProof = dyingDecisionProof(envelope, pending);
   const sourceOwnedAttackTargetActorId = proven ? sourceOwnedTriggerDecisionActorId(envelope, pending, activeFrame) : null;
-  const semanticDecisionActor = semanticDecisionActorId(envelope, pending, activeFrame, dyingProof, entourageDecision);
+  const shared = Boolean(record(pending)?.sharedResponseWindowId);
+  const semanticDecisionActor = shared ? null : semanticDecisionActorId(envelope, pending, activeFrame, dyingProof, entourageDecision);
   const publicActiveResolverId = isBumperHarvestNegationPending(pending) ? null : activeCurrent?.resolvingPlayerId ?? null;
   const relation: InteractionSceneContinuity["relation"] = !proven
     ? "UNPROVEN"
@@ -2534,6 +2543,7 @@ function stableBoundaryFor(
     checkpointId: proven ? scene?.checkpointId ?? null : null,
     presentationRevision: proven ? scene?.presentationRevision ?? null : null,
   };
+  if (proven && stringValue(record(pending)?.sharedResponseWindowId)) return { kind: "SPECIAL", ...identity, decisionActorId: null };
   const decisionActorId = proven ? scene?.decisionActorId ?? null : null;
   if (decisionActorId) return { kind: "CHOICE", ...identity, decisionActorId };
   const item = record(pending);
@@ -2665,7 +2675,7 @@ function singleTargetAttackRootActionEvaluationFor(
     : physicalCardKind && physicalCardKind !== "Attack" && rootEvent?.playedAs === "attack"
       ? { physicalCardKind, playedAs: "attack" as const }
       : null;
-  const serpentSpearMaterialCardIds = serpentSpearAttackRootMaterials(rootEvent, sourceId, targetId);
+  const serpentSpearMaterialCardIds = serpentSpearAttackRootMaterials(rootEvent, stringValue(record(rootEvent)?.actorId) ?? sourceId, targetId);
 
   const checks: Record<string, boolean> = {
     pendingIsAuthorizedAttackStage: isAttackResponse || isAttackTargetTrigger,
@@ -2765,6 +2775,7 @@ function singleTargetAttackRootActionEvaluationFor(
     checkpointId: envelope.checkpoint.checkpointId,
     presentationRevision: envelope.presentationRevision,
     rootEventId: rootEvent.id,
+    ...(stringValue(record(rootEvent)?.actorId) && stringValue(record(rootEvent)?.actorId) !== sourceId ? { physicalActorId: stringValue(record(rootEvent)?.actorId)! } : {}),
     action: "ATTACK",
     sourceId,
     targetId,
@@ -4301,6 +4312,21 @@ function participantsFromScene(scene: PresentationInteractionScene): Presentatio
 
 /** Pure, deterministic projection. CurrentAction remains the legality authority. */
 export function projectPresentationV2(input: PresentationV2Input): PresentationV2 {
+  const sharedResponseWindow = normalizePublicSharedWindow(input.sharedResponseWindow);
+  const committedSharedContributions = sharedResponseContributions(input.publicTimeline ?? input.timeline);
+  const recoveryContinuation = record(record(input.pending)?.continuation);
+  const recoveryResume = recoveryContinuation?.kind === "hp_recovered_event" ? record(recoveryContinuation.resume)
+    : recoveryContinuation?.kind === "hand_loss_event" ? record(record(recoveryContinuation.resumeRecovery)?.resume) : null;
+  const recoveringDying = recoveryResume?.kind === "dying" ? record(recoveryResume.pending) : null;
+  const recoveringReceipt = committedSharedContributions.find((proof) => proof.mode === "DYING_PEACH"
+    && proof.eventId === record(recoveringDying?.sharedRescue)?.responseEventId && proof.targetId === recoveringDying?.targetId);
+  const sharedPending = record(input.pending);
+  if (sharedResponseWindow && sharedPending?.kind === "shared_response_window"
+    && sharedPending.windowId === sharedResponseWindow.windowId) {
+    const domain = record(sharedPending.continuation);
+    const original = record(domain?.mode === "DYING_PEACH" ? domain.dying : domain?.response);
+    if (original) input = { ...input, pending: { ...original, actorId: null, sharedResponseWindowId: sharedResponseWindow.windowId } };
+  }
   const { active, parent, group: directGroup, root } = pendingContexts(input.pending);
   const group = directGroup ?? typedGroupContinuation(input.pending);
   const envelope = input.causalEnvelope ?? null;
@@ -4401,6 +4427,9 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     parentContext,
     participants: interactionScene?.semantics === "PROVEN" ? participantsFromScene(interactionScene) : participants(active, group),
     interactionScene,
+    ...(committedSharedContributions.length ? { sharedResponseContributions: committedSharedContributions } : {}),
+    ...(recoveringReceipt ? { sharedResponseRecovery: { eventId: recoveringReceipt.eventId, targetId: recoveringReceipt.targetId } } : {}),
+    ...(sharedResponseWindow ? { sharedResponseWindow } : {}),
     rootAction,
     skillEffectAction,
     skillEffectSettlements,

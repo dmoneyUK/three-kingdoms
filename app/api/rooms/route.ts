@@ -1,3 +1,9 @@
+import type { SharedResponseContribution } from "../../../game/shared-response-contribution";
+import { sharedResponseDatabase, withSharedResponseCommit, currentSharedResponseCommit } from "../shared-response-commit";
+import { createSharedResponseWindow, sharedResponseForPlayer } from "../../../game/shared-response-strategies";
+import type { SharedResponseWindowPending } from "../../../game/pending";
+import { responseWindowRows, ownResponseWindowChoice, insertResponseWindowChoice } from "../private-response-window-store";
+import { parsePrivateWindowSubmission, allWindowParticipantsSubmitted, selectFirstValidIntent, SHARED_RESPONSE_SETTLEMENT_LEASE_MS, type PrivateWindowSubmission } from "../../../game/shared-response-window";
 import { provenEntourageDecision, type EntourageInvocation, type EntourageHelper } from "../../../game/entourage-presentation";
 import { env } from "cloudflare:workers";
 import { cardDefinition, effectivePhysicalSuit, isAttackCard, makeDeck, shuffle } from "../../../game/cards";
@@ -43,7 +49,7 @@ export const runtime = "edge";
 type TargetCardZone = "hand" | "equipment" | "judgement";
 const PRIVATE_STEAL_RESULT_WINDOW_MS = 12_000;
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { entourageInvocation?: EntourageInvocation; resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; actorId?: string; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicFact?: PublicPresentationEventFactDraft; publicZoneTransition?: PublicPhysicalZoneTransition; publicZoneTransitions?: readonly PublicPhysicalZoneTransition[]; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PresentationMeta = { sharedResponseContribution?: SharedResponseContribution; entourageInvocation?: EntourageInvocation; resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; actorId?: string; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicFact?: PublicPresentationEventFactDraft; publicZoneTransition?: PublicPhysicalZoneTransition; publicZoneTransitions?: readonly PublicPhysicalZoneTransition[]; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type AttackDodgeProofDiagnostic = {
   result: "PROVEN" | "REJECTED" | "NOT_ATTEMPTED";
   reason: string;
@@ -235,7 +241,7 @@ function parsePersistedPending(value: string | null): Pending | null {
 function actionPlayerIdForPending(room: RoomRow, pending: Pending | null, players: PlayerRow[]) {
   if (room.status !== "playing") return null;
   if ((pending as unknown as { kind?: string } | null)?.kind === "discard_turn_handoff") return null;
-  if (pending?.kind === "negation_window") return null;
+  if (pending?.kind === "negation_window" || pending?.kind === "shared_response_window") return null;
   if (room.phase === "response" || room.phase === "dying") {
     if (pending && "actorId" in pending) return pending.actorId;
     if (pending && "targetId" in pending) return pending.targetId;
@@ -765,7 +771,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { ...(meta?.entourageInvocation ? { entourageInvocation: meta.entourageInvocation } : {}), resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
+  return { ...(meta?.sharedResponseContribution ? { sharedResponseContribution: meta.sharedResponseContribution } : {}), ...(meta?.entourageInvocation ? { entourageInvocation: meta.entourageInvocation } : {}), resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
 function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "amount" | "effect" | "bumperHarvestPickProof">> = {}, envelope?: CausalEnvelope | null): PublicPresentationEventFactDraft | undefined {
   if (!causal?.interactionId || !causal.frameId) return undefined;
@@ -3205,8 +3211,17 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
   if (resume.kind === "dying") {
     const target = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(resume.pending.targetId, roomId).first<PlayerRow>();
     if (!target) return;
+    if (resume.pending.sharedRescue && resume.handLoss) {
+      const nextResume: RecoveryResume = { kind: "dying", pending: resume.pending };
+      if (await maybeOpenHandLossTrigger(roomId, resume.handLoss.playerId, resume.handLoss.beforeHand,
+        { records: [], resume: nextResume })) return;
+    }
     if (isDying(target.hp ?? 0)) {
       const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
+      if (resume.pending.sharedRescue) {
+        await startSharedDyingWindow(room, resume.pending, players, deck, discard, log);
+        return;
+      }
       const transition = nextDyingTransition(room, resume.pending, players, [resume.pending.actorId, ...(resume.pending.remainingIds ?? [])]);
       if (transition.pending) {
         await causalRoomStateWrite(roomId, { phase: "dying", pending: transition.pending, deck, discard, log, causalEnvelope: transition.causalEnvelope }).run();
@@ -3561,10 +3576,10 @@ async function beginMatch(roomId: string, players: PlayerRow[]) {
   await beginTurnStart(roomId, lord.seat);
   return true;
 }
-function db() { return env.DB; }
+function db() { return sharedResponseDatabase(env.DB); }
 
 /** Open a private semantic hand-loss trigger after the completed mutation. */
-async function maybeOpenHandLossTrigger(roomId: string, playerId: string, beforeHand: Card[]) {
+async function maybeOpenHandLossTrigger(roomId: string, playerId: string, beforeHand: Card[], resumeRecovery?: { records: RecoveryRecord[]; resume: RecoveryResume }) {
   if (beforeHand.length === 0) return;
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   const player = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(playerId, roomId).first<PlayerRow>();
@@ -3600,12 +3615,13 @@ async function maybeOpenHandLossTrigger(roomId: string, playerId: string, before
       resumePhase: room.phase ?? "play",
       resumeTurnSeat: room.turn_seat,
       ...(existing ? { resumePending: existing } : {}),
+      ...(resumeRecovery ? { resumeRecovery } : {}),
     },
   }, presentation.log, presentation.eventId);
   const update = room.pending_json === null
     ? await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ? AND pending_json IS NULL").bind(serializePending(pending), JSON.stringify(presentation.log), roomId).run()
     : await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ? AND pending_json = ?").bind(serializePending(pending), JSON.stringify(presentation.log), roomId, room.pending_json).run();
-  if ((update.meta.changes ?? 0) <= 0) return;
+  return (update.meta.changes ?? 0) > 0;
 }
 
 function attackResponse(pending: ResponsePending | null | undefined) {
@@ -3891,6 +3907,13 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
   const pending = storedPending;
   if (room.phase === "response" || room.phase === "dying") {
     if (!pending) return `The ${room.phase} phase is missing its pending action.`;
+    if (pending.kind === "shared_response_window") {
+      if (pending.version !== 1 || !pending.windowId || pending.deadline !== pending.openedAt + 8000
+        || !pending.eligiblePlayerIds.length || new Set(pending.eligiblePlayerIds).size !== pending.eligiblePlayerIds.length
+        || pending.priorityPlayerIds.length !== pending.eligiblePlayerIds.length
+        || pending.priorityPlayerIds.some((id) => !pending.eligiblePlayerIds.includes(id))) return "The shared response window is invalid.";
+      return null;
+    }
     if (room.phase === "dying" && pending.kind !== "dying") return "The Dying phase contains the wrong pending action.";
     if (room.phase === "response" && pending.kind === "negation_window") {
       const seats = pending.seatOrderPlayerIds;
@@ -4180,17 +4203,7 @@ async function expireDyingRescue(roomId: string) {
 async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], extraWrites: D1PreparedStatement[] = [], resumePlayer: PlayerRow = source ?? target, resumePhase = source ? phaseAfterAttack(source) : "draw", resumePending?: ResponsePending, dyingHp = target.hp ?? 0, origin?: AttackOrigin, resumeTrigger?: DamageSufferedTriggerContinuation, resumeEffect?: DyingResumeEffect, causal?: CausalContext) {
   const order = playersInTurnOrder(players, room.turn_seat ?? source?.seat ?? target.seat);
   const basePending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: "", remainingIds: order.map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending, ...(causal ? { causal } : {}), ...(origin ? { origin } : {}), ...(resumeTrigger ? { resumeTrigger } : {}), ...(resumeEffect ? { resumeEffect } : {}), reason: `Decide whether to give Peach to ${target.name}` };
-  const next = nextDyingTransition(room, basePending, players, basePending.remainingIds);
-  if (!next.pending) {
-    await db().batch([...extraWrites, db().prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(dyingHp, target.id), causalRoomStateWrite(room.id, { phase: "resolving", pending: null, deck, discard, log, causalEnvelope: null })]);
-    const settledRoom = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
-    const settledPlayers = await db().prepare("SELECT * FROM players WHERE id IN (?, ?)").bind(target.id, source?.id ?? target.id).all<PlayerRow>();
-    const settledTarget = settledPlayers.results?.find((player) => player.id === target.id) ?? target;
-    const settledSource = settledPlayers.results?.find((player) => player.id === source?.id) ?? source;
-    if (settledRoom) await defeatDyingPlayer(settledRoom, basePending, settledTarget, settledSource);
-    return;
-  }
-  await db().batch([...extraWrites, db().prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(dyingHp, target.id), causalRoomStateWrite(room.id, { phase: "dying", pending: next.pending, deck, discard, log, causalEnvelope: next.causalEnvelope })]);
+  await startSharedDyingWindow(room, basePending, players, deck, discard, log, extraWrites, dyingHp);
 }
 
 async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePending; continuation: DuelContinuation }, loser: PlayerRow, opponent: PlayerRow, discard: Card[], log: string[]) {
@@ -4276,21 +4289,8 @@ function negationSemanticEffect(pending: NegationContinuation) {
 function canPlayerRespondWithNegation(player: PlayerRow | null | undefined, continuation: NegationContinuation, players: PlayerRow[]) {
   return Boolean(player?.alive && canRespondWithNegation(responseContext(player, players), negationRequirement(continuation)));
 }
-type NegationWindowSubmission = { kind: "pass" } | { kind: "intent"; providerId: string; cardIds: string[] };
-function parseNegationWindowSubmission(value: string): NegationWindowSubmission | null {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    const submission = parsed as Record<string, unknown>;
-    if (submission.kind === "pass") return { kind: "pass" };
-    if (submission.kind !== "intent" || typeof submission.providerId !== "string" || !submission.providerId.trim()
-      || !Array.isArray(submission.cardIds) || submission.cardIds.some((id) => typeof id !== "string" || !id)
-      || new Set(submission.cardIds).size !== submission.cardIds.length) return null;
-    return { kind: "intent", providerId: submission.providerId, cardIds: [...submission.cardIds] as string[] };
-  } catch {
-    return null;
-  }
-}
+type NegationWindowSubmission = PrivateWindowSubmission;
+const parseNegationWindowSubmission = parsePrivateWindowSubmission;
 function createNegationWindow(players: PlayerRow[], startSeat: number, continuation: NegationContinuation, openedAt = Date.now(), readyAfterEventId?: string): NegationWindowPending {
   const seatOrderPlayerIds = playersInNegationOrder(players.filter((player) => player.alive), startSeat).map((player) => player.id);
   const normalizedContinuation = { ...continuation, remainingIds: [] };
@@ -4321,12 +4321,8 @@ function responseForNegationWindow(pending: NegationWindowPending, actor: Player
 }
 async function negationWindowHasExplicitResponses(roomId: string, window: NegationWindowPending) {
   if (window.seatOrderPlayerIds.length === 0) return false;
-  const result = await db().prepare("SELECT player_id, submission_json, created_at FROM negation_window_submissions WHERE room_id = ? AND window_id = ?")
-    .bind(roomId, window.windowId).all<{ player_id: string; submission_json: string; created_at: number }>();
-  const submittedPlayerIds = new Set((result.results ?? [])
-    .filter((row) => row.created_at < window.deadline && parseNegationWindowSubmission(row.submission_json) !== null)
-    .map((row) => row.player_id));
-  return window.seatOrderPlayerIds.every((playerId) => submittedPlayerIds.has(playerId));
+  const rows = await responseWindowRows(db(), "negation_window_submissions", roomId, window.windowId);
+  return allWindowParticipantsSubmitted(window.seatOrderPlayerIds, window.deadline, rows);
 }
 function negationWindowEnvelope(envelope: CausalEnvelope | null, continuation: NegationContinuation): CausalEnvelope | null {
   const causal = continuation.causal;
@@ -5591,25 +5587,85 @@ async function resolveAttackDamageAboutToApply({ room, source, target, players, 
   });
 }
 
-async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, target: PlayerRow | null, discard: Card[], log: string[], resumePhase: string, sequenceStartCardId: string, writes: D1PreparedStatement[] = [], origin?: AttackOrigin, resumePlayerId?: string, rootEventId?: string) {
+function prepareAttackDodgePublicResponse(room: RoomRow, response: ResponsePending, actor: PlayerRow, source: PlayerRow | null,
+  semanticTarget: PlayerRow, dodgeCards: Card[], handBefore: Card[], responseExecution: ResponseExecution | null, initialLog: string[]) {
+  let log = initialLog;
+  const attack = attackResponse(response);
+  if (!attack) throw new Error("Only an authoritative Attack response may prepare a Dodge.");
+  const continuation = attack.continuation;
+  let responseEventId: string | null = null;
+  let attackDodgeEvaluation: AttackDodgeProofEvaluation | null = null;
+      if (dodgeCards.length === 1) {
+        responseEventId = crypto.randomUUID();
+        attackDodgeEvaluation = attackDodgeResponseProof(
+          log, response, actor.id, room.turn_seat, dodgeCards[0], responseExecution, actor.hero,
+          provenEntourageDecision(response, parseCausalEnvelope(room.causal_envelope_json), gameTimeline(log)), responseEventId,
+        );
+        const attackDodgeResponse = attackDodgeEvaluation.proof ?? undefined;
+        const conversion = publicConversionDraft(responseExecution?.providerId, actor.id, [dodgeCards[0]], { playerId: actor.id, hand: handBefore, equipment: equipmentCards(actor) }, semanticTarget.id, "Dodge");
+        const responseRoot = publicRootLink(log, continuation.rootEventId);
+        const provenConversion = conversion ? { ...conversion, ...(responseRoot ?? {}) } : null;
+        const entourageFact = attackDodgeResponse?.entourage ? publicFactFor(response.causal, "EFFECT_APPLIED", {
+          rootEventId: attackDodgeResponse.rootEventId, actorId: actor.id, affectedPlayerIds: [semanticTarget.id],
+          label: "Dodge", effect: { kind: "entourage_dodge" },
+          outcomeLabel: `played Dodge for ${semanticTarget.name} using Entourage`,
+        }, parseCausalEnvelope(room.causal_envelope_json)) : undefined;
+        const contribution = committedSharedContribution(room, responseEventId, actor, dodgeCards,
+          `${actor.name} played Dodge for ${semanticTarget.name} using Entourage.`);
+        const responseMeta: PresentationMeta = {
+          actorId: actor.id,
+          ...(contribution ? { sharedResponseContribution: contribution } : {}),
+          ...(entourageFact?.committedIdentity ? { publicFact: entourageFact } : {}),
+          ...(attackDodgeResponse ? { resolutionId: attackDodgeResponse.rootResolutionId } : {}),
+          ...(responseExecution?.playedAs ? { playedAs: responseExecution.playedAs } : {}),
+          ...(attackDodgeResponse ? { attackDodgeResponse } : {}),
+        };
+        log = provenConversion
+          ? addCardEventWithPublicEffect(log, actor.name, dodgeCards[0], source?.name ?? "Attack", "play", provenConversion, responseMeta, responseEventId).log
+          : addCardEvent(log, actor.name, dodgeCards[0], source?.name ?? "Attack", "play", true, responseMeta, responseEventId);
+      }
+      else {
+        attackDodgeEvaluation = {
+          proof: null,
+          diagnostic: {
+            result: "NOT_ATTEMPTED",
+            reason: "response-did-not-produce-one-public-physical-card",
+            correlation: {
+              interactionId: response.causal?.interactionId ?? null,
+              rootFrameId: response.causal?.frameId ?? null,
+              rootEventId: null,
+              rootResolutionId: null,
+              responseEventId: null,
+            },
+            checks: { physicalCardCount: dodgeCards.length },
+          },
+        };
+        log = addLogWithId(log, `${actor.name} uses ${responseExecution?.providerId ?? "a Dodge provider"}.` ).log;
+      }
+  return { log, responseEventId, attackDodgeEvaluation };
+}
+
+function dodgedAttackTransition(room: RoomRow, source: PlayerRow | null, target: PlayerRow | null, log: string[], resumePhase: string,
+  sequenceStartCardId: string, origin?: AttackOrigin, resumePlayerId?: string, rootEventId?: string): { phase: string; pending: Pending | null; log: string[]; clearEnvelope: boolean } {
   const options = source && target ? getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceHand: parse<Card[]>(source.hand_json, []), targetHand: parse<Card[]>(target.hand_json, []), targetEquipment: equipmentCards(target) }) : [];
   if (source?.alive && target?.alive && options.length) {
     const presentation = addLogWithId(log, `${source.name}'s Attack is blocked. ${options.length === 1 ? options[0].label : "Optional reactions"} may apply.`);
     const resolutionId = latestResolutionId(presentation.log);
-    const pending: TriggerPending = {
-      kind: "trigger", event: "attack_dodged", actorId: source.id, resolutionId,
-      reason: `Choose an optional reaction to ${target.name}'s Dodge, or skip`,
-      deadline: nextResponseDeadline(source),
-      continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId, ...(rootEventId ? { rootEventId } : {}), resolutionId, ...(resumePlayerId ? { resumePlayerId } : {}), ...(origin ? { origin } : {}) },
-    };
+    const pending: TriggerPending = { kind: "trigger", event: "attack_dodged", actorId: source.id, resolutionId,
+      reason: `Choose an optional reaction to ${target.name}'s Dodge, or skip`, deadline: nextResponseDeadline(source),
+      continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId,
+        ...(rootEventId ? { rootEventId } : {}), resolutionId, ...(resumePlayerId ? { resumePlayerId } : {}), ...(origin ? { origin } : {}) } };
     const readyAfterEventId = latestDecisionPresentationEventId(presentation.log, resolutionId);
-    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(readyAfterEventId ? withPresentationBarrier(pending, presentation.log, readyAfterEventId) : pending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id));
-    if (writes.length) await db().batch(writes);
-    return;
+    return { phase: "response", pending: readyAfterEventId ? withPresentationBarrier(pending, presentation.log, readyAfterEventId) : pending, log: presentation.log, clearEnvelope: false };
   }
-  writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ?, causal_envelope_json = NULL WHERE id = ?").bind(resumePhase, JSON.stringify(discard), JSON.stringify(log), room.id));
-  if (writes.length) await db().batch(writes);
-  if (resumePlayerId ?? source?.id) await continueAfterDying(room.id, resumePlayerId ?? source!.id);
+  return { phase: resumePhase, pending: null, log, clearEnvelope: true };
+}
+async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, target: PlayerRow | null, discard: Card[], log: string[], resumePhase: string, sequenceStartCardId: string, writes: D1PreparedStatement[] = [], origin?: AttackOrigin, resumePlayerId?: string, rootEventId?: string) {
+  const transition = dodgedAttackTransition(room, source, target, log, resumePhase, sequenceStartCardId, origin, resumePlayerId, rootEventId);
+  writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?")
+    .bind(transition.phase, transition.pending ? serializePending(transition.pending) : null, JSON.stringify(discard), JSON.stringify(transition.log), transition.clearEnvelope ? null : room.causal_envelope_json, room.id));
+  await db().batch(writes);
+  if (!transition.pending && (resumePlayerId ?? source?.id)) await continueAfterDying(room.id, resumePlayerId ?? source!.id);
 }
 
 /** Applies the semantic force-damage outcome after an Attack has been dodged. */
@@ -6603,6 +6659,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const deckReorderPending = persistedPending?.kind === "deck_reorder" ? persistedPending : null;
   const responsePending = persistedPending?.kind === "response" ? persistedPending : null;
   const negationWindow = persistedPending?.kind === "negation_window" ? persistedPending : null;
+  const sharedWindow = persistedPending?.kind === "shared_response_window" ? persistedPending : null;
   const legacyResponsePending = room.phase === "response" && persistedPending && ["attack", "duel", "group", "negation"].includes(persistedPending.kind);
   const projectedResponsePending = responsePending ?? (persistedPending?.kind === "dying" ? persistedPending.resumePending : null);
   const pending = persistedPending;
@@ -6635,6 +6692,22 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     ? requestedViewerId ? requestedViewer ?? controllerFallback
       : projectedActionPlayerId && controlledPlayerIds.has(projectedActionPlayerId) ? players.find((player) => player.id === projectedActionPlayerId) ?? controllerFallback : controllerFallback
     : sessionPlayers[0];
+  const ownSharedChoice = sharedWindow && me
+    ? await ownResponseWindowChoice(db, "shared_response_window_submissions", room.id, sharedWindow.windowId, me.id) : null;
+  const sharedPendingForViewer = sharedWindow && me && !sharedWindow.settlement && !ownSharedChoice
+    ? sharedResponseForPlayer(sharedWindow, me) : null;
+  const sharedDecisionForViewer = sharedPendingForViewer && me
+    ? responseDecisionFor(sharedPendingForViewer, responseContext(me, players, room.turn_seat)) : null;
+  if (sharedDecisionForViewer) sharedDecisionForViewer.options = sharedDecisionForViewer.options.filter((option) => option.selection && option.selection.min > 0);
+  const sharedRequesterName = sharedWindow ? players.find((player) => player.id === sharedWindow.requesterId)?.name ?? "the player" : "";
+  const sharedViewerReason = ownSharedChoice ? ownSharedChoice.kind === "pass"
+    ? "Skipped. Waiting for the window to resolve." : "Response submitted. Waiting for the window to resolve."
+    : sharedPendingForViewer ? sharedWindow?.continuation.mode === "ENTOURAGE_DODGE"
+      ? "Cao Cao asks you to provide Dodge. Choose Dodge and Confirm, or Skip."
+      : sharedWindow?.continuation.mode === "INFLUENCING_ATTACK"
+        ? "Liu Bei asks you to provide Attack. Choose Attack and Confirm, or Skip."
+        : `${sharedRequesterName} needs Peach. Choose a legal Peach or First Aid card and Confirm, or Skip.`
+      : "No action needed.";
   const ownWindowSubmission = negationWindow && me
     ? await db.prepare("SELECT submission_json FROM negation_window_submissions WHERE room_id = ? AND window_id = ? AND player_id = ?").bind(room.id, negationWindow.windowId, me.id).first<{ submission_json: string }>()
     : null;
@@ -6666,9 +6739,9 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   // Reading a room must not create D1 writes. Presence is refreshed by the
   // throttled heartbeat action below, never by normal room polling.
   const viewerPlayerIds = new Set(sessionPlayers.map((player) => player.id));
-  const responseDeadline = negationWindow?.deadline ?? (pending && "deadline" in pending ? pending.deadline ?? 0 : 0);
-  const responseCountdownVisibleAt = negationWindow?.openedAt ?? (room.phase === "response" && responseDeadline ? responseDeadline - HUMAN_RESPONSE_TIMEOUT_MS : 0);
-  const actionPlayerId = room.status === "heroes" ? projectedActionPlayerId : negationWindow ? null : negationWaitingForOther || room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
+  const responseDeadline = sharedWindow?.deadline ?? negationWindow?.deadline ?? (pending && "deadline" in pending ? pending.deadline ?? 0 : 0);
+  const responseCountdownVisibleAt = sharedWindow?.openedAt ?? negationWindow?.openedAt ?? (room.phase === "response" && responseDeadline ? responseDeadline - HUMAN_RESPONSE_TIMEOUT_MS : 0);
+  const actionPlayerId = room.status === "heroes" ? projectedActionPlayerId : sharedWindow || negationWindow ? null : negationWaitingForOther || room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
   const currentTriggerContext = triggerPending ? triggerContextFor(triggerPending, players, room) : null;
   const currentTriggerOptions = triggerPending ? triggerOptionsFor(triggerPending, players, room) : [];
   const privateTriggerDecision = Boolean(triggerPending && currentTriggerContext
@@ -6694,7 +6767,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const sharedWindowDecision = negationWindow && sharedWindowResponse && me
     ? responseDecisionFor(sharedWindowResponse, responseContext(me, players, room.turn_seat))
     : null;
-  const actionReason = discardTurnHandoff ? "No action needed."
+  const actionReason = sharedWindow ? sharedViewerReason : discardTurnHandoff ? "No action needed."
     : negationWaitingForOther
     ? "Waiting for Negation..."
     : negationWindow ? negationWindowSubmitted ? "Waiting for the other players." : sharedWindowDecision?.options.length
@@ -6702,7 +6775,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
       : "No Negation available. Pass."
     : concealPrivateTriggerDecision ? "Resolving…"
     : room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
-  const responseDecision = negationWindow ? sharedWindowDecision
+  const responseDecision = sharedWindow ? sharedDecisionForViewer : negationWindow ? sharedWindowDecision
     : me?.id === actualActionPlayerId ? responseDecisionFor(responsePending ?? pending, me ? responseContext(me, players, room.turn_seat) : undefined) : null;
   const canDeclareAttack = me?.id === actualActionPlayerId && canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, room.phase);
   const playPhaseActions = me?.id === actualActionPlayerId && room.phase?.startsWith("play") ? getPlayPhaseActions(responseContext(me, players)) : [];
@@ -6720,7 +6793,8 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const presentation = room.phase === "response" && pending
     ? { resolutionId: decisionResponsePending?.resolutionId ?? triggerPending?.resolutionId ?? latestResolutionId(rawLog), readyAfterEventId: decisionResponsePending?.readyAfterEventId ?? triggerPending?.readyAfterEventId ?? null }
     : undefined;
-  const legalActions = negationWindow ? sharedWindowResponse && me ? legalActionsFor(room, me, sharedWindowResponse, players) : []
+  const legalActions = sharedWindow ? sharedPendingForViewer
+    ? ([...(sharedDecisionForViewer?.options.length ? ["respond"] : []), sharedPendingForViewer.kind === "dying" ? "skip_rescue" : "decline_response"] as GameplayAction[]) : [] : negationWindow ? sharedWindowResponse && me ? legalActionsFor(room, me, sharedWindowResponse, players) : []
     : !legacyResponsePending && me?.id === actualActionPlayerId ? legalActionsFor(room, me, pending, players) : [];
   const targetCardSelection = room.phase === "response"
     && pending?.kind === "target_card"
@@ -6737,10 +6811,11 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     : undefined;
   const currentAction: CurrentAction = {
     version: 3,
-    kind: concealPrivateTriggerDecision || discardTurnHandoff ? "none" : responsePending || negationWindow ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
-    actorId: concealPrivateTriggerDecision ? null : room.status === "heroes" ? projectedActionPlayerId : negationWindow ? me?.id ?? null : actionPlayerId,
+    kind: sharedWindow ? sharedWindow.continuation.mode === "DYING_PEACH" ? "dying" : "response" : concealPrivateTriggerDecision || discardTurnHandoff ? "none" : responsePending || negationWindow ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
+    actorId: sharedWindow ? sharedPendingForViewer ? me?.id ?? null : null : concealPrivateTriggerDecision ? null : room.status === "heroes" ? projectedActionPlayerId : negationWindow ? me?.id ?? null : actionPlayerId,
     deadline: concealPrivateTriggerDecision ? 0 : responseDeadline,
     reason: actionReason,
+    ...(sharedWindow ? { sharedWindow: { windowId: sharedWindow.windowId, locked: Boolean(ownSharedChoice), choice: ownSharedChoice?.kind ?? null } } : {}),
     ...(negationWindow ? { negationWindowId: negationWindow.windowId } : {}),
     // This list is calculated only for the current private view. It is never
     // a table-wide disclosure of another player's hand or legal responses.
@@ -6771,6 +6846,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   });
   const publicTimeline = gameTimeline(rawLog).filter((event) => event.presentation !== false && typeof event.privateToPlayerId !== "string");
   const presentationInput = {
+    ...(sharedWindow ? { sharedResponseWindow: { semantics: "PROVEN" as const, windowId: sharedWindow.windowId, mode: sharedWindow.continuation.mode, requesterId: sharedWindow.requesterId, targetId: sharedWindow.targetId, openedAt: sharedWindow.openedAt, deadline: sharedWindow.deadline, stage: sharedWindow.settlement ? "SETTLING" as const : "COLLECTING" as const } } : {}),
     pending: negationWindow ? {
       kind: "response",
       actorId: null,
@@ -6850,14 +6926,14 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   return {
     ...(attackDodgeProjectionDiagnostics ? { attackDodgeProjectionDiagnostics } : {}),
     serverNow,
-    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, isTestRoom: Boolean(room.test_room), testHandPreset: hostTestHandPreset, responseCountdownVisibleAt: concealPrivateTriggerDecision ? 0 : responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending && !concealPrivateTriggerDecision && !discardTurnHandoff ? { kind: responsePending || negationWindow ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,
+    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, isTestRoom: Boolean(room.test_room), testHandPreset: hostTestHandPreset, responseCountdownVisibleAt: concealPrivateTriggerDecision ? 0 : responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending && !concealPrivateTriggerDecision && !discardTurnHandoff ? { kind: sharedWindow ? sharedWindow.continuation.mode === "DYING_PEACH" ? "dying" : "response" : responsePending || negationWindow ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,
     publicDiscardHandoff: discardTurnHandoff ? { eventId: discardTurnHandoff.eventId, actorId: discardTurnHandoff.actorId, cardCount: discardTurnHandoff.cardCount } : null,
     isHost: isRoomHost, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
     myHeroOptions,
     turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null,
     log: rawLog.flatMap((entry, index) => { if (entry.startsWith("@card:") || entry.startsWith("@cards:")) return []; if (entry.startsWith("@history:")) { try { return [(JSON.parse(entry.slice(9)) as { message: string }).message]; } catch { return []; } } const event = messageEvent(entry, index); return event ? [event.message] : []; }),
-    timeline: projectedTimeline, presentationV2, privateStealResult, privateStealParticipantResult, myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && !discardTurnHandoff && me?.seat === room.turn_seat, actionPlayerId: concealPrivateTriggerDecision || discardTurnHandoff ? null : actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && !discardTurnHandoff && (negationWindow ? Boolean(sharedWindowResponse) : me?.id === actualActionPlayerId),
+    timeline: projectedTimeline, presentationV2, privateStealResult, privateStealParticipantResult, myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && !discardTurnHandoff && me?.seat === room.turn_seat, actionPlayerId: concealPrivateTriggerDecision || discardTurnHandoff ? null : actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && !discardTurnHandoff && (sharedWindow ? Boolean(sharedPendingForViewer) : negationWindow ? Boolean(sharedWindowResponse) : me?.id === actualActionPlayerId),
     pendingAttack,
     // Compatibility projection for old clients/tests; canonical damage
     // reactions are persisted as TriggerPending and submitted via trigger or
@@ -6880,7 +6956,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     publicHarvestPool,
     pendingTargetCard: pending?.kind === "target_card" ? { kind: "target_card", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, cardKind: pending.cardKind } : null,
     pendingBorrowedSword: pending?.kind === "borrowed_sword" ? { kind: "borrowed_sword", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, holderId: pending.holderId, stage: pending.stage, weaponId: pending.weaponId ?? null, eligibleTargetIds: pending.stage === "choose_target" ? borrowedSwordForcedTargetIds(players, pending.sourceId, pending.holderId) : [] } : responsePending?.continuation.kind === "borrowed_sword_attack" ? { kind: "borrowed_sword", sourceId: responsePending.continuation.sourceId, actorId: responsePending.actorId, targetId: responsePending.continuation.targetId, holderId: responsePending.continuation.holderId, stage: "force_attack", weaponId: responsePending.continuation.weaponId, eligibleTargetIds: [] } : null,
-    pendingDying: pending?.kind === "dying" ? { kind: "dying", sourceId: pending.sourceId, targetId: pending.targetId, origin: pending.origin ?? null, recoveryNeeded: recoveryNeeded(players.find((player) => player.id === pending.targetId)?.hp ?? 0), deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
+    pendingDying: sharedWindow?.continuation.mode === "DYING_PEACH" ? { kind: "dying", sourceId: sharedWindow.continuation.dying.sourceId, targetId: sharedWindow.targetId, origin: sharedWindow.continuation.dying.origin ?? null, recoveryNeeded: recoveryNeeded(players.find((player) => player.id === sharedWindow.targetId)?.hp ?? 0), deadline: sharedWindow.deadline } : pending?.kind === "dying" ? { kind: "dying", sourceId: pending.sourceId, targetId: pending.targetId, origin: pending.origin ?? null, recoveryNeeded: recoveryNeeded(players.find((player) => player.id === pending.targetId)?.hp ?? 0), deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
     players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: room.status === "heroes" && !(room.test_room && isTestController) && player.role !== "Lord" && player.id !== me?.id ? null : player.hero, generalReady: Boolean(player.hero), ready: Boolean(player.ready), hp: room.status === "heroes" ? null : player.hp, maxHp: room.status === "heroes" ? null : player.max_hp, alive: Boolean(player.alive), connected: viewerPlayerIds.has(player.id) || Date.now() - player.connected_at < 90_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isTestPlayer: Boolean(player.is_test_player), role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
   };
 }
@@ -6967,6 +7043,628 @@ export async function GET(request: Request) {
   return json(state);
 }
 
+
+function committedSharedContribution(room: RoomRow, eventId: string, actor: PlayerRow, cards: Card[], message: string): SharedResponseContribution | undefined {
+  const window = sharedWindowFor(room);
+  if (!currentSharedResponseCommit() || !window?.settlement?.winner || window.settlement.winner.playerId !== actor.id
+    || cards.length !== window.settlement.winner.cardIds.length
+    || cards.some((card, index) => card.id !== window.settlement!.winner!.cardIds[index])) return undefined;
+  return { semantics: "PROVEN", eventId, windowId: window.windowId, mode: window.continuation.mode,
+    actorId: actor.id, requesterId: window.requesterId, targetId: window.targetId, cardIds: cards.map((card) => card.id),
+    effectiveKind: window.continuation.mode === "ENTOURAGE_DODGE" ? "Dodge" : window.continuation.mode === "INFLUENCING_ATTACK" ? "Attack" : "Peach", message };
+}
+function sharedWindowFor(room: RoomRow): SharedResponseWindowPending | null {
+  const pending = parsePersistedPending(room.pending_json);
+  return pending?.kind === "shared_response_window" ? pending : null;
+}
+async function startSharedDyingWindow(room: RoomRow, pending: DyingPending, players: PlayerRow[],
+  deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], hp?: number) {
+  const target = players.find((player) => player.id === pending.targetId);
+  if (!target) return;
+  const source = players.find((player) => player.id === pending.sourceId);
+  const window = createSharedResponseWindow(players, pending.targetId, pending.targetId,
+    { mode: "DYING_PEACH", dying: pending }, Date.now(), room.turn_seat ?? source?.seat ?? target.seat);
+  if (!window) { await defeatDyingPlayer(room, pending, target, source ?? null); return; }
+  await db().batch([...writes,
+    ...(hp === undefined ? [] : [db().prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(hp, target.id)]),
+    causalRoomStateWrite(room.id, { phase: "dying", pending: window, deck, discard, log,
+      causalEnvelope: parseCausalEnvelope(room.causal_envelope_json) })]);
+}
+async function advanceSharedResponseWindow(roomId: string, code: string, token: string) {
+  const room = await env.DB.prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+  if (!room) return;
+  const window = sharedWindowFor(room);
+  if (!window || !["response", "dying", "resolving"].includes(room.phase ?? "")) return;
+  const now = Date.now();
+  if (window.settlement && window.settlement.leaseUntil > now) return;
+  const rows = await responseWindowRows(env.DB, "shared_response_window_submissions", roomId, window.windowId);
+  const players = (await env.DB.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
+  const livingParticipants = window.eligiblePlayerIds.filter((id) => players.some((player) => player.id === id && player.alive));
+  if (!window.settlement && now < window.deadline && !allWindowParticipantsSubmitted(livingParticipants, window.deadline, rows)) return;
+  const winner = await selectFirstValidIntent(window.priorityPlayerIds, window.deadline, rows, async (playerId, choice) => {
+    const actor = players.find((player) => player.id === playerId && player.alive);
+    const pending = actor ? sharedResponseForPlayer(window, actor) : null;
+    const requester = players.find((player) => player.id === window.requesterId && player.alive);
+    if (!actor || !pending || !requester) return null;
+    const expectedFaction = window.continuation.mode === "ENTOURAGE_DODGE" ? "Wei" : window.continuation.mode === "INFLUENCING_ATTACK" ? "Shu" : null;
+    if (expectedFaction && !STANDARD_HEROES.some((hero) => hero.id === actor.hero && hero.faction === expectedFaction)) return null;
+    if (window.continuation.mode === "DYING_PEACH" && !isDying(requester.hp ?? 0)) return null;
+    const execution = resolveResponseDecision(pending, responseContext(actor, players, room.turn_seat), choice.providerId, { cardIds: choice.cardIds });
+    if (execution?.status !== "satisfied" || !execution.consumeCardIds?.length
+      || execution.consumeCardIds.length !== choice.cardIds.length
+      || execution.consumeCardIds.some((id, index) => id !== choice.cardIds[index])) return null;
+    if (window.continuation.mode === "DYING_PEACH" && execution.consumeCardIds.length !== 1) return null;
+    return { actor, pending, execution, choice };
+  });
+  const claimed: SharedResponseWindowPending = { ...window, settlement: { state: "CLAIMED", claimId: crypto.randomUUID(),
+    leaseUntil: now + SHARED_RESPONSE_SETTLEMENT_LEASE_MS,
+    winner: winner ? { playerId: winner.actor.id, providerId: winner.choice.providerId, cardIds: winner.choice.cardIds, pending: winner.pending } : null } };
+  const expectedPending = serializePending(claimed);
+  const claimedResult = await env.DB.prepare("UPDATE rooms SET pending_json = ?, phase = 'resolving' WHERE id = ? AND pending_json = ? AND phase = ?")
+    .bind(expectedPending, roomId, room.pending_json, room.phase).run();
+  if ((claimedResult.meta.changes ?? 0) === 0) return;
+  const claimedRoom = { ...room, phase: "resolving", pending_json: expectedPending };
+  await withSharedResponseCommit({ roomId, expectedPending, claimId: claimed.settlement!.claimId }, async () => {
+    if (winner) {
+      const response = await commitCanonicalResponse({ room: claimedRoom, me: winner.actor, code, token,
+        action: winner.pending.kind === "dying" ? "give_peach" : "respond",
+        body: { providerId: winner.choice.providerId, cardIds: winner.choice.cardIds, cardId: winner.choice.cardIds[0] },
+        canonicalResponseKind: winner.pending.kind === "dying" ? "dying" : winner.pending.continuation.kind,
+        canonicalResponseSatisfied: true, canonicalResponseDeclined: false, responseExecution: winner.execution, uxTraceId: null });
+      if (!response?.ok) throw new Error(`The selected shared response could not enter its original domain resolver (${response?.status ?? "missing"}).`);
+    } else {
+      const domain = window.continuation;
+      if (domain.mode === "DYING_PEACH") {
+        const target = players.find((player) => player.id === window.targetId) ?? null;
+        const source = players.find((player) => player.id === domain.dying.sourceId) ?? null;
+        await defeatDyingPlayer(claimedRoom, domain.dying, target, source);
+      } else if (domain.mode === "ENTOURAGE_DODGE") {
+        const requester = players.find((player) => player.id === window.requesterId);
+        const pending: ResponsePending = { ...domain.response, disabledProviderIds: [...new Set([...(domain.response.disabledProviderIds ?? []), "cao_cao_hujia"])],
+          deadline: requester ? nextResponseDeadline(requester) : 0 };
+        await causalRoomStateWrite(roomId, { phase: "response", pending,
+          log: addLog(parse<string[]>(room.log_json, []), "No Dodge was provided; the original Dodge decision resumes."),
+          causalEnvelope: parseCausalEnvelope(room.causal_envelope_json) }).run();
+      } else if (domain.response.continuation.kind === "influencing_attack") {
+        await db().prepare("UPDATE rooms SET phase = 'play', pending_json = NULL, log_json = ? WHERE id = ?")
+          .bind(JSON.stringify(addLog(parse<string[]>(room.log_json, []), "No Attack was provided with Influencing.")), roomId).run();
+      } else {
+        const requester = players.find((player) => player.id === window.requesterId) ?? null;
+        const response = await commitCanonicalResponse({ room: claimedRoom, me: requester, code, token, action: "decline_response", body: {},
+          canonicalResponseKind: domain.response.continuation.kind, canonicalResponseSatisfied: false,
+          canonicalResponseDeclined: true, responseExecution: null, uxTraceId: null });
+        if (!response?.ok) throw new Error("The original response decline could not resume.");
+      }
+    }
+  });
+  const current = await env.DB.prepare("SELECT pending_json FROM rooms WHERE id = ?").bind(roomId).first<{ pending_json: string | null }>();
+  if (current?.pending_json !== expectedPending) await env.DB.prepare("DELETE FROM shared_response_window_submissions WHERE room_id = ? AND window_id = ?")
+    .bind(roomId, window.windowId).run();
+}
+
+async function commitCanonicalResponse(input: {
+  room: RoomRow; me: PlayerRow | null; code: string; token: string; action: string;
+  body: { cardId?: string; cardIds?: string[]; providerId?: string }; canonicalResponseKind: string | null;
+  canonicalResponseSatisfied: boolean; canonicalResponseDeclined: boolean;
+  responseExecution: ResponseExecution | null; uxTraceId: string | null;
+}): Promise<Response | null> {
+  const { room, me, code, token, action, body, canonicalResponseKind, canonicalResponseSatisfied,
+    canonicalResponseDeclined, responseExecution, uxTraceId } = input;
+  const db = sharedResponseDatabase(env.DB);
+  if (canonicalResponseKind === "borrowed_sword_attack" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
+    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
+    const stored = pendingForDomainResolution(liveRoom);
+    const response = stored?.kind === "response" ? stored : null;
+    const continuation = response?.continuation.kind === "borrowed_sword_attack" ? response.continuation as BorrowedSwordAttackContinuation : null;
+    if (!liveRoom || liveRoom.phase !== "response" && !isSharedDomainResolution(liveRoom) || liveRoom.pending_json !== room.pending_json || !response || !continuation) return json({ error: "That Borrowed Sword response is stale; the decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
+    if (response.actorId !== me.id) return json({ error: "You are not the current Borrowed Sword Attack player." }, 409);
+    const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+    const players = rows.results ?? [];
+    const source = players.find((player) => player.id === continuation.sourceId && player.alive);
+    const semanticHolderId = semanticResponseActor(response);
+    const holder = players.find((player) => player.id === semanticHolderId && player.id === continuation.holderId && player.alive);
+    const costActorId = responseCostActor(response);
+    const target = players.find((player) => player.id === continuation.targetId && player.alive);
+    if (!source || !holder || !target || target.id === holder.id || attackDistance(players, holder.id, target.id) > attackRangeFor(holder) || !canTargetCharacter({ sourceId: holder.id, targetId: target.id, targetHero: target.hero, targetHandCount: parse<Card[]>(target.hand_json, []).length, cardKind: "Attack" })) return json({ error: "Borrowed Sword's Attack target is no longer legal.", stale: true, room: await roomState(code, token) }, 409);
+    const transferOrEnd = async () => {
+      const currentHolder = await db.prepare("SELECT * FROM players WHERE id = ?").bind(holder.id).first<PlayerRow>();
+      const currentSource = await db.prepare("SELECT * FROM players WHERE id = ?").bind(source.id).first<PlayerRow>();
+      const weapon = currentHolder ? equipmentZone(currentHolder).weapon : undefined;
+      const logBase = parse<string[]>(liveRoom.log_json, []);
+      const activeEnvelope = parseCausalEnvelope(liveRoom.causal_envelope_json);
+      const resumedEnvelope = activeEnvelope && continuation.causal
+        ? resumeCausalFrame(activeEnvelope, continuation.causal).envelope
+        : activeEnvelope;
+      const resumedEnvelopeJson = resumedEnvelope ? JSON.stringify(resumedEnvelope) : liveRoom.causal_envelope_json;
+      if (!currentHolder || !currentSource || !weapon || weapon.id !== continuation.weaponId) {
+        const log = addLog(logBase, `${source.name}'s Borrowed Sword transfer ends because the targeted Weapon changed or disappeared.`);
+        await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving'").bind(continuation.resumePhase, JSON.stringify(log), resumedEnvelopeJson, room.id).run();
+        return;
+      }
+      const equipment = equipmentZone(currentHolder); delete equipment.weapon;
+      const sourceHand = [...parse<Card[]>(currentSource.hand_json, []), weapon];
+      const weaponName = cardDefinition(weapon.kind).name;
+      const transferFact = continuation.rootEventId
+        ? publicFactFor(continuation.causal, "CARD_TRANSFERRED", {
+          rootEventId: continuation.rootEventId,
+          actorId: currentSource.id,
+          affectedPlayerIds: [currentHolder.id],
+          label: weaponName,
+          outcomeLabel: `obtained ${weaponName} from ${currentHolder.name}`,
+          effect: { kind: "equipment_to_hand", label: weaponName },
+        }, activeEnvelope)
+        : undefined;
+      const transferEvent = addLogWithId(logBase, `${source.name} obtains ${weaponName} from ${currentHolder.name} after the forced Attack fails.`, undefined,
+        { actorId: currentSource.id, ...(transferFact ? { publicFact: transferFact } : {}) });
+      let log = transferEvent.log;
+      log = addPrivateHandArrivalEvent(log, currentSource, weapon, {
+        sourceZone: "equipment",
+        sourcePlayerId: currentHolder.id,
+        ...(continuation.causal?.interactionId ? { interactionId: continuation.causal.interactionId } : {}),
+        ...(continuation.causal?.frameId ? { frameId: continuation.causal.frameId } : {}),
+      });
+      await db.batch([
+        db.prepare("UPDATE players SET equipment_json = ? WHERE id = ?").bind(JSON.stringify(equipment), currentHolder.id),
+        db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), currentSource.id),
+        db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving'").bind(JSON.stringify(log), resumedEnvelopeJson, room.id),
+      ]);
+      await advanceEquipmentLostEvents(room.id, equipmentLostRecords(currentHolder.id, [weapon], "borrowed_sword"), { kind: "phase", phase: continuation.resumePhase, playerId: continuation.resumePlayerId });
+    };
+    if (canonicalResponseDeclined || !responseExecution) {
+      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+      if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Borrowed Sword response has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      await transferOrEnd();
+      return json({ room: await roomState(code, token) });
+    }
+    const costHand = parse<Card[]>(me.hand_json, []); const costHandBefore = [...costHand];
+    const attackCards = (responseExecution.consumeCardIds ?? []).map((id) => costHand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
+    if (attackCards.length !== (responseExecution.consumeCardIds ?? []).length) return json({ error: "That Attack provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Borrowed Sword response has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+    const attack = attackCards.length === 1 ? attackCards[0] : undefined;
+    const hand = costHand.filter((card) => !attackCards.some((played) => played.id === card.id));
+    const discard = [...parse<Card[]>(liveRoom.discard_json, []), ...attackCards];
+    const baseLog = parse<string[]>(liveRoom.log_json, []);
+    const attackEventId = crypto.randomUUID();
+    const attackResolutionId = crypto.randomUUID();
+    const declarationResult = attackDeclaration(holder, target, "borrowed_sword", attackCards, continuation.resumePhase, attack, undefined,
+      attackEventId,
+      continuation.causal?.interactionId && continuation.causal.frameId
+        ? { interactionId: continuation.causal.interactionId, frameId: continuation.causal.frameId }
+        : undefined);
+    const declaration = { ...declarationResult.value, resumePlayerId: continuation.resumePlayerId, resolutionId: attackResolutionId } satisfies AttackDeclaration;
+    const attackEnvelope = exactCausalEnvelope(liveRoom, declarationResult.createdEnvelope);
+    const attackFact = publicFactFor(declaration.causal, attackCards.length ? "CARD_PLAYED" : "EFFECT_APPLIED", {
+      rootEventId: attackEventId,
+      actorId: holder.id,
+      affectedPlayerIds: [target.id],
+      label: "Attack",
+      ...(attackCards.length ? {} : { outcomeLabel: `played Attack on ${target.name}` }),
+      effect: { kind: "card_play", label: "Attack" },
+    }, attackEnvelope);
+    const contribution = committedSharedContribution(liveRoom, attackEventId, me, attackCards, `${me.name} provided Attack for ${holder.name} using Influencing against ${target.name}.`);
+    const responseMeta: PresentationMeta = {
+      resolutionId: attackResolutionId,
+      actorId: me.id,
+      ...(contribution ? { sharedResponseContribution: contribution } : {}),
+      ...(responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : {}),
+      ...(attackFact ? { publicFact: attackFact } : {}),
+    };
+    const conversion = publicConversionDraft(responseExecution.providerId, me.id, attackCards, { playerId: me.id, hand: costHandBefore, equipment: equipmentCards(me) }, target.id, "Attack");
+    const presentation = attackCards.length === 1
+      ? conversion
+        ? addCardEventWithPublicEffect(baseLog, me.name, attackCards[0], target.name, "play", conversion, responseMeta, attackEventId)
+        : addCardEventWithId(baseLog, me.name, attackCards[0], target.name, "play", true, responseMeta, attackEventId)
+      : attackCards.length > 1
+        ? conversion
+          ? addCardGroupEventWithPublicEffect(baseLog, me.name, attackCards, "play", target.name, conversion, undefined, responseMeta, attackEventId)
+          : addCardGroupEventWithId(baseLog, me.name, attackCards, "play", true, target.name, undefined, responseMeta, attackEventId)
+        : addLogWithId(baseLog, `${me.name} provides an Attack on ${holder.name}'s behalf.`, undefined, { ...responseMeta, actorId: holder.id }, attackEventId);
+    const next = attackResponseDecision(declaration, target);
+    if (attackTargetedOptions(holder, target, [], players).length) {
+      await beginAttackTargeted(liveRoom, declaration, holder, target, discard, presentation.log, presentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId), turnHistoryAttackWrite(liveRoom, holder)]);
+      await maybeOpenHandLossTrigger(room.id, costActorId, costHandBefore);
+      return json({ room: await roomState(code, token) });
+    }
+    const prevention = addPassiveAttackPreventionNotice(presentation.log, holder, target, attack, declaration.causal, declaration.rootEventId, exactCausalEnvelope(liveRoom, declarationResult.createdEnvelope));
+    if (prevention) {
+      await db.batch([
+        db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
+        turnHistoryAttackWrite(liveRoom, holder),
+        db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(continuation.resumePhase, JSON.stringify(discard), JSON.stringify(prevention.log), attackEnvelope ? JSON.stringify(attackEnvelope) : null, room.id),
+      ]);
+        await continueAfterDying(room.id, continuation.resumePlayerId);
+    } else {
+      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId), turnHistoryAttackWrite(liveRoom, holder)]);
+      await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(next, presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), attackEnvelope ? JSON.stringify(attackEnvelope) : null, room.id).run();
+    }
+    await maybeOpenHandLossTrigger(room.id, costActorId, costHandBefore);
+    return json({ room: await roomState(code, token) });
+  }
+
+  if (canonicalResponseKind === "duel" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
+    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = pendingForDomainResolution(liveRoom); const pending = duelResponse(stored?.kind === "response" ? stored : null);
+    if (!liveRoom || liveRoom.phase !== "response" && !isSharedDomainResolution(liveRoom) || liveRoom.pending_json !== room.pending_json || !pending) return json({ error: "That Duel response is stale; the decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
+    if (pending.response.actorId !== me.id) return json({ error: "You are not the acting player for this Duel response." }, 409);
+    const semanticActorId = semanticResponseActor(pending.response);
+    const semanticActor = (await db.prepare("SELECT * FROM players WHERE id = ? AND alive = 1").bind(semanticActorId).first<PlayerRow>()) ?? null;
+    const costActorId = responseCostActor(pending.response);
+    if (!semanticActor) return json({ error: "The semantic Duel actor is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+    let hand = parse<Card[]>(me.hand_json, []); const handBeforeDuel = [...hand]; const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
+    const opponent = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.continuation.opponentId).first<PlayerRow>();
+    if (!opponent) return json({ error: "The other duelist is no longer available." }, 409);
+    const semanticCards = responseExecution?.consumeCardIds?.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
+    const canonicalRespond = canonicalResponseSatisfied && canonicalResponseKind === "duel";
+    const attackCards = canonicalRespond && responseExecution ? semanticCards : [];
+    if (canonicalRespond && responseExecution && attackCards.length !== (responseExecution.consumeCardIds ?? []).length) return json({ error: "The selected Attack provider requested unavailable costs." }, 409);
+    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Duel response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
+    if (!canonicalRespond || !responseExecution) {
+      await resolveDuelLoss(liveRoom, pending, semanticActor, opponent, discard, log);
+    } else {
+      const attackIds = new Set(attackCards.map((card) => card.id)); hand = hand.filter((card) => !attackIds.has(card.id)); discard.push(...attackCards);
+      const responseOrdinal = Number.isSafeInteger(pending.continuation.attackResponseCount)
+        ? (pending.continuation.attackResponseCount as number) + 1
+        : null;
+      const responseForNext: ResponsePending = responseOrdinal === null
+        ? pending.response
+        : { ...pending.response, continuation: { ...pending.continuation, attackResponseCount: responseOrdinal } };
+      const duelProof = responseOrdinal === null
+        ? undefined
+        : duelAttackResponseProof(log, pending.response, me.id, opponent.id, semanticActor.id, responseOrdinal);
+      const lustDuelProof = responseOrdinal === null
+        ? undefined
+        : lustDuelAttackResponseProof(log, pending.response, me.id, opponent.id, semanticActor.id, responseOrdinal, attackCards);
+      const responseRoot = duelProof?.rootEventId && duelProof.rootResolutionId
+        ? { rootEventId: duelProof.rootEventId, rootResolutionId: duelProof.rootResolutionId }
+        : lustDuelProof
+          ? { rootEventId: lustDuelProof.activationEventId, rootResolutionId: lustDuelProof.activationResolutionId }
+          : null;
+      const responseFact = responseRoot && attackCards.length ? publicFactFor(pending.response.causal, "CARD_PLAYED", {
+        rootEventId: responseRoot.rootEventId, actorId: me.id, affectedPlayerIds: [opponent.id],
+        label: "Attack", effect: { kind: "card_play", label: "Attack" },
+      }, parseCausalEnvelope(liveRoom.causal_envelope_json)) : undefined;
+      const contributionEventId = crypto.randomUUID();
+      const contribution = committedSharedContribution(liveRoom, contributionEventId, me, attackCards,
+        `${me.name} provided Attack for ${semanticActor.name} using Influencing against ${opponent.name}.`);
+      const responseMeta: PresentationMeta = {
+        actorId: me.id,
+        ...(contribution ? { sharedResponseContribution: contribution } : {}),
+        ...(responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : {}),
+        ...(duelProof ? { resolutionId: duelProof.rootResolutionId, duelAttackResponse: duelProof } : {}),
+        ...(lustDuelProof ? { resolutionId: lustDuelProof.activationResolutionId, lustDuelAttackResponse: lustDuelProof } : {}),
+        ...(responseFact ? { publicFact: responseFact } : {}),
+      };
+      const conversion = publicConversionDraft(responseExecution.providerId, me.id, attackCards, { playerId: me.id, hand: handBeforeDuel, equipment: equipmentCards(me) }, opponent.id, "Attack");
+      const provenConversion = conversion ? { ...conversion, ...(responseRoot ?? {}) } : null;
+      const presentation = attackCards.length === 1
+        ? provenConversion
+          ? addCardEventWithPublicEffect(log, me.name, attackCards[0], opponent.name, "play", provenConversion, responseMeta, contributionEventId)
+          : addCardEventWithId(log, me.name, attackCards[0], opponent.name, "play", true, responseMeta, contributionEventId)
+        : attackCards.length > 1
+          ? provenConversion
+            ? addCardGroupEventWithPublicEffect(log, me.name, attackCards, "play", opponent.name, provenConversion, undefined, responseMeta, contributionEventId)
+            : addCardGroupEventWithId(log, me.name, attackCards, "play", true, opponent.name, undefined, responseMeta, contributionEventId)
+          : addLogWithId(log, `${me.name} provides an Attack on ${semanticActor.name}'s behalf in the Duel.`, undefined, { ...responseMeta, effectNotice: true });
+      const remaining = responseAfterSemanticSuccess(responseForNext);
+      log = addLog(presentation.log, `${me.name} provides an Attack on ${semanticActor.name}'s behalf in the Duel. ${remaining ? `${semanticActor.name} must provide another Attack.` : `Action passes to ${opponent.name}.`}`);
+      const reopened = remaining
+        ? reopenSemanticResponse(responseForNext, semanticActor, log, `${semanticActor.name} must provide another Attack.`)
+        : null;
+      const nextPending = reopened
+        ? reopened.pending
+        : attackCards.length
+          ? withPresentationBarrier(nextDuelResponse(responseForNext, responseForNext.continuation, opponent.id, semanticActor.id, nextResponseDeadline(opponent)), log, presentation.eventId)
+          : nextDuelResponse(responseForNext, responseForNext.continuation, opponent.id, semanticActor.id, nextResponseDeadline(opponent));
+      const nextLog = reopened?.log ?? log;
+      const nextActor = reopened ? semanticActor : opponent;
+      const nextOpponentId = nextActor.id === opponent.id ? semanticActor.id : opponent.id;
+      const nextEnvelope = causalEnvelopeAtStage(liveRoom, pending.response.causal, "DUEL_EXCHANGE", {
+        currentSourceId: pending.continuation.sourceId,
+        currentEffect: "duel",
+        currentTargetIds: [nextActor.id, nextOpponentId],
+        resolvingPlayerId: nextActor.id,
+      });
+      await db.batch([
+        db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
+        turnHistoryAttackWrite(liveRoom, semanticActor),
+        causalRoomStateWrite(room.id, { phase: "response", pending: nextPending, discard, log: nextLog, causalEnvelope: nextEnvelope }),
+      ]);
+      await advanceDuel(room.id);
+    }
+    await maybeOpenHandLossTrigger(room.id, costActorId, handBeforeDuel);
+    return json({ room: await roomState(code, token) });
+  }
+
+  if (canonicalResponseKind === "group" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
+    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = pendingForDomainResolution(liveRoom); const group = groupResponse(stored?.kind === "response" ? stored : null);
+    if (!liveRoom || liveRoom.phase !== "response" && !isSharedDomainResolution(liveRoom) || liveRoom.pending_json !== room.pending_json || !group) return json({ error: "That global card response is stale; the decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
+    if (group.response.actorId !== me.id) return json({ error: "You are not the acting player for this global card response." }, 409);
+    const { response, continuation } = group;
+    const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+    const players = rows.results ?? [];
+    const semanticActorId = semanticResponseActor(response);
+    const semanticActor = players.find((player) => player.id === semanticActorId && player.alive) ?? null;
+    const costActorId = responseCostActor(response);
+    if (!semanticActor) return json({ error: "The semantic group-response actor is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+    let hand = parse<Card[]>(me.hand_json, []); const handBeforeGroup = [...hand]; const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
+    const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(continuation.sourceId).first<PlayerRow>();
+    if (!source) return json({ error: "The card source is no longer available." }, 409);
+    const canonicalRespond = canonicalResponseSatisfied && canonicalResponseKind === "group";
+    const groupExecution = responseExecution;
+    const groupCards = groupExecution?.consumeCardIds?.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
+    const selectedResponse = groupExecution && groupCards.length === 1 ? groupCards[0] : null;
+    const serpentCards = groupExecution && groupCards.length > 1 ? groupCards : [];
+    if (canonicalRespond && (!groupExecution || groupExecution.status !== "satisfied" || groupCards.length !== (groupExecution.consumeCardIds ?? []).length)) return json({ error: `Select a valid ${continuation.requiredKind} response and pay its required costs.` }, 409);
+    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That global card response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
+    if (!canonicalRespond || !groupExecution) {
+      await resolveGroupDamage(liveRoom, response, continuation, semanticActor, source, players, discard, log);
+    } else {
+      const responseCards = selectedResponse ? [selectedResponse] : serpentCards; const responseIds = new Set(responseCards.map((card) => card.id)); hand = hand.filter((card) => !responseIds.has(card.id)); const nextContinuation = appendHeldGroupCards(continuation, responseCards);
+      const conversion = publicConversionDraft(groupExecution.providerId, me.id, responseCards, { playerId: me.id, hand: handBeforeGroup, equipment: equipmentCards(me) }, semanticActor.id, continuation.requiredKind);
+      const root = publicRootLink(log, continuation.rootEventId);
+      const provenConversion = conversion ? { ...conversion, ...(root ?? {}) } : null;
+      const responseEventId = crypto.randomUUID();
+      const contribution = committedSharedContribution(liveRoom, responseEventId, me, responseCards,
+        `${me.name} provided ${continuation.requiredKind} for ${semanticActor.name} using Influencing against ${source.name}.`);
+      const responseMeta: PresentationMeta = { actorId: me.id,
+        ...(contribution ? { sharedResponseContribution: contribution } : {}),
+        ...(groupExecution.playedAs ? { playedAs: groupExecution.playedAs } : {}) };
+      if (selectedResponse) {
+        log = (provenConversion
+          ? addCardEventWithPublicEffect(log, me.name, selectedResponse, me.name, "play", provenConversion, responseMeta, responseEventId)
+          : addCardEventWithId(log, me.name, selectedResponse, me.name, "play", true, responseMeta, responseEventId)).log;
+      } else if (responseCards.length) {
+        log = (provenConversion
+          ? addCardGroupEventWithPublicEffect(log, me.name, responseCards, "play", me.name, provenConversion, undefined, responseMeta, responseEventId)
+          : addCardGroupEventWithId(log, me.name, responseCards, "play", true, me.name, undefined, responseMeta, responseEventId)).log;
+      } else log = addLog(log, `${me.name} uses ${groupExecution.providerId} against ${groupCardName(continuation.cardKind)}.`);
+      log = addLog(log, selectedResponse ? `${me.name} plays ${continuation.requiredKind} against ${groupCardName(continuation.cardKind)}.` : responseCards.length ? `${me.name} discards cards with Serpent Spear to form an Attack against ${groupCardName(continuation.cardKind)}.` : `${me.name} satisfies the ${continuation.requiredKind} requirement against ${groupCardName(continuation.cardKind)}.`);
+      const settledResponse = { ...response, actorId: semanticActor.id, delegation: undefined, continuation: nextContinuation } satisfies ResponsePending;
+      const reopened = responseAfterSemanticSuccess(response)
+        ? reopenSemanticResponse(response, semanticActor, log, `${semanticActor.name} must provide another ${continuation.requiredKind}.`)
+        : null;
+      if (reopened) {
+        await db.batch([
+          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
+          ...(continuation.requiredKind === "Attack" ? [turnHistoryAttackWrite(liveRoom, semanticActor)] : []),
+          db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(reopened.pending), JSON.stringify(discard), JSON.stringify(reopened.log), room.id),
+        ]);
+      } else {
+        await finishGroupStep(liveRoom, settledResponse, nextContinuation, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId), ...(continuation.requiredKind === "Attack" ? [turnHistoryAttackWrite(liveRoom, semanticActor)] : [])], satisfiedGroupParticipantOutcome(continuation));
+      }
+    }
+    await maybeOpenHandLossTrigger(room.id, costActorId, handBeforeGroup);
+    return json({ room: await roomState(code, token) });
+  }
+
+  if (canonicalResponseKind === "influencing_attack" && canonicalResponseSatisfied) {
+    if (!me || !responseExecution || responseExecution.status !== "satisfied") return json({ error: "That Influencing Attack is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = pendingForDomainResolution(liveRoom); const response = stored?.kind === "response" && stored.continuation.kind === "influencing_attack" ? stored : null;
+    if (!liveRoom || liveRoom.phase !== "response" && !isSharedDomainResolution(liveRoom) || liveRoom.pending_json !== room.pending_json || !response) return json({ error: "That Influencing decision is stale; the table has advanced.", stale: true, room: await roomState(code, token) }, 409);
+    if (response.actorId !== me.id || response.delegation?.requesterId !== response.continuation.sourceId) return json({ error: "You are not the acting Shu character for this Influencing decision." }, 409);
+    const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(response.continuation.sourceId).first<PlayerRow>(); const target = await db.prepare("SELECT * FROM players WHERE id = ?").bind(response.continuation.targetId).first<PlayerRow>();
+    const players = (await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
+    const consumedIds = responseExecution.consumeCardIds ?? []; const hand = parse<Card[]>(me.hand_json, []); const providedCards = consumedIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)); const attackCard = providedCards.length === 1 ? providedCards[0] : undefined;
+    if (!source || !source.alive || !target || !target.alive || providedCards.length !== consumedIds.length) return json({ error: "The Shu Attack or its target is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Influencing Attack has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+    const nextHand = hand.filter((card) => !consumedIds.includes(card.id)); const discard = parse<Card[]>(liveRoom.discard_json, []); discard.push(...providedCards); let log = parse<string[]>(liveRoom.log_json, []);
+    const conversion = publicConversionDraft(responseExecution.providerId, me.id, providedCards, { playerId: me.id, hand, equipment: equipmentCards(me) }, target.id, "Attack");
+    const responseEventId = crypto.randomUUID();
+    const { value: declaration, createdEnvelope } = attackDeclaration(source, target, "triggered", providedCards,
+      phaseAfterAttack(source), attackCard, undefined, responseEventId);
+    const contributionFact = publicFactFor(declaration.causal, "CARD_PLAYED", { rootEventId: responseEventId,
+      actorId: me.id, affectedPlayerIds: [target.id], label: "Attack", effect: { kind: "card_play", label: "Attack" },
+      outcomeLabel: `provided Attack for ${source.name} using Influencing against ${target.name}` }, createdEnvelope);
+    const contribution = committedSharedContribution(liveRoom, responseEventId, me, providedCards, `${me.name} provided Attack for ${source.name} using Influencing against ${target.name}.`);
+    const meta: PresentationMeta = { actorId: me.id, ...(contribution ? { sharedResponseContribution: contribution } : {}), ...(responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : {}),
+      ...(contributionFact ? { publicFact: contributionFact } : {}) };
+    const materialPresentation = providedCards.length === 1
+      ? conversion ? addCardEventWithPublicEffect(log, me.name, providedCards[0], target.name, "play", conversion, meta, responseEventId)
+        : addCardEventWithId(log, me.name, providedCards[0], target.name, "play", true, meta, responseEventId)
+      : conversion ? addCardGroupEventWithPublicEffect(log, me.name, providedCards, "play", target.name, conversion, undefined, meta, responseEventId)
+        : addCardGroupEventWithId(log, me.name, providedCards, "play", true, target.name, undefined, meta, responseEventId);
+    log = addLog(materialPresentation.log, `${me.name} provided Attack for ${source.name} using Influencing against ${target.name}.`);
+    const targetedOptions = attackTargetedOptions(source, target, [], players);
+    if (targetedOptions.length) {
+      const presentation = addLogWithId(log, `${source.name}'s Attack affects ${target.name}; ${target.name} chooses how to resolve it.`);
+      await beginAttackTargeted(liveRoom, declaration, source, target, discard, presentation.log, presentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source)], [], undefined, createdEnvelope);
+    } else {
+      const prevention = addPassiveAttackPreventionNotice(log, source, target, attackCard, declaration.causal, declaration.rootEventId, exactCausalEnvelope(liveRoom, createdEnvelope));
+      if (prevention) {
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source), db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(phaseAfterAttack(source), JSON.stringify(discard), JSON.stringify(prevention.log), room.id)]);
+      } else {
+        const presentation = addLogWithId(log, `${target.name} must respond to ${source.name}'s Influencing Attack.`);
+        const responsePending = withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, presentation.eventId);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source), causalRoomStateWrite(room.id, { phase: "response", pending: responsePending, discard, log: presentation.log, causalEnvelope: exactCausalEnvelope(liveRoom, createdEnvelope) })]);
+      }
+    }
+    return json({ room: await roomState(code, token) });
+  }
+
+  if (canonicalResponseKind === "attack" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
+    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = pendingForDomainResolution(liveRoom); const response = stored?.kind === "response" ? stored : null; const attack = attackResponse(response);
+    if (!liveRoom || liveRoom.phase !== "response" && !isSharedDomainResolution(liveRoom) || liveRoom.pending_json !== room.pending_json || !attack) return json({ error: "That Attack response is stale; the decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
+    if (response?.actorId !== me.id) return json({ error: "You are not the acting player for this Attack response." }, 409);
+    const { continuation } = attack;
+    const semanticTargetId = semanticResponseActor(response!);
+    const semanticTarget = (await db.prepare("SELECT * FROM players WHERE id = ? AND alive = 1").bind(semanticTargetId).first<PlayerRow>()) ?? null;
+    const costActorId = responseCostActor(response!);
+    let hand = parse<Card[]>(me.hand_json, []); const handBeforeResponse = [...hand]; const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []); const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(continuation.sourceId).first<PlayerRow>();
+    if (!semanticTarget) {
+      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+      if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Attack response has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      const endedLog = addLog(log, "The Attack target is no longer available; the response ends without applying damage.");
+      await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'resolving'").bind(continuation.resumePhase ?? phaseAfterAttack(source), JSON.stringify(endedLog), room.id).run();
+      return json({ room: await roomState(code, token) });
+    }
+    const canonicalDodge = canonicalResponseSatisfied && canonicalResponseKind === "attack";
+    const dodgeIds = canonicalDodge ? (responseExecution?.consumeCardIds ?? []) : [];
+    const dodgeCards = dodgeIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
+    if (canonicalDodge && dodgeCards.length !== dodgeIds.length) return json({ error: "That Dodge provider is no longer available." }, 409);
+    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Attack response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
+    let attackDodgeEvaluation: AttackDodgeProofEvaluation | null = null;
+    let responseEventId: string | null = null;
+    if (canonicalDodge) {
+      const dodgeIdsSet = new Set(dodgeIds);
+      hand = hand.filter((card) => !dodgeIdsSet.has(card.id)); discard.push(...dodgeCards);
+      const presentation = prepareAttackDodgePublicResponse(liveRoom, response!, me, source, semanticTarget, dodgeCards, handBeforeResponse, responseExecution, log);
+      log = presentation.log; responseEventId = presentation.responseEventId; attackDodgeEvaluation = presentation.attackDodgeEvaluation;
+      const responseDescription = responseExecution?.providerId === "zhao_yun_attack_as_dodge"
+        ? "uses Braveheart to play Attack as Dodge"
+        : dodgeCards.length ? "plays Dodge" : `uses ${responseExecution?.providerId ?? "a Dodge provider"}`;
+      log = addLog(log, responseAfterSemanticSuccess(response)
+        ? `${me.name} ${responseDescription}; another Dodge is still required.`
+        : `${me.name} ${responseDescription} and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.`);
+      const reopened = responseAfterSemanticSuccess(response)
+        ? reopenSemanticResponse(response, semanticTarget, log, `${semanticTarget.name} must provide another Dodge.`)
+        : null;
+      if (reopened) {
+        await db.batch([
+          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
+          db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(reopened.pending), JSON.stringify(discard), JSON.stringify(reopened.log), room.id),
+        ]);
+      } else {
+        await finishDodgedAttack(liveRoom, source, semanticTarget, discard, log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId)], continuation.origin, continuation.resumePlayerId, continuation.rootEventId);
+      }
+      await maybeOpenHandLossTrigger(room.id, me.id, handBeforeResponse);
+    } else {
+      if (!source?.alive) {
+        await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(continuation.resumePhase ?? "play", JSON.stringify(addLog(log, "The Attack source is no longer available; the response ends.")), room.id).run();
+      } else {
+        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+        const attackHitProof = canonicalResponseDeclined && !response.delegation
+          && continuation.origin === "card" && continuation.requiredDodgeCount === 1
+          && continuation.damageCards?.length === 1
+          && continuation.damageCards[0].id === continuation.sequenceStartCardId
+          ? attackHitSettlementProofFor(liveRoom, source, semanticTarget, continuation.sequenceStartCardId ?? "", response.resolutionId ?? continuation.resolutionId, continuation.causal, log)
+          : undefined;
+        await resolveAttackDamageAboutToApply({ room: liveRoom, source, target: semanticTarget, players: rows.results ?? [], sourceHand: parse<Card[]>(source.hand_json, []), discard, log, resumePhase: continuation.resumePhase ?? phaseAfterAttack(source), resumePlayerId: continuation.resumePlayerId, sequenceStartCardId: continuation.sequenceStartCardId ?? "", rootEventId: continuation.rootEventId, damageCards: continuation.damageCards, physicalSuit: continuation.physicalSuit, origin: continuation.origin, causal: continuation.causal, label: "Attack", ...(attackHitProof ? { finalizeAttackHitLog: (damageLog: string[]) => attachAttackHitSettlement(damageLog, attackHitProof) } : {}) });
+      }
+    }
+    const nextRoom = await roomState(code, token);
+    if (uxTraceId && attackDodgeEvaluation) {
+      const responseEvent = responseEventId ? nextRoom?.timeline.find((event) => event.id === responseEventId) : undefined;
+      const presentationV2Proofs = nextRoom?.presentationV2?.attackDodgeResponses ?? [];
+      const snapshotProofs = nextRoom?.presentationSnapshot?.attackDodgeResponses ?? [];
+      return json({
+        room: nextRoom,
+        attackDodgeUxTrace: {
+          traceId: uxTraceId,
+          stage: "server-proof-and-projection",
+          proofBuilder: {
+            ...attackDodgeEvaluation.diagnostic,
+            correlation: { ...attackDodgeEvaluation.diagnostic.correlation, responseEventId },
+          },
+          responseEvent: {
+            eventId: responseEventId,
+            presentInReturnedTimeline: Boolean(responseEvent),
+            isPublicCardPlay: responseEvent?.type === "card" && responseEvent.action === "play" && responseEvent.presentation !== false,
+            resolutionMatchesRoot: attackDodgeEvaluation.proof
+              ? responseEvent?.resolutionId === attackDodgeEvaluation.proof.rootResolutionId
+              : null,
+          },
+          projection: {
+            presentationV2ProofCount: presentationV2Proofs.length,
+            snapshotProofCount: snapshotProofs.length,
+            responseMatchCountInPresentationV2: responseEventId ? presentationV2Proofs.filter((proof) => proof.responseEventId === responseEventId).length : 0,
+            responseMatchCountInSnapshot: responseEventId ? snapshotProofs.filter((proof) => proof.responseEventId === responseEventId).length : 0,
+          },
+        },
+      });
+    }
+    return json({ room: nextRoom });
+  }
+
+  if (["give_peach", "skip_rescue"].includes(action)) {
+    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const pending = pendingForDomainResolution(liveRoom);
+    if (!liveRoom || liveRoom.phase !== "dying" && !isSharedDomainResolution(liveRoom) || pending?.kind !== "dying" || pending.actorId !== me.id) {
+      if (action === "skip_rescue") return json({ room: await roomState(code, token) });
+      return json({ error: "You are not the acting player for this Peach rescue decision." }, 409);
+    }
+    const players = (await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
+    const liveActor = players.find((player) => player.id === me.id) ?? me;
+    let hand = parse<Card[]>(liveActor.hand_json, []); const handBeforePeach = [...hand]; const target = players.find((player) => player.id === pending.targetId) ?? null; const source = players.find((player) => player.id === pending.sourceId) ?? null; const resume = players.find((player) => player.id === pending.resumePlayerId) ?? null;
+    if (!target || !target.alive || !isDying(target.hp)) return json({ error: "That rescue target is no longer dying." }, 409);
+    const liveSemanticExecution = canonicalResponseSatisfied
+      ? resolveResponseDecision(pending, responseContext(liveActor, players, liveRoom.turn_seat), body.providerId, { cardId: body.cardId, cardIds: body.cardIds })
+      : null;
+    const selectedExecution = canonicalResponseSatisfied ? liveSemanticExecution : responseExecution;
+    const selectedPeach = action === "give_peach" ? hand.find((card) => card.id === String(body.cardId ?? "")) ?? null : null;
+    const peach = selectedPeach && (!canonicalResponseSatisfied || selectedExecution?.status === "satisfied" && selectedExecution.satisfies === "peach" && selectedExecution.consumeCardIds?.length === 1 && selectedExecution.consumeCardIds[0] === selectedPeach.id) ? selectedPeach : null;
+    if (action === "give_peach" && !peach) return json({ error: "Select a valid Peach or First Aid card for this rescue." }, 409);
+    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'dying' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Peach rescue decision has already moved on." }, 409);
+    if (peach) {
+      hand = hand.filter((card) => card.id !== peach.id); const resumedPending = appendDyingSequenceCard(pending, peach); const discard = pending.resumePending ? parse<Card[]>(liveRoom.discard_json, []) : [...parse<Card[]>(liveRoom.discard_json, []), peach]; let log = parse<string[]>(liveRoom.log_json, []); const firstAid = selectedExecution?.providerId === "hua_tuo_first_aid"; const jiuyuan = !firstAid && target?.hero === "sun-quan" && target.role === "Lord" && target.id !== me.id && me.hero ? STANDARD_HEROES.find((hero) => hero.id === me.hero)?.faction === "Wu" : false; const recoveryAmount = jiuyuan ? 2 : 1; const beforeHp = target?.hp ?? 0; const maxHp = target?.max_hp ?? beforeHp; const nextHp = applyRecovery(beforeHp, recoveryAmount, maxHp); const amountRecovered = recoveredAmount(beforeHp, maxHp, recoveryAmount); const firstAidMaterials = firstAid ? publicCardMaterials([peach], [{ playerId: me.id, hand: handBeforePeach, equipment: equipmentCards(liveActor) }], "PUBLIC_PLAY") : null; const peachEventId = crypto.randomUUID(); const contribution = committedSharedContribution(liveRoom, peachEventId, me, [peach], `${me.name} gave Peach to ${target.name}, restoring ${amountRecovered} HP.`); const peachMeta: PresentationMeta = { actorId: me.id, ...(contribution ? { sharedResponseContribution: contribution } : {}), ...(firstAid ? { playedAs: "peach" } : {}) }; const peachPresentation = firstAid && firstAidMaterials ? addCardEventWithPublicEffect(log, me.name, peach, target.name, "play", { effectId: "hua_tuo_first_aid", effectClass: "CONVERSION", activationOwnerId: me.id, materials: firstAidMaterials, targetId: target.id, resultingCardKind: "Peach", outcome: "AS_PEACH" }, peachMeta, peachEventId) : addCardEventWithId(log, me.name, peach, target.name, "play", true, peachMeta, peachEventId); log = addLog(peachPresentation.log, firstAid ? `${me.name} uses ${peach.rank}${peach.suit} as Peach with First Aid to rescue ${target?.name ?? "the dying player"}, restoring ${amountRecovered} HP (${nextHp} HP).` : `${me.name} gives Peach to ${target?.name ?? "the dying player"}${jiuyuan ? "; Deliverance provides an additional recovery" : ""}, restoring ${amountRecovered} HP (${nextHp} HP).`);
+      if (amountRecovered > 0) {
+        const recoveryPending = { ...resumedPending, actorId: pending.actorId, remainingIds: pending.remainingIds, deadline: 0, ...(pending.sharedRescue ? { sharedRescue: { ...pending.sharedRescue, responseEventId: peachEventId } } : {}) } satisfies DyingPending;
+        const recoveryEnvelope = pending.resumePending && pending.causal
+          ? causalEnvelopeAtStage(liveRoom, pending.causal, "DYING", { currentSourceId: pending.sourceId, currentEffect: "peach_rescue", currentTargetIds: [pending.targetId], resolvingPlayerId: pending.actorId })
+          : null;
+        await db.batch([
+          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
+          db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId),
+          causalRoomStateWrite(room.id, { phase: "resolving", pending: null, discard, log, causalEnvelope: recoveryEnvelope }),
+        ]);
+        await advanceHpRecoveredEvents(room.id, [{ playerId: pending.targetId, amountRecovered, sourceId: me.id, reason: "peach_rescue" }], { kind: "dying", pending: recoveryPending, ...(pending.sharedRescue ? { handLoss: { playerId: me.id, beforeHand: handBeforePeach } } : {}) });
+      } else if (isDying(nextHp)) {
+        const rescueBase = { ...resumedPending, actorId: "", remainingIds: pending.remainingIds, deadline: 0 } satisfies DyingPending;
+        const transition = nextDyingTransition(liveRoom, rescueBase, players, pending.remainingIds);
+        if (transition.pending) {
+          await db.batch([
+            db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
+            db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId),
+            causalRoomStateWrite(room.id, { phase: "dying", pending: transition.pending, discard, log, causalEnvelope: transition.causalEnvelope }, liveRoom.pending_json),
+          ]);
+        } else {
+          await db.batch([
+            db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
+            db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId),
+            causalRoomStateWrite(room.id, { phase: "resolving", pending: null, discard, log, causalEnvelope: null }, liveRoom.pending_json),
+          ]);
+          const settledRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
+          const settledPlayers = await db.prepare("SELECT * FROM players WHERE id IN (?, ?)").bind(target.id, source?.id ?? target.id).all<PlayerRow>();
+          const settledTarget = settledPlayers.results?.find((player) => player.id === target.id) ?? target;
+          const settledSource = settledPlayers.results?.find((player) => player.id === source?.id) ?? source;
+          if (settledRoom) await defeatDyingPlayer(settledRoom, resumedPending, settledTarget, settledSource);
+        }
+      } else {
+        const next = dyingResumeState(resumedPending, resume);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId), causalRoomStateWrite(room.id, { phase: next.phase, pending: next.pendingJson ? resumedPending : null, discard, log, causalEnvelope: liveRoom.causal_envelope_json ? causalEnvelopeAtStage(liveRoom, resumedPending.causal, "DAMAGE", { currentSourceId: pending.sourceId, currentEffect: "damage", currentTargetIds: [pending.targetId], resolvingPlayerId: resumedPending.actorId }) : null })]);
+        await continueDyingResolution(room.id, resumedPending);
+      }
+    } else if (pending.remainingIds.length) {
+      const transition = nextDyingTransition(liveRoom, pending, players, pending.remainingIds);
+      if (transition.pending) {
+        await causalRoomStateWrite(room.id, { phase: "dying", pending: transition.pending, log: parse<string[]>(liveRoom.log_json, []), causalEnvelope: transition.causalEnvelope }, liveRoom.pending_json).run();
+      } else {
+        await defeatDyingPlayer(liveRoom, pending, target, source);
+      }
+      return json({ room: await roomState(code, token) });
+    } else {
+      await defeatDyingPlayer(liveRoom, pending, target, source);
+    }
+    if (peach && !pending.sharedRescue) await maybeOpenHandLossTrigger(room.id, me.id, handBeforePeach);
+    return json({ room: await roomState(code, token) });
+  }
+
+  return null;
+}
+function isSharedDomainResolution(room: RoomRow | null | undefined) {
+  const claim = currentSharedResponseCommit();
+  return Boolean(room && claim && room.id === claim.roomId && room.pending_json === claim.expectedPending);
+}
+function pendingForDomainResolution(room: RoomRow | null | undefined): Pending | null {
+  const pending = parsePersistedPending(room?.pending_json ?? null);
+  if (pending?.kind === "shared_response_window" && isSharedDomainResolution(room)) return pending.settlement?.winner?.pending ?? (pending.continuation.mode === "INFLUENCING_ATTACK" ? pending.continuation.response : null);
+  return pending;
+}
 export async function POST(request: Request) {
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
   const uxTraceId = typeof body.uxTraceId === "string" && /^[a-zA-Z0-9-]{8,80}$/.test(body.uxTraceId) ? body.uxTraceId : null;
@@ -7110,11 +7808,11 @@ export async function POST(request: Request) {
       ? actionPlayerIdForController && sessionPlayers.some((player) => player.id === actionPlayerIdForController) ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? controllerFallback : controllerFallback
       : sessionPlayers[0];
     const submitted = body.context && typeof body.context === "object" ? body.context as { actionRevision?: unknown; meId?: unknown; phase?: unknown; pendingKind?: unknown; actorId?: unknown; windowId?: unknown } : null;
-    if (action !== "advance_timers" && pendingForController?.kind === "negation_window" && isTestController && typeof submitted?.meId === "string" && controlledPlayerIds.has(submitted.meId)) {
+    if (action !== "advance_timers" && (pendingForController?.kind === "negation_window" || pendingForController?.kind === "shared_response_window") && isTestController && typeof submitted?.meId === "string" && controlledPlayerIds.has(submitted.meId)) {
       me = allRoomPlayers.find((player) => player.id === submitted.meId) ?? controllerFallback;
     }
     const expectedRevision = await actionRevisionFor(room, allRoomPlayers, actionPlayerIdForController);
-    const expectedPendingKind = pendingForController?.kind === "response" || pendingForController?.kind === "negation_window" ? "response" : asTriggerPending(pendingForController) ? "trigger" : pendingForController?.kind ?? null;
+    const expectedPendingKind = pendingForController?.kind === "shared_response_window" ? pendingForController.continuation.mode === "DYING_PEACH" ? "dying" : "response" : pendingForController?.kind === "response" || pendingForController?.kind === "negation_window" ? "response" : asTriggerPending(pendingForController) ? "trigger" : pendingForController?.kind ?? null;
     const expectedContext = { meId: me?.id ?? null, phase: room.phase ?? null, pendingKind: expectedPendingKind, actorId: actionPlayerIdForController ?? null };
     const submittedPendingKind = submitted?.pendingKind === undefined ? undefined : String(submitted.pendingKind);
     const contextMismatchReasons: string[] = [];
@@ -7123,7 +7821,7 @@ export async function POST(request: Request) {
     if (submitted?.actionRevision !== undefined && String(submitted.actionRevision) !== expectedRevision) contextMismatchReasons.push("REVISION_CONTEXT");
     if (submitted?.phase !== undefined && String(submitted.phase) !== String(expectedContext.phase)) contextMismatchReasons.push("PHASE_CONTEXT");
     if (submittedPendingKind !== undefined && submittedPendingKind !== String(expectedContext.pendingKind)) contextMismatchReasons.push("PENDING_CONTEXT");
-    if (pendingForController?.kind === "negation_window" && submitted?.windowId !== undefined && String(submitted.windowId) !== pendingForController.windowId) contextMismatchReasons.push("WINDOW_CONTEXT");
+    if ((pendingForController?.kind === "negation_window" || pendingForController?.kind === "shared_response_window") && submitted?.windowId !== undefined && String(submitted.windowId) !== pendingForController.windowId) contextMismatchReasons.push("WINDOW_CONTEXT");
     const contextMismatch = contextMismatchReasons.length > 0;
     if (action === "advance_timers") {
       const pendingActorId = pendingForController && "actorId" in pendingForController ? pendingForController.actorId : null;
@@ -7147,6 +7845,39 @@ export async function POST(request: Request) {
     }
     if (contextMismatch && action !== "advance_timers") {
       return json({ error: "That action is stale. The table has advanced to the next actor.", stale: true, room: await roomState(code, token) }, 409);
+    }
+    if (pendingForController?.kind === "shared_response_window") {
+      const window = pendingForController;
+      const response = me ? sharedResponseForPlayer(window, me) : null;
+      const viewerRoom = () => roomState(code, token, false, isTestController ? me?.id : undefined);
+      if (action === "advance_timers") {
+        await advanceSharedResponseWindow(room.id, code, token);
+        return json({ room: await viewerRoom() });
+      }
+      if (!me || !response) return json({ error: "You are not eligible for this shared response.", room: await viewerRoom() }, 403);
+      const faction = window.continuation.mode === "ENTOURAGE_DODGE" ? "Wei" : window.continuation.mode === "INFLUENCING_ATTACK" ? "Shu" : null;
+      if (faction && !STANDARD_HEROES.some((hero) => hero.id === me!.hero && hero.faction === faction)) return json({ error: "Your faction is no longer eligible." }, 403);
+      const expectedRoot = window.continuation.mode === "ENTOURAGE_DODGE" ? window.continuation.invocation.rootEventId
+        : window.continuation.mode === "INFLUENCING_ATTACK" ? window.continuation.response.continuation.rootEventId : undefined;
+      if (body.rootEventId !== undefined && body.rootEventId !== expectedRoot
+        || body.interactionId !== undefined && body.interactionId !== window.causal?.interactionId) return json({ error: "The shared response causal context does not match.", stale: true }, 409);
+
+      if (["start_response_timer", "start_rescue_timer"].includes(action)) return json({ room: await viewerRoom() });
+      if (!["respond", "decline_response", "give_peach", "skip_rescue"].includes(action)) return json({ error: "Only a response or Skip is available in this shared window." }, 409);
+      const suppliedWindowId = submitted?.windowId ?? body.windowId;
+      if (suppliedWindowId !== window.windowId || window.settlement || Date.now() >= window.deadline) return json({ error: "That shared response window is stale.", stale: true, room: await viewerRoom() }, 409);
+      let choice: PrivateWindowSubmission = { kind: "pass" };
+      if (action === "respond" || action === "give_peach") {
+        const execution = resolveResponseDecision(response, responseContext(me, allRoomPlayers, room.turn_seat), body.providerId ?? "card", { cardId: body.cardId, cardIds: body.cardIds });
+        if (execution?.status !== "satisfied" || !execution.consumeCardIds?.length
+          || window.continuation.mode === "DYING_PEACH" && execution.consumeCardIds.length !== 1) return json({ error: "Choose a legal physical response from your own cards." }, 409);
+        choice = { kind: "intent", providerId: execution.providerId, cardIds: execution.consumeCardIds };
+      }
+      const result = await insertResponseWindowChoice(env.DB, "shared_response_window_submissions", {
+        roomId: room.id, windowId: window.windowId, playerId: me.id, expectedPending: room.pending_json!, submission: choice, now: Date.now() });
+      if (result === "conflict" || result === "closed") return json({ error: "This response is already locked or the window has closed.", stale: true, room: await viewerRoom() }, 409);
+      await advanceSharedResponseWindow(room.id, code, token);
+      return json({ room: await viewerRoom() });
     }
     if (pendingForController?.kind === "negation_window") {
       if (action !== "respond" && action !== "decline_response") {
@@ -7179,23 +7910,13 @@ export async function POST(request: Request) {
             return { kind: "intent", providerId: execution.providerId, cardIds: execution.consumeCardIds ?? [] };
           })();
         if (!submission) return json({ error: "That Negation provider or physical card is no longer available.", stale: true, room: await roomState(code, token, false, isTestController ? me.id : undefined) }, 409);
-        const submissionJson = JSON.stringify(submission);
-        const already = await db.prepare("SELECT submission_json FROM negation_window_submissions WHERE window_id = ? AND player_id = ?").bind(livePending.windowId, me.id).first<{ submission_json: string }>();
-        if (already) {
-          if (already.submission_json !== submissionJson) return json({ error: "A different response was already submitted for this window.", stale: true, room: await roomState(code, token, false, isTestController ? me.id : undefined) }, 409);
-          await advanceNegation(room.id, { allowExplicitEarlySettlement: true });
-          return json({ room: await roomState(code, token, false, isTestController ? me.id : undefined) });
-        }
-        const inserted = await db.prepare("INSERT OR IGNORE INTO negation_window_submissions (room_id, window_id, player_id, submission_json, created_at) SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM rooms WHERE id = ? AND phase = 'response' AND pending_json = ? AND json_extract(pending_json, '$.windowId') = ? AND json_extract(pending_json, '$.deadline') > ?)")
-          .bind(room.id, livePending.windowId, me.id, submissionJson, Date.now(), room.id, liveRoom.pending_json, livePending.windowId, Date.now()).run();
-        if ((inserted.meta.changes ?? 0) <= 0) {
-          const winner = await db.prepare("SELECT submission_json FROM negation_window_submissions WHERE window_id = ? AND player_id = ?").bind(livePending.windowId, me.id).first<{ submission_json: string }>();
-          if (winner?.submission_json === submissionJson) {
-            await advanceNegation(room.id, { allowExplicitEarlySettlement: true });
-            return json({ room: await roomState(code, token, false, isTestController ? me.id : undefined) });
-          }
-          return json({ error: "That Negation intent or Pass was not accepted before the shared deadline.", stale: true, room: await roomState(code, token, false, isTestController ? me.id : undefined) }, 409);
-        }
+        const result = await insertResponseWindowChoice(db, "negation_window_submissions", {
+          roomId: room.id, windowId: livePending.windowId, playerId: me.id,
+          expectedPending: liveRoom.pending_json!, submission, now: Date.now(),
+        });
+        if (result === "conflict" || result === "closed") return json({ error: result === "conflict"
+          ? "A different response was already submitted for this window." : "That Negation intent or Pass was not accepted before the shared deadline.",
+          stale: true, room: await roomState(code, token, false, isTestController ? me.id : undefined) }, 409);
         await advanceNegation(room.id, { allowExplicitEarlySettlement: true });
         return json({ room: await roomState(code, token, false, isTestController ? me.id : undefined) });
       }
@@ -7232,7 +7953,7 @@ export async function POST(request: Request) {
             if (fact?.committedIdentity) log = addLogWithId(log, `${me?.name ?? "The current helper"} declined Entourage.`, undefined,
               { publicFact: fact, resolutionId: response.delegation.publicEntourage.rootResolutionId, importance: "essential" }).log;
           }
-          const claim = await db.prepare("UPDATE rooms SET pending_json = ?, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(serializePending(next), JSON.stringify(log), room.id, room.pending_json).run();
+        const claim = await db.prepare("UPDATE rooms SET pending_json = ?, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(serializePending(next), JSON.stringify(log), room.id, room.pending_json).run();
           if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That response has already advanced.", stale: true, room: await roomState(code, token) }, 409);
           return json({ room: await roomState(code, token) });
         }
@@ -7318,7 +8039,29 @@ export async function POST(request: Request) {
             }
           }
         }
-        const claim = await db.prepare("UPDATE rooms SET pending_json = ?, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(serializePending(next), JSON.stringify(log), room.id, room.pending_json).run();
+        let nextPending: Pending = next;
+        if (responseExecution.providerId === "cao_cao_hujia") {
+          const helper = next.delegation?.publicEntourage;
+          if (!helper) return json({ error: "The Entourage invocation is missing its authoritative Attack root.", stale: true }, 409);
+          const shared = createSharedResponseWindow(allRoomPlayers, responsePending.actorId, responsePending.actorId,
+            { mode: "ENTOURAGE_DODGE", response: responsePending, invocation: helper });
+          if (!shared) return json({ error: "No living Wei helper is eligible." }, 409);
+          nextPending = shared;
+        } else if (responseExecution.providerId === "liu_bei_jijiang") {
+          const continuation = responsePending.continuation;
+          const targetId = continuation.kind === "duel" ? continuation.opponentId
+            : continuation.kind === "borrowed_sword_attack" ? continuation.targetId
+            : continuation.kind === "group" ? continuation.sourceId : responsePending.actorId;
+          const shared = createSharedResponseWindow(allRoomPlayers, responsePending.actorId, targetId,
+            { mode: "INFLUENCING_ATTACK", response: responsePending });
+          if (!shared) return json({ error: "No living Shu helper is eligible." }, 409);
+          nextPending = shared;
+          const fact = publicFactFor(responsePending.causal, "SKILL_USED", { actorId: responsePending.actorId,
+            affectedPlayerIds: [responsePending.actorId], label: "Influencing", effect: { kind: "influencing_invocation" } }, parseCausalEnvelope(room.causal_envelope_json));
+          log = addLogWithId(log, `${me?.name} (Liu Bei) used Influencing.`, undefined,
+            { actorId: responsePending.actorId, ...(fact ? { publicFact: fact } : {}), importance: "essential" }).log;
+        }
+        const claim = await db.prepare("UPDATE rooms SET pending_json = ?, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(serializePending(nextPending), JSON.stringify(log), room.id, room.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That delegated response has already advanced.", stale: true, room: await roomState(code, token) }, 409);
         return json({ room: await roomState(code, token) });
       }
@@ -7471,17 +8214,20 @@ export async function POST(request: Request) {
           await db.prepare("UPDATE rooms SET phase = 'play', pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'resolving'").bind(JSON.stringify(log), room.id).run();
           return json({ room: await roomState(code, token) });
         }
-        const next = delegates[0];
-        const presentation = addLogWithId(parse<string[]>(liveRoom.log_json, []), `${liveMe.name} uses Influencing and asks ${next.name} to provide an Attack on ${target.name}'s behalf.`);
-        const influencingPending: ResponsePending = withPresentationBarrier({
-          kind: "response", actorId: next.id,
-          requirement: { kind: "attack", sourceId: liveMe.id, actorId: next.id },
-          reason: `${liveMe.name} asks you to provide Attack with Influencing, or decline`,
-          deadline: nextResponseDeadline(next),
-          delegation: { kind: "attack", requesterId: liveMe.id, providerId: "liu_bei_jijiang", remainingActorIds: delegates.slice(1).map((player) => player.id) },
-          continuation: { kind: "influencing_attack", sourceId: liveMe.id, targetId: target.id, resumePhase: "play", sequenceStartCardId: `influencing-${liveMe.id}-${target.id}`, origin: "triggered" },
-        }, presentation.log, presentation.eventId);
-        await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving'").bind(serializePending(influencingPending), JSON.stringify(presentation.log), room.id).run();
+        const root = createCausalRoot({ stage: "FORCED_ACTION", origin: { originSourceId: liveMe.id,
+          originEffect: "influencing_attack", originalTargetIds: [target.id] }, current: { currentSourceId: liveMe.id,
+          currentEffect: "influencing_attack", currentTargetIds: [target.id], resolvingPlayerId: null } });
+        const fact = publicFactFor(root.context, "SKILL_USED", { actorId: liveMe.id, affectedPlayerIds: [target.id],
+          label: "Influencing", effect: { kind: "influencing_invocation" } }, root.envelope);
+        const presentation = addLogWithId(parse<string[]>(liveRoom.log_json, []), `${liveMe.name} (Liu Bei) used Influencing.`, undefined,
+          { actorId: liveMe.id, ...(fact ? { publicFact: fact } : {}), importance: "essential" });
+        const original: ResponsePending = { kind: "response", actorId: liveMe.id,
+          requirement: { kind: "attack", sourceId: liveMe.id, actorId: liveMe.id }, reason: "Influencing Attack", causal: root.context,
+          continuation: { kind: "influencing_attack", sourceId: liveMe.id, targetId: target.id, resumePhase: "play",
+            sequenceStartCardId: `influencing-${liveMe.id}-${target.id}`, origin: "triggered", causal: root.context } };
+        const window = createSharedResponseWindow(livePlayers, liveMe.id, target.id, { mode: "INFLUENCING_ATTACK", response: original });
+        if (!window) return json({ error: "No living Shu helper is eligible." }, 409);
+        await causalRoomStateWrite(room.id, { phase: "response", pending: window, log: presentation.log, causalEnvelope: root.envelope }).run();
         return json({ room: await roomState(code, token) });
       }
       let hand = liveHand;
@@ -8098,6 +8844,7 @@ export async function POST(request: Request) {
         db.prepare("UPDATE rooms SET turn_seat = ?, phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
           .bind(continuation.resumeTurnSeat, continuation.resumePhase, nextPending ? serializePending(nextPending) : null, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id),
       ]);
+      if (continuation.resumeRecovery) await advanceHpRecoveredEvents(room.id, continuation.resumeRecovery.records, continuation.resumeRecovery.resume);
       return json({ room: await roomState(code, token) });
     }
     if (liveRoom && trigger && continuation?.kind === "hero_choice_event" && trigger.actorId === me.id) {
@@ -8950,6 +9697,7 @@ export async function POST(request: Request) {
   }
 
   if (action === "advance_timers") {
+    await advanceSharedResponseWindow(room.id, code, token);
     await expireDyingRescue(room.id);
     const harvestAdvance = await advanceHarvest(room.id);
     if (advanceTimerContextDiagnostic && (advanceTimerContextDiagnostic.pendingKind === "harvest" || harvestAdvance.pendingKind === "harvest")) {
@@ -9337,460 +10085,13 @@ export async function POST(request: Request) {
     return json({ room: await roomState(code, token) });
   }
 
-  if (canonicalResponseKind === "borrowed_sword_attack" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
-    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
-    const stored = parsePersistedPending(liveRoom?.pending_json ?? null);
-    const response = stored?.kind === "response" ? stored : null;
-    const continuation = response?.continuation.kind === "borrowed_sword_attack" ? response.continuation as BorrowedSwordAttackContinuation : null;
-    if (!liveRoom || liveRoom.phase !== "response" || liveRoom.pending_json !== room.pending_json || !response || !continuation) return json({ error: "That Borrowed Sword response is stale; the decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
-    if (response.actorId !== me.id) return json({ error: "You are not the current Borrowed Sword Attack player." }, 409);
-    const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-    const players = rows.results ?? [];
-    const source = players.find((player) => player.id === continuation.sourceId && player.alive);
-    const semanticHolderId = semanticResponseActor(response);
-    const holder = players.find((player) => player.id === semanticHolderId && player.id === continuation.holderId && player.alive);
-    const costActorId = responseCostActor(response);
-    const target = players.find((player) => player.id === continuation.targetId && player.alive);
-    if (!source || !holder || !target || target.id === holder.id || attackDistance(players, holder.id, target.id) > attackRangeFor(holder) || !canTargetCharacter({ sourceId: holder.id, targetId: target.id, targetHero: target.hero, targetHandCount: parse<Card[]>(target.hand_json, []).length, cardKind: "Attack" })) return json({ error: "Borrowed Sword's Attack target is no longer legal.", stale: true, room: await roomState(code, token) }, 409);
-    const transferOrEnd = async () => {
-      const currentHolder = await db.prepare("SELECT * FROM players WHERE id = ?").bind(holder.id).first<PlayerRow>();
-      const currentSource = await db.prepare("SELECT * FROM players WHERE id = ?").bind(source.id).first<PlayerRow>();
-      const weapon = currentHolder ? equipmentZone(currentHolder).weapon : undefined;
-      const logBase = parse<string[]>(liveRoom.log_json, []);
-      const activeEnvelope = parseCausalEnvelope(liveRoom.causal_envelope_json);
-      const resumedEnvelope = activeEnvelope && continuation.causal
-        ? resumeCausalFrame(activeEnvelope, continuation.causal).envelope
-        : activeEnvelope;
-      const resumedEnvelopeJson = resumedEnvelope ? JSON.stringify(resumedEnvelope) : liveRoom.causal_envelope_json;
-      if (!currentHolder || !currentSource || !weapon || weapon.id !== continuation.weaponId) {
-        const log = addLog(logBase, `${source.name}'s Borrowed Sword transfer ends because the targeted Weapon changed or disappeared.`);
-        await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving'").bind(continuation.resumePhase, JSON.stringify(log), resumedEnvelopeJson, room.id).run();
-        return;
-      }
-      const equipment = equipmentZone(currentHolder); delete equipment.weapon;
-      const sourceHand = [...parse<Card[]>(currentSource.hand_json, []), weapon];
-      const weaponName = cardDefinition(weapon.kind).name;
-      const transferFact = continuation.rootEventId
-        ? publicFactFor(continuation.causal, "CARD_TRANSFERRED", {
-          rootEventId: continuation.rootEventId,
-          actorId: currentSource.id,
-          affectedPlayerIds: [currentHolder.id],
-          label: weaponName,
-          outcomeLabel: `obtained ${weaponName} from ${currentHolder.name}`,
-          effect: { kind: "equipment_to_hand", label: weaponName },
-        }, activeEnvelope)
-        : undefined;
-      const transferEvent = addLogWithId(logBase, `${source.name} obtains ${weaponName} from ${currentHolder.name} after the forced Attack fails.`, undefined,
-        { actorId: currentSource.id, ...(transferFact ? { publicFact: transferFact } : {}) });
-      let log = transferEvent.log;
-      log = addPrivateHandArrivalEvent(log, currentSource, weapon, {
-        sourceZone: "equipment",
-        sourcePlayerId: currentHolder.id,
-        ...(continuation.causal?.interactionId ? { interactionId: continuation.causal.interactionId } : {}),
-        ...(continuation.causal?.frameId ? { frameId: continuation.causal.frameId } : {}),
-      });
-      await db.batch([
-        db.prepare("UPDATE players SET equipment_json = ? WHERE id = ?").bind(JSON.stringify(equipment), currentHolder.id),
-        db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), currentSource.id),
-        db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving'").bind(JSON.stringify(log), resumedEnvelopeJson, room.id),
-      ]);
-      await advanceEquipmentLostEvents(room.id, equipmentLostRecords(currentHolder.id, [weapon], "borrowed_sword"), { kind: "phase", phase: continuation.resumePhase, playerId: continuation.resumePlayerId });
-    };
-    if (canonicalResponseDeclined || !responseExecution) {
-      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-      if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Borrowed Sword response has already resolved.", stale: true, room: await roomState(code, token) }, 409);
-      await transferOrEnd();
-      return json({ room: await roomState(code, token) });
-    }
-    const costHand = parse<Card[]>(me.hand_json, []); const costHandBefore = [...costHand];
-    const attackCards = (responseExecution.consumeCardIds ?? []).map((id) => costHand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
-    if (attackCards.length !== (responseExecution.consumeCardIds ?? []).length) return json({ error: "That Attack provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Borrowed Sword response has already resolved.", stale: true, room: await roomState(code, token) }, 409);
-    const attack = attackCards.length === 1 ? attackCards[0] : undefined;
-    const hand = costHand.filter((card) => !attackCards.some((played) => played.id === card.id));
-    const discard = [...parse<Card[]>(liveRoom.discard_json, []), ...attackCards];
-    const baseLog = parse<string[]>(liveRoom.log_json, []);
-    const attackEventId = crypto.randomUUID();
-    const attackResolutionId = crypto.randomUUID();
-    const declarationResult = attackDeclaration(holder, target, "borrowed_sword", attackCards, continuation.resumePhase, attack, undefined,
-      attackEventId,
-      continuation.causal?.interactionId && continuation.causal.frameId
-        ? { interactionId: continuation.causal.interactionId, frameId: continuation.causal.frameId }
-        : undefined);
-    const declaration = { ...declarationResult.value, resumePlayerId: continuation.resumePlayerId, resolutionId: attackResolutionId } satisfies AttackDeclaration;
-    const attackEnvelope = exactCausalEnvelope(liveRoom, declarationResult.createdEnvelope);
-    const attackFact = publicFactFor(declaration.causal, attackCards.length ? "CARD_PLAYED" : "EFFECT_APPLIED", {
-      rootEventId: attackEventId,
-      actorId: holder.id,
-      affectedPlayerIds: [target.id],
-      label: "Attack",
-      ...(attackCards.length ? {} : { outcomeLabel: `played Attack on ${target.name}` }),
-      effect: { kind: "card_play", label: "Attack" },
-    }, attackEnvelope);
-    const responseMeta: PresentationMeta = {
-      resolutionId: attackResolutionId,
-      actorId: holder.id,
-      ...(responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : {}),
-      ...(attackFact ? { publicFact: attackFact } : {}),
-    };
-    const conversion = publicConversionDraft(responseExecution.providerId, me.id, attackCards, { playerId: me.id, hand: costHandBefore, equipment: equipmentCards(me) }, target.id, "Attack");
-    const presentation = attackCards.length === 1
-      ? conversion
-        ? addCardEventWithPublicEffect(baseLog, me.name, attackCards[0], target.name, "play", conversion, responseMeta, attackEventId)
-        : addCardEventWithId(baseLog, me.name, attackCards[0], target.name, "play", true, responseMeta, attackEventId)
-      : attackCards.length > 1
-        ? conversion
-          ? addCardGroupEventWithPublicEffect(baseLog, me.name, attackCards, "play", target.name, conversion, undefined, responseMeta, attackEventId)
-          : addCardGroupEventWithId(baseLog, me.name, attackCards, "play", true, target.name, undefined, responseMeta, attackEventId)
-        : addLogWithId(baseLog, `${me.name} provides an Attack on ${holder.name}'s behalf.`, undefined, { ...responseMeta, actorId: holder.id }, attackEventId);
-    const next = attackResponseDecision(declaration, target);
-    if (attackTargetedOptions(holder, target, [], players).length) {
-      await beginAttackTargeted(liveRoom, declaration, holder, target, discard, presentation.log, presentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId), turnHistoryAttackWrite(liveRoom, holder)]);
-      await maybeOpenHandLossTrigger(room.id, costActorId, costHandBefore);
-      return json({ room: await roomState(code, token) });
-    }
-    const prevention = addPassiveAttackPreventionNotice(presentation.log, holder, target, attack, declaration.causal, declaration.rootEventId, exactCausalEnvelope(liveRoom, declarationResult.createdEnvelope));
-    if (prevention) {
-      await db.batch([
-        db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
-        turnHistoryAttackWrite(liveRoom, holder),
-        db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(continuation.resumePhase, JSON.stringify(discard), JSON.stringify(prevention.log), attackEnvelope ? JSON.stringify(attackEnvelope) : null, room.id),
-      ]);
-        await continueAfterDying(room.id, continuation.resumePlayerId);
-    } else {
-      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId), turnHistoryAttackWrite(liveRoom, holder)]);
-      await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(next, presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), attackEnvelope ? JSON.stringify(attackEnvelope) : null, room.id).run();
-    }
-    await maybeOpenHandLossTrigger(room.id, costActorId, costHandBefore);
-    return json({ room: await roomState(code, token) });
-  }
-
-  if (canonicalResponseKind === "duel" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
-    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const pending = duelResponse(stored?.kind === "response" ? stored : null);
-    if (!liveRoom || liveRoom.phase !== "response" || liveRoom.pending_json !== room.pending_json || !pending) return json({ error: "That Duel response is stale; the decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
-    if (pending.response.actorId !== me.id) return json({ error: "You are not the acting player for this Duel response." }, 409);
-    const semanticActorId = semanticResponseActor(pending.response);
-    const semanticActor = (await db.prepare("SELECT * FROM players WHERE id = ? AND alive = 1").bind(semanticActorId).first<PlayerRow>()) ?? null;
-    const costActorId = responseCostActor(pending.response);
-    if (!semanticActor) return json({ error: "The semantic Duel actor is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-    let hand = parse<Card[]>(me.hand_json, []); const handBeforeDuel = [...hand]; const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
-    const opponent = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.continuation.opponentId).first<PlayerRow>();
-    if (!opponent) return json({ error: "The other duelist is no longer available." }, 409);
-    const semanticCards = responseExecution?.consumeCardIds?.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
-    const canonicalRespond = canonicalResponseSatisfied && canonicalResponseKind === "duel";
-    const attackCards = canonicalRespond && responseExecution ? semanticCards : [];
-    if (canonicalRespond && responseExecution && attackCards.length !== (responseExecution.consumeCardIds ?? []).length) return json({ error: "The selected Attack provider requested unavailable costs." }, 409);
-    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Duel response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
-    if (!canonicalRespond || !responseExecution) {
-      await resolveDuelLoss(liveRoom, pending, semanticActor, opponent, discard, log);
-    } else {
-      const attackIds = new Set(attackCards.map((card) => card.id)); hand = hand.filter((card) => !attackIds.has(card.id)); discard.push(...attackCards);
-      const responseOrdinal = Number.isSafeInteger(pending.continuation.attackResponseCount)
-        ? (pending.continuation.attackResponseCount as number) + 1
-        : null;
-      const responseForNext: ResponsePending = responseOrdinal === null
-        ? pending.response
-        : { ...pending.response, continuation: { ...pending.continuation, attackResponseCount: responseOrdinal } };
-      const duelProof = responseOrdinal === null
-        ? undefined
-        : duelAttackResponseProof(log, pending.response, me.id, opponent.id, semanticActor.id, responseOrdinal);
-      const lustDuelProof = responseOrdinal === null
-        ? undefined
-        : lustDuelAttackResponseProof(log, pending.response, me.id, opponent.id, semanticActor.id, responseOrdinal, attackCards);
-      const responseRoot = duelProof?.rootEventId && duelProof.rootResolutionId
-        ? { rootEventId: duelProof.rootEventId, rootResolutionId: duelProof.rootResolutionId }
-        : lustDuelProof
-          ? { rootEventId: lustDuelProof.activationEventId, rootResolutionId: lustDuelProof.activationResolutionId }
-          : null;
-      const responseFact = responseRoot && attackCards.length ? publicFactFor(pending.response.causal, "CARD_PLAYED", {
-        rootEventId: responseRoot.rootEventId, actorId: me.id, affectedPlayerIds: [opponent.id],
-        label: "Attack", effect: { kind: "card_play", label: "Attack" },
-      }, parseCausalEnvelope(liveRoom.causal_envelope_json)) : undefined;
-      const responseMeta: PresentationMeta = {
-        ...(responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : {}),
-        ...(duelProof ? { resolutionId: duelProof.rootResolutionId, duelAttackResponse: duelProof } : {}),
-        ...(lustDuelProof ? { resolutionId: lustDuelProof.activationResolutionId, lustDuelAttackResponse: lustDuelProof } : {}),
-        ...(responseFact ? { publicFact: responseFact } : {}),
-      };
-      const conversion = publicConversionDraft(responseExecution.providerId, me.id, attackCards, { playerId: me.id, hand: handBeforeDuel, equipment: equipmentCards(me) }, opponent.id, "Attack");
-      const provenConversion = conversion ? { ...conversion, ...(responseRoot ?? {}) } : null;
-      const presentation = attackCards.length === 1
-        ? provenConversion
-          ? addCardEventWithPublicEffect(log, me.name, attackCards[0], opponent.name, "play", provenConversion, responseMeta)
-          : addCardEventWithId(log, me.name, attackCards[0], opponent.name, "play", true, responseMeta)
-        : attackCards.length > 1
-          ? provenConversion
-            ? addCardGroupEventWithPublicEffect(log, me.name, attackCards, "play", opponent.name, provenConversion, undefined, responseMeta)
-            : addCardGroupEventWithId(log, me.name, attackCards, "play", true, opponent.name, undefined, responseMeta)
-          : addLogWithId(log, `${me.name} provides an Attack on ${semanticActor.name}'s behalf in the Duel.`, undefined, { ...responseMeta, effectNotice: true });
-      const remaining = responseAfterSemanticSuccess(responseForNext);
-      log = addLog(presentation.log, `${me.name} provides an Attack on ${semanticActor.name}'s behalf in the Duel. ${remaining ? `${semanticActor.name} must provide another Attack.` : `Action passes to ${opponent.name}.`}`);
-      const reopened = remaining
-        ? reopenSemanticResponse(responseForNext, semanticActor, log, `${semanticActor.name} must provide another Attack.`)
-        : null;
-      const nextPending = reopened
-        ? reopened.pending
-        : attackCards.length
-          ? withPresentationBarrier(nextDuelResponse(responseForNext, responseForNext.continuation, opponent.id, semanticActor.id, nextResponseDeadline(opponent)), log, presentation.eventId)
-          : nextDuelResponse(responseForNext, responseForNext.continuation, opponent.id, semanticActor.id, nextResponseDeadline(opponent));
-      const nextLog = reopened?.log ?? log;
-      const nextActor = reopened ? semanticActor : opponent;
-      const nextOpponentId = nextActor.id === opponent.id ? semanticActor.id : opponent.id;
-      const nextEnvelope = causalEnvelopeAtStage(liveRoom, pending.response.causal, "DUEL_EXCHANGE", {
-        currentSourceId: pending.continuation.sourceId,
-        currentEffect: "duel",
-        currentTargetIds: [nextActor.id, nextOpponentId],
-        resolvingPlayerId: nextActor.id,
-      });
-      await db.batch([
-        db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
-        turnHistoryAttackWrite(liveRoom, semanticActor),
-        causalRoomStateWrite(room.id, { phase: "response", pending: nextPending, discard, log: nextLog, causalEnvelope: nextEnvelope }),
-      ]);
-      await advanceDuel(room.id);
-    }
-    await maybeOpenHandLossTrigger(room.id, costActorId, handBeforeDuel);
-    return json({ room: await roomState(code, token) });
-  }
-
-  if (canonicalResponseKind === "group" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
-    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const group = groupResponse(stored?.kind === "response" ? stored : null);
-    if (!liveRoom || liveRoom.phase !== "response" || liveRoom.pending_json !== room.pending_json || !group) return json({ error: "That global card response is stale; the decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
-    if (group.response.actorId !== me.id) return json({ error: "You are not the acting player for this global card response." }, 409);
-    const { response, continuation } = group;
-    const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-    const players = rows.results ?? [];
-    const semanticActorId = semanticResponseActor(response);
-    const semanticActor = players.find((player) => player.id === semanticActorId && player.alive) ?? null;
-    const costActorId = responseCostActor(response);
-    if (!semanticActor) return json({ error: "The semantic group-response actor is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-    let hand = parse<Card[]>(me.hand_json, []); const handBeforeGroup = [...hand]; const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
-    const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(continuation.sourceId).first<PlayerRow>();
-    if (!source) return json({ error: "The card source is no longer available." }, 409);
-    const canonicalRespond = canonicalResponseSatisfied && canonicalResponseKind === "group";
-    const groupExecution = responseExecution;
-    const groupCards = groupExecution?.consumeCardIds?.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
-    const selectedResponse = groupExecution && groupCards.length === 1 ? groupCards[0] : null;
-    const serpentCards = groupExecution && groupCards.length > 1 ? groupCards : [];
-    if (canonicalRespond && (!groupExecution || groupExecution.status !== "satisfied" || groupCards.length !== (groupExecution.consumeCardIds ?? []).length)) return json({ error: `Select a valid ${continuation.requiredKind} response and pay its required costs.` }, 409);
-    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That global card response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
-    if (!canonicalRespond || !groupExecution) {
-      await resolveGroupDamage(liveRoom, response, continuation, semanticActor, source, players, discard, log);
-    } else {
-      const responseCards = selectedResponse ? [selectedResponse] : serpentCards; const responseIds = new Set(responseCards.map((card) => card.id)); hand = hand.filter((card) => !responseIds.has(card.id)); const nextContinuation = appendHeldGroupCards(continuation, responseCards);
-      const conversion = publicConversionDraft(groupExecution.providerId, me.id, responseCards, { playerId: me.id, hand: handBeforeGroup, equipment: equipmentCards(me) }, semanticActor.id, continuation.requiredKind);
-      const root = publicRootLink(log, continuation.rootEventId);
-      const provenConversion = conversion ? { ...conversion, ...(root ?? {}) } : null;
-      if (selectedResponse && provenConversion) {
-        log = addCardEventWithPublicEffect(log, me.name, selectedResponse, me.name, "play", provenConversion, groupExecution.playedAs ? { playedAs: groupExecution.playedAs } : undefined).log;
-      } else if (!selectedResponse && provenConversion) {
-        log = addCardGroupEventWithPublicEffect(log, me.name, responseCards, "play", me.name, provenConversion, undefined, groupExecution.playedAs ? { playedAs: groupExecution.playedAs } : undefined).log;
-      } else {
-        log = selectedResponse ? addCardEvent(log, me.name, selectedResponse, me.name, "play", true, groupExecution.playedAs ? { playedAs: groupExecution.playedAs } : undefined) : responseCards.length ? addCardGroupEvent(log, me.name, responseCards, "play") : addLog(log, `${me.name} uses ${groupExecution.providerId} against ${groupCardName(continuation.cardKind)}.`);
-      }
-      log = addLog(log, selectedResponse ? `${me.name} plays ${continuation.requiredKind} against ${groupCardName(continuation.cardKind)}.` : responseCards.length ? `${me.name} discards cards with Serpent Spear to form an Attack against ${groupCardName(continuation.cardKind)}.` : `${me.name} satisfies the ${continuation.requiredKind} requirement against ${groupCardName(continuation.cardKind)}.`);
-      const settledResponse = { ...response, actorId: semanticActor.id, delegation: undefined, continuation: nextContinuation } satisfies ResponsePending;
-      const reopened = responseAfterSemanticSuccess(response)
-        ? reopenSemanticResponse(response, semanticActor, log, `${semanticActor.name} must provide another ${continuation.requiredKind}.`)
-        : null;
-      if (reopened) {
-        await db.batch([
-          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
-          ...(continuation.requiredKind === "Attack" ? [turnHistoryAttackWrite(liveRoom, semanticActor)] : []),
-          db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(reopened.pending), JSON.stringify(discard), JSON.stringify(reopened.log), room.id),
-        ]);
-      } else {
-        await finishGroupStep(liveRoom, settledResponse, nextContinuation, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId), ...(continuation.requiredKind === "Attack" ? [turnHistoryAttackWrite(liveRoom, semanticActor)] : [])], satisfiedGroupParticipantOutcome(continuation));
-      }
-    }
-    await maybeOpenHandLossTrigger(room.id, costActorId, handBeforeGroup);
-    return json({ room: await roomState(code, token) });
-  }
-
   if (["apply_trigger", "decline_trigger_effect"].includes(action)) {
     return json({ error: "This triggered effect is no longer available.", stale: true, room: await roomState(code, token) }, 409);
   }
 
-  if (canonicalResponseKind === "influencing_attack" && canonicalResponseSatisfied) {
-    if (!me || !responseExecution || responseExecution.status !== "satisfied") return json({ error: "That Influencing Attack is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const response = stored?.kind === "response" && stored.continuation.kind === "influencing_attack" ? stored : null;
-    if (!liveRoom || liveRoom.phase !== "response" || liveRoom.pending_json !== room.pending_json || !response) return json({ error: "That Influencing decision is stale; the table has advanced.", stale: true, room: await roomState(code, token) }, 409);
-    if (response.actorId !== me.id || response.delegation?.requesterId !== response.continuation.sourceId) return json({ error: "You are not the acting Shu character for this Influencing decision." }, 409);
-    const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(response.continuation.sourceId).first<PlayerRow>(); const target = await db.prepare("SELECT * FROM players WHERE id = ?").bind(response.continuation.targetId).first<PlayerRow>();
-    const players = (await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
-    const consumedIds = responseExecution.consumeCardIds ?? []; const hand = parse<Card[]>(me.hand_json, []); const providedCards = consumedIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)); const attackCard = providedCards.length === 1 ? providedCards[0] : undefined;
-    if (!source || !source.alive || !target || !target.alive || providedCards.length !== consumedIds.length) return json({ error: "The Shu Attack or its target is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Influencing Attack has already resolved.", stale: true, room: await roomState(code, token) }, 409);
-    const nextHand = hand.filter((card) => !consumedIds.includes(card.id)); const discard = parse<Card[]>(liveRoom.discard_json, []); discard.push(...providedCards); let log = parse<string[]>(liveRoom.log_json, []);
-    const conversion = publicConversionDraft(responseExecution.providerId, me.id, providedCards, { playerId: me.id, hand, equipment: equipmentCards(me) }, target.id, "Attack");
-    const materialPresentation = providedCards.length === 1
-      ? conversion
-        ? addCardEventWithPublicEffect(log, me.name, providedCards[0], target.name, "play", conversion, responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : undefined).log
-        : addCardEvent(log, me.name, providedCards[0], target.name, "play", true, responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : undefined)
-      : providedCards.length > 1
-        ? conversion
-          ? addCardGroupEventWithPublicEffect(log, me.name, providedCards, "play", target.name, conversion, undefined, responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : undefined).log
-          : addCardGroupEvent(log, me.name, providedCards, "play", true, target.name)
-        : log;
-    log = addLog(materialPresentation, `${me.name} provides an Attack on ${source.name}'s behalf against ${target.name}.`);
-    const { value: declaration, createdEnvelope } = attackDeclaration(source, target, "triggered", providedCards, phaseAfterAttack(source), attackCard);
-    const targetedOptions = attackTargetedOptions(source, target, [], players);
-    if (targetedOptions.length) {
-      const presentation = addLogWithId(log, `${source.name}'s Attack affects ${target.name}; ${target.name} chooses how to resolve it.`);
-      await beginAttackTargeted(liveRoom, declaration, source, target, discard, presentation.log, presentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source)], [], undefined, createdEnvelope);
-    } else {
-      const prevention = addPassiveAttackPreventionNotice(log, source, target, attackCard, declaration.causal, declaration.rootEventId, exactCausalEnvelope(liveRoom, createdEnvelope));
-      if (prevention) {
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source), db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(phaseAfterAttack(source), JSON.stringify(discard), JSON.stringify(prevention.log), room.id)]);
-      } else {
-        const presentation = addLogWithId(log, `${target.name} must respond to ${source.name}'s Influencing Attack.`);
-        const responsePending = withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, presentation.eventId);
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source), causalRoomStateWrite(room.id, { phase: "response", pending: responsePending, discard, log: presentation.log, causalEnvelope: exactCausalEnvelope(liveRoom, createdEnvelope) })]);
-      }
-    }
-    return json({ room: await roomState(code, token) });
-  }
-
-  if (canonicalResponseKind === "attack" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
-    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const response = stored?.kind === "response" ? stored : null; const attack = attackResponse(response);
-    if (!liveRoom || liveRoom.phase !== "response" || liveRoom.pending_json !== room.pending_json || !attack) return json({ error: "That Attack response is stale; the decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
-    if (response?.actorId !== me.id) return json({ error: "You are not the acting player for this Attack response." }, 409);
-    const { continuation } = attack;
-    const semanticTargetId = semanticResponseActor(response!);
-    const semanticTarget = (await db.prepare("SELECT * FROM players WHERE id = ? AND alive = 1").bind(semanticTargetId).first<PlayerRow>()) ?? null;
-    const costActorId = responseCostActor(response!);
-    let hand = parse<Card[]>(me.hand_json, []); const handBeforeResponse = [...hand]; const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []); const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(continuation.sourceId).first<PlayerRow>();
-    if (!semanticTarget) {
-      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-      if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Attack response has already resolved.", stale: true, room: await roomState(code, token) }, 409);
-      const endedLog = addLog(log, "The Attack target is no longer available; the response ends without applying damage.");
-      await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'resolving'").bind(continuation.resumePhase ?? phaseAfterAttack(source), JSON.stringify(endedLog), room.id).run();
-      return json({ room: await roomState(code, token) });
-    }
-    const canonicalDodge = canonicalResponseSatisfied && canonicalResponseKind === "attack";
-    const dodgeIds = canonicalDodge ? (responseExecution?.consumeCardIds ?? []) : [];
-    const dodgeCards = dodgeIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
-    if (canonicalDodge && dodgeCards.length !== dodgeIds.length) return json({ error: "That Dodge provider is no longer available." }, 409);
-    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Attack response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
-    let attackDodgeEvaluation: AttackDodgeProofEvaluation | null = null;
-    let responseEventId: string | null = null;
-    if (canonicalDodge) {
-      const dodgeIdsSet = new Set(dodgeIds);
-      hand = hand.filter((card) => !dodgeIdsSet.has(card.id)); discard.push(...dodgeCards);
-      if (dodgeCards.length === 1) {
-        responseEventId = crypto.randomUUID();
-        attackDodgeEvaluation = attackDodgeResponseProof(
-          log, attack.response, me.id, liveRoom.turn_seat, dodgeCards[0], responseExecution, me.hero,
-          provenEntourageDecision(attack.response, parseCausalEnvelope(liveRoom.causal_envelope_json), gameTimeline(log)), responseEventId,
-        );
-        const attackDodgeResponse = attackDodgeEvaluation.proof ?? undefined;
-        const conversion = publicConversionDraft(responseExecution?.providerId, me.id, [dodgeCards[0]], { playerId: me.id, hand: handBeforeResponse, equipment: equipmentCards(me) }, semanticTarget.id, "Dodge");
-        const responseRoot = publicRootLink(log, continuation.rootEventId);
-        const provenConversion = conversion ? { ...conversion, ...(responseRoot ?? {}) } : null;
-        const entourageFact = attackDodgeResponse?.entourage ? publicFactFor(response.causal, "EFFECT_APPLIED", {
-          rootEventId: attackDodgeResponse.rootEventId, actorId: me.id, affectedPlayerIds: [semanticTarget.id],
-          label: "Dodge", effect: { kind: "entourage_dodge" },
-          outcomeLabel: `played Dodge for ${semanticTarget.name} using Entourage`,
-        }, parseCausalEnvelope(liveRoom.causal_envelope_json)) : undefined;
-        const responseMeta: PresentationMeta = {
-          actorId: me.id,
-          ...(entourageFact?.committedIdentity ? { publicFact: entourageFact } : {}),
-          ...(attackDodgeResponse ? { resolutionId: attackDodgeResponse.rootResolutionId } : {}),
-          ...(responseExecution?.playedAs ? { playedAs: responseExecution.playedAs } : {}),
-          ...(attackDodgeResponse ? { attackDodgeResponse } : {}),
-        };
-        log = provenConversion
-          ? addCardEventWithPublicEffect(log, me.name, dodgeCards[0], source?.name ?? "Attack", "play", provenConversion, responseMeta, responseEventId).log
-          : addCardEvent(log, me.name, dodgeCards[0], source?.name ?? "Attack", "play", true, responseMeta, responseEventId);
-      }
-      else {
-        attackDodgeEvaluation = {
-          proof: null,
-          diagnostic: {
-            result: "NOT_ATTEMPTED",
-            reason: "response-did-not-produce-one-public-physical-card",
-            correlation: {
-              interactionId: attack.response.causal?.interactionId ?? null,
-              rootFrameId: attack.response.causal?.frameId ?? null,
-              rootEventId: null,
-              rootResolutionId: null,
-              responseEventId: null,
-            },
-            checks: { physicalCardCount: dodgeCards.length },
-          },
-        };
-        log = addLogWithId(log, `${me.name} uses ${responseExecution?.providerId ?? "a Dodge provider"}.` ).log;
-      }
-      const responseDescription = responseExecution?.providerId === "zhao_yun_attack_as_dodge"
-        ? "uses Braveheart to play Attack as Dodge"
-        : dodgeCards.length ? "plays Dodge" : `uses ${responseExecution?.providerId ?? "a Dodge provider"}`;
-      log = addLog(log, `${me.name} ${responseDescription} and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.`);
-      const reopened = responseAfterSemanticSuccess(response)
-        ? reopenSemanticResponse(response, semanticTarget, log, `${semanticTarget.name} must provide another Dodge.`)
-        : null;
-      if (reopened) {
-        await db.batch([
-          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
-          db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(reopened.pending), JSON.stringify(discard), JSON.stringify(reopened.log), room.id),
-        ]);
-      } else {
-        await finishDodgedAttack(liveRoom, source, semanticTarget, discard, log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId)], continuation.origin, continuation.resumePlayerId, continuation.rootEventId);
-      }
-      await maybeOpenHandLossTrigger(room.id, me.id, handBeforeResponse);
-    } else {
-      if (!source?.alive) {
-        await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(continuation.resumePhase ?? "play", JSON.stringify(addLog(log, "The Attack source is no longer available; the response ends.")), room.id).run();
-      } else {
-        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-        const attackHitProof = canonicalResponseDeclined && !response.delegation
-          && continuation.origin === "card" && continuation.requiredDodgeCount === 1
-          && continuation.damageCards?.length === 1
-          && continuation.damageCards[0].id === continuation.sequenceStartCardId
-          ? attackHitSettlementProofFor(liveRoom, source, semanticTarget, continuation.sequenceStartCardId ?? "", response.resolutionId ?? continuation.resolutionId, continuation.causal, log)
-          : undefined;
-        await resolveAttackDamageAboutToApply({ room: liveRoom, source, target: semanticTarget, players: rows.results ?? [], sourceHand: parse<Card[]>(source.hand_json, []), discard, log, resumePhase: continuation.resumePhase ?? phaseAfterAttack(source), resumePlayerId: continuation.resumePlayerId, sequenceStartCardId: continuation.sequenceStartCardId ?? "", rootEventId: continuation.rootEventId, damageCards: continuation.damageCards, physicalSuit: continuation.physicalSuit, origin: continuation.origin, causal: continuation.causal, label: "Attack", ...(attackHitProof ? { finalizeAttackHitLog: (damageLog: string[]) => attachAttackHitSettlement(damageLog, attackHitProof) } : {}) });
-      }
-    }
-    const nextRoom = await roomState(code, token);
-    if (uxTraceId && attackDodgeEvaluation) {
-      const responseEvent = responseEventId ? nextRoom?.timeline.find((event) => event.id === responseEventId) : undefined;
-      const presentationV2Proofs = nextRoom?.presentationV2?.attackDodgeResponses ?? [];
-      const snapshotProofs = nextRoom?.presentationSnapshot?.attackDodgeResponses ?? [];
-      return json({
-        room: nextRoom,
-        attackDodgeUxTrace: {
-          traceId: uxTraceId,
-          stage: "server-proof-and-projection",
-          proofBuilder: {
-            ...attackDodgeEvaluation.diagnostic,
-            correlation: { ...attackDodgeEvaluation.diagnostic.correlation, responseEventId },
-          },
-          responseEvent: {
-            eventId: responseEventId,
-            presentInReturnedTimeline: Boolean(responseEvent),
-            isPublicCardPlay: responseEvent?.type === "card" && responseEvent.action === "play" && responseEvent.presentation !== false,
-            resolutionMatchesRoot: attackDodgeEvaluation.proof
-              ? responseEvent?.resolutionId === attackDodgeEvaluation.proof.rootResolutionId
-              : null,
-          },
-          projection: {
-            presentationV2ProofCount: presentationV2Proofs.length,
-            snapshotProofCount: snapshotProofs.length,
-            responseMatchCountInPresentationV2: responseEventId ? presentationV2Proofs.filter((proof) => proof.responseEventId === responseEventId).length : 0,
-            responseMatchCountInSnapshot: responseEventId ? snapshotProofs.filter((proof) => proof.responseEventId === responseEventId).length : 0,
-          },
-        },
-      });
-    }
-    return json({ room: nextRoom });
-  }
+  const committedResponse = await commitCanonicalResponse({ room, me, code, token, action, body,
+    canonicalResponseKind, canonicalResponseSatisfied, canonicalResponseDeclined, responseExecution, uxTraceId });
+  if (committedResponse) return committedResponse;
 
   if (action === "start_rescue_timer") {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
@@ -9800,79 +10101,6 @@ export async function POST(request: Request) {
       const timedPending: DyingPending = { ...pending, deadline: Date.now() + 5000 };
       await db.prepare("UPDATE rooms SET pending_json = ? WHERE id = ? AND phase = 'dying' AND pending_json = ?").bind(serializePending(timedPending), room.id, liveRoom.pending_json).run();
     }
-    return json({ room: await roomState(code, token) });
-  }
-
-  if (["give_peach", "skip_rescue"].includes(action)) {
-    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const pending = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
-    if (!liveRoom || liveRoom.phase !== "dying" || pending?.kind !== "dying" || pending.actorId !== me.id) {
-      if (action === "skip_rescue") return json({ room: await roomState(code, token) });
-      return json({ error: "You are not the acting player for this Peach rescue decision." }, 409);
-    }
-    const players = (await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
-    const liveActor = players.find((player) => player.id === me.id) ?? me;
-    let hand = parse<Card[]>(liveActor.hand_json, []); const handBeforePeach = [...hand]; const target = players.find((player) => player.id === pending.targetId) ?? null; const source = players.find((player) => player.id === pending.sourceId) ?? null; const resume = players.find((player) => player.id === pending.resumePlayerId) ?? null;
-    if (!target || !target.alive || !isDying(target.hp)) return json({ error: "That rescue target is no longer dying." }, 409);
-    const liveSemanticExecution = canonicalResponseSatisfied
-      ? resolveResponseDecision(pending, responseContext(liveActor, players, liveRoom.turn_seat), body.providerId, { cardId: body.cardId, cardIds: body.cardIds })
-      : null;
-    const selectedExecution = canonicalResponseSatisfied ? liveSemanticExecution : responseExecution;
-    const selectedPeach = action === "give_peach" ? hand.find((card) => card.id === String(body.cardId ?? "")) ?? null : null;
-    const peach = selectedPeach && (!canonicalResponseSatisfied || selectedExecution?.status === "satisfied" && selectedExecution.satisfies === "peach" && selectedExecution.consumeCardIds?.length === 1 && selectedExecution.consumeCardIds[0] === selectedPeach.id) ? selectedPeach : null;
-    if (action === "give_peach" && !peach) return json({ error: "Select a valid Peach or First Aid card for this rescue." }, 409);
-    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'dying' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Peach rescue decision has already moved on." }, 409);
-    if (peach) {
-      hand = hand.filter((card) => card.id !== peach.id); const resumedPending = appendDyingSequenceCard(pending, peach); const discard = pending.resumePending ? parse<Card[]>(liveRoom.discard_json, []) : [...parse<Card[]>(liveRoom.discard_json, []), peach]; let log = parse<string[]>(liveRoom.log_json, []); const firstAid = selectedExecution?.providerId === "hua_tuo_first_aid"; const jiuyuan = !firstAid && target?.hero === "sun-quan" && target.role === "Lord" && target.id !== me.id && me.hero ? STANDARD_HEROES.find((hero) => hero.id === me.hero)?.faction === "Wu" : false; const recoveryAmount = jiuyuan ? 2 : 1; const beforeHp = target?.hp ?? 0; const maxHp = target?.max_hp ?? beforeHp; const nextHp = applyRecovery(beforeHp, recoveryAmount, maxHp); const amountRecovered = recoveredAmount(beforeHp, maxHp, recoveryAmount); const firstAidMaterials = firstAid ? publicCardMaterials([peach], [{ playerId: me.id, hand: handBeforePeach, equipment: equipmentCards(liveActor) }], "PUBLIC_PLAY") : null; const peachPresentation = firstAid && firstAidMaterials ? addCardEventWithPublicEffect(log, me.name, peach, target?.name ?? "the dying player", "play", { effectId: "hua_tuo_first_aid", effectClass: "CONVERSION", activationOwnerId: me.id, materials: firstAidMaterials, targetId: target.id, resultingCardKind: "Peach", outcome: "AS_PEACH" }, { playedAs: "peach" }) : addCardEventWithId(log, me.name, peach, target?.name ?? "the dying player", "play", true, firstAid ? { playedAs: "peach" } : undefined); log = addLog(peachPresentation.log, firstAid ? `${me.name} uses ${peach.rank}${peach.suit} as Peach with First Aid to rescue ${target?.name ?? "the dying player"}, restoring ${amountRecovered} HP (${nextHp} HP).` : `${me.name} gives Peach to ${target?.name ?? "the dying player"}${jiuyuan ? "; Deliverance provides an additional recovery" : ""}, restoring ${amountRecovered} HP (${nextHp} HP).`);
-      if (amountRecovered > 0) {
-        const recoveryPending = { ...resumedPending, actorId: pending.actorId, remainingIds: pending.remainingIds, deadline: 0 } satisfies DyingPending;
-        const recoveryEnvelope = pending.resumePending && pending.causal
-          ? causalEnvelopeAtStage(liveRoom, pending.causal, "DYING", { currentSourceId: pending.sourceId, currentEffect: "peach_rescue", currentTargetIds: [pending.targetId], resolvingPlayerId: pending.actorId })
-          : null;
-        await db.batch([
-          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
-          db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId),
-          causalRoomStateWrite(room.id, { phase: "resolving", pending: null, discard, log, causalEnvelope: recoveryEnvelope }),
-        ]);
-        await advanceHpRecoveredEvents(room.id, [{ playerId: pending.targetId, amountRecovered, sourceId: me.id, reason: "peach_rescue" }], { kind: "dying", pending: recoveryPending });
-      } else if (isDying(nextHp)) {
-        const rescueBase = { ...resumedPending, actorId: "", remainingIds: pending.remainingIds, deadline: 0 } satisfies DyingPending;
-        const transition = nextDyingTransition(liveRoom, rescueBase, players, pending.remainingIds);
-        if (transition.pending) {
-          await db.batch([
-            db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
-            db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId),
-            causalRoomStateWrite(room.id, { phase: "dying", pending: transition.pending, discard, log, causalEnvelope: transition.causalEnvelope }, liveRoom.pending_json),
-          ]);
-        } else {
-          await db.batch([
-            db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
-            db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId),
-            causalRoomStateWrite(room.id, { phase: "resolving", pending: null, discard, log, causalEnvelope: null }, liveRoom.pending_json),
-          ]);
-          const settledRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
-          const settledPlayers = await db.prepare("SELECT * FROM players WHERE id IN (?, ?)").bind(target.id, source?.id ?? target.id).all<PlayerRow>();
-          const settledTarget = settledPlayers.results?.find((player) => player.id === target.id) ?? target;
-          const settledSource = settledPlayers.results?.find((player) => player.id === source?.id) ?? source;
-          if (settledRoom) await defeatDyingPlayer(settledRoom, resumedPending, settledTarget, settledSource);
-        }
-      } else {
-        const next = dyingResumeState(resumedPending, resume);
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId), causalRoomStateWrite(room.id, { phase: next.phase, pending: next.pendingJson ? resumedPending : null, discard, log, causalEnvelope: liveRoom.causal_envelope_json ? causalEnvelopeAtStage(liveRoom, resumedPending.causal, "DAMAGE", { currentSourceId: pending.sourceId, currentEffect: "damage", currentTargetIds: [pending.targetId], resolvingPlayerId: resumedPending.actorId }) : null })]);
-        await continueDyingResolution(room.id, resumedPending);
-      }
-    } else if (pending.remainingIds.length) {
-      const transition = nextDyingTransition(liveRoom, pending, players, pending.remainingIds);
-      if (transition.pending) {
-        await causalRoomStateWrite(room.id, { phase: "dying", pending: transition.pending, log: parse<string[]>(liveRoom.log_json, []), causalEnvelope: transition.causalEnvelope }, liveRoom.pending_json).run();
-      } else {
-        await defeatDyingPlayer(liveRoom, pending, target, source);
-      }
-      return json({ room: await roomState(code, token) });
-    } else {
-      await defeatDyingPlayer(liveRoom, pending, target, source);
-    }
-    if (peach) await maybeOpenHandLossTrigger(room.id, me.id, handBeforePeach);
     return json({ room: await roomState(code, token) });
   }
 

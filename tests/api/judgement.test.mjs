@@ -418,10 +418,16 @@ test("turn engine completes repeated rounds, rejects duplicate actions, and skip
   assert.equal(invalidState.status, 409); assert.match(invalidState.data.error, /Game state check failed: The active turn does not belong to a living player/);
 });
 
-test("Entourage publishes the current helper and one original-target Dodge proof without exposing Hands", async () => {
+test("saved sequential Entourage publishes the current helper and original-target Dodge proof", async () => {
   const dodge = card("Dodge", "entourage-public-proof");
   const game = await openHujiaScenario({ delegateHero: "simayi", delegateCards: [dodge] });
   const invoked = await requestAndSettle("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia", preserveResponse: true });
+  const sharedStored = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  const { sharedResponseForPlayer } = await import("../../game/shared-response-strategies.ts");
+  const saved = sharedResponseForPlayer(sharedStored, { ...game.delegate, hero: "simayi", alive: true });
+  saved.delegation.remainingActorIds = sharedStored.priorityPlayerIds.filter((id) => id !== game.delegate.id);
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(saved))} WHERE code=${quote(game.code)}`);
+  invoked.data.room = (await state(game.code, game.caoMember.token)).data;
   assert.equal(invoked.status, 200, JSON.stringify(invoked.data));
   const snapshot = invoked.data.room.presentationSnapshot;
   assert.equal(snapshot.entourageDecision?.helperActorId, game.delegate.id, JSON.stringify(snapshot));
@@ -447,9 +453,15 @@ test("Entourage publishes the current helper and one original-target Dodge proof
   assert.notEqual(repeated.status, 200);
 });
 
-test("Entourage helper decline advances only the public current helper then returns to Cao Cao", async () => {
+test("saved sequential Entourage helper decline advances then returns to Cao Cao", async () => {
   const game = await openHujiaScenario({ delegateHero: "simayi", delegateCards: [card("Dodge", "entourage-decline-one")], thirdHero: "zhen-ji", thirdCards: [card("Dodge", "entourage-decline-two")] });
   const invoked = await requestAndSettle("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia", preserveResponse: true });
+  const sharedStored = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  const { sharedResponseForPlayer } = await import("../../game/shared-response-strategies.ts");
+  const saved = sharedResponseForPlayer(sharedStored, { ...game.delegate, hero: "simayi", alive: true });
+  saved.delegation.remainingActorIds = sharedStored.priorityPlayerIds.filter((id) => id !== game.delegate.id);
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(saved))} WHERE code=${quote(game.code)}`);
+  invoked.data.room = (await state(game.code, game.caoMember.token)).data;
   assert.equal(invoked.status, 200);
   const declined = await requestAndSettle("decline_response", { code: game.code, token: game.delegateMember.token, preserveResponse: true });
   assert.equal(declined.status, 200, JSON.stringify(declined.data));

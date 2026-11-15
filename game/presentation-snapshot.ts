@@ -1,3 +1,5 @@
+import type { SharedResponseContribution } from "./shared-response-contribution";
+import { normalizePublicSharedWindow, type PublicSharedResponseWindow } from "./shared-response-presentation";
 import { isEntourageDodgeFor, entourageDecisionMatchesSnapshot, type EntourageDecision } from "./entourage-presentation";
 import type { CurrentAction } from "./protocol";
 import { CARD_KINDS, type Card, type CardKind, type CardSuit } from "./model";
@@ -109,6 +111,9 @@ export type PresentationPublicDrawPhaseDecision = {
 };
 
 export type PresentationSnapshot = {
+  sharedResponseContributions?: readonly SharedResponseContribution[];
+  sharedResponseRecovery?: { eventId: string; targetId: string };
+  sharedResponseWindow?: PublicSharedResponseWindow | null;
   entourageDecision?: EntourageDecision | null;
   identity: PresentationSnapshotIdentity | null;
   stable: PresentationStableBoundary;
@@ -1606,6 +1611,7 @@ function rootActionFor(
     presentationRevision: identity.presentationRevision,
     rootEventId: action.rootEventId,
     sourceId: action.sourceId,
+    ...(action.physicalActorId ? { physicalActorId: action.physicalActorId } : {}),
     targetId: action.targetId,
   };
   if (action.action === "ATTACK" && "conversionId" in action && action.conversionId === "serpent_spear_attack") return {
@@ -1726,6 +1732,9 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
           .map(validateRetainedPublicEvent).filter((fact): fact is PublicPresentationEvent => Boolean(fact)) } : {}),
     publicNextDecision: semantic.nextDecision,
     publicDrawPhaseDecision: provenPublicDrawPhaseDecision(input.publicDrawPhaseDecision),
+    ...(input.presentationV2.sharedResponseRecovery ? { sharedResponseRecovery: input.presentationV2.sharedResponseRecovery } : {}),
+    ...(input.presentationV2.sharedResponseContributions?.length ? { sharedResponseContributions: input.presentationV2.sharedResponseContributions } : {}),
+    ...(normalizePublicSharedWindow(input.presentationV2.sharedResponseWindow) ? { sharedResponseWindow: normalizePublicSharedWindow(input.presentationV2.sharedResponseWindow) } : {}),
     viewerNegationChoice: acceptedViewerNegationChoice,
     transitionEvents: [],
   };

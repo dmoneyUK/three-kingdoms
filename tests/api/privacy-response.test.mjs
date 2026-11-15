@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
 import {
-  advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
+  advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, requestForViewer, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
 
 test("shared Negation windows keep submissions private and expose only each viewer's legal response", { timeout: 60_000 }, async () => {
@@ -474,7 +474,7 @@ test("shared Negation leaves ordinary human responses on the 60-second timeout",
   assert.equal(repeated.data.room.currentAction.deadline, deadline, "repeated timer requests preserve the original 60-second deadline");
 });
 
-test("Dying rescue exposes only real Peach blockers and skips empty seats", { timeout: 30_000 }, async () => {
+test("Dying private window does not leak empty hands by skipping eligible seats", { timeout: 30_000 }, async () => {
   async function lethal(peach) {
     const game = await createHumanGame(); const [sourceMember, targetMember] = game.members; const [source, target] = game.room.players;
     const attack = card("Attack", peach ? "peach-holder-attack" : "peach-empty-attack");
@@ -484,11 +484,15 @@ test("Dying rescue exposes only real Peach blockers and skips empty seats", { ti
     return { game, sourceMember, targetMember, source, target };
   }
   const empty = await lethal(false); const emptyRescue = (await state(empty.game.code, empty.sourceMember.token)).data;
-  assert.notEqual(emptyRescue.phase, "dying", "no legal Peach blocker is scanned automatically");
-  assert.equal(emptyRescue.presentationV2.dyingBarrier, null);
+  assert.equal(emptyRescue.phase, "dying", "all living players receive the same window, even without Peach");
+  assert.ok(emptyRescue.currentAction.sharedWindow.windowId);
+  assert.deepEqual(emptyRescue.currentAction.options, []);
+  const emptyFinished = await requestAndSettle("skip_rescue", { code: empty.game.code, token: empty.sourceMember.token });
+  assert.equal(emptyFinished.status, 200);
+  assert.notEqual(emptyFinished.data.room.phase, "dying");
 
   const holder = await lethal(true); const holderRescue = (await state(holder.game.code, holder.sourceMember.token)).data;
-  assert.equal(holderRescue.phase, "dying"); assert.ok(holderRescue.currentAction.legalActions.includes("skip_rescue")); assert.ok(holderRescue.currentAction.legalActions.includes("give_peach"));
+  assert.equal(holderRescue.phase, "dying"); assert.ok(holderRescue.currentAction.legalActions.includes("skip_rescue")); assert.ok(holderRescue.currentAction.legalActions.includes("respond"));
   const holderSkipped = await requestAndSettle("skip_rescue", { code: holder.game.code, token: holder.sourceMember.token }); assert.equal(holderSkipped.status, 200);
   assert.notEqual(holderSkipped.data.room.phase, "dying");
   assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(holder.source.id)}`)).map((item) => item.id), ["peach-peach-holder"]);
@@ -613,7 +617,7 @@ test("the three faction lords expose their active skills through the semantic pr
   assert.ok(hujiaTargetView.data.currentAction?.options?.some((option) => option.providerId === "cao_cao_hujia"), JSON.stringify(hujiaTargetView.data));
   const delegated = await requestAndSettle("respond", { code: hujiaGame.code, token: hujiaAlice.token, providerId: "cao_cao_hujia" });
   assert.equal(delegated.status, 200, JSON.stringify(delegated.data));
-  assert.equal(delegated.data.room.currentAction.actorId, hujiaWei.id, "Hujia moves the Dodge decision to a Wei delegate");
+  assert.equal(delegated.data.room.currentAction.actorId, null, "shared response does not disclose individual helper availability");
   const hujiaDodged = await requestAndSettle("respond", { code: hujiaGame.code, token: hujiaBob.token, cardId: hujiaDodge.id });
   assert.equal(hujiaDodged.status, 200, JSON.stringify(hujiaDodged.data));
   assert.equal(hujiaDodged.data.room.players.find((player) => player.id === hujiaCao.id).hp, 4, "the delegated Dodge prevents damage");
@@ -647,7 +651,7 @@ test("the three faction lords expose their active skills through the semantic pr
   assert.ok(jijiangTargetView.data.currentAction.options.some((option) => option.providerId === "liu_bei_jijiang"));
   const jijiangDelegated = await requestAndSettle("respond", { code: jijiangGame.code, token: jijiangAlice.token, providerId: "liu_bei_jijiang" });
   assert.equal(jijiangDelegated.status, 200, JSON.stringify(jijiangDelegated.data));
-  assert.equal(jijiangDelegated.data.room.currentAction.actorId, shu.id);
+  assert.equal(jijiangDelegated.data.room.currentAction.actorId, null);
   const jijiangAnswered = await requestAndSettle("respond", { code: jijiangGame.code, token: jijiangBob.token, cardId: jijiangAttack.id });
   assert.equal(jijiangAnswered.status, 200, JSON.stringify(jijiangAnswered.data));
   assert.equal(jijiangAnswered.data.room.phase, "play", JSON.stringify(jijiangAnswered.data.room));
@@ -726,7 +730,7 @@ test("Influencing initiates a normal delegated Attack without leaking Shu hands"
   const projected = await state(game.code, game.members[0].token); const option = projected.data.currentAction.triggerOptions.find((candidate) => candidate.effectId === "liu_bei_jijiang");
   assert.ok(option, JSON.stringify(projected.data)); assert.equal(option.label, "Influencing"); assert.deepEqual(option.selection.targetIds, [firstShu.id, target.id]);
   const selected = await requestAndSettle("trigger", { code: game.code, token: game.members[0].token, providerId: "liu_bei_jijiang", targetId: target.id });
-  assert.equal(selected.status, 200, JSON.stringify(selected.data)); assert.equal(selected.data.room.currentAction.actorId, firstShu.id); assert.equal(selected.data.room.currentAction.reason.includes(delegatedAttack.id), false); assert.equal(JSON.stringify(selected.data.room.currentAction).includes(delegatedAttack.id), false);
+  assert.equal(selected.status, 200, JSON.stringify(selected.data)); assert.equal(selected.data.room.currentAction.actorId, null); assert.equal(selected.data.room.currentAction.reason.includes(delegatedAttack.id), false); assert.equal(JSON.stringify(selected.data.room.currentAction).includes(delegatedAttack.id), false);
   const accepted = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardId: delegatedAttack.id });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data)); assert.equal(accepted.data.room.players.find((player) => player.id === target.id).hp, 3); assert.equal(accepted.data.room.phase, "play-struck"); assert.ok(discardIds(game.code).includes(delegatedAttack.id));
   assert.deepEqual((await state(game.code, game.members[0].token)).data.myHand, [normalAttack], "the delegate's private hand is not projected to Liu Bei");
@@ -735,8 +739,8 @@ test("Influencing initiates a normal delegated Attack without leaking Shu hands"
   sql(`UPDATE players SET hero='liu-bei', role='Lord' WHERE id=${quote(declinedSource.id)}`); sql(`UPDATE players SET hero='zhao-yun' WHERE id=${quote(declinedFirst.id)}`); sql(`UPDATE players SET hero='zhuge-liang' WHERE id=${quote(declinedSecond.id)}`); sql(`UPDATE players SET hero='sun-quan' WHERE id=${quote(declinedTarget.id)}`);
   setHand(declinedSource.id, [followUpAttack], 4, 4); setHand(declinedFirst.id, [], 4, 4); setHand(declinedSecond.id, [], 4, 4); setHand(declinedTarget.id, [], 4, 4); setTurn(declinedRoom.code, declinedSource.seat);
   const declinedStart = await requestAndSettle("trigger", { code: declinedRoom.code, token: declinedToken, providerId: "liu_bei_jijiang", targetId: declinedTarget.id, preserveResponse: true }); assert.equal(declinedStart.status, 200, JSON.stringify(declinedStart.data));
-  const firstDecline = await requestAndSettle("decline_response", { code: declinedRoom.code, token: declinedToken, preserveResponse: true }); assert.equal(firstDecline.status, 200, JSON.stringify(firstDecline.data)); assert.equal(firstDecline.data.room.currentAction.actorId, declinedSecond.id);
-  const allDeclined = await requestAndSettle("decline_response", { code: declinedRoom.code, token: declinedToken, preserveResponse: true }); assert.equal(allDeclined.status, 200, JSON.stringify(allDeclined.data)); assert.equal(allDeclined.data.room.phase, "play"); assert.equal(discardIds(declinedRoom.code).includes(followUpAttack.id), false);
+  const firstDecline = await requestForViewer("decline_response", { code: declinedRoom.code, token: declinedToken }, declinedFirst.id); assert.equal(firstDecline.status, 200, JSON.stringify(firstDecline.data)); assert.equal(firstDecline.data.room.currentAction.actorId, null);
+  const allDeclined = await requestForViewer("decline_response", { code: declinedRoom.code, token: declinedToken }, declinedSecond.id); assert.equal(allDeclined.status, 200, JSON.stringify(allDeclined.data)); assert.equal(allDeclined.data.room.phase, "play"); assert.equal(discardIds(declinedRoom.code).includes(followUpAttack.id), false);
   const normal = await requestAndSettle("play_card", { code: declinedRoom.code, token: declinedToken, cardId: followUpAttack.id, targetId: declinedTarget.id }); assert.equal(normal.status, 200, JSON.stringify(normal.data));
 });
 
@@ -829,11 +833,11 @@ test("Hujia prompts a living Wei character even when that character has no Dodge
   const activated = await requestAndSettle("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia", preserveResponse: true });
   assert.equal(activated.status, 200, JSON.stringify(activated.data));
   assert.equal(activated.data.error, undefined);
-  assert.equal(activated.data.room.currentAction.actorId, game.delegate.id);
+  assert.equal(activated.data.room.currentAction.actorId, null);
   const delegateView = await state(game.code, game.delegateMember.token);
   assert.deepEqual(delegateView.data.currentAction.legalActions, ["decline_response"]);
   assert.deepEqual(delegateView.data.currentAction.options, []);
-  assert.equal(delegateView.data.currentAction.reason, "Cao Cao asked you to provide Dodge with Entourage. Play Dodge or Skip.");
+  assert.equal(delegateView.data.currentAction.reason, "Cao Cao asks you to provide Dodge. Choose Dodge and Confirm, or Skip.");
   const caoView = await state(game.code, game.caoMember.token);
   assert.doesNotMatch(caoView.data.currentAction.reason, /no Dodge/i);
 });
@@ -846,7 +850,7 @@ test("Hujia lets a Wei character with Dodge cancel the Attack", { timeout: 120_0
   const delegateView = await state(game.code, game.delegateMember.token);
   assert.ok(delegateView.data.currentAction.legalActions.includes("respond"));
   assert.ok(delegateView.data.currentAction.legalActions.includes("decline_response"));
-  assert.equal(delegateView.data.currentAction.reason, "Cao Cao asked you to provide Dodge with Entourage. Play Dodge or Skip.");
+  assert.equal(delegateView.data.currentAction.reason, "Cao Cao asks you to provide Dodge. Choose Dodge and Confirm, or Skip.");
   const answered = await requestAndSettle("respond", { code: game.code, token: game.delegateMember.token, cardId: dodge.id });
   assert.equal(answered.status, 200, JSON.stringify(answered.data));
   assert.equal(answered.data.room.players.find((player) => player.id === game.cao.id).hp, 4);
@@ -892,15 +896,15 @@ test("Deliverance is Lord-only, faction- and ownership-gated, capped, and resume
   assert.equal(capped.players[1].hp, 1, "canonical recovery caps Deliverance at max HP");
 });
 
-test("Hujia asks Wei characters in action order instead of skipping empty hands", { timeout: 120_000 }, async () => {
+test("Hujia privately asks all Wei characters without skipping empty hands", { timeout: 120_000 }, async () => {
   const dodge = card("Dodge", "hujia-order-dodge");
   const game = await openHujiaScenario({ delegateHero: "simayi", thirdHero: "zhang-liao", thirdCards: [dodge] });
   const activated = await requestAndSettle("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia", preserveResponse: true });
   assert.equal(activated.status, 200, JSON.stringify(activated.data));
-  assert.equal(activated.data.room.currentAction.actorId, game.delegate.id);
+  assert.equal(activated.data.room.currentAction.actorId, null);
   const firstDecline = await requestAndSettle("decline_response", { code: game.code, token: game.delegateMember.token, preserveResponse: true });
   assert.equal(firstDecline.status, 200, JSON.stringify(firstDecline.data));
-  assert.equal(firstDecline.data.room.currentAction.actorId, game.third.id);
+  assert.equal(firstDecline.data.room.currentAction.actorId, null);
   const answered = await requestAndSettle("respond", { code: game.code, token: game.thirdMember.token, cardId: dodge.id });
   assert.equal(answered.status, 200, JSON.stringify(answered.data));
   assert.equal(answered.data.room.players.find((player) => player.id === game.cao.id).hp, 4);
@@ -912,7 +916,7 @@ test("Hujia returns to Cao Cao after every Wei character declines without loopin
   assert.equal(activated.status, 200, JSON.stringify(activated.data));
   const firstDecline = await requestAndSettle("decline_response", { code: game.code, token: game.delegateMember.token, preserveResponse: true });
   assert.equal(firstDecline.status, 200, JSON.stringify(firstDecline.data));
-  assert.equal(firstDecline.data.room.currentAction.actorId, game.third.id);
+  assert.equal(firstDecline.data.room.currentAction.actorId, null);
   const secondDecline = await requestAndSettle("decline_response", { code: game.code, token: game.thirdMember.token, preserveResponse: true });
   assert.equal(secondDecline.status, 200, JSON.stringify(secondDecline.data));
   assert.equal(secondDecline.data.room.currentAction.actorId, game.cao.id);
@@ -942,7 +946,7 @@ test("Hujia fallback lets Cao Cao use his own Dodge after all Wei declines", { t
   assert.equal(answered.data.room.players.find((player) => player.id === game.cao.id).hp, 4);
 });
 
-test("Jijiang also asks an empty-handed Shu character before the next delegate", { timeout: 120_000 }, async () => {
+test("Jijiang asks empty-handed and equipped Shu characters in the same private window", { timeout: 120_000 }, async () => {
   const game = await createHumanGame();
   const [sourceMember, liuMember, firstShuMember, secondShuMember] = game.members;
   const source = game.room.players.find((player) => player.name === "Host");
@@ -963,10 +967,10 @@ test("Jijiang also asks an empty-handed Shu character before the next delegate",
   assert.ok(liuView.data.currentAction.options.some((option) => option.providerId === "liu_bei_jijiang"));
   const activated = await requestAndSettle("respond", { code: game.code, token: liuMember.token, providerId: "liu_bei_jijiang", preserveResponse: true });
   assert.equal(activated.status, 200, JSON.stringify(activated.data));
-  assert.equal(activated.data.room.currentAction.actorId, firstShu.id);
+  assert.equal(activated.data.room.currentAction.actorId, null);
   const firstDecline = await requestAndSettle("decline_response", { code: game.code, token: firstShuMember.token, preserveResponse: true });
   assert.equal(firstDecline.status, 200, JSON.stringify(firstDecline.data));
-  assert.equal(firstDecline.data.room.currentAction.actorId, secondShu.id);
+  assert.equal(firstDecline.data.room.currentAction.actorId, null);
   const answered = await requestAndSettle("respond", { code: game.code, token: secondShuMember.token, cardId: attack.id });
   assert.equal(answered.status, 200, JSON.stringify(answered.data));
 });

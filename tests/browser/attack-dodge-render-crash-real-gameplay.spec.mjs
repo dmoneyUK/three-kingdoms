@@ -595,7 +595,7 @@ test("authorized Quick Test viewers switch manually at 440x894", async ({ page, 
   expect(errors.runtimeErrors).toEqual([]);
 });
 
-test("§10.50 Entourage keeps public helper PAC, private prompt and one real helper Dodge", async ({ page, request }, testInfo) => {
+test("§10.49 shared Entourage locks private choices and commits only the priority helper Dodge", async ({ page, request }, testInfo) => {
   test.setTimeout(90_000);
   const attack = card("Attack", "entourage-ui-attack");
   const dodge = card("Dodge", "entourage-ui-dodge", "♥");
@@ -605,12 +605,12 @@ test("§10.50 Entourage keeps public helper PAC, private prompt and one real hel
       { name: "ATTACKER", hero: "sun-quan", role: "Rebel", hp: 4, maxHp: 4, hand: [attack] },
       { name: "LORD", hero: "cao-cao", role: "Lord", hp: 4, maxHp: 4, hand: [] },
       { name: "HELPER", hero: "simayi", role: "Loyalist", hp: 3, maxHp: 3, hand: [dodge] },
-      { name: "OBSERVER", hero: "liu-bei", role: "Renegade", hp: 4, maxHp: 4, hand: [] },
+      { name: "OTHER", hero: "zhen-ji", role: "Renegade", hp: 4, maxHp: 4, hand: [card("Dodge", "losing-ui-dodge")] },
     ],
   } });
   expect(seeded.ok(), await seeded.text()).toBeTruthy();
   const room = await seeded.json();
-  const [, lord, helper] = room.players;
+  const [, lord, helper, other] = room.players;
   await openPlayer(page, room, 0);
   await page.setViewportSize({ width: 440, height: 766 });
   await page.locator(`[data-hand-card-id="${attack.id}"] .game-card`).click();
@@ -630,13 +630,19 @@ test("§10.50 Entourage keeps public helper PAC, private prompt and one real hel
   expect(invoked.ok()).toBeTruthy();
   const pac = page.locator('[data-public-activity-chip="true"]');
   await expect(pac).toBeVisible();
-  await expect(pac).toContainText("Waiting for HELPER to provide Dodge for LORD.");
+  await expect(pac).toContainText("Waiting for Wei Dodge responses for LORD.");
   await expect(page.locator('.public-card-display-journey-copy b')).toHaveText("LORD (Cao Cao) used Entourage.");
+  await page.getByTestId(`test-view-switch-${other.id}`).click();
+  await page.locator('[data-hand-card-id="losing-ui-dodge"] .game-card').click();
+  await page.locator('.local-player-dock [data-console-surface="local-operation"] button.primary').click();
+  await expect(page.locator('.local-player-dock .console-guidance')).toContainText("Response submitted. Waiting for the window to resolve.");
+  await expect(page.locator('[data-hand-card-id="losing-ui-dodge"]')).toBeVisible();
+  await expect(pac).toContainText("Waiting for Wei Dodge responses for LORD.");
   await page.getByTestId(`test-view-switch-${helper.id}`).click();
   await expect(page.locator(`.local-player-dock[data-player-anchor="${helper.id}"]`)).toBeVisible();
   await expect(pac).toBeVisible();
-  await expect(pac).toContainText("Waiting for HELPER to provide Dodge for LORD.");
-  await expect(page.locator('.local-player-dock .console-guidance')).toContainText("Cao Cao asked you to provide Dodge with Entourage. Play Dodge or Skip.");
+  await expect(pac).toContainText("Waiting for Wei Dodge responses for LORD.");
+  await expect(page.locator('.local-player-dock .console-guidance')).toContainText("Cao Cao asks you to provide Dodge. Choose Dodge and Confirm, or Skip.");
   await expect(page.locator('.visible-countdown')).toBeVisible();
   await page.locator(`[data-hand-card-id="${dodge.id}"] .game-card`).click();
   const confirm = page.locator('.local-player-dock [data-console-surface="local-operation"] button.primary');
@@ -651,6 +657,8 @@ test("§10.50 Entourage keeps public helper PAC, private prompt and one real hel
   expect(result.room.presentationSnapshot.attackDodgeResponses).toHaveLength(1);
   expect(result.room.presentationSnapshot.attackDodgeResponses[0]).toMatchObject({ responseActorId: helper.id, targetId: lord.id });
   expect(result.room.players.find((player) => player.id === lord.id).hp).toBe(4);
+  expect(result.room.players.find((player) => player.id === other.id).handCount).toBe(1);
+  expect(result.room.timeline.some(event => event.card?.id === 'losing-ui-dodge')).toBe(false);
   const physical = page.locator(`[data-public-card-journey-card-id="${dodge.id}"]`);
   await expect(physical).toHaveCount(1);
   await expect(physical).toBeVisible();

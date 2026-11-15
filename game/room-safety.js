@@ -273,6 +273,7 @@ function normalizePresentationMeta(entry) {
       ...(typeof entry.bumperHarvestRoot.rootFrameId === "string" ? { rootFrameId: entry.bumperHarvestRoot.rootFrameId } : {}),
     };
   }
+  if (isRecord(entry.sharedResponseContribution)) metadata.sharedResponseContribution = { ...entry.sharedResponseContribution };
   return metadata;
 }
 
@@ -406,6 +407,8 @@ function normalizeCurrentAction(value) {
     actorId: typeof value.actorId === "string" ? value.actorId : null,
     deadline: typeof value.deadline === "number" ? value.deadline : 0,
     reason: typeof value.reason === "string" ? value.reason : "Waiting for the next legal action",
+    ...(value.sharedWindow && typeof value.sharedWindow.windowId === "string" && typeof value.sharedWindow.locked === "boolean"
+      && ["pass", "intent", null].includes(value.sharedWindow.choice) ? { sharedWindow: { windowId: value.sharedWindow.windowId, locked: value.sharedWindow.locked, choice: value.sharedWindow.choice } } : {}),
     ...(typeof value.negationWindowId === "string" ? { negationWindowId: value.negationWindowId } : {}),
     legalActions: Array.isArray(value.legalActions) ? value.legalActions.filter((action) => typeof action === "string" && GAMEPLAY_ACTION_SET.has(action)) : [],
     ...(typeof value.canDeclareAttack === "boolean" ? { canDeclareAttack: value.canDeclareAttack } : {}),

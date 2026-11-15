@@ -13,6 +13,7 @@ export const rooms = sqliteTable("rooms", {
   discardJson: text("discard_json"),
   logJson: text("log_json"),
   pendingJson: text("pending_json"),
+  sharedResponseCommitId: text("shared_response_commit_id"),
   skillStateJson: text("skill_state_json"),
   causalEnvelopeJson: text("causal_envelope_json"),
   testRoom: integer("test_room", { mode: "boolean" }).notNull().default(false),
@@ -77,3 +78,13 @@ export const negationWindowSubmissions = sqliteTable("negation_window_submission
   primaryKey({ columns: [table.windowId, table.playerId] }),
   index("idx_negation_window_submissions_room").on(table.roomId),
 ]);
+
+
+// Private provisional choices; only a single selected contribution can commit.
+export const sharedResponseWindowSubmissions = sqliteTable("shared_response_window_submissions", {
+  roomId: text("room_id").notNull().references(() => rooms.id, { onDelete: "cascade" }),
+  windowId: text("window_id").notNull(),
+  playerId: text("player_id").notNull().references(() => players.id, { onDelete: "cascade" }),
+  submissionJson: text("submission_json").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.roomId, table.windowId, table.playerId] })]);

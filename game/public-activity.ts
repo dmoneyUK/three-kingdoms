@@ -1,3 +1,4 @@
+import { normalizePublicSharedWindow } from "./shared-response-presentation";
 import { entourageDecisionMatchesSnapshot } from "./entourage-presentation";
 import type { PresentationSnapshot } from "./presentation-snapshot";
 import { publicDecisionFromPresentationSnapshot } from "./presentation-semantics.ts";
@@ -615,6 +616,22 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
   const interaction = snapshot?.interaction;
   const nextDecision = publicDecisionFromPresentationSnapshot(snapshot);
 
+  const sharedWindow = normalizePublicSharedWindow(snapshot?.sharedResponseWindow);
+  if (sharedWindow) {
+    if (sharedWindow.stage !== "COLLECTING" || !["response", "dying"].includes(input.phase ?? "")) return NO_PUBLIC_ACTIVITY;
+    const requester = playerName(input, sharedWindow.requesterId);
+    if (!requester) return NO_PUBLIC_ACTIVITY;
+    const text = sharedWindow.mode === "ENTOURAGE_DODGE" ? `Waiting for Wei Dodge responses for ${requester}.`
+      : sharedWindow.mode === "INFLUENCING_ATTACK" ? `Waiting for Shu Attack responses for ${requester}.`
+      : `Waiting for Peach responses to save ${requester}.`;
+    return { kind: "response", text, heading: text };
+  }
+  const recovering = snapshot?.sharedResponseRecovery;
+  if (recovering && snapshot?.sharedResponseContributions?.some((proof) => proof.mode === "DYING_PEACH"
+    && proof.eventId === recovering.eventId && proof.targetId === recovering.targetId)) {
+    const target = playerName(input, recovering.targetId);
+    if (target) return { kind: "response", text: `Resolving Peach for ${target}.` };
+  }
   const entourage = snapshot?.entourageDecision;
   if (input.status === "playing" && input.phase === "response" && entourage
     && entourageDecisionMatchesSnapshot(entourage, snapshot?.identity, interaction)

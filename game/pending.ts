@@ -1,3 +1,4 @@
+import type { EntourageInvocation } from "./entourage-presentation";
 import type { EntourageHelper } from "./entourage-presentation";
 import type { Card, CardKind } from "./model";
 import type { ActionRequirement } from "./responses";
@@ -305,6 +306,7 @@ export type HandLossTriggerContinuation = {
   resumePhase: string;
   resumeTurnSeat: number | null;
   resumePending?: Pending;
+  resumeRecovery?: { records: RecoveryRecord[]; resume: RecoveryResume };
 };
 export type EquipmentLostRecord = { playerId: string; lostCards: Card[]; reason?: string };
 export type EquipmentLostResume =
@@ -338,7 +340,7 @@ export type RecoveryRecord = { playerId: string; amountRecovered: number; source
 export type RecoveryResume =
   | { kind: "phase"; phase: string; playerId?: string; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "turn_start"; continuation: TurnStartTriggerContinuation }
-  | { kind: "dying"; pending: DyingPending }
+  | { kind: "dying"; pending: DyingPending; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "damage_suffered"; continuation: DamageSufferedTriggerContinuation };
 export type HpRecoveredTriggerContinuation = {
   kind: "hp_recovered_event";
@@ -364,8 +366,25 @@ export type TriggerPending = CausalFields & {
   continuation: TriggerContinuation;
 };
 export type DyingResumeEffect = { kind: "draw_cards"; playerId: string; amount: number; label: string };
-export type DyingPending = CausalFields & { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; resumeTrigger?: DamageSufferedTriggerContinuation; resumeEffect?: DyingResumeEffect; origin?: AttackOrigin; reason: string };
-export type Pending = HarvestPending | TargetCardPending | BorrowedSwordPending | CardDistributionPending | DeckReorderPending | ResponsePending | NegationWindowPending | TriggerPending | DyingPending;
+export type DyingPending = CausalFields & { kind: "dying"; sharedRescue?: { round: number; responseEventId?: string }; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; resumeTrigger?: DamageSufferedTriggerContinuation; resumeEffect?: DyingResumeEffect; origin?: AttackOrigin; reason: string };
+export type SharedResponseWindowPending = CausalFields & {
+  kind: "shared_response_window";
+  version: 1;
+  windowId: string;
+  openedAt: number;
+  deadline: number;
+  eligiblePlayerIds: string[];
+  priorityPlayerIds: string[];
+  requesterId: string;
+  targetId: string;
+  round: number;
+  continuation: { mode: "ENTOURAGE_DODGE"; response: ResponsePending; invocation: EntourageInvocation }
+    | { mode: "INFLUENCING_ATTACK"; response: ResponsePending }
+    | { mode: "DYING_PEACH"; dying: DyingPending };
+  settlement?: { state: "CLAIMED"; claimId: string; leaseUntil: number;
+    winner: { playerId: string; providerId: string; cardIds: string[]; pending: ResponsePending | DyingPending } | null };
+};
+export type Pending = HarvestPending | TargetCardPending | BorrowedSwordPending | CardDistributionPending | DeckReorderPending | ResponsePending | NegationWindowPending | SharedResponseWindowPending | TriggerPending | DyingPending;
 
 export function asTriggerPending(pending: Pending | null | undefined): TriggerPending | null {
   return pending?.kind === "trigger" ? pending : null;
