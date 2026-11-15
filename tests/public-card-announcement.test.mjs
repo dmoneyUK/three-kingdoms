@@ -35,6 +35,22 @@ test("unowned committed physical roots use the shared Journey and restored roots
   assert.equal(publicCardMotionForCommittedCard(action, "ROOM", new Set(), true), null);
 });
 
+test("H4 candidate measurement confines text DOM changes to its marked copy", () => {
+  const source = readFileSync(new URL("../app/public-card-display.tsx", import.meta.url), "utf8");
+  const mutationHelperStart = source.indexOf("function setAnnouncementMessageTextOnMeasurementClone(");
+  const measurementHelperStart = source.indexOf("function measureAnnouncementCopy(", mutationHelperStart);
+  const h4RendererStart = source.indexOf("function PublicCardAnnouncement(", measurementHelperStart);
+  const h4RendererEnd = source.indexOf("export function PublicSkillEventAnnouncementLayer(", h4RendererStart);
+  assert.ok(mutationHelperStart >= 0 && measurementHelperStart > mutationHelperStart && h4RendererStart > measurementHelperStart && h4RendererEnd > h4RendererStart);
+
+  const mutationHelper = source.slice(mutationHelperStart, measurementHelperStart);
+  const h4Renderer = source.slice(h4RendererStart, h4RendererEnd);
+  assert.match(mutationHelper, /element\.closest\("\[data-h4-measurement-copy='true'\]"\)/);
+  assert.match(source.slice(measurementHelperStart, h4RendererStart), /measurementCopy\.dataset\.h4MeasurementCopy = "true"/);
+  assert.match(h4Renderer, /measureAnnouncementCopy\(/);
+  assert.doesNotMatch(h4Renderer, /(?:\.replaceChildren\(|(?:textElement|supportElement)\.textContent\s*=)/);
+});
+
 test("PublicCardDisplay fails closed instead of falling back to a static card", () => {
   const publicAction = {
     key: "text-only-action",

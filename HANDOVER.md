@@ -1,27 +1,36 @@
 # HANDOVER — 当前唯一任务
 
-## §10.49 共享响应窗到期卡死 P0 修复
+## 最近完成的相关交付
 
-**状态：** IMPLEMENTED LOCALLY / NOT ACCEPTED；尚未提交、推送或部署。目标分支 `ux-v2`。工作树 `/Users/jingedai/.codex/worktrees/ux2-1049-expiry-20261115`，当前基线 `4a94df589dd3020dd1b611f369b812390ba29f71`。设计依据：最新 `docs/UX2-refine.md`（2026-11-15 12:40 UTC），§10.49 P0 blocker。
+**§10.49 Shared Response Window 到期结算 P0**：提交 `3053d209aba640ff8280f43f3e4feff91be0a646` 已推送到 `ux-v2`。精确 SHA 的 [GitHub Actions 43726390974](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43726390974) 全部通过，Worker 部署成功，Version ID `fccb97eb-20dd-480e-ba45-aa8f33182896`；线上首页与 `/api/health` 为 HTTP 200。状态仍为 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW**。
 
-### 实施结果
+## 当前唯一任务：§10.51 ROOM-POLL-TRANSIENT-503-RECOVERY-01
 
-- 客户端共享窗观察器以公开 `windowId + deadline` 为稳定身份，支持普通玩家与 TEST SWITCH；到期先 GET 核对相同窗口仍在，再发送 `advance_timers` 并 GET 确认。未解决时按 1/2/4/8/15 秒上限退避重试，单浏览器防并发；页面隐藏时暂停，到前台续接。
-- 到期后冻结旧响应/救援选择，Console 显示 `Waiting for window resolution.`；共享窗不再走旧自动 Pass、Skip 或 `start_*_timer`。非共享响应路径保持原状。
-- 服务端只对已认证成员、同一已过期窗口的旧计时器/Pass 请求调用现有 `advanceSharedResponseWindow` CAS；错误窗口 ID 返回带最新房间的 409，不接受迟到卡牌或 Pass。未改 8 秒规则、优先级、卡牌规则或 D1 schema。
-- 回归覆盖 Entourage、Influencing、Dying Peach 的旧请求恢复；手机浏览器覆盖沉默的 Sima Yi 与已提交 Dodge 的 Zhang Liao。
+**状态：** 修复已在本地实现；待提交、精确 SHA CI、部署与生产 smoke。**不代表用户验收通过。**
 
-### 本轮操作与验证
+**设计依据：** `docs/UX2-refine.md` revision `2026-11-15 12:40 UTC`，远端基线 `3053d209aba640ff8280f43f3e4feff91be0a646`。
 
-- 14:09 UTC：复核 §10.49 原始 iPhone 到期失败及最新 §10.51 新失败记录；确认二者分开处理，当前仅执行 §10.49。
-- 14:10 UTC：保留既有本地 `app/page.tsx` 改动，起初加入共享窗到期 watcher 与旧响应计时绕行。
-- 依赖：此工作树最初没有 `node_modules`，第一次 `npm run build` 因 `vinext: command not found` 未启动。随后在本工作树建立指向现有共享依赖的忽略 symlink，未改动其他工作树文件。
-- 构建：`npm run build` 通过；仅报告现有 bundle 大小与动态 API 分类提示。
-- API：首次 12/13；新用例因复用 `openAttack()` 时卡牌 fixture ID 不符而失败（请求 400，未进入被测路径）。修正 fixture 后，`GAME_TEST_FILES=tests/api/shared-response-window.test.mjs node tests/run-tests.mjs` 通过 13/13。
-- 浏览器：单一 390×844 场景先通过 1/1（16.2 秒）；收紧为恰好一次 `advance_timers` 后再次通过 1/1（15.5 秒）。验证无自动 `decline_response` / `skip_rescue` / `start_*_timer`、到期控制禁用、窗口按真实 Dodge 作者结算且只消耗其实体牌。累计本地 UI 测试 31.7 秒。
-- Lint：变更的 API 与测试文件定向 ESLint 通过。完整 React Hook 规则对 `app/page.tsx` 栈溢出；用 `HEAD:app/page.tsx` 基线单独重现同一 `react-hooks/rules-of-hooks` `RangeError`，所以确认不是本次新增触发。局部关闭该崩溃规则检查本文件其余 lint 后为 0 error，剩 1 条既有 `exhaustive-deps` 警告（`publicCardDisplayAction?.motion`）。`git diff --check` 通过。
-- 提交前检查：当前远端 `ux-v2` 为 `4a94df58`，其与最近成功部署 SHA `e555109e` 之间只有文档变化，`app/ game/ tests/ package*` 无差异；远端最新相关 Actions #43698429149 在 e555 上全部通过（Lint/fast、API、browser smoke、D1 deploy、Worker deploy、production smoke）。新实现 SHA 的 exact-SHA CI 尚未运行。
+### 复现与根因
 
-### 唯一待办
+- 在同一真实挂载的手机尺寸 GameRoom 中执行四人局路径：司马懿使用南蛮入侵、曹操使用杀、夏侯惇实际选择“受伤”；服务端确认 HP 4→3、`currentAction.kind=trigger`、`triggerEvent=damage_suffered` 与夏侯惇刚烈选项。
+- 修复前捕获到原始本地异常：`NotFoundError: Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of this node.` React 栈 `span → b → div` 对应 H4。随后复现并证实：H4 布局测量曾直接改写 React 管理的 `<b>` / `<span>` 子树，触发 DOM 所有权冲突；不是服务端伤害或技能规则故障。
 
-复核最终 diff 与提交内容，按工作流提交并推送 §10.49 到 `ux-v2`；等待新提交的 exact-SHA GitHub Actions、D1/Worker 部署和生产 smoke 全部完成，记录实际 SHA/链接/Worker 结果。状态保持 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW`；不得标记用户验收通过。完成此任务后，再按用户要求重新复核 §10.51。
+### 实施
+
+- `app/public-card-display.tsx`：H4 候选文案现于带 `aria-hidden`、不可交互的离屏测量副本中排版和测量；实时 React 文案树不再被 `replaceChildren` 或 `textContent` 改写，真实 H4 仍由 React 渲染，布局逻辑只调整几何样式。
+- 增加定向 H4 所有权不变量检查和真实游戏路径浏览器回归。浏览器回归在修复后通过夏侯惇真实“受伤”→展示 H4/刚烈决策→点击 Skip/`decline_trigger`，房间保持挂载，无错误恢复屏。
+
+### 本轮验证
+
+- 定向 `tests/public-card-announcement.test.mjs`：32/32 通过。
+- 手机浏览器场景：440×894，1/1 通过；包含修复前原始异常复现与修复后实际 Skip。累计本地 UI/browser 测试约 3 分钟，未超过 5 分钟上限。
+- `npm run build`：通过。
+- 定向 ESLint：0 errors，14 条 React Hooks exhaustive-deps warnings。
+- `git diff --check`：通过。
+- 提交前 `ux-v2` 最新 SHA `3053d209...` 的 Actions 43726390974 为 completed/success；该结果只验证此前提交，不替代本修复提交的精确 SHA CI。
+
+### 唯一待办 / 恢复点
+
+复核当前四个任务文件的差异，只提交 §10.51 相关文件；推送到 `ux-v2`，等待新提交精确 SHA 的全部 GitHub Actions、Worker 部署和生产健康检查。记录真实 SHA、CI 链接、Worker 版本与 smoke 结果。最终状态为 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW**，不得自行标记验收通过。
+
+**本任务不改变**伤害、刚烈、服务器权限、响应/计时规则、卡牌身份或私有信息。§10.49 保持独立，不在本次扩大或重开。

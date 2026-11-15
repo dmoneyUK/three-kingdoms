@@ -2148,12 +2148,36 @@ type PublicCardAnnouncementBand = {
 
 const publicCardAnnouncementBands = new Map<string, PublicCardAnnouncementBand>();
 
-function setAnnouncementMessageText(
+const announcementMeasurementStyleProperties = [
+  "display", "box-sizing", "flex-direction", "align-items", "justify-content", "gap",
+  "padding-top", "padding-right", "padding-bottom", "padding-left",
+  "margin-top", "margin-right", "margin-bottom", "margin-left",
+  "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
+  "border-top-style", "border-right-style", "border-bottom-style", "border-left-style",
+  "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "border-radius",
+  "background-color", "box-shadow", "color", "font-family", "font-size", "font-weight", "font-style",
+  "line-height", "letter-spacing", "text-align", "text-transform", "text-indent", "white-space",
+  "overflow", "overflow-wrap", "word-break", "text-overflow", "max-width", "min-height",
+  "-webkit-box-orient", "-webkit-line-clamp",
+] as const;
+
+function copyAnnouncementMeasurementStyles(source: HTMLElement, target: HTMLElement) {
+  const computed = window.getComputedStyle(source);
+  for (const property of announcementMeasurementStyleProperties) {
+    const value = computed.getPropertyValue(property);
+    if (value) target.style.setProperty(property, value);
+  }
+}
+
+function setAnnouncementMessageTextOnMeasurementClone(
   element: HTMLElement,
   message: string,
   dismantleCardFace?: PublicDismantleCardFaceCopy,
   segments?: readonly PublicH4Segment[],
 ) {
+  if (!element.closest("[data-h4-measurement-copy='true']")) {
+    throw new Error("H4 candidate text may only be changed on a detached measurement copy.");
+  }
   if (!dismantleCardFace || dismantleCardFace.message !== message) {
     const parts = matchingPublicH4Segments(message, segments);
     if (parts) {
@@ -2181,6 +2205,76 @@ function setAnnouncementMessageText(
   name.textContent = dismantleCardFace.name;
   face.append(suitRank, name);
   element.replaceChildren(document.createTextNode(dismantleCardFace.prefix), face, document.createTextNode(dismantleCardFace.suffix));
+}
+
+function measureAnnouncementCopy(
+  copy: HTMLElement,
+  message: string,
+  supporting: string,
+  dismantleCardFace?: PublicDismantleCardFaceCopy,
+  segments?: readonly PublicH4Segment[],
+) {
+  const measurementCopy = copy.cloneNode(true) as HTMLElement;
+  measurementCopy.dataset.h4MeasurementCopy = "true";
+  measurementCopy.setAttribute("aria-hidden", "true");
+  measurementCopy.inert = true;
+  const sourceElements = [copy, ...Array.from(copy.querySelectorAll<HTMLElement>("*"))];
+  const measurementElements = [measurementCopy, ...Array.from(measurementCopy.querySelectorAll<HTMLElement>("*"))];
+  sourceElements.forEach((source, index) => {
+    const target = measurementElements[index];
+    if (target) copyAnnouncementMeasurementStyles(source, target);
+  });
+
+  const width = copy.getBoundingClientRect().width;
+  Object.assign(measurementCopy.style, {
+    position: "fixed",
+    left: "-10000px",
+    top: "0px",
+    right: "auto",
+    bottom: "auto",
+    width: `${width}px`,
+    height: "auto",
+    maxHeight: "none",
+    visibility: "hidden",
+    pointerEvents: "none",
+    zIndex: "-1",
+    translate: "none",
+  });
+
+  const sourceText = copy.querySelector<HTMLElement>("b");
+  const measurementText = measurementCopy.querySelector<HTMLElement>("b");
+  const measurementSupport = measurementCopy.querySelector<HTMLElement>(".public-negation-narration-support");
+  if (measurementText) setAnnouncementMessageTextOnMeasurementClone(measurementText, message, dismantleCardFace, segments);
+  if (measurementSupport) measurementSupport.textContent = supporting;
+
+  // Candidate text may create new semantic spans. Apply the resolved style of
+  // its matching React-rendered template node so the detached copy measures the
+  // same typography without changing any live React-owned H4 child.
+  if (sourceText && measurementText) {
+    const sourceTextElements = [sourceText, ...Array.from(sourceText.querySelectorAll<HTMLElement>("*"))];
+    for (const target of Array.from(measurementText.querySelectorAll<HTMLElement>("*"))) {
+      const source = sourceTextElements.find((candidate) => candidate.tagName === target.tagName
+        && candidate.className === target.className);
+      if (source) copyAnnouncementMeasurementStyles(source, target);
+    }
+  }
+
+  document.body.append(measurementCopy);
+  try {
+    const rect = measurementCopy.getBoundingClientRect();
+    const linesFor = (element: HTMLElement | null) => {
+      if (!element || !element.textContent?.trim()) return 0;
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return range.getClientRects().length;
+    };
+    return {
+      height: rect.height,
+      lines: linesFor(measurementText) + linesFor(measurementSupport),
+    };
+  } finally {
+    measurementCopy.remove();
+  }
 }
 
 function rememberPublicCardAnnouncementBand(key: string, band: PublicCardAnnouncementBand) {
@@ -2917,13 +3011,13 @@ function PublicCardAnnouncement({
         && previousPlacement.viewerLayoutKey === viewerLayoutKey;
       if (sameCopyAndGeometry && previousPlacement
         && (fixedUpperTop === null || Math.abs(previousPlacement.top - fixedUpperTop) <= 1)) {
-        const textElement = copy.querySelector<HTMLElement>("b");
-        const supportElement = copy.querySelector<HTMLElement>(".public-negation-narration-support");
-        if (textElement && textElement.textContent !== previousPlacement.message) {
-          setAnnouncementMessageText(textElement, previousPlacement.message, incomingDisplayedCopy.dismantleCardFace, incomingDisplayedCopy.segments);
-        }
-        if (supportElement && supportElement.textContent !== previousPlacement.supporting) supportElement.textContent = previousPlacement.supporting;
-        const measuredHeight = copy.getBoundingClientRect().height;
+        const measuredHeight = measureAnnouncementCopy(
+          copy,
+          previousPlacement.message,
+          previousPlacement.supporting,
+          incomingDisplayedCopy.dismantleCardFace,
+          incomingDisplayedCopy.segments,
+        ).height;
         const previousRect = new DOMRect(previousPlacement.left, previousPlacement.top, previousPlacement.width, measuredHeight);
         const overlapsCurrentCard = (phase === "reveal" || stableCenterAnchor || keepCenterAnchorClear)
           && centerCardStillOccupiesStage && rectsOverlap(toCardRect(previousRect), centerCardRect, gap);
@@ -3016,8 +3110,6 @@ function PublicCardAnnouncement({
         });
       const canonicalCenterX = targetCenterX;
       const widths = [maxWidth];
-      const textElement = copy.querySelector<HTMLElement>("b");
-      const supportElement = copy.querySelector<HTMLElement>(".public-negation-narration-support");
       // LUST participant names are identity, not expendable copy. Let their
       // measured text grow naturally; safe bounds and obstacle checks below
       // still reject any placement that would cover a Seat or the Dock.
@@ -3029,14 +3121,18 @@ function PublicCardAnnouncement({
         setData("data-public-card-announcement-tight-copy", hasNegationNarration && width <= 224 ? "true" : undefined);
         setData("data-public-card-announcement-width", `${Math.round(width)}`);
       };
-      const textLines = () => {
-        const linesFor = (element: HTMLElement | null) => {
-          if (!element || !element.textContent?.trim()) return 0;
-          const range = document.createRange();
-          range.selectNodeContents(element);
-          return range.getClientRects().length;
-        };
-        return linesFor(textElement) + linesFor(supportElement);
+      let measuredTextLines = 0;
+      const textLines = () => measuredTextLines;
+      const measureOption = (option: (typeof announcementOptions)[number]) => {
+        const measured = measureAnnouncementCopy(
+          copy,
+          option.message,
+          option.supporting,
+          incomingDisplayedCopy.dismantleCardFace,
+          incomingDisplayedCopy.segments,
+        );
+        measuredTextLines = measured.lines;
+        return measured.height;
       };
       let selected: { left: number; top: number; width: number; height: number; lines: number; message: string; supporting: string; compact: boolean } | null = null;
       let verticalMode: "above" | "below" = fixedUpperTop !== null ? "above" : preferredVerticalMode ?? (placementBand && centerCardStillOccupiesStage
@@ -3087,12 +3183,10 @@ function PublicCardAnnouncement({
         // H4 caption to jump above a revealed card and below its parked mini.
         for (const offset of topOffsets) {
           for (const option of announcementOptions) {
-            if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace, incomingDisplayedCopy.segments);
-            if (supportElement) supportElement.textContent = option.supporting;
             for (const width of widths) {
               setAnnouncementMeasureMode(option.compact, width);
               setPx("width", width);
-              const height = copy.getBoundingClientRect().height;
+              const height = measureOption(option);
               const top = fixedUpperTop ?? placementBand.centerY - height / 2 + offset;
               for (const centerOffset of centerOffsets) {
                 if (considerCandidate(option, width, height, centerOffset, top)) break;
@@ -3105,12 +3199,10 @@ function PublicCardAnnouncement({
         }
       } else {
         for (const option of announcementOptions) {
-          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace, incomingDisplayedCopy.segments);
-          if (supportElement) supportElement.textContent = option.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(option.compact, width);
             setPx("width", width);
-            const height = copy.getBoundingClientRect().height;
+            const height = measureOption(option);
             const baseTop = fixedUpperTop ?? (placementBand
               ? placementBand.centerY - height / 2
               : verticalMode === "below"
@@ -3150,12 +3242,10 @@ function PublicCardAnnouncement({
         // that baseline; then search the current safe area around the frame.
         // Protected Seat, Dock, Hand and control rects still apply.
         for (const option of announcementOptions) {
-          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace, incomingDisplayedCopy.segments);
-          if (supportElement) supportElement.textContent = option.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(option.compact, width);
             setPx("width", width);
-            const height = copy.getBoundingClientRect().height;
+            const height = measureOption(option);
             const preferredTop = placementBand
               ? placementBand.centerY - height / 2
               : verticalMode === "below"
@@ -3195,12 +3285,10 @@ function PublicCardAnnouncement({
         // below the reveal card. Skip every real or projected owner-card slot.
         const compactOption = announcementOptions.find((option) => option.compact) ?? announcementOptions[0];
         if (compactOption) {
-          if (textElement) setAnnouncementMessageText(textElement, compactOption.message, incomingDisplayedCopy.dismantleCardFace, incomingDisplayedCopy.segments);
-          if (supportElement) supportElement.textContent = compactOption.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(compactOption.compact, width);
             setPx("width", width);
-            const height = copy.getBoundingClientRect().height;
+            const height = measureOption(compactOption);
             for (const centerOffset of centerOffsets) {
               const left = canonicalCenterX + centerOffset - width / 2;
               if (left < safeLeft || left + width > safeRight) continue;
@@ -3233,12 +3321,10 @@ function PublicCardAnnouncement({
 
       if (!selected) {
         for (const option of announcementOptions) {
-          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace, incomingDisplayedCopy.segments);
-          if (supportElement) supportElement.textContent = option.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(option.compact, width);
             setPx("width", width);
-            const height = copy.getBoundingClientRect().height;
+            const height = measureOption(option);
             const preferredTop = fixedUpperTop ?? (placementBand
               ? placementBand.centerY - height / 2
               : verticalMode === "below"
@@ -3288,12 +3374,6 @@ function PublicCardAnnouncement({
       }
 
       if (!selected) {
-        const textElement = copy.querySelector<HTMLElement>("b");
-        const supportElement = copy.querySelector<HTMLElement>(".public-negation-narration-support");
-        if (textElement && textElement.textContent !== incomingDisplayedCopy.message) {
-          setAnnouncementMessageText(textElement, incomingDisplayedCopy.message, incomingDisplayedCopy.dismantleCardFace, incomingDisplayedCopy.segments);
-        }
-        if (supportElement && supportElement.textContent !== incomingDisplayedCopy.supporting) supportElement.textContent = incomingDisplayedCopy.supporting;
         const previous = lastValidPlacementRef.current;
         if (previous?.geometryIdentity === currentGeometryIdentity) setPx("width", previous.width);
         const retained = retainLastValidPlacement(layoutEpoch);
