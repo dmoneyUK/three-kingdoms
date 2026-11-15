@@ -12,6 +12,7 @@
 
 - 2026-11-15 22:58 UTC：在隔离的干净 `ux-v2` 工作树核对最新设计、代码和 HANDOVER；主目录中无关的未提交文件保持原样。确认 4–6 人手机顶排座位分支、按选中玩家实时测量、视觉视口夹取、障碍避让和 `§10.56` 回归测试均存在。
 - 2026-11-15 22:58:45–22:59 UTC：运行 `npm run test:browser -- --grep '§10.56 440px phone Inspector anchors under the selected top-row Seat' --workers=1`；单场景通过（Playwright 9.7 秒，命令约 10.3 秒）。覆盖 440px 顶排行左/中/右目标、身份、面板安全范围/避让、TEST SWITCH 及切到 390px。累计本地 UI/browser 测试约 10.3 秒；未运行其他测试。
-- 2026-11-15 23:00 UTC：更新本 HANDOVER；待执行 `git diff --check`、提交并推送本交接更新，再记录精确 SHA 的 CI 状态。
+- 2026-11-15 23:00 UTC：`git diff --check -- HANDOVER.md` 通过；HANDOVER-only commit `2495482f95d4217eb37de3bcb063fd4527745f85` 已推送。该 SHA 未触发 Actions；`.github/workflows/deploy.yml` 对 `**/*.md` 使用 `paths-ignore`，故没有新 CI 或 Worker 部署。
+- 2026-11-15 23:01 UTC：后续 HANDOVER-only 推送曾两次因远端并行更新被拒；新增远端提交 `76e1c8b2` 与 `057b829f` 均只改设计文档。已 fetch 并依次 rebase 本地交接更新，无冲突、无强推；重试仍需正常快进检查。
 
 **Owner iPhone 复验：** 从顶排行左、中、右不同对手打开 Inspector，确认面板跟随所选 Hero、无首帧居中跳动、无遮挡且详情可用。未标记 USER-ACCEPTED。
