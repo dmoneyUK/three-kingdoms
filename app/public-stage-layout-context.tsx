@@ -541,7 +541,7 @@ export function canRetainPublicStageLayout(table: HTMLElement, shared: SharedPub
   if (!card || !display || display.dataset.publicCardRootEventId !== scene.scopeId
     || display.dataset.publicCardViewerId !== scene.viewerId
     || display.dataset.publicCardLayoutViewerId !== scene.viewerId
-    || (scene.interactionId && display.dataset.publicCardInteractionId !== scene.interactionId)) return false;
+    || (display.dataset.publicCardInteractionId ?? null) !== scene.interactionId) return false;
   const h4 = [...display.querySelectorAll<HTMLElement>('[data-public-card-announcement="true"]')]
     .find((el) => el.dataset.publicCardAnnouncementEventId === shared.announcementEventId
       && (el.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey);
@@ -572,6 +572,82 @@ export function canRetainPublicStageLayout(table: HTMLElement, shared: SharedPub
     });
   }
   return !rects.some((rect) => obstacles.some((obstacle) => intersects(rect, obstacle)));
+}
+
+/**
+ * Allow PAC to keep the same proven scene while its lower edge is reflowed to
+ * the live Console. This is intentionally separate from retaining a complete
+ * shared layout: the card/H4 geometry may need a new generation, while the
+ * prior PAC can remain visible if its current destination is still safe.
+ */
+export function canPlaceRetainedPublicActivity(
+  table: HTMLElement,
+  shared: SharedPublicStageLayout,
+  activity: PublicStageRect,
+): boolean {
+  const scene = shared.layout.scene;
+  if (table.dataset.publicStageLayoutScope !== scene.scopeId) return false;
+  const card = [...table.querySelectorAll<HTMLElement>(
+    '.public-card-journey-card[data-public-card-primary-card="true"]',
+  )].find((el) => el.dataset.publicCardJourneyEventId === shared.primaryEventId
+    && el.dataset.publicCardJourneyCardId === shared.primaryCardId);
+  const display = card?.closest<HTMLElement>(".public-card-display");
+  if (!card || !display || display.dataset.publicCardRootEventId !== scene.scopeId
+    || display.dataset.publicCardViewerId !== scene.viewerId
+    || display.dataset.publicCardLayoutViewerId !== scene.viewerId
+    || (display.dataset.publicCardInteractionId ?? null) !== scene.interactionId) return false;
+
+  // A newer active card in this interaction owns the stage now. Never keep a
+  // prior card's PAC placement across that real semantic handoff.
+  const activeCards = [...table.querySelectorAll<HTMLElement>(
+    '.public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="reveal"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="move"]',
+  )].filter((candidate) => {
+    const owner = candidate.closest<HTMLElement>(".public-card-display");
+    return owner?.dataset.publicCardRootEventId === scene.scopeId
+      && owner.dataset.publicCardViewerId === scene.viewerId
+      && owner.dataset.publicCardLayoutViewerId === scene.viewerId
+      && (!scene.interactionId || owner.dataset.publicCardInteractionId === scene.interactionId);
+  });
+  if (activeCards.some((candidate) => candidate !== card)) return false;
+
+  const h4 = [...display.querySelectorAll<HTMLElement>('[data-public-card-announcement="true"]')]
+    .find((el) => el.dataset.publicCardAnnouncementEventId === shared.announcementEventId
+      && (el.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey);
+  const pac = table.querySelector<HTMLElement>('[data-public-activity-chip="true"]');
+  const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
+  if (!h4 || !pac || !consoleGuidance || !visibleObstacle(consoleGuidance)) return false;
+
+  const tableBounds = rectOf(table);
+  const h4Bounds = rectOf(h4);
+  const consoleBounds = rectOf(consoleGuidance);
+  const activityBounds = activity;
+  const intersects = (left: PublicStageRect, right: PublicStageRect) => left.left < right.right
+    && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
+  const viewportLeft = Math.max(0, window.visualViewport?.offsetLeft ?? 0);
+  const viewportTop = Math.max(0, window.visualViewport?.offsetTop ?? 0);
+  const viewportRight = Math.min(window.innerWidth, viewportLeft + (window.visualViewport?.width ?? window.innerWidth));
+  const viewportBottom = Math.min(window.innerHeight, viewportTop + (window.visualViewport?.height ?? window.innerHeight));
+  const activityInsideStageCorridor = activityBounds.left >= Math.max(tableBounds.left, viewportLeft) + 1
+    && activityBounds.right <= Math.min(tableBounds.right, viewportRight) - 1
+    && activityBounds.top >= Math.max(tableBounds.top, viewportTop) + 1
+    && activityBounds.bottom <= Math.min(viewportBottom, consoleBounds.top) + 1;
+  const h4InsideTable = h4Bounds.left >= tableBounds.left - 1 && h4Bounds.right <= tableBounds.right + 1
+    && h4Bounds.top >= tableBounds.top - 1 && h4Bounds.bottom <= tableBounds.bottom + 1;
+  if (!activityInsideStageCorridor || !h4InsideTable
+    || Math.abs(activityBounds.bottom - consoleBounds.top) > 2
+    || intersects(h4Bounds, activityBounds)) return false;
+
+  const obstacles = [...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)]
+    .filter((element) => element !== card && element !== h4 && element !== pac
+      && !card.contains(element) && visibleObstacle(element))
+    .map(rectOf);
+  if (card.dataset.publicCardJourneyPhase !== "parked") {
+    obstacles.push(rectOf(card));
+    card.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel").forEach((element) => {
+      if (visibleForMeasure(element)) obstacles.push(rectOf(element));
+    });
+  }
+  return !obstacles.some((obstacle) => intersects(activityBounds, obstacle));
 }
 
 export function sharedPublicStageMatchesElement(table: HTMLElement, shared: SharedPublicStageLayout): boolean {

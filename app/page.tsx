@@ -11632,7 +11632,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {publicActivityStatus.kind !== "none" && !targetCardChoiceMergeActive
         && !(publicActivityStatus.kind === "target-card-choice" && room.pendingTargetCard?.actorId === room.meId)
         && !lustOrderOwnsActivityBand
-        && <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey}
+        && <PublicActivityChip status={publicActivityStatus} roomId={room.code} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey}
           harvestPoolReadOnly={harvestReadOnlyDuringNegation}
           stableLowerCenter={targetCardActivityOwnsPac} />}
       </PublicStageLayoutProvider>

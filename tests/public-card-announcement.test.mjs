@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { measuredPublicCorridorWidth, publicCorridorWidth } from "../app/public-corridor.ts";
-import { fixedLowerActivityEdge } from "../app/public-activity-chip.tsx";
+import { fixedLowerActivityEdge, shouldRetainPublicActivityPlacement } from "../app/public-activity-chip.tsx";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { centerRevealCardInSafeBattlefield, publicCardAnnouncementCopy, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
+import { centerRevealCardInSafeBattlefield, publicCardAnnouncementCopy, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity, shouldDirectParkPublicJourney } from "../app/public-card-display.tsx";
 import {
   canClearPublicJourneyOwnership,
   publicAnnouncementEventCopyKey,
@@ -33,6 +33,51 @@ test("unowned committed physical roots use the shared Journey and restored roots
   const existingMotion = { type: "duel", scopeKey: "existing", freshEventIds: [] };
   assert.equal(publicCardMotionForCommittedCard({ ...action, motion: existingMotion }, "ROOM", new Set()), existingMotion);
   assert.equal(publicCardMotionForCommittedCard(action, "ROOM", new Set(), true), null);
+});
+
+test("phone direct parking requires a proven author target and an ordinary root or response", () => {
+  const ordinary = { cardFace: { kind: "Attack" }, motion: { type: "single-target" } };
+  assert.equal(shouldDirectParkPublicJourney(ordinary, "root", true, true), true);
+  assert.equal(shouldDirectParkPublicJourney(ordinary, "response", true, true), true);
+  assert.equal(shouldDirectParkPublicJourney(ordinary, "root", false, true), false);
+  assert.equal(shouldDirectParkPublicJourney(ordinary, "deflection", true, true), false);
+  assert.equal(shouldDirectParkPublicJourney(ordinary, "root", true, false), false);
+  assert.equal(shouldDirectParkPublicJourney({ ...ordinary, cardFace: { kind: "BumperHarvest" } }, "root", true, true), false);
+  assert.equal(shouldDirectParkPublicJourney({ ...ordinary, publicCardEffectFrame: {} }, "root", true, true), false);
+  assert.equal(shouldDirectParkPublicJourney({ ...ordinary, motion: { type: "lust-cost" } }, "root", true, true), false);
+});
+
+test("PAC placement survives only a safe same-room, viewer, status and scene remeasure", () => {
+  const scene = { scopeId: "root-1", interactionId: "interaction-1", eventId: "event-1", cardId: "card-1" };
+  const base = {
+    previousVisible: true,
+    previousRoomId: "ROOM",
+    roomId: "ROOM",
+    previousViewerId: "viewer-1",
+    viewerId: "viewer-1",
+    status: "Waiting for player 2",
+    previousScene: scene,
+    currentScene: scene,
+    previousRectMatchesCurrentSize: true,
+    geometrySafe: true,
+  };
+  assert.equal(shouldRetainPublicActivityPlacement(base), true);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, previousScene: null }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, currentScene: null }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, viewerId: "viewer-2" }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, roomId: "OTHER" }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, status: "A newer public status" }), true);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, status: " " }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({
+    ...base,
+    currentScene: { ...scene, eventId: "event-2", cardId: "card-2" },
+  }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({
+    ...base,
+    currentScene: { ...scene, interactionId: "interaction-2" },
+  }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, geometrySafe: false }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, previousVisible: false }), false);
 });
 
 test("H4 candidate measurement confines text DOM changes to its marked copy", () => {

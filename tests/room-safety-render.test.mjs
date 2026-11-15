@@ -1260,5 +1260,5 @@ test("play-target CurrentAction normalization keeps bounded verdicts only during
 
 test("absent public activity renders no plaque or live region", async () => {
   const { PublicActivityChip } = await import("../app/public-activity-chip.tsx");
-  assert.equal(renderToStaticMarkup(React.createElement(PublicActivityChip, { status: { kind: "none", text: "" }, viewerId: "p1", seatLayoutKey: "" })), "");
+  assert.equal(renderToStaticMarkup(React.createElement(PublicActivityChip, { status: { kind: "none", text: "" }, roomId: "ROOM", viewerId: "p1", seatLayoutKey: "" })), "");
 });

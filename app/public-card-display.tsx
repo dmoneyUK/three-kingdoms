@@ -636,6 +636,30 @@ const STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS = 4000;
 const DUEL_REVEAL_HOLD_MS = 4000;
 const MOVE_DURATION_MS = 380;
 
+export function shouldDirectParkPublicJourney(
+  action: PublicCardDisplayAction,
+  role: JourneyCard["role"],
+  hasProvenParkingTarget: boolean,
+  phoneViewport: boolean,
+): boolean {
+  return phoneViewport
+    && hasProvenParkingTarget
+    && (role === "root" || role === "response")
+    && action.cardFace?.kind !== "BumperHarvest"
+    && !action.publicCardEffectFrame
+    && !action.lustCostFrame
+    && action.motion?.type !== "lust-cost";
+}
+
+function directParkPublicJourneyOnPhone(
+  action: PublicCardDisplayAction,
+  role: JourneyCard["role"],
+  hasProvenParkingTarget: boolean,
+): boolean {
+  return shouldDirectParkPublicJourney(action, role, hasProvenParkingTarget,
+    typeof window !== "undefined" && window.matchMedia("(max-width: 520px)").matches);
+}
+
 function boundCardRect(left: number, top: number, width: number, height: number): CardRect {
   const maxLeft = Math.max(8, window.innerWidth - width - 8);
   const maxTop = Math.max(8, window.innerHeight - height - 8);
@@ -3944,10 +3968,11 @@ function AttackDodgeCardJourney({
         if (latestNewResponseEventId && prior.eventId !== latestNewResponseEventId && prior.phase === "reveal") {
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
           const elapsed = prior.revealStartedAtMs == null ? 0 : Math.max(0, performance.now() - prior.revealStartedAtMs);
+          const directPark = directParkPublicJourneyOnPhone(currentAction, prior.role, Boolean(target));
           rememberAttackDodgeJourneyLifecycle(
             attackDodgeJourneyLifecycleKey(roomCode, currentAction.rootEventId, scopeKey, prior.eventId),
             {
-              phase: !target || reducedMotion ? "parked" : "move",
+              phase: !target || reducedMotion || directPark ? "parked" : "move",
               revealStartedAtMs: null,
               revealStartedAtIso: prior.revealStartedAtIso ?? null,
               revealElapsedMs: (prior.revealElapsedMs ?? 0) + elapsed,
@@ -3961,15 +3986,17 @@ function AttackDodgeCardJourney({
             cardFace: candidate.cardFace,
             ariaLabel: candidate.ariaLabel,
             semanticLabel: candidate.semanticLabel,
-            phase: !target || reducedMotion ? "parked" as const : "move" as const,
+            phase: !target || reducedMotion || directPark ? "parked" as const : "move" as const,
             target: parkedTarget,
             rect: parkedTarget,
             revealStartedAtMs: null,
             revealElapsedMs: (prior.revealElapsedMs ?? 0) + elapsed,
             revealRemainingMs: 0,
-            moveStartedAtMs: !target || reducedMotion ? null : performance.now(),
+            moveStartedAtMs: !target || reducedMotion || directPark ? null : performance.now(),
             layoutPending: !target,
-            layoutChangeReason: measuredTarget ? "interrupted-by-new-committed-response" : "author-parking-unavailable-awaiting-remeasure",
+            layoutChangeReason: !target ? "author-parking-unavailable-awaiting-remeasure"
+              : directPark ? "interrupted-response-direct-phone-parking"
+                : reducedMotion ? "interrupted-response-reduced-motion" : "interrupted-by-new-committed-response",
           };
         }
         return {
@@ -4030,10 +4057,11 @@ function AttackDodgeCardJourney({
       if (latestNewResponseEventId && previouslyProvenCard.phase === "reveal") {
         const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         const elapsed = previouslyProvenCard.revealStartedAtMs == null ? 0 : Math.max(0, performance.now() - previouslyProvenCard.revealStartedAtMs);
+        const directPark = directParkPublicJourneyOnPhone(currentAction, previouslyProvenCard.role, Boolean(measuredTarget));
         rememberAttackDodgeJourneyLifecycle(
           attackDodgeJourneyLifecycleKey(roomCode, currentAction.rootEventId, scopeKey, previouslyProvenCard.eventId),
           {
-            phase: !measuredTarget || reducedMotion ? "parked" : "move",
+            phase: !measuredTarget || reducedMotion || directPark ? "parked" : "move",
             revealStartedAtMs: null,
             revealStartedAtIso: previouslyProvenCard.revealStartedAtIso ?? null,
             revealElapsedMs: (previouslyProvenCard.revealElapsedMs ?? 0) + elapsed,
@@ -4042,15 +4070,17 @@ function AttackDodgeCardJourney({
         );
         nextCards.push({
           ...previouslyProvenCard,
-          phase: !measuredTarget || reducedMotion ? "parked" : "move",
+          phase: !measuredTarget || reducedMotion || directPark ? "parked" : "move",
           target,
           rect: target,
           revealStartedAtMs: null,
           revealElapsedMs: (previouslyProvenCard.revealElapsedMs ?? 0) + elapsed,
           revealRemainingMs: 0,
-          moveStartedAtMs: !measuredTarget || reducedMotion ? null : performance.now(),
+          moveStartedAtMs: !measuredTarget || reducedMotion || directPark ? null : performance.now(),
           layoutPending: !measuredTarget,
-          layoutChangeReason: measuredTarget ? "interrupted-by-new-committed-response" : "author-parking-unavailable-awaiting-remeasure",
+          layoutChangeReason: !measuredTarget ? "author-parking-unavailable-awaiting-remeasure"
+            : directPark ? "interrupted-response-direct-phone-parking"
+              : reducedMotion ? "interrupted-response-reduced-motion" : "interrupted-by-new-committed-response",
         });
       } else {
         nextCards.push({
@@ -4138,7 +4168,9 @@ function AttackDodgeCardJourney({
         if (activePhase === "reveal") {
           const visibleSegmentMs = Math.max(0, performance.now() - (startedAtMs ?? performance.now()));
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-          const shouldMove = !reducedMotion && !current.layoutPending;
+          const directPark = directParkPublicJourneyOnPhone(actionRef.current, currentCard.role,
+            !currentCard.layoutPending && currentCard.target.width > 0 && currentCard.target.height > 0);
+          const shouldMove = !reducedMotion && !current.layoutPending && !directPark;
           const transitioned: JourneyCard = {
             ...candidate,
             phase: shouldMove ? "move" as const : "parked" as const,
@@ -4147,8 +4179,10 @@ function AttackDodgeCardJourney({
             revealElapsedMs: Math.max(STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS, (candidate.revealElapsedMs ?? 0) + visibleSegmentMs),
             revealRemainingMs: 0,
             moveStartedAtMs: shouldMove ? performance.now() : null,
-            layoutChangeReason: shouldMove ? "four-second-reveal-complete" : current.layoutPending
-              ? "reveal-complete-awaiting-seat-anchor" : "four-second-reveal-complete-reduced-motion",
+            layoutChangeReason: shouldMove ? "four-second-reveal-complete"
+              : current.layoutPending ? "reveal-complete-awaiting-seat-anchor"
+                : directPark ? "four-second-reveal-complete-direct-phone-parking"
+                  : "four-second-reveal-complete-reduced-motion",
           };
           rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, actionRef.current.rootEventId, scopeKey, eventId), {
             phase: transitioned.phase,
@@ -4879,6 +4913,7 @@ function SingleTargetCardJourney({
           : old.moveRemainingMs;
         if (old.awaitingParkingTarget && measuredTarget) {
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          const directPark = directParkPublicJourneyOnPhone(currentAction, event.role, true);
           return {
             ...event,
             ...old,
@@ -4886,21 +4921,23 @@ function SingleTargetCardJourney({
             cardFace: event.cardFace,
             ariaLabel: event.ariaLabel,
             semanticLabel: event.semanticLabel,
-            phase: reducedMotion ? "parked" : "move",
+            phase: reducedMotion || directPark ? "parked" : "move",
             rect: target,
             target,
             revealStartedAtMs: null,
             revealRemainingMs: 0,
-            moveStartedAtMs: reducedMotion ? null : now,
-            moveRemainingMs: reducedMotion ? 0 : MOVE_DURATION_MS,
+            moveStartedAtMs: reducedMotion || directPark ? null : now,
+            moveRemainingMs: reducedMotion || directPark ? 0 : MOVE_DURATION_MS,
             awaitingParkingTarget: false,
             parkingTargetViewerId: viewerId,
             layoutPending: false,
-            layoutChangeReason: reducedMotion ? "four-second-reveal-complete-reduced-motion" : "author-parking-anchor-recovered",
+            layoutChangeReason: directPark ? "author-parking-anchor-recovered-direct-phone-parking"
+              : reducedMotion ? "four-second-reveal-complete-reduced-motion" : "author-parking-anchor-recovered",
           };
         }
         if (latestFreshResponseEventId && event.eventId !== latestFreshResponseEventId && old.phase === "reveal") {
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          const directPark = directParkPublicJourneyOnPhone(currentAction, event.role, Boolean(measuredTarget));
           return {
             ...event,
             ...old,
@@ -4908,17 +4945,19 @@ function SingleTargetCardJourney({
             cardFace: event.cardFace,
             ariaLabel: event.ariaLabel,
             semanticLabel: event.semanticLabel,
-            phase: reducedMotion ? "parked" : "move",
+            phase: reducedMotion || directPark || !measuredTarget ? "parked" : "move",
             rect: target,
-            moveStartedAtMs: reducedMotion ? null : now,
-            moveRemainingMs: reducedMotion ? 0 : MOVE_DURATION_MS,
+            moveStartedAtMs: reducedMotion || directPark || !measuredTarget ? null : now,
+            moveRemainingMs: reducedMotion || directPark || !measuredTarget ? 0 : MOVE_DURATION_MS,
             awaitingParkingTarget: false,
             revealStartedAtMs: null,
             revealRemainingMs: 0,
             target,
             parkingTargetViewerId: measuredTarget ? viewerId : old.parkingTargetViewerId,
             layoutPending: !measuredTarget,
-            layoutChangeReason: "interrupted-by-new-committed-response",
+            layoutChangeReason: !measuredTarget ? "author-parking-unavailable-awaiting-remeasure"
+              : directPark ? "interrupted-response-direct-phone-parking"
+                : reducedMotion ? "interrupted-response-reduced-motion" : "interrupted-by-new-committed-response",
           };
         }
         return {
@@ -5078,7 +5117,9 @@ function SingleTargetCardJourney({
               return next;
             }
             const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-            const shouldMove = !reducedMotion && !currentCard.layoutPending;
+            const directPark = directParkPublicJourneyOnPhone(actionRef.current, currentCard.role,
+              !currentCard.layoutPending && currentCard.target.width > 0 && currentCard.target.height > 0);
+            const shouldMove = !reducedMotion && !currentCard.layoutPending && !directPark;
             const cards = current.cards.map((candidate) => candidate.eventId === card.eventId
               ? {
                 ...candidate,
@@ -5091,7 +5132,8 @@ function SingleTargetCardJourney({
                 moveRemainingMs: shouldMove ? MOVE_DURATION_MS : undefined,
                 awaitingParkingTarget: false,
                 layoutChangeReason: currentCard.layoutPending ? "reveal-complete-awaiting-seat-anchor"
-                  : reducedMotion ? "four-second-reveal-complete-reduced-motion" : "four-second-reveal-complete",
+                  : directPark ? "four-second-reveal-complete-direct-phone-parking"
+                    : reducedMotion ? "four-second-reveal-complete-reduced-motion" : "four-second-reveal-complete",
               }
               : candidate);
             const next = { ...current, cards };
