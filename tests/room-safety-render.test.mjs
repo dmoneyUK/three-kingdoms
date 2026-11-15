@@ -135,7 +135,7 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   const target = buildDecisionPresentation(presentationRoom({ phase: "response", currentAction: { version: 3, kind: "target_card", actorId: "p1", deadline: 0, reason: "Choose 1 current card", legalActions: ["choose_target_card"] } }));
   assert.equal(target.primaryStatus, "Choose a target card");
   const resolving = buildDecisionPresentation(presentationRoom({ phase: "resolving", currentAction: { version: 3, kind: "none", actorId: null, deadline: 0, reason: "Applying the result", legalActions: [] } }));
-  assert.equal(resolving.primaryStatus, "Resolving");
+  assert.equal(resolving.primaryStatus, "No action needed.");
   assert.equal(resolving.isResolving, true);
 
   const uxRoom = normalizeRoomData({
@@ -1255,4 +1255,10 @@ test("play-target CurrentAction normalization keeps bounded verdicts only during
   });
   assert.ok(responseRoom);
   assert.equal(responseRoom.currentAction.playTargetEligibility, undefined, "a stale play-target map is dropped outside a legal play turn");
+});
+
+
+test("absent public activity renders no plaque or live region", async () => {
+  const { PublicActivityChip } = await import("../app/public-activity-chip.tsx");
+  assert.equal(renderToStaticMarkup(React.createElement(PublicActivityChip, { status: { kind: "none", text: "" }, viewerId: "p1", seatLayoutKey: "" })), "");
 });

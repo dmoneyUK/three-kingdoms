@@ -1394,3 +1394,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
   font-size: 12px;
   pointer-events: none;
 }
+
+@media (max-width: 520px) {
+  .public-card-display-journey-copy { width: min(340px, calc(100vw - 32px)); max-width: min(340px, calc(100vw - 32px)); }
+}

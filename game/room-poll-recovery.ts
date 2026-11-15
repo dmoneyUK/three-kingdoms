@@ -5,7 +5,8 @@ export function classifyRoomGetFailure(status: number | null, payload?: unknown)
     && "error" in payload && typeof payload.error === "string" ? payload.error : null;
   if (status === 404 && error === "Room not found.") return "missing-room";
   if (status === 403 && error === "That test viewer is not controlled by this session.") return "unavailable-viewer";
-  if ((status === 401 || status === 403) && error === "Your player session is no longer valid.") return "invalid-session";
+  if ((status === 401 || status === 403) && (error === "Your player session is no longer valid."
+    || error === "A valid room member session is required for UX diagnostics.")) return "invalid-session";
   return "temporary";
 }
 export class RoomGetError extends Error {

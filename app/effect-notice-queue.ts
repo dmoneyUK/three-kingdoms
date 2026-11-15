@@ -1,9 +1,11 @@
+import type { PublicH4Segment } from "../game/public-h4-copy";
 export type EffectNoticeQueueEntry = {
   roomCode: string;
   viewerId: string;
   eventId: string;
   heading: string;
   message: string;
+  segments?: readonly PublicH4Segment[];
   exiting: boolean;
   beautyRootEventId?: string;
   beautySourceId?: string;

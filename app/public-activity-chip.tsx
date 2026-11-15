@@ -617,6 +617,8 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
     };
   }, [harvestPoolReadOnly, status.kind, status.stage, status.text, stableLowerCenter, viewerId, seatLayoutKey, sharedPublicStage]);
 
+  if (status.kind === "none") return null;
+
   return <div
     ref={chipRef}
     className="public-activity-chip"

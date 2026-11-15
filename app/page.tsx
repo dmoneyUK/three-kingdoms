@@ -1,5 +1,6 @@
 "use client";
 
+import { publicH4Copy } from "../game/public-h4-copy";
 import { classifyRoomGetFailure, RoomGetError, RoomPollRecovery } from "../game/room-poll-recovery";
 
 import { isEntourageDodgeFor } from "../game/entourage-presentation";
@@ -216,10 +217,10 @@ function diaoChanNoticeCopy(proof: PresentationSnapshotDiaoChanSkillNotice, play
       : `${failed.name} failed to play Attack; ${proof.damageAmount} Duel damage from ${damageSource.name} applies.` };
   }
   if (proof.effectId === "diao_chan_beauty_outshining_moon" && proof.notice === "ACTIVATION") {
-    return { heading: "BEAUTY", message: `${owner.name} activated Beauty Outshining the Moon.` };
+    return { heading: "BEAUTY", ...publicH4Copy([owner, " activated Beauty Outshining the Moon."]) };
   }
   if (proof.effectId === "diao_chan_beauty_outshining_moon" && proof.notice === "DRAWN" && proof.drawCount === 1) {
-    return { heading: "BEAUTY", message: `${owner.name} used Beauty and drew 1 card.` };
+    return { heading: "BEAUTY", ...publicH4Copy([owner, " used Beauty and drew 1 card."]) };
   }
   return null;
 }
@@ -1118,8 +1119,9 @@ type VerifiedRockCleavingAxeCostFrameProof = {
   costCards: readonly [Card, Card];
   activationOwner: Player;
   target: Player;
+  h4Copy: ReturnType<typeof publicH4Copy>;
 };
-function verifiedRockCleavingAxeCostFrameForEvent(
+export function verifiedRockCleavingAxeCostFrameForEvent(
   timeline: readonly GameEvent[],
   effects: readonly PresentationSnapshotPublicCardEffect[],
   players: readonly Player[],
@@ -1185,7 +1187,8 @@ function verifiedRockCleavingAxeCostFrameForEvent(
   if (!activationOwner?.name || !target?.name || activationOwner.id === target.id || !isAttackRoot
     || rootEvent.player !== activationOwner.name || rootEvent.target !== target.name
     || costEvent.player !== activationOwner.name || costEvent.target !== target.name) return null;
-  return { costEvent, effect, rootEvent, costCards: [costEvent.cards[0], costEvent.cards[1]], activationOwner, target };
+  return { costEvent, effect, rootEvent, costCards: [costEvent.cards[0], costEvent.cards[1]], activationOwner, target,
+    h4Copy: publicH4Copy([activationOwner, " used Rock Cleaving Axe; ", target, "'s Dodge was bypassed."]) };
 }
 type VerifiedKirinBowEffectFrameProof = {
   effectEvent: CardGroupEvent;
@@ -2562,7 +2565,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, m
   </article>;
 }
 
-function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
+function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Waiting for the next public update." : phase === "finished" ? "Finished" : ""; }
 
 export function presentationViewKey(view: PresentationClientView) {
   return JSON.stringify([
@@ -3350,7 +3353,7 @@ export function buildDecisionPresentation(room: Pick<Room, "players" | "meId" | 
     return { phaseLabel, turnOwner, actionOwner, primaryStatus: "The match has ended", supportingInstruction: "", isViewerRequiredActor: false, isWaiting: false, isResolving: false, isDecision: false };
   }
   if (isResolving) {
-    return { phaseLabel, turnOwner, actionOwner, primaryStatus: "Resolving", supportingInstruction: reason || "The game is applying the current result.", isViewerRequiredActor: false, isWaiting: true, isResolving: true, isDecision: false };
+    return { phaseLabel, turnOwner, actionOwner, primaryStatus: "No action needed.", supportingInstruction: "Waiting for the next public update.", isViewerRequiredActor: false, isWaiting: true, isResolving: true, isDecision: false };
   }
   if (isDecision && isViewerRequiredActor) {
     return { phaseLabel, turnOwner, actionOwner, primaryStatus: decisionLabel(action!, reason), supportingInstruction: decisionInstruction(action!, reason), isViewerRequiredActor: true, isWaiting: false, isResolving: false, isDecision: true };
@@ -8214,8 +8217,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     cardFace: rockCleavingAxeCostFrameCandidate.costCards[0],
     cardLabel: "ROCK CLEAVING AXE · TWO CARD COST",
     ariaLabel: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} used Rock Cleaving Axe, paying two real cards to force the original Attack through after Dodge against ${rockCleavingAxeCostFrameCandidate.target.name}.`,
-    publicNotice: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} paid two cards with Rock Cleaving Axe to force the Attack through after Dodge against ${rockCleavingAxeCostFrameCandidate.target.name}.`,
-    publicNoticeCompact: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} used Rock Cleaving Axe · FORCE HIT on ${rockCleavingAxeCostFrameCandidate.target.name}.`,
+    publicNotice: rockCleavingAxeCostFrameCandidate.h4Copy.message,
+    publicNoticeSegments: rockCleavingAxeCostFrameCandidate.h4Copy.segments,
     motion: {
       type: "single-target",
       scopeKey: [room.code, "rock_cleaving_axe_attack_dodged", rockCleavingAxeCostFrameCandidate.costEvent.id].join(":"),
@@ -9059,7 +9062,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeDeflectionAction = deflectionForPublicAction(selectedPublicCardAction);
   const selectedLustOrderOwnsActivityBand = Boolean(selectedPublicCardAction
     && (selectedPublicCardAction.motion?.type === "lust-cost" || selectedPublicCardAction.motion?.type === "lust-duel")
-    && (publicActivityStatus.kind === "response" || publicActivityStatus.kind === "resolving"));
+    && (publicActivityStatus.kind === "response"));
   const attackConversionFrameCandidate = (() => {
     if (!selectedPublicCardAction || selectedPublicCardAction.motion?.type !== "attack-dodge"
       || selectedPublicCardAction.cardKind !== "Attack" || !selectedPublicCardAction.cardFace) return null;
@@ -9453,6 +9456,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       phase: effectNotice.beautyPhase,
       heading: effectNotice.heading,
       message: effectNotice.message,
+      segments: effectNotice.segments,
       exiting: effectNotice.exiting,
     }
     : null;
@@ -10935,6 +10939,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && responseDamageAction === "decline_response"
   );
   const localWaitAlreadyPublic = decisionPresentation.isWaiting
+    && publicActivityStatus.kind !== "none"
     && publicActivityStatus.kind !== "turn"
     && publicActivityStatus.kind !== "finished";
   const consoleAuthoritativeDecision = Boolean(room.currentAction && room.currentAction.kind !== "none" && (consoleIsDecisionActor || room.isMyTurn && room.currentAction.kind === "turn" && currentActionOwnedByViewer));
@@ -10966,7 +10971,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? `Play Attack on ${room.players.find((player) => player.id === room.pendingBorrowedSword?.targetId)?.name ?? "the selected target"}, or give up your Weapon.`
     : room.publicDiscardHandoff
     ? "No action needed."
-    : localWaitAlreadyPublic
+    : localWaitAlreadyPublic || publicActivityStatus.kind === "none" && !consoleIsDecisionActor
     ? "No action needed."
     : room.currentAction?.kind === "turn" && !currentActionOwnedByViewer
     ? "No action needed."
@@ -11389,7 +11394,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         roomCode={room.code}
         viewerId={room.meId}
       />}
-      {!targetCardChoiceMergeActive
+      {publicActivityStatus.kind !== "none" && !targetCardChoiceMergeActive
         && !(publicActivityStatus.kind === "target-card-choice" && room.pendingTargetCard?.actorId === room.meId)
         && !lustOrderOwnsActivityBand
         && <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey}
@@ -11445,7 +11450,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               aria-live="polite"
               aria-atomic="true"
             >
-              {!combinedChoiceTriggerOption && !borrowedSwordContinuationConsole && !lustLocalSelectionActive && !privateNegationAcknowledgement && !localWaitAlreadyPublic && !(consoleIsDecisionActor && room.currentAction?.kind === "trigger") && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "WAITING FOR OTHERS" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
+              {!combinedChoiceTriggerOption && !borrowedSwordContinuationConsole && !lustLocalSelectionActive && !privateNegationAcknowledgement && !localWaitAlreadyPublic && !(publicActivityStatus.kind === "none" && !consoleIsDecisionActor) && !(consoleIsDecisionActor && room.currentAction?.kind === "trigger") && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "WAITING FOR OTHERS" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
               {!combinedChoiceTriggerOption && <strong>{activeLocalPlayTargetNotice?.message ?? consoleDecision.instruction}</strong>}
               {lustTargetOrder && <em className="lust-order-guidance" data-testid="lust-order-guidance">
                 Attack order: <strong>{lustTargetOrder.firstName}</strong> first → <span className="lust-second-actor">{lustTargetOrder.secondName}</span> second.
@@ -11457,10 +11462,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                   {daqiaoDeflectionCardCount === 1 && daqiaoDeflectionTargetCount === 1 && <strong>Ready to redirect Attack</strong>}
                 </div>
                 : !negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}
-              {consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true">
-                <b>{canClearTargetCardPickerSelection ? "CLEAR SELECTION" : "LOCAL CANCEL"}</b>
-                <span>{canClearTargetCardPickerSelection ? "Remove your selected card." : "Change your selection before submitting."}</span>
-              </span>}
+
             </div>
             <GameSystemMenu onLeave={onLeave} messages={gameMessages} messagesCollapsed={messagesCollapsed} onToggleMessages={() => setMessagesCollapsed((collapsed) => !collapsed)} />
           </div>

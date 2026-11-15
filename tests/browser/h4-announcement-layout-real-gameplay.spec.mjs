@@ -233,12 +233,17 @@ test("H4 reproduces announcement placement through a real observer Attack-to-Dod
     expect(visibleDodgeFrames.length).toBeGreaterThan(0);
     expect(visibleDodgeFrames.every((row) => Math.abs(row.centerOffset ?? Infinity) <= 4)).toBe(true);
     expect(Math.max(...visibleDodgeFrames.map((row) => row.announcement.top))
-      - Math.min(...visibleDodgeFrames.map((row) => row.announcement.top))).toBeLessThanOrEqual(16);
+      - Math.min(...visibleDodgeFrames.map((row) => row.announcement.top))).toBeLessThanOrEqual(2);
     expect(visibleDodgeFrames.every((row) => !row.fallback && row.lines >= 1 && row.fontSize >= 14
       && row.announcement.width >= 320 && row.announcement.width <= 340
       && row.announcementVisibility === "visible" && row.announcementPointerEvents === "none"
       && row.announcementZIndex > row.cardZIndex)).toBe(true);
     expect(visibleDodgeFrames.every((row) => row.protectedRects.length === 0)).toBe(true);
+    expect(visibleDodgeFrames.every((row) => row.announcement.left >= 49 && row.announcement.right <= 391)).toBe(true);
+    expect(Math.abs(parkedRoot.announcement.top - phases.reveal.announcement.top)).toBeLessThanOrEqual(2);
+    expect(phases.reveal.card.width).toBeCloseTo(90, 0);
+    expect(phases.reveal.card.height).toBeCloseTo(135, 0);
+    expect(phases.reveal.activeCardOverlap).toBe(false);
     expect(phases.reveal.announcementZIndex).toBeGreaterThan(phases.reveal.cardZIndex);
     expect(phases.parked.announcementZIndex).toBeGreaterThan(phases.parked.cardZIndex);
     expect(parkedRoot.announcementZIndex).toBeGreaterThan(parkedRoot.cardZIndex);

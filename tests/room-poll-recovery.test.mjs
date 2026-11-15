@@ -9,6 +9,7 @@ test("GET failures retire only explicitly proven missing rooms or invalid sessio
   }
   assert.equal(classifyRoomGetFailure(404, { error: "Room not found." }), "missing-room");
   assert.equal(classifyRoomGetFailure(403, { error: "Your player session is no longer valid." }), "invalid-session");
+  assert.equal(classifyRoomGetFailure(403, { error: "A valid room member session is required for UX diagnostics." }), "invalid-session");
   assert.equal(classifyRoomGetFailure(403, { error: "That test viewer is not controlled by this session." }), "unavailable-viewer");
   assert.equal(classifyRoomGetFailure(503, { error: "Your player session is no longer valid." }), "temporary");
 });

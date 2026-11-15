@@ -1,5 +1,6 @@
 "use client";
 
+import { publicH4Copy, matchingPublicH4Segments, publicH4WidthLimit, type PublicH4Segment } from "../game/public-h4-copy";
 import { fixedUpperHistoryAnnouncementAnchor, parkedCardSize } from "./public-upper-anchor";
 
 import { publicCorridorWidth } from "./public-corridor";
@@ -117,6 +118,7 @@ export type PublicCardDisplayAction = {
   cardLabel: string;
   ariaLabel: string;
   publicNotice?: string;
+  publicNoticeSegments?: readonly PublicH4Segment[];
   publicNoticeCompact?: string;
   publicNoticeEventId?: string;
   /** Keep a proved historical CardFace while retiring its active announcement. */
@@ -290,6 +292,7 @@ export type PublicSkillEventAnnouncement = {
   phase: "ACTIVATION" | "DRAWN";
   heading: string;
   message: string;
+  segments?: readonly PublicH4Segment[];
   exiting: boolean;
 };
 
@@ -699,7 +702,7 @@ function battlefieldCenterCard(
       if (reserved) obstacles.push(new DOMRect(reserved.left, reserved.top, reserved.width, reserved.height));
     }
   }
-  const announcementWidth = Math.min(PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH, window.innerWidth - 16, bounds.width - 16);
+  const announcementWidth = publicH4WidthLimit(window.innerWidth, bounds.width - 16, bounds.width - 16);
   const offsets: Array<[number, number]> = [[0, 0]];
   for (let distance = 8; distance <= 200; distance += 8) {
     offsets.push([0, -distance], [0, distance]);
@@ -1904,6 +1907,7 @@ type CompactPublicPlayerNames = Readonly<Record<string, string>>;
 
 type DisplayedPublicCardAnnouncement = {
   message: string;
+  segments?: readonly PublicH4Segment[];
   supporting: string;
   eventId: string;
   latestCommittedEventId?: string;
@@ -1927,6 +1931,7 @@ type PublicDismantleCardFaceCopy = {
 
 type PublicCardAnnouncementCopy = {
   message: string;
+  segments?: readonly PublicH4Segment[];
   compactMessage?: string;
   accessibleLabel?: string;
   dismantleCardFace?: PublicDismantleCardFaceCopy;
@@ -1979,6 +1984,28 @@ function publicSettlementCardFaceId(action: PublicCardDisplayAction, dismantleFa
   if (action.settlement?.outcome === "DISMANTLE_RESOLVED") return dismantleFaceCopy?.cardId;
   if (action.settlement?.outcome === "STEAL_RESOLVED" && action.settlement.targetCardMovement?.sourceZone === "hand") return undefined;
   return action.settlement?.targetCardMovement?.affectedCardFace?.id;
+}
+
+function publicCardPlayerSegments(action: PublicCardDisplayAction, message: string,
+  actorId: string, actorName: string | null, sourceName: string | null, targetName: string | null) {
+  const source = sourceName ? { id: action.sourceId, name: sourceName } : null;
+  const target = targetName && action.targetId ? { id: action.targetId, name: targetName } : null;
+  const actor = actorName && actorId ? { id: actorId, name: actorName } : null;
+  const sentences: ReturnType<typeof publicH4Copy>[] = [];
+  if (source) {
+    const cardName = action.cardLabel.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+    sentences.push(publicH4Copy([source, " played ", cardName, "."]));
+    if (target) {
+      sentences.push(publicH4Copy([source, " played ", cardName, " on ", target, "."]));
+      sentences.push(publicH4Copy([source, " played ", cardName, " targeting ", target, "."]));
+      if (action.settlement?.outcome === "ATTACK_DAMAGE_APPLIED")
+        sentences.push(publicH4Copy([target, " took damage from ", source, "'s Attack."]));
+    }
+    if (actor && action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE")
+      sentences.push(publicH4Copy([actor, action.response?.semanticLabel === "AS DODGE"
+        ? " used Attack as Dodge against " : " played Dodge against ", source, "'s Attack."]));
+  }
+  return sentences.find((copy) => copy.message === message)?.segments;
 }
 
 export function publicCardAnnouncementCopy(
@@ -2053,6 +2080,7 @@ export function publicCardAnnouncementCopy(
     const compactMessage = action.publicNoticeCompact?.trim();
     return {
       message: action.publicNotice,
+      segments: matchingPublicH4Segments(action.publicNotice, action.publicNoticeSegments),
       compactMessage: compactMessage && compactMessage !== action.publicNotice ? compactMessage : undefined,
       accessibleLabel: action.publicCardEffectFrame.accessibleLabel,
     };
@@ -2070,6 +2098,7 @@ export function publicCardAnnouncementCopy(
   const accessibleLabel = publicTargetCardSettlementAccessibleLabel(action, sourceName, targetName);
   return {
     message,
+    segments: publicCardPlayerSegments(action, message, actorId, actorName, sourceName, targetName),
     compactMessage: selectedCompactMessage === message ? undefined : selectedCompactMessage,
     ...(accessibleLabel ? { accessibleLabel } : {}),
   };
@@ -2121,9 +2150,20 @@ function setAnnouncementMessageText(
   element: HTMLElement,
   message: string,
   dismantleCardFace?: PublicDismantleCardFaceCopy,
+  segments?: readonly PublicH4Segment[],
 ) {
   if (!dismantleCardFace || dismantleCardFace.message !== message) {
-    if (element.textContent !== message) element.textContent = message;
+    const parts = matchingPublicH4Segments(message, segments);
+    if (parts) {
+      element.replaceChildren(...parts.map((part) => {
+        if (part.kind === "text") return document.createTextNode(part.text);
+        const name = document.createElement("span");
+        name.className = "public-h4-player";
+        name.dataset.publicPlayerId = part.playerId;
+        name.textContent = part.text;
+        return name;
+      }));
+    } else if (element.textContent !== message || element.querySelector(".public-h4-player")) element.textContent = message;
     return;
   }
   const face = document.createElement("span");
@@ -2219,6 +2259,7 @@ function PublicCardAnnouncement({
   phase,
   heading,
   message,
+  segments,
   compactMessage,
   accessibleLabel,
   dismantleCardFace,
@@ -2252,6 +2293,7 @@ function PublicCardAnnouncement({
   phase: JourneyCard["phase"] | "static";
   heading?: string;
   message: string;
+  segments?: readonly PublicH4Segment[];
   compactMessage?: string;
   accessibleLabel?: string;
   dismantleCardFace?: PublicDismantleCardFaceCopy;
@@ -2309,7 +2351,7 @@ function PublicCardAnnouncement({
     phase: presentationNarration?.phase ?? negationNarration?.phase,
     rootEffectState: presentationNarration?.rootEffectState ?? negationNarration?.rootEffectState,
     accessibleLabel: accessibleLabel ?? presentationNarration?.accessibleLabel ?? negationNarration?.accessibleLabel,
-    dismantleCardFace,
+    dismantleCardFace, segments,
   }));
   const displayedCopyRef = useRef(displayedCopy);
   useLayoutEffect(() => () => {
@@ -2328,7 +2370,7 @@ function PublicCardAnnouncement({
   [fallbackHeight, fallbackLeft, fallbackTop, fallbackWidth]);
   const latestInputs = {
     eventId, anchorEventId, eventCopyKey, announcementIdentity, geometryKey, copyLifecycleStage, placementKey, viewerLayoutKey,
-    phase, heading, message, compactMessage, accessibleLabel, dismantleCardFace, supportingMessage, compactSupportingMessage,
+    phase, heading, message, compactMessage, accessibleLabel, dismantleCardFace, segments, supportingMessage, compactSupportingMessage,
     presentationNarration, negationNarration, fallbackCardRect: stableFallbackCardRect, phaseNotice, outcome, negationWaiting,
     stableCenterAnchor, keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, clearCenterAnchorWhenParked,
     viewerGeometryReady, preferredVerticalMode, privateDrawAware, protectFirstParkedMiniature,
@@ -2436,6 +2478,7 @@ function PublicCardAnnouncement({
         && previous.phase === next.phase
         && previous.rootEffectState === next.rootEffectState
         && previous.accessibleLabel === next.accessibleLabel
+        && JSON.stringify(previous.segments) === JSON.stringify(next.segments)
         && JSON.stringify(previous.dismantleCardFace) === JSON.stringify(next.dismantleCardFace)) return;
       displayedCopyRef.current = next;
       setDisplayedCopy(next);
@@ -2494,10 +2537,10 @@ function PublicCardAnnouncement({
         accessibleLabel, supportingMessage, compactSupportingMessage, presentationNarration, negationNarration,
         fallbackCardRect: currentFallbackCardRect, outcome, stableCenterAnchor,
         keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, viewerGeometryReady, preferredVerticalMode,
-    privateDrawAware, protectFirstParkedMiniature, dismantleCardFace,
+    privateDrawAware, protectFirstParkedMiniature, dismantleCardFace, segments,
       } = latestInputsRef.current;
       const copySignature = JSON.stringify([
-        eventCopyKey, heading, message, compactMessage, accessibleLabel, dismantleCardFace, supportingMessage, compactSupportingMessage,
+        eventCopyKey, heading, message, compactMessage, accessibleLabel, dismantleCardFace, segments, supportingMessage, compactSupportingMessage,
       ]);
       const narration = presentationNarration ?? negationNarration;
       const hasNegationNarration = Boolean(negationNarration);
@@ -2516,7 +2559,7 @@ function PublicCardAnnouncement({
         phase: narrationPhase,
         rootEffectState: narrationRootEffectState,
         accessibleLabel: narrationAccessibleLabel,
-        dismantleCardFace,
+        dismantleCardFace, segments,
       };
       commitDisplayedCopy(incomingDisplayedCopy);
       const sharedTable = display.closest<HTMLElement>(".play-table");
@@ -2803,8 +2846,7 @@ function PublicCardAnnouncement({
       const maxWidth = Math.max(1, Math.min(
         publicCorridorWidth(table, h4CorridorBand),
         availableAnnouncementWidth,
-        PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH,
-        viewportWidth - 16,
+        publicH4WidthLimit(viewportWidth, publicCorridorWidth(table, h4CorridorBand), safeRight - safeLeft),
         safeRight - safeLeft,
       ));
       const harvestPool = stableHarvestAnchor
@@ -2876,7 +2918,7 @@ function PublicCardAnnouncement({
         const textElement = copy.querySelector<HTMLElement>("b");
         const supportElement = copy.querySelector<HTMLElement>(".public-negation-narration-support");
         if (textElement && textElement.textContent !== previousPlacement.message) {
-          setAnnouncementMessageText(textElement, previousPlacement.message, incomingDisplayedCopy.dismantleCardFace);
+          setAnnouncementMessageText(textElement, previousPlacement.message, incomingDisplayedCopy.dismantleCardFace, incomingDisplayedCopy.segments);
         }
         if (supportElement && supportElement.textContent !== previousPlacement.supporting) supportElement.textContent = previousPlacement.supporting;
         const measuredHeight = copy.getBoundingClientRect().height;
@@ -3043,7 +3085,7 @@ function PublicCardAnnouncement({
         // H4 caption to jump above a revealed card and below its parked mini.
         for (const offset of topOffsets) {
           for (const option of announcementOptions) {
-            if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace);
+            if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace, incomingDisplayedCopy.segments);
             if (supportElement) supportElement.textContent = option.supporting;
             for (const width of widths) {
               setAnnouncementMeasureMode(option.compact, width);
@@ -3061,7 +3103,7 @@ function PublicCardAnnouncement({
         }
       } else {
         for (const option of announcementOptions) {
-          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace);
+          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace, incomingDisplayedCopy.segments);
           if (supportElement) supportElement.textContent = option.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(option.compact, width);
@@ -3106,7 +3148,7 @@ function PublicCardAnnouncement({
         // that baseline; then search the current safe area around the frame.
         // Protected Seat, Dock, Hand and control rects still apply.
         for (const option of announcementOptions) {
-          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace);
+          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace, incomingDisplayedCopy.segments);
           if (supportElement) supportElement.textContent = option.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(option.compact, width);
@@ -3151,7 +3193,7 @@ function PublicCardAnnouncement({
         // below the reveal card. Skip every real or projected owner-card slot.
         const compactOption = announcementOptions.find((option) => option.compact) ?? announcementOptions[0];
         if (compactOption) {
-          if (textElement) setAnnouncementMessageText(textElement, compactOption.message, incomingDisplayedCopy.dismantleCardFace);
+          if (textElement) setAnnouncementMessageText(textElement, compactOption.message, incomingDisplayedCopy.dismantleCardFace, incomingDisplayedCopy.segments);
           if (supportElement) supportElement.textContent = compactOption.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(compactOption.compact, width);
@@ -3189,7 +3231,7 @@ function PublicCardAnnouncement({
 
       if (!selected) {
         for (const option of announcementOptions) {
-          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace);
+          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace, incomingDisplayedCopy.segments);
           if (supportElement) supportElement.textContent = option.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(option.compact, width);
@@ -3247,7 +3289,7 @@ function PublicCardAnnouncement({
         const textElement = copy.querySelector<HTMLElement>("b");
         const supportElement = copy.querySelector<HTMLElement>(".public-negation-narration-support");
         if (textElement && textElement.textContent !== incomingDisplayedCopy.message) {
-          setAnnouncementMessageText(textElement, incomingDisplayedCopy.message, incomingDisplayedCopy.dismantleCardFace);
+          setAnnouncementMessageText(textElement, incomingDisplayedCopy.message, incomingDisplayedCopy.dismantleCardFace, incomingDisplayedCopy.segments);
         }
         if (supportElement && supportElement.textContent !== incomingDisplayedCopy.supporting) supportElement.textContent = incomingDisplayedCopy.supporting;
         const previous = lastValidPlacementRef.current;
@@ -3311,6 +3353,7 @@ function PublicCardAnnouncement({
         rootEffectState: narrationRootEffectState,
         accessibleLabel: narrationAccessibleLabel,
         dismantleCardFace: incomingDisplayedCopy.dismantleCardFace,
+        segments: incomingDisplayedCopy.segments,
       };
       commitDisplayedCopy(nextDisplayedCopy);
       const previous = lastValidPlacementRef.current;
@@ -3506,7 +3549,9 @@ function PublicCardAnnouncement({
           </span>
           {displayedCopy.dismantleCardFace.suffix}
         </>
-        : displayedCopy.message}
+        : matchingPublicH4Segments(displayedCopy.message, displayedCopy.segments)?.map((part, index) => part.kind === "player"
+          ? <span key={index} className="public-h4-player" data-public-player-id={part.playerId}>{part.text}</span>
+          : <span key={index}>{part.text}</span>) ?? displayedCopy.message}
     </b>
     {displayedCopy.supporting && <span className="public-card-announcement-support public-negation-narration-support" aria-hidden="true">{displayedCopy.supporting}</span>}
   </div>;
@@ -3550,6 +3595,7 @@ export function PublicSkillEventAnnouncementLayer({
       phase="static"
       heading={announcement.heading}
       message={announcement.message}
+      segments={announcement.segments}
       fallbackCardRect={null}
       stableCenterAnchor
       privateDrawAware
@@ -3641,6 +3687,7 @@ export function PublicDiscardAnnouncementLayer({ announcement, roomCode, viewerI
       viewerLayoutKey={viewerId}
       phase="static"
       message={announcement.headline}
+      segments={announcement.segments}
       compactMessage={announcement.headline}
       accessibleLabel={announcement.accessibleLabel}
       fallbackCardRect={null}
@@ -4401,6 +4448,7 @@ function AttackDodgeCardJourney({
       anchorEventId={publicEffectFrameOwnsAnnouncementAnchor ? null : activeEventId}
       phase={publicEffectFrameOwnsAnnouncementAnchor ? "static" : activeJourneyCard?.phase ?? "static"}
       message={announcement}
+      segments={committedFactCopy.segments}
       compactMessage={compactAnnouncement}
       accessibleLabel={committedFactCopy.accessibleLabel}
       presentationNarration={negationNarration ? undefined : publicNarration}
@@ -5648,6 +5696,7 @@ function SingleTargetCardJourney({
           : publicEffectFrameOwnsAnnouncementAnchor ? null : activeEventId}
       phase={harvestPoolVisible || publicEffectFrameOwnsAnnouncementAnchor ? "static" : announcementAnchorCard?.phase ?? "static"}
       message={announcement}
+      segments={committedFactCopy.segments}
       compactMessage={compactAnnouncement}
       accessibleLabel={committedFactCopy.accessibleLabel}
       dismantleCardFace={dismantleFaceCopy}
@@ -6588,6 +6637,7 @@ function DuelCardJourney({
       anchorEventId={announcementEventId}
       phase={activeEvent?.phase ?? "static"}
       message={announcement}
+      segments={committedFactCopy.segments}
       compactMessage={compactAnnouncement}
       accessibleLabel={committedFactCopy.accessibleLabel}
       supportingMessage={negationNarration?.supportingMessage}

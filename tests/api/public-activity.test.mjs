@@ -131,7 +131,7 @@ function harvestSnapshot({ responseCount = 0, stage = "NEGATION", effectState = 
 
 test("public activity uses the public turn seat and fails closed for an absent seat", () => {
   assert.deepEqual(derivePublicActivityStatus(room({ turnSeat: 1 })), { kind: "turn", text: "Test Player 2's turn" });
-  assert.deepEqual(derivePublicActivityStatus(room({ turnSeat: 99 })), { kind: "resolving", text: "Resolving…" });
+  assert.deepEqual(derivePublicActivityStatus(room({ turnSeat: 99 })), { kind: "none", text: "" });
 });
 
 test("public Draw Phase choice shows the turn and server-proven decision", () => {
@@ -142,12 +142,12 @@ test("public Draw Phase choice shows the turn and server-proven decision", () =>
     kind: "response", text: "Test Player 1's turn", heading: "Test Player 1's turn",
     stage: "Waiting for Test Player 1 to use Heroic or Skip.",
   });
-  assert.equal(derivePublicActivityStatus({ ...input, turnSeat: 1 }).kind, "resolving");
+  assert.equal(derivePublicActivityStatus({ ...input, turnSeat: 1 }).kind, "none");
   assert.equal(derivePublicActivityStatus({ ...input, phase: "play" }).kind, "turn");
   current.publicDrawPhaseDecision.visibility = "REDACTED";
-  assert.equal(derivePublicActivityStatus(input).kind, "resolving");
+  assert.equal(derivePublicActivityStatus(input).kind, "none");
   current.publicDrawPhaseDecision = { semantics: "PROVEN", visibility: "PUBLIC", actorId: "p1", actionLabels: null, allowSkip: true };
-  assert.equal(derivePublicActivityStatus(input).kind, "resolving", "malformed public projections fail closed");
+  assert.equal(derivePublicActivityStatus(input).kind, "none", "malformed public projections fail closed");
 });
 
 test("public next-decision copy narrates a combined suit and hidden-card choice", () => {
@@ -173,10 +173,10 @@ test("PAC follows the exact committed Judgement event and ignores stale or misma
   assert.deepEqual(derivePublicActivityStatus(input), {
     kind: "judgement", text: "Test Player 2 is judging Overindulgence.", heading: "Test Player 2 is judging Overindulgence.",
   });
-  assert.equal(derivePublicActivityStatus({ ...input, activePublicJudgementEventId: "stale-reveal" }).kind, "resolving");
+  assert.equal(derivePublicActivityStatus({ ...input, activePublicJudgementEventId: "stale-reveal" }).kind, "none");
   assert.equal(derivePublicActivityStatus({ ...input,
     presentationSnapshot: { ...judgementSnapshot, interaction: { ...judgementSnapshot.interaction, stage: "SETTLEMENT" } },
-  }).kind, "resolving", "an earlier Judgement fact must not override a newer server stage");
+  }).kind, "none", "an earlier Judgement fact must not override a newer server stage");
   assert.equal(derivePublicActivityStatus({ ...input, phase: "discard" }).kind, "judgement",
     "the exact public reveal stays aligned with H4/PAC until it stops being the active event");
   assert.deepEqual(derivePublicActivityStatus({ ...input, phase: "discard", activePublicJudgementEventId: null }), {
@@ -446,7 +446,7 @@ test("target-card choice progress is identical across viewers and exposes no sel
 
 test("target-card choice progress is absent before Negation settles and fails closed on inconsistent public state", () => {
   const pendingTargetCard = { kind: "target_card", sourceId: "p1", actorId: "p1", targetId: "p2", cardKind: "Steal" };
-  assert.equal(derivePublicActivityStatus(room({ phase: "response", pendingTargetCard: null })).kind, "resolving");
+  assert.equal(derivePublicActivityStatus(room({ phase: "response", pendingTargetCard: null })).kind, "none");
   assert.notEqual(derivePublicActivityStatus(room({ phase: "response", pendingTargetCard: { ...pendingTargetCard, targetId: "p1" } })).kind, "target-card-choice");
   assert.notEqual(derivePublicActivityStatus(room({ phase: "response", pendingTargetCard: { ...pendingTargetCard, kind: "unknown" } })).kind, "target-card-choice");
   assert.notEqual(derivePublicActivityStatus(room({ phase: "play", pendingTargetCard })).kind, "target-card-choice");
@@ -544,10 +544,10 @@ test("PAC announces the publicly proven required response and outcome", () => {
 
 test("unproven response and shared Negation actor details are never published", () => {
   const unproven = snapshot({ stage: "DUEL_EXCHANGE", actorId: "p2", effect: "Duel", semantics: "UNPROVEN" });
-  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: unproven })), { kind: "resolving", text: "Resolving…" });
+  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: unproven })), { kind: "none", text: "" });
 
   const secretNegationActor = snapshot({ stage: "NEGATION", actorId: "p2", stableKind: "SPECIAL", effect: "Duel" });
-  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: secretNegationActor })), { kind: "resolving", text: "Resolving…" });
+  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: secretNegationActor })), { kind: "none", text: "" });
 });
 
 test("settling phases do not reuse a stale publicly proven actor", () => {
@@ -558,8 +558,8 @@ test("settling phases do not reuse a stale publicly proven actor", () => {
     duelExchange: { semantics: "PROVEN", decisionActorId: "p2", currentParticipantId: "p2" },
   });
   assert.deepEqual(derivePublicActivityStatus(room({ phase: "resolving", presentationSnapshot: priorDuel })), {
-    kind: "resolving",
-    text: "Resolving…",
+    kind: "none",
+    text: "",
   });
 });
 
@@ -689,4 +689,26 @@ test("Entourage PAC follows only the current public helper checkpoint and H4 rep
   assert.equal(narration().headline, "Test Player 3 declined Entourage for Test Player 2.");
   current.publicEventFacts.push({ ...current.publicEventFacts[0], eventId: "dodge", order: 4, category: "EFFECT_APPLIED", actorId: "p4", effect: { kind: "entourage_dodge" }, outcomeLabel: "played Dodge for Test Player 2 using Entourage" });
   assert.equal(narration().headline, "Test Player 4 played Dodge for Test Player 2 using Entourage.");
+});
+
+
+test("proven Attack/AOE requirements clear after the response and fail closed across viewers", () => {
+  for (const [stage, effect, required] of [["ATTACK_RESPONSE", "Attack", "Dodge"], ["GROUP_RESOLUTION", "BarbarianInvasion", "Attack"]]) {
+    const current = snapshot({ stage, actorId: "p2", effect, actionLabels: [required, "take damage"] });
+    const input = room({ phase: "response", presentationSnapshot: current });
+    assert.equal(derivePublicActivityStatus(input).text, `Waiting for Test Player 2 to play ${required} or take damage.`);
+    for (const viewer of players) {
+      assert.deepEqual(derivePublicActivityStatus({ ...input, viewerId: viewer.id }), derivePublicActivityStatus(input));
+    }
+    const closed = { ...current, publicNextDecision: null };
+    assert.deepEqual(derivePublicActivityStatus({ ...input, presentationSnapshot: closed }), { kind: "none", text: "" });
+    const stale = { ...current, publicNextDecision: { ...current.publicNextDecision, identity: { ...current.publicNextDecision.identity, checkpointId: "old" } } };
+    assert.deepEqual(derivePublicActivityStatus({ ...input, presentationSnapshot: stale }), { kind: "none", text: "" });
+  }
+});
+
+test("a closed Negation window cannot announce another counter opportunity", () => {
+  const current = harvestSnapshot({ responseWindowOpen: false });
+  const result = derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: current }));
+  assert.equal(result.kind, "none");
 });

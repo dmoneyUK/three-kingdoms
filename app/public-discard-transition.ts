@@ -1,3 +1,4 @@
+import { publicH4Copy, type PublicH4Segment } from "../game/public-h4-copy";
 import type { PublicPhysicalZoneTransition, PublicZoneEndpoint } from "../game/presentation-semantics";
 import { cardDefinition } from "../game/cards";
 import type { CardKind, CardRank, CardSuit } from "../game/model";
@@ -37,6 +38,7 @@ export type PublicDiscardAnnouncement = {
   count: number;
   cards: readonly { id: string; name: string; rank: CardRank; suit: CardSuit }[] | null;
   headline: string;
+  segments?: readonly PublicH4Segment[];
   accessibleLabel: string;
 };
 
@@ -142,8 +144,9 @@ export function publicDiscardAnnouncement(input: {
   });
   const hasCompleteIdentity = cards.length === count && cards.every((card) => card !== null);
   const cardList = hasCompleteIdentity ? cards as Array<{ id: string; name: string; rank: CardRank; suit: CardSuit }> : null;
-  const headline = cardList
-    ? `${actor} discarded ${count} ${count === 1 ? "card" : "cards"}: ${cardList.map((card) => `${card.rank}${card.suit} ${card.name}`).join(" · ")}.`
-    : `${actor} discarded ${count} ${count === 1 ? "card" : "cards"}.`;
-  return { eventId: event.id, actorId: event.actorId!, order: event.publicSequence!, count, cards: cardList, headline, accessibleLabel: headline };
+  const suffix = cardList
+    ? ` discarded ${count} ${count === 1 ? "card" : "cards"}: ${cardList.map((card) => `${card.rank}${card.suit} ${card.name}`).join(" · ")}.`
+    : ` discarded ${count} ${count === 1 ? "card" : "cards"}.`;
+  const { message: headline, segments } = publicH4Copy([{ id: event.actorId!, name: actor }, suffix]);
+  return { eventId: event.id, actorId: event.actorId!, order: event.publicSequence!, count, cards: cardList, headline, segments, accessibleLabel: headline };
 }

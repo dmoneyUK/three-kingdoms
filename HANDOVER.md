@@ -1,14 +1,13 @@
 # HANDOVER — 当前唯一任务
 
-## §10.51 ROOM-POLL-TRANSIENT-503-RECOVERY-01
+## §10.53 MOBILE-H4-COMPACT-PLAYER-COPY-01
 
-状态：IMPLEMENTED LOCALLY，准备提交；未部署、未验收。
-设计：已阅读远端 7e28edb3 的 §§10.51–10.53；本任务只实施 §10.51。
-2026-11-15：用户明确要求开始 51→52→53。未完成 §10.49 工作保存在原独立工作树 ux2-10-49-harvest-20261114，本工作树不包含其改动。
+状态：IMPLEMENTED LOCALLY — FINAL CI/DEPLOYMENT PENDING；未验收。
+设计：已同步并复习最新远端 bc7cb4b0；§§10.51–53 内容不变，新的 §10.49 扩展保持独立。用户明确 52 和 53 最后统一提交/部署。
+最近相关结果：§10.52 本地完成；聚焦公共文案/Console/技能交互 98/98 PASS（首轮暴露缺席 PAC 后旧旁观 Console 回退，已修正并复跑通过），无本地 browser。合法 Cancel/Skip、选牌和提交行为保留。
 
-已确认：fetchRoomRequest 将所有非 2xx GET 合成永久失效，503 会误删本地会话。准备改为严格 HTTP/结构化错误分类、临时中断保留状态及禁用新提交、单一轮询有界退避、旧 epoch/viewer 回复拒绝。
-验证计划：聚焦分类/恢复状态测试、基本 build/diff、正常精确 SHA CI/部署。尚未运行测试；本地 UI 总预算五分钟。
-下一恢复点：实现客户端恢复模块并接入 Home；不改变玩法、H4/PAC 或 POST 重放行为。503 上游原因未知，尚无关联历史日志证据。
+2026-11-15：实施手机 H4 独立 ≤340px / viewport-32px 上限；保持桌面520及中央牌/Frame布局。Axe 成本证明验证后使用短摘要，不提前声称伤害；完整成本保留 aria-label。共享 typed player/text fragments 由证明 IDs 构建，普通/技能/弃牌生产者接入，旧文案安全回退，Dismantle 专门牌面标记保留。
+当前恢复点：检查片段在 React/测量生命周期中的传递，聚焦 unit/build/diff；最多一个现有 440px 场景，UI 总预算五分钟。最后合并交付 52+53，完整 CI/Worker/health 尚待验证。
 
-2026-11-15 实现：严格分类 HTTP/结构化错误；临时失败保留会话/最后房间/视角，独立重连条和新 POST 门禁，单一轮询 1/2/4/8s 退避及身份去重，15s 请求超时；旧 epoch/viewer 完成不写状态，显式 Leave 仍独立。
-验证：聚焦 unit 14/14 PASS（含 503→200、阻断 POST、旧视角、去重退避）；build PASS，新增模块定向 lint PASS，diff PASS；未启动本地浏览器。现有可用工具没有该 Worker 历史日志入口或关联请求 ID，未查询其他 Site：503 ORIGIN UNKNOWN — LOGS UNAVAILABLE。正常完整 CI/部署待推送后执行。
+验证结果：§10.53 聚焦 copy/width/Axe proof/discard 测试 40/40 PASS；合并构建 PASS；定向 lint 0 errors、14 warnings（既有 Hooks 提示，未关闭规则）。唯一真实 440px Attack→Dodge browser 17.9s PASS：H4 340px、50px 两侧边距、top 稳定≤2px，真实90×135卡牌无H4交叠；没有第二 UI 场景。最后补齐 §10.51 对现有服务端 UX diagnostics 明确403无效会话文案的识别，聚焦最终 unit 43/43 PASS。globals 与最终 CSS 同步相同手机宽度，不变更 Frame。
+§10.51 Actions 43660527066 全部 SUCCESS，Worker 已部署；52+53 准备按用户要求统一提交。

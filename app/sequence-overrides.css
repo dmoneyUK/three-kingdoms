@@ -8096,3 +8096,17 @@
   overscroll-behavior-y: contain;
   scroll-padding-block: 6px;
 }
+
+/* §10.53: H4 only; CardFace, COST Frames and PAC keep their own geometry. */
+@media (max-width: 520px) {
+  .game-shell .public-card-display-journey-copy {
+    width: min(340px, calc(100vw - 32px));
+    max-width: min(340px, calc(100vw - 32px));
+  }
+}
+.public-card-display-journey-copy .public-h4-player {
+  color: #d3bf8d;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: normal;
+}

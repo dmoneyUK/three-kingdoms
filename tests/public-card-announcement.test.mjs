@@ -874,3 +874,57 @@ test("public announcement typography is readable and never truncates its verifie
   assert.match(overrides, /\.public-dismantle-card-name \{[\s\S]*?font-weight: 800;/);
   assert.doesNotMatch(css, /public-card-display-journey-copy\.is-condensed/);
 });
+
+
+test("mobile H4 width preserves real narrow corridors and desktop geometry", async () => {
+  const { publicH4WidthLimit } = await import("../game/public-h4-copy.ts");
+  assert.equal(publicH4WidthLimit(440, 424, 424), 340);
+  assert.equal(publicH4WidthLimit(390, 374, 374), 340);
+  assert.equal(publicH4WidthLimit(320, 304, 304), 288);
+  assert.equal(publicH4WidthLimit(440, 220, 424), 220);
+  assert.equal(publicH4WidthLimit(900, 884, 884), 520);
+});
+
+test("typed H4 names preserve exact text and accessible narration, without guessing substrings", async () => {
+  const { publicH4Copy, matchingPublicH4Segments } = await import("../game/public-h4-copy.ts");
+  const { PublicSkillEventAnnouncementLayer } = await import("../app/public-card-display.tsx");
+  const copy = publicH4Copy([{ id: "proven-player", name: "Attack the very long player name" }, " used Beauty and drew 1 card."]);
+  assert.equal(copy.segments.map((part) => part.text).join(""), copy.message);
+  assert.equal(matchingPublicH4Segments("A different event", copy.segments), undefined);
+  const html = renderToStaticMarkup(React.createElement(PublicSkillEventAnnouncementLayer, {
+    announcement: { semantics: "PROVEN", kind: "SKILL_OUTCOME", eventId: "event", rootEventId: "root",
+      sourceId: "proven-player", proofEventId: "event", phase: "DRAWN", heading: "BEAUTY", exiting: false, ...copy },
+    roomCode: "ROOM", viewerId: "observer",
+  }));
+  assert.match(html, /class="public-h4-player" data-public-player-id="proven-player"/);
+  assert.ok(html.includes(`aria-label="${copy.message}"`));
+  const plain = publicCardAnnouncementCopy({ sourceId: "p1", targetId: null, rootEventId: "legacy", cardLabel: "Attack" },
+    "A card named Attack does something.", null, "p1", "Attack", null, {});
+  assert.equal(plain.segments, undefined, "legacy prose is not parsed for a name that happens to match card text");
+});
+
+test("verified Axe cost has compact factual H4 without premature damage and keeps full accessibility", async () => {
+  const { verifiedRockCleavingAxeCostFrameForEvent } = await import("../app/page.tsx");
+  const actor = { id: "a", name: "ACTOR" }, target = { id: "b", name: "TARGET" };
+  const cards = [{ id: "cost1", kind: "Peach", rank: "A", suit: "♥" }, { id: "cost2", kind: "Dodge", rank: "2", suit: "♣" }];
+  const effect = { semantics: "PROVEN", eventId: "cost", effectId: "rock_cleaving_axe_attack_dodged", effectClass: "COST",
+    activationOwnerId: "a", targetId: "b", outcome: "FORCED_HIT", rootEventId: "attack", rootResolutionId: "root-resolution",
+    cards, materials: cards.map((card) => ({ cardId: card.id, ownerId: "a", fromZone: "HAND", toZone: "DISCARD" })) };
+  const cost = { id: "cost", type: "cards", action: "play", resolutionId: "cost-resolution", cards,
+    player: "ACTOR", target: "TARGET", publicCardEffects: [effect] };
+  const root = { id: "attack", type: "card", action: "play", resolutionId: "root-resolution",
+    card: { id: "attack-card", kind: "Attack", suit: "♠", rank: "7" }, player: "ACTOR", target: "TARGET" };
+  const proof = verifiedRockCleavingAxeCostFrameForEvent([root, cost], [effect], [actor, target], "cost");
+  assert.ok(proof);
+  assert.equal(proof.h4Copy.message, "ACTOR used Rock Cleaving Axe; TARGET's Dodge was bypassed.");
+  assert.doesNotMatch(proof.h4Copy.message, /took damage|hit|damage applied/i);
+  const action = { sourceId: "a", targetId: "b", rootEventId: "cost", cardLabel: "COST",
+    publicNotice: proof.h4Copy.message, publicNoticeSegments: proof.h4Copy.segments,
+    publicCardEffectFrame: { effectClass: "COST", accessibleLabel: "ACTOR paid exactly two of their own Hand or Equipment cards. The original Attack on TARGET continued to damage resolution after Dodge." } };
+  const copy = publicCardAnnouncementCopy(action, "", "ACTOR", "a", "ACTOR", "TARGET", {}, "cost");
+  assert.equal(copy.message, proof.h4Copy.message);
+  assert.match(copy.accessibleLabel, /paid exactly two/);
+  assert.equal(copy.segments.map((part) => part.text).join(""), copy.message);
+  assert.equal(verifiedRockCleavingAxeCostFrameForEvent([root, cost], [{ ...effect, targetId: "wrong" }], [actor, target], "cost"), null);
+  assert.equal(verifiedRockCleavingAxeCostFrameForEvent([root, { ...cost, cards: [cards[0]] }], [effect], [actor, target], "cost"), null);
+});

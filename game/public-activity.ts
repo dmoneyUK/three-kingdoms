@@ -34,13 +34,13 @@ export type PublicActivityInput = {
 };
 
 export type PublicActivityStatus = {
-  kind: "turn" | "discard" | "discard-handoff" | "response" | "negation" | "judgement" | "target-card-choice" | "resolving" | "finished";
+  kind: "turn" | "discard" | "discard-handoff" | "response" | "negation" | "judgement" | "target-card-choice" | "none" | "finished";
   text: string;
   heading?: string;
   stage?: string;
 };
 
-const RESOLVING: PublicActivityStatus = { kind: "resolving", text: "Resolving…" };
+const NO_PUBLIC_ACTIVITY: PublicActivityStatus = { kind: "none", text: "" };
 
 function activePublicJudgementFact(input: PublicActivityInput) {
   const snapshot = input.presentationSnapshot;
@@ -644,7 +644,7 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
     }
   }
 
-  if (input.status === "playing" && input.phase === "response" && nextDecision?.stageLabel === "Negation") {
+  if (input.status === "playing" && input.phase === "response" && nextDecision?.stageLabel === "Negation" && nextDecision.responseWindowOpen === true) {
     const harvestScene = snapshot?.bumperHarvestProgress !== null && snapshot?.bumperHarvestProgress !== undefined
       || interaction?.effect === "BumperHarvest";
     if (harvestScene) {
@@ -652,7 +652,7 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
       return {
         kind: "negation",
         text: "Waiting for counter responses",
-        stage: specific ?? (nextDecision.responseWindowOpen === true ? "Waiting for Negation responses" : "Resolving…"),
+        stage: specific ?? "Waiting for Negation responses",
       };
     }
     return {
@@ -712,6 +712,20 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
     }
   }
 
+  // Only the current validated public decision can name a responder. Never
+  // derive a requirement from a viewer's Hand, provider options or turn owner.
+  if (input.status === "playing" && input.phase === "response" && interaction?.effect
+    && (interaction.stage === "ATTACK_RESPONSE" || interaction.stage === "GROUP_RESOLUTION")
+    && nextDecision?.responseWindowOpen === true && nextDecision.actorIds.length === 1) {
+    const actor = playerName(input, nextDecision.actorIds[0]);
+    const labels = nextDecision.actionLabels;
+    const required = labels.includes("Dodge") ? "Dodge" : labels.includes("Attack") ? "Attack" : null;
+    if (actor && required && labels.includes("take damage")) {
+      const text = `Waiting for ${actor} to play ${required} or take damage.`;
+      return { kind: "response", text, heading: text };
+    }
+  }
+
   if (input.status === "playing" && input.phase === "response" && nextDecision?.actorIds.length === 1) {
     const actor = playerName(input, nextDecision.actorIds[0]);
     if (actor) {
@@ -748,10 +762,11 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
     if (fact) {
       const actor = playerName(input, fact.actorId);
       const judgement = effectLabel(fact.effect?.label ?? fact.label);
-      const text = actor && judgement
-        ? `${actor} is judging ${judgement}.`
-        : judgement ? `Judgement for ${judgement} is resolving.` : "Resolving a public Judgement.";
-      return { kind: "judgement", text, heading: text };
+      if (actor && judgement) {
+        const text = `${actor} is judging ${judgement}.`;
+        return { kind: "judgement", text, heading: text };
+      }
+      return NO_PUBLIC_ACTIVITY;
     }
   }
 
@@ -761,7 +776,7 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
       const text = `Waiting for ${player.name.trim()} to discard cards.`;
       return { kind: "discard", text, heading: text };
     }
-    return RESOLVING;
+    return NO_PUBLIC_ACTIVITY;
   }
 
   if (input.status === "playing" && input.phase !== "response" && input.phase !== "resolving" && input.phase !== "dying") {
@@ -769,5 +784,5 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
     if (player?.name.trim()) return { kind: "turn", text: `${player.name.trim()}'s turn` };
   }
 
-  return RESOLVING;
+  return NO_PUBLIC_ACTIVITY;
 }
