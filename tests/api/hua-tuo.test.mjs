@@ -82,7 +82,7 @@ test("First Aid offers only private red non-Peach cards and preserves Lady Gan P
   const opponentView = (await state(game.code, game.members[0].token)).data;
   assert.equal(JSON.stringify(opponentView).includes(redAttack.id), false, "the red-card choices remain private to Hua Tuo");
 
-  const rescued = await request("respond", { code: game.code, token: game.members[2].token, providerId: "hua_tuo_first_aid", cardId: redAttack.id });
+  const rescued = await requestAndSettle("respond", { code: game.code, token: game.members[2].token, providerId: "hua_tuo_first_aid", cardId: redAttack.id });
   assert.equal(rescued.status, 200, JSON.stringify(rescued.data));
   const afterRescue = (await state(game.code, game.members[1].token)).data;
   const firstAidEvent = afterRescue.timeline.find((event) => event.type === "card" && event.card?.id === redAttack.id);

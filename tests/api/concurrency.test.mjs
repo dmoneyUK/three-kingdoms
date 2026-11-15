@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
 import {
-  advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
+  restoreSequentialDyingFixture, advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
 
 test("unknown semantic Dodge and Negate providers cross the real API and D1 boundary", { timeout: 30_000 }, async () => {
@@ -176,7 +176,7 @@ test("lethal damage trigger exhaustion enters shared Dying and Peach rescue exac
   assert.notEqual(reopened.data.room.causalEnvelope.activeFrameId, attackEnvelope.activeFrameId, "a fresh root gets a fresh frame");
 });
 
-test("Dying uses one ordered rescue pass and does not revisit a passed actor", { timeout: 30_000 }, async () => {
+test("saved sequential Dying: Dying uses one ordered rescue pass and does not revisit a passed actor", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [host, alice, bob, carol] = game.members;
   const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = game.room.players;
@@ -188,6 +188,7 @@ test("Dying uses one ordered rescue pass and does not revisit a passed actor", {
   setTurn(game.code, hostPlayer.seat);
   await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-ordered-rescue", targetId: alicePlayer.id });
   await takeDamageIfPending(game.code, alice.token);
+  restoreSequentialDyingFixture(game.code, hostPlayer.id);
   assert.equal((await state(game.code, host.token)).data.players.find((player) => player.id === alicePlayer.id).hp, -2);
   await requestAndSettle("skip_rescue", { code: game.code, token: host.token });
   const bobPrompt = await state(game.code, bob.token);
@@ -204,7 +205,7 @@ test("Dying uses one ordered rescue pass and does not revisit a passed actor", {
   assert.equal(defeated.players.find((player) => player.id === alicePlayer.id).role, "Rebel");
 });
 
-test("the current Dying actor may give multiple Peaches consecutively", { timeout: 30_000 }, async () => {
+test("saved sequential Dying: the current Dying actor may give multiple Peaches consecutively", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [host, alice, bob] = game.members;
   const [hostPlayer, alicePlayer, bobPlayer] = game.room.players;
@@ -214,6 +215,7 @@ test("the current Dying actor may give multiple Peaches consecutively", { timeou
   setTurn(game.code, hostPlayer.seat);
   await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-consecutive-rescue", targetId: alicePlayer.id });
   await takeDamageIfPending(game.code, alice.token);
+  restoreSequentialDyingFixture(game.code, bobPlayer.id);
   for (const [index, id] of ["peach-consecutive-1", "peach-consecutive-2", "peach-consecutive-3"].entries()) {
     const result = await requestAndSettle("give_peach", { code: game.code, token: bob.token, cardId: id });
     assert.equal(result.status, 200);
@@ -224,7 +226,7 @@ test("the current Dying actor may give multiple Peaches consecutively", { timeou
   assert.equal((await state(game.code, alice.token)).data.pendingDying, null);
 });
 
-test("a Dying actor may stop after a partial Peach without being revisited", { timeout: 30_000 }, async () => {
+test("saved sequential Dying: a Dying actor may stop after a partial Peach without being revisited", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [host, alice, bob, carol] = game.members;
   const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = game.room.players;
@@ -235,6 +237,7 @@ test("a Dying actor may stop after a partial Peach without being revisited", { t
   setTurn(game.code, hostPlayer.seat);
   await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-early-stop", targetId: alicePlayer.id });
   await takeDamageIfPending(game.code, alice.token);
+  restoreSequentialDyingFixture(game.code, bobPlayer.id);
 
   await requestAndSettle("skip_rescue", { code: game.code, token: host.token });
   const partial = await requestAndSettle("give_peach", { code: game.code, token: bob.token, cardId: "peach-early-stop-1" });
@@ -492,13 +495,14 @@ test("concurrent lethal damage continuation enters Dying once and accepts one re
     phase: dying.data.phase,
     pendingKind: dying.data.pending?.kind,
     actorId: dying.data.actionPlayerId,
+    windowId: dying.data.currentAction.sharedWindow.windowId,
   };
   const rescues = await Promise.all([
     requestAndSettle("give_peach", { code: game.code, token: bob.token, cardId: "peach-double-lethal", context: rescueContext }),
     requestAndSettle("give_peach", { code: game.code, token: bob.token, cardId: "peach-double-lethal", context: rescueContext }),
   ]);
-  assert.equal(rescues.filter((result) => result.status === 200).length, 1, `exactly one Peach rescue claims Dying: ${JSON.stringify(rescues)}`);
-  assert.equal(rescues.filter((result) => result.status === 409).length, 1, "the duplicate rescue is rejected");
+  assert.ok(rescues.some((result) => result.status === 200), JSON.stringify(rescues));
+  assert.ok(rescues.every((result) => [200, 409].includes(result.status)), "identical pending intent is idempotent; settled stale retry may reject");
   const finished = await state(game.code, host.token);
   assert.equal(finished.data.players.find((player) => player.id === alicePlayer.id).hp, 1);
   assert.equal(finished.data.log.filter((entry) => /Alice takes 1 damage/.test(entry)).length, 1);

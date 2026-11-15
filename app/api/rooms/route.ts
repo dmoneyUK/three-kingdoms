@@ -4100,12 +4100,12 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
     discard.push(...defeatedEquipment);
     log = addDiscardEvent(log, target ?? "The defeated player", defeatedEquipment);
   }
-  const writes = [env.DB.prepare("UPDATE players SET hp = 0, alive = 0, hand_json = '[]', judgement_json = '[]', equipment_json = '{}' WHERE id = ?").bind(pending.targetId)];
+  const writes = [db().prepare("UPDATE players SET hp = 0, alive = 0, hand_json = '[]', judgement_json = '[]', equipment_json = '{}' WHERE id = ?").bind(pending.targetId)];
   if (target?.role === "Rebel" && source?.alive) {
     const reward = drawCards(deck, discard, 3, log); deck = reward.deck; discard = reward.discard; log = reward.log;
     for (const drawn of reward.drawn) log = addPrivateDrawEvent(log, source, drawn);
     const sourceHand = [...parse<Card[]>(source.hand_json, []), ...reward.drawn];
-    writes.push(env.DB.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id));
+    writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id));
     log = addLog(log, `${source.name} defeated Rebel ${target.name} and draws ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}.`, source.id);
   } else if (target?.role === "Loyalist" && source?.role === "Lord") {
     const lordHand = parse<Card[]>(source.hand_json, []);
@@ -4118,12 +4118,12 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
       discard.push(...lordEquipment);
       log = addDiscardEvent(log, source, lordEquipment);
     }
-    writes.push(env.DB.prepare("UPDATE players SET hand_json = '[]', equipment_json = '{}' WHERE id = ?").bind(source.id));
+    writes.push(db().prepare("UPDATE players SET hand_json = '[]', equipment_json = '{}' WHERE id = ?").bind(source.id));
     log = addLog(log, `${source.name} defeated Loyalist ${target.name} and discards all cards as the Lord's penalty.`);
   }
   const next = dyingResumeState(pending, resume);
-  writes.push(env.DB.prepare("UPDATE rooms SET phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(next.phase, next.pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
-  if (writes.length) await env.DB.batch(writes);
+  writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(next.phase, next.pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
+  if (writes.length) await db().batch(writes);
   await continueAfterDefeat(room.id, pending);
 }
 
@@ -6661,7 +6661,9 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const negationWindow = persistedPending?.kind === "negation_window" ? persistedPending : null;
   const sharedWindow = persistedPending?.kind === "shared_response_window" ? persistedPending : null;
   const legacyResponsePending = room.phase === "response" && persistedPending && ["attack", "duel", "group", "negation"].includes(persistedPending.kind);
-  const projectedResponsePending = responsePending ?? (persistedPending?.kind === "dying" ? persistedPending.resumePending : null);
+  const originalDying = persistedPending?.kind === "dying" ? persistedPending
+    : sharedWindow?.continuation.mode === "DYING_PEACH" ? sharedWindow.continuation.dying : null;
+  const projectedResponsePending = responsePending ?? originalDying?.resumePending;
   const pending = persistedPending;
   const responseContinuation = projectedResponsePending?.continuation;
   const pendingAttack = responseContinuation?.kind === "attack"
@@ -7068,7 +7070,10 @@ async function startSharedDyingWindow(room: RoomRow, pending: DyingPending, play
   await db().batch([...writes,
     ...(hp === undefined ? [] : [db().prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(hp, target.id)]),
     causalRoomStateWrite(room.id, { phase: "dying", pending: window, deck, discard, log,
-      causalEnvelope: parseCausalEnvelope(room.causal_envelope_json) })]);
+      causalEnvelope: causalEnvelopeAtStage(room, pending.causal, "DYING", {
+        currentSourceId: pending.sourceId, currentEffect: pending.origin ?? "damage",
+        currentTargetIds: [pending.targetId], resolvingPlayerId: null,
+      }) })]);
 }
 async function advanceSharedResponseWindow(roomId: string, code: string, token: string) {
   const room = await env.DB.prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();

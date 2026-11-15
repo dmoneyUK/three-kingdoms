@@ -202,7 +202,7 @@ test("Axe of Insanity HP loss uses canonical Dying and resumes the interrupted d
   const dying = await state(game.code, setup.sourceMember.token);
   assert.equal(dying.data.phase, "dying", JSON.stringify(dying.data));
   assert.equal((await request("skip_rescue", { code: game.code, token: setup.sourceMember.token, preserveResponse: true })).status, 200);
-  const rescued = await request("give_peach", { code: game.code, token: setup.targetMember.token, cardId: peach.id, preserveResponse: true });
+  const rescued = await requestAndSettle("give_peach", { code: game.code, token: setup.targetMember.token, cardId: peach.id });
   assert.equal(rescued.status, 200, JSON.stringify(rescued.data));
   const resumed = (await state(game.code, setup.sourceMember.token)).data;
   assert.equal(resumed.players.find((player) => player.id === setup.source.id).hp, 1);

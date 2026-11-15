@@ -2,6 +2,7 @@ export { default as assert } from "node:assert/strict";
 export { normalizeRoomData } from "../../game/room-safety.js";
 export {
   advanceNegationWindow,
+  restoreSequentialDyingFixture,
   card,
   createHumanGame,
   createHumanSetupGame,

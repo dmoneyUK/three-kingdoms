@@ -561,3 +561,19 @@ export async function openBorrowedSwordScenario({ attack = true, weaponKind = "G
   if (choose) assert.equal((await requestAndSettle("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: target.id })).status, 200);
   return { game, host, alice, source, holder, target, weapon, attackId: attackCard?.id, stage1Revision: stage1.actionRevision };
 }
+
+/** Explicit persisted pre-shared-window fixture. Only old-save regressions use
+ * this adapter; fresh-window arbitration tests never change their storage. */
+export function restoreSequentialDyingFixture(code, actorId) {
+  const room = JSON.parse(query(`SELECT json_object('pending',pending_json,'envelope',causal_envelope_json) FROM rooms WHERE code=${quote(code)}`));
+  const window = JSON.parse(room.pending);
+  assert.equal(window.kind, 'shared_response_window');
+  assert.equal(window.continuation.mode, 'DYING_PEACH');
+  assert.ok(window.priorityPlayerIds.includes(actorId));
+  const pending = {...window.continuation.dying, actorId, deadline:0,
+    remainingIds:window.priorityPlayerIds.slice(window.priorityPlayerIds.indexOf(actorId)+1)};
+  delete pending.sharedRescue;
+  const envelope = room.envelope ? JSON.parse(room.envelope) : null;
+  if(envelope) envelope.frames.find(frame=>frame.frameId===envelope.activeFrameId).current.resolvingPlayerId=actorId;
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(pending))},causal_envelope_json=${envelope?quote(JSON.stringify(envelope)):'NULL'} WHERE code=${quote(code)}`);
+}

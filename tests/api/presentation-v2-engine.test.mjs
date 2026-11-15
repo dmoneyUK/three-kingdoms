@@ -4,7 +4,7 @@ import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import { oathRecipientIds } from "../../game/oath.ts";
 import {
-  advanceNegationWindow, assert, card, createHumanGame, discardIds, openBorrowedSwordScenario, openGanglieGroup, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setTurn, sql, state, waitForState,
+  restoreSequentialDyingFixture, advanceNegationWindow, assert, card, createHumanGame, discardIds, openBorrowedSwordScenario, openGanglieGroup, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setTurn, sql, state, waitForState,
 } from "./test-support.mjs";
 
 function authoritativePending(code) {
@@ -44,6 +44,12 @@ function assertProjectionMatchesEngine(code, token) {
     } : storedPending;
     const expected = projectPresentationV2({
       pending,
+      ...(storedPending?.kind === "shared_response_window" ? { sharedResponseWindow: {
+        semantics: "PROVEN", windowId: storedPending.windowId, mode: storedPending.continuation.mode,
+        requesterId: storedPending.requesterId, targetId: storedPending.targetId,
+        openedAt: storedPending.openedAt, deadline: storedPending.deadline,
+        stage: storedPending.settlement ? "SETTLING" : "COLLECTING",
+      } } : {}),
       currentAction: view.currentAction,
       actionRevision: view.actionRevision,
       timeline: view.timeline,
@@ -1031,7 +1037,7 @@ test("engine-backed single-target card metadata is not projected as Group", { ti
   assert.equal(view.presentationV2.activeContext?.kind, "attack");
 });
 
-test("engine-backed Dying/rescue proves the separate timer arm and reconnect behavior", { timeout: 30_000 }, async () => {
+test("saved sequential Dying: engine-backed Dying/rescue proves the separate timer arm and reconnect behavior", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [host, , bob] = game.members;
   const [hostPlayer, dyingPlayer, bobPlayer] = game.room.players;
@@ -1042,9 +1048,13 @@ test("engine-backed Dying/rescue proves the separate timer arm and reconnect beh
   setTurn(game.code, hostPlayer.seat);
   const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-projector-dying-attack", targetId: dyingPlayer.id });
   assert.equal(opened.status, 200);
-  await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a" });
-  const dying = await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b" });
+  if ((await state(game.code, host.token)).data.phase !== "dying") {
+    await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a", preserveResponse: true });
+    await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b", preserveResponse: true });
+  }
+  const dying = { data: { room: (await state(game.code, host.token)).data } };
   assert.equal(dying.data.room.phase, "dying");
+  restoreSequentialDyingFixture(game.code, bobPlayer.id);
   const view = await assertProjectionMatchesEngine(game.code, bob.token);
   const pending = authoritativePending(game.code);
   assert.equal(pending.kind, "dying");
@@ -1096,7 +1106,7 @@ test("engine-backed Dying/rescue proves the separate timer arm and reconnect beh
   assert.ok(afterTimeout.phase !== "resolving" || afterTimeout.currentAction.kind !== "dying", "expired rescue does not leave the same expired decision active");
 });
 
-test("C4-01 Dying skips non-rescuers and advances one causal checkpoint between real rescuers", { timeout: 30_000 }, async () => {
+test("saved sequential Dying: C4-01 Dying skips non-rescuers and advances one causal checkpoint between real rescuers", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [host, targetMember, bobMember, carolMember] = game.members;
   const [source, target, bob, carol] = game.room.players;
@@ -1109,9 +1119,13 @@ test("C4-01 Dying skips non-rescuers and advances one causal checkpoint between 
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   const declinedAttack = await requestAndSettle("decline_response", { code: game.code, token: targetMember.token, preserveResponse: true });
   assert.equal(declinedAttack.status, 200, JSON.stringify(declinedAttack.data));
-  await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a", preserveResponse: true });
-  const dying = await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b", preserveResponse: true });
+  if ((await state(game.code, host.token)).data.phase !== "dying") {
+    await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a", preserveResponse: true });
+    await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b", preserveResponse: true });
+  }
+  const dying = { data: { room: (await state(game.code, host.token)).data } };
   assert.equal(dying.data.room.phase, "dying", JSON.stringify(dying.data.room));
+  restoreSequentialDyingFixture(game.code, bob.id);
   assertStableDyingPersistence(game.code);
   const bobView = await waitForState(game.code, bobMember.token, (room) => room.phase === "dying" && room.currentAction.actorId === bob.id);
   const bobBarrier = bobView.presentationV2.dyingBarrier;
@@ -1419,7 +1433,7 @@ test("FIX14 Group failure Damage uses one child frame and resumes the next parti
   assert.ok(bobDamageIndex >= 0 && bobDamageIndex < carolResponseIndex, "the resumed Group processes Bob once before Carol");
 });
 
-test("FIX15 lethal Group Damage survives Peach rescue with the parent frame available", { timeout: 30_000 }, async () => {
+test("saved sequential Dying: FIX15 lethal Group Damage survives Peach rescue with the parent frame available", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [sourceMember, targetMember, damageMember, finalMember] = game.members;
   const [source, target, damageTarget, finalTarget] = game.room.players;
@@ -1449,10 +1463,12 @@ test("FIX15 lethal Group Damage survives Peach rescue with the parent frame avai
   const dying = await requestAndSettle("decline_response", { code: game.code, token: damageMember.token });
   assert.equal(dying.status, 200, JSON.stringify(dying.data));
   assert.equal(dying.data.room.phase, "dying", JSON.stringify(dying.data.room));
+  restoreSequentialDyingFixture(game.code, source.id);
   const dyingSourceView = (await state(game.code, sourceMember.token)).data;
   assert.equal(dyingSourceView.currentAction.kind, "dying", JSON.stringify(dyingSourceView));
   assert.equal(dyingSourceView.currentAction.actorId, source.id);
   const dyingPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(dyingPending.kind, "dying");
   assert.equal(dyingPending.resumePending.continuation.kind, "group");
   assert.equal(dyingPending.resumePending.continuation.pendingDamageParticipantId, damageTarget.id);
   assert.notEqual(dyingPending.causal.frameId, groupRoot.activeFrameId);
@@ -1617,7 +1633,7 @@ test("UX2.7 Group Defeated outcome requires positive damage and an authoritative
       playerId: opened.target.id, order: 1, status: "PAUSED",
     }, `${kind}: lethal damage remains outcome-free while Dying has not settled`);
 
-    const defeated = await requestAndSettle("skip_rescue", { code: opened.code, token: opened.sourceMember.token, preserveResponse: true });
+    const defeated = await requestAndSettle("skip_rescue", { code: opened.code, token: opened.sourceMember.token });
     assert.equal(defeated.status, 200, `${kind}: ${JSON.stringify(defeated.data)}`);
     const resumed = await assertProjectionMatchesEngine(opened.code, opened.bobMember.token);
     assert.equal(resumed.players.find(({ id }) => id === opened.target.id)?.alive, false, `${kind}: the target is authoritatively defeated`);
@@ -1918,7 +1934,7 @@ test("engine-backed Duel alternates response actors without changing the root co
   ], "each response direction comes from the server-owned Duel continuation");
 });
 
-test("engine-backed Duel damage opens a child Dying frame and clears after rescue", { timeout: 30_000 }, async () => {
+test("saved sequential Dying: engine-backed Duel damage opens a child Dying frame and clears after rescue", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [sourceMember, targetMember] = game.members;
   const [source, target] = game.room.players;
@@ -1938,6 +1954,7 @@ test("engine-backed Duel damage opens a child Dying frame and clears after rescu
   const declined = await requestAndSettle("decline_response", { code: game.code, token: targetMember.token, preserveResponse: true });
   assert.equal(declined.status, 200, JSON.stringify(declined.data));
   assert.equal(declined.data.room.phase, "dying", JSON.stringify(declined.data.room));
+  restoreSequentialDyingFixture(game.code, source.id);
   const dying = await assertProjectionMatchesEngine(game.code, sourceMember.token);
   const dyingPending = authoritativePending(game.code);
   assert.equal(dyingPending.kind, "dying");

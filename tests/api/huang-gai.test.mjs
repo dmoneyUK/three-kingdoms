@@ -1,6 +1,6 @@
 import test from "node:test";
 import {
-  assert, card, createHumanGame, query, quote, request, roomCardCount, setDeck, setHand, setTurn, sql, state,
+  drainEmptyPrivateDecisions, requestAndSettle, assert, card, createHumanGame, query, quote, request, roomCardCount, setDeck, setHand, setTurn, sql, state,
 } from "./test-support.mjs";
 
 function configure(game, hp = 4) {
@@ -60,14 +60,15 @@ test("1 HP Self Sacrifice resumes after Peach rescue and draws exactly once", as
   const duringDying = await state(game.code, setup.sourceMember.token);
   assert.equal(duringDying.data.phase, "dying");
   assert.equal(duringDying.data.pendingDying.targetId, setup.source.id);
-  assert.equal(JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`)).resumeEffect.kind, "draw_cards", "the draw continuation survives room reload");
+  assert.equal(JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`)).continuation.dying.resumeEffect.kind, "draw_cards", "the draw continuation survives room reload");
   assert.equal((await request("skip_rescue", { code: game.code, token: setup.sourceMember.token })).status, 200);
 
   const rescues = await Promise.all([
     request("give_peach", { code: game.code, token: setup.rescuerMember.token, cardId: peach.id }),
     request("give_peach", { code: game.code, token: setup.rescuerMember.token, cardId: peach.id }),
   ]);
-  assert.deepEqual(rescues.map((result) => result.status).sort(), [200, 409]);
+  assert.deepEqual(rescues.map((result) => result.status).sort(), [200, 200], "identical private retries acknowledge one locked intent");
+  await drainEmptyPrivateDecisions(game.code, setup.sourceMember.token);
   const after = (await state(game.code, setup.sourceMember.token)).data;
   assert.equal(after.phase, "play");
   assert.equal(after.players.find((player) => player.id === setup.source.id).hp, 1);
@@ -89,7 +90,7 @@ test("1 HP Self Sacrifice accepts First Aid rescue before drawing", async () => 
   assert.equal((await request("skip_rescue", { code: game.code, token: setup.sourceMember.token })).status, 200);
   const rescueView = (await state(game.code, setup.rescuerMember.token)).data;
   assert.ok(rescueView.currentAction.options.some((option) => option.providerId === "hua_tuo_first_aid"));
-  const rescued = await request("respond", { code: game.code, token: setup.rescuerMember.token, providerId: "hua_tuo_first_aid", cardId: redCard.id });
+  const rescued = await requestAndSettle("respond", { code: game.code, token: setup.rescuerMember.token, providerId: "hua_tuo_first_aid", cardId: redCard.id });
   assert.equal(rescued.status, 200, JSON.stringify(rescued.data));
   const after = (await state(game.code, setup.sourceMember.token)).data;
   assert.equal(after.phase, "play");
