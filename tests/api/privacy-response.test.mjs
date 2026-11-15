@@ -833,7 +833,7 @@ test("Hujia prompts a living Wei character even when that character has no Dodge
   const delegateView = await state(game.code, game.delegateMember.token);
   assert.deepEqual(delegateView.data.currentAction.legalActions, ["decline_response"]);
   assert.deepEqual(delegateView.data.currentAction.options, []);
-  assert.match(delegateView.data.currentAction.reason, /^Cao Cao asks you to provide Dodge with Entourage\.$/);
+  assert.equal(delegateView.data.currentAction.reason, "Cao Cao asked you to provide Dodge with Entourage. Play Dodge or Skip.");
   const caoView = await state(game.code, game.caoMember.token);
   assert.doesNotMatch(caoView.data.currentAction.reason, /no Dodge/i);
 });
@@ -846,7 +846,7 @@ test("Hujia lets a Wei character with Dodge cancel the Attack", { timeout: 120_0
   const delegateView = await state(game.code, game.delegateMember.token);
   assert.ok(delegateView.data.currentAction.legalActions.includes("respond"));
   assert.ok(delegateView.data.currentAction.legalActions.includes("decline_response"));
-  assert.match(delegateView.data.currentAction.reason, /Play Dodge or decline/);
+  assert.equal(delegateView.data.currentAction.reason, "Cao Cao asked you to provide Dodge with Entourage. Play Dodge or Skip.");
   const answered = await requestAndSettle("respond", { code: game.code, token: game.delegateMember.token, cardId: dodge.id });
   assert.equal(answered.status, 200, JSON.stringify(answered.data));
   assert.equal(answered.data.room.players.find((player) => player.id === game.cao.id).hp, 4);
