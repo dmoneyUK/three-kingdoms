@@ -34,6 +34,7 @@ const fastTests = [
   "tests/public-card-announcement.test.mjs",
   "tests/public-card-effect-frame-layout.test.mjs",
   "tests/public-stage-layout.test.mjs",
+  "tests/verified-player-copy.test.mjs",
   "tests/public-card-effect-frame-view.test.mjs",
   "tests/wrangler-worker-supervisor.test.mjs",
 ];

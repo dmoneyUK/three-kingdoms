@@ -3632,7 +3632,7 @@ function PublicCardAnnouncement({
           {displayedCopy.dismantleCardFace.suffix}
         </>
         : matchingPublicH4Segments(displayedCopy.message, displayedCopy.segments)?.map((part, index) => part.kind === "player"
-          ? <span key={index} className="public-h4-player" data-public-player-id={part.playerId}>{part.text}</span>
+          ? <span key={index} className="message-player-name public-h4-player" data-player-id={part.playerId} data-public-player-id={part.playerId}>{part.text}</span>
           : <span key={index}>{part.text}</span>) ?? displayedCopy.message}
     </b>
     {displayedCopy.supporting && <span className="public-card-announcement-support public-negation-narration-support" aria-hidden="true">{displayedCopy.supporting}</span>}

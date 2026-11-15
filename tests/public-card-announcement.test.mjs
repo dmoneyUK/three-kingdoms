@@ -912,7 +912,7 @@ test("typed H4 names preserve exact text and accessible narration, without guess
       sourceId: "proven-player", proofEventId: "event", phase: "DRAWN", heading: "BEAUTY", exiting: false, ...copy },
     roomCode: "ROOM", viewerId: "observer",
   }));
-  assert.match(html, /class="public-h4-player" data-public-player-id="proven-player"/);
+  assert.match(html, /class="message-player-name public-h4-player" data-player-id="proven-player" data-public-player-id="proven-player"/);
   assert.ok(html.includes(`aria-label="${copy.message}"`));
   const plain = publicCardAnnouncementCopy({ sourceId: "p1", targetId: null, rootEventId: "legacy", cardLabel: "Attack" },
     "A card named Attack does something.", null, "p1", "Attack", null, {});

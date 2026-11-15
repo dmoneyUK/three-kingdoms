@@ -3,6 +3,7 @@ import { entourageDecisionMatchesSnapshot } from "./entourage-presentation";
 import type { PresentationSnapshot } from "./presentation-snapshot";
 import { publicDecisionFromPresentationSnapshot } from "./presentation-semantics.ts";
 import { CARD_DEFINITIONS } from "./cards";
+import { verifiedPlayerCopy, type VerifiedPlayerCopySegment } from "./verified-player-copy";
 
 export type PublicActivityPlayer = {
   id: string;
@@ -39,6 +40,9 @@ export type PublicActivityStatus = {
   text: string;
   heading?: string;
   stage?: string;
+  textSegments?: readonly VerifiedPlayerCopySegment[];
+  headingSegments?: readonly VerifiedPlayerCopySegment[];
+  stageSegments?: readonly VerifiedPlayerCopySegment[];
 };
 
 const NO_PUBLIC_ACTIVITY: PublicActivityStatus = { kind: "none", text: "" };
@@ -74,10 +78,11 @@ function activePublicJudgementFact(input: PublicActivityInput) {
   return matching.length === 1 ? matching[0] : null;
 }
 
-function playerName(input: PublicActivityInput, playerId: string | null | undefined): string | null {
+function playerPart(players: readonly PublicActivityPlayer[], playerId: string | null | undefined, aliveOnly = false) {
   if (!playerId) return null;
-  const player = input.players.find((candidate) => candidate.id === playerId && candidate.alive);
-  return player?.name.trim() || null;
+  const player = players.find((candidate) => candidate.id === playerId && (!aliveOnly || candidate.alive));
+  const name = player?.name.trim();
+  return player && name ? { id: player.id, name } : null;
 }
 
 function effectLabel(value: string | undefined): string | null {
@@ -93,14 +98,14 @@ function currentPublicRootEventId(snapshot: PresentationSnapshot | null | undefi
     ?? null;
 }
 
-function publicNegationEffectCopy(input: PublicActivityInput, decision: NonNullable<ReturnType<typeof publicDecisionFromPresentationSnapshot>>): string {
+function publicNegationEffectCopy(input: PublicActivityInput, decision: NonNullable<ReturnType<typeof publicDecisionFromPresentationSnapshot>>) {
   const effect = effectLabel(decision.nextEffect?.label);
   const direction = decision.nextEffect?.kind === "restore_effect" ? "restore"
     : decision.nextEffect?.kind === "cancel_effect" ? "cancel" : null;
-  if (!direction) return "A Negation response is available.";
+  if (!direction) return verifiedPlayerCopy(["A Negation response is available."]);
   const interaction = input.presentationSnapshot?.interaction;
   const activeTargetId = interaction?.activeTargetIds.length === 1 ? interaction.activeTargetIds[0] : null;
-  const target = activeTargetId ? playerName(input, activeTargetId) : null;
+  const target = activeTargetId ? playerPart(input.players, activeTargetId, true) : null;
   const rootEventId = currentPublicRootEventId(input.presentationSnapshot);
   const hasCommittedCounter = direction === "restore"
     || Boolean(activeTargetId && rootEventId && input.presentationSnapshot?.publicEventFacts.some((fact) =>
@@ -111,7 +116,11 @@ function publicNegationEffectCopy(input: PublicActivityInput, decision: NonNulla
         && (fact.category === "EFFECT_CANCELLED" || fact.category === "EFFECT_RESTORED"),
     ));
   const effectText = effect ? `the ${effect} effect` : "the current effect";
-  return `${hasCommittedCounter ? "Another Negation" : "Negation"} can ${direction} ${effectText}${target ? ` on ${target}` : ""}.`;
+  return verifiedPlayerCopy([
+    `${hasCommittedCounter ? "Another Negation" : "Negation"} can ${direction} ${effectText}`,
+    ...(target ? [" on ", target] : []),
+    ".",
+  ]);
 }
 
 type ProvenHarvestResponseCopy = {
@@ -230,7 +239,7 @@ function provenHarvestRootCopy(snapshot: PresentationSnapshot | null, players: r
   return { progress, interaction, identity, rootFact: roots[0]!, source };
 }
 
-function harvestNegationPossibility(snapshot: PresentationSnapshot | null, players: readonly PublicActivityPlayer[]): string | null {
+function harvestNegationPossibility(snapshot: PresentationSnapshot | null, players: readonly PublicActivityPlayer[]) {
   const state = provenHarvestPresentation(snapshot, players);
   if (!state || state.interaction.stage !== "NEGATION" || state.decision.responseWindowOpen !== true) return null;
   const currentResponses = state.responseFacts.filter(({ response }) => response.effectParticipantId === state.progress.currentParticipantId
@@ -238,21 +247,24 @@ function harvestNegationPossibility(snapshot: PresentationSnapshot | null, playe
   const nextEffect = state.decision.nextEffect;
   if (state.progress.currentEffectState === "ACTIVE" && nextEffect?.kind === "cancel_effect"
     && (!currentResponses.length || currentResponses.at(-1)?.fact.category === "EFFECT_RESTORED")) {
-    return `${currentResponses.length ? "Another Negation" : "Negation"} can prevent ${state.recipient} from picking.`;
+    const recipient = playerPart(players, state.progress.currentParticipantId);
+    if (recipient) return verifiedPlayerCopy([`${currentResponses.length ? "Another Negation" : "Negation"} can prevent `, recipient, " from picking."]);
   }
   if (state.progress.currentEffectState === "BLOCKED" && nextEffect?.kind === "restore_effect"
     && currentResponses.at(-1)?.fact.category === "EFFECT_CANCELLED") {
-    return `Another Negation can restore ${state.recipient}'s pick.`;
+    const recipient = playerPart(players, state.progress.currentParticipantId);
+    if (recipient) return verifiedPlayerCopy(["Another Negation can restore ", recipient, "'s pick."]);
   }
   return null;
 }
 
-function harvestChoiceInstruction(input: PublicActivityInput, decision: NonNullable<ReturnType<typeof publicDecisionFromPresentationSnapshot>>): string | null {
+function harvestChoiceInstruction(input: PublicActivityInput, decision: NonNullable<ReturnType<typeof publicDecisionFromPresentationSnapshot>>) {
   const state = provenHarvestPresentation(input.presentationSnapshot, input.players);
   if (!state || state.interaction.stage !== "SEQUENTIAL_CHOICE"
     || decision.actorIds.length !== 1 || decision.actorIds[0] !== state.progress.currentParticipantId
     || !decision.actionLabels.some((label) => /(?:choose|pick).*(?:card|revealed)/i.test(label))) return null;
-  return `Waiting for ${state.recipient} to pick a card`;
+  const recipient = playerPart(input.players, state.progress.currentParticipantId);
+  return recipient ? verifiedPlayerCopy(["Waiting for ", recipient, " to pick a card"]) : null;
 }
 
 function actionList(labels: readonly string[]): string {
@@ -619,18 +631,23 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
   const sharedWindow = normalizePublicSharedWindow(snapshot?.sharedResponseWindow);
   if (sharedWindow) {
     if (sharedWindow.stage !== "COLLECTING" || !["response", "dying"].includes(input.phase ?? "")) return NO_PUBLIC_ACTIVITY;
-    const requester = playerName(input, sharedWindow.requesterId);
+    const requester = playerPart(input.players, sharedWindow.requesterId, true);
     if (!requester) return NO_PUBLIC_ACTIVITY;
-    const text = sharedWindow.mode === "ENTOURAGE_DODGE" ? `Waiting for Wei Dodge responses for ${requester}.`
-      : sharedWindow.mode === "INFLUENCING_ATTACK" ? `Waiting for Shu Attack responses for ${requester}.`
-      : `Waiting for Peach responses to save ${requester}.`;
-    return { kind: "response", text, heading: text };
+    const copy = sharedWindow.mode === "ENTOURAGE_DODGE"
+      ? verifiedPlayerCopy(["Waiting for Wei Dodge responses for ", requester, "."])
+      : sharedWindow.mode === "INFLUENCING_ATTACK"
+        ? verifiedPlayerCopy(["Waiting for Shu Attack responses for ", requester, "."])
+        : verifiedPlayerCopy(["Waiting for Peach responses to save ", requester, "."]);
+    return { kind: "response", text: copy.message, heading: copy.message, textSegments: copy.segments, headingSegments: copy.segments };
   }
   const recovering = snapshot?.sharedResponseRecovery;
   if (recovering && snapshot?.sharedResponseContributions?.some((proof) => proof.mode === "DYING_PEACH"
     && proof.eventId === recovering.eventId && proof.targetId === recovering.targetId)) {
-    const target = playerName(input, recovering.targetId);
-    if (target) return { kind: "response", text: `Resolving Peach for ${target}.` };
+    const target = playerPart(input.players, recovering.targetId, true);
+    if (target) {
+      const copy = verifiedPlayerCopy(["Resolving Peach for ", target, "."]);
+      return { kind: "response", text: copy.message, textSegments: copy.segments };
+    }
   }
   const entourage = snapshot?.entourageDecision;
   if (input.status === "playing" && input.phase === "response" && entourage
@@ -642,9 +659,12 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
     && interaction?.decisionActorId === entourage.helperActorId
     && interaction.targetIds.length === 1 && interaction.targetIds[0] === entourage.requesterId
     && nextDecision.actorIds.length === 1 && nextDecision.actorIds[0] === entourage.helperActorId) {
-    const helper = playerName(input, entourage.helperActorId);
-    const requester = playerName(input, entourage.requesterId);
-    if (helper && requester) return { kind: "response", text: `Waiting for ${helper} to provide Dodge for ${requester}.` };
+    const helper = playerPart(input.players, entourage.helperActorId, true);
+    const requester = playerPart(input.players, entourage.requesterId, true);
+    if (helper && requester) {
+      const copy = verifiedPlayerCopy(["Waiting for ", helper, " to provide Dodge for ", requester, "."]);
+      return { kind: "response", text: copy.message, textSegments: copy.segments };
+    }
   }
 
   const drawDecision = snapshot?.publicDrawPhaseDecision;
@@ -655,9 +675,12 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
     && drawDecision.actionLabels.every((label) => typeof label === "string" && label.trim().length > 0 && label.length <= 160)) {
     const actor = input.players.find((candidate) => candidate.id === drawDecision.actorId && candidate.seat === input.turnSeat && candidate.alive);
     if (actor?.name.trim()) {
-      const turn = `${actor.name.trim()}'s turn`;
+      const actorPart = { id: actor.id, name: actor.name.trim() };
+      const turnCopy = verifiedPlayerCopy([actorPart, "'s turn"]);
       const actions = drawDecision.allowSkip ? [...drawDecision.actionLabels, "Skip"] : drawDecision.actionLabels;
-      return { kind: "response", text: turn, heading: turn, stage: `Waiting for ${actor.name.trim()} to use ${actionList(actions)}.` };
+      const stageCopy = verifiedPlayerCopy(["Waiting for ", actorPart, ` to use ${actionList(actions)}.`]);
+      return { kind: "response", text: turnCopy.message, heading: turnCopy.message, stage: stageCopy.message,
+        textSegments: turnCopy.segments, headingSegments: turnCopy.segments, stageSegments: stageCopy.segments };
     }
   }
 
@@ -669,63 +692,72 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
       return {
         kind: "negation",
         text: "Waiting for counter responses",
-        stage: specific ?? "Waiting for Negation responses",
+        stage: specific?.message ?? "Waiting for Negation responses",
+        ...(specific ? { stageSegments: specific.segments } : {}),
       };
     }
+    const effectCopy = publicNegationEffectCopy(input, nextDecision);
     return {
       kind: "negation",
       text: "Waiting for counter responses",
-      stage: publicNegationEffectCopy(input, nextDecision),
+      stage: effectCopy.message,
+      stageSegments: effectCopy.segments,
     };
   }
 
   if (input.status === "playing" && input.phase === "response" && nextDecision
     && interaction?.effect === "BumperHarvest") {
     const instruction = harvestChoiceInstruction(input, nextDecision);
-    if (instruction) return { kind: "response", text: instruction, heading: instruction };
+    if (instruction) return { kind: "response", text: instruction.message, heading: instruction.message,
+      textSegments: instruction.segments, headingSegments: instruction.segments };
   }
 
   const targetCard = input.pendingTargetCard;
   if (input.status === "playing" && input.phase === "response" && targetCard?.kind === "target_card"
     && targetCard.sourceId === targetCard.actorId && targetCard.targetId !== targetCard.actorId
     && interaction?.stage !== "NEGATION") {
-    const actor = playerName(input, targetCard.actorId);
-    const target = playerName(input, targetCard.targetId);
+    const actor = playerPart(input.players, targetCard.actorId, true);
+    const target = playerPart(input.players, targetCard.targetId, true);
     if (actor && target) {
+      const copy = verifiedPlayerCopy(["Waiting for ", actor, " to choose a card from ", target, "."]);
       return {
         kind: "target-card-choice",
-        text: `Waiting for ${actor} to choose a card from ${target}.`,
+        text: copy.message,
+        textSegments: copy.segments,
       };
     }
   }
 
   if (input.status === "playing" && input.phase === "response"
     && nextDecision?.stageLabel === "Borrowed Sword target choice" && nextDecision.actorIds.length === 1) {
-    const actor = playerName(input, nextDecision.actorIds[0]);
+    const actor = playerPart(input.players, nextDecision.actorIds[0], true);
     const holderId = interaction?.targetIds.length === 1 ? interaction.targetIds[0] : null;
-    const holder = playerName(input, holderId);
+    const holder = playerPart(input.players, holderId, true);
     if (actor && holder) {
-      const text = `Waiting for ${actor} to choose ${holder}'s Attack target.`;
-      return { kind: "response", text, heading: text, stage: nextDecision.stageLabel };
+      const copy = verifiedPlayerCopy(["Waiting for ", actor, " to choose ", holder, "'s Attack target."]);
+      return { kind: "response", text: copy.message, heading: copy.message, stage: nextDecision.stageLabel,
+        textSegments: copy.segments, headingSegments: copy.segments };
     }
   }
 
   if (input.status === "playing" && input.phase === "response"
     && nextDecision?.stageLabel === "Borrowed Sword forced choice" && nextDecision.actorIds.length === 1) {
-    const actor = playerName(input, nextDecision.actorIds[0]);
+    const actor = playerPart(input.players, nextDecision.actorIds[0], true);
     if (actor) {
-      const text = `Waiting for ${actor} to play Attack or give up their Weapon.`;
-      return { kind: "response", text, heading: text, stage: nextDecision.stageLabel };
+      const copy = verifiedPlayerCopy(["Waiting for ", actor, " to play Attack or give up their Weapon."]);
+      return { kind: "response", text: copy.message, heading: copy.message, stage: nextDecision.stageLabel,
+        textSegments: copy.segments, headingSegments: copy.segments };
     }
   }
 
   if (input.status === "playing" && input.phase === "response" && interaction?.stage === "ATTACK_RESPONSE"
     && interaction.effect?.toLowerCase() === "borrowed_sword" && nextDecision?.actorIds.length === 1) {
-    const actor = playerName(input, nextDecision.actorIds[0]);
-    const attacker = playerName(input, interaction.sourceId);
+    const actor = playerPart(input.players, nextDecision.actorIds[0], true);
+    const attacker = playerPart(input.players, interaction.sourceId, true);
     if (actor && attacker) {
-      const text = `Waiting for ${actor} to respond to ${attacker}'s Attack.`;
-      return { kind: "response", text, heading: text, stage: "Attack response" };
+      const copy = verifiedPlayerCopy(["Waiting for ", actor, " to respond to ", attacker, "'s Attack."]);
+      return { kind: "response", text: copy.message, heading: copy.message, stage: "Attack response",
+        textSegments: copy.segments, headingSegments: copy.segments };
     }
   }
 
@@ -734,17 +766,18 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
   if (input.status === "playing" && input.phase === "response" && interaction?.effect
     && (interaction.stage === "ATTACK_RESPONSE" || interaction.stage === "GROUP_RESOLUTION")
     && nextDecision?.responseWindowOpen === true && nextDecision.actorIds.length === 1) {
-    const actor = playerName(input, nextDecision.actorIds[0]);
+    const actor = playerPart(input.players, nextDecision.actorIds[0], true);
     const labels = nextDecision.actionLabels;
     const required = labels.includes("Dodge") ? "Dodge" : labels.includes("Attack") ? "Attack" : null;
     if (actor && required && labels.includes("take damage")) {
-      const text = `Waiting for ${actor} to play ${required} or take damage.`;
-      return { kind: "response", text, heading: text };
+      const copy = verifiedPlayerCopy(["Waiting for ", actor, ` to play ${required} or take damage.`]);
+      return { kind: "response", text: copy.message, heading: copy.message,
+        textSegments: copy.segments, headingSegments: copy.segments };
     }
   }
 
   if (input.status === "playing" && input.phase === "response" && nextDecision?.actorIds.length === 1) {
-    const actor = playerName(input, nextDecision.actorIds[0]);
+    const actor = playerPart(input.players, nextDecision.actorIds[0], true);
     if (actor) {
       const labels = nextDecision.actionLabels.filter((label) => label !== "Respond")
         .map((label) => label.replace(/^Use\s+/i, ""));
@@ -756,18 +789,20 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
           ? ` to use ${actionList(labels)}`
           : ` to play ${actionList(labels)}`
         : "";
-      const waiting = `Waiting for ${actor}${actionCopy}`;
-      return { kind: "response", text: waiting, heading: waiting, stage: nextDecision.stageLabel };
+      const waiting = verifiedPlayerCopy(["Waiting for ", actor, actionCopy]);
+      return { kind: "response", text: waiting.message, heading: waiting.message, stage: nextDecision.stageLabel,
+        textSegments: waiting.segments, headingSegments: waiting.segments };
     }
   }
 
   if (input.status === "playing" && input.phase === "resolving" && input.publicDiscardHandoff
     && Number.isSafeInteger(input.publicDiscardHandoff.cardCount) && input.publicDiscardHandoff.cardCount > 0) {
-    const actor = input.players.find((candidate) => candidate.id === input.publicDiscardHandoff?.actorId);
-    if (actor?.name.trim()) {
+    const actor = playerPart(input.players, input.publicDiscardHandoff.actorId);
+    if (actor) {
       const count = input.publicDiscardHandoff.cardCount;
-      const text = `${actor.name.trim()} discarded ${count === 1 ? "a card" : `${count} cards`} — finishing the turn.`;
-      return { kind: "discard-handoff", text, heading: text, stage: "Turn handoff" };
+      const copy = verifiedPlayerCopy([actor, ` discarded ${count === 1 ? "a card" : `${count} cards`} — finishing the turn.`]);
+      return { kind: "discard-handoff", text: copy.message, heading: copy.message, stage: "Turn handoff",
+        textSegments: copy.segments, headingSegments: copy.segments };
     }
   }
 
@@ -777,11 +812,12 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
   if (input.status === "playing") {
     const fact = activePublicJudgementFact(input);
     if (fact) {
-      const actor = playerName(input, fact.actorId);
+      const actor = playerPart(input.players, fact.actorId, true);
       const judgement = effectLabel(fact.effect?.label ?? fact.label);
       if (actor && judgement) {
-        const text = `${actor} is judging ${judgement}.`;
-        return { kind: "judgement", text, heading: text };
+        const copy = verifiedPlayerCopy([actor, ` is judging ${judgement}.`]);
+        return { kind: "judgement", text: copy.message, heading: copy.message,
+          textSegments: copy.segments, headingSegments: copy.segments };
       }
       return NO_PUBLIC_ACTIVITY;
     }
@@ -790,15 +826,19 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
   if (input.status === "playing" && input.phase === "discard") {
     const player = input.players.find((candidate) => candidate.seat === input.turnSeat && candidate.alive);
     if (player?.name.trim()) {
-      const text = `Waiting for ${player.name.trim()} to discard cards.`;
-      return { kind: "discard", text, heading: text };
+      const copy = verifiedPlayerCopy(["Waiting for ", { id: player.id, name: player.name.trim() }, " to discard cards."]);
+      return { kind: "discard", text: copy.message, heading: copy.message,
+        textSegments: copy.segments, headingSegments: copy.segments };
     }
     return NO_PUBLIC_ACTIVITY;
   }
 
   if (input.status === "playing" && input.phase !== "response" && input.phase !== "resolving" && input.phase !== "dying") {
     const player = input.players.find((candidate) => candidate.seat === input.turnSeat && candidate.alive);
-    if (player?.name.trim()) return { kind: "turn", text: `${player.name.trim()}'s turn` };
+    if (player?.name.trim()) {
+      const copy = verifiedPlayerCopy([{ id: player.id, name: player.name.trim() }, "'s turn"]);
+      return { kind: "turn", text: copy.message, textSegments: copy.segments };
+    }
   }
 
   return NO_PUBLIC_ACTIVITY;

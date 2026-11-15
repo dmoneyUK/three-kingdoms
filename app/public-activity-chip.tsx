@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { publicCorridorWidth } from "./public-corridor";
 import type { PublicActivityStatus } from "../game/public-activity";
+import { VerifiedPlayerCopy } from "./verified-player-copy";
 import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 import {
   committedPublicStageLayout,
@@ -632,7 +633,14 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
     aria-label={[status.text, status.stage].filter(Boolean).join(" ")}
     style={{ visibility: "hidden" }}
   >
-    <strong data-public-activity-heading="true">{status.heading ?? status.text}</strong>
-    {status.stage && <small data-public-activity-stage="true">{status.stage}</small>}
+    <strong data-public-activity-heading="true">
+      <VerifiedPlayerCopy
+        message={status.heading ?? status.text}
+        segments={status.headingSegments ?? (status.heading === undefined || status.heading === status.text ? status.textSegments : undefined)}
+      />
+    </strong>
+    {status.stage && <small data-public-activity-stage="true">
+      <VerifiedPlayerCopy message={status.stage} segments={status.stageSegments} />
+    </small>}
   </div>;
 }

@@ -1,29 +1,27 @@
 # HANDOVER — 当前唯一任务
 
-## 最近完成的相关交付
+## §10.53-F1 — H4、PAC、私有 Console 的验证玩家姓名样式
 
-- **§10.51 ROOM-POLL-TRANSIENT-503-RECOVERY-01：** H4 DOM 所有权修复已部署，提交 `6bcef5a3169746edae3edbfc0eab66108f1952b9`；[精确 SHA Actions 43729279654](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43729279654) 全部通过，Worker `22d8cce3-b1cc-4b2d-afcc-8ade1be6d355` 已部署，生产 smoke 与直接首页/health 检查通过。状态 **PENDING OWNER iPHONE RE-REVIEW**。
-- **§10.49 CAO-CAO-ENTOURAGE-SIMULTANEOUS-WEI-DODGE-01：** 8 秒共享窗口到期修复已部署，提交 `3053d209aba640ff8280f43f3e4feff91be0a646`；[精确 SHA Actions 43726390974](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43726390974) 全部通过，Worker `fccb97eb-20dd-480e-ba45-aa8f33182896` 已部署。原 owner 手机失败记录保留，状态 **PENDING OWNER iPHONE RE-REVIEW**。
+**状态：** 本地实现与定向验证完成；待提交、精确 SHA CI、部署与生产 smoke。交付后标记 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**，不代表验收通过。
 
-两项修复均未标记 USER-ACCEPTED。另一个旧 §10.49 worktree `/Users/jingedai/.codex/worktrees/ux2-10-49-harvest-20261114` 有未提交原型改动，已检查并保持原样；不得重置、覆盖或未经审阅直接移植。
+**设计基线：** `docs/UX2-refine.md` revision `2026-11-15 15:32 UTC`，§10.53-F1 A–D。远端基线 `origin/ux-v2` = `fbd515a659012618bb3e7c1189e63496de1c7736`。本地分支 `codex/ux2-1049-expiry-20261115`，交付目标 `ux-v2`。
 
-## 当前唯一任务：§10.53-F1 — H4、PAC 与私有 Console 的验证玩家姓名样式
+### 当前实现
 
-**状态：** 已获 owner 授权；尚未实施。当前远端基线 `ux-v2`：`6bcef5a3169746edae3edbfc0eab66108f1952b9`。设计依据：`docs/UX2-refine.md` revision `2026-11-15 15:32 UTC`，§10.53-F1 A–D。
+- `game/verified-player-copy.ts` 提供共享 typed 片段、精确拼接验证；`app/verified-player-copy.tsx` 仅渲染通过验证的玩家片段，失败时输出原文纯文本。H4 导出保持向后兼容。
+- PAC 的已证明玩家身份在原文生成处携带 ID，覆盖回合、抽弃牌、handoff、判定、Attack/Dodge、Negation/Harvest、借刀、目标选牌及公开共享响应参与者。PAC 文案、aria-label、跨观察者一致性及隐私保持不变。
+- 私有 Console 对等待者、当前交互参与者、借刀持有者/目标、目标选牌、Lust 顺序及直接 ID 生成的无效目标提示提供相同姓名标记；不解析 `CurrentAction.reason` 或动态技能文案，未证明片段回退为原文。
+- 最后覆盖样式采用 muted gold、600 字重、`letter-spacing:-0.05em`；H4 12px、PAC 12/10px、Console 11px（手机 10px），不调整区域几何。
 
-### 唯一任务范围
+### 本次执行记录（UTC）
 
-1. 建立可复用的 typed verified-player-copy helper：片段携带权威 `playerId` 与精确姓名；仅当片段拼接后与原消息完全相等时才渲染，否则保留原始完整纯文本。保留 H4 现有 API 与无障碍文案。
-2. 在 PAC 生成时用已验证身份构造 heading/stage/text 片段，并在 React 中呈现姓名；不得扫描任意文案、推测身份或泄露 §10.49 私有提交信息。
-3. 为 viewer-private Console 的既有权威 actor/借刀 holder 与 target/乐不思蜀顺序参与者添加可验证片段；不解析 `CurrentAction.reason` 或任意技能文案，不改服务端合法性、原字符串、按钮或 aria-live。
-4. 用同一 shared player-name class 与 approved muted-gold 字体规则统一 H4/PAC/Console；保持字间距与字词可读，不改三块区域几何布局。
+- **16:09** — 核对工作树与最新远端 HEAD；只保留 §10.53-F1 为 HANDOVER 当前任务。
+- **16:09** — 定向 Node 测试通过 **89/89**：PAC 文案/隐私、H4 精确文本与可访问文案、Console 权威 ID 和回退、房间渲染回归。
+- **16:09** — `npm run build` 通过；`git diff --check` 通过。
+- **16:09** — 定向 ESLint（除 `app/page.tsx`）通过，0 error、14 条现存 hooks 警告。单独 lint `app/page.tsx` 在 `react-hooks/rules-of-hooks` 行 4000 栈溢出；此大型组件在未修改的基线副本上此前也复现同一问题，记录为工具限制，不改规则或扩大重构。
+- **16:09** — 未启动本地浏览器测试：一个场景不能同时展示公共 PAC/H4 和 viewer-private Console 的所有身份分支；不以此宣称手机验收。Owner iPhone review 保留。
+- **16:09** — 提交前 CI 门禁：`ux-v2` 最新相关成功 push run 是 SHA `6bcef5a3169746edae3edbfc0eab66108f1952b9` / Actions `43729279654`；`fbd515a` 为 Markdown-only 更新，无独立 run。待本任务代码推送后核验精确 SHA 全部 required jobs、Worker 与 smoke。
 
-### 验证与交付
+### 下一步
 
-- 运行纯片段边界测试、PAC API 隐私/文案测试、定向 Console/H4 测试、构建、diff/lint。
-- 最多一个 440px 四人手机浏览器场景；所有本地 UI/browser 运行累计不超过 5 分钟。必要时将未覆盖浏览器面验证记为 SKIPPED，不能扩展测试矩阵。
-- 只提交当前任务文件；提交前核对当前 `ux-v2` 最新 Actions。推送后验证精确 SHA 的全部 required CI、部署与生产 smoke；结果保持 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**。
-
-### 恢复点
-
-安全边界已按最新设计重审 §10.49 和 §10.51：两者修复均已技术交付，但都仍待 owner 手机复验。开始 §10.53-F1 前，基于 `6bcef5a` 检查干净任务工作树及 `game/public-h4-copy.ts`、`game/public-activity.ts`、`app/public-activity-chip.tsx`、`app/page.tsx` 的现状；不要沿用旧版 UI 或重做已交付修复。
+复核本任务最终差异并提交本任务文件；推送 `ux-v2`，等待精确提交 Actions、Worker 部署及生产 smoke。之后依用户要求重新审查 §10.49 与 §10.51 的最新验收失败信息，再在安全边界将单一当前任务写入本文件。

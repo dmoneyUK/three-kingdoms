@@ -39,6 +39,16 @@ function room(overrides = {}) {
   return { status: "playing", phase: "play", turnSeat: 0, players, presentationSnapshot: null, ...overrides };
 }
 
+function visibleActivityStatus(status) {
+  const visible = { ...status };
+  delete visible.textSegments;
+  delete visible.headingSegments;
+  delete visible.stageSegments;
+  return visible;
+}
+
+const playerIds = (segments = []) => segments.filter((part) => part.kind === "player").map((part) => part.playerId);
+
 function harvestSnapshot({ responseCount = 0, stage = "NEGATION", effectState = "ACTIVE", nextEffectKind, responseWindowOpen = true } = {}) {
   const interactionId = "harvest-interaction";
   const rootFrameId = "harvest-root-frame";
@@ -130,7 +140,9 @@ function harvestSnapshot({ responseCount = 0, stage = "NEGATION", effectState = 
 }
 
 test("public activity uses the public turn seat and fails closed for an absent seat", () => {
-  assert.deepEqual(derivePublicActivityStatus(room({ turnSeat: 1 })), { kind: "turn", text: "Test Player 2's turn" });
+  const turn = derivePublicActivityStatus(room({ turnSeat: 1 }));
+  assert.deepEqual(visibleActivityStatus(turn), { kind: "turn", text: "Test Player 2's turn" });
+  assert.deepEqual(playerIds(turn.textSegments), ["p2"]);
   assert.deepEqual(derivePublicActivityStatus(room({ turnSeat: 99 })), { kind: "none", text: "" });
 });
 
@@ -138,10 +150,13 @@ test("public Draw Phase choice shows the turn and server-proven decision", () =>
   const current = snapshot({ stage: "SKILL_DECISION" });
   current.publicDrawPhaseDecision = { semantics: "PROVEN", visibility: "PUBLIC", actorId: "p1", actionLabels: ["Heroic"], allowSkip: true };
   const input = room({ phase: "response", presentationSnapshot: current });
-  assert.deepEqual(derivePublicActivityStatus(input), {
+  assert.deepEqual(visibleActivityStatus(derivePublicActivityStatus(input)), {
     kind: "response", text: "Test Player 1's turn", heading: "Test Player 1's turn",
     stage: "Waiting for Test Player 1 to use Heroic or Skip.",
   });
+  const copy = derivePublicActivityStatus(input);
+  assert.deepEqual(playerIds(copy.headingSegments), ["p1"]);
+  assert.deepEqual(playerIds(copy.stageSegments), ["p1"]);
   assert.equal(derivePublicActivityStatus({ ...input, turnSeat: 1 }).kind, "none");
   assert.equal(derivePublicActivityStatus({ ...input, phase: "play" }).kind, "turn");
   current.publicDrawPhaseDecision.visibility = "REDACTED";
@@ -153,12 +168,37 @@ test("public Draw Phase choice shows the turn and server-proven decision", () =>
 test("public next-decision copy narrates a combined suit and hidden-card choice", () => {
   const current = snapshot({ stage: "SEQUENTIAL_CHOICE", actorId: "p2", stableKind: "CHOICE", actionLabels: ["Choose a suit and a card"] });
   current.publicNextDecision.stageLabel = "Skill decision";
-  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: current })), {
+  assert.deepEqual(visibleActivityStatus(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: current }))), {
     kind: "response",
     text: "Waiting for Test Player 2 to choose a suit and a card",
     heading: "Waiting for Test Player 2 to choose a suit and a card",
     stage: "Skill decision",
   });
+  assert.deepEqual(playerIds(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: current })).textSegments), ["p2"]);
+});
+
+test("shared-window PAC exposes only the public requester identity consistently across viewers", () => {
+  const current = snapshot({ stage: "ENTOURAGE", actorId: null, stableKind: "SPECIAL" });
+  current.sharedResponseWindow = {
+    semantics: "PROVEN", windowId: "window-public-copy", mode: "ENTOURAGE_DODGE", requesterId: "p2", targetId: "p2",
+    openedAt: 100, deadline: 8100, stage: "COLLECTING", eligiblePlayerIds: ["private-helper"], submissions: [{ cardIds: ["secret-card"] }],
+  };
+  const views = players.map((player) => derivePublicActivityStatus(room({
+    phase: "response", presentationSnapshot: current, viewerId: player.id,
+    currentAction: { actorId: player.id, sharedWindow: { locked: player.id === "p3", choice: "intent", cardIds: ["private-card"] } },
+  })));
+  assert.ok(views.every((view) => JSON.stringify(view) === JSON.stringify(views[0])));
+  assert.equal(views[0].text, "Waiting for Wei Dodge responses for Test Player 2.");
+  assert.deepEqual(playerIds(views[0].textSegments), ["p2"]);
+  assert.doesNotMatch(JSON.stringify(views[0]), /private-helper|secret-card|private-card|submissions|eligiblePlayerIds/);
+});
+
+test("Borrowed Sword PAC names only its proven chooser and holder", () => {
+  const current = snapshot({ stage: "BORROWED_SWORD_TARGET_CHOICE", actorId: "p3", stableKind: "CHOICE", effect: "BorrowedSword" });
+  current.publicNextDecision.stageLabel = "Borrowed Sword target choice";
+  const status = derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: current }));
+  assert.equal(status.text, "Waiting for Test Player 3 to choose Test Player 2's Attack target.");
+  assert.deepEqual(playerIds(status.textSegments), ["p3", "p2"]);
 });
 
 test("PAC follows the exact committed Judgement event and ignores stale or mismatched stage facts", () => {
@@ -170,7 +210,7 @@ test("PAC follows the exact committed Judgement event and ignores stale or misma
   };
   const judgementSnapshot = snapshot({ stage: "JUDGEMENT", actorId: null, stableKind: "REST", publicEventFacts: [judgementFact] });
   const input = room({ phase: "resolving", presentationSnapshot: judgementSnapshot, activePublicJudgementEventId: "judgement-reveal" });
-  assert.deepEqual(derivePublicActivityStatus(input), {
+  assert.deepEqual(visibleActivityStatus(derivePublicActivityStatus(input)), {
     kind: "judgement", text: "Test Player 2 is judging Overindulgence.", heading: "Test Player 2 is judging Overindulgence.",
   });
   assert.equal(derivePublicActivityStatus({ ...input, activePublicJudgementEventId: "stale-reveal" }).kind, "none");
@@ -179,7 +219,7 @@ test("PAC follows the exact committed Judgement event and ignores stale or misma
   }).kind, "none", "an earlier Judgement fact must not override a newer server stage");
   assert.equal(derivePublicActivityStatus({ ...input, phase: "discard" }).kind, "judgement",
     "the exact public reveal stays aligned with H4/PAC until it stops being the active event");
-  assert.deepEqual(derivePublicActivityStatus({ ...input, phase: "discard", activePublicJudgementEventId: null }), {
+  assert.deepEqual(visibleActivityStatus(derivePublicActivityStatus({ ...input, phase: "discard", activePublicJudgementEventId: null })), {
     kind: "discard", text: "Waiting for Test Player 1 to discard cards.", heading: "Waiting for Test Player 1 to discard cards.",
   }, "server Discard Phase takes over after the prior reveal is no longer active");
 });
@@ -193,7 +233,7 @@ test("shared Negation wording is identical and ignores viewer-private submission
     pendingNegation: { submitted: true, submitterId: "p1", responseCount: 1 },
     currentAction: { actorId: "p3", reason: "private provider details" },
   });
-  assert.deepEqual(before, {
+  assert.deepEqual(visibleActivityStatus(before), {
     kind: "negation",
     text: "Waiting for counter responses",
     stage: "Negation can cancel the Something Out of Nothing effect on Test Player 2.",
@@ -248,7 +288,7 @@ test("Bumper Harvest H4 and PAC follow committed recipient Negation facts throug
   const picking = harvestSnapshot({ responseCount: 2, stage: "SEQUENTIAL_CHOICE" });
   assert.equal(derivePublicNegationNarration({ snapshot: picking, players, rootEventId: "harvest-root-event" })?.headline,
     restoredH4?.headline);
-  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: picking })), {
+  assert.deepEqual(visibleActivityStatus(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: picking }))), {
     kind: "response", text: "Waiting for Test Player 2 to pick a card", heading: "Waiting for Test Player 2 to pick a card",
   });
   const pickedCard = {
@@ -438,7 +478,7 @@ test("target-card choice progress is identical across viewers and exposes no sel
       text: "Waiting for Test Player 1 to choose a card from Test Player 2.",
     };
     for (const view of views) {
-      assert.deepEqual(view, expected);
+      assert.deepEqual(visibleActivityStatus(view), expected);
       assert.doesNotMatch(JSON.stringify(view), /hand|equipment|judgement|candidate|eligible|index|cardId/i);
     }
   }
@@ -462,7 +502,7 @@ test("PAC uses the snapshot's identity-matched public decision actor, independen
     effect: "Duel",
     duelExchange: { semantics: "PROVEN", decisionActorId: "p2", currentParticipantId: "p2" },
   });
-  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: publicSnapshot })), {
+  assert.deepEqual(visibleActivityStatus(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: publicSnapshot }))), {
     kind: "response",
     text: "Waiting for Test Player 2",
     heading: "Waiting for Test Player 2",
@@ -475,7 +515,7 @@ test("PAC uses the snapshot's identity-matched public decision actor, independen
     effect: "Duel",
     duelExchange: { semantics: "PROVEN", decisionActorId: "p3", currentParticipantId: "p3" },
   });
-  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: mismatchedProof })), {
+  assert.deepEqual(visibleActivityStatus(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: mismatchedProof }))), {
     kind: "response",
     text: "Waiting for Test Player 2",
     heading: "Waiting for Test Player 2",
@@ -494,7 +534,7 @@ test("PAC stage and actor come from the current snapshot, not provider-specific 
     decisionActorId: "p2",
   };
   const publicSnapshot = snapshot({ stage: "DUEL_EXCHANGE", actorId: "p2", effect: "Duel", lustDuelExchange: generatedExchange });
-  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: publicSnapshot })), {
+  assert.deepEqual(visibleActivityStatus(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: publicSnapshot }))), {
     kind: "response",
     text: "Waiting for Test Player 2",
     heading: "Waiting for Test Player 2",
@@ -507,7 +547,7 @@ test("PAC stage and actor come from the current snapshot, not provider-specific 
     effect: "Duel",
     lustDuelExchange: { ...generatedExchange, checkpointId: "old-checkpoint" },
   });
-  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: staleCheckpoint })), {
+  assert.deepEqual(visibleActivityStatus(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: staleCheckpoint }))), {
     kind: "response",
     text: "Waiting for Test Player 2",
     heading: "Waiting for Test Player 2",
@@ -520,7 +560,7 @@ test("PAC stage and actor come from the current snapshot, not provider-specific 
     effect: "Duel",
     lustDuelExchange: { ...generatedExchange, currentParticipantId: "p3", decisionActorId: "p3" },
   });
-  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: mismatchedActor })), {
+  assert.deepEqual(visibleActivityStatus(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: mismatchedActor }))), {
     kind: "response",
     text: "Waiting for Test Player 2",
     heading: "Waiting for Test Player 2",
@@ -534,7 +574,7 @@ test("PAC announces the publicly proven required response and outcome", () => {
     actorId: "p2",
     actionLabels: ["Attack", "take damage"],
   });
-  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: publicSnapshot })), {
+  assert.deepEqual(visibleActivityStatus(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: publicSnapshot }))), {
     kind: "response",
     text: "Waiting for Test Player 2 to play Attack or take damage",
     heading: "Waiting for Test Player 2 to play Attack or take damage",

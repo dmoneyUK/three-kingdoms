@@ -4,6 +4,7 @@ import { gameRenderFailureDiagnostic, resyncStaleResponseTimer } from "../game/g
 
 import { sharedResponseContributions } from "../game/shared-response-contribution";
 import { publicH4Copy } from "../game/public-h4-copy";
+import { verifiedPlayerCopy, type VerifiedPlayerCopySegment } from "../game/verified-player-copy";
 import { classifyRoomGetFailure, RoomGetError, RoomPollRecovery } from "../game/room-poll-recovery";
 
 import { isEntourageDodgeFor } from "../game/entourage-presentation";
@@ -41,6 +42,7 @@ import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlef
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
 import { PublicCardDisplay, PublicDiscardAnnouncementLayer, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, publicCardActionKey, publicCardJourneyOwnershipIdentity, publicCardMotionForCommittedCard, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
+import { VerifiedPlayerCopy } from "./verified-player-copy";
 import { PublicStageLayoutProvider } from "./public-stage-layout-context";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, hasAttackDodgeUxTrace, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
@@ -2507,20 +2509,21 @@ function heroDefinition(id?: string | null): Hero | null {
   return hero ? { id: hero.id, name: hero.name, faction: hero.faction, hp: hero.hp, ability: hero.ability, skills: hero.skills, skill: heroSkillName(hero.id) ?? undefined } : null;
 }
 
-function playTargetRejectionMessage(cardKind: CardKind, targetName: string, rejection: PlayTargetRejectionView | undefined) {
-  if (!rejection) return "Target eligibility is unavailable. Refresh the game state before choosing.";
+function playTargetRejectionCopy(cardKind: CardKind, target: { id: string; name: string }, rejection: PlayTargetRejectionView | undefined) {
+  const player = { id: target.id, name: target.name };
+  if (!rejection) return verifiedPlayerCopy(["Target eligibility is unavailable. Refresh the game state before choosing."]);
   const cardName = cardDefinition(cardKind).name;
   if (rejection.code === "OUT_OF_RANGE" && Number.isFinite(rejection.distance) && Number.isFinite(rejection.range)) {
     const rangeName = cardKind === "Attack" ? "Attack" : cardName;
     return cardKind === "Attack"
-      ? `Cannot attack ${targetName} — distance ${rejection.distance}; Attack range ${rejection.range}.`
-      : `Cannot use ${rangeName} on ${targetName} — distance ${rejection.distance}; ${rangeName} range ${rejection.range}.`;
+      ? verifiedPlayerCopy(["Cannot attack ", player, ` — distance ${rejection.distance}; Attack range ${rejection.range}.`])
+      : verifiedPlayerCopy([`Cannot use ${rangeName} on `, player, ` — distance ${rejection.distance}; ${rangeName} range ${rejection.range}.`]);
   }
-  if (rejection.code === "NO_TARGETABLE_CARDS") return `Cannot use ${cardName} on ${targetName} — no removable cards are available.`;
-  if (rejection.code === "DUPLICATE_DELAYED_CARD") return `Cannot use ${cardName} on ${targetName} — that card is already in their Judgement Zone.`;
-  if (rejection.code === "TARGET_RESTRICTED") return `Cannot target ${targetName} with ${cardName} because of a target restriction.`;
-  if (rejection.code === "ACTION_UNAVAILABLE") return `Target selection for ${cardName} is unavailable right now.`;
-  return `Cannot target ${targetName} with ${cardName} right now.`;
+  if (rejection.code === "NO_TARGETABLE_CARDS") return verifiedPlayerCopy([`Cannot use ${cardName} on `, player, " — no removable cards are available."]);
+  if (rejection.code === "DUPLICATE_DELAYED_CARD") return verifiedPlayerCopy([`Cannot use ${cardName} on `, player, " — that card is already in their Judgement Zone."]);
+  if (rejection.code === "TARGET_RESTRICTED") return verifiedPlayerCopy(["Cannot target ", player, ` with ${cardName} because of a target restriction.`]);
+  if (rejection.code === "ACTION_UNAVAILABLE") return verifiedPlayerCopy([`Target selection for ${cardName} is unavailable right now.`]);
+  return verifiedPlayerCopy(["Cannot target ", player, ` with ${cardName} right now.`]);
 }
 
 type LocalPlayTargetNotice = {
@@ -2530,6 +2533,7 @@ type LocalPlayTargetNotice = {
   modeKey: string;
   targetId: string;
   message: string;
+  segments?: readonly VerifiedPlayerCopySegment[];
   stale?: boolean;
 };
 
@@ -3345,6 +3349,81 @@ export type DecisionPresentation = {
     hasLocalControl: boolean;
   };
 };
+
+type LustTargetNameOrder = { firstId: string; firstName: string; secondId: string; secondName: string };
+
+export function buildConsoleVerifiedCopies(input: {
+  room: Room;
+  decisionPresentation: DecisionPresentation;
+  clientPresentation: PresentationClientView;
+  consoleInstruction: string;
+  consoleDisplayInstruction: string;
+  controlsVisible: boolean;
+  localWaitAlreadyPublic: boolean;
+  negationWindowSubmitted: boolean;
+  localSemanticResponseGuidance: boolean;
+  activeLocalPlayTargetMessage?: string;
+  activeLocalPlayTargetSegments?: readonly VerifiedPlayerCopySegment[];
+  lustTargetOrder: LustTargetNameOrder | null;
+}) {
+  const statusText = input.localWaitAlreadyPublic ? "NO ACTION NEEDED"
+    : input.negationWindowSubmitted ? "WAITING FOR OTHERS"
+      : input.localSemanticResponseGuidance ? "YOUR RESPONSE"
+        : input.controlsVisible ? "YOUR DECISION"
+          : input.decisionPresentation.isWaiting ? input.decisionPresentation.primaryStatus : "GAME STATUS";
+  const waitingActorId = input.clientPresentation.decisionActorId
+    ?? (input.decisionPresentation.isWaiting ? input.room.currentAction?.actorId ?? input.room.actionPlayerId : null);
+  const waitingActor = waitingActorId ? input.room.players.find((player) => player.id === waitingActorId) : null;
+  const waitingActorCopy = input.decisionPresentation.isWaiting && waitingActor?.name
+    ? verifiedPlayerCopy(["WAITING FOR ", { id: waitingActor.id, name: waitingActor.name.toUpperCase() }])
+    : null;
+  const statusSegments = statusText === waitingActorCopy?.message ? waitingActorCopy.segments : undefined;
+
+  const candidates = [] as ReturnType<typeof verifiedPlayerCopy>[];
+  const borrowedSword = input.room.pendingBorrowedSword;
+  if (input.room.phase === "response" && input.room.isMyAction && borrowedSword?.stage === "choose_target") {
+    const holder = input.room.players.find((player) => player.id === borrowedSword.holderId);
+    if (holder?.name) candidates.push(verifiedPlayerCopy(["Choose who ", { id: holder.id, name: holder.name }, " must Attack."]));
+  }
+  if (input.room.phase === "response" && input.room.isMyAction && borrowedSword?.stage === "force_attack" && borrowedSword.holderId === input.room.meId) {
+    const target = input.room.players.find((player) => player.id === borrowedSword.targetId);
+    if (target?.name) candidates.push(verifiedPlayerCopy(["Play Attack on ", { id: target.id, name: target.name }, ", or give up your Weapon."]));
+  }
+  const pendingTargetCard = input.room.pendingTargetCard;
+  if (pendingTargetCard && pendingTargetCard.actorId === input.room.meId && pendingTargetCard.sourceId === input.room.meId
+    && pendingTargetCard.targetId !== input.room.meId && input.room.currentAction?.kind === "target_card"
+    && input.room.currentAction.actorId === input.room.meId && input.room.currentAction.legalActions.includes("choose_target_card")) {
+    const target = input.room.players.find((player) => player.id === pendingTargetCard.targetId);
+    if (target?.name) {
+      const operation = pendingTargetCard.cardKind === "Steal" ? "take" : "discard";
+      candidates.push(verifiedPlayerCopy(["Choose one card to ", operation, " from ", { id: target.id, name: target.name }]));
+    }
+  }
+  const currentParticipantId = input.decisionPresentation.interaction?.currentParticipantId;
+  if (input.decisionPresentation.isWaiting && input.decisionPresentation.interaction?.stage && currentParticipantId) {
+    const currentParticipant = input.room.players.find((player) => player.id === currentParticipantId);
+    if (currentParticipant?.name) {
+      const stageLabel = presentationStageLabel(input.decisionPresentation.interaction.stage);
+      candidates.push(verifiedPlayerCopy([`${stageLabel} · `, { id: currentParticipant.id, name: currentParticipant.name }]));
+    }
+  }
+  const displayInstruction = input.activeLocalPlayTargetMessage ?? input.consoleDisplayInstruction;
+  const instructionCandidate = input.activeLocalPlayTargetMessage
+    ? input.activeLocalPlayTargetSegments ? { message: input.activeLocalPlayTargetMessage, segments: input.activeLocalPlayTargetSegments } : null
+    : candidates.find((candidate) => candidate.message === input.consoleInstruction && candidate.message === displayInstruction);
+  const lustCopy = input.lustTargetOrder
+    ? verifiedPlayerCopy(["Attack order: ", { id: input.lustTargetOrder.firstId, name: input.lustTargetOrder.firstName }, " first → ",
+      { id: input.lustTargetOrder.secondId, name: input.lustTargetOrder.secondName }, " second."])
+    : null;
+
+  return {
+    statusText,
+    statusSegments,
+    displayInstruction,
+    instructionSegments: instructionCandidate?.segments,
+    lustCopy,
+  };
+}
 
 function projectedPlayerName(room: Pick<Room, "players">, playerId: string | null | undefined, fallback: string) {
   return room.players.find((player) => player.id === playerId)?.name ?? fallback;
@@ -4521,9 +4600,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && activeSkillSelectedTargetIds.length === activeSkillTargetMin
     && activeSkillTargetMin === activeSkillTargetMax
     ? (() => {
-      const firstName = room.players.find((player) => player.id === activeSkillSelectedTargetIds[0])?.name;
-      const secondName = room.players.find((player) => player.id === activeSkillSelectedTargetIds[1])?.name;
-      return firstName && secondName ? { firstName, secondName } : null;
+      const first = room.players.find((player) => player.id === activeSkillSelectedTargetIds[0]);
+      const second = room.players.find((player) => player.id === activeSkillSelectedTargetIds[1]);
+      return first?.name && second?.name ? { firstId: first.id, firstName: first.name, secondId: second.id, secondName: second.name } : null;
     })()
     : null;
   const daqiaoDeflectionSelectionActive = Boolean(
@@ -11175,6 +11254,20 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     authoritativeDecline: consoleDecline,
     secondaryControls: consoleSecondaryControls,
   });
+  const consoleCopyPresentation = buildConsoleVerifiedCopies({
+    room,
+    decisionPresentation,
+    clientPresentation,
+    consoleInstruction,
+    consoleDisplayInstruction: consoleDecision.instruction,
+    controlsVisible: consoleDecision.controlsVisible,
+    localWaitAlreadyPublic,
+    negationWindowSubmitted,
+    localSemanticResponseGuidance: Boolean(localSemanticResponseGuidance),
+    activeLocalPlayTargetMessage: activeLocalPlayTargetNotice?.message,
+    activeLocalPlayTargetSegments: activeLocalPlayTargetNotice?.segments,
+    lustTargetOrder,
+  });
   const consolePrimaryId = consoleDecision.primary?.id ?? null;
   const harvestPoolProps: CardPoolPanelProps | null = harvestDisplay ? (() => {
     const choices: PublicCardPoolChoice[] = harvestDisplay.revealed.map((choice) => {
@@ -11437,11 +11530,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             || triggerTargetSelection?.targetIds.includes(player.id) && triggerTargetMode
             || normalTargetSelectionActive && playTargetEligibleIds.has(player.id),
           );
-          const blockedTargetReason = playTargetRejectionMessage(
+          const blockedTargetCopy = playTargetRejectionCopy(
             selectedPlayKind,
-            player.name,
+            player,
             player.alive ? playTargetRejection : { targetId: player.id, code: "NOT_ELIGIBLE" },
           );
+          const blockedTargetReason = blockedTargetCopy.message;
           const interactionRoles = projectInteractionSeatRoles(clientPresentation, player.id);
           return <OpponentPlayerCard
             key={`square-${player.id}`}
@@ -11473,6 +11567,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                     modeKey: targetEligibilityModeKey,
                     targetId: player.id,
                     message: blockedTargetReason,
+                    segments: blockedTargetCopy.segments,
                   });
                   if (fiveSeatPhoneAttackMode) openOpponentInspection(player.id, trigger);
                   return;
@@ -11590,10 +11685,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               aria-live="polite"
               aria-atomic="true"
             >
-              {!combinedChoiceTriggerOption && !borrowedSwordContinuationConsole && !lustLocalSelectionActive && !privateNegationAcknowledgement && !localWaitAlreadyPublic && !(publicActivityStatus.kind === "none" && !consoleIsDecisionActor) && !(consoleIsDecisionActor && room.currentAction?.kind === "trigger") && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "WAITING FOR OTHERS" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
-              {!combinedChoiceTriggerOption && <strong>{activeLocalPlayTargetNotice?.message ?? consoleDecision.instruction}</strong>}
+              {!combinedChoiceTriggerOption && !borrowedSwordContinuationConsole && !lustLocalSelectionActive && !privateNegationAcknowledgement && !localWaitAlreadyPublic && !(publicActivityStatus.kind === "none" && !consoleIsDecisionActor) && !(consoleIsDecisionActor && room.currentAction?.kind === "trigger") && <small>
+                <VerifiedPlayerCopy message={consoleCopyPresentation.statusText} segments={consoleCopyPresentation.statusSegments} />
+              </small>}
+              {!combinedChoiceTriggerOption && <strong>
+                <VerifiedPlayerCopy
+                  message={consoleCopyPresentation.displayInstruction}
+                  segments={consoleCopyPresentation.instructionSegments}
+                />
+              </strong>}
               {lustTargetOrder && <em className="lust-order-guidance" data-testid="lust-order-guidance">
-                Attack order: <strong>{lustTargetOrder.firstName}</strong> first → <span className="lust-second-actor">{lustTargetOrder.secondName}</span> second.
+                <VerifiedPlayerCopy
+                  message={consoleCopyPresentation.lustCopy?.message ?? ""}
+                  segments={consoleCopyPresentation.lustCopy?.segments}
+                  playerClassNameForOrdinal={(ordinal) => ordinal === 1 ? "lust-second-actor" : undefined}
+                />
               </em>}
               {daqiaoDeflectionSelectionActive
                 ? <div className="deflection-selection-guidance" data-testid="deflection-selection-guidance" role="group" aria-label="Deflection selections">

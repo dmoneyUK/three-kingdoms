@@ -8110,3 +8110,38 @@
   font-weight: 600;
   letter-spacing: normal;
 }
+
+/* §10.53-F1: one compact, readable treatment for proven player names in
+   H4, public PAC and viewer-private Console copy. */
+.game-shell .message-player-name,
+.game-shell .public-h4-player {
+  color: #d3bf8d;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+  line-height: inherit;
+}
+.game-shell .public-card-display-journey-copy .message-player-name,
+.game-shell .public-card-display-journey-copy .public-h4-player {
+  font-size: 12px;
+}
+.game-shell .play-table > .public-activity-chip > strong .message-player-name {
+  font-size: 12px;
+}
+.game-shell .play-table > .public-activity-chip > small .message-player-name {
+  font-size: 10px;
+}
+.game-shell .local-player-dock .console-guidance .decision-status strong .message-player-name,
+.game-shell .local-player-dock .console-guidance .decision-status em .message-player-name {
+  font-size: 11px;
+}
+.game-shell .local-player-dock .console-guidance .decision-status em.lust-order-guidance .message-player-name {
+  color: #d3bf8d;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+}
+@media (max-width: 520px) {
+  .game-shell .local-player-dock .console-guidance .decision-status strong .message-player-name,
+  .game-shell .local-player-dock .console-guidance .decision-status em .message-player-name {
+    font-size: 10px;
+  }
+}
