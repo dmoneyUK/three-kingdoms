@@ -1,4 +1,5 @@
 import test from "node:test";
+import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import {
   drainEmptyPrivateDecisions, requestAndSettle, assert, card, createHumanGame, query, quote, request, roomCardCount, setDeck, setHand, setTurn, sql, state,
 } from "./test-support.mjs";
@@ -10,6 +11,11 @@ function configure(game, hp = 4) {
   for (const player of [source, rescuer, third, fourth]) setHand(player.id, [], player.id === source.id ? hp : 4, 4);
   setTurn(game.code, source.seat, "play");
   return { source, rescuer, third, fourth, sourceMember: game.members[0], rescuerMember: game.members[1] };
+}
+
+function publicSkillFact(view) {
+  return [...(view.presentationSnapshot?.publicEventFacts ?? []), ...(view.presentationSnapshot?.retainedPublicEventFacts ?? [])]
+    .find((fact) => fact.category === "SKILL_USED" && fact.label === "Self Sacrifice");
 }
 
 async function activate(game, setup) {
@@ -30,6 +36,36 @@ test("Self Sacrifice loses 1 HP before drawing when Huang Gai survives", async (
   assert.equal(result.data.room.phase, "play");
   assert.equal(roomCardCount(game.code, drawn[0].id), 1);
   assert.equal(roomCardCount(game.code, drawn[1].id), 1);
+
+  const fact = publicSkillFact(result.data.room);
+  assert.ok(fact, "a committed no-card skill outcome has one public semantic fact");
+  assert.equal(fact.actorId, setup.source.id);
+  assert.equal(fact.rootEventId, fact.eventId);
+  const narration = derivePublicInteractionNarration({
+    snapshot: result.data.room.presentationSnapshot,
+    players: result.data.room.players,
+    rootEventId: fact.rootEventId,
+    interactionId: fact.identity.interactionId,
+    rootFrameId: fact.identity.rootFrameId,
+    eventId: fact.eventId,
+  });
+  assert.equal(narration?.headline, `${setup.source.name} used Self Sacrifice.`);
+  assert.doesNotMatch(JSON.stringify(result.data.room.presentationSnapshot.publicEventFacts), /huang-safe-[ab]/,
+    "public skill narration does not disclose the privately drawn cards");
+  for (const member of game.members) {
+    const viewer = (await state(game.code, member.token)).data;
+    assert.deepEqual(publicSkillFact(viewer), fact, "every viewer receives the same committed public skill fact");
+    const viewerFact = publicSkillFact(viewer);
+    const viewerNarration = derivePublicInteractionNarration({
+      snapshot: viewer.presentationSnapshot,
+      players: viewer.players,
+      rootEventId: viewerFact.rootEventId,
+      interactionId: viewerFact.identity.interactionId,
+      rootFrameId: viewerFact.identity.rootFrameId,
+      eventId: viewerFact.eventId,
+    });
+    assert.equal(viewerNarration?.headline, `${setup.source.name} used Self Sacrifice.`);
+  }
 });
 
 test("1 HP Self Sacrifice opens Dying before either draw card is available", async () => {
@@ -47,6 +83,18 @@ test("1 HP Self Sacrifice opens Dying before either draw card is available", asy
   assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(setup.source.id)}`)), []);
   assert.deepEqual(JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(game.code)}`)).map((item) => item.id), drawn.map((item) => item.id));
   assert.equal(result.data.room.log.some((entry) => /damage_suffered|suffered damage/i.test(entry)), false);
+  const fact = publicSkillFact(result.data.room);
+  assert.ok(fact, "the committed Self Sacrifice fact survives the transition into Dying");
+  assert.ok(result.data.room.presentationSnapshot.publicEventFacts.some((event) => event.eventId === fact?.eventId),
+    "the Dying interaction snapshot retains the committed Self Sacrifice fact");
+  assert.equal(derivePublicInteractionNarration({
+    snapshot: result.data.room.presentationSnapshot,
+    players: result.data.room.players,
+    rootEventId: fact.rootEventId,
+    interactionId: fact.identity.interactionId,
+    rootFrameId: fact.identity.rootFrameId,
+    eventId: fact.eventId,
+  })?.headline, `${setup.source.name} used Self Sacrifice.`);
 });
 
 test("1 HP Self Sacrifice resumes after Peach rescue and draws exactly once", async () => {

@@ -788,6 +788,27 @@ function publicFactFor(causal: CausalContext | undefined, category: PublicPresen
     category, ...fields, ...(committedIdentity ? { committedIdentity } : {}),
   };
 }
+function addCommittedPublicSkillOutcome(log: string[], actor: PlayerRow, skillLabel: string) {
+  const causal = createCausalRoot({
+    stage: "SETTLEMENT",
+    origin: { originSourceId: actor.id, originEffect: "public_skill_outcome", originalTargetIds: [] },
+    current: { currentSourceId: actor.id, currentEffect: "public_skill_outcome", currentTargetIds: [], resolvingPlayerId: actor.id },
+  });
+  const eventId = crypto.randomUUID();
+  const fact = publicFactFor(causal.context, "SKILL_USED", {
+    rootEventId: eventId,
+    actorId: actor.id,
+    affectedPlayerIds: [],
+    label: skillLabel,
+    effect: { kind: "skill_use" },
+  }, causal.envelope);
+  const committed = addLogWithId(log, `${actor.name} used ${skillLabel}.`, undefined, {
+    actorId: actor.id,
+    importance: "essential",
+    ...(fact ? { publicFact: fact } : {}),
+  }, eventId);
+  return { log: committed.log, eventId, causal: causal.context, envelope: causal.envelope };
+}
 type PublicTriggerOutcomeSummary = { affectedPlayerIds?: string[]; amount?: number; outcomeLabel: string };
 
 function publicTriggerOutcomeSummary(outcome: { kind: string }): PublicTriggerOutcomeSummary {
@@ -8472,14 +8493,17 @@ export async function POST(request: Request) {
         const hp = Math.max(0, (liveMe.hp ?? 1) - execution.outcome.lose);
         const nextState = { ...skillState, turnPlayerId: liveMe.id };
         const resumeEffect: DyingResumeEffect = { kind: "draw_cards", playerId: liveMe.id, amount: execution.outcome.draw, label: "uses Self Sacrifice" };
+        const publicSkillOutcome = addCommittedPublicSkillOutcome(log, liveMe, option?.label ?? "a skill");
+        log = publicSkillOutcome.log;
+        const publicSkillRoom = { ...liveRoom, causal_envelope_json: JSON.stringify(publicSkillOutcome.envelope) };
         if (hp <= 0) {
-          await startDyingRescue(liveRoom, null, { ...liveMe, hp }, livePlayers, deck, discard, log, [
+          await startDyingRescue(publicSkillRoom, null, { ...liveMe, hp }, livePlayers, deck, discard, log, [
             db.prepare("UPDATE rooms SET skill_state_json = ? WHERE id = ?").bind(JSON.stringify(nextState), room.id),
-          ], liveMe, "play", undefined, hp, undefined, undefined, resumeEffect);
+          ], liveMe, "play", undefined, hp, undefined, undefined, resumeEffect, publicSkillOutcome.causal);
         } else {
           await db.batch([
             db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, liveMe.id),
-            db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(nextState), JSON.stringify(log), room.id),
+            db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, skill_state_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(JSON.stringify(nextState), JSON.stringify(log), JSON.stringify(publicSkillOutcome.envelope), room.id),
           ]);
           await continueDyingResumeEffect(room.id, resumeEffect);
         }

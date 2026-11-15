@@ -2,10 +2,14 @@
 
 ## 黄盖 Self Sacrifice 公共信息区/H4 与共享技能事件发布修复
 
-**状态：BLOCKED — 等待 Planner 将已批准的详细设计写入远端 `docs/UX2-refine.md`。**
+**状态：IMPLEMENTED LOCALLY — 等待精确 SHA 的 CI、Worker 部署与生产 smoke。**
 
-**检查结果（2026-11-15 21:10 UTC）：** 已同步 `origin/ux-v2` 至 `f2af186d682e9594ffa30be8962fd51c673157bf`，读取仓库 `AGENTS.md`、完整当前 `HANDOVER.md`、`docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` 和最新 UX2 设计。最新设计修订仍为 2026-11-15 20:34 UTC，未找到黄盖 Self Sacrifice 公共信息/H4 丢失或共享公共技能事件发布机制的任务节、架构方案或验收标准。§10.49 只规定共享响应窗口与 DYING_PEACH 提交；不能用它推断这项 H4/公共发布修复。
+**设计依据：** 最新远端 `ux-v2`，`docs/UX2-refine.md` 修订于 2026-11-15 21:34 UTC；执行范围来自当前用户批准指令，遵守 §5.3 R6-QA-02 / R7 的单一事实型 H4 与公开/私有信息边界。实现基于 `69ff09d996a3dc461b1efe2a46d123c90bec3679`，并保留远端文档更新 `580a5e7236e716f16d6cc73c25b504226a684c3c`。
 
-**恢复点：** Planner 更新并推送该任务的批准设计及准确任务边界后，重新读取对应完整设计，再按其要求实施。设计到位前不修改源代码、不自行补写架构或验收行为。
+**实现：** 在通用服务端技能结果发布路径记录一条已提交的 `SKILL_USED` 公共事实，并持久化对应因果信封；现有共享 H4/PAC 投影据此生成文案。明确空 `affectedPlayerIds`，使当前交互投影也接纳无目标技能事实。公开事实不包含私下摸牌；未改规则、合法动作或 UI 专属分支。
 
-**最近交付：§10.57 SKIP-BUTTON-RED-CONSISTENCY-01** 已推送，仍待 Owner iPhone 复验。实现 SHA `f2af186d682e9594ffa30be8962fd51c673157bf`；[精确 SHA Actions 43761379770](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43761379770) 全绿（API、lint/fast、浏览器 smoke、D1 migration、Worker deploy、生产 smoke）；Worker `87be5fcd-8897-4019-ab72-b808942241e5`，生产 `/api/health` 正常。组件断言 3/3、build、一个 440×766 Retaliation 浏览器场景 1/1 通过；本地 UI 浏览器时间少于 1 分钟。未标记 USER-ACCEPTED。
+**修改文件：** `app/api/rooms/route.ts`、`tests/api/huang-gai.test.mjs`。
+
+**验证（2026-11-15 21:40 UTC）：** `npm run build` 通过；定向 Huang Gai API 回归 6/6 通过；`git diff --check` 通过。测试覆盖存活与进入 Dying 两条结果、当前活动公共事实/H4、全体观察者事实一致、私下摸牌不进入公共事实，以及既有救援和实体牌守恒行为。开发中曾有一次新增 Dying 断言失败，确认共享事实缺少空目标数组后修正；最终定向回归全绿。未运行本地 UI/browser 测试。
+
+**交付：** 实现已重放到最新远端设计文档之后，当前任务提交即将推送；精确 SHA CI、Worker 部署及生产 smoke 待执行。最近相关 Actions `43761379770` 对代码 SHA `f2af186d682e9594ffa30be8962fd51c673157bf` 全绿。不得标记 USER-ACCEPTED；部署后等待 Owner iPhone 复验。
