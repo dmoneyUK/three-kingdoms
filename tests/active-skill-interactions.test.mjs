@@ -946,7 +946,7 @@ test("Cultivation trigger has a routed skill control, generic prompt, and contin
 
     const cultivation = button(renderer, { "aria-label": "Cultivation" });
     assert.equal(cultivation.props.disabled, false, "Cultivation exposes a Skills-panel control");
-    assert.equal(text(renderer, "Use Cultivation: Draw 1 card after using a Stratagem, or Skip.").length, 1, "Cultivation uses the trigger-specific prompt");
+    assert.equal(renderer.root.findAllByType("strong").filter((node) => renderedNodeText(node) === "Use Cultivation: Draw 1 card after using a Stratagem, or Skip.").length, 1, "Cultivation uses the trigger-specific prompt");
     assert.equal(button(renderer, { children: "Skip" }).props.disabled, false, "Cultivation keeps the optional skip action");
     await act(async () => { cultivation.props.onClick(); });
     assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "huang_yueying_cultivation" }]);
@@ -962,9 +962,9 @@ test("Cultivation trigger has a routed skill control, generic prompt, and contin
     let opponentRenderer;
     await act(async () => { opponentRenderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: opponentRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: opponentRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("No action needed.")).length, 1, "absent public proof keeps the non-actor Local Dock neutral");
-    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Waiting for the target to answer the attacker")).length, 0, "the Attack fallback prompt is absent");
-    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Use Cultivation")).length, 0, "Cultivation remains private");
+    assert.equal(opponentRenderer.root.findAllByType("strong").filter((node) => renderedNodeText(node) === "No action needed.").length, 1, "absent public proof keeps the non-actor Local Dock neutral");
+    assert.equal(renderedNodeText(opponentRenderer.root).includes("Waiting for the target to answer the attacker"), false, "the Attack fallback prompt is absent");
+    assert.equal(renderedNodeText(opponentRenderer.root).includes("Use Cultivation"), false, "Cultivation remains private");
     assert.equal(opponentRoom.actionPlayerId, "p1");
     assert.equal(opponentRoom.currentAction.actorId, "p1");
 
