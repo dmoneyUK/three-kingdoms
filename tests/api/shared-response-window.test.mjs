@@ -116,6 +116,53 @@ test("Dying accepts one Peach per round and never carries losing intents to a fr
   assert.equal(discardIds(game.code).includes("loser"), false);
 });
 
+test("shared Dying Peach is a private respond intent and rescues once at the fixed deadline", async () => {
+  const peach = card("Peach", "huang-gai-rescue-peach", "♥");
+  const game = await seed([player("HUANG GAI", "huang-gai", "Lord", [], 1), player("SIMA YI", "simayi", "Loyalist", [peach]),
+    player("CAO CAO", "cao-cao", "Rebel", [card("Peach", "other-rescue-peach", "♦")]), player("SOURCE", "sun-quan", "Renegade", [card("Attack", "attack")])], 3);
+  const [target, rescuer, silent, source] = game.players;
+  await openAttack(game, source, target);
+  const damaged = await requestAndSettle("decline_response", { code: game.code, token: target.token, preserveResponse: true });
+  assert.equal(damaged.status, 200, JSON.stringify(damaged.data));
+  assert.equal(damaged.data.room.phase, "dying");
+  assert.equal(damaged.data.room.players.find((p) => p.id === target.id).hp, 0);
+  const window = stored(game);
+  assert.equal(window.continuation.mode, "DYING_PEACH");
+
+  const rescuerView = (await state(game.code, rescuer.token)).data;
+  assert.equal(rescuerView.currentAction.kind, "dying");
+  assert.equal(rescuerView.currentAction.actorId, rescuer.id);
+  assert.ok(rescuerView.currentAction.legalActions.includes("respond"));
+  const option = rescuerView.currentAction.options.find((candidate) => candidate.activation === "implicit"
+    && candidate.satisfies === "peach" && candidate.selection?.type === "cards"
+    && candidate.selection.min === 1 && candidate.selection.max === 1
+    && candidate.selection.eligibleCardIds.includes(peach.id));
+  assert.ok(option, "the current viewer receives an implicit legal physical Peach option");
+  assert.ok(rescuerView.currentAction.legalActions.includes("skip_rescue"));
+  assert.ok(rescuerView.myHand.some((held) => held.id === peach.id));
+
+  const intent = await request("respond", { code: game.code, token: rescuer.token, windowId: window.windowId, providerId: option.providerId, cardId: peach.id });
+  assert.equal(intent.status, 200, JSON.stringify(intent.data));
+  const locked = (await state(game.code, rescuer.token)).data;
+  assert.equal(locked.currentAction.sharedWindow.locked, true);
+  assert.equal(locked.currentAction.sharedWindow.choice, "intent");
+  assert.ok(locked.myHand.some((held) => held.id === peach.id), "intent submission does not consume the card");
+  const silentView = (await state(game.code, silent.token)).data;
+  assert.deepEqual(silentView.presentationSnapshot.sharedResponseWindow, locked.presentationSnapshot.sharedResponseWindow);
+  assert.equal(silentView.currentAction.sharedWindow.locked, false);
+  assert.equal(silentView.timeline.some((event) => event.card?.id === peach.id || event.cards?.some((entry) => entry.id === peach.id)), false,
+    "an uncommitted private intent is not a public card play");
+
+  expireSharedWindow(game, stored(game));
+  const resolved = await request("advance_timers", { code: game.code, token: source.token });
+  assert.equal(resolved.status, 200, JSON.stringify(resolved.data));
+  assert.equal(resolved.data.room.players.find((p) => p.id === target.id).hp, 1);
+  assert.notEqual(resolved.data.room.status, "finished");
+  assert.equal((await state(game.code, rescuer.token)).data.myHand.some((held) => held.id === peach.id), false);
+  assert.equal(discardIds(game.code).filter((id) => id === peach.id).length, 1);
+  assert.equal(resolved.data.room.presentationSnapshot.sharedResponseContributions.at(-1).actorId, rescuer.id);
+});
+
 test("window auth, one lock, immutable timer, refresh privacy and invalid intents", async () => {
   const game = await seed([player("CAO", "cao-cao", "Lord", []), player("ONE", "simayi", "Loyalist", [card("Dodge", "one")]),
     player("TWO", "zhen-ji", "Rebel", [card("Dodge", "two")]), player("SOURCE", "sun-quan", "Renegade", [card("Attack", "attack")])]);

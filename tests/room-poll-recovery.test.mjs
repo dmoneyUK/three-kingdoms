@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { classifyRoomGetFailure, RoomPollRecovery } from "../game/room-poll-recovery.ts";
+import { runSharedResponseExpiryAttempt } from "../game/shared-response-expiry.ts";
 
 test("GET failures retire only explicitly proven missing rooms or invalid sessions", () => {
   for (const status of [null, 200, 408, 429, 500, 502, 503, 404, 400, 403]) {
@@ -65,4 +66,41 @@ test("in-flight identity deduplication and bounded retry survive repeated failur
   gate.recover("current");
   assert.equal(gate.stale, false);
   assert.equal(gate.failures, 0);
+});
+
+test("shared expiry retries a coalesced GET and advances only the same expired public window", async () => {
+  const window = { semantics: "PROVEN", windowId: "liu-window", mode: "INFLUENCING_ATTACK", requesterId: "liu", targetId: "target", openedAt: 0, deadline: 8_000, stage: "COLLECTING" };
+  let now = window.deadline + 193;
+  let ordinaryGetInFlight = true;
+  let reads = 0;
+  let advanceActions = [];
+  let retries = 0;
+  let liveWindow = window;
+  const attempt = () => runSharedResponseExpiryAttempt({
+    expected: { windowId: window.windowId, deadline: window.deadline },
+    readCurrentWindow: async () => {
+      reads++;
+      // Reproduce the deadline GET collision: the ordinary same-key poll is
+      // still in flight from deadline−35ms through deadline+193ms.
+      if (ordinaryGetInFlight || reads === 3) return false;
+      return liveWindow;
+    },
+    advanceTimers: async () => { advanceActions.push("advance_timers"); },
+    isCurrent: () => true,
+    now: () => now,
+    scheduleDeadline: () => assert.fail("An already expired window cannot be rescheduled before its deadline"),
+    retry: () => { retries++; },
+  });
+
+  assert.equal(await attempt(), "retry", "the false preflight read schedules a same-window retry");
+  assert.equal(advanceActions.length, 0, "the first coalesced read is not treated as window closure or settlement");
+  ordinaryGetInFlight = false;
+  assert.equal(await attempt(), "retry", "the recovered same window posts expiry and retries a false verification read");
+  assert.deepEqual(advanceActions, ["advance_timers"]);
+  assert.equal(retries, 2);
+
+  liveWindow = { ...window, windowId: "next-window", deadline: 20_000 };
+  assert.equal(await attempt(), "closed", "an authoritative different window stops retries");
+  assert.deepEqual(advanceActions, ["advance_timers"], "the old window is never advanced after its identity changes");
+  assert.equal(retries, 2);
 });

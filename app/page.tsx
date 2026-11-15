@@ -6,6 +6,7 @@ import { sharedResponseContributions } from "../game/shared-response-contributio
 import { publicH4Copy } from "../game/public-h4-copy";
 import { verifiedPlayerCopy, type VerifiedPlayerCopySegment } from "../game/verified-player-copy";
 import { classifyRoomGetFailure, RoomGetError, RoomPollRecovery } from "../game/room-poll-recovery";
+import { runSharedResponseExpiryAttempt } from "../game/shared-response-expiry";
 
 import { isEntourageDodgeFor } from "../game/entourage-presentation";
 
@@ -2201,18 +2202,18 @@ export default function Home() {
       watcher!.inFlight = true;
       try {
         const selectedViewerId = room?.isTestController ? testViewerIdRef.current ?? undefined : undefined;
-        const current = await fetchRoom(roomCode, token, true, selectedViewerId);
-        if (!isCurrent()) return;
-        const live = current && (current.presentationV2?.sharedResponseWindow ?? current.presentationSnapshot?.sharedResponseWindow);
-        if (!live || live.windowId !== windowId || live.deadline !== deadline) return;
-        if (Date.now() < deadline) { schedule(deadline - Date.now()); return; }
-        await sharedResponseExpiryAdvanceRef.current();
-        if (!isCurrent()) return;
-        const fresh = await fetchRoom(roomCode, token, true, selectedViewerId);
-        if (!isCurrent()) return;
-        const next = fresh && (fresh.presentationV2?.sharedResponseWindow ?? fresh.presentationSnapshot?.sharedResponseWindow);
-        if (!next || next.windowId !== windowId || next.deadline !== deadline) return;
-        retry();
+        await runSharedResponseExpiryAttempt({
+          expected: { windowId, deadline },
+          readCurrentWindow: async () => {
+            const current = await fetchRoom(roomCode, token, true, selectedViewerId);
+            return current === false ? false : current.presentationV2?.sharedResponseWindow ?? current.presentationSnapshot?.sharedResponseWindow ?? null;
+          },
+          advanceTimers: () => sharedResponseExpiryAdvanceRef.current(),
+          isCurrent,
+          now: Date.now,
+          scheduleDeadline: schedule,
+          retry,
+        });
       } catch {
         if (isCurrent()) retry();
       } finally {
@@ -4876,6 +4877,45 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     || responseBarrierEvent?.importance === "informational"
     || presentedEventIds.has(responseReadyAfterEventId);
   const dyingFirstAidOption = semanticResponseOptions.find((option) => option.providerId === "hua_tuo_first_aid" && option.activation === "explicit") ?? null;
+  const sharedDyingPeachWindowActive = Boolean(
+    publicSharedResponseWindow?.semantics === "PROVEN"
+    && publicSharedResponseWindow.mode === "DYING_PEACH"
+    && room.phase === "dying"
+    && room.currentAction?.kind === "dying"
+    && room.currentAction.actorId === room.meId
+    && room.currentAction.sharedWindow?.windowId === publicSharedResponseWindow.windowId
+    && !room.currentAction.sharedWindow.locked
+    && room.currentAction.requirement === "peach"
+    && room.isMyAction
+    && !sharedWindowExpired,
+  );
+  const sharedDyingPeachOption = sharedDyingPeachWindowActive
+    ? semanticResponseOptions.find((option) => option.activation === "implicit"
+      && option.satisfies === "peach"
+      && option.selection?.type === "cards"
+      && option.selection.min === 1
+      && option.selection.max === 1) ?? null
+    : null;
+  const sharedDyingPeachSelection = sharedDyingPeachOption?.selection?.type === "cards" ? sharedDyingPeachOption.selection : null;
+  const sharedDyingPeachAvailable = Boolean(
+    sharedDyingPeachWindowActive
+    && canUseAction(room.currentAction, "respond")
+    && responsePresentationReady
+    && !busy
+    && !presentationBusy
+    && sharedDyingPeachOption
+    && sharedDyingPeachSelection
+    && selectedResponseProvider?.providerId === sharedDyingPeachOption.providerId
+    && sharedDyingPeachSelection.eligibleCardIds.some((cardId) => room.myHand.some((item) => item.id === cardId && item.kind === "Peach")),
+  );
+  const sharedDyingPeachSelectionComplete = Boolean(
+    sharedDyingPeachAvailable
+    && sharedDyingPeachOption
+    && sharedDyingPeachSelection
+    && selectedResponseProvider?.providerId === sharedDyingPeachOption.providerId
+    && sharedDyingPeachSelection.eligibleCardIds.some((cardId) => selected === cardId
+      && room.myHand.some((item) => item.id === cardId && item.kind === "Peach")),
+  );
   const dyingFirstAidAvailable = Boolean(
     !sharedWindowExpired
     &&
@@ -5001,8 +5041,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const responseDeadline = room.currentAction?.deadline ?? room.pendingNegation?.deadline ?? room.pendingGreenDragon?.deadline ?? room.pendingRockCleaving?.deadline ?? room.pendingDuel?.deadline ?? room.pendingAttack?.deadline ?? 0;
   const canRescue = room.phase === "dying" && room.isMyAction && !sharedWindowExpired;
   const rescueDecisionReady = canRescue && !presentationBusy;
-  const responseCardDisabled = (item: Card) => responseCardSelectionActive && (busy || !responseCardAllowed(item))
-    || rescueDecisionReady && !canRespond && !dyingFirstAidSelectionActive && item.kind !== "Peach";
+  const responseCardDisabled = (item: Card) => sharedDyingPeachWindowActive && !dyingFirstAidSelectionActive
+    ? busy || presentationBusy || !sharedDyingPeachAvailable || item.kind !== "Peach"
+      || !sharedDyingPeachSelection?.eligibleCardIds.includes(item.id)
+    : responseCardSelectionActive && (busy || !responseCardAllowed(item))
+      || rescueDecisionReady && !canRespond && !dyingFirstAidSelectionActive && item.kind !== "Peach";
   const timelineKey = room.timeline.map((event) => event.id).join("|");
   useLayoutEffect(() => {
     const rail = handRailRef.current;
@@ -6093,7 +6136,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         : null;
     // A Negation submitted during the shared window is still a private intent.
     // Only the server-selected winner may create a public card presentation.
-    const presentImmediately = Boolean(optimisticEvent && !room.currentAction?.negationWindowId && !optimisticPlay && !activeEvent && eventQueue.length === 0);
+    const presentImmediately = Boolean(optimisticEvent && !room.currentAction?.negationWindowId && !room.currentAction?.sharedWindow && !optimisticPlay && !activeEvent && eventQueue.length === 0);
     if (presentImmediately && optimisticEvent) { selfTargetWindowRevision.current += 1; materials.forEach((item) => optimisticallyPresentedCards.current.add(item.id)); setSelfTargetWindowClosing(false); setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [optimisticEvent])); setOptimisticPlay(optimisticEvent); }
     setResponseProviderId(""); setLongdanMode(null); setSelected(""); setSerpentSelected([]);
     const accepted = await onAction("respond", { providerId: provider.providerId, ...(selectedIds.length === 1 ? { cardId: selectedIds[0] } : selectedIds.length > 1 ? { cardIds: selectedIds } : {}) });
@@ -11056,7 +11099,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ...(triggerResponse && canUseAction(room.currentAction, "trigger") && selectedTriggerOption?.selection?.type === "target" ? [{ id: "trigger-target", label: "Confirm", enabled: localTargetSelection.canConfirm, priority: 70 }] : []),
     ...(canRespond && selectedResponseProvider ? [{ id: "response", label: "Confirm", enabled: canUseAction(room.currentAction, "respond") && responseSelectionComplete, priority: 60 }] : []),
     ...(dyingFirstAidSelectionActive ? [{ id: "first-aid", label: "Confirm", enabled: canUseAction(room.currentAction, "respond") && responseSelectionComplete, priority: 65 }] : []),
-    ...(rescueDecisionReady && !canRespond ? [{ id: "rescue", label: "Peach", enabled: canUseAction(room.currentAction, "give_peach") && card?.kind === "Peach", priority: 60 }] : []),
+    ...(sharedDyingPeachAvailable ? [{ id: "shared-dying-peach", label: "Confirm", enabled: sharedDyingPeachSelectionComplete, priority: 66 }] : []),
+    ...(rescueDecisionReady && !canRespond && !sharedDyingPeachWindowActive ? [{ id: "rescue", label: "Peach", enabled: canUseAction(room.currentAction, "give_peach") && card?.kind === "Peach", priority: 60 }] : []),
     ...(room.isMyTurn && room.phase === "discard" && currentActionOwnedByViewer ? [{ id: "discard", label: `Discard ${excessCards} selected`, enabled: canUseAction(room.currentAction, "discard_cards") && discardSelected.length === excessCards, priority: 60 }] : []),
     ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play", enabled: (canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack) && (!selectedCardNeedsTarget || selectedPlayTargetsValid) && (!(["Dodge", "Negation"].includes(card?.kind ?? "")) || selectedCanPlayAsAttack)), priority: 40 }] : []),
   ];
@@ -11793,7 +11837,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {room.isMyTurn && canPlay && consoleKind === "turn" && normalTargetSelectionActive && !ordinaryPlayTargetSelection && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !normalHasProviderCancelSurface && <button className="end local-target-cancel" disabled={busy || presentationBusy && !ordinaryTurnPlayAuthorized || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
           </div>
           <div data-action-slot="primary">
-            {rescueDecisionReady && !canRespond && consolePrimaryId === "rescue" && <button className="primary" disabled={busy || card?.kind !== "Peach" || !consoleDecision.primary?.enabled} onClick={() => { if (card?.kind === "Peach") void onAction("give_peach", { cardId: card.id }); setSelected(""); }}>{busy ? "Playing…" : "Peach"}</button>}
+            {sharedDyingPeachAvailable && consolePrimaryId === "shared-dying-peach" && <button className="primary" data-shared-dying-peach-confirm="true" disabled={busy || presentationBusy || !sharedDyingPeachSelectionComplete || !canUseAction(room.currentAction, "respond") || !consoleDecision.primary?.enabled} onClick={() => { if (sharedDyingPeachOption) void submitResponseProvider(sharedDyingPeachOption); }}>{busy ? "Confirming…" : "Confirm"}</button>}
+            {rescueDecisionReady && !canRespond && !sharedDyingPeachWindowActive && consolePrimaryId === "rescue" && <button className="primary" disabled={busy || card?.kind !== "Peach" || !consoleDecision.primary?.enabled} onClick={() => { if (card?.kind === "Peach") void onAction("give_peach", { cardId: card.id }); setSelected(""); }}>{busy ? "Playing…" : "Peach"}</button>}
             {dyingFirstAidSelectionActive && consolePrimaryId === "first-aid" && <button className="primary" disabled={busy || presentationBusy || !responseSelectionComplete || !canUseAction(room.currentAction, "respond") || !consoleDecision.primary?.enabled} onClick={() => void submitResponseProvider()}>{busy ? "Confirming…" : "Confirm"}</button>}
             {borrowedSwordTargetSelectionActive && consolePrimaryId === "borrowed-sword" && <button className="primary" disabled={busy || presentationBusy || !localTargetSelection.canConfirm || !consoleDecision.primary?.enabled} onClick={() => void confirmBorrowedSwordTarget()}>{busy ? "Confirming…" : "Confirm"}</button>}
             {targetCardPickerInLocalDock && consolePrimaryId === "target-card-picker" && <button className="primary" disabled={responseControlsDisabled || !targetCardPickerSelectionComplete || !consoleDecision.primary?.enabled} onClick={() => void submitTargetCardPicker(targetCardPickerSelectedKeys)}>{busy ? "Confirming…" : "Confirm"}</button>}

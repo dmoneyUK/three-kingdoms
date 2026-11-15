@@ -15,4 +15,6 @@
 
 **边界与验证：** 只按 `docs/UX2-refine.md` §10.49 原始任务的逐项方案实施。保持三种共享响应模式共用单一窗口语义；一次只结算一个合法物理响应；落败 intent 不耗牌；不得泄露其他玩家 intent/手牌，不改变规则、计时或原有 Negation。增加确定性单测/API 覆盖重叠 GET 到期、验证 GET 重试、合法 Peach `respond`、重复/迟到/错误提交和 one-winner；基本 build、定向验证、`git diff --check`。本任务本地 UI/browser 总计最多 5 分钟，超时即停止并报告 SKIPPED。之后提交推送，验证精确 SHA 所有必需 CI、D1/Worker 部署与生产 smoke；记录真实结果，不自我验收。§10.49 仅能由用户对 Liu Bei 和 Dying Peach 两场景均完成真实 iPhone 复审后关闭。
 
-**工作分支：** `codex/ux2-1049-expiry-20261115` → `ux-v2`。先保留工作区改动并核对远端，再开始源代码修改。
+**本轮执行记录（2026-11-15 18:24 UTC）：** 已实现同一 `windowId + deadline` 的 false-read 有界退避重试和 shared Dying Peach 的服务器授权 `respond`/实体 Peach Confirm；shared window intent 不再本地乐观公开。验证：`room-poll-recovery` 4/4、共享响应 API 14/14、`npm run build`、`git diff --check`、新增 helper/API/browser 文件定向 ESLint 均通过。唯一 390×844 Dying Peach 浏览器场景首次只因测试误把窗口 ID 期待在顶层字段而失败；按现有 `onAction` 合同改验 `context.windowId` 后复跑通过（共约 13 秒，低于 5 分钟）。对 `app/page.tsx` 的本地 ESLint 在 Node 26 `react-hooks/rules-of-hooks` 内递归溢出；直接对当前 `origin/ux-v2` 基线文件做 stdin ESLint 得到同一错误，故判定为已存在的本机 lint 限制，不能据此宣称页面 lint 通过。当前实现尚未提交；精确 SHA CI、部署及生产 smoke 待提交后验证。
+
+**工作分支 / 恢复点：** `codex/ux2-1049-expiry-20261115` → `ux-v2`。代码及定向验证已完成，工作树仅含此任务改动；下一步复核完整 diff、提交并推送，然后核验该实现 SHA 的 Actions、部署和生产 smoke。
