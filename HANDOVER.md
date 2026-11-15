@@ -4,7 +4,7 @@
 
 状态：IMPLEMENTING / NOT ACCEPTED。已在安全交付边界复习最新远端设计 `3d15e9dc` 的§10.51（含09:02交付标记）；工作树 `/Users/jingedai/.codex/worktrees/ux2-shared-response-20261115`，分支推送目标 `ux-v2`。
 
-最新相关结果：§10.49最终实现 `5b8e06ec1d73d6b608db66bf7545b690c8e7fc4f`，[Actions43696816383](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43696816383)全SUCCESS，D1迁移0013成功，Worker `119751bd-4da3-415b-bdb0-2d743d6d35a8`；09:02 UTC直接生产首页200、healthavailable。仅技术交付，待owner iPhone审核。完整本任务之外历史已移至roadmap，不在本文件保留。
+最新相关结果：§10.49最终实现 `5b8e06ec1d73d6b608db66bf7545b690c8e7fc4f`，[Actions43696816383](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43696816383)全SUCCESS，D1迁移0013成功，Worker `119751bd-4da3-415b-bdb0-2d743d6d35a8`；09:02 UTC直接生产首页200、healthavailable。仅技术交付；原任务§10.49已于09:44 iPhone验收失败（倒计时结束卡死），当前未验收，待原任务修复后重新手机验证。完整本任务之外历史已移至roadmap，不在本文件保留。
 
 本任务范围：错误边界增加脱敏高优先级render-failure诊断；Retry保留会话并一次GET重取权威状态、绝不重播POST；只有明确Leave/确认无效会话可以清理；生命周期trace保留导出；仅timer-only start_response_timer的stale409执行一次GET重同步，其他mutation错误保持现合同。
 
@@ -18,9 +18,9 @@
 
 ---
 
-## NEXT P0 — §10.49-F1 (same §10.49 ID): expired Shared Response Window 8s → stale 409 loop / frozen Cao Cao Entourage
+## NEXT AT SAFE HANDOFF — ORIGINAL §10.49 STILL NOT ACCEPTED / P0: expired Shared Response Window 8s → stale 409 loop / frozen Cao Cao Entourage
 
-**Priority/status:** OWNER iPHONE FAIL 2026-11-15 09:44 UTC; **NOT FIXED / NOT ACCEPTED**. This is the NEXT task **after** the above currently in-flight §10.51 work reaches a safe commit/push/handoff boundary. Do NOT start a second worktree concurrently modifying `app/page.tsx` or `app/api/rooms/route.ts`, do not drop §10.51's uncommitted edits, and do not claim §10.49 PASS based on green pre-failure Actions. **The single authoritative executable specification is `docs/UX2-refine.md` §10.49-F1** as pushed in commit `6674e671440f8f4d5250d47f7b24e8f7188dc879`; it overrides old §10.49 implementation-task instructions while retaining all original ONE WINNER PER ROUND rules. Read it at handoff, then execute — NO video reenactment, root-cause research, new architecture or new task number.
+**Priority/status:** ORIGINAL §10.49 FAILED owner iPHONE review 2026-11-15 09:44 UTC; **NOT FIXED / NOT ACCEPTED; NOT A NEW TASK OR F1**. This is the NEXT task **after** the above currently in-flight §10.51 work reaches a safe commit/push/handoff boundary. Do NOT start a second worktree concurrently modifying `app/page.tsx` or `app/api/rooms/route.ts`, do not drop §10.51's uncommitted edits, and do not claim §10.49 PASS based on green pre-failure Actions. **The single authoritative executable specification remains `docs/UX2-refine.md` original §10.49, including its CURRENT P0 acceptance-blocker subsection; no separate F1/task identity is authorized.** The existing single-winner-per-round design and exact source-grounded timeout repair instructions remain intact. Read it at handoff, then execute — NO video reenactment, root-cause research, new architecture or new task number.
 
 **Reviewer-verified failure:** Owner's uploaded 14.47s iPhone video and full `wtk-game-ux-trace-2026-11-15T09-43-47.575Z.json` captured deployed build `e555109e`. Cao Cao at seat1 invoked Entourage successfully; Zhang Liao seat3 submitted ONE genuine Dodge intent (200); eligible Sima Yi seat0 stayed silent. Shared absolute deadline 09:43:39.070 UTC. After deadline **17** `decline_response 409 stale` and **20** `start_response_timer 200`, **ZERO** `advance_timers`, GET poll 200; phase stays response, timer visually reaches 0, H4/PAC frozen and Confirm/Skip unresponsive. `app/page.tsx` old automatic response timeout effect (~L5909) illegally sends `decline_response` at shared expiry and re-arms after stale response; its `advance_timers` deadline watcher (~L2160) only supports Negation, not `presentationV2.sharedResponseWindow`. Server `route.ts` shared branch (~L7854–7885) accepts no late intent and treats `start_response_timer` as no-op; only `advanceSharedResponseWindow` (~L7078–7148) can settle. This is **a proven timeout-protocol deadlock**, NOT proof of GET 503 or a React render failure.
 
