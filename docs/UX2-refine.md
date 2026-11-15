@@ -1,6 +1,6 @@
 # WTK UX2 — Simplified Public Card UX
 
-**Revision:** 2026-11-15 20:02 UTC (§10.49 and §10.51 source re-reviews completed; owner-reported failures remain open because no post-fix reproduction was supplied; §10.56 is next; §10.58 deployed pending owner phone review).
+**Revision:** 2026-11-15 20:34 UTC (§10.49 and §10.51 source re-reviews completed; owner-reported failures remain open because no post-fix reproduction was supplied; §10.56 implemented/deployed pending owner iPhone review; §10.57 next; §10.58 deployed pending owner phone review).
 
 This file is the **single active UX2 product/design authority**. It replaces the superseded, much longer UX2 design; previous revisions exist only in Git history. Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmap records, old tests and screenshots are references to prior implementation, **not** permission to reinstate old visual requirements.
 
@@ -8,7 +8,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 **Editorial rule:** Preserve final approved product decisions, precise wording, server/privacy invariants and named acceptance boundaries. Superseded implementation and historical diagnoses remain in [Git history](https://github.com/dmoneyUK/three-kingdoms/blob/deb1ad92e21f2c04aaffbfeb64657e415c2764eb/docs/UX2-refine.md); editorial work never implies owner PASS.
 
-## UX2 CURRENT canonical work index — 2026-11-15 (§10.49 and §10.51 source re-reviews complete, owner failures unresolved without post-fix evidence; §10.56 next; §10.57 queued)
+## UX2 CURRENT canonical work index — 2026-11-15 (§10.49 and §10.51 source re-reviews complete, owner failures unresolved without post-fix evidence; §10.56 deployed pending owner review; §10.57 next)
 
 **AUTHORITATIVE STATUS INDEX / NO DUPLICATE EXECUTION:** Tables A–C and the latest explicit owner verdict in the original feature sections govern current work. Dated pre-cleanup snapshots and superseded repairs were removed from this active file but remain [archived in Git](#appendix-a--historical-ux2-status-snapshots-archive-only). A delivered feature awaiting human review belongs in Table B, **not** the development queue; USER-ACCEPTED/CLOSED and SUPERSEDED items in C are not active tasks. Keep one implementation identity per distinct defect.
 
@@ -16,7 +16,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 **Current precedence:** Original explicit USER-ACCEPTED verdicts close their exact reviewed scope. Prior 2026-11-02/03 partially accepted/failed snapshots and now-superseded task scheduling remain in [immutable Git history](https://github.com/dmoneyUK/three-kingdoms/blob/eb8b3a8bf91564b1c9c01bbf449bf63d55adbce4/docs/UX2-refine.md), not active work. New Classic rooms support only 4–6 players; unfinished 7/8-player UI work is out of scope.
 
-### A. Authorized work — §10.49/§10.51 post-fix failures evidence-gated; §10.56 next; §10.57 queued
+### A. Authorized work — §10.49/§10.51 post-fix failures evidence-gated; §10.57 next
 
 **§10.49 original P0 — corrective implementation deployed; owner reports acceptance failed:** The pre-fix Liu Bei deadline/GET collision and DYING_PEACH disabled Confirm were recorded on build `fc3496a0c0dc005aa5dc2da2432d3a679b9943d3`. The corrective watcher retry and legal Peach `respond` flow were implemented in `a88becfd` and are present in deployed `991fe948` and later production SHA `4164b5eb`. Source re-review confirms the same-window expiry retry, authoritative Peach provider/Confirm path, private intent, and no optimistic public card. Current checks: expiry recovery unit 4/4 and shared-response API 14/14 pass. The reported recordings are from pre-fix SHA `fc3496a0`; the owner still reports failed acceptance but supplied no post-fix reproduction in the latest instruction. **Re-review complete; no additional safe code correction is evidenced.** Keep the failure open and evidence-gated; preserve one winner, no fake Peach, and no public private-intent/card leak.
 
@@ -28,12 +28,11 @@ This file is the **single active UX2 product/design authority**. It replaces the
 | --- | --- |
 | **§10.49 ORIGINAL SHARED RESPONSE WINDOW — owner-reported failed acceptance** | OPEN / source re-review confirms deployed correction against pre-fix reports; exact post-fix failing step/trace needed before a further safe code change |
 | **§10.51 ROOM-POLL-TRANSIENT-503-RECOVERY-01** — owner-reported failed acceptance | OPEN / source re-review confirms retained recovery contract; exact new failing scenario/trace needed before a safe correction |
-| **§10.56 OPPONENT-INSPECTOR-SEAT-ANCHOR-01** — actual selected Seat anchoring on phone | NEXT / NOT IMPLEMENTED |
-| **§10.57 SKIP-BUTTON-RED-CONSISTENCY-01** — all genuine Skip controls match primary action layout/typography but use red | OWNER-AUTHORIZED / QUEUED / NOT IMPLEMENTED |
+| **§10.57 SKIP-BUTTON-RED-CONSISTENCY-01** — all genuine Skip controls match primary action layout/typography but use red | NEXT / OWNER-AUTHORIZED / NOT IMPLEMENTED |
 
 **New owner screenshots 2026-11-15 16:53 UTC:** 440px-class four-seat phone screenshots show a Retaliation actor's red, cramped serif `Skip` beside gold `USE RETALIATION`, and an equipped Serpent Spear turn control labelled only `SPEAR`. This is two distinct post-acceptance presentation tasks, **not** a reopening of §10.46 Retaliation, §10.9/W1–W6 equipment conversions, §10.49 shared responses or §10.53-F1. Details are in §§10.57–10.58; preserve current in-flight Agent work and begin each at a safe separate task boundary.
 
-**Isolation:** §10.49 and §10.51 source re-reviews are complete, but both owner-reported failures remain open. Do not infer a post-fix cause from pre-fix traces or passing automated tests. If the owner supplies new evidence, resume the matching original task and correct only the proven behavior. Meanwhile proceed to independent §10.56. Preserve the 4–6 player gate, server authority, privacy and accepted presentation.
+**Isolation:** §10.49 and §10.51 source re-reviews are complete, but both owner-reported failures remain open. Do not infer a post-fix cause from pre-fix traces or passing automated tests. If the owner supplies new evidence, resume the matching original task and correct only the proven behavior. §10.56 is now technically delivered pending owner review; proceed to independent §10.57. Preserve the 4–6 player gate, server authority, privacy and accepted presentation.
 
 **Delivered technical provenance (not user PASS by itself):** §10.49 corrective source `a88becfd2706413c09873c75313a1cc49a73070d` is present in final commit `991fe948987e5914e2275aea3207366c57f24b46` / [Actions 43750729642](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43750729642) / Worker `b8dd91a4-4a0a-4d54-801e-e621c170a37e`; production smoke passed. Prior §10.51 implementation `6bcef5a3169746edae3edbfc0eab66108f1952b9` / [Actions 43729279654](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43729279654) / Worker `22d8cce3-b1cc-4b2d-afcc-8ade1be6d355` had previously passed CI/deployment and a limited owner review; that does not resolve the current owner-reported failure.
 
@@ -47,6 +46,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 | **§10.53-F1 — verified player names in H4, PAC and private Console** | Code/test `fc3496a0c0dc005aa5dc2da2432d3a679b9943d3`; [exact-SHA Actions 43734731408](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43734731408) passed all required jobs; Worker `52ff5248-1710-415a-8bfa-ebade948a1cb`; production smoke passed. | IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW |
 | **§10.54 — PAC continuity through ordinary miniature parking** | Code/test `79efde4888fee3cd9ab900541c36b0b2d719a822`; [exact-SHA Actions 43743762710](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43743762710) passed browser startup/room smoke, API tests, lint/fast tests, Worker deployment and production `/` + `/api/health` smoke; Worker `8f8114de-219b-4dba-b0e4-8b3f7f64adb9`. A local 440px UI attempt failed before the final fail-closed correction and was not rerun after the 5-minute task budget; owner phone review remains required. | IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW |
 | **§10.55 OVERINDULGENCE-ONE-PHYSICAL-REVEAL-01 — one centre CardFace and true Judgement attachment** | Source/test `991fe948987e5914e2275aea3207366c57f24b46`; [exact-SHA Actions 43750729642](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43750729642) passed all required jobs; Worker `b8dd91a4-4a0a-4d54-801e-e621c170a37e`; production `/` and `/api/health` smoke passed. Focused unit 8/8, build and diff checks passed. Local mobile Playwright did not start because API fixture host `127.0.0.1:3137` was unavailable; no retry under the five-minute UI cap. | IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW |
+| **§10.56 OPPONENT-INSPECTOR-SEAT-ANCHOR-01 — mobile Inspector anchored to selected Seat** | Commit `bae5719c054eabaf4d52bec5cf6d6f35c0d24495`; [exact-SHA Actions 43758214272](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43758214272) passed API, lint/fast, browser startup/room smoke, D1 migration, Worker deployment and production smoke. Worker `4b38b1b4-877c-4e78-9957-794c2241a71d`; independent production `/` and `/api/health` checks passed. Focused Inspector browser regression 2/2. | IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW |
 | **§10.58 SERPENT-SPEAR-FULL-CONTROL-LABEL-01 — complete Serpent Spear control name** | Implementation/tests `4164b5eba9ec3501cdf95f0cdad1e8eb1f9c6ace`; [exact-SHA Actions 43754584146](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43754584146) passed API, browser startup/room smoke, lint/fast tests and deployment. Worker `2f2ea283-d616-4201-a800-792d606924fe`; production `/` and `/api/health` smoke passed. Focused GameRoom tests 2/2; 390×844 real-gameplay browser 1/1; build passed. | IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW |
 
 ### C. Owner-accepted / closed decisions — status index, not duplicated design
@@ -985,7 +985,7 @@ Prove 4/5/6 living-seat priority, Cao Cao nearest and forward tie, Liu Bei both 
 
 **Tests:** focused route/lifecycle tests genuine source same physical card: exactly one central REVEAL, later correct target mini with matching id/rank/suit; once-only retirement. Negative mismatched source/owner/card, cold viewer, distinct later Deck Judgement and Judgement→Discard. One focused mobile scene if needed; total local UI/browser ≤5min; CI/API separate. Owner iPhone PASS: 乐不思蜀 centre once, then target's Judgement mini, no second centre.
 
-### 10.56 OPPONENT-INSPECTOR-SEAT-ANCHOR-01 — inspect directly beneath selected Hero (**OWNER-AUTHORIZED NEW P1 / QUEUED / NOT IMPLEMENTED / PHONE REVIEW REQUIRED**)
+### 10.56 OPPONENT-INSPECTOR-SEAT-ANCHOR-01 — inspect directly beneath selected Hero (**IMPLEMENTED / DEPLOYED 2026-11-15; `bae5719c`; PENDING OWNER iPHONE REVIEW**)
 
 **Observed:** five-player phone top-row tapping right-side Xiahou Dun shows Inspector too far left, rather than under selected real Hero. Data identity itself is not in question.
 
@@ -995,7 +995,9 @@ Prove 4/5/6 living-seat priority, Cao Cao nearest and forward tie, Liu Bei both 
 
 **Tests:** one focused 440px top-row scene selected left/centre/right Seats; correct player identity, panel inside viewport and under chosen Seat as geometry permits, closest clamped center, no protected overlap; existing side-column untouched. Local UI/browser total ≤5min including retries; CI/Worker smoke distinct. Owner iPhone PASS: inspector follows chosen Hero, no left-floating global panel, fully legible and functional.
 
-### 10.57 SKIP-BUTTON-RED-CONSISTENCY-01 — all genuine gameplay **Skip** buttons share the Confirm/Use design but are RED (**OWNER-AUTHORIZED NEW P1 / QUEUED / NOT IMPLEMENTED / PHONE REVIEW REQUIRED**)
+**Delivery evidence:** Commit `bae5719c054eabaf4d52bec5cf6d6f35c0d24495`; [exact-SHA GitHub Actions run 43758214272](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43758214272) passed API, lint/fast, browser startup/room smoke, D1 migration, Worker deployment and production smoke. Worker Version ID `4b38b1b4-877c-4e78-9957-794c2241a71d`; independent production `/` and `/api/health` checks passed. Owner iPhone review remains pending; this is not USER-ACCEPTED.
+
+### 10.57 SKIP-BUTTON-RED-CONSISTENCY-01 — all genuine gameplay **Skip** buttons share the Confirm/Use design but are RED (**OWNER-AUTHORIZED NEW P1 / NEXT / NOT IMPLEMENTED / PHONE REVIEW REQUIRED**)
 
 **Owner screenshot and exact request 2026-11-15 16:53 UTC:** In `IMG_4336.jpeg` the genuine actor-only Retaliation panel shows a small red `Skip` button with a conspicuously different **large serif font and much smaller footprint** immediately beside the gold `USE RETALIATION` primary. Owner explicitly likes RED for skip/decline: ALL actual actionable gameplay buttons whose visible label is **`Skip` (or transient `Skipping…`)** must use the **same button design grammar as adjacent Confirm/Use** — typography, casing, weight, controlled padding, height (≥44px interactive touch where a safe choice panel uses 44px), borders, focus/pressed/disabled treatment and consistent alignment — with the **secondary/decline colour variant deep RED** rather than gold. This is not a request to recolour Cancel, Pass, End turn, Take Damage, Give up Weapon, inactive skill names, skipped-status prose or card art; those represent distinct legal outcomes and keep their current semantics/colours unless separately authorized. Nor should a disabled real Skip become enabled.
 
