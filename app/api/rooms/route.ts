@@ -7848,6 +7848,22 @@ export async function POST(request: Request) {
         windowMatches: pendingForController?.kind !== "negation_window" || submitted?.windowId === undefined ? null : String(submitted.windowId) === pendingForController.windowId,
       };
     }
+    const currentSharedWindow = pendingForController?.kind === "shared_response_window" ? pendingForController : null;
+    const expiredSharedWindow = Boolean(currentSharedWindow && Date.now() >= currentSharedWindow.deadline);
+    const deprecatedSharedExpiryAction = ["start_response_timer", "start_rescue_timer", "decline_response", "skip_rescue"].includes(action);
+    const suppliedWindowMatches = (submitted?.windowId === undefined || String(submitted.windowId) === currentSharedWindow?.windowId)
+      && (body.windowId === undefined || String(body.windowId) === currentSharedWindow?.windowId);
+    if (currentSharedWindow && expiredSharedWindow && deprecatedSharedExpiryAction && currentSessionPlayers.length > 0 && suppliedWindowMatches) {
+      // Old clients may still send a deadline Pass or legacy timer start. They
+      // cannot commit a late choice; use the existing server CAS settlement to
+      // make forward progress before rejecting a now-stale action context.
+      await advanceSharedResponseWindow(room.id, code, token);
+      return json({ room: await roomState(code, token, false, isTestController ? me?.id : undefined) });
+    }
+    if (currentSharedWindow && expiredSharedWindow && deprecatedSharedExpiryAction && currentSessionPlayers.length > 0 && !suppliedWindowMatches) {
+      return json({ error: "That shared response window has changed.", stale: true,
+        room: await roomState(code, token, false, isTestController ? me?.id : undefined) }, 409);
+    }
     if (contextMismatch && action !== "advance_timers") {
       return json({ error: "That action is stale. The table has advanced to the next actor.", stale: true, room: await roomState(code, token) }, 409);
     }

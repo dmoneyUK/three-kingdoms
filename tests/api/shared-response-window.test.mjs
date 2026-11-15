@@ -10,6 +10,16 @@ async function seed(players, turnSeat = 3) {
 }
 const player = (name, hero, role, hand, hp = 4) => ({ name, hero, role, hand, hp, maxHp: 4 });
 const stored = (game) => JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`) || "null");
+function expireSharedWindow(game, window) {
+  window.openedAt = Date.now() - 9_000;
+  window.deadline = window.openedAt + 8_000;
+  sql(`UPDATE shared_response_window_submissions SET created_at=${window.openedAt + 1_000} WHERE window_id=${quote(window.windowId)}`);
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(window))} WHERE code=${quote(game.code)}`);
+}
+function staleSharedContext(view) {
+  return { actionRevision: "old-shared-window-revision", meId: view.meId, phase: view.phase,
+    pendingKind: view.currentAction.kind, actorId: view.actionPlayerId, windowId: view.currentAction.sharedWindow.windowId };
+}
 async function submit(game, viewer, choice = null) {
   const windowId = stored(game).windowId;
   return request(choice ? "respond" : "decline_response", { code: game.code, token: viewer.token,
@@ -251,6 +261,68 @@ test("expired interrupted shared lease recovers once and rejects late intents", 
   assert.equal(discardIds(game.code).filter(id=>id==='one').length,1);
   assert.equal((await state(game.code,two.token)).data.myHand.some(c=>c.id==='two'),true);
   assert.notEqual(stored(game)?.kind,'shared_response_window');
+});
+
+test("expired shared windows recover before stale legacy timers or Passes, without accepting late intent", async () => {
+  {
+    const game = await seed([player("SIMAYI", "simayi", "Renegade", []), player("CAO", "cao-cao", "Lord", []),
+      player("XIAHOU", "xiahou-dun", "Rebel", [card("Attack", "attack")]),
+      player("ZHANG", "zhang-liao", "Loyalist", [card("Dodge", "entourage-dodge")])], 2);
+    const [silent, cao, source, winner] = game.players;
+    await openAttack(game, source, cao);
+    await requestAndSettle("respond", { code: game.code, token: cao.token, providerId: "cao_cao_hujia", preserveResponse: true });
+    await submit(game, winner, { cardIds: ["entourage-dodge"] });
+    const window = stored(game);
+    const before = (await state(game.code, silent.token)).data;
+    const wrongWindow = await request("decline_response", { code: game.code, token: silent.token,
+      context: { ...staleSharedContext(before), windowId: "older-window" } });
+    assert.equal(wrongWindow.status, 409);
+    assert.equal(stored(game).windowId, window.windowId, "a stale window identity cannot advance the current window");
+    expireSharedWindow(game, window);
+    const recovered = await request("decline_response", { code: game.code, token: silent.token, context: staleSharedContext(before) });
+    assert.equal(recovered.status, 200, JSON.stringify(recovered.data));
+    assert.notEqual(stored(game)?.kind, "shared_response_window");
+    assert.equal(discardIds(game.code).filter((id) => id === "entourage-dodge").length, 1);
+    assert.equal((await state(game.code, silent.token)).data.myHand.length, 0, "expired Pass did not spend a card or create a new choice");
+    assert.equal(recovered.data.room.presentationSnapshot.sharedResponseContributions.at(-1).actorId, winner.id);
+  }
+
+  {
+    const game = await seed([player("LIU", "liu-bei", "Lord", []), player("FIRST SHU", "guan-yu", "Loyalist", [card("Attack", "influence-attack")]),
+      player("SECOND SHU", "zhao-yun", "Rebel", []), player("TARGET", "simayi", "Renegade", [])], 0);
+    const [liu, winner, silent, target] = game.players;
+    const invoked = await requestAndSettle("trigger", { code: game.code, token: liu.token, providerId: "liu_bei_jijiang", targetId: target.id, preserveResponse: true });
+    assert.equal(invoked.status, 200, JSON.stringify(invoked.data));
+    await submit(game, winner, { cardIds: ["influence-attack"] });
+    const window = stored(game);
+    const view = (await state(game.code, silent.token)).data;
+    expireSharedWindow(game, window);
+    const resumed = await request("start_response_timer", { code: game.code, token: silent.token,
+      context: staleSharedContext(view) });
+    assert.equal(resumed.status, 200, JSON.stringify(resumed.data));
+    assert.notEqual(stored(game)?.kind, "shared_response_window");
+    assert.equal(discardIds(game.code).filter((id) => id === "influence-attack").length, 1);
+    assert.equal((await state(game.code, silent.token)).data.myHand.length, 0);
+  }
+
+  {
+    const game = await seed([player("TARGET", "liu-bei", "Lord", [], 1), player("DONOR", "guan-yu", "Loyalist", [card("Peach", "dying-peach")]),
+      player("SILENT", "zhao-yun", "Rebel", []), player("SOURCE", "sun-quan", "Renegade", [card("Attack", "attack")])]);
+    const [target, donor, silent, source] = game.players;
+    await openAttack(game, source, target);
+    await requestAndSettle("decline_response", { code: game.code, token: target.token, preserveResponse: true });
+    await submit(game, donor, { cardIds: ["dying-peach"] });
+    const window = stored(game);
+    assert.equal(window.continuation.mode, "DYING_PEACH");
+    const view = (await state(game.code, silent.token)).data;
+    expireSharedWindow(game, window);
+    const resumed = await request("skip_rescue", { code: game.code, token: silent.token, context: staleSharedContext(view) });
+    assert.equal(resumed.status, 200, JSON.stringify(resumed.data));
+    assert.notEqual(stored(game)?.kind, "shared_response_window");
+    assert.equal(discardIds(game.code).filter((id) => id === "dying-peach").length, 1);
+    assert.equal(resumed.data.room.players.find((entry) => entry.id === target.id).hp, 1);
+    assert.equal((await state(game.code, silent.token)).data.myHand.length, 0);
+  }
 });
 
 test("one Entourage winner satisfies only one of Lu Bu's two required Dodges",async()=>{

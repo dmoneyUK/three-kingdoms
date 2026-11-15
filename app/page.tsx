@@ -1779,6 +1779,8 @@ export default function Home() {
   const pendingTestViewerFocusIdRef = useRef<string | null>(null);
   const harvestCompletionWatcherRef = useRef<{ key: string; attempt: number; timer: number | null } | null>(null);
   const harvestCompletionRequestInFlightRef = useRef(false);
+  const sharedResponseExpiryWatcherRef = useRef<{ key: string; attempt: number; inFlight: boolean; timer: ReturnType<typeof setTimeout> | null } | null>(null);
+  const sharedResponseExpiryAdvanceRef = useRef<() => Promise<boolean>>(async () => false);
 
   useEffect(() => { setTraceAvailable(hasAttackDodgeUxTrace()); }, []);
 
@@ -2022,12 +2024,14 @@ export default function Home() {
       return true;
     } catch (cause) {
       if (uxTraceId) recordAttackDodgeUxTrace("gameplay-action-failure", { traceId: uxTraceId, action, kind: cause instanceof Error ? cause.name : "unknown" });
-      if (maintenanceAction) console.warn("Harvest completion maintenance did not advance; checking the authoritative room state.");
+      if (maintenanceAction) console.warn("Timer maintenance did not advance; checking the authoritative room state.");
       else if (!backgroundPreview) setError(cause instanceof Error ? cause.message : "Something went wrong.");
       return false;
     }
     finally { if (!nonBlocking) { if (mutationInFlight.current === mutationKey) mutationInFlight.current = null; setBusy(false); setBusyAction(null); } }
   }
+
+  sharedResponseExpiryAdvanceRef.current = () => send("advance_timers");
 
   async function switchTestViewer(playerId: string) {
     const targetPlayer = room?.players.find((player) => player.id === playerId);
@@ -2157,6 +2161,72 @@ export default function Home() {
   // completion. Chooser countdown expiry never selects a card automatically.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode, token, pageVisible, harvestComplete, harvestDeadline, harvestRevealEventId, room?.meId, room?.isTestController, fetchRoom]);
+  const sharedWindow = room?.presentationV2?.sharedResponseWindow ?? room?.presentationSnapshot?.sharedResponseWindow;
+  useEffect(() => {
+    const validWindow = roomCode && token && sharedWindow?.semantics === "PROVEN"
+      && sharedWindow.windowId && Number.isSafeInteger(sharedWindow.deadline)
+      ? sharedWindow : null;
+    let watcher = sharedResponseExpiryWatcherRef.current;
+    if (!validWindow) {
+      if (watcher?.timer) clearTimeout(watcher.timer);
+      sharedResponseExpiryWatcherRef.current = null;
+      return;
+    }
+    const { windowId, deadline } = validWindow;
+    const key = `${roomCode}|${windowId}|${deadline}`;
+    if (!watcher || watcher.key !== key) {
+      if (watcher?.timer) clearTimeout(watcher.timer);
+      watcher = { key, attempt: 0, inFlight: false, timer: null };
+      sharedResponseExpiryWatcherRef.current = watcher;
+    }
+    let cancelled = false;
+    const retryDelays = [1_000, 2_000, 4_000, 8_000, 15_000];
+    const isCurrent = () => !cancelled && sharedResponseExpiryWatcherRef.current === watcher;
+    const schedule = (delay: number) => {
+      if (!isCurrent() || !pageVisible) return;
+      if (watcher!.timer) clearTimeout(watcher!.timer);
+      watcher!.timer = setTimeout(() => { void advance(); }, Math.max(0, delay));
+    };
+    const retry = () => {
+      watcher!.attempt += 1;
+      schedule(retryDelays[Math.min(watcher!.attempt - 1, retryDelays.length - 1)]);
+    };
+    const advance = async () => {
+      watcher!.timer = null;
+      if (!isCurrent() || !pageVisible) return;
+      if (Date.now() < deadline) { schedule(deadline - Date.now()); return; }
+      if (watcher!.inFlight) { schedule(1_000); return; }
+      watcher!.inFlight = true;
+      try {
+        const selectedViewerId = room?.isTestController ? testViewerIdRef.current ?? undefined : undefined;
+        const current = await fetchRoom(roomCode, token, true, selectedViewerId);
+        if (!isCurrent()) return;
+        const live = current && (current.presentationV2?.sharedResponseWindow ?? current.presentationSnapshot?.sharedResponseWindow);
+        if (!live || live.windowId !== windowId || live.deadline !== deadline) return;
+        if (Date.now() < deadline) { schedule(deadline - Date.now()); return; }
+        await sharedResponseExpiryAdvanceRef.current();
+        if (!isCurrent()) return;
+        const fresh = await fetchRoom(roomCode, token, true, selectedViewerId);
+        if (!isCurrent()) return;
+        const next = fresh && (fresh.presentationV2?.sharedResponseWindow ?? fresh.presentationSnapshot?.sharedResponseWindow);
+        if (!next || next.windowId !== windowId || next.deadline !== deadline) return;
+        retry();
+      } catch {
+        if (isCurrent()) retry();
+      } finally {
+        watcher!.inFlight = false;
+      }
+    };
+    if (pageVisible) schedule(Math.max(0, deadline - Date.now()));
+    return () => {
+      cancelled = true;
+      if (watcher!.timer) clearTimeout(watcher!.timer);
+      watcher!.timer = null;
+    };
+  // The public window identity, not the selected viewer or action revision, owns this timer.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomCode, token, pageVisible, room?.isTestController, sharedWindow?.windowId, sharedWindow?.deadline, sharedWindow?.stage, fetchRoom]);
+
   const negationDeadline = room?.pendingNegation?.deadline ?? 0;
   useEffect(() => {
     if (!roomCode || !token || !pageVisible || !negationDeadline) return;
@@ -3863,10 +3933,28 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   ].join("\u001f");
   const [endTurnConfirmationIdentity, setEndTurnConfirmationIdentity] = useState<string | null>(null);
   const [endTurnConfirmationSubmitting, setEndTurnConfirmationSubmitting] = useState(false);
+  const [expiredSharedWindowIdentity, setExpiredSharedWindowIdentity] = useState("");
+  const publicSharedResponseWindow = room.presentationV2?.sharedResponseWindow ?? room.presentationSnapshot?.sharedResponseWindow;
+  const sharedWindowIdentity = publicSharedResponseWindow ? `${publicSharedResponseWindow.windowId}|${publicSharedResponseWindow.deadline}` : "";
+  const publicSharedWindowDeadline = publicSharedResponseWindow?.deadline ?? 0;
+  const publicSharedWindowStage = publicSharedResponseWindow?.stage ?? null;
+  const activeSharedResponseWindow = Boolean(room.currentAction?.sharedWindow || publicSharedResponseWindow);
+  const sharedWindowExpired = Boolean(publicSharedResponseWindow && (
+    publicSharedResponseWindow.stage === "SETTLING"
+    || Date.now() >= publicSharedResponseWindow.deadline
+    || expiredSharedWindowIdentity === sharedWindowIdentity
+  ));
   const endTurnConfirmationScopeRef = useRef(endTurnConfirmationScope);
   const endTurnConfirmationSubmissionRef = useRef(false);
   const endTurnConfirmationButtonRef = useRef<HTMLButtonElement | null>(null);
   const endTurnConfirmationCancelRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!sharedWindowIdentity || !publicSharedWindowDeadline || publicSharedWindowStage === "SETTLING"
+      || Date.now() >= publicSharedWindowDeadline) return;
+    const timer = setTimeout(() => setExpiredSharedWindowIdentity(sharedWindowIdentity),
+      Math.max(0, publicSharedWindowDeadline - Date.now()));
+    return () => clearTimeout(timer);
+  }, [sharedWindowIdentity, publicSharedWindowDeadline, publicSharedWindowStage]);
   useEffect(() => {
     if (endTurnConfirmationScopeRef.current === endTurnConfirmationScope) return;
     endTurnConfirmationScopeRef.current = endTurnConfirmationScope;
@@ -4365,12 +4453,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // authorized decision. Keep card selection narrower than decline so a
   // decline-only response never makes unrelated Hand cards selectable.
   const responseDecisionReady = Boolean(
+    !sharedWindowExpired && (
     canRespond && (canUseAction(room.currentAction, "respond") || canUseAction(room.currentAction, "decline_response"))
-    || triggerResponse && (canUseAction(room.currentAction, "trigger") || canUseAction(room.currentAction, "decline_trigger")),
+    || triggerResponse && (canUseAction(room.currentAction, "trigger") || canUseAction(room.currentAction, "decline_trigger"))),
   );
   const responseCardSelectionReady = Boolean(
-    canRespond && canUseAction(room.currentAction, "respond")
-    || triggerResponse && canUseAction(room.currentAction, "trigger"),
+    !sharedWindowExpired && (canRespond && canUseAction(room.currentAction, "respond")
+    || triggerResponse && canUseAction(room.currentAction, "trigger")),
   );
   // Ordinary physical responses are implicit: their eligible cards are ready
   // to select immediately. Explicit abilities deliberately enter a provider
@@ -4709,6 +4798,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     || presentedEventIds.has(responseReadyAfterEventId);
   const dyingFirstAidOption = semanticResponseOptions.find((option) => option.providerId === "hua_tuo_first_aid" && option.activation === "explicit") ?? null;
   const dyingFirstAidAvailable = Boolean(
+    !sharedWindowExpired
+    &&
     me?.hero === "hua-tuo"
     && room.phase === "dying"
     && room.currentAction?.kind === "dying"
@@ -4829,7 +4920,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const attackTargetsValid = selectedPlayTargetsValid;
   const canFormSerpentAttack = hasSerpentSpear && room.myHand.length >= 2 && room.isMyTurn && canPlay && canDeclareAttack;
   const responseDeadline = room.currentAction?.deadline ?? room.pendingNegation?.deadline ?? room.pendingGreenDragon?.deadline ?? room.pendingRockCleaving?.deadline ?? room.pendingDuel?.deadline ?? room.pendingAttack?.deadline ?? 0;
-  const canRescue = room.phase === "dying" && room.isMyAction;
+  const canRescue = room.phase === "dying" && room.isMyAction && !sharedWindowExpired;
   const rescueDecisionReady = canRescue && !presentationBusy;
   const responseCardDisabled = (item: Card) => responseCardSelectionActive && (busy || !responseCardAllowed(item))
     || rescueDecisionReady && !canRespond && !dyingFirstAidSelectionActive && item.kind !== "Peach";
@@ -5286,7 +5377,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       } : undefined,
     };
   });
-  const responseControlsDisabled = busy || !responseDecisionReady;
+  const responseControlsDisabled = busy || !responseDecisionReady || sharedWindowExpired;
   const triggerControlsDisabled = responseControlsDisabled || !canUseAction(room.currentAction, "trigger");
   const physicalResponseControlsDisabled = responseControlsDisabled || !genericResponse;
   const activeHarvestSelection = canChooseHarvest
@@ -5906,8 +5997,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const timer = setTimeout(() => { setLongdanMode(null); if (!canUseLongdanInResponse) setResponseProviderId(""); setSelected(""); setTargetIds([]); }, 0);
     return () => clearTimeout(timer);
   }, [longdanMode, canUseLongdanInPlay, canUseLongdanInResponse]);
-  useEffect(() => { if (!responseTimerActive || !responseDamageAction && !triggerResponse) { automaticResponseTimeout.current = ""; return; } if (busy || !responseDecisionReady) return; const key = room.actionRevision ?? `${room.actionPlayerId}-${room.currentAction?.kind ?? "response"}`; const startKey = `start-${key}`; const timerPrefix = `timer-${key}-`; if (automaticResponseTimeout.current !== startKey && !automaticResponseTimeout.current.startsWith(timerPrefix)) { automaticResponseTimeout.current = startKey; onActionRef.current("start_response_timer"); return; } if (responseDeadline <= 0) return; automaticResponseTimeout.current = `timer-${key}-${responseDeadline}`; const timer = setTimeout(() => { automaticResponseTimeout.current = `expired-${key}-${responseDeadline}`; if (!triggerResponse) { if (responseDamageAction) void onActionRef.current(responseDamageAction); return; } if (triggerDeclineAction) { void onActionRef.current("decline_trigger"); return; } if (mandatoryChoiceTriggerOption?.timeoutChoiceId) void onActionRef.current("trigger", { providerId: mandatoryChoiceTriggerOption.effectId, choice: mandatoryChoiceTriggerOption.timeoutChoiceId }); }, delayUntil(responseDeadline)); return () => clearTimeout(timer); }, [responseTimerActive, triggerResponse, triggerDeclineAction, mandatoryChoiceTriggerOption?.effectId, mandatoryChoiceTriggerOption?.timeoutChoiceId, busy, responseDecisionReady, responseDeadline, responseDamageAction, room.actionPlayerId, room.actionRevision, room.currentAction?.kind]);
-  useEffect(() => { if (!canRescue) { automaticRescueSkip.current = ""; return; } if (busy || presentationBusy) return; const key = `${room.pendingDying?.targetId}-${room.actionPlayerId}`; const deadline = room.pendingDying?.deadline ?? 0; if (deadline <= 0) { const startKey = `start-${key}`; if (automaticRescueSkip.current !== startKey) { automaticRescueSkip.current = startKey; onActionRef.current("start_rescue_timer"); } return; } const timerKey = `timer-${key}-${deadline}`; if (automaticRescueSkip.current === timerKey) return; automaticRescueSkip.current = timerKey; const timer = setTimeout(() => { automaticRescueSkip.current = `skip-${key}`; onActionRef.current("skip_rescue"); }, Math.max(0, deadline - Date.now())); return () => clearTimeout(timer); }, [canRescue, busy, presentationBusy, room.pendingDying?.targetId, room.pendingDying?.deadline, room.actionPlayerId]);
+  useEffect(() => { if (activeSharedResponseWindow) { automaticResponseTimeout.current = ""; return; } if (!responseTimerActive || !responseDamageAction && !triggerResponse) { automaticResponseTimeout.current = ""; return; } if (busy || !responseDecisionReady) return; const key = room.actionRevision ?? `${room.actionPlayerId}-${room.currentAction?.kind ?? "response"}`; const startKey = `start-${key}`; const timerPrefix = `timer-${key}-`; if (automaticResponseTimeout.current !== startKey && !automaticResponseTimeout.current.startsWith(timerPrefix)) { automaticResponseTimeout.current = startKey; onActionRef.current("start_response_timer"); return; } if (responseDeadline <= 0) return; automaticResponseTimeout.current = `timer-${key}-${responseDeadline}`; const timer = setTimeout(() => { automaticResponseTimeout.current = `expired-${key}-${responseDeadline}`; if (!triggerResponse) { if (responseDamageAction) void onActionRef.current(responseDamageAction); return; } if (triggerDeclineAction) { void onActionRef.current("decline_trigger"); return; } if (mandatoryChoiceTriggerOption?.timeoutChoiceId) void onActionRef.current("trigger", { providerId: mandatoryChoiceTriggerOption.effectId, choice: mandatoryChoiceTriggerOption.timeoutChoiceId }); }, delayUntil(responseDeadline)); return () => clearTimeout(timer); }, [activeSharedResponseWindow, responseTimerActive, triggerResponse, triggerDeclineAction, mandatoryChoiceTriggerOption?.effectId, mandatoryChoiceTriggerOption?.timeoutChoiceId, busy, responseDecisionReady, responseDeadline, responseDamageAction, room.actionPlayerId, room.actionRevision, room.currentAction?.kind]);
+  useEffect(() => { if (activeSharedResponseWindow || !canRescue) { automaticRescueSkip.current = ""; return; } if (busy || presentationBusy) return; const key = `${room.pendingDying?.targetId}-${room.actionPlayerId}`; const deadline = room.pendingDying?.deadline ?? 0; if (deadline <= 0) { const startKey = `start-${key}`; if (automaticRescueSkip.current !== startKey) { automaticRescueSkip.current = startKey; onActionRef.current("start_rescue_timer"); } return; } const timerKey = `timer-${key}-${deadline}`; if (automaticRescueSkip.current === timerKey) return; automaticRescueSkip.current = timerKey; const timer = setTimeout(() => { automaticRescueSkip.current = `skip-${key}`; onActionRef.current("skip_rescue"); }, Math.max(0, deadline - Date.now())); return () => clearTimeout(timer); }, [activeSharedResponseWindow, canRescue, busy, presentationBusy, room.pendingDying?.targetId, room.pendingDying?.deadline, room.actionPlayerId]);
   const submitResponseProvider = async (provider = selectedResponseProvider) => {
     if (!provider || !genericResponse || !me) return;
     const selection = provider.selection;
@@ -11011,10 +11102,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (canEndPlay) return "Finish the Play Phase.";
     return null;
   })();
-  const privateSharedAcknowledgement = room.currentAction?.sharedWindow?.locked
+  const privateSharedAcknowledgement = !sharedWindowExpired && room.currentAction?.sharedWindow?.locked
     ? room.currentAction.sharedWindow.choice === "pass" ? "Skipped. Waiting for the window to resolve." : "Response submitted. Waiting for the window to resolve." : null;
-  const privateSharedGuidance = room.currentAction?.sharedWindow ? room.currentAction.reason : null;
-  const consoleInstruction = privateSharedAcknowledgement ?? privateSharedGuidance ?? privateNegationAcknowledgement ?? privateHarvestChoiceGuidance ?? (borrowedSwordTargetSelectionActive
+  const privateSharedGuidance = !sharedWindowExpired && room.currentAction?.sharedWindow ? room.currentAction.reason : null;
+  const consoleInstruction = (sharedWindowExpired ? "Waiting for window resolution." : null) ?? privateSharedAcknowledgement ?? privateSharedGuidance ?? privateNegationAcknowledgement ?? privateHarvestChoiceGuidance ?? (borrowedSwordTargetSelectionActive
     ? `Choose who ${room.players.find((player) => player.id === room.pendingBorrowedSword?.holderId)?.name ?? "the Weapon holder"} must Attack.`
     : borrowedSwordForcedChoiceActive
     ? `Play Attack on ${room.players.find((player) => player.id === room.pendingBorrowedSword?.targetId)?.name ?? "the selected target"}, or give up your Weapon.`

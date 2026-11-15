@@ -1,29 +1,27 @@
 # HANDOVER — 当前唯一任务
 
-## §10.51 ROOM-POLL-TRANSIENT-503-RECOVERY-01 — P0 correction
+## §10.49 共享响应窗到期卡死 P0 修复
 
-状态：IMPLEMENTING / NOT ACCEPTED。已在安全交付边界复习最新远端设计 `3d15e9dc` 的§10.51（含09:02交付标记）；工作树 `/Users/jingedai/.codex/worktrees/ux2-shared-response-20261115`，分支推送目标 `ux-v2`。
+**状态：** IMPLEMENTED LOCALLY / NOT ACCEPTED；尚未提交、推送或部署。目标分支 `ux-v2`。工作树 `/Users/jingedai/.codex/worktrees/ux2-1049-expiry-20261115`，当前基线 `4a94df589dd3020dd1b611f369b812390ba29f71`。设计依据：最新 `docs/UX2-refine.md`（2026-11-15 12:40 UTC），§10.49 P0 blocker。
 
-最新相关结果：§10.49最终实现 `5b8e06ec1d73d6b608db66bf7545b690c8e7fc4f`，[Actions43696816383](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43696816383)全SUCCESS，D1迁移0013成功，Worker `119751bd-4da3-415b-bdb0-2d743d6d35a8`；09:02 UTC直接生产首页200、healthavailable。仅技术交付；原任务§10.49已于09:44 iPhone验收失败（倒计时结束卡死），当前未验收，待原任务修复后重新手机验证。完整本任务之外历史已移至roadmap，不在本文件保留。
+### 实施结果
 
-本任务范围：错误边界增加脱敏高优先级render-failure诊断；Retry保留会话并一次GET重取权威状态、绝不重播POST；只有明确Leave/确认无效会话可以清理；生命周期trace保留导出；仅timer-only start_response_timer的stale409执行一次GET重同步，其他mutation错误保持现合同。
+- 客户端共享窗观察器以公开 `windowId + deadline` 为稳定身份，支持普通玩家与 TEST SWITCH；到期先 GET 核对相同窗口仍在，再发送 `advance_timers` 并 GET 确认。未解决时按 1/2/4/8/15 秒上限退避重试，单浏览器防并发；页面隐藏时暂停，到前台续接。
+- 到期后冻结旧响应/救援选择，Console 显示 `Waiting for window resolution.`；共享窗不再走旧自动 Pass、Skip 或 `start_*_timer`。非共享响应路径保持原状。
+- 服务端只对已认证成员、同一已过期窗口的旧计时器/Pass 请求调用现有 `advanceSharedResponseWindow` CAS；错误窗口 ID 返回带最新房间的 409，不接受迟到卡牌或 Pass。未改 8 秒规则、优先级、卡牌规则或 D1 schema。
+- 回归覆盖 Entourage、Influencing、Dying Peach 的旧请求恢复；手机浏览器覆盖沉默的 Sima Yi 与已提交 Dodge 的 Zhang Liao。
 
-恢复点（2026-11-15 09:03 UTC）：先提交§10.49真实交付文档，然后检查现有GameRoomErrorBoundary、poll recovery、trace模块和最近针对性用例，按§10.51批准步骤实施。现已开始本任务源码修改与针对性验证，不猜测Barbarian或退出根因。源端明确缺失证据则报告EXIT ROOT CAUSE NOT PROVEN FROM CAPTURE。
+### 本轮操作与验证
 
-验证/边界：优先纯组件/会话重试/计时409测试，保留503和404既有回归；至多一个真实手机smoke、本地UI累计≤5分钟。必须实际source diff、exact-SHA CI/Worker/smoke，不自标USER-ACCEPTED。每个主要修改/测试/失败修正/push记真实UTC和结果。
+- 14:09 UTC：复核 §10.49 原始 iPhone 到期失败及最新 §10.51 新失败记录；确认二者分开处理，当前仅执行 §10.49。
+- 14:10 UTC：保留既有本地 `app/page.tsx` 改动，起初加入共享窗到期 watcher 与旧响应计时绕行。
+- 依赖：此工作树最初没有 `node_modules`，第一次 `npm run build` 因 `vinext: command not found` 未启动。随后在本工作树建立指向现有共享依赖的忽略 symlink，未改动其他工作树文件。
+- 构建：`npm run build` 通过；仅报告现有 bundle 大小与动态 API 分类提示。
+- API：首次 12/13；新用例因复用 `openAttack()` 时卡牌 fixture ID 不符而失败（请求 400，未进入被测路径）。修正 fixture 后，`GAME_TEST_FILES=tests/api/shared-response-window.test.mjs node tests/run-tests.mjs` 通过 13/13。
+- 浏览器：单一 390×844 场景先通过 1/1（16.2 秒）；收紧为恰好一次 `advance_timers` 后再次通过 1/1（15.5 秒）。验证无自动 `decline_response` / `skip_rescue` / `start_*_timer`、到期控制禁用、窗口按真实 Dodge 作者结算且只消耗其实体牌。累计本地 UI 测试 31.7 秒。
+- Lint：变更的 API 与测试文件定向 ESLint 通过。完整 React Hook 规则对 `app/page.tsx` 栈溢出；用 `HEAD:app/page.tsx` 基线单独重现同一 `react-hooks/rules-of-hooks` `RangeError`，所以确认不是本次新增触发。局部关闭该崩溃规则检查本文件其余 lint 后为 0 error，剩 1 条既有 `exhaustive-deps` 警告（`publicCardDisplayAction?.motion`）。`git diff --check` 通过。
+- 提交前检查：当前远端 `ux-v2` 为 `4a94df58`，其与最近成功部署 SHA `e555109e` 之间只有文档变化，`app/ game/ tests/ package*` 无差异；远端最新相关 Actions #43698429149 在 e555 上全部通过（Lint/fast、API、browser smoke、D1 deploy、Worker deploy、production smoke）。新实现 SHA 的 exact-SHA CI 尚未运行。
 
-2026-11-15 09:12 UTC：实现错误边界Retry与明确Leave分离；Retry重取权威GET，不清会话/不重播POST。新增结构化脱敏错误分类/组件名/版本指纹/seat，关键生命周期独立128条保留及trace最终status/actionKind；仅timer-arm stale409一次GET，其他动作错误不忽略。针对性17/17 PASS（含原503/404、真实React错误边界抛错/重复失败/Retry/Leave、trace大量DOM淘汰），build PASS，新模块/trace/测试lint PASS、diff待最终核对。唯一四人440px真实Attack→GROUP_RESOLUTION→受控错误注入/Retry场景正在运行，累计UI预算≤5分钟；不声称复现owner原始未知异常，尚未commit/push/部署。
+### 唯一待办
 
-2026-11-15 09:16 UTC：四人440px手机场景PASS：真实Attack respond200→下一目标Negation→实际错误边界受控注入→Retry仅GET恢复/会话不变/Attack仅一次→重复错误可下载trace→明确Leave才清会话。首次断言误写GROUP_RESOLUTION，实际合法下一阶段NEGATION；仅将断言改为NEGATION并校验真实下一目标，未改游戏规则。两次累计UI18.13s，不再增测。结构化脱敏诊断支持minified组件名和白名单属性名，原始错误消息/路径/私有ID不导出。最终针对性17/17 PASS、模块/trace/测试lint PASS、diff check PASS；即将commit/push，EXIT ROOT CAUSE NOT PROVEN FROM CAPTURE，待owner新trace/phone审核。
-
----
-
-## NEXT AT SAFE HANDOFF — ORIGINAL §10.49 STILL NOT ACCEPTED / P0: expired Shared Response Window 8s → stale 409 loop / frozen Cao Cao Entourage
-
-**Priority/status:** ORIGINAL §10.49 FAILED owner iPHONE review 2026-11-15 09:44 UTC; **NOT FIXED / NOT ACCEPTED; NOT A NEW TASK OR F1**. This is the NEXT task **after** the above currently in-flight §10.51 work reaches a safe commit/push/handoff boundary. Do NOT start a second worktree concurrently modifying `app/page.tsx` or `app/api/rooms/route.ts`, do not drop §10.51's uncommitted edits, and do not claim §10.49 PASS based on green pre-failure Actions. **The single authoritative executable specification remains `docs/UX2-refine.md` original §10.49, including its CURRENT P0 acceptance-blocker subsection; no separate F1/task identity is authorized.** The existing single-winner-per-round design and exact source-grounded timeout repair instructions remain intact. Read it at handoff, then execute — NO video reenactment, root-cause research, new architecture or new task number.
-
-**Reviewer-verified failure:** Owner's uploaded 14.47s iPhone video and full `wtk-game-ux-trace-2026-11-15T09-43-47.575Z.json` captured deployed build `e555109e`. Cao Cao at seat1 invoked Entourage successfully; Zhang Liao seat3 submitted ONE genuine Dodge intent (200); eligible Sima Yi seat0 stayed silent. Shared absolute deadline 09:43:39.070 UTC. After deadline **17** `decline_response 409 stale` and **20** `start_response_timer 200`, **ZERO** `advance_timers`, GET poll 200; phase stays response, timer visually reaches 0, H4/PAC frozen and Confirm/Skip unresponsive. `app/page.tsx` old automatic response timeout effect (~L5909) illegally sends `decline_response` at shared expiry and re-arms after stale response; its `advance_timers` deadline watcher (~L2160) only supports Negation, not `presentationV2.sharedResponseWindow`. Server `route.ts` shared branch (~L7854–7885) accepts no late intent and treats `start_response_timer` as no-op; only `advanceSharedResponseWindow` (~L7078–7148) can settle. This is **a proven timeout-protocol deadlock**, NOT proof of GET 503 or a React render failure.
-
-**Required implementation checkpoints:** (1) Bypass ALL legacy automatic `start_response_timer` and `decline_response`/`skip_rescue` on an active shared window, preserving manual choice until its deadline and private locked state. (2) Add one viewer-independent PUBLIC shared-window `windowId+deadline` watcher, at expiry send `advance_timers`, GET resync, bounded idempotent retry if same window remains; work for Entourage, Influencing, Dying, submitted viewers and TEST SWITCH. (3) Add narrow authenticated server fallback so an expired legacy timer/Pass cannot just return no-op or loop 409 forever; it may trigger real expiry settlement, but MUST NOT accept late intent or mutate on GET. (4) Verify actual one real winning Dodge/Attack/Peach or zero-valid fallback through existing resolvers and safe after-lease claim recovery, no duplicate Hand/HP/event. (5) Focused fake-clock client + API integration cases for silent last Wei helper, all early, all pass, 409 recovery, two simultaneous `advance_timers`, reload, private responses/other views; Negation/old actor timer/no GET writes regressions. At most ONE actual four-player browser scene, combined UI runtime ≤5 min. (6) Push code+tests to `ux-v2`; exact-SHA Actions/D1 (no migration expected)/Worker/production smoke; report failures truthfully, owner iPhone re-test required.
-
-**Next Agent HANDOVER ownership:** On safely taking this task, clean up the completed §10.51 execution notes, make this original §10.49 the sole CURRENT task, append real UTC execution/test/CI/deploy results, and STOP pending independent reviewer/owner verdict. Do not replace its failure evidence with the earlier green §10.49 delivery status. Do not start queued §10.53-F1/§§10.54–10.56 as part of this P0 task.
+复核最终 diff 与提交内容，按工作流提交并推送 §10.49 到 `ux-v2`；等待新提交的 exact-SHA GitHub Actions、D1/Worker 部署和生产 smoke 全部完成，记录实际 SHA/链接/Worker 结果。状态保持 `IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW`；不得标记用户验收通过。完成此任务后，再按用户要求重新复核 §10.51。
