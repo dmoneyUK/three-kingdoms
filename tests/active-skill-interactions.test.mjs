@@ -4,6 +4,7 @@ import test from "node:test";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { Countdown, GameRoom, GameRoomErrorBoundary, HERO_PASSIVE_SKILL_NAMES, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS } from "../app/page.tsx";
+import { gameplayDeclineButtonClassName } from "../app/semantic-action-style.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
 import { buildPresentationClientView } from "../game/presentation-client.ts";
 import { buildGroupScopePreview } from "../game/group-scope-preview.ts";
@@ -230,6 +231,13 @@ async function gameTree(skill, onAction) {
 
 function buttons(renderer, props) { return renderer.root.findAllByType("button").filter((button) => Object.entries(props).every(([key, value]) => button.props[key] === value)); }
 function button(renderer, props) { const matches = buttons(renderer, props); assert.equal(matches.length, 1, `expected one button ${JSON.stringify(props)}, got ${matches.length}; buttons=${renderer.root.findAllByType("button").map((entry) => String(entry.props.children)).join(" | ")}`); return matches[0]; }
+
+test("red action class is reserved for the exact voluntary Skip label", () => {
+  for (const label of ["Skip", "Skipping…"]) assert.ok(gameplayDeclineButtonClassName(label).includes("wtk-skip-action"));
+  for (const label of ["Pass", "TAKE DAMAGE", "End", "Cancel", "Give up Weapon"]) {
+    assert.equal(gameplayDeclineButtonClassName(label), "end", `${label} keeps its existing action palette`);
+  }
+});
 function nodeWith(renderer, prop, value) { const matches = renderer.root.findAll((node) => node.props?.[prop] === value); assert.equal(matches.length, 1, `expected one node ${prop}=${value}, got ${matches.length}`); return matches[0]; }
 function nodeWithClass(renderer, className) { const matches = renderer.root.findAll((node) => typeof node.type === "string" && node.props?.className?.split(/\s+/).includes(className)); assert.equal(matches.length, 1, `expected one node class=${className}, got ${matches.length}`); return matches[0]; }
 function opponentHeroButton(renderer, playerId) {
@@ -506,6 +514,7 @@ test("End Turn opens the in-battlefield confirmation and preserves legal action 
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const endTurn = button(renderer, { children: "End" });
   assert.equal(endTurn.props.disabled, false, "the authoritative End Turn action remains available");
+  assert.ok(!endTurn.props.className.includes("wtk-skip-action"), "End Turn keeps its existing red-button meaning");
   await act(async () => { endTurn.props.onClick(); });
   const stage = nodeWithClass(renderer, "end-turn-confirmation-stage");
   assert.equal(renderedNodeText(stage).includes("End your Play Phase?"), true);
@@ -810,12 +819,14 @@ test("generic trigger Cancel clears provider and target without replacing Skip",
   await act(async () => { button(renderer, { children: "Use Future Target" }).props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select TARGET" }).props.onClick(); });
   assert.equal(buttonsContaining(renderer, "Cancel").length, 1, "the provider-owned Cancel is the only cancel surface");
+  assert.ok(!buttonsContaining(renderer, "Cancel")[0].props.className.includes("wtk-skip-action"), "Cancel does not use the Skip variant");
   const actionCountBeforeCancel = actionCalls.length;
   await act(async () => { buttonsContaining(renderer, "Cancel")[0].props.onClick(); });
   assert.equal(actionCalls.length, actionCountBeforeCancel, "provider Cancel does not submit or decline");
   assert.equal(button(renderer, { children: "Use Future Target" }).props.disabled, false, "the trigger can restart after Cancel");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
   assert.equal(button(renderer, { children: "Skip" }).props.disabled, false, "Skip remains authoritative and separate");
+  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
   await act(async () => { renderer.unmount(); });
 });
 
@@ -1087,6 +1098,8 @@ test("Da Qiao Deflection is one mounted hero control with shared card/target sel
   const profileButton = button(renderer, { "aria-label": "Deflection" });
   assert.equal(profileButton.props.disabled, false);
   assert.equal(button(renderer, { children: "Skip" }).props.disabled, false);
+  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
+  assert.match(button(renderer, { children: "Skip" }).props.className, /\bwtk-skip-action\b/);
   assert.equal(renderer.root.findAllByProps({ children: "Confirm" }).length, 0);
   assert.equal(renderer.root.findAllByProps({ "aria-label": "Select ATTACKER as Deflection target" }).length, 0);
   assert.equal(renderer.root.findAllByProps({ "aria-label": "Select LEGAL TARGET as Deflection target" }).length, 0);
@@ -1155,13 +1168,15 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   assert.equal(skillButton().props["aria-pressed"], false);
   assert.equal(picker().length, 0, "Retaliation does not open its picker before activation");
   assert.equal(button(renderer, { children: "Skip" }).props.disabled, false);
+  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
   assert.equal(actionCalls.filter(([actionName]) => actionName === "trigger").length, 0, "Retaliation does not submit before activation");
 
   await act(async () => { skillButton().props.onClick(); });
   assert.equal(skillButton().props["aria-pressed"], true);
   assert.equal(picker().length, 1, "activating Retaliation opens the picker");
   assert.equal(actionCalls.filter(([actionName]) => actionName === "trigger").length, 0, "activation does not submit the trigger");
-
+  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
+  assert.ok(button(renderer, { children: "Use Retaliation" }).props.className.includes("wtk-action-button"));
   const eligibleCard = button(renderer, { "aria-label": "Choose one random Hand card, 1 cards" });
   assert.equal(eligibleCard.props["aria-pressed"], false);
   await act(async () => { eligibleCard.props.onClick(); });

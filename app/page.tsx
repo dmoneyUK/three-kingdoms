@@ -7,6 +7,7 @@ import { publicH4Copy } from "../game/public-h4-copy";
 import { verifiedPlayerCopy, type VerifiedPlayerCopySegment } from "../game/verified-player-copy";
 import { classifyRoomGetFailure, RoomGetError, RoomPollRecovery } from "../game/room-poll-recovery";
 import { runSharedResponseExpiryAttempt } from "../game/shared-response-expiry";
+import { gameplayDeclineButtonClassName } from "./semantic-action-style";
 
 import { isEntourageDodgeFor } from "../game/entourage-presentation";
 
@@ -11941,7 +11942,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             return <div ref={handRailRef} onScroll={(event) => { handViewportSnapshotRef.current = captureHandViewportSnapshot(event.currentTarget, room.meId); }} className="local-hand-rail" data-hand-layout={handCardLayout.measured ? "measured" : "pending"} style={{ justifyContent: handCardsInDock.length === 1 ? "center" : "flex-start" }} data-hand-overflow={handOverflows ? "true" : "false"} tabIndex={handOverflows ? 0 : undefined} role="region" aria-label={handOverflows ? "Hand cards — scroll horizontally to browse" : "Hand cards"}>{handCardsInDock.map((item, index) => renderHandCard(item, index))}</div>;
           })()}</div>
         </div>
-      <div className="turn-controls" data-console-surface="local-operation" data-ordinary-play-target-selection={ordinaryPlayTargetSelection ? "true" : undefined} aria-label="Local operation console">
+      <div className="turn-controls" data-console-surface="local-operation" data-ordinary-play-target-selection={ordinaryPlayTargetSelection ? "true" : undefined} data-skip-visible={consoleDecline?.label === "Skip" ? "true" : undefined} aria-label="Local operation console">
         <div data-action-extras="true">
           {triggerResponse && responseDecisionReady && inlineChoiceTriggerOption?.selection?.type === "choice" && inlineChoiceTriggerOption.selection.choices.map((choice) => <button type="button" key={`${inlineChoiceTriggerOption.effectId}:${choice.id}`} className="serpent-control" data-trigger-choice-provider={inlineChoiceTriggerOption.effectId} data-trigger-choice-action={choice.id} aria-label={`${inlineChoiceTriggerOption.label}: ${choice.label}`} disabled={responseControlsDisabled || !canUseAction(room.currentAction, "trigger")} onClick={() => void onAction("trigger", { providerId: inlineChoiceTriggerOption.effectId, choice: choice.id })}>{choice.label}</button>)}
           {triggerResponse && genericTriggerOptions.map((option) => option.selection?.type === "target_cards" || option.selection?.type === "choice" && option.allowDecline === false ? null : option.selection ? <button key={option.effectId} className={`serpent-control ${responseProviderId === option.effectId ? "active" : ""}`} disabled={triggerControlsDisabled} onClick={() => { const active = responseProviderId === option.effectId; if (active) resetLocalTargetFlow("trigger"); else { setResponseProviderId(option.effectId); setSelected(""); setTargetIds([]); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); } }}>{responseProviderId === option.effectId ? `Cancel ${option.label}` : option.selection.type === "target" ? `Use ${option.label}` : option.label}</button> : <button key={option.effectId} className="serpent-control" disabled={triggerControlsDisabled} onClick={() => onAction("trigger", { providerId: option.effectId })}>{`Use ${option.label}`}</button>)}
@@ -11970,9 +11971,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy && !ordinaryTurnPlayAuthorized || !card || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play"}</button>}
           </div>
           <div data-action-slot="decline">
-            {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}
-            {triggerResponse && triggerDeclineAction && (!targetCardPickerInModal || targetCardPickerInLocalDock) && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !consoleDecision.authoritativeDecline.enabled} onClick={() => onAction("decline_trigger")}>Skip</button>}
-            {canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !responseDamageAction || !consoleDecision.authoritativeDecline.enabled} onClick={() => responseDamageAction && onAction(responseDamageAction)}>{responseDeclineLabel}</button>}
+            {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName(busy ? "Skipping…" : "Skip")} disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}
+            {triggerResponse && triggerDeclineAction && (!targetCardPickerInModal || targetCardPickerInLocalDock) && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName("Skip")} disabled={responseControlsDisabled || !consoleDecision.authoritativeDecline.enabled} onClick={() => onAction("decline_trigger")}>Skip</button>}
+            {canRespond && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName(responseDeclineLabel)} disabled={responseControlsDisabled || !responseDamageAction || !consoleDecision.authoritativeDecline.enabled} onClick={() => responseDamageAction && onAction(responseDamageAction)}>{responseDeclineLabel}</button>}
             {room.isMyTurn && canPlay && consoleKind === "turn" && <button ref={endTurnConfirmationButtonRef} className="end" disabled={busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onClick={() => { if (endTurnConfirmationAuthorized && !endTurnConfirmationSubmissionRef.current) setEndTurnConfirmationIdentity(endTurnConfirmationScope); }}>{busy ? "Finishing…" : "End"}</button>}
           </div>
         </div>
@@ -12450,7 +12451,7 @@ function RetaliationCardPool({ selection, target, selectedKeys, playerCount, sco
       publicTarget={{ handCount: target.handCount, equipmentCards: target.equipmentCards, judgementCards: target.judgementCards }} zones={zones}
       selectionCount={`${selectedKeys.length} / ${selection.max} selected`} actionLabel="Use Retaliation" disabled={disabled}
       confirmDisabled={disabled || selectedKeys.length < selection.min || selectedKeys.length > selection.max}
-      secondaryAction={canDecline ? { label: "Skip", disabled, onClick: onDecline } : undefined}
+      secondaryAction={canDecline ? { label: "Skip", variant: "skip", disabled, onClick: onDecline } : undefined}
       error={error} onToggle={onToggle} onConfirm={onConfirm} onInfo={onInfo} />
   </BattlefieldChoiceStage>;
 }
@@ -12529,10 +12530,10 @@ function TargetCardPicker({ option, presentationCopy, compact = false, selection
       </section>)}
     </div>
     <div className="target-card-picker-count" aria-live="polite">{validSelectedKeys.length} / {selection.max} selected</div>
-    <div className="target-card-picker-actions">
+    <div className="target-card-picker-actions" data-skip-visible={canDecline ? "true" : undefined}>
       {showCancel && <button type="button" className="end" disabled={disabled} onClick={onCancel}>Cancel</button>}
-      {canDecline && <button type="button" className="end" disabled={disabled} onClick={onDecline}>Skip</button>}
-      <button type="button" className="primary" disabled={disabled || !complete} onClick={() => onUse(validSelectedKeys)}>{presentationCopy?.actionLabel ?? `Use ${effectLabel}`}</button>
+      {canDecline && <button type="button" className={gameplayDeclineButtonClassName("Skip")} disabled={disabled} onClick={onDecline}>Skip</button>}
+      <button type="button" className={`primary${canDecline ? " wtk-action-button" : ""}`} disabled={disabled || !complete} onClick={() => onUse(validSelectedKeys)}>{presentationCopy?.actionLabel ?? `Use ${effectLabel}`}</button>
     </div>
     {error && <p className="error" role="alert">{error}</p>}
   </section></div>;

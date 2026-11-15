@@ -8160,3 +8160,58 @@
     font-size: 10px;
   }
 }
+
+/* §10.57: true Skip controls share the adjacent Use/Confirm action grammar;
+   only the semantic voluntary-Skip class changes the palette to red. */
+.game-shell .wtk-action-button,
+.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__secondary.wtk-skip-action,
+.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__confirm,
+.game-shell .target-card-picker-actions[data-skip-visible="true"] > .wtk-action-button,
+.game-shell .local-player-dock .turn-controls[data-skip-visible="true"] [data-action-slot="decline"] > .wtk-action-button,
+.game-shell .local-player-dock .turn-controls[data-skip-visible="true"] [data-action-slot="primary"] > button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 6px 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 2px;
+  font: 700 9px/1.1 Arial, sans-serif;
+  letter-spacing: .06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.game-shell .wtk-skip-action {
+  background: #8b302a;
+  border-color: #c3a46b;
+  color: #fff2dc;
+}
+.game-shell .wtk-action-button:focus-visible,
+.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__confirm:focus-visible,
+.game-shell .target-card-picker-actions[data-skip-visible="true"] > .primary:focus-visible,
+.game-shell .local-player-dock .turn-controls[data-skip-visible="true"] [data-action-slot="primary"] > button:focus-visible {
+  outline: 2px solid #f0cf7e;
+  outline-offset: 2px;
+}
+.game-shell .wtk-action-button:disabled,
+.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__confirm:disabled,
+.game-shell .target-card-picker-actions[data-skip-visible="true"] > .primary:disabled,
+.game-shell .local-player-dock .turn-controls[data-skip-visible="true"] [data-action-slot="primary"] > button:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
+.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__secondary {
+  flex: 0 0 auto;
+  min-width: 48px;
+  padding-inline: 7px;
+}
+.game-shell .target-card-picker-actions[data-skip-visible="true"] {
+  gap: 6px;
+}
+.game-shell .target-card-picker-actions[data-skip-visible="true"] > button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline: 6px;
+}
