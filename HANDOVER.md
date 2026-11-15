@@ -22,3 +22,9 @@
 08:43–08:50 UTC：f8e9ce03正式CI lint/fast及startup smoke PASS，完整API FAIL，deploy SKIPPED，未上线。定位共享DYING未推进causal stage的真实回归，已补DYING stage/原AOE续接投影，并将败亡写入同一lease保护。旧单人救援/手动60s计时用例显式恢复旧存档fixture保留原断言；新规则继续由共享窗口真实API验证。正在运行失败文件的窄范围API，不追加UI测试。
 
 08:50 UTC：CI修复针对性API第一次132项126通过/6失败；6项中旧fixture/投影输入及测试helper越过下一领域响应，修正后第二组66项64通过/2失败，最终66/66 PASS（保留旧顺序存档的阶段、私有actor、计时与AOE/Duel续接原断言；新方天画戟救援用真实全员Pass+单桃提交，避免helper自动跳过后续目标响应）。没有禁用用例/断言/CI，没有重跑UI。新增Shared12项在修复首轮全部通过。服务器与修改测试lint PASS，build/diff check PASS。将修复独立commit/push，重新等待exact-SHA全CI。
+
+08:50 UTC：CI REPAIR PUSHED — VALIDATION PENDING。最新实现SHA `e6ffd37827478812f3aa4b623d47eca546efa668`，Actions [43696381697](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43696381697) 已in_progress。失败f8e9ce03未部署。精确恢复点：等待e6ffd378全部必需job、迁移、部署与smoke，不再运行本地UI。
+
+08:55 UTC：e6ffd378 CI第二次：lint/fast、startup smoke PASS；完整API364通过/1失败，deploy仍SKIPPED。唯一失败为并发伤害触发用例未固定请求checkpoint：第二个无context的旧trigger在新濒死窗口被当成不同操作，返回403而非预期409 stale。保留严格一成功+一409 stale断言，补相同旧checkpoint context，准确验证同一决策并发；正在单文件验证，不改生产规则、不重跑UI。
+
+08:56 UTC：并发单文件16/16 PASS，严格原断言保留，diff check PASS。仅测试checkpoint修复+handover提交，重新运行完整CI。

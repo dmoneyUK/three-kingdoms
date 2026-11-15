@@ -476,9 +476,12 @@ test("concurrent lethal damage continuation enters Dying once and accepts one re
 
   await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-double-lethal", targetId: alicePlayer.id });
   await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a" });
+  const beforeFinal = (await state(game.code, host.token)).data;
+  const damageContext = { actionRevision: beforeFinal.actionRevision, meId: beforeFinal.meId,
+    phase: beforeFinal.phase, pendingKind: beforeFinal.pending.kind, actorId: beforeFinal.actionPlayerId };
   const results = await Promise.all([
-    requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b" }),
-    requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b" }),
+    requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b", context: damageContext }),
+    requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b", context: damageContext }),
   ]);
   assert.equal(results.filter((result) => result.status === 200).length, 1);
   assert.equal(results.filter((result) => result.status === 409 && result.data.stale).length, 1);
