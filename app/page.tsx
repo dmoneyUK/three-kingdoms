@@ -1,5 +1,7 @@
 "use client";
 
+import { gameRenderFailureDiagnostic, resyncStaleResponseTimer } from "../game/game-screen-recovery";
+
 import { sharedResponseContributions } from "../game/shared-response-contribution";
 import { publicH4Copy } from "../game/public-h4-copy";
 import { classifyRoomGetFailure, RoomGetError, RoomPollRecovery } from "../game/room-poll-recovery";
@@ -1863,6 +1865,7 @@ export default function Home() {
         stateEpoch.current += 1;
         pollRecovery.current.reset();
         setConnectionInterrupted(false);
+        recordAttackDodgeUxTrace("game-session-retired", { category, status: cause instanceof RoomGetError ? cause.status : null });
         stopAttackDodgeUxTrace("room-session-unavailable");
         clearSavedGameSession();
         setRoom(null); setCode(""); setToken("");
@@ -1982,6 +1985,9 @@ export default function Home() {
           ) as Record<string, unknown>);
         }
       }
+      if (await resyncStaleResponseTimer(action, response.status, rawData.stale === true, async () => {
+        await fetchRoom(code, token, true, testViewerIdRef.current ?? room?.meId);
+      })) return true;
       const data = { ...rawData, room: normalizeRoomData(rawData.room) as Room | null };
       const testHeroSelectionAdvances = room?.isTestController && room.status === "heroes"
         && data.room?.status === "heroes";
@@ -2032,6 +2038,7 @@ export default function Home() {
     testViewerIdRef.current = playerId;
     testViewerRevisionRef.current += 1;
     pendingTestViewerFocusIdRef.current = playerId;
+    recordAttackDodgeUxTrace("test-viewer-changed", { fromSeat: room.players.find((player) => player.id === room.meId)?.seat ?? null, toSeat: targetPlayer.seat });
     if (!await fetchRoom(room.code, token, true, playerId)) pendingTestViewerFocusIdRef.current = null;
   }
 
@@ -2160,7 +2167,14 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode, token, pageVisible, negationDeadline]);
 
+  async function retryGameScreen() {
+    stateEpoch.current += 1;
+    pollRecovery.current.reset();
+    return Boolean(await fetchRoom(code, token, true, testViewerIdRef.current ?? room?.meId));
+  }
+
   function leave() {
+    recordAttackDodgeUxTrace("game-user-left", { status: room?.status ?? null, phase: room?.phase ?? null });
     pollRecovery.current.reset();
     setConnectionInterrupted(false);
     stopAttackDodgeUxTrace("player-left-game");
@@ -2175,7 +2189,7 @@ export default function Home() {
   const presentationView = room ? buildPresentationClientView(room.presentationSnapshot, room.meId) : null;
   const connectionStatus = <div role="status" className="room-connection-status" hidden={!connectionInterrupted}>Connection interrupted. Reconnecting…</div>;
 
-  if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <>{connectionStatus}<GameRoomErrorBoundary room={room} onRecover={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy || connectionInterrupted} busyAction={busyAction} error={error} onAction={send} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary></>;
+  if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <>{connectionStatus}<GameRoomErrorBoundary room={room} onRecover={retryGameScreen} onLeave={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy || connectionInterrupted} busyAction={busyAction} error={error} onAction={send} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary></>;
   if (room?.status === "heroes") return <>{connectionStatus}<HeroSelection room={room} busy={busy || connectionInterrupted} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} /></>;
   if (room) return <>{connectionStatus}<WaitingRoom room={room} busy={busy || connectionInterrupted} error={error} onStart={() => send("start")} onAddTestPlayers={(count) => send("add_test_players", { count })} onEnableTestRoom={() => send("enable_test_room")} onConfigureTestHands={(presetId, handsBySeat, expectedRevision) => send("configure_test_hands", { presetId, handsBySeat, expectedRevision })} onLeave={leave} /></>;
 
@@ -3402,39 +3416,29 @@ export function buildDecisionPresentation(room: Pick<Room, "players" | "meId" | 
 
 function pendingKind(room: Room) { return room.pending?.kind ?? null; }
 
-export class GameRoomErrorBoundary extends Component<{ room: Room; onRecover: () => void; children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
+export class GameRoomErrorBoundary extends Component<{ room: Room; onRecover: () => unknown | Promise<unknown>; onLeave?: () => void; children: ReactNode }, { failed: boolean; retrying: boolean }> {
+  state = { failed: false, retrying: false };
 
   componentDidCatch(error: Error, info: { componentStack?: string }) {
-    const viewer = this.props.room.players.find((player) => player.id === this.props.room.meId);
-    const action = this.props.room.currentAction;
-    console.error("[GameRoom render failure]", {
-      status: this.props.room.status,
-      phase: this.props.room.phase,
-      actionRevision: this.props.room.actionRevision ?? null,
-      currentAction: {
-        kind: action?.kind ?? null,
-        requirement: action?.requirement ?? null,
-        triggerEvent: action?.triggerEvent ?? null,
-        actorId: action?.actorId ?? null,
-      },
-      heroId: viewer?.hero ?? null,
-      activeSkillProviderIds: action?.triggerOptions?.map((option) => option.effectId) ?? [],
-      pendingKind: pendingKind(this.props.room),
-      error: { name: error.name, message: error.message, stack: error.stack ?? "" },
-      componentStack: info.componentStack ?? "",
-    });
-    this.setState({ failed: true });
+    const diagnostic = gameRenderFailureDiagnostic(error, info.componentStack ?? "", this.props.room, BUILD_SHA);
+    recordAttackDodgeUxTrace("game-room-render-failure", diagnostic);
+    console.error("[GameRoom render failure]", diagnostic);
+    this.setState({ failed: true, retrying: false });
   }
 
-  recover = () => {
-    clearSavedGameSession();
-    this.props.onRecover();
+  recover = async () => {
+    if (this.state.retrying) return;
+    recordAttackDodgeUxTrace("game-screen-retry", { phase: this.props.room.phase, currentActionKind: this.props.room.currentAction?.kind ?? null });
+    this.setState({ retrying: true });
+    try {
+      if (await this.props.onRecover()) this.setState({ failed: false });
+    } catch { /* Keep the recoverable error and trace download after a failed GET. */ }
+    finally { this.setState({ retrying: false }); }
   };
 
   render() {
     if (!this.state.failed) return this.props.children;
-    return <main className="landing-shell"><section className="entry-card recovery-card"><span className="eyebrow">GAME SCREEN ERROR</span><h1>The game screen encountered an error.</h1><p>Your room is protected. Return to the start screen to continue.</p><TraceDownloadControl buttonClassName="outline-button trace-download-landing" fallbackClassName="outline-button trace-download-landing trace-download-fallback" /><button className="gold-button" onClick={this.recover}>Return to start screen</button></section></main>;
+    return <main className="landing-shell"><section className="entry-card recovery-card"><span className="eyebrow">GAME SCREEN ERROR</span><h1>The game screen encountered an error.</h1><p>Your session is saved. Retry the current game screen.</p><TraceDownloadControl buttonClassName="outline-button trace-download-landing" fallbackClassName="outline-button trace-download-landing trace-download-fallback" /><button className="gold-button" disabled={this.state.retrying} onClick={this.recover}>{this.state.retrying ? "Retrying…" : "Retry game screen"}</button>{this.props.onLeave && <button className="outline-button" onClick={this.props.onLeave}>Leave game</button>}</section></main>;
   }
 }
 

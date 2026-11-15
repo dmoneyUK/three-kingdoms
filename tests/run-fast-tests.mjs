@@ -15,6 +15,7 @@ const fastTests = [
   "tests/targeting-capabilities.test.mjs",
   "tests/room-safety.test.mjs",
   "tests/room-poll-recovery.test.mjs",
+  "tests/game-screen-recovery.test.mjs",
   "tests/shared-response-window.test.mjs",
   "tests/shared-response-commit.test.mjs",
   "tests/room-safety-render.test.mjs",
