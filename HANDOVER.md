@@ -1,24 +1,18 @@
 # HANDOVER — 当前唯一任务
 
-## §10.54 — PAC-MINIATURE-PARK-CONTINUITY-01
+## §10.49 CAO-CAO-ENTOURAGE-SIMULTANEOUS-WEI-DODGE-01 — 原始 P0 两项修复
 
-**状态：** 实现已本地提交并接到最新远端基线；尚未推送、CI/部署或验收。当前只执行这一项。
+**状态：** CURRENT / NOT ACCEPTED。当前仍有两个由用户复现的阻断，必须在同一原始任务内修复；不得另建 F1 或改变已接受的窗口规则。
 
-**最新设计：** `docs/UX2-refine.md` revision `2026-11-15 17:51 UTC`，远端最新 `origin/ux-v2` = `9acc636ebbed78b2d8275bf9749c3ea9e9f8b32a`。原 §10.49 新增第二个 P0：Dying Peach 合法 `respond` 确认仍被旧客户端 `give_peach` 条件禁用；连同 17:24 Liu Bei expiry race 均保留在设计中。§10.51 仍关闭，§10.53-F1 技术交付有绿色 CI/Worker 证据。§10.54 已是本 HANDOVER 当前任务，owner 直接指示先完成后再复习 §10.49/§10.51；本任务继续，完成后按最新设计先处理 §10.49 两个 P0。远端 HANDOVER 不并入，本文件只记录本 Agent 的单一当前任务。工作分支 `codex/ux2-1049-expiry-20261115`，目标 `ux-v2`。
+**最新设计：** `docs/UX2-refine.md` revision `2026-11-15 18:02 UTC`。§10.49 原始任务定义为 Liu Bei 共享 Shu Attack 到期结算卡住，以及 Dying Peach 中真实 Peach 的 Confirm 被禁用。§10.51 依最新设计为 USER-ACCEPTED / CLOSED，不是待修任务。
 
-**范围：** 普通手机端公开 root/response 卡完成约 4 秒中央阅读后，仅在真实作者落点已证明时将同一张牌直接停放；保留真实身份、H4、特殊路线和触摸详情。PAC 在同房间/观察者/卡牌场景的安全重测期间保留或贴合真实 Console 边缘；文案更新时使用当前服务端公开文案。状态消失、观察者/卡牌场景改变或真实障碍冲突时清除；PAC 层级高于缩略牌、低于 Inspector。
+**刚完成的前置任务结果：** §10.54 已推送并部署，代码 SHA `79efde4888fee3cd9ab900541c36b0b2d719a822`；[精确 SHA Actions 43743762710](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43743762710) 全部通过；Cloudflare Worker Version `8f8114de-219b-4dba-b0e4-8b3f7f64adb9`；生产 `/` 与 `/api/health` 冒烟通过。状态为 IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。该任务一次本地 440px UI 尝试在最终修正前失败，达到 5 分钟 UI 预算后未重试，需由用户手机复审。
 
-**本地进展（UTC）：**
-- **17:12–17:23** — 440px 四人 Attack→Dodge 场景复现 PAC 隐藏约 100ms 后恢复；新 trace 显示 H4 可见期间 PAC 短暂隐藏。此失败发生在最后一次状态连续性修正之前。
-- **17:26** — 修正为按同房间/观察者/已证明场景/尺寸及实时碰撞安全性恢复原落点；允许公开文案更新，并放宽战场下沿至 Console 之间的安全走廊。已添加 2px 无害视口重排及身份/隐私负向单测。由于已停止本地 UI 重试，最终代码的浏览器行为尚未验证。
-- **17:27** — `node --import tsx --test tests/public-card-announcement.test.mjs` 通过 **34/34**；定向 ESLint 0 errors、14 条既存 hooks 警告；`git diff --check` 通过；`npm run build` 通过。
-- **17:28** — 包含 `app/page.tsx` 的 ESLint 在该文件约第 4000 行因既存 `react-hooks/rules-of-hooks` 调用栈溢出退出；不改 lint 规则。前一次 440px 浏览器场景未通过；最新源码尚无浏览器通过证据。
-- **17:29** — `origin/ux-v2` 前进至 `391510f`（仅 `docs/UX2-refine.md`）；已三方合并其 §10.57/§10.58 更新，未覆盖本地任务改动。最新已观察到的成功 Actions 为 `fc3496a` / [43734731408](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43734731408)；尚无本任务 commit、精确 SHA CI、部署或生产 smoke。
-- **17:38** — diff 审查发现无场景身份时 PAC 保留判断过宽；现要求前后场景身份均存在且完全匹配（含 interaction ID），补充缺失场景负向断言。定向 `tests/public-card-announcement.test.mjs` 仍通过 **34/34**；定向 ESLint 0 errors、14 条既存 warnings；`npm run build` 通过；`git diff --check` 通过。未重跑 UI，前述 440px 失败仍是待精确 SHA CI 验证的风险。
-- **17:38** — 复核远端：`391510f` 仅改 Markdown，部署 workflow 明确 `**/*.md` 路径忽略，因此该 SHA 无 Actions/status checks 是预期；最近一次相关成功 push Actions 仍为 `fc3496a` / `43734731408`。分支比该远端仅落后一条 docs commit；尚未提交或推送 §10.54。
-- **17:38** — 提交前发现远端继续前进到 `999528c`：`2fb0e095` 重开 §10.49 Liu Bei expiry P0，`999528c` 仅改 HANDOVER；没有读取远端 HANDOVER 内容。已按最新设计保留 P0 证据与方案，记录 §10.54 完成后先处理 §10.49；相关文档提交由 `paths-ignore: **/*.md` 排除，因此最新相关绿色 Actions 仍是 `fc3496a` / `43734731408`。新增小单测验证缺少/变更 interaction scene 时 PAC 不保留；定向测试通过 **34/34**。
-- **17:38** — 最新代码状态：定向 ESLint 0 errors / 14 既存 hooks warnings；`npm run build` 通过；`git diff --check` 通过。浏览器仍未重试；之前失败的 440px 场景保留为待精确 SHA CI 验证的风险。尚未提交/推送/部署。
-- **17:51** — 远端 `9acc636` 新增 §10.49 Dying Peach disabled-submit P0，与刘备 expiry race 并列原任务两个阻断。已合并最新证据、修复要求和 owner 任务顺序；与 §10.54 无代码冲突。该提交仅改 Markdown；未读取或并入他人 HANDOVER。
-- **17:52** — §10.54 实现已提交到本地任务分支，并成功 rebase 到 `origin/ux-v2` = `9acc636`；解决仅限 HANDOVER/UX2-refine 的预期冲突，保留本 Agent 的当前单任务 HANDOVER 与最新设计内容。尚未推送，精确 SHA Actions/Worker/deployment/smoke 待验证。
+**本任务两项阻断与恢复点：**
 
-**恢复点：** 当前任务提交已 rebase 到 `9acc636`。刷新远端/Actions 后推送该实现，再等待精确 SHA 必需 CI、Worker 部署及生产 smoke。当前浏览器失败必须作为未解决验证风险如实处理；不可标记已交付或用户验收。
+1. **Liu Bei expiry race：** 8 秒 `INFLUENCING_ATTACK` 中一个合法 Zhao Yun Attack intent 已提交、Guan Yu 沉默；到期时普通同 key GET 正在 flight，`fetchRoom` 返回 `false`，共享窗口 watcher 因此清掉唯一 timer 并退出，未发出 `advance_timers`。修改 `app/page.tsx` 的 shared-window expiry watcher：预检或结算后的验证 GET 若因单 flight/临时错误返回 false，必须对同一经服务端证明的 `windowId + deadline` 有界重试；维持单一 POST、服务端 CAS、身份/epoch 校验。窗口改变/消失或游戏结束后才终止。不得在 GET 写入或自动 Skip。
+2. **Dying Peach disabled submit：** Huang Gai 0 HP 的合法 `DYING_PEACH` 窗口中，Sima Yi/Cao Cao 手持真实 Peach，但旧客户端依赖 `give_peach`，当前 `CurrentAction` 合法提交是 `respond`，导致 Confirm 禁用、零 intent 到达服务端。使真实 Peach 选择经现有 viewer-authorized `respond` capability 到达既有共享窗口提交 API；保留单赢家、8 秒服务器 deadline、真实牌归属、原救援顺序、嵌套恢复触发及失败死亡规则。
+
+**边界与验证：** 只按 `docs/UX2-refine.md` §10.49 原始任务的逐项方案实施。保持三种共享响应模式共用单一窗口语义；一次只结算一个合法物理响应；落败 intent 不耗牌；不得泄露其他玩家 intent/手牌，不改变规则、计时或原有 Negation。增加确定性单测/API 覆盖重叠 GET 到期、验证 GET 重试、合法 Peach `respond`、重复/迟到/错误提交和 one-winner；基本 build、定向验证、`git diff --check`。本任务本地 UI/browser 总计最多 5 分钟，超时即停止并报告 SKIPPED。之后提交推送，验证精确 SHA 所有必需 CI、D1/Worker 部署与生产 smoke；记录真实结果，不自我验收。§10.49 仅能由用户对 Liu Bei 和 Dying Peach 两场景均完成真实 iPhone 复审后关闭。
+
+**工作分支：** `codex/ux2-1049-expiry-20261115` → `ux-v2`。先保留工作区改动并核对远端，再开始源代码修改。
