@@ -1649,11 +1649,11 @@ export function HeroPortrait({ hero }: { hero: Pick<Hero, "id" | "name"> }) {
 }
 
 export function hpDisplay(hp: number | null) { return hp !== null && hp <= 0 ? `${hp} HP` : "♥".repeat(Math.max(0, hp ?? 0)); }
-export function calculateHandCardStep(handRailWidth: number, cardsOrCount: number | readonly string[], cardWidth = 68, minStep = 30) {
+export function calculateHandCardStep(handRailWidth: number, cardsOrCount: number | readonly string[], cardWidth = 68) {
   const count = typeof cardsOrCount === "number" ? cardsOrCount : cardsOrCount.length;
   if (count <= 1 || handRailWidth <= 0) return cardWidth;
   const naturalStep = (handRailWidth - cardWidth) / (count - 1);
-  return Math.min(cardWidth, Math.max(minStep, naturalStep));
+  return Math.min(cardWidth, Math.max(cardWidth * 0.75, naturalStep));
 }
 function publicPlayerName(name: string) { return name; }
 function delayUntil(deadline: number) { return Math.max(0, deadline - Date.now()); }
@@ -4232,6 +4232,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const handRailRef = useRef<HTMLDivElement | null>(null);
   const handViewportSnapshotRef = useRef<HandViewportSnapshot | null>(null);
   const [handRailWidth, setHandRailWidth] = useState(0);
+  const [handCardFaceWidth, setHandCardFaceWidth] = useState(68);
   const [harvestDraft, setHarvestDraft] = useState<{ viewerId: string; actorId: string; actionRevision: string; cardId: string } | null>(null);
   const [harvestSubmitting, setHarvestSubmitting] = useState<{ roomCode: string; viewerId: string; actorId: string; actionRevision: string; cardId: string; playerId: string; playerName: string } | null>(null);
   const harvestLocalIdentityRef = useRef({ roomCode: room.code, viewerId: room.meId });
@@ -5174,23 +5175,30 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useLayoutEffect(() => {
     const rail = handRailRef.current;
     if (!rail) return;
-    const updateWidth = () => setHandRailWidth(rail.clientWidth);
-    updateWidth();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", updateWidth);
-      return () => window.removeEventListener("resize", updateWidth);
-    }
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(rail);
-    return () => observer.disconnect();
+    const updateMetrics = () => {
+      setHandRailWidth(rail.clientWidth);
+      const faceWidth = Number.parseFloat(window.getComputedStyle(rail).getPropertyValue("--hand-card-face-width"));
+      if (Number.isFinite(faceWidth) && faceWidth > 0) setHandCardFaceWidth(faceWidth);
+    };
+    updateMetrics();
+    window.addEventListener("resize", updateMetrics);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateMetrics);
+    observer?.observe(rail);
+    const shell = rail.closest<HTMLElement>(".game-shell");
+    if (shell) observer?.observe(shell);
+    return () => {
+      window.removeEventListener("resize", updateMetrics);
+      observer?.disconnect();
+    };
   }, [room.meId]);
   const handCardKey = room.myHand.map((item) => item.id).join("|");
   const handCardLayout = useMemo(() => ({
-    step: calculateHandCardStep(handRailWidth, handCardKey ? handCardKey.split("|") : []),
+    cardWidth: handCardFaceWidth,
+    step: calculateHandCardStep(handRailWidth, handCardKey ? handCardKey.split("|") : [], handCardFaceWidth),
     measured: handRailWidth > 0,
-  }), [handRailWidth, handCardKey]);
+  }), [handRailWidth, handCardFaceWidth, handCardKey]);
   const handOverflows = handRailWidth > 0 && room.myHand.length > 1
-    && 68 + (room.myHand.length - 1) * handCardLayout.step > handRailWidth + 1;
+    && handCardLayout.cardWidth + (room.myHand.length - 1) * handCardLayout.step > handRailWidth + 1;
   useLayoutEffect(() => {
     const rail = handRailRef.current;
     if (!rail) return;
@@ -11920,7 +11928,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               const inspectionDetailsSelected = inspectFocused && !actionDetailsSelected;
               const detailsCard = actionDetailsSelected ? selectedHandDetailsCard : inspectionDetailsSelected ? item : null;
               const skillModeEligible = wushengMode && wushengEligibleCardIds.has(item.id) || longdanMode && longdanEligibleCardIds.has(item.id) || activeSkillSelection?.eligibleCardIds.includes(item.id) === true;
-              return <div className={`card-slot ${singleSelected ? "single-selected" : ""} ${multiSelected ? "multi-selected" : ""} ${detailsSelected ? "details-selected" : ""} ${inspectFocused ? "inspect-focused" : ""}`} data-hand-card-id={item.id} data-card-selected={isSelected ? "true" : "false"} data-card-inspect-focused={inspectFocused ? "true" : "false"} key={`rail-${item.id}`} style={{ marginLeft: index === 0 ? 0 : `${handCardLayout.step - 68}px`, ...(multiSelected ? { zIndex: 100 + Math.max(0, selectedCardIds.length - multiSelectionOrder) } : {}) }}>
+              return <div className={`card-slot ${singleSelected ? "single-selected" : ""} ${multiSelected ? "multi-selected" : ""} ${detailsSelected ? "details-selected" : ""} ${inspectFocused ? "inspect-focused" : ""}`} data-hand-card-id={item.id} data-card-selected={isSelected ? "true" : "false"} data-card-inspect-focused={inspectFocused ? "true" : "false"} key={`rail-${item.id}`} style={{ marginLeft: index === 0 ? 0 : `${handCardLayout.step - handCardLayout.cardWidth}px`, ...(multiSelected ? { zIndex: 100 + Math.max(0, selectedCardIds.length - multiSelectionOrder) } : {}) }}>
                 {(detailsSelected || inspectionDetailsSelected) && <span className="hand-card-details-frame" aria-hidden="true" />}
                 <div className="hand-card-visual">
                   <button aria-pressed={isSelected} aria-label={`${isSelected ? "Deselect" : "Select"} ${definition.name}`} disabled={cardActionDisabled} onClick={() => { if (!cardActionDisabled) toggleHandCard(item); }} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}>

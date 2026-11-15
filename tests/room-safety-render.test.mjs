@@ -525,16 +525,22 @@ test("every implemented Standard hero is audited through the shared portrait ren
   assert.deepEqual(unmappedIds, []);
 });
 
-test("hand cards stay naturally packed and compress only when the rail is tight", () => {
+test("hand cards keep at least 75% face width between adjacent cards", () => {
   assert.equal(calculateHandCardStep(320, 1), 68, "one card keeps its physical width");
   assert.equal(calculateHandCardStep(320, 2), 68, "two cards never spread beyond adjacent physical cards");
   assert.equal(calculateHandCardStep(320, 3), 68, "three cards never spread beyond adjacent physical cards");
-  assert.equal(calculateHandCardStep(320, 10), 30, "large hands use controlled compression");
-  assert.equal(calculateHandCardStep(90, 2), 30, "tight rails use the minimum controlled overlap step");
-  assert.equal(calculateHandCardStep(90, 3), 30, "three tight cards remain a controlled stack");
+  assert.equal(calculateHandCardStep(320, 10), 51, "large hands never hide more than one quarter of an unselected face");
+  assert.equal(calculateHandCardStep(90, 2), 51, "a tight rail keeps the 75% minimum and overflows instead of overstacking");
+  assert.equal(calculateHandCardStep(90, 3), 51, "three tight cards keep the same proportional overlap floor");
+  assert.equal(calculateHandCardStep(440, 11), 51, "a crowded eleven-card 440px hand respects the approved minimum step");
+  assert.ok(68 + 10 * calculateHandCardStep(440, 11) > 440, "the crowded hand scrolls rather than shrinking spacing below its minimum");
+  assert.equal(calculateHandCardStep(320, 8, 56), 42, "a responsive 56px face uses a proportional 75% overlap floor");
+  assert.ok(calculateHandCardStep(400, 8, 56) >= 56 * 0.75, "natural responsive spacing never drops below the proportional floor");
   assert.match(gameRoomSource, /const handCardKey = room\.myHand\.map\(\(item\) => item\.id\)\.join\("\\|"\)/, "hand layout keys the actual card IDs and order");
-  assert.match(gameRoomSource, /\[handRailWidth, handCardKey\]/, "hand layout recomputes after card identity, order, or count changes");
-  assert.match(gameRoomSource, /calculateHandCardStep\(handRailWidth, handCardKey \? handCardKey\.split\("\\|"\) : \[\]\)/);
+  assert.match(gameRoomSource, /\[handRailWidth, handCardFaceWidth, handCardKey\]/, "hand layout recomputes after viewport, face width, card identity, order, or count changes");
+  assert.match(gameRoomSource, /getPropertyValue\("--hand-card-face-width"\)/, "responsive face width comes from the rendered CSS contract");
+  assert.match(gameRoomSource, /calculateHandCardStep\(handRailWidth, handCardKey \? handCardKey\.split\("\\|"\) : \[\], handCardFaceWidth\)/);
+  assert.match(gameRoomSource, /handCardLayout\.step - handCardLayout\.cardWidth/, "overlap uses the measured physical face width");
 });
 
 test("UI-11 keeps one local dock and stable opponent anchors across supported player counts", () => {
