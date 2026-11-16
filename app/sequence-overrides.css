@@ -421,14 +421,14 @@
   letter-spacing: .08em;
 }
 
-.target-card-picker-actions {
+.target-card-picker-actions:not(.card-pool-decision-footer) {
   display: flex;
   justify-content: center;
   gap: 10px;
   margin-top: 18px;
 }
 
-.target-card-picker-actions button {
+.target-card-picker-actions:not(.card-pool-decision-footer) button {
   min-width: 150px;
   min-height: 44px;
   padding: 10px 16px;
@@ -524,13 +524,13 @@
     padding-top: 16px;
   }
 
-  .target-card-picker-actions {
+  .target-card-picker-actions:not(.card-pool-decision-footer) {
     flex-direction: column-reverse;
     gap: 7px;
     margin-top: 14px;
   }
 
-  .target-card-picker-actions button {
+  .target-card-picker-actions:not(.card-pool-decision-footer) button {
     width: 100%;
   }
 }
@@ -3460,6 +3460,7 @@
 }
 .deck-reorder-group > header {
   display: grid;
+  flex: 0 0 auto;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 3px 8px;
@@ -5615,44 +5616,6 @@
   outline: 2px solid #ffe5a5;
   outline-offset: 1px;
 }
-.game-shell .harvest-confirm-row {
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 38px;
-  margin: 0;
-  padding: 0 1px;
-}
-.game-shell .harvest-selection-count {
-  min-width: 0;
-  overflow: hidden;
-  color: #d5c7a1;
-  font: 600 8px/1.2 Arial, sans-serif;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.game-shell .harvest-confirm-row > .primary {
-  flex: 0 0 auto;
-  width: auto;
-  min-width: 126px;
-  max-width: 150px;
-  min-height: 38px;
-  margin: 0;
-  padding: 0 12px;
-  border-color: #be9b53;
-  font: 700 9px/1 Arial, sans-serif;
-  letter-spacing: .04em;
-  white-space: nowrap;
-}
-.game-shell .harvest-confirm-row > .primary:disabled {
-  border-color: #5b513b;
-  color: #8f846e;
-}
-
 @media (max-width: 520px) {
   .game-shell .harvest-scroll-hint {
     display: block;
@@ -5804,7 +5767,7 @@
   padding: 1px 2px;
   text-align: right;
 }
-.target-card-picker-panel--compact > .target-card-picker-actions {
+.target-card-picker-panel--compact > .target-card-picker-actions:not(.card-pool-decision-footer) {
   display: flex;
   flex-direction: row;
   flex: 0 0 auto;
@@ -5814,7 +5777,7 @@
   padding-top: 4px;
   border-top: 1px solid #554a31;
 }
-.target-card-picker-panel--compact > .target-card-picker-actions button {
+.target-card-picker-panel--compact > .target-card-picker-actions:not(.card-pool-decision-footer) button {
   flex: 1 1 0;
   width: auto;
   min-width: 0;
@@ -5891,11 +5854,11 @@
     margin-top: 3px;
     font-size: 5px;
   }
-  .target-card-picker-panel--compact > .target-card-picker-actions {
+  .target-card-picker-panel--compact > .target-card-picker-actions:not(.card-pool-decision-footer) {
     flex-direction: row;
     gap: 6px;
   }
-  .target-card-picker-panel--compact > .target-card-picker-actions button {
+  .target-card-picker-panel--compact > .target-card-picker-actions:not(.card-pool-decision-footer) button {
     flex: 1 1 0;
     min-width: 0;
     min-height: 44px;
@@ -6748,7 +6711,7 @@
   display: none;
 }
 
-.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:not(.card-pool-decision-footer__confirm) {
   min-height: 44px;
 }
 
@@ -6789,7 +6752,7 @@
   outline: 3px solid #fff;
   outline-offset: 2px;
 }
-.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:not(.card-pool-decision-footer__confirm) {
   position: relative;
   isolation: isolate;
   display: grid;
@@ -6810,7 +6773,7 @@
   line-height: 1.05;
   opacity: 1;
 }
-.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm::before {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:not(.card-pool-decision-footer__confirm)::before {
   content: "";
   position: absolute;
   z-index: -1;
@@ -6823,19 +6786,19 @@
   background: #b9934e;
   pointer-events: none;
 }
-.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:disabled {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:not(.card-pool-decision-footer__confirm):disabled {
   color: #ead9b2;
   cursor: not-allowed;
 }
-.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:disabled::before {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:not(.card-pool-decision-footer__confirm):disabled::before {
   border-color: #756744;
   background: #51452e;
 }
-.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:focus-visible {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:not(.card-pool-decision-footer__confirm):focus-visible {
   outline: 3px solid #fff0bf;
   outline-offset: 2px;
 }
-.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:active:not(:disabled)::before {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:not(.card-pool-decision-footer__confirm):active:not(:disabled)::before {
   transform: translateY(-50%) scale(.97);
   background: #d0a64f;
 }
@@ -7199,7 +7162,7 @@
 }
 .game-shell .card-pool-panel__selected-zone.is-empty { display: none; }
 
-.game-shell .card-pool-panel--actor-target-select .card-pool-panel__footer {
+.game-shell .card-pool-panel--actor-target-select .card-pool-panel__footer:not(.card-pool-decision-footer) {
   width: 100%;
   max-width: 100%;
   min-height: 44px;
@@ -7207,7 +7170,7 @@
   gap: 4px;
 }
 
-.game-shell .card-pool-panel--actor-target-select .card-pool-panel__confirm {
+.game-shell .card-pool-panel--actor-target-select .card-pool-panel__confirm:not(.card-pool-decision-footer__confirm) {
   flex: 0 1 auto;
   width: fit-content;
   min-width: 0;
@@ -7341,7 +7304,7 @@
     text-align: left;
     white-space: normal;
   }
-  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm {
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:not(.card-pool-decision-footer__confirm) {
     flex: 0 1 auto;
     width: auto;
     min-width: 0;
@@ -8070,12 +8033,12 @@
 .game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-position {
   height: 66px;
 }
-.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__footer {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__footer:not(.card-pool-decision-footer) {
   justify-content: flex-end;
   gap: 2px;
   min-height: 44px;
 }
-.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm {
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:not(.card-pool-decision-footer__confirm) {
   box-sizing: border-box;
   flex: 0 0 64px;
   width: 64px;
@@ -8094,7 +8057,7 @@
 .game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select > .card-pool-panel__heading,
 .game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select > .fanjian-combined-controls,
 .game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select > .card-pool-panel__target-public-zones,
-.game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select > .card-pool-panel__footer {
+.game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select > .card-pool-panel__footer:not(.card-pool-decision-footer) {
   flex-shrink: 0;
 }
 @media (max-width: 360px) {
@@ -8235,4 +8198,160 @@
    the public-card display layer. */
 .game-shell .play-table[data-seat-topology="top-row"]:has(> .public-card-display-journey > [data-public-card-announcement="true"]) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
   z-index: 40;
+}
+
+/* §10.57: genuine card pools share one compact decision footer. Action meaning
+   lives in the pool heading and each control's accessible name; only legal
+   voluntary Skip uses the red palette. */
+.game-shell .card-pool-decision-footer {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 48px;
+  margin: 0;
+  padding: 3px 0;
+}
+.game-shell .card-pool-decision-footer__count {
+  min-width: 0;
+  overflow: hidden;
+  color: #d5c7a1;
+  font: 600 9px/1.2 Arial, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.game-shell .card-pool-decision-footer__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+.game-shell .card-pool-decision-footer__pair {
+  display: grid;
+  grid-template-columns: 96px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.game-shell .card-pool-decision-footer__pair[data-action-count="2"] {
+  grid-template-columns: repeat(2, 96px);
+}
+.game-shell .card-pool-decision-footer__button {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 96px;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  min-width: 88px;
+  max-width: 104px;
+  height: 44px;
+  min-height: 44px;
+  max-height: 44px;
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px solid #d5b96e;
+  border-radius: 2px;
+  font: 700 10px/1.1 Arial, sans-serif;
+  letter-spacing: .02em;
+  text-align: center;
+  text-transform: none;
+  white-space: nowrap;
+}
+.game-shell .card-pool-decision-footer__confirm {
+  background: #be9b53;
+  color: #17150f;
+}
+.game-shell .card-pool-decision-footer__skip {
+  background: #8b302a;
+  border-color: #c3a46b;
+  color: #fff2dc;
+}
+.game-shell .card-pool-decision-footer__actions > .card-pool-decision-footer__cancel {
+  box-sizing: border-box;
+  flex: 0 0 64px;
+  width: 64px;
+  min-width: 64px;
+  min-height: 44px;
+  margin: 0;
+  padding: 5px 6px;
+  border-color: #756744;
+  background: #24241f;
+  color: #e4d8b8;
+  font: 600 9px/1.1 Arial, sans-serif;
+  text-transform: none;
+}
+.game-shell .card-pool-decision-footer__button:focus-visible,
+.game-shell .card-pool-decision-footer__cancel:focus-visible {
+  outline: 2px solid #f0cf7e;
+  outline-offset: 2px;
+}
+.game-shell .card-pool-decision-footer__button:disabled,
+.game-shell .card-pool-decision-footer__cancel:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+.game-shell .card-pool-decision-footer.target-card-picker-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 0;
+}
+.game-shell .card-pool-decision-footer.target-card-picker-actions .card-pool-decision-footer__actions {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.game-shell .card-pool-panel--actor-target-select .card-pool-panel__target-public-backs {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+.game-shell .card-pool-panel--actor-target-select .card-pool-panel__target-public-backs::-webkit-scrollbar {
+  display: none;
+}
+@media (max-width: 380px) {
+  .game-shell .card-pool-decision-footer {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .game-shell .card-pool-decision-footer__count {
+    width: 100%;
+  }
+  .game-shell .card-pool-decision-footer__actions {
+    justify-content: flex-end;
+  }
+  .game-shell .card-pool-decision-footer__pair {
+    grid-template-columns: 88px;
+    gap: 4px;
+  }
+  .game-shell .card-pool-decision-footer__pair[data-action-count="2"] {
+    grid-template-columns: repeat(2, 88px);
+  }
+  .game-shell .card-pool-decision-footer__button {
+    flex-basis: 88px;
+    width: 88px;
+    font-size: 9px;
+  }
+  .game-shell .card-pool-decision-footer__actions > .card-pool-decision-footer__cancel {
+    flex-basis: 58px;
+    width: 58px;
+    min-width: 58px;
+  }
+  .game-shell .card-pool-decision-footer__count {
+    font-size: 8px;
+  }
+}
+.game-shell .card-pool-decision-footer__count:empty {
+  display: none;
 }

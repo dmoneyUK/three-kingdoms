@@ -4,6 +4,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { buildActiveSkillSubmission, buildDecisionPresentation, calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroDetailsPreview, HeroInfoDialog, HeroPortrait, HeroSelection, InteractionStage, MandatoryChoiceDialog, normalizeActiveCardSkillSelection, WaitingRoom } from "../app/page.tsx";
+import { CardPoolDecisionFooter, CardPoolPanel } from "../app/card-pool-panel.tsx";
 import { buildConsoleDecisionDisplay } from "../game/console-decision.ts";
 import { IMPLEMENTED_STANDARD_HERO_IDS, STANDARD_HEROES } from "../game/heroes.ts";
 import { buildPresentationClientView } from "../game/presentation-client.ts";
@@ -30,6 +31,102 @@ function assertNoTransientBusyGuidance(html) {
 test("game messages start minimized while retaining the fold control", () => {
   assert.match(gameRoomSource, /const \[messagesCollapsed, setMessagesCollapsed\] = useState\(true\)/);
   assert.match(gameRoomSource, /aria-label=\{messagesCollapsed \? "Expand game messages" : "Collapse game messages"\}/);
+});
+
+test("shared card-pool footer uses same-sized semantic Skip and Confirm actions", () => {
+  const markup = renderToStaticMarkup(React.createElement(CardPoolDecisionFooter, {
+    selectionCount: "1 / 1 selected",
+    confirmAction: { accessibleLabel: "Confirm Retaliation selection", disabled: false, onClick: () => {} },
+    skipAction: { accessibleLabel: "Skip Retaliation", disabled: false, onClick: () => {} },
+    cancelAction: { accessibleLabel: "Cancel Retaliation selection", disabled: false, onClick: () => {} },
+    className: "target-card-picker-actions",
+  }));
+  assert.match(markup, /data-pool-action-footer="true"/);
+  assert.match(markup, /data-action-count="2"/);
+  assert.match(markup, /data-pool-action="skip"[^>]*aria-label="Skip Retaliation"[^>]*>Skip<\/button>/);
+  assert.match(markup, /data-pool-action="confirm"[^>]*aria-label="Confirm Retaliation selection"[^>]*>Confirm<\/button>/);
+  assert.match(markup, /aria-label="Cancel Retaliation selection"[^>]*>Cancel<\/button>/);
+  assert.match(sequenceStyleSource, /\.card-pool-decision-footer__pair\[data-action-count="2"\]\s*\{\s*grid-template-columns:\s*repeat\(2,\s*96px\)/);
+  assert.match(sequenceStyleSource, /\.card-pool-decision-footer__button\s*\{[^}]*width:\s*96px;[^}]*height:\s*44px;/s);
+});
+
+test("shared pool actions do not relabel specialized non-pool controls", () => {
+  assert.match(gameRoomSource, /const responseDeclineLabel = borrowedSwordForcedChoiceActive \? "Give up Weapon" : declineAcceptsDamage \? "TAKE DAMAGE" : sharedNegationWindow \? "Pass" : "Skip";/);
+  assert.match(gameRoomSource, /end-turn-confirmation__confirm/);
+  assert.match(gameRoomSource, />Confirm End<\/button>/);
+  assert.match(gameRoomSource, /data-deck-reorder-submit="true"/);
+  assert.match(gameRoomSource, />COMPLETE STARGAZING<\/button>/);
+  assert.match(gameRoomSource, /serpentMode \? "Form Attack" : normalTargetSelectionActive \? "Confirm" : "Play"/);
+  const endTurnStart = gameRoomSource.indexOf('data-end-turn-confirmation="true"');
+  const endTurnEnd = gameRoomSource.indexOf("</BattlefieldChoiceStage>}", endTurnStart);
+  assert.ok(endTurnStart >= 0 && endTurnEnd > endTurnStart, "End Turn keeps its own confirmation stage");
+  assert.doesNotMatch(gameRoomSource.slice(endTurnStart, endTurnEnd), /CardPoolDecisionFooter/);
+});
+
+test("Harvest actor pools use the shared footer while public pools stay action-free", () => {
+  const publicChoice = {
+    type: "public-card",
+    publicCardFace: card("harvest-face"),
+    cardName: "Attack",
+    state: "available",
+    accessibleLabel: "Attack, available",
+    statusLabel: "Available",
+  };
+  const common = {
+    title: "Bumper Harvest",
+    instruction: "Choose one revealed card",
+    accessibilityLabel: "Bumper Harvest cards",
+    rowAccessibilityLabel: "Public Harvest cards",
+    choices: [publicChoice],
+    onInfo: () => {},
+  };
+  const actor = renderToStaticMarkup(React.createElement(CardPoolPanel, {
+    ...common, mode: "actor-select", selectionCount: "Choose 1 card", confirmDisabled: false, onToggle: () => {}, onConfirm: () => {},
+  }));
+  assert.match(actor, /data-pool-action-footer="true"/);
+  assert.match(actor, /aria-label="Confirm Bumper Harvest choice"[^>]*>Confirm<\/button>/);
+  assert.doesNotMatch(actor, />Skip<\/button>/);
+
+  const readOnly = renderToStaticMarkup(React.createElement(CardPoolPanel, { ...common, mode: "public-readonly" }));
+  assert.match(readOnly, /data-choice-mode="public-readonly"/);
+  assert.doesNotMatch(readOnly, /data-pool-action-footer|data-pool-action=/, "read-only public cards expose no choice actions");
+
+  const fanjian = renderToStaticMarkup(React.createElement(CardPoolPanel, {
+    title: "SOWING DISTRUST", instruction: "Choose a suit and one hidden card.", accessibilityLabel: "Sowing Distrust choice",
+    mode: "actor-target-select", publicTarget: { handCount: 5, equipmentCards: [], judgementCards: [] },
+    zones: [{ id: "hand", title: "HAND 5", accessibleName: "Hand", choices: Array.from({ length: 5 }, (_, position) => ({
+      type: "concealed-position", opaqueKey: `hand:${position}`, accessibleLabel: `Hidden Hand position ${position + 1}`,
+      position, state: "available",
+    })) }],
+    selectionControls: React.createElement("div", { className: "fanjian-combined-controls" }, "Suit choice"),
+    scrollHint: "Swipe to see all", handCountHeading: "Hand (5)", selectionCount: "0 / 1 selected",
+    confirmAccessibleLabel: "Confirm Sowing Distrust selection", disabled: false, confirmDisabled: true,
+    onToggle: () => {}, onConfirm: () => {}, onInfo: () => {},
+  }));
+  assert.equal((fanjian.match(/class="card-pool-panel__target-public-position/g) ?? []).length, 5, "all five concealed positions remain present");
+  assert.match(fanjian, /data-hand-scrollable="true"/);
+  assert.match(fanjian, /data-pool-action-footer="true"/);
+  assert.match(fanjian, /aria-label="Confirm Sowing Distrust selection"[^>]*disabled=""[^>]*>Confirm<\/button>/);
+  assert.doesNotMatch(fanjian, /data-pool-action="skip"/, "the shared footer does not invent an optional Skip");
+});
+
+test("target card pools preserve five hidden hand positions and paired legal actions", () => {
+  const pool = renderToStaticMarkup(React.createElement(CardPoolPanel, {
+    title: "RETALIATION", instruction: "Choose 1 card to obtain", accessibilityLabel: "Retaliation target card selection",
+    mode: "actor-target-select", publicTarget: { handCount: 5, equipmentCards: [], judgementCards: [] },
+    zones: [{ id: "hand", title: "HAND 5", accessibleName: "Hand", choices: Array.from({ length: 5 }, (_, position) => ({
+      type: "concealed-position", opaqueKey: `hand:${position}`, accessibleLabel: `Hidden Hand position ${position + 1}`,
+      position, state: "available",
+    })) }],
+    selectionCount: "0 / 1 selected", confirmAccessibleLabel: "Confirm Retaliation selection", disabled: false, confirmDisabled: false,
+    skipAction: { accessibleLabel: "Skip Retaliation", disabled: false, onClick: () => {} },
+    onToggle: () => {}, onConfirm: () => {}, onInfo: () => {},
+  }));
+  assert.equal((pool.match(/class="card-pool-panel__target-public-position/g) ?? []).length, 5);
+  assert.match(pool, /data-hand-scrollable="true"/);
+  assert.match(pool, /data-action-count="2"/);
+  assert.match(pool, /data-pool-action="skip"[^>]*aria-label="Skip Retaliation"[^>]*>Skip<\/button>/);
+  assert.match(pool, /data-pool-action="confirm"[^>]*aria-label="Confirm Retaliation selection"[^>]*>Confirm<\/button>/);
 });
 
 test("pre-game Hero information remains separate from the compact active-game preview", () => {
@@ -303,6 +400,7 @@ test("Legacy distribution keeps private cards static and labels recipients by he
   assert.match(gameRoomSource, /<div className="legacy-distribution-card"[\s\S]*<CardFace card=\{card\} \/>/, "Legacy uses the real CardFace artwork");
   assert.match(globalStyleSource, /\.legacy-distribution-card \.played-card\{animation:none;opacity:1;transform:none\}/, "Legacy cards do not use the temporary fade/flight animation");
   assert.doesNotMatch(gameRoomSource, /<option value=\{player\.id\} key=\{player\.id\}>\{player\.name\}<\/option>/, "Legacy does not expose player names in recipient choices");
+  assert.match(gameRoomSource, /function PrivateCardDistributionDialog[\s\S]*<CardPoolDecisionFooter[^>]*selectionCount=\{`\$\{assignedCount\} \/ \$\{cards\.length\} assigned`\}[^>]*confirmAction=\{\{ accessibleLabel: "Confirm card distribution"/);
 });
 
 test("retired public combat stage is absent while the proven Dying handoff remains", () => {
@@ -1030,9 +1128,22 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.doesNotMatch(pickerHtml, /class="target-card-picker-card hidden(?:\s|[^"]*")/, "hidden hand buttons do not use Tailwind's standalone hidden class");
   assert.match(pickerHtml, /aria-label="Equipment: Nio Shield/);
   assert.doesNotMatch(pickerHtml, /aria-label="not-eligible"/);
+  const kirinRoom = {
+    ...pickerRoom,
+    actionReason: "Use Kirin Bow",
+    currentAction: {
+      ...pickerRoom.currentAction,
+      reason: "Use Kirin Bow",
+      triggerOptions: [{ effectId: "kirin_bow_damage_about_to_apply", label: "Use Kirin Bow", selection: { type: "target_cards", targetId: "p2", min: 1, max: 1, eligibleKeys: ["armor"] } }],
+    },
+  };
+  const kirinHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: kirinRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(kirinHtml, /class="[^"]*card-pool-decision-footer[^"]*target-card-picker-actions/);
+  assert.match(kirinHtml, /aria-label="Confirm Kirin Bow selection"[^>]*>Confirm<\/button>/);
+  assert.doesNotMatch(kirinHtml, />Use Kirin Bow<\/button>/, "Kirin Bow keeps its context outside the shared visible action label");
   const pickerBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: pickerRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Skip<\/button>/);
-  assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Use Frost Sword<\/button>/);
+  assert.match(pickerBusyHtml, /<button[^>]*aria-label="Confirm Frost Sword selection"[^>]*disabled=""[^>]*>Confirm<\/button>/);
   assertNoTransientBusyGuidance(pickerBusyHtml);
 
   const choicePayload = {
@@ -1072,6 +1183,8 @@ test("normalized malformed and unknown response states render safely", () => {
   }));
   assert.equal((discardChoiceHtml.match(/aria-label="Attack [A-Z0-9]+[♠♥♦♣]"/g) ?? []).length, 2, "mandatory discard choice exposes the actor's private hand cards");
   assert.doesNotMatch(discardChoiceHtml, /Hidden hand card|concealed-card|>\?<\/span>/, "mandatory own-hand choices do not use concealed card backs");
+  assert.match(discardChoiceHtml, /aria-label="Confirm Yin-Yang Swords card choice"[^>]*>Confirm<\/button>/);
+  assert.doesNotMatch(discardChoiceHtml, />Confirm choice<\/button>/, "actual card selection uses the shared concise Confirm label");
 
   const noHandRoom = normalizeRoomData({
     ...choicePayload,

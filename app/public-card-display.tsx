@@ -1042,10 +1042,10 @@ function seatHistoryParkingProtectedSelectors(options: SeatHistoryCardParkingOpt
       // The panel itself is a soft overlay for a parked Harvest history mini.
       // Keep the real choice faces and their Info/selection controls as hard
       // obstacles for any part of the miniature that remains visible.
-      ".harvest-card-choice", ".harvest-card-select", ".harvest-card-info", ".harvest-confirm-row button",
+      ".harvest-card-choice", ".harvest-card-select", ".harvest-card-info", ".card-pool-decision-footer button", ".harvest-confirm-row button",
     ] : [
       ".harvest-choice-panel", ".harvest-choice-heading",
-      ".harvest-card-choice", ".harvest-card-select", ".harvest-card-info", ".harvest-confirm-row button",
+      ".harvest-card-choice", ".harvest-card-select", ".harvest-card-info", ".card-pool-decision-footer button", ".harvest-confirm-row button",
     ]),
     ...(options.preserveAuthorControls ? [
       ".test-view-switch-button", ".opponent-seat-inspect-button", ".opponent-player-name",

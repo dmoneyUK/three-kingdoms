@@ -363,18 +363,23 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
           const timerStyle = timer ? window.getComputedStyle(timer) : null;
           const timerVisible = Boolean(timerRect && timerStyle?.display !== "none" && timerStyle?.visibility !== "hidden"
             && timerRect.width > 0 && timerRect.height > 0);
-          const requiredButton = panel.querySelector<HTMLElement>(".card-pool-panel__footer > .primary, .harvest-confirm-row > .primary");
-          const footer = panel.querySelector<HTMLElement>(".card-pool-panel__footer, .harvest-confirm-row");
+          const requiredButton = panel.querySelector<HTMLElement>(".card-pool-decision-footer__confirm, .card-pool-panel__footer > .primary, .harvest-confirm-row > .primary");
+          const footer = panel.querySelector<HTMLElement>(".card-pool-decision-footer, .card-pool-panel__footer, .harvest-confirm-row");
           const panelStyle = window.getComputedStyle(panel);
           const footerStyle = footer ? window.getComputedStyle(footer) : null;
           const cssPixels = (value: string | undefined) => Number.parseFloat(value ?? "0") || 0;
-          const requiredWidth = requiredButton && footerStyle
-            ? cssPixels(window.getComputedStyle(requiredButton).minWidth)
-              + cssPixels(footerStyle.columnGap || footerStyle.gap)
-              + cssPixels(footerStyle.paddingLeft) + cssPixels(footerStyle.paddingRight)
-              + cssPixels(panelStyle.paddingLeft) + cssPixels(panelStyle.paddingRight)
-              + cssPixels(panelStyle.borderLeftWidth) + cssPixels(panelStyle.borderRightWidth)
-            : Number.POSITIVE_INFINITY;
+          const actionRow = footer?.querySelector<HTMLElement>(".card-pool-decision-footer__actions");
+          const count = footer?.querySelector<HTMLElement>(".card-pool-decision-footer__count");
+          const actionWidth = actionRow?.scrollWidth ?? (requiredButton && footerStyle
+            ? cssPixels(window.getComputedStyle(requiredButton).minWidth) + cssPixels(footerStyle.columnGap || footerStyle.gap)
+            : Number.POSITIVE_INFINITY);
+          const countWidth = count?.scrollWidth ?? 0;
+          const footerGap = footerStyle ? cssPixels(footerStyle.columnGap || footerStyle.gap) : 0;
+          const stackedFooter = window.matchMedia("(max-width: 380px)").matches;
+          const requiredWidth = (stackedFooter ? Math.max(actionWidth, countWidth) : actionWidth + (countWidth ? countWidth + footerGap : 0))
+            + (footerStyle ? cssPixels(footerStyle.paddingLeft) + cssPixels(footerStyle.paddingRight) : 0)
+            + cssPixels(panelStyle.paddingLeft) + cssPixels(panelStyle.paddingRight)
+            + cssPixels(panelStyle.borderLeftWidth) + cssPixels(panelStyle.borderRightWidth);
           const nextInsets = chooseBattlefieldChoiceInsets({
             table: tableRect,
             leftSeats,

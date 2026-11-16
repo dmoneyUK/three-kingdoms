@@ -39,7 +39,7 @@ import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, isPublicInteractionOutcomeFact, type PublicInteractionNarration } from "../game/public-activity";
 import { CardFace } from "./card-face";
 import { fixedUpperHistoryAnnouncementAnchor, publicH4ReservedHeight } from "./public-upper-anchor";
-import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
+import { CardPoolDecisionFooter, CardPoolPanel, useHorizontalOverflow, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
 import { PublicCardDisplay, PublicDiscardAnnouncementLayer, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, publicCardActionKey, publicCardJourneyOwnershipIdentity, publicCardMotionForCommittedCard, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
@@ -11417,8 +11417,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? activeHarvestSubmission
       ? "Submitting your Bumper Harvest choice…"
       : activeHarvestSelection
-        ? "1 card selected in Bumper Harvest. Tap Confirm choice."
-        : "Choose 1 card from Bumper Harvest, then tap Confirm choice."
+        ? "1 card selected in Bumper Harvest. Tap Confirm."
+        : "Choose 1 card from Bumper Harvest, then tap Confirm."
     : null;
   const privateTurnGuidance = (() => {
     const action = room.currentAction;
@@ -11566,6 +11566,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         mode: "actor-select" as const,
         selectionCount: harvestSelectedCard ? "1 selected" : "Choose 1 card",
         confirmDisabled: busy || !harvestSelectedCard || Boolean(activeHarvestSubmission),
+        confirmPending: busy || Boolean(activeHarvestSubmission),
         onToggle: toggleHarvestSelection,
         onConfirm: confirmHarvestChoice,
       }
@@ -11673,6 +11674,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           accessibilityLabel="Sowing Distrust combined choice"
           publicTarget={combinedChoicePoolTarget}
           zones={combinedChoicePoolZones}
+          scrollHint={combinedChoiceSelection.eligibleKeys.length > 4 ? "Swipe to see all" : undefined}
           handCountHeading={`Hand (${combinedChoiceSelection.eligibleKeys.length})`}
           handRailDescription={combinedChoiceSelection.eligibleKeys.length > 4 ? "Swipe horizontally to reach all hidden Hand positions." : undefined}
           selectionControls={<div className="fanjian-combined-controls">
@@ -11693,7 +11695,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             </fieldset>
           </div>}
           selectionCount=""
-          actionLabel="Confirm"
+          confirmAccessibleLabel="Confirm Sowing Distrust selection"
           disabled={triggerControlsDisabled}
           confirmDisabled={triggerControlsDisabled || !combinedChoiceSelection.choices.some((choice) => choice.id === triggerChoice) || triggerSelectedKeys.filter((key) => combinedChoiceSelection.eligibleKeys.includes(key)).length !== 1}
           error={error}
@@ -11738,8 +11740,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           accessibilityLabel={targetCardChoicePanelLabel}
           publicTarget={pendingTargetCardPublicPool}
           zones={pendingTargetCardPoolZones}
+          scrollHint={pendingTargetCardSelectableSelection.eligibleKeys.length > 4 ? "Swipe to see all" : undefined}
           selectionCount={`${pendingTargetCardSelectedKeys.length} / ${pendingTargetCardSelectableSelection.max} selected`}
-          actionLabel={`Use ${pendingTargetCardActionName}`}
+          confirmAccessibleLabel={`Confirm ${pendingTargetCardActionName} selection`}
           disabled={busy || !canUseAction(room.currentAction, "choose_target_card")}
           confirmDisabled={busy || !pendingTargetCardSelectionComplete || !canUseAction(room.currentAction, "choose_target_card")}
           error={error}
@@ -12496,11 +12499,12 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
 function PrivateCardDistributionDialog({ cards, players, disabled, error, onSubmit }: { cards: Card[]; players: Player[]; disabled: boolean; error: string; onSubmit: (assignments: Array<{ cardId: string; recipientId: string }>) => void }) {
   const [assignments, setAssignments] = useState<Record<string, string>>({});
   const complete = cards.length > 0 && cards.every((card) => Boolean(assignments[card.id]));
+  const assignedCount = cards.filter((card) => Boolean(assignments[card.id])).length;
   const submit = () => onSubmit(cards.map((card) => ({ cardId: card.id, recipientId: assignments[card.id] })));
   return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel choice-trigger-panel" role="dialog" aria-modal="false" aria-label="Legacy card distribution">
     <header><strong>LEGACY</strong><span>Look at the top 2 cards, then give each card to any living character.</span></header>
     <div className="legacy-distribution-row">{cards.map((card) => <div className="legacy-distribution-card" key={card.id}><CardFace card={card} /><label>Give this card to<select value={assignments[card.id] ?? ""} disabled={disabled} onChange={(event) => setAssignments((current) => ({ ...current, [card.id]: event.target.value }))}><option value="">Choose a hero</option>{players.map((player) => <option value={player.id} key={player.id}>{heroName(player.hero)}</option>)}</select></label></div>)}</div>
-    <div className="target-card-picker-actions"><button type="button" className="primary" disabled={disabled || !complete} onClick={submit}>Distribute cards</button></div>
+    <CardPoolDecisionFooter className="target-card-picker-actions" selectionCount={`${assignedCount} / ${cards.length} assigned`} confirmAction={{ accessibleLabel: "Confirm card distribution", disabled: disabled || !complete, pending: disabled, onClick: submit }} />
     {error && <p className="error" role="alert">{error}</p>}
   </section></div>;
 }
@@ -12510,6 +12514,7 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
   const handKeys = selection.eligibleHandKeys
     .filter((key) => /^hand:\d+$/.test(key))
     .sort((a, b) => Number(a.slice(5)) - Number(b.slice(5)));
+  const [handRowRef, handRowOverflowing] = useHorizontalOverflow<HTMLDivElement>(`mandatory-choice:${option.effectId}:${handKeys.length}`);
   const requiredHandCount = selectedChoice ? selection.cardCountByChoice?.[selectedChoice] ?? (selectedChoice === "discard" ? 1 : 0) : 0;
   const needsHandCard = requiredHandCount > 0;
   const complete = Boolean(selectedChoice && validSelectedKeys.length === requiredHandCount);
@@ -12517,8 +12522,13 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
   return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel choice-trigger-panel" role="dialog" aria-modal="false" aria-label={`${option.label} decision`}>
     <header><strong>{option.label.toUpperCase()}</strong><span>{option.description ?? "Choose one:"}</span></header>
     <div className="choice-trigger-options">{selection.choices.map((choice) => <button type="button" key={choice.id} className={selectedChoice === choice.id ? "selected" : ""} disabled={disabled} aria-pressed={selectedChoice === choice.id} onClick={() => onChoice(choice.id)}>{labelForChoice(choice)}</button>)}</div>
-    {needsHandCard && <><div className="target-card-picker-card-row choice-trigger-card-row" aria-label="Eligible hand cards">{handKeys.map((key) => { const index = Number(key.slice(5)); const card = hand[index]; if (!card) return null; const selected = validSelectedKeys.includes(key); return <button type="button" key={key} className={`target-card-picker-card ${selected ? "selected" : ""}`} disabled={disabled} aria-pressed={selected} aria-label={`${cardDefinition(card.kind).name} ${card.rank}${card.suit}`} onClick={() => onToggle(key)}><CardFace card={card} />{selected && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>; })}</div><div className="target-card-picker-count" aria-live="polite">{validSelectedKeys.length} / {requiredHandCount} selected</div></>}
-    <div className="target-card-picker-actions"><button type="button" className="primary" disabled={disabled || !complete} onClick={() => onConfirm(selectedChoice, validSelectedKeys)}>Confirm choice</button></div>
+    {needsHandCard && <>
+      {handRowOverflowing && <span className="target-card-picker-zone-scroll-hint">Swipe to see all hand cards</span>}
+      <div ref={handRowRef} className="target-card-picker-card-row choice-trigger-card-row" aria-label="Eligible hand cards" data-hand-scrollable={handKeys.length > 4 ? "true" : undefined}>{handKeys.map((key) => { const index = Number(key.slice(5)); const card = hand[index]; if (!card) return null; const selected = validSelectedKeys.includes(key); return <button type="button" key={key} className={`target-card-picker-card ${selected ? "selected" : ""}`} disabled={disabled} aria-pressed={selected} aria-label={`${cardDefinition(card.kind).name} ${card.rank}${card.suit}`} onClick={() => onToggle(key)}><CardFace card={card} />{selected && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>; })}</div>
+    </>}
+    {needsHandCard
+      ? <CardPoolDecisionFooter selectionCount={`${validSelectedKeys.length} / ${requiredHandCount} selected`} confirmAction={{ accessibleLabel: `Confirm ${option.label} card choice`, disabled: disabled || !complete, pending: disabled, onClick: () => onConfirm(selectedChoice, validSelectedKeys) }} className="target-card-picker-actions" />
+      : <div className="target-card-picker-actions"><button type="button" className="primary" disabled={disabled || !complete} onClick={() => onConfirm(selectedChoice, validSelectedKeys)}>Confirm choice</button></div>}
     {error && <p className="error" role="alert">{error}</p>}
   </section></div>;
 }
@@ -12537,9 +12547,10 @@ function RetaliationCardPool({ selection, target, selectedKeys, playerCount, sco
     style={{ top: top === null ? undefined : `${top}px`, left: insets ? `${insets.left}px` : undefined, right: insets?.width ? "auto" : insets ? `${insets.right}px` : undefined, width: insets?.width ? `${insets.width}px` : undefined, "--retaliation-pool-max-height": maxHeight === null ? undefined : `${maxHeight}px` } as CSSProperties}>
     <CardPoolPanel mode="actor-target-select" title="RETALIATION" instruction="Choose 1 card to obtain" accessibilityLabel="Retaliation target card selection"
       publicTarget={{ handCount: target.handCount, equipmentCards: target.equipmentCards, judgementCards: target.judgementCards }} zones={zones}
-      selectionCount={`${selectedKeys.length} / ${selection.max} selected`} actionLabel="Use Retaliation" disabled={disabled}
+      scrollHint={target.handCount > 4 ? "Swipe to see all" : undefined}
+      selectionCount={`${selectedKeys.length} / ${selection.max} selected`} confirmAccessibleLabel="Confirm Retaliation selection" disabled={disabled}
       confirmDisabled={disabled || selectedKeys.length < selection.min || selectedKeys.length > selection.max}
-      secondaryAction={canDecline ? { label: "Skip", variant: "skip", disabled, onClick: onDecline } : undefined}
+      skipAction={canDecline ? { accessibleLabel: "Skip Retaliation", disabled, onClick: onDecline } : undefined}
       error={error} onToggle={onToggle} onConfirm={onConfirm} onInfo={onInfo} />
   </BattlefieldChoiceStage>;
 }
@@ -12560,6 +12571,8 @@ function retaliationTargetZones(selection: PublicTargetCardSelection, target: Pl
 }
 
 function TargetCardPicker({ option, presentationCopy, compact = false, selection, target, selectedKeys, disabled, canDecline, showCancel, allowPublicCardInfo = false, error, onToggle, onUse, onCancel, onDecline, onInfoCard, poolPlayerCount = 0, poolScope = "" }: { poolPlayerCount?: number; poolScope?: string; option: TriggerOptionView | null; presentationCopy?: { title: string; accessibleName: string; instruction: string; actionLabel: string }; compact?: boolean; selection: PublicTargetCardSelection; target: Player; selectedKeys: string[]; disabled: boolean; canDecline: boolean; showCancel: boolean; allowPublicCardInfo?: boolean; error: string; onToggle: (key: string) => void; onUse: (keys: string[]) => void; onCancel: () => void; onDecline: () => void; onInfoCard?: (card: Card, trigger: HTMLButtonElement) => void }) {
+  const concealedHandCount = selection.eligibleKeys.filter((key) => /^hand:\d+$/.test(key)).length;
+  const [handRowRef, handRowOverflowing] = useHorizontalOverflow<HTMLDivElement>(`target-card-picker:${target.id}:${concealedHandCount}`);
   if (option?.effectId === "sima_yi_fankui" && compact) return <RetaliationCardPool selection={selection} target={target}
     selectedKeys={selectedKeys.filter((key) => selection.eligibleKeys.includes(key))} playerCount={poolPlayerCount} scope={poolScope}
     disabled={disabled} canDecline={canDecline} error={error} onToggle={onToggle} onConfirm={() => onUse(selectedKeys.filter((key) => selection.eligibleKeys.includes(key)))}
@@ -12611,18 +12624,19 @@ function TargetCardPicker({ option, presentationCopy, compact = false, selection
     <header><strong>{effectLabel.toUpperCase()}</strong><span>{subtitle}</span></header>
     <div className="target-card-picker-zones" data-zone-count={zones.length} data-zone-composition={zoneComposition}>
       {zones.map((zone) => <section className={`target-card-picker-zone target-card-picker-zone-${zone.id}`} aria-label={zone.accessibleName} key={zone.id}>
-        <div className="target-card-picker-zone-heading"><h3>{zone.title}</h3>{zone.id === "hand" && handKeys.length > 4 && <span className="target-card-picker-zone-scroll-hint">Swipe to see all</span>}</div>
-        <div className="target-card-picker-card-row" aria-label={`Eligible ${zone.accessibleName}`} data-hand-scrollable={zone.id === "hand" && handKeys.length > 4 ? "true" : undefined}>
+        <div className="target-card-picker-zone-heading"><h3>{zone.title}</h3>{zone.id === "hand" && handRowOverflowing && <span className="target-card-picker-zone-scroll-hint">Swipe to see all</span>}</div>
+        <div ref={zone.id === "hand" && handKeys.length > 4 ? handRowRef : undefined} className="target-card-picker-card-row" aria-label={`Eligible ${zone.accessibleName}`} data-hand-scrollable={zone.id === "hand" && handKeys.length > 4 ? "true" : undefined}>
           {zone.items.map(renderItem)}
         </div>
       </section>)}
     </div>
-    <div className="target-card-picker-count" aria-live="polite">{validSelectedKeys.length} / {selection.max} selected</div>
-    <div className="target-card-picker-actions" data-skip-visible={canDecline ? "true" : undefined}>
-      {showCancel && <button type="button" className="end" disabled={disabled} onClick={onCancel}>Cancel</button>}
-      {canDecline && <button type="button" className={gameplayDeclineButtonClassName("Skip")} disabled={disabled} onClick={onDecline}>Skip</button>}
-      <button type="button" className={`primary${canDecline ? " wtk-action-button" : ""}`} disabled={disabled || !complete} onClick={() => onUse(validSelectedKeys)}>{presentationCopy?.actionLabel ?? `Use ${effectLabel}`}</button>
-    </div>
+    <CardPoolDecisionFooter
+      className="target-card-picker-actions"
+      selectionCount={`${validSelectedKeys.length} / ${selection.max} selected`}
+      cancelAction={showCancel ? { accessibleLabel: `Cancel ${effectLabel} selection`, disabled, onClick: onCancel } : undefined}
+      skipAction={canDecline ? { accessibleLabel: `Skip ${effectLabel}`, disabled, onClick: onDecline } : undefined}
+      confirmAction={{ accessibleLabel: `Confirm ${effectLabel} selection`, disabled: disabled || !complete, onClick: () => onUse(validSelectedKeys) }}
+    />
     {error && <p className="error" role="alert">{error}</p>}
   </section></div>;
 }

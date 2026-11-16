@@ -1176,11 +1176,12 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   assert.equal(picker().length, 1, "activating Retaliation opens the picker");
   assert.equal(actionCalls.filter(([actionName]) => actionName === "trigger").length, 0, "activation does not submit the trigger");
   assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
-  assert.ok(button(renderer, { children: "Use Retaliation" }).props.className.includes("wtk-action-button"));
+  assert.ok(button(renderer, { "aria-label": "Confirm Retaliation selection" }).props.className.includes("card-pool-decision-footer__confirm"));
+  assert.equal(button(renderer, { "aria-label": "Confirm Retaliation selection" }).props.children, "Confirm");
   const eligibleCard = button(renderer, { "aria-label": "Choose one random Hand card, 1 cards" });
   assert.equal(eligibleCard.props["aria-pressed"], false);
   await act(async () => { eligibleCard.props.onClick(); });
-  assert.equal(button(renderer, { children: "Use Retaliation" }).props.disabled, false);
+  assert.equal(button(renderer, { "aria-label": "Confirm Retaliation selection" }).props.disabled, false);
 
   await act(async () => { skillButton().props.onClick(); });
   assert.equal(picker().length, 0, "clicking active Retaliation cancels the picker");
@@ -1196,7 +1197,7 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   await act(async () => { skillButton().props.onClick(); });
   assert.equal(button(renderer, { "aria-label": "Choose one random Hand card, 1 cards" }).props["aria-pressed"], false, "a new action revision clears stale selection");
   await act(async () => { button(renderer, { "aria-label": "Choose one random Hand card, 1 cards" }).props.onClick(); });
-  await act(async () => { button(renderer, { children: "Use Retaliation" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Confirm Retaliation selection" }).props.onClick(); });
   assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "sima_yi_fankui", cardKeys: ["hand"] }]);
 
   const skipRendererRoom = retaliationRoom("retaliation-ui-skip");
