@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
 import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { selectPublicH4AnnouncementOwner } from "../../app/public-presentation-routing.ts";
 import {
   advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestForViewer, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -951,6 +952,33 @@ test("Nio Shield occupies the Armor slot and prevents black Attack before Dodge 
   assert.equal(preventionFact?.actorId, alicePlayer.id);
   assert.equal(preventionFact?.outcomeLabel, "blocked the Attack");
   assert.equal(preventionFact?.label, "Nio Shield");
+  const preventionNarration = derivePublicInteractionNarration({
+    snapshot: blackAttack.data.room.presentationSnapshot,
+    players: blackAttack.data.room.players,
+    rootEventId: preventionFact.rootEventId,
+    interactionId: preventionFact.identity.interactionId,
+    rootFrameId: preventionFact.identity.rootFrameId,
+    eventId: preventionFact.eventId,
+  });
+  assert.equal(preventionNarration?.headline, `${alicePlayer.name} used Nio Shield and blocked the Attack.`,
+    "a committed zero-HP-loss prevention has a factual H4 and never claims damage was dealt");
+  const preventionOwner = selectPublicH4AnnouncementOwner({ fact: preventionFact });
+  assert.equal(preventionOwner?.eventId, preventionFact.eventId);
+  assert.equal(preventionOwner?.owner, "PublicInteractionAnnouncementLayer");
+  const preventionObserver = (await state(game.code, game.members[2].token)).data;
+  const observerPreventionFact = preventionObserver.presentationSnapshot.retainedPublicEvent;
+  const observerPreventionNarration = derivePublicInteractionNarration({
+    snapshot: preventionObserver.presentationSnapshot,
+    players: preventionObserver.players,
+    rootEventId: observerPreventionFact.rootEventId,
+    interactionId: observerPreventionFact.identity.interactionId,
+    rootFrameId: observerPreventionFact.identity.rootFrameId,
+    eventId: observerPreventionFact.eventId,
+  });
+  assert.equal(observerPreventionFact.eventId, preventionFact.eventId,
+    "the observer retains the identical public prevention event");
+  assert.equal(observerPreventionNarration?.headline, preventionNarration?.headline,
+    "the observer sees the same prevention H4 without a guessed HP change");
 
   const redAttack = { ...card("Attack", "red"), suit: "♥" };
   setHand(hostPlayer.id, [redAttack], 4, 4); setTurn(game.code, hostPlayer.seat);
