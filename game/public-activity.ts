@@ -299,6 +299,19 @@ export type PublicInteractionNarration = {
   readDurationMs?: number;
 };
 
+const PUBLIC_INTERACTION_OUTCOME_CATEGORIES = new Set([
+  "DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED",
+]);
+
+/** Shared candidate predicate for committed result H4s and existing generic outcomes. */
+export function isPublicInteractionOutcomeFact(
+  fact: Pick<PresentationSnapshot["publicEventFacts"][number], "category" | "effect" | "committedOutcome">,
+): boolean {
+  return fact.committedOutcome !== undefined
+    || PUBLIC_INTERACTION_OUTCOME_CATEGORIES.has(fact.category)
+    || fact.category === "ACTION_DECLINED" && fact.effect?.kind === "entourage_declined";
+}
+
 function narrationPlayerName(input: Pick<PublicActivityInput, "players">, playerId: string | undefined): string | null {
   if (!playerId) return null;
   return input.players.find((candidate) => candidate.id === playerId)?.name.trim() || null;
@@ -372,21 +385,17 @@ export function derivePublicInteractionNarration(input: {
         && fact.rootEventId === input.rootEventId,
     ).sort((left, right) => left.order - right.order);
     const rootOrder = facts.find((fact) => fact.eventId === input.rootEventId)?.order ?? -1;
-    const outcomeCategories = new Set([
-      "DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED",
-    ]);
     const rootCategories = new Set(["CARD_PLAYED", "CARD_EQUIPPED"]);
     const narratable = facts.filter((fact) => fact.eventId === input.rootEventId
-      ? rootCategories.has(fact.category) || outcomeCategories.has(fact.category)
-      : fact.order > rootOrder && (outcomeCategories.has(fact.category) || fact.category === "ACTION_DECLINED" && fact.effect?.kind === "entourage_declined"));
+      ? rootCategories.has(fact.category) || isPublicInteractionOutcomeFact(fact)
+      : fact.order > rootOrder && isPublicInteractionOutcomeFact(fact));
     latest = input.eventId
       ? narratable.find((fact) => fact.eventId === input.eventId)
       : narratable.at(-1);
   } else if (!identity && !interaction && snapshot.stable.kind === "REST") {
     const narratable = snapshot.retainedPublicEventFacts?.filter((fact) => fact.rootEventId === input.rootEventId
       && fact.identity.interactionId === input.interactionId && fact.identity.rootFrameId === input.rootFrameId
-      && (fact.category === "CARD_PLAYED" || fact.category === "CARD_EQUIPPED" || fact.category === "DAMAGE_APPLIED" || fact.category === "DAMAGE_PREVENTED"
-        || fact.category === "SKILL_USED" || fact.category === "EFFECT_APPLIED" || fact.category === "CARD_OBTAINED" || fact.category === "CARD_TRANSFERRED" || fact.category === "ACTION_DECLINED"))
+      && (fact.category === "CARD_PLAYED" || fact.category === "CARD_EQUIPPED" || isPublicInteractionOutcomeFact(fact)))
       .sort((left, right) => left.order - right.order);
     latest = input.eventId
       ? narratable?.find((fact) => fact.eventId === input.eventId)
@@ -398,9 +407,15 @@ export function derivePublicInteractionNarration(input: {
   const affected = latest.affectedPlayerIds.map((playerId) => narrationPlayerName(input, playerId)).filter((name): name is string => Boolean(name));
   const target = affected.length === 1 ? affected[0] : null;
   const amount = Number.isSafeInteger(latest.amount) && (latest.amount ?? 0) > 0 ? latest.amount : null;
+  const committedOutcomeCopy = latest.committedOutcome
+    ? formatCommittedPublicOutcome(latest.committedOutcome, input.players)
+    : null;
+  if (latest.committedOutcome && !committedOutcomeCopy) return null;
   let headline: string;
 
-  if (latest.category === "CARD_EQUIPPED") {
+  if (committedOutcomeCopy) {
+    headline = committedOutcomeCopy;
+  } else if (latest.category === "CARD_EQUIPPED") {
     headline = `${actor ?? "A player"} equipped ${effectLabel(latest.label) ?? "equipment"}.`;
   } else if (latest.category === "CARD_PLAYED") {
     const card = effectLabel(latest.label) ?? "a card";

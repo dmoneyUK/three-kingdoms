@@ -36,7 +36,7 @@ import { buildPresentationTransition, type PresentationTransitionKind } from "..
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, triggerDecisionInstruction, viewerNegationAcknowledgement, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
-import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, type PublicInteractionNarration } from "../game/public-activity";
+import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, isPublicInteractionOutcomeFact, type PublicInteractionNarration } from "../game/public-activity";
 import { CardFace } from "./card-face";
 import { fixedUpperHistoryAnnouncementAnchor, publicH4ReservedHeight } from "./public-upper-anchor";
 import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
@@ -9340,8 +9340,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ...(room.presentationSnapshot?.publicEventFacts ?? []),
     ...(room.presentationSnapshot?.retainedPublicEventFacts ?? []),
   ].filter((fact) => fact.rootEventId && (
-        ["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED", "CARD_EQUIPPED"].includes(fact.category)
-        || fact.category === "ACTION_DECLINED" && fact.effect?.kind === "entourage_declined"
+        isPublicInteractionOutcomeFact(fact)
+        || fact.category === "CARD_EQUIPPED"
         || fact.category === "CARD_PLAYED" && fact.eventId === fact.rootEventId
           && fact.effect?.label === "Borrowed Sword"
       ))

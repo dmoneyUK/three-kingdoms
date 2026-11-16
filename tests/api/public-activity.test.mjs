@@ -769,3 +769,45 @@ test("committed public outcome copy reports actual mixed HP and card deltas gene
   assert.equal(formatCommittedPublicOutcome({ ...outcome, changes: [{ ...outcome.changes[1], playerId: "unknown-player" }] }, players), null,
     "copy fails closed when a public participant name cannot be verified");
 });
+
+test("committed HP, draw, discard, recovery and transfer results own the shared H4 in active and retained views", () => {
+  const semanticIdentity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
+  const root = {
+    semantics: "PROVEN", visibility: "PUBLIC", identity: semanticIdentity,
+    eventId: "root-event", order: 1, rootEventId: "root-event", category: "CARD_PLAYED",
+    actorId: "p1", affectedPlayerIds: ["p2"], label: "Sowing Distrust", effect: { kind: "card_play", label: "Sowing Distrust" },
+  };
+  const outcome = {
+    semantics: "PROVEN", visibility: "PUBLIC", identity: semanticIdentity,
+    eventId: "result-event", order: 2, rootEventId: "root-event", frameId: "root-1", category: "CARD_DISCARDED",
+    actorId: "p2", affectedPlayerIds: ["p1", "p2"], label: "Sowing Distrust", effect: { kind: "skill_result" },
+    committedOutcome: {
+      semantics: "PROVEN", visibility: "PUBLIC", eventId: "result-event", identity: semanticIdentity, order: 2,
+      rootEventId: "root-event", frameId: "root-1", category: "CARD_DISCARDED", actorId: "p2", affectedPlayerIds: ["p1", "p2"],
+      source: { kind: "skill", label: "Sowing Distrust" },
+      changes: [
+        { kind: "CARD_DISCARDED", playerId: "p1", amount: 1, fromZone: "HAND", toZone: "DISCARD" },
+        { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
+        { kind: "CARD_DRAWN", playerId: "p2", amount: 2, fromZone: "DECK", toZone: "HAND" },
+        { kind: "HP_RECOVERED", playerId: "p2", amount: 1 },
+        { kind: "CARD_TRANSFERRED", fromPlayerId: "p1", toPlayerId: "p2", amount: 1, fromZone: "HAND", toZone: "HAND" },
+      ],
+    },
+  };
+  const expected = "Test Player 2 — Sowing Distrust: Test Player 1 discarded 1 card; Test Player 2 lost 1 HP to damage; Test Player 2 drew 2 cards; Test Player 2 recovered 1 HP; Test Player 2 received 1 card from Test Player 1.";
+  const input = { players, rootEventId: root.eventId, interactionId: semanticIdentity.interactionId, rootFrameId: semanticIdentity.rootFrameId };
+  const active = derivePublicInteractionNarration({ ...input,
+    snapshot: snapshot({ stage: "SETTLEMENT", actorId: null, publicEventFacts: [root, outcome] }),
+  });
+  assert.equal(active?.eventId, outcome.eventId);
+  assert.equal(active?.headline, expected);
+  assert.equal(active?.compactHeadline, expected);
+
+  const retained = derivePublicInteractionNarration({ ...input, snapshot: {
+    identity: null, interaction: null, stable: { kind: "REST" }, publicEventFacts: [],
+    retainedPublicEvent: outcome, retainedPublicEventFacts: [root, outcome],
+  } });
+  assert.equal(retained?.eventId, outcome.eventId);
+  assert.equal(retained?.headline, expected);
+  assert.doesNotMatch(retained?.headline ?? "", /private-card-id|suit|rank/i);
+});

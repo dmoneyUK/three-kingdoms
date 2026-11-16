@@ -60,7 +60,7 @@ test("Self Sacrifice loses 1 HP before drawing when Huang Gai survives", async (
     rootFrameId: fact.identity.rootFrameId,
     eventId: fact.eventId,
   });
-  assert.equal(narration?.headline, `${setup.source.name} used Self Sacrifice.`);
+  assert.equal(narration?.headline, `${setup.source.name} — Self Sacrifice: ${setup.source.name} paid 1 HP as a cost; ${setup.source.name} drew 2 cards.`);
   assert.doesNotMatch(JSON.stringify(result.data.room.presentationSnapshot.publicEventFacts), /huang-safe-[ab]/,
     "public skill narration does not disclose the privately drawn cards");
   for (const member of game.members) {
@@ -75,7 +75,7 @@ test("Self Sacrifice loses 1 HP before drawing when Huang Gai survives", async (
       rootFrameId: viewerFact.identity.rootFrameId,
       eventId: viewerFact.eventId,
     });
-    assert.equal(viewerNarration?.headline, `${setup.source.name} used Self Sacrifice.`);
+    assert.equal(viewerNarration?.headline, `${setup.source.name} — Self Sacrifice: ${setup.source.name} paid 1 HP as a cost; ${setup.source.name} drew 2 cards.`);
   }
 });
 
@@ -105,7 +105,7 @@ test("1 HP Self Sacrifice opens Dying before either draw card is available", asy
     interactionId: fact.identity.interactionId,
     rootFrameId: fact.identity.rootFrameId,
     eventId: fact.eventId,
-  })?.headline, `${setup.source.name} used Self Sacrifice.`);
+  })?.headline, `${setup.source.name} — Self Sacrifice: ${setup.source.name} paid 1 HP as a cost.`);
 });
 
 test("1 HP Self Sacrifice resumes after Peach rescue and draws exactly once", async () => {
