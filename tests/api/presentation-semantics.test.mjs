@@ -514,6 +514,75 @@ test("an unknown provider can publish a synthetic public skill event without dis
   assert.equal(projected.event?.outcomeLabel, "A public card was gained.");
 });
 
+test("committed public outcomes bind only to a unique public event, causal identity and exact public participants", () => {
+  const committedIdentity = identity(3, "committed-checkpoint");
+  const currentIdentity = identity(4, "current-checkpoint");
+  const timelineEvent = {
+    id: "outcome-event", type: "message", presentation: true, publicSequence: 24, actorId: "p1",
+    publicFact: {
+      semantics: "PROVEN", visibility: "PUBLIC", interactionId: committedIdentity.interactionId,
+      frameId: committedIdentity.rootFrameId, rootEventId: "outcome-event", category: "SKILL_USED",
+      actorId: "p1", affectedPlayerIds: ["p1"], label: "Self Sacrifice", committedIdentity,
+      committedOutcome: { source: { kind: "skill", label: "Self Sacrifice" }, changes: [
+        { kind: "HP_COST_LOST", playerId: "p1", amount: 1 },
+        { kind: "CARD_DRAWN", playerId: "p1", amount: 2, fromZone: "DECK", toZone: "HAND" },
+      ] },
+    },
+  };
+  const project = (timeline = [timelineEvent]) => collectPublicPresentationEventFacts({
+    timeline, identity: currentIdentity,
+    frames: [{ frameId: currentIdentity.rootFrameId, parentFrameId: null }], rootEventId: timelineEvent.id,
+  });
+  const fact = project()[0];
+  assert.equal(fact.committedOutcome?.eventId, timelineEvent.id);
+  assert.equal(fact.committedOutcome?.order, timelineEvent.publicSequence);
+  assert.deepEqual(fact.committedOutcome?.identity, committedIdentity);
+  assert.deepEqual(fact.committedOutcome?.changes.map(({ kind, amount }) => [kind, amount]), [
+    ["HP_COST_LOST", 1], ["CARD_DRAWN", 2],
+  ]);
+
+  const projected = projectPublicPresentationSemantics({
+    identity: currentIdentity,
+    events: [{ ...fact, identity: currentIdentity }],
+    nextDecision: null,
+  });
+  assert.equal(projected.event?.committedOutcome?.eventId, timelineEvent.id);
+
+  const retained = retainedPublicEventFromTimeline([timelineEvent]);
+  assert.equal(retained?.event.committedOutcome?.order, timelineEvent.publicSequence);
+
+  const invalidDrafts = [
+    { ...timelineEvent.publicFact.committedOutcome, changes: [{ kind: "CARD_DRAWN", playerId: "p1", amount: -1, fromZone: "DECK", toZone: "HAND" }] },
+    { ...timelineEvent.publicFact.committedOutcome, changes: [{ kind: "CARD_DRAWN", playerId: "p1", amount: 1.5, fromZone: "DECK", toZone: "HAND" }] },
+    { ...timelineEvent.publicFact.committedOutcome, changes: [{ kind: "CARD_DRAWN", playerId: "p1", amount: 1, fromZone: "DECK", toZone: "HAND", cardId: "hidden-card-id" }] },
+    { ...timelineEvent.publicFact.committedOutcome, changes: [{ kind: "CARD_DRAWN", playerId: "p2", amount: 2, fromZone: "DECK", toZone: "HAND" }] },
+    { ...timelineEvent.publicFact.committedOutcome, source: { kind: "hero_skill", label: "Self Sacrifice" } },
+    { ...timelineEvent.publicFact.committedOutcome, source: { kind: "skill", label: "Hidden card identity" } },
+    { ...timelineEvent.publicFact.committedOutcome, visibility: "PRIVATE" },
+  ];
+  for (const committedOutcome of invalidDrafts) {
+    const [invalid] = project([{ ...timelineEvent, publicFact: { ...timelineEvent.publicFact, committedOutcome } }]);
+    assert.equal(invalid?.committedOutcome, undefined, "malformed, private, or misattributed change does not become a public outcome");
+  }
+
+  const forgedBoundOutcome = { ...fact.committedOutcome, eventId: "forged-event-id" };
+  const [forged] = project([{ ...timelineEvent, publicFact: { ...timelineEvent.publicFact, committedOutcome: forgedBoundOutcome } }]);
+  assert.equal(forged?.committedOutcome, undefined, "stored identity cannot override the persisted event identity");
+  const forgedIdentity = { ...fact.committedOutcome, identity: { ...committedIdentity, checkpointId: "forged-checkpoint" } };
+  const [forgedCheckpoint] = project([{ ...timelineEvent, publicFact: { ...timelineEvent.publicFact, committedOutcome: forgedIdentity } }]);
+  assert.equal(forgedCheckpoint?.committedOutcome, undefined, "a nested outcome cannot replace the causal checkpoint");
+
+  const staleIdentityEvent = { ...timelineEvent, publicFact: { ...timelineEvent.publicFact,
+    committedIdentity: { ...committedIdentity, interactionId: "older-interaction" } } };
+  assert.equal(project([staleIdentityEvent])[0]?.committedOutcome, undefined, "an outcome from a different interaction is stale");
+  const futureIdentityEvent = { ...timelineEvent, publicFact: { ...timelineEvent.publicFact,
+    committedIdentity: { ...committedIdentity, presentationRevision: currentIdentity.presentationRevision + 1 } } };
+  assert.equal(project([futureIdentityEvent])[0]?.committedOutcome, undefined, "future checkpoints cannot prove a past committed outcome");
+  const duplicated = project([timelineEvent, { ...timelineEvent }]);
+  assert.equal(duplicated.every((entry) => entry.committedOutcome === undefined), true, "duplicate event ID and sequence cannot own an outcome");
+  assert.deepEqual(project([{ ...timelineEvent, privateToPlayerId: "p1" }]), [], "viewer-private records never become public outcomes");
+});
+
 test("ambiguous public event ordering is not assigned a false latest owner", () => {
   const current = identity();
   const projected = projectPublicPresentationSemantics({

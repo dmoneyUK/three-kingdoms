@@ -1,7 +1,7 @@
 import test from "node:test";
 import { viewerNegationAcknowledgement, triggerDecisionInstruction } from "../../game/console-decision.ts";
 import assert from "node:assert/strict";
-import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration } from "../../game/public-activity.ts";
+import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, formatCommittedPublicOutcome } from "../../game/public-activity.ts";
 
 const players = [
   { id: "p1", name: "Test Player 1", seat: 0, alive: true },
@@ -751,4 +751,21 @@ test("a closed Negation window cannot announce another counter opportunity", () 
   const current = harvestSnapshot({ responseWindowOpen: false });
   const result = derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: current }));
   assert.equal(result.kind, "none");
+});
+
+test("committed public outcome copy reports actual mixed HP and card deltas generically", () => {
+  const outcome = {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: "event-1", identity: {
+      interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1,
+    }, order: 3, rootEventId: "root-event", frameId: "root-1", category: "SKILL_USED",
+    actorId: "p1", affectedPlayerIds: ["p1", "p2"], source: { kind: "skill", label: "Self Sacrifice" }, changes: [
+      { kind: "HP_COST_LOST", playerId: "p1", amount: 1 },
+      { kind: "CARD_DRAWN", playerId: "p1", amount: 2, fromZone: "DECK", toZone: "HAND" },
+      { kind: "CARD_TRANSFERRED", fromPlayerId: "p1", toPlayerId: "p2", amount: 1, fromZone: "HAND", toZone: "HAND" },
+    ],
+  };
+  assert.equal(formatCommittedPublicOutcome(outcome, players),
+    "Test Player 1 — Self Sacrifice: Test Player 1 paid 1 HP as a cost; Test Player 1 drew 2 cards; Test Player 2 received 1 card from Test Player 1.");
+  assert.equal(formatCommittedPublicOutcome({ ...outcome, changes: [{ ...outcome.changes[1], playerId: "unknown-player" }] }, players), null,
+    "copy fails closed when a public participant name cannot be verified");
 });

@@ -36,7 +36,7 @@ import { resolveDamageModifiers, type DamageCause } from "../../../game/capabili
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
 import { attackRootProjectionDiagnosticsFor, projectPresentationV2, publicCardPlayProvesEffectiveKind, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
 import { composePresentationSnapshot, type PresentationPublicDrawPhaseDecision } from "../../../game/presentation-snapshot";
-import type { PublicPhysicalZoneTransition, PublicPresentationDecision, PublicPresentationEventFactDraft, PublicZoneEndpoint, ViewerNegationChoice } from "../../../game/presentation-semantics";
+import { validateCommittedPublicOutcomeDraft, type PublicPhysicalZoneTransition, type PublicPresentationDecision, type PublicPresentationEventFactDraft, type PublicZoneEndpoint, type ViewerNegationChoice } from "../../../game/presentation-semantics";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
 import { childCausalFrame, contextFor, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
@@ -773,8 +773,14 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
   return { ...(meta?.sharedResponseContribution ? { sharedResponseContribution: meta.sharedResponseContribution } : {}), ...(meta?.entourageInvocation ? { entourageInvocation: meta.entourageInvocation } : {}), resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
-function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "amount" | "effect" | "bumperHarvestPickProof">> = {}, envelope?: CausalEnvelope | null): PublicPresentationEventFactDraft | undefined {
+function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "amount" | "effect" | "bumperHarvestPickProof" | "committedOutcome">> = {}, envelope?: CausalEnvelope | null): PublicPresentationEventFactDraft | undefined {
   if (!causal?.interactionId || !causal.frameId) return undefined;
+  const committedOutcome = fields.committedOutcome === undefined ? undefined : validateCommittedPublicOutcomeDraft(fields.committedOutcome, {
+    actorId: fields.actorId,
+    affectedPlayerIds: fields.affectedPlayerIds,
+    publicLabels: [fields.label, fields.effect?.label],
+  });
+  if (fields.committedOutcome !== undefined && !committedOutcome) return undefined;
   const roots = envelope?.frames.filter((frame) => !frame.parentFrameId) ?? [];
   const frame = envelope?.frames.find((candidate) => candidate.frameId === causal.frameId);
   const committedIdentity = envelope && envelope.interactionId === causal.interactionId && roots.length === 1
@@ -785,7 +791,7 @@ function publicFactFor(causal: CausalContext | undefined, category: PublicPresen
   return {
     semantics: "PROVEN", visibility: "PUBLIC", interactionId: causal.interactionId,
     frameId: causal.frameId, ...(causal.parentFrameId ? { parentFrameId: causal.parentFrameId } : {}),
-    category, ...fields, ...(committedIdentity ? { committedIdentity } : {}),
+    category, ...fields, ...(committedOutcome ? { committedOutcome } : {}), ...(committedIdentity ? { committedIdentity } : {}),
   };
 }
 function addCommittedPublicSkillOutcome(log: string[], actor: PlayerRow, skillLabel: string) {
