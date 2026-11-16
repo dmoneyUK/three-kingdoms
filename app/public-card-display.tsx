@@ -2053,6 +2053,23 @@ export function publicCardAnnouncementCopy(
       dismantleCardFace: dismantleFace,
     };
   }
+  const blockedAttackCopy = action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE"
+    && action.settlement.publicOutcomeMessage && action.sourceId && sourceName
+    && action.targetId && targetName && action.response?.actorId && action.response.actorName
+    ? publicH4Copy([
+      { id: action.sourceId, name: sourceName }, "'s Attack on ",
+      { id: action.targetId, name: targetName }, " was blocked by ",
+      { id: action.response.actorId, name: action.response.actorName }, "'s Dodge.",
+    ])
+    : undefined;
+  if (blockedAttackCopy && blockedAttackCopy.message === action.settlement?.publicOutcomeMessage) {
+    return {
+      message: blockedAttackCopy.message,
+      segments: blockedAttackCopy.segments,
+      compactMessage: blockedAttackCopy.message,
+      accessibleLabel: blockedAttackCopy.message,
+    };
+  }
   const sameEventConversionCopy = action.publicCardEffectFrame?.effectClass === "CONVERSION"
     && action.publicCardEffectFrame.eventId === eventId
     && Boolean(action.publicNotice)
@@ -2061,6 +2078,7 @@ export function publicCardAnnouncementCopy(
   if (action.publicInteractionNarration && !sameEventConversionCopy) {
     return {
       message: action.publicInteractionNarration.headline,
+      segments: action.publicInteractionNarration.headlineSegments,
       compactMessage: action.publicInteractionNarration.compactHeadline,
       accessibleLabel: action.publicInteractionNarration.accessibleLabel,
     };
@@ -3765,6 +3783,7 @@ export function PublicInteractionAnnouncementLayer({
       viewerLayoutKey={viewerId}
       phase={anchorEventId ? "reveal" : "static"}
       message={narration.headline}
+      segments={narration.headlineSegments}
       compactMessage={narration.compactHeadline}
       accessibleLabel={narration.accessibleLabel}
       presentationNarration={narration}
@@ -3876,7 +3895,8 @@ function AttackDodgeCardJourney({
     && activeJourneyCard.eventId === action.response?.eventId
     ? action.settlement?.publicOutcomeMessage : undefined;
   const publicNarration = settledOutcomeMessage && action.publicInteractionNarration
-    ? { ...action.publicInteractionNarration, headline: settledOutcomeMessage, compactHeadline: settledOutcomeMessage, accessibleLabel: settledOutcomeMessage }
+    ? { ...action.publicInteractionNarration, headline: settledOutcomeMessage,
+      compactHeadline: settledOutcomeMessage, accessibleLabel: settledOutcomeMessage }
     : action.publicInteractionNarration;
   const announcementAction = publicNarration ? { ...action, publicInteractionNarration: publicNarration } : action;
   const announcementCopy = publicCardAnnouncementCopy(announcementAction, activeNotice, activeActorName, activeActorId, sourceName, targetName, compactPlayerNamesById, activeEventId);

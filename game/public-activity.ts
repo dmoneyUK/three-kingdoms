@@ -4,7 +4,7 @@ import type { PresentationSnapshot } from "./presentation-snapshot";
 import { publicDecisionFromPresentationSnapshot } from "./presentation-semantics.ts";
 import { PUBLIC_PRESENTATION_EVENT_CATEGORIES, type CommittedPublicOutcome, type CommittedPublicOutcomeChange, type PublicPresentationEventCategory } from "./presentation-semantics";
 import { CARD_DEFINITIONS } from "./cards";
-import { verifiedPlayerCopy, type VerifiedPlayerCopySegment } from "./verified-player-copy";
+import { matchingVerifiedPlayerCopySegments, verifiedPlayerCopy, type VerifiedPlayerCopySegment } from "./verified-player-copy";
 
 export type PublicActivityPlayer = {
   id: string;
@@ -290,6 +290,7 @@ export type PublicInteractionNarration = {
   rootFrameId: string;
   actorId?: string;
   headline: string;
+  headlineSegments?: readonly VerifiedPlayerCopySegment[];
   compactHeadline: string;
   accessibleLabel: string;
   supportingMessage?: string;
@@ -313,41 +314,43 @@ export function isPublicInteractionOutcomeFact(
   return PUBLIC_H4_FACT_CATEGORIES.has(fact.category);
 }
 
-function narrationPlayerName(input: Pick<PublicActivityInput, "players">, playerId: string | undefined): string | null {
+function narrationPlayerPart(players: readonly Pick<PublicActivityPlayer, "id" | "name">[], playerId: string | undefined) {
   if (!playerId) return null;
-  return input.players.find((candidate) => candidate.id === playerId)?.name.trim() || null;
+  const player = players.find((candidate) => candidate.id === playerId);
+  const name = player?.name.trim();
+  return player && name ? { id: player.id, name } : null;
 }
 
 /** Formats verified public state deltas without consulting a card, Hero, or skill rule. */
-export function formatCommittedPublicOutcome(
+function formatCommittedPublicOutcomeCopy(
   outcome: CommittedPublicOutcome,
   players: readonly Pick<PublicActivityPlayer, "id" | "name">[],
-): string | null {
+): { message: string; segments: VerifiedPlayerCopySegment[] } | null {
   if (!outcome || outcome.semantics !== "PROVEN" || outcome.visibility !== "PUBLIC"
     || !outcome.eventId || !outcome.rootEventId || !Array.isArray(outcome.changes) || outcome.changes.length === 0) return null;
-  const name = (playerId: string) => players.find((player) => player.id === playerId)?.name.trim() || null;
   const amountText = (amount: number, singular: string, plural: string) => `${amount} ${amount === 1 ? singular : plural}`;
-  const detail = (change: CommittedPublicOutcomeChange, amount: number): string | null => {
+  const detail = (change: CommittedPublicOutcomeChange, amount: number) => {
     if (!Number.isSafeInteger(amount) || amount <= 0) return null;
     if (change.kind === "CARD_TRANSFERRED") {
-      const from = name(change.fromPlayerId);
-      const to = name(change.toPlayerId);
-      return from && to ? `${to} received ${amountText(amount, "card", "cards")} from ${from}` : null;
+      const from = narrationPlayerPart(players, change.fromPlayerId);
+      const to = narrationPlayerPart(players, change.toPlayerId);
+      return from && to ? verifiedPlayerCopy([to, " received ", amountText(amount, "card", "cards"), " from ", from]) : null;
     }
-    const player = name(change.playerId);
+    const player = narrationPlayerPart(players, change.playerId);
     if (!player) return null;
+    let suffix: string;
     switch (change.kind) {
-      case "HP_COST_LOST": return `${player} paid ${amountText(amount, "HP", "HP")} as a cost`;
-      case "HP_LOST_TO_EFFECT": return `${player} lost ${amountText(amount, "HP", "HP")} to an effect`;
-      case "DAMAGE_APPLIED": return `${player} lost ${amountText(amount, "HP", "HP")} to damage`;
-      case "HP_RECOVERED": return `${player} recovered ${amountText(amount, "HP", "HP")}`;
-      case "CARD_DRAWN": return `${player} drew ${amountText(amount, "card", "cards")}`;
-      case "CARD_DISCARDED": return `${player} discarded ${amountText(amount, "card", "cards")}`;
-      case "CARD_GAINED": return `${player} gained ${amountText(amount, "card", "cards")}`;
-      case "CARD_EQUIPPED": return `${player} equipped ${amountText(amount, "item", "items")}`;
-      case "CARD_UNEQUIPPED": return `${player} unequipped ${amountText(amount, "item", "items")}`;
+      case "HP_COST_LOST": suffix = ` paid ${amountText(amount, "HP", "HP")} as a cost`; break;
+      case "HP_LOST_TO_EFFECT": suffix = ` lost ${amountText(amount, "HP", "HP")} to an effect`; break;
+      case "DAMAGE_APPLIED": suffix = ` lost ${amountText(amount, "HP", "HP")} to damage`; break;
+      case "HP_RECOVERED": suffix = ` recovered ${amountText(amount, "HP", "HP")}`; break;
+      case "CARD_DRAWN": suffix = ` drew ${amountText(amount, "card", "cards")}`; break;
+      case "CARD_DISCARDED": suffix = ` discarded ${amountText(amount, "card", "cards")}`; break;
+      case "CARD_GAINED": suffix = ` gained ${amountText(amount, "card", "cards")}`; break;
+      case "CARD_EQUIPPED": suffix = ` equipped ${amountText(amount, "item", "items")}`; break;
+      case "CARD_UNEQUIPPED": suffix = ` unequipped ${amountText(amount, "item", "items")}`; break;
     }
-    return null;
+    return verifiedPlayerCopy([player, suffix]);
   };
   const grouped = new Map<string, { change: CommittedPublicOutcomeChange; amount: number }>();
   for (const change of outcome.changes) {
@@ -359,11 +362,29 @@ export function formatCommittedPublicOutcome(
   }
   const details = [...grouped.values()].map(({ change, amount }) => detail(change, amount));
   if (details.some((entry) => !entry)) return null;
-  const actor = outcome.actorId ? name(outcome.actorId) : null;
+  const actor = outcome.actorId ? narrationPlayerPart(players, outcome.actorId) : null;
   if (outcome.actorId && !actor) return null;
   const source = outcome.source.label?.trim();
-  const heading = actor ? `${actor}${source ? ` — ${source}` : ""}` : source || "Public outcome";
-  return `${heading}: ${details.join("; ")}.`;
+  const parts: (string | { id: string; name: string })[] = [
+    ...(actor ? [actor] : [source || "Public outcome"]),
+    ...(actor && source ? [` — ${source}`] : []),
+    ": ",
+  ];
+  details.forEach((entry, index) => {
+    if (index) parts.push("; ");
+    parts.push(...entry!.segments.map((segment) => segment.kind === "player"
+      ? { id: segment.playerId, name: segment.text }
+      : segment.text));
+  });
+  parts.push(".");
+  return verifiedPlayerCopy(parts);
+}
+
+export function formatCommittedPublicOutcome(
+  outcome: CommittedPublicOutcome,
+  players: readonly Pick<PublicActivityPlayer, "id" | "name">[],
+): string | null {
+  return formatCommittedPublicOutcomeCopy(outcome, players)?.message ?? null;
 }
 
 /**
@@ -439,91 +460,91 @@ export function derivePublicInteractionNarration(input: {
   }
   if (!latest) return null;
 
-  const actor = narrationPlayerName(input, latest.actorId ?? undefined);
-  const affected = latest.affectedPlayerIds.map((playerId) => narrationPlayerName(input, playerId)).filter((name): name is string => Boolean(name));
-  const target = affected.length === 1 ? affected[0] : null;
+  const actorPart = narrationPlayerPart(input.players, latest.actorId ?? undefined);
+  const actor = actorPart?.name ?? null;
+  const affectedParts = latest.affectedPlayerIds.map((playerId) => narrationPlayerPart(input.players, playerId)).filter((part): part is NonNullable<typeof part> => Boolean(part));
+  const targetPart = affectedParts.length === 1 ? affectedParts[0] : null;
+  const target = targetPart?.name ?? null;
   const amount = Number.isSafeInteger(latest.amount) && (latest.amount ?? 0) > 0 ? latest.amount : null;
   const committedOutcomeCopy = latest.committedOutcome
-    ? formatCommittedPublicOutcome(latest.committedOutcome, input.players)
+    ? formatCommittedPublicOutcomeCopy(latest.committedOutcome, input.players)
     : null;
   if (latest.committedOutcome && !committedOutcomeCopy) return null;
+  let headlineCopy: { message: string; segments: VerifiedPlayerCopySegment[] } | null = null;
+  const fromParts = (parts: readonly (string | { id: string; name: string })[]) => {
+    const copy = verifiedPlayerCopy(parts);
+    headlineCopy = matchingVerifiedPlayerCopySegments(copy.message, copy.segments)
+      ? copy : null;
+    return copy.message;
+  };
   let headline: string;
 
   if (committedOutcomeCopy) {
-    headline = committedOutcomeCopy;
+    headlineCopy = committedOutcomeCopy;
+    headline = committedOutcomeCopy.message;
   } else if (latest.category === "CARD_EQUIPPED") {
-    headline = `${actor ?? "A player"} equipped ${effectLabel(latest.label) ?? "equipment"}.`;
+    headline = fromParts([actorPart ?? "A player", " equipped ", effectLabel(latest.label) ?? "equipment", "."]);
   } else if (latest.category === "CARD_PLAYED") {
     const card = effectLabel(latest.label) ?? "a card";
-    headline = `${actor ?? "A player"} played ${card}${target ? ` targeting ${target}` : ""}.`;
+    headline = fromParts([actorPart ?? "A player", " played ", card, ...(targetPart ? [" targeting ", targetPart] : []), "."]);
   } else if (latest.category === "DAMAGE_APPLIED") {
     const damage = amount === null ? "damage" : `${amount} damage`;
-    headline = actor && target ? `${actor} dealt ${damage} to ${target}.`
-      : target ? `${target} took ${damage}.`
-        : actor ? `${actor} dealt ${damage}.` : `Damage was applied${amount ? ` (${amount})` : ""}.`;
+    headline = actorPart && targetPart ? fromParts([actorPart, " dealt ", damage, " to ", targetPart, "."])
+      : targetPart ? fromParts([targetPart, " took ", damage, "."])
+        : actorPart ? fromParts([actorPart, " dealt ", damage, "."]) : `Damage was applied${amount ? ` (${amount})` : ""}.`;
   } else if (latest.category === "DAMAGE_PREVENTED") {
-    headline = actor ? `${actor} prevented damage${target ? ` to ${target}` : ""}.` : "Damage was prevented.";
+    headline = actorPart ? fromParts([actorPart, " prevented damage", ...(targetPart ? [" to ", targetPart] : []), "."]) : "Damage was prevented.";
   } else if (latest.category === "SKILL_USED") {
     const skill = latest.label?.trim().replace(/^Use\s+/i, "") || "a skill";
     const effectKind = latest.effect?.kind;
     if (effectKind === "entourage_invocation" && actor) {
-      headline = `${actor} (Cao Cao) used Entourage.`;
+      headline = fromParts([actorPart!, " (Cao Cao) used Entourage."]);
     } else if (effectKind === "targeted_skill" && target) {
-      headline = `${actor ? `${actor} used` : "A player used"} ${skill} on ${target}.`;
-      return {
-        eventId: latest.eventId,
-        publicSequence: latest.order,
-        rootEventId: input.rootEventId,
-        interactionId: input.interactionId,
-        rootFrameId: input.rootFrameId,
-        ...(latest.actorId ? { actorId: latest.actorId } : {}),
-        headline,
-        compactHeadline: headline,
-        accessibleLabel: headline,
-      };
-    }
-    if (effectKind !== "entourage_invocation") {
+      headline = fromParts([actorPart ?? "A player", " used ", skill, " on ", targetPart!, "."]);
+    } else if (effectKind !== "entourage_invocation") {
       const defaultOutcome = effectKind === "gain_target_card" ? "obtained one card"
         : effectKind === "gain_damage_cards" ? "obtained the card that caused the damage"
           : effectKind === "legacy_distribution" ? "began a card distribution"
             : null;
-      let outcome = latest.outcomeLabel?.trim() || defaultOutcome;
-      if (effectKind === "gain_target_card" && target && outcome) outcome = `${outcome} from ${target}`;
-      headline = `${actor ? `${actor} used` : "A player used"} ${skill}${outcome ? ` and ${outcome}` : ""}.`;
+      const outcome = latest.outcomeLabel?.trim() || defaultOutcome;
+      headline = fromParts([actorPart ?? "A player", " used ", skill,
+        ...(outcome ? [" and ", outcome, ...(effectKind === "gain_target_card" && targetPart ? [" from ", targetPart] : [])] : []), "."]);
+    } else {
+      headline = fromParts([actorPart ?? "A player", " used Entourage."]);
     }
   } else if (latest.category === "ACTION_DECLINED" && latest.effect?.kind === "entourage_declined" && actor && target) {
-    headline = `${actor} declined Entourage for ${target}.`;
+    headline = fromParts([actorPart!, " declined Entourage for ", targetPart!, "."]);
   } else if (latest.category === "CARD_OBTAINED" || latest.category === "CARD_TRANSFERRED") {
     const outcome = latest.outcomeLabel?.trim();
     const count = amount !== null && amount > 1 ? `${amount} cards` : latest.label?.trim() || "a card";
     headline = outcome
-      ? `${actor ? `${actor} ` : ""}${outcome.replace(/[.!?]+$/, "")}.`
-      : `${actor ?? "A player"} ${latest.category === "CARD_TRANSFERRED" ? "received" : "obtained"} ${count}${target ? ` from ${target}` : ""}.`;
+      ? fromParts([...(actorPart ? [actorPart, " "] : []), outcome.replace(/[.!?]+$/, ""), "."])
+      : fromParts([actorPart ?? "A player", ` ${latest.category === "CARD_TRANSFERRED" ? "received" : "obtained"} `, count, ...(targetPart ? [" from ", targetPart] : []), "."]);
   } else if (latest.category === "CARD_DISCARDED") {
     const outcome = latest.outcomeLabel?.trim();
     const count = amount !== null && amount > 0 ? `${amount} ${amount === 1 ? "card" : "cards"}` : null;
     headline = outcome
-      ? `${actor ? `${actor} ` : ""}${outcome.replace(/[.!?]+$/, "")}.`
-      : `${actor ?? "A player"} discarded ${count ?? (latest.label?.trim() || "cards")}.`;
+      ? fromParts([...(actorPart ? [actorPart, " "] : []), outcome.replace(/[.!?]+$/, ""), "."])
+      : fromParts([actorPart ?? "A player", " discarded ", count ?? (latest.label?.trim() || "cards"), "."]);
   } else if (latest.category === "EFFECT_CANCELLED" || latest.category === "EFFECT_RESTORED") {
     const effect = effectLabel(latest.effect?.label) ?? "an effect";
-    headline = `${actor ?? "A player"} ${latest.category === "EFFECT_RESTORED" ? "restored" : "cancelled"} ${effect}.`;
+    headline = fromParts([actorPart ?? "A player", ` ${latest.category === "EFFECT_RESTORED" ? "restored" : "cancelled"} `, effect, "."]);
   } else if (latest.category === "EFFECT_APPLIED") {
     const outcome = latest.outcomeLabel?.trim();
     headline = outcome
       ? latest.effect?.kind === "judgement"
         ? `${outcome.replace(/[.!?]+$/, "")}.`
-        : `${actor ? `${actor} ` : ""}${outcome.replace(/[.!?]+$/, "")}.`
-      : `${actor ?? "A player"} resolved an effect.`;
+        : fromParts([...(actorPart ? [actorPart, " "] : []), outcome.replace(/[.!?]+$/, ""), "."])
+      : fromParts([actorPart ?? "A player", " resolved an effect."]);
   } else if (latest.category === "ACTION_DECLINED") {
     const outcome = latest.outcomeLabel?.trim();
     headline = outcome
-      ? `${actor ? `${actor} ` : ""}${outcome.replace(/[.!?]+$/, "")}.`
-      : `${actor ?? "A player"} declined the available action.`;
+      ? fromParts([...(actorPart ? [actorPart, " "] : []), outcome.replace(/[.!?]+$/, ""), "."])
+      : fromParts([actorPart ?? "A player", " declined the available action."]);
   } else if (latest.category === "STAGE_COMPLETED") {
     const outcome = latest.outcomeLabel?.trim();
     headline = outcome
-      ? `${actor ? `${actor} ` : ""}${outcome.replace(/[.!?]+$/, "")}.`
+      ? fromParts([...(actorPart ? [actorPart, " "] : []), outcome.replace(/[.!?]+$/, ""), "."])
       : "A public effect stage completed.";
   } else {
     return null;
@@ -537,6 +558,8 @@ export function derivePublicInteractionNarration(input: {
     rootFrameId: input.rootFrameId,
     ...(latest.actorId ? { actorId: latest.actorId } : {}),
     headline,
+    ...(headlineCopy && matchingVerifiedPlayerCopySegments(headline, headlineCopy.segments)
+      ? { headlineSegments: headlineCopy.segments } : {}),
     compactHeadline: headline,
     accessibleLabel: headline,
     ...(latest.category === "CARD_EQUIPPED" || latest.category === "SKILL_USED" && latest.effect?.kind === "draw_phase_modifier" ? { readDurationMs: 4_000 } : {}),

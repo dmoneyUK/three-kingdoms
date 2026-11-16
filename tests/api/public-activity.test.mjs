@@ -618,17 +618,40 @@ test("generic H4 retains damage through Skip and formats committed public or hid
   const damage = fact("damage", 2, "DAMAGE_APPLIED", { actorId: "p1", affectedPlayerIds: ["p2"], amount: 1 });
   const input = (facts) => ({ snapshot: snapshot({ stage: "DAMAGE", actorId: "p2", publicEventFacts: facts }),
     players, rootEventId: "root-event", interactionId: "interaction-1", rootFrameId: "root-1" });
-  assert.equal(derivePublicInteractionNarration(input([root, damage]))?.headline, "Test Player 1 dealt 1 damage to Test Player 2.");
+  const damageNarration = derivePublicInteractionNarration(input([root, damage]));
+  assert.equal(damageNarration?.headline, "Test Player 1 dealt 1 damage to Test Player 2.");
+  assert.deepEqual(playerIds(damageNarration?.headlineSegments), ["p1", "p2"]);
+  const actorOnlyDamage = fact("actor-only-damage", 2, "DAMAGE_APPLIED", { actorId: "p1", amount: 1 });
+  const actorOnlyNarration = derivePublicInteractionNarration(input([root, actorOnlyDamage]));
+  assert.equal(actorOnlyNarration?.headline, "Test Player 1 dealt 1 damage.");
+  assert.deepEqual(playerIds(actorOnlyNarration?.headlineSegments), ["p1"]);
+  const burningBridges = fact("burning-bridges", 1, "CARD_PLAYED", {
+    actorId: "p3", affectedPlayerIds: ["p2"], label: "Burning Bridges",
+  });
+  const burningNarration = derivePublicInteractionNarration(input([burningBridges]));
+  assert.equal(burningNarration?.headline, "Test Player 3 played Burning Bridges targeting Test Player 2.");
+  assert.deepEqual(playerIds(burningNarration?.headlineSegments), ["p3", "p2"]);
+  const missingTarget = derivePublicInteractionNarration(input([{ ...burningBridges, affectedPlayerIds: ["unverified-target"] }]));
+  assert.equal(missingTarget?.headline, "Test Player 3 played Burning Bridges.");
+  assert.deepEqual(playerIds(missingTarget?.headlineSegments), ["p3"], "unknown IDs never receive a manufactured player-name span");
+  const duplicateNameNarration = derivePublicInteractionNarration({
+    ...input([burningBridges]),
+    players: players.map((player) => player.id === "p3" || player.id === "p2" ? { ...player, name: "Same Name" } : player),
+  });
+  assert.equal(duplicateNameNarration?.headline, "Same Name played Burning Bridges targeting Same Name.");
+  assert.deepEqual(playerIds(duplicateNameNarration?.headlineSegments), ["p3", "p2"], "identical visible names retain their distinct authoritative IDs");
   const fanjianActivation = fact("fanjian-activation", 2, "SKILL_USED", {
     actorId: "p1", affectedPlayerIds: ["p2"], label: "Sowing Distrust", effect: { kind: "targeted_skill" },
   });
-  assert.equal(derivePublicInteractionNarration(input([root, fanjianActivation]))?.headline,
-    "Test Player 1 used Sowing Distrust on Test Player 2.");
+  const fanjianNarration = derivePublicInteractionNarration(input([root, fanjianActivation]));
+  assert.equal(fanjianNarration?.headline, "Test Player 1 used Sowing Distrust on Test Player 2.");
+  assert.deepEqual(playerIds(fanjianNarration?.headlineSegments), ["p1", "p2"]);
   // A Skip adds no skill fact, including when a later decision uses the same causal root.
   assert.equal(derivePublicInteractionNarration(input([root, damage]))?.eventId, "damage");
   const hidden = fact("hidden", 3, "SKILL_USED", { actorId: "p2", affectedPlayerIds: ["p1"], label: "Retaliation", outcomeLabel: "obtained one card", effect: { kind: "gain_target_card" } });
   assert.equal(derivePublicInteractionNarration(input([root, damage, hidden]))?.headline,
     "Test Player 2 used Retaliation and obtained one card from Test Player 1.");
+  assert.deepEqual(playerIds(derivePublicInteractionNarration(input([root, damage, hidden]))?.headlineSegments), ["p2", "p1"]);
   const visible = { ...hidden, eventId: "visible", effect: { kind: "gain_target_card", label: "Nio Shield" } };
   assert.equal(derivePublicInteractionNarration(input([root, damage, visible]))?.headline,
     "Test Player 2 used Retaliation and obtained one card from Test Player 1.");
@@ -697,6 +720,7 @@ test("Equipment H4 uses the exact committed owner and card name for active and r
   const active = derivePublicInteractionNarration(input(snapshot({ stage: "SETTLEMENT", actorId: null,
     stableKind: "REST", publicEventFacts: [equip] })));
   assert.equal(active?.headline, "Test Player 1 equipped Frost Sword.");
+  assert.deepEqual(playerIds(active?.headlineSegments), ["p1"]);
   assert.equal(active?.eventId, equip.eventId);
   assert.equal(active?.readDurationMs, 4_000);
 
@@ -815,6 +839,7 @@ test("committed HP, draw, discard, recovery and transfer results own the shared 
   assert.equal(active?.eventId, outcome.eventId);
   assert.equal(active?.headline, expected);
   assert.equal(active?.compactHeadline, expected);
+  assert.deepEqual(playerIds(active?.headlineSegments), ["p2", "p1", "p2", "p2", "p2", "p2", "p1"]);
 
   const retained = derivePublicInteractionNarration({ ...input, snapshot: {
     identity: null, interaction: null, stable: { kind: "REST" }, publicEventFacts: [],

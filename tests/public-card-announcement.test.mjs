@@ -964,6 +964,44 @@ test("typed H4 names preserve exact text and accessible narration, without guess
   assert.equal(plain.segments, undefined, "legacy prose is not parsed for a name that happens to match card text");
 });
 
+test("generic committed H4 forwards producer-verified player fragments to the shared renderer", async () => {
+  const segments = [
+    { kind: "player", playerId: "actor-id", text: "Same Name" },
+    { kind: "text", text: " played Burning Bridges targeting " },
+    { kind: "player", playerId: "target-id", text: "Same Name" },
+    { kind: "text", text: "." },
+  ];
+  const headline = segments.map((part) => part.text).join("");
+  const narration = { eventId: "event", rootEventId: "root", interactionId: "interaction", rootFrameId: "frame",
+    headline, headlineSegments: segments, compactHeadline: headline, accessibleLabel: headline };
+  const copy = publicCardAnnouncementCopy({ sourceId: "actor-id", targetId: "target-id", rootEventId: "root", cardLabel: "Burning Bridges",
+    publicInteractionNarration: narration }, headline, "Same Name", "actor-id", "Same Name", "Same Name", {}, "event");
+  assert.equal(copy.message, headline);
+  assert.equal(copy.accessibleLabel, headline);
+  assert.deepEqual(copy.segments, segments);
+  assert.equal(copy.segments.map((part) => part.text).join(""), copy.message);
+  const html = renderToStaticMarkup(React.createElement(PublicInteractionAnnouncementLayer, {
+    narration: { ...narration, actorId: "actor-id" }, roomCode: "ROOM", viewerId: "observer",
+  }));
+  assert.equal((html.match(/class="message-player-name public-h4-player"/g) ?? []).length, 2);
+  assert.match(html, /data-player-id="actor-id" data-public-player-id="actor-id"/);
+  assert.match(html, /data-player-id="target-id" data-public-player-id="target-id"/);
+  assert.ok(html.includes(`aria-label="${headline}"`));
+  const blockedMessage = "Same Name's Attack on Same Name was blocked by Helper's Dodge.";
+  const blockedCopy = publicCardAnnouncementCopy({
+    sourceId: "actor-id", targetId: "target-id", rootEventId: "root", cardLabel: "Attack",
+    settlement: { outcome: "ATTACK_BLOCKED_BY_DODGE", eventId: "response", publicOutcomeMessage: blockedMessage },
+    response: { actorId: "helper-id", actorName: "Helper" },
+  }, blockedMessage, "Helper", "helper-id", "Same Name", "Same Name", {}, "response");
+  assert.equal(blockedCopy.message, blockedMessage);
+  assert.deepEqual(blockedCopy.segments.filter((part) => part.kind === "player").map((part) => part.playerId), ["actor-id", "target-id", "helper-id"]);
+  const mismatched = publicCardAnnouncementCopy({ sourceId: "actor-id", targetId: "target-id", rootEventId: "root", cardLabel: "Burning Bridges",
+    publicInteractionNarration: { ...narration, headline: "Changed copy." } }, headline, "Same Name", "actor-id", "Same Name", "Same Name", {}, "event");
+  assert.deepEqual(mismatched.segments, segments, "the renderer still applies its exact-message guard before highlighting");
+  const { matchingPublicH4Segments } = await import("../game/public-h4-copy.ts");
+  assert.equal(matchingPublicH4Segments(mismatched.message, mismatched.segments), undefined);
+});
+
 test("verified Axe cost has compact factual H4 without premature damage and keeps full accessibility", async () => {
   const { verifiedRockCleavingAxeCostFrameForEvent } = await import("../app/page.tsx");
   const actor = { id: "a", name: "ACTOR" }, target = { id: "b", name: "TARGET" };
