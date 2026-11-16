@@ -2,6 +2,7 @@
 import test from "node:test";
 import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import { projectPresentationV2 } from "../../game/presentation-v2.ts";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
   assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -531,6 +532,15 @@ test("Legacy privately distributes top two cards and repeats once per damage poi
   assert.deepEqual(settled.room.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
   const legacyOwner = (await state(one.game.code, one.guoMember.token)).data;
   const legacyObserver = (await state(one.game.code, one.game.members[2].token)).data;
+  const distributionEvent = legacyObserver.timeline.find((event) => event.publicFact?.committedOutcome?.changes?.some((change) =>
+    change.kind === "CARD_GAINED" && change.fromZone === "DISTRIBUTION"));
+  assert.ok(distributionEvent, "completed Legacy distribution publishes its actual recipient count");
+  assert.deepEqual(distributionEvent.publicFact.committedOutcome.changes, [
+    { kind: "CARD_GAINED", playerId: one.guo.id, amount: 2, fromZone: "DISTRIBUTION", toZone: "HAND" },
+  ]);
+  assertPublicOutcomeHasH4Owner(legacyObserver, distributionEvent.id);
+  assert.equal(JSON.stringify(distributionEvent.publicFact.committedOutcome).includes(firstCards[0].id), false,
+    "the public count result excludes the private Legacy card identity");
   const legacyArrivals = legacyOwner.timeline.filter((event) => event.type === "card" && event.privateHandTransfer);
   assert.deepEqual(legacyArrivals.map((event) => event.privateHandTransfer.cardId), [firstCards[0].id, firstCards[1].id]);
   assert.ok(legacyArrivals.every((event) => event.privateHandTransfer.sourceZone === "distribution"

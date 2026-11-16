@@ -1,6 +1,7 @@
 import test from "node:test";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
 import { projectPresentationV2 } from "../../game/presentation-v2.ts";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
   assert, card, createHumanGame, createTestGame, discardIds, query, quote, request, requestAndSettle, roomCardCount,
   setDeck, setEquipment, setHand, setTurn, sql, state,
@@ -442,6 +443,12 @@ test("Beauty Outshining the Moon is an optional private own-turn draw and shares
   const provenNotice = publicBeautyView.presentationSnapshot.diaoChanSkillNotices;
   assert.deepEqual(provenNotice.map((notice) => notice.notice), ["ACTIVATION", "DRAWN"]);
   assert.equal(provenNotice.find((notice) => notice.notice === "DRAWN").drawCount, 1);
+  const beautyDrawEvent = publicBeautyView.timeline.find((event) => event.publicDiaoChanNotice?.notice === "DRAWN");
+  assert.ok(beautyDrawEvent, "the committed Beauty draw keeps its existing public result event");
+  assert.deepEqual(beautyDrawEvent?.publicFact?.committedOutcome?.changes, [
+    { kind: "CARD_DRAWN", playerId: diao.id, amount: 1, fromZone: "DECK", toZone: "HAND" },
+  ], "the special Beauty result also enters the shared committed-outcome contract");
+  assertPublicOutcomeHasH4Owner(publicBeautyView, beautyDrawEvent.id);
   assert.equal(publicBeautyView.timeline.filter((event) => event.effectNotice === true && event.message.includes("Beauty")).length, 0);
   for (const [index, viewerView] of viewerViews.entries()) {
     assert.deepEqual(viewerView.presentationSnapshot.diaoChanSkillNotices, provenNotice,

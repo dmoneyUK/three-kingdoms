@@ -2564,6 +2564,8 @@ async function beginLegacyDistribution(room: RoomRow, continuation: DamageSuffer
     cards: draw.drawn,
     eligibleRecipientIds: legacyRecipients(players),
     resumeDamageSuffered: continuation,
+    ...(continuation.causal ? { causal: continuation.causal } : {}),
+    ...(publicFact?.label ? { publicOutcomeLabel: publicFact.label } : {}),
     reason: `${actor.name} privately assigns the 2 Legacy cards to living characters`,
     deadline: nextResponseDeadline(actor),
     resolutionId: continuation.resolutionId,
@@ -8687,6 +8689,41 @@ export async function POST(request: Request) {
         const hand = [...parse<Card[]>(player.hand_json, []), ...gained];
         return { ...player, hand_json: JSON.stringify(hand) };
       });
+      const distributionEventId = crypto.randomUUID();
+      const distributionCausal = distribution.causal ?? distribution.resumeDamageSuffered.causal;
+      const outcomeRootEventId = distribution.resumeDamageSuffered.rootEventId ?? distributionEventId;
+      const outcomeChanges: Extract<CommittedPublicOutcomeChange, { kind: "CARD_GAINED" }>[] = [...byRecipient]
+        .filter(([, gained]) => gained.length > 0)
+        .map(([playerId, gained]) => ({
+          kind: "CARD_GAINED",
+          playerId,
+          amount: gained.length,
+          fromZone: "DISTRIBUTION",
+          toZone: "HAND",
+        }));
+      const distributionLabel = distribution.publicOutcomeLabel ?? "Card distribution";
+      const distributionFact = distributionCausal ? publicFactFor(distributionCausal, "CARD_OBTAINED", {
+        rootEventId: outcomeRootEventId,
+        actorId: actor.id,
+        affectedPlayerIds: [...new Set(outcomeChanges.map((change) => change.playerId))],
+        label: distributionLabel,
+        outcomeLabel: "completed a card distribution",
+        effect: { kind: "card_distribution" },
+      }, parseCausalEnvelope(liveRoom.causal_envelope_json)) : undefined;
+      const committedDistributionFact = withCommittedPublicOutcome(distributionFact, {
+        outcomeLabel: "completed the card distribution",
+        source: distribution.publicOutcomeLabel
+          ? { kind: "skill", label: distribution.publicOutcomeLabel }
+          : { kind: "other", label: distributionLabel },
+        changes: outcomeChanges,
+      });
+      if (committedDistributionFact?.committedOutcome) {
+        log = addLogWithId(log, `${actor.name} completes a card distribution.`, undefined, {
+          actorId: actor.id,
+          importance: "essential",
+          publicFact: committedDistributionFact,
+        }, distributionEventId).log;
+      }
       const nextContinuation = {
         ...distribution.resumeDamageSuffered,
         resolvedDamagePointEffectIds: [...new Set([...(distribution.resumeDamageSuffered.resolvedDamagePointEffectIds ?? []), "guo_jia_legacy"])],
@@ -8694,7 +8731,12 @@ export async function POST(request: Request) {
         judgementCard: undefined,
         secondaryEffectId: undefined,
       } satisfies DamageSufferedTriggerContinuation;
-      await db.batch(updatedPlayers.filter((player, index) => player.hand_json !== players[index].hand_json).map((player) => db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(player.hand_json, player.id)));
+      await db.batch([
+        ...updatedPlayers.filter((player, index) => player.hand_json !== players[index].hand_json)
+          .map((player) => db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(player.hand_json, player.id)),
+        db.prepare("UPDATE rooms SET log_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json = ?")
+          .bind(JSON.stringify(log), room.id, liveRoom.pending_json),
+      ]);
       await continueDamageSufferedEvent(liveRoom, nextContinuation, updatedPlayers, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log);
       return json({ room: await roomState(code, token) });
     }
@@ -9305,17 +9347,27 @@ export async function POST(request: Request) {
           },
         });
         let nextLog = activation.log;
-        if (draw.drawn.length === 1) {
-          nextLog = addLogWithId(nextLog, `${source.name} used Beauty and drew 1 card.`, undefined, {
+        if (draw.drawn.length > 0) {
+          const outcomeBaseFact = triggerPublicFact
+            ? { ...triggerPublicFact, rootEventId: triggerPublicFact.rootEventId ?? activation.eventId,
+              actorId: source.id, affectedPlayerIds: [...new Set([...(triggerPublicFact.affectedPlayerIds ?? []), source.id])] }
+            : undefined;
+          const committedFact = withCommittedPublicTriggerOutcome(outcomeBaseFact, {
+            outcomeLabel: `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`,
+            source: { kind: "skill", ...(outcomeBaseFact?.label ? { label: outcomeBaseFact.label } : {}) },
+            changes: [{ kind: "CARD_DRAWN", playerId: source.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }],
+          });
+          nextLog = addLogWithId(nextLog, `${source.name} used Beauty and drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, undefined, {
             importance: "essential",
             finalResult: true,
+            ...(committedFact?.committedOutcome ? { publicFact: committedFact } : {}),
             publicDiaoChanNotice: {
               semantics: "PROVEN",
               effectId: "diao_chan_beauty_outshining_moon",
               notice: "DRAWN",
               rootEventId: activation.eventId,
               sourceId: source.id,
-              drawCount: 1,
+              drawCount: draw.drawn.length,
             },
           }).log;
         }

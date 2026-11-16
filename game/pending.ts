@@ -216,6 +216,8 @@ export type CardDistributionPending = CausalFields & {
   cards: Card[];
   eligibleRecipientIds: string[];
   resumeDamageSuffered: DamageSufferedTriggerContinuation;
+  /** Safe public skill/source label needed to narrate the committed distribution result. */
+  publicOutcomeLabel?: string;
   reason: string;
   deadline?: number;
   resolutionId?: string;

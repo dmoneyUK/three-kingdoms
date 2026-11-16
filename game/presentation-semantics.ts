@@ -37,7 +37,7 @@ export type CommittedPublicOutcomeChange =
   | { kind: "HP_COST_LOST" | "DAMAGE_APPLIED" | "HP_RECOVERED"; playerId: string; amount: number }
   | { kind: "CARD_DRAWN"; playerId: string; amount: number; fromZone: "DECK"; toZone: "HAND" }
   | { kind: "CARD_DISCARDED"; playerId: string; amount: number; fromZone: "HAND" | "EQUIPMENT" | "JUDGEMENT"; toZone: "DISCARD" }
-  | { kind: "CARD_GAINED"; playerId: string; amount: number; fromZone: "DECK" | "DISCARD"; toZone: "HAND" | "EQUIPMENT" }
+  | { kind: "CARD_GAINED"; playerId: string; amount: number; fromZone: "DECK" | "DISCARD" | "DISTRIBUTION"; toZone: "HAND" | "EQUIPMENT" }
   | { kind: "CARD_TRANSFERRED"; fromPlayerId: string; toPlayerId: string; amount: number; fromZone: "HAND" | "EQUIPMENT" | "JUDGEMENT"; toZone: "HAND" | "EQUIPMENT" | "JUDGEMENT" }
   | { kind: "CARD_EQUIPPED"; playerId: string; amount: 1; fromZone: "HAND"; toZone: "EQUIPMENT" }
   | { kind: "CARD_UNEQUIPPED"; playerId: string; amount: 1; fromZone: "EQUIPMENT"; toZone: "HAND" | "DISCARD" };
@@ -384,8 +384,9 @@ function publicOutcomeChange(value: unknown): CommittedPublicOutcomeChange | nul
         ? { kind: item.kind, playerId: item.playerId, amount, fromZone: item.fromZone, toZone: "DISCARD" } : null;
     case "CARD_GAINED":
       return exactKeys(item, ["kind", "playerId", "amount", "fromZone", "toZone"])
-        && nonEmptyString(item.playerId) && (item.fromZone === "DECK" || item.fromZone === "DISCARD")
-        && (item.toZone === "HAND" || item.toZone === "EQUIPMENT")
+        && nonEmptyString(item.playerId)
+        && (item.fromZone === "DECK" || item.fromZone === "DISCARD" || item.fromZone === "DISTRIBUTION")
+        && (item.toZone === "HAND" || (item.fromZone !== "DISTRIBUTION" && item.toZone === "EQUIPMENT"))
         ? { kind: item.kind, playerId: item.playerId, amount, fromZone: item.fromZone, toZone: item.toZone } : null;
     case "CARD_TRANSFERRED":
       return exactKeys(item, ["kind", "fromPlayerId", "toPlayerId", "amount", "fromZone", "toZone"])

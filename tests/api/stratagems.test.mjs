@@ -4,6 +4,7 @@ import { projectPresentationV2 } from "../../game/presentation-v2.ts";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import { baseUrl } from "./harness.mjs";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
   advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestForViewer, requestAndSettle, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -193,6 +194,13 @@ test("Something Out of Nothing preserves Play Phase and reveals the stratagem wi
   assert.equal(publicPlay.target, "Host");
   const drawHistory = result.data.room.timeline.find((event) => /plays Something Out of Nothing and draws 2 cards/.test(event.message ?? ""));
   assert.equal(drawHistory.presentation, false);
+  const drawOutcomeEvent = result.data.room.timeline.find((event) => event.publicFact?.committedOutcome?.changes?.some((change) =>
+    change.kind === "CARD_DRAWN" && change.playerId === hostPlayer.id));
+  assert.deepEqual(drawOutcomeEvent?.publicFact?.committedOutcome?.changes, [
+    { kind: "CARD_DRAWN", playerId: hostPlayer.id, amount: 2, fromZone: "DECK", toZone: "HAND" },
+  ]);
+  const publicDrawRoom = (await state(game.code, game.members[1].token)).data;
+  assertPublicOutcomeHasH4Owner(publicDrawRoom, drawOutcomeEvent.id);
   const arrivals = result.data.room.timeline.filter((event) => event.type === "card" && event.privateHandTransfer);
   assert.equal(arrivals.length, 2, "each committed draw has one private physical-card receipt");
   assert.ok(arrivals.every((event) => event.privateHandTransfer.recipientId === hostPlayer.id
