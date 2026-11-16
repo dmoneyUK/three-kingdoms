@@ -36,7 +36,7 @@ import { resolveDamageModifiers, type DamageCause } from "../../../game/capabili
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
 import { attackRootProjectionDiagnosticsFor, projectPresentationV2, publicCardPlayProvesEffectiveKind, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
 import { composePresentationSnapshot, type PresentationPublicDrawPhaseDecision } from "../../../game/presentation-snapshot";
-import { validateCommittedPublicOutcomeDraft, type CommittedPublicOutcomeChange, type PublicPhysicalZoneTransition, type PublicPresentationDecision, type PublicPresentationEventFactDraft, type PublicZoneEndpoint, type ViewerNegationChoice } from "../../../game/presentation-semantics";
+import { validateCommittedPublicOutcomeDraft, type CommittedPublicOutcomeChange, type CommittedPublicOutcomeDraft, type PublicPhysicalZoneTransition, type PublicPresentationDecision, type PublicPresentationEventFactDraft, type PublicZoneEndpoint, type ViewerNegationChoice } from "../../../game/presentation-semantics";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
 import { childCausalFrame, contextFor, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
@@ -863,26 +863,27 @@ function publicTriggerFactFor(trigger: TriggerPending, players: PlayerRow[], eff
   }, envelope);
 }
 
-/** Adds only server-measured, committed trigger results to the shared public fact. */
-function withCommittedPublicTriggerOutcome(
+/** Adds only server-measured, committed results to a shared public fact. */
+function withCommittedPublicOutcome(
   fact: PublicPresentationEventFactDraft | undefined,
-  result: { outcomeLabel: string; changes: readonly CommittedPublicOutcomeChange[] },
+  result: { outcomeLabel: string; changes: readonly CommittedPublicOutcomeChange[]; source?: CommittedPublicOutcomeDraft["source"] },
 ): PublicPresentationEventFactDraft | undefined {
   if (!fact || !Number.isSafeInteger(result.changes.reduce((total, change) => total + change.amount, 0))) return fact;
   const amount = result.changes.reduce((total, change) => total + change.amount, 0);
   if (result.changes.length === 0) return { ...fact, amount: 0, outcomeLabel: result.outcomeLabel };
   const committedOutcome = validateCommittedPublicOutcomeDraft({
-    source: { kind: "other", ...(fact.label ? { label: fact.label } : {}) },
+    source: result.source ?? { kind: "other", ...(fact.label ? { label: fact.label } : {}) },
     changes: result.changes,
   }, {
     ...(fact.actorId ? { actorId: fact.actorId } : {}),
     affectedPlayerIds: fact.affectedPlayerIds ?? [],
     publicLabels: [fact.label],
   });
-  // Keep the truthful generic trigger fact if participant/source proof is
+  // Keep the truthful generic event fact if participant/source proof is
   // incomplete; never attach a guessed amount or an invalid committed delta.
   return committedOutcome ? { ...fact, amount, outcomeLabel: result.outcomeLabel, committedOutcome } : fact;
 }
+const withCommittedPublicTriggerOutcome = withCommittedPublicOutcome;
 function genericStageLabel(stage: string) {
   return stage.toLowerCase().split("_").map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part).join(" ");
 }
@@ -4777,7 +4778,69 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
   if (!source) return [];
   if (pending.effect.kind === "draw_two") {
     const playedIndex = discard.findIndex((card) => card.id === pending.effect.cardId); const played = playedIndex >= 0 ? discard.splice(playedIndex, 1)[0] : null;
-    const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; if (played) discard.push(played); log = addHistory(draw.log, `${source.name} plays Something Out of Nothing and draws ${draw.drawn.length} cards.`, source.id);
+    const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; if (played) discard.push(played);
+    const drawEventId = crypto.randomUUID();
+    const drawOutcome: { outcomeLabel: string; changes: readonly CommittedPublicOutcomeChange[] } = {
+      outcomeLabel: draw.drawn.length > 0
+        ? `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`
+        : "resolved the draw effect; no cards were available",
+      changes: draw.drawn.length > 0
+        ? [{ kind: "CARD_DRAWN", playerId: source.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }]
+        : [],
+    };
+    const linkedDrawFact = pending.causal && pending.rootEventId
+      ? publicFactFor(pending.causal, "EFFECT_APPLIED", {
+        rootEventId: pending.rootEventId,
+        actorId: source.id,
+        affectedPlayerIds: [source.id],
+        label: pending.cardName,
+        effect: { kind: "draw", label: pending.cardName },
+      }, resumedEnvelope)
+      : undefined;
+    const committedLinkedDrawFact = withCommittedPublicOutcome(linkedDrawFact, {
+      ...drawOutcome,
+      source: { kind: "card", label: pending.cardName },
+    });
+    const linkedDrawOutcomeValid = drawOutcome.changes.length === 0 || Boolean(committedLinkedDrawFact?.committedOutcome);
+    let publishableDrawFact = committedLinkedDrawFact?.committedIdentity && linkedDrawOutcomeValid ? committedLinkedDrawFact : undefined;
+    const drawSourceLabel = publishableDrawFact ? pending.cardName : undefined;
+    if (!publishableDrawFact) {
+      // If a legacy continuation lacks a verifiable original root, publish
+      // only the actor and server-measured count under this committed result's
+      // own identity; never guess a causal card/root link.
+      const resultRoot = createCausalRoot({
+        stage: "SETTLEMENT",
+        origin: { originSourceId: source.id, originEffect: "committed_draw_result", originalTargetIds: [source.id] },
+        current: { currentSourceId: source.id, currentEffect: "committed_draw_result", currentTargetIds: [source.id], resolvingPlayerId: source.id },
+      });
+      const genericDrawFact = publicFactFor(resultRoot.context, "EFFECT_APPLIED", {
+        rootEventId: drawEventId,
+        actorId: source.id,
+        affectedPlayerIds: [source.id],
+        effect: { kind: "draw" },
+      }, resultRoot.envelope);
+      const committedGenericDrawFact = withCommittedPublicOutcome(genericDrawFact, {
+        ...drawOutcome,
+        source: { kind: "other" },
+      });
+      const genericDrawOutcomeValid = drawOutcome.changes.length === 0 || Boolean(committedGenericDrawFact?.committedOutcome);
+      publishableDrawFact = committedGenericDrawFact?.committedIdentity && genericDrawOutcomeValid ? committedGenericDrawFact : undefined;
+    }
+    const drawMessage = draw.drawn.length > 0
+      ? `${source.name} draws ${draw.drawn.length} cards${drawSourceLabel ? ` with ${drawSourceLabel}` : ""}.`
+      : `${source.name} draws no cards.`;
+    const linkedResolutionId = pending.rootResolutionId ?? pending.resolutionId;
+    const drawResolutionId = drawSourceLabel && linkedResolutionId ? linkedResolutionId : drawEventId;
+    log = publishableDrawFact
+      ? addLogWithId(draw.log, drawMessage, source.id, {
+        resolutionId: drawResolutionId,
+        actorId: source.id,
+        importance: "essential",
+        finalResult: true,
+        effectNotice: true,
+        publicFact: publishableDrawFact,
+      }, drawEventId).log
+      : addHistory(draw.log, drawMessage, source.id);
     for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, source, drawn);
     const hand = [...parse<Card[]>(source.hand_json, []), ...draw.drawn];
     const settled = await db().batch([
