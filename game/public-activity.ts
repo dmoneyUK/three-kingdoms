@@ -61,21 +61,14 @@ function activePublicJudgementFact(input: PublicActivityInput) {
       || interaction.checkpointId !== identity.checkpointId
       || interaction.presentationRevision !== identity.presentationRevision) return null;
   } else {
-    const retained = snapshot.retainedPublicEvent;
-    if (snapshot.identity || !retained) return null;
+    if (snapshot.identity || !snapshot.retainedPublicEventFacts?.length) return null;
     facts = snapshot.retainedPublicEventFacts ?? [];
   }
   const matching = facts.filter((fact) => fact.eventId === eventId
     && fact.category === "EFFECT_APPLIED" && fact.effect?.kind === "judgement"
     && fact.rootEventId && fact.outcomeLabel
     && (!interaction || fact.identity.interactionId === interaction.interactionId
-      && fact.identity.rootFrameId === interaction.rootFrameId)
-    && (!snapshot.identity && snapshot.retainedPublicEvent
-      ? fact.identity.interactionId === snapshot.retainedPublicEvent.identity.interactionId
-        && fact.identity.rootFrameId === snapshot.retainedPublicEvent.identity.rootFrameId
-        && fact.rootEventId === snapshot.retainedPublicEvent.rootEventId
-        && fact.identity.presentationRevision <= snapshot.retainedPublicEvent.identity.presentationRevision
-      : true));
+      && fact.identity.rootFrameId === interaction.rootFrameId));
   return matching.length === 1 ? matching[0] : null;
 }
 

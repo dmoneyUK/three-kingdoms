@@ -500,6 +500,24 @@ function isCommittedPublicEquipmentFact(event: Record<string, unknown>, fact: Re
     && affectedPlayerIds?.length === 1 && affectedPlayerIds[0] === actorId;
 }
 
+function isCommittedPublicDiscardFact(event: Record<string, unknown>, fact: Record<string, unknown>): boolean {
+  const card = record(event.card);
+  const transition = record(event.publicZoneTransition);
+  const from = record(transition?.from);
+  const to = record(transition?.to);
+  const eventActorId = typeof event.actorId === "string" ? event.actorId : null;
+  const affectedPlayerIds = uniqueStrings(fact.affectedPlayerIds, true);
+  return event.type === "card" && event.action === "discard" && event.presentation !== false
+    && typeof event.privateToPlayerId !== "string" && nonEmptyString(event.id)
+    && nonEmptyString(card?.id) && fact.category === "CARD_DISCARDED"
+    && Boolean(eventActorId) && fact.actorId === eventActorId
+    && Boolean(from && nonEmptyString(from.ownerId) && affectedPlayerIds?.includes(from.ownerId))
+    && transition?.semantics === "PROVEN" && transition.visibility === "PUBLIC"
+    && transition.eventId === event.id && transition.physicalCardId === card.id
+    && from !== null && ["HAND", "EQUIPMENT", "JUDGEMENT"].includes(String(from.zone)) && nonEmptyString(from.ownerId)
+    && to?.zone === "DISCARD" && to.ownerId === null;
+}
+
 function isCommittedPublicBumperHarvestPick(
   event: Record<string, unknown>,
   fact: Record<string, unknown>,
@@ -733,7 +751,8 @@ function retainedPublicFactFromEvent(event: Record<string, unknown>): PublicPres
   const committedIdentity = identity(fact?.committedIdentity);
   if (!fact || !committedIdentity || fact.interactionId !== committedIdentity.interactionId || !nonEmptyString(fact.rootEventId)
     || !RETAINABLE_PUBLIC_EVENT_CATEGORIES.has(fact.category as PublicPresentationEventCategory)
-      && !(fact.category === "CARD_EQUIPPED" && isCommittedPublicEquipmentFact(event, fact))) return null;
+      && !(fact.category === "CARD_EQUIPPED" && isCommittedPublicEquipmentFact(event, fact))
+      && !(fact.category === "CARD_DISCARDED" && isCommittedPublicDiscardFact(event, fact))) return null;
   return publicEvent(retainedPublicFactWithOutcome(event, fact, committedIdentity, committedIdentity), committedIdentity);
 }
 
