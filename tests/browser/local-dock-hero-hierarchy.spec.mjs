@@ -117,7 +117,7 @@ for (const viewport of viewports) {
   });
 }
 
-test("§10.60 Step 2 440px phone Hand accepts a real horizontal touch swipe", async ({ browser }) => {
+test("§10.60 Step 3 440px phone Hand swipes to the last card and taps it without acting during scroll", async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 440, height: 844 },
     screen: { width: 440, height: 844 },
@@ -145,6 +145,7 @@ test("§10.60 Step 2 440px phone Hand accepts a real horizontal touch swipe", as
     expect(railBox).not.toBeNull();
     expect(firstCardBox).not.toBeNull();
     expect(before.scrollWidth).toBeGreaterThan(before.clientWidth);
+    expect(await rail.evaluate((element) => getComputedStyle(element).touchAction)).toBe("pan-x");
 
     const point = { x: firstCardBox.x + 20, y: firstCardBox.y + Math.min(20, firstCardBox.height / 2) };
     const hit = await page.evaluate(({ x, y }) => {
@@ -157,23 +158,53 @@ test("§10.60 Step 2 440px phone Hand accepts a real horizontal touch swipe", as
     expect(hit.cardId).toBe("browser-hand-1");
 
     const session = await context.newCDPSession(page);
-    try {
-      await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ id: 1, ...point }] });
+    const swipe = async (start, distance) => {
+      await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ id: 1, ...start }] });
       for (const progress of [0.25, 0.5, 0.75, 1]) {
         await session.send("Input.dispatchTouchEvent", {
           type: "touchMove",
-          touchPoints: [{ id: 1, x: point.x - 180 * progress, y: point.y }],
+          touchPoints: [{ id: 1, x: start.x - distance * progress, y: start.y }],
         });
       }
       await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    };
+    try {
+      await swipe(point, 100);
+      await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(before.scrollLeft);
+      await expect.poll(() => rail.evaluate((element) => [...element.querySelectorAll(".game-card")]
+        .some((card) => card.getAttribute("aria-pressed") === "true"))).toBe(false);
+
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const progress = await rail.evaluate((element) => ({ left: element.scrollLeft, max: element.scrollWidth - element.clientWidth }));
+        if (progress.left >= progress.max - 1) break;
+        const currentRailBox = await rail.boundingBox();
+        const start = { x: currentRailBox.x + currentRailBox.width - 18, y: firstCardBox.y + Math.min(20, firstCardBox.height / 2) };
+        const currentHit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest(".card-slot")?.getAttribute("data-hand-card-id") ?? null, start);
+        expect(currentHit, "A visible Hand card must receive each real swipe start").toBeTruthy();
+        await swipe(start, Math.min(90, currentRailBox.width / 3));
+        await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(progress.left);
+        await expect.poll(() => rail.evaluate((element) => [...element.querySelectorAll(".game-card")]
+          .some((card) => card.getAttribute("aria-pressed") === "true"))).toBe(false);
+      }
     } finally {
       await session.detach();
     }
 
-    await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(before.scrollLeft);
-    await expect.poll(() => rail.evaluate((element) => [...element.querySelectorAll(".game-card")]
-      .some((card) => card.getAttribute("aria-pressed") === "true"))).toBe(false);
+    const lastCard = rail.locator(".card-slot").last();
+    const lastCardId = await lastCard.getAttribute("data-hand-card-id");
+    const lastCardBox = await lastCard.boundingBox();
+    const finalRailBox = await rail.boundingBox();
+    const finalScroll = await rail.evaluate((element) => ({ left: element.scrollLeft, max: element.scrollWidth - element.clientWidth }));
+    expect(finalScroll.left).toBeGreaterThanOrEqual(finalScroll.max - 1);
+    expect(lastCardBox.x).toBeGreaterThanOrEqual(finalRailBox.x - 1);
+    expect(lastCardBox.x + lastCardBox.width).toBeLessThanOrEqual(finalRailBox.x + finalRailBox.width + 1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(440);
+
+    await lastCard.locator(".game-card").tap();
+    await expect(lastCard.locator(".game-card")).toHaveAttribute("aria-pressed", "true");
+    expect(await lastCard.getAttribute("data-hand-card-id")).toBe(lastCardId);
+    expect(await rail.locator('.game-card[aria-pressed="true"]').count()).toBe(1);
+    expect(await rail.locator('.card-slot[data-card-selected="true"]').getAttribute("data-hand-card-id")).toBe(lastCardId);
   } finally {
     await context.close();
   }
