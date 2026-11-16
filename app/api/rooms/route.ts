@@ -3653,14 +3653,18 @@ async function settleBorrowedSwordNoAttackTarget(input: {
     const sourceHand = [...sourceHandBefore, weapon];
     const weaponName = cardDefinition(weapon.kind).name;
     const transferEventId = crypto.randomUUID();
-    const transferFact = input.rootEventId ? publicFactFor(input.causal, "CARD_TRANSFERRED", {
+    const transferFact = input.rootEventId ? withCommittedPublicOutcome(publicFactFor(input.causal, "CARD_TRANSFERRED", {
       rootEventId: input.rootEventId,
       actorId: source.id,
       affectedPlayerIds: [holder.id],
       label: weaponName,
       outcomeLabel: `obtained ${weaponName} from ${holder.name}`,
       effect: { kind: "equipment_to_hand", label: weaponName },
-    }, input.causalEnvelope) : undefined;
+    }, input.causalEnvelope), {
+      outcomeLabel: `transferred ${weaponName}`,
+      changes: [{ kind: "CARD_TRANSFERRED", fromPlayerId: holder.id, toPlayerId: source.id, amount: 1, fromZone: "EQUIPMENT", toZone: "HAND" }],
+      source: { kind: "equipment", label: weaponName },
+    }) : undefined;
     let log = addLogWithId(input.log, `${source.name} obtains ${weaponName} from ${holder.name} because no legal forced Attack target is available.`, undefined,
       { ...(input.rootResolutionId ? { resolutionId: input.rootResolutionId } : {}), actorId: source.id, ...(transferFact ? { publicFact: transferFact } : {}) }, transferEventId).log;
     log = addPrivateHandArrivalEvent(log, source, weapon, { sourceZone: "equipment", sourcePlayerId: holder.id });
@@ -7737,14 +7741,18 @@ async function commitCanonicalResponse(input: {
       const sourceHand = [...parse<Card[]>(currentSource.hand_json, []), weapon];
       const weaponName = cardDefinition(weapon.kind).name;
       const transferFact = continuation.rootEventId
-        ? publicFactFor(continuation.causal, "CARD_TRANSFERRED", {
+        ? withCommittedPublicOutcome(publicFactFor(continuation.causal, "CARD_TRANSFERRED", {
           rootEventId: continuation.rootEventId,
           actorId: currentSource.id,
           affectedPlayerIds: [currentHolder.id],
           label: weaponName,
           outcomeLabel: `obtained ${weaponName} from ${currentHolder.name}`,
           effect: { kind: "equipment_to_hand", label: weaponName },
-        }, activeEnvelope)
+        }, activeEnvelope), {
+          outcomeLabel: `transferred ${weaponName}`,
+          changes: [{ kind: "CARD_TRANSFERRED", fromPlayerId: currentHolder.id, toPlayerId: currentSource.id, amount: 1, fromZone: "EQUIPMENT", toZone: "HAND" }],
+          source: { kind: "equipment", label: weaponName },
+        })
         : undefined;
       const transferEvent = addLogWithId(logBase, `${source.name} obtains ${weaponName} from ${currentHolder.name} after the forced Attack fails.`, undefined,
         { actorId: currentSource.id, ...(transferFact ? { publicFact: transferFact } : {}) });

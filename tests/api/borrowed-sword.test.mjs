@@ -62,6 +62,14 @@ test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal"
   assert.ok(transferEvent, "the committed Weapon transfer is linked to the Borrowed Sword root");
   assert.equal(transferEvent.publicFact.actorId, source.id);
   assert.equal(transferEvent.publicFact.label, "Green Dragon Blade");
+  assert.deepEqual(transferEvent.publicFact.committedOutcome?.changes, [{
+    kind: "CARD_TRANSFERRED",
+    fromPlayerId: holder.id,
+    toPlayerId: source.id,
+    amount: 1,
+    fromZone: "EQUIPMENT",
+    toZone: "HAND",
+  }], "the transfer fact records the actual single Equipment-to-Hand state change without a physical card ID");
   const retainedTransferFact = [
     ...(refused.data.room.presentationSnapshot.publicEventFacts ?? []),
     ...(refused.data.room.presentationSnapshot.retainedPublicEventFacts ?? []),
@@ -74,7 +82,8 @@ test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal"
     interactionId: retainedTransferFact.identity.interactionId,
     rootFrameId: retainedTransferFact.identity.rootFrameId,
   });
-  assert.equal(transferNarration?.headline, `${source.name} obtained Green Dragon Blade from ${holder.name}.`);
+  assert.equal(transferNarration?.headline, `${source.name} — Green Dragon Blade: ${source.name} received 1 card from ${holder.name}.`);
+  await assertSameBorrowedSwordPublicProjection(game);
   assert.equal(refused.data.room.causalEnvelope.interactionId, childEnvelope.interactionId);
   assert.equal(refused.data.room.causalEnvelope.activeFrameId, childEnvelope.frames.find((frame) => frame.frameId !== childEnvelope.activeFrameId).frameId);
 
@@ -344,6 +353,16 @@ test("Borrowed Sword transfers its Weapon when Empty Fortress leaves no legal fo
   assert.equal(resolved.data.room.pendingBorrowedSword, null);
   assert.equal(resolved.data.room.players.find((player) => player.id === holder.id).equipmentCards.some((item) => item.id === weapon.id), false);
   assert.equal((await state(game.code, host.token)).data.myHand.some((item) => item.id === weapon.id), true, "the source obtains the exact Weapon when no Attack target exists");
+  const noTargetTransfer = resolved.data.room.timeline.find((event) => event.publicFact?.category === "CARD_TRANSFERRED");
+  assert.deepEqual(noTargetTransfer?.publicFact?.committedOutcome?.changes, [{
+    kind: "CARD_TRANSFERRED",
+    fromPlayerId: holder.id,
+    toPlayerId: source.id,
+    amount: 1,
+    fromZone: "EQUIPMENT",
+    toZone: "HAND",
+  }], "the no-target resolution publishes the same committed transfer proof");
+  await assertSameBorrowedSwordPublicProjection(game);
   const transferReceipt = resolved.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === weapon.id);
   assert.equal(transferReceipt?.privateHandTransfer?.sourceZone, "equipment");
   assert.equal(transferReceipt?.privateHandTransfer?.sourcePlayerId, holder.id);
