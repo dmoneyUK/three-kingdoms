@@ -4826,13 +4826,17 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
       const genericDrawOutcomeValid = drawOutcome.changes.length === 0 || Boolean(committedGenericDrawFact?.committedOutcome);
       publishableDrawFact = committedGenericDrawFact?.committedIdentity && genericDrawOutcomeValid ? committedGenericDrawFact : undefined;
     }
+    const drawHistoryMessage = `${source.name} plays ${pending.cardName} and draws ${draw.drawn.length} cards.`;
     const drawMessage = draw.drawn.length > 0
       ? `${source.name} draws ${draw.drawn.length} cards${drawSourceLabel ? ` with ${drawSourceLabel}` : ""}.`
       : `${source.name} draws no cards.`;
     const linkedResolutionId = pending.rootResolutionId ?? pending.resolutionId;
     const drawResolutionId = drawSourceLabel && linkedResolutionId ? linkedResolutionId : drawEventId;
+    // Preserve the legacy informational history contract; the committed event
+    // below is the sole H4 owner for the actual public draw outcome.
+    log = addHistory(draw.log, drawHistoryMessage, source.id);
     log = publishableDrawFact
-      ? addLogWithId(draw.log, drawMessage, source.id, {
+      ? addLogWithId(log, drawMessage, source.id, {
         resolutionId: drawResolutionId,
         actorId: source.id,
         importance: "essential",
@@ -4840,7 +4844,7 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
         effectNotice: true,
         publicFact: publishableDrawFact,
       }, drawEventId).log
-      : addHistory(draw.log, drawMessage, source.id);
+      : log;
     for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, source, drawn);
     const hand = [...parse<Card[]>(source.hand_json, []), ...draw.drawn];
     const settled = await db().batch([
