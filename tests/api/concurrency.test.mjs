@@ -205,9 +205,11 @@ test("saved sequential Dying: Dying uses one ordered rescue pass and does not re
   await requestAndSettle("skip_rescue", { code: game.code, token: carol.token });
   const defeated = await waitForState(game.code, host.token, (room) => !room.players.find((player) => player.id === alicePlayer.id).alive);
   assert.equal(defeated.players.find((player) => player.id === alicePlayer.id).role, "Rebel");
+  const rawRewardEvents = defeated.timeline.filter((event) => event.publicFact?.committedOutcome?.source.label === "Rebel Defeat Reward");
+  assert.equal(rawRewardEvents.length, 1, "the committed reward result is persisted as one public event before snapshot projection");
   const rewardFact = [...(defeated.presentationSnapshot?.retainedPublicEventFacts ?? []), ...(defeated.presentationSnapshot?.publicEventFacts ?? [])]
     .find((fact) => fact.committedOutcome?.source.label === "Rebel Defeat Reward");
-  assert.ok(rewardFact, "the committed public reward draw survives Dying defeat");
+  assert.ok(rewardFact, "the shared public snapshot retains the persisted reward outcome after Dying defeat");
   assert.deepEqual(rewardFact.committedOutcome.changes, [
     { kind: "CARD_DRAWN", playerId: hostPlayer.id, amount: 3, fromZone: "DECK", toZone: "HAND" },
   ], "the public result reports the actual reward draw count without card identities");

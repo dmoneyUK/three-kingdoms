@@ -1646,6 +1646,29 @@ function publicIdentityFromCommittedRoot(
     presentationRevision: identity.presentationRevision as number,
   };
 }
+function committedPublicRootForInteraction(
+  log: readonly string[],
+  interactionId: string | undefined,
+): { eventId: string; identity: NonNullable<PublicPresentationEventFactDraft["committedIdentity"]> } | undefined {
+  if (!interactionId) return undefined;
+  const roots = gameTimeline([...log]).flatMap((event) => {
+    const fact = record(event.publicFact);
+    const identity = record(fact?.committedIdentity);
+    if (event.presentation === false || typeof event.privateToPlayerId === "string"
+      || typeof event.id !== "string" || !fact || fact.semantics !== "PROVEN" || fact.visibility !== "PUBLIC"
+      || fact.interactionId !== interactionId || fact.rootEventId !== event.id || !identity
+      || identity.interactionId !== interactionId || identity.rootFrameId !== fact.frameId
+      || typeof identity.checkpointId !== "string" || !identity.checkpointId.trim() || identity.checkpointId.length > 160
+      || !Number.isSafeInteger(identity.presentationRevision) || (identity.presentationRevision as number) < 0) return [];
+    return [{ eventId: event.id, identity: {
+      interactionId,
+      rootFrameId: identity.rootFrameId as string,
+      checkpointId: identity.checkpointId,
+      presentationRevision: identity.presentationRevision as number,
+    } }];
+  });
+  return roots.length === 1 ? roots[0] : undefined;
+}
 function publicConversionEffectId(providerId: string | undefined, resultingCardKind: Card["kind"]) {
   if (resultingCardKind === "Attack" && (providerId === "guan_yu_red_card_attack" || providerId === "zhao_yun_dodge_as_attack" || providerId === "serpent_spear_attack")) return providerId;
   if (resultingCardKind === "Dodge" && (providerId === "zhao_yun_attack_as_dodge" || providerId === "zhen_ji_black_card_dodge")) return providerId;
@@ -4487,13 +4510,15 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
     const rewardMessage = `${source.name} defeated Rebel ${target.name} and draws ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}.`;
     if (reward.drawn.length > 0) {
       const rewardEventId = crypto.randomUUID();
+      const rewardEnvelope = parseCausalEnvelope(room.causal_envelope_json);
+      const committedRoot = committedPublicRootForInteraction(log, pending.causal?.interactionId);
       const rewardFact = pending.causal ? publicFactFor(pending.causal, "EFFECT_APPLIED", {
-        rootEventId: rewardEventId,
+        rootEventId: committedRoot?.eventId ?? rewardEventId,
         actorId: source.id,
         affectedPlayerIds: [source.id, target.id],
         label: "Rebel Defeat Reward",
         effect: { kind: "draw" },
-      }, parseCausalEnvelope(room.causal_envelope_json)) : undefined;
+      }, rewardEnvelope, committedRoot?.identity) : undefined;
       const committedRewardFact = withCommittedPublicOutcome(rewardFact, {
         outcomeLabel: `drew ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}`,
         source: { kind: "other", label: "Rebel Defeat Reward" },
