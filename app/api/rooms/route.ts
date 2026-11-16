@@ -773,7 +773,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
   return { ...(meta?.sharedResponseContribution ? { sharedResponseContribution: meta.sharedResponseContribution } : {}), ...(meta?.entourageInvocation ? { entourageInvocation: meta.entourageInvocation } : {}), resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
-function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "amount" | "effect" | "bumperHarvestPickProof" | "committedOutcome">> = {}, envelope?: CausalEnvelope | null): PublicPresentationEventFactDraft | undefined {
+function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "amount" | "effect" | "bumperHarvestPickProof" | "committedOutcome">> = {}, envelope?: CausalEnvelope | null, rootIdentity?: NonNullable<PublicPresentationEventFactDraft["committedIdentity"]>): PublicPresentationEventFactDraft | undefined {
   if (!causal?.interactionId || !causal.frameId) return undefined;
   const committedOutcome = fields.committedOutcome === undefined ? undefined : validateCommittedPublicOutcomeDraft(fields.committedOutcome, {
     actorId: fields.actorId,
@@ -787,7 +787,10 @@ function publicFactFor(causal: CausalContext | undefined, category: PublicPresen
     && frame && (frame.parentFrameId ?? undefined) === (causal.parentFrameId ?? undefined)
     ? { interactionId: envelope.interactionId, rootFrameId: roots[0].frameId,
       checkpointId: envelope.checkpoint.checkpointId, presentationRevision: envelope.presentationRevision }
-    : undefined;
+    : rootIdentity && rootIdentity.interactionId === causal.interactionId
+      && rootIdentity.rootFrameId === causal.frameId && !causal.parentFrameId
+      ? rootIdentity
+      : undefined;
   return {
     semantics: "PROVEN", visibility: "PUBLIC", interactionId: causal.interactionId,
     frameId: causal.frameId, ...(causal.parentFrameId ? { parentFrameId: causal.parentFrameId } : {}),
@@ -1616,6 +1619,32 @@ function publicEventResolutionId(log: readonly string[], eventId: string | undef
 function publicRootLink(log: readonly string[], eventId: string | undefined) {
   const resolutionId = publicEventResolutionId(log, eventId);
   return eventId && resolutionId ? { rootEventId: eventId, rootResolutionId: resolutionId } : null;
+}
+function publicIdentityFromCommittedRoot(
+  log: readonly string[],
+  rootEventId: string | undefined,
+  causal: CausalContext | undefined,
+): NonNullable<PublicPresentationEventFactDraft["committedIdentity"]> | undefined {
+  if (!rootEventId || !causal?.interactionId || !causal.frameId || causal.parentFrameId) return undefined;
+  const roots = gameTimeline([...log]).filter((event) => event.id === rootEventId);
+  if (roots.length !== 1) return undefined;
+  const root = roots[0];
+  const fact = record(root.publicFact);
+  const identity = record(fact?.committedIdentity);
+  if (root.presentation === false || typeof root.privateToPlayerId === "string"
+    || fact?.semantics !== "PROVEN" || fact.visibility !== "PUBLIC"
+    || fact.interactionId !== causal.interactionId || fact.frameId !== causal.frameId
+    || fact.rootEventId !== rootEventId || !identity
+    || identity.interactionId !== causal.interactionId || identity.rootFrameId !== causal.frameId
+    || typeof identity.checkpointId !== "string" || !identity.checkpointId.trim() || identity.checkpointId.length > 160
+    || !Number.isSafeInteger(identity.presentationRevision)
+    || (identity.presentationRevision as number) < 0) return undefined;
+  return {
+    interactionId: identity.interactionId as string,
+    rootFrameId: identity.rootFrameId as string,
+    checkpointId: identity.checkpointId as string,
+    presentationRevision: identity.presentationRevision as number,
+  };
 }
 function publicConversionEffectId(providerId: string | undefined, resultingCardKind: Card["kind"]) {
   if (resultingCardKind === "Attack" && (providerId === "guan_yu_red_card_attack" || providerId === "zhao_yun_dodge_as_attack" || providerId === "serpent_spear_attack")) return providerId;
@@ -9758,7 +9787,8 @@ export async function POST(request: Request) {
           affectedPlayerIds: [target.id],
           label: triggerPublicFact?.label ?? "Discard",
           effect: { kind: "discard" },
-        }, parseCausalEnvelope(liveRoom.causal_envelope_json))
+        }, parseCausalEnvelope(liveRoom.causal_envelope_json),
+        publicIdentityFromCommittedRoot(log, continuation.declaration.rootEventId, continuation.declaration.causal))
         : undefined;
       const targetDiscardAmount = targetDiscardChanges.reduce((total, change) => total + change.amount, 0);
       const targetDiscardDraft = targetDiscardAmount > 0
