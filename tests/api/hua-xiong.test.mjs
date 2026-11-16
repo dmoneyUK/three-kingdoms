@@ -85,7 +85,7 @@ test("Triumphant belongs to the red Attack source, offers recover/draw/decline, 
     snapshot: recovered.data.room.presentationSnapshot,
     players: recovered.data.room.players,
     rootEventId: recoveryFact.rootEventId,
-    interactionId: recoveryFact.interactionId,
+    interactionId: recoveryFact.identity.interactionId,
     rootFrameId: recoveryFact.identity.rootFrameId,
     eventId: recoveryFact.eventId,
   });
