@@ -396,7 +396,12 @@ export function derivePublicInteractionNarration(input: {
   // exact public event even when the room snapshot has advanced to a later
   // decision checkpoint or the event is carried in the retained queue.
   const exactCandidate = input.eventId ? verifiedFacts.find((fact) => fact.eventId === input.eventId) : undefined;
-  if (exactCandidate && isNarratableForRoot(exactCandidate)) latest = exactCandidate;
+  // A committed outcome is already bound to this validated root, interaction,
+  // frame, event ID and public sequence. Do not discard that exact H4 merely
+  // because an older root event is absent or has an unexpectedly later
+  // sequence in the retained projection; the caller selected this event from
+  // the current server-owned H4 candidate.
+  if (exactCandidate && (exactCandidate.committedOutcome || isNarratableForRoot(exactCandidate))) latest = exactCandidate;
   if (!latest && identity && interaction?.semantics === "PROVEN"
     && interaction.interactionId === identity.interactionId
     && interaction.checkpointId === identity.checkpointId
