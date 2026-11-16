@@ -336,7 +336,7 @@ export type StratagemUsedTriggerContinuation = {
   resume: "negation" | "direct";
   resumePhase: string;
 };
-export type RecoveryRecord = { playerId: string; amountRecovered: number; sourceId?: string; reason?: string };
+export type RecoveryRecord = { playerId: string; amountRecovered: number; sourceId?: string; reason?: string; /** Public recovery result already committed to the shared timeline. */ publicOutcomeEventId?: string } & CausalFields;
 export type RecoveryResume =
   | { kind: "phase"; phase: string; playerId?: string; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "turn_start"; continuation: TurnStartTriggerContinuation }

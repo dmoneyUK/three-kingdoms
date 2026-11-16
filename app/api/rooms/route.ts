@@ -3234,6 +3234,91 @@ async function resumeTurnStartEvent(room: RoomRow, continuation: TurnStartTrigge
 async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[], resume: RecoveryResume, initialResolvedEffectIds: readonly string[] = []) {
   let remaining = [...records];
   let resolvedEffectIds = [...initialResolvedEffectIds];
+  let committedOutcomeLog: string[] | null = null;
+  let committedOutcomeEnvelope: CausalEnvelope | null = null;
+  const unpublishedRecoveries = records.filter((recovery) => !recovery.publicOutcomeEventId
+    && Number.isSafeInteger(recovery.amountRecovered) && recovery.amountRecovered > 0);
+  if (unpublishedRecoveries.length) {
+    const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+    const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
+    if (room) {
+      const amounts = new Map<string, number>();
+      for (const recovery of unpublishedRecoveries) amounts.set(recovery.playerId, (amounts.get(recovery.playerId) ?? 0) + recovery.amountRecovered);
+      const changes: CommittedPublicOutcomeChange[] = [...amounts].map(([playerId, amount]) => ({ kind: "HP_RECOVERED", playerId, amount }));
+      const affectedPlayerIds = [...amounts.keys()];
+      const outcomeLabel = changes.map((change) => {
+        const playerName = players.find((player) => player.id === change.playerId)?.name ?? "A player";
+        return `${playerName} recovered ${change.amount} HP`;
+      }).join("; ");
+      const eventId = crypto.randomUUID();
+      const resumeCausal = resume.kind === "turn_start" ? resume.continuation.causal
+        : resume.kind === "damage_suffered" ? resume.continuation.causal
+          : resume.kind === "dying" ? resume.pending.causal ?? resume.pending.resumeTrigger?.causal
+            : undefined;
+      const explicitRootEventId = resume.kind === "damage_suffered" ? resume.continuation.rootEventId
+        : resume.kind === "dying" ? resume.pending.sharedRescue?.responseEventId
+          ?? resume.pending.resumeTrigger?.rootEventId ?? resume.pending.resumeEffect?.publicOutcome?.rootEventId
+          : undefined;
+      const existingEnvelope = parseCausalEnvelope(room.causal_envelope_json);
+      const existingRootFrame = existingEnvelope?.frames.filter((frame) => frame.parentFrameId == null) ?? [];
+      const canContinueCausal = Boolean(resumeCausal && existingEnvelope
+        && existingEnvelope.interactionId === resumeCausal.interactionId
+        && existingEnvelope.activeFrameId === resumeCausal.frameId
+        && existingEnvelope.checkpoint.frameId === resumeCausal.frameId
+        && existingRootFrame.length === 1);
+      const matchingRootEvents = canContinueCausal ? gameTimeline(parse<string[]>(room.log_json, [])).filter((event) => {
+        const publicFact = record(event.publicFact);
+        const identity = record(publicFact?.committedIdentity);
+        return event.presentation !== false && typeof event.privateToPlayerId !== "string"
+          && publicFact?.semantics === "PROVEN" && publicFact.visibility === "PUBLIC"
+          && publicFact.interactionId === existingEnvelope!.interactionId
+          && publicFact.frameId === existingRootFrame[0]!.frameId
+          && publicFact.rootEventId === event.id
+          && identity?.interactionId === existingEnvelope!.interactionId
+          && identity.rootFrameId === existingRootFrame[0]!.frameId;
+      }) : [];
+      const inheritedRootEvent = explicitRootEventId
+        ? matchingRootEvents.find((event) => event.id === explicitRootEventId) ?? null
+        : matchingRootEvents.length === 1 ? matchingRootEvents[0] : null;
+      const inheritedCausal = inheritedRootEvent && resumeCausal && existingEnvelope
+        ? { context: resumeCausal, envelope: existingEnvelope, rootEventId: inheritedRootEvent.id }
+        : null;
+      const standaloneCausal = inheritedCausal || resumeCausal ? null : createCausalRoot({
+        stage: "SETTLEMENT",
+        origin: { originSourceId: null, originEffect: "recovery", originalTargetIds: affectedPlayerIds },
+        current: { currentSourceId: null, currentEffect: "recovery", currentTargetIds: affectedPlayerIds, resolvingPlayerId: null },
+      });
+      const recoveryCausal = inheritedCausal?.context ?? standaloneCausal?.context;
+      const outcomeRootEventId = inheritedCausal?.rootEventId ?? eventId;
+      const fact = recoveryCausal ? publicFactFor(recoveryCausal, "EFFECT_APPLIED", {
+        rootEventId: outcomeRootEventId,
+        affectedPlayerIds,
+        label: "Recovery",
+        outcomeLabel,
+        effect: { kind: "hp_recovery", label: "Recovery" },
+        committedOutcome: { source: { kind: "recovery", label: "Recovery" }, changes },
+      }, inheritedCausal?.envelope ?? standaloneCausal?.envelope) : undefined;
+      if (fact?.committedOutcome) {
+        committedOutcomeLog = addLogWithId(parse<string[]>(room.log_json, []), outcomeLabel, undefined, {
+          importance: "essential",
+          finalResult: true,
+          publicFact: fact,
+        }, eventId).log;
+        if (standaloneCausal) committedOutcomeEnvelope = standaloneCausal.envelope;
+        const unpublishedIds = new Set(unpublishedRecoveries.map((recovery) => recovery.playerId));
+        remaining = remaining.map((recovery) => unpublishedIds.has(recovery.playerId) && !recovery.publicOutcomeEventId
+          ? { ...recovery, publicOutcomeEventId: eventId, causal: recoveryCausal }
+          : recovery);
+      }
+    }
+  }
+  const recoveryEnvelopeFor = (room: RoomRow, candidates: readonly RecoveryRecord[]) => {
+    if (committedOutcomeEnvelope) return committedOutcomeEnvelope;
+    const context = candidates.find((recovery) => recovery.publicOutcomeEventId)?.causal;
+    const envelope = parseCausalEnvelope(room.causal_envelope_json);
+    return context && envelope?.interactionId === context.interactionId
+      && envelope.frames.some((frame) => frame.frameId === context.frameId) ? envelope : null;
+  };
   while (remaining.length) {
     const [recovery, ...rest] = remaining;
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
@@ -3251,19 +3336,25 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
       continue;
     }
     const labels = options.map((option) => option.label).join(" or ");
-    const presentation = addLogWithId(parse<string[]>(room.log_json, []), `${player.name} may use ${labels}.`);
-    const continuation: HpRecoveredTriggerContinuation = { kind: "hp_recovered_event", recovery, remaining: rest, resume, ...(resolvedEffectIds.length ? { resolvedEffectIds } : {}) };
+    const log = committedOutcomeLog ?? parse<string[]>(room.log_json, []);
+    const presentation = addLogWithId(log, `${player.name} may use ${labels}.`);
+    const continuation: HpRecoveredTriggerContinuation = { kind: "hp_recovered_event", recovery, remaining: rest, resume, ...(recovery.causal ? { causal: recovery.causal } : {}), ...(resolvedEffectIds.length ? { resolvedEffectIds } : {}) };
     const pending: TriggerPending = withPresentationBarrier({
       kind: "trigger",
       event: "hp_recovered",
       actorId: player.id,
       reason: `${player.name} may use ${labels}, or decline`,
       deadline: nextResponseDeadline(player),
+      ...(recovery.causal ? { causal: recovery.causal } : {}),
       resolvedEffectIds: resolvedEffectIds.length ? resolvedEffectIds : undefined,
       continuation,
     }, presentation.log, presentation.eventId);
-    const updated = await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json IS NULL")
-      .bind(serializePending(pending), JSON.stringify(presentation.log), roomId).run();
+    const causalEnvelope = recoveryEnvelopeFor(room, [recovery, ...rest]);
+    const updated = causalEnvelope
+      ? await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json IS NULL")
+        .bind(serializePending(pending), JSON.stringify(presentation.log), JSON.stringify(causalEnvelope), roomId).run()
+      : await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json IS NULL")
+        .bind(serializePending(pending), JSON.stringify(presentation.log), roomId).run();
     if ((updated.meta.changes ?? 0) > 0) return;
     return;
   }
@@ -3272,37 +3363,50 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
   if (!room) return;
   const deck = parse<Card[]>(room.deck_json, []);
   const discard = parse<Card[]>(room.discard_json, []);
-  const log = parse<string[]>(room.log_json, []);
+  const log = committedOutcomeLog ?? parse<string[]>(room.log_json, []);
+  const recoveryEnvelope = recoveryEnvelopeFor(room, records);
   if (resume.kind === "turn_start") {
     const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
-    await resumeTurnStartEvent(room, resume.continuation, players, deck, discard, log);
+    const resumedRoom = recoveryEnvelope ? { ...room, causal_envelope_json: JSON.stringify(recoveryEnvelope) } : room;
+    if (committedOutcomeLog && recoveryEnvelope) {
+      await causalRoomStateWrite(roomId, { phase: room.phase ?? "resolving", pending: null, deck, discard, log, causalEnvelope: recoveryEnvelope }).run();
+    }
+    await resumeTurnStartEvent(resumedRoom, resume.continuation, players, deck, discard, log);
     return;
   }
   if (resume.kind === "phase") {
-    await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-      .bind(resume.phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
+    if (recoveryEnvelope) {
+      await causalRoomStateWrite(roomId, { phase: resume.phase, pending: null, deck, discard, log, causalEnvelope: recoveryEnvelope }).run();
+    } else {
+      await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
+        .bind(resume.phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
+    }
     if (resume.handLoss) await maybeOpenHandLossTrigger(roomId, resume.handLoss.playerId, resume.handLoss.beforeHand);
     return;
   }
   if (resume.kind === "dying") {
+    const resumedRoom = recoveryEnvelope ? { ...room, causal_envelope_json: JSON.stringify(recoveryEnvelope) } : room;
     const target = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(resume.pending.targetId, roomId).first<PlayerRow>();
     if (!target) return;
     if (resume.pending.sharedRescue && resume.handLoss) {
       const nextResume: RecoveryResume = { kind: "dying", pending: resume.pending };
+      if (committedOutcomeLog && recoveryEnvelope) {
+        await causalRoomStateWrite(roomId, { phase: room.phase ?? "resolving", pending: null, deck, discard, log, causalEnvelope: recoveryEnvelope }).run();
+      }
       if (await maybeOpenHandLossTrigger(roomId, resume.handLoss.playerId, resume.handLoss.beforeHand,
         { records: [], resume: nextResume })) return;
     }
     if (isDying(target.hp ?? 0)) {
       const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
       if (resume.pending.sharedRescue) {
-        await startSharedDyingWindow(room, resume.pending, players, deck, discard, log);
+        await startSharedDyingWindow(resumedRoom, resume.pending, players, deck, discard, log);
         return;
       }
-      const transition = nextDyingTransition(room, resume.pending, players, [resume.pending.actorId, ...(resume.pending.remainingIds ?? [])]);
+      const transition = nextDyingTransition(resumedRoom, resume.pending, players, [resume.pending.actorId, ...(resume.pending.remainingIds ?? [])]);
       if (transition.pending) {
         await causalRoomStateWrite(roomId, { phase: "dying", pending: transition.pending, deck, discard, log, causalEnvelope: transition.causalEnvelope }).run();
       } else {
-        await causalRoomStateWrite(roomId, { phase: "resolving", pending: null, deck, discard, log, causalEnvelope: null }).run();
+        await causalRoomStateWrite(roomId, { phase: "resolving", pending: null, deck, discard, log, causalEnvelope: recoveryEnvelope }).run();
         const settledRoom = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
         const settledTarget = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(resume.pending.targetId, roomId).first<PlayerRow>();
         const settledSource = resume.pending.sourceId ? await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(resume.pending.sourceId, roomId).first<PlayerRow>() : null;
@@ -3319,7 +3423,8 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
   }
   if (resume.kind === "damage_suffered") {
     const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
-    await continueDamageSufferedEvent(room, resume.continuation, players, deck, discard, log);
+    const resumedRoom = recoveryEnvelope ? { ...room, causal_envelope_json: JSON.stringify(recoveryEnvelope) } : room;
+    await continueDamageSufferedEvent(resumedRoom, resume.continuation, players, deck, discard, log);
     return;
   }
 }
