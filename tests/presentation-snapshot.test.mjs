@@ -127,6 +127,48 @@ test("a resumed interaction retains committed child outcomes without admitting a
   assert.deepEqual(project("C").publicEventFacts, project("B").publicEventFacts);
 });
 
+test("snapshot keeps an earlier committed public result available beside a newer active stage", () => {
+  const priorIdentity = {
+    interactionId: "prior-interaction", rootFrameId: "prior-root-frame",
+    checkpointId: "prior-checkpoint", presentationRevision: 1,
+  };
+  const priorDiscard = {
+    semantics: "PROVEN", visibility: "PUBLIC", identity: priorIdentity,
+    eventId: "prior-discard", order: 4, rootEventId: "prior-root",
+    frameId: "prior-root-frame", category: "CARD_DISCARDED", actorId: "A",
+    affectedPlayerIds: ["A"], label: "Discard phase",
+    committedOutcome: {
+      semantics: "PROVEN", visibility: "PUBLIC", eventId: "prior-discard",
+      identity: priorIdentity, order: 4, rootEventId: "prior-root",
+      frameId: "prior-root-frame", category: "CARD_DISCARDED", actorId: "A",
+      affectedPlayerIds: ["A"], source: { kind: "phase", label: "Discard phase" },
+      changes: [{ kind: "CARD_DISCARDED", playerId: "A", amount: 1, fromZone: "HAND", toZone: "DISCARD" }],
+    },
+  };
+  const currentRoot = {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: "current-root", order: 5,
+    rootEventId: "current-root", frameId: "root-frame", category: "CARD_PLAYED",
+    actorId: "A", affectedPlayerIds: ["B"], label: "Attack",
+  };
+  const currentPresentation = {
+    ...presentation(scene()), publicEventFacts: [currentRoot],
+    retainedPublicEvent: priorDiscard, retainedPublicEventFacts: [priorDiscard],
+  };
+
+  const snapshot = composePresentationSnapshot({
+    presentationV2: currentPresentation, currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "current", viewerId: "B",
+  });
+
+  assert.deepEqual(snapshot.publicEventFacts.map((fact) => fact.eventId), ["current-root"],
+    "the active interaction stays scoped to its own event facts");
+  assert.deepEqual(snapshot.retainedPublicEventFacts?.map((fact) => fact.eventId), ["prior-discard"],
+    "the validated prior outcome remains available to the shared chronological H4 owner");
+  assert.equal(snapshot.retainedPublicEventFacts?.[0]?.committedOutcome?.changes[0]?.amount, 1);
+  assert.equal(snapshot.retainedPublicEvent, undefined,
+    "an earlier result is not promoted as the current singular H4 owner during a newer interaction");
+});
+
 test("snapshot composes proven identity and public scene while keeping CurrentAction local", () => {
   const publicPresentation = presentation(scene());
   const acting = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "response", actorId: "B" }, actionRevision: "action-a", viewerId: "B" });
