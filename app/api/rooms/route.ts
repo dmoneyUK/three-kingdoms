@@ -10964,12 +10964,34 @@ export async function POST(request: Request) {
         const beforeHp = me.hp ?? 0;
         const maxHp = me.max_hp ?? beforeHp;
         const amountRecovered = recoveredAmount(beforeHp, maxHp, 1);
-        log = addCardEvent(log, me.name, card, me.name, "play", true, { selfTargetAction: { semantics: "PROVEN", sourceId: me.id, targetId: me.id, cardKind: "Peach" } }); log = addLog(log, `${me.name} plays Peach and recovers ${amountRecovered} HP.`);
+        const peachEventId = crypto.randomUUID();
+        const peachCausal = createCausalRoot({
+          stage: "SETTLEMENT",
+          origin: { originSourceId: me.id, originEffect: "Peach", originalTargetIds: [me.id] },
+          current: { currentSourceId: me.id, currentEffect: "Peach", currentTargetIds: [me.id], resolvingPlayerId: me.id },
+        });
+        const peachFact = withCommittedPublicOutcome(publicFactFor(peachCausal.context, "CARD_PLAYED", {
+          rootEventId: peachEventId,
+          actorId: me.id,
+          affectedPlayerIds: [me.id],
+          label: "Peach",
+          effect: { kind: "card_play", label: "Peach" },
+        }, peachCausal.envelope), {
+          outcomeLabel: `recovered ${amountRecovered} HP`,
+          source: { kind: "card", label: "Peach" },
+          changes: amountRecovered > 0 ? [{ kind: "HP_RECOVERED", playerId: me.id, amount: amountRecovered }] : [],
+        });
+        const peachPresentation = addCardEventWithId(log, me.name, card, me.name, "play", true, {
+          actorId: me.id,
+          ...(peachFact?.committedIdentity && peachFact.committedOutcome ? { publicFact: peachFact } : {}),
+          selfTargetAction: { semantics: "PROVEN", sourceId: me.id, targetId: me.id, cardKind: "Peach" },
+        }, peachEventId);
+        log = addLog(peachPresentation.log, `${me.name} plays Peach and recovers ${amountRecovered} HP.`);
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), applyRecovery(beforeHp, amountRecovered, maxHp), me.id),
-          db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), room.id),
+          db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), JSON.stringify(peachCausal.envelope), room.id),
         ]);
-        await advanceHpRecoveredEvents(room.id, amountRecovered ? [{ playerId: me.id, amountRecovered, sourceId: me.id, reason: "peach" }] : [], { kind: "phase", phase: liveRoom.phase ?? "play", playerId: me.id });
+        await advanceHpRecoveredEvents(room.id, amountRecovered ? [{ playerId: me.id, amountRecovered, sourceId: me.id, reason: "peach", ...(peachFact?.committedIdentity && peachFact.committedOutcome ? { publicOutcomeEventId: peachEventId, causal: peachCausal.context } : {}) }] : [], { kind: "phase", phase: liveRoom.phase ?? "play", playerId: me.id });
       } else if (cardDefinition(card.kind).equipmentSlot && !playableAttack) {
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         const beforeHand = [...hand];
