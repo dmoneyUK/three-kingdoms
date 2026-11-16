@@ -40,9 +40,17 @@ test("Axe of Insanity uses post-damage HP and draws exactly two private cards", 
   assert.equal(publicFact?.category, "SKILL_USED");
   assert.equal(publicFact?.actorId, setup.source.id);
   assert.equal(publicFact?.outcomeLabel, "drew 2 cards");
+  assert.deepEqual(publicFact?.committedOutcome?.changes, [
+    { kind: "CARD_DRAWN", playerId: setup.source.id, amount: 2, fromZone: "DECK", toZone: "HAND" },
+  ], "the shared post-damage draw path records the actual committed count only");
+  assert.equal(publicFact?.committedOutcome?.eventId, publicFact?.eventId);
   const observer = (await state(game.code, setup.targetMember.token)).data;
   assert.deepEqual(observer.presentationSnapshot.retainedPublicEvent, publicFact);
-  assert.equal(JSON.stringify(publicFact).includes(firstDraw.id), false);
+  const publicSnapshot = JSON.stringify(observer.presentationSnapshot);
+  for (const hiddenCard of [firstDraw, secondDraw]) {
+    assert.equal(JSON.stringify(publicFact).includes(hiddenCard.id), false);
+    assert.equal(publicSnapshot.includes(hiddenCard.id), false, "public count proof contains no drawn card identity");
+  }
   assert.equal(JSON.parse(query(`SELECT skill_state_json FROM rooms WHERE code=${quote(game.code)}`)).axeOfInsanityUsed, true);
   assert.equal((await state(game.code, setup.targetMember.token)).data.myHand.some((item) => item.id === firstDraw.id), false);
   assert.equal(roomCardCount(game.code, firstDraw.id), 1);

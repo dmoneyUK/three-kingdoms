@@ -2469,11 +2469,20 @@ async function resolveAutomaticDamageSufferedTrigger(room: RoomRow, continuation
   const context = damageSufferedTriggerContext(source, target, continuation.amount, undefined, continuation.damageCards ?? [], continuation.damageCause ?? "other", continuation.physicalSuit, state, continuation.resumePhase.startsWith("play"), recoverableCardIds);
   const committedFact = (outcomeLabel: string, amount: number) => {
     if (triggerAvailability(execution.effectId, context) !== "public") return undefined;
+    const publicSkillLabel = execution.presentation?.label?.split(" — ")[0] ?? "a skill";
+    const committedOutcome = execution.outcome.kind === "draw_cards" && source && amount > 0
+      ? {
+        source: { kind: "skill" as const, label: publicSkillLabel },
+        changes: [{ kind: "CARD_DRAWN" as const, playerId: source.id, amount, fromZone: "DECK" as const, toZone: "HAND" as const }],
+      }
+      : undefined;
     return publicFactFor(continuation.causal, "SKILL_USED", {
       rootEventId: continuation.rootEventId ?? notice.eventId,
       actorId: triggerActorId(execution.effectId, context) ?? source?.id ?? target.id,
-      label: execution.presentation?.label?.split(" — ")[0] ?? "a skill",
+      affectedPlayerIds: source ? [source.id] : [target.id],
+      label: publicSkillLabel,
       outcomeLabel, amount, effect: { kind: execution.outcome.kind },
+      ...(committedOutcome ? { committedOutcome } : {}),
     }, parseCausalEnvelope(room.causal_envelope_json));
   };
   const attachNoticeFact = (entries: string[], fact: PublicPresentationEventFactDraft | undefined) => {
