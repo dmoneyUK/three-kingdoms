@@ -455,7 +455,55 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
       ...(chosen.data.room.presentationSnapshot.retainedPublicEventFacts ?? []),
       ...(chosen.data.room.presentationSnapshot.retainedPublicEvent ? [chosen.data.room.presentationSnapshot.retainedPublicEvent] : []),
     ].find((fact) => fact.eventId === discardEvent.id);
-    assert.ok(committedDiscardFact, "the public discard enters the shared H4 fact stream");
+    const publicFactDiagnostic = (fact) => fact ? {
+      eventId: fact.eventId ?? null,
+      category: fact.category ?? null,
+      interactionId: fact.interactionId ?? null,
+      frameId: fact.frameId ?? null,
+      rootEventId: fact.rootEventId ?? null,
+      actorId: fact.actorId ?? null,
+      affectedPlayerIds: fact.affectedPlayerIds ?? null,
+      label: fact.label ?? null,
+      outcomeLabel: fact.outcomeLabel ?? null,
+      committedIdentity: fact.committedIdentity ?? null,
+      committedOutcome: fact.committedOutcome ?? null,
+    } : null;
+    const snapshot = chosen.data.room.presentationSnapshot;
+    assert.ok(committedDiscardFact, `the public discard enters the shared H4 fact stream: ${JSON.stringify({
+      discardEventFact: publicFactDiagnostic(discardEvent.publicFact),
+      snapshotIdentity: snapshot.identity ?? null,
+      snapshotInteraction: snapshot.interaction ? {
+        semantics: snapshot.interaction.semantics,
+        interactionId: snapshot.interaction.interactionId,
+        rootFrameId: snapshot.interaction.rootFrameId,
+        checkpointId: snapshot.interaction.checkpointId,
+        presentationRevision: snapshot.interaction.presentationRevision,
+      } : null,
+      snapshotStableKind: snapshot.stable?.kind ?? null,
+      snapshotFacts: snapshot.publicEventFacts.map((fact) => ({
+        eventId: fact.eventId,
+        category: fact.category,
+        rootEventId: fact.rootEventId,
+        order: fact.order,
+        interactionId: fact.identity?.interactionId ?? null,
+        rootFrameId: fact.identity?.rootFrameId ?? null,
+      })),
+      retainedFacts: (snapshot.retainedPublicEventFacts ?? []).map((fact) => ({
+        eventId: fact.eventId,
+        category: fact.category,
+        rootEventId: fact.rootEventId,
+        order: fact.order,
+        interactionId: fact.identity?.interactionId ?? null,
+        rootFrameId: fact.identity?.rootFrameId ?? null,
+      })),
+      retainedFact: publicFactDiagnostic(snapshot.retainedPublicEvent),
+      timelineFacts: chosen.data.room.timeline.filter((event) => event.publicFact).slice(-12).map((event) => ({
+        eventId: event.id,
+        type: event.type,
+        action: event.action ?? null,
+        fact: publicFactDiagnostic(event.publicFact),
+      })),
+    })}`);
     assert.deepEqual(committedDiscardFact.committedOutcome?.changes, [
       { kind: "CARD_DISCARDED", playerId: s.target.id, amount: 1, fromZone: "HAND", toZone: "DISCARD" },
     ], "the physical discard event carries its server-proven result in the shared H4 outcome contract");
