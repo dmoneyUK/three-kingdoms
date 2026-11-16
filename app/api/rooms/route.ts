@@ -2363,7 +2363,7 @@ async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePh
 }
 
 /** Settles a semantic Draw Phase replacement with physical hidden-hand transfers. */
-async function resolveDrawPhaseReplacement(room: RoomRow, target: PlayerRow, targets: PlayerRow[], resumePhase: string, deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = []) {
+async function resolveDrawPhaseReplacement(room: RoomRow, target: PlayerRow, targets: PlayerRow[], resumePhase: string, deck: Card[], discard: Card[], log: string[], sourceLabel: string, writes: D1PreparedStatement[] = []) {
   let targetHand = parse<Card[]>(target.hand_json, []);
   const transferred: Card[] = [];
   const transferSourceIds: string[] = [];
@@ -2378,11 +2378,41 @@ async function resolveDrawPhaseReplacement(room: RoomRow, target: PlayerRow, tar
     transferSourceIds.push(source.id);
     writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id));
   }
-  const sourceNames = targets.map((source) => source.name);
   for (const [index, obtained] of transferred.entries()) {
     log = addPrivateHandArrivalEvent(log, target, obtained, { sourceZone: "hand", sourcePlayerId: transferSourceIds[index] });
   }
-  log = addHistory(log, `${target.name} uses Assault and obtains 1 hand card from ${sourceNames.join(" and ")}.`, target.id);
+  const transferCounts = new Map<string, number>();
+  for (const sourceId of transferSourceIds) transferCounts.set(sourceId, (transferCounts.get(sourceId) ?? 0) + 1);
+  const changes: CommittedPublicOutcomeChange[] = [...transferCounts].map(([fromPlayerId, amount]): CommittedPublicOutcomeChange => ({
+    kind: "CARD_TRANSFERRED",
+    fromPlayerId,
+    toPlayerId: target.id,
+    amount,
+    fromZone: "HAND",
+    toZone: "HAND",
+  }));
+  const causal = createCausalRoot({
+    stage: "SETTLEMENT",
+    origin: { originSourceId: target.id, originEffect: "draw_phase_replacement", originalTargetIds: [...transferCounts.keys()] },
+    current: { currentSourceId: target.id, currentEffect: "draw_phase_replacement", currentTargetIds: [...transferCounts.keys()], resolvingPlayerId: target.id },
+  });
+  const eventId = crypto.randomUUID();
+  const affectedPlayerIds = [...new Set([target.id, ...transferCounts.keys()])];
+  const committedFact = withCommittedPublicOutcome(publicFactFor(causal.context, "SKILL_USED", {
+    rootEventId: eventId,
+    actorId: target.id,
+    affectedPlayerIds,
+    label: sourceLabel,
+    effect: { kind: "card_transfer" },
+  }, causal.envelope), {
+    outcomeLabel: `received ${transferred.length} card${transferred.length === 1 ? "" : "s"}`,
+    changes,
+    source: { kind: "skill", label: sourceLabel },
+  });
+  log = committedFact?.committedOutcome
+    ? addLogWithId(log, `${target.name} used ${sourceLabel} and received ${transferred.length} hand card${transferred.length === 1 ? "" : "s"}.`, target.id,
+      { actorId: target.id, importance: "essential", finalResult: true, publicFact: committedFact }, eventId).log
+    : addHistory(log, `${target.name} used ${sourceLabel} and received ${transferred.length} hand card${transferred.length === 1 ? "" : "s"}.`, target.id);
   const flags = drawPhaseFlags(resumePhase);
   writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id));
   writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
@@ -9877,10 +9907,10 @@ export async function POST(request: Request) {
       const publicDrawSkill = drawModifier && drawModifier.amount > 0 && triggerExecution && publicContext
         && triggerAvailability(triggerExecution.effectId, publicContext) === "public"
         ? { label: optionLabel, amount: drawModifier.amount, baseline: Math.max(0, 2 + (continuation.additionalCards ?? 0)) } : undefined;
-      if (action === "apply_trigger" && !publicDrawSkill) log = addTriggeredEffectNotice(log, player.name, optionLabel, triggerPublicFact).log;
+      if (action === "apply_trigger" && !publicDrawSkill && !replacementTargets) log = addTriggeredEffectNotice(log, player.name, optionLabel, triggerPublicFact).log;
       else if (action !== "apply_trigger") log = addLog(log, `${player.name} declines ${optionLabel}; normal Draw Phase draw continues.`);
       if (replacementTargets) {
-        const transferred = await resolveDrawPhaseReplacement(liveRoom, player, replacementTargets, continuation.resumePhase, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log);
+        const transferred = await resolveDrawPhaseReplacement(liveRoom, player, replacementTargets, continuation.resumePhase, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log, optionLabel);
         if (!transferred) return json({ error: "Assault could not be settled safely.", stale: true, room: await roomState(code, token) }, 409);
         return json({ room: await roomState(code, token), gainedCards: transferred });
       }
