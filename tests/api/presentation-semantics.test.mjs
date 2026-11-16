@@ -644,7 +644,8 @@ test("committed public outcomes bind only to a unique public event, causal ident
   }], currentIdentity, [{ frameId: currentIdentity.rootFrameId, parentFrameId: null }]);
   assert.equal(fromPresentationV2[0]?.committedOutcome?.eventId, timelineEvent.id,
     "the V2 projection retains the validated committed outcome for H4 consumption");
-  const { committedOutcome: _validatedOutcome, ...withoutOutcome } = fact;
+  const withoutOutcome = { ...fact };
+  delete withoutOutcome.committedOutcome;
   assert.deepEqual(publicEventFactsFromPresentationV2([{
     ...withoutOutcome,
     interactionId: currentIdentity.interactionId,

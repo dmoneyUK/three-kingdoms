@@ -10,4 +10,4 @@
 
 将唯一的 `PUBLIC_PRESENTATION_EVENT_CATEGORIES` 用于投影验证和保留；CARD_EQUIPPED 仍要求装备实体转移证明，CARD_DISCARDED 则要求实体弃牌证明或共享提交结果中的实际弃牌计数。把 `CommittedPublicOutcome` 传过 PresentationV2 共享验证；让每个可叙述的已验证公共类别进入统一 H4 候选与 provider-neutral 文案，纯阶段标记需有公开结果文案才入选。对活动/保留快照重复事件按持久 event ID 去重，遇到语义冲突则失败关闭；用一个实际接入 JSX 的选择器，在 PublicCardDisplay、PublicDiscardAnnouncementLayer、PublicInteractionAnnouncementLayer 和 PublicSkillEventAnnouncementLayer 间选择唯一 H4 owner。已添加类别覆盖、结果投影、保留和 owner 断言；未运行本地测试。
 
-**当前恢复点：** 检查源码与测试 diff、`git diff --check`；查询远端当前 `ux-v2` HEAD 的最新 CI；提交并推送这一阶段，等待精确 SHA Actions、部署和生产 smoke。若通过，继续 §10.59 指定的服务端结果来源边界（普通摸牌/抽牌、伤害/恢复、弃牌与转移），同一任务号内分片交付；不要因单个 Hero 或单类牌完成而停止。
+**最近精确 SHA CI 结果：** `82b999cf53d1c3631805de42822f7ae261527dba` 的 [Actions 43843136196](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43843136196) 已结束：lint 因 `tests/api/presentation-semantics.test.mjs:647` 未使用变量失败；API/build 与 browser startup/room smoke 均通过；部署因 lint 失败跳过，未执行 production smoke。现已将测试改为复制对象后删除字段；未运行本地测试、构建或设备测试。**当前恢复点：** 提交并推送仅此 lint 修复及 handover，等待修复 SHA 的完整 CI/部署/smoke；通过后继续 §10.59 下一服务端结果来源阶段。
