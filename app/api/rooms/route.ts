@@ -2677,7 +2677,7 @@ async function resolveAutomaticDamageSufferedTrigger(room: RoomRow, continuation
     nextLog = addLog(nextLog, `${source.name} loses 1 HP from Axe of Insanity${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`);
     const updatedSource = { ...source, hp } satisfies PlayerRow;
     if (isDying(hp)) {
-      await startDyingRescue(room, null, updatedSource, players, deck, discard, nextLog, [db().prepare("UPDATE rooms SET skill_state_json = ? WHERE id = ?").bind(JSON.stringify(nextState), room.id)], source, continuation.resumePhase, undefined, hp, continuation.origin, nextContinuation);
+      await startDyingRescue(room, null, updatedSource, players, deck, discard, nextLog, [db().prepare("UPDATE rooms SET skill_state_json = ? WHERE id = ?").bind(JSON.stringify(nextState), room.id)], source, continuation.resumePhase, undefined, hp, continuation.origin, nextContinuation, undefined, continuation.causal, continuation.rootEventId);
       return;
     }
     const updatedPlayers = players.map((player) => player.id === source.id ? updatedSource : player);
@@ -3395,8 +3395,9 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
           : resume.kind === "dying" ? resume.pending.causal ?? resume.pending.resumeTrigger?.causal
             : undefined;
       const explicitRootEventId = resume.kind === "damage_suffered" ? resume.continuation.rootEventId
-        : resume.kind === "dying" ? resume.pending.sharedRescue?.responseEventId
-          ?? resume.pending.resumeTrigger?.rootEventId ?? resume.pending.resumeEffect?.publicOutcome?.rootEventId
+        : resume.kind === "dying" ? resume.pending.rootEventId
+          ?? resume.pending.sharedRescue?.responseEventId ?? resume.pending.resumeTrigger?.rootEventId
+          ?? resume.pending.resumeEffect?.publicOutcome?.rootEventId
           : undefined;
       const existingEnvelope = parseCausalEnvelope(room.causal_envelope_json);
       const existingRootFrame = existingEnvelope?.frames.filter((frame) => frame.parentFrameId == null) ?? [];
@@ -3421,9 +3422,21 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
       const inheritedRootEvent = explicitRootEventId
         ? matchingRootEvents.find((event) => event.id === explicitRootEventId) ?? null
         : matchingRootEvents.length === 1 ? matchingRootEvents[0] : null;
+      const explicitRootEvents = explicitRootEventId ? recoveryTimeline.filter((event) => event.id === explicitRootEventId
+        && event.presentation !== false && typeof event.privateToPlayerId !== "string"
+        && ((event.type === "card" || event.type === "cards") && event.action === "play"
+          || event.importance === "essential")) : [];
+      // A server-persisted continuation may prove the original root even when
+      // that root's public fact is synthesized by the snapshot rather than
+      // stored on the root event itself. Bind only when the same persisted
+      // causal envelope and one public root event agree with that reference.
+      const explicitContinuationRoot = canContinueCausal && explicitRootEvents.length === 1
+        && resumeCausal && existingEnvelope && explicitRootEventId
+        ? { context: resumeCausal, envelope: existingEnvelope, rootEventId: explicitRootEventId }
+        : null;
       const inheritedCausal = inheritedRootEvent && resumeCausal && existingEnvelope
         ? { context: resumeCausal, envelope: existingEnvelope, rootEventId: inheritedRootEvent.id }
-        : null;
+        : explicitContinuationRoot;
       // A continuation may retain the original committed root even after its
       // active envelope has advanced. Reuse that identity only when the root
       // event itself proves the exact causal interaction and frame.
@@ -4513,7 +4526,7 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
       const rewardEnvelope = parseCausalEnvelope(room.causal_envelope_json);
       const committedRoot = committedPublicRootForInteraction(log, pending.causal?.interactionId);
       const rewardFact = pending.causal ? publicFactFor(pending.causal, "EFFECT_APPLIED", {
-        rootEventId: committedRoot?.eventId ?? rewardEventId,
+        rootEventId: pending.rootEventId ?? committedRoot?.eventId ?? rewardEventId,
         actorId: source.id,
         affectedPlayerIds: [source.id, target.id],
         label: "Rebel Defeat Reward",
@@ -4629,9 +4642,10 @@ async function expireDyingRescue(roomId: string) {
   }
 }
 
-async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], extraWrites: D1PreparedStatement[] = [], resumePlayer: PlayerRow = source ?? target, resumePhase = source ? phaseAfterAttack(source) : "draw", resumePending?: ResponsePending, dyingHp = target.hp ?? 0, origin?: AttackOrigin, resumeTrigger?: DamageSufferedTriggerContinuation, resumeEffect?: DyingResumeEffect, causal?: CausalContext) {
+async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], extraWrites: D1PreparedStatement[] = [], resumePlayer: PlayerRow = source ?? target, resumePhase = source ? phaseAfterAttack(source) : "draw", resumePending?: ResponsePending, dyingHp = target.hp ?? 0, origin?: AttackOrigin, resumeTrigger?: DamageSufferedTriggerContinuation, resumeEffect?: DyingResumeEffect, causal?: CausalContext, rootEventId?: string) {
   const order = playersInTurnOrder(players, room.turn_seat ?? source?.seat ?? target.seat);
-  const basePending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: "", remainingIds: order.map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending, ...(causal ? { causal } : {}), ...(origin ? { origin } : {}), ...(resumeTrigger ? { resumeTrigger } : {}), ...(resumeEffect ? { resumeEffect } : {}), reason: `Decide whether to give Peach to ${target.name}` };
+  const committedRootEventId = rootEventId ?? resumeTrigger?.rootEventId ?? resumeEffect?.publicOutcome?.rootEventId;
+  const basePending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: "", remainingIds: order.map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending, ...(causal ? { causal } : {}), ...(committedRootEventId ? { rootEventId: committedRootEventId } : {}), ...(origin ? { origin } : {}), ...(resumeTrigger ? { resumeTrigger } : {}), ...(resumeEffect ? { resumeEffect } : {}), reason: `Decide whether to give Peach to ${target.name}` };
   await startSharedDyingWindow(room, basePending, players, deck, discard, log, extraWrites, dyingHp);
 }
 
@@ -5995,7 +6009,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
       ? damageSufferedTriggerOptions(dyingSource?.alive ? dyingSource : null, dyingTarget, finalAmount, undefined, [], damageCards, [], cause, physicalSuit, skillState, playPhase, recoverableCardIds)
       : [];
     const needsPostDamageResume = pendingPostDamageOptions.length > 0 || Boolean(effectiveResumeGroup || resumeDamageSuffered || resumeTurnEnd);
-    await startDyingRescue(room, source, dyingTarget, players, deck, discard, damageLog, writes, resumePlayer, resumePhase, effectiveResumePending, hp, origin, needsPostDamageResume ? damageContinuation : undefined, undefined, inheritedCausal);
+    await startDyingRescue(room, source, dyingTarget, players, deck, discard, damageLog, writes, resumePlayer, resumePhase, effectiveResumePending, hp, origin, needsPostDamageResume ? damageContinuation : undefined, undefined, inheritedCausal, rootEventId);
     return { kind: "dying" };
   }
 
@@ -8115,7 +8129,7 @@ async function commitCanonicalResponse(input: {
       hand = hand.filter((card) => card.id !== peach.id); const resumedPending = appendDyingSequenceCard(pending, peach); const discard = pending.resumePending ? parse<Card[]>(liveRoom.discard_json, []) : [...parse<Card[]>(liveRoom.discard_json, []), peach]; let log = parse<string[]>(liveRoom.log_json, []); const firstAid = selectedExecution?.providerId === "hua_tuo_first_aid"; const jiuyuan = !firstAid && target?.hero === "sun-quan" && target.role === "Lord" && target.id !== me.id && me.hero ? STANDARD_HEROES.find((hero) => hero.id === me.hero)?.faction === "Wu" : false; const recoveryAmount = jiuyuan ? 2 : 1; const beforeHp = target?.hp ?? 0; const maxHp = target?.max_hp ?? beforeHp; const nextHp = applyRecovery(beforeHp, recoveryAmount, maxHp); const amountRecovered = recoveredAmount(beforeHp, maxHp, recoveryAmount); const firstAidMaterials = firstAid ? publicCardMaterials([peach], [{ playerId: me.id, hand: handBeforePeach, equipment: equipmentCards(liveActor) }], "PUBLIC_PLAY") : null; const peachEventId = crypto.randomUUID(); const contribution = committedSharedContribution(liveRoom, peachEventId, me, [peach], `${me.name} gave Peach to ${target.name}, restoring ${amountRecovered} HP.`); const peachMeta: PresentationMeta = { actorId: me.id, ...(contribution ? { sharedResponseContribution: contribution } : {}), ...(firstAid ? { playedAs: "peach" } : {}) }; const peachPresentation = firstAid && firstAidMaterials ? addCardEventWithPublicEffect(log, me.name, peach, target.name, "play", { effectId: "hua_tuo_first_aid", effectClass: "CONVERSION", activationOwnerId: me.id, materials: firstAidMaterials, targetId: target.id, resultingCardKind: "Peach", outcome: "AS_PEACH" }, peachMeta, peachEventId) : addCardEventWithId(log, me.name, peach, target.name, "play", true, peachMeta, peachEventId); log = addLog(peachPresentation.log, firstAid ? `${me.name} uses ${peach.rank}${peach.suit} as Peach with First Aid to rescue ${target?.name ?? "the dying player"}, restoring ${amountRecovered} HP (${nextHp} HP).` : `${me.name} gives Peach to ${target?.name ?? "the dying player"}${jiuyuan ? "; Deliverance provides an additional recovery" : ""}, restoring ${amountRecovered} HP (${nextHp} HP).`);
       if (amountRecovered > 0) {
         const recoveryPending = { ...resumedPending, actorId: pending.actorId, remainingIds: pending.remainingIds, deadline: 0, ...(pending.sharedRescue ? { sharedRescue: { ...pending.sharedRescue, responseEventId: peachEventId } } : {}) } satisfies DyingPending;
-        const recoveryEnvelope = (pending.resumePending || pending.resumeEffect) && pending.causal
+        const recoveryEnvelope = pending.causal
           ? causalEnvelopeAtStage(liveRoom, pending.causal, "DYING", { currentSourceId: pending.sourceId, currentEffect: "peach_rescue", currentTargetIds: [pending.targetId], resolvingPlayerId: pending.actorId })
           : null;
         await db.batch([
@@ -9022,7 +9036,7 @@ export async function POST(request: Request) {
         if (hp <= 0) {
           await startDyingRescue(publicSkillRoom, null, { ...liveMe, hp }, livePlayers, deck, discard, log, [
             db.prepare("UPDATE rooms SET skill_state_json = ? WHERE id = ?").bind(JSON.stringify(nextState), room.id),
-          ], liveMe, "play", undefined, hp, undefined, undefined, resumeEffect, publicSkillOutcome.causal);
+          ], liveMe, "play", undefined, hp, undefined, undefined, resumeEffect, publicSkillOutcome.causal, publicSkillOutcome.eventId);
         } else {
           await db.batch([
             db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, liveMe.id),

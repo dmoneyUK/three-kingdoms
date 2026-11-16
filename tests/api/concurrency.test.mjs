@@ -210,6 +210,9 @@ test("saved sequential Dying: Dying uses one ordered rescue pass and does not re
   const rewardFact = [...(defeated.presentationSnapshot?.retainedPublicEventFacts ?? []), ...(defeated.presentationSnapshot?.publicEventFacts ?? [])]
     .find((fact) => fact.committedOutcome?.source.label === "Rebel Defeat Reward");
   assert.ok(rewardFact, "the shared public snapshot retains the persisted reward outcome after Dying defeat");
+  const attackRoots = defeated.timeline.filter((event) => event.type === "card" && event.action === "play" && event.card?.id === "attack-ordered-rescue");
+  assert.equal(attackRoots.length, 1, "the original Attack remains present as the public causal root");
+  assert.equal(rewardFact.rootEventId, attackRoots[0].id, "the committed reward remains linked to the original Attack root");
   assert.deepEqual(rewardFact.committedOutcome.changes, [
     { kind: "CARD_DRAWN", playerId: hostPlayer.id, amount: 3, fromZone: "DECK", toZone: "HAND" },
   ], "the public result reports the actual reward draw count without card identities");
