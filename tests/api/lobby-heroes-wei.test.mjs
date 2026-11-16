@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import { projectPresentationV2 } from "../../game/presentation-v2.ts";
 import {
   assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
@@ -916,11 +917,31 @@ test("Wu hero skills complete through the normal semantic API", async () => {
   assert.equal(heroicFact?.outcomeLabel, "drew one additional card");
   const completedDrawFact = acceptedYingziFacts.find((fact) => fact.committedOutcome?.changes?.some((change) =>
     change.kind === "CARD_DRAWN" && change.playerId === acceptedSource.id));
+  assert.ok(completedDrawFact, "the committed Draw Phase result is present after Heroic");
   assert.equal(completedDrawFact?.committedOutcome?.changes?.find((change) => change.kind === "CARD_DRAWN")?.amount, 3,
     "the latest public result reports the three cards actually drawn after Heroic");
+  const completedDrawNarration = derivePublicInteractionNarration({
+    snapshot: acceptedYingziSnapshot,
+    players: acceptedYingzi.data.room.players,
+    rootEventId: completedDrawFact.rootEventId,
+    interactionId: completedDrawFact.identity.interactionId,
+    rootFrameId: completedDrawFact.identity.rootFrameId,
+    eventId: completedDrawFact.eventId,
+  });
+  assert.equal(completedDrawNarration?.eventId, completedDrawFact.eventId);
+  assert.match(completedDrawNarration?.headline ?? "", /drew 3 cards/, "H4 reports Heroic's actual three-card draw, not only its extra card");
   assert.equal(acceptedYingziSnapshot.retainedPublicEvent?.eventId, completedDrawFact?.eventId,
     "the latest retained event follows the committed public sequence");
   const heroicObserver = await state(acceptedGame.code, acceptedGame.members[1].token);
+  const observerDrawNarration = derivePublicInteractionNarration({
+    snapshot: heroicObserver.data.presentationSnapshot,
+    players: heroicObserver.data.players,
+    rootEventId: completedDrawFact.rootEventId,
+    interactionId: completedDrawFact.identity.interactionId,
+    rootFrameId: completedDrawFact.identity.rootFrameId,
+    eventId: completedDrawFact.eventId,
+  });
+  assert.equal(observerDrawNarration?.headline, completedDrawNarration?.headline);
   assert.deepEqual(heroicObserver.data.presentationSnapshot.retainedPublicEvent, acceptedYingziSnapshot.retainedPublicEvent);
   assert.deepEqual(heroicObserver.data.presentationSnapshot.retainedPublicEventFacts, acceptedYingziSnapshot.retainedPublicEventFacts,
     "every viewer receives the same ordered public result queue");

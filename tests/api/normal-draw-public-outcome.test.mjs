@@ -1,4 +1,5 @@
 import test from "node:test";
+import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import { assert, card, createHumanGame, request, setDeck, setHand, setTurn, state } from "./test-support.mjs";
 
 function drawOutcome(view, playerId) {
@@ -31,10 +32,29 @@ test("normal Draw Phase publishes only the actual public draw count to every vie
   const committedEvent = result.data.room.timeline.find((event) => event.id === fact.eventId);
   assert.ok(committedEvent, "the public result binds to its committed timeline event");
   assert.equal(fact.committedOutcome.order, committedEvent.publicSequence);
+  const narration = derivePublicInteractionNarration({
+    snapshot: result.data.room.presentationSnapshot,
+    players: result.data.room.players,
+    rootEventId: fact.rootEventId,
+    interactionId: fact.identity.interactionId,
+    rootFrameId: fact.identity.rootFrameId,
+    eventId: fact.eventId,
+  });
+  assert.equal(narration?.eventId, fact.eventId, "the committed normal draw enters the shared H4 consumer");
+  assert.match(narration?.headline ?? "", /drew 2 cards/, "H4 reports the two cards actually drawn");
 
   for (const member of game.members) {
     const viewer = (await state(game.code, member.token)).data;
     assert.deepEqual(drawOutcome(viewer, player.id), fact, "all viewers receive the identical public draw fact");
+    const viewerNarration = derivePublicInteractionNarration({
+      snapshot: viewer.presentationSnapshot,
+      players: viewer.players,
+      rootEventId: fact.rootEventId,
+      interactionId: fact.identity.interactionId,
+      rootFrameId: fact.identity.rootFrameId,
+      eventId: fact.eventId,
+    });
+    assert.equal(viewerNarration?.headline, narration?.headline, "every viewer receives the same public H4 copy");
     const publicFacts = JSON.stringify([
       ...(viewer.presentationSnapshot?.publicEventFacts ?? []),
       ...(viewer.presentationSnapshot?.retainedPublicEventFacts ?? []),
