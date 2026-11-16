@@ -150,9 +150,26 @@ test("snapshot keeps an earlier committed public result available beside a newer
     rootEventId: "current-root", frameId: "root-frame", category: "CARD_PLAYED",
     actorId: "A", affectedPlayerIds: ["B"], label: "Attack",
   };
+  const laterIdentity = {
+    interactionId: "later-interaction", rootFrameId: "later-root-frame",
+    checkpointId: "later-checkpoint", presentationRevision: 1,
+  };
+  const laterDraw = {
+    semantics: "PROVEN", visibility: "PUBLIC", identity: laterIdentity,
+    eventId: "later-draw", order: 6, rootEventId: "later-root",
+    frameId: "later-root-frame", category: "EFFECT_APPLIED", actorId: "B",
+    affectedPlayerIds: ["B"], label: "Draw Phase",
+    committedOutcome: {
+      semantics: "PROVEN", visibility: "PUBLIC", eventId: "later-draw",
+      identity: laterIdentity, order: 6, rootEventId: "later-root",
+      frameId: "later-root-frame", category: "EFFECT_APPLIED", actorId: "B",
+      affectedPlayerIds: ["B"], source: { kind: "phase", label: "Draw Phase" },
+      changes: [{ kind: "CARD_DRAWN", playerId: "B", amount: 2, fromZone: "DECK", toZone: "HAND" }],
+    },
+  };
   const currentPresentation = {
     ...presentation(scene()), publicEventFacts: [currentRoot],
-    retainedPublicEvent: priorDiscard, retainedPublicEventFacts: [priorDiscard],
+    retainedPublicEvent: priorDiscard, retainedPublicEventFacts: [priorDiscard, laterDraw],
   };
 
   const snapshot = composePresentationSnapshot({
@@ -162,9 +179,10 @@ test("snapshot keeps an earlier committed public result available beside a newer
 
   assert.deepEqual(snapshot.publicEventFacts.map((fact) => fact.eventId), ["current-root"],
     "the active interaction stays scoped to its own event facts");
-  assert.deepEqual(snapshot.retainedPublicEventFacts?.map((fact) => fact.eventId), ["prior-discard"],
-    "the validated prior outcome remains available to the shared chronological H4 owner");
+  assert.deepEqual(snapshot.retainedPublicEventFacts?.map((fact) => fact.eventId), ["prior-discard", "later-draw"],
+    "validated older and newer outcomes retain server order for the shared H4 cursor");
   assert.equal(snapshot.retainedPublicEventFacts?.[0]?.committedOutcome?.changes[0]?.amount, 1);
+  assert.equal(snapshot.retainedPublicEventFacts?.[1]?.committedOutcome?.changes[0]?.amount, 2);
   assert.equal(snapshot.retainedPublicEvent, undefined,
     "an earlier result is not promoted as the current singular H4 owner during a newer interaction");
 });

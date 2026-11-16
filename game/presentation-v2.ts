@@ -4369,8 +4369,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     // committed root remains available to the shared public fact projection.
     rootEventId: projectedBumperHarvestProgress?.rootEventId ?? rootEvent?.id ?? null,
   }) : [];
-  const retainedCandidate = input.retainPublicEventAtRest || envelope
-    ? retainedPublicEventFromTimeline(input.publicTimeline ?? input.timeline) : null;
+  const retainedCandidate = retainedPublicEventFromTimeline(input.publicTimeline ?? input.timeline);
   const retainedMatchesEnvelope = Boolean(retainedCandidate && envelope && causalRootFrame
     && retainedCandidate.event.identity.interactionId === envelope.interactionId
     && retainedCandidate.event.identity.rootFrameId === causalRootFrame.frameId

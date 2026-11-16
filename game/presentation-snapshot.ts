@@ -1679,10 +1679,10 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     viewerNegationChoice: input.viewerNegationChoice,
   });
   const semanticFactIds = new Set(semantic.events.map((fact) => fact.eventId));
-  const firstActiveFactOrder = semantic.events.reduce<number | null>((first, fact) =>
-    first === null ? fact.order : Math.min(first, fact.order), null);
-  const exposedRetainedFacts = retainedFacts.filter((fact) => !semanticFactIds.has(fact.eventId)
-    && (firstActiveFactOrder === null || fact.order < firstActiveFactOrder));
+  // Keep the validated queue in server order even when a retained result is
+  // newer than an active-root fact. The presentation cursor, not this snapshot
+  // boundary, decides which committed event currently owns H4.
+  const exposedRetainedFacts = retainedFacts.filter((fact) => !semanticFactIds.has(fact.eventId));
   const acceptedViewerNegationChoice = semantic.nextDecision?.stage === "NEGATION"
     && semantic.nextDecision.responseWindowOpen ? semantic.viewerNegationChoice : null;
   const publicCardEffects = provenPublicCardEffects(input.presentationV2.publicCardEffects);
