@@ -1,20 +1,17 @@
-# HANDOVER — 当前唯一任务：§10.62 原任务剩余修正
+# HANDOVER — 当前唯一任务：§10.63
 
-## 最近交付：§10.61 Boundary A
+## 最近结果：§10.62
 
-**IMPLEMENTED / DEPLOYED — 等待 §10.61 整体完成后的 Owner review。** 最终代码 SHA `d2c0b3279b740c2bc6eabf7b0129d75894f53f08`；[Actions 43964193573](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43964193573) 精确 SHA 全绿：lint/build、fast tests `433/433`、API、browser startup/H4 smoke、D1 migrations、Worker deployment 与 production smoke。Worker version `561d97a2-8c0c-4032-ad9f-3cb4212c5ab3`，生产 `/api/health` 返回 `{"ok":true,"worker":"available"}`。没有运行本地手机或浏览器验收。
+**IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。** 修复 Negation 与 Dismantle H4 的已验证玩家名片段。代码提交 `61bc60a53ca4dfcf7ddb145c2a79d0c6b28407a2`；精确 SHA Actions [43969554427](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43969554427) 全部必需作业通过。定向 Node 测试 `67/67` 通过，`git diff --check` 通过。Worker version `5302fb17-94d0-4647-81f2-429fe70709fd`；生产首页与 `/api/health` smoke 通过。未运行本地手机或浏览器验收；等待 Owner iPhone 复验。
 
-## 当前唯一任务：§10.62
+## 当前任务：§10.63 LOCAL-SELECTED-HAND-ABOVE-SKILL-01
 
-**H4-VERIFIED-PLAYER-FRAGMENTS-REGRESSION-01 — 完成 iPhone 部分验收后仍失败的 Negation 与 Dismantle H4 名称路径。** 依据最新 `docs/UX2-refine.md` revision `2026-11-16 21:51 UTC`、远端设计提交 `c82c15d901f2340e57594dd08408ca638ed10fff`。Owner 截图 `IMG_4381`、`IMG_4379` 显示 Negation 窗口中 Burning Bridges H4 的 actor/target 为普通大字；`IMG_4380` 显示 Dismantle 的嵌入式真实 ♠8 Attack H4 两个人名未缩小。原 §10.62 **部分验收 / 未关闭**；保留已正确的小字路径与已接受 §10.53-F1 样式。
+按 Owner 最新直接顺序，在 §10.62 后先执行本项。设计依据 `docs/UX2-refine.md` revision `2026-11-16 21:51 UTC`，设计提交 `c82c15d901f2340e57594dd08408ca638ed10fff`。
 
-### 已复核的实现缺口
+修复四人局本地 Dock 中被选中的真实手牌与武将技能重叠时，技能文字/边框仍绘制在卡牌上方的问题。必须保持单张真实 CardFace、原有选择/再次点击取消行为、未遮挡技能与装备的点击能力，以及 §10.60 已通过的原生横向滑动和首尾牌可达性。不改合法行动、卡牌身份、隐私、游戏规则或其他展示行为；不得以单纯增加子元素 z-index、复制卡牌、遮盖技能或扩大透明拦截区替代真正的选中卡视觉层级。
 
-- `derivePublicNegationNarration()` 以普通字符串生成根事件、反制与终局文案，缺少 verified player fragments；当 Negation 文案拥有 H4 时，`publicCardCommittedFactCopy()` 返回该文案但丢弃通用 typed segments。
-- `publicDismantleCardFaceCopy()` 用普通 `prefix` / `suffix` 包裹真实 settlement 的卡牌缩略面；该专用渲染路径绕过通用 verified-segment 渲染。
+### 当前实现进度
 
-### 执行边界与检查
-
-只修原 §10.62：从有证明的 playerId 与原文同时构造 Negation typed headline segments；Dismantle 的 prefix/suffix 仅在 source/target 身份与真实 settlement 匹配时渲染 verified spans。保留原消息、aria 文案、卡牌花色/点数/名称、唯一 H4 owner 与测量 clone 几何；身份不匹配时回退普通文本。审计 copy ownership 适配器，防止 typed segments 在 displayedCopy/Negation/settlement 生命周期中丢失。不得改规则、牌身份、隐私、时序、H4/PAC 位置或全局字体。
-
-按设计补聚焦 pure/API/renderer 回归；不运行本地手机或浏览器验收，最终 iPhone 复验由 Owner 完成。提交后核验精确 SHA Actions、Worker deploy 和 production smoke；不宣布 USER-ACCEPTED。
+- 已让处于选中/聚焦状态的原生手牌滚动容器成为确定的 `z-index:80` 绘制层，高于技能按钮的 `z-index:70`；滚动容器自身穿透点击，只让真实卡槽接收点击。横向 `overflow-x:auto`、`touch-action:pan-x` 和滚动容器结构保持不变。
+- 增加了单一四人局 Cao Cao / Treachery / Kirin Bow 浏览器回归场景，CI 会附带卡牌与技能重叠区截图，并核对卡牌命中、未遮挡技能/装备命中、再次点击取消及滚动样式。该场景已加入部署所需的 browser smoke。
+- 按 Owner 指示未在本地运行手机或浏览器测试；CI 尚未运行。当前修改仍未提交，下一步只做差异检查，然后提交推送并核验精确 SHA CI、Worker 与生产 smoke。结果保持 **PENDING OWNER iPHONE REVIEW**。此项完成后按 Owner 顺序进入 §10.61，再执行 §10.57。

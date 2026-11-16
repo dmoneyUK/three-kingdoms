@@ -821,13 +821,14 @@
 /* The top panels stay below the hand so a raised card can paint over them. */
 .local-hand-section { position: relative; grid-area: hand; height: var(--hand-panel-height); min-height: var(--hand-panel-height); min-width: 0; padding: var(--hand-top-inset) 4px var(--hand-bottom-gutter); overflow: visible; z-index: 50; }
 .local-hand { position: relative; height: 100%; min-width: 0; overflow: visible; z-index: 60; }
-/* A selected physical card must escape the Hand's three nested stacking
-   contexts to cover only the skill pixels it actually overlaps. The rail
-   remains the native, hit-testable scrollport: its empty area stays below
-   positive-z Skill controls, while selected CardFaces keep their own z-order. */
+/* The iOS native scroller is its own paint layer. When a real Hand card is
+   raised, lift that scrollport above Skills as one definite plane; otherwise
+   WebKit can paint the z-indexed Skill over the CardFace. Let empty scrollport
+   space pass through so uncovered Skills/Equipment remain tappable. Real card
+   slots stay hit-testable descendants of the native pan-x scroller. */
 .local-hand-section:has(.card-slot.single-selected, .card-slot.multi-selected, .card-slot.details-selected, .card-slot.inspect-focused) { z-index: auto; }
 .local-hand-section:has(.card-slot.single-selected, .card-slot.multi-selected, .card-slot.details-selected, .card-slot.inspect-focused) .local-hand { z-index: auto; }
-.local-hand-section:has(.card-slot.single-selected, .card-slot.multi-selected, .card-slot.details-selected, .card-slot.inspect-focused) .local-hand-rail { z-index: auto; }
+.local-hand-section:has(.card-slot.single-selected, .card-slot.multi-selected, .card-slot.details-selected, .card-slot.inspect-focused) .local-hand-rail { z-index: 80; pointer-events: none; }
 /* Native scrolling clips both axes. Keep the scrollport itself hit-testable for
    iOS WebKit; the empty Dock panel areas pass through, while real skill and
    equipment buttons stay above the raised-card clearance as their own targets. */
