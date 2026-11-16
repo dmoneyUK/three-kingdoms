@@ -771,7 +771,10 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(handViewportRule, /height: calc\(var\(--hand-peek-height\) \+ var\(--hand-lift-clearance\)\)/);
   assert.match(handViewportRule, /padding: var\(--hand-lift-clearance\) 0 0/);
   assert.match(handViewportRule, /overflow-x: auto; overflow-y: hidden/);
-  assert.match(handViewportRule, /pointer-events: none/, "empty lift space preserves underlying Skills/Equipment hits");
+  assert.match(handViewportRule, /pointer-events: auto/, "iOS native scrolling can hit the actual overflow scrollport");
+  assert.match(dockZonesRule, /pointer-events: none/, "transparent Skills/Equipment panel space passes pointer hits through");
+  assert.match(sequenceStyleSource, /\.local-dock-zones \.hero-skill-button \{ position: relative; z-index: 70; pointer-events: auto; \}/, "real Skill buttons stay hit-testable above the scrollport");
+  assert.match(sequenceStyleSource, /\.local-dock-zones \.local-zone-card-button,\s*\.local-dock-zones \.zone-info-button \{ z-index: 70; pointer-events: auto; \}/, "real Equipment and info controls stay hit-testable above the scrollport");
   assert.match(gameRoomSource, /ResizeObserver[\s\S]*handRailWidth[\s\S]*calculateHandCardStep/);
   assert.doesNotMatch(sequenceStyleSource, /margin-left: -38px|margin-left: -34px/);
   assert.match(html, /class="hand-card-visual"[\s\S]*class="game-card/);
