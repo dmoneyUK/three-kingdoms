@@ -4,6 +4,7 @@ import { derivePublicInteractionNarration } from "../../game/public-activity.ts"
 import {
   advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, requestForViewer, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 
 function committedSkillOutcome(view, label) {
   return [...(view.presentationSnapshot?.publicEventFacts ?? []), ...(view.presentationSnapshot?.retainedPublicEventFacts ?? [])]
@@ -581,6 +582,10 @@ test("the three faction lords expose their active skills through the semantic pr
   assert.deepEqual(new Set(zhiheng.data.room.myHand.map((held) => held.id)), new Set([drawn.id, drawnTwo.id]), "Equilibrium draws one replacement for each discarded card");
   assert.ok(discardIds(zhihengGame.code).includes(discarded.id)); assert.ok(discardIds(zhihengGame.code).includes(equipped.id));
   const zhihengObserver = (await state(zhihengGame.code, zhihengGame.members[1].token)).data;
+  const equilibriumH4 = assertPublicOutcomeHasH4Owner(zhiheng.data.room, equilibriumOutcome.eventId);
+  const equilibriumObserverH4 = assertPublicOutcomeHasH4Owner(zhihengObserver, equilibriumOutcome.eventId);
+  assert.equal(equilibriumObserverH4.narration.headline, equilibriumH4.narration.headline,
+    "actor and observer route distinct Hand/Equipment discards and actual draw count through the one shared H4 owner");
   assert.equal(JSON.stringify(zhihengObserver.presentationSnapshot.publicCardEffects).includes(drawn.id), false);
   assert.equal(JSON.stringify(zhihengObserver.presentationSnapshot.publicCardEffects).includes(drawnTwo.id), false,
     "Equilibrium's private replacement draws never enter public proof");
@@ -720,6 +725,10 @@ test("Benevolence counts exact physical cards cumulatively and spends its thresh
   const benevolenceObserver = (await state(two.game.code, two.game.members[2].token)).data;
   assert.deepEqual(committedSkillOutcome(benevolenceObserver, "Benevolence"), benevolenceOutcome,
     "all viewers receive the same public outcome while transfer identities remain private");
+  const benevolenceH4 = assertPublicOutcomeHasH4Owner(twoResult.data.room, benevolenceOutcome.eventId);
+  const benevolenceObserverH4 = assertPublicOutcomeHasH4Owner(benevolenceObserver, benevolenceOutcome.eventId);
+  assert.equal(benevolenceObserverH4.narration.headline, benevolenceH4.narration.headline,
+    "actor and observer route the same transfer and recovered-HP fact through the one shared H4 owner");
   assert.equal(benevolenceObserver.timeline.some((event) => event.privateHandTransfer), false, "other seats do not receive private transfer receipts");
   const serializedObserver = JSON.stringify(benevolenceObserver);
   assert.equal(serializedObserver.includes("attack-rende-two-a"), false, "a transferred hidden card ID is not disclosed to observers");
