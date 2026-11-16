@@ -116,3 +116,65 @@ for (const viewport of viewports) {
     expect(lastCardBox.x + lastCardBox.width).toBeLessThanOrEqual(railBox.x + railBox.width + 1);
   });
 }
+
+test("§10.60 Step 2 440px phone Hand accepts a real horizontal touch swipe", async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 440, height: 844 },
+    screen: { width: 440, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  try {
+    await page.goto("http://127.0.0.1:4177/tests/browser/fixture.html?state=normal&count=4&handSize=11");
+    const rail = page.locator(".local-hand-rail");
+    await expect(rail.locator(".card-slot")).toHaveCount(11);
+    await expect(rail).toHaveAttribute("data-hand-overflow", "true");
+
+    const [railBox, firstCardBox, before] = await Promise.all([
+      rail.boundingBox(),
+      rail.locator(".card-slot").first().boundingBox(),
+      rail.evaluate((element) => ({
+        scrollLeft: element.scrollLeft,
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
+        selected: [...element.querySelectorAll(".game-card")].some((card) => card.getAttribute("aria-pressed") === "true"),
+      })),
+    ]);
+    expect(railBox).not.toBeNull();
+    expect(firstCardBox).not.toBeNull();
+    expect(before.scrollWidth).toBeGreaterThan(before.clientWidth);
+
+    const point = { x: firstCardBox.x + 20, y: firstCardBox.y + Math.min(20, firstCardBox.height / 2) };
+    const hit = await page.evaluate(({ x, y }) => {
+      const target = document.elementFromPoint(x, y);
+      return {
+        tag: target?.tagName ?? null,
+        cardId: target?.closest(".card-slot")?.getAttribute("data-hand-card-id") ?? null,
+      };
+    }, point);
+    expect(hit.cardId).toBe("browser-hand-1");
+
+    const session = await context.newCDPSession(page);
+    try {
+      await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ id: 1, ...point }] });
+      for (const progress of [0.25, 0.5, 0.75, 1]) {
+        await session.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ id: 1, x: point.x - 180 * progress, y: point.y }],
+        });
+      }
+      await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    } finally {
+      await session.detach();
+    }
+
+    await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(before.scrollLeft);
+    await expect.poll(() => rail.evaluate((element) => [...element.querySelectorAll(".game-card")]
+      .some((card) => card.getAttribute("aria-pressed") === "true"))).toBe(false);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(440);
+  } finally {
+    await context.close();
+  }
+});

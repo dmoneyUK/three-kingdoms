@@ -1,13 +1,11 @@
-# HANDOVER — 当前唯一任务：§10.60 Step 1 手牌间距修复
+# HANDOVER — 当前唯一任务：§10.56 Inspector 保留 H4 的复核修正
 
-**最近交付结果：§10.56 OPPONENT-INSPECTOR-SEAT-ANCHOR-01 返修已实现并部署，仍待 Owner iPhone 复验。** Commit `c290f9f2b775f36a47e5027055efc2e2af23d3f8`；精确 SHA [Actions 43775398370](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43775398370) 全绿（浏览器启动/房间 smoke、lint/fast、API、D1/deploy）；Worker `4e7bb0aa-f538-4652-837e-4a4d09e09b3d`；线上 `/` HTTP 200、`/api/health` 返回 `{"ok":true,"worker":"available"}`。聚焦手机回归 1/1，7.9 秒，确认选中 Xiahou Dun 时 Inspector 起点距 Seat 底部 `8±2px`、Inspector 可盖住但不移动 H4、且不碰其他受保护区。不得标为用户验收通过。
+## 最近结果
 
-## 当前任务与设计基线
+§10.56 先前实现 `c290f9f2b775f36a47e5027055efc2e2af23d3f8` 已部署，精确 SHA Actions [43775398370](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43775398370) 全绿，Worker `4e7bb0aa-f538-4652-837e-4a4d09e09b3d`；该结果仍未通过 Owner iPhone 验收。最新设计已于 2026-11-15 23:53 UTC 澄清：Inspector 可遮住 H4，但 H4 必须由原有 owner 保持同一 DOM/事件/文案/坐标和自然生命周期；打开 Inspector 不得隐藏、移动、重挂载或重置其计时。新设计要求先验证现有部署是否已经满足，再决定是否改代码，禁止盲目重复 z-index 补丁。
 
-当前唯一任务为 `docs/UX2-refine.md` §10.60 `LOCAL-HAND-OVERLAP-TOUCH-SWIPE-01` 的 Step 1（文档修订依据：最新远端 `origin/ux-v2` `b580b5f6e88281ce99ad2107d59ad98714040082`，Revision 2026-11-15 23:33 UTC；最新两笔提交只更新设计文档，§10.60 条款未变）。§10.60 要求保留 68px 真实卡面、艺术/文字/花色和顺序；相邻未选卡片的水平步进至少为卡面宽度的 75%（68px 面宽时至少 51px，最多遮挡 25%），按响应式实际宽度比例计算，不缩小卡片或截断信息；拥挤的 440px、约 11 张牌场景需证明下限。
+§10.60 Step 1 已随 `657b82a36e3f9fa84b28915f9161026020f3d82e` 推送部署；精确 SHA Actions [43776358723](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43776358723) 最终全绿（首跑 API shard 的瞬时 `fetch failed` 在同 SHA 重跑通过），D1 migration、Worker 部署和生产 smoke 全通过；Worker `e34f198a-d48a-46d8-b3cf-11ab0a80157e`。§10.60 Step 2 的新增触摸回归本地 1/1（1.7s）：440×844 移动触屏 Chromium 的真实单指横划命中第一张手牌并推进轨道 `scrollLeft`，没有误选或页面横向溢出；未复现报告中的 iPhone 故障，因此未加无证据 CSS 补丁。该回归与本 HANDOVER 变更待推送。
 
-## 本步骤状态与验收
+## 当前执行
 
-**2026-11-15 23:42 UTC：本地实现完成，待提交/精确 SHA CI/部署。** `calculateHandCardStep` 使用实际卡宽的 75% 下限；测量 Rail 的 CSS `--hand-card-face-width` 并用于布局步进、溢出判断和负 margin，因此 56px 短屏卡面按 42px 下限计算。保留真实卡牌尺寸、信息与顺序；拥挤牌列由既有原生横向溢出承载。定向测试 `node --import tsx --test --test-name-pattern="hand cards keep at least 75%" tests/room-safety-render.test.mjs`：1/1 通过；`git diff --check` 通过。未运行 UI/browser。仅修改 `app/page.tsx` 与其现有快速纯逻辑/布局断言；不改触摸滚动和手牌交互。完成此 Step 1 的精确 SHA CI/部署后，再将 HANDOVER 切到 Step 2（真实手势复现/命中测试及最小原生滚动修复）。
-
-保留当前唯一任务编号 §10.60；最终仍需按设计完成 Step 2、Step 3（最后一张完整可达、手势不误触、点击选择正确）以及 exact-SHA CI、部署和生产 smoke。不得自我验收，Owner iPhone review 仍是最终验收门槛。
+仅处理 `docs/UX2-refine.md` §10.56 的最新验收修正。设计基线为最新远端 `origin/ux-v2` `d6555d51dadebc14ef629a842ea57e9d098cdcf6`（Revision 2026-11-15 23:53 UTC）。当前已部署代码已将 `PublicCardDisplay` 与 Inspector 独立渲染，并使 Inspector 在 H4 上方；待用真实 H4 owner 的 440px 手机场景验证：打开前后 H4 是同一节点/事件/文案，display/visibility/opacity 与坐标不变（±2px），Inspector 对重叠点的实际绘制层级在前，关闭后同一 H4 原位恢复且生命周期不重启。先检查现有 browser fixture/真实事件来源并用一次 ≤5 分钟的本地 UI/browser 回归；只有复现 H4 被切换/隐藏/移动时才改生产代码。保持 PAC、Seat、活动 CardFace、Console 与其他保护区可操作，不改 H4 内容/计时/来源或游戏规则。完成后按 exact-SHA CI、Worker 部署和生产 smoke 交付；最终仍待 Owner iPhone 复验。
