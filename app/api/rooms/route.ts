@@ -9751,14 +9751,15 @@ export async function POST(request: Request) {
       const targetDiscardChanges = targetDiscardEventId
         ? committedDiscardChangesFromTransitions(targetDiscardEventId, target.id, targetDiscardTransitions) ?? []
         : [];
-      const targetDiscardBaseFact = targetDiscardEventId && triggerPublicFact?.committedIdentity
-        ? {
-          ...triggerPublicFact,
-          rootEventId: triggerPublicFact.rootEventId ?? targetDiscardEventId,
+      const targetDiscardBaseFact = targetDiscardEventId
+        ? publicFactFor(continuation.declaration.causal, "CARD_DISCARDED", {
+          rootEventId: continuation.declaration.rootEventId ?? targetDiscardEventId,
           actorId: target.id,
-          affectedPlayerIds: [...new Set([...(triggerPublicFact.affectedPlayerIds ?? []), target.id])],
-        }
-        : triggerPublicFact;
+          affectedPlayerIds: [target.id],
+          label: triggerPublicFact?.label ?? "Discard",
+          effect: { kind: "discard" },
+        }, parseCausalEnvelope(liveRoom.causal_envelope_json))
+        : undefined;
       const targetDiscardAmount = targetDiscardChanges.reduce((total, change) => total + change.amount, 0);
       const targetDiscardDraft = targetDiscardAmount > 0
         ? withCommittedPublicTriggerOutcome(targetDiscardBaseFact, {
