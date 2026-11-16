@@ -5579,7 +5579,7 @@ type SourcedDamageTransition = {
   resumeDamageSuffered?: DamageSufferedTriggerContinuation;
   resumeTurnEnd?: TurnEndTriggerContinuation;
   onDamageApplied?: (hp: number) => Promise<void> | void;
-  finalizeDamageLog?: (log: string[], resolvedDamageAmount: number) => string[];
+  finalizeDamageLog?: (log: string[], actualHpLost: number) => string[];
   finalizeAttackHitLog?: (log: string[]) => string[];
 };
 
@@ -5592,14 +5592,26 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
   const skillState = parse<KingSkillState>(room.skill_state_json, {});
   const playPhase = resumePhase.startsWith("play");
   const hp = applyDamage(target.hp ?? 1, finalAmount);
-  const description = typeof damageDescription === "function" ? damageDescription(finalAmount) : damageDescription ?? `${target.name} takes ${finalAmount} damage${label !== "Attack" && label ? ` from ${label}` : ""}`;
-  const damageFact = amount > 0 ? publicFactFor(inheritedCausal, finalAmount > 0 ? "DAMAGE_APPLIED" : "DAMAGE_PREVENTED", {
-    ...(rootEventId ? { rootEventId } : {}), ...(source ? { actorId: source.id } : {}),
-    affectedPlayerIds: [target.id], amount: finalAmount,
+  const actualHpLost = Math.max(0, (target.hp ?? 1) - hp);
+  const description = actualHpLost === 0
+    ? `Damage to ${target.name} was prevented`
+    : typeof damageDescription === "function" ? damageDescription(actualHpLost) : damageDescription ?? `${target.name} takes ${actualHpLost} damage${label !== "Attack" && label ? ` from ${label}` : ""}`;
+  const damageEventId = crypto.randomUUID();
+  const damageFact = amount > 0 ? publicFactFor(inheritedCausal, actualHpLost > 0 ? "DAMAGE_APPLIED" : "DAMAGE_PREVENTED", {
+    rootEventId: rootEventId ?? damageEventId,
+    ...(actualHpLost > 0 && source ? { actorId: source.id } : {}),
+    affectedPlayerIds: [target.id], label, amount: actualHpLost,
+    outcomeLabel: actualHpLost > 0 ? `lost ${actualHpLost} HP to damage` : "damage was prevented",
+    effect: { kind: actualHpLost > 0 ? "damage_applied" : "damage_prevented" },
+    ...(actualHpLost > 0 ? { committedOutcome: {
+      source: { kind: "damage", label },
+      changes: [{ kind: "DAMAGE_APPLIED", playerId: target.id, amount: actualHpLost }],
+    } } : {}),
   }, parseCausalEnvelope(room.causal_envelope_json)) : undefined;
-  const unfinalizedDamageLog = addLog(log, `${description}${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`, undefined,
-    damageFact ? { ...(source ? { actorId: source.id } : {}), publicFact: damageFact } : undefined);
-  const damageLog = finalizeDamageLog ? finalizeDamageLog(unfinalizedDamageLog, finalAmount) : unfinalizedDamageLog;
+  const damageLogEntry = addLogWithId(log, `${description}${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`, undefined,
+    damageFact ? { ...(actualHpLost > 0 && source ? { actorId: source.id } : {}), publicFact: damageFact } : undefined, damageEventId);
+  const unfinalizedDamageLog = damageLogEntry.log;
+  const damageLog = finalizeDamageLog ? finalizeDamageLog(unfinalizedDamageLog, actualHpLost) : unfinalizedDamageLog;
   const damageContinuation: DamageSufferedTriggerContinuation = {
     kind: "damage_suffered_event",
     ...(source ? { sourceId: source.id } : {}),
