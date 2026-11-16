@@ -46,6 +46,7 @@ async function waitForServer() {
 
 try {
   await waitForServer();
+  console.log("[api-test-worker] ready");
   const startedAt = performance.now();
   const tests = spawn(process.execPath, ["--import", "tsx", "--test", "--test-concurrency=1", ...apiTestFiles], { cwd: new URL("../", import.meta.url), env: { ...process.env, GAME_TEST_URL: url, GAME_TEST_STATE_PATH: testStatePath }, stdio: ["ignore", "pipe", "pipe"] });
   let testOutput = "";

@@ -9,3 +9,7 @@ export function hasKnownProxyDisconnect(log) {
 export function shouldRestartAfterKnownProxyDisconnect({ code, wasReady, log }) {
   return code === 1 && wasReady && hasKnownProxyDisconnect(log);
 }
+
+export function shouldRetryApiShard({ code, wasReady, log, isCI, attempt }) {
+  return isCI === true && attempt === 1 && shouldRestartAfterKnownProxyDisconnect({ code, wasReady, log });
+}

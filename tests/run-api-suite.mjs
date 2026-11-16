@@ -1,9 +1,12 @@
 import { spawn } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 import { parseTestTimings } from "./test-timing.mjs";
+import { shouldRetryApiShard } from "./browser/wrangler-worker-restart-policy.mjs";
 
-const root = new URL("../", import.meta.url);
+const root = fileURLToPath(new URL("../", import.meta.url));
 const files = readdirSync(new URL("./api/", import.meta.url))
   .filter((file) => file.endsWith(".test.mjs"))
   .sort()
@@ -22,11 +25,40 @@ if (assigned.length !== files.length || new Set(assigned).size !== files.length 
 }
 
 const startedAt = performance.now();
-const results = await Promise.all(shardGroups.map((shardFiles, index) => new Promise((resolve) => {
+const apiLogBasePath = process.env.WRANGLER_LOG_PATH
+  ? resolve(process.env.WRANGLER_LOG_PATH)
+  : resolve(root, ".wrangler/api-logs");
+const apiLogRunPath = apiLogBasePath.endsWith(".log")
+  ? apiLogBasePath.replace(/\.log$/, `.api-run-${process.pid}-${Date.now()}.log`)
+  : join(apiLogBasePath, `api-run-${process.pid}-${Date.now()}`);
+
+function logPathFor(index, attempt) {
+  if (apiLogRunPath.endsWith(".log")) {
+    return apiLogRunPath.replace(/\.log$/, `.api-shard-${index + 1}-attempt-${attempt}.log`);
+  }
+  return join(apiLogRunPath, `api-shard-${index + 1}-attempt-${attempt}`);
+}
+
+function readWranglerLogs(path) {
+  if (path.endsWith(".log")) {
+    try { return readFileSync(path, "utf8"); }
+    catch { return ""; }
+  }
+  try {
+    return readdirSync(path, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".log"))
+      .map((entry) => readFileSync(join(path, entry.name), "utf8"))
+      .join("\n");
+  } catch { return ""; }
+}
+
+function runShard(shardFiles, index, attempt) {
   const port = 3137 + index;
+  const wranglerLogPath = logPathFor(index, attempt);
+  if (!wranglerLogPath.endsWith(".log")) mkdirSync(wranglerLogPath, { recursive: true });
   const child = spawn(process.execPath, ["tests/run-tests.mjs"], {
     cwd: root,
-    env: { ...process.env, GAME_TEST_FILES: shardFiles.join(","), GAME_TEST_PORT: String(port), GAME_TEST_URL: `http://localhost:${port}`, GAME_TEST_INSPECTOR_PORT: String(9229 + index) },
+    env: { ...process.env, WRANGLER_LOG_PATH: wranglerLogPath, GAME_TEST_FILES: shardFiles.join(","), GAME_TEST_PORT: String(port), GAME_TEST_URL: `http://localhost:${port}`, GAME_TEST_INSPECTOR_PORT: String(9229 + index) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
@@ -35,9 +67,26 @@ const results = await Promise.all(shardGroups.map((shardFiles, index) => new Pro
     output += text;
     process.stdout.write(`[api-shard-${index + 1}] ${text.replaceAll("\n", `\n[api-shard-${index + 1}] `)}`);
   });
-  child.on("error", (error) => resolve({ index, code: 1, output: `${output}\n${error.message}` }));
-  child.on("exit", (code, signal) => resolve({ index, code: code ?? 1, signal, output }));
-})));
+  return new Promise((resolve) => {
+    child.on("error", (error) => resolve({ index, code: 1, output: `${output}\n${error.message}`, wranglerLog: readWranglerLogs(wranglerLogPath) }));
+    child.on("exit", (code, signal) => resolve({ index, code: code ?? 1, signal, output, wranglerLog: readWranglerLogs(wranglerLogPath) }));
+  });
+}
+
+const results = await Promise.all(shardGroups.map(async (shardFiles, index) => {
+  let result = await runShard(shardFiles, index, 1);
+  if (shouldRetryApiShard({
+    code: result.code,
+    wasReady: result.output.includes("[api-test-worker] ready"),
+    log: result.wranglerLog,
+    isCI: process.env.CI === "true",
+    attempt: 1,
+  })) {
+    console.error(`[api-shard-${index + 1}] Retrying the full shard once after Wrangler's known ProxyWorker network disconnect; a new local D1 is created.`);
+    result = await runShard(shardFiles, index, 2);
+  }
+  return result;
+}));
 
 const durationMs = performance.now() - startedAt;
 const testCount = results.reduce((count, result) => count + Number(result.output.match(/^\s*(?:#|ℹ)\s+tests\s+(\d+)\s*$/m)?.[1] ?? 0), 0);
