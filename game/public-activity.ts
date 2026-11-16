@@ -408,6 +408,27 @@ export function derivePublicInteractionNarration(input: {
       ? narratable?.find((fact) => fact.eventId === input.eventId)
       : narratable?.at(-1);
   }
+  // A committed result can remain the latest H4 fact while the server has
+  // already advanced to a later decision checkpoint. In that case the active
+  // interaction is not the result's owner; use only the exact, validated
+  // public fact identity supplied by the caller instead of dropping the copy.
+  if (!latest) {
+    const factsByEventId = new Map<string, PresentationSnapshot["publicEventFacts"][number]>();
+    for (const fact of [...(snapshot.retainedPublicEventFacts ?? []), ...snapshot.publicEventFacts]) {
+      if (fact.rootEventId !== input.rootEventId
+        || fact.identity.interactionId !== input.interactionId
+        || fact.identity.rootFrameId !== input.rootFrameId) continue;
+      factsByEventId.set(fact.eventId, fact);
+    }
+    const facts = [...factsByEventId.values()].sort((left, right) => left.order - right.order);
+    const rootOrder = facts.find((fact) => fact.eventId === input.rootEventId)?.order ?? -1;
+    const narratable = facts.filter((fact) => fact.eventId === input.rootEventId
+      ? fact.category === "CARD_PLAYED" || fact.category === "CARD_EQUIPPED" || isPublicInteractionOutcomeFact(fact)
+      : fact.order > rootOrder && isPublicInteractionOutcomeFact(fact));
+    latest = input.eventId
+      ? narratable.find((fact) => fact.eventId === input.eventId)
+      : narratable.at(-1);
+  }
   if (!latest) return null;
 
   const actor = narrationPlayerName(input, latest.actorId ?? undefined);

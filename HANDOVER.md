@@ -10,6 +10,6 @@
 
 实现提交 `b955ce853872ed680691565d4aa975482d975930` 已推送至 `ux-v2`。通用 `advanceHpRecoveredEvents` 仅在唯一公开根事件的 interaction/frame/committed identity 可验证时补回因 continuation 前进而失去的身份；通用 `recover_player` 传播已提交恢复事件 ID 和 causal context，避免续接再次发布重复 Recovery fact。未获证据时不猜测。
 
-精确 SHA Actions [43860393484](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43860393484) 首次 API 分片因 Wrangler 空运行时错误造成请求 `fetch failed`；同 SHA 重跑后 API 203 项中 202 项通过，唯一失败为新增断言误读快照字段。真实字段是 `identity.rootFrameId`，不是 `committedIdentity.rootFrameId`；当前仅修正此断言。失败/重跑均未部署，Worker 仍是已部署基线版本。按 Owner 指令不运行本地测试、构建或设备测试；修正提交后的精确 SHA CI、部署和生产 smoke 待验证。
+提交 `af245aa78265e5fca94092cbe4dac42b88799e8d` 修正了事实 identity 字段。精确 SHA Actions [43862283496](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43862283496) 的 API 203 项中 202 项通过；唯一失败进一步证明已验证恢复事实在服务器进入后续决策后未被 `derivePublicInteractionNarration()` 选出，故可见 H4 仍为空。Browser smoke 与 Lint/fast 通过，部署被跳过；Worker 仍为已部署基线版本。当前改动在共享叙述函数中按精确 root event、interaction、root frame 和 event ID 回退到已验证的活动/保留事实，避免后续决策 checkpoint 令实际结果文案消失。按 Owner 指令不运行本地测试、构建或设备测试；此修复的精确 SHA CI、部署和生产 smoke 待验证。
 
-**续接点：** 检查本次仅测试断言和 HANDOVER 的 diff，提交并推送；确认精确 SHA 全部必需 CI、Worker 部署及 production smoke。阶段交付后继续同一 §10.59 的下一明确来源边界（普通 Draw Phase 与实际 draw commit recipients），再完成通用筛选、保留和唯一 H4 展示所有权。不得把单个阶段标为 §10.59 完成，不得自行宣布 USER-ACCEPTED。
+**续接点：** 检查共享叙述选择和 HANDOVER diff，提交并推送；确认精确 SHA 全部必需 CI、Worker 部署及 production smoke。阶段交付后继续同一 §10.59 的下一明确来源边界（普通 Draw Phase 与实际 draw commit recipients），再完成通用筛选、保留和唯一 H4 展示所有权。不得把单个阶段标为 §10.59 完成，不得自行宣布 USER-ACCEPTED。
