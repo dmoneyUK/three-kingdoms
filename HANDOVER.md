@@ -1,19 +1,19 @@
-# HANDOVER — 唯一未完成任务：§10.59 UNIVERSAL-H4-COMMITTED-FACT-COVERAGE-01
+# HANDOVER — 当前唯一任务：§10.59 UNIVERSAL-H4-COMMITTED-FACT-COVERAGE-01
 
-**总状态：NOT CLOSED；所有代码阶段属于同一任务，不逐段请求验收。** 最新复习的设计为 `docs/UX2-refine.md` revision `2026-11-16 09:42 UTC`。完成服务端来源覆盖、统一消费/唯一 H4 所有权及系统级回归后，再交给 Owner 进行一次 iPhone 最终验收。
+**状态：NOT CLOSED。** 不把有界代码阶段拆成验收任务；继续完成全部服务器结果来源、公共事实投影/保留、单一 H4 所有权及系统级回归后，再交 Owner 做一次最终 iPhone 验收。最新设计：`docs/UX2-refine.md` §10.59，revision `2026-11-16 09:42 UTC`。
 
-## 最近已部署基线
+## 最近已验证并部署的同任务切片
 
-- `a0f3b0061adbb259a8e806db56e8e69e923070e5`（`ux-v2`）：为公开 turn-end 技能窗口建立通用因果身份，修复郭嘉遗计及貂蝉闭月 API 断言实际揭示的缺口；同一切片也保留 Draw Two 实际抽牌数和遗计私牌隐私断言。
-- 精确 SHA Actions [43885972081](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43885972081) 全绿：API、Lint/fast、build、browser startup、D1 migration、Worker deploy 和生产 smoke 均通过。Worker `d52ec36b-e771-4184-8827-9199260ad935`。
-- `b16643b6860b3b7c9766be151eca82a2b26aede3` 的首次远端 API 运行失败，失败项是公开 turn-end 窗口缺因果身份；`a0f3b006` 的精确 SHA CI 验证通过。已部署结果仍不代表 §10.59 全面完成或通过 Owner 验收。
+- SHA `bd4459008bad62f720adb4226ebc1fd23a5cc4bc`：增加普通摸牌、华佗、孙尚香、黄盖及濒死桃救结果的共同 H4 文案/事件身份/唯一 surface API 断言。救援通过 timeline `event.id` 定位，再从 `fact.identity.interactionId` 读取因果身份。
+- 精确 SHA GitHub Actions [43888535445](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43888535445) 最终成功。首次 API shard 遇到 Worker harness `fetch failed`；同一 run 的失败作业重跑通过。API、Lint/fast、Build、Browser startup smoke、D1 migration、Worker deploy 和 production smoke 均为成功。
+- Worker Version ID：`d73f7e71-7ce8-4481-aae7-b185a3e02d17`。本地未运行测试、build 或设备测试，遵循 Owner 指令。
 
-## 当前实施进度（2026-11-16 14:41 UTC）
+## 当前已提交、等待远端验证的进展
 
-- 最近已部署切片：遗计按收牌人写入实际获得数量；闭月结果沿用原 `DRAWN` 事件并附共享结果事实；公开 turn-end 触发窗口持久化通用因果上下文，使公开 provider 可复用共享发布器。
-- 本次续接为现有 API 场景补上共同的 H4 文案/事件身份/唯一 surface 断言：普通摸牌、华佗弃牌与恢复、孙尚香弃牌和双恢复、黄盖自伤与实际摸牌，以及濒死桃救恢复。救援使用持久 timeline `event.id` 定位，再由共享 helper 读取已验证的 `fact.identity.interactionId`；不读取不存在的顶层 `interactionId`。
-- 未按 Owner 指令运行本地测试、构建或设备测试。`git diff --check` 已通过；新回归等待推送后的精确 SHA 远端 CI。提交前确认当前 `ux-v2` HEAD `a0f3b006…` 的 Actions `43885972081` 成功，上一失败 SHA `b16643b6…` 的缺陷已在该 HEAD 修复。
+- 修复 H4 队列在跨 resolution 合并时丢失已验证事实的问题；消息事实按 `publicSequence` 排队读取，展示游标不提前跳到未来事件。
+- 活跃队列事实暂时优先于更新的 discard 公告，避免被抢占；有效 H4 阅读队列不禁用合法游戏操作。新增队列顺序、跨 resolution 保留、游标回退、单一 owner 与非阻塞纯逻辑断言。
+- 以上修改已形成当前本地提交，准备推送至 `ux-v2`。`git diff --check` 通过；按要求没有运行本地测试或构建。该切片尚无精确 SHA 的远端 CI、部署或生产 smoke 结果。
 
 ## 唯一续接点
 
-继续 §10.59 已列出的其他服务器结算来源，再完成公开类别的穷尽投影/保留、统一 H4 候选与所有权仲裁、跨普通卡牌/不同武将/伤害/恢复/弃牌及隐私的系统回归。除非出现设计明确的安全阻塞或 Owner 要求暂停，不转做其他任务，也不要求阶段验收。
+推送当前 H4 队列切片并等待精确 SHA CI、D1/Worker 部署和生产 smoke；随后继续 §10.59 中尚未覆盖的服务器结算来源和系统级回归，不请求阶段验收、不转做其他任务、不宣布 Owner 接受。

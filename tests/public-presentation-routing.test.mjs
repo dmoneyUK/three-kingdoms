@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   PUBLIC_PRESENTATION_EVENT_COVERAGE,
+  coalescePresentationQueue,
+  presentationEventBlocksActions,
+  publicH4FactAtPresentationCursor,
   routePublicPresentation,
   selectPublicH4AnnouncementOwner,
   uniquePublicH4Facts,
@@ -102,6 +105,10 @@ test("all public fact categories resolve to one H4 owner and duplicate projectio
     fact: rootFact, discard: { eventId: "later-discard", order: rootFact.order + 1 },
   }), { eventId: "later-discard", owner: "PublicDiscardAnnouncementLayer" },
     "a genuinely later public discard supersedes the older fact");
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: rootFact, factIsActive: true, discard: { eventId: "later-discard", order: rootFact.order + 1 },
+  }), { eventId: rootFact.eventId, owner: "PublicInteractionAnnouncementLayer" },
+    "a later discard cannot preempt an earlier fact that already owns its queued read turn");
   assert.deepEqual(selectPublicH4AnnouncementOwner({ skillEvent: { eventId: "skill-event" } }), {
     eventId: "skill-event", owner: "PublicSkillEventAnnouncementLayer",
   });
@@ -112,6 +119,49 @@ test("all public fact categories resolve to one H4 owner and duplicate projectio
   assert.equal(merged[0].committedOutcome, withResult.committedOutcome, "the richer validated public result survives a duplicate checkpoint projection");
   assert.deepEqual(uniquePublicH4Facts([rootFact, { ...rootFact, category: "DAMAGE_APPLIED" }]), [],
     "contradictory facts for one durable event ID fail closed");
+});
+
+test("presentation queue keeps validated H4 facts in public order across resolution coalescing", () => {
+  const current = [
+    { id: "result-1", resolutionId: "resolution-1", importance: "informational" },
+    { id: "old-ordinary", resolutionId: "resolution-1", importance: "informational" },
+  ];
+  const incoming = [
+    { id: "result-2", resolutionId: "resolution-2", importance: "informational" },
+    { id: "new-ordinary", resolutionId: "resolution-2", importance: "informational" },
+  ];
+  assert.deepEqual(coalescePresentationQueue(current, incoming, new Set(["result-1", "result-2"])).map(({ id }) => id),
+    ["result-1", "result-2", "new-ordinary"],
+    "a newer resolution may coalesce ordinary presentation while preserving each admitted public H4 event exactly once");
+  assert.deepEqual(coalescePresentationQueue(current, incoming, new Set(["result-1", "result-2"])).map(({ id }) => id),
+    ["result-1", "result-2", "new-ordinary"], "reapplying the same poll is idempotent");
+  const queuedH4Ids = new Set(["result-1", "result-2"]);
+  assert.equal(presentationEventBlocksActions({ id: "result-1", type: "message" }, queuedH4Ids), false,
+    "a public result read turn does not disable legal game actions");
+  assert.equal(presentationEventBlocksActions({ id: "card-action", type: "card" }, queuedH4Ids), true,
+    "existing card journeys retain their action lock");
+  assert.equal(presentationEventBlocksActions({ id: "other-message", type: "message" }, queuedH4Ids), true,
+    "unvalidated informational messages do not gain the H4 exception");
+});
+
+test("H4 cursor selection never jumps ahead of the event currently being presented", () => {
+  const facts = [
+    { eventId: "fact-1", order: 11 },
+    { eventId: "fact-2", order: 14 },
+    { eventId: "fact-3", order: 19 },
+  ];
+  assert.deepEqual(publicH4FactAtPresentationCursor(facts, { id: "fact-2", publicSequence: 14 }), {
+    fact: facts[1], isExactCursorFact: true,
+  });
+  assert.deepEqual(publicH4FactAtPresentationCursor(facts, { id: "ordinary-15", publicSequence: 15 }), {
+    fact: facts[1], isExactCursorFact: false,
+  }, "an ordinary event retains the latest earlier public fact, never the later fact-3 result");
+  assert.deepEqual(publicH4FactAtPresentationCursor(facts, { id: "ordinary-10", publicSequence: 10 }), {
+    fact: null, isExactCursorFact: false,
+  }, "an event before the first outcome cannot show a future H4 result");
+  assert.deepEqual(publicH4FactAtPresentationCursor(facts, null), {
+    fact: facts[2], isExactCursorFact: false,
+  }, "a fresh or restored view presents the latest retained committed fact");
 });
 
 test("Attack, Duel and committed Negation response cards retain one public journey owner", () => {

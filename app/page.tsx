@@ -27,7 +27,7 @@ import { derivePrivateResponseGuidance } from "../game/private-response-guidance
 import { latestPublicMessages } from "../game/messages.js";
 import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice, PresentationSnapshotPublicCardEffect } from "../game/presentation-snapshot";
 import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationLustDuelAttackResponseProof, PresentationPublicCardEffectProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
-import type { PublicPhysicalZoneTransition, PublicPresentationEventFactDraft } from "../game/presentation-semantics";
+import type { PublicPhysicalZoneTransition, PublicPresentationEvent, PublicPresentationEventFactDraft } from "../game/presentation-semantics";
 import { attackDodgeResponseEventMatchesProof, publicCardPlayProvesEffectiveKind } from "../game/presentation-v2";
 import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
 import { attackDodgePublicActionEvents, attackDodgeSettlementSupersessionReason, attackHitSettlementSupersessionReason, parseRetiredAttackDodgeCompositionSnapshot, persistRetiredAttackDodgeComposition, retiredAttackDodgeCompositionServerSnapshot, retiredAttackDodgeCompositionStorageSnapshot, subscribeRetiredAttackDodgeComposition, type AttackDodgeSettlementHoldIdentity, type AttackHitSettlementHoldIdentity } from "../game/attack-dodge-settlement-lifecycle";
@@ -58,7 +58,7 @@ import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEv
 import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
 import { layoutPublicResultCards, type PublicResultObstacle } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
-import { selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
+import { coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -1702,12 +1702,6 @@ function appendUniqueEvents(current: GameEvent[], incoming: GameEvent[]) {
   return incoming.reduce((events, event) => events.some((existing) => existing.id === event.id) ? events : [...events, event], current);
 }
 function eventImportance(event: GameEvent) { return event.importance ?? "informational"; }
-function coalescePresentationQueue(current: GameEvent[], incoming: GameEvent[]) {
-  const combined = appendUniqueEvents(current, incoming);
-  const latestResolutionId = incoming.map((event) => event.resolutionId).filter(Boolean).at(-1);
-  if (!latestResolutionId) return combined;
-  return combined.filter((event) => event.resolutionId === latestResolutionId || eventImportance(event) === "essential" || event.finalResult === true);
-}
 
 const UI_TIMING = {
   roomPoll: 8000,
@@ -4395,6 +4389,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
   }
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
+  const [queuedPublicH4Facts, setQueuedPublicH4Facts] = useState<Map<string, PublicPresentationEvent>>(() => new Map());
+  const queuedPublicH4RoomCode = useRef(room.code);
   const effectNoticeScope = useRef(JSON.stringify([room.code, room.meId]));
   const pendingGroupSettlementEventIds = useRef(new Set<string>());
   const seenDiaoChanNoticeEventIds = useRef(new Set((room.presentationSnapshot?.diaoChanSkillNotices ?? []).map((notice) => notice.eventId)));
@@ -4874,13 +4870,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeEventDisplayDuration = activeJudgementZoneTransition ? UI_TIMING.judgementCard
     : activeEvent?.type === "card" || activeEvent?.type === "cards"
     ? isJudgementReveal(activeEvent) ? UI_TIMING.judgementCard : UI_TIMING.playedCard
+    : activeEvent?.type === "message" && queuedPublicH4Facts.has(activeEvent.id) ? UI_TIMING.effectNotice
     : 0;
+  const queuedPublicH4EventIds = new Set(queuedPublicH4Facts.keys());
+  const activeEventBlocksActions = presentationEventBlocksActions(activeEvent, queuedPublicH4EventIds);
+  const queuedEventsBlockActions = eventQueue.some((event) => presentationEventBlocksActions(event, queuedPublicH4EventIds));
   const hasUnseenPresentations = room.timeline.some((event) => (event.type !== "message" || isM3JudgementTransitionEvent(event)) && event.presentation !== false
     && !presentedEventIds.has(event.id) && event.id !== activeEquipmentArrivalEventId);
   const presentationBusyCauses = {
     optimisticPlay: Boolean(optimisticPlay),
-    activeEvent: Boolean(activeEvent && !activeEquipmentArrivalEventId),
-    eventQueue: eventQueue.length > 0,
+    activeEvent: Boolean(activeEventBlocksActions && !activeEquipmentArrivalEventId),
+    eventQueue: queuedEventsBlockActions,
     selfTargetWindowClosing,
     turnNotice: Boolean(turnNotice),
     privateDrawCards: privateDrawCards.length > 0,
@@ -5831,6 +5831,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
   }, [room.code, room.meId, room.myHand, room.serverNow, privateHandEvents]);
   useEffect(() => {
+    if (queuedPublicH4RoomCode.current !== room.code) {
+      queuedPublicH4RoomCode.current = room.code;
+      setQueuedPublicH4Facts(new Map());
+    }
     const noticeScopeKey = JSON.stringify([room.code, room.meId]);
     if (effectNoticeScope.current !== noticeScopeKey) {
       effectNoticeScope.current = noticeScopeKey;
@@ -5840,6 +5844,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       setProcessedTimelineKey(timelineKey);
       setEffectNotices([]);
     }
+    const projectedPublicH4Facts = uniquePublicH4Facts([
+      ...(room.presentationSnapshot?.publicEventFacts ?? []),
+      ...(room.presentationSnapshot?.retainedPublicEventFacts ?? []),
+    ].filter((fact) => fact.rootEventId && isPublicInteractionOutcomeFact(fact)));
+    const projectedPublicH4FactsById = new Map(projectedPublicH4Facts.map((fact) => [fact.eventId, fact]));
     const fresh = (room.timeline ?? []).filter((event) => !seenEvents.current.has(event.id));
     fresh.forEach((event) => seenEvents.current.add(event.id));
     fresh.forEach((event) => {
@@ -6018,8 +6027,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const immediatelyPresented = new Set<string>();
     const visible = fresh.filter((event) => {
       if (event.presentation === false) return false;
-      // Informational text is not a blocking visual presentation.
-      if (event.type === "message") return isM3JudgementTransitionEvent(event);
+      // Ordinary messages remain non-blocking. A projected public H4 result
+      // enters the ordered presentation queue so a poll burst cannot replace
+      // its copy before every viewer gets a read turn.
+      if (event.type === "message") return isM3JudgementTransitionEvent(event) || projectedPublicH4FactsById.has(event.id);
       if (event.type === "card" && settlesInJudgement(event)
         && validatedJudgementTransitionSourceEventIds.has(event.id)) {
         // Its proven zone-transition owner presents the same physical card;
@@ -6036,24 +6047,38 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       }
       return true;
     });
+    const newlyQueuedFacts = visible.flatMap((event) => {
+      const fact = projectedPublicH4FactsById.get(event.id);
+      return fact ? [[event.id, fact] as const] : [];
+    });
+    if (newlyQueuedFacts.length) setQueuedPublicH4Facts((current) => {
+      const next = new Map(current);
+      newlyQueuedFacts.forEach(([eventId, fact]) => next.set(eventId, fact));
+      return next;
+    });
     if (immediatelyPresented.size) setPresentedEventIds((ids) => new Set([...ids, ...immediatelyPresented]));
     if (visible.length) {
       setSelfTargetWindowClosing(false);
       const cardsArrived = visible.some((event) => eventCards(event).length > 0);
       if (cardsArrived) selfTargetWindowRevision.current += 1;
       const latestResolutionId = visible.map((event) => event.resolutionId).filter(Boolean).at(-1);
-      if (latestResolutionId && activeEvent?.resolutionId && activeEvent.resolutionId !== latestResolutionId && eventImportance(activeEvent) === "informational") setActiveEvent(null);
+      if (latestResolutionId && activeEvent?.resolutionId && activeEvent.resolutionId !== latestResolutionId
+        && eventImportance(activeEvent) === "informational" && !queuedPublicH4Facts.has(activeEvent.id)) setActiveEvent(null);
       if (!optimisticPlay && !activeEvent && eventQueue.length === 0) {
         const first = visible[0];
         if (first) {
           setActiveEvent(first);
           if (retainsAtPlayer(first)) setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [first]));
         }
-        setEventQueue(coalescePresentationQueue([], visible.slice(1)));
-      } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
+        setEventQueue(coalescePresentationQueue([], visible.slice(1), new Set([
+          ...queuedPublicH4Facts.keys(), ...projectedPublicH4FactsById.keys(),
+        ])));
+      } else setEventQueue((queue) => coalescePresentationQueue(queue, visible, new Set([
+        ...queuedPublicH4Facts.keys(), ...projectedPublicH4FactsById.keys(),
+      ])));
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, lustFramePresentationBlocked, optimisticPlay, activeEvent, activeGroupSettlement?.eventId, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements, validatedJudgementTransitionSourceEventIds]);
+  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, room.presentationSnapshot?.publicEventFacts, room.presentationSnapshot?.retainedPublicEventFacts, lustFramePresentationBlocked, optimisticPlay, activeEvent, activeGroupSettlement?.eventId, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements, validatedJudgementTransitionSourceEventIds]);
   const effectNoticeEventId = effectNotice?.eventId ?? "";
   const effectNoticeProofEventId = effectNotice?.beautyProofEventId ?? effectNoticeEventId;
   const effectNoticeRoomCode = effectNotice?.roomCode ?? "";
@@ -6087,7 +6112,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const timer = setTimeout(() => setHarvestSubmitting((current) => current === harvestSubmitting ? null : current), 0);
     return () => clearTimeout(timer);
   }, [harvestSubmitting, room.actionRevision, room.code, room.meId, room.pendingHarvest]);
-  useEffect(() => { const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || !room.phase?.startsWith("draw") || !canUseAction(room.currentAction, "draw") || activeEvent || eventQueue.length || hasUnseenPresentations || privateDrawCards.length || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey && canUseAction(room.currentAction, "draw")) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, UI_TIMING.turnDrawStart); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, room.currentAction, current?.name, lastTimelineId, hasUnseenPresentations, activeEvent, eventQueue.length, privateDrawCards.length]);
+  useEffect(() => { const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || !room.phase?.startsWith("draw") || !canUseAction(room.currentAction, "draw") || activeEventBlocksActions || queuedEventsBlockActions || hasUnseenPresentations || privateDrawCards.length || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey && canUseAction(room.currentAction, "draw")) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, UI_TIMING.turnDrawStart); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, room.currentAction, current?.name, lastTimelineId, hasUnseenPresentations, activeEventBlocksActions, queuedEventsBlockActions, privateDrawCards.length]);
   useEffect(() => { if (optimisticPlay || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { const next = eventQueue[0]; setActiveEvent(next); if (retainsAtPlayer(next)) setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [next])); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue]);
   useEffect(() => {
     if (!activeEventTimerEventId) return;
@@ -6123,6 +6148,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const timer = setTimeout(() => {
       fired = true;
       traceTimer("fired");
+      setQueuedPublicH4Facts((current) => {
+        if (!current.has(activeEventTimerEventId)) return current;
+        const next = new Map(current);
+        next.delete(activeEventTimerEventId);
+        return next;
+      });
       setPresentedEventIds((ids) => ids.has(activeEventTimerEventId) ? ids : new Set([...ids, activeEventTimerEventId]));
       setActiveEvent((currentEvent) => currentEvent?.id === activeEventTimerEventId ? null : currentEvent);
     }, activeEventDisplayDuration);
@@ -6131,6 +6162,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       if (!fired) traceTimer("cancelled");
     };
   }, [activeEventTimerEventId, activeEventTimerKind, activeEventTimerIdentity, activeEventDisplayDuration, activeEquipmentArrivalKey, activeJudgementTransitionKey, activePublicDiscardTransitionKey, activePublicHandRevealTransitionKey]);
+  useEffect(() => {
+    const pendingIds = new Set([activeEvent, ...eventQueue].flatMap((event) => event ? [event.id] : []));
+    setQueuedPublicH4Facts((current) => {
+      const next = new Map(current);
+      for (const eventId of current.keys()) {
+        if (!pendingIds.has(eventId) && presentedEventIds.has(eventId)) next.delete(eventId);
+      }
+      return next.size === current.size ? current : next;
+    });
+  }, [activeEvent, eventQueue, presentedEventIds]);
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || selfTargetWindowClosing || !selfTargetWindowEvents.length) return; const timer = setTimeout(() => setSelfTargetWindowClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, selfTargetWindowClosing, selfTargetWindowEvents.length]);
   useEffect(() => { if (!selfTargetWindowClosing) return; const closingRevision = selfTargetWindowRevision.current; const timer = setTimeout(() => { if (selfTargetWindowRevision.current !== closingRevision) { setSelfTargetWindowClosing(false); return; } setSelfTargetWindowEvents([]); setSelfTargetWindowStartId(""); setSelfTargetWindowClosing(false); }, UI_TIMING.selfTargetWindowClose); return () => clearTimeout(timer); }, [selfTargetWindowClosing]);
   useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawPresentation({ playerId: room.meId, cards: [], transferIds: [] }), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, room.meId, activeEvent, eventQueue.length]);
@@ -9343,13 +9384,19 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const narratableInteractionFacts = uniquePublicH4Facts([
     ...(room.presentationSnapshot?.publicEventFacts ?? []),
     ...(room.presentationSnapshot?.retainedPublicEventFacts ?? []),
+    ...queuedPublicH4Facts.values(),
   ].filter((fact) => fact.rootEventId && (
         isPublicInteractionOutcomeFact(fact)
       )));
+  const publicH4PresentationCursor = activeEvent ?? eventQueue[0] ?? null;
+  const { fact: currentFactAtPresentationCursor, isExactCursorFact: cursorPublicH4Fact } = publicH4FactAtPresentationCursor(
+    narratableInteractionFacts,
+    publicH4PresentationCursor ? { id: publicH4PresentationCursor.id, publicSequence: publicH4PresentationCursor.publicSequence } : null,
+  );
   const currentInteractionFactCandidate = room.presentationSnapshot?.interaction?.stage !== "NEGATION"
-    ? (activeEvent ? narratableInteractionFacts.find((fact) => fact.eventId === activeEvent.id) : null)
-      ?? narratableInteractionFacts.at(-1)
-      ?? room.presentationSnapshot?.retainedPublicEvent
+    ? publicH4PresentationCursor
+      ? currentFactAtPresentationCursor
+      : currentFactAtPresentationCursor ?? room.presentationSnapshot?.retainedPublicEvent
     : null;
   const currentInteractionFact = currentInteractionFactCandidate
     ? selectPublicAnnouncementCandidate([
@@ -9358,7 +9405,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         rootEventId: currentInteractionFactCandidate.rootEventId ?? currentInteractionFactCandidate.eventId,
         checkpointEventId: currentInteractionFactCandidate.eventId,
         priority: 1,
-        supersedeOnNewerPublicPlay: true,
+        supersedeOnNewerPublicPlay: !cursorPublicH4Fact,
       },
     ], publicAnnouncementTimelineEventIds, laterPublicCardPlayEventIds)
     : null;
@@ -9865,6 +9912,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && !publicInteractionNarration;
   const publicH4Owner = selectPublicH4AnnouncementOwner({
     fact: publicInteractionNarration ? currentInteractionFact : null,
+    factIsActive: Boolean(publicH4PresentationCursor && cursorPublicH4Fact),
     cardDisplay: publicInteractionNarration && publicCardDisplayAction ? {
       enabled: publicCardDisplayEnabled,
       rootEventId: publicCardDisplayAction.rootEventId,
