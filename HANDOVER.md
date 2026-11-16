@@ -1,25 +1,18 @@
 # HANDOVER — 当前唯一任务：§10.59 UNIVERSAL-H4-COMMITTED-FACT-COVERAGE-01
 
-**状态：NOT CLOSED。** 有界实现切片属于同一个 §10.59，不要求逐片验收。完成全部服务端结果来源覆盖、公共事实保留、唯一 H4 owner 和系统级回归后，再交 Owner 做一次最终 iPhone 验收。设计：`docs/UX2-refine.md` §10.59，revision `2026-11-16 09:42 UTC`。
+**状态：NOT CLOSED / 部分实现已部署，待继续同一任务。** 各有界切片不单独交 Owner 验收；全部服务端来源覆盖、公共事实保留、唯一 H4 owner 与系统级回归完成后，再提交一次最终 iPhone 验收。设计依据：`docs/UX2-refine.md` §10.59，revision `2026-11-16 09:42 UTC`。
 
 ## 最新交付
 
-- 普通桃恢复已并入真实 `CARD_PLAYED` committed fact：H4 以 `Peach` 为来源并报告服务端计算的实际 `HP_RECOVERED` 数量；恢复触发沿用同一事件，避免另建泛化 Recovery H4。新增 `tests/api/peach-public-outcome.test.mjs` 覆盖实际恢复量、唯一 H4 owner、旁观者相同公开投影及 outcome 不含物理牌 ID。
-- 实现 SHA `6d0f66069da470fa7dd6aefcd3e657e5fae03d49` 的首次 Actions `43917594774` 未通过：API shard manifest 未登记新增测试，失败发生在 API 用例启动前，不是恢复字段错误或业务断言失败。`b3a9f4fc71806173de8b484b30158060100cc56d` 补齐现有 shard 配置后，[精确 SHA Actions 43918235743](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43918235743) 全部通过：API、lint/fast、browser startup/room smoke、D1 migration、Worker deploy、production smoke。
-- D1 无待应用 migration；Worker Version ID `c4dd1a4d-d809-498e-a821-629c99a0db57`。CI 生产首页和 `/api/health` smoke 通过；额外线上 health 返回 `{"ok":true,"worker":"available"}`。
-- 未运行本地测试、构建或设备/browser 测试；`git diff --check` 通过。所有 API 与浏览器检查由精确 SHA Actions 执行。
-- 实现 SHA `1bfd37de34fc926bb8fbec06f14720db6d55f7d5`；[精确 SHA Actions 43914879229](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43914879229) 全部通过：API、lint/build/fast、browser startup/room smoke、D1 migration、Worker deploy、production smoke。
-- D1 无待应用 migration；Worker Version ID `f84b230d-1f60-48b6-92a6-84657ad303fd`。额外线上 `/api/health` 返回 `{"ok":true,"worker":"available"}`。
-- 按 Owner 指令未运行本地测试、构建或设备/browser 测试；`git diff --check` 通过。完整 API 回归仅通过远端 Actions 执行。
-- 先前恢复结果用例的失败原因已核正：测试应读取 `recoveryFact.identity.interactionId`，误用 `recoveryFact.interactionId` 是测试字段错误，不能据此判定 H4 实现故障。
+- 本切片把濒死救援的真实桃恢复量（含华佗 First Aid 转桃）并入实际救援 `CARD_PLAYED` 事件，沿用濒死 causal/root；只有 committed outcome 证明有效时，该牌才接管 Recovery H4，避免重复泛化恢复提示。回归断言覆盖桃、First Aid、准确恢复量、唯一 owner、所有玩家公共事实一致和不公开物理牌 ID。
+- 实现 SHA：`c7f31768f568526e3f6b3ed8ce0d3dc57e064d3f`；[精确 SHA Actions 43920739898](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43920739898) 全部通过：API、浏览器启动/建房 smoke、lint、build、fast tests、D1 migration、Worker 部署、生产 smoke。Worker Version ID：`18d41f96-217a-4316-8450-fb6d40f56029`；额外 `/api/health` 返回 `{"ok":true,"worker":"available"}`。
+- `git diff --check` 通过；按 Owner 指令未运行本地测试、构建或设备测试。本切片尚未用户验收，且不代表 §10.59 完成。
+- 恢复测试的旧字段误用已核正：应读取 `recoveryFact.identity.interactionId`；误用顶层 `recoveryFact.interactionId` 是断言错误，不能据此判为实现缺陷。
 
-## 当前任务进度
+## 同一 §10.59 已有覆盖
 
-- 已部署共享 retained-fact 队列与 Discard Phase `HAND → DISCARD` 的精确数量、共享 formatter 和统一 H4 owner 覆盖。
-- 已部署借刀杀人两种实际武器转移分支的 `EQUIPMENT → HAND` committed outcome。
-- 本次补齐 Steal/Burning Bridges 的六种来源组合：Steal 从 HAND/EQUIPMENT/JUDGEMENT 转到 HAND；Burning Bridges 从三种来源区转到 DISCARD。服务端结果绑定现有 settlement proof 和公共区域转移证明；不在通用 outcome 暴露物理牌 ID，Steal 手牌身份仍仅对授权 viewer 私有。
-- `tests/api/stratagems.test.mjs` 增加六路径断言：实际区域/数量、统一 H4 owner/文案、各 viewer 公共投影一致和 outcome 不含物理牌 ID。以上由精确 SHA API CI 通过；尚未做 Owner iPhone 验收。
+共享 retained-fact/Discard Phase 结果、借刀杀人的装备转移、顺手牵羊/过河拆桥六种来源区组合、普通桃恢复与濒死桃/急救恢复已接入并有远端 CI 证据；普通 Draw Phase 的实际摸牌数已有 committed outcome 和 API 回归。以上都仍只是全局任务的局部覆盖，保留为后续系统回归。
 
 ## 唯一续接点
 
-继续同一 §10.59，按设计清单检查并接入 Dying/rescue Peach 的来源与实际恢复结果，再完成其余真实 HP/卡牌变化服务端来源、穷尽式公共事实筛选/留存、单一 H4 所有权与隐私、recency、跨来源系统回归。不得拆成独立任务或要求逐片验收；继续遵守不运行本地测试/构建/设备测试，仅做必要的精确 SHA CI、部署与 production smoke。不得标记 USER-ACCEPTED。
+继续 §10.59 服务端来源顺序：补齐 `resolveDrawPhaseReplacement` 中实际手牌转移的公共结果。该路径目前仅留下非展示 history 和收件者私有到牌记录；改为使用同一公共 outcome publisher/formatter，按已提交的真实来源玩家、收件者和数量生成单一 H4，绝不公开转移牌的身份。随后继续设计中其余 HP/card 变更来源、穷尽式筛选/留存、唯一显示 owner 与系统级回归。仅运行精确 SHA 远端 CI/部署/smoke；不得启动本地测试、build 或设备/browser 测试，也不得标记 USER-ACCEPTED。
