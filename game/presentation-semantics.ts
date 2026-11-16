@@ -534,7 +534,8 @@ function isCommittedPublicDiscardFact(event: Record<string, unknown>, fact: Reco
     const physicalCardId = transition.physicalCardId;
     const fromZone = from?.zone;
     if (transition.semantics !== "PROVEN" || transition.visibility !== "PUBLIC"
-      || transition.eventId !== event.id || transition.sourceEventId !== event.id || transition.rootEventId !== event.id
+      || transition.eventId !== event.id
+      || event.type === "cards" && (transition.sourceEventId !== event.id || transition.rootEventId !== event.id)
       || !nonEmptyString(physicalCardId) || !cardIds.has(physicalCardId)
       || matchedCardIds.has(physicalCardId) || !from || !(fromZone === "HAND" || fromZone === "EQUIPMENT" || fromZone === "JUDGEMENT")
       || from.ownerId !== eventActorId || !affectedPlayerIds.includes(eventActorId)
