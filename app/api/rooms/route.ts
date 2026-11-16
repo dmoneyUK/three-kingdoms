@@ -5896,7 +5896,8 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
       source: { kind: "damage", label },
       changes: [{ kind: "DAMAGE_APPLIED", playerId: target.id, amount: actualHpLost }],
     } } : {}),
-  }, parseCausalEnvelope(room.causal_envelope_json)) : undefined;
+  }, parseCausalEnvelope(room.causal_envelope_json),
+  publicIdentityFromCommittedRoot(log, rootEventId, inheritedCausal)) : undefined;
   const damageLogEntry = addLogWithId(log, `${description}${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`, undefined,
     damageFact ? { ...(actualHpLost > 0 && source ? { actorId: source.id } : {}), publicFact: damageFact } : undefined, damageEventId);
   const unfinalizedDamageLog = damageLogEntry.log;
