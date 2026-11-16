@@ -3585,10 +3585,16 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
     const hasCausalContinuation = Boolean(resume.pending.resumePending
       || resume.pending.resumeTrigger
       || resume.pending.resumeEffect);
-    const nextEnvelope = hasCausalContinuation ? room.causal_envelope_json : null;
+    // A shared-rescue Hand-loss check may have already committed the recovery
+    // fact and advanced its checkpoint. Re-read the CAS inputs after that
+    // write so the terminal Dying transition does not strand the room in
+    // `resolving` by comparing against the pre-commit envelope.
+    const transitionRoom = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+    if (!transitionRoom) return;
+    const nextEnvelope = hasCausalContinuation ? transitionRoom.causal_envelope_json : null;
     const resumed = await db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = ? AND pending_json IS ? AND causal_envelope_json IS ?")
       .bind(next.phase, next.pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), nextEnvelope,
-        roomId, room.phase, room.pending_json, room.causal_envelope_json).run();
+        roomId, transitionRoom.phase, transitionRoom.pending_json, transitionRoom.causal_envelope_json).run();
     if ((resumed.meta.changes ?? 0) <= 0) return;
     await continueDyingResolution(roomId, resume.pending);
     return;
