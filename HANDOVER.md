@@ -12,8 +12,8 @@
 
 - 修复 H4 队列在跨 resolution 合并时丢失已验证事实的问题；消息事实按 `publicSequence` 排队读取，展示游标不提前跳到未来事件。
 - 活跃队列事实暂时优先于更新的 discard 公告，避免被抢占；有效 H4 阅读队列不禁用合法游戏操作。新增队列顺序、跨 resolution 保留、游标回退、单一 owner 与非阻塞纯逻辑断言。
-- 以上修改已形成当前本地提交，准备推送至 `ux-v2`。`git diff --check` 通过；按要求没有运行本地测试或构建。该切片尚无精确 SHA 的远端 CI、部署或生产 smoke 结果。
+- 队列切片已推送 SHA `835a54f6558dfb0daa94b42f3d0f1b2598b3d38e`。精确 Actions [43893415420](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43893415420)：lint/build、API 和 browser smoke 成功；fast 为 418/419，唯一失败是 `tests/room-safety-render.test.mjs` 仍匹配旧的 `activeEvent` 源码表达式。新逻辑把经过验证的 H4 message 放行提取到共享 helper，且保留 `!activeEquipmentArrivalEventId` 豁免；当前修正该源码断言以同时锁定两项语义。该失败使 deploy 被跳过。没有运行本地测试/build/设备测试。
 
 ## 唯一续接点
 
-推送当前 H4 队列切片并等待精确 SHA CI、D1/Worker 部署和生产 smoke；随后继续 §10.59 中尚未覆盖的服务器结算来源和系统级回归，不请求阶段验收、不转做其他任务、不宣布 Owner 接受。
+提交并推送上述静态回归断言修正，等待精确 SHA CI、D1/Worker 部署和生产 smoke；通过后继续 §10.59 中尚未覆盖的服务器结算来源和系统级回归，不请求阶段验收、不转做其他任务、不宣布 Owner 接受。
