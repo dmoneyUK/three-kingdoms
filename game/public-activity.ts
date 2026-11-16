@@ -381,7 +381,23 @@ export function derivePublicInteractionNarration(input: {
   const interaction = snapshot?.interaction;
   if (!snapshot || !input.rootEventId) return null;
   let latest: PresentationSnapshot["publicEventFacts"][number] | undefined;
-  if (identity && interaction?.semantics === "PROVEN"
+  const publicFactsByEventId = new Map<string, PresentationSnapshot["publicEventFacts"][number]>();
+  for (const fact of [...(snapshot.retainedPublicEventFacts ?? []), ...snapshot.publicEventFacts]) {
+    if (fact.rootEventId === input.rootEventId
+      && fact.identity.interactionId === input.interactionId
+      && fact.identity.rootFrameId === input.rootFrameId) publicFactsByEventId.set(fact.eventId, fact);
+  }
+  const verifiedFacts = [...publicFactsByEventId.values()].sort((left, right) => left.order - right.order);
+  const verifiedRootOrder = verifiedFacts.find((fact) => fact.eventId === input.rootEventId)?.order ?? -1;
+  const isNarratableForRoot = (fact: PresentationSnapshot["publicEventFacts"][number]) => fact.eventId === input.rootEventId
+    ? fact.category === "CARD_PLAYED" || fact.category === "CARD_EQUIPPED" || isPublicInteractionOutcomeFact(fact)
+    : fact.order > verifiedRootOrder && isPublicInteractionOutcomeFact(fact);
+  // The caller has already selected the server-owned H4 event. Prefer that
+  // exact public event even when the room snapshot has advanced to a later
+  // decision checkpoint or the event is carried in the retained queue.
+  const exactCandidate = input.eventId ? verifiedFacts.find((fact) => fact.eventId === input.eventId) : undefined;
+  if (exactCandidate && isNarratableForRoot(exactCandidate)) latest = exactCandidate;
+  if (!latest && identity && interaction?.semantics === "PROVEN"
     && interaction.interactionId === identity.interactionId
     && interaction.checkpointId === identity.checkpointId
     && interaction.presentationRevision === identity.presentationRevision
@@ -399,7 +415,7 @@ export function derivePublicInteractionNarration(input: {
     latest = input.eventId
       ? narratable.find((fact) => fact.eventId === input.eventId)
       : narratable.at(-1);
-  } else if (!identity && !interaction && snapshot.stable.kind === "REST") {
+  } else if (!latest && !identity && !interaction && snapshot.stable.kind === "REST") {
     const narratable = snapshot.retainedPublicEventFacts?.filter((fact) => fact.rootEventId === input.rootEventId
       && fact.identity.interactionId === input.interactionId && fact.identity.rootFrameId === input.rootFrameId
       && (fact.category === "CARD_PLAYED" || fact.category === "CARD_EQUIPPED" || isPublicInteractionOutcomeFact(fact)))
@@ -413,18 +429,7 @@ export function derivePublicInteractionNarration(input: {
   // interaction is not the result's owner; use only the exact, validated
   // public fact identity supplied by the caller instead of dropping the copy.
   if (!latest) {
-    const factsByEventId = new Map<string, PresentationSnapshot["publicEventFacts"][number]>();
-    for (const fact of [...(snapshot.retainedPublicEventFacts ?? []), ...snapshot.publicEventFacts]) {
-      if (fact.rootEventId !== input.rootEventId
-        || fact.identity.interactionId !== input.interactionId
-        || fact.identity.rootFrameId !== input.rootFrameId) continue;
-      factsByEventId.set(fact.eventId, fact);
-    }
-    const facts = [...factsByEventId.values()].sort((left, right) => left.order - right.order);
-    const rootOrder = facts.find((fact) => fact.eventId === input.rootEventId)?.order ?? -1;
-    const narratable = facts.filter((fact) => fact.eventId === input.rootEventId
-      ? fact.category === "CARD_PLAYED" || fact.category === "CARD_EQUIPPED" || isPublicInteractionOutcomeFact(fact)
-      : fact.order > rootOrder && isPublicInteractionOutcomeFact(fact));
+    const narratable = verifiedFacts.filter(isNarratableForRoot);
     latest = input.eventId
       ? narratable.find((fact) => fact.eventId === input.eventId)
       : narratable.at(-1);
