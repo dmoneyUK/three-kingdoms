@@ -1,5 +1,6 @@
 import test from "node:test";
 import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
   drainEmptyPrivateDecisions, requestAndSettle, assert, card, createHumanGame, query, quote, request, roomCardCount, setDeck, setHand, setTurn, sql, state,
 } from "./test-support.mjs";
@@ -51,6 +52,7 @@ test("Self Sacrifice loses 1 HP before drawing when Huang Gai survives", async (
   assert.equal(fact.rootEventId, fact.eventId);
   const outcome = publicSkillOutcomeFact(result.data.room, fact.eventId);
   assert.ok(outcome, "the committed skill result has a public outcome fact");
+  assertPublicOutcomeHasH4Owner(result.data.room, outcome.eventId);
   assert.deepEqual(outcome?.committedOutcome?.changes, [
     { kind: "HP_COST_LOST", playerId: setup.source.id, amount: 1 },
     { kind: "CARD_DRAWN", playerId: setup.source.id, amount: 2, fromZone: "DECK", toZone: "HAND" },
@@ -72,6 +74,7 @@ test("Self Sacrifice loses 1 HP before drawing when Huang Gai survives", async (
     const viewerFact = publicSkillFact(viewer);
     const viewerOutcome = publicSkillOutcomeFact(viewer, viewerFact.eventId);
     assert.ok(viewerOutcome, "every viewer receives the committed result fact");
+    assertPublicOutcomeHasH4Owner(viewer, viewerOutcome.eventId);
     const viewerNarration = derivePublicInteractionNarration({
       snapshot: viewer.presentationSnapshot,
       players: viewer.players,

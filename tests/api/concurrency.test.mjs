@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
 import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
   restoreSequentialDyingFixture, advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -163,6 +164,7 @@ test("lethal damage trigger exhaustion enters shared Dying and Peach rescue exac
     && event.publicFact.committedOutcome?.changes?.some((change) => change.kind === "HP_RECOVERED" && change.playerId === alicePlayer.id));
   assert.equal(rescueRecoveryFacts.length, 1, "the committed recovery H4 fact survives retirement of the settled Dying envelope");
   assert.equal(rescueRecoveryFacts[0].publicFact.committedOutcome.changes[0].amount, 1, "the public result carries the actual recovered HP");
+  assertPublicOutcomeHasH4Owner(rescued.data.room, rescueRecoveryFacts[0].id);
   assert.equal(rescued.data.room.currentAction.kind, "turn");
   assert.equal(rescued.data.room.log.filter((entry) => /Alice takes 1 damage/.test(entry)).length, 1, "rescue does not replay damage");
   assert.equal(rescued.data.room.log.filter((entry) => /enters Dying/.test(entry)).length, 1, "Dying begins once");

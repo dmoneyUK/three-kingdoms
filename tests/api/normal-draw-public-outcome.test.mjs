@@ -1,5 +1,6 @@
 import test from "node:test";
 import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import { assert, card, createHumanGame, request, setDeck, setHand, setTurn, state } from "./test-support.mjs";
 
 function drawOutcome(view, playerId) {
@@ -25,6 +26,7 @@ test("normal Draw Phase publishes only the actual public draw count to every vie
 
   const fact = drawOutcome(result.data.room, player.id);
   assert.ok(fact, "the committed ordinary Draw Phase has one typed public result");
+  assertPublicOutcomeHasH4Owner(result.data.room, fact.eventId);
   assert.deepEqual(fact.committedOutcome.changes, [
     { kind: "CARD_DRAWN", playerId: player.id, amount: 2, fromZone: "DECK", toZone: "HAND" },
   ]);
@@ -46,6 +48,7 @@ test("normal Draw Phase publishes only the actual public draw count to every vie
   for (const member of game.members) {
     const viewer = (await state(game.code, member.token)).data;
     assert.deepEqual(drawOutcome(viewer, player.id), fact, "all viewers receive the identical public draw fact");
+    assertPublicOutcomeHasH4Owner(viewer, fact.eventId);
     const viewerNarration = derivePublicInteractionNarration({
       snapshot: viewer.presentationSnapshot,
       players: viewer.players,

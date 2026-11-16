@@ -1,5 +1,6 @@
 import test from "node:test";
 import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import { assert, card, createHumanGame, discardIds, query, quote, request, requestAndSettle, roomCardCount, setHand, setTurn, state, sql } from "./test-support.mjs";
 
 function committedSkillOutcome(view, label) {
@@ -49,6 +50,7 @@ test("Prodigal Healer discards exactly one Hand card, heals self or another inju
   assert.equal(healed.players.find((player) => player.id === target.id).hp, 3);
   const outcome = committedSkillOutcome(healed, "Prodigal Healer");
   assert.ok(outcome, "the shared public skill result records its committed discard and recovery");
+  assertPublicOutcomeHasH4Owner(healed, outcome.eventId);
   assert.deepEqual(outcome.committedOutcome.changes, [
     { kind: "CARD_DISCARDED", playerId: hua.id, amount: 1, fromZone: "HAND", toZone: "DISCARD" },
     { kind: "HP_RECOVERED", playerId: target.id, amount: 1 },
@@ -58,6 +60,7 @@ test("Prodigal Healer discards exactly one Hand card, heals self or another inju
   const observer = (await state(game.code, game.members[1].token)).data;
   assert.deepEqual(committedSkillOutcome(observer, "Prodigal Healer"), outcome,
     "all viewers share the same public counts and committed event identity");
+  assertPublicOutcomeHasH4Owner(observer, outcome.eventId);
   assert.equal(JSON.stringify(outcome).includes(cost.id), false, "the aggregate outcome does not add a private card identity");
   assert.equal(healed.myHand.length, 0);
   assert.equal(discardIds(game.code).includes(cost.id), true);

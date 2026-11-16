@@ -1,5 +1,6 @@
 import test from "node:test";
 import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import { assert, card, createHumanGame, discardIds, quote, query, request, requestAndSettle, setDeck, setEquipment, setHand, setTurn, sql, state, takeDamageIfPending } from "./test-support.mjs";
 
 function committedSkillOutcome(view, label) {
@@ -47,6 +48,7 @@ test("Betrothment uses exactly two Hand cards, recovers Sun first then the injur
   assert.equal(resolved.players.find((player) => player.id === target.id).hp, 3);
   const publicOutcome = committedSkillOutcome(resolved, "Betrothment");
   assert.ok(publicOutcome, "Betrothment routes its committed cost and both recoveries through the shared outcome contract");
+  assertPublicOutcomeHasH4Owner(resolved, publicOutcome.eventId);
   assert.deepEqual(publicOutcome.committedOutcome.changes, [
     { kind: "CARD_DISCARDED", playerId: sun.id, amount: 2, fromZone: "HAND", toZone: "DISCARD" },
     { kind: "HP_RECOVERED", playerId: sun.id, amount: 1 },

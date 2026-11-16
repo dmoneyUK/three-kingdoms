@@ -4,16 +4,16 @@
 
 ## 最近已部署基线
 
-- `26f46123d45a717a778794b5a1372827a4086e40`（`ux-v2`）：精确 SHA Actions [43879485226](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43879485226) 全绿；API、Lint/fast、build、browser startup、D1 migration、Worker deploy 和生产 smoke 均通过。Worker `2ffba680-7499-46ce-86ec-040950241fd8`。
-- 已部署范围含普通抽牌、恢复结果及 Dying 续接公开结果；仍不能代表 §10.59 全面完成或通过 Owner 验收。
+- `a0f3b0061adbb259a8e806db56e8e69e923070e5`（`ux-v2`）：为公开 turn-end 技能窗口建立通用因果身份，修复郭嘉遗计及貂蝉闭月 API 断言实际揭示的缺口；同一切片也保留 Draw Two 实际抽牌数和遗计私牌隐私断言。
+- 精确 SHA Actions [43885972081](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43885972081) 全绿：API、Lint/fast、build、browser startup、D1 migration、Worker deploy 和生产 smoke 均通过。Worker `d52ec36b-e771-4184-8827-9199260ad935`。
+- `b16643b6860b3b7c9766be151eca82a2b26aede3` 的首次远端 API 运行失败，失败项是公开 turn-end 窗口缺因果身份；`a0f3b006` 的精确 SHA CI 验证通过。已部署结果仍不代表 §10.59 全面完成或通过 Owner 验收。
 
-## 当前实施进度（2026-11-16 14:26 UTC）
+## 当前实施进度（2026-11-16 14:41 UTC）
 
-- `b16643b6860b3b7c9766be151eca82a2b26aede3` 已推送，包含郭嘉遗计私密分配的实际收牌数事实（只公开人数和数量，不含私牌身份）、闭月实际抽牌数事实及共享 API 断言。
-- 精确 SHA Actions [43884626527](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43884626527)：Lint/fast、build、浏览器启动 smoke 通过；API 在闭月回归断言失败，部署跳过。实际失败为 `DRAWN` 专用事件未携带 `committedOutcome`，并非抽牌数量错误。
-- 按失败证据，发现公开 turn-end 触发窗口未建立/保存因果身份。当前本地修正是在共享 turn-end 窗口创建通用因果根并随 pending 一起持久化，使所有公开 turn-end provider 都能接入既有结果发布器；不添加貂蝉专属发布分支。尚未提交或由远端 CI 验证。
-- 按 Owner 指令，没有运行本地测试、构建或设备测试；待将此修正推送后，由精确 SHA 远端 CI 验证。
+- 最近已部署切片：遗计按收牌人写入实际获得数量；闭月结果沿用原 `DRAWN` 事件并附共享结果事实；公开 turn-end 触发窗口持久化通用因果上下文，使公开 provider 可复用共享发布器。
+- 本次续接为现有 API 场景补上共同的 H4 文案/事件身份/唯一 surface 断言：普通摸牌、华佗弃牌与恢复、孙尚香弃牌和双恢复、黄盖自伤与实际摸牌，以及濒死桃救恢复。救援使用持久 timeline `event.id` 定位，再由共享 helper 读取已验证的 `fact.identity.interactionId`；不读取不存在的顶层 `interactionId`。
+- 未按 Owner 指令运行本地测试、构建或设备测试。`git diff --check` 已通过；新回归等待推送后的精确 SHA 远端 CI。提交前确认当前 `ux-v2` HEAD `a0f3b006…` 的 Actions `43885972081` 成功，上一失败 SHA `b16643b6…` 的缺陷已在该 HEAD 修复。
 
 ## 唯一续接点
 
-先完成 turn-end 通用因果上下文修正并通过精确 SHA CI、部署、生产 smoke；之后继续 §10.59 已列出的其他结算来源，再完成公开类别的穷尽投影/保留、统一 H4 候选与所有权仲裁、跨普通卡牌/不同武将/伤害/恢复/弃牌及隐私的系统回归。除非出现设计明确的安全阻塞或 Owner 要求暂停，不转做其他任务，也不要求阶段验收。
+继续 §10.59 已列出的其他服务器结算来源，再完成公开类别的穷尽投影/保留、统一 H4 候选与所有权仲裁、跨普通卡牌/不同武将/伤害/恢复/弃牌及隐私的系统回归。除非出现设计明确的安全阻塞或 Owner 要求暂停，不转做其他任务，也不要求阶段验收。
