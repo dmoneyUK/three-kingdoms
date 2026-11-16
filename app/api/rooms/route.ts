@@ -2088,9 +2088,42 @@ function addDiscardEventWithId(log: string[], player: PlayerRow | string, cards:
   const ownerName = typeof player === "string" ? player : player.name;
   const eventId = crypto.randomUUID();
   const publicZoneTransitions = typeof player === "string" ? undefined : publicDiscardTransitions(eventId, player, cards);
+  const discardActorId = typeof player === "string" ? null : player.id;
+  const discardedByZone = new Map<"HAND" | "EQUIPMENT" | "JUDGEMENT", number>();
+  for (const transition of publicZoneTransitions ?? []) {
+    const zone = transition.from.zone;
+    if (zone === "HAND" || zone === "EQUIPMENT" || zone === "JUDGEMENT") {
+      discardedByZone.set(zone, (discardedByZone.get(zone) ?? 0) + 1);
+    }
+  }
+  const committedChanges: CommittedPublicOutcomeChange[] = discardActorId ? [...discardedByZone].map(([fromZone, amount]) => ({
+    kind: "CARD_DISCARDED" as const,
+    playerId: discardActorId,
+    amount,
+    fromZone,
+    toZone: "DISCARD" as const,
+  })) : [];
+  const discardRoot = committedChanges.length && typeof player !== "string"
+    ? createCausalRoot({
+      stage: "SETTLEMENT",
+      origin: { originSourceId: player.id, originEffect: "public_discard", originalTargetIds: [player.id] },
+      current: { currentSourceId: player.id, currentEffect: "public_discard", currentTargetIds: [player.id], resolvingPlayerId: player.id },
+    })
+    : null;
+  const publicFact = discardRoot && typeof player !== "string"
+    ? publicFactFor(discardRoot.context, "CARD_DISCARDED", {
+      rootEventId: eventId,
+      actorId: player.id,
+      affectedPlayerIds: [player.id],
+      label: "Discard",
+      effect: { kind: "discard" },
+      committedOutcome: { source: { kind: "other", label: "Discard" }, changes: committedChanges },
+    }, discardRoot.envelope)
+    : undefined;
   const meta: PresentationMeta = {
     ...(typeof player === "string" ? {} : { actorId: player.id }),
     ...(publicZoneTransitions ? { publicZoneTransitions } : {}),
+    ...(publicFact ? { publicFact } : {}),
   };
   return { ...addCardGroupEventWithId(log, ownerName, cards, "discard", true, ownerName, undefined, meta, eventId), eventId };
 }

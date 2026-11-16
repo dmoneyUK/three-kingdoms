@@ -501,21 +501,67 @@ function isCommittedPublicEquipmentFact(event: Record<string, unknown>, fact: Re
 }
 
 function isCommittedPublicDiscardFact(event: Record<string, unknown>, fact: Record<string, unknown>): boolean {
-  const card = record(event.card);
-  const transition = record(event.publicZoneTransition);
-  const from = record(transition?.from);
-  const to = record(transition?.to);
+  const cards = event.type === "card"
+    ? [record(event.card)]
+    : event.type === "cards" && Array.isArray(event.cards)
+      ? event.cards.map(record)
+      : [];
+  const transitions = event.type === "card"
+    ? [record(event.publicZoneTransition)]
+    : event.type === "cards" && Array.isArray(event.publicZoneTransitions)
+      ? event.publicZoneTransitions.map(record)
+      : [];
   const eventActorId = typeof event.actorId === "string" ? event.actorId : null;
   const affectedPlayerIds = uniqueStrings(fact.affectedPlayerIds, true);
-  return event.type === "card" && event.action === "discard" && event.presentation !== false
-    && typeof event.privateToPlayerId !== "string" && nonEmptyString(event.id)
-    && nonEmptyString(card?.id) && fact.category === "CARD_DISCARDED"
-    && Boolean(eventActorId) && fact.actorId === eventActorId
-    && Boolean(from && nonEmptyString(from.ownerId) && affectedPlayerIds?.includes(from.ownerId))
-    && transition?.semantics === "PROVEN" && transition.visibility === "PUBLIC"
-    && transition.eventId === event.id && transition.physicalCardId === card.id
-    && from !== null && ["HAND", "EQUIPMENT", "JUDGEMENT"].includes(String(from.zone)) && nonEmptyString(from.ownerId)
-    && to?.zone === "DISCARD" && to.ownerId === null;
+  if ((event.type !== "card" && event.type !== "cards") || event.action !== "discard" || event.presentation === false
+    || typeof event.privateToPlayerId === "string" || !nonEmptyString(event.id) || !cards.length
+    || transitions.length !== cards.length
+    || !eventActorId || fact.category !== "CARD_DISCARDED" || fact.actorId !== eventActorId
+    || !affectedPlayerIds || !affectedPlayerIds.includes(eventActorId)) return false;
+
+  const cardIds = new Set<string>();
+  for (const card of cards) {
+    const cardId = card?.id;
+    if (!nonEmptyString(cardId) || cardIds.has(cardId)) return false;
+    cardIds.add(cardId);
+  }
+  const discardedByZone = new Map<"HAND" | "EQUIPMENT" | "JUDGEMENT", number>();
+  const matchedCardIds = new Set<string>();
+  for (const transition of transitions) {
+    if (!transition) return false;
+    const from = record(transition.from);
+    const to = record(transition.to);
+    const physicalCardId = transition.physicalCardId;
+    const fromZone = from?.zone;
+    if (transition.semantics !== "PROVEN" || transition.visibility !== "PUBLIC"
+      || transition.eventId !== event.id || transition.sourceEventId !== event.id || transition.rootEventId !== event.id
+      || !nonEmptyString(physicalCardId) || !cardIds.has(physicalCardId)
+      || matchedCardIds.has(physicalCardId) || !from || !(fromZone === "HAND" || fromZone === "EQUIPMENT" || fromZone === "JUDGEMENT")
+      || from.ownerId !== eventActorId || !affectedPlayerIds.includes(eventActorId)
+      || !to || to.zone !== "DISCARD" || to.ownerId !== null) return false;
+    matchedCardIds.add(physicalCardId);
+    discardedByZone.set(fromZone, (discardedByZone.get(fromZone) ?? 0) + 1);
+  }
+  if (matchedCardIds.size !== cardIds.size) return false;
+
+  // Preserve the established single-card discard proof. Group outcomes are
+  // accepted only when their generic count facts exactly match every physical
+  // transition and source zone.
+  if (fact.committedOutcome === undefined) return event.type === "card";
+  const effect = record(fact.effect);
+  const outcome = validateCommittedPublicOutcomeDraft(fact.committedOutcome, {
+    actorId: eventActorId,
+    affectedPlayerIds,
+    publicLabels: [typeof fact.label === "string" ? fact.label : undefined, typeof effect?.label === "string" ? effect.label : undefined],
+  });
+  if (!outcome || outcome.changes.length !== discardedByZone.size) return false;
+  const remaining = new Map(discardedByZone);
+  for (const change of outcome.changes) {
+    if (change.kind !== "CARD_DISCARDED" || change.playerId !== eventActorId || change.toZone !== "DISCARD"
+      || remaining.get(change.fromZone) !== change.amount) return false;
+    remaining.delete(change.fromZone);
+  }
+  return remaining.size === 0;
 }
 
 function isCommittedPublicBumperHarvestPick(
