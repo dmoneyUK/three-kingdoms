@@ -1976,6 +1976,34 @@ type PublicDismantleCardFaceCopy = {
   suffixSegments?: readonly PublicH4Segment[];
 };
 
+/** The physical discard face stays one authentic element between verified H4 fragments. */
+export function PublicDismantleCardFaceH4({ copy }: { copy: PublicDismantleCardFaceCopy }) {
+  return <>
+    <PublicH4Text message={copy.prefix} segments={copy.prefixSegments} />
+    <span
+      className="public-dismantle-card-face"
+      data-settlement-event-id={copy.settlementEventId}
+      data-card-id={copy.cardId}
+      aria-hidden="true"
+    >
+      <span className={`public-dismantle-card-suit-rank ${copy.suit === "♥" || copy.suit === "♦" ? "is-red" : "is-black"}`}>
+        {copy.suit}{copy.rank}
+      </span>
+      <strong className="public-dismantle-card-name">{copy.name}</strong>
+    </span>
+    <PublicH4Text message={copy.suffix} segments={copy.suffixSegments} />
+  </>;
+}
+
+function verifiedAnnouncementSegments(
+  message: string,
+  narrationSegments?: readonly PublicH4Segment[],
+  suppliedSegments?: readonly PublicH4Segment[],
+) {
+  return matchingPublicH4Segments(message, narrationSegments)
+    ?? matchingPublicH4Segments(message, suppliedSegments);
+}
+
 type PublicCardAnnouncementCopy = {
   message: string;
   segments?: readonly PublicH4Segment[];
@@ -2544,8 +2572,10 @@ function PublicCardAnnouncement({
   const placementFailureRef = useRef<{ identity: string; layoutEpoch: string; startedAt: number } | null>(null);
   const copyLifecycleRef = useRef<PublicAnnouncementCopyLifecycle>({ eventCopyKey: "", stage: "UNSEEN" });
   const lastGeometryKeyRef = useRef("");
+  const initialNarration = presentationNarration ?? negationNarration;
+  const initialMessage = initialNarration?.headline ?? message;
   const [displayedCopy, setDisplayedCopy] = useState<DisplayedPublicCardAnnouncement>(() => ({
-    message: presentationNarration?.headline ?? negationNarration?.headline ?? message,
+    message: initialMessage,
     supporting: presentationNarration?.supportingMessage ?? negationNarration?.supportingMessage ?? supportingMessage ?? "",
     eventId: presentationNarration?.eventId ?? negationNarration?.eventId ?? eventId,
     latestCommittedEventId: presentationNarration?.latestCommittedEventId ?? negationNarration?.latestCommittedEventId,
@@ -2553,7 +2583,8 @@ function PublicCardAnnouncement({
     phase: presentationNarration?.phase ?? negationNarration?.phase,
     rootEffectState: presentationNarration?.rootEffectState ?? negationNarration?.rootEffectState,
     accessibleLabel: accessibleLabel ?? presentationNarration?.accessibleLabel ?? negationNarration?.accessibleLabel,
-    dismantleCardFace, segments,
+    dismantleCardFace,
+    segments: verifiedAnnouncementSegments(initialMessage, initialNarration?.headlineSegments, segments),
   }));
   const displayedCopyRef = useRef(displayedCopy);
   useLayoutEffect(() => () => {
@@ -2752,8 +2783,9 @@ function PublicCardAnnouncement({
       const narrationPhase = narration?.phase;
       const narrationRootEffectState = narration?.rootEffectState;
       const narrationAccessibleLabel = accessibleLabel ?? narration?.accessibleLabel;
+      const incomingMessage = narration?.headline ?? message;
       const incomingDisplayedCopy: DisplayedPublicCardAnnouncement = {
-        message: narration?.headline ?? message,
+        message: incomingMessage,
         supporting: narration?.supportingMessage ?? supportingMessage ?? "",
         eventId: narrationEventId ?? eventId,
         latestCommittedEventId: narrationLatestCommittedEventId,
@@ -2761,7 +2793,8 @@ function PublicCardAnnouncement({
         phase: narrationPhase,
         rootEffectState: narrationRootEffectState,
         accessibleLabel: narrationAccessibleLabel,
-        dismantleCardFace, segments,
+        dismantleCardFace,
+        segments: verifiedAnnouncementSegments(incomingMessage, narration?.headlineSegments, segments),
       };
       commitDisplayedCopy(incomingDisplayedCopy);
       const sharedTable = display.closest<HTMLElement>(".play-table");
@@ -3144,6 +3177,7 @@ function PublicCardAnnouncement({
             ...incomingDisplayedCopy,
             message: previousPlacement.message,
             supporting: previousPlacement.supporting,
+            segments: verifiedAnnouncementSegments(previousPlacement.message, narration?.headlineSegments, incomingDisplayedCopy.segments),
           });
           setData("data-public-card-announcement-compact", previousPlacement.compact ? "true" : undefined);
           setData("data-public-card-announcement-width", `${Math.round(previousPlacement.width)}`);
@@ -3541,7 +3575,7 @@ function PublicCardAnnouncement({
         rootEffectState: narrationRootEffectState,
         accessibleLabel: narrationAccessibleLabel,
         dismantleCardFace: incomingDisplayedCopy.dismantleCardFace,
-        segments: incomingDisplayedCopy.segments,
+        segments: verifiedAnnouncementSegments(selected.message, narration?.headlineSegments, incomingDisplayedCopy.segments),
       };
       commitDisplayedCopy(nextDisplayedCopy);
       const previous = lastValidPlacementRef.current;
@@ -3725,21 +3759,7 @@ function PublicCardAnnouncement({
     {heading && <span className="public-event-announcement-heading">{heading}</span>}
     <b aria-label={displayedCopy.accessibleLabel ?? displayedCopy.message}>
       {displayedCopy.dismantleCardFace && displayedCopy.dismantleCardFace.message === displayedCopy.message
-        ? <>
-          <PublicH4Text message={displayedCopy.dismantleCardFace.prefix} segments={displayedCopy.dismantleCardFace.prefixSegments} />
-          <span
-            className="public-dismantle-card-face"
-            data-settlement-event-id={displayedCopy.dismantleCardFace.settlementEventId}
-            data-card-id={displayedCopy.dismantleCardFace.cardId}
-            aria-hidden="true"
-          >
-            <span className={`public-dismantle-card-suit-rank ${displayedCopy.dismantleCardFace.suit === "♥" || displayedCopy.dismantleCardFace.suit === "♦" ? "is-red" : "is-black"}`}>
-              {displayedCopy.dismantleCardFace.suit}{displayedCopy.dismantleCardFace.rank}
-            </span>
-            <strong className="public-dismantle-card-name">{displayedCopy.dismantleCardFace.name}</strong>
-          </span>
-          <PublicH4Text message={displayedCopy.dismantleCardFace.suffix} segments={displayedCopy.dismantleCardFace.suffixSegments} />
-        </>
+        ? <PublicDismantleCardFaceH4 copy={displayedCopy.dismantleCardFace} />
         : <PublicH4Text message={displayedCopy.message} segments={displayedCopy.segments} />}
     </b>
     {displayedCopy.supporting && <span className="public-card-announcement-support public-negation-narration-support" aria-hidden="true">{displayedCopy.supporting}</span>}

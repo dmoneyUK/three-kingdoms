@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { centerRevealCardInSafeBattlefield, publicCardAnnouncementCopy, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicH4Text, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity, shouldDirectParkPublicJourney } from "../app/public-card-display.tsx";
+import { centerRevealCardInSafeBattlefield, publicCardAnnouncementCopy, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicDismantleCardFaceH4, PublicH4Text, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity, shouldDirectParkPublicJourney } from "../app/public-card-display.tsx";
 import {
   canClearPublicJourneyOwnership,
   publicAnnouncementEventCopyKey,
@@ -311,6 +311,36 @@ test("same-event proven conversion copy outranks its generic root narration but 
   assert.equal(renderToStaticMarkup(React.createElement(PublicH4Text, {
     message: committedNegation.message, segments: committedNegation.segments,
   })).match(/class="message-player-name public-h4-player"/g)?.length, 2);
+
+  const rootBurningBridgesHeadline = "Same Name played Burning Bridges targeting Same Name.";
+  const rootBurningBridgesSegments = [
+    { kind: "player", playerId: "actor-id", text: "Same Name" },
+    { kind: "text", text: " played Burning Bridges targeting " },
+    { kind: "player", playerId: "target-id", text: "Same Name" },
+    { kind: "text", text: "." },
+  ];
+  const rootBurningBridges = publicCardCommittedFactCopy(action({
+    cardKind: "Dismantle", rootEventId: "burning-root", sourceId: "actor-id", targetId: "target-id",
+    publicNegationNarration: {
+      rootLabel: "Burning Bridges", eventId: "burning-root", latestCommittedEventId: "burning-root",
+      checkpointId: "checkpoint-root", phase: "WINDOW_OPEN", rootEffectState: "ACTIVE",
+      headline: rootBurningBridgesHeadline, headlineSegments: rootBurningBridgesSegments,
+      compactHeadline: rootBurningBridgesHeadline, supportingMessage: "", compactSupportingMessage: "",
+      accessibleLabel: rootBurningBridgesHeadline,
+    },
+  }), { message: "Source played Burning Bridge targeting Target.", compactMessage: "Source: Burning Bridge" });
+  const rootBurningBridgesHtml = renderToStaticMarkup(React.createElement("b", {
+    "aria-label": rootBurningBridges.accessibleLabel,
+  }, React.createElement(PublicH4Text, {
+    message: rootBurningBridges.message, segments: rootBurningBridges.segments,
+  })));
+  assert.equal((rootBurningBridgesHtml.match(/class="message-player-name public-h4-player"/g) ?? []).length, 2,
+    "the Negation-owned root Burning Bridges H4 keeps both distinct proven player identities");
+  assert.match(rootBurningBridgesHtml, /data-player-id="actor-id" data-public-player-id="actor-id"/);
+  assert.match(rootBurningBridgesHtml, /data-player-id="target-id" data-public-player-id="target-id"/);
+  assert.ok(rootBurningBridgesHtml.includes(`aria-label="${rootBurningBridgesHeadline}"`));
+  assert.equal(rootBurningBridges.segments.map((part) => part.text).join(""), rootBurningBridges.message);
+
   assert.equal(publicCardCommittedFactCopy({
     ...conversionAction,
     publicNegationNarration: {
@@ -1018,6 +1048,15 @@ test("Dismantle authentic settlement keeps its card face and verified actor/targ
   const suffixHtml = renderToStaticMarkup(React.createElement(PublicH4Text, { message: face.suffix, segments: face.suffixSegments }));
   assert.match(prefixHtml, /data-player-id="source" data-public-player-id="source"/);
   assert.match(suffixHtml, /data-player-id="target" data-public-player-id="target"/);
+  const completeH4 = renderToStaticMarkup(React.createElement("b", { "aria-label": face.message },
+    React.createElement(PublicDismantleCardFaceH4, { copy: face })));
+  assert.equal((completeH4.match(/class="message-player-name public-h4-player"/g) ?? []).length, 2,
+    "the actual composed Dismantle H4 renders actor and target as verified spans");
+  assert.match(completeH4, /data-settlement-event-id="dismantle-result" data-card-id="actual-discarded-card" aria-hidden="true"/);
+  assert.ok(completeH4.includes(`aria-label="${face.message}"`));
+  assert.ok(completeH4.includes("♥3 Peach"));
+  assert.equal(face.prefix + "♥3 Peach" + face.suffix, face.message,
+    "styled fragments and the authentic mini-face preserve the exact accessible sentence");
 
   const wrongSettlementActor = publicCardAnnouncementCopy({
     ...dismantleAction,
