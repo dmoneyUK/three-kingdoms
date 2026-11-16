@@ -1,14 +1,15 @@
 # HANDOVER — 唯一当前任务：§10.59 UNIVERSAL-H4-COMMITTED-FACT-COVERAGE-01
 
-**整体状态：NOT CLOSED；已部署切片均 PENDING OWNER REVIEW。** 最新设计 revision：`2026-11-16 09:42 UTC`。Owner 授权在同一 §10.59 编号下连续完成全部技术覆盖；最终验收由 Owner 统一进行。不得转做 §10.57 或创建新任务编号。
+**整体状态：NOT CLOSED；全部已部署切片均 PENDING OWNER REVIEW。** 已复习设计 revision `2026-11-16 09:42 UTC`。继续同一个 §10.59，不创建新任务、不转做 §10.57；最终验收由 Owner 统一进行。
 
 ## 最近已部署基线
 
-- `e7dddc17138b089d81e95140a2162f52c374b089`：Benevolence、Equilibrium、Prodigal Healer、Betrothment 的真实公开结果进入共享 `CommittedPublicOutcome → H4`；Actions [43847397840](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43847397840) 全绿，Worker `88cf9742-f0b0-438e-8386-62e57fd51430`。
-- `8d33844cebe7f95a4e7c6c1933837b2f3f634ad0`：普通装备上场及替换结果进入共享 H4；Actions [43849427860](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43849427860) 全绿，Worker `da7bd900-5e66-4d8d-ba4a-36714ab8c5e8`。Owner 禁止的本地测试、构建和设备测试均未运行。
+- `b5e049661acc5fee56cb6955da7fe4920a9ac423`：弃牌与实际伤害结果共享已证明身份并进入 H4 保留链。精确 SHA Actions [43858161652](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43858161652) 全绿，包含 API、Lint/fast、browser startup/room smoke、D1 migration、Worker deploy、production smoke；Worker `52d15d81-39cc-43a8-a1f8-31ee2b14de57`。生产 `/api/health` 返回 `{"ok":true,"worker":"available"}`。
 
-## 当前有界阶段：弃牌与伤害事实均可保留到共享 H4
+## 当前有界阶段：恢复结果进入共享 H4，避免重复结果
 
-**进度时间：2026-11-16 11:28 UTC。** `82de57dd56de25dd0848f910814685c8f8c386ca`、`9f2f077e0900a65ffa49a6f0f62f863e5252b93c`、诊断提交 `1c7668c4c81f912f78ba760d3dc0c5f26a9482db` 的 Actions [43852880381](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43852880381)、[43853968468](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43853968468)、[43855217103](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43855217103) 均因弃牌 H4 fact 断言失败，部署跳过；lint/fast、build、browser smoke 通过。修复 SHA `f103c7579dcfd9cdc837eb2696b73b4536a87f31` 的 Actions [43857103764](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43857103764) 仍因同一断言失败，其他三个 jobs 通过、部署跳过。
+**进度时间：2026-11-16 11:43 UTC；实现尚未提交。** 在通用 `advanceHpRecoveredEvents` 中，继续沿用已提交根事件的严格校验；当活动 envelope 已前进时，只在唯一公开根事件的 interaction/frame/committed identity 全部吻合时，才使用 `publicIdentityFromCommittedRoot` 补回身份。通用 `recover_player` 已有带真实 HP 变化的 committed outcome 时，把该事件 ID 和 causal context 传给 `RecoveryRecord`，避免恢复续接再发布一条重复的泛化 Recovery fact。未获得可验证身份时不猜测。
 
-远端诊断已证明弃牌事件本身的 `CARD_DISCARDED` outcome、identity 和真实数量都已写入 timeline；REST snapshot 仍未保留它，是因为更晚的 `DAMAGE_APPLIED` fact 缺少 `committedIdentity`，保留层按规则 fail closed。当前未提交修复将同一已证明根事件 identity 绑定机制接入共享 `resolveSourcedDamage` 发布点，与弃牌共同保留在现有 H4 fact 流；该路径仍只接受唯一公开根事件且 interaction/frame 精确匹配。只运行 `git diff --check`；Owner 禁止的本地测试、构建及设备测试均未运行。下一步提交并推送后等待精确 SHA Actions、Worker 部署与生产 smoke；随后继续 §10.59 其余指定结果来源、共享事件保留与唯一 H4 消费覆盖。
+已为 Hua Xiong Triumphant 恢复增加 API 回归断言：同一真实恢复只归属一个公共 fact；snapshot 保留事实；共享 `derivePublicInteractionNarration` / `formatCommittedPublicOutcome` 给出实际恢复 HP；观察者获得一致的公共结果。按 Owner 指令未运行本地测试、构建或设备测试；本地 `git diff --check` 通过。当前远端基线 b5 的精确 SHA CI 已确认全绿；本阶段提交后的精确 SHA CI、部署与生产 smoke 尚待执行。
+
+**续接点：** 审阅本阶段源代码和测试 diff；提交并推送到 `ux-v2`，等待精确 SHA Actions、Worker 部署及生产 smoke。通过后继续 §10.59 确定的下一结果来源边界，再逐步完成公共事件筛选/保留/唯一 H4 消费覆盖。不得把本阶段或单个来源标记为 §10.59 完成；不得自行宣布 USER-ACCEPTED。

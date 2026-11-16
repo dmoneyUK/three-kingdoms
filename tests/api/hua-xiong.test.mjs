@@ -1,4 +1,5 @@
 import test from "node:test";
+import { derivePublicInteractionNarration, formatCommittedPublicOutcome } from "../../game/public-activity.ts";
 import {
   assert, card, createHumanGame, discardIds, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setTurn, sql, state,
 } from "./test-support.mjs";
@@ -73,6 +74,28 @@ test("Triumphant belongs to the red Attack source, offers recover/draw/decline, 
   const recovered = await request("trigger", { code: game.code, token: setup.sourceMember.token, providerId: "hua_xiong_triumphant", choice: "recover", preserveResponse: true });
   assert.equal(recovered.status, 200, JSON.stringify(recovered.data));
   assert.equal(recovered.data.room.players.find((player) => player.id === setup.source.id).hp, 3);
+  const recoveryFacts = recovered.data.room.timeline.filter((event) => event.publicFact?.committedOutcome?.changes
+    .some((change) => change.kind === "HP_RECOVERED" && change.playerId === setup.source.id));
+  assert.equal(recoveryFacts.length, 1, "the committed recovery has one shared public outcome owner, not a duplicate generic recovery fact");
+  const snapshotFacts = [...recovered.data.room.presentationSnapshot.publicEventFacts,
+    ...(recovered.data.room.presentationSnapshot.retainedPublicEventFacts ?? [])];
+  const recoveryFact = snapshotFacts.find((fact) => fact.eventId === recoveryFacts[0].id);
+  assert.ok(recoveryFact?.committedOutcome, "the public snapshot retains the committed recovery result");
+  const recoveryNarration = derivePublicInteractionNarration({
+    snapshot: recovered.data.room.presentationSnapshot,
+    players: recovered.data.room.players,
+    rootEventId: recoveryFact.rootEventId,
+    interactionId: recoveryFact.interactionId,
+    rootFrameId: recoveryFact.committedIdentity.rootFrameId,
+    eventId: recoveryFact.eventId,
+  });
+  assert.equal(recoveryNarration?.headline, formatCommittedPublicOutcome(recoveryFact.committedOutcome, recovered.data.room.players));
+  assert.match(recoveryNarration?.headline ?? "", /recovered 1 HP/, "the visible H4 uses the actual committed recovery delta");
+  const observerRoom = (await state(game.code, setup.targetMember.token)).data;
+  const observerFact = [...observerRoom.presentationSnapshot.publicEventFacts,
+    ...(observerRoom.presentationSnapshot.retainedPublicEventFacts ?? [])].find((fact) => fact.eventId === recoveryFacts[0].id);
+  assert.deepEqual(observerFact, recoveryFact,
+    "all viewers receive the same public recovery fact and amount");
   assert.equal(recovered.data.room.currentAction.triggerEvent, "hp_recovered");
   assert.deepEqual(recovered.data.room.currentAction.triggerOptions.map((option) => option.effectId), ["lady_gan_prudence"]);
   assert.equal(recovered.data.room.currentAction.actorId, setup.source.id);

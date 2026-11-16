@@ -3377,12 +3377,14 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
           : undefined;
       const existingEnvelope = parseCausalEnvelope(room.causal_envelope_json);
       const existingRootFrame = existingEnvelope?.frames.filter((frame) => frame.parentFrameId == null) ?? [];
+      const recoveryLog = parse<string[]>(room.log_json, []);
+      const recoveryTimeline = gameTimeline(recoveryLog);
       const canContinueCausal = Boolean(resumeCausal && existingEnvelope
         && existingEnvelope.interactionId === resumeCausal.interactionId
         && existingEnvelope.activeFrameId === resumeCausal.frameId
         && existingEnvelope.checkpoint.frameId === resumeCausal.frameId
         && existingRootFrame.length === 1);
-      const matchingRootEvents = canContinueCausal ? gameTimeline(parse<string[]>(room.log_json, [])).filter((event) => {
+      const matchingRootEvents = canContinueCausal ? recoveryTimeline.filter((event) => {
         const publicFact = record(event.publicFact);
         const identity = record(publicFact?.committedIdentity);
         return event.presentation !== false && typeof event.privateToPlayerId !== "string"
@@ -3399,13 +3401,25 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
       const inheritedCausal = inheritedRootEvent && resumeCausal && existingEnvelope
         ? { context: resumeCausal, envelope: existingEnvelope, rootEventId: inheritedRootEvent.id }
         : null;
-      const standaloneCausal = inheritedCausal || resumeCausal ? null : createCausalRoot({
+      // A continuation may retain the original committed root even after its
+      // active envelope has advanced. Reuse that identity only when the root
+      // event itself proves the exact causal interaction and frame.
+      const provenRootCandidates = resumeCausal && !resumeCausal.parentFrameId
+        ? recoveryTimeline.flatMap((event) => {
+          const committedIdentity = publicIdentityFromCommittedRoot(recoveryLog, event.id, resumeCausal);
+          return committedIdentity ? [{ event, committedIdentity }] : [];
+        })
+        : [];
+      const fallbackCommittedRoot = inheritedCausal ? null : explicitRootEventId
+        ? provenRootCandidates.find((candidate) => candidate.event.id === explicitRootEventId) ?? null
+        : provenRootCandidates.length === 1 ? provenRootCandidates[0] : null;
+      const standaloneCausal = inheritedCausal || fallbackCommittedRoot || resumeCausal ? null : createCausalRoot({
         stage: "SETTLEMENT",
         origin: { originSourceId: null, originEffect: "recovery", originalTargetIds: affectedPlayerIds },
         current: { currentSourceId: null, currentEffect: "recovery", currentTargetIds: affectedPlayerIds, resolvingPlayerId: null },
       });
-      const recoveryCausal = inheritedCausal?.context ?? standaloneCausal?.context;
-      const outcomeRootEventId = inheritedCausal?.rootEventId ?? eventId;
+      const recoveryCausal = inheritedCausal?.context ?? (fallbackCommittedRoot ? resumeCausal : standaloneCausal?.context);
+      const outcomeRootEventId = inheritedCausal?.rootEventId ?? fallbackCommittedRoot?.event.id ?? eventId;
       const fact = recoveryCausal ? publicFactFor(recoveryCausal, "EFFECT_APPLIED", {
         rootEventId: outcomeRootEventId,
         affectedPlayerIds,
@@ -3413,7 +3427,7 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
         outcomeLabel,
         effect: { kind: "hp_recovery", label: "Recovery" },
         committedOutcome: { source: { kind: "recovery", label: "Recovery" }, changes },
-      }, inheritedCausal?.envelope ?? standaloneCausal?.envelope) : undefined;
+      }, inheritedCausal?.envelope ?? standaloneCausal?.envelope, fallbackCommittedRoot?.committedIdentity) : undefined;
       if (fact?.committedOutcome) {
         committedOutcomeLog = addLogWithId(parse<string[]>(room.log_json, []), outcomeLabel, undefined, {
           importance: "essential",
@@ -10004,11 +10018,21 @@ export async function POST(request: Request) {
               outcomeLabel: amountRecovered > 0 ? `recovered ${amountRecovered} HP` : "used a recovery effect; HP did not change",
               changes: amountRecovered > 0 ? [{ kind: "HP_RECOVERED", playerId: sourcePlayer.id, amount: amountRecovered }] : [],
             });
-            log = addTriggeredEffectNotice(log, sourcePlayer.name, triggerExecution.presentation?.label ?? "an optional effect", committedFact).log;
+            const recoveryNotice = addTriggeredEffectNotice(log, sourcePlayer.name, triggerExecution.presentation?.label ?? "an optional effect", committedFact);
+            log = recoveryNotice.log;
             log = addLog(log, `${sourcePlayer.name} chooses Triumphant and recovers ${amountRecovered} HP.`);
             await db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(nextHp, sourcePlayer.id).run();
             await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(log), room.id).run();
-            await advanceHpRecoveredEvents(room.id, amountRecovered > 0 ? [{ playerId: sourcePlayer.id, amountRecovered, sourceId: sourcePlayer.id, reason: "triumphant" }] : [], { kind: "damage_suffered", continuation: nextContinuation });
+            const recovery: RecoveryRecord | null = amountRecovered > 0 ? {
+              playerId: sourcePlayer.id,
+              amountRecovered,
+              sourceId: sourcePlayer.id,
+              reason: "triumphant",
+              ...(committedFact?.committedOutcome && committedFact.committedIdentity && trigger.causal
+                ? { publicOutcomeEventId: recoveryNotice.eventId, causal: trigger.causal }
+                : {}),
+            } : null;
+            await advanceHpRecoveredEvents(room.id, recovery ? [recovery] : [], { kind: "damage_suffered", continuation: nextContinuation });
           } else {
             let deck = parse<Card[]>(liveRoom.deck_json, []);
             const draw = drawCards(deck, discard, 1, log);
