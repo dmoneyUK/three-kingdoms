@@ -10703,6 +10703,15 @@ export async function POST(request: Request) {
           label: equipmentName,
           effect: { kind: "equipment_play", label: equipmentName },
         }, equipCausal.envelope);
+        const equipOutcomeChanges: CommittedPublicOutcomeChange[] = [
+          ...(replacedEquipment ? [{ kind: "CARD_DISCARDED", playerId: me.id, amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" } as const] : []),
+          { kind: "CARD_EQUIPPED", playerId: me.id, amount: 1, fromZone: "HAND", toZone: "EQUIPMENT" } as const,
+        ];
+        const committedEquipPublicFact = withCommittedPublicOutcome(equipPublicFact, {
+          outcomeLabel: replacedEquipment ? "equipment slot replacement committed" : "equipment committed",
+          changes: equipOutcomeChanges,
+          source: { kind: "card", label: equipmentName },
+        });
         if (replacedEquipment) {
           discard.push(replacedEquipment);
           const replacementEventId = crypto.randomUUID();
@@ -10729,7 +10738,7 @@ export async function POST(request: Request) {
           }, replacementEventId);
         }
         log = addCardEvent(log, me.name, card, me.name, "equip", true,
-          { actorId: me.id, ...(equipPublicFact ? { publicFact: equipPublicFact } : {}) }, equipEventId);
+          { actorId: me.id, ...(committedEquipPublicFact ? { publicFact: committedEquipPublicFact } : equipPublicFact ? { publicFact: equipPublicFact } : {}) }, equipEventId);
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(hand), JSON.stringify(equipment), me.id),
           db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(replacedEquipment ? "resolving" : liveRoom.phase, JSON.stringify(discard), JSON.stringify(log), room.id),
