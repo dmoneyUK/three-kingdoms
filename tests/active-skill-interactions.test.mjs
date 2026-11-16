@@ -271,6 +271,7 @@ async function verifyResponsePrecommitOwner({ room, ownerLabel, ownerProps, card
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const actionsBeforeSelection = [...actionCalls];
   const ownerButton = () => button(renderer, ownerProps);
   assert.equal(renderedNodeText(ownerButton()), ownerLabel);
   assert.equal(ownerButton().props["aria-pressed"], false);
@@ -281,14 +282,14 @@ async function verifyResponsePrecommitOwner({ room, ownerLabel, ownerProps, card
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false, "one eligible physical card enables the existing Confirm");
   assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "the same reversible owner does not add a duplicate Local Cancel");
   await act(async () => { ownerButton().props.onClick(); });
-  assert.equal(actionCalls.length, 0, "owner retap only clears the unsubmitted local draft");
+  assert.deepEqual(actionCalls, actionsBeforeSelection, "owner retap only clears the unsubmitted local draft");
   assert.equal(ownerButton().props["aria-pressed"], false);
   assert.equal(handCardButton(renderer, cardId).props["aria-pressed"], false, "owner retap clears the selected physical card");
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "owner retap removes stale Confirm readiness");
   await act(async () => { ownerButton().props.onClick(); });
   await act(async () => { handCardButton(renderer, cardId).props.onClick(); });
   await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
-  assert.deepEqual(actionCalls, [["respond", { providerId, cardId }]], "Confirm submits exactly one unchanged server response payload");
+  assert.deepEqual(actionCalls.slice(actionsBeforeSelection.length), [["respond", { providerId, cardId }]], "Confirm submits exactly one unchanged server response payload after mount-time timer setup");
   await act(async () => { renderer.unmount(); });
 }
 function statusText(renderer) { return renderer.root.findAll((node) => node.props?.role === "status").map(renderedNodeText).join(" "); }
@@ -944,6 +945,7 @@ test("generic selectable trigger keeps its name and retap clears target without 
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const actionsBeforeSelection = [...actionCalls];
   assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "a stale isMyTurn flag cannot expose a turn footer primary during a trigger");
   assert.equal(consoleButtons(renderer).filter((node) => node.props.children === "End").length, 0, "trigger owns the footer instead of stale End");
   await act(async () => { button(renderer, { children: "Future Target" }).props.onClick(); });
@@ -952,7 +954,7 @@ test("generic selectable trigger keeps its name and retap clears target without 
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false, "the selected legal target enables the existing Confirm");
   assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "the named provider owns the only local exit");
   await act(async () => { button(renderer, { children: "Future Target" }).props.onClick(); });
-  assert.equal(actionCalls.length, 0, "provider retap does not submit or decline");
+  assert.deepEqual(actionCalls, actionsBeforeSelection, "provider retap does not submit or decline");
   assert.equal(button(renderer, { children: "Future Target" }).props["aria-pressed"], false, "provider returns to idle");
   assert.equal(button(renderer, { children: "Future Target" }).props.disabled, false, "the trigger can restart after retap");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
