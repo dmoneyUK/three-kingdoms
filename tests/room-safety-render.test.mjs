@@ -766,12 +766,15 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(gameRoomSource, /hiddenCardIds\.has\(card\.id\)/, "in-flight Judgement cards retain their existing hidden-card behavior");
   assert.doesNotMatch(gameRoomSource, /judgementCardLayout\.step - 34/);
   assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*height: var\(--hand-panel-height\)[\s\S]*padding: var\(--hand-top-inset\) 4px var\(--hand-bottom-gutter\)/);
-  const handViewportRule = sequenceStyleSource.match(/\.local-hand-rail\s*\{([^}]*)\}/)?.[1] ?? "";
+  const handViewportRule = sequenceStyleSource.match(/^\.local-hand-rail\s*\{([^}]*)\}/m)?.[1] ?? "";
   assert.match(handViewportRule, /top: calc\(-1 \* var\(--hand-lift-clearance\)\)/);
   assert.match(handViewportRule, /height: calc\(var\(--hand-peek-height\) \+ var\(--hand-lift-clearance\)\)/);
   assert.match(handViewportRule, /padding: var\(--hand-lift-clearance\) 0 0/);
   assert.match(handViewportRule, /overflow-x: auto; overflow-y: hidden/);
   assert.match(handViewportRule, /pointer-events: auto/, "iOS native scrolling can hit the actual overflow scrollport");
+  assert.match(sequenceStyleSource, /\.local-hand-section:has\(\.card-slot\.single-selected, \.card-slot\.multi-selected, \.card-slot\.details-selected, \.card-slot\.inspect-focused\)\s*\{\s*z-index: auto;\s*\}/, "raised real Hand cards escape the section stacking context only in selected or inspection states");
+  assert.match(sequenceStyleSource, /\.local-hand-section:has\(\.card-slot\.single-selected, \.card-slot\.multi-selected, \.card-slot\.details-selected, \.card-slot\.inspect-focused\) \.local-hand\s*\{\s*z-index: auto;\s*\}/, "selected cards are not trapped by the local Hand stacking context");
+  assert.match(sequenceStyleSource, /\.local-hand-section:has\(\.card-slot\.single-selected, \.card-slot\.multi-selected, \.card-slot\.details-selected, \.card-slot\.inspect-focused\) \.local-hand-rail\s*\{\s*z-index: auto;\s*\}/, "selected cards can paint above Skills while the rail retains its native scroll properties");
   assert.match(dockZonesRule, /pointer-events: none/, "transparent Skills/Equipment panel space passes pointer hits through");
   assert.match(sequenceStyleSource, /\.local-dock-zones \.hero-skill-button \{ position: relative; z-index: 70; pointer-events: auto; \}/, "real Skill buttons stay hit-testable above the scrollport");
   assert.match(sequenceStyleSource, /\.local-dock-zones \.local-zone-card-button,\s*\.local-dock-zones \.zone-info-button \{ z-index: 70; pointer-events: auto; \}/, "real Equipment and info controls stay hit-testable above the scrollport");
