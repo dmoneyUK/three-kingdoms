@@ -1,17 +1,15 @@
-# HANDOVER — 当前唯一任务：§10.59 Step 2C 延迟摸牌结果
+# HANDOVER — 当前唯一任务：§10.59 Step 2D 公共触发结果数量
 
-**状态：实现完成，待提交和远端 CI/部署。** `ux-v2` 基线：`9c8233eb2c12f02ba4cab3628f81a0d3a43a9b43`；已复核设计 revision：`2026-11-16 01:34 UTC`。Owner 负责实际游戏/手机测试；Agent 不运行本地测试、构建、浏览器或设备测试。
+**状态：已授权，待开始。** 当前 `ux-v2` 基线：`cd5bece262ea67d90a5e8a34fea05713f51c301b`；最新已复核设计 revision：`2026-11-16 01:34 UTC`。Owner 负责真实游戏/手机验收；Agent 不运行本地测试、构建、浏览器或设备测试。
 
 ## 最近交付
 
-§10.59 Step 2B 已部署：共享伤害后 `draw_cards` provider 仅在 `triggerAvailability` 证明公开时，将服务端实际 `draw.drawn.length` 写入同一 `SKILL_USED` 事实；私有卡牌回执不变。提交 `9c8233eb2c12f02ba4cab3628f81a0d3a43a9b43`；精确 SHA Actions [43796061595](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43796061595) 的 API、lint/fast、build、browser startup、D1 migration、Worker 部署及生产 smoke 全通过。Worker `d1c833f5-0f2f-42e7-935e-07c446e9598b`。
+§10.59 Step 2C 已实现并部署（实现提交 `cd5bece262ea67d90a5e8a34fea05713f51c301b`）。通用 `DyingResumeEffect` 保存结果 event ID、原公开 root、公开技能标签及已提交 HP 成本；Peach/First Aid 后续续接沿用原因果 envelope。成功续接发布实际 HP 成本与实际摸牌数，失败救援只发布已证明的 HP 成本，不伪报摸牌；私有卡牌身份不进入公共事实。旧 continuation 缺证明字段时 fail closed。
 
-§10.60 手牌滑动修正已包含在基线并部署；等待 Owner 用真实 iPhone Chrome 复验，Agent 不重复测试。§10.59 Step 2A 普通 Draw Phase 已部署；Owner 验收和 §10.59 总体验收未完成。
+精确 SHA GitHub Actions [43798696496](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43798696496) 已完成且成功：lint/fast、API、browser startup smoke、D1 migration、build、Worker deploy 和 production smoke 全绿。Worker `667a4f4e-4a52-457b-83ca-497afe224e39`。测试仅由远端必需 CI 执行；Agent 未运行本地测试、构建或真实 UI 测试。最终 iPhone 体验由 Owner 验收；§10.59 总体仍未关闭。
 
 ## 当前边界与恢复点
 
-- 2026-11-16 03:30 UTC：扩展通用 `DyingResumeEffect`，保存服务端生成的结果事件 ID、原公开技能 root ID、公开技能标签及已实际提交的 HP 成本；救援续接携带原因果上下文。Peach/First Aid 恢复路径在存在 `resumeEffect` 时保留原因果 envelope。
-- 摸牌成功后，只以实际 `draw.drawn.length` 发布 `HP_COST_LOST` 与 `CARD_DRAWN` 组合结果；救援失败时只记录已提交 HP 成本，不伪报摸牌。发布前验证唯一原 root 事件、公开事实、参与者、技能标签和当前因果帧；身份/证明缺失时不发布。卡牌 ID/卡面仍只进入私有回执。旧保存 continuation 无新证明字段时继续原安全流程。
-- 回归断言已补到 Self Sacrifice 直达、Peach/First Aid 救援续接、失败救援无摸牌事实、短牌堆实际数量和多观察者一致性；这些断言未在本地运行，依 Owner 要求留给远端 CI/Owner。未运行本地测试、构建或 UI/browser 测试；`git diff --check` 通过。
-- 当前代码尚未提交/推送；精确 SHA GitHub Actions、Worker 部署和生产 smoke 待进行。§10.59 仍未关闭，也未获 Owner 手机验收。
-- 当前只执行 §10.59 Step 2C。下一个边界依 §10.59 顺序：通用 `publicTriggerFactFor` 完成/续接结果的实际 HP/卡牌数量发布；完成 Step 2C 的精确 SHA CI/部署后再开始。
+- 2026-11-16 03:37 UTC：开始 §10.59 下一个来源边界。只处理共享 `publicTriggerFactFor` 的效果完成/续接结果：使用服务器实际提交的 HP/卡牌数量和真实参与者，沿用已验证公开权限、原 causal/root 身份与现有公共事实 pipeline；不从 provider 请求参数、英文历史或客户端状态猜结果。
+- 保持未知/私有结果 fail closed；不改规则、响应顺序或私有卡牌回执，不加 Hero/卡牌专用公共展示分支。补充对应 API 数量/隐私断言，但不在本地运行测试；部署仍走精确 SHA GitHub Actions。
+- §10.59 其余来源边界及通用 H4 消费/所有权审计仍未完成。本任务不是 §10.59 完成或 Owner 接受声明。
