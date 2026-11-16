@@ -655,7 +655,7 @@ test("Borrowed Sword local target clears when the authoritative revision changes
   await act(async () => { renderer.unmount(); });
 });
 
-test("pending Dismantle shared choice keeps opaque selection local across Use and retap deselect", async () => {
+test("pending Dismantle shared choice keeps opaque selection local until Confirm and retap deselect", async () => {
   const room = pendingTargetCardRoom("target-card-revision", { withFocusProjection: true });
   const actionCalls = [];
   const action = async (...args) => { actionCalls.push(args); return true; };
@@ -670,7 +670,7 @@ test("pending Dismantle shared choice keeps opaque selection local across Use an
   assert.equal(nodeWithClass(renderer, "card-pool-panel--actor-target-select").props["aria-label"], "Burning Bridge target card selection");
   assert.equal(renderer.root.findAll((node) => node.props?.role === "dialog").length, 0, "target selection no longer creates a fullscreen dialog");
   assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], false);
-  assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, true, "the effect-specific action waits for an eligible selection");
+  assert.equal(button(renderer, { "aria-label": "Confirm Burning Bridge selection" }).props.disabled, true, "the shared Confirm waits for an eligible selection");
   assert.equal(buttons(renderer, { children: "Cancel" }).length, 0, "mandatory discard has no Cancel control");
   assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "shared-pool submission is not duplicated in the Local Dock");
   await act(async () => { button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props.onClick(); });
@@ -678,7 +678,7 @@ test("pending Dismantle shared choice keeps opaque selection local across Use an
   assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], true);
   assert.deepEqual({ kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] }, mainBefore, "local private selection does not alter public presentation attributes");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props["data-interaction-roles"], publicRolesBefore, "private card selection does not change public seat roles");
-  assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, false);
+  assert.equal(button(renderer, { "aria-label": "Confirm Burning Bridge selection" }).props.disabled, false);
   await act(async () => { button(renderer, { "aria-label": "Judgement (1)" }).props.onClick(); });
   assert.equal(text(renderer, "Selection retained · HAND 2").length, 1, "tab changes retain a legal private selection");
   assert.equal(button(renderer, { "aria-label": "Judgement: Lightning" }).props["aria-pressed"], false);
@@ -687,10 +687,10 @@ test("pending Dismantle shared choice keeps opaque selection local across Use an
   await act(async () => { button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props.onClick(); });
   assert.equal(actionCalls.length, 0, "retap deselect sends no gameplay or decline action");
   assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], false, "retap clears the opaque card selection");
-  assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, true);
+  assert.equal(button(renderer, { "aria-label": "Confirm Burning Bridge selection" }).props.disabled, true);
   await act(async () => { button(renderer, { "aria-label": "Equipment (1)" }).props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Equipment: Nio Shield" }).props.onClick(); });
-  await act(async () => { button(renderer, { children: "Use Burning Bridge" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Confirm Burning Bridge selection" }).props.onClick(); });
   assert.deepEqual(actionCalls, [["choose_target_card", { targetCardZone: "equipment", targetCardId: "target-armor" }]], "Confirm preserves the existing action and payload exactly once");
   await act(async () => { renderer.unmount(); });
 });
@@ -701,7 +701,7 @@ test(`${cardKind} pending card choice uses the nonmodal shared pool without Canc
     const actionName = cardKind === "Dismantle" ? "Burning Bridge" : cardKind;
     const title = cardKind === "Dismantle" ? "BURNING BRIDGES · SOURCE → TARGET" : "STEAL · SOURCE → TARGET";
     const instruction = "Choose one card";
-    const useLabel = `Use ${actionName}`;
+    const confirmAccessibleLabel = `Confirm ${actionName} selection`;
     const actionCalls = [];
     let renderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
@@ -723,8 +723,8 @@ test(`${cardKind} pending card choice uses the nonmodal shared pool without Canc
     const hiddenHandChoice = button(renderer, { "aria-label": "Choose hidden Hand position 1" });
     assert.equal(hiddenHandChoice.props["data-target-card-zone"], undefined, "hidden choices expose no physical zone-card identity");
     assert.equal(hiddenHandChoice.props["aria-pressed"], false);
-    assert.equal(button(renderer, { children: useLabel }).props.disabled, true, "Use waits for one eligible selection");
-    assert.equal(buttons(renderer, { children: "Confirm" }).length, 0, "no duplicate footer Confirm is rendered");
+    assert.equal(button(renderer, { "aria-label": confirmAccessibleLabel }).props.disabled, true, "Confirm waits for one eligible selection");
+    assert.equal(buttons(renderer, { children: "Confirm" }).length, 1, "the pool owns exactly one shared Confirm");
     assert.equal(consoleButtons(renderer).filter((node) => node.props.children === "Cancel").length, 0, "no duplicate footer Cancel is rendered");
     assert.equal(buttons(renderer, { children: "Cancel" }).length, 0, "mandatory card choice has no Cancel button");
     const mainBefore = { kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] };
@@ -732,7 +732,7 @@ test(`${cardKind} pending card choice uses the nonmodal shared pool without Canc
     await act(async () => { button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props.onClick(); });
     assert.equal(actionCalls.length, 0, "hidden-position selection remains local");
     assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], true);
-    assert.equal(button(renderer, { children: useLabel }).props.disabled, false);
+    assert.equal(button(renderer, { "aria-label": confirmAccessibleLabel }).props.disabled, false);
     assert.deepEqual({ kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] }, mainBefore, "private choice does not mutate public presentation");
 
     await act(async () => { button(renderer, { "aria-label": "Equipment (1)" }).props.onClick(); });
@@ -740,8 +740,8 @@ test(`${cardKind} pending card choice uses the nonmodal shared pool without Canc
     assert.equal(button(renderer, { "aria-label": "Equipment: Nio Shield" }).props["aria-pressed"], false);
     await act(async () => { button(renderer, { "aria-label": "Equipment: Nio Shield" }).props.onClick(); });
     assert.equal(button(renderer, { "aria-label": "Equipment: Nio Shield" }).props["aria-pressed"], true, "a new legal choice replaces the prior one-card selection");
-    assert.equal(actionCalls.length, 0, "tab and card selection remain local until Use");
-    await act(async () => { button(renderer, { children: useLabel }).props.onClick(); });
+    assert.equal(actionCalls.length, 0, "tab and card selection remain local until Confirm");
+    await act(async () => { button(renderer, { "aria-label": confirmAccessibleLabel }).props.onClick(); });
     assert.deepEqual(actionCalls, [["choose_target_card", { targetCardZone: "equipment", targetCardId: "target-armor" }]], "shared-pool action keeps the existing public-card payload exactly once");
     assert.equal(text(renderer, "target-armor").length, 0, "physical object IDs are not rendered as player-facing text");
     await act(async () => { renderer.unmount(); });
@@ -777,7 +777,7 @@ test("target-card trigger picker adds local Cancel while preserving Skip and opa
   assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "an empty mandatory picker does not present Cancel as if the trigger could be declined");
   assert.equal(buttonsContaining(renderer, "Skip").length, 1, "Skip remains the separate authoritative action");
   assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "trigger-owned target-card submission is not duplicated in the footer");
-  assert.equal(button(renderer, { children: "Use Future Target Cards" }).props.disabled, true);
+  assert.equal(button(renderer, { "aria-label": "Confirm Future Target Cards selection" }).props.disabled, true);
   await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
   assert.equal(actionCalls.length, actionCountBeforeSelection, "target-card trigger selection sends no action");
   assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], true);
@@ -787,7 +787,7 @@ test("target-card trigger picker adds local Cancel while preserving Skip and opa
   assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false, "modal Cancel resets the full local attempt");
   assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "the local clearing action disappears when nothing is selected");
   await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
-  await act(async () => { button(renderer, { children: "Use Future Target Cards" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Confirm Future Target Cards selection" }).props.onClick(); });
   assert.deepEqual(actionCalls.filter(([actionName]) => actionName === "trigger"), [["trigger", { providerId: "future_target_cards", cardKeys: ["hand:0"] }]], "Confirm preserves the semantic trigger payload exactly once");
   assert.equal(renderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("hand:0")).length, 0, "opaque key is not rendered as public text");
   await act(async () => { renderer.unmount(); });
@@ -804,7 +804,7 @@ test("pending target-card selection clears when authoritative availability chang
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: changed, onRecover: () => {} }, React.createElement(GameRoom, { room: changed, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], false, "availability change clears stale opaque selection");
-  assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, true);
+  assert.equal(button(renderer, { "aria-label": "Confirm Burning Bridge selection" }).props.disabled, true);
   await act(async () => { renderer.unmount(); });
 });
 
