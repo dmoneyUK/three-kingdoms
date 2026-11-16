@@ -86,7 +86,7 @@ test("Triumphant belongs to the red Attack source, offers recover/draw/decline, 
     players: recovered.data.room.players,
     rootEventId: recoveryFact.rootEventId,
     interactionId: recoveryFact.interactionId,
-    rootFrameId: recoveryFact.committedIdentity.rootFrameId,
+    rootFrameId: recoveryFact.identity.rootFrameId,
     eventId: recoveryFact.eventId,
   });
   assert.equal(recoveryNarration?.headline, formatCommittedPublicOutcome(recoveryFact.committedOutcome, recovered.data.room.players));
