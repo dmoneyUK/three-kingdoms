@@ -1,9 +1,13 @@
-# HANDOVER — 当前唯一任务：§10.62 H4-VERIFIED-PLAYER-FRAGMENTS-REGRESSION-01
+# HANDOVER — 当前唯一任务：§10.63 LOCAL-SELECTED-HAND-ABOVE-SKILL-01
 
-**状态：实施中。** 依据 `docs/UX2-refine.md` revision `2026-11-16 19:15 UTC`。用户直接授权顺序执行 §10.62 → §10.63 → §10.57 → §10.61；本文件只保留当前 §10.62，不列后续任务。
+**上一交付：** §10.62 已部署，SHA `7d3ec863ccfe87d4c47b42a1afe31295e0b04bd3`；Actions `43941924716` 全通过，Worker `e6892e5c-bb6e-41dd-82ac-dea6c550f3af`，生产 smoke 通过。§10.62 等待用户 iPhone 验收。
 
-§10.59 技术交付已部署（实现 SHA `93d0cef9ce89dc6922d0d204a581a9868032075f`，Actions `43935431031` 通过，Worker `d050dc6a-3db6-4828-8e70-39c7ccbe64e8`）；仍待用户 iPhone 验收，未标记 USER-ACCEPTED。用户明确授权在该验收待定期间继续独立任务。
+## 当前任务
 
-**本任务进度：** `derivePublicInteractionNarration()` 现在与正文同时构造基于真实 playerId 的 typed fragments；覆盖普通出牌/装备、伤害/防止伤害、目标技能、获取/弃置与 CommittedPublicOutcome。`publicCardAnnouncementCopy()`、实际 `PublicInteractionAnnouncementLayer` 和测量副本使用同一片段；已提交防御结果仅在 ID 生成的片段精确等于经验证文案时应用，其他文案保持纯文本。
+**状态：实现完成，待提交及精确 SHA CI/部署。** 依据 `docs/UX2-refine.md` revision `2026-11-16 19:15 UTC`。只在真实选中、详情或检查态取消 hand-section、hand、scroll rail 的中间堆叠上下文；原始选中 CardFace 按自身 z-index 越过它覆盖的技能按钮像素。保留 scroll rail 的 `pointer-events:auto`、`overflow-x:auto` 和 `touch-action:pan-x`，未遮挡的技能/装备按钮继续命中。
 
-**验证记录（2026-11-16 UTC）：** 19:39 定向 Node 测试 `tests/verified-player-copy.test.mjs`、`tests/public-card-announcement.test.mjs`、`tests/api/public-activity.test.mjs`：71/71 通过。19:40 `npx eslint` 覆盖已改 TS/测试文件：0 errors，`app/public-card-display.tsx` 有 14 条 Hook dependency warnings；`git diff --check` 通过。一次额外把未改的 `app/page.tsx` 加入 ESLint 时，`react-hooks/rules-of-hooks` 在既有大型 `GameRoom` 路径分析中栈溢出；最终改动不含 `app/page.tsx`。未运行浏览器/设备测试、构建或 CI；尚未提交/推送。下一步检查远端 CI 状态、复审 diff、提交后核验精确 SHA CI/部署/production smoke。手机验收由用户执行。
+**运行时证据：** 440×844 手机视口中，选中牌与 Influencing 重叠约 41.5×33px。修复前重叠点命中技能按钮；修复后命中真实选中牌；牌外但仍位于 rail 区域的技能点命中 Influencing，装备按钮也命中自身。
+
+**验证：** 聚焦浏览器场景通过：选中/反选、层叠命中、未遮挡技能与装备命中、原生横滑、末张完整可见且滑动未误选。该单场景 4 次运行总计约 36 秒（含一次选位校正、一次预期基线复现及两次最终通过），低于 5 分钟；`git diff --check` 通过。未运行其他本地测试、构建或设备测试。
+
+**边界：** 无玩法/权限改动；§10.60 原横滑验收保持；部署后仍需用户 iPhone 验收。不得标记 USER-ACCEPTED。
