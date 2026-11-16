@@ -1,15 +1,13 @@
-# HANDOVER — 当前唯一任务：§10.59 Step 2D 公共触发结果数量
+# HANDOVER — 唯一任务：§10.59 Step 2D 公共触发结果数量
 
-**状态：已授权，待开始。** 当前 `ux-v2` 基线：`cd5bece262ea67d90a5e8a34fea05713f51c301b`；最新已复核设计 revision：`2026-11-16 01:34 UTC`。Owner 负责真实游戏/手机验收；Agent 不运行本地测试、构建、浏览器或设备测试。
+**状态：实现完成，待提交及精确 SHA CI / Worker 部署。** 当前设计 revision：`2026-11-16 01:34 UTC`；基线提交：`cd5bece262ea67d90a5e8a34fea05713f51c301b`。Owner 负责真实游戏与手机验收；按 Owner 指示不运行本地测试、构建、浏览器或设备测试。
 
-## 最近交付
+## 当前执行结果
 
-§10.59 Step 2C 已实现并部署（实现提交 `cd5bece262ea67d90a5e8a34fea05713f51c301b`）。通用 `DyingResumeEffect` 保存结果 event ID、原公开 root、公开技能标签及已提交 HP 成本；Peach/First Aid 后续续接沿用原因果 envelope。成功续接发布实际 HP 成本与实际摸牌数，失败救援只发布已证明的 HP 成本，不伪报摸牌；私有卡牌身份不进入公共事实。旧 continuation 缺证明字段时 fail closed。
+2026-11-16 03:48 UTC：在 `app/api/rooms/route.ts` 为共享 `publicTriggerFactFor` 结果增加服务端结算后补全路径。provider 动态请求值不再冒充实际数量；复用 `validateCommittedPublicOutcomeDraft`，将服务端实际摸牌、恢复 HP、弃置成本、受伤后获得牌及玩家间转移写入类型化公共结果。补齐受益玩家参与者证明；零变化结果只带真实的零结果文案。公共结果不含隐藏牌 ID 或牌面。无 Hero/卡牌专用展示分支。
 
-精确 SHA GitHub Actions [43798696496](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43798696496) 已完成且成功：lint/fast、API、browser startup smoke、D1 migration、build、Worker deploy 和 production smoke 全绿。Worker `667a4f4e-4a52-457b-83ca-497afe224e39`。测试仅由远端必需 CI 执行；Agent 未运行本地测试、构建或真实 UI 测试。最终 iPhone 体验由 Owner 验收；§10.59 总体仍未关闭。
+改动覆盖回复 HP 后目标摸牌、装备离场/锦囊使用/失牌触发的实际摸牌、实际恢复 HP、已提交的手牌弃置成本、实际获得伤害牌、实际区域间转移，以及攻击目标触发的实际摸牌。尚未提交的源文件仅 `app/api/rooms/route.ts`；未添加或运行测试。`git diff --check` 已通过（仅格式检查，不是行为测试）。
 
-## 当前边界与恢复点
+## 恢复点
 
-- 2026-11-16 03:37 UTC：开始 §10.59 下一个来源边界。只处理共享 `publicTriggerFactFor` 的效果完成/续接结果：使用服务器实际提交的 HP/卡牌数量和真实参与者，沿用已验证公开权限、原 causal/root 身份与现有公共事实 pipeline；不从 provider 请求参数、英文历史或客户端状态猜结果。
-- 保持未知/私有结果 fail closed；不改规则、响应顺序或私有卡牌回执，不加 Hero/卡牌专用公共展示分支。补充对应 API 数量/隐私断言，但不在本地运行测试；部署仍走精确 SHA GitHub Actions。
-- §10.59 其余来源边界及通用 H4 消费/所有权审计仍未完成。本任务不是 §10.59 完成或 Owner 接受声明。
+先按项目 CI cadence 检查远端 `ux-v2` 最新相关工作流；最近代码提交 `cd5bece262ea67d90a5e8a34fea05713f51c301b` 的 Actions `43798696496` 成功，Worker `667a4f4e-4a52-457b-83ca-497afe224e39`。随后提交并推送当前 Step 2D，核实精确 SHA 的必需 Actions、部署与 production smoke。§10.59 仍开放且待 Owner iPhone 验收；不得宣称接受。

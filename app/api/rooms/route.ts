@@ -36,7 +36,7 @@ import { resolveDamageModifiers, type DamageCause } from "../../../game/capabili
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
 import { attackRootProjectionDiagnosticsFor, projectPresentationV2, publicCardPlayProvesEffectiveKind, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
 import { composePresentationSnapshot, type PresentationPublicDrawPhaseDecision } from "../../../game/presentation-snapshot";
-import { validateCommittedPublicOutcomeDraft, type PublicPhysicalZoneTransition, type PublicPresentationDecision, type PublicPresentationEventFactDraft, type PublicZoneEndpoint, type ViewerNegationChoice } from "../../../game/presentation-semantics";
+import { validateCommittedPublicOutcomeDraft, type CommittedPublicOutcomeChange, type PublicPhysicalZoneTransition, type PublicPresentationDecision, type PublicPresentationEventFactDraft, type PublicZoneEndpoint, type ViewerNegationChoice } from "../../../game/presentation-semantics";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
 import { childCausalFrame, contextFor, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
@@ -815,34 +815,25 @@ function addCommittedPublicSkillOutcome(log: string[], actor: PlayerRow, skillLa
   }, eventId);
   return { log: committed.log, eventId, causal: causal.context, envelope: causal.envelope };
 }
-type PublicTriggerOutcomeSummary = { affectedPlayerIds?: string[]; amount?: number; outcomeLabel: string };
+type PublicTriggerOutcomeSummary = { affectedPlayerIds?: string[]; outcomeLabel: string };
 
 function publicTriggerOutcomeSummary(outcome: { kind: string }): PublicTriggerOutcomeSummary {
   const details = outcome as unknown as Record<string, unknown>;
   const ids = (...values: unknown[]) => [...new Set(values.filter((value): value is string => typeof value === "string" && value.length > 0))];
-  const count = (value: unknown) => Array.isArray(value) ? value.length : null;
   switch (outcome.kind) {
-    case "gain_target_card": return { affectedPlayerIds: ids(details.sourceId), outcomeLabel: "obtained one card" };
+    case "gain_target_card": return { affectedPlayerIds: ids(details.sourceId, details.targetId), outcomeLabel: "obtained one card" };
     case "fanjian_combined": return { affectedPlayerIds: ids(details.targetId), outcomeLabel: "revealed one hidden card" };
-    case "gain_damage_cards": {
-      const gained = count(details.cardIds);
-      return { affectedPlayerIds: ids(details.targetId), ...(gained !== null ? { amount: gained } : {}), outcomeLabel: gained === 1 ? "obtained the card that caused the damage" : "obtained the cards that caused the damage" };
-    }
+    case "gain_damage_cards": return { affectedPlayerIds: ids(details.targetId), outcomeLabel: "obtained damage cards" };
     case "legacy_distribution": return { affectedPlayerIds: ids(details.playerId), outcomeLabel: "began a card distribution" };
-    // These provider outcomes describe requested operations. The server may
-    // cap recovery at max HP or draw fewer cards when the deck is short, so
-    // report the committed amount at the common outcome branch instead.
     case "recover_player": return { affectedPlayerIds: ids(details.playerId), outcomeLabel: "resolved a recovery effect" };
     case "draw_cards": return { outcomeLabel: "resolved a draw effect" };
+    case "draw_target_cards": return { affectedPlayerIds: ids(details.targetId), outcomeLabel: "resolved a draw effect" };
     case "obtain_judgement_card": return { affectedPlayerIds: ids(details.playerId), outcomeLabel: "obtained the final Judgement card" };
     case "damage_player": return { affectedPlayerIds: ids(details.targetId), outcomeLabel: "resolved a damage effect" };
     case "force_damage": return { outcomeLabel: "resolved a damage effect" };
     case "prevent_damage": return { outcomeLabel: "prevented the damage" };
     case "target_discard": return { outcomeLabel: "discarded one selected card" };
-    case "discard_cards": {
-      const discarded = count(details.targetCardIds);
-      return { affectedPlayerIds: ids(details.targetId), ...(discarded !== null ? { amount: discarded } : {}), outcomeLabel: `discarded ${discarded ?? 1} card${(discarded ?? 1) === 1 ? "" : "s"}` };
-    }
+    case "discard_cards": return { affectedPlayerIds: ids(details.targetId), outcomeLabel: "resolved a discard effect" };
     case "judgement": return { outcomeLabel: "started a Judgement" };
     case "attacker_draw": return { outcomeLabel: "allowed the attacker to draw a card" };
     case "follow_up_attack": return { outcomeLabel: "prepared a follow-up Attack" };
@@ -858,14 +849,39 @@ function publicTriggerFactFor(trigger: TriggerPending, players: PlayerRow[], eff
   const actorId = triggerActorId(effectId, context) ?? trigger.actorId;
   const option = triggerOptionsFor(trigger, players, room).find((candidate) => candidate.effectId === effectId);
   const summary = publicTriggerOutcomeSummary(outcome);
+  const affectedPlayerIds = [...new Set([
+    ...(summary.affectedPlayerIds ?? []),
+    ...(outcome.kind === "draw_cards" && actorId ? [actorId] : []),
+    ...(outcome.kind === "attacker_draw" && context.sourceId ? [context.sourceId] : []),
+  ])];
   return publicFactFor(trigger.causal, "SKILL_USED", {
     actorId, ...(rootEventId ? { rootEventId } : {}),
-    ...(summary.affectedPlayerIds?.length ? { affectedPlayerIds: summary.affectedPlayerIds } : {}),
+    ...(affectedPlayerIds.length ? { affectedPlayerIds } : {}),
     ...(option?.label ? { label: option.label } : {}),
     ...(summary.outcomeLabel ? { outcomeLabel: summary.outcomeLabel } : {}),
-    ...(summary.amount !== undefined ? { amount: summary.amount } : {}),
     effect: { kind: outcome.kind },
   }, envelope);
+}
+
+/** Adds only server-measured, committed trigger results to the shared public fact. */
+function withCommittedPublicTriggerOutcome(
+  fact: PublicPresentationEventFactDraft | undefined,
+  result: { outcomeLabel: string; changes: readonly CommittedPublicOutcomeChange[] },
+): PublicPresentationEventFactDraft | undefined {
+  if (!fact || !Number.isSafeInteger(result.changes.reduce((total, change) => total + change.amount, 0))) return fact;
+  const amount = result.changes.reduce((total, change) => total + change.amount, 0);
+  if (result.changes.length === 0) return { ...fact, amount: 0, outcomeLabel: result.outcomeLabel };
+  const committedOutcome = validateCommittedPublicOutcomeDraft({
+    source: { kind: "other", ...(fact.label ? { label: fact.label } : {}) },
+    changes: result.changes,
+  }, {
+    ...(fact.actorId ? { actorId: fact.actorId } : {}),
+    affectedPlayerIds: fact.affectedPlayerIds ?? [],
+    publicLabels: [fact.label],
+  });
+  // Keep the truthful generic trigger fact if participant/source proof is
+  // incomplete; never attach a guessed amount or an invalid committed delta.
+  return committedOutcome ? { ...fact, amount, outcomeLabel: result.outcomeLabel, committedOutcome } : fact;
 }
 function genericStageLabel(stage: string) {
   return stage.toLowerCase().split("_").map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part).join(" ");
@@ -8721,7 +8737,13 @@ export async function POST(request: Request) {
         const draw = drawCards(deck, discard, amount, log);
         deck = draw.deck;
         discard = draw.discard;
-        let nextLog = addTriggeredEffectNotice(draw.log, recoveredPlayer.name, triggerExecution?.presentation?.label ?? "Prudence", triggerPublicFact).log;
+        const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+          outcomeLabel: draw.drawn.length > 0
+            ? `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`
+            : "used a draw effect; no cards were drawn",
+          changes: draw.drawn.length > 0 ? [{ kind: "CARD_DRAWN", playerId: target.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }] : [],
+        });
+        let nextLog = addTriggeredEffectNotice(draw.log, recoveredPlayer.name, triggerExecution?.presentation?.label ?? "Prudence", committedFact).log;
         for (const drawn of draw.drawn) nextLog = addPrivateDrawEvent(nextLog, target, drawn);
         log = addHistory(nextLog, `${target.name} draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"} with Prudence.`, target.id);
         await db.batch([
@@ -8759,7 +8781,13 @@ export async function POST(request: Request) {
         deck = draw.deck;
         discard = draw.discard;
         const nextHand = [...parse<Card[]>(owner.hand_json, []), ...draw.drawn];
-        log = addTriggeredEffectNotice(draw.log, owner.name, triggerExecution?.presentation?.label ?? "Daredevil", triggerPublicFact).log;
+        const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+          outcomeLabel: draw.drawn.length > 0
+            ? `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`
+            : "used a draw effect; no cards were drawn",
+          changes: draw.drawn.length > 0 ? [{ kind: "CARD_DRAWN", playerId: owner.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }] : [],
+        });
+        log = addTriggeredEffectNotice(draw.log, owner.name, triggerExecution?.presentation?.label ?? "Daredevil", committedFact).log;
         for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, owner, drawn);
         log = addHistory(log, `${owner.name} draws ${draw.drawn.length} cards with Daredevil.`, owner.id);
         await db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), owner.id).run();
@@ -8796,6 +8824,13 @@ export async function POST(request: Request) {
           nextHand = [...nextHand, ...draw.drawn];
           for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, source, drawn);
         }
+        const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+          outcomeLabel: draw.drawn.length > 0
+            ? `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`
+            : "used a draw effect; no cards were drawn",
+          changes: draw.drawn.length > 0 ? [{ kind: "CARD_DRAWN", playerId: source.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }] : [],
+        });
+        log = addTriggeredEffectNotice(log, source.name, triggerExecution.presentation?.label ?? "an optional effect", committedFact).log;
         log = addHistory(log, `${source.name} uses Cultivation and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, source.id);
         nextPlayers = players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(nextHand) } : player);
       } else {
@@ -8912,7 +8947,11 @@ export async function POST(request: Request) {
           materials, targetId: endingPlayer.id, outcome: "ACTIVATION_COST",
         }).log
         : addDiscardEvent(log, source, [cost]);
-      log = addTriggeredEffectNotice(log, source.name, "Dauntless", triggerPublicFact).log;
+      const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+        outcomeLabel: "discarded 1 card as a cost",
+        changes: [{ kind: "CARD_DISCARDED", playerId: source.id, amount: 1, fromZone: "HAND", toZone: "DISCARD" }],
+      });
+      log = addTriggeredEffectNotice(log, source.name, "Dauntless", committedFact).log;
       const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), "yue_jin_dauntless"])], sourceId: source.id, targetId: endingPlayer.id } satisfies TurnEndTriggerContinuation;
       if (equipmentCards(endingPlayer).length > 0) {
         const presentation = addLogWithId(log, `${endingPlayer.name} must choose 1 Equipment card to discard for Dauntless.`);
@@ -8992,6 +9031,13 @@ export async function POST(request: Request) {
         log = draw.log;
         nextHand = [...nextHand, ...draw.drawn];
         for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, actor, drawn);
+        const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+          outcomeLabel: draw.drawn.length > 0
+            ? `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`
+            : "used a draw effect; no cards were drawn",
+          changes: draw.drawn.length > 0 ? [{ kind: "CARD_DRAWN", playerId: actor.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }] : [],
+        });
+        log = addTriggeredEffectNotice(log, actor.name, triggerExecution?.presentation?.label ?? "an optional effect", committedFact).log;
         log = addHistory(log, `${actor.name} uses Second Wind and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, actor.id);
       } else {
         log = addHistory(log, `${actor.name} declines Second Wind.`);
@@ -9397,7 +9443,9 @@ export async function POST(request: Request) {
         : undefined;
       // The dedicated public cost-card journey and verified main sentence fully
       // explain a proven Deflection. Keep the generic toast when proof is absent.
-      if (execution && !deflectionProof) log = addTriggeredEffectNotice(log, me.name, triggerExecution.presentation?.label ?? "an optional effect", triggerPublicFact).log;
+      if (execution && !deflectionProof && execution.outcome.kind !== "attacker_draw") {
+        log = addTriggeredEffectNotice(log, me.name, triggerExecution.presentation?.label ?? "an optional effect", triggerPublicFact).log;
+      }
       if (redirect && redirectTarget && redirectCost) {
         const nextTargetHand = targetHand.filter((card) => card.id !== redirectCost.id);
         const nextTargetEquipment = Object.fromEntries(Object.entries(targetEquipment).filter(([, card]) => !card || card.id !== redirectCost.id)) as EquipmentZone;
@@ -9475,7 +9523,16 @@ export async function POST(request: Request) {
         continuationPlayers = players.map((player) => player.id === target.id ? { ...player, hand_json: JSON.stringify(nextTargetHand) } : player);
         await db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextTargetHand), target.id).run();
       } else if (execution?.outcome.kind === "attacker_draw") {
-        const drawn = drawCards(parse<Card[]>(liveRoom.deck_json, []), discard, 1, log); discard = drawn.discard; log = addLog(drawn.drawn[0] ? addPrivateDrawEvent(drawn.log, source, drawn.drawn[0]) : drawn.log, `${target.name} allows ${source.name} to draw a card.`, source.id);
+        const drawn = drawCards(parse<Card[]>(liveRoom.deck_json, []), discard, 1, log); discard = drawn.discard;
+        let drawLog = drawn.drawn[0] ? addPrivateDrawEvent(drawn.log, source, drawn.drawn[0]) : drawn.log;
+        const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+          outcomeLabel: drawn.drawn.length > 0
+            ? `drew ${drawn.drawn.length} card${drawn.drawn.length === 1 ? "" : "s"}`
+            : "allowed a draw; no card was drawn",
+          changes: drawn.drawn.length > 0 ? [{ kind: "CARD_DRAWN", playerId: source.id, amount: drawn.drawn.length, fromZone: "DECK", toZone: "HAND" }] : [],
+        });
+        drawLog = addTriggeredEffectNotice(drawLog, target.name, triggerExecution.presentation?.label ?? "an optional effect", committedFact).log;
+        log = addLog(drawLog, `${target.name} allows ${source.name} to draw ${drawn.drawn.length} card${drawn.drawn.length === 1 ? "" : "s"}.`, source.id);
         const nextSourceHand = [...parse<Card[]>(source.hand_json, []), ...drawn.drawn];
         continuationPlayers = players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(nextSourceHand) } : player);
         await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id), db.prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(drawn.deck), room.id)]);
@@ -9580,11 +9637,10 @@ export async function POST(request: Request) {
             const maxHp = sourcePlayer.max_hp ?? beforeHp;
             const amountRecovered = recoveredAmount(beforeHp, maxHp, triggerExecution.outcome.amount);
             const nextHp = applyRecovery(beforeHp, amountRecovered, maxHp);
-            const committedFact = triggerPublicFact ? {
-              ...triggerPublicFact,
-              ...(amountRecovered > 0 ? { amount: amountRecovered, outcomeLabel: `recovered ${amountRecovered} HP` }
-                : { amount: 0, outcomeLabel: "used a recovery effect; HP did not change" }),
-            } : undefined;
+            const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+              outcomeLabel: amountRecovered > 0 ? `recovered ${amountRecovered} HP` : "used a recovery effect; HP did not change",
+              changes: amountRecovered > 0 ? [{ kind: "HP_RECOVERED", playerId: sourcePlayer.id, amount: amountRecovered }] : [],
+            });
             log = addTriggeredEffectNotice(log, sourcePlayer.name, triggerExecution.presentation?.label ?? "an optional effect", committedFact).log;
             log = addLog(log, `${sourcePlayer.name} chooses Triumphant and recovers ${amountRecovered} HP.`);
             await db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(nextHp, sourcePlayer.id).run();
@@ -9596,13 +9652,12 @@ export async function POST(request: Request) {
             deck = draw.deck;
             discard = draw.discard;
             const nextHand = [...parse<Card[]>(sourcePlayer.hand_json, []), ...draw.drawn];
-            const committedFact = triggerPublicFact ? {
-              ...triggerPublicFact,
-              amount: draw.drawn.length,
+            const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
               outcomeLabel: draw.drawn.length > 0
                 ? `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`
                 : "used a draw effect; no cards were drawn",
-            } : undefined;
+              changes: draw.drawn.length > 0 ? [{ kind: "CARD_DRAWN", playerId: sourcePlayer.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }] : [],
+            });
             log = addTriggeredEffectNotice(draw.log, sourcePlayer.name, triggerExecution.presentation?.label ?? "an optional effect", committedFact).log;
             log = addHistory(log, `${sourcePlayer.name} chooses Triumphant and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, sourcePlayer.id);
             for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, sourcePlayer, drawn);
@@ -9624,13 +9679,12 @@ export async function POST(request: Request) {
           const available = gained.cards;
           discard = gained.discard;
           const hand = [...parse<Card[]>(target.hand_json, []), ...available];
-          const committedFact = triggerPublicFact ? {
-            ...triggerPublicFact,
-            amount: available.length,
+          const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
             outcomeLabel: available.length === 1
               ? "obtained one damage card"
               : `obtained ${available.length} damage cards`,
-          } : undefined;
+            changes: available.length > 0 ? [{ kind: "CARD_GAINED", playerId: target.id, amount: available.length, fromZone: "DISCARD", toZone: "HAND" }] : [],
+          });
           log = addTriggeredEffectNotice(log, target.name, triggerExecution.presentation?.label ?? "Treachery", committedFact).log;
           for (const card of available) {
             log = addPrivateHandArrivalEvent(log, target, card, {
@@ -9668,16 +9722,20 @@ export async function POST(request: Request) {
             ...(continuation.interactionId ? { interactionId: continuation.interactionId } : {}),
             ...(continuation.frameId ? { frameId: continuation.frameId } : {}),
           });
-          const committedFact = triggerPublicFact ? {
-            ...triggerPublicFact,
+          const sourceZoneForOutcome = sourceZone.toUpperCase() as "HAND" | "EQUIPMENT" | "JUDGEMENT";
+          const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
             outcomeLabel: "obtained one card",
+            changes: [{ kind: "CARD_TRANSFERRED", fromPlayerId: sourcePlayer.id, toPlayerId: target.id, amount: 1, fromZone: sourceZoneForOutcome, toZone: "HAND" }],
+          });
+          const publicEffect = committedFact ? {
+            ...committedFact,
             effect: {
               kind: "gain_target_card",
               ...(handIndex < 0 ? { label: cardDefinition(selected.kind).name } : {}),
             },
           } : undefined;
           gainLog = addLogWithId(gainLog, `${target.name} obtains a card from ${sourcePlayer.name} with Retaliation.`, undefined, {
-            effectNotice: true, ...(committedFact ? { publicFact: committedFact } : {}),
+            effectNotice: true, ...(publicEffect ? { publicFact: publicEffect } : {}),
           }).log;
           await db.batch([
             db.prepare("UPDATE players SET hand_json = ?, equipment_json = ?, judgement_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), JSON.stringify(nextEquipment), JSON.stringify(nextJudgement), sourcePlayer.id),
