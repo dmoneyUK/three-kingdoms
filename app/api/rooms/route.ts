@@ -898,6 +898,32 @@ function withCommittedPublicOutcome(
   return committedOutcome ? { ...fact, amount, outcomeLabel: result.outcomeLabel, committedOutcome } : fact;
 }
 const withCommittedPublicTriggerOutcome = withCommittedPublicOutcome;
+function committedDiscardChangesFromTransitions(
+  eventId: string,
+  playerId: string,
+  transitions: readonly PublicPhysicalZoneTransition[] | undefined,
+): CommittedPublicOutcomeChange[] | null {
+  if (!transitions?.length) return null;
+  const amounts = new Map<"HAND" | "EQUIPMENT" | "JUDGEMENT", number>();
+  const physicalCardIds = new Set<string>();
+  for (const transition of transitions) {
+    const fromZone = transition.from.zone;
+    if (transition.semantics !== "PROVEN" || transition.visibility !== "PUBLIC"
+      || transition.eventId !== eventId || transition.from.ownerId !== playerId
+      || transition.to.zone !== "DISCARD" || transition.to.ownerId !== null
+      || !(fromZone === "HAND" || fromZone === "EQUIPMENT" || fromZone === "JUDGEMENT")
+      || !transition.physicalCardId || physicalCardIds.has(transition.physicalCardId)) return null;
+    physicalCardIds.add(transition.physicalCardId);
+    amounts.set(fromZone, (amounts.get(fromZone) ?? 0) + 1);
+  }
+  return [...amounts].map(([fromZone, amount]) => ({
+    kind: "CARD_DISCARDED" as const,
+    playerId,
+    amount,
+    fromZone,
+    toZone: "DISCARD" as const,
+  }));
+}
 function genericStageLabel(stage: string) {
   return stage.toLowerCase().split("_").map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part).join(" ");
 }
@@ -2122,20 +2148,9 @@ function addDiscardEventWithId(log: string[], player: PlayerRow | string, cards:
   const eventId = crypto.randomUUID();
   const publicZoneTransitions = typeof player === "string" ? undefined : publicDiscardTransitions(eventId, player, cards);
   const discardActorId = typeof player === "string" ? null : player.id;
-  const discardedByZone = new Map<"HAND" | "EQUIPMENT" | "JUDGEMENT", number>();
-  for (const transition of publicZoneTransitions ?? []) {
-    const zone = transition.from.zone;
-    if (zone === "HAND" || zone === "EQUIPMENT" || zone === "JUDGEMENT") {
-      discardedByZone.set(zone, (discardedByZone.get(zone) ?? 0) + 1);
-    }
-  }
-  const committedChanges: CommittedPublicOutcomeChange[] = discardActorId ? [...discardedByZone].map(([fromZone, amount]) => ({
-    kind: "CARD_DISCARDED" as const,
-    playerId: discardActorId,
-    amount,
-    fromZone,
-    toZone: "DISCARD" as const,
-  })) : [];
+  const committedChanges = discardActorId
+    ? committedDiscardChangesFromTransitions(eventId, discardActorId, publicZoneTransitions) ?? []
+    : [];
   const discardRoot = committedChanges.length && typeof player !== "string"
     ? createCausalRoot({
       stage: "SETTLEMENT",
@@ -2164,12 +2179,18 @@ function addDiscardEvent(log: string[], player: PlayerRow | string, cards: Card[
   return addDiscardEventWithId(log, player, cards).log;
 }
 
-function addPublicDiscardCardEvent(log: string[], player: PlayerRow, card: Card) {
-  const eventId = crypto.randomUUID();
+function addPublicDiscardCardEvent(
+  log: string[],
+  player: PlayerRow,
+  card: Card,
+  options: { eventId?: string; publicFact?: PublicPresentationEventFactDraft } = {},
+) {
+  const eventId = options.eventId ?? crypto.randomUUID();
   const publicZoneTransitions = publicDiscardTransitions(eventId, player, [card]);
   return addCardEvent(log, player.name, card, player.name, "discard", true, {
     actorId: player.id,
     ...(publicZoneTransitions ? { publicZoneTransitions } : {}),
+    ...(options.publicFact ? { publicFact: options.publicFact } : {}),
   }, eventId);
 }
 function drawCards(deck: Card[], discard: Card[], count: number, log: string[]) {
@@ -9723,9 +9744,34 @@ export async function POST(request: Request) {
       const deflectionProof = execution?.effectId === "daqiao_deflection" && redirect && redirectTarget && redirectCost && deflectionDiscardEventId
         ? daQiaoDeflectionActionProofFor(liveRoom, continuation.declaration, source, target, redirectTarget, redirectCost, deflectionDiscardEventId, log)
         : undefined;
+      const targetDiscardEventId = execution?.outcome.kind === "target_discard" && discardCard ? crypto.randomUUID() : null;
+      const targetDiscardTransitions = targetDiscardEventId && discardCard
+        ? publicDiscardTransitions(targetDiscardEventId, target, [discardCard])
+        : undefined;
+      const targetDiscardChanges = targetDiscardEventId
+        ? committedDiscardChangesFromTransitions(targetDiscardEventId, target.id, targetDiscardTransitions) ?? []
+        : [];
+      const targetDiscardBaseFact = targetDiscardEventId && triggerPublicFact?.committedIdentity
+        ? {
+          ...triggerPublicFact,
+          rootEventId: triggerPublicFact.rootEventId ?? targetDiscardEventId,
+          actorId: target.id,
+          affectedPlayerIds: [...new Set([...(triggerPublicFact.affectedPlayerIds ?? []), target.id])],
+        }
+        : triggerPublicFact;
+      const targetDiscardAmount = targetDiscardChanges.reduce((total, change) => total + change.amount, 0);
+      const targetDiscardDraft = targetDiscardAmount > 0
+        ? withCommittedPublicTriggerOutcome(targetDiscardBaseFact, {
+          outcomeLabel: `discarded ${targetDiscardAmount} card${targetDiscardAmount === 1 ? "" : "s"}`,
+          changes: targetDiscardChanges,
+        })
+        : undefined;
+      const targetDiscardOutcomeFact = targetDiscardDraft?.committedIdentity && targetDiscardDraft.committedOutcome
+        ? targetDiscardDraft
+        : undefined;
       // The dedicated public cost-card journey and verified main sentence fully
       // explain a proven Deflection. Keep the generic toast when proof is absent.
-      if (execution && !deflectionProof && execution.outcome.kind !== "attacker_draw") {
+      if (execution && !deflectionProof && execution.outcome.kind !== "attacker_draw" && !targetDiscardOutcomeFact) {
         log = addTriggeredEffectNotice(log, me.name, triggerExecution.presentation?.label ?? "an optional effect", triggerPublicFact).log;
       }
       if (redirect && redirectTarget && redirectCost) {
@@ -9793,12 +9839,15 @@ export async function POST(request: Request) {
             effectId: "yin_yang_swords_attack_targeted", effectClass: "EFFECT", activationOwnerId: source.id,
             materials: yinYangMaterials, targetId: target.id, outcome: "TARGET_DISCARDED",
             ...yinYangRoot,
-          });
+          }, { actorId: target.id, ...(targetDiscardOutcomeFact ? { publicFact: targetDiscardOutcomeFact } : {}) }, targetDiscardEventId ?? undefined);
           log = publicDiscard.log;
         } else {
           // The actual committed discard is public even if its causal root cannot
           // be verified. Keep the physical event, but omit an unproven effect link.
-          log = addPublicDiscardCardEvent(log, target, card);
+          log = addPublicDiscardCardEvent(log, target, card, {
+            ...(targetDiscardEventId ? { eventId: targetDiscardEventId } : {}),
+            ...(targetDiscardOutcomeFact ? { publicFact: targetDiscardOutcomeFact } : {}),
+          });
         }
         discard.push(card); log = addLog(log, `${target.name} discards a hand card.`);
         const nextTargetHand = hand.filter((item) => item.id !== card.id);
