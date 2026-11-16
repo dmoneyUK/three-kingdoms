@@ -4827,9 +4827,7 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
       publishableDrawFact = committedGenericDrawFact?.committedIdentity && genericDrawOutcomeValid ? committedGenericDrawFact : undefined;
     }
     const drawHistoryMessage = `${source.name} plays ${pending.cardName} and draws ${draw.drawn.length} cards.`;
-    const drawMessage = draw.drawn.length > 0
-      ? `${source.name} draws ${draw.drawn.length} cards${drawSourceLabel ? ` with ${drawSourceLabel}` : ""}.`
-      : `${source.name} draws no cards.`;
+    const drawMessage = `${source.name} resolves the committed draw effect.`;
     const linkedResolutionId = pending.rootResolutionId ?? pending.resolutionId;
     const drawResolutionId = drawSourceLabel && linkedResolutionId ? linkedResolutionId : drawEventId;
     // Preserve the legacy informational history contract; the committed event
