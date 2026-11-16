@@ -799,6 +799,7 @@ function addCommittedPublicSkillOutcome(
   actor: PlayerRow,
   skillLabel: string,
   changes: readonly CommittedPublicOutcomeChange[],
+  noChangeOutcomeLabel = `${skillLabel} resolved without a public HP or card change`,
 ) {
   const causal = createCausalRoot({
     stage: "SETTLEMENT",
@@ -817,7 +818,7 @@ function addCommittedPublicSkillOutcome(
     effect: { kind: "skill_use" },
   }, causal.envelope);
   const committedFact = withCommittedPublicOutcome(fact, {
-    outcomeLabel: `${skillLabel} committed its public cost`,
+    outcomeLabel: changes.length ? `${skillLabel} resolved its committed public result` : noChangeOutcomeLabel,
     changes,
     source: { kind: "skill", label: skillLabel },
   });
@@ -1562,6 +1563,24 @@ function publicCardMaterials(cards: readonly Card[], owners: readonly { playerId
   return materials.length === cards.length && materials.every(Boolean)
     ? materials as PresentationPublicCardEffectProof["materials"]
     : null;
+}
+function committedDiscardChangesFromZones(playerId: string, cards: readonly Card[], hand: readonly Card[], equipment: readonly Card[]): CommittedPublicOutcomeChange[] | null {
+  if (!cards.length || new Set(cards.map((card) => card.id)).size !== cards.length) return null;
+  const counts = new Map<"HAND" | "EQUIPMENT", number>();
+  for (const card of cards) {
+    const inHand = hand.some((held) => held.id === card.id);
+    const inEquipment = equipment.some((held) => held.id === card.id);
+    if (inHand === inEquipment) return null;
+    const fromZone = inHand ? "HAND" : "EQUIPMENT";
+    counts.set(fromZone, (counts.get(fromZone) ?? 0) + 1);
+  }
+  return [...counts].map(([fromZone, amount]) => ({
+    kind: "CARD_DISCARDED" as const,
+    playerId,
+    amount,
+    fromZone,
+    toZone: "DISCARD",
+  }));
 }
 function publicEventResolutionId(log: readonly string[], eventId: string | undefined) {
   if (!eventId) return undefined;
@@ -8697,12 +8716,19 @@ export async function POST(request: Request) {
             }).log
             : addDiscardEvent(log, liveMe, selected);
           log = addLog(log, `${liveMe.name} uses Prodigal Healer on ${target.name}; ${target.name} recovers ${amountRecovered} HP.`);
+          const discardChanges = committedDiscardChangesFromZones(liveMe.id, selected, liveHand, liveEquipment) ?? [];
+          const outcomeChanges: CommittedPublicOutcomeChange[] = [
+            ...discardChanges,
+            ...(amountRecovered > 0 ? [{ kind: "HP_RECOVERED", playerId: target.id, amount: amountRecovered } as const] : []),
+          ];
+          const publicOutcome = addCommittedPublicSkillOutcome(log, liveMe, option?.label ?? "Prodigal Healer", outcomeChanges);
+          log = publicOutcome.log;
           await db.batch([
             db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), liveMe.id),
             db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(applyRecovery(beforeHp, amountRecovered, maxHp), target.id),
-            db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), room.id),
+            db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, skill_state_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), JSON.stringify(publicOutcome.envelope), room.id),
           ]);
-          await advanceHpRecoveredEvents(room.id, amountRecovered ? [{ playerId: target.id, amountRecovered, sourceId: liveMe.id, reason: "prodigal_healer" }] : [], { kind: "phase", phase: "play", playerId: liveMe.id, handLoss: { playerId: liveMe.id, beforeHand: liveHand } });
+          await advanceHpRecoveredEvents(room.id, amountRecovered ? [{ playerId: target.id, amountRecovered, sourceId: liveMe.id, reason: "prodigal_healer", publicOutcomeEventId: publicOutcome.eventId, causal: publicOutcome.causal }] : [], { kind: "phase", phase: "play", playerId: liveMe.id, handLoss: { playerId: liveMe.id, beforeHand: liveHand } });
         }
       } else if (execution.outcome.kind === "betrothment") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive && heroGender(player.hero) === "male" && (player.hp ?? 0) < (player.max_hp ?? 0));
@@ -8730,12 +8756,21 @@ export async function POST(request: Request) {
           const recoveryRecords: RecoveryRecord[] = [];
           if (sourceRecovered > 0) recoveryRecords.push({ playerId: liveMe.id, amountRecovered: sourceRecovered, sourceId: liveMe.id, reason: "betrothment" });
           if (targetRecovered > 0) recoveryRecords.push({ playerId: target.id, amountRecovered: targetRecovered, sourceId: liveMe.id, reason: "betrothment" });
+          const discardChanges = committedDiscardChangesFromZones(liveMe.id, selected, liveHand, liveEquipment) ?? [];
+          const outcomeChanges: CommittedPublicOutcomeChange[] = [
+            ...discardChanges,
+            ...(sourceRecovered > 0 ? [{ kind: "HP_RECOVERED", playerId: liveMe.id, amount: sourceRecovered } as const] : []),
+            ...(targetRecovered > 0 ? [{ kind: "HP_RECOVERED", playerId: target.id, amount: targetRecovered } as const] : []),
+          ];
+          const publicOutcome = addCommittedPublicSkillOutcome(log, liveMe, option?.label ?? "Betrothment", outcomeChanges);
+          log = publicOutcome.log;
           await db.batch([
             db.prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), applyRecovery(sourceHp, sourceRecovered, sourceMaxHp), liveMe.id),
             db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(applyRecovery(targetHp, targetRecovered, targetMaxHp), target.id),
-            db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), room.id),
+            db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, skill_state_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), JSON.stringify(publicOutcome.envelope), room.id),
           ]);
-          await advanceHpRecoveredEvents(room.id, recoveryRecords, { kind: "phase", phase: "play", playerId: liveMe.id, handLoss: { playerId: liveMe.id, beforeHand: liveHand } });
+          const publishedRecoveries = recoveryRecords.map((record) => ({ ...record, publicOutcomeEventId: publicOutcome.eventId, causal: publicOutcome.causal }));
+          await advanceHpRecoveredEvents(room.id, publishedRecoveries, { kind: "phase", phase: "play", playerId: liveMe.id, handLoss: { playerId: liveMe.id, beforeHand: liveHand } });
         }
       } else if (execution.outcome.kind === "place_delayed") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive);
@@ -8770,12 +8805,18 @@ export async function POST(request: Request) {
         const shouldRecover = amountRecovered > 0;
         const nextState = { ...skillState, turnPlayerId: liveMe.id, rendeGiven: given, rendeRecovered: Boolean(skillState.rendeRecovered) || recoveryReached };
         log = addLog(transferLog, shouldRecover ? `${liveMe.name} recovers 1 HP from Benevolence.` : recoveryReached ? `${liveMe.name} reaches Benevolence's recovery threshold but is already at full HP.` : `${liveMe.name} uses Benevolence on ${target.name}.`);
+        const outcomeChanges: CommittedPublicOutcomeChange[] = [
+          ...(selected.length > 0 ? [{ kind: "CARD_TRANSFERRED", fromPlayerId: liveMe.id, toPlayerId: target.id, amount: selected.length, fromZone: "HAND", toZone: "HAND" } as const] : []),
+          ...(shouldRecover ? [{ kind: "HP_RECOVERED", playerId: liveMe.id, amount: amountRecovered } as const] : []),
+        ];
+        const publicOutcome = addCommittedPublicSkillOutcome(log, liveMe, option?.label ?? "Benevolence", outcomeChanges);
+        log = publicOutcome.log;
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), applyRecovery(beforeHp, amountRecovered, maxHp), liveMe.id),
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id),
-          db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(nextState), JSON.stringify(log), room.id),
+          db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, skill_state_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(JSON.stringify(nextState), JSON.stringify(log), JSON.stringify(publicOutcome.envelope), room.id),
         ]);
-        await advanceHpRecoveredEvents(room.id, shouldRecover ? [{ playerId: liveMe.id, amountRecovered, sourceId: liveMe.id, reason: "benevolence" }] : [], { kind: "phase", phase: "play", playerId: liveMe.id });
+        await advanceHpRecoveredEvents(room.id, shouldRecover ? [{ playerId: liveMe.id, amountRecovered, sourceId: liveMe.id, reason: "benevolence", publicOutcomeEventId: publicOutcome.eventId, causal: publicOutcome.causal }] : [], { kind: "phase", phase: "play", playerId: liveMe.id });
       } else if (execution.outcome.kind === "discard_draw") {
         const lostEquipment = selected.filter((card) => liveEquipment.some((equipped) => equipped.id === card.id));
         discard.push(...selected);
@@ -8789,9 +8830,16 @@ export async function POST(request: Request) {
         const draw = drawCards(deck, discard, selected.length, log); deck = draw.deck; discard = draw.discard; log = addHistory(draw.log, `${liveMe.name} uses Equilibrium and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, liveMe.id);
         for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, liveMe, drawn);
         const nextState = { ...skillState, turnPlayerId: liveMe.id, zhihengUsed: true };
+        const discardChanges = committedDiscardChangesFromZones(liveMe.id, selected, liveHand, liveEquipment) ?? [];
+        const outcomeChanges: CommittedPublicOutcomeChange[] = [
+          ...discardChanges,
+          ...(draw.drawn.length > 0 ? [{ kind: "CARD_DRAWN", playerId: liveMe.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" } as const] : []),
+        ];
+        const publicOutcome = addCommittedPublicSkillOutcome(log, liveMe, option?.label ?? "Equilibrium", outcomeChanges);
+        log = publicOutcome.log;
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify([...hand, ...draw.drawn]), JSON.stringify(equipment), liveMe.id),
-          db.prepare(`UPDATE rooms SET phase = '${lostEquipment.length ? "resolving" : "play"}', pending_json = NULL, deck_json = ?, discard_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?`).bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), room.id),
+          db.prepare(`UPDATE rooms SET phase = '${lostEquipment.length ? "resolving" : "play"}', pending_json = NULL, deck_json = ?, discard_json = ?, skill_state_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?`).bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), JSON.stringify(publicOutcome.envelope), room.id),
         ]);
         if (lostEquipment.length) {
           await advanceEquipmentLostEvents(room.id, equipmentLostRecords(liveMe.id, lostEquipment, "active_skill_cost"), { kind: "phase", phase: "play", playerId: liveMe.id, handLoss: { playerId: liveMe.id, beforeHand: liveHand } });

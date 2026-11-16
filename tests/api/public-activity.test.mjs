@@ -767,6 +767,13 @@ test("committed public outcome copy reports actual mixed HP and card deltas gene
   };
   assert.equal(formatCommittedPublicOutcome(outcome, players),
     "Test Player 1 — Self Sacrifice: Test Player 1 paid 1 HP as a cost; Test Player 1 drew 2 cards; Test Player 2 received 1 card from Test Player 1.");
+  assert.equal(formatCommittedPublicOutcome({ ...outcome, source: { kind: "skill", label: "Equilibrium" }, changes: [
+    { kind: "CARD_DISCARDED", playerId: "p1", amount: 1, fromZone: "HAND", toZone: "DISCARD" },
+    { kind: "CARD_DISCARDED", playerId: "p1", amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+    { kind: "CARD_DRAWN", playerId: "p1", amount: 2, fromZone: "DECK", toZone: "HAND" },
+  ] }, players),
+  "Test Player 1 — Equilibrium: Test Player 1 discarded 2 cards; Test Player 1 drew 2 cards.",
+  "one public count can combine matching changes while the proof retains their distinct source zones");
   assert.equal(formatCommittedPublicOutcome({ ...outcome, changes: [{ ...outcome.changes[1], playerId: "unknown-player" }] }, players), null,
     "copy fails closed when a public participant name cannot be verified");
 });

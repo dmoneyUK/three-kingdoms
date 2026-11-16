@@ -1,8 +1,27 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import {
   advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, requestForViewer, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
+
+function committedSkillOutcome(view, label) {
+  return [...(view.presentationSnapshot?.publicEventFacts ?? []), ...(view.presentationSnapshot?.retainedPublicEventFacts ?? [])]
+    .filter((fact) => fact.category === "SKILL_USED" && fact.label === label && fact.committedOutcome)
+    .sort((left, right) => left.order - right.order)
+    .at(-1);
+}
+
+function committedSkillNarration(view, fact) {
+  return derivePublicInteractionNarration({
+    snapshot: view.presentationSnapshot,
+    players: view.players,
+    rootEventId: fact.rootEventId,
+    interactionId: fact.identity.interactionId,
+    rootFrameId: fact.identity.rootFrameId,
+    eventId: fact.eventId,
+  });
+}
 
 test("shared Negation windows keep submissions private and expose only each viewer's legal response", { timeout: 60_000 }, async () => {
   const nobody = await createHumanGame(); const [nobodySourceMember] = nobody.members; const [nobodySource, ...nobodyOthers] = nobody.room.players; const drawTwo = card("DrawTwo", "privacy-negation");
@@ -542,6 +561,17 @@ test("the three faction lords expose their active skills through the semantic pr
   assert.deepEqual(zhihengOption.selection.eligibleCardIds, [discarded.id, equipped.id]);
   const zhiheng = await requestAndSettle("trigger", { code: zhihengGame.code, token: zhihengHost.token, providerId: "sun_quan_zhiheng", cardIds: [discarded.id, equipped.id] });
   assert.equal(zhiheng.status, 200, JSON.stringify(zhiheng.data));
+  const equilibriumOutcome = committedSkillOutcome(zhiheng.data.room, "Equilibrium");
+  assert.ok(equilibriumOutcome, "Equilibrium reports its actual discard and draw counts through the shared outcome");
+  assert.deepEqual(equilibriumOutcome.committedOutcome.changes, [
+    { kind: "CARD_DISCARDED", playerId: zhihengSun.id, amount: 1, fromZone: "HAND", toZone: "DISCARD" },
+    { kind: "CARD_DISCARDED", playerId: zhihengSun.id, amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+    { kind: "CARD_DRAWN", playerId: zhihengSun.id, amount: 2, fromZone: "DECK", toZone: "HAND" },
+  ]);
+  assert.equal(committedSkillNarration(zhiheng.data.room, equilibriumOutcome)?.headline,
+    `${zhihengSun.name} — Equilibrium: ${zhihengSun.name} discarded 2 cards; ${zhihengSun.name} drew 2 cards.`);
+  assert.equal(JSON.stringify(equilibriumOutcome).includes(drawn.id), false);
+  assert.equal(JSON.stringify(equilibriumOutcome).includes(drawnTwo.id), false);
   const zhihengCostEvent = zhiheng.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === discarded.id));
   assert.deepEqual(zhihengCostEvent.publicCardEffects?.[0]?.materials, [
     { cardId: discarded.id, ownerId: zhihengSun.id, fromZone: "HAND", toZone: "DISCARD" },
@@ -671,6 +701,14 @@ test("Benevolence counts exact physical cards cumulatively and spends its thresh
   const two = await open([card("Attack", "rende-two-a"), card("Dodge", "rende-two-b")]);
   const twoResult = await requestAndSettle("trigger", { code: two.game.code, token: two.game.members[0].token, providerId: "liu_bei_rende", cardIds: ["attack-rende-two-a", "dodge-rende-two-b"], targetId: two.target.id });
   assert.equal(twoResult.status, 200, JSON.stringify(twoResult.data)); assert.equal(twoResult.data.room.players.find((player) => player.id === two.source.id).hp, 4, "two cards recover once when Liu Bei is eligible");
+  const benevolenceOutcome = committedSkillOutcome(twoResult.data.room, "Benevolence");
+  assert.ok(benevolenceOutcome, "Benevolence publishes its committed public transfer and actual recovery");
+  assert.deepEqual(benevolenceOutcome.committedOutcome.changes, [
+    { kind: "CARD_TRANSFERRED", fromPlayerId: two.source.id, toPlayerId: two.target.id, amount: 2, fromZone: "HAND", toZone: "HAND" },
+    { kind: "HP_RECOVERED", playerId: two.source.id, amount: 1 },
+  ]);
+  assert.equal(committedSkillNarration(twoResult.data.room, benevolenceOutcome)?.headline,
+    `${two.source.name} — Benevolence: ${two.target.name} received 2 cards from ${two.source.name}; ${two.source.name} recovered 1 HP.`);
   assert.deepEqual(discardIds(two.game.code), [], "Benevolence transfers cards without touching discard");
   const benevolenceRecipient = (await state(two.game.code, two.game.members[1].token)).data;
   assert.deepEqual(benevolenceRecipient.myHand.map((held) => held.id), ["attack-rende-two-a", "dodge-rende-two-b"]);
@@ -680,6 +718,8 @@ test("Benevolence counts exact physical cards cumulatively and spends its thresh
     && event.privateHandTransfer.sourcePlayerId === two.source.id
     && event.privateHandTransfer.recipientId === two.target.id));
   const benevolenceObserver = (await state(two.game.code, two.game.members[2].token)).data;
+  assert.deepEqual(committedSkillOutcome(benevolenceObserver, "Benevolence"), benevolenceOutcome,
+    "all viewers receive the same public outcome while transfer identities remain private");
   assert.equal(benevolenceObserver.timeline.some((event) => event.privateHandTransfer), false, "other seats do not receive private transfer receipts");
   const serializedObserver = JSON.stringify(benevolenceObserver);
   assert.equal(serializedObserver.includes("attack-rende-two-a"), false, "a transferred hidden card ID is not disclosed to observers");

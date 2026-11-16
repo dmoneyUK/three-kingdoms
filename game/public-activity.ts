@@ -325,28 +325,36 @@ export function formatCommittedPublicOutcome(
     || !outcome.eventId || !outcome.rootEventId || !Array.isArray(outcome.changes) || outcome.changes.length === 0) return null;
   const name = (playerId: string) => players.find((player) => player.id === playerId)?.name.trim() || null;
   const amountText = (amount: number, singular: string, plural: string) => `${amount} ${amount === 1 ? singular : plural}`;
-  const detail = (change: CommittedPublicOutcomeChange): string | null => {
-    if (!Number.isSafeInteger(change.amount) || change.amount <= 0) return null;
+  const detail = (change: CommittedPublicOutcomeChange, amount: number): string | null => {
+    if (!Number.isSafeInteger(amount) || amount <= 0) return null;
     if (change.kind === "CARD_TRANSFERRED") {
       const from = name(change.fromPlayerId);
       const to = name(change.toPlayerId);
-      return from && to ? `${to} received ${amountText(change.amount, "card", "cards")} from ${from}` : null;
+      return from && to ? `${to} received ${amountText(amount, "card", "cards")} from ${from}` : null;
     }
     const player = name(change.playerId);
     if (!player) return null;
     switch (change.kind) {
-      case "HP_COST_LOST": return `${player} paid ${amountText(change.amount, "HP", "HP")} as a cost`;
-      case "DAMAGE_APPLIED": return `${player} lost ${amountText(change.amount, "HP", "HP")} to damage`;
-      case "HP_RECOVERED": return `${player} recovered ${amountText(change.amount, "HP", "HP")}`;
-      case "CARD_DRAWN": return `${player} drew ${amountText(change.amount, "card", "cards")}`;
-      case "CARD_DISCARDED": return `${player} discarded ${amountText(change.amount, "card", "cards")}`;
-      case "CARD_GAINED": return `${player} gained ${amountText(change.amount, "card", "cards")}`;
-      case "CARD_EQUIPPED": return `${player} equipped ${amountText(change.amount, "item", "items")}`;
-      case "CARD_UNEQUIPPED": return `${player} unequipped ${amountText(change.amount, "item", "items")}`;
+      case "HP_COST_LOST": return `${player} paid ${amountText(amount, "HP", "HP")} as a cost`;
+      case "DAMAGE_APPLIED": return `${player} lost ${amountText(amount, "HP", "HP")} to damage`;
+      case "HP_RECOVERED": return `${player} recovered ${amountText(amount, "HP", "HP")}`;
+      case "CARD_DRAWN": return `${player} drew ${amountText(amount, "card", "cards")}`;
+      case "CARD_DISCARDED": return `${player} discarded ${amountText(amount, "card", "cards")}`;
+      case "CARD_GAINED": return `${player} gained ${amountText(amount, "card", "cards")}`;
+      case "CARD_EQUIPPED": return `${player} equipped ${amountText(amount, "item", "items")}`;
+      case "CARD_UNEQUIPPED": return `${player} unequipped ${amountText(amount, "item", "items")}`;
     }
     return null;
   };
-  const details = outcome.changes.map(detail);
+  const grouped = new Map<string, { change: CommittedPublicOutcomeChange; amount: number }>();
+  for (const change of outcome.changes) {
+    const key = change.kind === "CARD_TRANSFERRED"
+      ? `${change.kind}:${change.fromPlayerId}:${change.toPlayerId}`
+      : `${change.kind}:${change.playerId}`;
+    const current = grouped.get(key);
+    grouped.set(key, { change: current?.change ?? change, amount: (current?.amount ?? 0) + change.amount });
+  }
+  const details = [...grouped.values()].map(({ change, amount }) => detail(change, amount));
   if (details.some((entry) => !entry)) return null;
   const actor = outcome.actorId ? name(outcome.actorId) : null;
   if (outcome.actorId && !actor) return null;

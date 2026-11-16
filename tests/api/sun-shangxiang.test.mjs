@@ -1,5 +1,13 @@
 import test from "node:test";
+import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import { assert, card, createHumanGame, discardIds, quote, query, request, requestAndSettle, setDeck, setEquipment, setHand, setTurn, sql, state, takeDamageIfPending } from "./test-support.mjs";
+
+function committedSkillOutcome(view, label) {
+  return [...(view.presentationSnapshot?.publicEventFacts ?? []), ...(view.presentationSnapshot?.retainedPublicEventFacts ?? [])]
+    .filter((fact) => fact.category === "SKILL_USED" && fact.label === label && fact.committedOutcome)
+    .sort((left, right) => left.order - right.order)
+    .at(-1);
+}
 
 function configure(game, { sunHp = 2, targetHero = "guan-yu", targetHp = 2, targetMaxHp = 4, sunHand = [card("Dodge", "betrothment-a"), card("Peach", "betrothment-b")] } = {}) {
   const [sun, target, ...others] = game.room.players;
@@ -37,6 +45,23 @@ test("Betrothment uses exactly two Hand cards, recovers Sun first then the injur
   const resolved = (await state(game.code, game.members[0].token)).data;
   assert.equal(resolved.players.find((player) => player.id === sun.id).hp, 3);
   assert.equal(resolved.players.find((player) => player.id === target.id).hp, 3);
+  const publicOutcome = committedSkillOutcome(resolved, "Betrothment");
+  assert.ok(publicOutcome, "Betrothment routes its committed cost and both recoveries through the shared outcome contract");
+  assert.deepEqual(publicOutcome.committedOutcome.changes, [
+    { kind: "CARD_DISCARDED", playerId: sun.id, amount: 2, fromZone: "HAND", toZone: "DISCARD" },
+    { kind: "HP_RECOVERED", playerId: sun.id, amount: 1 },
+    { kind: "HP_RECOVERED", playerId: target.id, amount: 1 },
+  ]);
+  const narration = derivePublicInteractionNarration({
+    snapshot: resolved.presentationSnapshot,
+    players: resolved.players,
+    rootEventId: publicOutcome.rootEventId,
+    interactionId: publicOutcome.identity.interactionId,
+    rootFrameId: publicOutcome.identity.rootFrameId,
+    eventId: publicOutcome.eventId,
+  });
+  assert.equal(narration?.headline,
+    `${sun.name} — Betrothment: ${sun.name} discarded 2 cards; ${sun.name} recovered 1 HP; ${target.name} recovered 1 HP.`);
   assert.equal(resolved.myHand.length, 0);
   assert.equal(discardIds(game.code).filter((id) => id.includes("betrothment-")).length, 2);
   assert.equal(resolved.currentAction.triggerOptions?.some((entry) => entry.effectId === "sun_shangxiang_betrothment") ?? false, false);
