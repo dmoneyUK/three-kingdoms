@@ -48,6 +48,7 @@ test("Self Sacrifice loses 1 HP before drawing when Huang Gai survives", async (
   assert.equal(fact.actorId, setup.source.id);
   assert.equal(fact.rootEventId, fact.eventId);
   const outcome = publicSkillOutcomeFact(result.data.room, fact.eventId);
+  assert.ok(outcome, "the committed skill result has a public outcome fact");
   assert.deepEqual(outcome?.committedOutcome?.changes, [
     { kind: "HP_COST_LOST", playerId: setup.source.id, amount: 1 },
     { kind: "CARD_DRAWN", playerId: setup.source.id, amount: 2, fromZone: "DECK", toZone: "HAND" },
@@ -58,7 +59,7 @@ test("Self Sacrifice loses 1 HP before drawing when Huang Gai survives", async (
     rootEventId: fact.rootEventId,
     interactionId: fact.identity.interactionId,
     rootFrameId: fact.identity.rootFrameId,
-    eventId: fact.eventId,
+    eventId: outcome.eventId,
   });
   assert.equal(narration?.headline, `${setup.source.name} — Self Sacrifice: ${setup.source.name} paid 1 HP as a cost; ${setup.source.name} drew 2 cards.`);
   assert.doesNotMatch(JSON.stringify(result.data.room.presentationSnapshot.publicEventFacts), /huang-safe-[ab]/,
@@ -67,13 +68,15 @@ test("Self Sacrifice loses 1 HP before drawing when Huang Gai survives", async (
     const viewer = (await state(game.code, member.token)).data;
     assert.deepEqual(publicSkillFact(viewer), fact, "every viewer receives the same committed public skill fact");
     const viewerFact = publicSkillFact(viewer);
+    const viewerOutcome = publicSkillOutcomeFact(viewer, viewerFact.eventId);
+    assert.ok(viewerOutcome, "every viewer receives the committed result fact");
     const viewerNarration = derivePublicInteractionNarration({
       snapshot: viewer.presentationSnapshot,
       players: viewer.players,
       rootEventId: viewerFact.rootEventId,
       interactionId: viewerFact.identity.interactionId,
       rootFrameId: viewerFact.identity.rootFrameId,
-      eventId: viewerFact.eventId,
+      eventId: viewerOutcome.eventId,
     });
     assert.equal(viewerNarration?.headline, `${setup.source.name} — Self Sacrifice: ${setup.source.name} paid 1 HP as a cost; ${setup.source.name} drew 2 cards.`);
   }
@@ -98,13 +101,15 @@ test("1 HP Self Sacrifice opens Dying before either draw card is available", asy
   assert.ok(fact, "the committed Self Sacrifice fact survives the transition into Dying");
   assert.ok(result.data.room.presentationSnapshot.publicEventFacts.some((event) => event.eventId === fact?.eventId),
     "the Dying interaction snapshot retains the committed Self Sacrifice fact");
+  const outcome = publicSkillOutcomeFact(result.data.room, fact.eventId);
+  assert.ok(outcome, "the Dying snapshot retains the public HP-cost result fact");
   assert.equal(derivePublicInteractionNarration({
     snapshot: result.data.room.presentationSnapshot,
     players: result.data.room.players,
     rootEventId: fact.rootEventId,
     interactionId: fact.identity.interactionId,
     rootFrameId: fact.identity.rootFrameId,
-    eventId: fact.eventId,
+    eventId: outcome.eventId,
   })?.headline, `${setup.source.name} — Self Sacrifice: ${setup.source.name} paid 1 HP as a cost.`);
 });
 
