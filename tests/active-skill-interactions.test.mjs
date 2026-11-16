@@ -839,7 +839,7 @@ const activeSkills = [
 ];
 
 for (const skill of activeSkills) {
-  test(`${skill.label} survives click, selection, cancel, re-entry, and submission`, async () => {
+  test(`${skill.label} survives click, selection, owner retap, re-entry, and submission`, async () => {
     const { renderer, actionCalls } = await gameTree(skill);
     const skillButton = () => button(renderer, { "aria-label": skill.skill });
     const useButton = () => button(renderer, { children: "Confirm" });
@@ -866,15 +866,13 @@ for (const skill of activeSkills) {
       assert.doesNotMatch(renderedNodeText(decisionStatus), /YOUR DECISION|LOCAL CANCEL|Change your selection/, "Lust guidance omits redundant headings and cancel text");
       assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "Lust selection has no redundant Cancel button");
     }
-    const actionCountBeforeCancel = actionCalls.length;
-    await act(async () => {
-      if (skill.effectId === "diao_chan_lust") skillButton().props.onClick();
-      else button(renderer, { children: "Cancel" }).props.onClick();
-    });
-    assert.equal(actionCalls.length, actionCountBeforeCancel, `${skill.label} local cancellation sends no action`);
-    assert.equal(button(renderer, { "aria-label": skill.skill }).props["aria-pressed"], false, `${skill.label} Cancel exits the active local skill flow`);
-    for (const cardId of skill.cardIds) assert.equal(handCardButton(renderer, cardId).props.className.includes("selected"), false, `${skill.label} Cancel clears the selected card`);
-    for (const targetId of skill.targetIds) assert.equal(nodeWith(renderer, "data-player-anchor", targetId).props.className.includes("selected-target"), false, `${skill.label} Cancel clears the selected target`);
+    const actionCountBeforeRetap = actionCalls.length;
+    if (skill.effectId !== "diao_chan_lust") assert.equal(buttonsContaining(renderer, "Cancel").length, 0, `${skill.label} has no duplicate Local Cancel while its stable skill tile can exit the draft`);
+    await act(async () => { skillButton().props.onClick(); });
+    assert.equal(actionCalls.length, actionCountBeforeRetap, `${skill.label} owner retap sends no action`);
+    assert.equal(button(renderer, { "aria-label": skill.skill }).props["aria-pressed"], false, `${skill.label} owner retap exits the active local skill flow`);
+    for (const cardId of skill.cardIds) assert.equal(handCardButton(renderer, cardId).props.className.includes("selected"), false, `${skill.label} owner retap clears the selected card`);
+    for (const targetId of skill.targetIds) assert.equal(nodeWith(renderer, "data-player-anchor", targetId).props.className.includes("selected-target"), false, `${skill.label} owner retap clears the selected target`);
     await act(async () => { skillButton().props.onClick(); });
     for (const cardId of skill.cardIds) await act(async () => { handCardButton(renderer, cardId).props.onClick(); });
     for (const targetId of skill.targetIds) await act(async () => { targetButton(renderer, targetId).props.onClick(); });
@@ -1139,11 +1137,11 @@ test("Da Qiao Deflection is one mounted hero control with shared card/target sel
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true);
   await act(async () => { button(renderer, { "aria-label": "Select LEGAL TARGET as Deflection target" }).props.onClick(); });
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
-  const actionCountBeforeTargetCancel = actionCalls.length;
-  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
-  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), false, "trigger Cancel clears the local target");
-  assert.equal(handCardButton(renderer, "deflection-hand").props.className.includes("selected"), false, "trigger Cancel clears the local cost card");
-  assert.equal(actionCalls.length, actionCountBeforeTargetCancel, "trigger Cancel does not decline the trigger");
+  const actionCountBeforeRetap = actionCalls.length;
+  await act(async () => { button(renderer, { "aria-label": "Deflection" }).props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), false, "owner retap clears the local target");
+  assert.equal(handCardButton(renderer, "deflection-hand").props.className.includes("selected"), false, "owner retap clears the local cost card");
+  assert.equal(actionCalls.length, actionCountBeforeRetap, "owner retap does not submit or decline the trigger");
   await act(async () => { button(renderer, { "aria-label": "Deflection" }).props.onClick(); });
   await act(async () => { handCardButton(renderer, "deflection-hand").props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select LEGAL TARGET as Deflection target" }).props.onClick(); });

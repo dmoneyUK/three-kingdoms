@@ -35,6 +35,7 @@ import { buildDyingHandoffView, buildInteractionStageView, buildPresentationClie
 import { buildPresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, triggerDecisionInstruction, viewerNegationAcknowledgement, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
+import { createPrecommitScopeForAction, derivePrecommitOwnerControls, precommitDraftForScope, resetPrecommitOwnerDraft, togglePrecommitDraftCard, togglePrecommitDraftTarget, togglePrecommitOwnerDraft, type PrecommitScopeIdentity, type PrecommitSelectionDraft } from "./local-precommit-selection";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, isPublicInteractionOutcomeFact, type PublicInteractionNarration } from "../game/public-activity";
 import { CardFace } from "./card-face";
@@ -61,7 +62,7 @@ import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, ty
 import { coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
-type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
+type ActiveSkillSelectionState = PrecommitSelectionDraft;
 type InspectorCardDetailDismissRef = { current: (() => boolean) | null };
 type ActiveAttackDodgeSettlement = {
   eventId: string;
@@ -4708,8 +4709,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeSkillSelection = normalizeActiveCardSkillSelection(activeSkillOption?.selection ?? null);
   const activeSkillTargetSelection = activeSkillOption?.selection?.type === "target" ? activeSkillOption.selection : null;
   const activeActionRevision = room.actionRevision ?? "";
-  const activeSkillStateIsCurrent = Boolean(activeSkillOption && activeSkillSelectionState?.revision === activeActionRevision && activeSkillSelectionState.effectId === activeSkillOption.effectId);
-  const activeSkillSelectedCardIds = activeSkillSelection && activeSkillStateIsCurrent ? (activeSkillSelectionState?.cardIds ?? []).filter((id) => activeSkillSelection.eligibleCardIds.includes(id)) : [];
+  const activeSkillScope = activeSkillOption ? createPrecommitScopeForAction({
+    roomCode: room.code,
+    viewerId: room.meId,
+    actionRevision: activeActionRevision,
+    actionKind: room.currentAction?.kind,
+    kind: "skill",
+    ownerId: activeSkillOption.effectId,
+  }) : null;
+  const activeSkillDraft = precommitDraftForScope(activeSkillSelectionState, activeSkillScope);
+  const activeSkillStateIsCurrent = Boolean(activeSkillOption && activeSkillDraft);
+  const activeSkillSelectedCardIds = activeSkillSelection && activeSkillDraft ? activeSkillDraft.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)) : [];
   const activeSkillTargetIds = activeSkillSelection?.targetIds ?? activeSkillTargetSelection?.targetIds ?? [];
   const activeSkillTargetMin = activeSkillSelection?.targetMin ?? (activeSkillTargetSelection?.min ?? 1);
   const activeSkillTargetMax = activeSkillSelection?.targetMax ?? (activeSkillTargetSelection?.max ?? 1);
@@ -4719,7 +4729,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // available outside Play Phase.
   const activeSkillTargetMode = Boolean(activeSkillOption && activeSkillStateIsCurrent && activeSkillTargetIds.length > 0);
   const fanjianTargetSelectionActive = Boolean(activeSkillTargetMode && activeSkillOption?.effectId === "zhou_yu_fanjian");
-  const activeSkillSelectedTargetIds = activeSkillStateIsCurrent ? (activeSkillSelectionState?.targetIds ?? []).filter((id) => activeSkillTargetIds.includes(id)) : [];
+  const activeSkillSelectedTargetIds = activeSkillDraft ? activeSkillDraft.targetIds.filter((id) => activeSkillTargetIds.includes(id)) : [];
   const activeSkillTargetId = activeSkillSelectedTargetIds[0] ?? "";
   const lustLocalSelectionActive = Boolean(
     activeSkillOption?.effectId === "diao_chan_lust"
@@ -4752,8 +4762,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && !busy,
   );
   const activeSkillComplete = Boolean(activeSkillOption && activeSkillStateIsCurrent && (activeSkillSelection ? activeSkillSelectedCardIds.length >= activeSkillSelection.min && activeSkillSelectedCardIds.length <= activeSkillSelection.max : activeSkillTargetSelection) && (activeSkillTargetIds.length === 0 || activeSkillSelectedTargetIds.length >= activeSkillTargetMin && activeSkillSelectedTargetIds.length <= activeSkillTargetMax));
-  const activeSkillSubmission = activeSkillOption && activeSkillSelection && activeSkillStateIsCurrent && activeSkillSelectionState
-    ? buildActiveSkillSubmission(activeSkillOption.effectId, activeSkillSelection, activeSkillSelectionState)
+  const activeSkillSubmission = activeSkillOption && activeSkillSelection && activeSkillStateIsCurrent && activeSkillDraft
+    ? buildActiveSkillSubmission(activeSkillOption.effectId, activeSkillSelection, activeSkillDraft)
     : activeSkillOption && activeSkillStateIsCurrent
       ? { providerId: activeSkillOption.effectId, ...(activeSkillTargetSelection && activeSkillTargetMax > 1 ? { targetIds: activeSkillSelectedTargetIds } : activeSkillTargetId ? { targetId: activeSkillTargetId } : {}) }
       : null;
@@ -5146,31 +5156,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       if (daqiaoDeflectionSelectionActive && !activeSkillTargetIds.includes(playerId)) return;
       const max = activeSkillSelection?.targetMax ?? activeSkillTargetSelection?.max ?? 1;
       setActiveSkillSelectionState((state) => {
-        if (!state) return state;
-        const current = state.targetIds.filter((id) => activeSkillTargetIds.includes(id));
-        const next = daqiaoDeflectionSelectionActive
-          ? current.includes(playerId) ? [] : [playerId]
-          : max > 1
-            ? current.includes(playerId) ? current.filter((id) => id !== playerId) : current.length < max ? [...current, playerId] : current
-            : [playerId];
-        return { ...state, targetIds: next };
+        if (!state || !activeSkillScope) return state;
+        return togglePrecommitDraftTarget(state, activeSkillScope, playerId, activeSkillTargetIds, max);
       });
       if (!daqiaoDeflectionSelectionActive) {
-        setTargetIds((current) => max > 1 ? current.includes(playerId) ? current.filter((id) => id !== playerId) : current.length < max ? [...current, playerId] : current : [playerId]);
+        setTargetIds((current) => current.includes(playerId)
+          ? current.filter((id) => id !== playerId)
+          : max === 1 ? [playerId] : current.length < max ? [...current, playerId] : current);
       }
       return;
     }
     setTargetIds((ids) => activeSkillTargetIds.length ? [playerId] : halberdAttack ? ids.includes(playerId) ? ids.filter((id) => id !== playerId) : ids.length < 3 ? [...ids, playerId] : ids : [playerId]);
   };
   const toggleActiveSkillCardSelection = (cardId: string) => setActiveSkillSelectionState((state) => {
-    if (!state || !activeSkillStateIsCurrent || !activeSkillSelection?.eligibleCardIds.includes(cardId)) return state;
-    const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id));
-    if (daqiaoDeflectionSelectionActive) {
-      return { ...state, cardIds: validIds.includes(cardId) ? [] : [cardId] };
-    }
-    return validIds.includes(cardId)
-      ? { ...state, cardIds: validIds.filter((id) => id !== cardId) }
-      : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, cardId] } : { ...state, cardIds: validIds };
+    if (!state || !activeSkillStateIsCurrent || !activeSkillSelection || !activeSkillScope) return state;
+    return togglePrecommitDraftCard(state, activeSkillScope, cardId, activeSkillSelection.eligibleCardIds, activeSkillSelection.max);
   });
   const attackTargetsValid = selectedPlayTargetsValid;
   const canFormSerpentAttack = hasSerpentSpear && room.myHand.length >= 2 && room.isMyTurn && canPlay && canDeclareAttack;
@@ -5324,6 +5324,29 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       && activeSkillSubmission
       && (!(activeSkillTargetSelection || Boolean(activeSkillSelection?.targetIds.length)) || localTargetSelection.canConfirm),
     );
+  const activeSkillPrecommitControls = derivePrecommitOwnerControls({
+    ownerPresent: Boolean(activeSkillOption),
+    scope: activeSkillScope,
+    available: Boolean(room.currentAction?.actorId === room.meId && room.isMyAction && canUseAction(room.currentAction, "trigger")),
+    selected: activeSkillStateIsCurrent,
+    selectionType: activeSkillOption?.selection?.type ?? null,
+    // Card-cost active skills already keep a stable named skill tile whose
+    // current handler exits the local draft when tapped again. Target-only
+    // skills remain standalone until their later bounded migration.
+    retapSupported: activeSkillOption?.selection?.type === "cards" || activeSkillOption?.selection?.type === "target_cards",
+    standalonePickerActive: Boolean(activeSkillStateIsCurrent && activeSkillOption?.selection?.type === "target"),
+    busy: busy || activeSkillSelectionBusy,
+    confirmEnabled: activeSkillConfirmEnabled,
+    localCancelAvailable: localTargetSelection.canCancel,
+    existingPrimaryLabel: "Confirm",
+    existingPrimaryEnabled: activeSkillConfirmEnabled,
+  });
+  const localTargetCancelVisible = localTargetFlow === "active-skill"
+    ? activeSkillPrecommitControls.showLocalCancel
+    : localTargetSelection.canCancel;
+  const localTargetCancelEnabled = localTargetFlow === "active-skill"
+    ? activeSkillPrecommitControls.localCancelEnabled
+    : localTargetSelection.canCancel;
   const selectedExternalPreviewId = localTargetSelection.selectionActive
     ? [...localTargetSelection.selectedTargetIds].reverse().find((id) => id !== room.meId) ?? null
     : null;
@@ -5462,7 +5485,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       return;
     }
     if (flow === "active-skill") {
-      setKingSkillId(""); setActiveSkillSelectionState(null); setSelected("");
+      setKingSkillId(""); setActiveSkillSelectionState((state) => resetPrecommitOwnerDraft(state, activeSkillScope)); setSelected("");
       return;
     }
     if (flow === "borrowed-sword") {
@@ -5621,9 +5644,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     return {
       name: skill.name,
       description: skill.description,
-      enabled: Boolean(option),
+      enabled: Boolean(option && canUseAction(room.currentAction, "trigger")),
       active,
       onClick: option ? () => {
+        if (!canUseAction(room.currentAction, "trigger") || room.currentAction?.actorId !== room.meId || !room.isMyAction) return;
         if (option.selection?.type === "cards" || option.selection?.type === "target" || option.selection?.type === "target_cards") {
           const activating = kingSkillId !== option.effectId;
           if (!activating && option.effectId === "diao_chan_lust") resetLocalTargetFlow("active-skill");
@@ -5632,10 +5656,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             // Other target skills keep their explicit local Cancel surface.
             // Lust alone uses a second skill tap to clear its ordered choice.
             return;
-          } else if (!activating && option.selection?.type === "cards") resetLocalTargetFlow("active-skill");
-          else {
-            setKingSkillId(activating ? option.effectId : "");
-            setActiveSkillSelectionState(activating ? { revision: activeActionRevision, effectId: option.effectId, cardIds: [], targetIds: [] } : null);
+          } else {
+            const scope = createPrecommitScopeForAction({
+              roomCode: room.code,
+              viewerId: room.meId,
+              actionRevision: activeActionRevision,
+              actionKind: room.currentAction?.kind,
+              kind: "skill",
+              ownerId: option.effectId,
+            });
+            if (!scope) return;
+            const currentDraft = precommitDraftForScope(activeSkillSelectionState, scope);
+            const nextDraft = togglePrecommitOwnerDraft(currentDraft, scope);
+            if (!nextDraft) resetLocalTargetFlow("active-skill");
+            else {
+              setKingSkillId(option.effectId);
+              setActiveSkillSelectionState(nextDraft);
+            }
           }
           setSerpentSelected([]); setSelected(""); setTargetIds([]); setTriggerSelectedKeys([]);
         } else void onAction("trigger", { providerId: option.effectId });
@@ -6218,7 +6255,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   }, [inspectOnlyHandCardId, room.myHand]);
   useEffect(() => { if (!visibleInfoCard && !infoHero && !expandedOpponentId) return; const close = (event: KeyboardEvent) => { if (event.key !== "Escape") return; if (visibleInfoCard) { closeCardDetails(); return; } if (infoHero) { closeHeroDetails(); return; } if (nestedInspectorCardDetailDismissRef.current?.()) return; closeOpponentInspection(); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [visibleInfoCard, infoHero, expandedOpponentId, closeCardDetails, closeHeroDetails, closeOpponentInspection]);
   useEffect(() => { heroInfoReturnFocusRef.current = null; const timer = setTimeout(() => setInfoHero(null), 0); return () => clearTimeout(timer); }, [room.code, room.meId]);
-  useEffect(() => { const timer = setTimeout(() => { setSelected(""); setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setTargetIds([]); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setDiscardSelected([]); setSerpentMode(false); setSerpentSelected([]); setResponseProviderId(""); }, 0); return () => clearTimeout(timer); }, [room.turnSeat, room.phase, room.meId]);
+  useEffect(() => { const timer = setTimeout(() => { setSelected(""); setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setTargetIds([]); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setDiscardSelected([]); setSerpentMode(false); setSerpentSelected([]); setResponseProviderId(""); }, 0); return () => clearTimeout(timer); }, [room.code, room.turnSeat, room.phase, room.meId]);
   // A response may advance to another decision without changing the turn,
   // phase, or acting seat. The authoritative revision identifies that new
   // decision and prevents a previous provider/cost from leaking into it.
@@ -11302,7 +11339,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             : undefined;
   const consolePrimaryCandidates = [
     ...(borrowedSwordTargetSelectionActive && canUseAction(room.currentAction, "choose_borrowed_sword_target") ? [{ id: "borrowed-sword", label: "Confirm", enabled: localTargetSelection.canConfirm, priority: 80 }] : []),
-    ...(activeSkillSelection || activeSkillTargetSelection ? [{ id: "active-skill", label: "Confirm", enabled: activeSkillConfirmEnabled, priority: 70 }] : []),
+    ...(activeSkillSelection || activeSkillTargetSelection ? [{ id: "active-skill", label: activeSkillPrecommitControls.primaryLabel ?? "Confirm", enabled: activeSkillPrecommitControls.primaryEnabled, priority: 70 }] : []),
     ...(targetCardPickerInLocalDock ? [{ id: "target-card-picker", label: "Confirm", enabled: targetCardPickerSelectionComplete && !responseControlsDisabled, priority: 70 }] : []),
     ...(triggerResponse && canUseAction(room.currentAction, "trigger") && selectedTriggerOption?.selection?.type === "cards" ? [{ id: "trigger-cards", label: "Confirm", enabled: triggerSubmissionComplete, priority: 70 }] : []),
     ...(triggerResponse && canUseAction(room.currentAction, "trigger") && selectedTriggerOption?.selection?.type === "target" ? [{ id: "trigger-target", label: "Confirm", enabled: localTargetSelection.canConfirm, priority: 70 }] : []),
@@ -11481,12 +11518,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && !normalHasProviderCancelSurface,
   );
   const consoleLocalCancelVisible = !fiveSeatPhoneAttackMode && !lustLocalSelectionActive && (
-    localTargetSelection.canCancel && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface && !ordinaryPlayTargetSelection
+    localTargetCancelVisible && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface && !ordinaryPlayTargetSelection
     || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal)
     || canClearTargetCardPickerSelection
   ) && !fanjianTargetSelectionActive;
   const consoleLocalCancelEnabled = !lustLocalSelectionActive && (
-    localTargetSelection.canCancel
+    localTargetCancelEnabled
     || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal)
     || canClearTargetCardPickerSelection
   ) && !fanjianTargetSelectionActive;
