@@ -365,7 +365,14 @@ export type TriggerPending = CausalFields & {
   resolvedEffectIds?: string[];
   continuation: TriggerContinuation;
 };
-export type DyingResumeEffect = { kind: "draw_cards"; playerId: string; amount: number; label: string };
+export type DyingResumeEffect = {
+  kind: "draw_cards";
+  playerId: string;
+  amount: number;
+  label: string;
+  /** Server-owned proof for a later public outcome; absent in older saved continuations. */
+  publicOutcome?: { eventId: string; rootEventId: string; skillLabel: string; hpCostLost: number };
+};
 export type DyingPending = CausalFields & { kind: "dying"; sharedRescue?: { round: number; responseEventId?: string }; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; resumeTrigger?: DamageSufferedTriggerContinuation; resumeEffect?: DyingResumeEffect; origin?: AttackOrigin; reason: string };
 export type SharedResponseWindowPending = CausalFields & {
   kind: "shared_response_window";

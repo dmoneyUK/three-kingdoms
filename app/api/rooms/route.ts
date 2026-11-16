@@ -4112,7 +4112,7 @@ async function continueDyingResolution(roomId: string, pending: DyingPending) {
     await resumeGroupAfterDying(roomId, pending);
     await advanceGroup(roomId);
   }
-  else if (pending.resumeEffect) await continueDyingResumeEffect(roomId, pending.resumeEffect);
+  else if (pending.resumeEffect) await continueDyingResumeEffect(roomId, pending.resumeEffect, pending.causal);
   else if (pending.resumeTrigger) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
@@ -4122,7 +4122,69 @@ async function continueDyingResolution(roomId: string, pending: DyingPending) {
 }
 
 /** Resume a small persisted effect after canonical Dying/rescue settles. */
-async function continueDyingResumeEffect(roomId: string, effect: DyingResumeEffect) {
+function appendDyingResumePublicOutcome(
+  log: string[],
+  player: PlayerRow,
+  effect: DyingResumeEffect,
+  causal: CausalContext | undefined,
+  envelope: CausalEnvelope | null,
+  drawnCount: number,
+) {
+  const proof = effect.publicOutcome;
+  if (!proof || !causal || !envelope || !proof.eventId || !proof.rootEventId || proof.eventId === proof.rootEventId
+    || !proof.skillLabel.trim() || !Number.isSafeInteger(proof.hpCostLost) || proof.hpCostLost < 0
+    || !Number.isSafeInteger(effect.amount) || effect.amount < 0
+    || !Number.isSafeInteger(drawnCount) || drawnCount < 0 || drawnCount > effect.amount
+    || envelope.interactionId !== causal.interactionId
+    || envelope.activeFrameId !== causal.frameId || envelope.checkpoint.frameId !== causal.frameId
+    || !envelope.frames.some((frame) => frame.frameId === causal.frameId)) return log;
+
+  const existingEvents = log.flatMap((entry) => {
+    if (!entry.startsWith("@event:")) return [];
+    try {
+      const event = JSON.parse(entry.slice(7)) as Record<string, unknown>;
+      return event.id === proof.eventId ? [event] : [];
+    } catch { return []; }
+  });
+  if (existingEvents.length > 0) return log;
+
+  const rootEvents = log.flatMap((entry) => {
+    if (!entry.startsWith("@event:")) return [];
+    try {
+      const event = JSON.parse(entry.slice(7)) as Record<string, unknown>;
+      return event.id === proof.rootEventId ? [event] : [];
+    } catch { return []; }
+  });
+  const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
+  const rootFact = record(rootEvent?.publicFact);
+  const rootIdentity = record(rootFact?.committedIdentity);
+  const rootFrames = envelope.frames.filter((frame) => frame.parentFrameId === null);
+  if (!rootEvent || rootEvent.actorId !== player.id || !rootFact || rootFact.semantics !== "PROVEN"
+    || rootFact.visibility !== "PUBLIC" || rootFact.category !== "SKILL_USED"
+    || rootFact.rootEventId !== proof.rootEventId || rootFact.interactionId !== causal.interactionId
+    || rootFact.frameId !== causal.frameId || rootFact.actorId !== player.id
+    || rootFact.label !== proof.skillLabel || !rootIdentity || rootIdentity.interactionId !== causal.interactionId
+    || rootFrames.length !== 1 || rootIdentity.rootFrameId !== rootFrames[0].frameId) return log;
+
+  const changes: NonNullable<PublicPresentationEventFactDraft["committedOutcome"]>["changes"][number][] = [];
+  if (proof.hpCostLost > 0) changes.push({ kind: "HP_COST_LOST", playerId: player.id, amount: proof.hpCostLost });
+  if (drawnCount > 0) changes.push({ kind: "CARD_DRAWN", playerId: player.id, amount: drawnCount, fromZone: "DECK", toZone: "HAND" });
+  if (changes.length === 0) return log;
+
+  const publicFact = publicFactFor(causal, "SKILL_USED", {
+    rootEventId: proof.rootEventId,
+    actorId: player.id,
+    affectedPlayerIds: [player.id],
+    label: proof.skillLabel,
+    effect: { kind: "skill_use" },
+    committedOutcome: { source: { kind: "skill", label: proof.skillLabel }, changes },
+  }, envelope);
+  if (!publicFact?.committedIdentity) return log;
+  return addLogWithId(log, `${player.name} completed ${proof.skillLabel}.`, undefined,
+    { actorId: player.id, importance: "essential", publicFact }, proof.eventId).log;
+}
+
+async function continueDyingResumeEffect(roomId: string, effect: DyingResumeEffect, causal?: CausalContext) {
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   if (!room || room.phase !== "resolving" || room.pending_json !== null) return;
   const player = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(effect.playerId, roomId).first<PlayerRow>();
@@ -4133,6 +4195,7 @@ async function continueDyingResumeEffect(roomId: string, effect: DyingResumeEffe
   const draw = drawCards(deck, discard, effect.amount, log);
   let nextLog = addHistory(draw.log, `${player.name} ${effect.label} and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, player.id);
   for (const drawn of draw.drawn) nextLog = addPrivateDrawEvent(nextLog, player, drawn);
+  nextLog = appendDyingResumePublicOutcome(nextLog, player, effect, causal, parseCausalEnvelope(room.causal_envelope_json), draw.drawn.length);
   const hand = parse<Card[]>(player.hand_json, []);
   const updated = await db().prepare("UPDATE players SET hand_json = ? WHERE id = ? AND hand_json = ?").bind(JSON.stringify([...hand, ...draw.drawn]), player.id, player.hand_json).run();
   if ((updated.meta.changes ?? 0) <= 0) return;
@@ -4180,6 +4243,10 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
     }
     writes.push(db().prepare("UPDATE players SET hand_json = '[]', equipment_json = '{}' WHERE id = ?").bind(source.id));
     log = addLog(log, `${source.name} defeated Loyalist ${target.name} and discards all cards as the Lord's penalty.`);
+  }
+  if (target && pending.resumeEffect) {
+    log = appendDyingResumePublicOutcome(log, target, pending.resumeEffect, pending.causal,
+      parseCausalEnvelope(room.causal_envelope_json), 0);
   }
   const next = dyingResumeState(pending, resume);
   writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(next.phase, next.pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
@@ -7669,7 +7736,7 @@ async function commitCanonicalResponse(input: {
       hand = hand.filter((card) => card.id !== peach.id); const resumedPending = appendDyingSequenceCard(pending, peach); const discard = pending.resumePending ? parse<Card[]>(liveRoom.discard_json, []) : [...parse<Card[]>(liveRoom.discard_json, []), peach]; let log = parse<string[]>(liveRoom.log_json, []); const firstAid = selectedExecution?.providerId === "hua_tuo_first_aid"; const jiuyuan = !firstAid && target?.hero === "sun-quan" && target.role === "Lord" && target.id !== me.id && me.hero ? STANDARD_HEROES.find((hero) => hero.id === me.hero)?.faction === "Wu" : false; const recoveryAmount = jiuyuan ? 2 : 1; const beforeHp = target?.hp ?? 0; const maxHp = target?.max_hp ?? beforeHp; const nextHp = applyRecovery(beforeHp, recoveryAmount, maxHp); const amountRecovered = recoveredAmount(beforeHp, maxHp, recoveryAmount); const firstAidMaterials = firstAid ? publicCardMaterials([peach], [{ playerId: me.id, hand: handBeforePeach, equipment: equipmentCards(liveActor) }], "PUBLIC_PLAY") : null; const peachEventId = crypto.randomUUID(); const contribution = committedSharedContribution(liveRoom, peachEventId, me, [peach], `${me.name} gave Peach to ${target.name}, restoring ${amountRecovered} HP.`); const peachMeta: PresentationMeta = { actorId: me.id, ...(contribution ? { sharedResponseContribution: contribution } : {}), ...(firstAid ? { playedAs: "peach" } : {}) }; const peachPresentation = firstAid && firstAidMaterials ? addCardEventWithPublicEffect(log, me.name, peach, target.name, "play", { effectId: "hua_tuo_first_aid", effectClass: "CONVERSION", activationOwnerId: me.id, materials: firstAidMaterials, targetId: target.id, resultingCardKind: "Peach", outcome: "AS_PEACH" }, peachMeta, peachEventId) : addCardEventWithId(log, me.name, peach, target.name, "play", true, peachMeta, peachEventId); log = addLog(peachPresentation.log, firstAid ? `${me.name} uses ${peach.rank}${peach.suit} as Peach with First Aid to rescue ${target?.name ?? "the dying player"}, restoring ${amountRecovered} HP (${nextHp} HP).` : `${me.name} gives Peach to ${target?.name ?? "the dying player"}${jiuyuan ? "; Deliverance provides an additional recovery" : ""}, restoring ${amountRecovered} HP (${nextHp} HP).`);
       if (amountRecovered > 0) {
         const recoveryPending = { ...resumedPending, actorId: pending.actorId, remainingIds: pending.remainingIds, deadline: 0, ...(pending.sharedRescue ? { sharedRescue: { ...pending.sharedRescue, responseEventId: peachEventId } } : {}) } satisfies DyingPending;
-        const recoveryEnvelope = pending.resumePending && pending.causal
+        const recoveryEnvelope = (pending.resumePending || pending.resumeEffect) && pending.causal
           ? causalEnvelopeAtStage(liveRoom, pending.causal, "DYING", { currentSourceId: pending.sourceId, currentEffect: "peach_rescue", currentTargetIds: [pending.targetId], resolvingPlayerId: pending.actorId })
           : null;
         await db.batch([
@@ -8531,8 +8598,15 @@ export async function POST(request: Request) {
       } else if (execution.outcome.kind === "lose_draw") {
         const hp = Math.max(0, (liveMe.hp ?? 1) - execution.outcome.lose);
         const nextState = { ...skillState, turnPlayerId: liveMe.id };
-        const resumeEffect: DyingResumeEffect = { kind: "draw_cards", playerId: liveMe.id, amount: execution.outcome.draw, label: "uses Self Sacrifice" };
-        const publicSkillOutcome = addCommittedPublicSkillOutcome(log, liveMe, option?.label ?? "a skill");
+        const skillLabel = option?.label ?? "a skill";
+        const publicSkillOutcome = addCommittedPublicSkillOutcome(log, liveMe, skillLabel);
+        const resumeEffect: DyingResumeEffect = {
+          kind: "draw_cards", playerId: liveMe.id, amount: execution.outcome.draw, label: "uses Self Sacrifice",
+          publicOutcome: {
+            eventId: crypto.randomUUID(), rootEventId: publicSkillOutcome.eventId, skillLabel,
+            hpCostLost: Math.max(0, (liveMe.hp ?? 0) - hp),
+          },
+        };
         log = publicSkillOutcome.log;
         const publicSkillRoom = { ...liveRoom, causal_envelope_json: JSON.stringify(publicSkillOutcome.envelope) };
         if (hp <= 0) {
@@ -8544,7 +8618,7 @@ export async function POST(request: Request) {
             db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, liveMe.id),
             db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, skill_state_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(JSON.stringify(nextState), JSON.stringify(log), JSON.stringify(publicSkillOutcome.envelope), room.id),
           ]);
-          await continueDyingResumeEffect(room.id, resumeEffect);
+          await continueDyingResumeEffect(room.id, resumeEffect, publicSkillOutcome.causal);
         }
       }
       return json({ room: await roomState(code, token) });
