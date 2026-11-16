@@ -12,8 +12,8 @@
 
 - 修复 H4 队列在跨 resolution 合并时丢失已验证事实的问题；消息事实按 `publicSequence` 排队读取，展示游标不提前跳到未来事件。
 - 活跃队列事实暂时优先于更新的 discard 公告，避免被抢占；有效 H4 阅读队列不禁用合法游戏操作。新增队列顺序、跨 resolution 保留、游标回退、单一 owner 与非阻塞纯逻辑断言。
-- 队列切片已推送 SHA `835a54f6558dfb0daa94b42f3d0f1b2598b3d38e`。精确 Actions [43893415420](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43893415420)：lint/build、API 和 browser smoke 成功；fast 为 418/419，唯一失败是 `tests/room-safety-render.test.mjs` 仍匹配旧的 `activeEvent` 源码表达式。新逻辑把经过验证的 H4 message 放行提取到共享 helper，且保留 `!activeEquipmentArrivalEventId` 豁免；当前修正该源码断言以同时锁定两项语义。该失败使 deploy 被跳过。没有运行本地测试/build/设备测试。
+- 队列切片 SHA `835a54f6558dfb0daa94b42f3d0f1b2598b3d38e` 的 Actions [43893415420](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43893415420) 因一条匹配旧源码表达式的静态断言失败，部署被跳过；已在 `bccd8c27aa22dad3d6efceb29ba3e4c967965bc9` 修正断言，使它分别锁定共享 H4 非阻塞规则和装备到达豁免。精确 Actions [43894424785](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43894424785) 的 lint/fast、API、browser smoke、D1 migration、Worker deploy、production smoke 全部成功。Worker Version ID：`dfe2462c-d8bc-4de8-b48f-2447108090f1`。按 Owner 指令没有运行本地测试/build/设备测试。
 
 ## 唯一续接点
 
-提交并推送上述静态回归断言修正，等待精确 SHA CI、D1/Worker 部署和生产 smoke；通过后继续 §10.59 中尚未覆盖的服务器结算来源和系统级回归，不请求阶段验收、不转做其他任务、不宣布 Owner 接受。
+共享事实与队列切片已完成远端部署。下一有界实现阶段是在现有 Diao Chan Duel API 回归中验证真实 HP 损失从服务端事实、公开投影到通用 H4 formatter/唯一 owner，并确认观察者看到相同结果；随后继续补齐剩余服务端来源与跨路径类别/唯一 owner 系统回归。整个过程仍是同一项未关闭任务，不请求阶段验收、不转做其他任务、不宣布 Owner 接受。

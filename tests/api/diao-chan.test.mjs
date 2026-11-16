@@ -109,6 +109,15 @@ test("Lust offers ordered male Duel targets, accepts one Hand cost, bypasses Neg
   assert.equal(finished.data.room.players.find((player) => player.id === setup.first.id).hp, 3);
   assert.equal(finished.data.room.players.find((player) => player.id === setup.second.id).hp, 4);
   assert.equal(finished.data.room.players.find((player) => player.id === setup.diao.id).hp, 3);
+  const committedDamageEvent = finished.data.room.timeline.find((event) => event.publicFact?.committedOutcome?.changes?.some((change) =>
+    change.kind === "DAMAGE_APPLIED" && change.playerId === setup.first.id));
+  assert.ok(committedDamageEvent, "the actual Duel HP loss has one typed committed public result");
+  assert.deepEqual(committedDamageEvent.publicFact.committedOutcome.changes, [
+    { kind: "DAMAGE_APPLIED", playerId: setup.first.id, amount: 1 },
+  ], "the outcome reports the true one HP loss, not only the attempted Duel damage");
+  const damageH4 = assertPublicOutcomeHasH4Owner(finished.data.room, committedDamageEvent.id);
+  assert.match(damageH4.narration.headline, /lost 1 HP to damage/,
+    "the real damage result reaches the same shared H4 formatter and single-owner route");
   assert.ok(finished.data.room.log.some((entry) => entry.includes(`${setup.second.name}`) && entry.includes(`${setup.first.name}`)), JSON.stringify(finished.data.room.log));
   const lustResults = finished.data.room.presentationSnapshot.diaoChanSkillNotices.filter((notice) => notice.notice === "DUEL_RESULT");
   assert.equal(lustResults.length, 1, JSON.stringify(finished.data.room.presentationSnapshot.diaoChanSkillNotices));
@@ -127,6 +136,8 @@ test("Lust offers ordered male Duel targets, accepts one Hand cost, bypasses Neg
   assert.equal(settledExchange.settlement.damageSourceId, setup.second.id);
   const otherViewer = (await state(game.code, game.members[3].token)).data;
   assert.deepEqual(otherViewer.presentationSnapshot.diaoChanSkillNotices, finished.data.room.presentationSnapshot.diaoChanSkillNotices);
+  assert.deepEqual(assertPublicOutcomeHasH4Owner(otherViewer, committedDamageEvent.id).fact, damageH4.fact,
+    "observers receive the same committed damage count and H4 fact");
   const normalizeSettlementWindow = (exchange) => {
     const normalized = structuredClone(exchange);
     delete normalized.settlement.readRemainingMs;
