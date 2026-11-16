@@ -146,6 +146,14 @@ test("§10.60 Step 3 440px phone Hand swipes to the last card and taps it withou
     expect(firstCardBox).not.toBeNull();
     expect(before.scrollWidth).toBeGreaterThan(before.clientWidth);
     expect(await rail.evaluate((element) => getComputedStyle(element).touchAction)).toBe("pan-x");
+    expect(await rail.locator(".game-card").first().evaluate((element) => getComputedStyle(element).touchAction)).toBe("pan-x");
+    const skillHit = await page.evaluate(() => {
+      const skill = document.querySelector(".local-status-panel .hero-skill-button");
+      if (!skill) return null;
+      const rect = skill.getBoundingClientRect();
+      return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest(".hero-skill-button") !== null;
+    });
+    expect(skillHit).toBe(true);
 
     const point = { x: firstCardBox.x + 20, y: firstCardBox.y + Math.min(20, firstCardBox.height / 2) };
     const hit = await page.evaluate(({ x, y }) => {

@@ -825,6 +825,9 @@
 .local-hand-rail::-webkit-scrollbar { display: none; }
 .local-hand-rail:focus-visible { outline: 1px solid #e6cc8c; outline-offset: -1px; }
 .local-hand-rail .card-slot { position: relative; z-index: 1; flex: 0 0 var(--hand-card-face-width); width: var(--hand-card-face-width); height: var(--hand-peek-height); overflow: hidden; pointer-events: auto; }
+.local-hand-rail .card-slot .game-card,
+.local-hand-rail .card-slot .hand-card-details-action,
+.local-hand-section .card-slot .hand-card-retap-extension { touch-action: pan-x; }
 .local-hand-rail .card-slot.single-selected { z-index: 80; height: var(--hand-peek-height); overflow: visible; }
 .local-hand-rail .card-slot.details-selected { z-index: 90; overflow: visible; }
 .local-hand-rail .card-slot.inspect-focused { z-index: 90; overflow: visible; }
