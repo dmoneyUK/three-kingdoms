@@ -14,8 +14,9 @@
 - `game/presentation-snapshot.ts` 将已验证 retained facts 与当前 interaction facts 分开透传，只去除活动列表已有的 event ID，不截断事实的前后顺序。唯一 H4 选择仍由真实 `publicSequence` 游标仲裁。
 - 保留前一阶段的 validated retained fact queue 与 Discard Phase `HAND → DISCARD` 精确数量/共享 formatter/actor-observer owner 回归；当前部署代码已覆盖这些结果。
 - 借刀杀人两种真实装备转移结算（强制攻击无合法目标、攻击者拒绝）现均附带共享 `CommittedPublicOutcome`：实际 `EQUIPMENT → HAND`、数量 1、转出/接收玩家；不泄露物理卡牌 ID。`tests/api/borrowed-sword.test.mjs` 断言两个分支、通用 H4 文案和 actor/observer 公共投影一致；API shard 2 通过。
+- 本轮补齐 `choose_target_card` 的真实 Steal/Burning Bridges 结算：Steal 对 HAND/EQUIPMENT/JUDGEMENT 到 HAND 发布精确 `CARD_TRANSFERRED`；Burning Bridges 对三种来源区到 DISCARD 发布精确 `CARD_DISCARDED`，并沿用公开弃牌 transition 与原 settlement proof。`tests/api/stratagems.test.mjs` 的六路径矩阵新增通用 H4 owner/文案、跨 viewer 一致、精确区域/数量和 outcome 不含物理牌 ID 断言。Steal 手牌身份仍只由既有 viewer-private receipt 提供。
 - 未运行本地测试、构建或设备/browser 测试；仅 `git diff --check` 通过。
 
 ## 唯一续接点
 
-继续同一 §10.59 的下一有界实现：核对并补齐剩余公开普通卡牌结算的实际 HP/卡牌变化 outcome 与通用 H4 owner，优先覆盖实体牌弃置/转移与技能/群体结算重叠的路径；随后继续完成所有来源覆盖及系统级唯一 owner/privacy/recency 回归。仍不运行本地测试、构建或设备/browser 测试；只执行必需的精确 SHA CI、部署和生产 smoke。不要拆分任务、请求阶段验收或标记 USER-ACCEPTED。
+继续同一 §10.59：在这次 Steal/Burning Bridges 结果接入通过精确 SHA CI 后，继续核对 §10.59 列出的其他真实 HP/卡牌变更服务端来源，接入同一 outcome publisher、留存与唯一 H4 owner，完成系统级覆盖/隐私/recency 回归。仍不运行本地测试、构建或设备/browser 测试；只执行必需的精确 SHA CI、部署和生产 smoke。不要拆分任务、请求阶段验收或标记 USER-ACCEPTED。

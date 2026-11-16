@@ -10704,22 +10704,58 @@ export async function POST(request: Request) {
     if (pending.cardKind === "Dismantle") {
       const settlementProof = dismantleSettlementProofFor(liveRoom, pending, zone, chosen, log);
       discard.push(chosen);
+      const settlementEventId = crypto.randomUUID();
+      const publicZoneTransitions = publicDiscardTransitions(settlementEventId, target, [chosen]);
+      const sourceLabel = cardDefinition(pending.cardKind).name;
+      const outcomeLabel = `${target.name} discarded one card`;
+      const publicFact = settlementProof && publicZoneTransitions
+        ? withCommittedPublicOutcome(publicFactFor(pending.causal, "CARD_DISCARDED", {
+          rootEventId: settlementProof.rootEventId,
+          actorId: target.id,
+          affectedPlayerIds: [target.id],
+          label: sourceLabel,
+          outcomeLabel,
+        }, parseCausalEnvelope(liveRoom.causal_envelope_json)), {
+          outcomeLabel,
+          changes: [{ kind: "CARD_DISCARDED", playerId: target.id, amount: 1, fromZone: zone === "hand" ? "HAND" : zone === "equipment" ? "EQUIPMENT" : "JUDGEMENT", toZone: "DISCARD" }],
+          source: { kind: "card", label: sourceLabel },
+        })
+        : undefined;
       log = addCardEvent(log, target.name, chosen, target.name, "discard", true, settlementProof ? {
         resolutionId: settlementProof.rootResolutionId,
         importance: "essential",
         finalResult: true,
+        actorId: target.id,
+        ...(publicZoneTransitions ? { publicZoneTransitions } : {}),
+        ...(publicFact ? { publicFact } : {}),
         publicDismantleSettlement: settlementProof,
-      } : undefined);
+      } : undefined, settlementEventId);
       log = addHistory(log, `${me.name} uses Burning Bridges to discard one ${zone === "hand" ? "hidden hand" : zone} card from ${target.name}.`);
     } else {
       const settlementProof = stealSettlementProofFor(liveRoom, pending, zone, chosen, log);
       sourceHand = [...sourceHand, chosen];
       const message = `${me.name} uses Steal to obtain one ${zone === "hand" ? "hidden hand" : zone} card from ${target.name}.`;
       if (settlementProof) {
+        const sourceLabel = cardDefinition(pending.cardKind).name;
+        const outcomeLabel = "transferred one card";
+        const fromZone = zone === "hand" ? "HAND" : zone === "equipment" ? "EQUIPMENT" : "JUDGEMENT";
+        const publicFact = withCommittedPublicOutcome(publicFactFor(pending.causal, "CARD_TRANSFERRED", {
+          rootEventId: settlementProof.rootEventId,
+          actorId: me.id,
+          affectedPlayerIds: [me.id, target.id],
+          label: sourceLabel,
+          outcomeLabel,
+        }, parseCausalEnvelope(liveRoom.causal_envelope_json)), {
+          outcomeLabel,
+          changes: [{ kind: "CARD_TRANSFERRED", fromPlayerId: target.id, toPlayerId: me.id, amount: 1, fromZone, toZone: "HAND" }],
+          source: { kind: "card", label: sourceLabel },
+        });
         const settlementEvent = addLogWithId(log, message, undefined, {
           resolutionId: settlementProof.rootResolutionId,
           importance: "essential",
           finalResult: true,
+          actorId: me.id,
+          ...(publicFact ? { publicFact } : {}),
           publicStealSettlement: settlementProof,
         });
         log = settlementEvent.log;
