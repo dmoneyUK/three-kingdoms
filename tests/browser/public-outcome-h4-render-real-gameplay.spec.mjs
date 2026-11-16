@@ -25,19 +25,6 @@ test("a committed public draw is rendered as exactly one visible React H4 for ev
   const actor = room.players[0];
   const viewers = room.players;
 
-  await page.setViewportSize({ width: 440, height: 894 });
-  const viewerPages = [];
-  for (const viewer of viewers) {
-    const viewerPage = viewerPages.length === 0 ? page : await page.context().newPage();
-    if (viewerPages.length > 0) await viewerPage.setViewportSize({ width: 440, height: 894 });
-    await viewerPage.addInitScript(({ code, token, name }) => {
-      localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
-    }, { code: room.code, token: viewer.token, name: viewer.name });
-    await viewerPage.goto(`${API}/`);
-    await expect(viewerPage.locator(".game-shell")).toBeVisible();
-    viewerPages.push({ player: viewer, page: viewerPage });
-  }
-
   const actorStateResponse = await request.get(`${API}/api/rooms?code=${room.code}&token=${actor.token}`);
   expect(actorStateResponse.ok()).toBeTruthy();
   const actorState = await actorStateResponse.json();
@@ -54,6 +41,19 @@ test("a committed public draw is rendered as exactly one visible React H4 for ev
   expect(committedEvent.publicFact.committedOutcome.changes).toEqual([
     { kind: "CARD_DRAWN", playerId: actor.id, amount: 2, fromZone: "DECK", toZone: "HAND" },
   ]);
+
+  await page.setViewportSize({ width: 440, height: 894 });
+  const viewerPages = [];
+  for (const viewer of viewers) {
+    const viewerPage = viewerPages.length === 0 ? page : await page.context().newPage();
+    if (viewerPages.length > 0) await viewerPage.setViewportSize({ width: 440, height: 894 });
+    await viewerPage.addInitScript(({ code, token, name }) => {
+      localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
+    }, { code: room.code, token: viewer.token, name: viewer.name });
+    await viewerPage.goto(`${API}/`);
+    await expect(viewerPage.locator(".game-shell")).toBeVisible();
+    viewerPages.push({ player: viewer, page: viewerPage });
+  }
 
   const eventId = committedEvent.id;
   const viewerCopies = await Promise.all(viewerPages.map(async ({ player: viewer, page: viewerPage }, index) => {
