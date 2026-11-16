@@ -1654,6 +1654,14 @@ test("committed Discard-phase cards carry one public physical HAND-to-Discard pr
   const observerEvent = observer.timeline.find((event) => event.id === ownerEvent.id);
   assert.deepEqual(observerEvent?.publicZoneTransitions, ownerEvent.publicZoneTransitions,
     "public transition evidence is identical for every viewer");
+  const ownerH4 = assertPublicOutcomeHasH4Owner(discarded.data.room, ownerEvent.id);
+  const observerH4 = assertPublicOutcomeHasH4Owner(observer, ownerEvent.id);
+  assert.equal(ownerH4.fact.committedOutcome.changes[0]?.kind, "CARD_DISCARDED");
+  assert.equal(ownerH4.fact.committedOutcome.changes[0]?.amount, 1);
+  assert.match(ownerH4.narration.headline, /discarded 1 card/,
+    "ordinary Discard Phase H4 reports the committed discard count");
+  assert.equal(observerH4.narration.headline, ownerH4.narration.headline,
+    "actor and observer share the same single-owner H4 result for the public discard");
 });
 
 test("delayed Judgement Negation and counter-Negation reuse one activation frame", { timeout: 30_000 }, async () => {
