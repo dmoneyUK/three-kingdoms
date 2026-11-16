@@ -26,6 +26,7 @@ export function assertPublicOutcomeHasH4Owner(room, eventId) {
   });
   assert.ok(narration, `public result event ${eventId} produces H4 narration`);
   assert.equal(narration.eventId, eventId, "the H4 uses the exact committed event identity");
+  assert.equal(narration.publicSequence, projected.order, "the H4 retains the event's authoritative public sequence");
   assert.equal(narration.headline, formatCommittedPublicOutcome(projected.committedOutcome, room.players),
     "the H4 copy comes from the shared committed-outcome formatter");
 

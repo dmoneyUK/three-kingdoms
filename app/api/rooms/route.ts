@@ -862,7 +862,12 @@ function publicTriggerFactFor(trigger: TriggerPending, players: PlayerRow[], eff
   const context = triggerContextFor(trigger, players, room);
   if (!context || triggerAvailability(effectId, context) !== "public") return undefined;
   const continuation = trigger.continuation as unknown as Record<string, unknown>;
-  const rootEventId = typeof continuation.rootEventId === "string" ? continuation.rootEventId : undefined;
+  const judgementContinuation = continuation.kind === "judgement_effective_event" ? record(continuation.judgement) : null;
+  const rootEventId = typeof continuation.rootEventId === "string" ? continuation.rootEventId
+    : continuation.kind === "judgement_effective_event"
+      ? typeof trigger.readyAfterEventId === "string" ? trigger.readyAfterEventId
+        : typeof judgementContinuation?.revealedEventId === "string" ? judgementContinuation.revealedEventId : undefined
+      : undefined;
   const actorId = triggerActorId(effectId, context) ?? trigger.actorId;
   const option = triggerOptionsFor(trigger, players, room).find((candidate) => candidate.effectId === effectId);
   const summary = publicTriggerOutcomeSummary(outcome);
@@ -2657,12 +2662,17 @@ async function resolveAutomaticDamageSufferedTrigger(room: RoomRow, continuation
   const committedFact = (outcomeLabel: string, amount: number) => {
     if (triggerAvailability(execution.effectId, context) !== "public") return undefined;
     const publicSkillLabel = execution.presentation?.label?.split(" — ")[0] ?? "a skill";
-    const committedOutcome = execution.outcome.kind === "draw_cards" && source && amount > 0
+    const committedOutcome = source && amount > 0 && execution.outcome.kind === "draw_cards"
       ? {
         source: { kind: "skill" as const, label: publicSkillLabel },
         changes: [{ kind: "CARD_DRAWN" as const, playerId: source.id, amount, fromZone: "DECK" as const, toZone: "HAND" as const }],
       }
-      : undefined;
+      : source && amount > 0 && execution.outcome.kind === "lose_hp"
+        ? {
+          source: { kind: "skill" as const, label: publicSkillLabel },
+          changes: [{ kind: "HP_LOST_TO_EFFECT" as const, playerId: source.id, amount }],
+        }
+        : undefined;
     return publicFactFor(continuation.causal, "SKILL_USED", {
       rootEventId: continuation.rootEventId ?? notice.eventId,
       actorId: triggerActorId(execution.effectId, context) ?? source?.id ?? target.id,
@@ -2704,8 +2714,10 @@ async function resolveAutomaticDamageSufferedTrigger(room: RoomRow, continuation
     if (!source || execution.outcome.playerId !== source.id || execution.outcome.amount !== 1) return continueDamageSufferedEvent(room, nextContinuation, players, deck, discard, addLog(nextLog, "The passive HP-loss effect has no valid source and ends."));
     // This is explicit HP loss, not sourced damage: do not route it through
     // resolveSourcedDamage or emit another damage_suffered event.
-    const hp = Math.max(0, (source.hp ?? 0) - execution.outcome.amount);
-    nextLog = attachNoticeFact(nextLog, committedFact("lost 1 HP", 1));
+    const hpBefore = source.hp ?? 0;
+    const hp = Math.max(0, hpBefore - execution.outcome.amount);
+    const actualHpLost = Math.max(0, hpBefore - hp);
+    nextLog = attachNoticeFact(nextLog, committedFact(actualHpLost > 0 ? `lost ${actualHpLost} HP` : "lost no HP", actualHpLost));
     nextLog = addLog(nextLog, `${source.name} loses 1 HP from Axe of Insanity${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`);
     const updatedSource = { ...source, hp } satisfies PlayerRow;
     if (isDying(hp)) {
@@ -9867,7 +9879,12 @@ export async function POST(request: Request) {
       const obtained = action === "apply_trigger";
       if (obtained) {
         const hand = [...parse<Card[]>(actor.hand_json, []), finalCard];
-        log = addTriggeredEffectNotice(log, actor.name, "Jealousy of God", triggerPublicFact).log;
+        const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+          outcomeLabel: "obtained the final Judgment card",
+          source: { kind: "skill", label: triggerPublicFact?.label ?? "Jealousy of God" },
+          changes: [{ kind: "CARD_GAINED", playerId: actor.id, amount: 1, fromZone: "JUDGEMENT", toZone: "HAND" }],
+        });
+        log = addTriggeredEffectNotice(log, actor.name, "Jealousy of God", committedFact).log;
         log = addFinalResult(log, `${actor.name} activates Jealousy of God and obtains ${finalCard.rank}${finalCard.suit}.`, undefined, continuation.judgement.resolutionId);
         log = addPrivateHandArrivalEvent(log, actor, finalCard, {
           sourceZone: "judgement",

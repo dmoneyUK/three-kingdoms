@@ -34,10 +34,10 @@ export type PublicOutcomeSourceKind = "card" | "skill" | "phase" | "damage" | "r
 
 /** Public counts and owners only; physical card identities and faces never belong here. */
 export type CommittedPublicOutcomeChange =
-  | { kind: "HP_COST_LOST" | "DAMAGE_APPLIED" | "HP_RECOVERED"; playerId: string; amount: number }
+  | { kind: "HP_COST_LOST" | "HP_LOST_TO_EFFECT" | "DAMAGE_APPLIED" | "HP_RECOVERED"; playerId: string; amount: number }
   | { kind: "CARD_DRAWN"; playerId: string; amount: number; fromZone: "DECK"; toZone: "HAND" }
   | { kind: "CARD_DISCARDED"; playerId: string; amount: number; fromZone: "HAND" | "EQUIPMENT" | "JUDGEMENT"; toZone: "DISCARD" }
-  | { kind: "CARD_GAINED"; playerId: string; amount: number; fromZone: "DECK" | "DISCARD" | "DISTRIBUTION"; toZone: "HAND" | "EQUIPMENT" }
+  | { kind: "CARD_GAINED"; playerId: string; amount: number; fromZone: "DECK" | "DISCARD" | "DISTRIBUTION" | "JUDGEMENT"; toZone: "HAND" | "EQUIPMENT" }
   | { kind: "CARD_TRANSFERRED"; fromPlayerId: string; toPlayerId: string; amount: number; fromZone: "HAND" | "EQUIPMENT" | "JUDGEMENT"; toZone: "HAND" | "EQUIPMENT" | "JUDGEMENT" }
   | { kind: "CARD_EQUIPPED"; playerId: string; amount: 1; fromZone: "HAND"; toZone: "EQUIPMENT" }
   | { kind: "CARD_UNEQUIPPED"; playerId: string; amount: 1; fromZone: "EQUIPMENT"; toZone: "HAND" | "DISCARD" };
@@ -369,6 +369,7 @@ function publicOutcomeChange(value: unknown): CommittedPublicOutcomeChange | nul
   const amount = item.amount as number;
   switch (item.kind) {
     case "HP_COST_LOST":
+    case "HP_LOST_TO_EFFECT":
     case "DAMAGE_APPLIED":
     case "HP_RECOVERED":
       return exactKeys(item, ["kind", "playerId", "amount"]) && nonEmptyString(item.playerId)
@@ -385,8 +386,8 @@ function publicOutcomeChange(value: unknown): CommittedPublicOutcomeChange | nul
     case "CARD_GAINED":
       return exactKeys(item, ["kind", "playerId", "amount", "fromZone", "toZone"])
         && nonEmptyString(item.playerId)
-        && (item.fromZone === "DECK" || item.fromZone === "DISCARD" || item.fromZone === "DISTRIBUTION")
-        && (item.toZone === "HAND" || (item.fromZone !== "DISTRIBUTION" && item.toZone === "EQUIPMENT"))
+        && (item.fromZone === "DECK" || item.fromZone === "DISCARD" || item.fromZone === "DISTRIBUTION" || item.fromZone === "JUDGEMENT")
+        && (item.toZone === "HAND" || (item.fromZone !== "DISTRIBUTION" && item.fromZone !== "JUDGEMENT" && item.toZone === "EQUIPMENT"))
         ? { kind: item.kind, playerId: item.playerId, amount, fromZone: item.fromZone, toZone: item.toZone } : null;
     case "CARD_TRANSFERRED":
       return exactKeys(item, ["kind", "fromPlayerId", "toPlayerId", "amount", "fromZone", "toZone"])

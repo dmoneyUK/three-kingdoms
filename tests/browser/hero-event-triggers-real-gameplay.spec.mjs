@@ -314,7 +314,12 @@ test("E15: final Judgement, two-card discard and next-turn status stay coherent 
   expect(discardEvent).toBeTruthy();
 
   const discardH4 = page.locator(`[data-public-discard-announcement-event-id="${discardEvent.id}"]`);
+  const renderedDiscardH4 = page.locator(`[data-public-h4-event-id="${discardEvent.id}"]`);
   await expect(discardH4).toBeVisible({ timeout: 15_000 });
+  await expect(renderedDiscardH4).toHaveCount(1);
+  await expect(renderedDiscardH4).toBeVisible();
+  await expect(renderedDiscardH4).toHaveAttribute("data-public-h4-owner", "PublicDiscardAnnouncementLayer");
+  await expect(renderedDiscardH4).toHaveAttribute("data-public-h4-public-sequence", String(discardEvent.publicSequence));
   await expect(discardH4).toContainText("SIMA YI discarded 2 cards: 7♠ Dodge · 7♠ Peach.");
   await expect(discardH4).toHaveAttribute("data-public-discard-announcement-card-ids", discarded.map((card) => card.id).join(","));
   const discardCards = page.locator(`[data-public-zone-transition-event-id="${discardEvent.id}"][data-public-zone-transition-destination="DISCARD"]`);
@@ -332,6 +337,9 @@ test("E15: final Judgement, two-card discard and next-turn status stay coherent 
   await page.getByTestId(`test-view-switch-${observer.id}`).click();
   await expect(page.locator(`.local-player-dock[data-player-anchor="${observer.id}"]`)).toBeVisible({ timeout: 15_000 });
   await expect(page.locator(`[data-public-discard-announcement-event-id="${discardEvent.id}"]`)).toContainText("7♠ Dodge · 7♠ Peach");
+  const switchedDiscardH4 = page.locator(`[data-public-h4-event-id="${discardEvent.id}"]`);
+  await expect(switchedDiscardH4).toHaveCount(1);
+  await expect(switchedDiscardH4).toHaveAttribute("data-public-h4-public-sequence", String(discardEvent.publicSequence));
   await expect(page.locator('[data-public-activity-chip="true"]')).toHaveAttribute("data-public-activity-kind", "discard-handoff");
   await expect(page.locator(".console-guidance")).toContainText("No action needed.");
   await expect(discardCards).toHaveCount(2);

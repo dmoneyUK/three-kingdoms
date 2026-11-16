@@ -342,11 +342,21 @@ test("Guo Jia Jealousy of God waits for the final Judgment card and handles Necr
   const acceptedResult = await requestAndSettle("trigger", { code: accepted.game.code, token: accepted.guoMember.token, providerId: "guo_jia_jealousy_of_god" });
   assert.equal(acceptedResult.status, 200, JSON.stringify(acceptedResult.data));
   assert.ok(acceptedResult.data.room.myHand.some((held) => held.id === replacement.id), "the replacement Judgment card enters Guo Jia's hand");
+  const jealousyOutcomeEvent = acceptedResult.data.room.timeline.find((event) => event.publicFact?.committedOutcome?.changes?.some((change) =>
+    change.kind === "CARD_GAINED" && change.playerId === accepted.guo.id && change.fromZone === "JUDGEMENT"));
+  assert.ok(jealousyOutcomeEvent, "the public result records the actual Judgement-to-Hand gain");
+  assert.deepEqual(jealousyOutcomeEvent.publicFact.committedOutcome.changes, [
+    { kind: "CARD_GAINED", playerId: accepted.guo.id, amount: 1, fromZone: "JUDGEMENT", toZone: "HAND" },
+  ]);
+  assertPublicOutcomeHasH4Owner(acceptedResult.data.room, jealousyOutcomeEvent.id);
   const jealousyArrival = acceptedResult.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === replacement.id);
   assert.equal(jealousyArrival?.privateHandTransfer?.sourceZone, "judgement");
   assert.equal(jealousyArrival?.privateHandTransfer?.recipientId, accepted.guo.id);
   const jealousyObserver = (await state(accepted.game.code, accepted.simaMember.token)).data;
   assert.equal(jealousyObserver.timeline.some((event) => event.privateHandTransfer), false, "only Guo Jia receives the private Hand arrival receipt");
+  const observerJealousyOutcome = jealousyObserver.timeline.find((event) => event.id === jealousyOutcomeEvent.id);
+  assert.deepEqual(observerJealousyOutcome?.publicFact?.committedOutcome, jealousyOutcomeEvent.publicFact.committedOutcome,
+    "every viewer receives the same public count without the private arrival receipt");
   assert.equal(roomCardCount(accepted.game.code, original.id), 1, "the original revealed card remains exactly once after normal discard/reshuffle processing");
   assert.equal(roomCardCount(accepted.game.code, replacement.id), 1, "the obtained replacement remains exactly once");
   assert.equal(JSON.parse(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(accepted.sima.id)} AND json_extract(value,'$.id')=${quote(replacement.id)}`)), 0, "Necromancy removes the replacement from Sima Yi");

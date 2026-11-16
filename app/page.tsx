@@ -79,6 +79,7 @@ function finalizePublicNegationNarration(
   narration: PublicNegationNarration,
   outcome: "ROOT_CANCELLED" | "ROOT_RESTORED",
   settlementEventId: string,
+  settlementPublicSequence?: number,
 ): PublicNegationNarration {
   const rootEffectState = outcome === "ROOT_CANCELLED" ? "BLOCKED" : "ACTIVE";
   const disposition = outcome === "ROOT_CANCELLED" ? "cancelled" : "restored";
@@ -86,6 +87,7 @@ function finalizePublicNegationNarration(
   return {
     ...narration,
     eventId: settlementEventId,
+    ...(settlementPublicSequence !== undefined ? { publicSequence: settlementPublicSequence } : {}),
     phase: "FINAL",
     rootEffectState,
     headline: publicHeadline,
@@ -126,6 +128,11 @@ type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; playe
 
 type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | ({ type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean } & PresentationEventMeta);
 type EffectNoticeState = EffectNoticeQueueEntry;
+
+function publicSequenceForEvent(timeline: readonly GameEvent[], eventId: string) {
+  const sequence = timeline.find((event) => event.id === eventId)?.publicSequence;
+  return typeof sequence === "number" && Number.isSafeInteger(sequence) ? sequence : undefined;
+}
 
 function privateHandTransferScope(roomCode: string, playerId: string) {
   return `wtk:private-hand-arrivals:v1:${roomCode}:${playerId}`;
@@ -8101,6 +8108,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           activePublicNegationRead.action.publicNegationNarration,
           provenDuelNegationSettlement.proof.outcome,
           provenDuelNegationSettlement.settlementEvent.id,
+          publicSequenceForEvent(room.timeline, provenDuelNegationSettlement.settlementEvent.id),
         ) }
         : {}),
       ...(activePublicNegationRead.action.cardKind === "BumperHarvest" ? {
@@ -8192,7 +8200,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ariaLabel: `${singleTargetNegationProofCandidate.root.source.name} played ${cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name} targeting ${singleTargetNegationProofCandidate.root.targets[0]!.name}`,
       ...(singleTargetNegationUsesJourney && singleTargetNegationNarration ? {
         publicNegationNarration: singleTargetNegationSettlement
-          ? finalizePublicNegationNarration(singleTargetNegationNarration, singleTargetNegationSettlement.outcome, singleTargetNegationSettlement.eventId)
+          ? finalizePublicNegationNarration(singleTargetNegationNarration, singleTargetNegationSettlement.outcome,
+            singleTargetNegationSettlement.eventId, publicSequenceForEvent(room.timeline, singleTargetNegationSettlement.eventId))
           : singleTargetNegationNarration,
       } : {}),
       phaseNotice: singleTargetNegationUsesJourney && clientPresentation.stage === "NEGATION"
@@ -9428,6 +9437,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         : `Suits differ; ${skillEffectSettlementCandidate.target.name} takes ${settlement.damage.amount} damage.`;
     return {
       eventId: settlement.eventId,
+      publicSequence: publicSequenceForEvent(room.timeline, settlement.eventId),
       rootEventId: settlement.rootEventId,
       interactionId: settlement.interactionId,
       rootFrameId: settlement.rootFrameId,
@@ -9894,6 +9904,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       semantics: "PROVEN",
       kind: "SKILL_OUTCOME",
       eventId: effectNotice.eventId,
+      publicSequence: publicSequenceForEvent(room.timeline, effectNotice.eventId),
       rootEventId: effectNotice.beautyRootEventId,
       sourceId: effectNotice.beautySourceId,
       proofEventId: effectNotice.beautyProofEventId,
@@ -10956,6 +10967,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       "data-public-card-journey-target-top", "data-public-card-journey-target-width", "data-public-card-journey-target-height",
       "data-settlement-event-id", "data-settlement-card-id", "data-player-anchor",
       "data-public-card-announcement-key", "data-public-card-announcement-event-id", "data-public-card-copy-anchor-event-id",
+      "data-public-h4-event-id", "data-public-h4-public-sequence", "data-public-h4-owner",
       "data-effect-notice-event-id", "data-seat-topology", "data-countdown-urgency",
     ];
     const attributesFor = (element: Element) => Object.fromEntries(safeAttributes.flatMap((name) => {
@@ -11847,7 +11859,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
       <PublicStageLayoutProvider roomId={room.code} scopeId={publicCardDisplayAction?.rootEventId ?? null} viewerId={room.meId} interactionId={publicCardDisplayAction?.interactionId ?? null}>
-      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} suppressAnnouncement={targetCardChoiceMergeActive || publicDiscardOwnsAnnouncement} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} protectFirstParkedMiniature={protectPublicInteractionUpperH4} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} responseHistoryOwnership={publicDisplayOwnedResponseHistory.map((response) => ({ eventId: response.eventId, cardIds: (response.cardFaces ?? [response.cardFace]).map((card) => card.id) }))} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardDisplayEventParked} onJourneyRevealCompleted={markPublicCardJourneyRevealCompleted} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
+      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} suppressAnnouncement={targetCardChoiceMergeActive || publicDiscardOwnsAnnouncement} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} protectFirstParkedMiniature={protectPublicInteractionUpperH4} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} publicSequenceForEvent={(eventId) => publicSequenceForEvent(room.timeline, eventId)} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} responseHistoryOwnership={publicDisplayOwnedResponseHistory.map((response) => ({ eventId: response.eventId, cardIds: (response.cardFaces ?? [response.cardFace]).map((card) => card.id) }))} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardDisplayEventParked} onJourneyRevealCompleted={markPublicCardJourneyRevealCompleted} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
         setActiveDismantleSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
           ? { ...current, journeySettled: true }
           : current);

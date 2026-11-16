@@ -288,6 +288,7 @@ export type PublicSkillEventAnnouncement = {
   semantics: "PROVEN";
   kind: "SKILL_OUTCOME";
   eventId: string;
+  publicSequence?: number;
   rootEventId: string;
   sourceId: string;
   proofEventId: string;
@@ -2368,11 +2369,14 @@ function publicAnnouncementTraceHash(value: string) {
 
 function PublicCardAnnouncement({
   eventId,
+  h4Owner,
+  h4PublicSequence,
   anchorEventId,
   stagePrimaryEventId,
   eventCopyKey,
   announcementIdentity,
   geometryKey,
+  publicSequenceForEvent,
   copyLifecycleStage,
   placementKey,
   viewerLayoutKey,
@@ -2402,6 +2406,9 @@ function PublicCardAnnouncement({
   protectFirstParkedMiniature = false,
 }: {
   eventId: string;
+  h4Owner: "PublicCardDisplay" | "PublicInteractionAnnouncementLayer" | "PublicDiscardAnnouncementLayer" | "PublicSkillEventAnnouncementLayer";
+  h4PublicSequence?: number;
+  publicSequenceForEvent?: (eventId: string) => number | undefined;
   anchorEventId?: string | null;
   stagePrimaryEventId?: string | null;
   eventCopyKey: string;
@@ -3622,6 +3629,9 @@ function PublicCardAnnouncement({
     aria-atomic="true"
     data-public-card-announcement="true"
     data-public-card-announcement-delivery="COMMITTED"
+    data-public-h4-event-id={displayedCopy.eventId}
+    data-public-h4-public-sequence={Number.isSafeInteger(h4PublicSequence) ? h4PublicSequence : publicSequenceForEvent?.(displayedCopy.eventId)}
+    data-public-h4-owner={h4Owner}
     data-public-card-announcement-key={displayedCopy.eventId}
     data-public-card-announcement-copy-key={eventCopyKey}
     data-public-card-announcement-geometry-key={geometryKey}
@@ -3685,6 +3695,8 @@ export function PublicSkillEventAnnouncementLayer({
   >
     <PublicCardAnnouncement
       eventId={announcement.eventId}
+      h4Owner="PublicSkillEventAnnouncementLayer"
+      h4PublicSequence={announcement.publicSequence}
       anchorEventId={null}
       eventCopyKey={buildPublicAnnouncementEventCopyKey({
         roomCode,
@@ -3739,6 +3751,8 @@ export function PublicInteractionAnnouncementLayer({
     data-public-interaction-event-id={narration.eventId} data-public-event-root-id={narration.rootEventId}>
     <PublicCardAnnouncement
       eventId={narration.eventId}
+      h4Owner="PublicInteractionAnnouncementLayer"
+      h4PublicSequence={narration.publicSequence}
       anchorEventId={anchorEventId}
       eventCopyKey={buildPublicAnnouncementEventCopyKey({
         roomCode, rootEventId: narration.rootEventId, checkpointEventId: narration.eventId,
@@ -3778,6 +3792,8 @@ export function PublicDiscardAnnouncementLayer({ announcement, roomCode, viewerI
     data-public-discard-announcement-card-count={announcement.count}>
     <PublicCardAnnouncement
       eventId={announcement.eventId}
+      h4Owner="PublicDiscardAnnouncementLayer"
+      h4PublicSequence={announcement.order}
       anchorEventId={null}
       eventCopyKey={buildPublicAnnouncementEventCopyKey({
         roomCode,
@@ -3811,6 +3827,7 @@ function AttackDodgeCardJourney({
   compactPlayerNamesById,
   roomCode,
   viewerId,
+  publicSequenceForEvent,
   onInspectCard,
   onJourneyEventParked,
 }: {
@@ -3821,6 +3838,7 @@ function AttackDodgeCardJourney({
   compactPlayerNamesById: CompactPublicPlayerNames;
   roomCode: string;
   viewerId: string;
+  publicSequenceForEvent?: (eventId: string) => number | undefined;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneyEventParked?: (eventId: string) => void;
 }) {
@@ -4555,6 +4573,9 @@ function AttackDodgeCardJourney({
     })}
     <PublicCardAnnouncement
       eventId={negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? activeEventId}
+      h4Owner="PublicCardDisplay"
+      h4PublicSequence={negationNarration?.publicSequence ?? action.publicInteractionNarration?.publicSequence}
+      publicSequenceForEvent={publicSequenceForEvent}
       eventCopyKey={publicCardAnnouncementCopyKey(action, negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? activeEventId, negationNarration?.actorId ?? action.publicInteractionNarration?.actorId ?? activeActorId, roomCode)}
       announcementIdentity={action.publicAnnouncementIdentity}
       geometryKey={publicAnnouncementGeometryKey(roomCode, viewerId)}
@@ -4713,6 +4734,7 @@ function SingleTargetCardJourney({
   compactPlayerNamesById,
   roomCode,
   viewerId,
+  publicSequenceForEvent,
   onInspectCard,
   onJourneySettled,
   onJourneyEventParked,
@@ -4732,6 +4754,7 @@ function SingleTargetCardJourney({
   compactPlayerNamesById: CompactPublicPlayerNames;
   roomCode: string;
   viewerId: string;
+  publicSequenceForEvent?: (eventId: string) => number | undefined;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneySettled?: (settlementEventId: string) => void;
   onJourneyEventParked?: (eventId: string) => void;
@@ -5819,6 +5842,9 @@ function SingleTargetCardJourney({
     </ol>
     {!historyOnly && !suppressAnnouncement && <PublicCardAnnouncement
       stagePrimaryEventId={harvestStagePrimaryEventId}
+      h4Owner="PublicCardDisplay"
+      h4PublicSequence={negationNarration?.publicSequence ?? action.publicInteractionNarration?.publicSequence}
+      publicSequenceForEvent={publicSequenceForEvent}
       eventId={dismantleFaceCopy?.settlementEventId ?? negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId)}
       eventCopyKey={publicCardAnnouncementCopyKey(
         action,
@@ -5986,6 +6012,7 @@ function DuelCardJourney({
   compactPlayerNamesById,
   roomCode,
   viewerId,
+  publicSequenceForEvent,
   viewerSeat,
   resultReadRemainingMs,
   onInspectCard,
@@ -6000,6 +6027,7 @@ function DuelCardJourney({
   compactPlayerNamesById: CompactPublicPlayerNames;
   roomCode: string;
   viewerId: string;
+  publicSequenceForEvent?: (eventId: string) => number | undefined;
   viewerSeat: number | null;
   resultReadRemainingMs: number | null;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
@@ -6760,6 +6788,9 @@ function DuelCardJourney({
     {!suppressAnnouncement && !action.suppressAnnouncement && <PublicCardAnnouncement
       eventId={negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? (action.motion?.type === "lust-duel" && announcementEventId === action.rootEventId && activeCard?.role === "root" && action.lustCostFrame
         ? action.lustCostFrame.activationEventId : announcementEventId)}
+      h4Owner="PublicCardDisplay"
+      h4PublicSequence={negationNarration?.publicSequence ?? action.publicInteractionNarration?.publicSequence}
+      publicSequenceForEvent={publicSequenceForEvent}
       eventCopyKey={publicCardAnnouncementCopyKey(
         action,
         negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? (action.motion?.type === "lust-duel" && announcementEventId === action.rootEventId && activeCard?.role === "root" && action.lustCostFrame
@@ -6818,6 +6849,7 @@ export function PublicCardDisplay({
   compactPlayerNamesById,
   roomCode,
   viewerId,
+  publicSequenceForEvent,
   viewerSeat,
   resultReadRemainingMs = null,
   responseHistoryOwnership = [],
@@ -6840,6 +6872,7 @@ export function PublicCardDisplay({
   compactPlayerNamesById: CompactPublicPlayerNames;
   roomCode: string;
   viewerId: string;
+  publicSequenceForEvent?: (eventId: string) => number | undefined;
   viewerSeat: number | null;
   resultReadRemainingMs?: number | null;
   responseHistoryOwnership?: readonly { eventId: string; cardIds: readonly string[] }[];
@@ -6858,14 +6891,14 @@ export function PublicCardDisplay({
 }) {
   if (!action) return null;
   if (action.motion?.type === "attack-dodge") {
-    return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
+    return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} publicSequenceForEvent={publicSequenceForEvent} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (action.motion?.type === "single-target" || action.motion?.type === "negation"
     || action.motion?.type === "group-root" || action.motion?.type === "lust-cost") {
-    return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHarvestHistory={retainHarvestHistory} protectFirstParkedMiniature={protectFirstParkedMiniature} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyRevealCompleted={onJourneyRevealCompleted} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
+    return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHarvestHistory={retainHarvestHistory} protectFirstParkedMiniature={protectFirstParkedMiniature} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} publicSequenceForEvent={publicSequenceForEvent} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyRevealCompleted={onJourneyRevealCompleted} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
   }
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {
-    return <DuelCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHistoryDuringInspection={retainDuelHistoryDuringInspection} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
+    return <DuelCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHistoryDuringInspection={retainDuelHistoryDuringInspection} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} publicSequenceForEvent={publicSequenceForEvent} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }
   return null;
 }

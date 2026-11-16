@@ -767,6 +767,11 @@ test("committed public outcome copy reports actual mixed HP and card deltas gene
   };
   assert.equal(formatCommittedPublicOutcome(outcome, players),
     "Test Player 1 — Self Sacrifice: Test Player 1 paid 1 HP as a cost; Test Player 1 drew 2 cards; Test Player 2 received 1 card from Test Player 1.");
+  assert.equal(formatCommittedPublicOutcome({ ...outcome, source: { kind: "skill", label: "Axe of Insanity" }, changes: [
+    { kind: "HP_LOST_TO_EFFECT", playerId: "p1", amount: 1 },
+  ] }, players),
+  "Test Player 1 — Axe of Insanity: Test Player 1 lost 1 HP to an effect.",
+  "non-damage HP loss stays distinct from HP costs and damage");
   assert.equal(formatCommittedPublicOutcome({ ...outcome, source: { kind: "skill", label: "Equilibrium" }, changes: [
     { kind: "CARD_DISCARDED", playerId: "p1", amount: 1, fromZone: "HAND", toZone: "DISCARD" },
     { kind: "CARD_DISCARDED", playerId: "p1", amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" },

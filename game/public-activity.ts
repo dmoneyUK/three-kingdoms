@@ -270,6 +270,7 @@ function actionList(labels: readonly string[]): string {
 export type PublicNegationNarration = {
   rootLabel: string;
   eventId: string;
+  publicSequence?: number;
   latestCommittedEventId?: string;
   checkpointId?: string;
   phase: "WINDOW_OPEN" | "FINAL";
@@ -283,6 +284,7 @@ export type PublicNegationNarration = {
 
 export type PublicInteractionNarration = {
   eventId: string;
+  publicSequence?: number;
   rootEventId: string;
   interactionId: string;
   rootFrameId: string;
@@ -336,6 +338,7 @@ export function formatCommittedPublicOutcome(
     if (!player) return null;
     switch (change.kind) {
       case "HP_COST_LOST": return `${player} paid ${amountText(amount, "HP", "HP")} as a cost`;
+      case "HP_LOST_TO_EFFECT": return `${player} lost ${amountText(amount, "HP", "HP")} to an effect`;
       case "DAMAGE_APPLIED": return `${player} lost ${amountText(amount, "HP", "HP")} to damage`;
       case "HP_RECOVERED": return `${player} recovered ${amountText(amount, "HP", "HP")}`;
       case "CARD_DRAWN": return `${player} drew ${amountText(amount, "card", "cards")}`;
@@ -469,6 +472,7 @@ export function derivePublicInteractionNarration(input: {
       headline = `${actor ? `${actor} used` : "A player used"} ${skill} on ${target}.`;
       return {
         eventId: latest.eventId,
+        publicSequence: latest.order,
         rootEventId: input.rootEventId,
         interactionId: input.interactionId,
         rootFrameId: input.rootFrameId,
@@ -527,6 +531,7 @@ export function derivePublicInteractionNarration(input: {
 
   return {
     eventId: latest.eventId,
+    publicSequence: latest.order,
     rootEventId: input.rootEventId,
     interactionId: input.interactionId,
     rootFrameId: input.rootFrameId,
@@ -628,6 +633,7 @@ export function derivePublicNegationNarration(input: {
     return {
       rootLabel: "Bumper Harvest",
       eventId,
+      publicSequence: publicEventFacts.find((fact) => fact.eventId === eventId)?.order,
       latestCommittedEventId: eventId,
       checkpointId,
       phase,
@@ -700,6 +706,7 @@ export function derivePublicNegationNarration(input: {
   return {
     rootLabel: narratedEffectName,
     eventId: latest.eventId,
+    publicSequence: latest.order,
     latestCommittedEventId: latest.eventId,
     checkpointId: latest.identity.checkpointId,
     phase,
