@@ -4,7 +4,7 @@ import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import { oathRecipientIds } from "../../game/oath.ts";
 import {
-  advanceNegationWindow, assert, card, createHumanGame, discardIds, openBorrowedSwordScenario, openGanglieGroup, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setTurn, sql, state, waitForState,
+  restoreSequentialDyingFixture, advanceNegationWindow, assert, card, createHumanGame, discardIds, openBorrowedSwordScenario, openGanglieGroup, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setTurn, sql, state, waitForState,
 } from "./test-support.mjs";
 
 function authoritativePending(code) {
@@ -44,9 +44,16 @@ function assertProjectionMatchesEngine(code, token) {
     } : storedPending;
     const expected = projectPresentationV2({
       pending,
+      ...(storedPending?.kind === "shared_response_window" ? { sharedResponseWindow: {
+        semantics: "PROVEN", windowId: storedPending.windowId, mode: storedPending.continuation.mode,
+        requesterId: storedPending.requesterId, targetId: storedPending.targetId,
+        openedAt: storedPending.openedAt, deadline: storedPending.deadline,
+        stage: storedPending.settlement ? "SETTLING" : "COLLECTING",
+      } } : {}),
       currentAction: view.currentAction,
       actionRevision: view.actionRevision,
       timeline: view.timeline,
+      publicTimeline: view.timeline.filter((event) => event.presentation !== false && typeof event.privateToPlayerId !== "string"),
       causalEnvelope: view.causalEnvelope,
       retainPublicEventAtRest: view.status === "playing" && !storedPending && !view.causalEnvelope && view.currentAction?.kind === "turn",
       oathRecipientIds: oathRecipientIds(view.players.map((player) => ({ id: player.id, alive: player.alive, hp: player.hp, maxHp: player.maxHp }))),
@@ -70,6 +77,7 @@ function assertProjectionMatchesEngine(code, token) {
       actionRevision: view.actionRevision,
       viewerId: view.meId,
       publicNextDecision: serverDecision,
+      publicDrawPhaseDecision: view.presentationSnapshot.publicDrawPhaseDecision,
       viewerNegationChoice: view.presentationSnapshot.viewerNegationChoice,
     });
     assert.deepEqual(view.presentationSnapshot, expectedSnapshot, "route PresentationSnapshot is composed from the persisted engine projection");
@@ -197,7 +205,7 @@ test("public effect root links accept a genuine grouped physical root", () => {
   assert.equal(projected[0].rootResolutionId, root.resolutionId);
 });
 
-test("engine-backed Sowing Distrust exposes only its exact public Effect root across both target choices", { timeout: 30_000 }, async () => {
+test("engine-backed Sowing Distrust exposes its public Effect root during one private combined choice", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [source, target] = game.room.players;
   const [sourceMember, targetMember, observerMember] = game.members;
@@ -209,48 +217,68 @@ test("engine-backed Sowing Distrust exposes only its exact public Effect root ac
 
   const started = await request("trigger", { code: game.code, token: sourceMember.token, providerId: "zhou_yu_fanjian", targetId: target.id });
   assert.equal(started.status, 200, JSON.stringify(started.data));
-  const suitView = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  const choiceView = await assertProjectionMatchesEngine(game.code, targetMember.token);
   const rootPending = authoritativePending(game.code);
+  const activationEvent = choiceView.timeline.find((event) => event.id === rootPending.continuation.effectRoot.rootEventId);
+  const activationFact = activationEvent?.publicFact;
+  assert.equal(activationFact?.category, "SKILL_USED");
   const effectAction = {
     semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId: rootPending.continuation.effectRoot.rootEventId,
-    sourceId: source.id, targetId: target.id,
+    sourceId: source.id, targetId: target.id, interactionId: activationFact.interactionId, rootFrameId: activationFact.frameId,
   };
-  assert.deepEqual(suitView.presentationV2.skillEffectAction, effectAction);
-  assert.deepEqual(suitView.presentationSnapshot.skillEffectAction, effectAction);
-  assert.equal(suitView.currentAction.actorId, target.id);
-  assert.equal(suitView.currentAction.triggerOptions[0].selection.choices.length, 4);
-  assert.equal(suitView.timeline.find((event) => event.id === effectAction.rootEventId)?.publicSkillEffect?.effectId, "zhou_yu_fanjian");
+  assert.deepEqual(choiceView.presentationV2.skillEffectAction, effectAction);
+  assert.deepEqual(choiceView.presentationSnapshot.skillEffectAction, effectAction);
+  assert.equal(choiceView.currentAction.actorId, target.id);
+  assert.equal(choiceView.currentAction.triggerOptions[0].selection.type, "choice_and_target_cards");
+  assert.equal(choiceView.currentAction.triggerOptions[0].selection.choices.length, 4);
+  assert.deepEqual(choiceView.currentAction.triggerOptions[0].selection.eligibleKeys, ["hand:0"]);
+  assert.equal(JSON.stringify(choiceView.currentAction).includes(hiddenCard.id), false);
+  assert.equal(choiceView.timeline.some((event) => event.type === "card" && event.card.id === hiddenCard.id), false, "the source Hand face is not public before the combined choice commits");
+  assert.equal(choiceView.presentationSnapshot.publicNextDecision?.visibility, "PUBLIC");
+  assert.deepEqual(choiceView.presentationSnapshot.publicNextDecision?.actorIds, [target.id]);
+  assert.deepEqual(choiceView.presentationSnapshot.publicNextDecision?.actionLabels, ["Choose a suit and a card"]);
+  assert.equal(choiceView.timeline.find((event) => event.id === effectAction.rootEventId)?.publicSkillEffect?.effectId, "zhou_yu_fanjian");
   assert.equal(JSON.stringify(effectAction).includes(hiddenCard.id), false, "the public effect node carries no source Hand identity");
 
   const observerView = (await state(game.code, observerMember.token)).data;
   assert.deepEqual(observerView.presentationV2.skillEffectAction, effectAction);
-  assert.deepEqual(publicSnapshot(observerView.presentationSnapshot), publicSnapshot(suitView.presentationSnapshot));
+  assert.deepEqual(publicSnapshot(observerView.presentationSnapshot), publicSnapshot(choiceView.presentationSnapshot));
   assert.deepEqual(observerView.currentAction.triggerOptions, [], "private suit controls remain restricted to the decision viewer");
   const observerClient = buildPresentationClientView(observerView.presentationSnapshot, observerView.meId);
-  assert.equal(observerClient.hasInteraction, false, "the skill proof does not fabricate a causal scene");
+  assert.equal(observerClient.hasInteraction, true, "the committed skill root owns a public choice scene");
+  assert.equal(observerClient.stage, "SEQUENTIAL_CHOICE");
+  assert.equal(observerClient.sourceId, source.id);
+  assert.deepEqual(observerClient.originalTargetIds, [target.id]);
+  assert.equal(observerClient.decisionActorId, target.id);
+  assert.equal(observerClient.isLocalDecisionActor, false, "the observer receives public context without local choice authority");
   assert.deepEqual(observerClient.skillEffectAction, effectAction, "the standalone public Effect proof survives the REST fallback");
 
-  const input = { pending: rootPending, currentAction: suitView.currentAction, actionRevision: suitView.actionRevision, timeline: suitView.timeline, causalEnvelope: null };
+  const input = { pending: rootPending, currentAction: choiceView.currentAction, actionRevision: choiceView.actionRevision, timeline: choiceView.timeline, causalEnvelope: null };
   assert.equal(projectPresentationV2({ ...input, pending: { ...rootPending, continuation: { ...rootPending.continuation, effectRoot: { ...rootPending.continuation.effectRoot, rootEventId: "missing" } } } }).skillEffectAction, null);
   assert.equal(projectPresentationV2({ ...input, pending: { ...rootPending, continuation: { ...rootPending.continuation, targetId: source.id } } }).skillEffectAction, null);
-  assert.equal(projectPresentationV2({ ...input, currentAction: { ...suitView.currentAction, actorId: source.id } }).skillEffectAction, null);
-  assert.equal(projectPresentationV2({ ...input, timeline: [...suitView.timeline, suitView.timeline.find((event) => event.id === effectAction.rootEventId)] }).skillEffectAction, null);
+  assert.equal(projectPresentationV2({ ...input, currentAction: { ...choiceView.currentAction, actorId: source.id } }).skillEffectAction, null);
+  assert.equal(projectPresentationV2({ ...input, timeline: [...choiceView.timeline, choiceView.timeline.find((event) => event.id === effectAction.rootEventId)] }).skillEffectAction, null);
 
-  const choseSuit = await request("trigger", { code: game.code, token: targetMember.token, providerId: "zhou_yu_fanjian_choice", choice: "♥" });
-  assert.equal(choseSuit.status, 200, JSON.stringify(choseSuit.data));
-  const cardView = await assertProjectionMatchesEngine(game.code, targetMember.token);
-  assert.deepEqual(cardView.presentationSnapshot.skillEffectAction, effectAction, "the root Effect persists while the hidden-card decision is active");
-  assert.deepEqual(cardView.currentAction.triggerOptions[0].selection.eligibleKeys, ["hand:0"]);
-  assert.equal(JSON.stringify(cardView.presentationSnapshot.skillEffectAction).includes(hiddenCard.id), false);
+  const partialChoice = await request("trigger", { code: game.code, token: targetMember.token, providerId: "zhou_yu_fanjian_choice", choice: "♥" });
+  assert.equal(partialChoice.status, 409, "a suit-only partial selection cannot replace the active combined decision");
+  const stillChoosing = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  assert.deepEqual(stillChoosing.presentationSnapshot.skillEffectAction, effectAction, "the public root remains active while the target revises the local combined choice");
+  assert.equal(stillChoosing.currentAction.triggerOptions[0].selection.type, "choice_and_target_cards");
+  assert.equal(JSON.stringify(stillChoosing.currentAction).includes(hiddenCard.id), false);
 
-  const choseHiddenCard = await request("trigger", { code: game.code, token: targetMember.token, providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:0"] });
-  assert.equal(choseHiddenCard.status, 200, JSON.stringify(choseHiddenCard.data));
+  const choseCombined = await request("trigger", { code: game.code, token: targetMember.token, providerId: "zhou_yu_fanjian_choice", choice: "♥", cardKeys: ["hand:0"] });
+  assert.equal(choseCombined.status, 200, JSON.stringify(choseCombined.data));
   const settledView = await assertProjectionMatchesEngine(game.code, targetMember.token);
   const settlement = settledView.presentationV2.skillEffectSettlements;
   assert.equal(settlement.length, 1);
+  const revealEvent = settledView.timeline.find((event) => event.id === settlement[0].revealEventId);
+  const damageEvent = settledView.timeline.find((event) => event.id === settlement[0].damage.eventId);
   assert.deepEqual(settlement[0], {
     semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId: effectAction.rootEventId,
     sourceId: source.id, targetId: target.id, outcome: "SUITS_DIFFERED",
+    interactionId: effectAction.interactionId, rootFrameId: effectAction.rootFrameId,
+    guess: "♥", revealEventId: revealEvent.id, physicalCardId: hiddenCard.id,
+    damage: { outcome: "DAMAGE_APPLIED", amount: 1, eventId: damageEvent.id },
     eventId: settledView.timeline.find((event) => event.publicSkillEffectSettlement)?.id,
   });
   assert.deepEqual(settledView.presentationSnapshot.skillEffectSettlements, settlement);
@@ -259,8 +287,12 @@ test("engine-backed Sowing Distrust exposes only its exact public Effect root ac
   assert.equal(settlementEvent.importance, "essential");
   assert.equal(settlementEvent.finalResult, true);
   assert.equal(settlementEvent.publicSkillEffectSettlement.rootEventId, effectAction.rootEventId);
+  assert.equal(revealEvent.card.id, hiddenCard.id);
+  assert.equal(revealEvent.publicZoneTransition.from.ownerId, source.id);
+  assert.equal(revealEvent.publicZoneTransition.to.ownerId, target.id);
   assert.equal(settledView.timeline.some((event) => event.type === "card" && event.card.id === hiddenCard.id), true, "the card identity becomes public only through the game's reveal event");
-  assert.equal(JSON.stringify(settlement).includes(hiddenCard.id), false, "the semantic settlement proof contains no physical-card identity");
+  assert.equal(settledView.timeline.filter((event) => event.type === "card" && event.action === "reveal" && event.card.id === hiddenCard.id).length, 1, "the real selected card is publicly revealed once");
+  assert.equal(JSON.stringify(settlement).includes(hiddenCard.id), true, "the postcommit proof points to the already-public physical card");
 
   const settledObserver = (await state(game.code, observerMember.token)).data;
   assert.deepEqual(settledObserver.presentationSnapshot.skillEffectSettlements, settlement);
@@ -287,10 +319,8 @@ test("engine-backed Sowing Distrust publishes the matched-suit settlement withou
   const started = await request("trigger", { code: game.code, token: sourceMember.token, providerId: "zhou_yu_fanjian", targetId: target.id });
   assert.equal(started.status, 200, JSON.stringify(started.data));
   const rootEventId = authoritativePending(game.code).continuation.effectRoot.rootEventId;
-  const choseSuit = await request("trigger", { code: game.code, token: targetMember.token, providerId: "zhou_yu_fanjian_choice", choice: "♥" });
-  assert.equal(choseSuit.status, 200, JSON.stringify(choseSuit.data));
-  const choseHiddenCard = await request("trigger", { code: game.code, token: targetMember.token, providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:0"] });
-  assert.equal(choseHiddenCard.status, 200, JSON.stringify(choseHiddenCard.data));
+  const choseCombined = await request("trigger", { code: game.code, token: targetMember.token, providerId: "zhou_yu_fanjian_choice", choice: "♥", cardKeys: ["hand:0"] });
+  assert.equal(choseCombined.status, 200, JSON.stringify(choseCombined.data));
 
   const settledView = await assertProjectionMatchesEngine(game.code, targetMember.token);
   expectSettlement(settledView, source.id, target.id, hiddenCard.id, "SUITS_MATCHED");
@@ -306,7 +336,13 @@ function expectSettlement(view, sourceId, targetId, hiddenCardId, outcome) {
   assert.equal(settlement.outcome, outcome);
   assert.equal(settlement.sourceId, sourceId);
   assert.equal(settlement.targetId, targetId);
-  assert.equal(JSON.stringify(settlement).includes(hiddenCardId), false);
+  assert.equal(settlement.physicalCardId, hiddenCardId);
+  assert.equal(settlement.guess, view.timeline.find((candidate) => candidate.id === settlement.eventId)?.publicSkillEffectSettlement?.guess);
+  const reveal = view.timeline.find((candidate) => candidate.id === settlement.revealEventId);
+  assert.equal(reveal?.type, "card");
+  assert.equal(reveal?.card?.id, hiddenCardId);
+  assert.equal(settlement.damage.outcome, "NO_DAMAGE");
+  assert.equal(settlement.damage.amount, 0);
   const event = view.timeline.find((candidate) => candidate.id === settlement.eventId);
   assert.equal(event?.publicSkillEffectSettlement?.outcome, outcome);
   assert.equal(event?.importance, "essential");
@@ -1001,7 +1037,7 @@ test("engine-backed single-target card metadata is not projected as Group", { ti
   assert.equal(view.presentationV2.activeContext?.kind, "attack");
 });
 
-test("engine-backed Dying/rescue proves the separate timer arm and reconnect behavior", { timeout: 30_000 }, async () => {
+test("saved sequential Dying: engine-backed Dying/rescue proves the separate timer arm and reconnect behavior", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [host, , bob] = game.members;
   const [hostPlayer, dyingPlayer, bobPlayer] = game.room.players;
@@ -1012,9 +1048,13 @@ test("engine-backed Dying/rescue proves the separate timer arm and reconnect beh
   setTurn(game.code, hostPlayer.seat);
   const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-projector-dying-attack", targetId: dyingPlayer.id });
   assert.equal(opened.status, 200);
-  await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a" });
-  const dying = await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b" });
+  if ((await state(game.code, host.token)).data.phase !== "dying") {
+    await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a", preserveResponse: true });
+    await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b", preserveResponse: true });
+  }
+  const dying = { data: { room: (await state(game.code, host.token)).data } };
   assert.equal(dying.data.room.phase, "dying");
+  restoreSequentialDyingFixture(game.code, bobPlayer.id);
   const view = await assertProjectionMatchesEngine(game.code, bob.token);
   const pending = authoritativePending(game.code);
   assert.equal(pending.kind, "dying");
@@ -1066,7 +1106,7 @@ test("engine-backed Dying/rescue proves the separate timer arm and reconnect beh
   assert.ok(afterTimeout.phase !== "resolving" || afterTimeout.currentAction.kind !== "dying", "expired rescue does not leave the same expired decision active");
 });
 
-test("C4-01 Dying skips non-rescuers and advances one causal checkpoint between real rescuers", { timeout: 30_000 }, async () => {
+test("saved sequential Dying: C4-01 Dying skips non-rescuers and advances one causal checkpoint between real rescuers", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [host, targetMember, bobMember, carolMember] = game.members;
   const [source, target, bob, carol] = game.room.players;
@@ -1079,9 +1119,13 @@ test("C4-01 Dying skips non-rescuers and advances one causal checkpoint between 
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   const declinedAttack = await requestAndSettle("decline_response", { code: game.code, token: targetMember.token, preserveResponse: true });
   assert.equal(declinedAttack.status, 200, JSON.stringify(declinedAttack.data));
-  await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a", preserveResponse: true });
-  const dying = await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b", preserveResponse: true });
+  if ((await state(game.code, host.token)).data.phase !== "dying") {
+    await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a", preserveResponse: true });
+    await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b", preserveResponse: true });
+  }
+  const dying = { data: { room: (await state(game.code, host.token)).data } };
   assert.equal(dying.data.room.phase, "dying", JSON.stringify(dying.data.room));
+  restoreSequentialDyingFixture(game.code, bob.id);
   assertStableDyingPersistence(game.code);
   const bobView = await waitForState(game.code, bobMember.token, (room) => room.phase === "dying" && room.currentAction.actorId === bob.id);
   const bobBarrier = bobView.presentationV2.dyingBarrier;
@@ -1389,7 +1433,7 @@ test("FIX14 Group failure Damage uses one child frame and resumes the next parti
   assert.ok(bobDamageIndex >= 0 && bobDamageIndex < carolResponseIndex, "the resumed Group processes Bob once before Carol");
 });
 
-test("FIX15 lethal Group Damage survives Peach rescue with the parent frame available", { timeout: 30_000 }, async () => {
+test("saved sequential Dying: FIX15 lethal Group Damage survives Peach rescue with the parent frame available", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [sourceMember, targetMember, damageMember, finalMember] = game.members;
   const [source, target, damageTarget, finalTarget] = game.room.players;
@@ -1419,10 +1463,12 @@ test("FIX15 lethal Group Damage survives Peach rescue with the parent frame avai
   const dying = await requestAndSettle("decline_response", { code: game.code, token: damageMember.token });
   assert.equal(dying.status, 200, JSON.stringify(dying.data));
   assert.equal(dying.data.room.phase, "dying", JSON.stringify(dying.data.room));
+  restoreSequentialDyingFixture(game.code, source.id);
   const dyingSourceView = (await state(game.code, sourceMember.token)).data;
   assert.equal(dyingSourceView.currentAction.kind, "dying", JSON.stringify(dyingSourceView));
   assert.equal(dyingSourceView.currentAction.actorId, source.id);
   const dyingPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(dyingPending.kind, "dying");
   assert.equal(dyingPending.resumePending.continuation.kind, "group");
   assert.equal(dyingPending.resumePending.continuation.pendingDamageParticipantId, damageTarget.id);
   assert.notEqual(dyingPending.causal.frameId, groupRoot.activeFrameId);
@@ -1587,7 +1633,7 @@ test("UX2.7 Group Defeated outcome requires positive damage and an authoritative
       playerId: opened.target.id, order: 1, status: "PAUSED",
     }, `${kind}: lethal damage remains outcome-free while Dying has not settled`);
 
-    const defeated = await requestAndSettle("skip_rescue", { code: opened.code, token: opened.sourceMember.token, preserveResponse: true });
+    const defeated = await requestAndSettle("skip_rescue", { code: opened.code, token: opened.sourceMember.token });
     assert.equal(defeated.status, 200, `${kind}: ${JSON.stringify(defeated.data)}`);
     const resumed = await assertProjectionMatchesEngine(opened.code, opened.bobMember.token);
     assert.equal(resumed.players.find(({ id }) => id === opened.target.id)?.alive, false, `${kind}: the target is authoritatively defeated`);
@@ -1888,7 +1934,7 @@ test("engine-backed Duel alternates response actors without changing the root co
   ], "each response direction comes from the server-owned Duel continuation");
 });
 
-test("engine-backed Duel damage opens a child Dying frame and clears after rescue", { timeout: 30_000 }, async () => {
+test("saved sequential Dying: engine-backed Duel damage opens a child Dying frame and clears after rescue", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [sourceMember, targetMember] = game.members;
   const [source, target] = game.room.players;
@@ -1908,6 +1954,7 @@ test("engine-backed Duel damage opens a child Dying frame and clears after rescu
   const declined = await requestAndSettle("decline_response", { code: game.code, token: targetMember.token, preserveResponse: true });
   assert.equal(declined.status, 200, JSON.stringify(declined.data));
   assert.equal(declined.data.room.phase, "dying", JSON.stringify(declined.data.room));
+  restoreSequentialDyingFixture(game.code, source.id);
   const dying = await assertProjectionMatchesEngine(game.code, sourceMember.token);
   const dyingPending = authoritativePending(game.code);
   assert.equal(dyingPending.kind, "dying");
@@ -2779,6 +2826,11 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.deepEqual(initialProgress?.participants.map(({ status }) => status), ["CURRENT", "PENDING", "PENDING", "PENDING"]);
   assert.equal(initialProgress?.currentParticipantId, source.id);
   assert.equal(firstWindow.presentationV2.interactionScene?.stage, "NEGATION");
+  const rootFact = firstWindow.presentationSnapshot.publicEventFacts.filter((fact) => fact.eventId === initialProgress?.rootEventId);
+  assert.equal(rootFact.length, 1, "nested Harvest Negation retains its validated original root in public event facts");
+  assert.deepEqual({ category: rootFact[0]?.category, actorId: rootFact[0]?.actorId, rootEventId: rootFact[0]?.rootEventId }, {
+    category: "CARD_PLAYED", actorId: source.id, rootEventId: initialProgress?.rootEventId,
+  });
   const firstPublicPool = firstWindow.publicHarvestPool;
   assert.equal(firstWindow.pendingHarvest, null, "the public Negation pool does not promote a chooser action");
   assert.equal(firstPublicPool?.semantics, "PROVEN");
@@ -2819,6 +2871,17 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(counterWindow.presentationSnapshot.bumperHarvestProgress?.currentEffectState, "BLOCKED", "a committed public Negation blocks only the current Bumper participant branch");
   assert.deepEqual(counterWindow.presentationSnapshot.reactionChain?.nodes.map(({ actorId }) => actorId), [first.id], "only the submitted Negation appears in public history");
   assert.equal(counterWindow.presentationSnapshot.reactionChain?.publicNodeEventLinks?.length, 1, "the public Negation node links to its exact played card event");
+  const committedHarvestFacts = counterWindow.presentationSnapshot.publicEventFacts;
+  const committedHarvestFactSummary = committedHarvestFacts.map(({ eventId, category, frameId, parentFrameId, rootEventId, actorId, affectedPlayerIds, effect }) =>
+    ({ eventId, category, frameId, parentFrameId, rootEventId, actorId, affectedPlayerIds, effect }));
+  const firstNegationFact = committedHarvestFacts.find((fact) => fact.eventId === counterWindow.presentationSnapshot.reactionChain?.publicNodeEventLinks?.[0]?.eventId);
+  assert.deepEqual({ category: firstNegationFact?.category, actorId: firstNegationFact?.actorId, label: firstNegationFact?.label }, {
+    category: "CARD_PLAYED", actorId: first.id, label: "Negation",
+  });
+  assert.ok(committedHarvestFacts.some((fact) => fact.category === "EFFECT_CANCELLED"
+    && fact.actorId === first.id && fact.rootEventId === initialProgress?.rootEventId
+    && fact.affectedPlayerIds.length === 1 && fact.affectedPlayerIds[0] === source.id),
+  `the committed response fact proves which current participant's pick was blocked: ${JSON.stringify(committedHarvestFactSummary)}`);
   assert.equal(counterWindow.presentationSnapshot.reactionChain?.rootCard, null, "Bumper Harvest response history does not acquire a single-target root card");
   assert.equal("physicalCardId" in counterWindow.presentationSnapshot.reactionChain.nodes[0], false);
   assert.equal(counterWindow.presentationV2.interactionScene?.decisionActorId, null);
@@ -2914,6 +2977,18 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.deepEqual(nextWindow.publicHarvestPool?.choices, [{ cardId: chosen, playerId: first.id, playerName: first.name }]);
   assert.deepEqual(nextWindow.publicHarvestPool?.availableIds, availableBeforeExpiry.filter((id) => id !== chosen));
   assert.equal(nextWindow.pendingHarvest, null, "the next Negation stays read-only until that branch settles");
+  const typedPick = nextWindow.presentationSnapshot.bumperHarvestPicks[0];
+  assert.equal(nextWindow.presentationSnapshot.bumperHarvestPicks.length, 1);
+  assert.equal(typedPick?.eventId, nextWindow.presentationSnapshot.publicEventFacts
+    .find((fact) => fact.effect?.kind === "bumper_harvest_pick")?.eventId);
+  assert.equal(typedPick?.order, nextWindow.presentationSnapshot.publicEventFacts
+    .find((fact) => fact.effect?.kind === "bumper_harvest_pick")?.order);
+  assert.deepEqual({ actorId: typedPick?.actorId, rootEventId: typedPick?.rootEventId,
+    chosenCardId: typedPick?.chosenCardId, chosenFace: typedPick?.chosenFace }, {
+    actorId: first.id, rootEventId: firstPublicPool.rootEventId, chosenCardId: chosen,
+    chosenFace: { kind: "Attack", suit: "♠", rank: "A" },
+  }, "the next Negation projection carries the exact committed public pick face and owner");
+  assert.ok(typedPick?.committedIdentity?.checkpointId, "the public pick retains its real server commit checkpoint");
   progress = nextWindow.presentationSnapshot.bumperHarvestProgress;
   assert.equal(progress?.participants[1].status, "RESOLVED");
   assert.equal(progress?.participants[1].outcome, "CHOSE_CARD");

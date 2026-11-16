@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { measuredPublicCorridorWidth, publicCorridorWidth } from "../app/public-corridor.ts";
-import { fixedLowerActivityEdge } from "../app/public-activity-chip.tsx";
+import { fixedLowerActivityEdge, shouldRetainPublicActivityPlacement } from "../app/public-activity-chip.tsx";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { centerRevealCardInSafeBattlefield, publicCardAnnouncementCopy, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity } from "../app/public-card-display.tsx";
+import { centerRevealCardInSafeBattlefield, publicCardAnnouncementCopy, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity, shouldDirectParkPublicJourney } from "../app/public-card-display.tsx";
 import {
   canClearPublicJourneyOwnership,
   publicAnnouncementEventCopyKey,
@@ -33,6 +33,67 @@ test("unowned committed physical roots use the shared Journey and restored roots
   const existingMotion = { type: "duel", scopeKey: "existing", freshEventIds: [] };
   assert.equal(publicCardMotionForCommittedCard({ ...action, motion: existingMotion }, "ROOM", new Set()), existingMotion);
   assert.equal(publicCardMotionForCommittedCard(action, "ROOM", new Set(), true), null);
+});
+
+test("phone direct parking requires a proven author target and an ordinary root or response", () => {
+  const ordinary = { cardFace: { kind: "Attack" }, motion: { type: "single-target" } };
+  assert.equal(shouldDirectParkPublicJourney(ordinary, "root", true, true), true);
+  assert.equal(shouldDirectParkPublicJourney(ordinary, "response", true, true), true);
+  assert.equal(shouldDirectParkPublicJourney(ordinary, "root", false, true), false);
+  assert.equal(shouldDirectParkPublicJourney(ordinary, "deflection", true, true), false);
+  assert.equal(shouldDirectParkPublicJourney(ordinary, "root", true, false), false);
+  assert.equal(shouldDirectParkPublicJourney({ ...ordinary, cardFace: { kind: "BumperHarvest" } }, "root", true, true), false);
+  assert.equal(shouldDirectParkPublicJourney({ ...ordinary, publicCardEffectFrame: {} }, "root", true, true), false);
+  assert.equal(shouldDirectParkPublicJourney({ ...ordinary, motion: { type: "lust-cost" } }, "root", true, true), false);
+});
+
+test("PAC placement survives only a safe same-room, viewer, status and scene remeasure", () => {
+  const scene = { scopeId: "root-1", interactionId: "interaction-1", eventId: "event-1", cardId: "card-1" };
+  const base = {
+    previousVisible: true,
+    previousRoomId: "ROOM",
+    roomId: "ROOM",
+    previousViewerId: "viewer-1",
+    viewerId: "viewer-1",
+    status: "Waiting for player 2",
+    previousScene: scene,
+    currentScene: scene,
+    previousRectMatchesCurrentSize: true,
+    geometrySafe: true,
+  };
+  assert.equal(shouldRetainPublicActivityPlacement(base), true);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, previousScene: null }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, currentScene: null }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, viewerId: "viewer-2" }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, roomId: "OTHER" }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, status: "A newer public status" }), true);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, status: " " }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({
+    ...base,
+    currentScene: { ...scene, eventId: "event-2", cardId: "card-2" },
+  }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({
+    ...base,
+    currentScene: { ...scene, interactionId: "interaction-2" },
+  }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, geometrySafe: false }), false);
+  assert.equal(shouldRetainPublicActivityPlacement({ ...base, previousVisible: false }), false);
+});
+
+test("H4 candidate measurement confines text DOM changes to its marked copy", () => {
+  const source = readFileSync(new URL("../app/public-card-display.tsx", import.meta.url), "utf8");
+  const mutationHelperStart = source.indexOf("function setAnnouncementMessageTextOnMeasurementClone(");
+  const measurementHelperStart = source.indexOf("function measureAnnouncementCopy(", mutationHelperStart);
+  const h4RendererStart = source.indexOf("function PublicCardAnnouncement(", measurementHelperStart);
+  const h4RendererEnd = source.indexOf("export function PublicSkillEventAnnouncementLayer(", h4RendererStart);
+  assert.ok(mutationHelperStart >= 0 && measurementHelperStart > mutationHelperStart && h4RendererStart > measurementHelperStart && h4RendererEnd > h4RendererStart);
+
+  const mutationHelper = source.slice(mutationHelperStart, measurementHelperStart);
+  const h4Renderer = source.slice(h4RendererStart, h4RendererEnd);
+  assert.match(mutationHelper, /element\.closest\("\[data-h4-measurement-copy='true'\]"\)/);
+  assert.match(source.slice(measurementHelperStart, h4RendererStart), /measurementCopy\.dataset\.h4MeasurementCopy = "true"/);
+  assert.match(h4Renderer, /measureAnnouncementCopy\(/);
+  assert.doesNotMatch(h4Renderer, /(?:\.replaceChildren\(|(?:textElement|supportElement)\.textContent\s*=)/);
 });
 
 test("PublicCardDisplay fails closed instead of falling back to a static card", () => {
@@ -434,6 +495,27 @@ test("public announcement arbitration uses unique committed checkpoints and reti
   ], [...timeline, "hero-cost"]), null);
 });
 
+test("a Fanjian result remains readable until a later unique public card play", () => {
+  const result = { id: "fanjian-result" };
+  const timeline = ["fanjian-root", "fanjian-reveal", "fanjian-result", "fanjian-damage"];
+  const candidate = {
+    value: result,
+    rootEventId: "fanjian-root",
+    checkpointEventId: "fanjian-damage",
+    priority: 0,
+    supersedeOnNewerPublicPlay: true,
+  };
+
+  assert.equal(selectPublicAnnouncementCandidate([candidate], timeline), result,
+    "the public result remains current without a later committed card play");
+  assert.equal(selectPublicAnnouncementCandidate([candidate], [...timeline, "informational-note"]), result,
+    "informational messages do not retire the result");
+  assert.equal(selectPublicAnnouncementCandidate([candidate], [...timeline, "attack-root"], ["attack-root"]), null,
+    "a unique later public Attack or Steal root retires the old result");
+  assert.equal(selectPublicAnnouncementCandidate([candidate], [...timeline, "attack-root", "attack-root"], ["attack-root"]), result,
+    "ambiguous duplicate event identity cannot be used as chronology proof");
+});
+
 test("announcement copy identity is viewer-independent while geometry identity is viewer-scoped", () => {
   const identity = {
     roomCode: "ROOM",
@@ -717,19 +799,32 @@ test("Bumper Harvest announcement fails closed without a proven narration", () =
     firstNegation,
     "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3",
     "Test Player 4", "JD", null,
-  ), "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3");
+  ), "JD played Bumper Harvest.");
   assert.equal(publicCardAnnouncement(
     { ...firstNegation, harvestEffectRecipient: undefined },
     "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3",
     "Test Player 4", "JD", null,
-  ), "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3");
+  ), "JD played Bumper Harvest.");
 
   const counterNotice = "Test Player 2 played Negation to counter Negation 1";
   assert.equal(publicCardAnnouncement(
     { ...firstNegation, responses: [firstNegation.responses[0], { eventId: "counter-event", ordinal: 2, actorId: "responder-2", actorName: "Test Player 2" }] },
     counterNotice, "Test Player 2", "JD", null,
-  ), counterNotice);
-  assert.equal(publicCardAnnouncement({ ...firstNegation, settlement: { eventId: "settled", outcome: "ROOT_CANCELLED", exiting: false } }, "", "Test Player 4", "JD", null), "Test Player 4's Negation cancelled JD's Bumper Harvest.");
+  ), "JD played Bumper Harvest.");
+  const committedCounterCopy = "Test Player 2 counters Test Player 4's Negation. Test Player 3's pick is restored.";
+  const committedNarration = {
+    rootLabel: "Bumper Harvest", eventId: "counter-settlement", latestCommittedEventId: "counter-settlement",
+    checkpointId: "checkpoint-counter", phase: "FINAL", rootEffectState: "ACTIVE",
+    headline: committedCounterCopy, compactHeadline: committedCounterCopy, supportingMessage: "",
+    compactSupportingMessage: "", accessibleLabel: committedCounterCopy,
+  };
+  const renderedCopy = publicCardCommittedFactCopy({ ...firstNegation, publicNegationNarration: committedNarration }, {
+    message: counterNotice, compactMessage: counterNotice,
+  });
+  assert.deepEqual(renderedCopy, {
+    message: committedCounterCopy, compactMessage: committedCounterCopy, accessibleLabel: committedCounterCopy,
+  });
+  assert.equal(publicCardAnnouncement({ ...firstNegation, settlement: { eventId: "settled", outcome: "ROOT_CANCELLED", exiting: false } }, "", "Test Player 4", "JD", null), "JD played Bumper Harvest.");
 });
 
 test("Duel H4 copy contains committed facts only", () => {
@@ -839,4 +934,58 @@ test("public announcement typography is readable and never truncates its verifie
   assert.match(overrides, /\.public-dismantle-card-suit-rank\.is-black \{ color: #171914; \}/);
   assert.match(overrides, /\.public-dismantle-card-name \{[\s\S]*?font-weight: 800;/);
   assert.doesNotMatch(css, /public-card-display-journey-copy\.is-condensed/);
+});
+
+
+test("mobile H4 width preserves real narrow corridors and desktop geometry", async () => {
+  const { publicH4WidthLimit } = await import("../game/public-h4-copy.ts");
+  assert.equal(publicH4WidthLimit(440, 424, 424), 340);
+  assert.equal(publicH4WidthLimit(390, 374, 374), 340);
+  assert.equal(publicH4WidthLimit(320, 304, 304), 288);
+  assert.equal(publicH4WidthLimit(440, 220, 424), 220);
+  assert.equal(publicH4WidthLimit(900, 884, 884), 520);
+});
+
+test("typed H4 names preserve exact text and accessible narration, without guessing substrings", async () => {
+  const { publicH4Copy, matchingPublicH4Segments } = await import("../game/public-h4-copy.ts");
+  const { PublicSkillEventAnnouncementLayer } = await import("../app/public-card-display.tsx");
+  const copy = publicH4Copy([{ id: "proven-player", name: "Attack the very long player name" }, " used Beauty and drew 1 card."]);
+  assert.equal(copy.segments.map((part) => part.text).join(""), copy.message);
+  assert.equal(matchingPublicH4Segments("A different event", copy.segments), undefined);
+  const html = renderToStaticMarkup(React.createElement(PublicSkillEventAnnouncementLayer, {
+    announcement: { semantics: "PROVEN", kind: "SKILL_OUTCOME", eventId: "event", rootEventId: "root",
+      sourceId: "proven-player", proofEventId: "event", phase: "DRAWN", heading: "BEAUTY", exiting: false, ...copy },
+    roomCode: "ROOM", viewerId: "observer",
+  }));
+  assert.match(html, /class="message-player-name public-h4-player" data-player-id="proven-player" data-public-player-id="proven-player"/);
+  assert.ok(html.includes(`aria-label="${copy.message}"`));
+  const plain = publicCardAnnouncementCopy({ sourceId: "p1", targetId: null, rootEventId: "legacy", cardLabel: "Attack" },
+    "A card named Attack does something.", null, "p1", "Attack", null, {});
+  assert.equal(plain.segments, undefined, "legacy prose is not parsed for a name that happens to match card text");
+});
+
+test("verified Axe cost has compact factual H4 without premature damage and keeps full accessibility", async () => {
+  const { verifiedRockCleavingAxeCostFrameForEvent } = await import("../app/page.tsx");
+  const actor = { id: "a", name: "ACTOR" }, target = { id: "b", name: "TARGET" };
+  const cards = [{ id: "cost1", kind: "Peach", rank: "A", suit: "♥" }, { id: "cost2", kind: "Dodge", rank: "2", suit: "♣" }];
+  const effect = { semantics: "PROVEN", eventId: "cost", effectId: "rock_cleaving_axe_attack_dodged", effectClass: "COST",
+    activationOwnerId: "a", targetId: "b", outcome: "FORCED_HIT", rootEventId: "attack", rootResolutionId: "root-resolution",
+    cards, materials: cards.map((card) => ({ cardId: card.id, ownerId: "a", fromZone: "HAND", toZone: "DISCARD" })) };
+  const cost = { id: "cost", type: "cards", action: "play", resolutionId: "cost-resolution", cards,
+    player: "ACTOR", target: "TARGET", publicCardEffects: [effect] };
+  const root = { id: "attack", type: "card", action: "play", resolutionId: "root-resolution",
+    card: { id: "attack-card", kind: "Attack", suit: "♠", rank: "7" }, player: "ACTOR", target: "TARGET" };
+  const proof = verifiedRockCleavingAxeCostFrameForEvent([root, cost], [effect], [actor, target], "cost");
+  assert.ok(proof);
+  assert.equal(proof.h4Copy.message, "ACTOR used Rock Cleaving Axe; TARGET's Dodge was bypassed.");
+  assert.doesNotMatch(proof.h4Copy.message, /took damage|hit|damage applied/i);
+  const action = { sourceId: "a", targetId: "b", rootEventId: "cost", cardLabel: "COST",
+    publicNotice: proof.h4Copy.message, publicNoticeSegments: proof.h4Copy.segments,
+    publicCardEffectFrame: { effectClass: "COST", accessibleLabel: "ACTOR paid exactly two of their own Hand or Equipment cards. The original Attack on TARGET continued to damage resolution after Dodge." } };
+  const copy = publicCardAnnouncementCopy(action, "", "ACTOR", "a", "ACTOR", "TARGET", {}, "cost");
+  assert.equal(copy.message, proof.h4Copy.message);
+  assert.match(copy.accessibleLabel, /paid exactly two/);
+  assert.equal(copy.segments.map((part) => part.text).join(""), copy.message);
+  assert.equal(verifiedRockCleavingAxeCostFrameForEvent([root, cost], [{ ...effect, targetId: "wrong" }], [actor, target], "cost"), null);
+  assert.equal(verifiedRockCleavingAxeCostFrameForEvent([root, { ...cost, cards: [cards[0]] }], [effect], [actor, target], "cost"), null);
 });

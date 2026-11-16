@@ -1,8 +1,11 @@
+import { sharedResponseContributions, type SharedResponseContribution } from "./shared-response-contribution";
+import { normalizePublicSharedWindow, type PublicSharedResponseWindow } from "./shared-response-presentation";
+import { provenEntourageDecision, isEntourageDodgeFor, entourageInvocationMatchesTimeline, type EntourageDodge, type EntourageDecision } from "./entourage-presentation";
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
-import { collectPublicPresentationEventFacts, retainedPublicEventFromTimeline, type PublicPresentationEvent, type PublicPresentationEventFactDraft } from "./presentation-semantics";
+import { collectPublicPresentationEventFacts, retainedPublicEventFromTimeline, type PublicPresentationEvent, type PublicPresentationEventFactDraft, type PublicPresentationEventFactProjection } from "./presentation-semantics";
 import { CARD_DEFINITIONS } from "./cards";
-import { CARD_KINDS, type Card, type CardKind } from "./model";
+import { CARD_KINDS, type Card, type CardKind, type CardSuit } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestNegationResponseRecord, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type NegationHistoryRecord } from "./pending";
 
 const LUST_DUEL_SETTLEMENT_PROJECTION_RETENTION_MS = 8_000;
@@ -29,11 +32,15 @@ export type PresentationV2Event = {
   judgement?: boolean;
   negationSettlement?: unknown;
   selfTargetAction?: unknown;
+  entourageInvocation?: unknown;
+  actorId?: string;
   attackDodgeResponse?: unknown;
   duelAttackResponse?: unknown;
   lustDuelAttackResponse?: unknown;
   effectNotice?: unknown;
   publicSkillEffect?: { effectId?: unknown; sourceId?: unknown; targetId?: unknown };
+  publicFact?: unknown;
+  publicZoneTransition?: unknown;
   publicDiaoChanNotice?: unknown;
   publicDeflectionAction?: unknown;
   publicCardEffects?: unknown;
@@ -180,6 +187,8 @@ export type PresentationSkillEffectAction = {
   rootEventId: string;
   sourceId: string;
   targetId: string;
+  interactionId?: string;
+  rootFrameId?: string;
 };
 
 export type PresentationSkillEffectActionEvent = Pick<PresentationSkillEffectAction, "effectId" | "sourceId" | "targetId">;
@@ -191,6 +200,16 @@ export type PresentationSkillEffectSettlementProof = {
   sourceId: string;
   targetId: string;
   outcome: "SUITS_MATCHED" | "SUITS_DIFFERED";
+  interactionId: string;
+  rootFrameId: string;
+  guess: CardSuit;
+  revealEventId: string;
+  physicalCardId: string;
+  damage: {
+    outcome: "NO_DAMAGE" | "DAMAGE_APPLIED" | "DAMAGE_PREVENTED";
+    amount: number;
+    eventId?: string;
+  };
 };
 
 export type PresentationSkillEffectSettlement = PresentationSkillEffectSettlementProof & {
@@ -365,6 +384,7 @@ export type PresentationNegationSettlement = PresentationNegationSettlementProof
 };
 
 export type PresentationV2Input = {
+  sharedResponseWindow?: PublicSharedResponseWindow | null;
   pending: unknown | null;
   currentAction: Pick<CurrentAction, "kind" | "actorId" | "reason" | "deadline" | "declineAction" | "presentation"> | null;
   actionRevision: string;
@@ -529,6 +549,8 @@ export type PresentationReactionChain = {
 };
 
 type PresentationRootActionBase = {
+  /** Committed physical payer, distinct from the semantic source when delegated. */
+  physicalActorId?: string;
   semantics: "PROVEN";
   interactionId: string;
   rootFrameId: string;
@@ -663,6 +685,7 @@ type PresentationAttackDodgeResponseProofBase = {
   rootSourceId: string;
   targetId: string;
   responseActorId: string;
+  entourage?: EntourageDodge;
   rootCardKind: "Attack";
   /** Semantic response kind; may differ from the actual public CardFace below. */
   responseCardKind: "Dodge";
@@ -684,7 +707,7 @@ export type PresentationAttackDodgeResponse = PresentationAttackDodgeResponsePro
 /** Only these server-authored physical/effective pairings can prove an Attack block. */
 export function isSupportedAttackDodgeResponseProof(value: unknown): value is PresentationAttackDodgeResponseProof {
   const proof = record(value);
-  if (!proof) return false;
+  if (!proof || (proof.entourage !== undefined && !isEntourageDodgeFor(proof))) return false;
   const hasPhysicalKind = Object.prototype.hasOwnProperty.call(proof, "responsePhysicalCardKind");
   const hasPlayedAs = Object.prototype.hasOwnProperty.call(proof, "responsePlayedAs");
   const hasConversionEffect = Object.prototype.hasOwnProperty.call(proof, "responseConversionEffectId");
@@ -699,9 +722,11 @@ export function isSupportedAttackDodgeResponseProof(value: unknown): value is Pr
 /** Cross-checks a typed server proof against the exact public physical response event. */
 export function attackDodgeResponseEventMatchesProof(
   value: unknown,
-  event: Pick<PresentationV2Event, "id" | "card" | "playedAs" | "publicCardEffects">,
+  event: Pick<PresentationV2Event, "id" | "card" | "playedAs" | "publicCardEffects" | "actorId">,
 ): boolean {
   if (!isSupportedAttackDodgeResponseProof(value)) return false;
+  if (value.entourage && (value.entourage.responseEventId !== event.id
+    || value.entourage.responseCardId !== event.card?.id || value.entourage.helperActorId !== event.actorId)) return false;
   if (value.responseConversionEffectId === "zhen_ji_black_card_dodge") {
     const card = event.card;
     if (!card?.id || card.kind !== value.responsePhysicalCardKind
@@ -892,6 +917,9 @@ export type PresentationStableBoundary = {
 };
 
 export type PresentationV2 = {
+  sharedResponseContributions?: readonly SharedResponseContribution[];
+  sharedResponseRecovery?: { eventId: string; targetId: string };
+  sharedResponseWindow?: PublicSharedResponseWindow | null;
   rootContext: { eventId: string | null; kind: string | null; sourceId: string | null; originalTargetIds: readonly string[]; resolutionId: string | null } | null;
   activeContext: { kind: string | null; stage: string | null; sourceId: string | null; currentTargetIds: readonly string[]; eventIds: readonly string[]; resolutionId: string | null } | null;
   parentContext: { kind: string | null; sourceId: string | null; targetIds: readonly string[]; resumeKind: string | null } | null;
@@ -916,6 +944,7 @@ export type PresentationV2 = {
   negationSettlement: PresentationNegationSettlement | null;
   oathRecipientScope: PresentationOathRecipientScope | null;
   bumperHarvestProgress: PresentationBumperHarvestProgress | null;
+  entourageDecision?: EntourageDecision | null;
   attackDodgeResponses?: readonly PresentationAttackDodgeResponse[];
   groupResolution: {
     semantics: "PROVEN" | "UNPROVEN";
@@ -945,7 +974,7 @@ export type PresentationV2 = {
   decision: { kind: CurrentAction["kind"] | null; actorId: string | null; actionRevision: string; resolutionId: string | null; readyAfterEventId: string | null; deadline: number } | null;
   settlement: { eventId: string; resolutionId: string | null } | null;
   transitionEvents: readonly { eventId: string; type: string; resolutionId: string | null }[];
-  publicEventFacts: readonly PublicPresentationEventFactDraft[];
+  publicEventFacts: readonly PublicPresentationEventFactProjection[];
   retainedPublicEvent?: PublicPresentationEvent | null;
   retainedPublicEventFacts?: readonly PublicPresentationEvent[];
   stableBoundary: PresentationStableBoundary;
@@ -1200,8 +1229,9 @@ function sourceOwnedTriggerDecisionActorId(envelope: CausalEnvelope | null, pend
  * Attack-targeted exception above. CurrentAction remains a viewer-specific
  * control projection and is deliberately not evidence here.
  */
-function semanticDecisionActorId(envelope: CausalEnvelope | null, pending: unknown, activeFrame: CausalFrame | null, dyingProof: DyingDecisionProof | null): string | null {
+function semanticDecisionActorId(envelope: CausalEnvelope | null, pending: unknown, activeFrame: CausalFrame | null, dyingProof: DyingDecisionProof | null, entourageDecision: EntourageDecision | null): string | null {
   if (dyingProof) return stringValue(dyingProof.pending.actorId);
+  if (entourageDecision) return entourageDecision.helperActorId;
   const item = record(pending);
   const actorId = stringValue(item?.actorId);
   const causal = record(item?.causal);
@@ -1365,6 +1395,7 @@ function interactionSceneFor(
   envelope: CausalEnvelope | null,
   groupValues: GroupProjectionValues | null,
   pending: unknown,
+  entourageDecision: EntourageDecision | null = null,
 ): PresentationInteractionScene | null {
   const activeFrame = groupValues?.activeFrame ?? envelope?.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
   if (!groupValues && !envelope) return null;
@@ -1380,7 +1411,8 @@ function interactionSceneFor(
   const currentParticipantId = groupValues?.currentParticipantId ?? firstString(activeCurrent?.currentTargetIds[0]);
   const dyingProof = dyingDecisionProof(envelope, pending);
   const sourceOwnedAttackTargetActorId = proven ? sourceOwnedTriggerDecisionActorId(envelope, pending, activeFrame) : null;
-  const semanticDecisionActor = semanticDecisionActorId(envelope, pending, activeFrame, dyingProof);
+  const shared = Boolean(record(pending)?.sharedResponseWindowId);
+  const semanticDecisionActor = shared ? null : semanticDecisionActorId(envelope, pending, activeFrame, dyingProof, entourageDecision);
   const publicActiveResolverId = isBumperHarvestNegationPending(pending) ? null : activeCurrent?.resolvingPlayerId ?? null;
   const relation: InteractionSceneContinuity["relation"] = !proven
     ? "UNPROVEN"
@@ -2511,6 +2543,7 @@ function stableBoundaryFor(
     checkpointId: proven ? scene?.checkpointId ?? null : null,
     presentationRevision: proven ? scene?.presentationRevision ?? null : null,
   };
+  if (proven && stringValue(record(pending)?.sharedResponseWindowId)) return { kind: "SPECIAL", ...identity, decisionActorId: null };
   const decisionActorId = proven ? scene?.decisionActorId ?? null : null;
   if (decisionActorId) return { kind: "CHOICE", ...identity, decisionActorId };
   const item = record(pending);
@@ -2615,6 +2648,7 @@ function singleTargetAttackRootActionEvaluationFor(
   pending: unknown,
   rootContext: Context | null,
   rootEvent: PresentationV2Event | null,
+  entourageDecision: EntourageDecision | null,
 ): { rootAction: PresentationRootAction | null; diagnostics: AttackRootProjectionDiagnostics } {
   const item = record(pending);
   const continuation = record(item?.continuation);
@@ -2641,7 +2675,7 @@ function singleTargetAttackRootActionEvaluationFor(
     : physicalCardKind && physicalCardKind !== "Attack" && rootEvent?.playedAs === "attack"
       ? { physicalCardKind, playedAs: "attack" as const }
       : null;
-  const serpentSpearMaterialCardIds = serpentSpearAttackRootMaterials(rootEvent, sourceId, targetId);
+  const serpentSpearMaterialCardIds = serpentSpearAttackRootMaterials(rootEvent, stringValue(record(rootEvent)?.actorId) ?? sourceId, targetId);
 
   const checks: Record<string, boolean> = {
     pendingIsAuthorizedAttackStage: isAttackResponse || isAttackTargetTrigger,
@@ -2667,7 +2701,7 @@ function singleTargetAttackRootActionEvaluationFor(
       || declarationCausal?.interactionId === envelope?.interactionId && declarationCausal.frameId === frame?.frameId,
     distinctSourceAndTargetPresent: Boolean(sourceId && targetId && sourceId !== targetId),
     decisionActorIsAuthorized: isAttackResponse
-      ? item?.actorId === targetId
+      ? item?.actorId === targetId || Boolean(entourageDecision && entourageDecision.helperActorId === item?.actorId && entourageDecision.requesterId === targetId)
       : isAttackTargetTrigger && (item?.actorId === sourceId || item?.actorId === targetId),
     sceneDecisionActorMatchesPending: scene?.decisionActorId === item?.actorId,
     frameOriginSourceMatches: frame?.origin.originSourceId === sourceId,
@@ -2690,7 +2724,8 @@ function singleTargetAttackRootActionEvaluationFor(
     participantRoleCurrentParticipantIsTarget: scene?.participantRoles.currentParticipantId === targetId,
     participantRoleDecisionActorMatchesPending: scene?.participantRoles.decisionActorId === item?.actorId,
     participantRoleResolverIsTarget: scene?.participantRoles.activeResolverId === targetId,
-    sceneDecisionActorIsAuthorized: scene?.decisionActorId === targetId || scene?.decisionActorId === sourceId,
+    sceneDecisionActorIsAuthorized: scene?.decisionActorId === targetId || scene?.decisionActorId === sourceId
+      || Boolean(entourageDecision && scene?.decisionActorId === entourageDecision.helperActorId && entourageDecision.requesterId === targetId),
     sceneResolverIsTarget: scene?.activeResolverId === targetId,
     rootContextIsAuthorizedAttackStage: rootContext?.kind === "response"
       || rootContext?.kind === "trigger" && rootContext.stage === "attack_targeted",
@@ -2740,6 +2775,7 @@ function singleTargetAttackRootActionEvaluationFor(
     checkpointId: envelope.checkpoint.checkpointId,
     presentationRevision: envelope.presentationRevision,
     rootEventId: rootEvent.id,
+    ...(stringValue(record(rootEvent)?.actorId) && stringValue(record(rootEvent)?.actorId) !== sourceId ? { physicalActorId: stringValue(record(rootEvent)?.actorId)! } : {}),
     action: "ATTACK",
     sourceId,
     targetId,
@@ -2755,13 +2791,13 @@ function attackRootProjectionEvaluationFor(input: PresentationV2Input) {
   const group = directGroup ?? typedGroupContinuation(input.pending);
   const envelope = input.causalEnvelope ?? null;
   const groupValues = groupProjectionValues(envelope, input.pending, group);
-  const scene = interactionSceneFor(envelope, groupValues, input.pending);
+  const scene = interactionSceneFor(envelope, groupValues, input.pending, provenEntourageDecision(input.pending, envelope, input.publicTimeline ?? input.timeline));
   const pendingItem = record(input.pending);
   const pendingContinuation = record(pendingItem?.continuation);
   const pendingDeclaration = record(pendingContinuation?.declaration);
   const expectedRootEventId = firstString(pendingContinuation?.rootEventId, pendingDeclaration?.rootEventId);
   const rootEvent = uniqueTimelineEventById(expectedRootEventId, input.timeline);
-  return singleTargetAttackRootActionEvaluationFor(envelope, scene, input.pending, root, rootEvent);
+  return singleTargetAttackRootActionEvaluationFor(envelope, scene, input.pending, root, rootEvent, provenEntourageDecision(input.pending, envelope, input.publicTimeline ?? input.timeline));
 }
 
 /** Trace-only diagnostics for the existing server-authoritative Attack root proof gate. */
@@ -2881,7 +2917,7 @@ function skillEffectActionFor(input: PresentationV2Input): PresentationSkillEffe
   if (pending?.kind !== "trigger" || pending.event !== "hero_choice"
     || continuation?.kind !== "hero_choice_event"
     || effectRoot?.effectId !== "zhou_yu_fanjian"
-    || (continuation.stage !== "suit" && continuation.stage !== "card")
+    || (continuation.stage !== "suit" && continuation.stage !== "card" && continuation.stage !== "combined")
     || input.currentAction?.kind !== "trigger" || !sourceId || !targetId
     || sourceId === targetId || pending.actorId !== targetId || input.currentAction.actorId !== targetId
     || !rootEventId || !rootEvent || rootEvent.type !== "message" || rootEvent.presentation === false
@@ -2889,7 +2925,20 @@ function skillEffectActionFor(input: PresentationV2Input): PresentationSkillEffe
     || publicEffect.sourceId !== sourceId || publicEffect.targetId !== targetId
     || !barrierEventId || !barrierEvent || barrierEvent.presentation === false) return null;
 
-  return { semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId, sourceId, targetId };
+  const publicFact = record(rootEvent.publicFact);
+  const committedIdentity = record(publicFact?.committedIdentity);
+  const publicIdentity = publicFact?.semantics === "PROVEN" && publicFact.visibility === "PUBLIC"
+    && publicFact.category === "SKILL_USED" && publicFact.interactionId === committedIdentity?.interactionId
+    && publicFact.frameId === committedIdentity?.rootFrameId && publicFact.rootEventId === rootEventId
+    && publicFact.actorId === sourceId && Array.isArray(publicFact.affectedPlayerIds)
+    && publicFact.affectedPlayerIds.length === 1 && publicFact.affectedPlayerIds[0] === targetId
+    && record(publicFact.effect)?.kind === "targeted_skill"
+    ? { interactionId: publicFact.interactionId as string, rootFrameId: publicFact.frameId as string }
+    : null;
+  return {
+    semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId, sourceId, targetId,
+    ...(publicIdentity ? publicIdentity : {}),
+  };
 }
 
 function skillEffectSettlementsFor(input: PresentationV2Input): PresentationSkillEffectSettlement[] {
@@ -2916,19 +2965,79 @@ function skillEffectSettlementsFor(input: PresentationV2Input): PresentationSkil
     const rootEventId = stringValue(proof?.rootEventId);
     const sourceId = stringValue(proof?.sourceId);
     const targetId = stringValue(proof?.targetId);
+    const guess = stringValue(proof?.guess);
+    const revealEventId = stringValue(proof?.revealEventId);
+    const physicalCardId = stringValue(proof?.physicalCardId);
+    const damage = record(proof?.damage);
     if (!eventId || eventIdCounts.get(eventId) !== 1 || !rootEventId || rootIdCounts.get(rootEventId) !== 1
       || !sourceId || !targetId || sourceId === targetId
       || proof?.semantics !== "PROVEN" || proof.effectId !== "zhou_yu_fanjian"
       || proof.outcome !== "SUITS_MATCHED" && proof.outcome !== "SUITS_DIFFERED"
+      || !guess || !PHYSICAL_CARD_SUITS.has(guess) || !revealEventId || eventIdCounts.get(revealEventId) !== 1
+      || !physicalCardId || !damage
+      || !Number.isSafeInteger(damage.amount) || (damage.amount as number) < 0
+      || damage.outcome !== "NO_DAMAGE" && damage.outcome !== "DAMAGE_APPLIED" && damage.outcome !== "DAMAGE_PREVENTED"
+      || damage.outcome === "NO_DAMAGE" && (proof.outcome !== "SUITS_MATCHED" || damage.amount !== 0)
+      || damage.outcome === "DAMAGE_APPLIED" && (proof.outcome !== "SUITS_DIFFERED" || (damage.amount as number) <= 0)
+      || damage.outcome === "DAMAGE_PREVENTED" && (proof.outcome !== "SUITS_DIFFERED" || damage.amount !== 0)
       || event.type !== "message" || event.presentation === false || event.importance !== "essential" || event.finalResult !== true
       || activeRootEventId === rootEventId) return [];
 
     const rootEvents = input.timeline.filter((candidate) => candidate.id === rootEventId);
     const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
+    const revealEvents = input.timeline.filter((candidate) => candidate.id === revealEventId);
+    const revealEvent = revealEvents.length === 1 ? revealEvents[0] : null;
+    const transition = record(revealEvent?.publicZoneTransition);
+    const from = record(transition?.from);
+    const to = record(transition?.to);
+    const revealCard = record(revealEvent?.card);
+    const rootFact = record(rootEvent?.publicFact);
+    const committedIdentity = record(rootFact?.committedIdentity);
     const publicEffect = record(rootEvent?.publicSkillEffect);
     if (!rootEvent || rootEvent.type !== "message" || rootEvent.presentation === false
       || publicEffect?.effectId !== "zhou_yu_fanjian"
-      || publicEffect.sourceId !== sourceId || publicEffect.targetId !== targetId) return [];
+      || publicEffect.sourceId !== sourceId || publicEffect.targetId !== targetId
+      || rootFact?.semantics !== "PROVEN" || rootFact.visibility !== "PUBLIC" || rootFact.category !== "SKILL_USED"
+      || rootFact.rootEventId !== rootEventId || rootFact.actorId !== sourceId
+      || !Array.isArray(rootFact.affectedPlayerIds) || rootFact.affectedPlayerIds.length !== 1 || rootFact.affectedPlayerIds[0] !== targetId
+      || record(rootFact.effect)?.kind !== "targeted_skill"
+      || proof.interactionId !== rootFact.interactionId || proof.rootFrameId !== committedIdentity?.rootFrameId
+      || rootFact.interactionId !== committedIdentity?.interactionId
+      || !revealEvent || revealEvent.type !== "card" || revealEvent.action !== "reveal"
+      || revealEvent.presentation === false || typeof revealEvent.privateToPlayerId === "string"
+      || revealCard?.id !== physicalCardId
+      || proof.outcome === "SUITS_MATCHED" && revealCard.suit !== guess
+      || proof.outcome === "SUITS_DIFFERED" && revealCard.suit === guess
+      || transition?.semantics !== "PROVEN" || transition.visibility !== "PUBLIC"
+      || transition.eventId !== revealEventId || transition.physicalCardId !== physicalCardId
+      || transition.rootEventId !== rootEventId
+      || from?.zone !== "HAND" || from.ownerId !== sourceId
+      || to?.zone !== "HAND" || to.ownerId !== targetId
+      || input.timeline.indexOf(revealEvent) >= input.timeline.indexOf(event)
+      || proof.outcome === "SUITS_MATCHED" && guess !== revealCard.suit
+      || proof.outcome === "SUITS_DIFFERED" && guess === revealCard.suit) return [];
+
+    const damageEventId = stringValue(damage.eventId);
+    if (damage.outcome === "NO_DAMAGE") {
+      if (damageEventId) return [];
+    } else {
+      const expectedCategory = damage.outcome === "DAMAGE_APPLIED" ? "DAMAGE_APPLIED" : "DAMAGE_PREVENTED";
+      const damageEvents = input.timeline.filter((candidate) => {
+        const fact = record(candidate.publicFact);
+        const factIdentity = record(fact?.committedIdentity);
+        const affectedPlayerIds = fact?.affectedPlayerIds;
+        return candidate.id === damageEventId && candidate.type === "message" && candidate.presentation !== false
+          && typeof candidate.privateToPlayerId !== "string"
+          && fact?.semantics === "PROVEN" && fact.visibility === "PUBLIC" && fact.category === expectedCategory
+          && fact.interactionId === proof.interactionId && fact.frameId === proof.rootFrameId
+          && factIdentity?.interactionId === proof.interactionId && factIdentity.rootFrameId === proof.rootFrameId
+          && fact.actorId === sourceId && Array.isArray(affectedPlayerIds)
+          && affectedPlayerIds.length === 1 && affectedPlayerIds[0] === targetId
+          && fact.amount === damage.amount;
+      });
+      const damageIndex = damageEventId ? input.timeline.findIndex((candidate) => candidate.id === damageEventId) : -1;
+      if (damageEvents.length !== 1 || damageIndex <= input.timeline.indexOf(event)) return [];
+    }
 
     return [{
       semantics: "PROVEN",
@@ -2937,6 +3046,16 @@ function skillEffectSettlementsFor(input: PresentationV2Input): PresentationSkil
       sourceId,
       targetId,
       outcome: proof.outcome,
+      interactionId: proof.interactionId as string,
+      rootFrameId: proof.rootFrameId as string,
+      guess: guess as CardSuit,
+      revealEventId,
+      physicalCardId,
+      damage: {
+        outcome: damage.outcome as PresentationSkillEffectSettlementProof["damage"]["outcome"],
+        amount: damage.amount as number,
+        ...(damageEventId ? { eventId: damageEventId } : {}),
+      },
       eventId,
     }];
   });
@@ -3633,6 +3752,10 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
     const rootCardId = stringValue(rootCard?.id);
     const serpentMaterialIds = serpentSpearAttackRootMaterials(rootEvent, rootSourceId, targetId);
     const responseCardId = stringValue(responseCard?.id);
+    const delegated = isEntourageDodgeFor(proof) && proof.entourage as EntourageDodge | false;
+    const delegatedProven = Boolean(delegated && entourageInvocationMatchesTimeline(delegated, timeline)
+      && delegated.responseEventId === eventId && delegated.responseCardId === responseCardId
+      && event.actorId === delegated.helperActorId);
     const physicalAttackRoot = rootEvent.type === "card" && Boolean(rootCardId)
       && cardIdCounts.get(rootCardId!) === 1
       && (rootEvent.playedAs === undefined
@@ -3648,7 +3771,7 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
       || !(physicalAttackRoot || serpentSpearAttackRoot)
       || rootEvent.resolutionId !== rootResolutionId || responseResolutionId !== rootResolutionId
       || rootEventId === eventId || !rootResolutionId || !interactionId || !rootFrameId
-      || !rootSourceId || !targetId || rootSourceId === targetId || responseActorId !== targetId
+      || !rootSourceId || !targetId || rootSourceId === targetId || (responseActorId !== targetId && !delegatedProven)
       || proof.rootCardKind !== "Attack" || proof.responseCardKind !== "Dodge") return [];
     return [{
       semantics: "PROVEN",
@@ -3660,6 +3783,7 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
       rootSourceId,
       targetId,
       responseActorId,
+      ...(delegatedProven ? { entourage: delegated as EntourageDodge } : {}),
       rootCardKind: "Attack",
       responseCardKind: "Dodge",
       responseEventId: eventId,
@@ -4188,6 +4312,21 @@ function participantsFromScene(scene: PresentationInteractionScene): Presentatio
 
 /** Pure, deterministic projection. CurrentAction remains the legality authority. */
 export function projectPresentationV2(input: PresentationV2Input): PresentationV2 {
+  const sharedResponseWindow = normalizePublicSharedWindow(input.sharedResponseWindow);
+  const committedSharedContributions = sharedResponseContributions(input.publicTimeline ?? input.timeline);
+  const recoveryContinuation = record(record(input.pending)?.continuation);
+  const recoveryResume = recoveryContinuation?.kind === "hp_recovered_event" ? record(recoveryContinuation.resume)
+    : recoveryContinuation?.kind === "hand_loss_event" ? record(record(recoveryContinuation.resumeRecovery)?.resume) : null;
+  const recoveringDying = recoveryResume?.kind === "dying" ? record(recoveryResume.pending) : null;
+  const recoveringReceipt = committedSharedContributions.find((proof) => proof.mode === "DYING_PEACH"
+    && proof.eventId === record(recoveringDying?.sharedRescue)?.responseEventId && proof.targetId === recoveringDying?.targetId);
+  const sharedPending = record(input.pending);
+  if (sharedResponseWindow && sharedPending?.kind === "shared_response_window"
+    && sharedPending.windowId === sharedResponseWindow.windowId) {
+    const domain = record(sharedPending.continuation);
+    const original = record(domain?.mode === "DYING_PEACH" ? domain.dying : domain?.response);
+    if (original) input = { ...input, pending: { ...original, actorId: null, sharedResponseWindowId: sharedResponseWindow.windowId } };
+  }
   const { active, parent, group: directGroup, root } = pendingContexts(input.pending);
   const group = directGroup ?? typedGroupContinuation(input.pending);
   const envelope = input.causalEnvelope ?? null;
@@ -4211,17 +4350,24 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   if (settlementEvent) relevantIds.push(settlementEvent.id);
   const groupCardKind = group ? firstString(group.cardKind, group.kind === "group" ? "group" : null) : null;
   const groupValues = groupProjectionValues(envelope, input.pending, group);
-  const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
+  const interactionScene = interactionSceneFor(envelope, groupValues, input.pending, provenEntourageDecision(input.pending, envelope, input.publicTimeline ?? input.timeline));
   const factIdentity = interactionScene?.semantics === "PROVEN" && interactionScene.interactionId && interactionScene.rootFrameId
     && interactionScene.checkpointId && Number.isSafeInteger(interactionScene.presentationRevision)
     ? { interactionId: interactionScene.interactionId, rootFrameId: interactionScene.rootFrameId,
       checkpointId: interactionScene.checkpointId, presentationRevision: interactionScene.presentationRevision }
     : null;
+  const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene, input.timeline);
+  const publicHarvestRevealEvidence = input.timeline.filter((event) => event.type === "cards"
+    && event.action === "reveal" && event.presentation === false && typeof event.privateToPlayerId !== "string");
   const publicEventFacts = factIdentity ? collectPublicPresentationEventFacts({
     timeline: input.publicTimeline ?? input.timeline,
+    supportingPublicEvents: publicHarvestRevealEvidence,
     identity: factIdentity,
     frames: envelope?.frames ?? [],
-    rootEventId: rootEvent?.id ?? null,
+    // A nested Harvest Negation Pending does not carry the physical root in
+    // PendingContext. Use the already-validated server progress link so the
+    // committed root remains available to the shared public fact projection.
+    rootEventId: projectedBumperHarvestProgress?.rootEventId ?? rootEvent?.id ?? null,
   }) : [];
   const retainedCandidate = input.retainPublicEventAtRest || envelope
     ? retainedPublicEventFromTimeline(input.publicTimeline ?? input.timeline) : null;
@@ -4248,7 +4394,6 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const selfTargetActions = selfTargetActionsFor(input.timeline);
   const deflectionActions = deflectionActionsFor(input);
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
-  const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene, input.timeline);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
   const groupRootCardProof = groupRootCardProofFor(envelope, group, groupValues, interactionScene, projectedGroupParticipantProgress, input.timeline);
   const orderedAttackRoot = orderedAttackRootProofFor(envelope, group, groupValues, interactionScene, projectedGroupParticipantProgress, input.timeline);
@@ -4276,11 +4421,15 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     ? { kind: parent?.kind ?? causalParentFrame.stage, sourceId: parent?.sourceId ?? causalParentFrame.origin.originSourceId, targetIds: parent?.targetIds ?? causalParentFrame.origin.originalTargetIds, resumeKind: parent?.kind ?? causalParentFrame.stage }
     : parent ? { kind: parent.kind, sourceId: parent.sourceId, targetIds: parent.targetIds, resumeKind: parent.kind } : null;
   return {
+    entourageDecision: provenEntourageDecision(input.pending, envelope, input.publicTimeline ?? input.timeline),
     rootContext,
     activeContext,
     parentContext,
     participants: interactionScene?.semantics === "PROVEN" ? participantsFromScene(interactionScene) : participants(active, group),
     interactionScene,
+    ...(committedSharedContributions.length ? { sharedResponseContributions: committedSharedContributions } : {}),
+    ...(recoveringReceipt ? { sharedResponseRecovery: { eventId: recoveringReceipt.eventId, targetId: recoveringReceipt.targetId } } : {}),
+    ...(sharedResponseWindow ? { sharedResponseWindow } : {}),
     rootAction,
     skillEffectAction,
     skillEffectSettlements,

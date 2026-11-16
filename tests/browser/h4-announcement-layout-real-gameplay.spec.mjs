@@ -117,6 +117,9 @@ test("H4 reproduces announcement placement through a real observer Attack-to-Dod
         if (text) range.selectNodeContents(text);
         const announcementRect = rect(announcement);
         const cardRect = rect(cardElement);
+        const activity = document.querySelector('[data-public-activity-chip="true"]');
+        const activityRect = activity ? rect(activity) : null;
+        const activityStyle = activity ? getComputedStyle(activity) : null;
         const table = document.querySelector(".play-table");
         const tableRect = table ? rect(table) : null;
         const protectedRects = [...document.querySelectorAll(
@@ -141,8 +144,20 @@ test("H4 reproduces announcement placement through a real observer Attack-to-Dod
           cardId: cardElement.dataset.publicCardJourneyCardId,
           actorId: cardElement.dataset.publicCardJourneyActorId,
           phase: cardElement.dataset.publicCardJourneyPhase,
+          target: {
+            left: Number(cardElement.dataset.publicCardJourneyTargetLeft),
+            top: Number(cardElement.dataset.publicCardJourneyTargetTop),
+            width: Number(cardElement.dataset.publicCardJourneyTargetWidth),
+            height: Number(cardElement.dataset.publicCardJourneyTargetHeight),
+          },
           announcement: announcementRect,
           card: cardRect,
+          activity: activityRect,
+          activityVisibility: activityStyle?.visibility ?? "missing",
+          activityLayout: activity?.dataset.publicActivityLayout ?? null,
+          activityKind: activity?.dataset.publicActivityKind ?? null,
+          activityText: activity?.textContent?.trim() ?? "",
+          activityZIndex: Number.parseInt(activityStyle?.zIndex ?? "0", 10),
           announcementZIndex: Number.parseInt(getComputedStyle(announcement).zIndex, 10),
           cardZIndex: Number.parseInt(getComputedStyle(cardElement).zIndex, 10),
           announcementVisibility: getComputedStyle(announcement).visibility,
@@ -185,6 +200,9 @@ test("H4 reproduces announcement placement through a real observer Attack-to-Dod
     await expect(observerPage.locator('[data-public-card-announcement="true"]')).toBeVisible();
     const rootEventId = await observerPage.locator('.public-card-display[data-public-card-motion="attack-dodge"]')
       .getAttribute("data-public-card-root-event-id");
+    await observerPage.setViewportSize({ width: 442, height: 894 });
+    await expect(observerPage.locator('[data-public-activity-chip="true"]')).toBeVisible();
+    await observerPage.setViewportSize({ width: 440, height: 894 });
     await expect(rootCard).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 15_000 });
     const parkedRoot = await observerPage.evaluate(() => window.__h4Capture());
     await saveScreenshot(observerPage, testInfo, "h4-root-parked.png");
@@ -197,7 +215,9 @@ test("H4 reproduces announcement placement through a real observer Attack-to-Dod
     await saveScreenshot(observerPage, testInfo, "h4-dodge-parked.png");
 
     const frames = await observerPage.evaluate(() => window.__h4Frames);
+    const rootFrames = frames.filter((row) => row.cardId === room.attack.id);
     const dodgeFrames = frames.filter((row) => row.cardId === room.dodge.id);
+    const visibleRootFrames = rootFrames.filter((row) => row.announcementVisibility === "visible");
     const visibleDodgeFrames = dodgeFrames.filter((row) => row.announcementVisibility === "visible");
     const phases = Object.fromEntries(["reveal", "move", "parked"].map((phase) => [
       phase, dodgeFrames.find((row) => row.phase === phase && row.announcementVisibility === "visible")
@@ -210,6 +230,10 @@ test("H4 reproduces announcement placement through a real observer Attack-to-Dod
       defenderId: defender.id,
       rootEventId,
       parkedRoot,
+      rootFrames: rootFrames.map(({ at, phase, actorId, cardId, target, card, activity, activityVisibility, activityLayout, activityKind, activityText, activityZIndex }) => ({
+        at, phase, actorId, cardId, target, card, activity, activityVisibility, activityLayout,
+        activityKind, activityText, activityZIndex,
+      })),
       phases,
       sampledFrames: dodgeFrames.length,
       dodgeFrames: dodgeFrames.map(({ at, interactionId, activeEventId, anchorEventId, cardId, actorId, phase, announcement, card, centerOffset, announcementToCardCenterOffset, lines, fontSize, fallback, compact, placement, activeCardOverlap, protectedRects, text }) => ({
@@ -224,21 +248,37 @@ test("H4 reproduces announcement placement through a real observer Attack-to-Dod
       await mkdir(evidenceRoot, { recursive: true });
       await writeFile(join(evidenceRoot, "h4-attack-dodge-baseline-geometry.json"), `${JSON.stringify(result, null, 2)}\n`);
     }
-    console.log(`[H4 Attack/Dodge] ${JSON.stringify({ rootEventId, observerId: observer.id, phases, sampledFrames: dodgeFrames.length })}`);
+    expect(rootFrames.some((row) => row.phase === "reveal")).toBe(true);
+    expect(rootFrames.some((row) => row.phase === "move")).toBe(false);
+    expect(rootFrames.some((row) => row.phase === "parked")).toBe(true);
+    expect(rootFrames.every((row) => row.actorId === attacker.id)).toBe(true);
+    expect(visibleRootFrames.length).toBeGreaterThan(0);
+    expect(visibleRootFrames.every((row) => row.activityVisibility === "visible")).toBe(true);
+    expect(new Set(visibleRootFrames.map((row) => row.activityText)).size).toBe(1);
+    expect(parkedRoot.activityZIndex).toBeGreaterThan(parkedRoot.cardZIndex);
+    expect(parkedRoot.card.left).toBeCloseTo(parkedRoot.target.left, 1);
+    expect(parkedRoot.card.top).toBeCloseTo(parkedRoot.target.top, 1);
+    await expect(observerPage.locator(`.public-card-journey-card[data-public-card-journey-card-id="${room.attack.id}"]`)).toHaveCount(1);
+    await expect(observerPage.locator(`.public-card-journey-card[data-public-card-journey-card-id="${room.dodge.id}"]`)).toHaveCount(1);
     expect(phases.reveal?.cardId).toBe(room.dodge.id);
     expect(phases.parked?.cardId).toBe(room.dodge.id);
-    expect(phases.move?.cardId).toBe(room.dodge.id);
+    expect(phases.move).toBeNull();
     expect(dodgeFrames.some((row) => row.anchorEventId !== row.activeEventId)).toBe(false);
     expect(new Set(dodgeFrames.map((row) => row.interactionId)).size).toBe(1);
     expect(visibleDodgeFrames.length).toBeGreaterThan(0);
     expect(visibleDodgeFrames.every((row) => Math.abs(row.centerOffset ?? Infinity) <= 4)).toBe(true);
     expect(Math.max(...visibleDodgeFrames.map((row) => row.announcement.top))
-      - Math.min(...visibleDodgeFrames.map((row) => row.announcement.top))).toBeLessThanOrEqual(16);
+      - Math.min(...visibleDodgeFrames.map((row) => row.announcement.top))).toBeLessThanOrEqual(2);
     expect(visibleDodgeFrames.every((row) => !row.fallback && row.lines >= 1 && row.fontSize >= 14
       && row.announcement.width >= 320 && row.announcement.width <= 340
       && row.announcementVisibility === "visible" && row.announcementPointerEvents === "none"
       && row.announcementZIndex > row.cardZIndex)).toBe(true);
     expect(visibleDodgeFrames.every((row) => row.protectedRects.length === 0)).toBe(true);
+    expect(visibleDodgeFrames.every((row) => row.announcement.left >= 49 && row.announcement.right <= 391)).toBe(true);
+    expect(Math.abs(parkedRoot.announcement.top - phases.reveal.announcement.top)).toBeLessThanOrEqual(2);
+    expect(phases.reveal.card.width).toBeCloseTo(90, 0);
+    expect(phases.reveal.card.height).toBeCloseTo(135, 0);
+    expect(phases.reveal.activeCardOverlap).toBe(false);
     expect(phases.reveal.announcementZIndex).toBeGreaterThan(phases.reveal.cardZIndex);
     expect(phases.parked.announcementZIndex).toBeGreaterThan(phases.parked.cardZIndex);
     expect(parkedRoot.announcementZIndex).toBeGreaterThan(parkedRoot.cardZIndex);

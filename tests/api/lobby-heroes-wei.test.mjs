@@ -1103,12 +1103,26 @@ test("Wu hero skills complete through the normal semantic API", async () => {
   sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(zhouSource.id)}`); setHand(zhouSource.id, [], 3, 3); setDeck(zhouGame.code, zhouDraw); setTurn(zhouGame.code, zhouSource.seat, "draw");
   const yingzi = await requestAndSettle("draw", { code: zhouGame.code, token: zhouGame.members[0].token }); assert.equal(yingzi.status, 200, JSON.stringify(yingzi.data)); assert.equal(yingzi.data.room.myHand.length, 0); assert.equal(yingzi.data.room.currentAction.kind, "trigger"); assert.equal(yingzi.data.room.currentAction.triggerOptions[0].effectId, "zhou_yu_yingzi"); assert.ok(yingzi.data.room.currentAction.legalActions.includes("decline_trigger"));
   const otherSeatView = await state(zhouGame.code, zhouGame.members[1].token); assert.equal(otherSeatView.data.currentAction.triggerOptions.length, 0, "Yingzi is private to Zhou Yu");
+  const publicDrawDecision = { semantics: "PROVEN", visibility: "PUBLIC", actorId: zhouSource.id, actionLabels: ["Heroic"], allowSkip: true };
+  assert.deepEqual(yingzi.data.room.presentationSnapshot.publicDrawPhaseDecision, publicDrawDecision);
+  assert.deepEqual(otherSeatView.data.presentationSnapshot.publicDrawPhaseDecision, publicDrawDecision, "all viewers receive the same public decision without private controls");
   const skippedYingzi = await requestAndSettle("decline_trigger", { code: zhouGame.code, token: zhouGame.members[0].token }); assert.equal(skippedYingzi.status, 200, JSON.stringify(skippedYingzi.data)); assert.equal(skippedYingzi.data.room.myHand.length, 2, "declining Yingzi draws exactly two normal cards");
+  assert.equal(skippedYingzi.data.room.presentationSnapshot.publicDrawPhaseDecision, null, "the decision disappears after the Draw Phase advances");
 
   const acceptedGame = await createHumanGame(); const acceptedSource = acceptedGame.room.players[0];
   sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(acceptedSource.id)}`); setHand(acceptedSource.id, [], 3, 3); setDeck(acceptedGame.code, zhouDraw); setTurn(acceptedGame.code, acceptedSource.seat, "draw");
   await requestAndSettle("draw", { code: acceptedGame.code, token: acceptedGame.members[0].token });
   const acceptedYingzi = await requestAndSettle("trigger", { code: acceptedGame.code, token: acceptedGame.members[0].token, providerId: "zhou_yu_yingzi" }); assert.equal(acceptedYingzi.status, 200, JSON.stringify(acceptedYingzi.data)); assert.equal(acceptedYingzi.data.room.myHand.length, 3, "accepting Yingzi draws exactly three normal cards"); assert.equal(acceptedYingzi.data.room.phase, "play");
+  assert.equal(acceptedYingzi.data.room.presentationSnapshot.publicDrawPhaseDecision, null);
+  const heroicFact = acceptedYingzi.data.room.presentationSnapshot.retainedPublicEvent;
+  assert.equal(heroicFact?.category, "SKILL_USED");
+  assert.equal(heroicFact?.actorId, acceptedSource.id);
+  assert.equal(heroicFact?.label, "Heroic");
+  assert.equal(heroicFact?.outcomeLabel, "drew one additional card");
+  const heroicObserver = await state(acceptedGame.code, acceptedGame.members[1].token);
+  assert.deepEqual(heroicObserver.data.presentationSnapshot.retainedPublicEvent, heroicFact);
+  assert.equal(JSON.stringify(heroicObserver.data.presentationSnapshot).includes("yingzi-a"), false, "private draw identities stay private");
+  assert.notEqual(skippedYingzi.data.room.presentationSnapshot.retainedPublicEvent?.label, "Heroic", "declining does not publish Heroic success");
 
   const fanjianGame = await createHumanGame(); const fanjianSource = fanjianGame.room.players[0]; const fanjianTarget = fanjianGame.room.players[1]; const concealed = card("Peach", "fanjian-card", "♥"); const spare = card("Dodge", "fanjian-spare", "♠");
   sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(fanjianSource.id)}`); setHand(fanjianSource.id, [concealed, spare], 3, 3); setHand(fanjianTarget.id, [], 4, 4); setTurn(fanjianGame.code, fanjianSource.seat);
@@ -1117,13 +1131,17 @@ test("Wu hero skills complete through the normal semantic API", async () => {
   assert.ok(initialOption); assert.deepEqual(initialOption.selection, { type: "target", targetIds: [fanjianTarget.id, fanjianGame.room.players[2].id, fanjianGame.room.players[3].id] });
   const fanjian = await requestAndSettle("trigger", { code: fanjianGame.code, token: fanjianGame.members[0].token, providerId: "zhou_yu_fanjian", targetId: fanjianTarget.id }); assert.equal(fanjian.status, 200, JSON.stringify(fanjian.data));
   assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(fanjianSource.id)}`)).length, 2, "activation does not transfer a card");
-  const suitView = await state(fanjianGame.code, fanjianGame.members[1].token); const suitOption = suitView.data.currentAction.triggerOptions.find((option) => option.effectId === "zhou_yu_fanjian_choice");
-  assert.deepEqual(suitOption.selection.choices.map((choice) => choice.id), ["♥", "♦", "♣", "♠"]); assert.equal(suitOption.allowDecline, false); assert.equal(JSON.stringify(suitView.data.currentAction).includes(concealed.id), false);
-  const guess = await requestAndSettle("trigger", { code: fanjianGame.code, token: fanjianGame.members[1].token, providerId: "zhou_yu_fanjian_choice", choice: "♠" }); assert.equal(guess.status, 200, JSON.stringify(guess.data));
-  const cardView = await state(fanjianGame.code, fanjianGame.members[1].token); const hiddenOption = cardView.data.currentAction.triggerOptions.find((option) => option.effectId === "zhou_yu_fanjian_choice");
-  assert.deepEqual(hiddenOption.selection, { type: "target_cards", targetId: fanjianSource.id, min: 1, max: 1, eligibleKeys: ["hand:0", "hand:1"] }); assert.equal(JSON.stringify(cardView.data.currentAction).includes(concealed.id), false); assert.equal(JSON.stringify(cardView.data.currentAction).includes(concealed.suit), false);
-  const obtained = await requestAndSettle("trigger", { code: fanjianGame.code, token: fanjianGame.members[1].token, providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:0"] }); assert.equal(obtained.status, 200, JSON.stringify(obtained.data)); assert.equal(obtained.data.room.players.find((player) => player.id === fanjianTarget.id).hp, 3); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(fanjianTarget.id)}`)).map((item) => item.id), [concealed.id]); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(fanjianSource.id)}`)).map((item) => item.id), [spare.id]);
-  const duplicate = await requestAndSettle("trigger", { code: fanjianGame.code, token: fanjianGame.members[1].token, providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:0"] }); assert.equal(duplicate.status, 409);
+  const choiceView = await state(fanjianGame.code, fanjianGame.members[1].token); const combinedOption = choiceView.data.currentAction.triggerOptions.find((option) => option.effectId === "zhou_yu_fanjian_choice");
+  assert.deepEqual(combinedOption.selection, { type: "choice_and_target_cards", choices: [{ id: "♥", label: "♥ Heart" }, { id: "♦", label: "♦ Diamond" }, { id: "♣", label: "♣ Club" }, { id: "♠", label: "♠ Spade" }], targetId: fanjianSource.id, min: 1, max: 1, eligibleKeys: ["hand:0", "hand:1"] });
+  assert.equal(combinedOption.allowDecline, false); assert.equal(JSON.stringify(choiceView.data.currentAction).includes(concealed.id), false);
+  const observerChoiceView = await state(fanjianGame.code, fanjianGame.members[2].token);
+  assert.equal(observerChoiceView.data.currentAction.triggerOptions.length, 0, "combined suit and anonymous-card choices remain private to the target");
+  const partialChoice = await requestAndSettle("trigger", { code: fanjianGame.code, token: fanjianGame.members[1].token, providerId: "zhou_yu_fanjian_choice", choice: "♠" });
+  assert.equal(partialChoice.status, 409); assert.equal(partialChoice.data.room.currentAction.triggerOptions[0].selection.type, "choice_and_target_cards");
+  const obtained = await requestAndSettle("trigger", { code: fanjianGame.code, token: fanjianGame.members[1].token, providerId: "zhou_yu_fanjian_choice", choice: "♠", cardKeys: ["hand:0"] }); assert.equal(obtained.status, 200, JSON.stringify(obtained.data)); assert.equal(obtained.data.room.players.find((player) => player.id === fanjianTarget.id).hp, 3); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(fanjianTarget.id)}`)).map((item) => item.id), [concealed.id]); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(fanjianSource.id)}`)).map((item) => item.id), [spare.id]);
+  const revealEvents = obtained.data.room.timeline.filter((event) => event.type === "card" && event.action === "reveal" && event.card.id === concealed.id);
+  assert.equal(revealEvents.length, 1, "one combined submission publishes one real-card reveal");
+  const duplicate = await requestAndSettle("trigger", { code: fanjianGame.code, token: fanjianGame.members[1].token, providerId: "zhou_yu_fanjian_choice", choice: "♠", cardKeys: ["hand:0"] }); assert.equal(duplicate.status, 409);
 });
 
 test("Qixi follows the normalized browser selection contract in multiplayer and host test flow", async () => {

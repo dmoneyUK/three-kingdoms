@@ -1,5 +1,8 @@
 "use client";
 
+import { publicH4Copy, matchingPublicH4Segments, publicH4WidthLimit, type PublicH4Segment } from "../game/public-h4-copy";
+import { fixedUpperHistoryAnnouncementAnchor, parkedCardSize } from "./public-upper-anchor";
+
 import { publicCorridorWidth } from "./public-corridor";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -110,11 +113,14 @@ export type PublicCardDisplayAction = {
   /** Current server-proven public stage identity, separate from card motion and viewer layout. */
   publicAnnouncementIdentity?: PublicCardAnnouncementIdentity;
   sourceId: string;
+  physicalActorId?: string;
+  physicalActorName?: string;
   targetId: string | null;
   cardKind?: CardKind;
   cardLabel: string;
   ariaLabel: string;
   publicNotice?: string;
+  publicNoticeSegments?: readonly PublicH4Segment[];
   publicNoticeCompact?: string;
   publicNoticeEventId?: string;
   /** Keep a proved historical CardFace while retiring its active announcement. */
@@ -136,6 +142,8 @@ export type PublicCardDisplayAction = {
     eventId: string;
     /** Authenticated root proof used to match an actor-private Steal result. */
     rootResolutionId?: string;
+    /** Verified resolution copy; does not create a physical card or animation. */
+    publicOutcomeMessage?: string;
     outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "GROUP_RESOLVED" | "BUMPER_HARVEST_RESOLVED" | "ROOT_CANCELLED" | "ROOT_RESTORED" | "LUST_DUEL_DAMAGE_APPLIED" | "LUST_DUEL_DAMAGE_PREVENTED";
     exiting: boolean;
     /** Server-derived remaining portion of a proof-backed public-card read, when supplied. */
@@ -286,6 +294,7 @@ export type PublicSkillEventAnnouncement = {
   phase: "ACTIVATION" | "DRAWN";
   heading: string;
   message: string;
+  segments?: readonly PublicH4Segment[];
   exiting: boolean;
 };
 
@@ -459,7 +468,7 @@ function PublicJourneyCard({
     data-public-card-journey-author-reservation-width={authorReservation?.width}
     data-public-card-journey-author-reservation-height={authorReservation?.height}
     data-public-card-harvest-history-parked={harvestHistory && card.phase === "parked" ? "true" : undefined}
-    data-public-card-compact-response={(harvestHistory || card.role === "response") && card.rect.width < PARKED_CARD.width ? "true" : undefined}
+    data-public-card-compact-response={(harvestHistory || card.role === "response") && card.rect.width < parkedCardSize().width ? "true" : undefined}
     data-harvest-root-parked={harvestRootParked ? "true" : undefined}
     data-public-card-journey-phase={card.phase}
     data-public-card-journey-size={size}
@@ -614,7 +623,6 @@ function withFirstQueuedAttackDodgeReveal(cards: JourneyCard[], center: CardRect
 // readable before it shrinks to the 48×72 parked thumbnail.
 const REVEAL_CARD = { width: 90, height: 135 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
-const PARKED_CARD = { width: 48, height: 72 };
 const HARVEST_MOBILE_RESPONSE_CARD = { width: 32, height: 48 };
 const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 520;
 // Two 15px mobile lines at 1.2 line-height plus 4px vertical padding and
@@ -628,6 +636,30 @@ const STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS = 4000;
 const DUEL_REVEAL_HOLD_MS = 4000;
 const MOVE_DURATION_MS = 380;
 
+export function shouldDirectParkPublicJourney(
+  action: PublicCardDisplayAction,
+  role: JourneyCard["role"],
+  hasProvenParkingTarget: boolean,
+  phoneViewport: boolean,
+): boolean {
+  return phoneViewport
+    && hasProvenParkingTarget
+    && (role === "root" || role === "response")
+    && action.cardFace?.kind !== "BumperHarvest"
+    && !action.publicCardEffectFrame
+    && !action.lustCostFrame
+    && action.motion?.type !== "lust-cost";
+}
+
+function directParkPublicJourneyOnPhone(
+  action: PublicCardDisplayAction,
+  role: JourneyCard["role"],
+  hasProvenParkingTarget: boolean,
+): boolean {
+  return shouldDirectParkPublicJourney(action, role, hasProvenParkingTarget,
+    typeof window !== "undefined" && window.matchMedia("(max-width: 520px)").matches);
+}
+
 function boundCardRect(left: number, top: number, width: number, height: number): CardRect {
   const maxLeft = Math.max(8, window.innerWidth - width - 8);
   const maxTop = Math.max(8, window.innerHeight - height - 8);
@@ -639,7 +671,11 @@ function boundCardRect(left: number, top: number, width: number, height: number)
   };
 }
 
-type BattlefieldCenterCardSafety = { reserveSeatHistoryDepth?: number; reservePlayerIds?: readonly string[] };
+type BattlefieldCenterCardSafety = {
+  reserveSeatHistoryDepth?: number;
+  reservePlayerIds?: readonly string[];
+  respectFixedUpperH4?: boolean;
+};
 type ProtectedBattlefieldCenterCardSafety = BattlefieldCenterCardSafety & { requireProtectedClearance: true };
 
 function battlefieldCenterCard(size?: { width: number; height: number }, safety?: BattlefieldCenterCardSafety): CardRect;
@@ -655,10 +691,17 @@ function battlefieldCenterCard(
   const bounds = table.getBoundingClientRect();
   const preferredTop = bounds.top + bounds.height * 0.5 - size.height / 2;
   const preferredLeft = bounds.left + (bounds.width - size.width) / 2;
+  const fixedUpperH4 = safety.respectFixedUpperH4
+    ? table.querySelector<HTMLElement>("[data-public-card-announcement-fixed-upper='true'][data-public-card-announcement-positioned='true']")
+    : null;
+  const fixedUpperH4Rect = fixedUpperH4?.getBoundingClientRect();
+  const requiredTop = fixedUpperH4Rect && fixedUpperH4Rect.width > 0 && fixedUpperH4Rect.height > 0
+    ? fixedUpperH4Rect.bottom + 8
+    : null;
   const obstacles = [...document.querySelectorAll<HTMLElement>(
     ".opponent-player-card[data-player-anchor], .player-square, .player-board-status, .visible-countdown, .stage-system-cluster",
   )].map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
-  if (safety.requireProtectedClearance) {
+  if (safety.requireProtectedClearance || safety.respectFixedUpperH4) {
     const protectedSelectors = [
       ".public-activity-chip", ".opponent-inspection-floating-shell", ".card-details-panel", ".hero-details-panel",
       ".interaction-stage-dying", ".dying-handoff-compact", ".card-pool-target-stage", ".battlefield-choice-stage",
@@ -685,7 +728,7 @@ function battlefieldCenterCard(
       if (reserved) obstacles.push(new DOMRect(reserved.left, reserved.top, reserved.width, reserved.height));
     }
   }
-  const announcementWidth = Math.min(PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH, window.innerWidth - 16, bounds.width - 16);
+  const announcementWidth = publicH4WidthLimit(window.innerWidth, bounds.width - 16, bounds.width - 16);
   const offsets: Array<[number, number]> = [[0, 0]];
   for (let distance = 8; distance <= 200; distance += 8) {
     offsets.push([0, -distance], [0, distance]);
@@ -699,6 +742,22 @@ function battlefieldCenterCard(
     width: size.width,
     height: size.height,
   }));
+  if (requiredTop !== null) {
+    const pac = table.querySelector<HTMLElement>("[data-public-activity-chip='true']");
+    const pacStyle = pac ? window.getComputedStyle(pac) : null;
+    const pacRect = pac?.getBoundingClientRect();
+    const lowerEdge = pacRect && pacStyle?.display !== "none" && pacStyle?.visibility !== "hidden"
+      && pacRect.width > 0 && pacRect.height > 0 ? Math.min(bounds.bottom, pacRect.top - 8) : bounds.bottom - 8;
+    const minimum = Math.max(bounds.top + 8, requiredTop);
+    if (lowerEdge - minimum >= size.height) {
+      candidates.unshift({
+        left: preferredLeft,
+        top: minimum + (lowerEdge - minimum - size.height) / 2,
+        width: size.width,
+        height: size.height,
+      });
+    }
+  }
   // Eight-pixel stepping can miss the only safe fit on short screens by a
   // fraction of a pixel: the full sentence may fit below the Hero row while
   // the next stepped card position falls just past the battlefield's bottom.
@@ -716,6 +775,7 @@ function battlefieldCenterCard(
   const cardFits = (candidate: CardRect) => candidate.left >= bounds.left + 8
       && candidate.left + candidate.width <= bounds.right - 8
       && candidate.top >= bounds.top + 8
+      && (requiredTop === null || candidate.top >= requiredTop)
       && candidate.top + candidate.height <= bounds.bottom
       && candidate.left >= 8
       && candidate.left + candidate.width <= window.innerWidth - 8
@@ -916,7 +976,7 @@ function actorParkedCard(actorId: string, cardIndex = 0, preferLocalAuthorDock =
   if (bounds.width <= 0 || bounds.height <= 0) return null;
 
   if (anchor.classList.contains("local-player-dock")) {
-    return boundCardRect(bounds.left + 8 + cardIndex * (PARKED_CARD.width + 6), bounds.top - PARKED_CARD.height - 6, PARKED_CARD.width, PARKED_CARD.height);
+    return boundCardRect(bounds.left + 8 + cardIndex * (parkedCardSize().width + 6), bounds.top - parkedCardSize().height - 6, parkedCardSize().width, parkedCardSize().height);
   }
 
   const table = document.querySelector<HTMLElement>(".play-table");
@@ -930,18 +990,19 @@ function actorParkedCard(actorId: string, cardIndex = 0, preferLocalAuthorDock =
   const isUpperSeat = tableBounds ? anchorCenterY < tableBounds.top + tableBounds.height * 0.38 : anchorCenterY < boardCenterY;
 
   if (isUpperSeat) {
-    return boundCardRect(anchorCenterX - PARKED_CARD.width / 2 + cardIndex * (PARKED_CARD.width + 6), bounds.bottom + 6, PARKED_CARD.width, PARKED_CARD.height);
+    const topGap = window.matchMedia("(max-width: 700px)").matches ? 0 : 6;
+    return boundCardRect(anchorCenterX - parkedCardSize().width / 2 + cardIndex * (parkedCardSize().width + 6), bounds.bottom + topGap, parkedCardSize().width, parkedCardSize().height);
   }
 
   if (Math.abs(anchorCenterX - boardCenterX) > Math.abs(anchorCenterY - boardCenterY)) {
     const facesCenterFromLeft = anchorCenterX < boardCenterX;
     const left = facesCenterFromLeft
-      ? bounds.right + 6 + cardIndex * (PARKED_CARD.width + 6)
-      : bounds.left - PARKED_CARD.width - 6 - cardIndex * (PARKED_CARD.width + 6);
-    return boundCardRect(left, anchorCenterY - PARKED_CARD.height / 2, PARKED_CARD.width, PARKED_CARD.height);
+      ? bounds.right + 6 + cardIndex * (parkedCardSize().width + 6)
+      : bounds.left - parkedCardSize().width - 6 - cardIndex * (parkedCardSize().width + 6);
+    return boundCardRect(left, anchorCenterY - parkedCardSize().height / 2, parkedCardSize().width, parkedCardSize().height);
   }
 
-  return boundCardRect(anchorCenterX - PARKED_CARD.width / 2 + cardIndex * (PARKED_CARD.width + 6), bounds.top - PARKED_CARD.height - 6, PARKED_CARD.width, PARKED_CARD.height);
+  return boundCardRect(anchorCenterX - parkedCardSize().width / 2 + cardIndex * (parkedCardSize().width + 6), bounds.top - parkedCardSize().height - 6, parkedCardSize().width, parkedCardSize().height);
 }
 
 type SeatHistoryCardParking = { rect: CardRect; side: "local" | "top" | "left" | "right" };
@@ -1057,7 +1118,7 @@ function seatHistoryCardParking(
     reportEarlyFailure("author-anchor-or-table-has-no-size", { actorRect: { left: seat.left, top: seat.top, width: seat.width, height: seat.height }, tableRect: { left: tableRect.left, top: tableRect.top, width: tableRect.width, height: tableRect.height } });
     return null;
   }
-  const cardSize = options.cardSize ?? PARKED_CARD;
+  const cardSize = options.cardSize ?? parkedCardSize();
   const isLocalAnchor = anchor.classList.contains("local-player-dock");
   if (options.protectInteractionControls && options.anchorLocalHero) {
     const authorHero = anchor.querySelector<HTMLElement>(isLocalAnchor ? ".local-hero-card" : ".opponent-hero-card");
@@ -1126,15 +1187,16 @@ function seatHistoryCardParking(
     const isFree = (candidate: CardRect) => {
       const visible = visibleFront(candidate);
       if (!visible) return false;
+      const seatClearance = window.matchMedia("(max-width: 700px)").matches && candidate.top >= seat.bottom - 0.5 ? 0 : 2;
       return inViewport(candidate)
-        && !rectsOverlap(heroRect, visible.rect, 2)
-        && (!authorSeatRect || !rectsOverlap(authorSeatRect, visible.rect, 2))
+        && !rectsOverlap(heroRect, visible.rect, seatClearance)
+        && (!authorSeatRect || !rectsOverlap(authorSeatRect, visible.rect, seatClearance))
         && !occupied.some((rect) => rectsOverlap(rect, candidate, 2))
         && obstacles.every((rect) => !rectsOverlap(rect, visible.rect, 2))
         && otherAnchors.every((rect) => !rectsOverlap(rect, visible.rect, 2));
     };
     const belowSeatCandidates = (left: number): CardRect[] => {
-      const firstTop = seat.bottom + gap + cascade;
+      const firstTop = seat.bottom + (window.matchMedia("(max-width: 700px)").matches ? 0 : gap) + cascade;
       const tops = new Set([firstTop]);
       // A response mini must stay visibly attached to its real author. Do not
       // keep walking below obstacles (especially the Harvest pool), where a
@@ -1551,7 +1613,7 @@ function seatHistoryCardParking(
     side = edgeDistances[0].side;
     if (side === "top") {
       baseLeft = seatCenterX - cardSize.width / 2;
-      baseTop = seat.bottom + gap;
+      baseTop = seat.bottom + (window.matchMedia("(max-width: 700px)").matches ? 0 : gap);
     } else if (side === "left") {
       baseLeft = seat.right + gap;
       baseTop = seatCenterY - cardSize.height / 2;
@@ -1694,7 +1756,7 @@ function seatHistoryCardParking(
     verticalBounds: candidate.top >= (localAnchor ? 4 : safeTop)
       && candidate.top <= (localAnchor ? window.innerHeight - cardSize.height - 4 : safeBottom),
     actorSeat: (!(options.extendNegationChainCollisionSlots || options.protectInteractionControls)
-      || !rectsOverlap(candidate, seat, 2)),
+      || !rectsOverlap(candidate, seat, side === "top" && window.matchMedia("(max-width: 700px)").matches ? 0 : 2)),
     occupiedCards: occupied.filter((rect) => rectsOverlap(rect, new DOMRect(candidate.left, candidate.top, candidate.width, candidate.height), 4)),
     otherSeats: anchors.filter((obstacle) => rectsOverlap(candidate, obstacle, 3)),
     protectedObstacles: protectedObstacles.filter((obstacle) => rectsOverlap(candidate, obstacle, 2)),
@@ -1773,6 +1835,11 @@ export function publicCardAnnouncement(
     ? cardDefinition(targetCardFace.kind).name
     : "one card";
   const dismantleFaceCopy = publicDismantleCardFaceCopy(action, sourceName, targetName, action.settlement?.eventId);
+
+  if ((action.cardKind === "BumperHarvest" || action.cardFace?.kind === "BumperHarvest")
+    && action.motion?.type === "negation" && !action.publicNegationNarration) {
+    return action.ariaLabel;
+  }
 
   switch (outcome) {
     case "ATTACK_DAMAGE_APPLIED":
@@ -1866,6 +1933,7 @@ type CompactPublicPlayerNames = Readonly<Record<string, string>>;
 
 type DisplayedPublicCardAnnouncement = {
   message: string;
+  segments?: readonly PublicH4Segment[];
   supporting: string;
   eventId: string;
   latestCommittedEventId?: string;
@@ -1889,6 +1957,7 @@ type PublicDismantleCardFaceCopy = {
 
 type PublicCardAnnouncementCopy = {
   message: string;
+  segments?: readonly PublicH4Segment[];
   compactMessage?: string;
   accessibleLabel?: string;
   dismantleCardFace?: PublicDismantleCardFaceCopy;
@@ -1941,6 +2010,28 @@ function publicSettlementCardFaceId(action: PublicCardDisplayAction, dismantleFa
   if (action.settlement?.outcome === "DISMANTLE_RESOLVED") return dismantleFaceCopy?.cardId;
   if (action.settlement?.outcome === "STEAL_RESOLVED" && action.settlement.targetCardMovement?.sourceZone === "hand") return undefined;
   return action.settlement?.targetCardMovement?.affectedCardFace?.id;
+}
+
+function publicCardPlayerSegments(action: PublicCardDisplayAction, message: string,
+  actorId: string, actorName: string | null, sourceName: string | null, targetName: string | null) {
+  const source = sourceName ? { id: action.sourceId, name: sourceName } : null;
+  const target = targetName && action.targetId ? { id: action.targetId, name: targetName } : null;
+  const actor = actorName && actorId ? { id: actorId, name: actorName } : null;
+  const sentences: ReturnType<typeof publicH4Copy>[] = [];
+  if (source) {
+    const cardName = action.cardLabel.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+    sentences.push(publicH4Copy([source, " played ", cardName, "."]));
+    if (target) {
+      sentences.push(publicH4Copy([source, " played ", cardName, " on ", target, "."]));
+      sentences.push(publicH4Copy([source, " played ", cardName, " targeting ", target, "."]));
+      if (action.settlement?.outcome === "ATTACK_DAMAGE_APPLIED")
+        sentences.push(publicH4Copy([target, " took damage from ", source, "'s Attack."]));
+    }
+    if (actor && action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE")
+      sentences.push(publicH4Copy([actor, action.response?.semanticLabel === "AS DODGE"
+        ? " used Attack as Dodge against " : " played Dodge against ", source, "'s Attack."]));
+  }
+  return sentences.find((copy) => copy.message === message)?.segments;
 }
 
 export function publicCardAnnouncementCopy(
@@ -2015,6 +2106,7 @@ export function publicCardAnnouncementCopy(
     const compactMessage = action.publicNoticeCompact?.trim();
     return {
       message: action.publicNotice,
+      segments: matchingPublicH4Segments(action.publicNotice, action.publicNoticeSegments),
       compactMessage: compactMessage && compactMessage !== action.publicNotice ? compactMessage : undefined,
       accessibleLabel: action.publicCardEffectFrame.accessibleLabel,
     };
@@ -2032,6 +2124,7 @@ export function publicCardAnnouncementCopy(
   const accessibleLabel = publicTargetCardSettlementAccessibleLabel(action, sourceName, targetName);
   return {
     message,
+    segments: publicCardPlayerSegments(action, message, actorId, actorName, sourceName, targetName),
     compactMessage: selectedCompactMessage === message ? undefined : selectedCompactMessage,
     ...(accessibleLabel ? { accessibleLabel } : {}),
   };
@@ -2079,13 +2172,48 @@ type PublicCardAnnouncementBand = {
 
 const publicCardAnnouncementBands = new Map<string, PublicCardAnnouncementBand>();
 
-function setAnnouncementMessageText(
+const announcementMeasurementStyleProperties = [
+  "display", "box-sizing", "flex-direction", "align-items", "justify-content", "gap",
+  "padding-top", "padding-right", "padding-bottom", "padding-left",
+  "margin-top", "margin-right", "margin-bottom", "margin-left",
+  "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
+  "border-top-style", "border-right-style", "border-bottom-style", "border-left-style",
+  "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "border-radius",
+  "background-color", "box-shadow", "color", "font-family", "font-size", "font-weight", "font-style",
+  "line-height", "letter-spacing", "text-align", "text-transform", "text-indent", "white-space",
+  "overflow", "overflow-wrap", "word-break", "text-overflow", "max-width", "min-height",
+  "-webkit-box-orient", "-webkit-line-clamp",
+] as const;
+
+function copyAnnouncementMeasurementStyles(source: HTMLElement, target: HTMLElement) {
+  const computed = window.getComputedStyle(source);
+  for (const property of announcementMeasurementStyleProperties) {
+    const value = computed.getPropertyValue(property);
+    if (value) target.style.setProperty(property, value);
+  }
+}
+
+function setAnnouncementMessageTextOnMeasurementClone(
   element: HTMLElement,
   message: string,
   dismantleCardFace?: PublicDismantleCardFaceCopy,
+  segments?: readonly PublicH4Segment[],
 ) {
+  if (!element.closest("[data-h4-measurement-copy='true']")) {
+    throw new Error("H4 candidate text may only be changed on a detached measurement copy.");
+  }
   if (!dismantleCardFace || dismantleCardFace.message !== message) {
-    if (element.textContent !== message) element.textContent = message;
+    const parts = matchingPublicH4Segments(message, segments);
+    if (parts) {
+      element.replaceChildren(...parts.map((part) => {
+        if (part.kind === "text") return document.createTextNode(part.text);
+        const name = document.createElement("span");
+        name.className = "public-h4-player";
+        name.dataset.publicPlayerId = part.playerId;
+        name.textContent = part.text;
+        return name;
+      }));
+    } else if (element.textContent !== message || element.querySelector(".public-h4-player")) element.textContent = message;
     return;
   }
   const face = document.createElement("span");
@@ -2101,6 +2229,76 @@ function setAnnouncementMessageText(
   name.textContent = dismantleCardFace.name;
   face.append(suitRank, name);
   element.replaceChildren(document.createTextNode(dismantleCardFace.prefix), face, document.createTextNode(dismantleCardFace.suffix));
+}
+
+function measureAnnouncementCopy(
+  copy: HTMLElement,
+  message: string,
+  supporting: string,
+  dismantleCardFace?: PublicDismantleCardFaceCopy,
+  segments?: readonly PublicH4Segment[],
+) {
+  const measurementCopy = copy.cloneNode(true) as HTMLElement;
+  measurementCopy.dataset.h4MeasurementCopy = "true";
+  measurementCopy.setAttribute("aria-hidden", "true");
+  measurementCopy.inert = true;
+  const sourceElements = [copy, ...Array.from(copy.querySelectorAll<HTMLElement>("*"))];
+  const measurementElements = [measurementCopy, ...Array.from(measurementCopy.querySelectorAll<HTMLElement>("*"))];
+  sourceElements.forEach((source, index) => {
+    const target = measurementElements[index];
+    if (target) copyAnnouncementMeasurementStyles(source, target);
+  });
+
+  const width = copy.getBoundingClientRect().width;
+  Object.assign(measurementCopy.style, {
+    position: "fixed",
+    left: "-10000px",
+    top: "0px",
+    right: "auto",
+    bottom: "auto",
+    width: `${width}px`,
+    height: "auto",
+    maxHeight: "none",
+    visibility: "hidden",
+    pointerEvents: "none",
+    zIndex: "-1",
+    translate: "none",
+  });
+
+  const sourceText = copy.querySelector<HTMLElement>("b");
+  const measurementText = measurementCopy.querySelector<HTMLElement>("b");
+  const measurementSupport = measurementCopy.querySelector<HTMLElement>(".public-negation-narration-support");
+  if (measurementText) setAnnouncementMessageTextOnMeasurementClone(measurementText, message, dismantleCardFace, segments);
+  if (measurementSupport) measurementSupport.textContent = supporting;
+
+  // Candidate text may create new semantic spans. Apply the resolved style of
+  // its matching React-rendered template node so the detached copy measures the
+  // same typography without changing any live React-owned H4 child.
+  if (sourceText && measurementText) {
+    const sourceTextElements = [sourceText, ...Array.from(sourceText.querySelectorAll<HTMLElement>("*"))];
+    for (const target of Array.from(measurementText.querySelectorAll<HTMLElement>("*"))) {
+      const source = sourceTextElements.find((candidate) => candidate.tagName === target.tagName
+        && candidate.className === target.className);
+      if (source) copyAnnouncementMeasurementStyles(source, target);
+    }
+  }
+
+  document.body.append(measurementCopy);
+  try {
+    const rect = measurementCopy.getBoundingClientRect();
+    const linesFor = (element: HTMLElement | null) => {
+      if (!element || !element.textContent?.trim()) return 0;
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return range.getClientRects().length;
+    };
+    return {
+      height: rect.height,
+      lines: linesFor(measurementText) + linesFor(measurementSupport),
+    };
+  } finally {
+    measurementCopy.remove();
+  }
 }
 
 function rememberPublicCardAnnouncementBand(key: string, band: PublicCardAnnouncementBand) {
@@ -2171,6 +2369,7 @@ function publicAnnouncementTraceHash(value: string) {
 function PublicCardAnnouncement({
   eventId,
   anchorEventId,
+  stagePrimaryEventId,
   eventCopyKey,
   announcementIdentity,
   geometryKey,
@@ -2180,6 +2379,7 @@ function PublicCardAnnouncement({
   phase,
   heading,
   message,
+  segments,
   compactMessage,
   accessibleLabel,
   dismantleCardFace,
@@ -2199,9 +2399,11 @@ function PublicCardAnnouncement({
   viewerGeometryReady = true,
   preferredVerticalMode,
   privateDrawAware = false,
+  protectFirstParkedMiniature = false,
 }: {
   eventId: string;
   anchorEventId?: string | null;
+  stagePrimaryEventId?: string | null;
   eventCopyKey: string;
   announcementIdentity?: PublicCardAnnouncementIdentity;
   geometryKey: string;
@@ -2211,6 +2413,7 @@ function PublicCardAnnouncement({
   phase: JourneyCard["phase"] | "static";
   heading?: string;
   message: string;
+  segments?: readonly PublicH4Segment[];
   compactMessage?: string;
   accessibleLabel?: string;
   dismantleCardFace?: PublicDismantleCardFaceCopy;
@@ -2230,6 +2433,7 @@ function PublicCardAnnouncement({
   viewerGeometryReady?: boolean;
   preferredVerticalMode?: "above" | "below";
   privateDrawAware?: boolean;
+  protectFirstParkedMiniature?: boolean;
 }) {
   const sharedPublicStage = usePublicStageLayout();
   const copyRef = useRef<HTMLDivElement>(null);
@@ -2267,7 +2471,7 @@ function PublicCardAnnouncement({
     phase: presentationNarration?.phase ?? negationNarration?.phase,
     rootEffectState: presentationNarration?.rootEffectState ?? negationNarration?.rootEffectState,
     accessibleLabel: accessibleLabel ?? presentationNarration?.accessibleLabel ?? negationNarration?.accessibleLabel,
-    dismantleCardFace,
+    dismantleCardFace, segments,
   }));
   const displayedCopyRef = useRef(displayedCopy);
   useLayoutEffect(() => () => {
@@ -2286,10 +2490,10 @@ function PublicCardAnnouncement({
   [fallbackHeight, fallbackLeft, fallbackTop, fallbackWidth]);
   const latestInputs = {
     eventId, anchorEventId, eventCopyKey, announcementIdentity, geometryKey, copyLifecycleStage, placementKey, viewerLayoutKey,
-    phase, heading, message, compactMessage, accessibleLabel, dismantleCardFace, supportingMessage, compactSupportingMessage,
+    phase, heading, message, compactMessage, accessibleLabel, dismantleCardFace, segments, supportingMessage, compactSupportingMessage,
     presentationNarration, negationNarration, fallbackCardRect: stableFallbackCardRect, phaseNotice, outcome, negationWaiting,
     stableCenterAnchor, keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, clearCenterAnchorWhenParked,
-    viewerGeometryReady, preferredVerticalMode, privateDrawAware,
+    viewerGeometryReady, preferredVerticalMode, privateDrawAware, protectFirstParkedMiniature,
   };
   const latestInputsRef = useRef(latestInputs);
   const placementInputKey = JSON.stringify(latestInputs);
@@ -2351,18 +2555,21 @@ function PublicCardAnnouncement({
     if (geometryChanged) lastGeometryKeyRef.current = geometryKey;
 
     const copyAnchorEventId = anchorEventId === null ? "" : anchorEventId ?? eventId;
-    const getAnchor = () => copyAnchorEventId
-      ? Array.from(display.querySelectorAll<HTMLElement>("[data-public-card-copy-anchor-event-id]"))
-        .find((element) => element !== copy && element.dataset.publicCardCopyAnchorEventId === copyAnchorEventId) ?? null
-      : null;
+    const getAnchor = () => {
+      if (!copyAnchorEventId) return null;
+      const table = display.closest<HTMLElement>(".play-table");
+      return (table ? Array.from(table.querySelectorAll<HTMLElement>("[data-public-card-copy-anchor-event-id]")) : [])
+        .find((element) => element !== copy && element.dataset.publicCardCopyAnchorEventId === copyAnchorEventId) ?? null;
+    };
     const toCardRect = (rect: DOMRect): CardRect => ({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     let resizeObserver: ResizeObserver | null = null;
     let mutationObserver: MutationObserver | null = null;
     let anchorObserver: MutationObserver | null = null;
     let frame = 0;
     let placementFailureTimer: number | null = null;
+    let revealAnchorFollowTimer: number | null = null;
     let currentGeometryIdentity = "";
-    const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-row"] : [])].join(", ");
+    const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-row"] : []), ...(protectFirstParkedMiniature ? ['.public-card-journey-card[data-public-card-journey-phase="parked"]'] : [])].join(", ");
     const setData = (name: string, value: string | undefined) => {
       const current = copy.getAttribute(name);
       if (value === undefined) {
@@ -2391,6 +2598,7 @@ function PublicCardAnnouncement({
         && previous.phase === next.phase
         && previous.rootEffectState === next.rootEffectState
         && previous.accessibleLabel === next.accessibleLabel
+        && JSON.stringify(previous.segments) === JSON.stringify(next.segments)
         && JSON.stringify(previous.dismantleCardFace) === JSON.stringify(next.dismantleCardFace)) return;
       displayedCopyRef.current = next;
       setDisplayedCopy(next);
@@ -2449,10 +2657,10 @@ function PublicCardAnnouncement({
         accessibleLabel, supportingMessage, compactSupportingMessage, presentationNarration, negationNarration,
         fallbackCardRect: currentFallbackCardRect, outcome, stableCenterAnchor,
         keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, viewerGeometryReady, preferredVerticalMode,
-        privateDrawAware, dismantleCardFace,
+    privateDrawAware, protectFirstParkedMiniature, dismantleCardFace, segments,
       } = latestInputsRef.current;
       const copySignature = JSON.stringify([
-        eventCopyKey, heading, message, compactMessage, accessibleLabel, dismantleCardFace, supportingMessage, compactSupportingMessage,
+        eventCopyKey, heading, message, compactMessage, accessibleLabel, dismantleCardFace, segments, supportingMessage, compactSupportingMessage,
       ]);
       const narration = presentationNarration ?? negationNarration;
       const hasNegationNarration = Boolean(negationNarration);
@@ -2471,12 +2679,12 @@ function PublicCardAnnouncement({
         phase: narrationPhase,
         rootEffectState: narrationRootEffectState,
         accessibleLabel: narrationAccessibleLabel,
-        dismantleCardFace,
+        dismantleCardFace, segments,
       };
       commitDisplayedCopy(incomingDisplayedCopy);
       const sharedTable = display.closest<HTMLElement>(".play-table");
       const currentSharedStage = sharedTable ? committedPublicStageLayout(sharedTable) ?? sharedPublicStage : sharedPublicStage;
-      const sharedPlacementIsCurrent = Boolean(currentSharedStage
+      const sharedPlacementIsCurrent = Boolean(!protectFirstParkedMiniature && currentSharedStage
         && sharedTable
         && (sharedPublicStageMatchesElement(sharedTable, currentSharedStage)
           || canRetainPublicStageLayout(sharedTable, currentSharedStage))
@@ -2492,6 +2700,18 @@ function PublicCardAnnouncement({
         setData("data-public-stage-layout-identity", currentSharedStage.layout.identity);
         setData("data-public-card-announcement-placement", `shared-${currentSharedStage.layout.scene.phase.toLowerCase()}`);
         setData("data-public-card-announcement-positioned", "true");
+        const sharedUpper = sharedTable ? fixedUpperHistoryAnnouncementAnchor(sharedTable) : null;
+        const matchesUpper = sharedUpper && Math.abs(sharedUpper.top - rect.top) <= 0.5;
+        setData("data-public-card-announcement-fixed-upper", matchesUpper ? "true" : undefined);
+        setData("data-public-card-announcement-fixed-upper-top", matchesUpper ? `${Math.round(rect.top * 2) / 2}` : undefined);
+        setData("data-public-card-announcement-width", `${Math.round(rect.right - rect.left)}`);
+        const text = copy.querySelector("b");
+        if (text) {
+          const range = document.createRange();
+          range.selectNodeContents(text);
+          const lines = new Set([...range.getClientRects()].map((line) => Math.round(line.top)));
+          setData("data-public-card-announcement-lines", `${Math.max(1, lines.size)}`);
+        }
         if (copy.style.visibility !== "visible") copy.style.visibility = "visible";
         setDelivery("VISIBLE", currentEventCopyKey);
         reportH4Placement({
@@ -2506,7 +2726,7 @@ function PublicCardAnnouncement({
         });
         return;
       }
-      const sharedStageCandidate = Boolean(sharedTable
+      const sharedStageCandidate = Boolean(!protectFirstParkedMiniature && sharedTable
         && publicStageLayoutCandidateMatchesElement(sharedTable, {
           scopeId: display.dataset.publicCardRootEventId ?? "",
           viewerId: display.dataset.publicCardViewerId ?? "",
@@ -2516,6 +2736,46 @@ function PublicCardAnnouncement({
             copy.dataset.publicCardAnnouncementAnchorEventId ?? "",
           ],
         }));
+      if (sharedStageCandidate && sharedTable && copy.style.visibility === "visible") {
+        // A measured viewport reflow can briefly outpace the shared context.
+        // Keep the same committed copy visible only after validating its new
+        // upper anchor, the current real card and every visible control.
+        const upper = fixedUpperHistoryAnnouncementAnchor(sharedTable);
+        const tableBounds = sharedTable.getBoundingClientRect();
+        const viewportLeft = window.visualViewport?.offsetLeft ?? 0;
+        const viewportRight = viewportLeft + (window.visualViewport?.width ?? window.innerWidth);
+        const safeLeft = Math.max(tableBounds.left, viewportLeft) + 8;
+        const safeRight = Math.min(tableBounds.right, viewportRight) - 8;
+        const width = Math.min(copy.getBoundingClientRect().width, safeRight - safeLeft);
+        if (upper && width > 0) {
+          setPx("left", (safeLeft + safeRight - width) / 2);
+          setPx("top", upper.top);
+          setPx("width", width);
+          const rect = copy.getBoundingClientRect();
+          const currentCard = display.querySelector<HTMLElement>('.public-card-journey-card[data-public-card-journey-phase="reveal"]');
+          const controls = [...sharedTable.querySelectorAll<HTMLElement>(".player-square, .public-activity-chip, .visible-countdown, .stage-system-cluster, .card-pool-target-stage")];
+          const collision = (element: HTMLElement) => {
+            const style = window.getComputedStyle(element);
+            const other = element.getBoundingClientRect();
+            return style.display !== "none" && style.visibility !== "hidden" && other.width > 0 && other.height > 0
+              && rect.left < other.right && rect.right > other.left && rect.top < other.bottom && rect.bottom > other.top;
+          };
+          const cardRect = currentCard?.getBoundingClientRect();
+          const safeCard = !cardRect || cardRect.width <= 0 || rect.bottom + 3 <= cardRect.top;
+          const safeSlots = upper.slots.every(({ rect: slot }) => rect.top >= slot.top + slot.height - 0.5);
+          if (rect.left >= safeLeft - 0.5 && rect.right <= safeRight + 0.5 && safeCard && safeSlots && !controls.some(collision)) {
+            setData("data-public-card-announcement-positioned", "true");
+            setData("data-public-card-announcement-fixed-upper", "true");
+            setData("data-public-card-announcement-fixed-upper-top", `${Math.round(upper.top * 2) / 2}`);
+            setData("data-public-card-announcement-width", `${Math.round(rect.width)}`);
+            setData("data-public-card-announcement-placement", "measured-upper-reflow");
+            setDelivery("VISIBLE", currentEventCopyKey);
+            reportH4Placement({ geometryEpoch: null, obstacleIds: [], decision: "reuse", reason: "measured-upper-reflow-before-shared-generation", compact: null,
+              rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height }, visible: true });
+            return;
+          }
+        }
+      }
       if (sharedStageCandidate) {
         // The provider publishes a new generation before React delivers its
         // matching context value. Never expose the prior H4 placement or fall
@@ -2552,6 +2812,11 @@ function PublicCardAnnouncement({
         });
         return;
       }
+      const table = display.closest<HTMLElement>(".play-table")!;
+      const upperHistoryAnchor = fixedUpperHistoryAnnouncementAnchor(table);
+      const fixedUpperTop = upperHistoryAnchor?.top ?? null;
+      setData("data-public-card-announcement-fixed-upper", fixedUpperTop === null ? undefined : "true");
+      setData("data-public-card-announcement-fixed-upper-top", fixedUpperTop === null ? undefined : `${Math.round(fixedUpperTop * 2) / 2}`);
       // An announcement band and its measured centre card belong to the
       // viewer's current battlefield geometry. Reuse them across semantic
       // checkpoints only while that geometry remains materially unchanged.
@@ -2587,7 +2852,7 @@ function PublicCardAnnouncement({
       const isLargeRevealAnchor = phase === "reveal" && !stableCenterAnchor
         && actualRect && actualRect.width > 0 && actualRect.height > 0;
       const obstacles: Array<{ element: HTMLElement | null; rect: DOMRect }> = [...document.querySelectorAll<HTMLElement>(
-        [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-row"] : [])].join(", "),
+        [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ...(fixedUpperTop === null ? [".harvest-choice-panel"] : []), ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-row"] : [])].join(", "),
       )].flatMap((element) => {
         const parked = element.closest<HTMLElement>('[data-public-card-journey-phase="parked"]');
         const parkedBounds = parked?.getBoundingClientRect();
@@ -2601,6 +2866,10 @@ function PublicCardAnnouncement({
           ? []
           : [{ element, rect }];
       });
+      for (const slot of upperHistoryAnchor?.slots ?? []) {
+        const rect = slot.rect;
+        obstacles.push({ element: slot.element, rect: new DOMRect(rect.left, rect.top, rect.width, rect.height) });
+      }
       const protectedGeometry: PublicAnnouncementProtectedGeometry[] = obstacles.map(({ element, rect }) => ({
         kind: element?.className?.toString() ?? "journey-target",
         identity: element?.dataset.publicCardCopyAnchorEventId ?? element?.dataset.playerAnchor ?? "",
@@ -2644,9 +2913,9 @@ function PublicCardAnnouncement({
         seats: playerAnchorGeometry,
         anchor: null,
         protectedRects: [],
-      })}:${stableHarvestAnchor ? "harvest" : "public"}`;
+      })}:${stableHarvestAnchor ? "harvest" : "public"}${fixedUpperTop === null ? "" : `:upper-${Math.round(fixedUpperTop * 2) / 2}`}`;
       const geometryEpoch = `${layoutEpoch}:${publicAnnouncementTraceHash(currentGeometryIdentity)}`;
-      if (!viewerGeometryReady) {
+      if (!viewerGeometryReady && fixedUpperTop === null) {
         if (copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
         setDelivery("PENDING_PLACEMENT", currentEventCopyKey);
         setData("data-public-card-announcement-stability", "waiting-current-viewer-geometry");
@@ -2683,20 +2952,21 @@ function PublicCardAnnouncement({
       const availableAnnouncementWidth = mobileLustFrame
         ? Math.min(PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH, viewportWidth - 16)
         : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH;
-      const table = display.closest<HTMLElement>(".play-table")!;
-      const existingBand = publicCardAnnouncementBands.get(bandKey);
+      const existingBand = fixedUpperTop === null ? publicCardAnnouncementBands.get(bandKey) : undefined;
       const defaultCenterY = stableHarvestAnchor
         ? tableRect.top + tableRect.height * 0.3
         : tableRect.top + tableRect.height * 0.45;
-      const stableCenterY = existingBand?.centerY ?? defaultCenterY;
+      const initialCopyHeight = copy.getBoundingClientRect().height;
+      const stableCenterY = fixedUpperTop === null
+        ? existingBand?.centerY ?? defaultCenterY
+        : fixedUpperTop + initialCopyHeight / 2;
       // Reserve one fixed H4 stage band so text length and countdown mounting
       // cannot alter its width or horizontal center.
       const h4CorridorBand = { top: stableCenterY - 64, bottom: stableCenterY + 64 };
       const maxWidth = Math.max(1, Math.min(
         publicCorridorWidth(table, h4CorridorBand),
         availableAnnouncementWidth,
-        PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH,
-        viewportWidth - 16,
+        publicH4WidthLimit(viewportWidth, publicCorridorWidth(table, h4CorridorBand), safeRight - safeLeft),
         safeRight - safeLeft,
       ));
       const harvestPool = stableHarvestAnchor
@@ -2726,10 +2996,27 @@ function PublicCardAnnouncement({
       // parked by its real seat and independently reserved as an obstacle.
       // Public REVEAL and authentic PARKED miniatures remain allowed beneath
       // H4. A centre frame explicitly marked to stay clear remains protected.
-      const centerCardStillOccupiesStage = keepCenterAnchorClear;
+      // A fixed-upper result can outlive its explicitly identified reveal.
+      // Once that actual anchor is gone, its cached rectangle is no longer a
+      // live obstacle; still protect every current Seat, miniature and control.
+      // Only the matching committed Hand-to-Hand reveal may cross H4 in
+      // flight. Its stationary centre remains a protected card rectangle.
+      const handReveal = protectFirstParkedMiniature && anchor
+        ? anchor.closest<HTMLElement>(".public-hand-transfer") : null;
+      const handAnimation = handReveal?.getAnimations().find((animation) =>
+        "animationName" in animation && animation.animationName === "revealedCardToHand");
+      const timing = handAnimation?.effect?.getComputedTiming();
+      const progress = timing?.progress;
+      const isHandRevealFlight = Boolean(handReveal && (handReveal.classList.contains("public-hand-transfer-preflight")
+        || (typeof progress === "number" && (progress < 0.08 || progress > 0.92))));
+      const centerCardStillOccupiesStage = keepCenterAnchorClear && !isHandRevealFlight
+        && !(protectFirstParkedMiniature && Boolean(copyAnchorEventId) && !anchor && !currentFallbackCardRect);
 
-      const gap = PUBLIC_CARD_ANNOUNCEMENT_GAP;
-      const obstacleClearance = (element: HTMLElement | null) => privateDrawAware && element?.matches(".private-draw-row")
+      const gap = upperHistoryAnchor && window.matchMedia("(max-width: 700px)").matches
+        ? 3 : PUBLIC_CARD_ANNOUNCEMENT_GAP;
+      const obstacleClearance = (element: HTMLElement | null) => Boolean(upperHistoryAnchor) && window.matchMedia("(max-width: 700px)").matches
+        && upperHistoryAnchor?.slots.some((slot) => slot.element === element) ? 0
+        : privateDrawAware && element?.matches(".private-draw-row")
         ? 10
         : compactMobileLustFrame && element?.matches(".public-activity-chip") ? 6
           : element?.matches(".opponent-player-card, .player-square") ? 0 : 2;
@@ -2746,14 +3033,15 @@ function PublicCardAnnouncement({
         && previousPlacement.geometryIdentity === currentGeometryIdentity
         && previousPlacement.layoutEpoch === layoutEpoch
         && previousPlacement.viewerLayoutKey === viewerLayoutKey;
-      if (sameCopyAndGeometry && previousPlacement) {
-        const textElement = copy.querySelector<HTMLElement>("b");
-        const supportElement = copy.querySelector<HTMLElement>(".public-negation-narration-support");
-        if (textElement && textElement.textContent !== previousPlacement.message) {
-          setAnnouncementMessageText(textElement, previousPlacement.message, incomingDisplayedCopy.dismantleCardFace);
-        }
-        if (supportElement && supportElement.textContent !== previousPlacement.supporting) supportElement.textContent = previousPlacement.supporting;
-        const measuredHeight = copy.getBoundingClientRect().height;
+      if (sameCopyAndGeometry && previousPlacement
+        && (fixedUpperTop === null || Math.abs(previousPlacement.top - fixedUpperTop) <= 1)) {
+        const measuredHeight = measureAnnouncementCopy(
+          copy,
+          previousPlacement.message,
+          previousPlacement.supporting,
+          incomingDisplayedCopy.dismantleCardFace,
+          incomingDisplayedCopy.segments,
+        ).height;
         const previousRect = new DOMRect(previousPlacement.left, previousPlacement.top, previousPlacement.width, measuredHeight);
         const overlapsCurrentCard = (phase === "reveal" || stableCenterAnchor || keepCenterAnchorClear)
           && centerCardStillOccupiesStage && rectsOverlap(toCardRect(previousRect), centerCardRect, gap);
@@ -2823,7 +3111,17 @@ function PublicCardAnnouncement({
       // old centre technically inside the safe bounds. Do not treat that
       // clipped band as reusable: the next copy would be forced into a box
       // that no longer fits above the Local Player Dock.
-      const placementBand = reusableBand ?? (existingBand && existingBandHasCurrentVerticalRoom
+      const placementBand = fixedUpperTop !== null
+        ? {
+          left: targetCenterX - maxWidth / 2,
+          top: fixedUpperTop,
+          width: maxWidth,
+          centerX: targetCenterX,
+          centerY: fixedUpperTop + measuredCopyHeight / 2,
+          centerCardRect,
+          verticalMode: "above" as const,
+        }
+        : reusableBand ?? (existingBand && existingBandHasCurrentVerticalRoom
         ? existingBand
         : {
           left: targetCenterX - maxWidth / 2,
@@ -2836,8 +3134,6 @@ function PublicCardAnnouncement({
         });
       const canonicalCenterX = targetCenterX;
       const widths = [maxWidth];
-      const textElement = copy.querySelector<HTMLElement>("b");
-      const supportElement = copy.querySelector<HTMLElement>(".public-negation-narration-support");
       // LUST participant names are identity, not expendable copy. Let their
       // measured text grow naturally; safe bounds and obstacle checks below
       // still reject any placement that would cover a Seat or the Dock.
@@ -2849,24 +3145,28 @@ function PublicCardAnnouncement({
         setData("data-public-card-announcement-tight-copy", hasNegationNarration && width <= 224 ? "true" : undefined);
         setData("data-public-card-announcement-width", `${Math.round(width)}`);
       };
-      const textLines = () => {
-        const linesFor = (element: HTMLElement | null) => {
-          if (!element || !element.textContent?.trim()) return 0;
-          const range = document.createRange();
-          range.selectNodeContents(element);
-          return range.getClientRects().length;
-        };
-        return linesFor(textElement) + linesFor(supportElement);
+      let measuredTextLines = 0;
+      const textLines = () => measuredTextLines;
+      const measureOption = (option: (typeof announcementOptions)[number]) => {
+        const measured = measureAnnouncementCopy(
+          copy,
+          option.message,
+          option.supporting,
+          incomingDisplayedCopy.dismantleCardFace,
+          incomingDisplayedCopy.segments,
+        );
+        measuredTextLines = measured.lines;
+        return measured.height;
       };
       let selected: { left: number; top: number; width: number; height: number; lines: number; message: string; supporting: string; compact: boolean } | null = null;
-      let verticalMode: "above" | "below" = placementBand && centerCardStillOccupiesStage
+      let verticalMode: "above" | "below" = fixedUpperTop !== null ? "above" : preferredVerticalMode ?? (placementBand && centerCardStillOccupiesStage
         ? placementBand.centerY >= centerCardRect.top + centerCardRect.height / 2 ? "below" : "above"
-        : placementBand?.verticalMode ?? preferredVerticalMode ?? "above";
+        : placementBand?.verticalMode ?? "above");
       // Keep the established H4 centre within its accepted 16px vertical
       // tolerance while allowing a small obstacle-clearing adjustment. A
       // narrow phone can otherwise have no legal fit between parked history
       // cards and the activity chip even though the band has safe room nearby.
-      const topOffsets = placementBand
+      const topOffsets = fixedUpperTop !== null ? [0] : placementBand
         ? [0, -2, 2, -4, 4, -6, 6, -8, 8, -10, 10, -12, 12, -14, 14, -16, 16]
         : [0, -1, 1, -2, 2, -4, 4, -8, 8, -12, 12, -16, 16];
       const considerCandidate = (
@@ -2877,9 +3177,10 @@ function PublicCardAnnouncement({
         top: number,
         allowBandEscape = false,
       ) => {
+        if (fixedUpperTop !== null && Math.abs(top - fixedUpperTop) > 0.5) return false;
         const centeredLeft = canonicalCenterX + centerOffset - width / 2;
         if (centeredLeft < safeLeft || centeredLeft + width > safeRight) return false;
-        if (placementBand && !allowBandEscape && Math.abs(top + height / 2 - placementBand.centerY) > 16) return false;
+        if (fixedUpperTop === null && placementBand && !allowBandEscape && Math.abs(top + height / 2 - placementBand.centerY) > 16) return false;
         if (top < safeTop || top + height > safeBottom || !staysAbovePrivateDraw(top, height)) return false;
         const clearsCenterCard = (!isLargeRevealAnchor && !stableCenterAnchor && !keepCenterAnchorClear) || !centerCardStillOccupiesStage
           || (allowBandEscape
@@ -2906,13 +3207,11 @@ function PublicCardAnnouncement({
         // H4 caption to jump above a revealed card and below its parked mini.
         for (const offset of topOffsets) {
           for (const option of announcementOptions) {
-            if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace);
-            if (supportElement) supportElement.textContent = option.supporting;
             for (const width of widths) {
               setAnnouncementMeasureMode(option.compact, width);
               setPx("width", width);
-              const height = copy.getBoundingClientRect().height;
-              const top = placementBand.centerY - height / 2 + offset;
+              const height = measureOption(option);
+              const top = fixedUpperTop ?? placementBand.centerY - height / 2 + offset;
               for (const centerOffset of centerOffsets) {
                 if (considerCandidate(option, width, height, centerOffset, top)) break;
               }
@@ -2924,17 +3223,15 @@ function PublicCardAnnouncement({
         }
       } else {
         for (const option of announcementOptions) {
-          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace);
-          if (supportElement) supportElement.textContent = option.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(option.compact, width);
             setPx("width", width);
-            const height = copy.getBoundingClientRect().height;
-            const baseTop = placementBand
+            const height = measureOption(option);
+            const baseTop = fixedUpperTop ?? (placementBand
               ? placementBand.centerY - height / 2
               : verticalMode === "below"
                 ? centerCardRect.top + centerCardRect.height + gap
-                : centerCardRect.top - height - gap;
+                : centerCardRect.top - height - gap);
             for (const centerOffset of centerOffsets) {
               for (const offset of topOffsets) {
                 if (considerCandidate(option, width, height, centerOffset, baseTop + offset)) break;
@@ -2962,19 +3259,17 @@ function PublicCardAnnouncement({
       const canReflowCurrentBand = (!lastValidPlacementRef.current
         || lastValidPlacementRef.current.viewerLayoutKey !== viewerLayoutKey
         || lastValidPlacementRef.current.layoutEpoch !== layoutEpoch);
-      if (!selected && (stableCenterAnchor || (hasNegationNarration && canReflowCurrentBand)
+      if (!selected && fixedUpperTop === null && (stableCenterAnchor || (hasNegationNarration && canReflowCurrentBand)
         || priorBandOverlapsProtectedCenter)) {
         // Keep the previous H4 position and preferred side when either fits.
         // A layout change or a protected centre-card collision can invalidate
         // that baseline; then search the current safe area around the frame.
         // Protected Seat, Dock, Hand and control rects still apply.
         for (const option of announcementOptions) {
-          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace);
-          if (supportElement) supportElement.textContent = option.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(option.compact, width);
             setPx("width", width);
-            const height = copy.getBoundingClientRect().height;
+            const height = measureOption(option);
             const preferredTop = placementBand
               ? placementBand.centerY - height / 2
               : verticalMode === "below"
@@ -3009,17 +3304,15 @@ function PublicCardAnnouncement({
         }
       }
 
-      if (!selected && !placementBand && centerCardStillOccupiesStage) {
+      if (!selected && fixedUpperTop === null && !placementBand && centerCardStillOccupiesStage) {
         // A constrained short battlefield can place its one stable band just
         // below the reveal card. Skip every real or projected owner-card slot.
         const compactOption = announcementOptions.find((option) => option.compact) ?? announcementOptions[0];
         if (compactOption) {
-          if (textElement) setAnnouncementMessageText(textElement, compactOption.message, incomingDisplayedCopy.dismantleCardFace);
-          if (supportElement) supportElement.textContent = compactOption.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(compactOption.compact, width);
             setPx("width", width);
-            const height = copy.getBoundingClientRect().height;
+            const height = measureOption(compactOption);
             for (const centerOffset of centerOffsets) {
               const left = canonicalCenterX + centerOffset - width / 2;
               if (left < safeLeft || left + width > safeRight) continue;
@@ -3052,28 +3345,26 @@ function PublicCardAnnouncement({
 
       if (!selected) {
         for (const option of announcementOptions) {
-          if (textElement) setAnnouncementMessageText(textElement, option.message, incomingDisplayedCopy.dismantleCardFace);
-          if (supportElement) supportElement.textContent = option.supporting;
           for (const width of widths) {
             setAnnouncementMeasureMode(option.compact, width);
             setPx("width", width);
-            const height = copy.getBoundingClientRect().height;
-            const preferredTop = placementBand
+            const height = measureOption(option);
+            const preferredTop = fixedUpperTop ?? (placementBand
               ? placementBand.centerY - height / 2
               : verticalMode === "below"
                 ? centerCardRect.top + centerCardRect.height + gap
-                : centerCardRect.top - height - gap;
+                : centerCardRect.top - height - gap);
             for (const centerOffset of centerOffsets) {
               const left = canonicalCenterX + centerOffset - width / 2;
               if (left < safeLeft || left + width > safeRight) continue;
-              const candidateTops = new Set<number>(placementBand ? [preferredTop] : [
+              const candidateTops = new Set<number>(fixedUpperTop !== null ? [fixedUpperTop] : placementBand ? [preferredTop] : [
                 safeTop,
                 preferredTop,
                 safeBottom - height,
                 centerCardRect.top - height - gap,
                 centerCardRect.top + centerCardRect.height + gap,
               ]);
-              if (!placementBand) {
+              if (!placementBand && fixedUpperTop === null) {
                 for (let top = safeTop; top + height <= safeBottom; top += 2) candidateTops.add(top);
                 for (const { element, rect } of obstacles) {
                   const clearance = obstacleClearance(element);
@@ -3085,7 +3376,7 @@ function PublicCardAnnouncement({
                 .filter((top) => Number.isFinite(top) && top >= safeTop && top + height <= safeBottom && staysAbovePrivateDraw(top, height))
                 .sort((first, second) => Math.abs(first - preferredTop) - Math.abs(second - preferredTop));
               for (const top of orderedTops) {
-                if (placementBand && Math.abs(top + height / 2 - placementBand.centerY) > 16) continue;
+                if (fixedUpperTop === null && placementBand && Math.abs(top + height / 2 - placementBand.centerY) > 16) continue;
                 const rect = new DOMRect(left, top, width, height);
                 const lines = textLines();
                 const centerCardOverlap = centerCardStillOccupiesStage
@@ -3107,12 +3398,6 @@ function PublicCardAnnouncement({
       }
 
       if (!selected) {
-        const textElement = copy.querySelector<HTMLElement>("b");
-        const supportElement = copy.querySelector<HTMLElement>(".public-negation-narration-support");
-        if (textElement && textElement.textContent !== incomingDisplayedCopy.message) {
-          setAnnouncementMessageText(textElement, incomingDisplayedCopy.message, incomingDisplayedCopy.dismantleCardFace);
-        }
-        if (supportElement && supportElement.textContent !== incomingDisplayedCopy.supporting) supportElement.textContent = incomingDisplayedCopy.supporting;
         const previous = lastValidPlacementRef.current;
         if (previous?.geometryIdentity === currentGeometryIdentity) setPx("width", previous.width);
         const retained = retainLastValidPlacement(layoutEpoch);
@@ -3159,7 +3444,8 @@ function PublicCardAnnouncement({
         top: selected.top,
         width: selected.width,
         centerX: hasNegationNarration && placementBand ? placementBand.centerX : selected.left + selected.width / 2,
-        centerY: hasNegationNarration && placementBand ? placementBand.centerY : selected.top + selected.height / 2,
+        centerY: fixedUpperTop !== null ? selected.top + selected.height / 2
+          : hasNegationNarration && placementBand ? placementBand.centerY : selected.top + selected.height / 2,
         centerCardRect,
         verticalMode,
       });
@@ -3173,6 +3459,7 @@ function PublicCardAnnouncement({
         rootEffectState: narrationRootEffectState,
         accessibleLabel: narrationAccessibleLabel,
         dismantleCardFace: incomingDisplayedCopy.dismantleCardFace,
+        segments: incomingDisplayedCopy.segments,
       };
       commitDisplayedCopy(nextDisplayedCopy);
       const previous = lastValidPlacementRef.current;
@@ -3193,7 +3480,8 @@ function PublicCardAnnouncement({
       reportH4Placement({
         geometryEpoch, obstacleIds: actualObstacleIds,
         decision: sameBand ? "reuse" : "reflow",
-        reason: sameBand ? "existing-safe-band-remains-valid-for-current-copy"
+        reason: fixedUpperTop !== null ? sameBand ? "fixed-upper-first-history-slot-band-reused" : "fixed-upper-first-history-slot-reservation"
+          : sameBand ? "existing-safe-band-remains-valid-for-current-copy"
           : previous ? "material-geometry-or-obstacle-change-required-safe-reflow" : "initial-safe-placement",
         compact: selected.compact,
         rect: { left: selected.left, top: selected.top, width: selected.width, height: selected.height },
@@ -3225,9 +3513,25 @@ function PublicCardAnnouncement({
       });
     };
     schedulePlacementRef.current = schedule;
+    // Resolve the new viewer geometry in the same layout commit, before paint.
+    // The solver still hides the announcement if the new bounds are unsafe.
+    if (geometryChanged && protectFirstParkedMiniature) place();
     const anchor = getAnchor();
     anchorObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
     if (anchor) anchorObserver?.observe(anchor, { attributes: true, attributeFilter: ["style", "data-harvest-root-parked"] });
+    const revealTransfer = anchor?.closest<HTMLElement>(".public-hand-transfer") ?? null;
+    if (revealTransfer && phase === "reveal") {
+      const followDeadline = performance.now() + 5_000;
+      const followRevealAnchor = () => {
+        if (placementGeneration !== placementGenerationRef.current) return;
+        schedule();
+        const animationRunning = revealTransfer.getAnimations().some((animation) => animation.playState === "running" || animation.playState === "pending");
+        if (animationRunning && performance.now() < followDeadline) {
+          revealAnchorFollowTimer = window.setTimeout(followRevealAnchor, 80);
+        }
+      };
+      revealAnchorFollowTimer = window.setTimeout(followRevealAnchor, 0);
+    }
     const harvestStage = display.closest<HTMLElement>(".play-table")?.querySelector<HTMLElement>(".harvest-choice-stage");
     if (harvestStage) anchorObserver?.observe(harvestStage, { attributes: true, attributeFilter: ["style"], childList: stableHarvestAnchor, subtree: stableHarvestAnchor });
     anchorObserver?.observe(display, { attributes: true, attributeFilter: ["data-public-card-layout-pending"] });
@@ -3247,22 +3551,34 @@ function PublicCardAnnouncement({
       const harvestPool = table?.querySelector<HTMLElement>(".harvest-choice-panel");
       if (harvestPool) resizeObserver?.observe(harvestPool);
     }
-    if (privateDrawAware && typeof MutationObserver !== "undefined") {
+    if ((privateDrawAware || protectFirstParkedMiniature) && typeof MutationObserver !== "undefined") {
       mutationObserver = new MutationObserver((records) => {
-        const affectsPrivateDraw = records.some((record) => {
+        const affectsPrivateDraw = privateDrawAware && records.some((record) => {
           const target = record.target instanceof Element ? record.target : record.target.parentElement;
           if (target?.closest(".public-skill-event-announcement")) return false;
           if (target?.closest(".private-draw-row")) return true;
           return [...record.addedNodes, ...record.removedNodes].some((node) => node instanceof Element
             && (node.matches(".private-draw-row") || Boolean(node.querySelector(".private-draw-row"))));
         });
-        if (!affectsPrivateDraw) return;
-        for (const element of document.querySelectorAll<HTMLElement>(".private-draw-row")) resizeObserver?.observe(element);
+        const affectsParkedCard = protectFirstParkedMiniature && records.some((record) => {
+          const target = record.target instanceof Element ? record.target : record.target.parentElement;
+          return Boolean(target?.closest(".public-card-journey-card")
+            || [...record.addedNodes, ...record.removedNodes].some((node) => node instanceof Element
+              && (node.matches(".public-card-journey-card") || Boolean(node.querySelector(".public-card-journey-card")))));
+        });
+        if (!affectsPrivateDraw && !affectsParkedCard) return;
+        if (privateDrawAware) for (const element of document.querySelectorAll<HTMLElement>(".private-draw-row")) resizeObserver?.observe(element);
+        if (protectFirstParkedMiniature) for (const element of document.querySelectorAll<HTMLElement>('.public-card-journey-card[data-public-card-journey-phase="queued"], .public-card-journey-card[data-public-card-journey-phase="reveal"], .public-card-journey-card[data-public-card-journey-phase="move"], .public-card-journey-card[data-public-card-journey-phase="parked"]')) resizeObserver?.observe(element);
         schedule();
       });
       // Observe only actual private-draw changes; rewriting this live region's
       // own text must not schedule another placement pass.
-      mutationObserver.observe(display.closest<HTMLElement>(".game-shell") ?? document.body, { childList: true, subtree: true });
+      mutationObserver.observe(display.closest<HTMLElement>(".game-shell") ?? document.body, {
+        attributes: protectFirstParkedMiniature,
+        attributeFilter: protectFirstParkedMiniature ? ["style", "data-public-card-journey-phase", "data-public-card-journey-target-left", "data-public-card-journey-target-top", "data-public-card-journey-target-width", "data-public-card-journey-target-height", "data-public-card-journey-author-reservation-left", "data-public-card-journey-author-reservation-top", "data-public-card-journey-author-reservation-width", "data-public-card-journey-author-reservation-height"] : undefined,
+        childList: true,
+        subtree: true,
+      });
     }
 
     return () => {
@@ -3275,9 +3591,10 @@ function PublicCardAnnouncement({
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
       anchorObserver?.disconnect();
+      if (revealAnchorFollowTimer !== null) window.clearTimeout(revealAnchorFollowTimer);
       window.cancelAnimationFrame(frame);
     };
-  }, [anchorEventId, eventCopyKey, eventId, geometryKey, privateDrawAware, reportH4Placement, sharedPublicStage, stableHarvestAnchor]);
+  }, [anchorEventId, eventCopyKey, eventId, geometryKey, privateDrawAware, protectFirstParkedMiniature, reportH4Placement, sharedPublicStage, stableHarvestAnchor]);
 
   useLayoutEffect(() => {
     latestInputsRef.current = latestInputs;
@@ -3309,6 +3626,7 @@ function PublicCardAnnouncement({
     data-public-card-announcement-copy-key={eventCopyKey}
     data-public-card-announcement-geometry-key={geometryKey}
     data-public-card-announcement-event-id={displayedCopy.eventId}
+    data-public-card-stage-primary-event-id={stagePrimaryEventId ?? undefined}
     data-public-card-announcement-anchor-event-id={anchorEventId === null ? undefined : anchorEventId ?? eventId}
     data-public-negation-latest-event-id={displayedCopy.latestCommittedEventId}
     data-public-negation-checkpoint-id={displayedCopy.checkpointId}
@@ -3337,7 +3655,9 @@ function PublicCardAnnouncement({
           </span>
           {displayedCopy.dismantleCardFace.suffix}
         </>
-        : displayedCopy.message}
+        : matchingPublicH4Segments(displayedCopy.message, displayedCopy.segments)?.map((part, index) => part.kind === "player"
+          ? <span key={index} className="message-player-name public-h4-player" data-player-id={part.playerId} data-public-player-id={part.playerId}>{part.text}</span>
+          : <span key={index}>{part.text}</span>) ?? displayedCopy.message}
     </b>
     {displayedCopy.supporting && <span className="public-card-announcement-support public-negation-narration-support" aria-hidden="true">{displayedCopy.supporting}</span>}
   </div>;
@@ -3381,6 +3701,7 @@ export function PublicSkillEventAnnouncementLayer({
       phase="static"
       heading={announcement.heading}
       message={announcement.message}
+      segments={announcement.segments}
       fallbackCardRect={null}
       stableCenterAnchor
       privateDrawAware
@@ -3389,10 +3710,22 @@ export function PublicSkillEventAnnouncementLayer({
 }
 
 /** H4 for a proven outcome whose originating physical-card journey has ended. */
-export function PublicInteractionAnnouncementLayer({ narration, roomCode, viewerId }: {
+export function PublicInteractionAnnouncementLayer({
+  narration,
+  roomCode,
+  viewerId,
+  anchorEventId = null,
+  protectFirstParkedMiniature = false,
+  keepCenterAnchorClear = false,
+  preferredVerticalMode,
+}: {
   narration: PublicInteractionNarration;
   roomCode: string;
   viewerId: string;
+  anchorEventId?: string | null;
+  protectFirstParkedMiniature?: boolean;
+  keepCenterAnchorClear?: boolean;
+  preferredVerticalMode?: "above" | "below";
 }) {
   const [expiredEventId, setExpiredEventId] = useState<string | null>(null);
   useEffect(() => {
@@ -3406,7 +3739,7 @@ export function PublicInteractionAnnouncementLayer({ narration, roomCode, viewer
     data-public-interaction-event-id={narration.eventId} data-public-event-root-id={narration.rootEventId}>
     <PublicCardAnnouncement
       eventId={narration.eventId}
-      anchorEventId={null}
+      anchorEventId={anchorEventId}
       eventCopyKey={buildPublicAnnouncementEventCopyKey({
         roomCode, rootEventId: narration.rootEventId, checkpointEventId: narration.eventId,
         proofEventId: narration.eventId, actorId: narration.actorId ?? "public", actionClass: "interaction-outcome",
@@ -3416,13 +3749,18 @@ export function PublicInteractionAnnouncementLayer({ narration, roomCode, viewer
       copyLifecycleStage="ACTIVE"
       placementKey={`${roomCode}:public-interaction-event-band`}
       viewerLayoutKey={viewerId}
-      phase="static"
+      phase={anchorEventId ? "reveal" : "static"}
       message={narration.headline}
       compactMessage={narration.compactHeadline}
       accessibleLabel={narration.accessibleLabel}
       presentationNarration={narration}
+      supportingMessage={narration.supportingMessage}
+      compactSupportingMessage={narration.compactSupportingMessage}
       fallbackCardRect={null}
-      stableCenterAnchor
+      stableCenterAnchor={!anchorEventId}
+      keepCenterAnchorClear={keepCenterAnchorClear}
+      preferredVerticalMode={preferredVerticalMode}
+      protectFirstParkedMiniature={protectFirstParkedMiniature}
       ignoreJourneyLayoutPending
     />
   </section>;
@@ -3435,7 +3773,9 @@ export function PublicDiscardAnnouncementLayer({ announcement, roomCode, viewerI
   viewerId: string;
 }) {
   return <section className="public-card-display public-card-display-journey public-interaction-event-announcement public-discard-announcement"
-    data-public-discard-announcement-event-id={announcement.eventId}>
+    data-public-discard-announcement-event-id={announcement.eventId}
+    data-public-discard-announcement-card-ids={announcement.cards?.map((card) => card.id).join(",") ?? ""}
+    data-public-discard-announcement-card-count={announcement.count}>
     <PublicCardAnnouncement
       eventId={announcement.eventId}
       anchorEventId={null}
@@ -3453,6 +3793,7 @@ export function PublicDiscardAnnouncementLayer({ announcement, roomCode, viewerI
       viewerLayoutKey={viewerId}
       phase="static"
       message={announcement.headline}
+      segments={announcement.segments}
       compactMessage={announcement.headline}
       accessibleLabel={announcement.accessibleLabel}
       fallbackCardRect={null}
@@ -3513,8 +3854,15 @@ function AttackDodgeCardJourney({
   const activeActorName = activeJourneyCard?.actorName ?? latestResponse?.actorName ?? latestDeflection?.actorName ?? sourceName;
   const activeRevealStartedAtMs = activeJourneyCard?.revealStartedAtMs ?? null;
   const activeRevealRemainingMs = activeJourneyCard?.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS;
-  const announcementCopy = publicCardAnnouncementCopy(action, activeNotice, activeActorName, activeActorId, sourceName, targetName, compactPlayerNamesById, activeEventId);
-  const committedFactCopy = publicCardCommittedFactCopy(action, announcementCopy);
+  const settledOutcomeMessage = activeJourneyCard?.phase === "parked"
+    && activeJourneyCard.eventId === action.response?.eventId
+    ? action.settlement?.publicOutcomeMessage : undefined;
+  const publicNarration = settledOutcomeMessage && action.publicInteractionNarration
+    ? { ...action.publicInteractionNarration, headline: settledOutcomeMessage, compactHeadline: settledOutcomeMessage, accessibleLabel: settledOutcomeMessage }
+    : action.publicInteractionNarration;
+  const announcementAction = publicNarration ? { ...action, publicInteractionNarration: publicNarration } : action;
+  const announcementCopy = publicCardAnnouncementCopy(announcementAction, activeNotice, activeActorName, activeActorId, sourceName, targetName, compactPlayerNamesById, activeEventId);
+  const committedFactCopy = publicCardCommittedFactCopy(announcementAction, announcementCopy);
   const negationNarration = action.publicNegationNarration;
   const announcementPhaseNotice = action.settlement || action.publicInteractionNarration || negationNarration ? undefined : action.phaseNotice;
   const announcement = committedFactCopy.message;
@@ -3561,8 +3909,8 @@ function AttackDodgeCardJourney({
     const previous = sameInteraction ? previousState.cards : [];
     const root = currentAction.cardFace && currentSourceName ? [{
       eventId: currentAction.rootEventId,
-      actorId: currentAction.sourceId,
-      actorName: currentSourceName,
+      actorId: currentAction.physicalActorId ?? currentAction.sourceId,
+      actorName: currentAction.physicalActorName ?? currentSourceName,
       cardFace: currentAction.cardFace,
       ariaLabel: currentAction.ariaLabel,
       semanticLabel: undefined,
@@ -3620,10 +3968,11 @@ function AttackDodgeCardJourney({
         if (latestNewResponseEventId && prior.eventId !== latestNewResponseEventId && prior.phase === "reveal") {
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
           const elapsed = prior.revealStartedAtMs == null ? 0 : Math.max(0, performance.now() - prior.revealStartedAtMs);
+          const directPark = directParkPublicJourneyOnPhone(currentAction, prior.role, Boolean(target));
           rememberAttackDodgeJourneyLifecycle(
             attackDodgeJourneyLifecycleKey(roomCode, currentAction.rootEventId, scopeKey, prior.eventId),
             {
-              phase: !target || reducedMotion ? "parked" : "move",
+              phase: !target || reducedMotion || directPark ? "parked" : "move",
               revealStartedAtMs: null,
               revealStartedAtIso: prior.revealStartedAtIso ?? null,
               revealElapsedMs: (prior.revealElapsedMs ?? 0) + elapsed,
@@ -3637,15 +3986,17 @@ function AttackDodgeCardJourney({
             cardFace: candidate.cardFace,
             ariaLabel: candidate.ariaLabel,
             semanticLabel: candidate.semanticLabel,
-            phase: !target || reducedMotion ? "parked" as const : "move" as const,
+            phase: !target || reducedMotion || directPark ? "parked" as const : "move" as const,
             target: parkedTarget,
             rect: parkedTarget,
             revealStartedAtMs: null,
             revealElapsedMs: (prior.revealElapsedMs ?? 0) + elapsed,
             revealRemainingMs: 0,
-            moveStartedAtMs: !target || reducedMotion ? null : performance.now(),
+            moveStartedAtMs: !target || reducedMotion || directPark ? null : performance.now(),
             layoutPending: !target,
-            layoutChangeReason: measuredTarget ? "interrupted-by-new-committed-response" : "author-parking-unavailable-awaiting-remeasure",
+            layoutChangeReason: !target ? "author-parking-unavailable-awaiting-remeasure"
+              : directPark ? "interrupted-response-direct-phone-parking"
+                : reducedMotion ? "interrupted-response-reduced-motion" : "interrupted-by-new-committed-response",
           };
         }
         return {
@@ -3706,10 +4057,11 @@ function AttackDodgeCardJourney({
       if (latestNewResponseEventId && previouslyProvenCard.phase === "reveal") {
         const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         const elapsed = previouslyProvenCard.revealStartedAtMs == null ? 0 : Math.max(0, performance.now() - previouslyProvenCard.revealStartedAtMs);
+        const directPark = directParkPublicJourneyOnPhone(currentAction, previouslyProvenCard.role, Boolean(measuredTarget));
         rememberAttackDodgeJourneyLifecycle(
           attackDodgeJourneyLifecycleKey(roomCode, currentAction.rootEventId, scopeKey, previouslyProvenCard.eventId),
           {
-            phase: !measuredTarget || reducedMotion ? "parked" : "move",
+            phase: !measuredTarget || reducedMotion || directPark ? "parked" : "move",
             revealStartedAtMs: null,
             revealStartedAtIso: previouslyProvenCard.revealStartedAtIso ?? null,
             revealElapsedMs: (previouslyProvenCard.revealElapsedMs ?? 0) + elapsed,
@@ -3718,15 +4070,17 @@ function AttackDodgeCardJourney({
         );
         nextCards.push({
           ...previouslyProvenCard,
-          phase: !measuredTarget || reducedMotion ? "parked" : "move",
+          phase: !measuredTarget || reducedMotion || directPark ? "parked" : "move",
           target,
           rect: target,
           revealStartedAtMs: null,
           revealElapsedMs: (previouslyProvenCard.revealElapsedMs ?? 0) + elapsed,
           revealRemainingMs: 0,
-          moveStartedAtMs: !measuredTarget || reducedMotion ? null : performance.now(),
+          moveStartedAtMs: !measuredTarget || reducedMotion || directPark ? null : performance.now(),
           layoutPending: !measuredTarget,
-          layoutChangeReason: measuredTarget ? "interrupted-by-new-committed-response" : "author-parking-unavailable-awaiting-remeasure",
+          layoutChangeReason: !measuredTarget ? "author-parking-unavailable-awaiting-remeasure"
+            : directPark ? "interrupted-response-direct-phone-parking"
+              : reducedMotion ? "interrupted-response-reduced-motion" : "interrupted-by-new-committed-response",
         });
       } else {
         nextCards.push({
@@ -3814,7 +4168,9 @@ function AttackDodgeCardJourney({
         if (activePhase === "reveal") {
           const visibleSegmentMs = Math.max(0, performance.now() - (startedAtMs ?? performance.now()));
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-          const shouldMove = !reducedMotion && !current.layoutPending;
+          const directPark = directParkPublicJourneyOnPhone(actionRef.current, currentCard.role,
+            !currentCard.layoutPending && currentCard.target.width > 0 && currentCard.target.height > 0);
+          const shouldMove = !reducedMotion && !current.layoutPending && !directPark;
           const transitioned: JourneyCard = {
             ...candidate,
             phase: shouldMove ? "move" as const : "parked" as const,
@@ -3823,8 +4179,10 @@ function AttackDodgeCardJourney({
             revealElapsedMs: Math.max(STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS, (candidate.revealElapsedMs ?? 0) + visibleSegmentMs),
             revealRemainingMs: 0,
             moveStartedAtMs: shouldMove ? performance.now() : null,
-            layoutChangeReason: shouldMove ? "four-second-reveal-complete" : current.layoutPending
-              ? "reveal-complete-awaiting-seat-anchor" : "four-second-reveal-complete-reduced-motion",
+            layoutChangeReason: shouldMove ? "four-second-reveal-complete"
+              : current.layoutPending ? "reveal-complete-awaiting-seat-anchor"
+                : directPark ? "four-second-reveal-complete-direct-phone-parking"
+                  : "four-second-reveal-complete-reduced-motion",
           };
           rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, actionRef.current.rootEventId, scopeKey, eventId), {
             phase: transitioned.phase,
@@ -4206,9 +4564,10 @@ function AttackDodgeCardJourney({
       anchorEventId={publicEffectFrameOwnsAnnouncementAnchor ? null : activeEventId}
       phase={publicEffectFrameOwnsAnnouncementAnchor ? "static" : activeJourneyCard?.phase ?? "static"}
       message={announcement}
+      segments={committedFactCopy.segments}
       compactMessage={compactAnnouncement}
       accessibleLabel={committedFactCopy.accessibleLabel}
-      presentationNarration={negationNarration ? undefined : action.publicInteractionNarration}
+      presentationNarration={negationNarration ? undefined : publicNarration}
       negationNarration={negationNarration}
       fallbackCardRect={publicEffectFrameOwnsAnnouncementAnchor && journey.center && action.publicCardEffectFrame
         ? battlefieldPublicEffectFrame(journey.center, action.publicCardEffectFrame) : journey.center}
@@ -4257,8 +4616,8 @@ function singleTargetJourneyEvents(action: PublicCardDisplayAction, sourceName: 
     role: "root",
     globalOrdinal: 1,
     phase: "parked",
-    rect: { left: 0, top: 0, ...PARKED_CARD },
-    target: { left: 0, top: 0, ...PARKED_CARD },
+    rect: { left: 0, top: 0, ...parkedCardSize() },
+    target: { left: 0, top: 0, ...parkedCardSize() },
   });
   const responseByEventId = new Map<string, PublicCardDisplayResponseNode>();
   for (const response of action.responseHistory ?? []) responseByEventId.set(response.eventId, response);
@@ -4282,8 +4641,8 @@ function singleTargetJourneyEvents(action: PublicCardDisplayAction, sourceName: 
       role: "response",
       globalOrdinal: response.ordinal + 1,
       phase: "parked",
-      rect: { left: 0, top: 0, ...PARKED_CARD },
-      target: { left: 0, top: 0, ...PARKED_CARD },
+      rect: { left: 0, top: 0, ...parkedCardSize() },
+      target: { left: 0, top: 0, ...parkedCardSize() },
     });
   }
   return events.sort((left, right) => (left.globalOrdinal ?? 0) - (right.globalOrdinal ?? 0));
@@ -4315,7 +4674,7 @@ function singleTargetParkingOptions(
     ...(action.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer" ? { avoidAuthorSeat: true } : {}),
     // All parked Harvest history (root and committed responses) uses the
     // same footprint. The 90×135 reveal remains a separate live phase.
-    cardSize: compactHarvestMini ? HARVEST_MOBILE_RESPONSE_CARD : PARKED_CARD,
+    cardSize: compactHarvestMini ? HARVEST_MOBILE_RESPONSE_CARD : parkedCardSize(),
     ...(harvest ? {
       anchorLocalHero: true,
       avoidAuthorSeat: event.role !== "response",
@@ -4345,6 +4704,7 @@ function SingleTargetCardJourney({
   enabled,
   suppressAnnouncement = false,
   retainHarvestHistory = false,
+  protectFirstParkedMiniature = false,
   responseHistoryOwnership = [],
   harvestChoiceActive,
   harvestPoolReadOnly,
@@ -4356,12 +4716,14 @@ function SingleTargetCardJourney({
   onInspectCard,
   onJourneySettled,
   onJourneyEventParked,
+  onJourneyRevealCompleted,
   onJourneyOwnershipChange,
 }: {
   action: PublicCardDisplayAction;
   enabled: boolean;
   suppressAnnouncement?: boolean;
   retainHarvestHistory?: boolean;
+  protectFirstParkedMiniature?: boolean;
   responseHistoryOwnership?: readonly { eventId: string; cardIds: readonly string[] }[];
   harvestChoiceActive: boolean;
   harvestPoolReadOnly: boolean;
@@ -4373,6 +4735,7 @@ function SingleTargetCardJourney({
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneySettled?: (settlementEventId: string) => void;
   onJourneyEventParked?: (eventId: string) => void;
+  onJourneyRevealCompleted?: (eventId: string, physicalCardId: string) => void;
   onJourneyOwnershipChange?: (
     roomCode: string,
     actionKey: string,
@@ -4413,6 +4776,7 @@ function SingleTargetCardJourney({
   const [documentVisible, setDocumentVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
   const notifiedSettlementEventIdRef = useRef<string | null>(null);
   const parkedNotifiedEventIdsRef = useRef(new Set<string>());
+  const completedRevealNotifiedKeysRef = useRef(new Set<string>());
   const traceSignaturesRef = useRef(new Map<string, string>());
   const parkingFailureSignaturesRef = useRef(new Map<string, string>());
   const placementFailureReporter = useCallback((event: JourneyCard): SeatHistoryCardParkingOptions => {
@@ -4530,7 +4894,7 @@ function SingleTargetCardJourney({
           ?? (!parkingOptions.protectInteractionControls
             ? actorParkedCard(event.actorId, actorIndex, event.actorId === viewerId)
             : null));
-      const parkedSize = parkingOptions.cardSize ?? PARKED_CARD;
+      const parkedSize = parkingOptions.cardSize ?? parkedCardSize();
       // Retain the last real author target while a same-viewer measurement is
       // pending. A first-time missing target remains an unproven centre-sized
       // placeholder and is never treated as a valid parked position.
@@ -4552,6 +4916,7 @@ function SingleTargetCardJourney({
           : old.moveRemainingMs;
         if (old.awaitingParkingTarget && measuredTarget) {
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          const directPark = directParkPublicJourneyOnPhone(currentAction, event.role, true);
           return {
             ...event,
             ...old,
@@ -4559,21 +4924,23 @@ function SingleTargetCardJourney({
             cardFace: event.cardFace,
             ariaLabel: event.ariaLabel,
             semanticLabel: event.semanticLabel,
-            phase: reducedMotion ? "parked" : "move",
+            phase: reducedMotion || directPark ? "parked" : "move",
             rect: target,
             target,
             revealStartedAtMs: null,
             revealRemainingMs: 0,
-            moveStartedAtMs: reducedMotion ? null : now,
-            moveRemainingMs: reducedMotion ? 0 : MOVE_DURATION_MS,
+            moveStartedAtMs: reducedMotion || directPark ? null : now,
+            moveRemainingMs: reducedMotion || directPark ? 0 : MOVE_DURATION_MS,
             awaitingParkingTarget: false,
             parkingTargetViewerId: viewerId,
             layoutPending: false,
-            layoutChangeReason: reducedMotion ? "four-second-reveal-complete-reduced-motion" : "author-parking-anchor-recovered",
+            layoutChangeReason: directPark ? "author-parking-anchor-recovered-direct-phone-parking"
+              : reducedMotion ? "four-second-reveal-complete-reduced-motion" : "author-parking-anchor-recovered",
           };
         }
         if (latestFreshResponseEventId && event.eventId !== latestFreshResponseEventId && old.phase === "reveal") {
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          const directPark = directParkPublicJourneyOnPhone(currentAction, event.role, Boolean(measuredTarget));
           return {
             ...event,
             ...old,
@@ -4581,17 +4948,19 @@ function SingleTargetCardJourney({
             cardFace: event.cardFace,
             ariaLabel: event.ariaLabel,
             semanticLabel: event.semanticLabel,
-            phase: reducedMotion ? "parked" : "move",
+            phase: reducedMotion || directPark || !measuredTarget ? "parked" : "move",
             rect: target,
-            moveStartedAtMs: reducedMotion ? null : now,
-            moveRemainingMs: reducedMotion ? 0 : MOVE_DURATION_MS,
+            moveStartedAtMs: reducedMotion || directPark || !measuredTarget ? null : now,
+            moveRemainingMs: reducedMotion || directPark || !measuredTarget ? 0 : MOVE_DURATION_MS,
             awaitingParkingTarget: false,
             revealStartedAtMs: null,
             revealRemainingMs: 0,
             target,
             parkingTargetViewerId: measuredTarget ? viewerId : old.parkingTargetViewerId,
             layoutPending: !measuredTarget,
-            layoutChangeReason: "interrupted-by-new-committed-response",
+            layoutChangeReason: !measuredTarget ? "author-parking-unavailable-awaiting-remeasure"
+              : directPark ? "interrupted-response-direct-phone-parking"
+                : reducedMotion ? "interrupted-response-reduced-motion" : "interrupted-by-new-committed-response",
           };
         }
         return {
@@ -4704,6 +5073,24 @@ function SingleTargetCardJourney({
   const activeEventId = activeCard?.eventId
     ?? [...journey.cards].reverse().find((card) => card.phase !== "queued")?.eventId
     ?? action.rootEventId;
+  const primaryJourneyCard = journey.cards.find((card) => card.eventId === activeEventId);
+  // The latest H4 fact can be a pick without owning a physical card Journey.
+  // Associate it with this viewer's proven root/response only for stage layout.
+  const harvestStagePrimaryEventId = harvestPoolVisible
+    && action.cardKind === "BumperHarvest" && Boolean(action.interactionId)
+    && journey.scopeKey === scopeKey && journey.viewerId === viewerId
+    && journey.cards.some((card) => card.role === "root"
+      && card.eventId === action.rootEventId && card.actorId === action.sourceId
+      && card.cardFace.id === action.cardFace?.id)
+    && primaryJourneyCard && primaryJourneyCard.eventId === activeEventId
+    && incoming.some((card) => card.eventId === primaryJourneyCard.eventId
+      && card.actorId === primaryJourneyCard.actorId && card.cardFace.id === primaryJourneyCard.cardFace.id)
+    ? primaryJourneyCard.eventId
+    : undefined;
+  // Shared H4/PAC placement belongs to the current primary card. An unrelated
+  // older parked author's unmeasured Seat may keep that one miniature hidden,
+  // but it must not make an otherwise measured current public stage disappear.
+  const sharedStageLayoutPending = !journey.center || !primaryJourneyCard || primaryJourneyCard.layoutPending;
   const activePhase = activeCard?.phase ?? null;
   useEffect(() => {
     if (!journeyEnabled || !documentVisible || journey.scopeKey !== scopeKey || !activeCard || !activePhase) return;
@@ -4713,6 +5100,19 @@ function SingleTargetCardJourney({
           - Math.max(0, performance.now() - card.revealStartedAtMs));
         return [window.setTimeout(() => {
           if (!mountedRef.current) return;
+          const current = journeyRef.current;
+          const completedCard = current.cards.find((candidate) => candidate.eventId === card.eventId);
+          if (current.scopeKey !== scopeKey || current.viewerId !== viewerIdRef.current || current.viewerId !== viewerId
+            || !completedCard || completedCard.phase !== "reveal") return;
+          const completionKey = `${roomCode}\u001f${viewerId}\u001f${completedCard.eventId}\u001f${completedCard.cardFace.id}`;
+          if (!completedRevealNotifiedKeysRef.current.has(completionKey)) {
+            completedRevealNotifiedKeysRef.current.add(completionKey);
+            if (completedRevealNotifiedKeysRef.current.size > 500) {
+              const oldest = completedRevealNotifiedKeysRef.current.values().next().value;
+              if (oldest) completedRevealNotifiedKeysRef.current.delete(oldest);
+            }
+            onJourneyRevealCompleted?.(completedCard.eventId, completedCard.cardFace.id);
+          }
           setJourney((current) => {
             const currentCard = current.cards.find((candidate) => candidate.eventId === card.eventId);
             if (current.scopeKey !== scopeKey || !currentCard || currentCard.phase !== "reveal") return current;
@@ -4733,7 +5133,9 @@ function SingleTargetCardJourney({
               return next;
             }
             const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-            const shouldMove = !reducedMotion && !currentCard.layoutPending;
+            const directPark = directParkPublicJourneyOnPhone(actionRef.current, currentCard.role,
+              !currentCard.layoutPending && currentCard.target.width > 0 && currentCard.target.height > 0);
+            const shouldMove = !reducedMotion && !currentCard.layoutPending && !directPark;
             const cards = current.cards.map((candidate) => candidate.eventId === card.eventId
               ? {
                 ...candidate,
@@ -4746,7 +5148,8 @@ function SingleTargetCardJourney({
                 moveRemainingMs: shouldMove ? MOVE_DURATION_MS : undefined,
                 awaitingParkingTarget: false,
                 layoutChangeReason: currentCard.layoutPending ? "reveal-complete-awaiting-seat-anchor"
-                  : reducedMotion ? "four-second-reveal-complete-reduced-motion" : "four-second-reveal-complete",
+                  : directPark ? "four-second-reveal-complete-direct-phone-parking"
+                    : reducedMotion ? "four-second-reveal-complete-reduced-motion" : "four-second-reveal-complete",
               }
               : candidate);
             const next = { ...current, cards };
@@ -4832,7 +5235,8 @@ function SingleTargetCardJourney({
       journeyRef.current = next;
       if (mountedRef.current) setJourney(next);
     };
-  }, [journeyEnabled, documentVisible, journey.cards, journey.scopeKey, scopeKey, activeCard?.eventId, activePhase]);
+  }, [journeyEnabled, documentVisible, journey.cards, journey.scopeKey, scopeKey, activeCard?.eventId, activePhase,
+    roomCode, viewerId, onJourneyRevealCompleted]);
 
   useEffect(() => {
     if (!journeyEnabled || !documentVisible || journey.scopeKey !== scopeKey || !journey.center || !activeCard || activeCard.phase !== "reveal"
@@ -4972,7 +5376,7 @@ function SingleTargetCardJourney({
             occupied,
             parkingOptions,
           )?.rect;
-          const parkedSize = parkingOptions.cardSize ?? PARKED_CARD;
+          const parkedSize = parkingOptions.cardSize ?? parkedCardSize();
           const renderedRect = card.phase === "move" ? renderedJourneyCardRect(card.eventId) : null;
           const target = measuredTarget
             ?? (card.phase === "move" ? renderedRect ?? card.rect : { left: card.target.left, top: card.target.top, ...parkedSize });
@@ -5342,13 +5746,14 @@ function SingleTargetCardJourney({
     data-public-card-motion={motion?.type ?? "single-target"}
     data-public-card-kind={action.cardKind}
     data-public-card-viewer-id={viewerId}
-    data-public-card-layout-pending={journey.layoutPending || viewerLayoutPending ? "true" : "false"}
+    data-public-card-layout-pending={sharedStageLayoutPending || viewerLayoutPending ? "true" : "false"}
     data-public-card-layout-viewer-id={journey.viewerId || undefined}
     data-public-card-harvest-active={harvestRootPoolVisible ? "true" : undefined}
     data-public-card-harvest-history-passive={historyOnly ? "true" : undefined}
     data-public-card-ordinal-context={showNegationChainOrdinals ? "negation-chain" : undefined}
     data-public-card-event-id={activeEventId}
     data-public-card-root-event-id={action.rootEventId}
+    data-public-card-root-card-id={action.cardFace?.id}
     data-public-card-id={currentPublicCard?.id}
     data-public-card-actor-id={currentCard?.actorId ?? action.sourceId}
     data-public-card-source-id={action.sourceId}
@@ -5413,6 +5818,7 @@ function SingleTargetCardJourney({
       </li>)}
     </ol>
     {!historyOnly && !suppressAnnouncement && <PublicCardAnnouncement
+      stagePrimaryEventId={harvestStagePrimaryEventId}
       eventId={dismantleFaceCopy?.settlementEventId ?? negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId)}
       eventCopyKey={publicCardAnnouncementCopyKey(
         action,
@@ -5431,6 +5837,7 @@ function SingleTargetCardJourney({
           : publicEffectFrameOwnsAnnouncementAnchor ? null : activeEventId}
       phase={harvestPoolVisible || publicEffectFrameOwnsAnnouncementAnchor ? "static" : announcementAnchorCard?.phase ?? "static"}
       message={announcement}
+      segments={committedFactCopy.segments}
       compactMessage={compactAnnouncement}
       accessibleLabel={committedFactCopy.accessibleLabel}
       dismantleCardFace={dismantleFaceCopy}
@@ -5451,6 +5858,7 @@ function SingleTargetCardJourney({
       stableCenterAnchor={motion?.type === "lust-cost"}
       keepCenterAnchorClear={publicEffectFrameOwnsAnnouncementAnchor}
       stableHarvestAnchor={harvestPoolVisible}
+      protectFirstParkedMiniature={protectFirstParkedMiniature}
       // The banner validates current-viewer geometry independently; thumbnail
       // parking must not hide this separately placeable public announcement.
       ignoreJourneyLayoutPending
@@ -5736,7 +6144,9 @@ function DuelCardJourney({
       ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
       : currentMotion.type === "lust-duel" && currentAction.lustCostFrame && lustRootIsCurrent
         ? battlefieldLustCostCard()
-      : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
+        : currentMotion.type === "duel"
+          ? battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)), requireProtectedClearance: true, respectFixedUpperH4: true })
+          : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
     const previous = journeyRef.current;
     const sameInteraction = previous.scopeKey === scopeKey;
     const viewerChanged = sameInteraction && previous.viewerId !== viewerId;
@@ -6105,7 +6515,9 @@ function DuelCardJourney({
           ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
           : currentMotion?.type === "lust-duel" && currentAction.lustCostFrame && lustRootIsCurrent
             ? battlefieldLustCostCard()
-          : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
+            : currentMotion?.type === "duel"
+              ? battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)), requireProtectedClearance: true, respectFixedUpperH4: true })
+              : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
         const targets = duelParkingTargets(events);
         setJourney((current) => {
           if (current.scopeKey !== scopeKey || currentLayoutRun !== layoutRun) return current;
@@ -6366,6 +6778,7 @@ function DuelCardJourney({
       anchorEventId={announcementEventId}
       phase={activeEvent?.phase ?? "static"}
       message={announcement}
+      segments={committedFactCopy.segments}
       compactMessage={compactAnnouncement}
       accessibleLabel={committedFactCopy.accessibleLabel}
       supportingMessage={negationNarration?.supportingMessage}
@@ -6378,6 +6791,8 @@ function DuelCardJourney({
       outcome={action.settlement?.outcome}
       negationWaiting={Boolean(negationNarration || !action.publicInteractionNarration && action.phaseNotice?.includes("NEGATION"))}
       stableCenterAnchor={action.motion?.type === "lust-duel"}
+      keepCenterAnchorClear={action.motion?.type === "duel"}
+      protectFirstParkedMiniature={action.motion?.type === "duel"}
       preferredVerticalMode={action.motion?.type === "lust-duel" ? "below" : undefined}
       ignoreJourneyLayoutPending
       clearCenterAnchorWhenParked={action.motion?.type === "duel" && action.publicNoticeEventId !== undefined}
@@ -6395,6 +6810,7 @@ export function PublicCardDisplay({
   suppressAnnouncement = false,
   retainHarvestHistory = false,
   retainDuelHistoryDuringInspection = false,
+  protectFirstParkedMiniature = false,
   harvestChoiceActive = false,
   harvestPoolReadOnly = false,
   sourceName,
@@ -6407,6 +6823,7 @@ export function PublicCardDisplay({
   responseHistoryOwnership = [],
   onInspectCard,
   onJourneyEventParked,
+  onJourneyRevealCompleted,
   onJourneySettled,
   onJourneyOwnershipChange,
 }: {
@@ -6415,6 +6832,7 @@ export function PublicCardDisplay({
   suppressAnnouncement?: boolean;
   retainHarvestHistory?: boolean;
   retainDuelHistoryDuringInspection?: boolean;
+  protectFirstParkedMiniature?: boolean;
   harvestChoiceActive?: boolean;
   harvestPoolReadOnly?: boolean;
   sourceName: string | null;
@@ -6427,6 +6845,7 @@ export function PublicCardDisplay({
   responseHistoryOwnership?: readonly { eventId: string; cardIds: readonly string[] }[];
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneyEventParked?: (eventId: string) => void;
+  onJourneyRevealCompleted?: (eventId: string, physicalCardId: string) => void;
   onJourneySettled?: (settlementEventId: string) => void;
   onJourneyOwnershipChange?: (
     roomCode: string,
@@ -6443,7 +6862,7 @@ export function PublicCardDisplay({
   }
   if (action.motion?.type === "single-target" || action.motion?.type === "negation"
     || action.motion?.type === "group-root" || action.motion?.type === "lust-cost") {
-    return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHarvestHistory={retainHarvestHistory} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
+    return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHarvestHistory={retainHarvestHistory} protectFirstParkedMiniature={protectFirstParkedMiniature} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyRevealCompleted={onJourneyRevealCompleted} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
   }
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {
     return <DuelCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHistoryDuringInspection={retainDuelHistoryDuringInspection} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;

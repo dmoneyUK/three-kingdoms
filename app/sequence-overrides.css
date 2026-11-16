@@ -80,6 +80,22 @@
 .active-table-reveal.public-hand-transfer {
   animation: revealedCardToHand var(--played-card-display) ease-in-out both !important;
 }
+.active-table-reveal.public-hand-transfer.public-hand-transfer-preflight {
+  animation: none !important;
+  visibility: hidden;
+}
+@media (max-width: 700px) {
+  .active-table-reveal.public-hand-transfer .played-card, .active-table-reveal.equipment-flight .played-card {
+    width: var(--public-hand-reveal-width, 90px) !important;
+    height: var(--public-hand-reveal-height, 135px) !important;
+  }
+}
+@media (max-width: 400px) and (max-height: 740px) {
+  .active-table-reveal.public-hand-transfer .played-card, .active-table-reveal.equipment-flight .played-card {
+    width: var(--public-hand-reveal-width, 72px) !important;
+    height: var(--public-hand-reveal-height, 108px) !important;
+  }
+}
 
 /* A single visible equipment card flies to the measured rack slot. The rack
    placeholder retains its dimensions but stays hidden until the reveal ends. */
@@ -91,7 +107,7 @@
 }
 @keyframes equipmentCardToSlot {
   0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
-  10%, 85% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  10%, 85% { left: var(--public-reveal-x, 50%); top: var(--public-reveal-y, 50%); opacity: 1; transform: scale(1); }
   100% { left: var(--equipment-x, 50%); top: var(--equipment-y, 50%); opacity: 1; transform: scale(var(--equipment-scale-x, .4), var(--equipment-scale-y, .4)); }
 }
 @keyframes judgementCardToZone {
@@ -127,9 +143,10 @@
 
 @keyframes revealedCardToHand {
   0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
-  10%, 85% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  8%, 92% { left: var(--public-reveal-x, 50%); top: var(--public-reveal-y, 50%); opacity: 1; transform: scale(1); }
   100% { left: var(--hand-x, 50%); top: var(--hand-y, 50%); opacity: 0; transform: scale(.12); }
 }
+
 
 .active-table-reveal .played-card {
   animation: none !important;
@@ -2889,11 +2906,21 @@
   .local-hero-skills .hero-skill-button { font-family: "Arial Narrow", "Liberation Sans Narrow", "DejaVu Sans Condensed", Arial, sans-serif; }
 }
 
-@media (max-width: 390px) and (min-height: 700px) {
+@media (max-width: 390px) and (min-height: 741px) {
   .local-player-dock { --top-panel-height: 106px; }
   .local-dock-zones { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: 2px; }
   .local-status-panel { padding: 1px; }
   .local-equipment-panel { justify-self: end; padding: 1px; }
+}
+
+/* Short phones reclaim battlefield height by scaling the Dock's visual
+   panels, while the skill, menu and action controls keep their hit areas. */
+@media (max-width: 400px) and (max-height: 740px) {
+  .game-shell { --hand-card-face-width: 56px; --hand-card-face-height: 84px; }
+  .game-shell .play-command { padding: 2px 4px 3px; }
+  .local-player-dock { --top-panel-height: 52px; --hand-panel-height: 90px; --zone-card-width: 24px; --zone-card-gap: 2px; --selected-rise: 38px; --selected-face-rise: 13px; gap: 2px; grid-template-rows: auto var(--top-panel-height) var(--hand-panel-height) minmax(44px, auto); }
+  .local-player-dock .console-guidance { padding: 2px 4px; }
+  .local-player-dock .turn-controls { min-height: 44px; padding: 2px 4px; }
 }
 
 @media (max-width: 390px) and (max-height: 700px) {
@@ -5266,6 +5293,14 @@
 .game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-public-card-journey-phase="move"] {
   z-index: 36;
 }
+/* §10.48: only the exact original Harvest root sits beneath its own pool.
+   Negation response CardFaces keep their established foreground layer. */
+.game-shell .public-card-display-journey.is-harvest-pool-active[data-public-card-kind="BumperHarvest"]
+  > .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-phase="reveal"],
+.game-shell .public-card-display-journey.is-harvest-pool-active[data-public-card-kind="BumperHarvest"]
+  > .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-phase="move"] {
+  z-index: 24;
+}
 .game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-display-journey-copy {
   z-index: 38;
 }
@@ -6621,6 +6656,177 @@
   z-index: 26;
 }
 
+.game-shell .play-table > .fanjian-combined-stage {
+  z-index: 26;
+}
+
+.game-shell .fanjian-combined-stage .fanjian-combined-controls {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.game-shell .fanjian-combined-stage .fanjian-combined-suits {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.game-shell .fanjian-combined-stage .fanjian-combined-suits legend,
+.game-shell .fanjian-combined-stage .fanjian-combined-controls h3 {
+  margin: 0 0 4px;
+  color: #d7c28f;
+  font: 700 8px/1.2 Arial, sans-serif;
+}
+
+.game-shell .fanjian-combined-stage .fanjian-combined-suit-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(44px, 1fr));
+  gap: 4px;
+}
+
+.game-shell .fanjian-combined-stage .fanjian-combined-suit-options button {
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px;
+  border: 1px solid #796844;
+  border-radius: 4px;
+  background: #151811;
+  color: #ead9ad;
+  font: 700 8px/1.15 Arial, sans-serif;
+  white-space: normal;
+}
+
+.game-shell .fanjian-combined-stage .fanjian-combined-suit-options button.selected,
+.game-shell .fanjian-combined-stage .fanjian-combined-suit-options button[aria-pressed="true"] {
+  border-color: #f2ca65;
+  background: #342a14;
+  box-shadow: 0 0 0 2px #f2ca6544;
+  color: #fff0c7;
+}
+
+.game-shell .fanjian-combined-stage .card-pool-panel__target-public-zone {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.game-shell .fanjian-combined-stage .card-pool-panel__target-public-backs {
+  box-sizing: border-box;
+  width: min(100%, 185px);
+  max-width: 100%;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+
+.game-shell .fanjian-combined-stage .card-pool-panel__target-public-backs::-webkit-scrollbar {
+  display: none;
+}
+
+.game-shell .fanjian-combined-stage .card-pool-panel__selection-count:empty {
+  display: none;
+}
+
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm {
+  min-height: 44px;
+}
+
+@media (max-width: 360px) {
+  .game-shell .fanjian-combined-stage .fanjian-combined-suit-options {
+    grid-template-columns: repeat(2, minmax(44px, 1fr));
+  }
+}
+
+/* §10.43: keep the selected suit unmistakable after the later per-color base
+   paint, while the visible Confirm face stays compact inside a 44px target. */
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button[aria-pressed="true"] {
+  position: relative;
+  z-index: 1;
+  border: 2px solid #fff0bf;
+  background: #302411;
+  color: #fff4d1;
+  box-shadow: 0 0 0 2px #17150f, 0 0 0 4px #e6c267;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button[aria-pressed="true"]::after {
+  content: "✓";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  width: 13px;
+  height: 13px;
+  place-items: center;
+  border-radius: 50%;
+  background: #f2ca65;
+  box-shadow: 0 0 0 1px #17150f;
+  color: #17150f;
+  font: 700 10px/1 Arial, sans-serif;
+  pointer-events: none;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button:focus-visible {
+  z-index: 2;
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  flex: 0 0 64px;
+  width: 64px;
+  min-width: 64px;
+  max-width: 64px;
+  height: 44px;
+  min-height: 44px;
+  max-height: 44px;
+  place-items: center;
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: #17150f;
+  font-size: 7px;
+  line-height: 1.05;
+  opacity: 1;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset-inline: 0;
+  top: 50%;
+  height: 30px;
+  transform: translateY(-50%);
+  border: 1px solid #d1b06d;
+  border-radius: 4px;
+  background: #b9934e;
+  pointer-events: none;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:disabled {
+  color: #ead9b2;
+  cursor: not-allowed;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:disabled::before {
+  border-color: #756744;
+  background: #51452e;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:focus-visible {
+  outline: 3px solid #fff0bf;
+  outline-offset: 2px;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm:active:not(:disabled)::before {
+  transform: translateY(-50%) scale(.97);
+  background: #d0a64f;
+}
+
 .game-shell .play-table:has(> .card-pool-target-stage[data-choice-mode="actor-target-select"]) > .interaction-safe-zone:has(> .interaction-stage-inspect-only),
 .game-shell .play-table:has(> .card-pool-target-stage[data-choice-mode="target-readonly"]) > .interaction-safe-zone:has(> .interaction-stage-inspect-only) {
   z-index: 40;
@@ -7629,4 +7835,383 @@
     padding: 3px;
     gap: 2px;
   }
+}
+
+/* UX2 §10.39 — scale CardFace text from each already-sized face, not from the
+   viewport. These owners have definite dimensions; the rules below only fit
+   their authentic name/category text and leave the micro-card owners alone. */
+.public-result-card,
+.active-table-reveal .played-card,
+.private-draw-row .played-card,
+.public-card-journey-card,
+.public-card-effect-frame-material,
+.target-card-picker-card,
+.local-hand-rail .card-slot,
+.card-details-illustration,
+.deck-reorder-card-face,
+.discard-card-row .played-card {
+  container-type: inline-size;
+}
+
+.public-result-card > .played-card .card-name-mark,
+.active-table-reveal .played-card .card-name-mark,
+.active-table-reveal.direct-discard .played-card .card-name-mark,
+.active-table-reveal.public-judgement-original-reveal .played-card .card-name-mark,
+.private-draw-row .played-card .card-name-mark,
+.private-draw-row .played-card.drawtwo .card-name-mark,
+.private-draw-row .played-card.dismantle .card-name-mark,
+.public-card-journey-card[data-public-card-journey-size="reveal"] > .played-card .card-name-mark,
+.public-card-journey-card[data-public-card-journey-size="duel-reveal"] .public-card-duel-physical-face > .played-card .card-name-mark,
+.public-card-effect-frame-material > .played-card .card-name-mark,
+.target-card-picker-card .played-card .card-name-mark,
+.target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"] .played-card .card-name-mark,
+.target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] .played-card .card-name-mark,
+.card-details-illustration > .played-card .card-name-mark,
+.deck-reorder-card-face > .played-card .card-name-mark,
+.discard-card-row .played-card .card-name-mark {
+  max-width: 96%;
+  font-size: clamp(7px, 3vw, 16px);
+  line-height: 1.04;
+  letter-spacing: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  hyphens: none;
+}
+
+.played-card[data-card-title-fit="long"] { --card-title-cqi: 10.5; }
+:is(.public-result-card, .active-table-reveal, .public-card-journey-card[data-public-card-journey-size="reveal"], .public-card-effect-frame-material, .target-card-picker-card, .card-details-illustration, .deck-reorder-card-face, .discard-card-row) .played-card[data-card-title-fit="long"] .card-name-mark {
+  -webkit-line-clamp: 4;
+}
+
+.public-result-card > .played-card > strong,
+.active-table-reveal .played-card > strong,
+.private-draw-row .played-card > strong,
+.public-card-journey-card[data-public-card-journey-size="reveal"] > .played-card > strong,
+.public-card-journey-card[data-public-card-journey-size="duel-reveal"] .public-card-duel-physical-face > .played-card > strong,
+.public-card-effect-frame-material > .played-card > strong,
+.target-card-picker-card .played-card > strong,
+.target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"] .played-card > strong,
+.target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] .played-card > strong,
+.card-details-illustration > .played-card > strong,
+.deck-reorder-card-face > .played-card > strong,
+.discard-card-row .played-card > strong {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 4px;
+  font-size: clamp(4px, 1.8vw, 8px);
+  line-height: 1;
+  letter-spacing: .035em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* The local Hand is only 68px wide on supported phone layouts. Keep full
+   names readable within that existing footprint while preserving hit areas. */
+.local-hand-rail .card-slot .game-card .card-name-mark {
+  max-width: 100%;
+  font-size: clamp(8px, 2.8vw, 11px) !important;
+  line-height: 1;
+  letter-spacing: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  hyphens: none;
+  -webkit-line-clamp: 4;
+}
+.local-hand-rail .card-slot .game-card { padding-inline: 2px; }
+.local-hand-rail .card-slot .game-card > strong {
+  width: 100%;
+  max-width: 100%;
+  font-size: clamp(5.5px, 1.5vw, 6.5px);
+  line-height: 1;
+  letter-spacing: normal;
+  white-space: nowrap;
+}
+
+/* Container-query sizing follows the measured card face in modern browsers;
+   the viewport-based declarations above remain a compatible fallback. */
+@supports (font-size: 1cqi) {
+  .public-result-card > .played-card .card-name-mark,
+  .active-table-reveal .played-card .card-name-mark,
+  .active-table-reveal.direct-discard .played-card .card-name-mark,
+  .active-table-reveal.public-judgement-original-reveal .played-card .card-name-mark,
+  .private-draw-row .played-card .card-name-mark,
+  .private-draw-row .played-card.drawtwo .card-name-mark,
+  .private-draw-row .played-card.dismantle .card-name-mark,
+  .public-card-journey-card[data-public-card-journey-size="reveal"] > .played-card .card-name-mark,
+  .public-card-journey-card[data-public-card-journey-size="duel-reveal"] .public-card-duel-physical-face > .played-card .card-name-mark,
+  .public-card-effect-frame-material > .played-card .card-name-mark,
+  .target-card-picker-card .played-card .card-name-mark,
+  .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"] .played-card .card-name-mark,
+  .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] .played-card .card-name-mark,
+  .card-details-illustration > .played-card .card-name-mark,
+  .deck-reorder-card-face > .played-card .card-name-mark,
+  .discard-card-row .played-card .card-name-mark {
+    font-size: clamp(6px, calc(var(--card-title-cqi, 13) * 1cqi), 22px);
+  }
+  .public-result-card > .played-card > strong,
+  .active-table-reveal .played-card > strong,
+  .private-draw-row .played-card > strong,
+  .public-card-journey-card[data-public-card-journey-size="reveal"] > .played-card > strong,
+  .public-card-journey-card[data-public-card-journey-size="duel-reveal"] .public-card-duel-physical-face > .played-card > strong,
+  .public-card-effect-frame-material > .played-card > strong,
+  .target-card-picker-card .played-card > strong,
+  .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"] .played-card > strong,
+  .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] .played-card > strong,
+  .card-details-illustration > .played-card > strong,
+  .deck-reorder-card-face > .played-card > strong,
+  .discard-card-row .played-card > strong {
+    font-size: clamp(4px, 7.5cqi, 10px);
+  }
+  .local-hand-rail .card-slot .game-card .card-name-mark {
+    font-size: clamp(10px, 17cqi, 13px) !important;
+  }
+  .private-draw-row .played-card .card-name-mark {
+    font-size: clamp(10px, 18cqi, 18px);
+  }
+  .private-draw-row .played-card[data-card-title-fit="long"] .card-name-mark {
+    font-size: clamp(9px, 14cqi, 16px);
+    -webkit-line-clamp: 4;
+  }
+  .private-draw-row .played-card > strong {
+    font-size: clamp(5.5px, 9cqi, 9px);
+    letter-spacing: normal;
+  }
+  .local-hand-rail .card-slot .game-card > strong {
+    font-size: clamp(6px, 9.2cqi, 7.5px);
+    letter-spacing: -.03em;
+  }
+}
+
+/* §10.37: preserve the chooser controls while fitting the combined panel into
+   the short mobile battlefield corridor between fixed H4 and PAC. */
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel--actor-target-select.harvest-choice-panel {
+  gap: 1px;
+  padding: 1px;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__heading {
+  align-items: baseline;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  gap: 4px;
+  width: 100%;
+  min-height: 0;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__title {
+  width: auto;
+  max-width: 100%;
+  overflow: visible;
+  flex: 0 0 auto;
+  font-size: 9px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__instruction {
+  min-width: 0;
+  flex: 1 1 auto;
+  width: auto;
+  max-width: 100%;
+  overflow: visible;
+  text-overflow: clip;
+  font-size: 7px;
+  line-height: 1.1;
+  text-align: right;
+  white-space: normal;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-controls {
+  gap: 2px;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suits legend {
+  margin: 0;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button {
+  font: 700 25px/1 Arial, sans-serif;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button[data-suit-color="red"] {
+  color: #ff6670;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button[data-suit-color="black"] {
+  color: #171717;
+  background: #f4ead5;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button[data-suit-color="red"][aria-pressed="true"],
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .fanjian-combined-suit-options button[data-suit-color="black"][aria-pressed="true"] {
+  background: #302411;
+  color: #fff4d1;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-zones {
+  gap: 1px;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-hand {
+  gap: 1px;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-zone-title {
+  margin: 0;
+  font-size: 7px;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-backs {
+  width: min(100%, 182px);
+  min-height: 66px;
+  gap: 2px;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-public-position {
+  height: 66px;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__footer {
+  justify-content: flex-end;
+  gap: 2px;
+  min-height: 44px;
+}
+.game-shell .card-pool-target-stage.fanjian-combined-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm {
+  box-sizing: border-box;
+  flex: 0 0 64px;
+  width: 64px;
+  min-width: 64px;
+  max-width: 64px;
+  min-height: 44px;
+  padding-inline: 6px;
+}
+.game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select {
+  max-height: var(--fanjian-combined-max-height, none);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-padding-block: 6px;
+  scrollbar-width: thin;
+}
+.game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select > .card-pool-panel__heading,
+.game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select > .fanjian-combined-controls,
+.game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select > .card-pool-panel__target-public-zones,
+.game-shell .fanjian-combined-stage .card-pool-panel--actor-target-select > .card-pool-panel__footer {
+  flex-shrink: 0;
+}
+@media (max-width: 360px) {
+  .game-shell .fanjian-combined-stage .fanjian-combined-suit-options {
+    grid-template-columns: repeat(2, minmax(44px, 1fr));
+  }
+}
+
+.game-shell [data-retaliation-pool="true"] .card-pool-panel--actor-target-select {
+  max-height: var(--retaliation-pool-max-height, none);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-padding-block: 6px;
+}
+
+/* §10.53: H4 only; CardFace, COST Frames and PAC keep their own geometry. */
+@media (max-width: 520px) {
+  .game-shell .public-card-display-journey-copy {
+    width: min(340px, calc(100vw - 32px));
+    max-width: min(340px, calc(100vw - 32px));
+  }
+}
+.public-card-display-journey-copy .public-h4-player {
+  color: #d3bf8d;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: normal;
+}
+
+/* §10.53-F1: one compact, readable treatment for proven player names in
+   H4, public PAC and viewer-private Console copy. */
+.game-shell .message-player-name,
+.game-shell .public-h4-player {
+  color: #d3bf8d;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+  line-height: inherit;
+}
+.game-shell .public-card-display-journey-copy .message-player-name,
+.game-shell .public-card-display-journey-copy .public-h4-player {
+  font-size: 12px;
+}
+.game-shell .play-table > .public-activity-chip > strong .message-player-name {
+  font-size: 12px;
+}
+.game-shell .play-table > .public-activity-chip > small .message-player-name {
+  font-size: 10px;
+}
+.game-shell .local-player-dock .console-guidance .decision-status strong .message-player-name,
+.game-shell .local-player-dock .console-guidance .decision-status em .message-player-name {
+  font-size: 11px;
+}
+.game-shell .local-player-dock .console-guidance .decision-status em.lust-order-guidance .message-player-name {
+  color: #d3bf8d;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+}
+.game-shell .local-player-dock .turn-controls > [data-action-extras="true"] > .serpent-control[data-serpent-spear-control="true"] {
+  box-sizing: border-box;
+  min-width: 78px;
+  max-width: 104px;
+  min-height: 44px;
+  padding: 6px 8px;
+  overflow: visible;
+  text-align: center;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  line-height: 1.1;
+  flex: 0 1 auto;
+}
+@media (max-width: 520px) {
+  .game-shell .local-player-dock .console-guidance .decision-status strong .message-player-name,
+  .game-shell .local-player-dock .console-guidance .decision-status em .message-player-name {
+    font-size: 10px;
+  }
+}
+
+/* §10.57: true Skip controls share the adjacent Use/Confirm action grammar;
+   only the semantic voluntary-Skip class changes the palette to red. */
+.game-shell .wtk-action-button,
+.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__secondary.wtk-skip-action,
+.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__confirm,
+.game-shell .target-card-picker-actions[data-skip-visible="true"] > .wtk-action-button,
+.game-shell .local-player-dock .turn-controls[data-skip-visible="true"] [data-action-slot="decline"] > .wtk-action-button,
+.game-shell .local-player-dock .turn-controls[data-skip-visible="true"] [data-action-slot="primary"] > button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 6px 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 2px;
+  font: 700 9px/1.1 Arial, sans-serif;
+  letter-spacing: .06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.game-shell .wtk-skip-action {
+  background: #8b302a;
+  border-color: #c3a46b;
+  color: #fff2dc;
+}
+.game-shell .wtk-action-button:focus-visible,
+.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__confirm:focus-visible,
+.game-shell .target-card-picker-actions[data-skip-visible="true"] > .primary:focus-visible,
+.game-shell .local-player-dock .turn-controls[data-skip-visible="true"] [data-action-slot="primary"] > button:focus-visible {
+  outline: 2px solid #f0cf7e;
+  outline-offset: 2px;
+}
+.game-shell .wtk-action-button:disabled,
+.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__confirm:disabled,
+.game-shell .target-card-picker-actions[data-skip-visible="true"] > .primary:disabled,
+.game-shell .local-player-dock .turn-controls[data-skip-visible="true"] [data-action-slot="primary"] > button:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
+.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__secondary {
+  flex: 0 0 auto;
+  min-width: 48px;
+  padding-inline: 7px;
+}
+.game-shell .target-card-picker-actions[data-skip-visible="true"] {
+  gap: 6px;
+}
+.game-shell .target-card-picker-actions[data-skip-visible="true"] > button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline: 6px;
 }

@@ -1228,10 +1228,12 @@ for (const viewport of [
       const box = card.getBoundingClientRect();
       return { x: box.x, y: box.y, width: box.width, height: box.height };
     }));
-    const [stageBox, surfaceBox, panelBox, dockBefore, menuBox, guidanceBox, seatBoxes] = await Promise.all([
+    const [stageBox, surfaceBox, panelBox, dockBefore, menuBox, guidanceBox, seatBoxes, tableBox, inspectedSeatBox] = await Promise.all([
       stage.boundingBox(), surface.boundingBox(), panel.boundingBox(), dockAtSelectedTarget,
       page.locator(".stage-system-menu-trigger").boundingBox(), page.locator(".local-player-dock .console-guidance").boundingBox(),
       page.locator(".player-board [data-player-anchor]").evaluateAll((seats) => seats.map((seat) => { const box = seat.getBoundingClientRect(); return { x: box.x, y: box.y, width: box.width, height: box.height }; })),
+      page.locator(".play-table").boundingBox(),
+      page.locator(`[data-player-anchor="${inspected.id}"]`).boundingBox(),
     ]);
     expect(stageBox).not.toBeNull();
     expect(surfaceBox).not.toBeNull();
@@ -1273,7 +1275,20 @@ for (const viewport of [
       expect(Math.abs(equipmentCardBoxes[0].y - equipmentCardBoxes[1].y)).toBeLessThanOrEqual(1);
       for (const cardBox of equipmentCardBoxes) expect(cardBox.width).toBeGreaterThanOrEqual(27);
     }
-    expect(surfaceBox.width / stageBox.width).toBeLessThanOrEqual(0.82);
+    if (viewport.width <= 520) {
+      const expectedLeft = await page.evaluate(({ seatId, tableLeft, tableWidth, panelWidth }) => {
+        const seat = document.querySelector(`[data-player-anchor="${seatId}"]`).getBoundingClientRect();
+        const viewportLeft = window.visualViewport?.offsetLeft ?? 0;
+        const viewportRight = viewportLeft + (window.visualViewport?.width ?? innerWidth);
+        const safeLeft = Math.max(tableLeft + 8, viewportLeft + 8);
+        const safeRight = Math.min(tableLeft + tableWidth - 8, viewportRight - 8);
+        return Math.min(Math.max(seat.left + seat.width / 2 - panelWidth / 2, safeLeft), safeRight - panelWidth);
+      }, { seatId: inspected.id, tableLeft: tableBox.x, tableWidth: tableBox.width, panelWidth: surfaceBox.width });
+      expect(Math.abs(surfaceBox.x - expectedLeft)).toBeLessThanOrEqual(1);
+      expect(surfaceBox.y).toBeGreaterThanOrEqual(inspectedSeatBox.y + inspectedSeatBox.height + 7);
+    } else {
+      expect(surfaceBox.width / stageBox.width).toBeLessThanOrEqual(0.82);
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     await attachScreenshot(testInfo, `server-opponent-inspect-${viewport.width}`, page);
     await saveInspectionScreenshot(page, `server-opponent-inspect-${viewport.width}.png`);

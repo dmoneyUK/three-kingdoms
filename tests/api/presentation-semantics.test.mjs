@@ -96,6 +96,80 @@ test("public Equipment facts require a committed real equip and never infer a pl
   }]), null, "an unproven later equip supersedes older retained results without inventing H4");
 });
 
+test("Bumper Harvest pick facts require the one committed public root, reveal, chooser and face", () => {
+  const checkpoint = identity(3, "harvest-choice-checkpoint");
+  const rootEvent = {
+    id: "harvest-root-event", type: "card", action: "play", presentation: true,
+    publicSequence: 1, resolutionId: "harvest-root-resolution",
+    card: { id: "harvest-root-card", kind: "BumperHarvest", suit: "♣", rank: "7" },
+    bumperHarvestRoot: { semantics: "PROVEN", sourceId: "p1", cardId: "harvest-root-card",
+      interactionId: checkpoint.interactionId, rootFrameId: checkpoint.rootFrameId },
+  };
+  const chosen = { id: "revealed-card-1", kind: "Overindulgence", suit: "♠", rank: "6" };
+  const revealEvent = {
+    id: "harvest-reveal-event", type: "cards", action: "reveal", presentation: false,
+    resolutionId: rootEvent.resolutionId, cards: [chosen],
+  };
+  const outcomeLabel = "Test Player 2 took 6♠ Overindulgence from Bumper Harvest";
+  const proof = {
+    semantics: "PROVEN", eventId: "harvest-pick-event", interactionId: checkpoint.interactionId,
+    rootFrameId: checkpoint.rootFrameId, rootEventId: rootEvent.id,
+    rootResolutionId: rootEvent.resolutionId, rootCardId: rootEvent.card.id,
+    revealEventId: revealEvent.id, sourceId: "p1", actorId: "p2", card: chosen,
+  };
+  const pickEvent = {
+    id: proof.eventId, type: "message", message: outcomeLabel, presentation: true,
+    publicSequence: 3, resolutionId: rootEvent.resolutionId, actorId: "p2",
+    publicFact: {
+      semantics: "PROVEN", visibility: "PUBLIC", interactionId: checkpoint.interactionId,
+      frameId: checkpoint.rootFrameId, rootEventId: rootEvent.id, category: "CARD_OBTAINED",
+      actorId: "p2", affectedPlayerIds: ["p2"], label: "Overindulgence", outcomeLabel,
+      effect: { kind: "bumper_harvest_pick", label: "Bumper Harvest" },
+      bumperHarvestPickProof: proof,
+      committedIdentity: checkpoint,
+    },
+  };
+  const frames = [{ frameId: checkpoint.rootFrameId, parentFrameId: null,
+    origin: { originSourceId: "p1", originEffect: "BumperHarvest", originalTargetIds: ["p1", "p2", "p3", "p4"] } }];
+  const project = (timeline, supportingPublicEvents = []) => collectPublicPresentationEventFacts({
+    timeline, supportingPublicEvents, identity: checkpoint, frames, rootEventId: rootEvent.id,
+  });
+  const valid = project([rootEvent, revealEvent, pickEvent]).find((fact) => fact.eventId === pickEvent.id);
+  assert.equal(valid?.category, "CARD_OBTAINED");
+  assert.equal(valid?.outcomeLabel, outcomeLabel);
+  assert.equal(valid?.effect?.kind, "bumper_harvest_pick");
+  assert.deepEqual(valid?.bumperHarvestPick, {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: pickEvent.id, order: 3,
+    actorId: "p2", rootEventId: rootEvent.id, chosenCardId: chosen.id,
+    chosenFace: { kind: chosen.kind, suit: chosen.suit, rank: chosen.rank },
+    committedIdentity: checkpoint,
+  });
+  assert.equal(Object.hasOwn(valid ?? {}, "bumperHarvestPickProof"), false, "internal proof is not copied into the public snapshot");
+  const projectedFromDisplayEvents = project([rootEvent, pickEvent], [revealEvent])
+    .find((fact) => fact.eventId === pickEvent.id);
+  assert.equal(projectedFromDisplayEvents?.outcomeLabel, outcomeLabel,
+    "a non-presented but public reveal may prove the face without becoming a display event");
+  assert.equal(project([rootEvent, pickEvent]).some((fact) => fact.eventId === pickEvent.id), false,
+    "a pick fact fails closed when its supporting public reveal is absent");
+
+  const invalidTimelines = [
+    [rootEvent, revealEvent, pickEvent, { ...pickEvent }],
+    [rootEvent, revealEvent, { ...pickEvent, publicFact: { ...pickEvent.publicFact,
+      bumperHarvestPickProof: { ...proof, actorId: "p3" } } }],
+    [rootEvent, { ...revealEvent, cards: [{ ...chosen, id: "different-card" }] }, pickEvent],
+    [rootEvent, revealEvent, { ...pickEvent, actorId: "p3" }],
+    [rootEvent, revealEvent, { ...pickEvent, publicFact: { ...pickEvent.publicFact,
+      rootEventId: "other-root" } }],
+    [rootEvent, revealEvent, { ...pickEvent, message: "A different public result." }],
+    [rootEvent, revealEvent, { ...pickEvent, publicFact: { ...pickEvent.publicFact,
+      bumperHarvestPickProof: { ...proof, revealEventId: "missing-reveal" } } }],
+  ];
+  for (const timeline of invalidTimelines) {
+    assert.equal(project(timeline).some((fact) => fact.eventId === pickEvent.id && fact.effect?.kind === "bumper_harvest_pick"),
+      false, "a duplicate or mismatched commitment cannot publish a Harvest pick fact");
+  }
+});
+
 test("public semantic projection fails closed for empty, stale, private, and unproven facts", () => {
   const empty = projectPublicPresentationSemantics({ identity: null, events: [], nextDecision: null });
   assert.deepEqual(empty, { identity: null, event: null, events: [], nextDecision: null, viewerNegationChoice: null });

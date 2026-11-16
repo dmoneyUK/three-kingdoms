@@ -773,7 +773,7 @@ test("Sky Piercing Halberd keeps ORDERED progress through child Dying and resume
   setEquipment(source.id, { weapon: card("SkyPiercingHalberd", "halberd-ordered-dying-weapon") });
   setTurn(game.code, source.seat, "play");
 
-  const launched = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetIds: [first.id, second.id, third.id] });
+  const launched = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetIds: [first.id, second.id, third.id], preserveResponse: true });
   assert.equal(launched.status, 200, JSON.stringify(launched.data));
   assert.equal(launched.data.room.presentationV2.groupResolution.resolutionSemantics, "ORDERED");
   assert.deepEqual(launched.data.room.presentationV2.groupResolution.targetIds, [first.id, second.id, third.id]);
@@ -797,13 +797,18 @@ test("Sky Piercing Halberd keeps ORDERED progress through child Dying and resume
   assert.deepEqual(dyingObserver.presentationSnapshot.groupParticipantProgress.orderedAttackRoot, dyingRootProof, "the child-Dying root link is public and viewer-equal");
 
   const dyingPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
-  const dyingActorId = dyingPending.actorId;
+  assert.equal(dyingPending.kind, "shared_response_window");
+  const dyingActorId = first.id;
   const dyingActorIndex = game.room.players.findIndex((player) => player.id === dyingActorId);
   const dyingActorMember = game.members[dyingActorIndex];
   const peachByPlayer = new Map([[first.id, firstPeach.id], [second.id, secondPeach.id], [third.id, thirdPeach.id]]);
   const peachId = peachByPlayer.get(dyingActorId);
   assert.ok(dyingActorMember && peachId, `expected a Peach-capable rescuer, got ${dyingActorId}`);
-  const rescued = await requestAndSettle("give_peach", { code: game.code, token: dyingActorMember.token, cardId: peachId, preserveResponse: true });
+  for (const member of game.members.filter((member) => member.token !== dyingActorMember.token)) {
+    const passed = await request("skip_rescue", { code: game.code, token: member.token, windowId: dyingPending.windowId });
+    assert.equal(passed.status, 200, JSON.stringify(passed.data));
+  }
+  const rescued = await request("give_peach", { code: game.code, token: dyingActorMember.token, cardId: peachId, windowId: dyingPending.windowId });
   assert.equal(rescued.status, 200, JSON.stringify(rescued.data));
   assert.equal(rescued.data.room.currentAction.kind, "response");
   assert.equal(rescued.data.room.currentAction.actorId, second.id);

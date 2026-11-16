@@ -443,14 +443,16 @@ test("Retaliation selection clears locally while Skip remains authoritative", as
   const dialog = await loadPicker(page, { width: 390 });
   const handZone = dialog.locator('[data-target-card-zone="hand"]');
 
-  await expect(dialog.getByRole("button", { name: "Skip" })).toBeVisible();
+  const skip = dialog.getByRole("button", { name: "Skip" });
+  await expect(skip).toBeVisible();
+  await expect(skip).toHaveClass(/wtk-skip-action/);
   await handZone.click();
   await expect(handZone).toHaveAttribute("aria-pressed", "true");
   await handZone.click();
   await expect(handZone).toHaveAttribute("aria-pressed", "false");
   expect(await page.evaluate(() => window.__browserActions.filter((entry) => ["trigger", "decline_trigger"].includes(entry.action)))).toEqual([]);
 
-  await dialog.getByRole("button", { name: "Skip" }).click();
+  await skip.click();
   await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "decline_trigger").map((entry) => entry.action))).toEqual(["decline_trigger"]);
 });
 

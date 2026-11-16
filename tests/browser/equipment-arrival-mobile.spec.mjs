@@ -303,7 +303,7 @@ test("mobile equipment arrival anchors remain correct across 4, 6, 8 and 10 seat
 
 test("real Worker/D1 equip publishes one actor-bound arrival to the owner and an independent mobile observer", async ({ browser, request }, testInfo) => {
   test.setTimeout(60_000);
-  const viewport = { width: 390, height: 844 };
+  const viewport = { width: 440, height: 766 };
   const bow = { id: "worker-e1f-kirin-bow", kind: "KirinBow", suit: "♥", rank: "Q" };
   const seededResponse = await request.post(`${workerApi}/__test/seed-playing-game`, { data: {
     phase: "play",
@@ -363,6 +363,21 @@ test("real Worker/D1 equip publishes one actor-bound arrival to the owner and an
     await expect(observerReveal).toBeVisible({ timeout: 12_000 });
     await expect(ownerReveal).toHaveAttribute("data-public-zone-transition-event-id", event.id);
     await expect(ownerReveal).toHaveAttribute("data-public-zone-transition-destination", "EQUIPMENT");
+    const h4 = ownerPage.locator('[data-public-card-announcement-fixed-upper="true"]').filter({ hasText: "equipped" });
+    await expect(h4).toBeVisible();
+    await expect.poll(() => ownerReveal.evaluate((node) => node.getAnimations()[0]?.currentTime ?? 0)).toBeGreaterThan(600);
+    const geometry = await ownerPage.evaluate((eventId) => {
+      const h4 = document.querySelector('[data-public-card-announcement-fixed-upper="true"]');
+      const card = document.querySelector(`.active-table-reveal[data-settlement-event-id="${eventId}"] .played-card`);
+      const seats = [...document.querySelectorAll('.player-board > [data-player-anchor]')].map((seat) => seat.getBoundingClientRect());
+      const mini = document.querySelector('.local-player-dock .local-equipment-slot').getBoundingClientRect();
+      return { h4: h4?.getBoundingClientRect().toJSON(), card: card?.getBoundingClientRect().toJSON(), upperBottom: Math.max(...seats.map((seat) => seat.bottom)), miniHeight: mini.height };
+    }, event.id);
+    console.log("EQUIP_CENTRE", JSON.stringify(geometry));
+    expect(geometry.h4).toBeTruthy(); expect(geometry.card).toBeTruthy();
+    expect(Math.abs(geometry.h4.top - geometry.upperBottom - geometry.miniHeight)).toBeLessThanOrEqual(2);
+    expect(geometry.card.top).toBeGreaterThanOrEqual(geometry.h4.bottom + 3);
+
     await expect(observerReveal).toHaveAttribute("data-public-zone-transition-event-id", event.id);
     await expect(ownerPage.locator(`.active-table-reveal[data-public-zone-transition-card-id="${bow.id}"]`)).toHaveCount(1);
     await expect(observerPage.locator(`.active-table-reveal[data-public-zone-transition-card-id="${bow.id}"]`)).toHaveCount(1);

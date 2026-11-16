@@ -104,6 +104,14 @@ function coherentBoundary(overrides = {}) {
   };
 }
 
+test("snapshot admits only the safe public Draw Phase decision fields", () => {
+  const input = { presentationV2: presentation(scene()), currentAction: null, actionRevision: "draw" };
+  const decision = { semantics: "PROVEN", visibility: "PUBLIC", actorId: "A", actionLabels: ["Heroic"], allowSkip: true };
+  assert.deepEqual(composePresentationSnapshot({ ...input, publicDrawPhaseDecision: { ...decision, privateCardIds: ["secret"] } }).publicDrawPhaseDecision, decision);
+  assert.equal(composePresentationSnapshot({ ...input, publicDrawPhaseDecision: { ...decision, visibility: "PRIVATE" } }).publicDrawPhaseDecision, null);
+  assert.equal(composePresentationSnapshot({ ...input, publicDrawPhaseDecision: { ...decision, actionLabels: [""] } }).publicDrawPhaseDecision, null);
+});
+
 test("a resumed interaction retains committed child outcomes without admitting another interaction", () => {
   const priorIdentity = { interactionId: "interaction-1", rootFrameId: "root-frame", checkpointId: "child-checkpoint", presentationRevision: 2 };
   const fact = (eventId, order, category, identity = priorIdentity) => ({

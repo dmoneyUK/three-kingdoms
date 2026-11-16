@@ -52,6 +52,10 @@ export async function request(action, values = {}) {
     delete values.preserveResponse;
     delete values.preserveNegationWindow;
   }
+  if (["respond", "decline_response", "give_peach", "skip_rescue"].includes(action) && values.code && values.token && values.windowId === undefined && !values.context?.windowId) {
+    const preview = await state(values.code, values.token);
+    if (preview.data.currentAction?.sharedWindow) values = { ...values, windowId: preview.data.currentAction.sharedWindow.windowId };
+  }
   if (["respond", "decline_response"].includes(action) && values.code && values.token) {
     const current = await state(values.code, values.token);
     const windowId = current.data.currentAction?.negationWindowId;
@@ -151,8 +155,26 @@ export async function requestAndSettle(action, values = {}) {
     }) ?? options[0];
     if (selected) actionValues = { ...actionValues, providerId: action === "respond" ? selected.providerId : selected.effectId };
   }
+  const sharedBefore = actionValues.code && ["respond", "decline_response", "give_peach", "skip_rescue"].includes(action)
+    ? (await state(actionValues.code, actionValues.token)).data.currentAction?.sharedWindow?.windowId : null;
   const result = await request(action, actionValues);
   if (actionValues.code && result.status === 200 && !preserveResponse && !["start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) {
+    if (sharedBefore) {
+      // Domain regressions ask this test helper to settle one decision. Other
+      // real authenticated participants explicitly Pass; production never does
+      // this automatically. Shared-window privacy/arbitration tests use request.
+      const members = membersByCode.get(actionValues.code) ?? [];
+      for (const member of members) {
+        const current = await state(actionValues.code, member.token);
+        const views = current.data.isTestController
+          ? await Promise.all(current.data.players.filter((player) => player.isHost || player.isTestPlayer).map((player) => state(actionValues.code, member.token, false, player.id))) : [current];
+        for (const { data } of views) if (data.currentAction?.sharedWindow?.windowId === sharedBefore
+          && !data.currentAction.sharedWindow.locked && data.isMyAction) {
+          await request("decline_response", { code: actionValues.code, token: member.token, windowId: sharedBefore,
+            ...(data.isTestController ? { context: { meId: data.meId } } : {}) });
+        }
+      }
+    }
     if (responseWindowId && !preserveNegationWindow) await advanceNegationWindow(actionValues.code, actionValues.token, responseWindowId);
     else if (!responseWindowId && !submittedNegation && !["respond", "decline_response"].includes(action)) await fastForwardNegationWindow(actionValues.code, actionValues.token);
     await drainEmptyPrivateDecisions(actionValues.code, actionValues.token);
@@ -560,4 +582,20 @@ export async function openBorrowedSwordScenario({ attack = true, weaponKind = "G
   assert.equal(stage1.currentAction.actorId, source.id); assert.deepEqual(stage1.currentAction.legalActions, ["choose_borrowed_sword_target"]);
   if (choose) assert.equal((await requestAndSettle("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: target.id })).status, 200);
   return { game, host, alice, source, holder, target, weapon, attackId: attackCard?.id, stage1Revision: stage1.actionRevision };
+}
+
+/** Explicit persisted pre-shared-window fixture. Only old-save regressions use
+ * this adapter; fresh-window arbitration tests never change their storage. */
+export function restoreSequentialDyingFixture(code, actorId) {
+  const room = JSON.parse(query(`SELECT json_object('pending',pending_json,'envelope',causal_envelope_json) FROM rooms WHERE code=${quote(code)}`));
+  const window = JSON.parse(room.pending);
+  assert.equal(window.kind, 'shared_response_window');
+  assert.equal(window.continuation.mode, 'DYING_PEACH');
+  assert.ok(window.priorityPlayerIds.includes(actorId));
+  const pending = {...window.continuation.dying, actorId, deadline:0,
+    remainingIds:window.priorityPlayerIds.slice(window.priorityPlayerIds.indexOf(actorId)+1)};
+  delete pending.sharedRescue;
+  const envelope = room.envelope ? JSON.parse(room.envelope) : null;
+  if(envelope) envelope.frames.find(frame=>frame.frameId===envelope.activeFrameId).current.resolvingPlayerId=actorId;
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(pending))},causal_envelope_json=${envelope?quote(JSON.stringify(envelope)):'NULL'} WHERE code=${quote(code)}`);
 }

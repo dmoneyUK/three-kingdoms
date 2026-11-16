@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { routePublicDiscardTransition } from "../app/public-discard-transition.ts";
+import { publicDiscardAnnouncement, routePublicDiscardTransition } from "../app/public-discard-transition.ts";
 import { layoutPublicResultCards } from "../app/public-result-layout.ts";
 
 const actorId = "player-1";
@@ -55,6 +55,45 @@ test("single public discard routes and replayed events do not claim twice", () =
   assert.equal(routePublicDiscardTransition({ ...input, retiredTransitionIds: [input.event.id] }), null);
 });
 
+test("discard H4 lists every committed physical card in order and falls back to count-only for incomplete identity", () => {
+  const cards = [
+    { id: "first-attack", kind: "Attack", rank: "A", suit: "♠" },
+    { id: "second-attack", kind: "Attack", rank: "A", suit: "♠" },
+    { id: "peach", kind: "Peach", rank: "10", suit: "♥" },
+  ];
+  const input = setup({ cards, transitions: cards.map((card) => transition("committed-discard", card.id, { zone: "HAND", ownerId: actorId })) });
+  const route = routePublicDiscardTransition(input);
+  const announcement = publicDiscardAnnouncement({ event: input.event, route, players: [{ id: actorId, name: "Player One" }] });
+  assert.deepEqual(announcement.cards, [
+    { id: "first-attack", name: "Attack", rank: "A", suit: "♠" },
+    { id: "second-attack", name: "Attack", rank: "A", suit: "♠" },
+    { id: "peach", name: "Peach", rank: "10", suit: "♥" },
+  ]);
+  assert.equal(announcement.headline, "Player One discarded 3 cards: A♠ Attack · A♠ Attack · 10♥ Peach.");
+
+  const incompleteCards = [{ id: "unknown-face", kind: "Attack" }];
+  const incomplete = setup({ cards: incompleteCards, eventType: "card", transitions: [transition("committed-discard", "unknown-face", { zone: "HAND", ownerId: actorId })] });
+  const fallback = publicDiscardAnnouncement({ event: incomplete.event, route: routePublicDiscardTransition(incomplete), players: [{ id: actorId, name: "Player One" }] });
+  assert.equal(fallback.headline, "Player One discarded 1 card.");
+  assert.equal(fallback.cards, null);
+});
+
+test("complete discard H4 retains exact rank, suit, name, identity and order for one and seven cards", () => {
+  const ranks = ["A", "2", "3", "4", "5", "6", "7"];
+  const suits = ["♠", "♣", "♥", "♦", "♠", "♣", "♥"];
+  for (const count of [1, 7]) {
+    const cards = Array.from({ length: count }, (_, index) => ({
+      id: `card-${index}`, kind: index % 2 ? "Attack" : "Dodge", rank: ranks[index], suit: suits[index],
+    }));
+    const input = setup({ cards, eventType: count === 1 ? "card" : "cards",
+      transitions: cards.map((card) => transition("committed-discard", card.id, { zone: "HAND", ownerId: actorId })) });
+    const route = routePublicDiscardTransition(input);
+    const announcement = publicDiscardAnnouncement({ event: input.event, route, players: [{ id: actorId, name: "Player One" }] });
+    assert.deepEqual(announcement.cards, cards.map((card) => ({ id: card.id, name: card.kind, rank: card.rank, suit: card.suit })));
+    assert.match(announcement.headline, new RegExp(`discarded ${count} ${count === 1 ? "card" : "cards"}:`));
+  }
+});
+
 test("a committed play root is not double-claimed by the generic discard route", () => {
   const card = { id: "played-root", kind: "Duel" };
   const input = setup({
@@ -83,10 +122,19 @@ test("private, Dismantle, R4-owned, mismatched, duplicate, or incomplete proof f
 });
 
 test("timeline identity must match the active event's actor, sequence, and physical cards", () => {
-  const card = { id: "physical-card", kind: "Attack" };
-  const input = setup({ cards: [card], transitions: [transition("committed-discard", card.id, { zone: "HAND", ownerId: actorId })] });
+  const cards = [{ id: "first-card", kind: "Attack" }, { id: "second-card", kind: "Peach" }];
+  const transitions = cards.map((card) => transition("committed-discard", card.id, { zone: "HAND", ownerId: actorId }));
+  const input = setup({ cards, transitions });
   const mismatch = { ...input.event, cards: [{ id: "different-card", kind: "Peach" }] };
   assert.equal(routePublicDiscardTransition({ ...input, timeline: [mismatch] }), null);
+  const reorderedEvent = { ...input.event, cards: [...cards].reverse() };
+  assert.equal(routePublicDiscardTransition({ ...input, timeline: [reorderedEvent] }), null,
+    "the active event and authoritative timeline must agree on card order");
+  assert.equal(routePublicDiscardTransition({ ...input, event: reorderedEvent, timeline: [reorderedEvent] }), null,
+    "H4 card order must match the same committed event's physical card order");
+  const reorderedTransitions = { ...input.event, publicZoneTransitions: [...transitions].reverse() };
+  assert.equal(routePublicDiscardTransition({ ...input, event: reorderedTransitions, timeline: [reorderedTransitions] }), null,
+    "the displayed CardFace group must retain the committed order too");
   const duplicate = { ...input.event };
   assert.equal(routePublicDiscardTransition({ ...input, timeline: [input.event, duplicate] }), null);
 });

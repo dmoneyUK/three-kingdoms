@@ -1,5 +1,5 @@
 import { CARD_DEFINITIONS } from "./cards";
-import type { EquipmentZone } from "./model";
+import type { CardKind, CardRank, CardSuit, EquipmentZone } from "./model";
 
 /** Stable public identity shared by the public event and the current decision. */
 export type PresentationSemanticIdentity = {
@@ -26,6 +26,19 @@ export type PublicPresentationEventCategory =
   | "STAGE_COMPLETED";
 
 export type PublicEffectDescriptor = { kind: string; label?: string };
+
+/** Minimal public receipt for one committed choice from a revealed Harvest pool. */
+export type PublicBumperHarvestPick = {
+  semantics: "PROVEN";
+  visibility: "PUBLIC";
+  eventId: string;
+  order: number;
+  actorId: string;
+  rootEventId: string;
+  chosenCardId: string;
+  chosenFace: { kind: CardKind; suit: CardSuit; rank: CardRank };
+  committedIdentity: PresentationSemanticIdentity;
+};
 
 export type PublicZoneEndpoint =
   | { zone: "HAND" | "EQUIPMENT" | "JUDGEMENT"; ownerId: string; slot?: keyof EquipmentZone }
@@ -64,6 +77,7 @@ export type PublicPresentationEvent = {
   outcomeLabel?: string;
   amount?: number;
   effect?: PublicEffectDescriptor;
+  bumperHarvestPick?: PublicBumperHarvestPick;
 };
 
 /** Minimal metadata appended to an already-committed public room event. */
@@ -84,23 +98,50 @@ export type PublicPresentationEventFactDraft = {
   outcomeLabel?: string;
   amount?: number;
   effect?: PublicEffectDescriptor;
+  /** Extra server proof required before a Harvest pick can enter the public fact stream. */
+  bumperHarvestPickProof?: PublicBumperHarvestPickProof;
   /** Causal checkpoint captured by the server at the committed event. */
   committedIdentity?: PresentationSemanticIdentity;
+};
+
+/** A validated server fact enriched only by the shared proof collector. */
+export type PublicPresentationEventFactProjection = PublicPresentationEventFactDraft & {
+  bumperHarvestPick?: PublicBumperHarvestPick;
+};
+
+/** Server proof for one committed choice from the already-public Harvest pool. */
+export type PublicBumperHarvestPickProof = {
+  semantics: "PROVEN";
+  eventId: string;
+  interactionId: string;
+  rootFrameId: string;
+  rootEventId: string;
+  rootResolutionId: string;
+  rootCardId: string;
+  revealEventId: string;
+  sourceId: string;
+  actorId: string;
+  card: { id: string; kind: string; suit: string; rank: string };
 };
 
 /** Reads only structured, committed public log records; never inspects message text. */
 export function collectPublicPresentationEventFacts(input: {
   timeline: readonly unknown[];
+  /** Public, non-presented events that can prove a committed public outcome without becoming display facts. */
+  supportingPublicEvents?: readonly unknown[];
   identity: unknown;
   frames: readonly unknown[];
   rootEventId?: string | null;
-}): PublicPresentationEventFactDraft[] {
+}): PublicPresentationEventFactProjection[] {
   const current = identity(input.identity);
   if (!current) return [];
+  const proofTimeline = input.supportingPublicEvents?.length
+    ? [...input.timeline, ...input.supportingPublicEvents]
+    : input.timeline;
   const frameRows = input.frames.map(record).filter((frame): frame is Record<string, unknown> => Boolean(frame));
   if (!frameRows.length) return [];
   const frameIds = new Set(frameRows.flatMap((frame) => typeof frame.frameId === "string" ? [frame.frameId] : []));
-  const facts: PublicPresentationEventFactDraft[] = [];
+  const facts: PublicPresentationEventFactProjection[] = [];
   input.timeline.forEach((candidate) => {
     const event = record(candidate);
     if (!event || !nonEmptyString(event.id) || event.presentation === false || typeof event.privateToPlayerId === "string"
@@ -111,9 +152,17 @@ export function collectPublicPresentationEventFacts(input: {
       if (raw.semantics !== "PROVEN" || raw.visibility !== "PUBLIC"
         || raw.interactionId !== current.interactionId || !nonEmptyString(raw.frameId) || !frameIds.has(raw.frameId)) return;
       if (raw.category === "CARD_EQUIPPED" && !isCommittedPublicEquipmentFact(event, raw)) return;
+      const effect = record(raw.effect);
+      const hasHarvestPickProof = raw.bumperHarvestPickProof !== undefined;
+      if ((effect?.kind === "bumper_harvest_pick" || hasHarvestPickProof)
+        && !isCommittedPublicBumperHarvestPick(event, raw, proofTimeline, frameRows)) return;
+      const bumperHarvestPick = effect?.kind === "bumper_harvest_pick"
+        ? bumperHarvestPickFromCommittedFact(event, raw, current, order)
+        : null;
+      if ((effect?.kind === "bumper_harvest_pick" || hasHarvestPickProof) && !bumperHarvestPick) return;
       const frame = frameRows.find((row) => row.frameId === raw.frameId);
       if (raw.parentFrameId !== undefined && raw.parentFrameId !== (frame?.parentFrameId ?? undefined)) return;
-      const fact: PublicPresentationEventFactDraft = {
+      const fact: PublicPresentationEventFactProjection = {
         semantics: "PROVEN", visibility: "PUBLIC", eventId: event.id,
         ...(typeof event.resolutionId === "string" ? { resolutionId: event.resolutionId } : {}), order,
         interactionId: current.interactionId, frameId: raw.frameId,
@@ -127,6 +176,7 @@ export function collectPublicPresentationEventFacts(input: {
         ...(typeof raw.outcomeLabel === "string" ? { outcomeLabel: raw.outcomeLabel } : {}),
         ...(Number.isSafeInteger(raw.amount) && (raw.amount as number) >= 0 ? { amount: raw.amount as number } : {}),
         ...(record(raw.effect) ? { effect: raw.effect as { kind: string; label?: string } } : {}),
+        ...(bumperHarvestPick ? { bumperHarvestPick } : {}),
       };
       facts.push(fact);
       return;
@@ -241,6 +291,87 @@ function isCommittedPublicEquipmentFact(event: Record<string, unknown>, fact: Re
     && affectedPlayerIds?.length === 1 && affectedPlayerIds[0] === actorId;
 }
 
+function isCommittedPublicBumperHarvestPick(
+  event: Record<string, unknown>,
+  fact: Record<string, unknown>,
+  timeline: readonly unknown[],
+  frames: readonly Record<string, unknown>[],
+): boolean {
+  const proof = record(fact.bumperHarvestPickProof);
+  const card = record(proof?.card);
+  const effect = record(fact.effect);
+  const actorId = typeof event.actorId === "string" ? event.actorId : null;
+  const rootEventId = typeof proof?.rootEventId === "string" ? proof.rootEventId : null;
+  const revealEventId = typeof proof?.revealEventId === "string" ? proof.revealEventId : null;
+  const matchingPickEvents = timeline.map(record).filter((candidate): candidate is Record<string, unknown> =>
+    Boolean(candidate && candidate.id === event.id));
+  const rootMatches = rootEventId ? timeline.map(record).filter((candidate): candidate is Record<string, unknown> =>
+    Boolean(candidate && candidate.id === rootEventId)) : [];
+  const revealMatches = revealEventId ? timeline.map(record).filter((candidate): candidate is Record<string, unknown> =>
+    Boolean(candidate && candidate.id === revealEventId)) : [];
+  const root = rootMatches.length === 1 ? rootMatches[0] : null;
+  const reveal = revealMatches.length === 1 ? revealMatches[0] : null;
+  const rootCard = record(root?.card);
+  const rootProof = record(root?.bumperHarvestRoot);
+  const revealCards = Array.isArray(reveal?.cards) ? reveal.cards.map(record).filter((candidate): candidate is Record<string, unknown> => Boolean(candidate)) : [];
+  const matchingRevealedCards = revealCards.filter((revealed) => revealed.id === card?.id
+    && revealed.kind === card?.kind && revealed.suit === card?.suit && revealed.rank === card?.rank);
+  const cardDefinition = typeof card?.kind === "string" ? CARD_DEFINITIONS[card.kind as keyof typeof CARD_DEFINITIONS] : null;
+  const frame = frames.find((candidate) => candidate.frameId === proof?.rootFrameId);
+  const affected = Array.isArray(fact.affectedPlayerIds) ? fact.affectedPlayerIds : [];
+  return matchingPickEvents.length === 1 && event.type === "message"
+    && proof?.semantics === "PROVEN" && nonEmptyString(proof.eventId) && proof.eventId === event.id
+    && nonEmptyString(proof.interactionId) && proof.interactionId === fact.interactionId
+    && nonEmptyString(proof.rootFrameId) && proof.rootFrameId === frame?.frameId && (frame?.parentFrameId ?? null) === null
+    && nonEmptyString(rootEventId) && rootEventId === fact.rootEventId
+    && nonEmptyString(proof.rootResolutionId) && proof.rootResolutionId === event.resolutionId
+    && nonEmptyString(proof.rootCardId) && nonEmptyString(proof.sourceId) && nonEmptyString(proof.actorId)
+    && proof.actorId === actorId && fact.actorId === actorId && affected.length === 1 && affected[0] === actorId
+    && effect?.kind === "bumper_harvest_pick" && fact.category === "CARD_OBTAINED"
+    && rootMatches.length === 1 && root?.type === "card" && root.action === "play" && root.presentation !== false
+    && root?.resolutionId === proof.rootResolutionId && rootCard?.id === proof.rootCardId && rootCard.kind === "BumperHarvest"
+    && rootProof?.semantics === "PROVEN" && rootProof.sourceId === proof.sourceId && rootProof.cardId === proof.rootCardId
+    && rootProof.interactionId === proof.interactionId && rootProof.rootFrameId === proof.rootFrameId
+    && revealMatches.length === 1 && reveal?.type === "cards" && reveal.action === "reveal" && reveal.presentation === false
+    && typeof reveal.privateToPlayerId !== "string" && reveal?.resolutionId === proof.rootResolutionId
+    && nonEmptyString(proof.revealEventId) && nonEmptyString(card?.id) && nonEmptyString(card?.kind)
+    && nonEmptyString(card?.suit) && nonEmptyString(card?.rank) && matchingRevealedCards.length === 1
+    && cardDefinition?.name === fact.label
+    && nonEmptyString(fact.outcomeLabel) && fact.outcomeLabel === event.message;
+}
+
+function bumperHarvestPickFromCommittedFact(
+  event: Record<string, unknown>,
+  fact: Record<string, unknown>,
+  current: PresentationSemanticIdentity,
+  order: number,
+): PublicBumperHarvestPick | null {
+  const proof = record(fact.bumperHarvestPickProof);
+  const card = record(proof?.card);
+  const committedIdentity = identity(fact.committedIdentity);
+  const actorId = typeof event.actorId === "string" ? event.actorId : null;
+  const rootEventId = typeof proof?.rootEventId === "string" ? proof.rootEventId : null;
+  const cardKind = typeof card?.kind === "string" && CARD_DEFINITIONS[card.kind as CardKind] ? card.kind as CardKind : null;
+  const suit = card?.suit === "♥" || card?.suit === "♦" || card?.suit === "♣" || card?.suit === "♠" ? card.suit as CardSuit : null;
+  const rank = typeof card?.rank === "string" && ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"].includes(card.rank)
+    ? card.rank as CardRank : null;
+  if (!proof || !committedIdentity || !sameInteraction(committedIdentity, current)
+    || committedIdentity.presentationRevision > current.presentationRevision
+    || !nonEmptyString(event.id) || proof.eventId !== event.id
+    || !Number.isSafeInteger(event.publicSequence) || event.publicSequence !== order
+    || !actorId || proof.actorId !== actorId || fact.actorId !== actorId
+    || !rootEventId || fact.rootEventId !== rootEventId
+    || proof.interactionId !== committedIdentity.interactionId
+    || proof.rootFrameId !== committedIdentity.rootFrameId
+    || !nonEmptyString(card?.id) || !cardKind || !suit || !rank) return null;
+  return {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: event.id, order, actorId,
+    rootEventId, chosenCardId: card.id,
+    chosenFace: { kind: cardKind, suit, rank },
+    committedIdentity,
+  };
+}
+
 function sameIdentity(left: PresentationSemanticIdentity, right: PresentationSemanticIdentity): boolean {
   return left.interactionId === right.interactionId
     && left.rootFrameId === right.rootFrameId
@@ -263,6 +394,7 @@ function publicEvent(value: unknown, current: PresentationSemanticIdentity): Pub
   const item = record(value);
   const eventIdentity = identity(item?.identity);
   const affectedPlayerIds = uniqueStrings(item?.affectedPlayerIds, true);
+  const bumperHarvestPick = publicBumperHarvestPick(item?.bumperHarvestPick, item, current);
   if (!item || item.semantics !== "PROVEN" || item.visibility !== "PUBLIC" || !eventIdentity
     || !sameInteraction(eventIdentity, current) || eventIdentity.presentationRevision > current.presentationRevision
     || !nonEmptyString(item.eventId) || !Number.isSafeInteger(item.order) || (item.order as number) < 0
@@ -297,6 +429,29 @@ function publicEvent(value: unknown, current: PresentationSemanticIdentity): Pub
       kind: record(item.effect)!.kind as string,
       ...(typeof record(item.effect)!.label === "string" ? { label: record(item.effect)!.label as string } : {}),
     } } : {}),
+    ...(bumperHarvestPick ? { bumperHarvestPick } : {}),
+  };
+}
+
+function publicBumperHarvestPick(value: unknown, event: Record<string, unknown> | null, current: PresentationSemanticIdentity): PublicBumperHarvestPick | null {
+  const item = record(value);
+  const committedIdentity = identity(item?.committedIdentity);
+  const face = record(item?.chosenFace);
+  const cardKind = typeof face?.kind === "string" && CARD_DEFINITIONS[face.kind as CardKind] ? face.kind as CardKind : null;
+  const suit = face?.suit === "♥" || face?.suit === "♦" || face?.suit === "♣" || face?.suit === "♠" ? face.suit as CardSuit : null;
+  const rank = typeof face?.rank === "string" && ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"].includes(face.rank)
+    ? face.rank as CardRank : null;
+  if (!item || !event || item.semantics !== "PROVEN" || item.visibility !== "PUBLIC"
+    || !committedIdentity || !sameInteraction(committedIdentity, current)
+    || committedIdentity.presentationRevision > current.presentationRevision
+    || item.eventId !== event.eventId || item.order !== event.order || item.actorId !== event.actorId
+    || item.rootEventId !== event.rootEventId || !nonEmptyString(item.chosenCardId)
+    || !cardKind || !suit || !rank || !nonEmptyString(event.eventId)
+    || !Number.isSafeInteger(event.order) || !nonEmptyString(event.actorId) || !nonEmptyString(event.rootEventId)) return null;
+  return {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: event.eventId, order: event.order as number,
+    actorId: event.actorId, rootEventId: event.rootEventId, chosenCardId: item.chosenCardId,
+    chosenFace: { kind: cardKind, suit, rank }, committedIdentity,
   };
 }
 
@@ -482,6 +637,7 @@ export function publicEventFactsFromPresentationV2(value: unknown, identityValue
       category: item.category, actorId: item.actorId,
       affectedPlayerIds: item.affectedPlayerIds ?? [], label: item.label,
       outcomeLabel: item.outcomeLabel, amount: item.amount, effect: item.effect,
+      bumperHarvestPick: item.bumperHarvestPick,
     }, current);
     return fact ? [fact] : [];
   }) : [];

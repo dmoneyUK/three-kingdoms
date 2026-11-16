@@ -5,6 +5,8 @@ const ACTIVE_KEY = "wtk.game-ux-trace.active.v2";
 const DOCUMENT_KEY = "wtk.game-ux-trace.document.v2";
 const LEGACY_DOCUMENT_KEY = "wtk.attack-dodge-ux-trace.document.v1";
 const MAX_TRACE_ENTRIES = 3_200;
+const LIFECYCLE_STAGES = new Set(["game-room-render-failure", "game-session-retired", "game-user-left", "game-screen-retry",
+  "room-poll-failure", "gameplay-action-response", "test-viewer-changed", "game-session-ended"]);
 const MAX_TRACE_JSON_CHARS = 1_700_000;
 const FLUSH_INTERVAL_MS = 1_500;
 
@@ -36,6 +38,8 @@ type AttackDodgeUxTraceDocument = {
   environment: TraceEnvironment;
   activeSession: TraceSession | null;
   droppedEntryCount: number;
+  lifecycleEntries?: AttackDodgeUxTraceEntry[];
+  finalRoomState?: { status: string | null; currentActionKind: string | null };
   entries: AttackDodgeUxTraceEntry[];
 };
 
@@ -256,6 +260,12 @@ export function recordAttackDodgeUxTrace(stage: string, data: Record<string, unk
     stage,
     data: safeData,
   };
+  if (LIFECYCLE_STAGES.has(stage)) {
+    const history = Array.isArray(trace.lifecycleEntries) ? trace.lifecycleEntries : [];
+    const previousSize = JSON.stringify(history).length;
+    trace.lifecycleEntries = [...history, entry].slice(-128);
+    estimatedDocumentChars += JSON.stringify(trace.lifecycleEntries).length - previousSize;
+  }
   trace.entries.push(entry);
   estimatedDocumentChars += JSON.stringify(entry).length + 1;
   while (trace.entries.length > MAX_TRACE_ENTRIES || estimatedDocumentChars > MAX_TRACE_JSON_CHARS) {
@@ -525,6 +535,13 @@ export function recordPublicGameRoomSnapshot(room: unknown, source: "poll" | "ac
     && (lastTimelineLength === 0 || (rawTimeline[lastTimelineLength - 1] as Record<string, unknown> | undefined)?.id === lastTimelineTailId);
   const timelineStartIndex = samePrefix ? lastTimelineLength : 0;
   const summary = summarizePublicGameRoom(room, timelineStartIndex);
+  const trace = readDocument();
+  if (trace) {
+    const value = room && typeof room === "object" ? room as PublicTraceRoom : {};
+    const action = value.currentAction && typeof value.currentAction === "object" ? value.currentAction as Record<string, unknown> : {};
+    trace.finalRoomState = { status: typeof value.status === "string" ? value.status : null,
+      currentActionKind: typeof action.kind === "string" ? action.kind : null };
+  }
   const fingerprint = JSON.stringify(summary.state);
   if (fingerprint !== lastRoomStateFingerprint) {
     recordAttackDodgeUxTrace("game-room-state", { source, ...summary.state });

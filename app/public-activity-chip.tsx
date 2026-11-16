@@ -3,13 +3,16 @@
 import { useLayoutEffect, useRef } from "react";
 import { publicCorridorWidth } from "./public-corridor";
 import type { PublicActivityStatus } from "../game/public-activity";
+import { VerifiedPlayerCopy } from "./verified-player-copy";
 import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 import {
   committedPublicStageLayout,
+  canPlaceRetainedPublicActivity,
   canRetainPublicStageLayout,
   publicStageLayoutCandidateMatchesElement,
   sharedPublicStageMatchesElement,
   usePublicStageLayout,
+  type SharedPublicStageLayout,
 } from "./public-stage-layout-context";
 
 const SAFE_OBSTACLES = [
@@ -47,6 +50,36 @@ const EXTERNAL_ACTION_OBSTACLES = ".local-player-dock, .local-hand-rail, .local-
 
 type Rect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
 type ProtectedRect = Rect & { sources: string[]; ids: string[] };
+export type ActivitySceneIdentity = {
+  scopeId: string;
+  interactionId: string | null;
+  eventId: string;
+  cardId: string;
+};
+
+export function shouldRetainPublicActivityPlacement(input: {
+  previousVisible: boolean;
+  previousRoomId?: string;
+  roomId: string;
+  previousViewerId?: string;
+  viewerId: string;
+  status: string;
+  previousScene?: ActivitySceneIdentity | null;
+  currentScene: ActivitySceneIdentity | null;
+  previousRectMatchesCurrentSize: boolean;
+  geometrySafe: boolean;
+}): boolean {
+  const sameScene = Boolean(input.previousScene && input.currentScene
+    && sameActivityScene(input.previousScene, input.currentScene));
+  return input.previousVisible
+    && input.previousRoomId === input.roomId
+    && input.previousViewerId === input.viewerId
+    && Boolean(input.status.trim())
+    && sameScene
+    && input.previousRectMatchesCurrentSize
+    && input.geometrySafe;
+}
+
 type PlacementMemory = {
   inputKey: string;
   reuseKey: string;
@@ -59,6 +92,15 @@ type PlacementMemory = {
   lastTraceSignature: string;
   compact: boolean;
   activeRevealKey: string | null;
+  roomId?: string;
+  viewerId?: string;
+  scene?: ActivitySceneIdentity | null;
+};
+
+type SharedPlacementMemory = {
+  roomId: string;
+  viewerId: string;
+  shared: SharedPublicStageLayout;
 };
 
 const ACTIVITY_CHIP_GAP = 2;
@@ -135,6 +177,52 @@ function protectedRects(table: HTMLElement): ProtectedRect[] {
     }
   }
   return [...rectsByGeometry.values()];
+}
+
+function currentActivitySceneIdentity(table: HTMLElement, viewerId: string): ActivitySceneIdentity | null {
+  const candidates = [...table.querySelectorAll<HTMLElement>(
+    '.public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="reveal"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="move"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="parked"]',
+  )].flatMap((card) => {
+    const display = card.closest<HTMLElement>(".public-card-display");
+    if (!display || !display.dataset.publicCardRootEventId
+      || display.dataset.publicCardViewerId !== viewerId
+      || display.dataset.publicCardLayoutViewerId !== viewerId) return [];
+    return [{
+      scopeId: display.dataset.publicCardRootEventId,
+      interactionId: display.dataset.publicCardInteractionId ?? null,
+      eventId: card.dataset.publicCardJourneyEventId ?? "",
+      cardId: card.dataset.publicCardJourneyCardId ?? "",
+      phase: card.dataset.publicCardJourneyPhase,
+    }];
+  }).filter((candidate) => candidate.scopeId && candidate.eventId && candidate.cardId);
+  const active = candidates.filter((candidate) => candidate.phase !== "parked");
+  const owners = active.length > 0 ? active : candidates;
+  if (owners.length !== 1) return null;
+  const { scopeId, interactionId, eventId, cardId } = owners[0];
+  return { scopeId, interactionId, eventId, cardId };
+}
+
+function sameActivityScene(left: ActivitySceneIdentity | null | undefined, right: ActivitySceneIdentity | null) {
+  return Boolean(left && right && left.scopeId === right.scopeId && left.interactionId === right.interactionId
+    && left.eventId === right.eventId && left.cardId === right.cardId);
+}
+
+function safeCurrentActivityRect(table: HTMLElement, activity: Rect): boolean {
+  const tableRect = table.getBoundingClientRect();
+  const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
+  const consoleRect = consoleGuidance ? visibleRect(consoleGuidance) : null;
+  if (!consoleRect) return false;
+  const viewportLeft = Math.max(0, window.visualViewport?.offsetLeft ?? 0);
+  const viewportTop = Math.max(0, window.visualViewport?.offsetTop ?? 0);
+  const viewportRight = Math.min(window.innerWidth, viewportLeft + (window.visualViewport?.width ?? window.innerWidth));
+  const viewportBottom = Math.min(window.innerHeight, viewportTop + (window.visualViewport?.height ?? window.innerHeight));
+  const leftBound = Math.max(tableRect.left + 8, viewportLeft + 8);
+  const rightBound = Math.min(tableRect.right - 8, viewportRight - 8);
+  const topBound = Math.max(tableRect.top + 8, viewportTop + 8);
+  const gapAboveConsole = consoleRect.top - activity.bottom;
+  if (activity.left < leftBound || activity.right > rightBound || activity.top < topBound
+    || activity.bottom > viewportBottom || gapAboveConsole < -1 || gapAboveConsole > 8) return false;
+  return protectedRects(table).every((obstacle) => !intersects(activity, obstacle, 0));
 }
 
 function rectSummary(rect: Rect | DOMRect | null | undefined): Rect | null {
@@ -458,8 +546,9 @@ function placeChip(
   return finishTrace("hidden:no-safe-candidate", undefined, "no-collision-free-candidate");
 }
 
-export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoolReadOnly = false, stableLowerCenter = false }: {
+export function PublicActivityChip({ status, roomId, viewerId, seatLayoutKey, harvestPoolReadOnly = false, stableLowerCenter = false }: {
   status: PublicActivityStatus;
+  roomId: string;
   viewerId: string;
   seatLayoutKey: string;
   harvestPoolReadOnly?: boolean;
@@ -469,7 +558,11 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
   const chipRef = useRef<HTMLDivElement>(null);
   const sharedTraceRef = useRef("");
   const placementMemoryRef = useRef<PlacementMemory | null>(null);
+  const sharedPlacementMemoryRef = useRef<SharedPlacementMemory | null>(null);
   const stableLowerCenterLatchRef = useRef(false);
+  const statusIdentity = JSON.stringify([
+    status.kind, status.heading ?? status.text, status.stage ?? null,
+  ]);
 
   useLayoutEffect(() => {
     const chip = chipRef.current;
@@ -485,6 +578,8 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
       frame = window.requestAnimationFrame(() => {
         const currentChip = chipRef.current;
         const currentTable = currentChip?.closest<HTMLElement>(".play-table");
+        const currentCopyIdentity = currentChip?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+        const currentScene = currentTable ? currentActivitySceneIdentity(currentTable, viewerId) : null;
         // A parked card from an earlier interaction may still own the shared
         // layout context after the server has advanced to an ordinary turn.
         // The turn PAC belongs to the current phase and must not wait for that
@@ -492,26 +587,40 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
         const currentSharedStage = status.kind !== "turn"
           ? currentTable ? committedPublicStageLayout(currentTable) ?? sharedPublicStage : sharedPublicStage
           : null;
-        if (currentChip && currentTable && currentSharedStage
+        if (status.kind === "turn") sharedPlacementMemoryRef.current = null;
+        const retained = sharedPlacementMemoryRef.current;
+        const retainedMatchesCurrentScene = Boolean(retained && currentCopyIdentity
+          && retained.roomId === roomId && retained.viewerId === viewerId
+          && retained.shared.layout.scene.roomId === roomId
+          && retained.shared.layout.scene.viewerId === viewerId
+          && currentScene && sameActivityScene(retained.shared.layout.scene, currentScene));
+        const chosenSharedStage = currentChip && currentTable && currentSharedStage
           && (sharedPublicStageMatchesElement(currentTable, currentSharedStage)
-            || canRetainPublicStageLayout(currentTable, currentSharedStage))) {
+            || canRetainPublicStageLayout(currentTable, currentSharedStage))
+          ? currentSharedStage
+          : currentChip && currentTable && retainedMatchesCurrentScene && retained
+            && canRetainPublicStageLayout(currentTable, retained.shared)
+            ? retained.shared : null;
+        if (currentChip && currentTable && chosenSharedStage) {
           const tableRect = currentTable.getBoundingClientRect();
-          const activityRect = currentSharedStage.layout.activity;
+          const activityRect = chosenSharedStage.layout.activity;
           currentChip.style.width = `${activityRect.right - activityRect.left}px`;
           currentChip.style.left = `${activityRect.left - tableRect.left}px`;
           currentChip.style.top = `${activityRect.top - tableRect.top}px`;
           currentChip.style.visibility = "visible";
-          currentChip.dataset.publicActivityLayout = `shared-${currentSharedStage.layout.scene.phase.toLowerCase()}`;
-          currentChip.dataset.publicStageLayoutIdentity = currentSharedStage.layout.identity;
+          currentChip.dataset.publicActivityLayout = `shared-${chosenSharedStage.layout.scene.phase.toLowerCase()}`;
+          currentChip.dataset.publicStageLayoutIdentity = chosenSharedStage.layout.identity;
+          sharedPlacementMemoryRef.current = { roomId, viewerId, shared: chosenSharedStage };
           delete currentChip.dataset.publicActivityPlacementBlockers;
-          const signature = `visible:${currentSharedStage.layout.identity}`;
+          const signature = `visible:${chosenSharedStage.layout.identity}`;
           if (signature !== sharedTraceRef.current && isAttackDodgeUxTraceActive()) {
             sharedTraceRef.current = signature;
             recordAttackDodgeUxTrace("public-activity-shared-transition", {
-              reason: "shared-layout", visible: true, rootEventId: currentSharedStage.layout.scene.scopeId,
-              eventId: currentSharedStage.primaryEventId, publicCardId: currentSharedStage.primaryCardId,
-              viewerId, phase: currentSharedStage.layout.scene.phase, generation: currentSharedStage.layout.generation,
-              identity: currentSharedStage.layout.identity, rect: activityRect,
+              reason: chosenSharedStage === retained?.shared ? "same-scene-safe-reuse" : "shared-layout",
+              visible: true, rootEventId: chosenSharedStage.layout.scene.scopeId,
+              eventId: chosenSharedStage.primaryEventId, publicCardId: chosenSharedStage.primaryCardId,
+              viewerId, phase: chosenSharedStage.layout.scene.phase, generation: chosenSharedStage.layout.generation,
+              identity: chosenSharedStage.layout.identity, rect: activityRect,
             });
           }
           return;
@@ -523,8 +632,102 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
             interactionId: sharedPublicStage?.layout.scene.interactionId,
           }));
         if (currentChip && sharedStageCandidate) {
+          // A new generation may move the Console seam before its shared
+          // layout commits. Re-anchor the current public PAC copy at the live
+          // seam only while the same room/viewer/card scene remains proven
+          // and the actual H4, Seats and controls leave it safe.
+          if (retainedMatchesCurrentScene && retained && currentTable) {
+            const tableRect = currentTable.getBoundingClientRect();
+            const oldActivity = retained.shared.layout.activity;
+            const safeLeft = Math.max(tableRect.left + 8, window.visualViewport?.offsetLeft ?? 0);
+            const safeRight = Math.min(tableRect.right - 8,
+              (window.visualViewport?.offsetLeft ?? 0) + (window.visualViewport?.width ?? window.innerWidth));
+            const width = Math.min(oldActivity.right - oldActivity.left, safeRight - safeLeft);
+            const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
+            const consoleTop = consoleGuidance?.getBoundingClientRect().top;
+            const height = currentChip.getBoundingClientRect().height || oldActivity.bottom - oldActivity.top;
+            if (Number.isFinite(consoleTop) && width > 0 && height > 0) {
+              const left = Math.max(safeLeft, Math.min((tableRect.left + tableRect.right - width) / 2, safeRight - width));
+              const activity = {
+                left,
+                right: left + width,
+                top: consoleTop! - height,
+                bottom: consoleTop!,
+              };
+              if (canPlaceRetainedPublicActivity(currentTable, retained.shared, activity)) {
+                currentChip.style.width = `${width}px`;
+                currentChip.style.left = `${left - tableRect.left}px`;
+                currentChip.style.top = `${activity.top - tableRect.top}px`;
+                currentChip.style.visibility = "visible";
+                currentChip.dataset.publicActivityLayout = "shared-safe-reflow";
+                currentChip.dataset.publicStageLayoutIdentity = retained.shared.layout.identity;
+                sharedPlacementMemoryRef.current = {
+                  ...retained,
+                  shared: {
+                    ...retained.shared,
+                    layout: { ...retained.shared.layout, activity },
+                  },
+                };
+                delete currentChip.dataset.publicActivityPlacementBlockers;
+                const signature = `visible:retained:${retained.shared.layout.identity}:${activity.top}`;
+                if (signature !== sharedTraceRef.current && isAttackDodgeUxTraceActive()) {
+                  sharedTraceRef.current = signature;
+                  recordAttackDodgeUxTrace("public-activity-shared-transition", {
+                    reason: "same-scene-safe-reflow", visible: true,
+                    rootEventId: retained.shared.layout.scene.scopeId,
+                    eventId: retained.shared.primaryEventId, publicCardId: retained.shared.primaryCardId,
+                    viewerId, phase: retained.shared.layout.scene.phase,
+                    generation: retained.shared.layout.generation,
+                    identity: retained.shared.layout.identity, rect: activity,
+                  });
+                }
+                return;
+              }
+            }
+          }
+          const priorPlacement = placementMemoryRef.current;
+          const measuredChipRect = rectSummary(currentChip.getBoundingClientRect());
+          const previousRectMatchesCurrentSize = Boolean(priorPlacement?.rect && measuredChipRect
+            && Math.abs(priorPlacement.rect.width - measuredChipRect.width) <= 1
+            && Math.abs(priorPlacement.rect.height - measuredChipRect.height) <= 1
+            && (getComputedStyle(currentChip).visibility === "hidden"
+              || sameRect(priorPlacement.rect, measuredChipRect)));
+          const geometrySafe = Boolean(priorPlacement?.rect
+            && safeCurrentActivityRect(currentTable, priorPlacement.rect));
+          const retainPreviousPlacement = Boolean(priorPlacement && currentCopyIdentity
+            && shouldRetainPublicActivityPlacement({
+              previousVisible: priorPlacement.visible,
+              previousRoomId: priorPlacement.roomId,
+              roomId,
+              previousViewerId: priorPlacement.viewerId,
+              viewerId,
+              status: currentCopyIdentity,
+              previousScene: priorPlacement.scene,
+              currentScene,
+              previousRectMatchesCurrentSize,
+              geometrySafe,
+            }));
+          if (retainPreviousPlacement && priorPlacement?.rect) {
+            // React may briefly restore the JSX default visibility while a
+            // shared generation is being remeasured. Reapply the prior safe
+            // geometry for the current public copy after the collision proof.
+            const tableRect = currentTable.getBoundingClientRect();
+            currentChip.style.width = `${priorPlacement.rect.width}px`;
+            currentChip.style.left = `${priorPlacement.rect.left - tableRect.left}px`;
+            currentChip.style.top = `${priorPlacement.rect.top - tableRect.top}px`;
+            currentChip.style.visibility = "visible";
+            currentChip.dataset.publicActivityLayout = "shared-pending-safe-retained";
+            delete currentChip.dataset.publicStageLayoutIdentity;
+            delete currentChip.dataset.publicActivityPlacementBlockers;
+            placementMemoryRef.current = {
+              ...priorPlacement,
+              scene: currentScene ?? priorPlacement.scene,
+            };
+            return;
+          }
           // Hold PAC until the provider's current generation reaches this
           // viewer. Independent placement here can overlap the active Frame.
+          sharedPlacementMemoryRef.current = null;
           currentChip.style.visibility = "hidden";
           currentChip.dataset.publicActivityLayout = "pending-shared-stage-layout";
           delete currentChip.dataset.publicStageLayoutIdentity;
@@ -543,7 +746,8 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
           return;
         }
         delete chip.dataset.publicStageLayoutIdentity;
-        placementMemoryRef.current = placeChip(
+        sharedPlacementMemoryRef.current = null;
+        const placement = placeChip(
           chip,
           table,
           harvestPoolReadOnly,
@@ -554,6 +758,12 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
           seatLayoutKey,
           placementMemoryRef.current,
         );
+        placementMemoryRef.current = {
+          ...placement,
+          roomId,
+          viewerId,
+          scene: currentActivitySceneIdentity(table, viewerId),
+        };
       });
     };
     const relevantMutation = (node: Node): boolean => {
@@ -615,7 +825,9 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
       window.removeEventListener("resize", schedule);
       window.visualViewport?.removeEventListener("resize", schedule);
     };
-  }, [harvestPoolReadOnly, status.kind, status.stage, status.text, stableLowerCenter, viewerId, seatLayoutKey, sharedPublicStage]);
+  }, [harvestPoolReadOnly, roomId, statusIdentity, status.kind, status.stage, status.text, stableLowerCenter, viewerId, seatLayoutKey, sharedPublicStage]);
+
+  if (status.kind === "none") return null;
 
   return <div
     ref={chipRef}
@@ -630,7 +842,14 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
     aria-label={[status.text, status.stage].filter(Boolean).join(" ")}
     style={{ visibility: "hidden" }}
   >
-    <strong data-public-activity-heading="true">{status.heading ?? status.text}</strong>
-    {status.stage && <small data-public-activity-stage="true">{status.stage}</small>}
+    <strong data-public-activity-heading="true">
+      <VerifiedPlayerCopy
+        message={status.heading ?? status.text}
+        segments={status.headingSegments ?? (status.heading === undefined || status.heading === status.text ? status.textSegments : undefined)}
+      />
+    </strong>
+    {status.stage && <small data-public-activity-stage="true">
+      <VerifiedPlayerCopy message={status.stage} segments={status.stageSegments} />
+    </small>}
   </div>;
 }

@@ -310,8 +310,9 @@ test("real Dauntless damage offers Sima Yi Retaliation and a second event replac
     const dauntlessGeometry = await captureNoticeLayout(page, notice, testInfo, { name: "retaliation-440x956", width: 440, height: 956 });
     expect(dauntlessGeometry.notice.animationName).toBe("none");
     await skill.click();
-    const dialog = page.getByRole("dialog", { name: "Retaliation target card selection" });
+    const dialog = page.locator('div.battlefield-choice-stage[aria-label="Retaliation target card selection"]');
     await expect(dialog).toBeVisible();
+    await dialog.getByRole("tab", { name: /Equipment/ }).click();
     const publicWeapon = dialog.getByRole("button", { name: "Equipment: Zhuge Crossbow", exact: true });
     await publicWeapon.click();
     await expect(publicWeapon).toHaveAttribute("aria-pressed", "true");
@@ -351,4 +352,27 @@ test("real Dauntless damage offers Sima Yi Retaliation and a second event replac
   } finally {
     await yuePage.close();
   }
+});
+
+test("Retaliation uses the shared pool and obtains the selected public weapon", async ({ page, request }) => {
+  const basic = card("Peach", "retaliation-pool-cost", "♥");
+  const hidden = card("Dodge", "retaliation-pool-hidden", "♣");
+  const weapon = card("ZhugeCrossbow", "retaliation-pool-weapon");
+  const game = await seedRoom(request, { yueHand: [basic, hidden], yueEquipment: { weapon }, roomLabel: "retaliation-shared-pool" });
+  await beginDauntless(request, game);
+  const trigger = await request.post(`${API}/api/rooms`, { data: { action: "trigger", code: game.code, token: game.players[1].token, providerId: "yue_jin_dauntless", cardIds: [basic.id] } });
+  expect(trigger.ok(), await trigger.text()).toBeTruthy();
+  const sima = await openPlayer(page, game, 0, { width: 440, height: 844 });
+  await page.locator(`.local-player-dock[data-player-anchor="${sima.id}"]`).getByRole("button", { name: "Retaliation", exact: true }).click();
+  const pool = page.locator('div.battlefield-choice-stage[aria-label="Retaliation target card selection"]');
+  await expect(pool).toBeVisible();
+  await expect(pool.locator('.card-pool-panel--actor-target-select')).toHaveCount(1);
+  await expect(pool.getByRole("button", { name: "Skip", exact: true })).toBeVisible();
+  await expect(pool).not.toContainText(hidden.id);
+  await pool.getByRole("tab", { name: /Equipment/ }).click();
+  await pool.getByRole("button", { name: "Equipment: Zhuge Crossbow", exact: true }).click();
+  const committed = page.waitForResponse((response) => response.url() === `${API}/api/rooms` && response.request().method() === "POST" && response.request().postDataJSON()?.providerId === "sima_yi_fankui");
+  await pool.getByRole("button", { name: "Use Retaliation", exact: true }).click();
+  const result = await committed; expect(result.ok()).toBeTruthy();
+  const body = await result.json(); expect(body.room.myHand.map((item) => item.id)).toContain(weapon.id);
 });

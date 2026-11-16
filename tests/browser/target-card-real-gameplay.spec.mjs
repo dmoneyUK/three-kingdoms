@@ -694,8 +694,8 @@ for (const kind of ["Steal", "Dismantle"]) {
     if (kind === "Dismantle" && await page.evaluate(() => innerWidth) <= 520) {
       await expect(page.locator('[data-public-card-display="true"] [data-public-card-announcement="true"]')).toHaveCount(0);
     }
-    await expect(dialog.locator('.card-pool-panel__target-choice[data-choice-key-type="concealed-position"]')).toHaveCount(2);
-    await dialog.getByRole("tab", { name: "EQUIPMENT 1" }).click();
+    await expect(dialog.getByRole("button", { name: /^Choose hidden Hand position \d+$/ })).toHaveCount(2);
+    await dialog.getByRole("tab", { name: "EQUIPMENT (1)" }).click();
     await expect(dialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true })).toBeVisible();
 
     const sourceBeforeObserver = await roomView(request, seed, 0);
@@ -726,7 +726,7 @@ for (const kind of ["Steal", "Dismantle"]) {
       await spectatorPage.close();
     }
 
-    await dialog.getByRole("tab", { name: "JUDGEMENT 1" }).click();
+    await dialog.getByRole("tab", { name: "JUDGEMENT (1)" }).click();
     const judgment = dialog.getByRole("button", { name: "Judgement: Lightning", exact: true });
     await judgment.click({ position: { x: 8, y: 8 } });
     await expect(judgment).toHaveAttribute("aria-pressed", "true");
@@ -1007,11 +1007,13 @@ for (const kind of ["Steal", "Dismantle"]) {
           expect(chipRect.x).toBeGreaterThanOrEqual(tableRect.x);
           expect(chipRect.y).toBeGreaterThanOrEqual(tableRect.y);
           expect(chipRect.x + chipRect.width).toBeLessThanOrEqual(tableRect.x + tableRect.width);
-          expect(chipRect.y + chipRect.height).toBeLessThanOrEqual(tableRect.y + tableRect.height);
+          const consoleRect = await viewerPage.locator(".local-player-dock .console-guidance").boundingBox();
+          expect(consoleRect).toBeTruthy();
+          expect(Math.abs(consoleRect.y - (chipRect.y + chipRect.height))).toBeLessThanOrEqual(2);
         }
         if (chipRect && index !== 1) {
           const layout = await chip.getAttribute("data-public-activity-layout");
-          expect(layout).toMatch(/^fixed-lower-center(?:-blocked)?$/);
+          expect(layout).toMatch(/^(?:fixed-lower-center(?:-blocked)?|shared-parked)$/);
         }
         const targetPicker = viewerPage.locator(".card-pool-panel--actor-target-select");
         if (await targetPicker.isVisible().catch(() => false) && chipRect) {
@@ -2585,12 +2587,54 @@ test("Retaliation Skip is a distinct authorized server action at 440x766", async
     const skill = page.getByRole("button", { name: "Retaliation", exact: true });
     await expect(skill).toBeEnabled({ timeout: 15_000 });
     await tapMobile(page, skill);
-    const dialog = await expectModal(page, "Retaliation", "Choose 1 card to obtain", "Use Retaliation");
+    const dialog = page.locator('.card-pool-target-stage[data-retaliation-pool="true"] .card-pool-panel--actor-target-select');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAccessibleName("Retaliation target card selection");
     await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
     const use = dialog.getByRole("button", { name: "Use Retaliation", exact: true });
     await expect(use).toBeDisabled();
     const skip = dialog.getByRole("button", { name: "Skip", exact: true });
     await expect(skip).toBeEnabled();
+    const actionStyles = await Promise.all([skip, use].map((button) => button.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return {
+        fontFamily: style.fontFamily,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        lineHeight: style.lineHeight,
+        letterSpacing: style.letterSpacing,
+        textTransform: style.textTransform,
+        display: style.display,
+        alignItems: style.alignItems,
+        justifyContent: style.justifyContent,
+        height: rect.height,
+        width: rect.width,
+        x: rect.x,
+        y: rect.y,
+        right: rect.right,
+        bottom: rect.bottom,
+        backgroundColor: style.backgroundColor,
+        borderRadius: style.borderRadius,
+        borderWidth: style.borderWidth,
+      };
+    })));
+    const [skipStyle, useStyle] = actionStyles;
+    for (const property of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "textTransform", "display", "alignItems", "justifyContent", "height", "borderRadius", "borderWidth"]) {
+      expect(skipStyle[property], `${property} matches the Use action`).toBe(useStyle[property]);
+    }
+    expect(skipStyle.height).toBeGreaterThanOrEqual(44);
+    expect(skipStyle.width).toBeGreaterThanOrEqual(44);
+    expect(skipStyle.backgroundColor).toBe("rgb(139, 48, 42)");
+    expect(useStyle.backgroundColor).not.toBe(skipStyle.backgroundColor);
+    const footerItems = await dialog.locator(".card-pool-panel__footer > *").evaluateAll((items) => items.map((element) => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x, right: rect.right, top: rect.top, bottom: rect.bottom };
+    }));
+    expect(footerItems).toHaveLength(3);
+    expect(footerItems.every((rect) => rect.x >= 0 && rect.right <= 440 && rect.bottom <= 766)).toBe(true);
+    expect(footerItems[0].right).toBeLessThanOrEqual(footerItems[1].x + 2);
+    expect(footerItems[1].right).toBeLessThanOrEqual(footerItems[2].x + 2);
     const rects = await Promise.all([skip, use].map((button) => button.evaluate((element) => {
       const { x, y, right, bottom } = element.getBoundingClientRect();
       return { x, y, right, bottom };

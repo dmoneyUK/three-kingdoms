@@ -14,6 +14,7 @@ export const rooms = sqliteTable("rooms", {
   discardJson: text("discard_json"),
   logJson: text("log_json"),
   pendingJson: text("pending_json"),
+  sharedResponseCommitId: text("shared_response_commit_id"),
   skillStateJson: text("skill_state_json"),
   causalEnvelopeJson: text("causal_envelope_json"),
   testRoom: integer("test_room", { mode: "boolean" }).notNull().default(false),
@@ -121,3 +122,12 @@ export const botDemoRateLimits = sqliteTable("bot_demo_rate_limits", {
   hourBucket: integer("hour_bucket").primaryKey(),
   botAddCount: integer("bot_add_count").notNull().default(0),
 }, (table) => [check("bot_demo_rate_limits_add_count_check", sql`${table.botAddCount} BETWEEN 0 AND 12`)]);
+
+// Private provisional choices; only a single selected contribution can commit.
+export const sharedResponseWindowSubmissions = sqliteTable("shared_response_window_submissions", {
+  roomId: text("room_id").notNull().references(() => rooms.id, { onDelete: "cascade" }),
+  windowId: text("window_id").notNull(),
+  playerId: text("player_id").notNull().references(() => players.id, { onDelete: "cascade" }),
+  submissionJson: text("submission_json").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.roomId, table.windowId, table.playerId] })]);

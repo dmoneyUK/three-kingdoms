@@ -119,7 +119,9 @@ test("five-seat phone Attack selection uses portrait touch and retap deselection
       expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 
       await page.keyboard.press("Escape");
-      await attack.tap();
+      // The centered 44px Details action intentionally wins taps on its own
+      // area. Retap the visible card corner to exercise card deselection.
+      await attack.tap({ position: { x: 6, y: 6 } });
       await expect(page.locator('[data-hand-card-id="browser-target-eligibility-attack"]')).toHaveAttribute("data-card-selected", "false");
       await expect(page.locator(".opponent-player-card.selected-target")).toHaveCount(0);
       await expect(page.locator('[data-console-surface="local-operation"] button.primary')).toBeDisabled();
@@ -457,10 +459,18 @@ test("live five-seat mobile targeting preserves private authority, Inspector, De
     const board = table?.querySelector(".player-board");
     const seatBox = rect(seat);
     const shellBox = rect(shell);
+    const tableBox = rect(table);
+    const viewportLeft = visualViewport?.offsetLeft ?? 0;
+    const viewportRight = viewportLeft + (visualViewport?.width ?? innerWidth);
+    const safeLeft = tableBox ? Math.max(tableBox.left + 8, viewportLeft + 8) : 0;
+    const safeRight = tableBox ? Math.min(tableBox.right - 8, viewportRight - 8) : innerWidth;
+    const preferredLeft = seatBox && shellBox ? seatBox.left + seatBox.width / 2 - shellBox.width / 2 : 0;
     return {
       subjectId: panel?.dataset.inspectPlayerId,
       seat: seatBox,
       shell: shellBox,
+      side: seat?.dataset.sideColumn,
+      expectedLeft: Math.min(Math.max(preferredLeft, safeLeft), safeRight - (shellBox?.width ?? 0)),
       centerDelta: seatBox && shellBox
         ? Math.abs((seatBox.top + seatBox.height / 2) - (shellBox.top + shellBox.height / 2))
         : null,
@@ -472,6 +482,14 @@ test("live five-seat mobile targeting preserves private authority, Inspector, De
       viewportWidth: innerWidth,
     };
   }, blockedId);
+  const expectInspectorSeatAnchor = (geometry) => {
+    if (geometry.mobileMedia && geometry.side === "top") {
+      expect(Math.abs(geometry.shell.left - geometry.expectedLeft), JSON.stringify(geometry)).toBeLessThanOrEqual(1);
+      expect(geometry.shell.top, JSON.stringify(geometry)).toBeGreaterThanOrEqual(geometry.seat.bottom + 7);
+    } else {
+      expect(geometry.centerDelta, JSON.stringify(geometry)).toBeLessThanOrEqual(24);
+    }
+  };
   const openBlockedInspector = async () => {
     const inspectButton = blockedTarget.locator(".opponent-seat-inspect-button");
     if (await inspectButton.count()) await inspectButton.click();
@@ -493,7 +511,7 @@ test("live five-seat mobile targeting preserves private authority, Inspector, De
   await expect(inspector).toHaveAttribute("data-inspect-player-id", blockedId);
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const otherViewerInspectorGeometry = await inspectorAnchorMetrics();
-  expect(otherViewerInspectorGeometry.centerDelta, JSON.stringify(otherViewerInspectorGeometry)).toBeLessThanOrEqual(24);
+  expectInspectorSeatAnchor(otherViewerInspectorGeometry);
   expect(otherViewerInspectorGeometry.documentWidth).toBeLessThanOrEqual(otherViewerInspectorGeometry.viewportWidth);
   await expect(blockedTarget).not.toHaveClass(/selected-target/);
   await expect(page.locator(".decision-status")).not.toHaveAttribute("data-local-target-notice", "rejected");
@@ -516,7 +534,7 @@ test("live five-seat mobile targeting preserves private authority, Inspector, De
   await expect(inspector).toHaveAttribute("data-inspect-player-id", blockedId);
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const returnedViewerInspectorGeometry = await inspectorAnchorMetrics();
-  expect(returnedViewerInspectorGeometry.centerDelta, JSON.stringify(returnedViewerInspectorGeometry)).toBeLessThanOrEqual(24);
+  expectInspectorSeatAnchor(returnedViewerInspectorGeometry);
   await expect(page.locator(".decision-status")).not.toContainText("Cannot attack");
 
   await page.setViewportSize({ width: 440, height: 894 });

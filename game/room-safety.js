@@ -273,6 +273,7 @@ function normalizePresentationMeta(entry) {
       ...(typeof entry.bumperHarvestRoot.rootFrameId === "string" ? { rootFrameId: entry.bumperHarvestRoot.rootFrameId } : {}),
     };
   }
+  if (isRecord(entry.sharedResponseContribution)) metadata.sharedResponseContribution = { ...entry.sharedResponseContribution };
   return metadata;
 }
 
@@ -354,6 +355,8 @@ function normalizeCurrentAction(value) {
         ? { type: "target", targetIds: option.selection.targetIds.filter((id) => typeof id === "string"), ...(Number.isInteger(option.selection.min) ? { min: option.selection.min } : {}), ...(Number.isInteger(option.selection.max) ? { max: option.selection.max } : {}) }
       : isRecord(option.selection) && option.selection.type === "target_cards" && typeof option.selection.targetId === "string" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleKeys)
         ? { type: "target_cards", targetId: option.selection.targetId, min: option.selection.min, max: option.selection.max, eligibleKeys: option.selection.eligibleKeys.filter((id) => typeof id === "string") }
+      : isRecord(option.selection) && option.selection.type === "choice_and_target_cards" && typeof option.selection.targetId === "string" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.choices) && Array.isArray(option.selection.eligibleKeys)
+        ? { type: "choice_and_target_cards", choices: option.selection.choices.filter(isRecord).filter((choice) => typeof choice.id === "string" && typeof choice.label === "string").map((choice) => ({ id: choice.id, label: choice.label })), targetId: option.selection.targetId, min: option.selection.min, max: option.selection.max, eligibleKeys: option.selection.eligibleKeys.filter((id) => typeof id === "string") }
         : isRecord(option.selection) && option.selection.type === "choice" && Array.isArray(option.selection.choices) && Array.isArray(option.selection.eligibleHandKeys)
           ? { type: "choice", choices: option.selection.choices.filter(isRecord).filter((choice) => typeof choice.id === "string" && typeof choice.label === "string").map((choice) => ({ id: choice.id, label: choice.label })), eligibleHandKeys: option.selection.eligibleHandKeys.filter((id) => typeof id === "string"), ...(isRecord(option.selection.cardCountByChoice) ? { cardCountByChoice: Object.fromEntries(Object.entries(option.selection.cardCountByChoice).filter(([id, count]) => typeof id === "string" && Number.isInteger(count) && count >= 0)) } : {}) }
         : null;
@@ -404,6 +407,8 @@ function normalizeCurrentAction(value) {
     actorId: typeof value.actorId === "string" ? value.actorId : null,
     deadline: typeof value.deadline === "number" ? value.deadline : 0,
     reason: typeof value.reason === "string" ? value.reason : "Waiting for the next legal action",
+    ...(value.sharedWindow && typeof value.sharedWindow.windowId === "string" && typeof value.sharedWindow.locked === "boolean"
+      && ["pass", "intent", null].includes(value.sharedWindow.choice) ? { sharedWindow: { windowId: value.sharedWindow.windowId, locked: value.sharedWindow.locked, choice: value.sharedWindow.choice } } : {}),
     ...(typeof value.negationWindowId === "string" ? { negationWindowId: value.negationWindowId } : {}),
     legalActions: Array.isArray(value.legalActions) ? value.legalActions.filter((action) => typeof action === "string" && GAMEPLAY_ACTION_SET.has(action)) : [],
     ...(typeof value.canDeclareAttack === "boolean" ? { canDeclareAttack: value.canDeclareAttack } : {}),

@@ -1,31 +1,19 @@
-# HANDOVER — 当前执行交接
+# HANDOVER — 当前唯一代码任务（原 H4 未完成任务续做）
 
-## 当前唯一任务：PUBLIC-DISCARD-UX-01 / §10.36.1
+## 全游戏 H4 公共事实完整性与 HP/卡牌变化的通用复用修复
 
-**状态：IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。源实现提交 `bf327e76b11efcfefae2f14bc0f7ccfa8090d521` 已通过精确 SHA CI 并部署；不代表用户验收。** 仅实现同一成功的手牌顺手牵羊结算中，偷牌者与原持有人各自短暂私下看到同一真实牌面；其他玩家只看到匿名牌背。保护 E15 已部署待手机复验和独立待验收的 E16；不改规则，不创建子任务 ID。
+**状态：ORIGINAL TASK / PARTIALLY ACCEPTED / CORRECTION REQUIRED / NOT CLOSED。** 黄盖仅是最早发现 H4 信息区缺失的一个场景；**任务原目标是所有支持的公开游戏场景都不能再丢失 H4，新增明确要求：所有实际已提交、规则允许公开的生命和卡牌变化都必须呈现在 H4**。这是**同一未完成原任务**，不是新增 Huang Gai 专项、文案专项、或新编号。执行依据：最新 `docs/UX2-refine.md` 的现有 **§10.59 UNIVERSAL-H4-COMMITTED-FACT-COVERAGE-01**（该章节编号不变）。先阅读 `AGENTS.md`、该完整章节及 R0/R1/R2/R7/R8、`docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`，按其规定从本任务继续。
 
-### 设计与分支基线
+**已完成且仅部分通过的证据：** 代码 `32fd22c05969caaac19b52cb940c3dadd490a3a0` 已修复黄盖 Self Sacrifice 的 H4 显示并部署，原精确 SHA [Actions 43765286393](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43765286393) 全绿，Worker `569f1334-63f7-424c-b8e5-1195bd340072`。Owner 在 2026-11-15 22:40 UTC **只确认“黄盖信息显示通过”**；其 `lost 1 HP and drew 2 cards` 结果文案未通过，其他 Hero、正常 Draw/Discard、普通卡牌、Equipment、Dying/Negation/多个连续事实的完整覆盖均尚未验收。**不可关闭原任务**，也不可把黄盖显示成功表述为共享架构已通过。
 
-- 实现依据：远端 `ux-v2` 的 `docs/UX2-refine.md` §10.36.1（2026-11-04 22:40 UTC）；截至本次安全同步的最新文档 revision 为 **23:38 UTC**（远端 `407a5878`；设计合并提交 `3a4bf00e`）。更新只细化独立 §10.37 Fanjian 并新增 §10.38 Treachery 设计；未更改 §10.36.1 的合同，本 handover 仍只跟踪当前 §10.36.1 手机验收边界。
-- 源码基线：`cf779c6b5fa4a21c77de70706222734a45c70b97`；实现提交：`bf327e76b11efcfefae2f14bc0f7ccfa8090d521`。工作分支 `codex/ux2-judgement-seat-01`，已推送至 `origin/ux-v2`。实现提交推送前安全 rebase 到 `875e9628`；随后将 HANDOVER 更新安全 rebase 到远端最新 `407a5878`，仅并入 §10.37/§10.38 设计文档更新。
-- 精确 SHA Actions：[`41935465005`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/41935465005)，head SHA `bf327e76b11efcfefae2f14bc0f7ccfa8090d521`，结论 success。Browser startup/room smoke、Lint + fast tests、API tests、deploy 均通过；D1 migrations、Worker deploy 和 production smoke 均通过。Worker version：`ab45581b-bf45-4e05-9d89-1415e682114c`。独立 production `/api/health` 检查返回 HTTP 200 和 `{"ok":true,"worker":"available"}`。
+**Planner 已完成根因与架构审查，Agent 只执行：** 设计文档 §10.59 已列明代码路径、事实模型、唯一 H4 所有权、公共/私有边界、所有变化类型及逐步验收。特别注意：`app/api/rooms/route.ts` 的现有 `addCommittedPublicSkillOutcome` 只有黄盖 `lose_draw` 调用；`publicTriggerFactFor`、`resolveNormalDrawPhase`、`continueDyingResumeEffect`、`addDiscardEvent`、`resolveSourcedDamage`、`give_cards` / `discard_draw`、普通卡牌效果各自发布/处理，尚无全路径共用已提交结果。事实投影与 retained/H4 选择器不完全覆盖 `CARD_DISCARDED` 等类别；`app/page.tsx` 通用、弃牌、真实 CardFace、技能专用展示入口存在多所有权。不得只增加黄盖条件句或改一条字符串就宣称完成。**禁止 Agent 自行调查根因、重新设计、扩大产品行为或创建新任务编号**；遇到具体服务端证明不足，报告准确阻塞点给 Planner，不能编造事实。
 
-### 当前实现
+**当前唯一可执行的第一步（同一任务内部的 bounded slice）：**
+1. 在 `game/presentation-semantics.ts` 的现有公开事实契约上实施**可验证的 typed committed HP/card outcome**，覆盖已提交的 HP COST vs actual damage/recovery、Draw/Discard/Gain/Transfer/Equipment zone 等实际变化；建立共享服务端发布 helper，保留 event/root/causal/publicSequence、actor/target、准确整数数量、匿名私牌安全和旧记录兼容。使用合法 server-confirmed commitment/CAS，避免“声明了但尚未执行”的结果或重复事件。
+2. 让 `game/public-activity.ts` 的一个纯共享 formatter 输出数量准确的 outcome-first H4；保留真正无增减时的原始取消/预防/出牌意义，不发明伤害或卡牌。将黄盖存活和濒死救援后的真实结果接到新契约；**同时通过一个不同英雄技能与一个普通卡牌/正常摸弃牌的共享 API/formatter 回归，证明它不是 Huang-only 的类型/组件**。
+3. 做定向单元/API 测试，要求公共事实身份/安全校验、黄盖实际 `lost 1 HP and drew 2 cards`，进入 Dying 前**不能**声称未完成的摸牌、死亡不能假摸；实际数量短缺、恢复上限、匿名私牌和同一批多人观察者一致；`git diff --check`、必要 build/lint。禁止以文字解析 `@history` 或本地 HP/Hand diff 填充公共证据。不得创建新 H4 组件、特判 Hero ID 或改变游戏规则。
+4. 第一代码 slice 达到可提交状态后，根据原有工作流同步、提交推送 `ux-v2`、检查该精确 SHA 所有必需 CI、Worker 和生产 smoke，如实记录结果。**即使第一 slice 完成，本任务仍 NOT CLOSED**；在本 HANDOVER 写同一原任务的下一 bounded slice（§10.59 的通用 publisher → 其他真实结算源 → 公共投影保留 → 全类别唯一 H4 仲裁/事件队列），不能误切换到 §10.57。所有“正常回合、英雄技能、普通卡牌、装备及其他实际生命/卡牌变化”最终都必须走复用路径并证明不掉 H4。
 
-- `app/api/rooms/route.ts`：在已提交的成功手牌 Steal 结算内原子写入 TAKER gain 与 FORMER_OWNER loss 私有证明；两者绑定同一 room、settlement/root/resolution、真实 physical card 和 12 秒资格窗。只向认证的对应 viewer 输出统一 `privateStealParticipantResult`；私有卡身份从 timeline/projection 清洗，失主不是获得牌的 Hand 到达事件。
-- `game/room-safety.js`：校验认证 viewer、参与者角色、物理卡、窗口和 TAKER transfer ID。
-- `app/page.tsx`：结果仅在当前已证明并 settled 的 Hand Steal settlement 中进入唯一中央结果层；参与者私下看到真实卡牌及对应无障碍卡面说明，其他视角保留匿名背面。按 viewer/role/settlement/card IDs 防重放；TEST SWITCH 先清除旧 viewer 的手牌到达、卡片/英雄详情与选择；剔除同一 TAKER transfer 的重复牌面，同时保留一般 R7 抽牌生命周期。
-- 回归覆盖：`tests/api/stratagems.test.mjs` 增加四视角、提交前/后、私有身份、重复证明与过期窗断言；`tests/browser/target-card-real-gameplay.spec.mjs` 增加唯一 390×844 实际牌局和 TEST SWITCH 场景。
+**验收与禁止事项：** 以设计文档 §10.59 的完整来源覆盖、公共可见结果/不重复/不丢失、隐私/合法行动/实际物理卡牌守恒、手机真实显示为唯一最终完成门槛。所有本地 UI/browser 测试在**每个 bounded slice 合计最多 5 分钟**，不可把它误当每个 test 5 分钟；优先快速 pure/API，CI/部署单独核验。CI 绿不等于 Owner PASS。你只能实施、验证、交付，不做新的原因调查，不自我验收。
 
-### 进度与验证记录（2026-11-04 UTC）
-
-- 23:15–23:21：完成 server proof、viewer projection、client result lifecycle、TEST SWITCH 清理和四视角 API 断言。首轮 API 30 项中 29 通过；唯一失败是目标断言仍按旧合同要求失主看不到牌身份。更新为“失主仅在自己的私有结果字段看到同一张牌”，重跑后 **30/30 通过**。
-- 23:20–23:24：首次 targeted lint 报 3 个错误；修复 timeline 私有字段清洗与私有卡面切换时的状态重置。复跑 lint **0 errors**，有页面原有的 2 条 React Hook warning（`publicCardDisplayAction` 依赖，未改动）。
-- 23:21–23:32：唯一 390×844 浏览器场景合计 11 次短运行，累计远低于 5 分钟。前 9 次中的失败均来自测试夹具推进/选中卡假设或过宽/过时断言，逐项修正后场景通过；随后加入参与者无障碍卡面身份断言时，运行曾读到旧 `dist/client`，重建后最终场景 **1 passed，7.8s**。最终断言验证：两名参与者都见同一原始卡面，H4/PAC 无隐藏身份，匿名观察者无卡牌 ID/真牌标签，TEST SWITCH 与刷新无重放，同一牌不重复显示为 R7 Hand 到达牌。
-- 23:30–23:36：发现远端推进到 `875e9628`；确认仅文档变更并读完新增设计差异。最终 `npm run build` **通过**（只有项目现有 large chunk 与动态 API 分类提示）；最终 targeted lint **0 errors / 2 warnings**；`git diff --check` **通过**。
-- 23:39–23:44：实现提交 `bf327e76b11efcfefae2f14bc0f7ccfa8090d521` 推送到 `ux-v2`；精确 SHA Actions `41935465005` 全部通过，Cloudflare Worker 部署及生产 smoke 成功，版本 `ab45581b-bf45-4e05-9d89-1415e682114c`；独立线上 health 请求 HTTP 200。
-- 23:45 UTC：复核远端新增的 §10.37/§10.38 设计更新，确认与已交付 §10.36.1 不冲突；HANDOVER 仍只保留本任务及其待手机验收边界。
-
-### Owner 手机验收边界
-
-技术交付已完成。状态保持 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**，不得自我验收。用户手机复验要求：偷牌者和失主各见同一真牌一次；旁观者只见牌背；所有公共说明不泄露卡面；TEST SWITCH/刷新无泄漏或重放。
+**独立已交付但需保留的记录：** §10.56 Inspector 座位锚定已于 `bae5719c054eabaf4d52bec5cf6d6f35c0d24495` 部署，Actions `43758214272` 全绿；2026-11-15 22:58–22:59 UTC 复跑 440px 聚焦浏览器回归通过，**仍待 Owner iPhone 验收**，不因本 handover 调整而宣称通过。§10.57 Skip 红色样式已经批准，但根据 Owner 最新优先级**暂缓至此原 H4 任务完成或明确阻塞的安全边界**。独立 §10.51 仍为证据门控，已通过的 §10.49 不重开。

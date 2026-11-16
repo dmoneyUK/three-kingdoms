@@ -325,3 +325,23 @@ test("automatic trace survives a new game session and stops only at game boundar
   delete globalThis.window;
   delete globalThis.document;
 });
+
+test('render/session lifecycle and final room state survive verbose trace eviction', async()=>{
+  const {recordPublicGameRoomSnapshot}=await import('../app/attack-dodge-ux-trace.ts');
+  const values=new Map();
+  globalThis.window={sessionStorage:{getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)},innerWidth:440,innerHeight:894,devicePixelRatio:3,visualViewport:null,matchMedia:()=>({matches:false}),addEventListener(){}};
+  globalThis.document={visibilityState:'visible',addEventListener(){}};
+  beginAttackDodgeUxTraceSession();
+  recordAttackDodgeUxTrace('game-room-render-failure',{category:'react-render',viewerSeat:1});
+  recordAttackDodgeUxTrace('game-screen-retry',{phase:'response'});
+  for(let i=0;i<3300;i++) recordAttackDodgeUxTrace('presentation-dom',{sample:i,padding:'x'.repeat(600)});
+  recordPublicGameRoomSnapshot({status:'playing',currentAction:{kind:'response'},players:[],timeline:[]});
+  const trace=JSON.parse(exportAttackDodgeUxTrace());
+  assert.ok(trace.droppedEntryCount>0);
+  assert.ok(trace.lifecycleEntries.some(entry=>entry.stage==='game-room-render-failure'));
+  assert.ok(trace.lifecycleEntries.some(entry=>entry.stage==='game-screen-retry'));
+  assert.deepEqual(trace.finalRoomState,{status:'playing',currentActionKind:'response'});
+  assert.ok(trace.lifecycleEntries.length<=128);
+  stopAttackDodgeUxTrace('test-complete');
+  delete globalThis.window;delete globalThis.document;
+});

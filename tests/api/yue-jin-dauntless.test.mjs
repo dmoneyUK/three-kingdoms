@@ -109,7 +109,7 @@ test("Dauntless activation, own-turn exclusion, no-Basic private Pass, decline, 
   assert.equal(concealedTimer.data.responseCountdownVisibleAt, 0);
   const refreshedViews = await Promise.all(noBasic.members.map((member) => state(noBasic.code, member.token)));
   for (const { data } of refreshedViews) {
-    assert.deepEqual(derivePublicActivityStatus(data), { kind: "resolving", text: "Resolving…" }, "refresh/reconnect preserves the unconditional shared status");
+    assert.deepEqual(derivePublicActivityStatus(data), { kind: "none", text: "" }, "refresh/reconnect preserves safe public absence without exposing Basic-card eligibility");
     if (data.meId !== noBasicSetup.yue.id) {
       assert.equal(data.currentAction.deadline, 0);
       assert.equal(data.currentAction.actorId, null);
@@ -139,7 +139,7 @@ test("Dauntless activation, own-turn exclusion, no-Basic private Pass, decline, 
   const switchedViews = await Promise.all(room.players.map((player) => state(room.code, token, false, player.id)));
   assert.deepEqual(switchedViews.map(({ data }) => data.meId).sort(), room.players.map((player) => player.id).sort(), "host Switch can read each authenticated test-player projection during the private window");
   for (const { data } of switchedViews) {
-    assert.deepEqual(derivePublicActivityStatus(data), { kind: "resolving", text: "Resolving…" });
+    assert.deepEqual(derivePublicActivityStatus(data), { kind: "none", text: "" });
     assert.equal(data.timeline.some((event) => event.type === "message" && /Dauntless|may use/i.test(event.message)), false);
     if (data.meId === switchedYue.id) {
       assert.deepEqual(data.currentAction.triggerOptions, []);
@@ -269,7 +269,7 @@ test("Dauntless public projection privacy audit across independent viewers", asy
   await openDauntless(withBasic, withBasic.members[0], withBasic.members[1]);
   const basicViews = await Promise.all(withBasic.members.map((member) => state(withBasic.code, member.token)));
   const sharedBasicStatus = derivePublicActivityStatus(basicViews[0].data);
-  assert.deepEqual(sharedBasicStatus, { kind: "resolving", text: "Resolving…" });
+  assert.deepEqual(sharedBasicStatus, { kind: "none", text: "" });
   for (const { data } of basicViews) {
     assert.deepEqual(derivePublicActivityStatus(data), sharedBasicStatus, "all independent viewers receive the same public status");
     assert.equal(data.timeline.some((event) => event.type === "message" && /may use Dauntless|Dauntless.*end of/i.test(event.message)), false, "private Basic-card eligibility is absent from shared timeline text");

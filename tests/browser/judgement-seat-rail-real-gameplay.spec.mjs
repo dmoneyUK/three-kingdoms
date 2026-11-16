@@ -97,14 +97,10 @@ test("T1: public Judgement markers stay inside their real Seat across viewers", 
     });
     expect(play.ok(), await play.text()).toBeTruthy();
 
-    const inFlight = firstPage.locator(`.active-table-reveal[data-public-zone-transition-card-id="${room.delayed.id}"]`);
-    await expect(inFlight).toBeVisible({ timeout: 12_000 });
     const attachedDelayed = firstPage.locator(`.opponent-player-card[data-player-anchor="${owner.id}"] [data-judgement-id="${room.delayed.id}"]`);
-    await expect(attachedDelayed).toHaveCount(0);
-    await expect(inFlight.locator(`[data-settlement-card-id="${room.delayed.id}"]`)).toHaveCount(1);
     await expect(attachedDelayed).toBeVisible({ timeout: 12_000 });
+    await expect(firstPage.locator(`[data-judgement-id="${room.delayed.id}"]`)).toHaveCount(1);
     await expect(attachedDelayed.locator("svg")).toHaveCount(1);
-    await expect(firstPage.locator(`.active-table-reveal[data-public-zone-transition-card-id="${room.delayed.id}"]`)).toHaveCount(0);
 
     const postArrival = await judgementGeometry(firstPage, owner.id, room.delayed.id);
     expect(postArrival.ownerId).toBe(owner.id);

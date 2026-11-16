@@ -209,6 +209,7 @@ test("Influencing keeps Liu Bei as the red Attack damage source and choice owner
   const started = await requestAndSettle("trigger", { code: game.code, token: liuMember.token, providerId: "liu_bei_jijiang", targetId: hua.id, preserveResponse: true });
   assert.equal(started.status, 200, JSON.stringify(started.data));
   const delegated = await requestAndSettle("respond", { code: game.code, token: shuMember.token, providerId: "card", cardId: influencingAttack.id, preserveResponse: true });
+  await request("decline_response", { code: game.code, token: game.members[2].token });
   assert.equal(delegated.status, 200, JSON.stringify(delegated.data));
   const declined = await requestAndSettle("decline_response", { code: game.code, token: huaMember.token });
   assert.equal(declined.status, 200, JSON.stringify(declined.data));

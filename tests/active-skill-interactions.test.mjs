@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
-import { GameRoom, GameRoomErrorBoundary, HERO_PASSIVE_SKILL_NAMES, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS } from "../app/page.tsx";
+import { Countdown, GameRoom, GameRoomErrorBoundary, HERO_PASSIVE_SKILL_NAMES, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS } from "../app/page.tsx";
+import { gameplayDeclineButtonClassName } from "../app/semantic-action-style.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
 import { buildPresentationClientView } from "../game/presentation-client.ts";
 import { buildGroupScopePreview } from "../game/group-scope-preview.ts";
@@ -230,6 +231,13 @@ async function gameTree(skill, onAction) {
 
 function buttons(renderer, props) { return renderer.root.findAllByType("button").filter((button) => Object.entries(props).every(([key, value]) => button.props[key] === value)); }
 function button(renderer, props) { const matches = buttons(renderer, props); assert.equal(matches.length, 1, `expected one button ${JSON.stringify(props)}, got ${matches.length}; buttons=${renderer.root.findAllByType("button").map((entry) => String(entry.props.children)).join(" | ")}`); return matches[0]; }
+
+test("red action class is reserved for the exact voluntary Skip label", () => {
+  for (const label of ["Skip", "Skipping…"]) assert.ok(gameplayDeclineButtonClassName(label).includes("wtk-skip-action"));
+  for (const label of ["Pass", "TAKE DAMAGE", "End", "Cancel", "Give up Weapon"]) {
+    assert.equal(gameplayDeclineButtonClassName(label), "end", `${label} keeps its existing action palette`);
+  }
+});
 function nodeWith(renderer, prop, value) { const matches = renderer.root.findAll((node) => node.props?.[prop] === value); assert.equal(matches.length, 1, `expected one node ${prop}=${value}, got ${matches.length}`); return matches[0]; }
 function nodeWithClass(renderer, className) { const matches = renderer.root.findAll((node) => typeof node.type === "string" && node.props?.className?.split(/\s+/).includes(className)); assert.equal(matches.length, 1, `expected one node class=${className}, got ${matches.length}`); return matches[0]; }
 function opponentHeroButton(renderer, playerId) {
@@ -506,6 +514,7 @@ test("End Turn opens the in-battlefield confirmation and preserves legal action 
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const endTurn = button(renderer, { children: "End" });
   assert.equal(endTurn.props.disabled, false, "the authoritative End Turn action remains available");
+  assert.ok(!endTurn.props.className.includes("wtk-skip-action"), "End Turn keeps its existing red-button meaning");
   await act(async () => { endTurn.props.onClick(); });
   const stage = nodeWithClass(renderer, "end-turn-confirmation-stage");
   assert.equal(renderedNodeText(stage).includes("End your Play Phase?"), true);
@@ -548,7 +557,14 @@ test("Serpent Spear Cancel clears mode, both cost cards, and target", async () =
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  await act(async () => { button(renderer, { children: "Spear" }).props.onClick(); });
+  const modeButton = button(renderer, { "data-serpent-spear-control": "true" });
+  assert.equal(renderedNodeText(modeButton), "Serpent Spear");
+  assert.equal(modeButton.props["aria-label"], "Use Serpent Spear");
+  assert.equal(modeButton.props["aria-pressed"], false);
+  await act(async () => { modeButton.props.onClick(); });
+  assert.equal(renderedNodeText(button(renderer, { "data-serpent-spear-control": "true" })), "Normal");
+  assert.equal(button(renderer, { "data-serpent-spear-control": "true" }).props["aria-label"], "Exit Serpent Spear mode");
+  assert.equal(button(renderer, { "data-serpent-spear-control": "true" }).props["aria-pressed"], true);
   await act(async () => { handCardButton(renderer, "serpent-cost-one").props.onClick(); });
   await act(async () => { handCardButton(renderer, "serpent-cost-two").props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select TARGET" }).props.onClick(); });
@@ -556,10 +572,41 @@ test("Serpent Spear Cancel clears mode, both cost cards, and target", async () =
   await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
   const actionCountBeforeCancel = actionCalls.length;
   assert.equal(actionCountBeforeCancel, 0);
-  assert.equal(button(renderer, { children: "Spear" }).props.className.includes("active"), false);
+  assert.equal(button(renderer, { "data-serpent-spear-control": "true" }).props.className.includes("active"), false);
+  assert.equal(button(renderer, { "data-serpent-spear-control": "true" }).props["aria-pressed"], false);
   assert.equal(handCardButton(renderer, "serpent-cost-one").props.className.includes("selected"), false);
   assert.equal(handCardButton(renderer, "serpent-cost-two").props.className.includes("selected"), false);
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
+  await act(async () => { renderer.unmount(); });
+});
+
+test("Serpent Spear response option keeps the full projected weapon name", async () => {
+  const roomWithoutProvider = duelResponseRoom();
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: roomWithoutProvider, onRecover: () => {} }, React.createElement(GameRoom, { room: roomWithoutProvider, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(renderer.root.findAllByType("button").filter((node) => renderedNodeText(node).includes("Serpent Spear")).length, 0, "the response label is not invented when CurrentAction omits the provider");
+  await act(async () => { renderer.unmount(); });
+
+  const responseCards = [card("spear-response-peach", "Peach"), card("spear-response-dodge", "Dodge")];
+  const room = duelResponseRoom();
+  room.myHand = responseCards;
+  room.players = room.players.map((player) => player.id === room.meId
+    ? { ...player, handCount: responseCards.length, equipmentCards: [card("spear-response-equipment", "SerpentSpear")] }
+    : player);
+  room.currentAction = {
+    ...room.currentAction,
+    options: [
+      ...(room.currentAction.options ?? []),
+      { providerId: "serpent_spear_attack", satisfies: "attack", label: "Use Serpent Spear", description: "Use Serpent Spear", activation: "explicit", selection: { type: "cards", min: 2, max: 2, eligibleCardIds: responseCards.map((item) => item.id) } },
+    ],
+  };
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const spearProviderButton = button(renderer, { children: "Serpent Spear" });
+  assert.match(spearProviderButton.props.className, /serpent-control/);
+  await act(async () => { spearProviderButton.props.onClick(); });
+  assert.match(button(renderer, { children: "Cancel Serpent Spear" }).props.className, /active/);
   await act(async () => { renderer.unmount(); });
 });
 
@@ -772,12 +819,14 @@ test("generic trigger Cancel clears provider and target without replacing Skip",
   await act(async () => { button(renderer, { children: "Use Future Target" }).props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select TARGET" }).props.onClick(); });
   assert.equal(buttonsContaining(renderer, "Cancel").length, 1, "the provider-owned Cancel is the only cancel surface");
+  assert.ok(!buttonsContaining(renderer, "Cancel")[0].props.className.includes("wtk-skip-action"), "Cancel does not use the Skip variant");
   const actionCountBeforeCancel = actionCalls.length;
   await act(async () => { buttonsContaining(renderer, "Cancel")[0].props.onClick(); });
   assert.equal(actionCalls.length, actionCountBeforeCancel, "provider Cancel does not submit or decline");
   assert.equal(button(renderer, { children: "Use Future Target" }).props.disabled, false, "the trigger can restart after Cancel");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
   assert.equal(button(renderer, { children: "Skip" }).props.disabled, false, "Skip remains authoritative and separate");
+  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
   await act(async () => { renderer.unmount(); });
 });
 
@@ -946,7 +995,7 @@ test("Cultivation trigger has a routed skill control, generic prompt, and contin
 
     const cultivation = button(renderer, { "aria-label": "Cultivation" });
     assert.equal(cultivation.props.disabled, false, "Cultivation exposes a Skills-panel control");
-    assert.equal(text(renderer, "Use Cultivation: Draw 1 card after using a Stratagem, or Skip.").length, 1, "Cultivation uses the trigger-specific prompt");
+    assert.equal(renderer.root.findAllByType("strong").filter((node) => renderedNodeText(node) === "Use Cultivation: Draw 1 card after using a Stratagem, or Skip.").length, 1, "Cultivation uses the trigger-specific prompt");
     assert.equal(button(renderer, { children: "Skip" }).props.disabled, false, "Cultivation keeps the optional skip action");
     await act(async () => { cultivation.props.onClick(); });
     assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "huang_yueying_cultivation" }]);
@@ -962,16 +1011,16 @@ test("Cultivation trigger has a routed skill control, generic prompt, and contin
     let opponentRenderer;
     await act(async () => { opponentRenderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: opponentRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: opponentRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("No action needed.")).length, 1, "the public plaque owns the waiting actor while the non-actor Local Dock stays concise");
-    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Waiting for the target to answer the attacker")).length, 0, "the Attack fallback prompt is absent");
-    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Use Cultivation")).length, 0, "Cultivation remains private");
+    assert.equal(opponentRenderer.root.findAllByType("strong").filter((node) => renderedNodeText(node) === "No action needed.").length, 1, "absent public proof keeps the non-actor Local Dock neutral");
+    assert.equal(renderedNodeText(opponentRenderer.root).includes("Waiting for the target to answer the attacker"), false, "the Attack fallback prompt is absent");
+    assert.equal(renderedNodeText(opponentRenderer.root).includes("Use Cultivation"), false, "Cultivation remains private");
     assert.equal(opponentRoom.actionPlayerId, "p1");
     assert.equal(opponentRoom.currentAction.actorId, "p1");
 
     const continuationRoom = normalizeRoomData({ ...room, isMyAction: false, actionPlayerId: "p2", currentAction: { version: 3, kind: "response", actorId: "p2", deadline: 0, reason: "Negation window", requirement: "negate", legalActions: ["respond", "decline_response"], options: [], triggerOptions: [] }, pendingNegation: { kind: "negation", actorId: "p2", responseTarget: "Stratagem's effect on TARGET", cardName: "Stratagem" }, phase: "response" });
     await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: continuationRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: continuationRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
-    const continuationChip = renderer.root.find((node) => node.props?.["data-public-activity-chip"] === "true");
-    assert.equal(continuationChip.props["aria-label"], "Resolving…", "an unproven continuation fails closed in the public status plaque");
+    assert.equal(renderer.root.findAll((node) => node.props?.["data-public-activity-chip"] === "true").length, 0,
+      "an unproven continuation has no public status plaque or live announcement");
     assert.equal(renderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Negation window")).length, 0, "a non-actor does not get a duplicate or CurrentAction-derived waiting message");
     await act(async () => { renderer.unmount(); skipRenderer.unmount(); opponentRenderer.unmount(); });
 });
@@ -1049,6 +1098,8 @@ test("Da Qiao Deflection is one mounted hero control with shared card/target sel
   const profileButton = button(renderer, { "aria-label": "Deflection" });
   assert.equal(profileButton.props.disabled, false);
   assert.equal(button(renderer, { children: "Skip" }).props.disabled, false);
+  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
+  assert.match(button(renderer, { children: "Skip" }).props.className, /\bwtk-skip-action\b/);
   assert.equal(renderer.root.findAllByProps({ children: "Confirm" }).length, 0);
   assert.equal(renderer.root.findAllByProps({ "aria-label": "Select ATTACKER as Deflection target" }).length, 0);
   assert.equal(renderer.root.findAllByProps({ "aria-label": "Select LEGAL TARGET as Deflection target" }).length, 0);
@@ -1112,19 +1163,21 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
   const skillButton = () => button(renderer, { "aria-label": "Retaliation" });
-  const picker = () => renderer.root.findAllByProps({ "aria-label": "Retaliation target card selection" });
+  const picker = () => renderer.root.findAll((node) => node.type === "div" && node.props["aria-label"] === "Retaliation target card selection");
   assert.equal(skillButton().props.disabled, false);
   assert.equal(skillButton().props["aria-pressed"], false);
   assert.equal(picker().length, 0, "Retaliation does not open its picker before activation");
   assert.equal(button(renderer, { children: "Skip" }).props.disabled, false);
+  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
   assert.equal(actionCalls.filter(([actionName]) => actionName === "trigger").length, 0, "Retaliation does not submit before activation");
 
   await act(async () => { skillButton().props.onClick(); });
   assert.equal(skillButton().props["aria-pressed"], true);
   assert.equal(picker().length, 1, "activating Retaliation opens the picker");
   assert.equal(actionCalls.filter(([actionName]) => actionName === "trigger").length, 0, "activation does not submit the trigger");
-
-  const eligibleCard = button(renderer, { "data-target-card-zone": "hand" });
+  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
+  assert.ok(button(renderer, { children: "Use Retaliation" }).props.className.includes("wtk-action-button"));
+  const eligibleCard = button(renderer, { "aria-label": "Choose one random Hand card, 1 cards" });
   assert.equal(eligibleCard.props["aria-pressed"], false);
   await act(async () => { eligibleCard.props.onClick(); });
   assert.equal(button(renderer, { children: "Use Retaliation" }).props.disabled, false);
@@ -1133,16 +1186,16 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   assert.equal(picker().length, 0, "clicking active Retaliation cancels the picker");
   await act(async () => { skillButton().props.onClick(); });
   assert.equal(picker().length, 1);
-  assert.equal(button(renderer, { "data-target-card-zone": "hand" }).props["aria-pressed"], false, "re-entry clears selected zones");
+  assert.equal(button(renderer, { "aria-label": "Choose one random Hand card, 1 cards" }).props["aria-pressed"], false, "re-entry clears selected zones");
 
-  await act(async () => { button(renderer, { "data-target-card-zone": "hand" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Choose one random Hand card, 1 cards" }).props.onClick(); });
   const revisedRoom = retaliationRoom("retaliation-ui-revision-2");
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: revisedRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: revisedRoom, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(picker().length, 0, "a new action revision clears active Retaliation");
   await act(async () => { skillButton().props.onClick(); });
-  assert.equal(button(renderer, { "data-target-card-zone": "hand" }).props["aria-pressed"], false, "a new action revision clears stale selection");
-  await act(async () => { button(renderer, { "data-target-card-zone": "hand" }).props.onClick(); });
+  assert.equal(button(renderer, { "aria-label": "Choose one random Hand card, 1 cards" }).props["aria-pressed"], false, "a new action revision clears stale selection");
+  await act(async () => { button(renderer, { "aria-label": "Choose one random Hand card, 1 cards" }).props.onClick(); });
   await act(async () => { button(renderer, { children: "Use Retaliation" }).props.onClick(); });
   assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "sima_yi_fankui", cardKeys: ["hand"] }]);
 
@@ -1519,5 +1572,21 @@ test("mounted Judgement focus and controls ignore legacy owners and require an a
     && node.props.className.split(/\s+/u).includes("played-card")
     && node.props.className.split(/\s+/u).includes("dodge"));
   assert.equal(renderedDodgeCards.length, 0, "no Dodge card face is rendered without the server reveal event");
+  await act(async () => { renderer.unmount(); });
+});
+
+
+test("suppressed presentation countdown keeps its clock while response owns the visible timer", async () => {
+  let renderer;
+  const render = (response) => React.createElement(React.Fragment, null,
+    React.createElement(Countdown, { key: "event", durationMs: 1200, label: "Cards close in", compactEvent: true, suppressed: response }),
+    response ? React.createElement(Countdown, { key: "response", durationMs: 0, deadline: Date.now() + 30000, responseTimer: true }) : null);
+  await act(async () => { renderer = TestRenderer.create(render(true)); });
+  assert.equal(renderer.root.findAllByProps({ role: "timer" }).length, 1);
+  assert.match(renderer.root.findByProps({ role: "timer" }).props["aria-label"], /^Response Time /);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
+  await act(async () => { renderer.update(render(false)); });
+  const eventTimer = renderer.root.findByProps({ role: "timer" });
+  assert.match(eventTimer.props["aria-label"], /^Cards close in 1 seconds$/);
   await act(async () => { renderer.unmount(); });
 });
