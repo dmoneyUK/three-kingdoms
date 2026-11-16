@@ -3828,6 +3828,11 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
       const presentation = publicLabels
         ? addLogWithId(log, `${actor.name} may use ${publicLabels} at the end of ${endingPlayer.name}'s turn.`)
         : null;
+      const publicTriggerRoot = publicOptions.length > 0 ? createCausalRoot({
+        stage: "SETTLEMENT",
+        origin: { originSourceId: actor.id, originEffect: "turn_end_trigger", originalTargetIds: [endingPlayer.id] },
+        current: { currentSourceId: actor.id, currentEffect: "turn_end_trigger", currentTargetIds: [endingPlayer.id], resolvingPlayerId: actor.id },
+      }) : null;
       const labels = options.map((option) => option.label).join(" or ");
       const pendingWithoutBarrier = {
         kind: "trigger",
@@ -3836,13 +3841,20 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
         reason: labels ? `${actor.name} may use ${labels} at the end of ${endingPlayer.name}'s turn, or decline` : "Turn-end check; Pass to continue.",
         deadline: nextResponseDeadline(actor),
         resolvedEffectIds: resolved,
+        ...(publicTriggerRoot ? { causal: publicTriggerRoot.context } : {}),
         continuation: { ...continuation, stage: "activation" },
       } satisfies TriggerPending;
       const pending: TriggerPending = presentation
         ? withPresentationBarrier(pendingWithoutBarrier, presentation.log, presentation.eventId)
         : pendingWithoutBarrier;
-      await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-        .bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(presentation?.log ?? log), room.id).run();
+      await causalRoomStateWrite(room.id, {
+        phase: "response",
+        pending,
+        deck,
+        discard,
+        log: presentation?.log ?? log,
+        causalEnvelope: publicTriggerRoot?.envelope ?? parseCausalEnvelope(room.causal_envelope_json),
+      }).run();
       return;
     }
   }
