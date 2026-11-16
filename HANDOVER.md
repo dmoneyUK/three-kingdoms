@@ -16,6 +16,7 @@
 
 - 04:29–04:36：修改 `app/api/rooms/route.ts` 与 `game/pending.ts`；共享恢复路径将已提交正整数 HP 恢复量按目标合并为通用 `EFFECT_APPLIED / HP_RECOVERED` 结果。若续接带有因果上下文，则只在当前 envelope 与唯一公开 root event 可验证时沿用；否则不猜根事件、不替换现有活动因果 envelope。事件 ID 随 continuation 保留，避免同一次恢复在触发技能后重复发布。
 - 04:36：`git diff --check` 通过；未运行本地测试、构建、浏览器、对局或设备测试（遵从 Owner 指示）。
-- 提交前检查：当前远端 HEAD `42f341e53b5163a47e6ef7bb6fa8d0fe0eb2461c` 仅更新 Markdown，Actions 按 `paths-ignore: "**/*.md"` 不触发；最近适用的代码 SHA `4986edf90393482ef527408ecb577b709168f091` Actions 43801738109 全绿且已部署。当前 Step 2F 的精确 SHA 验证待提交后执行。
+- 04:36：实现提交 `2935944ef5ae6d8ddd04bd8415b05d07b856eb38` 已推送 `ux-v2`；精确 SHA Actions [43805162032](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43805162032) 正在执行，CI、部署和生产 smoke 待定。
+- 提交前 gate：当时远端 HEAD `42f341e53b5163a47e6ef7bb6fa8d0fe0eb2461c` 仅更新 Markdown，因此按 `paths-ignore: "**/*.md"` 不触发 Actions；最近适用代码 SHA `4986edf90393482ef527408ecb577b709168f091` 的 Actions 43801738109 全绿且已部署。
 
 范围限制：该切片只补共享 HP 恢复结果；若恢复续接存在 causal context、但当前日志无法唯一证明其公开 root event，本代码会 fail closed，当前精确缺失字段是该恢复结果可沿用的 `rootEventId`。§10.59 的其他 HP/卡牌提交源、跨源同一结算合并、完整 H4 单一归属/队列覆盖和 Owner iPhone 验收仍未完成。不要据此关闭 §10.59。
