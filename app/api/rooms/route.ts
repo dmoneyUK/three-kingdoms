@@ -794,24 +794,37 @@ function publicFactFor(causal: CausalContext | undefined, category: PublicPresen
     category, ...fields, ...(committedOutcome ? { committedOutcome } : {}), ...(committedIdentity ? { committedIdentity } : {}),
   };
 }
-function addCommittedPublicSkillOutcome(log: string[], actor: PlayerRow, skillLabel: string) {
+function addCommittedPublicSkillOutcome(
+  log: string[],
+  actor: PlayerRow,
+  skillLabel: string,
+  changes: readonly CommittedPublicOutcomeChange[],
+) {
   const causal = createCausalRoot({
     stage: "SETTLEMENT",
     origin: { originSourceId: actor.id, originEffect: "public_skill_outcome", originalTargetIds: [] },
     current: { currentSourceId: actor.id, currentEffect: "public_skill_outcome", currentTargetIds: [], resolvingPlayerId: actor.id },
   });
   const eventId = crypto.randomUUID();
+  const affectedPlayerIds = [...new Set(changes.flatMap((change) => change.kind === "CARD_TRANSFERRED"
+    ? [change.fromPlayerId, change.toPlayerId]
+    : [change.playerId]))];
   const fact = publicFactFor(causal.context, "SKILL_USED", {
     rootEventId: eventId,
     actorId: actor.id,
-    affectedPlayerIds: [],
+    affectedPlayerIds,
     label: skillLabel,
     effect: { kind: "skill_use" },
   }, causal.envelope);
+  const committedFact = withCommittedPublicOutcome(fact, {
+    outcomeLabel: `${skillLabel} committed its public cost`,
+    changes,
+    source: { kind: "skill", label: skillLabel },
+  });
   const committed = addLogWithId(log, `${actor.name} used ${skillLabel}.`, undefined, {
     actorId: actor.id,
     importance: "essential",
-    ...(fact ? { publicFact: fact } : {}),
+    ...(committedFact ? { publicFact: committedFact } : {}),
   }, eventId);
   return { log: committed.log, eventId, causal: causal.context, envelope: causal.envelope };
 }
@@ -4325,6 +4338,10 @@ function appendDyingResumePublicOutcome(
   if (proof.hpCostLost > 0) changes.push({ kind: "HP_COST_LOST", playerId: player.id, amount: proof.hpCostLost });
   if (drawnCount > 0) changes.push({ kind: "CARD_DRAWN", playerId: player.id, amount: drawnCount, fromZone: "DECK", toZone: "HAND" });
   if (changes.length === 0) return log;
+  const rootOutcome = record(rootFact.committedOutcome);
+  if (drawnCount === 0 && rootOutcome?.source && record(rootOutcome.source)?.kind === "skill"
+    && record(rootOutcome.source)?.label === proof.skillLabel
+    && JSON.stringify(rootOutcome.changes) === JSON.stringify(changes)) return log;
 
   const publicFact = publicFactFor(causal, "SKILL_USED", {
     rootEventId: proof.rootEventId,
@@ -8830,12 +8847,14 @@ export async function POST(request: Request) {
         const hp = Math.max(0, (liveMe.hp ?? 1) - execution.outcome.lose);
         const nextState = { ...skillState, turnPlayerId: liveMe.id };
         const skillLabel = option?.label ?? "a skill";
-        const publicSkillOutcome = addCommittedPublicSkillOutcome(log, liveMe, skillLabel);
+        const hpCostLost = Math.max(0, (liveMe.hp ?? 0) - hp);
+        const publicSkillOutcome = addCommittedPublicSkillOutcome(log, liveMe, skillLabel,
+          hpCostLost > 0 ? [{ kind: "HP_COST_LOST", playerId: liveMe.id, amount: hpCostLost }] : []);
         const resumeEffect: DyingResumeEffect = {
           kind: "draw_cards", playerId: liveMe.id, amount: execution.outcome.draw, label: "uses Self Sacrifice",
           publicOutcome: {
             eventId: crypto.randomUUID(), rootEventId: publicSkillOutcome.eventId, skillLabel,
-            hpCostLost: Math.max(0, (liveMe.hp ?? 0) - hp),
+            hpCostLost,
           },
         };
         log = publicSkillOutcome.log;

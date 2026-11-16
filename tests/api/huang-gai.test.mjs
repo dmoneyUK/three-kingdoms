@@ -20,8 +20,10 @@ function publicSkillFact(view) {
 
 function publicSkillOutcomeFact(view, rootEventId) {
   return [...(view.presentationSnapshot?.publicEventFacts ?? []), ...(view.presentationSnapshot?.retainedPublicEventFacts ?? [])]
-    .find((fact) => fact.category === "SKILL_USED" && fact.label === "Self Sacrifice"
-      && fact.rootEventId === rootEventId && fact.committedOutcome);
+    .filter((fact) => fact.category === "SKILL_USED" && fact.label === "Self Sacrifice"
+      && fact.rootEventId === rootEventId && fact.committedOutcome)
+    .sort((left, right) => left.order - right.order)
+    .at(-1);
 }
 
 async function activate(game, setup) {
@@ -103,6 +105,7 @@ test("1 HP Self Sacrifice opens Dying before either draw card is available", asy
     "the Dying interaction snapshot retains the committed Self Sacrifice fact");
   const outcome = publicSkillOutcomeFact(result.data.room, fact.eventId);
   assert.ok(outcome, "the Dying snapshot retains the public HP-cost result fact");
+  assert.equal(outcome.eventId, fact.eventId, "the committed HP cost is visible before the Dying decision opens");
   assert.equal(derivePublicInteractionNarration({
     snapshot: result.data.room.presentationSnapshot,
     players: result.data.room.players,
