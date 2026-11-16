@@ -27,6 +27,40 @@ function publicSkillOutcomeFact(view, rootEventId) {
     .at(-1);
 }
 
+function assertDyingPeachRecoveryFact(view, { peachId, rootEventId, actorId, targetId, sourceLabel, amount }) {
+  const event = view.timeline.find((candidate) => candidate.action === "play" && candidate.card?.id === peachId);
+  assert.ok(event, "the genuine rescue card remains the public physical-card event");
+  const facts = [...(view.presentationSnapshot?.publicEventFacts ?? []), ...(view.presentationSnapshot?.retainedPublicEventFacts ?? [])];
+  const fact = facts.find((candidate) => candidate.eventId === event.id);
+  assert.ok(fact, "the committed rescue card owns its typed public recovery fact");
+  assert.equal(fact.category, "CARD_PLAYED");
+  assert.equal(fact.rootEventId, rootEventId, "the rescue stays linked to the original committed causal root");
+  assert.equal(fact.actorId, actorId);
+  assert.deepEqual(fact.affectedPlayerIds, [targetId]);
+  assert.deepEqual(fact.committedOutcome?.changes, [
+    { kind: "HP_RECOVERED", playerId: targetId, amount },
+  ], "the result records the actual recovery amount, not the requested Peach value");
+  assert.equal(fact.committedOutcome?.source.label, sourceLabel);
+  assert.equal(JSON.stringify(fact.committedOutcome).includes(peachId), false,
+    "the typed public outcome does not expose physical card IDs");
+  assertPublicOutcomeHasH4Owner(view, event.id);
+  const narration = derivePublicInteractionNarration({
+    snapshot: view.presentationSnapshot,
+    players: view.players,
+    rootEventId,
+    interactionId: fact.identity.interactionId,
+    rootFrameId: fact.identity.rootFrameId,
+    eventId: event.id,
+  });
+  assert.equal(narration?.headline, `${view.players.find((player) => player.id === actorId).name} — ${sourceLabel}: ${view.players.find((player) => player.id === targetId).name} recovered ${amount} HP.`);
+  assert.equal(view.timeline.some((candidate) => candidate.publicFact?.rootEventId === rootEventId
+    && candidate.publicFact?.category === "EFFECT_APPLIED"
+    && candidate.publicFact?.label === "Recovery"
+    && candidate.publicFact?.committedOutcome?.changes?.some((change) => change.kind === "HP_RECOVERED" && change.playerId === targetId)), false,
+  "the rescue card remains the only H4 owner for this committed recovery");
+  return fact;
+}
+
 async function activate(game, setup) {
   const result = await request("trigger", { code: game.code, token: setup.sourceMember.token, providerId: "huang_gai_kurou" });
   assert.equal(result.status, 200, JSON.stringify(result.data));
@@ -148,6 +182,14 @@ test("1 HP Self Sacrifice resumes after Peach rescue and draws exactly once", as
   assert.equal(roomCardCount(game.code, drawn[0].id), 1);
   assert.equal(roomCardCount(game.code, drawn[1].id), 1);
   assert.equal(roomCardCount(game.code, peach.id), 1);
+  const peachFact = assertDyingPeachRecoveryFact(after, {
+    peachId: peach.id,
+    rootEventId: skillRoot.eventId,
+    actorId: setup.rescuer.id,
+    targetId: setup.source.id,
+    sourceLabel: "Peach",
+    amount: 1,
+  });
   const outcome = publicSkillOutcomeFact(after, skillRoot.eventId);
   assert.ok(outcome, "the resumed public result is linked to the original committed skill root");
   assert.deepEqual(outcome.committedOutcome.changes, [
@@ -158,6 +200,10 @@ test("1 HP Self Sacrifice resumes after Peach rescue and draws exactly once", as
     "public outcome contains the count, never the privately drawn card IDs");
   for (const member of game.members) {
     const viewer = (await state(game.code, member.token)).data;
+    const viewerPeachFact = [...(viewer.presentationSnapshot?.publicEventFacts ?? []), ...(viewer.presentationSnapshot?.retainedPublicEventFacts ?? [])]
+      .find((fact) => fact.eventId === peachFact.eventId);
+    assert.deepEqual(viewerPeachFact, peachFact, "every viewer receives the same committed rescue result fact");
+    assertPublicOutcomeHasH4Owner(viewer, peachFact.eventId);
     assert.deepEqual(publicSkillOutcomeFact(viewer, skillRoot.eventId), outcome,
       "all viewers receive the identical committed count and causal identity");
   }
@@ -183,6 +229,14 @@ test("1 HP Self Sacrifice accepts First Aid rescue before drawing", async () => 
   assert.equal(after.phase, "play");
   assert.deepEqual(after.myHand.map((item) => item.id), drawn.map((item) => item.id));
   assert.equal(roomCardCount(game.code, redCard.id), 1);
+  assertDyingPeachRecoveryFact(after, {
+    peachId: redCard.id,
+    rootEventId: skillRoot.eventId,
+    actorId: setup.rescuer.id,
+    targetId: setup.source.id,
+    sourceLabel: "First Aid",
+    amount: 1,
+  });
   const outcome = publicSkillOutcomeFact(after, skillRoot.eventId);
   assert.deepEqual(outcome?.committedOutcome?.changes, [
     { kind: "HP_COST_LOST", playerId: setup.source.id, amount: 1 },

@@ -8160,18 +8160,80 @@ async function commitCanonicalResponse(input: {
     if (action === "give_peach" && !peach) return json({ error: "Select a valid Peach or First Aid card for this rescue." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'dying' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Peach rescue decision has already moved on." }, 409);
     if (peach) {
-      hand = hand.filter((card) => card.id !== peach.id); const resumedPending = appendDyingSequenceCard(pending, peach); const discard = pending.resumePending ? parse<Card[]>(liveRoom.discard_json, []) : [...parse<Card[]>(liveRoom.discard_json, []), peach]; let log = parse<string[]>(liveRoom.log_json, []); const firstAid = selectedExecution?.providerId === "hua_tuo_first_aid"; const jiuyuan = !firstAid && target?.hero === "sun-quan" && target.role === "Lord" && target.id !== me.id && me.hero ? STANDARD_HEROES.find((hero) => hero.id === me.hero)?.faction === "Wu" : false; const recoveryAmount = jiuyuan ? 2 : 1; const beforeHp = target?.hp ?? 0; const maxHp = target?.max_hp ?? beforeHp; const nextHp = applyRecovery(beforeHp, recoveryAmount, maxHp); const amountRecovered = recoveredAmount(beforeHp, maxHp, recoveryAmount); const firstAidMaterials = firstAid ? publicCardMaterials([peach], [{ playerId: me.id, hand: handBeforePeach, equipment: equipmentCards(liveActor) }], "PUBLIC_PLAY") : null; const peachEventId = crypto.randomUUID(); const contribution = committedSharedContribution(liveRoom, peachEventId, me, [peach], `${me.name} gave Peach to ${target.name}, restoring ${amountRecovered} HP.`); const peachMeta: PresentationMeta = { actorId: me.id, ...(contribution ? { sharedResponseContribution: contribution } : {}), ...(firstAid ? { playedAs: "peach" } : {}) }; const peachPresentation = firstAid && firstAidMaterials ? addCardEventWithPublicEffect(log, me.name, peach, target.name, "play", { effectId: "hua_tuo_first_aid", effectClass: "CONVERSION", activationOwnerId: me.id, materials: firstAidMaterials, targetId: target.id, resultingCardKind: "Peach", outcome: "AS_PEACH" }, peachMeta, peachEventId) : addCardEventWithId(log, me.name, peach, target.name, "play", true, peachMeta, peachEventId); log = addLog(peachPresentation.log, firstAid ? `${me.name} uses ${peach.rank}${peach.suit} as Peach with First Aid to rescue ${target?.name ?? "the dying player"}, restoring ${amountRecovered} HP (${nextHp} HP).` : `${me.name} gives Peach to ${target?.name ?? "the dying player"}${jiuyuan ? "; Deliverance provides an additional recovery" : ""}, restoring ${amountRecovered} HP (${nextHp} HP).`);
+      hand = hand.filter((card) => card.id !== peach.id);
+      const resumedPending = appendDyingSequenceCard(pending, peach);
+      const discard = pending.resumePending ? parse<Card[]>(liveRoom.discard_json, []) : [...parse<Card[]>(liveRoom.discard_json, []), peach];
+      let log = parse<string[]>(liveRoom.log_json, []);
+      const firstAid = selectedExecution?.providerId === "hua_tuo_first_aid";
+      const jiuyuan = !firstAid && target.hero === "sun-quan" && target.role === "Lord" && target.id !== me.id && me.hero
+        ? STANDARD_HEROES.find((hero) => hero.id === me.hero)?.faction === "Wu"
+        : false;
+      const recoveryAmount = jiuyuan ? 2 : 1;
+      const beforeHp = target.hp ?? 0;
+      const maxHp = target.max_hp ?? beforeHp;
+      const nextHp = applyRecovery(beforeHp, recoveryAmount, maxHp);
+      const amountRecovered = recoveredAmount(beforeHp, maxHp, recoveryAmount);
+      const firstAidMaterials = firstAid
+        ? publicCardMaterials([peach], [{ playerId: me.id, hand: handBeforePeach, equipment: equipmentCards(liveActor) }], "PUBLIC_PLAY")
+        : null;
+      const peachEventId = crypto.randomUUID();
+      const contribution = committedSharedContribution(liveRoom, peachEventId, me, [peach], `${me.name} gave Peach to ${target.name}, restoring ${amountRecovered} HP.`);
+      const recoveryEnvelope = amountRecovered > 0 && pending.causal
+        ? causalEnvelopeAtStage(liveRoom, pending.causal, "DYING", {
+          currentSourceId: pending.sourceId,
+          currentEffect: "peach_rescue",
+          currentTargetIds: [pending.targetId],
+          resolvingPlayerId: pending.actorId,
+        })
+        : null;
+      const outcomeSourceLabel = firstAid ? "First Aid" : "Peach";
+      const committedPeachFact = amountRecovered > 0 && pending.rootEventId && pending.causal && recoveryEnvelope
+        ? withCommittedPublicOutcome(publicFactFor(pending.causal, "CARD_PLAYED", {
+          rootEventId: pending.rootEventId,
+          actorId: me.id,
+          affectedPlayerIds: [target.id],
+          label: outcomeSourceLabel,
+          effect: { kind: "card_play", label: outcomeSourceLabel },
+        }, recoveryEnvelope), {
+          outcomeLabel: `recovered ${amountRecovered} HP`,
+          changes: [{ kind: "HP_RECOVERED", playerId: target.id, amount: amountRecovered }],
+          source: { kind: firstAid ? "skill" : "card", label: outcomeSourceLabel },
+        })
+        : undefined;
+      const peachMeta: PresentationMeta = {
+        actorId: me.id,
+        ...(contribution ? { sharedResponseContribution: contribution } : {}),
+        ...(firstAid ? { playedAs: "peach" } : {}),
+        ...(committedPeachFact?.committedOutcome ? { publicFact: committedPeachFact } : {}),
+      };
+      const peachPresentation = firstAid && firstAidMaterials
+        ? addCardEventWithPublicEffect(log, me.name, peach, target.name, "play", {
+          effectId: "hua_tuo_first_aid",
+          effectClass: "CONVERSION",
+          activationOwnerId: me.id,
+          materials: firstAidMaterials,
+          targetId: target.id,
+          resultingCardKind: "Peach",
+          outcome: "AS_PEACH",
+        }, peachMeta, peachEventId)
+        : addCardEventWithId(log, me.name, peach, target.name, "play", true, peachMeta, peachEventId);
+      log = addLog(peachPresentation.log, firstAid
+        ? `${me.name} uses ${peach.rank}${peach.suit} as Peach with First Aid to rescue ${target.name}, restoring ${amountRecovered} HP (${nextHp} HP).`
+        : `${me.name} gives Peach to ${target.name}${jiuyuan ? "; Deliverance provides an additional recovery" : ""}, restoring ${amountRecovered} HP (${nextHp} HP).`);
       if (amountRecovered > 0) {
         const recoveryPending = { ...resumedPending, actorId: pending.actorId, remainingIds: pending.remainingIds, deadline: 0, ...(pending.sharedRescue ? { sharedRescue: { ...pending.sharedRescue, responseEventId: peachEventId } } : {}) } satisfies DyingPending;
-        const recoveryEnvelope = pending.causal
-          ? causalEnvelopeAtStage(liveRoom, pending.causal, "DYING", { currentSourceId: pending.sourceId, currentEffect: "peach_rescue", currentTargetIds: [pending.targetId], resolvingPlayerId: pending.actorId })
-          : null;
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
           db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId),
           causalRoomStateWrite(room.id, { phase: "resolving", pending: null, discard, log, causalEnvelope: recoveryEnvelope }),
         ]);
-        await advanceHpRecoveredEvents(room.id, [{ playerId: pending.targetId, amountRecovered, sourceId: me.id, reason: "peach_rescue" }], { kind: "dying", pending: recoveryPending, ...(pending.sharedRescue ? { handLoss: { playerId: me.id, beforeHand: handBeforePeach } } : {}) });
+        await advanceHpRecoveredEvents(room.id, [{
+          playerId: pending.targetId,
+          amountRecovered,
+          sourceId: me.id,
+          reason: "peach_rescue",
+          ...(committedPeachFact?.committedOutcome ? { publicOutcomeEventId: peachEventId, causal: pending.causal } : {}),
+        }], { kind: "dying", pending: recoveryPending, ...(pending.sharedRescue ? { handLoss: { playerId: me.id, beforeHand: handBeforePeach } } : {}) });
       } else if (isDying(nextHp)) {
         const rescueBase = { ...resumedPending, actorId: "", remainingIds: pending.remainingIds, deadline: 0 } satisfies DyingPending;
         const transition = nextDyingTransition(liveRoom, rescueBase, players, pending.remainingIds);
