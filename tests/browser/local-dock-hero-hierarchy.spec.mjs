@@ -127,7 +127,7 @@ test("§10.60 Step 3 440px phone Hand swipes to the last card and taps it withou
   });
   const page = await context.newPage();
   try {
-    await page.goto("http://127.0.0.1:4177/tests/browser/fixture.html?state=normal&count=4&handSize=11");
+    await page.goto("http://127.0.0.1:4177/tests/browser/fixture.html?state=normal&count=4&handSize=11&equipmentCase=localInspectPair");
     const rail = page.locator(".local-hand-rail");
     await expect(rail.locator(".card-slot")).toHaveCount(11);
     await expect(rail).toHaveAttribute("data-hand-overflow", "true");
@@ -146,6 +146,7 @@ test("§10.60 Step 3 440px phone Hand swipes to the last card and taps it withou
     expect(firstCardBox).not.toBeNull();
     expect(before.scrollWidth).toBeGreaterThan(before.clientWidth);
     expect(await rail.evaluate((element) => getComputedStyle(element).touchAction)).toBe("pan-x");
+    expect(await rail.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe("auto");
     expect(await rail.locator(".game-card").first().evaluate((element) => getComputedStyle(element).touchAction)).toBe("pan-x");
     const skillHit = await page.evaluate(() => {
       const skill = document.querySelector(".local-status-panel .hero-skill-button");
@@ -154,6 +155,13 @@ test("§10.60 Step 3 440px phone Hand swipes to the last card and taps it withou
       return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest(".hero-skill-button") !== null;
     });
     expect(skillHit).toBe(true);
+    const equipmentButton = page.locator(".local-equipment-panel .local-zone-card-button").first();
+    await expect(equipmentButton).toBeVisible();
+    const equipmentHit = await equipmentButton.evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === button;
+    });
+    expect(equipmentHit).toBe(true);
 
     const point = { x: firstCardBox.x + 20, y: firstCardBox.y + Math.min(20, firstCardBox.height / 2) };
     const hit = await page.evaluate(({ x, y }) => {
@@ -213,6 +221,8 @@ test("§10.60 Step 3 440px phone Hand swipes to the last card and taps it withou
     expect(await lastCard.getAttribute("data-hand-card-id")).toBe(lastCardId);
     expect(await rail.locator('.game-card[aria-pressed="true"]').count()).toBe(1);
     expect(await rail.locator('.card-slot[data-card-selected="true"]').getAttribute("data-hand-card-id")).toBe(lastCardId);
+    await equipmentButton.click();
+    await expect(page.locator(".card-details-close")).toBeVisible();
   } finally {
     await context.close();
   }

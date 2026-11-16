@@ -1,26 +1,21 @@
-# HANDOVER — 当前唯一任务：§10.60 iPhone Chrome (iOS WebKit) 原生 Hand Cards 滑动（用户真实手机 FAIL / NOT ACCEPTED）
+# HANDOVER — 当前唯一任务：§10.60 Hand 原生横向滑动修复
 
-**状态：ORIGINAL §10.60 — USER iPHONE FAIL / NOT ACCEPTED / FUNCTION STILL NOT WORKING（2026-11-16 01:33 UTC）**。Owner 明确指出当前真实 iPhone **Chrome** 浏览器里的游戏 Hand Cards 仍然无法横向滑动；**这是明确的验收失败，不是“请 Owner 再验证”、不只是存疑或等待验证。** 即使 `4e61022` 已技术部署且 Chromium 绿灯，不能标记功能已完成。由于缺少带部署 SHA 的 iPhone Chrome / iOS WebKit 精确事件 trace，本条是 **Owner 对当前游戏功能的失败判定**，而非声称证明某个特定物理设备/代码路径的触摸根因。Agent 负责完成修复与自己的真实 iPhone Chrome 或同引擎可信 iOS WebKit 验证，不能把调试和重复失败验证推给 Owner。
+**状态：已实现，待精确 SHA CI / Worker 部署 / 新版 iPhone Chrome 复验；未验收。** 当前设计版本：`docs/UX2-refine.md` revision `2026-11-16 01:34 UTC`。Owner 已确认旧部署在英国 iPhone Chrome（iOS WebKit）仍无法滑动，旧 Chromium/CDP 通过不构成手机验收。
 
+## 本次实现
 
-**重要环境纠正（Owner 2026-11-16 01:34 UTC）：测试设备用的是 iPhone **Chrome** 而不是 Safari。英国 iPhone Chrome 使用 WebKit 渲染；源自 WebKit Bug 183870 的滚动风险仍可适用，但不能把“Safari 未测试”误读成“用户浏览器是 Safari”。Agent 修复验证的终端环境优先级是 **真实 iPhone Chrome > 可信 iOS WebKit 设备 > Chromium 辅助回归**。Apple 的替代引擎 entitlement 仅适用于欧盟发行的浏览器（[Apple](https://developer.apple.com/support/alternative-browser-engines/)）；[MDN Chrome 词条](https://developer.mozilla.org/en-US/docs/Glossary/Google_Chrome) 也说明 iOS Chrome 使用 WebKit。Agent 不得要求 Owner 用 Safari 重新测试此前已确认失败的旧版本。**
+- `app/sequence-overrides.css`：原生滚动容器 `.local-hand-rail` 自身改为可命中（`pointer-events:auto`）；透明 Dock 上方面板区域透传触摸，技能和装备的实际按钮提升为独立命中目标，避免滚动区域截断其点击。
+- `tests/browser/local-dock-hero-hierarchy.spec.mjs`：保留 440px、11 张手牌原生触摸滚动与末张选择回归，并断言技能及装备按钮命中和装备详情点击。
+- 未修改游戏规则、服务端权限、卡牌身份、卡牌尺寸或既有 75% 卡面步长。
 
-## 已交付的技术结果（保留，不再误当手机验收）
+## 验证与边界
 
-- §10.60 75% 最小面宽推进（68px face → ≥51px x-step）、11 张卡可 overflow、原生横滑基础代码已交付；前次 `02cb61288d19478433cccd2310650c4a41f8cebf`（Actions [43780573479](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43780573479)）已部署，但 Owner 报告 iPhone 失败。
-- 最新二次补丁 `4e61022fc9177de8319cbef432a8a84c2d1e6424` 已推送部署；[Actions 43785016336](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43785016336) 全绿，Worker `7cf33a66-5c52-4db2-a626-2c7e6b801b6e`；只给 .game-card / 信息 / 反选触摸目标添加 `touch-action:pan-x`，继续保留滚动节点 `pointer-events:none`。Chrome DevTools Protocol `Input.dispatchTouchEvent` 11 卡、440px 浏览器 1/1 PASS，技能按钮命中 PASS；**这只能证明 Chromium，不证明 iPhone Chrome（iOS WebKit）滚动可用**。
-- §10.60 原设计：`docs/UX2-refine.md` 原 §10.60（保持 68px 牌、≥75% 步长、原生横向 overflow、首末卡可达、滑动不误选、点按仍选择、技能装备仍可点；隐私/服务器权限不变）。§10.56 Inspector 已 OWNER CLOSED，§10.59 等任务独立，不能借本次扩大范围。
+- `npm run build`：PASS。
+- §10.60 定向 Playwright Chromium/CDP 触摸场景：1/1 PASS（11 张牌滑至末张、滑动不误选、点选末张、技能/装备按钮可命中及装备详情可打开）。此结果不是 iPhone WebKit 实机证明。
+- 定向 ESLint 与 `git diff --check`：PASS。
+- 当前环境只有 Chromium Playwright 浏览器；`xcodebuild`/`simctl` 不可用，未能执行真实 iPhone Chrome 或 iOS WebKit A/B。不得据此宣称手机问题已证实修复；新版部署后需确认真实滑动及点击路径。
+- 旧基线 `4e61022fc9177de8319cbef432a8a84c2d1e6424` 的 Actions `43785016336` 为成功，但不代表本次改动通过。提交后须记录本次精确 SHA 的 Actions、Worker 部署和生产 smoke。
 
-## 本次 Reviewer 源码与 WebKit 对照——先验高可信假设，非已经证明的 iPhone Chrome runtime
+## 唯一当前任务
 
-**关键可验证冲突：** `app/sequence-overrides.css` L818–830，`.local-hand-rail` 是 `overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x` 的**真正滚动容器**，但是它自身被设成 **`pointer-events:none`**；只有 `.card-slot` 恢复 `pointer-events:auto`，新补丁再给子按钮 `touch-action:pan-x`。WebKit Bug [183870](https://bugs.webkit.org/show_bug.cgi?id=183870)（OPEN，2025-11 仍有复现讨论）专门记录 **iOS 无法原生滚动 pointer-events:none 的 scrollport，即使子元素 pointer-events:auto；Chrome/桌面 Safari 可能正常**。因此「对子按钮加 pan-x」未移除真实的 scrollport hit-test 故障。HANDOVER 已记录 Agent 曾试验给整个 rail `pointer-events:auto`，导致 rail 上部透明 lift clearance 截获 `.hero-skill-button`/装备点击；又退回 pointer-none，形成 **iPhone Chrome 滚动 vs 技能可点** 二选一陷阱。这是**最优先验证**的原因，不能先宣称唯一已证实根因。另须排除真机 overlay/disabled card target、祖先 touch-action/overflow 与 scrollLeft 被重置。
-
-**执行责任与唯一原任务下一步（Owner 已明确报 FAIL，禁止要求其重复证明失败、禁止仅靠 Chromium CDP 宣称完成）：**
-
-1. **iPhone Chrome（iOS WebKit）触摸诊断/A-B，先证明具体事件路径：** 11 张真实 Hand 并确保 `scrollWidth>clientWidth`，在真正的 iPhone Chrome 会话中用可用的 WebKit 检查工具或隔离的 DEBUG-only probe 记录 `touchstart`/first `touchmove` 的 `elementFromPoint` + `event.target/composedPath`、对应 target 和 scrollport 的 computed `pointerEvents/touchAction/overflowX`、`event.cancelable/defaultPrevented`、手势前后 `rail.scrollLeft`、点击上层技能是否仍命中。**仅用于诊断**临时把 rail `pointerEvents=auto` 再滑：若 iPhone Chrome 立即可滑而技能区域被挡，则 WebKit 183870 成立；再复原。若仍不可滑，沿实际命中 DOM/事件拦截链测量其他 overlay/祖先/disabled 按钮问题，不能盲目认定。
-2. **从结构上拆开“可滑卡牌触控区域”和“上方透明抬升留白”：** 让接受真实横向手指触摸的 **原生 scrollport 自己**是 `pointer-events:auto` 的真实 hit target（或使用经过 iPhone 验证的内层 pointer-auto 自滚动节点），并且**其命中矩形不能覆盖上方技能/装备有效点击区**。透明 lift clearance 应当是独立 `pointer-events:none` 的视觉区域/层，不能再作为必须 pointer-none 的 scrollport 本身；保留已选卡完整抬升和真卡 CardFace，不凭猜测调整全局 z-index、禁用技能点击或用 JS `touchmove` 假滚动替代。必要时把实际交互 scrollport 与视觉抬升层/包裹区域拆分，使用实时 DOMRect 证明裁切/层叠安全；不能为了通滑而截断所选卡或牺牲其他 accepted Dock。具体最小 DOM/CSS 变更由 A/B 命中测量确定，优先单个复用滚动结构，不做 Hero 特判。
-3. **补 iPhone Chrome / iOS WebKit 回归，不只桌面 Chromium：** 一次真实 iPhone（或可信 WebKit 设备）11 卡向左滑至少两次，`scrollLeft` 实际前进、最后一张完整可见、未误选；末张点选/复选正常；随后点击两个上方技能/装备按钮命中正确；无整页横溢和两指缩放窃取。同步维持 Chromium unit/DOM 和原 `local-dock-hero-hierarchy.spec.mjs`，但 **CDP Chromium 单通过不能关 §10.60**。应比较 touchstart 时真实命中节点与祖先，触摸 target 不是 scrollport 的情况也需证明其最近可滚动祖先能收到 native gesture。
-4. **发布边界：** 若是真机 A/B 证实后实施，提交同一 §10.60 代码与测试到 `ux-v2`，定向 unit/lint/build、`git diff --check`、精确 SHA Actions/Worker/production smoke；在本 HANDOVER 记录测量、根因可信等级与实际验证设备。保持本任务 **IMPLEMENTED / DEPLOYED — PENDING OWNER REAL-iPHONE REVIEW** 直至 Owner 明确 PASS。若暂时拿不到 iPhone Chrome 实机诊断，优先自己搭建可复现的 iOS WebKit 兼容调试环境和确定性隔离用例，记录环境限制与可证实的层级/命中事实；不得要求 Owner 再次证明当前失败，也不得继续反复改 CSS 并宣称解决。
-5. **互不干扰：** 不开 §10.60-F1，不更改独立 §10.59 H4、已接受 §10.56 Inspector、待做 §10.57 pooled buttons、§10.61 等；不 reset/clean 其他 Agent worktrees。其余 UI/browser 本地回归合计 ≤5 min；必要的真实 iPhone 外部验收不算本地 UI 矩阵。
-
-**Reviewer 结论：当前功能在真实 iPhone 上 FAIL / NOT ACCEPTED。Agent 应在 iPhone Chrome / iOS WebKit 触摸路径上优先验证 scrollport pointer-events A/B 并修复滚动与技能热区的结构冲突；在新代码实际部署后才邀请 Owner 复验，不得将现有部署标为可验收成功。** 这份交接是当前同一原任务的下一执行步骤，不是新功能批准。
+§10.60 原任务：完成本次精确 SHA CI 与部署；随后用 iPhone Chrome（或可信 iOS WebKit）验证 11 张手牌真实单指滑动、末张完整可达、滑动不触发选择，以及技能/装备按钮仍可点击。状态保持 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**，直到 Owner 明确验收；不得标记 USER-ACCEPTED。

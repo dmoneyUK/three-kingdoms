@@ -748,7 +748,8 @@
   min-height: 0;
   height: var(--top-panel-height);
   position: relative;
-  z-index: 10;
+  z-index: auto;
+  pointer-events: none;
 }
 
 .local-status-panel,
@@ -780,6 +781,9 @@
 
 .local-equipment-panel { width: max-content; }
 .local-equipment-slots { display: grid; grid-template-columns: repeat(4, var(--zone-card-width)); gap: var(--zone-card-gap); min-width: 0; align-items: center; height: 100%; }
+.local-dock-zones .hero-skill-button { position: relative; z-index: 70; pointer-events: auto; }
+.local-dock-zones .local-zone-card-button,
+.local-dock-zones .zone-info-button { z-index: 70; pointer-events: auto; }
 .local-equipment-slot,
 .local-judgement-card-slot { display: block; position: relative; flex: 0 0 var(--zone-card-width); width: var(--zone-card-width); height: var(--zone-card-height); min-width: 0; min-height: 0; }
 
@@ -817,11 +821,10 @@
 /* The top panels stay below the hand so a raised card can paint over them. */
 .local-hand-section { position: relative; grid-area: hand; height: var(--hand-panel-height); min-height: var(--hand-panel-height); min-width: 0; padding: var(--hand-top-inset) 4px var(--hand-bottom-gutter); overflow: visible; z-index: 50; }
 .local-hand { position: relative; height: 100%; min-width: 0; overflow: visible; z-index: 60; }
-/* Native scrolling clips both axes. Reserve the existing lift above the normal
-   baseline inside the viewport, without increasing the Dock's grid height.
-   Empty lift space passes hits through to Skills/Equipment; card descendants
-   still receive native touch/wheel input, and the rail supports keyboard pan. */
-.local-hand-rail { position: absolute; top: calc(-1 * var(--hand-lift-clearance)); right: 4px; left: 4px; z-index: 60; display: flex; align-items: flex-start; justify-content: flex-start; box-sizing: border-box; width: auto; height: calc(var(--hand-peek-height) + var(--hand-lift-clearance)); min-width: 0; padding: var(--hand-lift-clearance) 0 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x; pointer-events: none; scrollbar-width: none; }
+/* Native scrolling clips both axes. Keep the scrollport itself hit-testable for
+   iOS WebKit; the empty Dock panel areas pass through, while real skill and
+   equipment buttons stay above the raised-card clearance as their own targets. */
+.local-hand-rail { position: absolute; top: calc(-1 * var(--hand-lift-clearance)); right: 4px; left: 4px; z-index: 60; display: flex; align-items: flex-start; justify-content: flex-start; box-sizing: border-box; width: auto; height: calc(var(--hand-peek-height) + var(--hand-lift-clearance)); min-width: 0; padding: var(--hand-lift-clearance) 0 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x; pointer-events: auto; scrollbar-width: none; }
 .local-hand-rail::-webkit-scrollbar { display: none; }
 .local-hand-rail:focus-visible { outline: 1px solid #e6cc8c; outline-offset: -1px; }
 .local-hand-rail .card-slot { position: relative; z-index: 1; flex: 0 0 var(--hand-card-face-width); width: var(--hand-card-face-width); height: var(--hand-peek-height); overflow: hidden; pointer-events: auto; }
