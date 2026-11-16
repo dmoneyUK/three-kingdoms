@@ -2170,7 +2170,31 @@ async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePh
         effect: { kind: "draw_phase_modifier" } }, root.envelope);
       log = addTriggeredEffectNotice(log, target.name, publicDrawSkill.label, fact).log;
     }
-    log = addHistory(log, `${target.name} draws ${draw.drawn.length} cards.`, target.id);
+    if (draw.drawn.length > 0) {
+      const drawRoot = createCausalRoot({
+        stage: "SETTLEMENT",
+        origin: { originSourceId: target.id, originEffect: "normal_draw_phase", originalTargetIds: [target.id] },
+        current: { currentSourceId: target.id, currentEffect: "normal_draw_phase", currentTargetIds: [target.id], resolvingPlayerId: target.id },
+      });
+      const drawEventId = crypto.randomUUID();
+      const drawFact = publicFactFor(drawRoot.context, "EFFECT_APPLIED", {
+        rootEventId: drawEventId,
+        actorId: target.id,
+        affectedPlayerIds: [target.id],
+        label: "Draw Phase",
+        effect: { kind: "draw_phase" },
+        committedOutcome: {
+          source: { kind: "phase", label: "Draw Phase" },
+          changes: [{ kind: "CARD_DRAWN", playerId: target.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }],
+        },
+      }, drawRoot.envelope);
+      log = drawFact?.committedOutcome
+        ? addLogWithId(log, `${target.name} draws ${draw.drawn.length} cards.`, target.id,
+          { actorId: target.id, importance: "essential", publicFact: drawFact }, drawEventId).log
+        : addHistory(log, `${target.name} draws ${draw.drawn.length} cards.`, target.id);
+    } else {
+      log = addHistory(log, `${target.name} draws 0 cards.`, target.id);
+    }
     for (const drawn of drawnCards) log = addPrivateDrawEvent(log, target, drawn);
     const hand = [...parse<Card[]>(target.hand_json, []), ...draw.drawn];
     writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), target.id));
