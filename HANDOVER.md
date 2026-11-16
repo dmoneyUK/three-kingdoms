@@ -1,17 +1,18 @@
-# HANDOVER — 当前唯一任务：§10.63
+# HANDOVER — 当前唯一任务：§10.61 Boundary B
 
-## 最近结果：§10.62
+## 最近交付结果
 
-**IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW。** 修复 Negation 与 Dismantle H4 的已验证玩家名片段。代码提交 `61bc60a53ca4dfcf7ddb145c2a79d0c6b28407a2`；精确 SHA Actions [43969554427](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43969554427) 全部必需作业通过。定向 Node 测试 `67/67` 通过，`git diff --check` 通过。Worker version `5302fb17-94d0-4647-81f2-429fe70709fd`；生产首页与 `/api/health` smoke 通过。未运行本地手机或浏览器验收；等待 Owner iPhone 复验。
+- **§10.62** 已实现并部署，等待 Owner iPhone 复验：commit `61bc60a53ca4dfcf7ddb145c2a79d0c6b28407a2`，精确 SHA Actions [43969554427](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43969554427) 全绿，Worker `5302fb17-94d0-4647-81f2-429fe70709fd`，生产首页与 `/api/health` smoke 通过。
+- **§10.63** 已实现并部署，等待 Owner iPhone 复验：commit `ee45f4c7fd9560a3fc59151be039e1200b2c31ba`，精确 SHA Actions [43973352179](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43973352179) 所有必需作业通过，Worker `4581d450-2328-43c3-a8af-beba73299bfa`，生产首页与 `/api/health` smoke 通过。未运行本地浏览器或设备测试。
 
-## 当前任务：§10.63 LOCAL-SELECTED-HAND-ABOVE-SKILL-01
+## 当前任务：§10.61 UNIVERSAL-PRECOMMIT-SELECTION-TOGGLE-01 — Boundary B
 
-按 Owner 最新直接顺序，在 §10.62 后先执行本项。设计依据 `docs/UX2-refine.md` revision `2026-11-16 21:51 UTC`，设计提交 `c82c15d901f2340e57594dd08408ca638ed10fff`。
+依据最新 `docs/UX2-refine.md` revision `2026-11-16 21:51 UTC`，设计 commit `c82c15d901f2340e57594dd08408ca638ed10fff`。Boundary A 的纯策略适配器已存在于 `app/local-precommit-selection.ts`，其焦点测试在 Actions `43964193573` 通过。
 
-修复四人局本地 Dock 中被选中的真实手牌与武将技能重叠时，技能文字/边框仍绘制在卡牌上方的问题。必须保持单张真实 CardFace、原有选择/再次点击取消行为、未遮挡技能与装备的点击能力，以及 §10.60 已通过的原生横向滑动和首尾牌可达性。不改合法行动、卡牌身份、隐私、游戏规则或其他展示行为；不得以单纯增加子元素 z-index、复制卡牌、遮盖技能或扩大透明拦截区替代真正的选中卡视觉层级。
+只接入 Turn 转换、武器和可撤销 provider 标签：Serpent Spear、Wusheng、Longdan 的 Play/Response 路径及 generic selectable Trigger/Response provider。活动控件保留原技能/武器/provider 名称和 `aria-pressed`；再次点击同一活动 owner 只清除其未提交的卡牌、目标、错误提示/预览，不发送动作。可撤销草稿只使用现有 primary `Confirm`，不显示同一草稿的 Local `Cancel`、`Normal` 或 `Form Attack`。保留服务端 CurrentAction 合法性、`serpent_spear_attack` 两张真实手牌和目标 payload、现有 conversion source、Skip/Pass、§10.58 名称和 §10.60 原生手牌滑动。
 
-### 当前实现进度
+**当前进度：** Boundary B 实现及聚焦断言已修改，尚未提交。`app/page.tsx` 现在让 Serpent Spear、Wusheng、Longdan 的 Play/Response 与可选择的通用 Trigger/Response provider 保留稳定名称、`aria-pressed` 和同名再次点击退出；退出清除未提交卡牌/目标/本地提示，不发 action。统一使用现有 primary `Confirm`，去掉同一草稿的重复 Local Cancel，并保持原服务器 action payload。Serpent Spear 请求忙时不可切换。
 
-- 已让处于选中/聚焦状态的原生手牌滚动容器成为确定的 `z-index:80` 绘制层，高于技能按钮的 `z-index:70`；滚动容器自身穿透点击，只让真实卡槽接收点击。横向 `overflow-x:auto`、`touch-action:pan-x` 和滚动容器结构保持不变。
-- 增加了单一四人局 Cao Cao / Treachery / Kirin Bow 浏览器回归场景，CI 会附带卡牌与技能重叠区截图，并核对卡牌命中、未遮挡技能/装备命中、再次点击取消及滚动样式。该场景已加入部署所需的 browser smoke。
-- 按 Owner 指示未在本地运行手机或浏览器测试。精确 SHA `e5191f77d27b79013ebec70a457ea15d9002bf1f` 的 Actions [43972519728](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43972519728) 于 2026-11-16 22:44 UTC 失败：lint/build、浏览器 smoke、API 均通过；fast 失败在 `tests/room-safety-render.test.mjs` 的旧断言仍要求 selected rail 为 `z-index:auto`。未部署。2026-11-16 22:46 UTC 已将该断言改为检查新选中态绘制层与空白穿透，以及真实卡槽的 pointer target；本地浏览器/测试仍未运行。下一步差异检查后提交、推送并核验新精确 SHA CI、Worker 与生产 smoke。结果保持 **PENDING OWNER iPHONE REVIEW**。此项完成后按 Owner 顺序进入 §10.61，再执行 §10.57。
+已更新 `tests/active-skill-interactions.test.mjs` 中旧的 Cancel/Normal 断言，并补充 Wusheng/Longdan Play 与 Response、通用 Response 的确认 payload 和本地退出覆盖；同步更新 `tests/browser/hero-event-triggers-real-gameplay.spec.mjs`、`tests/room-safety-render.test.mjs` 的现有断言。没有运行本地测试、构建、浏览器或设备测试；`git diff --check` 已通过。提交前检查到当前远端 tip `ee45f4c7fd9560a3fc59151be039e1200b2c31ba` 的精确 SHA Actions `43973352179` 全绿。下一步检查完整 diff 后提交/推送，验证新 SHA 的必需 CI、Worker 部署及生产 smoke；通过后把唯一当前任务推进到 Boundary C。
+
+交付本 Boundary 后，在 HANDOVER 中记录精确 commit、CI、部署/生产 smoke 和未覆盖范围，并将唯一当前任务推进至 §10.61 Boundary C。§10.61 总体状态保持未验收，等待 Owner iPhone 复验。

@@ -56,7 +56,10 @@ test("shared pool actions do not relabel specialized non-pool controls", () => {
   assert.match(gameRoomSource, />Confirm End<\/button>/);
   assert.match(gameRoomSource, /data-deck-reorder-submit="true"/);
   assert.match(gameRoomSource, />COMPLETE STARGAZING<\/button>/);
-  assert.match(gameRoomSource, /serpentMode \? "Form Attack" : normalTargetSelectionActive \? "Confirm" : "Play"/);
+  assert.match(gameRoomSource, /turnConversionPrecommitControls\?\.primaryLabel/);
+  assert.match(gameRoomSource, /turnConversionPrecommitControls\?\.primaryEnabled/);
+  assert.match(gameRoomSource, /data-serpent-spear-control="true"[^\n]*aria-label=\{SERPENT_SPEAR_LABEL\}[^\n]*aria-pressed=\{serpentMode\}/);
+  assert.doesNotMatch(gameRoomSource, /serpentMode \? "Form Attack"|serpentMode \? "Normal"/);
   const endTurnStart = gameRoomSource.indexOf('data-end-turn-confirmation="true"');
   const endTurnEnd = gameRoomSource.indexOf("</BattlefieldChoiceStage>}", endTurnStart);
   assert.ok(endTurnStart >= 0 && endTurnEnd > endTurnStart, "End Turn keeps its own confirmation stage");

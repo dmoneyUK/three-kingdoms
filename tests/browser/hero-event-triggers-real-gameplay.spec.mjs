@@ -1558,7 +1558,7 @@ test("Serpent Spear presents two real cards as one Attack for actor, target and 
     const actorDock = page.locator(`.local-player-dock[data-player-anchor="${seedData.players[0].id}"]`);
     const spearToggle = actorDock.locator('button[data-serpent-spear-control="true"]');
     await expect(spearToggle).toHaveText("Serpent Spear");
-    await expect(spearToggle).toHaveAttribute("aria-label", "Use Serpent Spear");
+    await expect(spearToggle).toHaveAttribute("aria-label", "Serpent Spear");
     await expect(spearToggle).toHaveAttribute("aria-pressed", "false");
     const toggleGeometry = await spearToggle.evaluate((button) => {
       const rect = button.getBoundingClientRect();
@@ -1580,8 +1580,8 @@ test("Serpent Spear presents two real cards as one Attack for actor, target and 
     expect(toggleGeometry.fontSize).toBeGreaterThanOrEqual(7);
     expect(toggleGeometry.scrollWidth).toBeLessThanOrEqual(toggleGeometry.clientWidth + 1);
     await spearToggle.click();
-    await expect(spearToggle).toHaveText("Normal");
-    await expect(spearToggle).toHaveAttribute("aria-label", "Exit Serpent Spear mode");
+    await expect(spearToggle).toHaveText("Serpent Spear");
+    await expect(spearToggle).toHaveAttribute("aria-label", "Serpent Spear");
     await expect(spearToggle).toHaveAttribute("aria-pressed", "true");
     await spearToggle.click();
     await expect(spearToggle).toHaveText("Serpent Spear");

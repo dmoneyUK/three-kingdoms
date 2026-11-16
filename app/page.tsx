@@ -35,7 +35,7 @@ import { buildDyingHandoffView, buildInteractionStageView, buildPresentationClie
 import { buildPresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, triggerDecisionInstruction, viewerNegationAcknowledgement, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
-import { createPrecommitScopeForAction, derivePrecommitOwnerControls, precommitDraftForScope, resetPrecommitOwnerDraft, togglePrecommitDraftCard, togglePrecommitDraftTarget, togglePrecommitOwnerDraft, type PrecommitSelectionDraft } from "./local-precommit-selection";
+import { createPrecommitScopeForAction, derivePrecommitOwnerControls, precommitDraftForScope, resetPrecommitOwnerDraft, togglePrecommitDraftCard, togglePrecommitDraftTarget, togglePrecommitOwnerDraft, type PrecommitOwnerKind, type PrecommitSelectionDraft } from "./local-precommit-selection";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, isPublicInteractionOutcomeFact, type PublicInteractionNarration } from "../game/public-activity";
 import { CardFace } from "./card-face";
@@ -2513,6 +2513,9 @@ const SERPENT_SPEAR_LABEL = cardDefinition("SerpentSpear").name;
 function conciseActionLabel(label: string) {
   return ({ "Play Attack": "Attack", "Play Dodge": "Dodge", "Play Negation": "Negate", "Use Serpent Spear": SERPENT_SPEAR_LABEL } as Record<string, string>)[label] ?? label;
 }
+function stablePrecommitOwnerLabel(label: string) {
+  return conciseActionLabel(label).replace(/^Use\s+/i, "").trim();
+}
 function heroDefinition(id?: string | null): Hero | null {
   const hero = HEROES.find((candidate) => candidate.id === id);
   return hero ? { id: hero.id, name: hero.name, faction: hero.faction, hp: hero.hp, ability: hero.ability, skills: hero.skills, skill: heroSkillName(hero.id) ?? undefined } : null;
@@ -3815,6 +3818,7 @@ type HeroSkillButtonModel = {
   description: string;
   enabled: boolean;
   active: boolean;
+  retapToExit?: boolean;
   passive?: boolean;
   onClick?: () => void;
 };
@@ -4709,6 +4713,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeSkillSelection = normalizeActiveCardSkillSelection(activeSkillOption?.selection ?? null);
   const activeSkillTargetSelection = activeSkillOption?.selection?.type === "target" ? activeSkillOption.selection : null;
   const activeActionRevision = room.actionRevision ?? "";
+  const createLocalPrecommitScope = (kind: PrecommitOwnerKind, ownerId: string) => createPrecommitScopeForAction({
+    roomCode: room.code,
+    viewerId: room.meId,
+    actionRevision: activeActionRevision,
+    actionKind: room.currentAction?.kind,
+    kind,
+    ownerId,
+  });
   const activeSkillScope = activeSkillOption ? createPrecommitScopeForAction({
     roomCode: room.code,
     viewerId: room.meId,
@@ -5082,7 +5094,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : triggerCardOption?.selection?.type === "cards" && triggerCardOption.selection.eligibleCardIds.includes(item.id);
   const responseCardSelectionActive = Boolean(responseCardSelectionReady || dyingFirstAidSelectionActive);
   const heroResponseEffectIds = new Set(Object.values(HERO_SKILL_RESPONSE_IDS[me?.hero ?? ""] ?? {}).flat());
-  const genericResponseOptions = semanticResponseOptions.filter((option) => option.activation === "explicit" && !heroResponseEffectIds.has(option.providerId)).map((option) => ({ ...option, label: conciseActionLabel(option.label) }));
+  const genericResponseOptions = semanticResponseOptions.filter((option) => option.activation === "explicit" && !heroResponseEffectIds.has(option.providerId)).map((option) => ({ ...option, label: option.selection ? stablePrecommitOwnerLabel(option.label) : conciseActionLabel(option.label) }));
   const responseDamageAction = canUseAction(room.currentAction, "decline_response") ? "decline_response" as GameplayAction : canUseAction(room.currentAction, "skip_rescue") ? "skip_rescue" as GameplayAction : canUseAction(room.currentAction, "decline_trigger") ? "decline_trigger" as GameplayAction : null;
   const triggerDeclineAction = canUseAction(room.currentAction, "decline_trigger");
   const hasSerpentSpear = getResponseOptions({ hand: room.myHand, equipment: me?.equipmentCards ?? [], hero: me?.hero }, { kind: "attack" }).some((option) => option.providerId === "serpent_spear_attack");
@@ -5341,6 +5353,52 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     existingPrimaryLabel: "Confirm",
     existingPrimaryEnabled: activeSkillConfirmEnabled,
   });
+  const wushengConfirmEnabled = wushengMode === "play"
+    ? Boolean(canUseAction(room.currentAction, "play_card") && canDeclareAttack && selectedCanPlayAsAttack && selectedPlayTargetsValid)
+    : Boolean(wushengMode === "response" && canUseAction(room.currentAction, "respond") && responseProviderId === wushengResponseOption?.providerId && responseSelectionComplete);
+  const wushengPrecommitControls = derivePrecommitOwnerControls({
+    ownerPresent: Boolean(wushengMode),
+    scope: wushengMode ? createLocalPrecommitScope("skill", "guan_yu_red_card_attack") : null,
+    available: wushengMode === "play" ? canUseWushengInPlay : Boolean(wushengMode === "response" && canUseWushengInResponse && canUseAction(room.currentAction, "respond")),
+    selected: Boolean(wushengMode),
+    selectionType: "cards",
+    retapSupported: true,
+    busy: busy || wushengMode === "response" && (!responseDecisionReady || sharedWindowExpired),
+    confirmEnabled: wushengConfirmEnabled,
+    localCancelAvailable: localTargetSelection.canCancel,
+    existingPrimaryLabel: "Confirm",
+    existingPrimaryEnabled: wushengConfirmEnabled,
+  });
+  const longdanConfirmEnabled = longdanMode === "play"
+    ? Boolean(canUseAction(room.currentAction, "play_card") && canDeclareAttack && selectedCanPlayAsAttack && selectedPlayTargetsValid)
+    : Boolean(longdanMode === "response" && canUseAction(room.currentAction, "respond") && responseProviderId === longdanResponseOption?.providerId && responseSelectionComplete);
+  const longdanPrecommitControls = derivePrecommitOwnerControls({
+    ownerPresent: Boolean(longdanMode),
+    scope: longdanMode ? createLocalPrecommitScope("skill", longdanMode === "play" ? "zhao_yun_dodge_as_attack" : longdanResponseOption?.providerId ?? "") : null,
+    available: longdanMode === "play" ? canUseLongdanInPlay : Boolean(longdanMode === "response" && longdanResponseOptions.length > 0 && canUseAction(room.currentAction, "respond")),
+    selected: Boolean(longdanMode),
+    selectionType: "cards",
+    retapSupported: true,
+    busy: busy || longdanMode === "response" && (!responseDecisionReady || sharedWindowExpired),
+    confirmEnabled: longdanConfirmEnabled,
+    localCancelAvailable: localTargetSelection.canCancel,
+    existingPrimaryLabel: "Confirm",
+    existingPrimaryEnabled: longdanConfirmEnabled,
+  });
+  const serpentConfirmEnabled = Boolean(canUseAction(room.currentAction, "serpent_spear_attack") && canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid);
+  const serpentPrecommitControls = derivePrecommitOwnerControls({
+    ownerPresent: serpentMode,
+    scope: serpentMode ? createLocalPrecommitScope("weapon", "serpent_spear_attack") : null,
+    available: Boolean(serpentMode && canFormSerpentAttack && canUseAction(room.currentAction, "serpent_spear_attack")),
+    selected: serpentMode,
+    selectionType: "cards",
+    retapSupported: true,
+    busy: busy,
+    confirmEnabled: serpentConfirmEnabled,
+    localCancelAvailable: localTargetSelection.canCancel,
+    existingPrimaryLabel: "Confirm",
+    existingPrimaryEnabled: serpentConfirmEnabled,
+  });
   const localTargetCancelVisible = localTargetFlow === "active-skill"
     ? activeSkillPrecommitControls.showLocalCancel
     : localTargetSelection.canCancel;
@@ -5471,7 +5529,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     return accepted;
   };
   const triggerHasProviderCancelSurface = Boolean(triggerTargetMode && selectedTriggerOption && !heroTriggerEffectIds.has(selectedTriggerOption.effectId));
-  const normalHasProviderCancelSurface = wushengMode === "play" || longdanMode === "play";
+  const normalHasProviderCancelSurface = Boolean(wushengMode === "play" || longdanMode === "play" || serpentMode);
   const resetLocalTargetFlow = (flow: LocalTargetFlow) => {
     setLocalPlayTargetNotice(null);
     closeOpponentInspection(false);
@@ -5494,6 +5552,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
     setResponseProviderId(""); setSelected(""); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice("");
     setWushengMode(null); setLongdanMode(null); setSerpentMode(false);
+  };
+  const clearLocalPrecommitDrafts = () => {
+    setLocalPlayTargetNotice(null);
+    closeOpponentInspection(false);
+    setSelected(""); setTargetIds([]); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice("");
+    setResponseProviderId(""); setSerpentMode(false); setWushengMode(null); setLongdanMode(null);
+    setKingSkillId(""); setActiveSkillSelectionState(null);
+  };
+  const toggleGenericProviderDraft = (providerId: string) => {
+    const active = responseProviderId === providerId;
+    clearLocalPrecommitDrafts();
+    if (!active) setResponseProviderId(providerId);
   };
   const clearPendingTargetCardSelection = () => {
     setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId("");
@@ -5594,11 +5664,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       description: skill.description,
       enabled: !wushengButtonDisabled || Boolean(wushengMode),
       active: Boolean(wushengMode),
+      retapToExit: true,
       onClick: () => {
-        if (wushengMode === "play") { setWushengMode(null); setSelected(""); setTargetIds([]); return; }
-        if (wushengMode === "response") { setWushengMode(null); setResponseProviderId(""); setSelected(""); setSerpentSelected([]); return; }
-        if (canUseWushengInPlay) { setWushengMode("play"); setSerpentMode(false); setSelected(""); setTargetIds([]); return; }
-        if (canUseWushengInResponse && wushengResponseOption) { setWushengMode("response"); setResponseProviderId(wushengResponseOption.providerId); setSelected(""); setSerpentSelected([]); }
+        if (wushengMode) { clearLocalPrecommitDrafts(); return; }
+        if (canUseWushengInPlay) { clearLocalPrecommitDrafts(); setWushengMode("play"); return; }
+        if (canUseWushengInResponse && responseDecisionReady && canUseAction(room.currentAction, "respond") && wushengResponseOption) { clearLocalPrecommitDrafts(); setWushengMode("response"); setResponseProviderId(wushengResponseOption.providerId); }
       },
     };
     if (me?.hero === "zhao-yun" && skill.name === "Braveheart") return {
@@ -5606,11 +5676,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       description: skill.description,
       enabled: !longdanButtonDisabled || Boolean(longdanMode),
       active: Boolean(longdanMode),
+      retapToExit: true,
       onClick: () => {
-        if (longdanMode === "play") { setLongdanMode(null); setSelected(""); setTargetIds([]); return; }
-        if (longdanMode === "response") { setLongdanMode(null); setResponseProviderId(""); setSelected(""); setSerpentSelected([]); return; }
-        if (canUseLongdanInPlay) { setLongdanMode("play"); setWushengMode(null); setSerpentMode(false); setSelected(""); setTargetIds([]); return; }
-        if (canUseLongdanInResponse && longdanResponseOption) { setLongdanMode("response"); setResponseProviderId(longdanResponseOption.providerId); setSelected(""); setSerpentSelected([]); }
+        if (longdanMode) { clearLocalPrecommitDrafts(); return; }
+        if (canUseLongdanInPlay) { clearLocalPrecommitDrafts(); setLongdanMode("play"); return; }
+        if (canUseLongdanInResponse && responseDecisionReady && canUseAction(room.currentAction, "respond") && longdanResponseOption) { clearLocalPrecommitDrafts(); setLongdanMode("response"); setResponseProviderId(longdanResponseOption.providerId); }
       },
     };
     const responseEffectIds = HERO_SKILL_RESPONSE_IDS[me?.hero ?? ""]?.[skill.name] ?? [];
@@ -5682,6 +5752,33 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const responseControlsDisabled = busy || !responseDecisionReady || sharedWindowExpired;
   const triggerControlsDisabled = responseControlsDisabled || !canUseAction(room.currentAction, "trigger");
   const physicalResponseControlsDisabled = responseControlsDisabled || !genericResponse;
+  const genericTriggerPrecommitOption = triggerResponse && responseProviderId
+    ? genericTriggerOptions.find((option) => option.effectId === responseProviderId && (option.selection?.type === "cards" || option.selection?.type === "target")) ?? null
+    : null;
+  const genericResponsePrecommitOption = canRespond && responseProviderId
+    ? genericResponseOptions.find((option) => option.providerId === responseProviderId && option.selection?.type === "cards") ?? null
+    : null;
+  const genericPrecommitOption = genericTriggerPrecommitOption ?? genericResponsePrecommitOption;
+  const genericPrecommitOwnerId = genericTriggerPrecommitOption?.effectId ?? genericResponsePrecommitOption?.providerId ?? "";
+  const genericPrecommitScope = genericPrecommitOption
+    ? createLocalPrecommitScope("provider", genericPrecommitOwnerId)
+    : null;
+  const genericPrecommitConfirmEnabled = genericTriggerPrecommitOption
+    ? genericTriggerPrecommitOption.selection?.type === "target" ? triggerTargetComplete : triggerSubmissionComplete
+    : Boolean(genericResponsePrecommitOption && canUseAction(room.currentAction, "respond") && responseSelectionComplete);
+  const genericPrecommitControls = derivePrecommitOwnerControls({
+    ownerPresent: Boolean(genericPrecommitOption),
+    scope: genericPrecommitScope,
+    available: Boolean(genericTriggerPrecommitOption && canUseAction(room.currentAction, "trigger") || genericResponsePrecommitOption && canUseAction(room.currentAction, "respond")),
+    selected: Boolean(genericPrecommitOption),
+    selectionType: genericPrecommitOption?.selection?.type ?? null,
+    retapSupported: Boolean(genericPrecommitOption?.selection),
+    busy: responseControlsDisabled,
+    confirmEnabled: genericPrecommitConfirmEnabled,
+    localCancelAvailable: localTargetSelection.canCancel,
+    existingPrimaryLabel: "Confirm",
+    existingPrimaryEnabled: genericPrecommitConfirmEnabled,
+  });
   const activeHarvestSelection = canChooseHarvest
     && harvestDraft?.viewerId === room.meId
     && harvestDraft.actorId === room.pendingHarvest?.actorId
@@ -6362,7 +6459,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     // Only the server-selected winner may create a public card presentation.
     const presentImmediately = Boolean(optimisticEvent && !room.currentAction?.negationWindowId && !room.currentAction?.sharedWindow && !optimisticPlay && !activeEvent && eventQueue.length === 0);
     if (presentImmediately && optimisticEvent) { selfTargetWindowRevision.current += 1; materials.forEach((item) => optimisticallyPresentedCards.current.add(item.id)); setSelfTargetWindowClosing(false); setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [optimisticEvent])); setOptimisticPlay(optimisticEvent); }
-    setResponseProviderId(""); setLongdanMode(null); setSelected(""); setSerpentSelected([]);
+    setResponseProviderId(""); setWushengMode(null); setLongdanMode(null); setSelected(""); setSerpentSelected([]); setTargetIds([]);
     const accepted = await onAction("respond", { providerId: provider.providerId, ...(selectedIds.length === 1 ? { cardId: selectedIds[0] } : selectedIds.length > 1 ? { cardIds: selectedIds } : {}) });
     if (!accepted && presentImmediately && optimisticEvent) { materials.forEach((item) => optimisticallyPresentedCards.current.delete(item.id)); setOptimisticPlay(null); setSelfTargetWindowEvents((events) => events.filter((event) => event.id !== optimisticEvent.id)); }
   };
@@ -11341,18 +11438,30 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           : room.phase === "discard"
             ? { active: true, hasInput: discardSelected.length > 0, count: discardSelected.length, min: excessCards, max: excessCards, summary: `${discardSelected.length} of ${excessCards} selected` }
             : undefined;
+  const turnConversionPrecommitControls = serpentMode
+    ? serpentPrecommitControls
+    : wushengMode === "play"
+      ? wushengPrecommitControls
+      : longdanMode === "play"
+        ? longdanPrecommitControls
+        : null;
+  const responseConversionPrecommitControls = wushengMode === "response"
+    ? wushengPrecommitControls
+    : longdanMode === "response"
+      ? longdanPrecommitControls
+      : null;
   const consolePrimaryCandidates = [
     ...(borrowedSwordTargetSelectionActive && canUseAction(room.currentAction, "choose_borrowed_sword_target") ? [{ id: "borrowed-sword", label: "Confirm", enabled: localTargetSelection.canConfirm, priority: 80 }] : []),
     ...(activeSkillSelection || activeSkillTargetSelection ? [{ id: "active-skill", label: activeSkillPrecommitControls.primaryLabel ?? "Confirm", enabled: activeSkillPrecommitControls.primaryEnabled, priority: 70 }] : []),
     ...(targetCardPickerInLocalDock ? [{ id: "target-card-picker", label: "Confirm", enabled: targetCardPickerSelectionComplete && !responseControlsDisabled, priority: 70 }] : []),
-    ...(triggerResponse && canUseAction(room.currentAction, "trigger") && selectedTriggerOption?.selection?.type === "cards" ? [{ id: "trigger-cards", label: "Confirm", enabled: triggerSubmissionComplete, priority: 70 }] : []),
-    ...(triggerResponse && canUseAction(room.currentAction, "trigger") && selectedTriggerOption?.selection?.type === "target" ? [{ id: "trigger-target", label: "Confirm", enabled: localTargetSelection.canConfirm, priority: 70 }] : []),
-    ...(canRespond && selectedResponseProvider ? [{ id: "response", label: "Confirm", enabled: canUseAction(room.currentAction, "respond") && responseSelectionComplete, priority: 60 }] : []),
+    ...(triggerResponse && canUseAction(room.currentAction, "trigger") && selectedTriggerOption?.selection?.type === "cards" ? [{ id: "trigger-cards", label: genericPrecommitControls.primaryLabel ?? "Confirm", enabled: genericTriggerPrecommitOption?.effectId === selectedTriggerOption.effectId ? genericPrecommitControls.primaryEnabled : triggerSubmissionComplete, priority: 70 }] : []),
+    ...(triggerResponse && canUseAction(room.currentAction, "trigger") && selectedTriggerOption?.selection?.type === "target" ? [{ id: "trigger-target", label: genericPrecommitControls.primaryLabel ?? "Confirm", enabled: genericTriggerPrecommitOption?.effectId === selectedTriggerOption.effectId ? genericPrecommitControls.primaryEnabled : localTargetSelection.canConfirm, priority: 70 }] : []),
+    ...(canRespond && selectedResponseProvider ? [{ id: "response", label: responseConversionPrecommitControls?.primaryLabel ?? genericPrecommitControls.primaryLabel ?? "Confirm", enabled: responseConversionPrecommitControls?.primaryEnabled ?? (genericResponsePrecommitOption?.providerId === selectedResponseProvider.providerId ? genericPrecommitControls.primaryEnabled : canUseAction(room.currentAction, "respond") && responseSelectionComplete), priority: 60 }] : []),
     ...(dyingFirstAidSelectionActive ? [{ id: "first-aid", label: "Confirm", enabled: canUseAction(room.currentAction, "respond") && responseSelectionComplete, priority: 65 }] : []),
     ...(sharedDyingPeachAvailable ? [{ id: "shared-dying-peach", label: "Confirm", enabled: sharedDyingPeachSelectionComplete, priority: 66 }] : []),
     ...(rescueDecisionReady && !canRespond && !sharedDyingPeachWindowActive ? [{ id: "rescue", label: "Peach", enabled: canUseAction(room.currentAction, "give_peach") && card?.kind === "Peach", priority: 60 }] : []),
     ...(room.isMyTurn && room.phase === "discard" && currentActionOwnedByViewer ? [{ id: "discard", label: `Discard ${excessCards} selected`, enabled: canUseAction(room.currentAction, "discard_cards") && discardSelected.length === excessCards, priority: 60 }] : []),
-    ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play", enabled: (canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack) && (!selectedCardNeedsTarget || selectedPlayTargetsValid) && (!(["Dodge", "Negation"].includes(card?.kind ?? "")) || selectedCanPlayAsAttack)), priority: 40 }] : []),
+    ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: turnConversionPrecommitControls?.primaryLabel ?? (normalTargetSelectionActive ? "Confirm" : "Play"), enabled: turnConversionPrecommitControls?.primaryEnabled ?? ((canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack) && (!selectedCardNeedsTarget || selectedPlayTargetsValid) && (!(["Dodge", "Negation"].includes(card?.kind ?? "")) || selectedCanPlayAsAttack))), priority: 40 }] : []),
   ];
   const consoleIsDecisionActor = currentActionOwnedByViewer;
   const currentPublicGroupResponse = (() => {
@@ -11508,9 +11617,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && targetCardPickerSelectedKeys.length > 0,
   );
   const consoleSecondaryControls = [
-    ...(genericTriggerOptions.map((option) => option.label)),
+    ...(genericTriggerOptions.map((option) => option.selection ? stablePrecommitOwnerLabel(option.label) : option.label)),
     ...(genericResponseOptions.map((option) => option.label)),
-    ...(canFormSerpentAttack ? [serpentMode ? "Normal" : SERPENT_SPEAR_LABEL] : []),
+    ...(canFormSerpentAttack ? [SERPENT_SPEAR_LABEL] : []),
     ...(room.isMyTurn && canPlay ? ["End"] : []),
   ].filter((label, index, all) => Boolean(label) && all.indexOf(label) === index);
   const ordinaryPlayTargetSelection = Boolean(
@@ -11522,11 +11631,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && !normalHasProviderCancelSurface,
   );
   const consoleLocalCancelVisible = !fiveSeatPhoneAttackMode && !lustLocalSelectionActive && (
-    localTargetCancelVisible && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface && !ordinaryPlayTargetSelection
+    localTargetCancelVisible && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface && !genericPrecommitControls.ownerCanRetapToExit && !ordinaryPlayTargetSelection
     || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal)
     || canClearTargetCardPickerSelection
   ) && !fanjianTargetSelectionActive;
-  const consoleLocalCancelEnabled = !lustLocalSelectionActive && (
+  const consoleLocalCancelEnabled = consoleLocalCancelVisible && !lustLocalSelectionActive && (
     localTargetCancelEnabled
     || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal)
     || canClearTargetCardPickerSelection
@@ -11942,10 +12051,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         <section className="hero-skills local-hero-skills" data-hero-id={localHero?.id ?? undefined} aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive
             ? <div key={skill.name} className="hero-skill-button hero-skill-passive" role="group" aria-label={`${skill.name}, passive skill`}>{skill.name}</div>
-            : <button type="button" key={skill.name} className={`hero-skill-button ${skill.active ? "active" : ""}`} aria-label={skill.name} aria-pressed={skill.active} title={skill.description} disabled={!skill.enabled || (busy && !(skill.name === "Deflection" && canActivateDaqiaoDeflectionDuringTimerStart)) || (presentationBusy && !responseDecisionReady && !skill.active && !(skill.name === "Deflection" && canActivateDaqiaoDeflection))} onClick={() => skill.onClick?.()}>
-              {skill.active && (me?.hero === "guan-yu" || me?.hero === "zhao-yun")
-                ? `Cancel ${skill.name}`
-                : me?.hero === "diao-chan" && skill.name === "Beauty Outshining the Moon"
+            : <button type="button" key={skill.name} className={`hero-skill-button ${skill.active ? "active" : ""}`} aria-label={skill.name} aria-pressed={skill.active} data-precommit-owner={skill.retapToExit ? skill.name : undefined} title={skill.active && skill.retapToExit ? `${skill.description} Tap again to cancel this selection.` : skill.description} disabled={!skill.enabled || (busy && !(skill.name === "Deflection" && canActivateDaqiaoDeflectionDuringTimerStart)) || (presentationBusy && !responseDecisionReady && !skill.active && !(skill.name === "Deflection" && canActivateDaqiaoDeflection))} onClick={() => skill.onClick?.()}>
+              {me?.hero === "diao-chan" && skill.name === "Beauty Outshining the Moon"
                   ? <>
                     <span className="diao-chan-beauty-label diao-chan-beauty-label-wide">Beauty Outshining{"\n"}the Moon</span>
                     <span className="diao-chan-beauty-label diao-chan-beauty-label-compact">Beauty{"\n"}Outshining the Moon</span>
@@ -12077,9 +12184,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       <div className="turn-controls" data-console-surface="local-operation" data-ordinary-play-target-selection={ordinaryPlayTargetSelection ? "true" : undefined} data-skip-visible={consoleDecline?.label === "Skip" ? "true" : undefined} aria-label="Local operation console">
         <div data-action-extras="true">
           {triggerResponse && responseDecisionReady && inlineChoiceTriggerOption?.selection?.type === "choice" && inlineChoiceTriggerOption.selection.choices.map((choice) => <button type="button" key={`${inlineChoiceTriggerOption.effectId}:${choice.id}`} className="serpent-control" data-trigger-choice-provider={inlineChoiceTriggerOption.effectId} data-trigger-choice-action={choice.id} aria-label={`${inlineChoiceTriggerOption.label}: ${choice.label}`} disabled={responseControlsDisabled || !canUseAction(room.currentAction, "trigger")} onClick={() => void onAction("trigger", { providerId: inlineChoiceTriggerOption.effectId, choice: choice.id })}>{choice.label}</button>)}
-          {triggerResponse && genericTriggerOptions.map((option) => option.selection?.type === "target_cards" || option.selection?.type === "choice" && option.allowDecline === false ? null : option.selection ? <button key={option.effectId} className={`serpent-control ${responseProviderId === option.effectId ? "active" : ""}`} disabled={triggerControlsDisabled} onClick={() => { const active = responseProviderId === option.effectId; if (active) resetLocalTargetFlow("trigger"); else { setResponseProviderId(option.effectId); setSelected(""); setTargetIds([]); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); } }}>{responseProviderId === option.effectId ? `Cancel ${option.label}` : option.selection.type === "target" ? `Use ${option.label}` : option.label}</button> : <button key={option.effectId} className="serpent-control" disabled={triggerControlsDisabled} onClick={() => onAction("trigger", { providerId: option.effectId })}>{`Use ${option.label}`}</button>)}
-          {canRespond && genericResponse && semanticResponseOptions.length > 0 && genericResponseOptions.map((option) => option.selection ? <button key={option.providerId} className={`serpent-control ${responseProviderId === option.providerId ? "active" : ""}`} disabled={physicalResponseControlsDisabled} onClick={() => { const active = responseProviderId === option.providerId; setResponseProviderId(active ? "" : option.providerId); setSelected(""); setSerpentSelected([]); }}>{responseProviderId === option.providerId ? `Cancel ${option.label}` : option.label}</button> : <button key={option.providerId} className="serpent-control" disabled={physicalResponseControlsDisabled} onClick={() => submitResponseProvider(option)}>{busy ? "Resolving…" : option.label}</button>)}
-          {room.isMyTurn && canPlay && consoleKind === "turn" && canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} data-serpent-spear-control="true" aria-label={serpentMode ? "Exit Serpent Spear mode" : "Use Serpent Spear"} aria-pressed={serpentMode} onClick={() => { setSerpentMode((active) => !active); setSerpentSelected([]); setSelected(""); setTarget(""); }}>{serpentMode ? "Normal" : SERPENT_SPEAR_LABEL}</button>}
+          {triggerResponse && genericTriggerOptions.map((option) => {
+            if (option.selection?.type === "target_cards" || option.selection?.type === "choice" && option.allowDecline === false) return null;
+            if (!option.selection) return <button key={option.effectId} className="serpent-control" disabled={triggerControlsDisabled} onClick={() => onAction("trigger", { providerId: option.effectId })}>{`Use ${option.label}`}</button>;
+            const active = responseProviderId === option.effectId;
+            const label = stablePrecommitOwnerLabel(option.label);
+            return <button key={option.effectId} className={`serpent-control ${active ? "active" : ""}`} aria-label={label} aria-pressed={active} title={active ? "Tap again to cancel this selection." : option.description} data-precommit-provider={option.effectId} disabled={triggerControlsDisabled} onClick={() => toggleGenericProviderDraft(option.effectId)}>{label}</button>;
+          })}
+          {canRespond && genericResponse && semanticResponseOptions.length > 0 && genericResponseOptions.map((option) => {
+            if (option.selection) {
+              const active = responseProviderId === option.providerId;
+              return <button key={option.providerId} className={`serpent-control ${active ? "active" : ""}`} aria-label={option.label} aria-pressed={active} title={active ? "Tap again to cancel this selection." : option.description} data-precommit-provider={option.providerId} disabled={physicalResponseControlsDisabled} onClick={() => toggleGenericProviderDraft(option.providerId)}>{option.label}</button>;
+            }
+            return <button key={option.providerId} className="serpent-control" disabled={physicalResponseControlsDisabled} onClick={() => submitResponseProvider(option)}>{busy ? "Resolving…" : option.label}</button>;
+          })}
+          {room.isMyTurn && canPlay && consoleKind === "turn" && canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} data-serpent-spear-control="true" data-precommit-owner="serpent_spear_attack" aria-label={SERPENT_SPEAR_LABEL} title={serpentMode ? "Tap again to cancel this selection." : `Use ${SERPENT_SPEAR_LABEL}`} aria-pressed={serpentMode} disabled={busy} onClick={() => { clearLocalPrecommitDrafts(); if (!serpentMode) setSerpentMode(true); }}>{SERPENT_SPEAR_LABEL}</button>}
         </div>
         <div data-action-slots="true">
           <div data-action-slot="cancel">
@@ -12100,7 +12219,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {(activeSkillSelection || activeSkillTargetSelection) && consolePrimaryId === "active-skill" && <button className="primary" disabled={busy || !activeSkillConfirmEnabled || !consoleDecision.primary?.enabled} onClick={() => activeSkillSubmission && submitWithLocalTargetPreview(() => onAction("trigger", activeSkillSubmission))}>Confirm</button>}
             {canRespond && genericResponse && semanticResponseOptions.length > 0 && selectedResponseProvider && consolePrimaryId === "response" && <button className="primary" disabled={responseControlsDisabled || !responseSelectionComplete || !consoleDecision.primary?.enabled} onClick={() => submitResponseProvider()}>{busy ? "Confirming…" : "Confirm"}</button>}
             {room.isMyTurn && room.phase === "discard" && consolePrimaryId === "discard" && <button className="primary" disabled={busy || discardSelected.length !== excessCards || !consoleDecision.primary?.enabled} onClick={() => onAction("discard_cards", { cardIds: discardSelected })}>{busy ? "Discarding…" : `Discard ${excessCards} selected`}</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy && !ordinaryTurnPlayAuthorized || !card || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play"}</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy && !ordinaryTurnPlayAuthorized || !card || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : turnConversionPrecommitControls?.primaryLabel ?? (normalTargetSelectionActive ? "Confirm" : "Play")}</button>}
           </div>
           <div data-action-slot="decline">
             {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName(busy ? "Skipping…" : "Skip")} disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}
