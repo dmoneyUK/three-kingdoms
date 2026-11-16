@@ -963,7 +963,7 @@ test("Zhou Yu renders Sowing Distrust from its projected semantic capability", (
     ],
     myHand: [card("zhou-yu-hand", "Attack")], turnSeat: 0, phase: "play", deckCount: 20, discardTop: null,
     log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
-    currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"], triggerOptions: [fanjianOption] },
+    currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card", "trigger"], triggerOptions: [fanjianOption] },
     pendingAttack: null, pendingGreenDragon: null, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null,
     pendingGroup: null, pendingNegation: null, pendingHarvest: null, pendingTargetCard: null, pendingBorrowedSword: null, pendingDying: null,
   };
@@ -976,7 +976,8 @@ test("Zhou Yu renders Sowing Distrust from its projected semantic capability", (
   assert.doesNotMatch(fanjianButton, /disabled=""/, "Sowing Distrust is enabled when zhou_yu_fanjian is projected");
   assert.match(html, /data-player-anchor="p2"/, "the projected eligible opponent is rendered");
   assert.match(gameRoomSource, /activeSkillTargetMode && activeSkillTargetIds\.includes\(player\.id\)/, "activated semantic target skills make projected opponents selectable across phases");
-  assert.match(gameRoomSource, /setActiveSkillSelectionState\(\(state\) => \{[\s\S]*targetIds: next/, "target selection stores the chosen opponent in the active skill state");
+  assert.match(gameRoomSource, /togglePrecommitDraftTarget\(state, activeSkillScope, playerId, activeSkillTargetIds, max\)/,
+    "active target selection uses the shared scoped toggle with projected eligibility");
   assert.match(gameRoomSource, /onAction\("trigger", activeSkillSubmission\)/, "active skills use the generic trigger action");
   assert.match(gameRoomSource, /activeSkillSubmission =[\s\S]*?providerId: activeSkillOption\.effectId[\s\S]*(?:targetIds: activeSkillSelectedTargetIds|targetId: activeSkillTargetId)/, "the generic trigger payload carries providerId and the selected target field");
 
@@ -1328,8 +1329,10 @@ test("every card-and-target active hero skill has a valid empty-selection UI con
     "a committed Equipment arrival remains exempt while other public event animations remain busy");
   assert.match(gameRoomSource, /const presentationBusy = Object\.values\(presentationBusyCauses\)\.some\(Boolean\)/,
     "all explicit presentation busy causes still compose into one status");
-  assert.match(gameRoomSource, /const activeSkillTargetIds = activeSkillSelection\?\.targetIds \?\? activeSkillTargetSelection\?\.targetIds \?\? \[\]/);
-  assert.match(gameRoomSource, /const activeSkillSelectedTargetIds = activeSkillStateIsCurrent \? \(activeSkillSelectionState\?\.targetIds \?\? \[\]\)/);
+  assert.match(gameRoomSource, /const activeSkillDraft = precommitDraftForScope\(activeSkillSelectionState, activeSkillScope\)/,
+    "active-skill draft is consumed only inside its complete current scope");
+  assert.match(gameRoomSource, /const activeSkillSelectedTargetIds = activeSkillDraft \? activeSkillDraft\.targetIds\.filter\(\(id\) => activeSkillTargetIds\.includes\(id\)\) : \[\]/,
+    "active target drafts remain restricted to the projected eligible target IDs");
 
   for (const conversion of [
     { hero: "guan-yu", skill: "God of War", cardId: "wusheng-card", canPlayAs: "attack" },
