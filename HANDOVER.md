@@ -1,14 +1,14 @@
-# HANDOVER — 当前唯一任务：§10.60 Step 3 手牌触摸滑动回归修正
+# HANDOVER — 当前唯一任务：§10.59 Step 1 共享公共结果契约
 
-## 最新结果
+## 最近结果
 
-- §10.56 Inspector/H4：Owner 已在 2026-11-16 00:19 UTC 明确验收通过；最新设计提交 `7f2eb25e19b5932a17b3aee9b21c40f6d441b3a0` 已标记 USER-ACCEPTED/CLOSED。原技术交付仍为 `c290f9f2b775f36a47e5027055efc2e2af23d3f8`，Actions `43775398370` 全绿，Worker `4e7bb0aa-f538-4652-837e-4a4d09e09b3d`。
-- §10.60 Step 1 `657b82a36e3f9fa84b28915f9161026020f3d82e` 和 Step 2 `7c9798c2be66a722733cc8d1dd8649873eda66c6` 已推送、部署；各自精确 SHA Actions `43776358723`、`43778222306` 全绿，最近 Worker `9dd16d8f-6a20-4587-8954-506132b99bc3`。Step 2 Chromium 触摸仿真通过，但 Owner 报告真实 iPhone 仍无法横滑，因此不视为手机验收。
+- §10.56 Inspector/H4 已由 Owner 于 2026-11-16 00:19 UTC 验收通过；最新设计提交 `7f2eb25e19b5932a17b3aee9b21c40f6d441b3a0` 标记 USER-ACCEPTED/CLOSED。
+- §10.60 Step 3 已于 `02cb61288d19478433cccd2310650c4a41f8cebf` 推送并部署。精确 SHA Actions [43780573479](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43780573479) 全部通过：lint/fast、browser smoke、API、D1 migration、Worker deploy、production smoke。Worker `aca70fcf-d641-444c-96b2-e2cbf38ccc83`；线上 `/` 与 `/api/health` 为 HTTP 200。440×844、11 张牌移动 Chromium 触摸回归通过：多次真实触摸横划可到末张，滑动不误选，末张可完整显示并单独点选。真实 iPhone Safari 仍待 Owner 复核，因此状态为 IMPLEMENTED/DEPLOYED — PENDING OWNER iPHONE REVIEW。
 
 ## 当前执行
 
-只执行最新 `docs/UX2-refine.md` §10.60 Step 3。基线：远端文档提交 `7f2eb25e19b5932a17b3aee9b21c40f6d441b3a0`，Revision 2026-11-16 00:19 UTC。
+只执行 `docs/UX2-refine.md` §10.59 原始任务。已复习最新完整设计：远端基线 `7f2eb25e19b5932a17b3aee9b21c40f6d441b3a0`，Revision 2026-11-16 00:19 UTC。任务仍为 PARTIALLY ACCEPTED / CORRECTION REQUIRED / NOT CLOSED；黄盖苦肉仅是已通过的发现案例，不代表普适 H4 覆盖验收。
 
-2026-11-16：检查到 `.local-hand-rail` 是横向原生滚动区，但没有明确声明 `touch-action: pan-x` 和 iOS overflow scrolling。已在该轨道增加这两项声明，保留原有 `pointer-events: none`、牌宽和现有点击/选牌处理。扩展 440×844、11 张手牌回归：真实 CDP 单指触摸先命中卡牌，再多次横划至末张；滑动期间不选牌；末张完整位于滚动视口内；点按末张仅选择该卡；无页面横向溢出。最终运行：`npm run test:browser -- tests/browser/local-dock-hero-hierarchy.spec.mjs -g '§10.60 Step 3' --workers=1`，1/1 通过（6.6s）。首次检查 WebKit 专属计算样式时 Chromium 返回 `undefined`；移除该引擎不支持的断言后，行为回归通过。`node --check` 与 `git diff --check` 通过。
+当前安全切片是设计执行顺序第 1 步“Common contract and safety”：在现有 `publicFactFor` / causal envelope / `@event` / PresentationV2 路径上定义 typed committed public outcome，建立服务端唯一发布 helper、共享校验/所有权契约和纯 H4 结果文案 formatter；保留保存房间旧事件 wire compatibility。聚焦证明：实际提交身份、顺序、因果关系、actor/target 与实际 HP/卡牌变化数量；拒绝伪造、私有、重复和陈旧事实；不得解析英文 history，不改规则/CurrentAction/隐私，不加 Hero/卡牌专用分支，不在共同消费链尚未完成时宣称 10.59 已通过。
 
-仍需完成：复核本次精确 diff；按提交前门禁检查 `ux-v2` 最新 CI；仅提交本任务文件；等待该 SHA 完整 Actions、Worker 部署和生产 smoke。最终状态应为 IMPLEMENTED/DEPLOYED — PENDING OWNER iPHONE REVIEW。现有测试是 Chromium 移动触摸仿真，不代表真实 iPhone Safari 验收；Owner 已报告真实设备仍失败，部署后需再核验滑动。游戏规则、服务器权限、卡牌身份/顺序和其他 Dock 控件保持不变。
+最近一次提交前 CI 门禁核验：`ux-v2` 最新相关成功 run `43780573479` 对 SHA `02cb6128…` 全绿；之后仅进行 HANDOVER 任务边界更新。下一步先检查本地/远端状态并按上述第 1 步修改最小共享类型与验证测试；每个安全切片最多 5 分钟本地 UI/browser 测试，优先纯函数/API/隐私测试。每个提交前再检查当前远端 SHA 的最新 CI 状态。
