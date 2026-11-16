@@ -1,13 +1,11 @@
-# HANDOVER — 唯一当前任务：§10.59 Step 2E 实际伤害 HP 结果
+# HANDOVER — 唯一当前任务：§10.60 Hand 原生横向滑动修复
 
-**状态：实现已在隔离工作树完成，待提交推送。** 最新设计复核基线：`origin/ux-v2` = `3c92d2094a091ebfe91429d4fc4b06800a41e721`；设计 revision `2026-11-16 01:34 UTC`。Owner 负责实际游戏/手机验收；按 Owner 指示不运行本地测试、构建、浏览器或设备测试。
+**状态：已按 Owner 指示授权，待实施。** 最新远端设计复核：`origin/ux-v2` = `4986edf90393482ef527408ecb577b709168f091`，§10.60 标记为 iPhone Chrome/WebKit 验收失败。Owner 将自行进行实际手机测试；Agent 不运行本地游戏、浏览器、设备测试或构建。
 
 ## 最近交付
 
-§10.59 Step 2D 已部署：提交 `6b6816094e90ae2823e079fbb71dd95ada8a352b`，精确 SHA Actions [43800530986](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43800530986) 全绿，Worker `b3284270-e174-470d-83a2-2a2c9349cbdb`。D1 无迁移。
+§10.59 Step 2E 已实现并部署：提交 `4986edf90393482ef527408ecb577b709168f091`。精确 SHA Actions [43801738109](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43801738109) 成功：API tests、lint/fast、单场启动 smoke、D1（无迁移）、Worker deploy 和 production smoke 全绿。Worker 版本 `aecf5f1c-cd39-47cf-8173-fb1db1df4053`。未运行本地测试/构建/浏览器/设备测试；`git diff --check` 通过。§10.59 仍开放，待后续来源边界实现和 Owner iPhone review。
 
-## 当前任务与进展
+## 当前任务边界
 
-Step 2E 在共享 `resolveSourcedDamage` 边界按实际 HP 前后差计算 `actualHpLost`，用实际变化生成 `DAMAGE_APPLIED` / `DAMAGE_PREVENTED` 公共事实和结果文案；只有真实 HP 损失才公开伤害来源并附带已提交的 HP 变化。日志后处理器也接收实际 HP 差值。游戏响应/伤害 continuation 仍使用规则结算出的 `finalAmount`，未改变规则。
-
-尚未提交、推送或获得精确 SHA CI/部署结果。本地只做源码审阅和差异检查；Owner 将自行做实际游戏验收。§10.59 仍未关闭，待 Owner iPhone review。
+§10.60 按设计修复两项：手牌相邻牌的前进距离至少为牌宽 75%（68px 牌宽时至少 51px，最多遮挡 25%）；实际滚动容器在拥挤时保留原牌尺寸并启用原生横向溢出，修复该滚动命中区的 pointer-events/阻断层，使 iPhone Chrome/WebKit 单指滑动可工作。只做设计指定的局部修改，不做 JS 假轮播、不改规则/H4/全局 Dock。提交后由 Owner 实机验收；不得标记 USER-ACCEPTED。
