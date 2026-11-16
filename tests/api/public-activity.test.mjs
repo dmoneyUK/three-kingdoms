@@ -270,12 +270,14 @@ test("Bumper Harvest H4 and PAC follow committed recipient Negation facts throug
   const initial = harvestSnapshot();
   const initialH4 = derivePublicNegationNarration({ snapshot: initial, players, rootEventId: "harvest-root-event" });
   assert.equal(initialH4?.headline, "Test Player 1 played Bumper Harvest.");
+  assert.deepEqual(playerIds(initialH4?.headlineSegments), ["p1"]);
   assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: initial })).stage,
     "Negation can prevent Test Player 2 from picking.");
 
   const cancelled = harvestSnapshot({ responseCount: 1, effectState: "BLOCKED", nextEffectKind: "restore_effect" });
-  assert.equal(derivePublicNegationNarration({ snapshot: cancelled, players, rootEventId: "harvest-root-event" })?.headline,
-    "Test Player 3's Negation blocks Test Player 2's pick.");
+  const cancelledH4 = derivePublicNegationNarration({ snapshot: cancelled, players, rootEventId: "harvest-root-event" });
+  assert.equal(cancelledH4?.headline, "Test Player 3's Negation blocks Test Player 2's pick.");
+  assert.deepEqual(playerIds(cancelledH4?.headlineSegments), ["p3", "p2"]);
   assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: cancelled })).stage,
     "Another Negation can restore Test Player 2's pick.");
 
@@ -283,6 +285,7 @@ test("Bumper Harvest H4 and PAC follow committed recipient Negation facts throug
   const restoredH4 = derivePublicNegationNarration({ snapshot: restored, players, rootEventId: "harvest-root-event" });
   assert.equal(restoredH4?.headline,
     "Test Player 4 counters Test Player 3's Negation. Test Player 2's pick is restored.");
+  assert.deepEqual(playerIds(restoredH4?.headlineSegments), ["p4", "p3", "p2"]);
   assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: restored })).stage,
     "Another Negation can prevent Test Player 2 from picking.");
 
@@ -327,6 +330,7 @@ test("a committed public Harvest pick owns the newest H4 through the next Negati
   const snapshotWithPick = { ...base, publicEventFacts: [...base.publicEventFacts, chosenCard], bumperHarvestPicks: [pick] };
   const narration = derivePublicNegationNarration({ snapshot: snapshotWithPick, players, rootEventId: "harvest-root-event" });
   assert.equal(narration?.headline, "Test Player 2 took 6♠ Overindulgence from Bumper Harvest.");
+  assert.deepEqual(playerIds(narration?.headlineSegments), ["p2"]);
   assert.equal(narration?.eventId, chosenCard.eventId);
   assert.equal(narration?.phase, "WINDOW_OPEN");
   assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: snapshotWithPick })).stage,
@@ -412,10 +416,27 @@ test("H4 follows only the committed current-root Negation fact chain", () => {
 
   const firstCopy = derivePublicNegationNarration({ snapshot: withFacts([root, first]), players, rootEventId: "root-event" });
   assert.equal(firstCopy?.headline, "Test Player 3's Negation cancels Test Player 1's Duel effect on Test Player 2.");
+  assert.deepEqual(playerIds(firstCopy?.headlineSegments), ["p3", "p1", "p2"]);
   const secondCopy = derivePublicNegationNarration({ snapshot: withFacts([root, first, second]), players, rootEventId: "root-event" });
   assert.equal(secondCopy?.headline, "Test Player 4 counters Test Player 3's Negation. The Duel effect on Test Player 2 is restored.");
+  assert.deepEqual(playerIds(secondCopy?.headlineSegments), ["p4", "p3", "p2"]);
   const thirdCopy = derivePublicNegationNarration({ snapshot: withFacts([root, first, second, third]), players, rootEventId: "root-event" });
   assert.equal(thirdCopy?.headline, "Test Player 1 counters Test Player 4's Negation. The Duel effect on Test Player 2 is cancelled.");
+  assert.deepEqual(playerIds(thirdCopy?.headlineSegments), ["p1", "p4", "p2"]);
+  assert.equal(secondCopy?.headlineSegments?.map(({ text }) => text).join(""), secondCopy?.headline);
+
+  const duplicateVisibleNames = players.map((player) => ["p1", "p2", "p3"].includes(player.id)
+    ? { ...player, name: "Same Name" } : player);
+  const duplicateCopy = derivePublicNegationNarration({
+    snapshot: withFacts([root, first]), players: duplicateVisibleNames, rootEventId: "root-event",
+  });
+  assert.equal(duplicateCopy?.headline, "Same Name's Negation cancels Duel effect on Same Name.");
+  assert.deepEqual(playerIds(duplicateCopy?.headlineSegments), ["p3", "p2"]);
+  const missingTargetCopy = derivePublicNegationNarration({
+    snapshot: withFacts([root, first]), players: players.filter((player) => player.id !== "p2"), rootEventId: "root-event",
+  });
+  assert.equal(missingTargetCopy?.headline, "Test Player 3's Negation cancels Test Player 1's Duel effect.");
+  assert.deepEqual(playerIds(missingTargetCopy?.headlineSegments), ["p3", "p1"]);
 
   const wrongRoot = { ...third, rootEventId: "another-root" };
   assert.equal(derivePublicNegationNarration({ snapshot: withFacts([root, wrongRoot]), players, rootEventId: "root-event" })?.headline,

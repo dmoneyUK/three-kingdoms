@@ -276,6 +276,7 @@ export type PublicNegationNarration = {
   phase: "WINDOW_OPEN" | "FINAL";
   rootEffectState: "ACTIVE" | "BLOCKED";
   headline: string;
+  headlineSegments?: readonly VerifiedPlayerCopySegment[];
   compactHeadline: string;
   supportingMessage: string;
   compactSupportingMessage: string;
@@ -624,29 +625,36 @@ export function derivePublicNegationNarration(input: {
         && response.effectParticipantId === latest.response.effectParticipantId
         && response.frameId === latest.response.frameId)
       : null;
-    let headline = `${root.source} played Bumper Harvest.`;
+    let headlineCopy = verifiedPlayerCopy([playerPart(input.players, root.progress.sourceId) ?? root.source, " played Bumper Harvest."]);
     let eventId = root.rootFact.eventId;
     let checkpointId = root.rootFact.identity.checkpointId;
     let rootEffectState: "ACTIVE" | "BLOCKED" = "ACTIVE";
     if (latestPick && latestPick.pick.order > latestOwnedOrder) {
-      headline = `${latestPick.actor} took ${latestPick.pick.chosenFace.rank}${latestPick.pick.chosenFace.suit} ${latestPick.cardName} from Bumper Harvest.`;
+      const picker = playerPart(input.players, latestPick.pick.actorId);
+      headlineCopy = verifiedPlayerCopy([picker ?? latestPick.actor, ` took ${latestPick.pick.chosenFace.rank}${latestPick.pick.chosenFace.suit} ${latestPick.cardName} from Bumper Harvest.`]);
       eventId = latestPick.pick.eventId;
       checkpointId = publicEventFacts.find((fact) => fact.eventId === latestPick.pick.eventId)?.identity.checkpointId ?? checkpointId;
       rootEffectState = state?.progress.currentEffectState === "BLOCKED" ? "BLOCKED" : "ACTIVE";
     } else if (latest && actor && recipient) {
       if (latest.fact.category === "EFFECT_RESTORED" && prior) {
-        const priorActor = input.players.find((player) => player.id === prior.response.actorId)?.name.trim();
-        if (priorActor) {
-          headline = `${actor} counters ${priorActor}'s Negation. ${recipient}'s pick is restored.`;
+        const responseActor = playerPart(input.players, latest.response.actorId);
+        const priorActor = playerPart(input.players, prior.response.actorId);
+        const recipientPart = playerPart(input.players, recipientId);
+        if (responseActor && priorActor && recipientPart) {
+          headlineCopy = verifiedPlayerCopy([responseActor, " counters ", priorActor, "'s Negation. ", recipientPart, "'s pick is restored."]);
           rootEffectState = "ACTIVE";
         }
       } else if (latest.fact.category === "EFFECT_CANCELLED") {
         if (!prior) {
-          headline = `${actor}'s Negation blocks ${recipient}'s pick.`;
+          const responseActor = playerPart(input.players, latest.response.actorId);
+          const recipientPart = playerPart(input.players, recipientId);
+          if (responseActor && recipientPart) {
+            headlineCopy = verifiedPlayerCopy([responseActor, "'s Negation blocks ", recipientPart, "'s pick."]);
+          }
         }
-        if (headline !== `${root.source} played Bumper Harvest.`) rootEffectState = "BLOCKED";
+        if (headlineCopy.message !== `${root.source} played Bumper Harvest.`) rootEffectState = "BLOCKED";
       }
-      if (headline !== `${root.source} played Bumper Harvest.`) {
+      if (headlineCopy.message !== `${root.source} played Bumper Harvest.`) {
         eventId = latest.fact.eventId;
         checkpointId = latest.fact.identity.checkpointId;
       }
@@ -661,11 +669,13 @@ export function derivePublicNegationNarration(input: {
       checkpointId,
       phase,
       rootEffectState,
-      headline,
-      compactHeadline: headline,
+      headline: headlineCopy.message,
+      ...(matchingVerifiedPlayerCopySegments(headlineCopy.message, headlineCopy.segments)
+        ? { headlineSegments: headlineCopy.segments } : {}),
+      compactHeadline: headlineCopy.message,
       supportingMessage: "",
       compactSupportingMessage: "",
-      accessibleLabel: headline,
+      accessibleLabel: headlineCopy.message,
     };
   }
   const interaction = snapshot?.interaction;
@@ -697,31 +707,31 @@ export function derivePublicNegationNarration(input: {
   const narratedEffectName = latest.category === "CARD_PLAYED"
     ? rootLabel
     : effectLabel(latest.effect?.label) ?? rootLabel;
-  const rootActor = root.actorId ? input.players.find((player) => player.id === root.actorId)?.name.trim() : null;
-  const actor = latest.actorId ? input.players.find((player) => player.id === latest.actorId)?.name.trim() : null;
+  const rootActor = playerPart(input.players, root.actorId);
+  const actor = playerPart(input.players, latest.actorId);
   if (!actor) return null;
 
-  let headline: string;
+  let headlineCopy: ReturnType<typeof verifiedPlayerCopy>;
   if (latest.category === "CARD_PLAYED") {
-    const targetName = root.affectedPlayerIds.length === 1
-      ? input.players.find((player) => player.id === root.affectedPlayerIds[0])?.name.trim()
+    const target = root.affectedPlayerIds.length === 1
+      ? playerPart(input.players, root.affectedPlayerIds[0])
       : null;
-    headline = `${actor} played ${rootLabel}${targetName ? ` targeting ${targetName}` : ""}.`;
+    headlineCopy = verifiedPlayerCopy([actor, ` played ${rootLabel}${target ? " targeting " : ""}`, ...(target ? [target] : []), "."]);
   } else {
-    const targetName = latest.affectedPlayerIds.length === 1
-      ? input.players.find((player) => player.id === latest.affectedPlayerIds[0])?.name.trim()
+    const target = latest.affectedPlayerIds.length === 1
+      ? playerPart(input.players, latest.affectedPlayerIds[0])
       : null;
     const restored = latest.category === "EFFECT_RESTORED";
     const disposition = restored ? "restored" : "cancelled";
     const priorEffect = effects.length > 1 ? effects.at(-2) : null;
-    const priorActor = priorEffect?.actorId ? input.players.find((player) => player.id === priorEffect.actorId)?.name.trim() : null;
-    const effectDescription = `${narratedEffectName} effect${targetName ? ` on ${targetName}` : ""}`;
+    const priorActor = playerPart(input.players, priorEffect?.actorId);
+    const effectDescription = [`${narratedEffectName} effect`, ...(target ? [" on ", target] : [])];
     if (priorActor) {
-      headline = `${actor} counters ${priorActor}'s Negation. The ${effectDescription} is ${disposition}.`;
-    } else if (rootActor && rootActor !== actor) {
-      headline = `${actor}'s Negation ${restored ? "restores" : "cancels"} ${rootActor}'s ${effectDescription}.`;
+      headlineCopy = verifiedPlayerCopy([actor, " counters ", priorActor, "'s Negation. The ", ...effectDescription, ` is ${disposition}.`]);
+    } else if (rootActor && rootActor.name !== actor.name) {
+      headlineCopy = verifiedPlayerCopy([actor, `'s Negation ${restored ? "restores" : "cancels"} `, rootActor, "'s ", ...effectDescription, "."]);
     } else {
-      headline = `${actor}'s Negation ${restored ? "restores" : "cancels"} ${effectDescription}.`;
+      headlineCopy = verifiedPlayerCopy([actor, `'s Negation ${restored ? "restores" : "cancels"} `, ...effectDescription, "."]);
     }
   }
   const phase = interaction.stage === "NEGATION" ? "WINDOW_OPEN" : "FINAL";
@@ -734,11 +744,13 @@ export function derivePublicNegationNarration(input: {
     checkpointId: latest.identity.checkpointId,
     phase,
     rootEffectState,
-    headline,
-    compactHeadline: headline,
+    headline: headlineCopy.message,
+    ...(matchingVerifiedPlayerCopySegments(headlineCopy.message, headlineCopy.segments)
+      ? { headlineSegments: headlineCopy.segments } : {}),
+    compactHeadline: headlineCopy.message,
     supportingMessage: "",
     compactSupportingMessage: "",
-    accessibleLabel: headline,
+    accessibleLabel: headlineCopy.message,
   };
 }
 

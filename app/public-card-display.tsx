@@ -80,6 +80,7 @@ export type PublicNegationNarration = {
   phase: "WINDOW_OPEN" | "FINAL";
   rootEffectState: "ACTIVE" | "BLOCKED";
   headline: string;
+  headlineSegments?: readonly PublicH4Segment[];
   compactHeadline: string;
   supportingMessage: string;
   compactSupportingMessage: string;
@@ -142,6 +143,10 @@ export type PublicCardDisplayAction = {
     eventId: string;
     /** Authenticated root proof used to match an actor-private Steal result. */
     rootResolutionId?: string;
+    /** Identities copied from the validated public target-card settlement proof. */
+    rootEventId?: string;
+    sourceId?: string;
+    targetId?: string;
     /** Verified resolution copy; does not create a physical card or animation. */
     publicOutcomeMessage?: string;
     outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "GROUP_RESOLVED" | "BUMPER_HARVEST_RESOLVED" | "ROOT_CANCELLED" | "ROOT_RESTORED" | "LUST_DUEL_DAMAGE_APPLIED" | "LUST_DUEL_DAMAGE_PREVENTED";
@@ -1945,15 +1950,30 @@ type DisplayedPublicCardAnnouncement = {
   dismantleCardFace?: PublicDismantleCardFaceCopy;
 };
 
+/** Render only producer-verified names whose segment text matches this exact copy. */
+export function PublicH4Text({ message, segments }: {
+  message: string;
+  segments?: readonly PublicH4Segment[];
+}) {
+  const parts = matchingPublicH4Segments(message, segments);
+  return parts
+    ? <>{parts.map((part, index) => part.kind === "player"
+      ? <span key={index} className="message-player-name public-h4-player" data-player-id={part.playerId} data-public-player-id={part.playerId}>{part.text}</span>
+      : <span key={index}>{part.text}</span>)}</>
+    : message;
+}
+
 type PublicDismantleCardFaceCopy = {
   settlementEventId: string;
   cardId: string;
   message: string;
   prefix: string;
+  prefixSegments?: readonly PublicH4Segment[];
   suit: string;
   rank?: string;
   name: string;
   suffix: string;
+  suffixSegments?: readonly PublicH4Segment[];
 };
 
 type PublicCardAnnouncementCopy = {
@@ -1978,6 +1998,10 @@ function publicDismantleCardFaceCopy(
   if (action.cardKind !== "Dismantle"
     || settlement?.outcome !== "DISMANTLE_RESOLVED"
     || !settlement.eventId
+    || settlement.rootEventId !== action.rootEventId
+    || !settlement.rootResolutionId
+    || settlement.sourceId !== action.sourceId
+    || settlement.targetId !== action.targetId
     || eventId !== settlement.eventId
     || action.publicNoticeEventId && action.publicNoticeEventId !== settlement.eventId
     || action.targetId === null
@@ -1995,15 +2019,23 @@ function publicDismantleCardFaceCopy(
   const prefix = `${source} discarded `;
   const suffix = ` from ${target} (${zone}).`;
   const message = `${prefix}${face.suit}${rank ?? ""} ${name}${suffix}`;
+  const prefixCopy = sourceName && settlement.sourceId === action.sourceId
+    ? publicH4Copy([{ id: settlement.sourceId, name: sourceName }, " discarded "])
+    : undefined;
+  const suffixCopy = targetName && settlement.targetId === action.targetId
+    ? publicH4Copy([" from ", { id: settlement.targetId, name: targetName }, ` (${zone}).`])
+    : undefined;
   return {
     settlementEventId: settlement.eventId,
     cardId: face.id,
     message,
     prefix,
+    ...(matchingPublicH4Segments(prefix, prefixCopy?.segments) ? { prefixSegments: prefixCopy!.segments } : {}),
     suit: face.suit,
     ...(rank ? { rank } : {}),
     name,
     suffix,
+    ...(matchingPublicH4Segments(suffix, suffixCopy?.segments) ? { suffixSegments: suffixCopy!.segments } : {}),
   };
 }
 
@@ -2170,6 +2202,8 @@ export function publicCardCommittedFactCopy(
     .replace(/\.\s+(\d+\s+(?:targets|choices) resolved\.)/i, "; $1");
   return narration && !copy.dismantleCardFace && negationNarrationOwnsCopy ? {
     message: narration.headline,
+    ...(matchingPublicH4Segments(narration.headline, narration.headlineSegments)
+      ? { segments: narration.headlineSegments } : {}),
     compactMessage: narration.compactHeadline,
     accessibleLabel: narration.accessibleLabel,
   } : {
@@ -2227,7 +2261,8 @@ function setAnnouncementMessageTextOnMeasurementClone(
       element.replaceChildren(...parts.map((part) => {
         if (part.kind === "text") return document.createTextNode(part.text);
         const name = document.createElement("span");
-        name.className = "public-h4-player";
+        name.className = "message-player-name public-h4-player";
+        name.dataset.playerId = part.playerId;
         name.dataset.publicPlayerId = part.playerId;
         name.textContent = part.text;
         return name;
@@ -2247,7 +2282,29 @@ function setAnnouncementMessageTextOnMeasurementClone(
   name.className = "public-dismantle-card-name";
   name.textContent = dismantleCardFace.name;
   face.append(suitRank, name);
-  element.replaceChildren(document.createTextNode(dismantleCardFace.prefix), face, document.createTextNode(dismantleCardFace.suffix));
+  const appendText = (messagePart: string, segments?: readonly PublicH4Segment[]) => {
+    const parts = matchingPublicH4Segments(messagePart, segments);
+    if (!parts) {
+      element.append(document.createTextNode(messagePart));
+      return;
+    }
+    for (const part of parts) {
+      if (part.kind === "text") {
+        element.append(document.createTextNode(part.text));
+        continue;
+      }
+      const name = document.createElement("span");
+      name.className = "message-player-name public-h4-player";
+      name.dataset.playerId = part.playerId;
+      name.dataset.publicPlayerId = part.playerId;
+      name.textContent = part.text;
+      element.append(name);
+    }
+  };
+  element.replaceChildren();
+  appendText(dismantleCardFace.prefix, dismantleCardFace.prefixSegments);
+  element.append(face);
+  appendText(dismantleCardFace.suffix, dismantleCardFace.suffixSegments);
 }
 
 function measureAnnouncementCopy(
@@ -3669,7 +3726,7 @@ function PublicCardAnnouncement({
     <b aria-label={displayedCopy.accessibleLabel ?? displayedCopy.message}>
       {displayedCopy.dismantleCardFace && displayedCopy.dismantleCardFace.message === displayedCopy.message
         ? <>
-          {displayedCopy.dismantleCardFace.prefix}
+          <PublicH4Text message={displayedCopy.dismantleCardFace.prefix} segments={displayedCopy.dismantleCardFace.prefixSegments} />
           <span
             className="public-dismantle-card-face"
             data-settlement-event-id={displayedCopy.dismantleCardFace.settlementEventId}
@@ -3681,11 +3738,9 @@ function PublicCardAnnouncement({
             </span>
             <strong className="public-dismantle-card-name">{displayedCopy.dismantleCardFace.name}</strong>
           </span>
-          {displayedCopy.dismantleCardFace.suffix}
+          <PublicH4Text message={displayedCopy.dismantleCardFace.suffix} segments={displayedCopy.dismantleCardFace.suffixSegments} />
         </>
-        : matchingPublicH4Segments(displayedCopy.message, displayedCopy.segments)?.map((part, index) => part.kind === "player"
-          ? <span key={index} className="message-player-name public-h4-player" data-player-id={part.playerId} data-public-player-id={part.playerId}>{part.text}</span>
-          : <span key={index}>{part.text}</span>) ?? displayedCopy.message}
+        : <PublicH4Text message={displayedCopy.message} segments={displayedCopy.segments} />}
     </b>
     {displayedCopy.supporting && <span className="public-card-announcement-support public-negation-narration-support" aria-hidden="true">{displayedCopy.supporting}</span>}
   </div>;

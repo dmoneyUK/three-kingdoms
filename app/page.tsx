@@ -9115,6 +9115,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       },
       settlement: {
         eventId: dismantleSettlementCandidate.action.eventId,
+        rootEventId: dismantleSettlementCandidate.action.rootEventId,
+        rootResolutionId: dismantleSettlementCandidate.action.rootResolutionId,
+        sourceId: dismantleSettlementCandidate.action.sourceId,
+        targetId: dismantleSettlementCandidate.action.targetId,
         outcome: dismantleSettlementCandidate.action.outcome,
         exiting: dismantleSettlementCandidate.exiting,
         targetCardMovement: {

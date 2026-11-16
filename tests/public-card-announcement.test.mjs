@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { centerRevealCardInSafeBattlefield, publicCardAnnouncementCopy, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity, shouldDirectParkPublicJourney } from "../app/public-card-display.tsx";
+import { centerRevealCardInSafeBattlefield, publicCardAnnouncementCopy, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicH4Text, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity, shouldDirectParkPublicJourney } from "../app/public-card-display.tsx";
 import {
   canClearPublicJourneyOwnership,
   publicAnnouncementEventCopyKey,
@@ -233,6 +233,7 @@ const action = (overrides = {}) => ({
   ariaLabel: "Source played Attack targeting Target",
   ...overrides,
 });
+const dismantleIdentity = { rootEventId: "root-event", rootResolutionId: "dismantle-root-resolution", sourceId: "source", targetId: "target" };
 
 test("same-event proven conversion copy outranks its generic root narration but yields to newer facts", () => {
   const conversionNotice = "Source used Ambushment AS Burning Bridges on Target.";
@@ -287,17 +288,38 @@ test("same-event proven conversion copy outranks its generic root narration but 
     "the Negation window's same-event root narration must not erase a proven conversion");
 
   const committedNegationHeadline = "Responder's Negation cancelled Burning Bridges on Target.";
+  const committedNegationSegments = [
+    { kind: "player", playerId: "responder-id", text: "Responder" },
+    { kind: "text", text: "'s Negation cancelled Burning Bridges on " },
+    { kind: "player", playerId: "target-id", text: "Target" },
+    { kind: "text", text: "." },
+  ];
   const committedNegation = publicCardCommittedFactCopy({
     ...conversionAction,
     publicNegationNarration: {
       rootLabel: "Dodge", eventId: "negation-event", latestCommittedEventId: "negation-event", checkpointId: "checkpoint-negation",
       phase: "WINDOW_OPEN", rootEffectState: "BLOCKED",
       headline: committedNegationHeadline, compactHeadline: committedNegationHeadline,
+      headlineSegments: committedNegationSegments,
       supportingMessage: "", compactSupportingMessage: "", accessibleLabel: committedNegationHeadline,
     },
   }, sameEvent);
   assert.equal(committedNegation.message, committedNegationHeadline,
     "a later committed Negation fact still supersedes the conversion root");
+  assert.deepEqual(committedNegation.segments, committedNegationSegments,
+    "the Negation copy owner preserves only segments that exactly match its winning headline");
+  assert.equal(renderToStaticMarkup(React.createElement(PublicH4Text, {
+    message: committedNegation.message, segments: committedNegation.segments,
+  })).match(/class="message-player-name public-h4-player"/g)?.length, 2);
+  assert.equal(publicCardCommittedFactCopy({
+    ...conversionAction,
+    publicNegationNarration: {
+      rootLabel: "Duel", eventId: "negation-event", latestCommittedEventId: "negation-event", checkpointId: "checkpoint-negation",
+      phase: "WINDOW_OPEN", rootEffectState: "BLOCKED", headline: committedNegationHeadline,
+      headlineSegments: [{ kind: "player", playerId: "wrong", text: "Not the responder" }],
+      compactHeadline: committedNegationHeadline, supportingMessage: "", compactSupportingMessage: "", accessibleLabel: committedNegationHeadline,
+    },
+  }, sameEvent).segments, undefined, "mismatched verified text fails closed");
 });
 
 test("committed outcomes from existing and synthetic providers use the same H4 layer", () => {
@@ -728,7 +750,7 @@ test("public battle announcements keep proof-backed event meaning in concise cop
 
   assert.equal(publicCardAnnouncement(
     action({ cardKind: "Dismantle", cardLabel: "BURNING BRIDGE", settlement: {
-      eventId: "dismantle-hand", outcome: "DISMANTLE_RESOLVED", exiting: false,
+      ...dismantleIdentity, eventId: "dismantle-hand", outcome: "DISMANTLE_RESOLVED", exiting: false,
       targetCardMovement: {
         sourceZone: "hand", affectedCardOwnerId: "target", destinationZone: "discard", destinationOwnerId: null,
         affectedCardFace: { id: "discarded-card", kind: "Peach", suit: "♥", rank: "3" },
@@ -743,7 +765,7 @@ test("public battle announcements keep proof-backed event meaning in concise cop
   ]) {
     assert.equal(publicCardAnnouncement(
       action({ cardKind: "Dismantle", cardLabel: "BURNING BRIDGE", settlement: {
-        eventId: `dismantle-${zone}`, outcome: "DISMANTLE_RESOLVED", exiting: false,
+        ...dismantleIdentity, eventId: `dismantle-${zone}`, outcome: "DISMANTLE_RESOLVED", exiting: false,
         targetCardMovement: {
           sourceZone: zone, affectedCardOwnerId: ownerId, destinationZone: "discard", destinationOwnerId: null,
           affectedCardFace: cardFace,
@@ -866,6 +888,7 @@ test("Dismantle H4 uses event-matched public discard facts; hidden Steal Hand id
     cardFace: { id: "dismantle-root", kind: "Dismantle", suit: "♠", rank: "4" },
     ariaLabel: "Source played Burning Bridge targeting Target",
     settlement: {
+      ...dismantleIdentity,
       eventId: "dismantle-settlement",
       outcome: "DISMANTLE_RESOLVED",
       exiting: false,
@@ -962,6 +985,45 @@ test("typed H4 names preserve exact text and accessible narration, without guess
   const plain = publicCardAnnouncementCopy({ sourceId: "p1", targetId: null, rootEventId: "legacy", cardLabel: "Attack" },
     "A card named Attack does something.", null, "p1", "Attack", null, {});
   assert.equal(plain.segments, undefined, "legacy prose is not parsed for a name that happens to match card text");
+});
+
+test("Dismantle authentic settlement keeps its card face and verified actor/target H4 spans", () => {
+  const dismantleAction = action({
+    cardKind: "Dismantle",
+    cardLabel: "BURNING BRIDGE",
+    publicNoticeEventId: "dismantle-result",
+    settlement: {
+      ...dismantleIdentity,
+      eventId: "dismantle-result",
+      outcome: "DISMANTLE_RESOLVED",
+      exiting: false,
+      targetCardMovement: {
+        sourceZone: "hand",
+        affectedCardOwnerId: "target",
+        destinationZone: "discard",
+        destinationOwnerId: null,
+        affectedCardFace: { id: "actual-discarded-card", kind: "Peach", suit: "♥", rank: "3" },
+      },
+    },
+  });
+  const copy = publicCardAnnouncementCopy(dismantleAction, "Source played Burning Bridge targeting Target", "Source", "source", "Same Name", "Same Name", {}, "dismantle-result");
+  const face = copy.dismantleCardFace;
+  assert.ok(face, "the authentic public settlement still owns the inset card face");
+  assert.equal(face.cardId, "actual-discarded-card");
+  assert.equal(face.message, "Same Name discarded ♥3 Peach from Same Name (Hand).");
+  assert.deepEqual(face.prefixSegments?.filter((part) => part.kind === "player").map((part) => part.playerId), ["source"]);
+  assert.deepEqual(face.suffixSegments?.filter((part) => part.kind === "player").map((part) => part.playerId), ["target"]);
+  assert.equal(face.prefix + "♥3 Peach" + face.suffix, face.message);
+  const prefixHtml = renderToStaticMarkup(React.createElement(PublicH4Text, { message: face.prefix, segments: face.prefixSegments }));
+  const suffixHtml = renderToStaticMarkup(React.createElement(PublicH4Text, { message: face.suffix, segments: face.suffixSegments }));
+  assert.match(prefixHtml, /data-player-id="source" data-public-player-id="source"/);
+  assert.match(suffixHtml, /data-player-id="target" data-public-player-id="target"/);
+
+  const wrongSettlementActor = publicCardAnnouncementCopy({
+    ...dismantleAction,
+    settlement: { ...dismantleAction.settlement, sourceId: "unrelated-actor" },
+  }, "Source played Burning Bridge targeting Target", "Source", "source", "Source", "Target", {}, "dismantle-result");
+  assert.equal(wrongSettlementActor.dismantleCardFace, undefined, "an actor mismatch cannot claim the special settlement/card rendering owner");
 });
 
 test("generic committed H4 forwards producer-verified player fragments to the shared renderer", async () => {
