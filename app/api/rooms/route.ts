@@ -3582,8 +3582,14 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
     }
     const resumePlayer = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(resume.pending.resumePlayerId, roomId).first<PlayerRow>();
     const next = dyingResumeState(resume.pending, resumePlayer);
-    await db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-      .bind(next.phase, next.pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
+    const hasCausalContinuation = Boolean(resume.pending.resumePending
+      || resume.pending.resumeTrigger
+      || resume.pending.resumeEffect);
+    const nextEnvelope = hasCausalContinuation ? room.causal_envelope_json : null;
+    const resumed = await db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = ? AND pending_json IS ? AND causal_envelope_json IS ?")
+      .bind(next.phase, next.pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), nextEnvelope,
+        roomId, room.phase, room.pending_json, room.causal_envelope_json).run();
+    if ((resumed.meta.changes ?? 0) <= 0) return;
     await continueDyingResolution(roomId, resume.pending);
     return;
   }

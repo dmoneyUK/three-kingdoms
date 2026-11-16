@@ -159,6 +159,10 @@ test("lethal damage trigger exhaustion enters shared Dying and Peach rescue exac
   assert.equal(rescued.data.room.players.find((player) => player.id === alicePlayer.id).alive, true);
   assert.equal(rescued.data.room.pendingDying, null);
   assert.equal(rescued.data.room.causalEnvelope, null, "settled lethal Interaction clears its envelope after rescue");
+  const rescueRecoveryFacts = rescued.data.room.timeline.filter((event) => event.publicFact?.visibility === "PUBLIC"
+    && event.publicFact.committedOutcome?.changes?.some((change) => change.kind === "HP_RECOVERED" && change.playerId === alicePlayer.id));
+  assert.equal(rescueRecoveryFacts.length, 1, "the committed recovery H4 fact survives retirement of the settled Dying envelope");
+  assert.equal(rescueRecoveryFacts[0].publicFact.committedOutcome.changes[0].amount, 1, "the public result carries the actual recovered HP");
   assert.equal(rescued.data.room.currentAction.kind, "turn");
   assert.equal(rescued.data.room.log.filter((entry) => /Alice takes 1 damage/.test(entry)).length, 1, "rescue does not replay damage");
   assert.equal(rescued.data.room.log.filter((entry) => /enters Dying/.test(entry)).length, 1, "Dying begins once");
