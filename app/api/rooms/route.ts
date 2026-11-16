@@ -4484,7 +4484,29 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
     for (const drawn of reward.drawn) log = addPrivateDrawEvent(log, source, drawn);
     const sourceHand = [...parse<Card[]>(source.hand_json, []), ...reward.drawn];
     writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id));
-    log = addLog(log, `${source.name} defeated Rebel ${target.name} and draws ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}.`, source.id);
+    const rewardMessage = `${source.name} defeated Rebel ${target.name} and draws ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}.`;
+    if (reward.drawn.length > 0) {
+      const rewardEventId = crypto.randomUUID();
+      const rewardFact = pending.causal ? publicFactFor(pending.causal, "EFFECT_APPLIED", {
+        rootEventId: rewardEventId,
+        actorId: source.id,
+        affectedPlayerIds: [source.id, target.id],
+        label: "Rebel Defeat Reward",
+        effect: { kind: "draw" },
+      }, parseCausalEnvelope(room.causal_envelope_json)) : undefined;
+      const committedRewardFact = withCommittedPublicOutcome(rewardFact, {
+        outcomeLabel: `drew ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}`,
+        source: { kind: "other", label: "Rebel Defeat Reward" },
+        changes: [{ kind: "CARD_DRAWN", playerId: source.id, amount: reward.drawn.length, fromZone: "DECK", toZone: "HAND" }],
+      });
+      log = addLogWithId(log, rewardMessage, source.id, {
+        actorId: source.id,
+        importance: "essential",
+        ...(committedRewardFact?.committedIdentity && committedRewardFact.committedOutcome ? { publicFact: committedRewardFact } : {}),
+      }, rewardEventId).log;
+    } else {
+      log = addLog(log, rewardMessage, source.id);
+    }
   } else if (target?.role === "Loyalist" && source?.role === "Lord") {
     const lordHand = parse<Card[]>(source.hand_json, []);
     const lordEquipment = equipmentCards(source);

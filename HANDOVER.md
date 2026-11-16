@@ -1,17 +1,15 @@
 # HANDOVER — 当前任务：§10.59 UNIVERSAL-H4-COMMITTED-FACT-COVERAGE-01
 
-**整体状态：NOT CLOSED；已部署切片 PENDING OWNER REVIEW。** 最近复习的设计：`docs/UX2-refine.md` revision `2026-11-16 09:42 UTC`。本任务保持同一 §10.59，不创建新编号、不转做 §10.57；最终验收由 Owner 统一进行。
+**整体状态：NOT CLOSED；所有已部署切片 PENDING OWNER REVIEW。** 最近复习设计：`docs/UX2-refine.md` revision `2026-11-16 09:42 UTC`。§10.59 保持唯一当前任务；最终 iPhone 验收由 Owner 统一进行。
 
-## 最近已部署切片：恢复结果进入共享 H4
+## 最近已部署阶段
 
-提交 `4f3ddce6f9bfdc3877273435b08e99ab463f2edb` 已推送至 `ux-v2`。精确 SHA Actions [43866484287](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43866484287) 全部通过：API 377/377、lint/fast、build、Browser startup/room smoke、D1 migrations、Worker deploy 与 production smoke。Worker 版本 `8c452d7f-ade3-405c-8057-907b6a529c0d`；生产 `/api/health` 返回可用。
+恢复结果和普通摸牌结果均已接入并由共享 H4 消费器验证。`4f3ddce6f9bfdc3877273435b08e99ab463f2edb` 的精确 SHA Actions [43866484287](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43866484287) 全绿、Worker 部署和 production smoke 成功，Worker `8c452d7f-ade3-405c-8057-907b6a529c0d`。此前恢复测试失败是错误读取 `recoveryFact.interactionId`；权威字段是 `recoveryFact.identity.interactionId`，那些失败不能单独证明 H4 实现有缺陷。
 
-此前恢复 H4 断言失败的根因是测试读取了错误身份字段：使用了不存在的 `recoveryFact.interactionId`，而权威字段为 `recoveryFact.identity.interactionId`。因此这些失败本身不能证明共享 H4 实现有缺陷。`4f3ddce6` 修正测试身份读取；精确 SHA CI 通过并完成部署，验证了恢复结果经共享 H4 消费器呈现。此前未通过的 SHA 未部署。
+`e96ad960e11fa437f4ad9908ede0c23e54c1c182` 为普通 Draw Phase 两张摸牌及周瑜英姿后实际三张摸牌增加共享 H4 和观察者一致性断言。精确 SHA Actions [43868046409](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43868046409) 全部通过（API、lint/fast、build、browser startup/room smoke、D1、Worker deploy、production smoke）；Worker `15088362-95c1-4f5c-a0b4-062f9d7023d1`，生产 `/api/health` 正常。
 
-## 当前有界阶段：普通摸牌结果进入共享 H4
+## 当前有界阶段：Dying 击败奖励摸牌结果
 
-未提交改动仅增加两处现有 API 回归断言：普通 Draw Phase 的实际两张摸牌结果，以及周瑜英姿后 Draw Phase 的实际三张摸牌结果，都经 `derivePublicInteractionNarration()` 到达共享 H4；同时比较不同玩家视角的公开文案一致性。没有改动服务端行为或游戏规则。
+当前未提交改动为在击败 Rebel 后，以服务端实际 `draw.drawn.length` 发布通用 `CARD_DRAWN` 结果事实，并在现有 Dying API 回归中检查共享 H4 文案、观察者一致性及不包含抽牌 ID。没有改变奖励规则或公开牌面；没有运行本地测试、构建或设备测试。
 
-按 Owner 指令，未运行本地测试、构建或设备测试。下一步审阅 diff，提交并推送当前阶段，等待精确 SHA GitHub Actions、部署与 production smoke；若 CI 失败，先依据真实失败证据修正，不以错误断言推断 H4 缺陷。
-
-**续接点与剩余 §10.59 范围：** 当前 draw 集成断言交付后，继续设计指定的其他实际服务端结果来源，以及 presentation 的通用筛选、保留和唯一 H4 展示所有权；逐阶段提交和部署。§10.59 只有全部要求完成后才可关闭；不得自行宣布 USER-ACCEPTED。
+**续接点与同一 §10.59 剩余范围：** 审阅并交付此来源阶段后，继续已批准的其余服务端结果来源覆盖，以及通用 public-event 筛选、保留、唯一 H4 所有权和系统级回归。阶段提交不代表独立验收或关闭 §10.59；不自行宣布 USER-ACCEPTED。

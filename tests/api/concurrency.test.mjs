@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import {
   restoreSequentialDyingFixture, advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -183,6 +184,7 @@ test("saved sequential Dying: Dying uses one ordered rescue pass and does not re
   setHand(hostPlayer.id, [card("Attack", "ordered-rescue"), card("Peach", "host-unused")], 4, 4);
   setHand(alicePlayer.id, [], -1, 4);
   sql(`UPDATE players SET role='Rebel' WHERE id=${quote(alicePlayer.id)}`);
+  setDeck(game.code, [card("Dodge", "rebel-reward-1"), card("Attack", "rebel-reward-2"), card("Peach", "rebel-reward-3")]);
   setHand(bobPlayer.id, [card("Peach", "ordered-bob")], 4, 4);
   setHand(carolPlayer.id, [card("Peach", "ordered-carol")], 4, 4);
   setTurn(game.code, hostPlayer.seat);
@@ -203,6 +205,32 @@ test("saved sequential Dying: Dying uses one ordered rescue pass and does not re
   await requestAndSettle("skip_rescue", { code: game.code, token: carol.token });
   const defeated = await waitForState(game.code, host.token, (room) => !room.players.find((player) => player.id === alicePlayer.id).alive);
   assert.equal(defeated.players.find((player) => player.id === alicePlayer.id).role, "Rebel");
+  const rewardFact = [...(defeated.presentationSnapshot?.retainedPublicEventFacts ?? []), ...(defeated.presentationSnapshot?.publicEventFacts ?? [])]
+    .find((fact) => fact.committedOutcome?.source.label === "Rebel Defeat Reward");
+  assert.ok(rewardFact, "the committed public reward draw survives Dying defeat");
+  assert.deepEqual(rewardFact.committedOutcome.changes, [
+    { kind: "CARD_DRAWN", playerId: hostPlayer.id, amount: 3, fromZone: "DECK", toZone: "HAND" },
+  ], "the public result reports the actual reward draw count without card identities");
+  const rewardNarration = derivePublicInteractionNarration({
+    snapshot: defeated.presentationSnapshot,
+    players: defeated.players,
+    rootEventId: rewardFact.rootEventId,
+    interactionId: rewardFact.identity.interactionId,
+    rootFrameId: rewardFact.identity.rootFrameId,
+    eventId: rewardFact.eventId,
+  });
+  assert.match(rewardNarration?.headline ?? "", /Host.*drew 3 cards/);
+  assert.equal(JSON.stringify(rewardFact).includes("rebel-reward-"), false, "the public result never reveals drawn card identities");
+  const observer = (await state(game.code, bob.token)).data;
+  const observerReward = derivePublicInteractionNarration({
+    snapshot: observer.presentationSnapshot,
+    players: observer.players,
+    rootEventId: rewardFact.rootEventId,
+    interactionId: rewardFact.identity.interactionId,
+    rootFrameId: rewardFact.identity.rootFrameId,
+    eventId: rewardFact.eventId,
+  });
+  assert.equal(observerReward?.headline, rewardNarration?.headline, "the public reward H4 is identical for a second viewer");
 });
 
 test("saved sequential Dying: the current Dying actor may give multiple Peaches consecutively", { timeout: 30_000 }, async () => {
