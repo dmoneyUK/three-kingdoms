@@ -903,13 +903,27 @@ test("Wu hero skills complete through the normal semantic API", async () => {
   await requestAndSettle("draw", { code: acceptedGame.code, token: acceptedGame.members[0].token });
   const acceptedYingzi = await requestAndSettle("trigger", { code: acceptedGame.code, token: acceptedGame.members[0].token, providerId: "zhou_yu_yingzi" }); assert.equal(acceptedYingzi.status, 200, JSON.stringify(acceptedYingzi.data)); assert.equal(acceptedYingzi.data.room.myHand.length, 3, "accepting Yingzi draws exactly three normal cards"); assert.equal(acceptedYingzi.data.room.phase, "play");
   assert.equal(acceptedYingzi.data.room.presentationSnapshot.publicDrawPhaseDecision, null);
-  const heroicFact = acceptedYingzi.data.room.presentationSnapshot.retainedPublicEvent;
+  const acceptedYingziSnapshot = acceptedYingzi.data.room.presentationSnapshot;
+  const acceptedYingziFacts = [
+    ...(acceptedYingziSnapshot.publicEventFacts ?? []),
+    ...(acceptedYingziSnapshot.retainedPublicEventFacts ?? []),
+  ];
+  const heroicFact = acceptedYingziFacts.find((fact) => fact.actorId === acceptedSource.id && fact.label === "Heroic");
+  assert.ok(heroicFact, "the committed Heroic fact remains in the public result queue after the Draw Phase result");
   assert.equal(heroicFact?.category, "SKILL_USED");
   assert.equal(heroicFact?.actorId, acceptedSource.id);
   assert.equal(heroicFact?.label, "Heroic");
   assert.equal(heroicFact?.outcomeLabel, "drew one additional card");
+  const completedDrawFact = acceptedYingziFacts.find((fact) => fact.committedOutcome?.changes?.some((change) =>
+    change.kind === "CARD_DRAWN" && change.playerId === acceptedSource.id));
+  assert.equal(completedDrawFact?.committedOutcome?.changes?.find((change) => change.kind === "CARD_DRAWN")?.amount, 3,
+    "the latest public result reports the three cards actually drawn after Heroic");
+  assert.equal(acceptedYingziSnapshot.retainedPublicEvent?.eventId, completedDrawFact?.eventId,
+    "the latest retained event follows the committed public sequence");
   const heroicObserver = await state(acceptedGame.code, acceptedGame.members[1].token);
-  assert.deepEqual(heroicObserver.data.presentationSnapshot.retainedPublicEvent, heroicFact);
+  assert.deepEqual(heroicObserver.data.presentationSnapshot.retainedPublicEvent, acceptedYingziSnapshot.retainedPublicEvent);
+  assert.deepEqual(heroicObserver.data.presentationSnapshot.retainedPublicEventFacts, acceptedYingziSnapshot.retainedPublicEventFacts,
+    "every viewer receives the same ordered public result queue");
   assert.equal(JSON.stringify(heroicObserver.data.presentationSnapshot).includes("yingzi-a"), false, "private draw identities stay private");
   assert.notEqual(skippedYingzi.data.room.presentationSnapshot.retainedPublicEvent?.label, "Heroic", "declining does not publish Heroic success");
 

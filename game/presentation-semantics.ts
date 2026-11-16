@@ -723,7 +723,21 @@ function retainedPublicFactWithOutcome(
   };
 }
 
-/** Retains only an independently committed, causal public outcome at rest. */
+const RETAINED_PUBLIC_EVENT_FACT_LIMIT = 32;
+const RETAINABLE_PUBLIC_EVENT_CATEGORIES = new Set<PublicPresentationEventCategory>([
+  "DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED", "STAGE_COMPLETED",
+]);
+
+function retainedPublicFactFromEvent(event: Record<string, unknown>): PublicPresentationEvent | null {
+  const fact = record(event.publicFact);
+  const committedIdentity = identity(fact?.committedIdentity);
+  if (!fact || !committedIdentity || fact.interactionId !== committedIdentity.interactionId || !nonEmptyString(fact.rootEventId)
+    || !RETAINABLE_PUBLIC_EVENT_CATEGORIES.has(fact.category as PublicPresentationEventCategory)
+      && !(fact.category === "CARD_EQUIPPED" && isCommittedPublicEquipmentFact(event, fact))) return null;
+  return publicEvent(retainedPublicFactWithOutcome(event, fact, committedIdentity, committedIdentity), committedIdentity);
+}
+
+/** Retains a bounded, ordered queue of independently committed public outcomes at rest. */
 export function retainedPublicEventFromTimeline(timeline: readonly unknown[]): { event: PublicPresentationEvent; facts: PublicPresentationEvent[] } | null {
   const events = timeline.map(record).filter((event): event is Record<string, unknown> => Boolean(event))
     .filter((event) => event.presentation !== false && typeof event.privateToPlayerId !== "string"
@@ -731,34 +745,29 @@ export function retainedPublicEventFromTimeline(timeline: readonly unknown[]): {
     .sort((left, right) => (left.publicSequence as number) - (right.publicSequence as number));
   if (new Set(events.map((event) => event.id)).size !== events.length
     || new Set(events.map((event) => event.publicSequence)).size !== events.length) return null;
+  const facts: PublicPresentationEvent[] = [];
+  let latestIndex = -1;
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
-    const fact = record(event.publicFact);
-    if (fact) {
-      const committedIdentity = identity(fact.committedIdentity);
-      if (!committedIdentity || fact.interactionId !== committedIdentity.interactionId || !nonEmptyString(fact.rootEventId)
-        || !["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED", "STAGE_COMPLETED"].includes(String(fact.category))
-          && !(fact.category === "CARD_EQUIPPED" && isCommittedPublicEquipmentFact(event, fact))) return null;
-      const latest = publicEvent(retainedPublicFactWithOutcome(event, fact, committedIdentity, committedIdentity), committedIdentity);
-      if (!latest) return null;
-      const facts = events.slice(0, index + 1).flatMap((candidate) => {
-        const raw = record(candidate.publicFact);
-        const candidateIdentity = identity(raw?.committedIdentity);
-        if (!raw || !candidateIdentity || !sameInteraction(candidateIdentity, committedIdentity)
-          || raw.interactionId !== committedIdentity.interactionId || raw.rootEventId !== latest.rootEventId
-          || candidateIdentity.presentationRevision > committedIdentity.presentationRevision
-          || raw.category === "CARD_EQUIPPED" && !isCommittedPublicEquipmentFact(candidate, raw)) return [];
-        const accepted = publicEvent(retainedPublicFactWithOutcome(candidate, raw, candidateIdentity, committedIdentity), committedIdentity);
-        return accepted ? [accepted] : [];
-      });
-      return { event: latest, facts };
+    if (record(event.publicFact)) {
+      const retained = retainedPublicFactFromEvent(event);
+      if (!retained) {
+        // An unprovable newest fact must not fall back to stale older narration.
+        if (latestIndex < 0) return null;
+      } else {
+        facts.push(retained);
+        if (latestIndex < 0) latestIndex = index;
+        if (facts.length >= RETAINED_PUBLIC_EVENT_FACT_LIMIT) break;
+      }
     }
     // A newer committed card action supersedes an earlier result. Do not
     // reconstruct its meaning from a message or from the displayed CardFace.
-    if ((event.type === "card" || event.type === "cards")
+    if (latestIndex < 0 && (event.type === "card" || event.type === "cards")
       && (event.action === "play" || event.action === "equip" || event.action === "activate")) return null;
   }
-  return null;
+  if (latestIndex < 0 || !facts.length) return null;
+  const latest = facts[0];
+  return { event: latest, facts: facts.reverse() };
 }
 
 export function validateRetainedPublicEvent(value: unknown): PublicPresentationEvent | null {

@@ -53,6 +53,41 @@ test("idle retention uses committed causal facts and stops at a later public act
   assert.equal(retainedPublicEventFromTimeline([damage, { ...skill, publicFact: { ...skill.publicFact, committedIdentity: undefined } }]), null);
 });
 
+test("idle retention keeps a bounded public fact queue across causal roots in sequence order", () => {
+  const earlierIdentity = { interactionId: "interaction-earlier", rootFrameId: "frame-earlier", checkpointId: "checkpoint-earlier", presentationRevision: 2 };
+  const latestIdentity = { interactionId: "interaction-latest", rootFrameId: "frame-latest", checkpointId: "checkpoint-latest", presentationRevision: 1 };
+  const committed = (id, order, currentIdentity, rootEventId, category, extra = {}) => ({
+    id, type: "message", presentation: true, publicSequence: order,
+    publicFact: { semantics: "PROVEN", visibility: "PUBLIC", interactionId: currentIdentity.interactionId,
+      frameId: currentIdentity.rootFrameId, committedIdentity: currentIdentity, rootEventId,
+      category, actorId: "player-1", affectedPlayerIds: ["player-1"], ...extra },
+  });
+  const earlier = committed("earlier-result", 20, earlierIdentity, "earlier-root", "EFFECT_APPLIED", {
+    label: "Earlier result", effect: { kind: "judgement" },
+  });
+  const latest = committed("latest-draw", 25, latestIdentity, "latest-root", "EFFECT_APPLIED", {
+    label: "Draw Phase", effect: { kind: "draw_phase" },
+  });
+  const privateEvent = { ...committed("private-result", 30, latestIdentity, "private-root", "EFFECT_APPLIED"),
+    presentation: false, privateToPlayerId: "player-1" };
+
+  const retained = retainedPublicEventFromTimeline([earlier, latest, privateEvent]);
+  assert.equal(retained?.event.eventId, "latest-draw");
+  assert.deepEqual(retained?.facts.map((fact) => fact.eventId), ["earlier-result", "latest-draw"]);
+  assert.equal(retained?.facts[0].identity.interactionId, earlierIdentity.interactionId,
+    "each retained fact keeps its own committed interaction identity");
+
+  const burst = Array.from({ length: 40 }, (_, index) => {
+    const currentIdentity = { interactionId: `interaction-${index}`, rootFrameId: `frame-${index}`,
+      checkpointId: `checkpoint-${index}`, presentationRevision: 1 };
+    return committed(`burst-${index}`, 100 + index, currentIdentity, `root-${index}`, "EFFECT_APPLIED");
+  });
+  const retainedBurst = retainedPublicEventFromTimeline(burst);
+  assert.equal(retainedBurst?.facts.length, 32, "retention stays bounded");
+  assert.equal(retainedBurst?.facts[0].eventId, "burst-8");
+  assert.equal(retainedBurst?.event.eventId, "burst-39");
+});
+
 test("public Equipment facts require a committed real equip and never infer a play from an unproven equip", () => {
   const checkpoint = identity(2, "equipment-checkpoint");
   const equip = {
