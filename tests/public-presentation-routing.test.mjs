@@ -3,7 +3,10 @@ import test from "node:test";
 import {
   PUBLIC_PRESENTATION_EVENT_COVERAGE,
   routePublicPresentation,
+  selectPublicH4AnnouncementOwner,
+  uniquePublicH4Facts,
 } from "../app/public-presentation-routing.ts";
+import { PUBLIC_PRESENTATION_EVENT_CATEGORIES } from "../game/presentation-semantics.ts";
 
 function fact(eventId, order, rootEventId, actorId, overrides = {}) {
   return {
@@ -69,6 +72,46 @@ test("coverage inventory records one current producer, route, owner and zone for
   assert.deepEqual(PUBLIC_PRESENTATION_EVENT_COVERAGE.map((entry) => entry.id), Array.from({ length: 21 }, (_, index) => `E${String(index + 1).padStart(2, "0")}`));
   assert.ok(PUBLIC_PRESENTATION_EVENT_COVERAGE.every((entry) => entry.producer.trim() && entry.route && entry.currentOwner.trim() && entry.zone.trim()));
   assert.ok(PUBLIC_PRESENTATION_EVENT_COVERAGE.every((entry) => !("legacyRoutes" in entry) && !("nextMigration" in entry)));
+});
+
+test("all public fact categories resolve to one H4 owner and duplicate projections keep one proof", () => {
+  for (const [index, category] of PUBLIC_PRESENTATION_EVENT_CATEGORIES.entries()) {
+    const candidate = fact(`h4-${category}`, index + 1, "root-event", "actor-1", { category });
+    assert.deepEqual(selectPublicH4AnnouncementOwner({ fact: candidate }), {
+      eventId: candidate.eventId, owner: "PublicInteractionAnnouncementLayer",
+    }, `${category} has one generic H4 surface when no accepted special owner applies`);
+  }
+
+  const rootFact = fact("result-event", 5, "root-event", "actor-1", { category: "SKILL_USED" });
+  const cardDisplayOwner = selectPublicH4AnnouncementOwner({
+    fact: rootFact,
+    cardDisplay: { enabled: true, rootEventId: "root-event", interactionId: "interaction-1", rootFrameId: "root-frame" },
+  });
+  assert.deepEqual(cardDisplayOwner, { eventId: rootFact.eventId, owner: "PublicCardDisplay" });
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: { ...rootFact, category: "CARD_DISCARDED" },
+    discard: { eventId: rootFact.eventId, order: rootFact.order },
+  }), { eventId: rootFact.eventId, owner: "PublicDiscardAnnouncementLayer" },
+    "an exact physical discard keeps its approved H4 owner when no composite result is attached");
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: { ...rootFact, category: "CARD_DISCARDED", committedOutcome: { eventId: rootFact.eventId } },
+    discard: { eventId: rootFact.eventId, order: rootFact.order },
+  }), { eventId: rootFact.eventId, owner: "PublicInteractionAnnouncementLayer" },
+    "a same-event composite result keeps its complete public deltas in the shared narrator");
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: rootFact, discard: { eventId: "later-discard", order: rootFact.order + 1 },
+  }), { eventId: "later-discard", owner: "PublicDiscardAnnouncementLayer" },
+    "a genuinely later public discard supersedes the older fact");
+  assert.deepEqual(selectPublicH4AnnouncementOwner({ skillEvent: { eventId: "skill-event" } }), {
+    eventId: "skill-event", owner: "PublicSkillEventAnnouncementLayer",
+  });
+
+  const withResult = { ...rootFact, committedOutcome: { eventId: rootFact.eventId, changes: [{ kind: "CARD_DRAWN", amount: 2 }] } };
+  const merged = uniquePublicH4Facts([rootFact, { ...rootFact, identity: { ...rootFact.identity, checkpointId: "later", presentationRevision: 2 }, committedOutcome: withResult.committedOutcome }]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].committedOutcome, withResult.committedOutcome, "the richer validated public result survives a duplicate checkpoint projection");
+  assert.deepEqual(uniquePublicH4Facts([rootFact, { ...rootFact, category: "DAMAGE_APPLIED" }]), [],
+    "contradictory facts for one durable event ID fail closed");
 });
 
 test("Attack, Duel and committed Negation response cards retain one public journey owner", () => {

@@ -2,7 +2,7 @@ import { normalizePublicSharedWindow } from "./shared-response-presentation";
 import { entourageDecisionMatchesSnapshot } from "./entourage-presentation";
 import type { PresentationSnapshot } from "./presentation-snapshot";
 import { publicDecisionFromPresentationSnapshot } from "./presentation-semantics.ts";
-import type { CommittedPublicOutcome, CommittedPublicOutcomeChange } from "./presentation-semantics";
+import { PUBLIC_PRESENTATION_EVENT_CATEGORIES, type CommittedPublicOutcome, type CommittedPublicOutcomeChange, type PublicPresentationEventCategory } from "./presentation-semantics";
 import { CARD_DEFINITIONS } from "./cards";
 import { verifiedPlayerCopy, type VerifiedPlayerCopySegment } from "./verified-player-copy";
 
@@ -299,17 +299,16 @@ export type PublicInteractionNarration = {
   readDurationMs?: number;
 };
 
-const PUBLIC_INTERACTION_OUTCOME_CATEGORIES = new Set([
-  "DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED",
-]);
+/** Every validated public event category must enter the shared H4 candidate pipeline. */
+export const PUBLIC_H4_FACT_CATEGORIES: ReadonlySet<PublicPresentationEventCategory> = new Set(PUBLIC_PRESENTATION_EVENT_CATEGORIES);
 
 /** Shared candidate predicate for committed result H4s and existing generic outcomes. */
 export function isPublicInteractionOutcomeFact(
-  fact: Pick<PresentationSnapshot["publicEventFacts"][number], "category" | "effect" | "committedOutcome">,
+  fact: Pick<PresentationSnapshot["publicEventFacts"][number], "category" | "effect" | "committedOutcome" | "outcomeLabel">,
 ): boolean {
-  return fact.committedOutcome !== undefined
-    || PUBLIC_INTERACTION_OUTCOME_CATEGORIES.has(fact.category)
-    || fact.category === "ACTION_DECLINED" && fact.effect?.kind === "entourage_declined";
+  if (fact.committedOutcome !== undefined) return true;
+  if (fact.category === "STAGE_COMPLETED") return Boolean(fact.outcomeLabel?.trim());
+  return PUBLIC_H4_FACT_CATEGORIES.has(fact.category);
 }
 
 function narrationPlayerName(input: Pick<PublicActivityInput, "players">, playerId: string | undefined): string | null {
@@ -458,9 +457,16 @@ export function derivePublicInteractionNarration(input: {
     headline = `${actor} declined Entourage for ${target}.`;
   } else if (latest.category === "CARD_OBTAINED" || latest.category === "CARD_TRANSFERRED") {
     const outcome = latest.outcomeLabel?.trim();
+    const count = amount !== null && amount > 1 ? `${amount} cards` : latest.label?.trim() || "a card";
     headline = outcome
       ? `${actor ? `${actor} ` : ""}${outcome.replace(/[.!?]+$/, "")}.`
-      : `${actor ?? "A player"} obtained ${latest.label?.trim() || "a card"}${target ? ` from ${target}` : ""}.`;
+      : `${actor ?? "A player"} ${latest.category === "CARD_TRANSFERRED" ? "received" : "obtained"} ${count}${target ? ` from ${target}` : ""}.`;
+  } else if (latest.category === "CARD_DISCARDED") {
+    const outcome = latest.outcomeLabel?.trim();
+    const count = amount !== null && amount > 0 ? `${amount} ${amount === 1 ? "card" : "cards"}` : null;
+    headline = outcome
+      ? `${actor ? `${actor} ` : ""}${outcome.replace(/[.!?]+$/, "")}.`
+      : `${actor ?? "A player"} discarded ${count ?? (latest.label?.trim() || "cards")}.`;
   } else if (latest.category === "EFFECT_CANCELLED" || latest.category === "EFFECT_RESTORED") {
     const effect = effectLabel(latest.effect?.label) ?? "an effect";
     headline = `${actor ?? "A player"} ${latest.category === "EFFECT_RESTORED" ? "restored" : "cancelled"} ${effect}.`;
@@ -471,6 +477,16 @@ export function derivePublicInteractionNarration(input: {
         ? `${outcome.replace(/[.!?]+$/, "")}.`
         : `${actor ? `${actor} ` : ""}${outcome.replace(/[.!?]+$/, "")}.`
       : `${actor ?? "A player"} resolved an effect.`;
+  } else if (latest.category === "ACTION_DECLINED") {
+    const outcome = latest.outcomeLabel?.trim();
+    headline = outcome
+      ? `${actor ? `${actor} ` : ""}${outcome.replace(/[.!?]+$/, "")}.`
+      : `${actor ?? "A player"} declined the available action.`;
+  } else if (latest.category === "STAGE_COMPLETED") {
+    const outcome = latest.outcomeLabel?.trim();
+    headline = outcome
+      ? `${actor ? `${actor} ` : ""}${outcome.replace(/[.!?]+$/, "")}.`
+      : "A public effect stage completed.";
   } else {
     return null;
   }

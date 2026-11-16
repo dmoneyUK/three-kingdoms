@@ -1,7 +1,8 @@
 import test from "node:test";
 import { viewerNegationAcknowledgement, triggerDecisionInstruction } from "../../game/console-decision.ts";
 import assert from "node:assert/strict";
-import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, formatCommittedPublicOutcome } from "../../game/public-activity.ts";
+import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, formatCommittedPublicOutcome, isPublicInteractionOutcomeFact, PUBLIC_H4_FACT_CATEGORIES } from "../../game/public-activity.ts";
+import { PUBLIC_PRESENTATION_EVENT_CATEGORIES } from "../../game/presentation-semantics.ts";
 
 const players = [
   { id: "p1", name: "Test Player 1", seat: 0, alive: true },
@@ -810,4 +811,26 @@ test("committed HP, draw, discard, recovery and transfer results own the shared 
   assert.equal(retained?.eventId, outcome.eventId);
   assert.equal(retained?.headline, expected);
   assert.doesNotMatch(retained?.headline ?? "", /private-card-id|suit|rank/i);
+});
+
+test("every validated public event category has a shared H4 candidate and truthful narration", () => {
+  assert.deepEqual([...PUBLIC_H4_FACT_CATEGORIES].sort(), [...PUBLIC_PRESENTATION_EVENT_CATEGORIES].sort());
+  const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
+  for (const [index, category] of PUBLIC_PRESENTATION_EVENT_CATEGORIES.entries()) {
+    const fact = {
+      semantics: "PROVEN", visibility: "PUBLIC", identity,
+      eventId: `category-${category}`, order: index + 1, frameId: identity.rootFrameId,
+      rootEventId: `category-${category}`, category, actorId: "p1", affectedPlayerIds: ["p2"],
+      label: "Public action", amount: 2,
+      ...(category === "STAGE_COMPLETED" ? { outcomeLabel: "completed the public stage" } : {}),
+      ...(category === "ACTION_DECLINED" ? { effect: { kind: "generic_decline" } } : {}),
+    };
+    assert.equal(isPublicInteractionOutcomeFact(fact), true, `${category} enters the shared H4 candidate predicate`);
+    const narration = derivePublicInteractionNarration({
+      snapshot: snapshot({ stage: "SETTLEMENT", actorId: null, publicEventFacts: [fact] }),
+      players, rootEventId: fact.rootEventId, interactionId: identity.interactionId, rootFrameId: identity.rootFrameId,
+    });
+    assert.equal(narration?.eventId, fact.eventId, `${category} receives one committed public narration`);
+    assert.ok(narration?.headline.trim(), `${category} has non-empty H4 copy`);
+  }
 });

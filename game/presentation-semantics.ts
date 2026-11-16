@@ -10,20 +10,23 @@ export type PresentationSemanticIdentity = {
 };
 
 /** Generic meanings are provider-neutral; card, Hero and skill IDs do not belong here. */
-export type PublicPresentationEventCategory =
-  | "CARD_PLAYED"
-  | "CARD_EQUIPPED"
-  | "CARD_DISCARDED"
-  | "CARD_OBTAINED"
-  | "CARD_TRANSFERRED"
-  | "EFFECT_APPLIED"
-  | "EFFECT_CANCELLED"
-  | "EFFECT_RESTORED"
-  | "DAMAGE_APPLIED"
-  | "DAMAGE_PREVENTED"
-  | "SKILL_USED"
-  | "ACTION_DECLINED"
-  | "STAGE_COMPLETED";
+export const PUBLIC_PRESENTATION_EVENT_CATEGORIES = [
+  "CARD_PLAYED",
+  "CARD_EQUIPPED",
+  "CARD_DISCARDED",
+  "CARD_OBTAINED",
+  "CARD_TRANSFERRED",
+  "EFFECT_APPLIED",
+  "EFFECT_CANCELLED",
+  "EFFECT_RESTORED",
+  "DAMAGE_APPLIED",
+  "DAMAGE_PREVENTED",
+  "SKILL_USED",
+  "ACTION_DECLINED",
+  "STAGE_COMPLETED",
+] as const;
+
+export type PublicPresentationEventCategory = typeof PUBLIC_PRESENTATION_EVENT_CATEGORIES[number];
 
 export type PublicEffectDescriptor = { kind: string; label?: string };
 
@@ -250,6 +253,8 @@ export function collectPublicPresentationEventFacts(input: {
           affectedPlayerIds: affectedForOutcome,
           publicLabels: [typeof raw.label === "string" ? raw.label : undefined, typeof effectLabel === "string" ? effectLabel : undefined],
         });
+      if (raw.category === "CARD_DISCARDED" && !isCommittedPublicDiscardFact(event, raw)
+        && !committedOutcome?.changes.some((change) => change.kind === "CARD_DISCARDED")) return;
       if (committedOutcome) fact.committedOutcome = committedOutcome;
       facts.push(fact);
       return;
@@ -264,6 +269,9 @@ export function collectPublicPresentationEventFacts(input: {
       : event.action === "discard" ? "CARD_DISCARDED"
         : event.action === "gain" ? "CARD_OBTAINED"
           : event.action === "activate" ? "SKILL_USED" : "EFFECT_APPLIED";
+    if (category === "CARD_DISCARDED" && !isCommittedPublicDiscardFact(event, {
+      category, actorId: event.actorId, affectedPlayerIds: typeof event.actorId === "string" ? [event.actorId] : [],
+    })) return;
     const rootFrameId = frameRows.find((frame) => frame.parentFrameId === null || frame.parentFrameId === undefined)?.frameId;
     if (typeof rootFrameId !== "string") return;
     const rootFrame = frameRows.find((frame) => frame.frameId === rootFrameId);
@@ -322,11 +330,7 @@ export type PublicPresentationSemantics = {
   viewerNegationChoice: ViewerNegationChoice | null;
 };
 
-const EVENT_CATEGORIES = new Set<PublicPresentationEventCategory>([
-  "CARD_PLAYED", "CARD_EQUIPPED", "CARD_DISCARDED", "CARD_OBTAINED", "CARD_TRANSFERRED", "EFFECT_APPLIED",
-  "EFFECT_CANCELLED", "EFFECT_RESTORED", "DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED",
-  "ACTION_DECLINED", "STAGE_COMPLETED",
-]);
+const EVENT_CATEGORIES = new Set<PublicPresentationEventCategory>(PUBLIC_PRESENTATION_EVENT_CATEGORIES);
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -789,18 +793,19 @@ function retainedPublicFactWithOutcome(
 }
 
 const RETAINED_PUBLIC_EVENT_FACT_LIMIT = 32;
-const RETAINABLE_PUBLIC_EVENT_CATEGORIES = new Set<PublicPresentationEventCategory>([
-  "DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED", "STAGE_COMPLETED",
-]);
+const RETAINABLE_PUBLIC_EVENT_CATEGORIES: ReadonlySet<PublicPresentationEventCategory> = new Set(PUBLIC_PRESENTATION_EVENT_CATEGORIES);
 
 function retainedPublicFactFromEvent(event: Record<string, unknown>): PublicPresentationEvent | null {
   const fact = record(event.publicFact);
   const committedIdentity = identity(fact?.committedIdentity);
   if (!fact || !committedIdentity || fact.interactionId !== committedIdentity.interactionId || !nonEmptyString(fact.rootEventId)
     || !RETAINABLE_PUBLIC_EVENT_CATEGORIES.has(fact.category as PublicPresentationEventCategory)
-      && !(fact.category === "CARD_EQUIPPED" && isCommittedPublicEquipmentFact(event, fact))
-      && !(fact.category === "CARD_DISCARDED" && isCommittedPublicDiscardFact(event, fact))) return null;
-  return publicEvent(retainedPublicFactWithOutcome(event, fact, committedIdentity, committedIdentity), committedIdentity);
+    || fact.category === "CARD_EQUIPPED" && !isCommittedPublicEquipmentFact(event, fact)) return null;
+  const retained = publicEvent(retainedPublicFactWithOutcome(event, fact, committedIdentity, committedIdentity), committedIdentity);
+  if (!retained) return null;
+  if (fact.category === "CARD_DISCARDED" && !isCommittedPublicDiscardFact(event, fact)
+    && !retained.committedOutcome?.changes.some((change) => change.kind === "CARD_DISCARDED")) return null;
+  return retained;
 }
 
 /** Retains a bounded, ordered queue of independently committed public outcomes at rest. */
@@ -974,9 +979,11 @@ export function publicEventFactsFromPresentationV2(value: unknown, identityValue
       category: item.category, actorId: item.actorId,
       affectedPlayerIds: item.affectedPlayerIds ?? [], label: item.label,
       outcomeLabel: item.outcomeLabel, amount: item.amount, effect: item.effect,
+      committedOutcome: item.committedOutcome,
       bumperHarvestPick: item.bumperHarvestPick,
     }, current);
-    return fact ? [fact] : [];
+    if (!fact || fact.category === "CARD_DISCARDED" && !fact.committedOutcome) return [];
+    return [fact];
   }) : [];
   const eventIds = new Set<string>();
   const orders = new Set<number>();

@@ -58,7 +58,7 @@ import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEv
 import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
 import { layoutPublicResultCards, type PublicResultObstacle } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
-import type { PublicPresentationRoute } from "./public-presentation-routing";
+import { selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -1571,7 +1571,8 @@ type PrivateStealResult = { semantics: "PRIVATE_PROVEN"; roomCode: string; event
 type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; serverNow?: number; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; privateStealResult: PrivateStealResult | null; privateStealParticipantResult: PrivateStealParticipantResult | null; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; publicDiscardHandoff?: { eventId: string; actorId: string; cardCount: number } | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealEventId: string | null; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; complete: boolean; countdownUntil: number } | null; publicHarvestPool?: { semantics: "PROVEN"; rootEventId: string; revealEventId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[] } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
 
 function sharedContributionDisplayAction(room: Room, domainPublicCardDisplayAction: PublicCardDisplayAction | null,
-  currentFact: { eventId: string; order: number } | null, seenEventIds: ReadonlySet<string>): PublicCardDisplayAction | null {
+  currentFact: { eventId: string; order: number } | null, seenEventIds: ReadonlySet<string>,
+  publicInteractionNarration: PublicInteractionNarration | null): PublicCardDisplayAction | null {
     const proofs = sharedResponseContributions(room.timeline).filter((proof) =>
       room.presentationSnapshot?.sharedResponseContributions?.some((server) => server.eventId === proof.eventId
         && server.actorId === proof.actorId && server.windowId === proof.windowId));
@@ -1593,7 +1594,10 @@ function sharedContributionDisplayAction(room: Room, domainPublicCardDisplayActi
     if (nextFact && nextFact.eventId !== proof.eventId && nextFact.order > (event.publicSequence ?? -1)) return null;
     const conversion = room.presentationSnapshot?.publicCardEffects.find((effect) => effect.eventId === proof.eventId
       && effect.effectClass === "CONVERSION" && effect.activationOwnerId === proof.actorId);
+    const matchingNarration = publicInteractionNarration?.rootEventId === proof.eventId ? publicInteractionNarration : null;
     return { key: `shared-contribution:${proof.eventId}`, rootEventId: proof.eventId,
+      ...(matchingNarration ? { interactionId: matchingNarration.interactionId, rootFrameId: matchingNarration.rootFrameId,
+        publicInteractionNarration: matchingNarration, suppressAnnouncement: false } : {}),
       sourceId: proof.actorId, targetId: proof.requesterId, cardFace: face,
       cardKind: proof.effectiveKind, cardLabel: proof.effectiveKind.toUpperCase(), ariaLabel: proof.message,
       publicNotice: proof.message, publicNoticeEventId: proof.eventId,
@@ -9336,16 +9340,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       rootEventId: selectedPublicCardAction.rootEventId,
     })
     : null;
-  const narratableInteractionFacts = [
+  const narratableInteractionFacts = uniquePublicH4Facts([
     ...(room.presentationSnapshot?.publicEventFacts ?? []),
     ...(room.presentationSnapshot?.retainedPublicEventFacts ?? []),
   ].filter((fact) => fact.rootEventId && (
         isPublicInteractionOutcomeFact(fact)
-        || fact.category === "CARD_EQUIPPED"
-        || fact.category === "CARD_PLAYED" && fact.eventId === fact.rootEventId
-          && fact.effect?.label === "Borrowed Sword"
-      ))
-    .sort((left, right) => left.order - right.order);
+      )));
   const currentInteractionFactCandidate = room.presentationSnapshot?.interaction?.stage !== "NEGATION"
     ? (activeEvent ? narratableInteractionFacts.find((fact) => fact.eventId === activeEvent.id) : null)
       ?? narratableInteractionFacts.at(-1)
@@ -9365,10 +9365,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeEventSupersedesDiscard = Boolean(activeEvent && activeEvent.id !== latestPublicDiscardAnnouncement?.eventId
     && Number.isSafeInteger((activeEvent as GameEvent & { publicSequence?: number }).publicSequence)
     && ((activeEvent as GameEvent & { publicSequence?: number }).publicSequence ?? -1) > (latestPublicDiscardAnnouncement?.order ?? -1));
-  const publicDiscardOwnsAnnouncement = Boolean(latestPublicDiscardAnnouncement
+  const publicDiscardCandidate = latestPublicDiscardAnnouncement
     && !presentedEventIds.has(latestPublicDiscardAnnouncement.eventId)
     && !activeEventSupersedesDiscard
-    && latestPublicDiscardAnnouncement.order > (currentInteractionFact?.order ?? -1));
+    ? { eventId: latestPublicDiscardAnnouncement.eventId, order: latestPublicDiscardAnnouncement.order }
+    : null;
   const fanjianSettlementNarration: PublicInteractionNarration | null = skillEffectSettlementCandidate ? (() => {
     const settlement = skillEffectSettlementCandidate.action;
     const card = skillEffectSettlementCandidate.revealEvent.card;
@@ -9697,7 +9698,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     } : {}),
     deflection: activeDeflectionAction ?? undefined,
   } : null;
-  const sharedContributionAction = sharedContributionDisplayAction(room, domainPublicCardDisplayAction, currentInteractionFact, publicCardJourneySeenEventIds);
+  const sharedContributionAction = sharedContributionDisplayAction(room, domainPublicCardDisplayAction, currentInteractionFact,
+    publicCardJourneySeenEventIds, publicInteractionNarration);
   const publicCardDisplayAction = sharedContributionAction ?? domainPublicCardDisplayAction;
   const publicCardDisplayOwnershipIdentity = publicCardDisplayAction
     ? publicCardJourneyOwnershipIdentity(publicCardDisplayAction, room.code)
@@ -9855,14 +9857,25 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       exiting: effectNotice.exiting,
     }
     : null;
-  const visibleBeautyAnnouncement = beautyNotice
-    && !publicDiscardOwnsAnnouncement
+  const beautyNoticeEligible = beautyNotice
     && effectNotice?.roomCode === room.code
     && effectNotice.viewerId === room.meId
     && Boolean(beautyNotice.sourceId && beautyNotice.proofEventId)
     && !publicCardDisplayOwnsPresentation
-    ? beautyNotice
-    : null;
+    && !publicInteractionNarration;
+  const publicH4Owner = selectPublicH4AnnouncementOwner({
+    fact: publicInteractionNarration ? currentInteractionFact : null,
+    cardDisplay: publicInteractionNarration && publicCardDisplayAction ? {
+      enabled: publicCardDisplayEnabled,
+      rootEventId: publicCardDisplayAction.rootEventId,
+      interactionId: publicCardDisplayAction.interactionId ?? "",
+      rootFrameId: publicCardDisplayAction.rootFrameId ?? "",
+    } : null,
+    discard: publicDiscardCandidate,
+    skillEvent: beautyNoticeEligible && beautyNotice ? { eventId: beautyNotice.eventId } : null,
+  });
+  const publicDiscardOwnsAnnouncement = publicH4Owner?.owner === "PublicDiscardAnnouncementLayer";
+  const visibleBeautyAnnouncement = publicH4Owner?.owner === "PublicSkillEventAnnouncementLayer" ? beautyNotice : null;
   const publicCardJourneyEventIds = publicCardDisplayAction?.motion?.type === "attack-dodge"
     ? [publicCardDisplayAction.rootEventId, publicCardDisplayAction.response?.eventId, publicCardDisplayAction.deflection?.eventId].filter((eventId): eventId is string => Boolean(eventId))
     : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation" || publicCardDisplayAction?.motion?.type === "group-root"
@@ -11797,14 +11810,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {publicDiscardOwnsAnnouncement && latestPublicDiscardAnnouncement && <PublicDiscardAnnouncementLayer
         announcement={latestPublicDiscardAnnouncement} roomCode={room.code} viewerId={room.meId}
       />}
-      {!sharedContributionAction && !publicDiscardOwnsAnnouncement && publicInteractionNarration && (!interactionNarrationBelongsToAction || !publicCardDisplayEnabled) && <PublicInteractionAnnouncementLayer
+      {!sharedContributionAction && publicH4Owner?.owner === "PublicInteractionAnnouncementLayer" && publicInteractionNarration && <PublicInteractionAnnouncementLayer
         narration={publicInteractionNarration} roomCode={room.code} viewerId={room.meId}
         anchorEventId={fanjianSettlementNarration ? skillEffectSettlementCandidate?.revealEvent.id : null}
         protectFirstParkedMiniature={protectPublicInteractionUpperH4}
         keepCenterAnchorClear={Boolean(fanjianSettlementNarration)}
         preferredVerticalMode={fanjianSettlementNarration ? "above" : undefined}
       />}
-      {visibleBeautyAnnouncement && !publicInteractionNarration && <PublicSkillEventAnnouncementLayer
+      {publicH4Owner?.owner === "PublicSkillEventAnnouncementLayer" && visibleBeautyAnnouncement && <PublicSkillEventAnnouncementLayer
         announcement={visibleBeautyAnnouncement}
         roomCode={room.code}
         viewerId={room.meId}

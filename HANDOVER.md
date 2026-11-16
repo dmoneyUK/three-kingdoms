@@ -1,17 +1,13 @@
-# HANDOVER — 唯一当前任务：§10.59 共享 H4 结果消费
+# HANDOVER — 唯一当前任务：§10.59 UNIVERSAL-H4-COMMITTED-FACT-COVERAGE-01
 
-**状态：共享消费实现已推送；CI 暴露 Dying 期间结果事实缺失，正在修复同一阶段。** 全局任务仍为 NOT CLOSED。最新设计 revision：`2026-11-16 08:44 UTC`。Owner 已授权继续，无需等 Draw Two 单项验收；Draw Two 切片仍为 PENDING OWNER REVIEW。Owner 统一进行最终 iPhone 验收。
+**全局状态：NOT CLOSED；所有已部署切片均为 PENDING OWNER REVIEW。** Owner 已授权继续，不必逐项等待验收；最终由 Owner 统一进行 iPhone 验收。最新设计：`docs/UX2-refine.md` revision `2026-11-16 09:42 UTC`；核对确认新增 §§10.62–10.63 未改变当前 §10.59 范围或顺序。不得创建新任务编号、切换独立任务或自行宣布接受。
 
-## 当前边界
+## 最近已部署结果
 
-将经 `game/presentation-semantics.ts` 验证的 `CommittedPublicOutcome` 接入 `derivePublicInteractionNarration()`，让实际 HP、摸牌、弃牌、恢复和转移数量成为共享 H4 文案；让 `app/page.tsx` 使用同一候选谓词发现这些结果，覆盖活动与保留快照。无结果事实时保持既有文案；身份或参与者无法验证时失败关闭。保留现有专用 Negation、Fanjian 和弃牌展示的单一所有权、游戏规则与手牌隐私。
+提交 `7f5ec98910d1cf3be820f67c5c614c7967242fb6` 修复 Self Sacrifice 在 Dying 前的实际 HP 成本事实，并避免同根失败救援重复发布。精确 SHA [Actions 43838156258](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43838156258) 全部成功；Worker `37794291-8402-415d-9d08-24cf1222464a` 已部署；生产 `/api/health` 返回 `{"ok":true,"worker":"available"}`。Draw Two 先前切片仍 PENDING OWNER REVIEW。按 Owner 指令，本地测试、构建、浏览器、对局及设备测试均未运行。
 
-本阶段聚焦 `game/public-activity.ts`、`app/page.tsx` 和 targeted API assertions。回归断言覆盖活动/REST 保留视图与真实混合 HP、draw、discard、recovery、transfer 数量，并更新 Huang Gai 共享文案预期。
+## 当前有界阶段：公共事件类别保留与唯一 H4 消费者
 
-## 最近交付与验证
+将唯一的 `PUBLIC_PRESENTATION_EVENT_CATEGORIES` 用于投影验证和保留；CARD_EQUIPPED 仍要求装备实体转移证明，CARD_DISCARDED 则要求实体弃牌证明或共享提交结果中的实际弃牌计数。把 `CommittedPublicOutcome` 传过 PresentationV2 共享验证；让每个可叙述的已验证公共类别进入统一 H4 候选与 provider-neutral 文案，纯阶段标记需有公开结果文案才入选。对活动/保留快照重复事件按持久 event ID 去重，遇到语义冲突则失败关闭；用一个实际接入 JSX 的选择器，在 PublicCardDisplay、PublicDiscardAnnouncementLayer、PublicInteractionAnnouncementLayer 和 PublicSkillEventAnnouncementLayer 间选择唯一 H4 owner。已添加类别覆盖、结果投影、保留和 owner 断言；未运行本地测试。
 
-Draw Two 实际结果来源已在 `02d9f5dfcf5ad4c537c2d6fc174a733252c8e2e3` 部署；[Actions 43810251024](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43810251024) 全部成功，Worker `3b217660-4a8d-4660-a673-99d5560ca9f2`，生产 health 正常。此切片仅公开实际数量，不公开抽到的卡牌身份。Owner 已授权继续，无需等待单项测试。
-
-**操作记录（2026-11-16 UTC）：** 08:44 同步至最新 `origin/ux-v2` `e6c424ef3a599e74490653d906ea903cad0e1072`；设计更新不改变 §10.59。共享 H4 消费提交 `41ffa2aa2dad2b21e3703821a3fce29344c4925c` 已推送。Actions [43835856345](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43835856345) lint/fast 与 browser startup/room smoke 通过，API 失败 2 项，部署跳过。09:06 查明前两条断言使用根事件而非实际结果事件；提交 `2478933109ca76c1bfa5dab81442a47effc1b706` 修正事件选择并推送。其 Actions [43836952648](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43836952648) lint/fast、构建、browser smoke 均通过，API 仍失败 1 项：1 HP Self Sacrifice 在进入 Dying 前未把已提交 HP 成本附到公共事实，故没有可保留结果。09:14 按既定共享路径改为在技能成本提交事实中记录服务器实测 HP 变化；成功救援后续事实仍聚合 HP 成本与实际摸牌数；失败救援不会重复发布相同成本。回归断言现核对 Dying 时的成本事实及同根最终最新结果。未运行本地测试、构建、浏览器、对局或设备测试。
-
-**当前精确恢复点：** 核对本次服务端与断言 diff，运行 `git diff --check` 后提交/推送并等待精确 SHA Actions。API 全绿并部署后，继续同一 §10.59 的事件类别保留、候选筛选与唯一 H4 所有权；不得创建新任务编号或宣称 USER-ACCEPTED。
+**当前恢复点：** 检查源码与测试 diff、`git diff --check`；查询远端当前 `ux-v2` HEAD 的最新 CI；提交并推送这一阶段，等待精确 SHA Actions、部署和生产 smoke。若通过，继续 §10.59 指定的服务端结果来源边界（普通摸牌/抽牌、伤害/恢复、弃牌与转移），同一任务号内分片交付；不要因单个 Hero 或单类牌完成而停止。

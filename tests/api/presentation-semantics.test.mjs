@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectPublicPresentationEventFacts, projectPublicPresentationSemantics, publicDecisionFromPresentationSnapshot, retainedPublicEventFromTimeline } from "../../game/presentation-semantics.ts";
+import { collectPublicPresentationEventFacts, projectPublicPresentationSemantics, publicDecisionFromPresentationSnapshot, publicEventFactsFromPresentationV2, PUBLIC_PRESENTATION_EVENT_CATEGORIES, retainedPublicEventFromTimeline } from "../../game/presentation-semantics.ts";
 import { appendSequencedLogRecord, publicEventSequencesFromLog } from "../../game/public-log-sequence.ts";
 
 const identity = (revision = 1, checkpointId = `checkpoint-${revision}`) => ({
@@ -86,6 +86,60 @@ test("idle retention keeps a bounded public fact queue across causal roots in se
   assert.equal(retainedBurst?.facts.length, 32, "retention stays bounded");
   assert.equal(retainedBurst?.facts[0].eventId, "burst-8");
   assert.equal(retainedBurst?.event.eventId, "burst-39");
+});
+
+test("idle retention covers every generic public event category without weakening physical card proofs", () => {
+  const checkpoint = identity(3, "category-retention-checkpoint");
+  const genericCategories = PUBLIC_PRESENTATION_EVENT_CATEGORIES.filter((category) => category !== "CARD_EQUIPPED");
+  for (const [index, category] of genericCategories.entries()) {
+    const timelineEvent = {
+      id: `retained-${category}`, type: "message", presentation: true, publicSequence: 100 + index,
+      actorId: "player-1",
+      publicFact: { semantics: "PROVEN", visibility: "PUBLIC", interactionId: checkpoint.interactionId,
+        frameId: checkpoint.rootFrameId, committedIdentity: checkpoint, rootEventId: "public-root",
+        category, actorId: "player-1", affectedPlayerIds: category === "CARD_DISCARDED" ? ["player-1"] : [], label: "Public result",
+        ...(category === "CARD_DISCARDED" ? { committedOutcome: { source: { kind: "skill", label: "Public result" }, changes: [
+          { kind: "CARD_DISCARDED", playerId: "player-1", amount: 2, fromZone: "HAND", toZone: "DISCARD" },
+        ] } } : {}) },
+    };
+    const retained = retainedPublicEventFromTimeline([timelineEvent]);
+    assert.equal(retained?.event.eventId, timelineEvent.id, `${category} remains visible in the at-rest public queue`);
+    assert.equal(retained?.event.category, category);
+    if (category === "CARD_DISCARDED") {
+      const active = collectPublicPresentationEventFacts({
+        timeline: [timelineEvent], identity: checkpoint,
+        frames: [{ frameId: checkpoint.rootFrameId, parentFrameId: null }], rootEventId: "public-root",
+      });
+      assert.equal(active[0]?.committedOutcome?.changes[0]?.kind, "CARD_DISCARDED",
+        "a public count proof remains visible without exposing the discarded physical card identity");
+    }
+  }
+
+  const unprovenDiscard = {
+    id: "unproven-discard", type: "card", action: "discard", presentation: true, publicSequence: 200,
+    actorId: "player-1", card: { id: "real-card", kind: "Attack", suit: "♠", rank: "7" },
+    publicFact: { semantics: "PROVEN", visibility: "PUBLIC", interactionId: checkpoint.interactionId,
+      frameId: checkpoint.rootFrameId, committedIdentity: checkpoint, rootEventId: "unproven-discard",
+      category: "CARD_DISCARDED", actorId: "player-1", affectedPlayerIds: ["player-1"] },
+  };
+  assert.equal(retainedPublicEventFromTimeline([unprovenDiscard]), null,
+    "CARD_DISCARDED still requires its exact public zone-transition proof");
+  assert.deepEqual(collectPublicPresentationEventFacts({
+    timeline: [{ ...unprovenDiscard, publicFact: undefined }], identity: checkpoint,
+    frames: [{ frameId: checkpoint.rootFrameId, parentFrameId: null }], rootEventId: unprovenDiscard.id,
+  }), [], "the active projection also rejects an unproven discard fallback");
+
+  const provenDiscard = {
+    id: "proven-discard", type: "card", action: "discard", presentation: true, publicSequence: 201,
+    actorId: "player-1", card: { id: "public-card", kind: "Attack", suit: "♠", rank: "7" },
+    publicZoneTransition: { semantics: "PROVEN", visibility: "PUBLIC", eventId: "proven-discard", physicalCardId: "public-card",
+      from: { zone: "HAND", ownerId: "player-1" }, to: { zone: "DISCARD", ownerId: null } },
+    publicFact: { semantics: "PROVEN", visibility: "PUBLIC", interactionId: checkpoint.interactionId,
+      frameId: checkpoint.rootFrameId, committedIdentity: checkpoint, rootEventId: "proven-discard",
+      category: "CARD_DISCARDED", actorId: "player-1", affectedPlayerIds: ["player-1"] },
+  };
+  assert.equal(retainedPublicEventFromTimeline([provenDiscard])?.event.eventId, provenDiscard.id,
+    "the physical discard owner remains valid when the true public card-zone transition is proven");
 });
 
 test("public Equipment facts require a committed real equip and never infer a play from an unproven equip", () => {
@@ -582,6 +636,21 @@ test("committed public outcomes bind only to a unique public event, causal ident
     nextDecision: null,
   });
   assert.equal(projected.event?.committedOutcome?.eventId, timelineEvent.id);
+
+  const fromPresentationV2 = publicEventFactsFromPresentationV2([{
+    ...fact,
+    interactionId: currentIdentity.interactionId,
+    committedOutcome: fact.committedOutcome,
+  }], currentIdentity, [{ frameId: currentIdentity.rootFrameId, parentFrameId: null }]);
+  assert.equal(fromPresentationV2[0]?.committedOutcome?.eventId, timelineEvent.id,
+    "the V2 projection retains the validated committed outcome for H4 consumption");
+  const { committedOutcome: _validatedOutcome, ...withoutOutcome } = fact;
+  assert.deepEqual(publicEventFactsFromPresentationV2([{
+    ...withoutOutcome,
+    interactionId: currentIdentity.interactionId,
+    category: "CARD_DISCARDED",
+  }], currentIdentity, [{ frameId: currentIdentity.rootFrameId, parentFrameId: null }]), [],
+  "V2 cannot promote a discard count without either its shared committed result or the separate physical-zone owner");
 
   const retained = retainedPublicEventFromTimeline([timelineEvent]);
   assert.equal(retained?.event.committedOutcome?.order, timelineEvent.publicSequence);
