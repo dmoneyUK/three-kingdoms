@@ -201,6 +201,8 @@ test("Borrowed Sword public root, private Negation, counter, chooser and forced 
   assert.ok(choiceFact);
   assert.equal(choiceFact.actorId, source.id);
   assert.deepEqual(choiceFact.affectedPlayerIds, [target.id]);
+  assert.deepEqual(choiceFact.outcomeCopySegments.filter((part) => part.kind === "player").map((part) => part.playerId), [target.id, holder.id]);
+  assert.equal(choiceFact.outcomeCopySegments.map((part) => part.text).join(""), choiceFact.outcomeLabel);
   const choiceNarration = derivePublicInteractionNarration({
     snapshot: chosenRoom.presentationSnapshot,
     players: chosenRoom.players,
@@ -209,6 +211,9 @@ test("Borrowed Sword public root, private Negation, counter, chooser and forced 
     rootFrameId: choiceFact.identity.rootFrameId,
   });
   assert.equal(choiceNarration?.headline, `${source.name} chose ${target.name} as ${holder.name}'s Attack target.`);
+  assert.deepEqual(choiceNarration?.headlineSegments.filter((part) => part.kind === "player").map((part) => part.playerId), [source.id, target.id, holder.id]);
+  assert.equal(choiceNarration?.headlineSegments.map((part) => part.text).join(""), choiceNarration?.headline);
+  assert.equal(choiceNarration?.accessibleLabel, choiceNarration?.headline);
   assert.equal(chosenRoom.presentationSnapshot.publicNextDecision?.stageLabel, "Borrowed Sword forced choice");
   assert.match(borrowedSwordPublicStatus(chosenRoom).text, /play Attack or give up their Weapon/);
   assert.doesNotMatch(borrowedSwordPublicStatus(chosenRoom).text, /take damage/i);

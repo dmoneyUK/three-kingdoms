@@ -322,6 +322,28 @@ function narrationPlayerPart(players: readonly Pick<PublicActivityPlayer, "id" |
   return player && name ? { id: player.id, name } : null;
 }
 
+function publicOutcomeCopyParts(
+  outcomeLabel: string | undefined,
+  segments: readonly VerifiedPlayerCopySegment[] | undefined,
+  players: readonly Pick<PublicActivityPlayer, "id" | "name">[],
+  provenParticipantIds: ReadonlySet<string>,
+): (string | { id: string; name: string })[] | null {
+  if (!outcomeLabel || outcomeLabel !== outcomeLabel.trim() || /[.!?]+$/.test(outcomeLabel)) return null;
+  const verified = matchingVerifiedPlayerCopySegments(outcomeLabel, segments);
+  if (!verified?.some((segment) => segment.kind === "player")) return null;
+  const parts: (string | { id: string; name: string })[] = [];
+  for (const segment of verified) {
+    if (segment.kind === "text") parts.push(segment.text);
+    else {
+      if (!provenParticipantIds.has(segment.playerId)) return null;
+      const player = narrationPlayerPart(players, segment.playerId);
+      if (!player || player.name !== segment.text) return null;
+      parts.push(player);
+    }
+  }
+  return parts;
+}
+
 /** Formats verified public state deltas without consulting a card, Hero, or skill rule. */
 function formatCommittedPublicOutcomeCopy(
   outcome: CommittedPublicOutcome,
@@ -462,6 +484,13 @@ export function derivePublicInteractionNarration(input: {
   if (!latest) return null;
 
   const actorPart = narrationPlayerPart(input.players, latest.actorId ?? undefined);
+  const rootFact = verifiedFacts.find((fact) => fact.eventId === input.rootEventId);
+  const provenParticipantIds = new Set([
+    latest.actorId,
+    ...latest.affectedPlayerIds,
+    rootFact?.actorId,
+    ...(rootFact?.affectedPlayerIds ?? []),
+  ].filter((playerId): playerId is string => Boolean(playerId)));
   const actor = actorPart?.name ?? null;
   const affectedParts = latest.affectedPlayerIds.map((playerId) => narrationPlayerPart(input.players, playerId)).filter((part): part is NonNullable<typeof part> => Boolean(part));
   const targetPart = affectedParts.length === 1 ? affectedParts[0] : null;
@@ -532,11 +561,13 @@ export function derivePublicInteractionNarration(input: {
     headline = fromParts([actorPart ?? "A player", ` ${latest.category === "EFFECT_RESTORED" ? "restored" : "cancelled"} `, effect, "."]);
   } else if (latest.category === "EFFECT_APPLIED") {
     const outcome = latest.outcomeLabel?.trim();
-    headline = outcome
-      ? latest.effect?.kind === "judgement"
-        ? `${outcome.replace(/[.!?]+$/, "")}.`
-        : fromParts([...(actorPart ? [actorPart, " "] : []), outcome.replace(/[.!?]+$/, ""), "."])
-      : fromParts([actorPart ?? "A player", " resolved an effect."]);
+    const outcomeCopyParts = actorPart
+      ? publicOutcomeCopyParts(latest.outcomeLabel, latest.outcomeCopySegments, input.players, provenParticipantIds)
+      : null;
+    if (!outcome) headline = fromParts([actorPart ?? "A player", " resolved an effect."]);
+    else if (latest.effect?.kind === "judgement") headline = `${outcome.replace(/[.!?]+$/, "")}.`;
+    else if (outcomeCopyParts && actorPart) headline = fromParts([actorPart, " ", ...outcomeCopyParts, "."]);
+    else headline = fromParts([...(actorPart ? [actorPart, " "] : []), outcome.replace(/[.!?]+$/, ""), "."]);
   } else if (latest.category === "ACTION_DECLINED") {
     const outcome = latest.outcomeLabel?.trim();
     headline = outcome

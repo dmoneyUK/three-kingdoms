@@ -710,6 +710,61 @@ test("generic H4 retains damage through Skip and formats committed public or hid
   assert.equal(derivePublicInteractionNarration({ ...input([independent]), rootEventId: "standalone" })?.eventId, "standalone");
 });
 
+test("committed target-choice H4 styles only server-proven player identities", () => {
+  const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
+  const root = { semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "root-event", order: 1,
+    rootEventId: "root-event", category: "CARD_PLAYED", actorId: "p3", affectedPlayerIds: ["p2"], label: "Borrowed Sword" };
+  const chooser = { id: "p3", name: "Zoë 王", seat: 2, alive: true };
+  const target = { id: "p1", name: "O’Neil", seat: 0, alive: true };
+  const holder = { id: "p2", name: "D'Souza", seat: 1, alive: true };
+  const segments = [
+    { kind: "text", text: "chose " },
+    { kind: "player", playerId: target.id, text: target.name },
+    { kind: "text", text: " as " },
+    { kind: "player", playerId: holder.id, text: holder.name },
+    { kind: "text", text: "'s Attack target" },
+  ];
+  const choice = { semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "target-choice", order: 2,
+    rootEventId: "root-event", category: "EFFECT_APPLIED", actorId: chooser.id, affectedPlayerIds: [target.id],
+    outcomeLabel: `chose ${target.name} as ${holder.name}'s Attack target`, outcomeCopySegments: segments,
+    effect: { kind: "target_choice" } };
+  const narrate = (fact, roster = [chooser, target, holder]) => derivePublicInteractionNarration({
+    snapshot: snapshot({ stage: "FORCED_ACTION", actorId: holder.id, publicEventFacts: [root, fact] }),
+    players: roster, rootEventId: "root-event", interactionId: identity.interactionId, rootFrameId: identity.rootFrameId,
+  });
+
+  const result = narrate(choice);
+  assert.equal(result?.headline, "Zoë 王 chose O’Neil as D'Souza's Attack target.");
+  assert.deepEqual(playerIds(result?.headlineSegments), ["p3", "p1", "p2"]);
+  assert.equal(result?.headlineSegments.map((part) => part.text).join(""), result?.headline);
+  assert.equal(result?.accessibleLabel, result?.headline);
+
+  const duplicateNames = [chooser, target, holder].map((player) => ({ ...player, name: "Shared Name" }));
+  const duplicateChoice = { ...choice,
+    outcomeLabel: "chose Shared Name as Shared Name's Attack target",
+    outcomeCopySegments: segments.map((part) => part.kind === "player" ? { ...part, text: "Shared Name" } : part),
+  };
+  const duplicateResult = narrate(duplicateChoice, duplicateNames);
+  assert.equal(duplicateResult?.headline, "Shared Name chose Shared Name as Shared Name's Attack target.");
+  assert.deepEqual(playerIds(duplicateResult?.headlineSegments), ["p3", "p1", "p2"], "equal display names retain their distinct server identities");
+
+  const changedRoster = [chooser, { ...target, name: "Changed Target" }, holder];
+  const changedResult = narrate(choice, changedRoster);
+  assert.equal(changedResult?.headline, "Zoë 王 chose O’Neil as D'Souza's Attack target.");
+  assert.deepEqual(playerIds(changedResult?.headlineSegments), ["p3"], "a name mismatch falls back to plain committed outcome text");
+
+  for (const { fact, roster } of [
+    { fact: { ...choice, outcomeCopySegments: undefined }, roster: [chooser, target, holder] },
+    { fact: { ...choice, outcomeCopySegments: segments.map((part) => part.kind === "player" && part.playerId === target.id
+      ? { ...part, playerId: "p4" } : part) }, roster: [chooser, target, holder, { id: "p4", name: target.name, seat: 3, alive: true }] },
+  ]) {
+    const fallback = narrate(fact, roster);
+    assert.equal(fallback?.headline, "Zoë 王 chose O’Neil as D'Souza's Attack target.");
+    assert.deepEqual(playerIds(fallback?.headlineSegments), ["p3"], "missing or inconsistent identity proof never styles the referenced name");
+    assert.equal(fallback?.accessibleLabel, fallback?.headline);
+  }
+});
+
 test("H4 selects the exact active Judgement event, then its committed result", () => {
   const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
   const root = { semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "overindulgence-play", order: 1,

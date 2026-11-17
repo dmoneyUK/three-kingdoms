@@ -1,5 +1,6 @@
 import { CARD_DEFINITIONS } from "./cards";
 import type { CardKind, CardRank, CardSuit, EquipmentZone } from "./model";
+import { matchingVerifiedPlayerCopySegments, type VerifiedPlayerCopySegment } from "./verified-player-copy";
 
 /** Stable public identity shared by the public event and the current decision. */
 export type PresentationSemanticIdentity = {
@@ -111,6 +112,8 @@ export type PublicPresentationEvent = {
   affectedPlayerIds: readonly string[];
   label?: string;
   outcomeLabel?: string;
+  /** Server-authored identity references for player names inside outcomeLabel. */
+  outcomeCopySegments?: readonly VerifiedPlayerCopySegment[];
   amount?: number;
   effect?: PublicEffectDescriptor;
   committedOutcome?: CommittedPublicOutcome;
@@ -133,6 +136,8 @@ export type PublicPresentationEventFactDraft = {
   affectedPlayerIds?: readonly string[];
   label?: string;
   outcomeLabel?: string;
+  /** Server-authored identity references for player names inside outcomeLabel. */
+  outcomeCopySegments?: readonly VerifiedPlayerCopySegment[];
   amount?: number;
   effect?: PublicEffectDescriptor;
   committedOutcome?: CommittedPublicOutcomeDraft;
@@ -201,6 +206,7 @@ export function collectPublicPresentationEventFacts(input: {
         || raw.interactionId !== current.interactionId || !nonEmptyString(raw.frameId) || !frameIds.has(raw.frameId)) return;
       if (raw.category === "CARD_EQUIPPED" && !isCommittedPublicEquipmentFact(event, raw)) return;
       const effect = record(raw.effect);
+      const outcomeCopySegments = publicOutcomeCopySegments(raw.outcomeCopySegments, raw.outcomeLabel);
       const hasHarvestPickProof = raw.bumperHarvestPickProof !== undefined;
       if ((effect?.kind === "bumper_harvest_pick" || hasHarvestPickProof)
         && !isCommittedPublicBumperHarvestPick(event, raw, proofTimeline, frameRows)) return;
@@ -222,6 +228,7 @@ export function collectPublicPresentationEventFacts(input: {
         ...(Array.isArray(raw.affectedPlayerIds) ? { affectedPlayerIds: raw.affectedPlayerIds as string[] } : {}),
         ...(typeof raw.label === "string" ? { label: raw.label } : {}),
         ...(typeof raw.outcomeLabel === "string" ? { outcomeLabel: raw.outcomeLabel } : {}),
+        ...(outcomeCopySegments ? { outcomeCopySegments } : {}),
         ...(Number.isSafeInteger(raw.amount) && (raw.amount as number) >= 0 ? { amount: raw.amount as number } : {}),
         ...(record(raw.effect) ? { effect: raw.effect as { kind: string; label?: string } } : {}),
         ...(bumperHarvestPick ? { bumperHarvestPick } : {}),
@@ -670,6 +677,20 @@ function uniqueStrings(value: unknown, allowEmpty = false): string[] | null {
   return new Set(values).size === values.length ? values : null;
 }
 
+function publicOutcomeCopySegments(value: unknown, outcomeLabel: unknown): VerifiedPlayerCopySegment[] | null {
+  if (!Array.isArray(value) || typeof outcomeLabel !== "string") return null;
+  const segments: VerifiedPlayerCopySegment[] = [];
+  for (const candidate of value) {
+    const item = record(candidate);
+    if (!item || !nonEmptyString(item.text)) return null;
+    if (item.kind === "text") segments.push({ kind: "text", text: item.text });
+    else if (item.kind === "player" && nonEmptyString(item.playerId)) {
+      segments.push({ kind: "player", playerId: item.playerId, text: item.text });
+    } else return null;
+  }
+  return matchingVerifiedPlayerCopySegments(outcomeLabel, segments) ? segments : null;
+}
+
 function publicEvent(value: unknown, current: PresentationSemanticIdentity): PublicPresentationEvent | null {
   const item = record(value);
   const eventIdentity = identity(item?.identity);
@@ -690,6 +711,7 @@ function publicEvent(value: unknown, current: PresentationSemanticIdentity): Pub
     || (item.effect !== undefined && (!record(item.effect) || !nonEmptyString(record(item.effect)?.kind)
       || record(item.effect)?.label !== undefined && !nonEmptyString(record(item.effect)?.label)))) return null;
   const outcomeIdentity = identity(record(item.committedOutcome)?.identity);
+  const outcomeCopySegments = publicOutcomeCopySegments(item.outcomeCopySegments, item.outcomeLabel);
   const committedOutcome = item.committedOutcome === undefined || !outcomeIdentity
     || !nonEmptyString(item.rootEventId) || !nonEmptyString(item.frameId)
     ? null
@@ -722,6 +744,7 @@ function publicEvent(value: unknown, current: PresentationSemanticIdentity): Pub
     affectedPlayerIds,
     ...(item.label ? { label: item.label as string } : {}),
     ...(item.outcomeLabel ? { outcomeLabel: item.outcomeLabel } : {}),
+    ...(outcomeCopySegments ? { outcomeCopySegments } : {}),
     ...(item.amount !== undefined ? { amount: item.amount as number } : {}),
     ...(record(item.effect) ? { effect: {
       kind: record(item.effect)!.kind as string,
@@ -980,7 +1003,8 @@ export function publicEventFactsFromPresentationV2(value: unknown, identityValue
       ...(item.rootEventId ? { rootEventId: item.rootEventId } : {}),
       category: item.category, actorId: item.actorId,
       affectedPlayerIds: item.affectedPlayerIds ?? [], label: item.label,
-      outcomeLabel: item.outcomeLabel, amount: item.amount, effect: item.effect,
+      outcomeLabel: item.outcomeLabel, outcomeCopySegments: item.outcomeCopySegments,
+      amount: item.amount, effect: item.effect,
       committedOutcome: item.committedOutcome,
       bumperHarvestPick: item.bumperHarvestPick,
     }, current);

@@ -1,15 +1,13 @@
-# HANDOVER — 当前唯一任务：§10.61 Boundary C
+# HANDOVER — 当前唯一任务：§10.62 Borrowed Sword H4 身份片段修正
 
-## 最近交付结果
+## 最近结果与依据
 
-最新已部署 tip `44130bec756e3335cf13018d2a9b284d8cd6381d` 的精确 SHA Actions [43985524065](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43985524065) 全绿；Worker `dba0700d-87c4-4e15-80ec-ddc37752cacc`，生产首页与 `/api/health` HTTP 200。此 tip 包含已完成的 §10.62/§10.63 修改，两项均待 Owner iPhone 复验。§10.61 Boundary A/B 已在当前分支；Boundary B 精确 SHA Actions [43980227100](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43980227100) 全绿并部署，Worker `ebdd299b-11f7-49f3-a275-10c11cf35535`。
+§10.61 Boundary C 已实现并部署：commit `6a66fcac686fdf7880cb0c96062fb6fd7ccd33a2`，精确 SHA Actions [43987623967](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43987623967) 全绿，Worker `7f5d3eb8-0ef9-44aa-8783-0f9ef5500437`，生产首页与 `/api/health` HTTP 200。Owner 仍未完成 §10.61 iPhone 验收。
 
-已同步 `origin/ux-v2`。当前依据 `docs/UX2-refine.md` revision `2026-11-16 21:51 UTC`、design commit `c82c15d901f2340e57594dd08408ca638ed10fff`。不运行本地 UI/browser 或设备测试；针对性纯测试交由精确 SHA CI 执行。
+已快进同步 `origin/ux-v2` 至 `20492e3d`。当前设计依据 `docs/UX2-refine.md` revision `2026-11-17`。遵守 Owner 指令：不运行本地测试、构建或设备/UI 测试；提交后由精确 SHA CI 验证。
 
-## 当前任务：§10.61 UNIVERSAL-PRECOMMIT-SELECTION-TOGGLE-01 — Boundary C
+## 当前任务：§10.62 H4-VERIFIED-PLAYER-FRAGMENTS-REGRESSION-01
 
-将同一可撤销选择策略接入剩余 Hero/目标草稿及确实可选择的可选 Provider：移除普通 target-only Hero skill 活动态按钮的无操作返回；owner 仍持有活动草稿时，同一按钮再次点击应只清除未提交目标/卡牌和本地提示，不发 action；同一授权目标可再次点击取消；同一草稿不显示多余 Local Cancel。保留 Lust、Fanjian 专用退出与私有选择器，Borrowed Sword 强制续选、End Turn、mandatory picker、即时触发、passive/automatic skill、Skip/Pass/TAKE DAMAGE 与已提交 response 的现有语义。
+修复已提交 Borrowed Sword 目标选择结果 H4 中目标与武器持有者未使用身份片段的问题。服务器在同一公共 `EFFECT_APPLIED` 事实中携带 outcome 文案及来源已证明的玩家 ID 片段；共享投影校验片段与原文完全一致，H4 再用当前公开玩家名册核验姓名。保留事实、原句、可访问文案及游戏规则；不解析自然语言、不添加卡牌专用 UI 分支。补充 API 和纯文案回归断言，覆盖三方 ID、重名、Unicode/撇号以及缺失/错配身份时的安全回退。
 
-复用 `app/local-precommit-selection.ts` 和现有 CurrentAction/Provider 投影；不改规则、服务端、action payload 或已提交事件。针对本阶段更新/补齐受影响的焦点断言，检查完整 diff 与 `git diff --check`，提交推送并核验精确 SHA Actions、Worker 部署及生产 smoke。若投影不能证明 owner/选项有效则 fail closed 并报告具体阻塞。§10.61 总体验收待 Owner iPhone review，不得自行标记 USER-ACCEPTED。
-
-**恢复点：** Boundary A/B 已交付。当前源码中 `activeSkillPrecommitControls.retapSupported` 未包含 `selection.type === "target"`，`heroSkillButtons` 对非 Lust/Fanjian 的活动 target-only skill 直接返回。先完成这两处及 Zhang Liao Assault 的目标反选断言，再核对 §10.61 Boundary C 其余要求；Boundary C 完成后 HANDOVER 仅切换到一个下一 bounded task。
+当前状态：实现与断言已编辑，尚未提交；未运行本地测试、构建或设备/UI 测试。待完成源码 diff 审阅、`git diff --check`、精确 SHA CI、Worker 部署与生产 smoke。§10.62 仍需 Owner iPhone 复验，不得标记 USER-ACCEPTED。

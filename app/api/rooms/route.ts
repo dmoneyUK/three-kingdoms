@@ -773,7 +773,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
   return { ...(meta?.sharedResponseContribution ? { sharedResponseContribution: meta.sharedResponseContribution } : {}), ...(meta?.entourageInvocation ? { entourageInvocation: meta.entourageInvocation } : {}), resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
-function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "amount" | "effect" | "bumperHarvestPickProof" | "committedOutcome">> = {}, envelope?: CausalEnvelope | null, rootIdentity?: NonNullable<PublicPresentationEventFactDraft["committedIdentity"]>): PublicPresentationEventFactDraft | undefined {
+function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "outcomeCopySegments" | "amount" | "effect" | "bumperHarvestPickProof" | "committedOutcome">> = {}, envelope?: CausalEnvelope | null, rootIdentity?: NonNullable<PublicPresentationEventFactDraft["committedIdentity"]>): PublicPresentationEventFactDraft | undefined {
   if (!causal?.interactionId || !causal.frameId) return undefined;
   const committedOutcome = fields.committedOutcome === undefined ? undefined : validateCommittedPublicOutcomeDraft(fields.committedOutcome, {
     actorId: fields.actorId,
@@ -10959,6 +10959,13 @@ export async function POST(request: Request) {
         affectedPlayerIds: [chosen.id],
         label: "Borrowed Sword target choice",
         outcomeLabel: `chose ${chosen.name} as ${holder.name}'s Attack target`,
+        outcomeCopySegments: [
+          { kind: "text", text: "chose " },
+          { kind: "player", playerId: chosen.id, text: chosen.name },
+          { kind: "text", text: " as " },
+          { kind: "player", playerId: holder.id, text: holder.name },
+          { kind: "text", text: "'s Attack target" },
+        ],
         effect: { kind: "target_choice", label: "Borrowed Sword" },
       }, child.envelope)
       : undefined;
