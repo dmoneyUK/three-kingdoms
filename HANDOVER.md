@@ -1,10 +1,13 @@
-# HANDOVER — 当前唯一任务：§10.64-A Worker 1102 资源调查
+# HANDOVER — Current task: §10.65 concealed Steal result lifetime correction
 
-## 最新核实 checkpoint
+## Current checkpoint
 
-- Owner 指定队列已同步到 `docs/UX2-refine.md`。§10.61 Boundary C 提交 `6a66fcac686fdf7880cb0c96062fb6fd7ccd33a2` 的精确 SHA [Actions 43987623967](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43987623967) 全绿，Worker `7f5d3eb8-0ef9-44aa-8783-0f9ef5500437` 已部署且生产 smoke 成功；不重做 C。
-- §10.64-B 已由 `3929af6031d5fc0173bd504b5933e004342fef05` 修复 CI，精确 SHA [Actions 44007322476](https://github.com/dmoneyUK/three-kingdoms/actions/runs/44007322476) 全绿，Worker `6ee069e1-7f2b-426f-9de4-9817155d2132` 已部署且生产 smoke 成功；1102 根因仍未证实。
+- Reviewed latest design `docs/UX2-refine.md` at `04f07c39`; Owner iPhone FAIL on deployed `b4a5de00c978` is binding.
+- Local implementation scopes one result owner to room/root/settlement/action revision/viewer and hides/retires it on superseding action/H4 or revoked proof. New Discard H4 and zone transition remain separate.
+- Four focused mobile browser attempts were within the five-minute cap. The latest run timed out on a component-specific `[data-public-discard-announcement-event-id]` selector. Existing trace screenshots show the genuine Discard copy and neutral discard cards during their animation; the final capture still has a central anonymous card, whose owner/event identity was not established. Do not claim the browser regression passed.
+- Current local correction adds a validated newer Discard zone-transition as a direct retirement signal for the old Steal owner. The regression now checks the shared H4 event identity and exact Discard transition event ID/card count. This latest diff has not been browser-rerun; no more local UI/browser tests for this task.
+- Local validation: the focused public-H4-routing and public-discard-transition tests passed (20/20); browser spec ESLint passed; `git diff --check` passed. ESLint on `app/page.tsx` hit React Hooks `Maximum call stack size exceeded` at line 4113; the same failure reproduced on the unchanged `HEAD` copy, so it is a baseline tooling failure, not attributed to this patch.
 
-## 当前边界与阻塞
+## Current task / resume point
 
-取得 Ray `a5ba0c010b821669`（2026-11-16 22:49:05 UTC）的权威 Cloudflare invocation 记录，确认 route、CPU/内存类别、duration、status 与 resource 指标。仓库和本地附件未找到该记录；当前连接也没有可查询此 Worker 历史 invocation 的 Cloudflare 日志接口。**BLOCKED — 等待权威 Cloudflare 记录/导出。** 不根据客户端 503 或 TypeError 猜测 1102 根因，也不重跑 §10.64-B；收到记录后继续本任务。§10.51 仍是独立条件项，仅在有当前版本可复现失败时启动。
+Finish diff review, commit/push and verify exact-SHA CI, Worker deployment and production health. Owner iPhone review remains pending; preserve the unresolved final-frame identity as a limitation unless CI or source evidence resolves it.

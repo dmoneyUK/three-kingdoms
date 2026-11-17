@@ -3206,7 +3206,7 @@ async function confirmPrivateStealResult(page, request, scenario) {
   return result;
 }
 
-test("§10.36.1 concealed-Hand Steal result is private to both participants through TEST SWITCH", async ({ browser, request }) => {
+test("§10.36.1 concealed-Hand Steal result is private to each authorized participant and retires on observer switch", async ({ browser, request }) => {
   test.setTimeout(90_000);
   const scenario = await createPrivateStealScenario(request);
   const { code, token, source, target, otherViewers, stolenCard } = scenario;
@@ -3214,6 +3214,8 @@ test("§10.36.1 concealed-Hand Steal result is private to both participants thro
   const page = await context.newPage();
   try {
     const result = await confirmPrivateStealResult(page, request, scenario);
+    const settlementEventId = await result.getAttribute("data-public-result-event-id");
+    expect(settlementEventId).toBeTruthy();
     const actorProof = await controlledRoomView(request, code, token, source.id);
     expect(actorProof.privateStealParticipantResult).toMatchObject({ role: "TAKER", viewerId: source.id, physicalCardId: stolenCard.id, card: stolenCard });
     await expect(result).toHaveAttribute("data-public-result-card-id", stolenCard.id);
@@ -3249,9 +3251,9 @@ test("§10.36.1 concealed-Hand Steal result is private to both participants thro
     const observerView = await controlledRoomView(request, code, token, observer.id);
     expect(observerView.privateStealParticipantResult).toBeNull();
     expect(JSON.stringify(observerView)).not.toContain(stolenCard.id);
-    await expect(result).toHaveAttribute("data-public-result-face", "anonymous-back", { timeout: 5_000 });
-    await expect(result).not.toHaveAttribute("data-public-result-card-id");
-    await expect(page.locator(".public-result-card-layer")).toHaveAttribute("aria-label", `A concealed Hand card was obtained from ${target.name}`);
+    await expect(page.locator(`[data-public-result-event-id="${settlementEventId}"]`)).toHaveCount(0);
+    await expect(page.locator(".public-result-card-layer")).toHaveCount(0);
+    await expect(page.locator(`[data-public-result-card-id="${stolenCard.id}"]`)).toHaveCount(0);
 
     const fourthView = await controlledRoomView(request, code, token, otherViewers[1].id);
     expect(fourthView.privateStealParticipantResult).toBeNull();
@@ -3270,8 +3272,8 @@ test("§10.65 authorized private Steal result stays face up until its result own
   const page = await context.newPage();
   try {
     const viewport = { width: 390, height: 844 };
-    const { dialog } = await openRealTargetCardDecision({
-      page, request, kind: "Steal", viewport, handCount: 1, equipment: false, judgement: false,
+    const { seed, dialog } = await openRealTargetCardDecision({
+      page, request, kind: "Steal", viewport, handCount: 5, equipment: false, judgement: false,
     });
     const hiddenChoice = dialog.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
     await tapMobile(page, hiddenChoice);
@@ -3286,30 +3288,68 @@ test("§10.65 authorized private Steal result stays face up until its result own
     const result = page.locator("[data-public-result-event-id]");
     await expect(result).toHaveCount(1);
     await expect(result).toHaveAttribute("data-public-result-face", "private", { timeout: 20_000 });
-    const lifetime = await result.evaluate((element) => new Promise((resolve) => {
-      const faceChanges = [];
-      const observer = new MutationObserver((records) => {
+    const oldSettlementEventId = await result.getAttribute("data-public-result-event-id");
+    const oldRootEventId = await result.getAttribute("data-public-result-root-event-id");
+    expect(oldSettlementEventId).toBeTruthy();
+    expect(oldRootEventId).toBeTruthy();
+    await result.evaluate((element) => {
+      const changes = [element.getAttribute("data-public-result-face")];
+      const faceObserver = new MutationObserver((records) => {
         for (const record of records) {
-          if (record.attributeName === "data-public-result-face") faceChanges.push(element.getAttribute(record.attributeName));
+          if (record.attributeName === "data-public-result-face") changes.push(element.getAttribute("data-public-result-face"));
         }
       });
-      observer.observe(element, { attributes: true, attributeFilter: ["data-public-result-face"] });
-      const startedAt = performance.now();
-      const observeLifetime = () => {
-        const elapsedMs = performance.now() - startedAt;
-        if (!element.isConnected || elapsedMs >= 3_500) {
-          observer.disconnect();
-          resolve({ faceChanges, connected: element.isConnected });
-          return;
-        }
-        requestAnimationFrame(observeLifetime);
-      };
-      requestAnimationFrame(observeLifetime);
-    }));
-    expect(lifetime.faceChanges).not.toContain("anonymous-back");
-    if (lifetime.connected) {
-      await expect(result).toHaveAttribute("data-public-result-face", "private");
-    }
+      faceObserver.observe(element, { attributes: true, attributeFilter: ["data-public-result-face"] });
+      const removalObserver = new MutationObserver(() => {
+        if (element.isConnected) return;
+        faceObserver.disconnect();
+        removalObserver.disconnect();
+        window.__stealResultLifecycleAudit = { faceChanges: changes, retired: true };
+      });
+      removalObserver.observe(document.body, { childList: true, subtree: true });
+      window.__stealResultLifecycleAudit = { faceChanges: changes, retired: false };
+    });
+
+    // Commit a different player's real end-turn/discard before the private
+    // result's normal read period expires. The new public Discard must own H4
+    // and its zone transition; the old Steal owner must disappear, never turn
+    // into an anonymous back or remain centred behind the new owner.
+    const sourceTurn = await roomView(request, seed, 0);
+    if (sourceTurn.currentAction.legalActions.includes("draw")) await act(request, seed, 0, "draw");
+    await act(request, seed, 0, "end_turn");
+    const targetDraw = await roomView(request, seed, 1);
+    if (targetDraw.currentAction.legalActions.includes("draw")) await act(request, seed, 1, "draw");
+    await act(request, seed, 1, "end_turn");
+    const targetTurn = await roomView(request, seed, 1);
+    expect(targetTurn.currentAction.legalActions).toContain("discard_cards");
+    const target = targetTurn.players.find((player) => player.id === seed.players[1].id);
+    const requiredDiscardCount = Math.max(0, targetTurn.myHand.length - (target?.hp ?? 0));
+    expect(requiredDiscardCount, "the real turn has cards above the server-proven hand limit").toBeGreaterThan(0);
+    const discardedCardIds = targetTurn.myHand.slice(0, requiredDiscardCount).map((held) => held.id);
+    expect(discardedCardIds).toHaveLength(requiredDiscardCount);
+    await act(request, seed, 1, "discard_cards", { cardIds: discardedCardIds });
+    const afterDiscard = await roomView(request, seed, 1);
+    const discardEvent = [...afterDiscard.timeline].reverse().find((event) => {
+      if (event.action !== "discard" || event.presentation === false) return false;
+      const cards = event.type === "card" ? [event.card] : event.type === "cards" ? event.cards : [];
+      return cards.some((held) => discardedCardIds.includes(held.id));
+    });
+    expect(discardEvent).toBeTruthy();
+    const discardH4 = page.locator(`[data-public-card-announcement="true"][data-public-h4-event-id="${discardEvent.id}"]`);
+    await expect(discardH4).toHaveCount(1, { timeout: 15_000 });
+    await expect(discardH4).toBeVisible({ timeout: 15_000 });
+    await expect(discardH4).toContainText(/TARGET.*discarded 2 cards/i);
+    await expect(discardH4).toHaveAttribute("data-public-h4-owner", /^(PublicDiscardAnnouncementLayer|PublicInteractionAnnouncementLayer|PublicCardDisplay)$/);
+    const discardTransitions = page.locator(`[data-public-zone-transition-event-id="${discardEvent.id}"]`);
+    await expect(discardTransitions).toHaveCount(requiredDiscardCount, { timeout: 15_000 });
+    await expect(discardTransitions.first()).toBeVisible();
+    const transitionCardIds = await discardTransitions.evaluateAll((elements) => elements.map((element) => element.getAttribute("data-public-zone-transition-card-id")).sort());
+    expect(transitionCardIds).toEqual([...discardedCardIds].sort());
+    await expect(page.locator(`[data-public-result-event-id="${oldSettlementEventId}"]`)).toHaveCount(0);
+    await expect(page.locator(`[data-public-result-root-event-id="${oldRootEventId}"]`)).toHaveCount(0);
+    const lifecycle = await page.evaluate(() => window.__stealResultLifecycleAudit);
+    expect(lifecycle).toMatchObject({ retired: true });
+    expect(lifecycle.faceChanges).not.toContain("anonymous-back");
   } finally {
     await context.close();
   }
