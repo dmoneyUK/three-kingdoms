@@ -3100,8 +3100,7 @@ test("§10.22 real Steal Hand(4) uses the compact shared target pool and submits
   }
 });
 
-test("§10.36.1 concealed-Hand Steal result is private to both participants through TEST SWITCH", async ({ browser, request }) => {
-  test.setTimeout(90_000);
+async function createPrivateStealScenario(request) {
   const name = `Steal result ${Date.now().toString(36)}`;
   const createdResponse = await request.post(`${API}/api/rooms`, { data: { action: "create", name } });
   const created = await createdResponse.json();
@@ -3180,30 +3179,41 @@ test("§10.36.1 concealed-Hand Steal result is private to both participants thro
   const stolenCard = (await controlledRoomView(request, code, token, target.id)).myHand[0];
   expect(stolenCard).toBeTruthy();
   const fixture = { code, players: room.players.map((player) => ({ ...player, token })) };
-  const seed = fixture;
+  return { name, code, token, source, target, otherViewers, stolenCard, seed: fixture };
+}
+
+async function confirmPrivateStealResult(page, request, scenario) {
+  const { code, seed, source, target, token, stolenCard } = scenario;
+  await openGame(page, seed, 0, { width: 390, height: 844 });
+  const choiceView = await controlledRoomView(request, code, token, source.id);
+  expect(choiceView.pendingTargetCard).toMatchObject({ cardKind: "Steal", actorId: source.id, targetId: target.id });
+  expect((await controlledRoomView(request, code, token, target.id)).myHand).toContainEqual(stolenCard);
+  const pool = page.locator(".card-pool-panel--actor-target-select");
+  await expect(pool).toBeVisible({ timeout: 15_000 });
+  await expect(pool.getByRole("button", { name: "Confirm Steal selection", exact: true })).toBeVisible();
+  const hiddenChoice = pool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
+  await tapMobile(page, hiddenChoice);
+  const submit = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+    catch { return false; }
+  });
+  await tapMobile(page, pool.getByRole("button", { name: "Confirm Steal selection", exact: true }));
+  expect((await submit).ok()).toBe(true);
+  const result = page.locator("[data-public-result-event-id]");
+  await expect(result).toHaveCount(1);
+  await expect(result).toHaveAttribute("data-public-result-face", "private", { timeout: 20_000 });
+  return result;
+}
+
+test("§10.36.1 concealed-Hand Steal result is private to both participants through TEST SWITCH", async ({ browser, request }) => {
+  test.setTimeout(90_000);
+  const scenario = await createPrivateStealScenario(request);
+  const { code, token, source, target, otherViewers, stolenCard } = scenario;
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   const page = await context.newPage();
   try {
-    await openGame(page, seed, 0, { width: 390, height: 844 });
-    const choiceView = await controlledRoomView(request, code, token, source.id);
-    expect(choiceView.pendingTargetCard).toMatchObject({ cardKind: "Steal", actorId: source.id, targetId: target.id });
-    expect((await controlledRoomView(request, code, token, target.id)).myHand).toContainEqual(stolenCard);
-    const pool = page.locator(".card-pool-panel--actor-target-select");
-    await expect(pool).toBeVisible({ timeout: 15_000 });
-    await expect(pool.getByRole("button", { name: "Confirm Steal selection", exact: true })).toBeVisible();
-    const hiddenChoice = pool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
-    await tapMobile(page, hiddenChoice);
-    const submit = page.waitForResponse((response) => {
-      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
-      try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
-      catch { return false; }
-    });
-    await tapMobile(page, pool.getByRole("button", { name: "Confirm Steal selection", exact: true }));
-    expect((await submit).ok()).toBe(true);
-
-    const result = page.locator(`[data-public-result-event-id]`);
-    await expect(result).toHaveCount(1);
-    await expect(result).toHaveAttribute("data-public-result-face", "private", { timeout: 20_000 });
+    const result = await confirmPrivateStealResult(page, request, scenario);
     const actorProof = await controlledRoomView(request, code, token, source.id);
     expect(actorProof.privateStealParticipantResult).toMatchObject({ role: "TAKER", viewerId: source.id, physicalCardId: stolenCard.id, card: stolenCard });
     await expect(result).toHaveAttribute("data-public-result-card-id", stolenCard.id);
@@ -3249,6 +3259,34 @@ test("§10.36.1 concealed-Hand Steal result is private to both participants thro
     await page.reload();
     await expect(page.locator(".game-shell")).toBeVisible();
     await expect(page.locator('[data-public-result-face="private"]')).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test("§10.65 authorized private Steal result stays face up until its result owner retires", async ({ browser, request }) => {
+  test.setTimeout(90_000);
+  const scenario = await createPrivateStealScenario(request);
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const page = await context.newPage();
+  try {
+    const result = await confirmPrivateStealResult(page, request, scenario);
+    await result.evaluate((element) => {
+      const faceChanges = [];
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          if (record.attributeName === "data-public-result-face") faceChanges.push(element.getAttribute(record.attributeName));
+        }
+      });
+      observer.observe(element, { attributes: true, attributeFilter: ["data-public-result-face"] });
+      window.__privateStealFaceLifecycle = { faceChanges, observer };
+    });
+    await expect(result).toHaveCount(0, { timeout: 10_000 });
+    const faceChanges = await page.evaluate(() => {
+      window.__privateStealFaceLifecycle.observer.disconnect();
+      return window.__privateStealFaceLifecycle.faceChanges;
+    });
+    expect(faceChanges).not.toContain("anonymous-back");
   } finally {
     await context.close();
   }

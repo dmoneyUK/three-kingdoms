@@ -13200,23 +13200,18 @@ type PublicSettlementCardResult = {
 
 function PublicSettlementCardResult({ result }: { result: PublicSettlementCardResult }) {
   const cardRef = useRef<HTMLDivElement>(null);
-  const [privateFaceState, setPrivateFaceState] = useState(() => ({
-    scope: result.privateResultScope ?? null,
-    visible: Boolean(result.privateResultScope && !privateStealResultWasSeen(result.privateResultScope)),
-  }));
-  const privateFaceVisible = Boolean(result.privateResultScope
-    && privateFaceState.scope === result.privateResultScope && privateFaceState.visible);
+  const [initialPrivateFaceScope] = useState(() => result.privateResultScope
+    && !privateStealResultWasSeen(result.privateResultScope) ? result.privateResultScope : null);
+  const privateFaceVisible = Boolean(result.privateResultScope && initialPrivateFaceScope === result.privateResultScope);
   const renderedCard = result.privateResultScope ? privateFaceVisible ? result.card : undefined : result.card;
   const showAnonymousBack = result.anonymousHandBack || Boolean(result.privateResultScope && !privateFaceVisible);
 
   useEffect(() => {
     const scope = result.privateResultScope;
     if (!scope || !privateFaceVisible) return;
-    let elapsedVisibleMs = 0;
-    let previousFrameAt: number | null = null;
     let markedSeen = false;
     let frame = 0;
-    const sample = (now: number) => {
+    const markWhenFirstVisible = () => {
       const card = cardRef.current;
       const bounds = card?.getBoundingClientRect();
       const style = card ? window.getComputedStyle(card) : null;
@@ -13229,17 +13224,12 @@ function PublicSettlementCardResult({ result }: { result: PublicSettlementCardRe
         if (!markedSeen) {
           markPrivateStealResultSeen(scope);
           markedSeen = true;
-        }
-        if (previousFrameAt !== null) elapsedVisibleMs += Math.min(100, Math.max(0, now - previousFrameAt));
-        previousFrameAt = now;
-        if (elapsedVisibleMs >= UI_TIMING.publicTargetCardSettlementRead) {
-          setPrivateFaceState((current) => current.scope === scope && current.visible ? { ...current, visible: false } : current);
           return;
         }
       }
-      frame = window.requestAnimationFrame(sample);
+      frame = window.requestAnimationFrame(markWhenFirstVisible);
     };
-    frame = window.requestAnimationFrame(sample);
+    frame = window.requestAnimationFrame(markWhenFirstVisible);
     return () => window.cancelAnimationFrame(frame);
   }, [privateFaceVisible, result.privateResultScope]);
 
