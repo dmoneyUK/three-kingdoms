@@ -9,9 +9,11 @@ const files = readdirSync(new URL("./api/", import.meta.url))
   .sort()
   .map((file) => `tests/api/${file}`);
 
-// Keep two isolated groups explicit to lower concurrent Wrangler/D1 memory.
-// Same-membership process-tree samples measured ~1.65 GiB vs ~2.22 GiB with
-// four groups; API duration rose from ~50s to 54.92s.
+// Keep two isolated groups explicit and run them sequentially. Each shard owns
+// a local Wrangler/Miniflare/D1 process tree; concurrent shards have produced
+// intermittent `fetch failed` errors in otherwise unrelated API scenarios.
+// Serial execution bounds the local Worker count without skipping tests or
+// changing their assertions.
 const shardGroups = [
   ["tests/api/da-qiao.test.mjs", "tests/api/equipment.test.mjs", "tests/api/gongsun-zan.test.mjs", "tests/api/judgement.test.mjs", "tests/api/ma-chao.test.mjs", "tests/api/eight-trigrams-failed-response.test.mjs", "tests/api/lobby-heroes-wei.test.mjs", "tests/api/lightning-overindulgence-preset.test.mjs", "tests/api/concurrency.test.mjs", "tests/api/yue-jin-dauntless.test.mjs", "tests/api/huang-yueying.test.mjs", "tests/api/lady-gan.test.mjs", "tests/api/sun-shangxiang.test.mjs", "tests/api/hua-tuo.test.mjs", "tests/api/diao-chan.test.mjs", "tests/api/hua-xiong.test.mjs", "tests/api/pan-feng.test.mjs", "tests/api/huang-gai.test.mjs", "tests/api/public-activity.test.mjs"],
   ["tests/api/shared-response-window.test.mjs", "tests/api/privacy-response.test.mjs", "tests/api/heroes-wu-shu.test.mjs", "tests/api/stratagems.test.mjs", "tests/api/group-root-public-card-proof.test.mjs", "tests/api/borrowed-sword.test.mjs", "tests/api/play-target-eligibility.test.mjs", "tests/api/presentation-semantics.test.mjs", "tests/api/presentation-v2-engine.test.mjs", "tests/api/presentation-causality.test.mjs", "tests/api/zhuge-liang.test.mjs", "tests/api/normal-draw-public-outcome.test.mjs", "tests/api/peach-public-outcome.test.mjs"],
@@ -22,22 +24,26 @@ if (assigned.length !== files.length || new Set(assigned).size !== files.length 
 }
 
 const startedAt = performance.now();
-const results = await Promise.all(shardGroups.map((shardFiles, index) => new Promise((resolve) => {
-  const port = 3137 + index;
-  const child = spawn(process.execPath, ["tests/run-tests.mjs"], {
-    cwd: root,
-    env: { ...process.env, GAME_TEST_FILES: shardFiles.join(","), GAME_TEST_PORT: String(port), GAME_TEST_URL: `http://localhost:${port}`, GAME_TEST_INSPECTOR_PORT: String(9229 + index) },
-    stdio: ["ignore", "pipe", "pipe"],
+const results = [];
+for (const [index, shardFiles] of shardGroups.entries()) {
+  const result = await new Promise((resolve) => {
+    const port = 3137 + index;
+    const child = spawn(process.execPath, ["tests/run-tests.mjs"], {
+      cwd: root,
+      env: { ...process.env, GAME_TEST_FILES: shardFiles.join(","), GAME_TEST_PORT: String(port), GAME_TEST_URL: `http://localhost:${port}`, GAME_TEST_INSPECTOR_PORT: String(9229 + index) },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    for (const stream of [child.stdout, child.stderr]) stream.on("data", (chunk) => {
+      const text = chunk.toString();
+      output += text;
+      process.stdout.write(`[api-shard-${index + 1}] ${text.replaceAll("\n", `\n[api-shard-${index + 1}] `)}`);
+    });
+    child.on("error", (error) => resolve({ index, code: 1, output: `${output}\n${error.message}` }));
+    child.on("exit", (code, signal) => resolve({ index, code: code ?? 1, signal, output }));
   });
-  let output = "";
-  for (const stream of [child.stdout, child.stderr]) stream.on("data", (chunk) => {
-    const text = chunk.toString();
-    output += text;
-    process.stdout.write(`[api-shard-${index + 1}] ${text.replaceAll("\n", `\n[api-shard-${index + 1}] `)}`);
-  });
-  child.on("error", (error) => resolve({ index, code: 1, output: `${output}\n${error.message}` }));
-  child.on("exit", (code, signal) => resolve({ index, code: code ?? 1, signal, output }));
-})));
+  results.push(result);
+}
 
 const durationMs = performance.now() - startedAt;
 const testCount = results.reduce((count, result) => count + Number(result.output.match(/^\s*(?:#|ℹ)\s+tests\s+(\d+)\s*$/m)?.[1] ?? 0), 0);

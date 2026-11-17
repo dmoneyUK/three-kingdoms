@@ -1,22 +1,19 @@
-# HANDOVER — 当前唯一任务：§10.64-B WORKER-1102-LONG-SESSION-RESOURCE-01
+# HANDOVER — 当前唯一任务：修复 ux-v2 API CI 的本地 Worker 连接中断
 
 ## 当前状态
 
-- 分支：`codex/ux2-1057-card-pool-footer`，基线 `c2b674ff206b031222c36887dd1787c3854280f3`，与 `origin/ux-v2` 一致。当前实现与文档改动尚未提交或推送。
-- 已复习最新 `AGENTS.md`、`docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`、`docs/UX2-refine.md` 与本文件。当前设计记录为 §10.64-B；不继续旧任务队列。
-- §10.64-A 证据结论：Cloudflare invocation 记录与原始 trace 不可用，Ray `a5ba0c010b821669` 的路由、CPU/内存分类、耗时和资源数据均 UNKNOWN。1102 根因未确认。
-- §10.64-B 保留 GET 的第二次完整 `roomState`，避免未经版本证明的并发旧状态；只做可证明等价的重复工作削减。
+- 分支：`codex/ux2-1057-card-pool-footer`；远端 `ux-v2` 当前 SHA：`1d763f9380569a194fb757ea3c9208850a601094`。
+- §10.64-B 源码和隐私回归已在该 SHA 提交；当前 SHA 的 Actions run `44004371904` 失败，部署被跳过，生产未更新。
+- 用户要求本阶段不运行本地测试、构建或设备测试；遵守该限制。
 
-## 本阶段工作记录（UTC）
+## 本任务进展（UTC）
 
-- **02:05–02:21**：核对 Worker 部署时间线与 `roomState`/GET 调用；Cloudflare 控制台要求登录，环境没有 Wrangler CLI，附件目录没有 incident trace。没有声称取得 Cloudflare 运行指标。
-- **02:27**：重新 fetch `origin/ux-v2`，确认源码基线仍为 `c2b674ff206b031222c36887dd1787c3854280f3`；检查该精确 SHA 最新 Actions `43999469845` 为成功。
-- **02:27–02:35**：完成 §10.64-B 初始修改：从同一 viewer-filtered timeline 派生 public timeline，保留 `presentation !== false` / 无 private owner 过滤与原顺序；把 Attack/Dodge diagnostics 限定到 handoff 后最终的新鲜 GET projection；保留第二次完整 `roomState`。在 `tests/api/privacy-response.test.mjs` 增加四个 viewer 的公开投影一致性、公开根事件保留和私有卡牌仅所有者可见断言。既有 traced GET API 断言继续覆盖 opt-in diagnostics。
-- **02:34**：更新 §10.64 状态与设计边界，并将 HANDOVER 收敛到这一个当前任务。实现与文档仍是本地未提交改动。
+- **02:37–02:41**：精确 SHA run `44004371904` 首次失败。Lint/fast、浏览器 smoke 及 API shard 2 通过；API shard 1 在 Guo Jia / Raining Arrows 场景收到 `TypeError: fetch failed`，随后该 shard 请求无法继续。未见应用断言失败或 Worker 5xx 证据。
+- **02:49–02:53**：仅重跑失败 job。相同 SHA 改由 API shard 2 在共享 Negation 并发请求场景收到同类 `fetch failed`；API shard 1 的 204 项全部通过。失败转移到另一 shard/场景，不能按单一产品用例回归处理。
+- **03:01**：将 `tests/run-api-suite.mjs` 两组既有 API shard 改为串行运行，限制同时存活的 Wrangler/Miniflare/D1 测试服务为一个；未删减测试或断言。根因仍未由日志证明，此改动用于隔离并发本地 Worker 资源/连接争用。
 
-## 当前文件与验证
+## 当前改动与下一步
 
-- 改动：`app/api/rooms/route.ts`、`tests/api/privacy-response.test.mjs`、`docs/UX2-refine.md`、`HANDOVER.md`。
-- 用户要求不运行本地测试、构建或设备测试；本阶段均未运行。`git diff --check` 于 02:36 UTC 通过；随后提交、推送并核对实现精确 SHA 的 GitHub Actions、Worker 部署及生产 `/api/health` smoke。
-- 提交前基线 Actions：`c2b674ff206b031222c36887dd1787c3854280f3` / [run 43999469845](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43999469845)，状态 SUCCESS；该 run 不是本次改动的验证。
-- §10.64-B 交付只可报告已削减的重复 timeline/诊断计算。不得宣称资源指标改善、长局 soak 完成或 1102 根因修复。保持 §10.51 独立；不声明 Owner acceptance。
+- 当前未提交改动：`tests/run-api-suite.mjs`（API shard 串行化）、`HANDOVER.md`（本任务状态）。
+- 尚未运行任何本地测试或构建。提交前只做差异审阅与 `git diff --check`。
+- 下一步：提交并推送 CI 修复；观察精确 SHA 的完整 GitHub Actions。仅在所有必需 job 通过后，确认部署及生产 health smoke；若 API 仍失败，按新日志继续定位，不绕过断言、不继续重跑同一失败配置。
