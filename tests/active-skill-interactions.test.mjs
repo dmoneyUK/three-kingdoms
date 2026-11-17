@@ -1302,7 +1302,7 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   assert.equal(skillButton().props["aria-pressed"], false);
   assert.equal(picker().length, 0, "Retaliation does not open its picker before activation");
   assert.equal(button(renderer, { children: "Skip" }).props.disabled, false);
-  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-card-pool-action--skip"));
+  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
   assert.equal(actionCalls.filter(([actionName]) => actionName === "trigger").length, 0, "Retaliation does not submit before activation");
 
   await act(async () => { skillButton().props.onClick(); });
