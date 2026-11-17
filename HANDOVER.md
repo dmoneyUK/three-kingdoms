@@ -1,15 +1,22 @@
-# HANDOVER — 当前唯一任务：§10.57 SKIP-BUTTON-RED-CONSISTENCY-01
+# HANDOVER — 当前唯一任务：§10.64-B WORKER-1102-LONG-SESSION-RESOURCE-01
 
-## 当前进度
+## 当前状态
 
-- 设计依据：`docs/UX2-refine.md` §10.57，远端原始设计 revision `20492e3db4d2186cea3e0fa8543fc9bca21ef79e`。§10.57 要求所有真实选牌池复用同一决策 footer；可见按钮为等尺寸金色 `Confirm` / 红色 `Skip`，保留上下文无障碍名称、合法性、只读池、私牌与独立 `Cancel` 语义。
-- 2026-11-17 01:45 UTC：已将 §10.57 代码差异从旧工作树 `/Users/jingedai/.codex/worktrees/ux2-1060-webkit-20261116` 安全复制到当前工作树，仅复制源码和现有断言，不包含其过期 HANDOVER；旧工作树原样保留。差异涉及 `app/card-pool-panel.tsx`、`app/sequence-overrides.css` 和 8 个现有测试文件。当前仅完成源码审阅与 `git diff --check`，没有本地测试、构建或设备/UI 测试。
-- 2026-11-17 01:43 UTC：已推送文档/交接对齐提交 `473f79590d76d62fe7fa8d917fac7f125118beb3`。这次仅改文档，GitHub Actions 未为该提交启动；代码验证仍以父代码提交 `5aa83ac5940a82d0ba2d635ed39e32f4ac080815` 的成功精确 SHA 工作流为基线。§10.62/63 技术交付与 §10.61 A/B/C、Boundary D 源码复核均已记录为待 Owner iPhone 验收。
-- 2026-11-17 01:51 UTC：精确 SHA `33ff37f9d8feadb4c96f9811a740debfe8c8fd66` 的 Actions `43998268098` 失败：API 成功、lint/build 成功、browser startup smoke 成功；`test:fast` 的既有 Retaliation 断言仍检查旧类名 `wtk-skip-action`，部署被跳过。已将该快测和对应浏览器断言改为检查新共享语义类 `wtk-card-pool-action--skip`；未运行本地测试，等待修复提交的精确 SHA CI。
-- 2026-11-17 01:57 UTC：第二次精确 SHA `71f38e7bd8145adaa37e14f2662c9f6f581381ba` 的 Actions `43998874361` 仍失败，API 与 browser startup smoke 成功，部署跳过。日志显示同一 Retaliation 测试在“技能尚未激活”阶段检查 Local Dock 的 Skip；它应保留 `wtk-skip-action`，只有打开的选牌池 footer 才用 `wtk-card-pool-action--skip`。现已恢复前置 Dock 断言，仅保留池内 Skip 的新类断言；未运行本地测试，等待下一精确 SHA CI。
+- 分支：`codex/ux2-1057-card-pool-footer`，基线 `c2b674ff206b031222c36887dd1787c3854280f3`，与 `origin/ux-v2` 一致。当前实现与文档改动尚未提交或推送。
+- 已复习最新 `AGENTS.md`、`docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`、`docs/UX2-refine.md` 与本文件。当前设计记录为 §10.64-B；不继续旧任务队列。
+- §10.64-A 证据结论：Cloudflare invocation 记录与原始 trace 不可用，Ray `a5ba0c010b821669` 的路由、CPU/内存分类、耗时和资源数据均 UNKNOWN。1102 根因未确认。
+- §10.64-B 保留 GET 的第二次完整 `roomState`，避免未经版本证明的并发旧状态；只做可证明等价的重复工作削减。
 
-## 恢复点与交付要求
+## 本阶段工作记录（UTC）
 
-从本工作树继续审阅 §10.57 的实际差异及已共享 footer 的所有调用者；不运行本地测试、构建或设备/UI 测试（Owner 指令）。然后执行 `git diff --check`，只提交本任务相关源码、既有回归断言、设计状态和本 HANDOVER；推送 `ux-v2`，等待精确 SHA 的 GitHub Actions，核实部署与生产 smoke，再如实更新此处。
+- **02:05–02:21**：核对 Worker 部署时间线与 `roomState`/GET 调用；Cloudflare 控制台要求登录，环境没有 Wrangler CLI，附件目录没有 incident trace。没有声称取得 Cloudflare 运行指标。
+- **02:27**：重新 fetch `origin/ux-v2`，确认源码基线仍为 `c2b674ff206b031222c36887dd1787c3854280f3`；检查该精确 SHA 最新 Actions `43999469845` 为成功。
+- **02:27–02:35**：完成 §10.64-B 初始修改：从同一 viewer-filtered timeline 派生 public timeline，保留 `presentation !== false` / 无 private owner 过滤与原顺序；把 Attack/Dodge diagnostics 限定到 handoff 后最终的新鲜 GET projection；保留第二次完整 `roomState`。在 `tests/api/privacy-response.test.mjs` 增加四个 viewer 的公开投影一致性、公开根事件保留和私有卡牌仅所有者可见断言。既有 traced GET API 断言继续覆盖 opt-in diagnostics。
+- **02:34**：更新 §10.64 状态与设计边界，并将 HANDOVER 收敛到这一个当前任务。实现与文档仍是本地未提交改动。
 
-最终技术状态只能在精确 SHA CI、部署和生产 smoke 成功后写为 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**。不得声明用户验收通过。
+## 当前文件与验证
+
+- 改动：`app/api/rooms/route.ts`、`tests/api/privacy-response.test.mjs`、`docs/UX2-refine.md`、`HANDOVER.md`。
+- 用户要求不运行本地测试、构建或设备测试；本阶段均未运行。`git diff --check` 于 02:36 UTC 通过；随后提交、推送并核对实现精确 SHA 的 GitHub Actions、Worker 部署及生产 `/api/health` smoke。
+- 提交前基线 Actions：`c2b674ff206b031222c36887dd1787c3854280f3` / [run 43999469845](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43999469845)，状态 SUCCESS；该 run 不是本次改动的验证。
+- §10.64-B 交付只可报告已削减的重复 timeline/诊断计算。不得宣称资源指标改善、长局 soak 完成或 1102 根因修复。保持 §10.51 独立；不声明 Owner acceptance。

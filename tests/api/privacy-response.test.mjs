@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
 import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { appendSequencedLogRecord } from "../../game/public-log-sequence.ts";
 import {
   advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, requestForViewer, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -23,6 +24,75 @@ function committedSkillNarration(view, fact) {
     eventId: fact.eventId,
   });
 }
+
+test("room public presentation is viewer-identical while private card events stay owner-only", { timeout: 30_000 }, async () => {
+  const game = await seedPlayingGame({
+    phase: "play",
+    turnSeat: 0,
+    players: ["Lord", "Loyalist", "Rebel", "Renegade"].map((role, index) => ({
+      name: `Timeline Seat ${index + 1}`,
+      role,
+      hero: "cao-cao",
+      hp: 4,
+      maxHp: 4,
+      hand: [],
+    })),
+  });
+  const [source, firstOwner, secondOwner] = game.room.players;
+  const tokenFor = (player) => game.members.find((member) => member.name === player.name)?.token;
+  const root = card("DrawTwo", "viewer-timeline-public-root");
+  setHand(source.id, [root], 4, 4);
+  for (const player of game.room.players.slice(1)) setHand(player.id, [], 4, 4);
+  setTurn(game.code, source.seat);
+  const opened = await request("play_card", { code: game.code, token: tokenFor(source), cardId: root.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+
+  const firstSecret = card("Peach", "viewer-timeline-secret-one", "♥");
+  const secondSecret = card("Dodge", "viewer-timeline-secret-two", "♣");
+  let persistedLog = JSON.parse(query(`SELECT log_json FROM rooms WHERE code=${quote(game.code)}`));
+  persistedLog = appendSequencedLogRecord(persistedLog, "@card:", {
+    id: "viewer-private-card-one", player: firstOwner.name, target: firstOwner.name, card: firstSecret,
+    action: "draw", presentation: true, privateToPlayerId: firstOwner.id,
+  });
+  persistedLog = appendSequencedLogRecord(persistedLog, "@card:", {
+    id: "viewer-private-card-two", player: secondOwner.name, target: secondOwner.name, card: secondSecret,
+    action: "draw", presentation: true, privateToPlayerId: secondOwner.id,
+  });
+  sql(`UPDATE rooms SET log_json=${quote(JSON.stringify(persistedLog))} WHERE code=${quote(game.code)}`);
+
+  const views = await Promise.all(game.room.players.map((player) => state(game.code, tokenFor(player))));
+  const publicProjection = ({ presentationSnapshot, presentationV2 }) => ({
+    snapshot: {
+      stable: presentationSnapshot.stable,
+      interaction: presentationSnapshot.interaction,
+      rootAction: presentationSnapshot.rootAction,
+      publicEventFacts: presentationSnapshot.publicEventFacts,
+      retainedPublicEvent: presentationSnapshot.retainedPublicEvent,
+      retainedPublicEventFacts: presentationSnapshot.retainedPublicEventFacts,
+      publicNextDecision: presentationSnapshot.publicNextDecision,
+      publicCardEffects: presentationSnapshot.publicCardEffects,
+    },
+    presentation: {
+      rootContext: presentationV2.rootContext,
+      activeContext: presentationV2.activeContext,
+      interactionScene: presentationV2.interactionScene,
+      rootAction: presentationV2.rootAction,
+      publicCardEffects: presentationV2.publicCardEffects,
+    },
+  });
+  const expectedPublicProjection = publicProjection(views[0].data);
+  for (const [index, response] of views.entries()) {
+    assert.ok(response.data.timeline.some((event) => event.card?.id === root.id && event.action === "play"), `viewer ${index + 1} retains the committed public root`);
+    assert.deepEqual(publicProjection(response.data), expectedPublicProjection, `viewer ${index + 1} receives the same public presentation`);
+    const serializedPublicProjection = JSON.stringify(publicProjection(response.data));
+    assert.equal(serializedPublicProjection.includes(firstSecret.id), false, "a private card never enters the public presentation");
+    assert.equal(serializedPublicProjection.includes(secondSecret.id), false, "another private card never enters the public presentation");
+  }
+  assert.ok(views[1].data.timeline.some((event) => event.card?.id === firstSecret.id), "the owning viewer retains its own private card event");
+  assert.equal(views[0].data.timeline.some((event) => event.card?.id === firstSecret.id), false, "other viewers do not receive that private card event");
+  assert.ok(views[2].data.timeline.some((event) => event.card?.id === secondSecret.id), "the second owning viewer retains its own private card event");
+  assert.equal(views[0].data.timeline.some((event) => event.card?.id === secondSecret.id), false, "other viewers do not receive the second private card event");
+});
 
 test("shared Negation windows keep submissions private and expose only each viewer's legal response", { timeout: 60_000 }, async () => {
   const nobody = await createHumanGame(); const [nobodySourceMember] = nobody.members; const [nobodySource, ...nobodyOthers] = nobody.room.players; const drawTwo = card("DrawTwo", "privacy-negation");

@@ -7438,7 +7438,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     delete safeEvent.privateStealParticipantResult;
     return [safeEvent];
   });
-  const publicTimeline = gameTimeline(rawLog).filter((event) => event.presentation !== false && typeof event.privateToPlayerId !== "string");
+  const publicTimeline = viewerTimeline.filter((event) => event.presentation !== false && typeof event.privateToPlayerId !== "string");
   const presentationInput = {
     ...(sharedWindow ? { sharedResponseWindow: { semantics: "PROVEN" as const, windowId: sharedWindow.windowId, mode: sharedWindow.continuation.mode, requesterId: sharedWindow.requesterId, targetId: sharedWindow.targetId, openedAt: sharedWindow.openedAt, deadline: sharedWindow.deadline, stage: sharedWindow.settlement ? "SETTLING" as const : "COLLECTING" as const } } : {}),
     pending: negationWindow ? {
@@ -7618,7 +7618,9 @@ export async function GET(request: Request) {
     const result = await env.DB.prepare("SELECT id,event_key,event_type,actor_id,actor_name,action,phase_before,phase_after,turn_seat_before,turn_seat_after,acting_player_before,acting_player_after,detail_json,created_at FROM game_audit WHERE room_id = ? ORDER BY id").bind(room.id).all();
     return json({ code, audit: result.results ?? [] });
   }
-  let state = await roomState(code, token, Boolean(uxTraceId), requestedViewerId);
+  // The first projection exists only to identify the authenticated viewer and
+  // advance the discard handoff. Diagnostics belong to the final fresh view.
+  let state = await roomState(code, token, false, requestedViewerId);
   if (!state) return json({ error: "Room not found." }, 404);
   if (requestedViewerId && state.meId !== requestedViewerId) {
     return json({ error: "That test viewer is not controlled by this session." }, 403);
