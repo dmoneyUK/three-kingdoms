@@ -8138,12 +8138,9 @@
   }
 }
 
-/* §10.57: true Skip controls share the adjacent Use/Confirm action grammar;
-   only the semantic voluntary-Skip class changes the palette to red. */
+/* §10.57: keep non-pool Local Dock Skip styling semantic; pooled Skip/Confirm
+   actions use their dedicated equal-size variants below. */
 .game-shell .wtk-action-button,
-.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__secondary.wtk-skip-action,
-.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__confirm,
-.game-shell .target-card-picker-actions[data-skip-visible="true"] > .wtk-action-button,
 .game-shell .local-player-dock .turn-controls[data-skip-visible="true"] [data-action-slot="decline"] > .wtk-action-button,
 .game-shell .local-player-dock .turn-controls[data-skip-visible="true"] [data-action-slot="primary"] > button {
   box-sizing: border-box;
@@ -8166,33 +8163,15 @@
   color: #fff2dc;
 }
 .game-shell .wtk-action-button:focus-visible,
-.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__confirm:focus-visible,
-.game-shell .target-card-picker-actions[data-skip-visible="true"] > .primary:focus-visible,
 .game-shell .local-player-dock .turn-controls[data-skip-visible="true"] [data-action-slot="primary"] > button:focus-visible {
   outline: 2px solid #f0cf7e;
   outline-offset: 2px;
 }
 .game-shell .wtk-action-button:disabled,
-.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__confirm:disabled,
-.game-shell .target-card-picker-actions[data-skip-visible="true"] > .primary:disabled,
 .game-shell .local-player-dock .turn-controls[data-skip-visible="true"] [data-action-slot="primary"] > button:disabled {
   cursor: not-allowed;
   opacity: .42;
 }
-.game-shell .card-pool-panel__footer[data-skip-visible="true"] > .card-pool-panel__secondary {
-  flex: 0 0 auto;
-  min-width: 48px;
-  padding-inline: 7px;
-}
-.game-shell .target-card-picker-actions[data-skip-visible="true"] {
-  gap: 6px;
-}
-.game-shell .target-card-picker-actions[data-skip-visible="true"] > button {
-  flex: 1 1 0;
-  min-width: 0;
-  padding-inline: 6px;
-}
-
 /* UX2 §10.56: on the phone top row, the explicitly opened Inspector may
    overlap the existing H4 copy. Raise only that Inspector stacking context;
    H4 geometry, lifetime, and all CardFace reveal behavior remain owned by
@@ -8205,6 +8184,9 @@
    lives in the pool heading and each control's accessible name; only legal
    voluntary Skip uses the red palette. */
 .game-shell .card-pool-decision-footer {
+  --wtk-card-pool-action-width: 96px;
+  --wtk-card-pool-action-height: 44px;
+  --wtk-card-pool-action-font-size: 10px;
   box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -8221,7 +8203,7 @@
   min-width: 0;
   overflow: hidden;
   color: #d5c7a1;
-  font: 600 9px/1.2 Arial, sans-serif;
+  font: 600 10px/1.2 Arial, sans-serif;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -8234,41 +8216,40 @@
 }
 .game-shell .card-pool-decision-footer__pair {
   display: grid;
-  grid-template-columns: 96px;
+  grid-template-columns: var(--wtk-card-pool-action-width);
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
 .game-shell .card-pool-decision-footer__pair[data-action-count="2"] {
-  grid-template-columns: repeat(2, 96px);
+  grid-template-columns: repeat(2, var(--wtk-card-pool-action-width));
 }
 .game-shell .card-pool-decision-footer__button {
   box-sizing: border-box;
   display: inline-flex;
-  flex: 0 0 96px;
   align-items: center;
   justify-content: center;
-  width: 96px;
-  min-width: 88px;
-  max-width: 104px;
-  height: 44px;
-  min-height: 44px;
-  max-height: 44px;
+  width: var(--wtk-card-pool-action-width);
+  min-width: var(--wtk-card-pool-action-width);
+  max-width: var(--wtk-card-pool-action-width);
+  height: var(--wtk-card-pool-action-height);
+  min-height: var(--wtk-card-pool-action-height);
+  max-height: var(--wtk-card-pool-action-height);
   margin: 0;
   padding: 5px 8px;
   border: 1px solid #d5b96e;
   border-radius: 2px;
-  font: 700 10px/1.1 Arial, sans-serif;
+  font: 700 var(--wtk-card-pool-action-font-size)/1.1 Arial, sans-serif;
   letter-spacing: .02em;
   text-align: center;
   text-transform: none;
   white-space: nowrap;
 }
-.game-shell .card-pool-decision-footer__confirm {
+.game-shell .wtk-card-pool-action--confirm {
   background: #be9b53;
   color: #17150f;
 }
-.game-shell .card-pool-decision-footer__skip {
+.game-shell .wtk-card-pool-action--skip {
   background: #8b302a;
   border-color: #c3a46b;
   color: #fff2dc;
@@ -8323,6 +8304,7 @@
 }
 @media (max-width: 380px) {
   .game-shell .card-pool-decision-footer {
+    --wtk-card-pool-action-width: 88px;
     grid-template-columns: minmax(0, 1fr);
     gap: 4px;
   }
@@ -8333,16 +8315,17 @@
     justify-content: flex-end;
   }
   .game-shell .card-pool-decision-footer__pair {
-    grid-template-columns: 88px;
+    grid-template-columns: var(--wtk-card-pool-action-width);
     gap: 4px;
   }
   .game-shell .card-pool-decision-footer__pair[data-action-count="2"] {
-    grid-template-columns: repeat(2, 88px);
+    grid-template-columns: repeat(2, var(--wtk-card-pool-action-width));
   }
   .game-shell .card-pool-decision-footer__button {
-    flex-basis: 88px;
-    width: 88px;
-    font-size: 9px;
+    width: var(--wtk-card-pool-action-width);
+    min-width: var(--wtk-card-pool-action-width);
+    max-width: var(--wtk-card-pool-action-width);
+    font-size: var(--wtk-card-pool-action-font-size);
   }
   .game-shell .card-pool-decision-footer__actions > .card-pool-decision-footer__cancel {
     flex-basis: 58px;
@@ -8350,7 +8333,7 @@
     min-width: 58px;
   }
   .game-shell .card-pool-decision-footer__count {
-    font-size: 8px;
+    font-size: 10px;
   }
 }
 .game-shell .card-pool-decision-footer__count:empty {

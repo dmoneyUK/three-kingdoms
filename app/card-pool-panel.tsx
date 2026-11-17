@@ -147,7 +147,7 @@ export function CardPoolDecisionFooter({
       <div className="card-pool-decision-footer__pair" data-action-count={skipAction ? "2" : "1"}>
         {skipAction && <button
           type="button"
-          className="end card-pool-decision-footer__button card-pool-decision-footer__skip wtk-skip-action"
+          className="end card-pool-decision-footer__button card-pool-decision-footer__skip wtk-card-pool-action--skip"
           data-pool-action="skip"
           aria-label={skipAction.accessibleLabel}
           disabled={skipAction.disabled}
@@ -155,7 +155,7 @@ export function CardPoolDecisionFooter({
         >{skipAction.pending ? "Skipping…" : "Skip"}</button>}
         <button
           type="button"
-          className="primary card-pool-panel__confirm card-pool-decision-footer__button card-pool-decision-footer__confirm"
+          className="primary card-pool-panel__confirm card-pool-decision-footer__button card-pool-decision-footer__confirm wtk-card-pool-action--confirm"
           data-pool-action="confirm"
           aria-label={confirmAction.accessibleLabel}
           disabled={confirmAction.disabled}

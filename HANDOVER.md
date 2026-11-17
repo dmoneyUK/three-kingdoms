@@ -1,13 +1,13 @@
 # HANDOVER — 当前唯一任务：§10.57 SKIP-BUTTON-RED-CONSISTENCY-01
 
-## 最近交付与验证
+## 当前进度
 
-- §10.62 Borrowed Sword H4 身份片段已包含在 `5aa83ac5940a82d0ba2d635ed39e32f4ac080815`；[精确 SHA Actions 43990716580](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43990716580) 的 lint/fast、API、浏览器 smoke、D1 migration、部署和 production smoke 全部成功。Worker `ddf4e41a-db07-4e11-81c1-3849036ede7c`，生产 `/api/health` HTTP 200。§10.63 同一最新构建的专项浏览器 smoke 通过。两项都仍待 Owner iPhone 复验，不得标记接受。
-- §10.61 A/B/C 已交付；Boundary D 已完成源码复核。`5aa83ac` 精确 SHA CI 全绿。根据 Owner 指令，本地测试、构建和设备/UI 测试均未运行；Owner iPhone 验收仍待完成。
-- 当前设计 revision `20492e3db4d2186cea3e0fa8543fc9bca21ef79e` 已记录 §10.62/63 技术交付、§10.61 D 完成和下一任务 §10.57。
+- 设计依据：`docs/UX2-refine.md` §10.57，远端原始设计 revision `20492e3db4d2186cea3e0fa8543fc9bca21ef79e`。§10.57 要求所有真实选牌池复用同一决策 footer；可见按钮为等尺寸金色 `Confirm` / 红色 `Skip`，保留上下文无障碍名称、合法性、只读池、私牌与独立 `Cancel` 语义。
+- 2026-11-17 01:45 UTC：已将 §10.57 代码差异从旧工作树 `/Users/jingedai/.codex/worktrees/ux2-1060-webkit-20261116` 安全复制到当前工作树，仅复制源码和现有断言，不包含其过期 HANDOVER；旧工作树原样保留。差异涉及 `app/card-pool-panel.tsx`、`app/sequence-overrides.css` 和 8 个现有测试文件。当前仅完成源码审阅与 `git diff --check`，没有本地测试、构建或设备/UI 测试。
+- 2026-11-17 01:43 UTC：已推送文档/交接对齐提交 `473f79590d76d62fe7fa8d917fac7f125118beb3`。这次仅改文档，GitHub Actions 未为该提交启动；代码验证仍以父代码提交 `5aa83ac5940a82d0ba2d635ed39e32f4ac080815` 的成功精确 SHA 工作流为基线。§10.62/63 技术交付与 §10.61 A/B/C、Boundary D 源码复核均已记录为待 Owner iPhone 验收。
 
-## 当前任务与恢复点
+## 恢复点与交付要求
 
-执行 §10.57：让真实卡牌选择池共用紧凑 footer，Confirm/Skip 同宽同高、至少 44px 高，使用金色 Confirm 与红色 Skip，并保持真实选择、只读池、私有手牌、可访问名称及非卡池按钮语义。
+从本工作树继续审阅 §10.57 的实际差异及已共享 footer 的所有调用者；不运行本地测试、构建或设备/UI 测试（Owner 指令）。然后执行 `git diff --check`，只提交本任务相关源码、既有回归断言、设计状态和本 HANDOVER；推送 `ux-v2`，等待精确 SHA 的 GitHub Actions，核实部署与生产 smoke，再如实更新此处。
 
-已有 §10.57 未提交源码修改保存在 `/Users/jingedai/.codex/worktrees/ux2-1060-webkit-20261116`，基于 `5aa83ac5940a82d0ba2d635ed39e32f4ac080815`。先检查并保留该 worktree 的当前 diff，再按 §10.57 完成复核；其中旧 HANDOVER 修改不应覆盖本文件。该修改未提交，未运行本地测试/构建/UI 测试。完成后推送 `ux-v2`，验证精确 SHA GitHub Actions、Worker 部署及生产 smoke，并按实际结果更新 HANDOVER。§10.57 状态保持 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**，不得自称用户验收通过。
+最终技术状态只能在精确 SHA CI、部署和生产 smoke 成功后写为 **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**。不得声明用户验收通过。

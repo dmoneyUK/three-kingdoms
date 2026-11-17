@@ -43,11 +43,19 @@ test("shared card-pool footer uses same-sized semantic Skip and Confirm actions"
   }));
   assert.match(markup, /data-pool-action-footer="true"/);
   assert.match(markup, /data-action-count="2"/);
+  assert.match(markup, /wtk-card-pool-action--skip/);
+  assert.match(markup, /wtk-card-pool-action--confirm/);
   assert.match(markup, /data-pool-action="skip"[^>]*aria-label="Skip Retaliation"[^>]*>Skip<\/button>/);
   assert.match(markup, /data-pool-action="confirm"[^>]*aria-label="Confirm Retaliation selection"[^>]*>Confirm<\/button>/);
   assert.match(markup, /aria-label="Cancel Retaliation selection"[^>]*>Cancel<\/button>/);
-  assert.match(sequenceStyleSource, /\.card-pool-decision-footer__pair\[data-action-count="2"\]\s*\{\s*grid-template-columns:\s*repeat\(2,\s*96px\)/);
-  assert.match(sequenceStyleSource, /\.card-pool-decision-footer__button\s*\{[^}]*width:\s*96px;[^}]*height:\s*44px;/s);
+  assert.match(sequenceStyleSource, /--wtk-card-pool-action-width:\s*96px/);
+  assert.match(sequenceStyleSource, /--wtk-card-pool-action-height:\s*44px/);
+  assert.match(sequenceStyleSource, /--wtk-card-pool-action-font-size:\s*10px/);
+  assert.match(sequenceStyleSource, /\.card-pool-decision-footer__pair\[data-action-count="2"\]\s*\{\s*grid-template-columns:\s*repeat\(2,\s*var\(--wtk-card-pool-action-width\)\)/);
+  assert.match(sequenceStyleSource, /\.card-pool-decision-footer__button\s*\{[^}]*width:\s*var\(--wtk-card-pool-action-width\);[^}]*height:\s*var\(--wtk-card-pool-action-height\);/s);
+  assert.match(sequenceStyleSource, /@media \(max-width: 380px\) \{\s*\.game-shell \.card-pool-decision-footer \{\s*--wtk-card-pool-action-width:\s*88px/s);
+  assert.match(sequenceStyleSource, /\.game-shell \.wtk-card-pool-action--confirm\s*\{\s*background:\s*#be9b53/);
+  assert.match(sequenceStyleSource, /\.game-shell \.wtk-card-pool-action--skip\s*\{\s*background:\s*#8b302a/);
 });
 
 test("shared pool actions do not relabel specialized non-pool controls", () => {

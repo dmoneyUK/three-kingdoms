@@ -660,7 +660,7 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
     await expect(inspection).toHaveCount(0);
     await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: "Take 1 damage from Xiahou Dun", exact: true }).click();
-    const confirm = dialog.getByRole("button", { name: "Confirm choice", exact: true });
+    const confirm = dialog.getByRole("button", { name: "Confirm Stauchness card choice", exact: true });
     await expect(confirm).toBeEnabled();
     const submittedPromise = sourcePage.waitForResponse((response) => response.url() === API + "/api/rooms"
       && response.request().method() === "POST"
@@ -764,7 +764,7 @@ test("real Stauchness frames the two committed source cards for actor, payer and
       && response.request().method() === "POST"
       && response.request().postDataJSON()?.action === "trigger"
       && response.request().postDataJSON()?.providerId === "xiahou_dun_ganglie");
-    await dialog.getByRole("button", { name: "Confirm choice", exact: true }).click();
+    await dialog.getByRole("button", { name: /Confirm .* card choice/ }).click();
     const submitted = await submission;
     expect(submitted.ok()).toBeTruthy();
     expect(submitted.request().postDataJSON()).toMatchObject({
@@ -1377,7 +1377,7 @@ test("real Legacy activation reaches the private two-card distribution UI and su
   await expect(inspection).toHaveCount(0);
   await expect(recipients.nth(0)).toHaveValue(seedData.players[1].id);
   await recipients.nth(1).selectOption(seedData.players[2].id);
-  const distribute = dialog.getByRole("button", { name: "Distribute cards", exact: true });
+  const distribute = dialog.getByRole("button", { name: "Confirm card distribution", exact: true });
   await expect(distribute).toBeEnabled();
   const submittedPromise = page.waitForResponse((response) => response.url() === API + "/api/rooms"
     && response.request().method() === "POST"
