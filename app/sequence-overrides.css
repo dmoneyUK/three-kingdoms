@@ -826,7 +826,7 @@
    WebKit can paint the z-indexed Skill over the CardFace. Let empty scrollport
    space pass through so uncovered Skills/Equipment remain tappable. Real card
    slots stay hit-testable descendants of the native pan-x scroller. */
-.local-hand-section:has(.card-slot.single-selected, .card-slot.multi-selected, .card-slot.details-selected, .card-slot.inspect-focused) { z-index: auto; }
+.local-hand-section:has(.card-slot.single-selected, .card-slot.multi-selected, .card-slot.details-selected, .card-slot.inspect-focused) { z-index: 80; }
 .local-hand-section:has(.card-slot.single-selected, .card-slot.multi-selected, .card-slot.details-selected, .card-slot.inspect-focused) .local-hand { z-index: auto; }
 .local-hand-section:has(.card-slot.single-selected, .card-slot.multi-selected, .card-slot.details-selected, .card-slot.inspect-focused) .local-hand-rail { z-index: 80; pointer-events: none; }
 /* Native scrolling clips both axes. Keep the scrollport itself hit-testable for

@@ -23,9 +23,10 @@ test("§10.63 selected Kirin Bow visually covers Cao Cao's overlapping Treachery
     const overlap = await page.evaluate(() => {
       const card = document.querySelector(".local-hand-rail .card-slot.single-selected .game-card");
       const rail = document.querySelector(".local-hand-rail");
+      const handSection = rail?.closest(".local-hand-section");
       const skillButton = document.querySelector('.local-status-panel .hero-skill-button[aria-label="Treachery"]');
       const equipmentButton = document.querySelector(".local-equipment-panel .local-zone-card-button");
-      if (!card || !rail || !skillButton || !equipmentButton) return null;
+      if (!card || !rail || !handSection || !skillButton || !equipmentButton) return null;
       const cardRect = card.getBoundingClientRect();
       const skillRect = skillButton.getBoundingClientRect();
       const rect = {
@@ -64,6 +65,7 @@ test("§10.63 selected Kirin Bow visually covers Cao Cao's overlapping Treachery
           overflowY: getComputedStyle(rail).overflowY,
           touchAction: getComputedStyle(rail).touchAction,
         },
+        handSectionZIndex: getComputedStyle(handSection).zIndex,
         cardSlotPointerEvents: getComputedStyle(card.closest(".card-slot")).pointerEvents,
         skillZIndex: getComputedStyle(skillButton).zIndex,
         uncoveredSkillPoint,
@@ -77,8 +79,9 @@ test("§10.63 selected Kirin Bow visually covers Cao Cao's overlapping Treachery
     expect(overlap?.topIsSelectedCard).toBe(true);
     expect(overlap?.cardId).toBe("browser-hand-2");
     expect(overlap?.rail).toEqual({ zIndex: "80", pointerEvents: "none", overflowX: "auto", overflowY: "hidden", touchAction: "pan-x" });
+    expect(overlap?.handSectionZIndex).toBe("80");
     expect(overlap?.cardSlotPointerEvents).toBe("auto");
-    expect(Number(overlap?.skillZIndex)).toBeLessThan(Number(overlap?.rail.zIndex));
+    expect(Number(overlap?.skillZIndex)).toBeLessThan(Number(overlap?.handSectionZIndex));
     expect(overlap?.uncoveredSkillPoint).not.toBeNull();
     expect(overlap?.equipmentHit).toBe(true);
 
