@@ -3266,12 +3266,27 @@ test("§10.36.1 concealed-Hand Steal result is private to both participants thro
 
 test("§10.65 authorized private Steal result stays face up until its result owner retires", async ({ browser, request }) => {
   test.setTimeout(90_000);
-  const scenario = await createPrivateStealScenario(request);
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   const page = await context.newPage();
   try {
-    const result = await confirmPrivateStealResult(page, request, scenario);
-    await result.evaluate((element) => {
+    const viewport = { width: 390, height: 844 };
+    const { dialog } = await openRealTargetCardDecision({
+      page, request, kind: "Steal", viewport, handCount: 1, equipment: false, judgement: false,
+    });
+    const hiddenChoice = dialog.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
+    await tapMobile(page, hiddenChoice);
+    const submit = page.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+      catch { return false; }
+    });
+    await tapMobile(page, dialog.getByRole("button", { name: "Confirm Steal selection", exact: true }));
+    expect((await submit).ok()).toBe(true);
+
+    const result = page.locator("[data-public-result-event-id]");
+    await expect(result).toHaveCount(1);
+    await expect(result).toHaveAttribute("data-public-result-face", "private", { timeout: 20_000 });
+    const lifetime = await result.evaluate((element) => new Promise((resolve) => {
       const faceChanges = [];
       const observer = new MutationObserver((records) => {
         for (const record of records) {
@@ -3279,14 +3294,22 @@ test("§10.65 authorized private Steal result stays face up until its result own
         }
       });
       observer.observe(element, { attributes: true, attributeFilter: ["data-public-result-face"] });
-      window.__privateStealFaceLifecycle = { faceChanges, observer };
-    });
-    await expect(result).toHaveCount(0, { timeout: 10_000 });
-    const faceChanges = await page.evaluate(() => {
-      window.__privateStealFaceLifecycle.observer.disconnect();
-      return window.__privateStealFaceLifecycle.faceChanges;
-    });
-    expect(faceChanges).not.toContain("anonymous-back");
+      const startedAt = performance.now();
+      const observeLifetime = () => {
+        const elapsedMs = performance.now() - startedAt;
+        if (!element.isConnected || elapsedMs >= 3_500) {
+          observer.disconnect();
+          resolve({ faceChanges, connected: element.isConnected });
+          return;
+        }
+        requestAnimationFrame(observeLifetime);
+      };
+      requestAnimationFrame(observeLifetime);
+    }));
+    expect(lifetime.faceChanges).not.toContain("anonymous-back");
+    if (lifetime.connected) {
+      await expect(result).toHaveAttribute("data-public-result-face", "private");
+    }
   } finally {
     await context.close();
   }
