@@ -1,19 +1,13 @@
-# HANDOVER — 当前唯一任务：修复 ux-v2 API CI 的本地 Worker 连接中断
+# HANDOVER — 当前唯一任务：§10.65 CONCEALED-STEAL-FACE-UNTIL-RETIRE-01
 
-## 当前状态
+## 最新交付结果
 
-- 分支：`codex/ux2-1057-card-pool-footer`；远端 `ux-v2` 当前 SHA：`1d763f9380569a194fb757ea3c9208850a601094`。
-- §10.64-B 源码和隐私回归已在该 SHA 提交；当前 SHA 的 Actions run `44004371904` 失败，部署被跳过，生产未更新。
-- 用户要求本阶段不运行本地测试、构建或设备测试；遵守该限制。
+- 已复习远端 `ux-v2` 的 `docs/UX2-refine.md`（2026-11-17 修订）。§10.62、§10.63、§10.61、§10.57 的技术实现均已部署；四项均仍待 Owner iPhone 验收，不得标记为通过或关闭。没有新的失败证据，本轮未重做这些实现。
+- §10.64-B 实现提交 `1d763f9380569a194fb757ea3c9208850a601094` 的首次 CI 与定向重跑均在 API Worker 测试中出现交替 shard 的 `fetch failed`。提交 `3929af6031d5fc0173bd504b5933e004342fef05` 将既有 API shards 串行运行，未删减测试或断言；未运行本地测试、构建或设备测试，遵守 Owner 限制；`git diff --check` 通过。
+- 精确 SHA CI：[run 44007322476](https://github.com/dmoneyUK/three-kingdoms/actions/runs/44007322476) — 全部必需 job 成功，包括 Lint/fast、API、browser smoke、D1 migration、Worker 部署和生产 smoke。
+- Cloudflare Worker 版本：`6ee069e1-7f2b-426f-9de4-9817155d2132`。部署流程对首页和 `/api/health` 的 smoke 均成功；直接健康检查返回 `{"ok":true,"worker":"available"}`，HTTP 200。
+- 串行化缓解了 CI 中并发测试 Worker 连接中断；尚无证据证明或排除此前 Cloudflare 1102 的根因。
 
-## 本任务进展（UTC）
+## 唯一下一任务
 
-- **02:37–02:41**：精确 SHA run `44004371904` 首次失败。Lint/fast、浏览器 smoke 及 API shard 2 通过；API shard 1 在 Guo Jia / Raining Arrows 场景收到 `TypeError: fetch failed`，随后该 shard 请求无法继续。未见应用断言失败或 Worker 5xx 证据。
-- **02:49–02:53**：仅重跑失败 job。相同 SHA 改由 API shard 2 在共享 Negation 并发请求场景收到同类 `fetch failed`；API shard 1 的 204 项全部通过。失败转移到另一 shard/场景，不能按单一产品用例回归处理。
-- **03:01**：将 `tests/run-api-suite.mjs` 两组既有 API shard 改为串行运行，限制同时存活的 Wrangler/Miniflare/D1 测试服务为一个；未删减测试或断言。根因仍未由日志证明，此改动用于隔离并发本地 Worker 资源/连接争用。
-
-## 当前改动与下一步
-
-- 当前未提交改动：`tests/run-api-suite.mjs`（API shard 串行化）、`HANDOVER.md`（本任务状态）。
-- 尚未运行任何本地测试或构建。提交前只做差异审阅与 `git diff --check`。
-- 下一步：提交并推送 CI 修复；观察精确 SHA 的完整 GitHub Actions。仅在所有必需 job 通过后，确认部署及生产 health smoke；若 API 仍失败，按新日志继续定位，不绕过断言、不继续重跑同一失败配置。
+执行 §10.65：已验证的顺手牵羊参与者私有结果牌，在同一结果仍显示期间保持正面，随结果及其 H4 一同退场；旁观者全程只见牌背，继续保留现有身份/结算证明、隐私和防重放校验。先按最新设计核对当前源码与任务边界；不扩展为全局卡牌生命周期重构。
