@@ -5342,10 +5342,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     available: Boolean(room.currentAction?.actorId === room.meId && room.isMyAction && canUseAction(room.currentAction, "trigger")),
     selected: activeSkillStateIsCurrent,
     selectionType: activeSkillOption?.selection?.type ?? null,
-    // Card-cost active skills already keep a stable named skill tile whose
-    // current handler exits the local draft when tapped again. Target-only
-    // skills remain standalone until their later bounded migration.
-    retapSupported: activeSkillOption?.selection?.type === "cards" || activeSkillOption?.selection?.type === "target_cards",
+    retapSupported: activeSkillOption?.selection?.type === "cards"
+      || activeSkillOption?.selection?.type === "target"
+      || activeSkillOption?.selection?.type === "target_cards",
     standalonePickerActive: Boolean(activeSkillStateIsCurrent && activeSkillOption?.selection?.type === "target"),
     busy: busy || activeSkillSelectionBusy,
     confirmEnabled: activeSkillConfirmEnabled,
@@ -5716,17 +5715,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       description: skill.description,
       enabled: Boolean(option && canUseAction(room.currentAction, "trigger")),
       active,
+      retapToExit: Boolean(option?.selection
+        && ["cards", "target", "target_cards"].includes(option.selection.type)),
       onClick: option ? () => {
         if (!canUseAction(room.currentAction, "trigger") || room.currentAction?.actorId !== room.meId || !room.isMyAction) return;
         if (option.selection?.type === "cards" || option.selection?.type === "target" || option.selection?.type === "target_cards") {
           const activating = kingSkillId !== option.effectId;
           if (!activating && option.effectId === "diao_chan_lust") resetLocalTargetFlow("active-skill");
           else if (!activating && option.effectId === "zhou_yu_fanjian" && option.selection?.type === "target") resetLocalTargetFlow("active-skill");
-          else if (!activating && option.selection?.type === "target") {
-            // Other target skills keep their explicit local Cancel surface.
-            // Lust alone uses a second skill tap to clear its ordered choice.
-            return;
-          } else {
+          else if (!activating && option.selection?.type === "target") resetLocalTargetFlow("active-skill");
+          else {
             const scope = createPrecommitScopeForAction({
               roomCode: room.code,
               viewerId: room.meId,

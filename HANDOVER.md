@@ -1,13 +1,15 @@
-# HANDOVER — 当前唯一任务：§10.63 选中手牌绘制层高于技能层
+# HANDOVER — 当前唯一任务：§10.61 Boundary C
 
 ## 最近交付结果
 
-§10.62 H4 认证玩家姓名片段修正已实现并部署，待 Owner iPhone 复验：commit `d10fd75f995558f4f780e8ed5be90fdac83b1103`；精确 SHA Actions [43983882142](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43983882142) 全绿，API、Lint/Fast、浏览器 smoke、D1 migration、Worker deploy 和生产 smoke 均通过。Worker `8b4fa728-e0a9-4689-9725-1d5bb9051908`；生产首页与 `/api/health` 均返回 HTTP 200。未运行本地测试、构建或浏览器/设备验证。
+最新已部署 tip `44130bec756e3335cf13018d2a9b284d8cd6381d` 的精确 SHA Actions [43985524065](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43985524065) 全绿；Worker `dba0700d-87c4-4e15-80ec-ddc37752cacc`，生产首页与 `/api/health` HTTP 200。此 tip 包含已完成的 §10.62/§10.63 修改，两项均待 Owner iPhone 复验。§10.61 Boundary A/B 已在当前分支；Boundary B 精确 SHA Actions [43980227100](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43980227100) 全绿并部署，Worker `ebdd299b-11f7-49f3-a275-10c11cf35535`。
 
-## 当前任务：§10.63 LOCAL-SELECTED-HAND-ABOVE-SKILL-01
+已同步 `origin/ux-v2`。当前依据 `docs/UX2-refine.md` revision `2026-11-16 21:51 UTC`、design commit `c82c15d901f2340e57594dd08408ca638ed10fff`。不运行本地 UI/browser 或设备测试；针对性纯测试交由精确 SHA CI 执行。
 
-依据最新 `docs/UX2-refine.md`（revision `2026-11-16 21:51 UTC`，设计 commit `c82c15d901f2340e57594dd08408ca638ed10fff`）。Owner iPhone 证据显示选中手牌覆盖 Cao Cao/TREACHERY 时，技能文字与边框仍绘制在卡面上方。现有规则把 `.local-hand-section` 与 `.local-hand` 设为 `z-index:auto`，只提升原生滚动层的子层级，不能保证 iPhone WebKit 中整张真实卡牌绘制于技能之上。
+## 当前任务：§10.61 UNIVERSAL-PRECOMMIT-SELECTION-TOGGLE-01 — Boundary C
 
-按设计将选中态的共享 `.local-hand-section` 提升为明确的叠放上下文，确保整张真实 CardFace 在技能层上方；保留原生横向滚动、当前卡牌 ID/点击与反选、未被卡牌覆盖的技能和装备点击区域。禁止复制卡牌、遮盖技能文字、改规则或重构 §10.61 选择语义。Owner 要求不运行本地测试、构建或设备测试；只做 `git diff --check`，提交推送后核验精确 SHA CI、Worker 部署和生产 smoke。真实 iPhone 复验由 Owner 完成，不得自行标记验收。
+将同一可撤销选择策略接入剩余 Hero/目标草稿及确实可选择的可选 Provider：移除普通 target-only Hero skill 活动态按钮的无操作返回；owner 仍持有活动草稿时，同一按钮再次点击应只清除未提交目标/卡牌和本地提示，不发 action；同一授权目标可再次点击取消；同一草稿不显示多余 Local Cancel。保留 Lust、Fanjian 专用退出与私有选择器，Borrowed Sword 强制续选、End Turn、mandatory picker、即时触发、passive/automatic skill、Skip/Pass/TAKE DAMAGE 与已提交 response 的现有语义。
 
-§10.63 首次实现 commit `9482d59d40357f8e83301a074c93691698fb54a0` 已推送。精确 SHA Actions `43984791826` 未通过：Lint/Fast 的既有静态断言仍要求选中态 `.local-hand-section` 为 `z-index:auto`，与本任务批准的 `z-index:80` 相冲突；API 分片出现跨多个无关用例的网络 `fetch failed`；浏览器 smoke 通过，部署因 CI 失败跳过。当前仅将该断言更新为检查批准的 80 层级；未运行本地测试/构建/UI 测试。随后将重新提交并观察新精确 SHA 的完整 CI 与部署。
+复用 `app/local-precommit-selection.ts` 和现有 CurrentAction/Provider 投影；不改规则、服务端、action payload 或已提交事件。针对本阶段更新/补齐受影响的焦点断言，检查完整 diff 与 `git diff --check`，提交推送并核验精确 SHA Actions、Worker 部署及生产 smoke。若投影不能证明 owner/选项有效则 fail closed 并报告具体阻塞。§10.61 总体验收待 Owner iPhone review，不得自行标记 USER-ACCEPTED。
+
+**恢复点：** Boundary A/B 已交付。当前源码中 `activeSkillPrecommitControls.retapSupported` 未包含 `selection.type === "target"`，`heroSkillButtons` 对非 Lust/Fanjian 的活动 target-only skill 直接返回。先完成这两处及 Zhang Liao Assault 的目标反选断言，再核对 §10.61 Boundary C 其余要求；Boundary C 完成后 HANDOVER 仅切换到一个下一 bounded task。

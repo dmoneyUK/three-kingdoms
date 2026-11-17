@@ -1035,6 +1035,8 @@ test("Zhang Liao Assault uses generic target controls during the Draw Phase", as
   assert.equal(inspectionPanels().length, 0, "tapping the inspected Hero closes the Inspector");
 
   await act(async () => { skillButton().props.onClick(); });
+  assert.equal(skillButton().props["data-precommit-owner"], "Assault", "selectable Hero skills expose their stable owner identity");
+  assert.match(skillButton().props.title, /Tap again to cancel this selection\./, "the active owner explains its local retap exit");
   assert.equal(button(renderer, { "aria-label": "Select TARGET ONE" }).props.disabled, false);
   assert.equal(button(renderer, { "aria-label": "Select TARGET TWO" }).props.disabled, false);
   assert.equal(button(renderer, { "aria-label": "Select INVALID TARGET" }).props.disabled, true, "non-eligible targets remain disabled");
@@ -1043,29 +1045,30 @@ test("Zhang Liao Assault uses generic target controls during the Draw Phase", as
   await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), true);
   assert.equal(useButton().props.disabled, false, "one Assault target enables submission");
+  const actionCountBeforeOwnerRetap = actionCalls.length;
   await act(async () => { skillButton().props.onClick(); });
-  assert.equal(skillButton().props["aria-pressed"], true, "the skill button is not a second local Cancel surface");
-  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), true, "the second skill click preserves the local target");
-  const actionCountAfterSelection = actionCalls.length;
-  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
-  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "Cancel clears the local amber target");
-  assert.equal(actionCalls.length, actionCountAfterSelection, "local Cancel does not submit a gameplay action");
+  assert.equal(skillButton().props["aria-pressed"], false, "the stable skill owner exits its reversible target draft");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "owner retap clears the local target");
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "the reversible owner has no duplicate Local Cancel");
+  assert.equal(renderer.root.findAllByProps({ children: "Confirm" }).length, 0, "owner retap removes the stale Confirm");
+  assert.equal(actionCalls.length, actionCountBeforeOwnerRetap, "owner retap does not submit a gameplay action");
+
   await act(async () => { skillButton().props.onClick(); });
+  assert.equal(useButton().props.disabled, true, "re-entering the skill starts with an empty target draft");
   await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
-  assert.equal(useButton().props.disabled, false, "the target can be reselected after local Cancel");
   await act(async () => { button(renderer, { "aria-label": "Select TARGET TWO" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "same-target retap removes only that target");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), true, "removing one target preserves the other ordered target");
+  assert.equal(useButton().props.disabled, false, "the remaining legal target still satisfies Assault's minimum");
+  await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), true);
   assert.equal(button(renderer, { "aria-label": "Select INVALID TARGET" }).props.disabled, true);
   assert.doesNotMatch(statusText(renderer), /Lust order/, "Zhang Liao Assault never renders Diao Chan Lust guidance");
   assert.equal(useButton().props.disabled, false, "two Assault targets keep Confirm enabled");
   await act(async () => { useButton().props.onClick(); });
-  assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "zhang_liao_assault", targetIds: ["p2", "p3"] }]);
+  assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "zhang_liao_assault", targetIds: ["p3", "p2"] }], "retapping one target preserves the remaining target's order");
 
-  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
-  assert.equal(opponentHeroButton(renderer, "p2").props.disabled, false, "explicit Cancel exits target mode");
-  await act(async () => { skillButton().props.onClick(); });
-  assert.equal(useButton().props.disabled, true, "reactivation resets target selection");
-  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
   await act(async () => { renderer.unmount(); });
 });
 
