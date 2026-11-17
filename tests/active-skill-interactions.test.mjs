@@ -1234,7 +1234,6 @@ test("Da Qiao Deflection is one mounted hero control with shared card/target sel
   assert.equal(profileButton.props.disabled, false);
   assert.equal(button(renderer, { children: "Skip" }).props.disabled, false);
   assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
-  assert.match(button(renderer, { children: "Skip" }).props.className, /\bwtk-skip-action\b/);
   assert.equal(renderer.root.findAllByProps({ children: "Confirm" }).length, 0);
   assert.equal(renderer.root.findAllByProps({ "aria-label": "Select ATTACKER as Deflection target" }).length, 0);
   assert.equal(renderer.root.findAllByProps({ "aria-label": "Select LEGAL TARGET as Deflection target" }).length, 0);
@@ -1303,14 +1302,14 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   assert.equal(skillButton().props["aria-pressed"], false);
   assert.equal(picker().length, 0, "Retaliation does not open its picker before activation");
   assert.equal(button(renderer, { children: "Skip" }).props.disabled, false);
-  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
+  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-card-pool-action--skip"));
   assert.equal(actionCalls.filter(([actionName]) => actionName === "trigger").length, 0, "Retaliation does not submit before activation");
 
   await act(async () => { skillButton().props.onClick(); });
   assert.equal(skillButton().props["aria-pressed"], true);
   assert.equal(picker().length, 1, "activating Retaliation opens the picker");
   assert.equal(actionCalls.filter(([actionName]) => actionName === "trigger").length, 0, "activation does not submit the trigger");
-  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
+  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-card-pool-action--skip"));
   assert.ok(button(renderer, { "aria-label": "Confirm Retaliation selection" }).props.className.includes("card-pool-decision-footer__confirm"));
   assert.equal(button(renderer, { "aria-label": "Confirm Retaliation selection" }).props.children, "Confirm");
   const eligibleCard = button(renderer, { "aria-label": "Choose one random Hand card, 1 cards" });

@@ -445,7 +445,7 @@ test("Retaliation selection clears locally while Skip remains authoritative", as
 
   const skip = dialog.getByRole("button", { name: "Skip" });
   await expect(skip).toBeVisible();
-  await expect(skip).toHaveClass(/wtk-skip-action/);
+  await expect(skip).toHaveClass(/wtk-card-pool-action--skip/);
   await handZone.click();
   await expect(handZone).toHaveAttribute("aria-pressed", "true");
   await handZone.click();
