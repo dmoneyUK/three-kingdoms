@@ -10310,7 +10310,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeTargetCardSettlementExiting = Boolean(activeTargetCardSettlement?.eventId === activeTargetCardSettlementEventId
     && activeTargetCardSettlement.exiting);
   const activeDismantleSettlementEventKey = activeDismantleSettlement?.eventId ?? null;
-  const activeStealSettlementEventKey = activeStealSettlement?.eventId ?? null;
   useEffect(() => {
     const liveRootEventId = clientPresentation.rootAction?.rootEventId;
     const supersededDismantleEventId = activeDismantleSettlementEventKey
@@ -10322,24 +10321,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       setActiveDismantleSettlement((current) => current?.eventId === supersededDismantleEventId ? null : current);
     }
 
-    const active = activeStealSettlement;
-    if (!active) return;
+    if (!activeStealSettlement) return;
     const currentScope = currentPrivateStealSettlementScope;
-    const canReplaceViewerOwner = Boolean(active.privateResultScope && currentScope
-      && currentScope !== active.privateResultScope && !privateStealViewerSwitchPending
+    const canReplaceViewerOwner = Boolean(activeStealSettlement.privateResultScope && currentScope
+      && currentScope !== activeStealSettlement.privateResultScope && !privateStealViewerSwitchPending
       && !privateStealResultWasSeen(currentScope));
-    const privateOwnerWasRevoked = Boolean(active.privateResultScope
-      && currentScope !== active.privateResultScope
+    const privateOwnerWasRevoked = Boolean(activeStealSettlement.privateResultScope
+      && currentScope !== activeStealSettlement.privateResultScope
       && !privateStealViewerSwitchPending && !canReplaceViewerOwner);
-    const rootWasSuperseded = Boolean(liveRootEventId && liveRootEventId !== active.rootEventId);
-    const shouldRetire = active.roomCode !== room.code || active.actionRevision !== (room.actionRevision ?? null)
+    const rootWasSuperseded = Boolean(liveRootEventId && liveRootEventId !== activeStealSettlement.rootEventId);
+    const shouldRetire = activeStealSettlement.roomCode !== room.code
+      || activeStealSettlement.actionRevision !== (room.actionRevision ?? null)
       || activeStealSettlementHasNewerH4Owner || activeStealSettlementHasNewerDiscardTransition
       || rootWasSuperseded || privateOwnerWasRevoked;
     if (shouldRetire) {
-      setActiveStealSettlement((current) => current?.eventId === active.eventId ? null : current);
+      setActiveStealSettlement((current) => current?.eventId === activeStealSettlement.eventId ? null : current);
     }
-  }, [activeDismantleSettlementEventKey, activeStealSettlement?.actionRevision, activeStealSettlement?.eventId,
-    activeStealSettlement?.privateResultScope, activeStealSettlement?.rootEventId, activeStealSettlement?.roomCode,
+  }, [activeDismantleSettlementEventKey, activeStealSettlement,
     activeStealSettlementHasNewerH4Owner, activeStealSettlementHasNewerDiscardTransition,
     clientPresentation.rootAction?.rootEventId, currentPrivateStealSettlementScope,
     dismantleSettlements, privateStealViewerSwitchPending, room.actionRevision, room.code]);
