@@ -1,13 +1,11 @@
-# HANDOVER — Current task: §10.65 concealed Steal result lifetime correction
+# HANDOVER — Current task: §10.64-A Worker 1102 resource investigation
 
 ## Latest checkpoint
 
-- Reviewed `docs/UX2-refine.md` §10.65 at `04f07c39`. The Owner's iPhone failure on deployed `b4a5de00c978` remains binding; §10.65 is not accepted.
-- Implementation commits on `ux-v2`: `222d816a340ab2aa7ff38294fb64b2c616aa8eb5` and lint correction `75382e28366ca20a869e02a709a80ec9c847629a`.
-- A single Steal result owner is scoped to room/root/settlement/action revision/viewer. It hides and retires when a newer action, H4, discard transition, room or private viewer scope supersedes it. New discard H4 and its card transitions retain their own event identity. No gameplay or privacy rules changed.
-- Focused public-H4/discard tests passed (20/20), browser-spec ESLint and `git diff --check` passed. `app/page.tsx` local ESLint hit the React Hooks `Maximum call stack size exceeded` baseline failure. Four local mobile-browser attempts did not prove the final lifecycle; the corrected shared-H4 regression has not been browser-rerun, and the local UI-test budget is exhausted.
-- Exact-SHA [Actions 44173403218](https://github.com/dmoneyUK/three-kingdoms/actions/runs/44173403218) for `75382e28` passed all jobs: lint/fast, browser startup/H4 smoke, API, D1 migration step and deployment/production smoke. No D1 migrations were pending. Worker version: `c7baf25e-8573-4611-a1d3-b34c4ada7472`. Production root returned HTTP 200 and `/api/health` returned `{"ok":true,"worker":"available"}`.
+- Reviewed remote `docs/UX2-refine.md` at `386ed989` (revision 2026-11-18 19:25 UTC). The Owner explicitly USER-ACCEPTED/CLOSED §10.65 at 19:18 UTC and §10.63 at 19:25 UTC; do not reopen either without new failure evidence.
+- §10.65 correction `75382e28366ca20a869e02a709a80ec9c847629a` passed exact-SHA [Actions 44173403218](https://github.com/dmoneyUK/three-kingdoms/actions/runs/44173403218), deployed Worker `c7baf25e-8573-4611-a1d3-b34c4ada7472`, and passed production smoke. Owner iPhone PASS is recorded in the latest design.
+- §10.64-B is complete and deployed; it does not establish the cause of the separate 1102 incident.
 
 ## Current task / resume point
 
-§10.65 correction is implemented and deployed, **PENDING OWNER iPHONE RE-REVIEW**. On iPhone, verify an authorized Hand-Steal face stays visible only for its own result lifetime, retires after a subsequent real action, and does not replace or suppress the new discard H4/cards. The focused browser regression remains unverified; do not claim USER-ACCEPTED.
+§10.64-A is **EVIDENCE BLOCKED**. The authoritative Cloudflare invocation record/export for Ray `a5ba0c010b821669` is still unavailable. Required fields are the affected route, CPU/memory classification, duration, status and runtime resource counts. Do not infer these from client 503/TypeError reports. Resume this task only when the authoritative record/export is available; keep §10.51 conditional on separate concrete, reproducible current-build failure evidence.
