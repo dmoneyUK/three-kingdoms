@@ -4,26 +4,27 @@ Branch: `feature/smart-bot-player`
 Design: `docs/AI_PLAYER_DESIGN.md` — AIP-D18
 Workflow: `docs/AI_PLAYER_AGENT_WORKFLOW.md` — AIP-AUTO-1
 
-## Current task: IN_PROGRESS — owner-authorized repeat UX2 → AI sync (AIP-SYNC-01)
+## Latest result — AIP-SYNC-01: PENDING_REVIEW
 
-The Product Owner authorized this one-way sync on 2026-11-20 and directed that AI Player experiments may proceed after it. Integration worktree: `/private/tmp/WTK-AIP-SYNC-04-20261119`, local branch `codex/aip-sync-04-20261119`; intended destination is `feature/smart-bot-player`. Never write to `main` or `ux-v2`.
+- Product Owner authorized the one-way `ux-v2` → `feature/smart-bot-player` sync on 2026-11-20 and directed non-overlapping AI Player experiments after it. UX2 tip `94381f44163c2158301294396a6cf1b9e6e17b22` and AI base `509f0ba73fa8693e0616be42050c6a401a34238c` are ancestors of code SHA `5340113d379ab18b2a1c56fa45ee99c66492b8c3`; no writes to `main` or `ux-v2`.
+- Exact-SHA [Actions run 44650399437](https://github.com/dmoneyUK/three-kingdoms/actions/runs/44650399437), attempt 2, succeeded on SHA `5340113d379ab18b2a1c56fa45ee99c66492b8c3`. Lint/build/fast, API and browser smoke were green; Staging target guard/build, migration check, deploy and mobile Bot/rejoin smoke were green. Staging smoke passed **1/1 in 4.5m**. Attempt 1 failed at the Host Game enabled assertion; rerunning the failed Staging job on the same SHA passed. Cause of the first failure is unproven. [Staging evidence artifact](https://github.com/dmoneyUK/three-kingdoms/actions/runs/44650399437/artifacts/14591970977).
+- Staging deployed SHA `5340113d` to Worker `three-kingdoms-ai-staging` at https://three-kingdoms-ai-staging.dai-jinge.workers.dev. Target guard confirmed its separate D1 binding, production D1 excluded, `BOT_AI_ENABLED=false`, `BOT_DEMO_ENABLED=true`; no migrations were pending. Production `deploy` was **skipped**. AIP-MOB-01 and integrated real-iPhone Safari review remain `PENDING_REVIEW`; no human acceptance is implied.
 
-### Pinned state
+## Current task: IN_PROGRESS — AIP-02A response candidate bridge
 
-- AI destination before merge: `509f0ba73fa8693e0616be42050c6a401a34238c`; latest validated code ancestor: `63c40f6317c0848e3aebded8b91ff6c628356211`, [Actions 43848297264](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43848297264) succeeded including isolated Staging; production `deploy` skipped. The current destination SHA is docs-only and has no run.
-- UX2 merge base: `bcc2a72e5b56db674700acf1775890522832caaa`. Code-bearing UX2 revision: `75382e28366ca20a869e02a709a80ec9c847629a`, [Actions 44173403218](https://github.com/dmoneyUK/three-kingdoms/actions/runs/44173403218) succeeded. Latest UX2 tip: `94381f44163c2158301294396a6cf1b9e6e17b22`; commits after `d36f52a` change only `docs/UX2-refine.md` (211 lines; no source or `HANDOVER.md` delta).
-- Local merge commits: `d17c807b` merges `d36f52a`; `bb144221` merges the latest UX2 tip. Both AI base `509f0ba` and UX2 tip `94381f4` are verified ancestors. The remote AI feature branch is still at `509f0ba`; a non-force fast-forward push is safe if it remains unchanged. No unresolved conflicts remain.
+The Product Owner's 2026-11-20 direction authorizes this non-overlapping offline/mock experiment after the sync. Keep it independent of the still-pending mobile review.
 
-### Validation and boundaries
+### Scope and boundaries
 
-- Default build passed; fast suite **471/471**; API suite **390/390**; browser smoke **4/4**.
-- Isolated local three-deterministic-bot browser smoke passed **1/1** earlier in this task. It used local D1 only; no remote Cloudflare operation occurred.
-- Staging-target build and `verify-ai-staging-config.mjs` passed: Worker `three-kingdoms-ai-staging`, isolated Staging D1 UUID, production D1 excluded, `BOT_AI_ENABLED=false`, `BOT_DEMO_ENABLED=true`; config tests **6/6**.
-- Pending sync-fix commit contains: bind conversion H4 copy to the exact physical root event and display presentation narration only when it owns the current copy; update the public Treachery outcome expectation; pass the server's current shared rescue `windowId` in the First Aid browser setup. Focused ESLint reports **0 errors, 14 Hook warnings**; targeted God of War/Braveheart browser regressions passed **4/4**.
-- Focused W4 First Aid browser test remains a local failure: after its 12-second animation wait it observes the already parked historical card. The attempted priority/fresh-event change was reverted. The UX code-bearing baseline has the same First Aid candidate selection and event freshness logic; do not claim this test is fixed. Recheck or report this timing-sensitive gap with exact CI evidence.
-- Full local lint has a known macOS ARM React Hooks stack overflow also reproduced on the clean UX baseline; do not weaken lint. Exact feature-branch Actions is required.
-- No production Worker/D1 change, no live OpenAI call, no real-player data transfer. AIP-MOB-01 remains `PENDING_REVIEW` for physical iPhone Safari review.
+- Own `ai/response-candidates.ts`, `tests/ai-response-candidates.test.mjs`, and append-only registration of that test in `tests/run-fast-tests.mjs`; update only AIP-02A status/evidence here and in the design.
+- Build a pure internal mapping from an actor-authorized `CurrentAction` response projection plus opaque decision/action revision to model-safe candidate IDs and exact internal response payloads. Resolve only a selected, still-current candidate after rechecking decision ID, actor, revision and caller-provided consumed-decision state. Never execute an action.
+- Follow the detailed AIP-02A support matrix and require at least 12 focused positive/negative/privacy tests. Unsupported multi-card, multi-response, or otherwise unmappable choices fail closed. Keep execution IDs/card IDs out of the serialized `BotDecisionRequestV1`.
+- Do not change routes, game rules, UI, Worker, D1/schema/migrations, scheduler, live bot seats or OpenAI transport. No live API call, key use, cost, real-player data transfer or production action. Existing CI may auto-deploy the unchanged AI-disabled Staging configuration.
 
-### Next checkpoint
+### Source audit completed; next step
 
-Commit only the validated integration compatibility fixes plus this handover and AIP-SYNC-01 evidence; inspect `git diff --check` and deployment guards, then push the final sync to `origin/feature/smart-bot-player`. Verify lint/build/fast, API, browser, Staging target and isolated smoke jobs for the exact pushed SHA; confirm production `deploy` is skipped. Only after that sync gate passes, continue the owner's explicitly requested non-overlapping offline/mock AIP-02A; do not start AIP-02B or implement gameplay.
+- After the UX2 sync, `CurrentAction` is V3 with actor-specific legal actions/options; `roomState` returns an opaque `actionRevision` separately. `actionRevisionFor` binds phase, projected actor, persisted pending state, skill state and hand revision. Do not parse or recreate that server revision.
+- `game/response-decision.ts` remains the server authority for provider choices and live revalidation. `ai/decision-prototype.ts` builds the existing model-safe request and strips actor/provider/physical-card identifiers; keep the new sealed mapping separate from the request object.
+- Next: finish the response-family support matrix (ordinary response, Negation, Peach/Dying, shared windows, single-card vs multi-card providers), then implement the pure bridge and focused tests. Do not wire it into the room route or start AIP-02B.
+
+Known separate caveat: one local W4 First Aid presentation test previously observed a parked historical card after its animation wait. It was not changed in this sync; the required exact-SHA browser smoke passed. Do not claim that focused presentation case is fixed.
