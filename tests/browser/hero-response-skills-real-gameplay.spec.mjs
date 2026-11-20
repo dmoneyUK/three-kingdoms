@@ -17,6 +17,15 @@ async function view(request, seedData, index) {
   return response.json();
 }
 
+async function skipRescue(request, seedData, index) {
+  const current = await view(request, seedData, index);
+  const windowId = current.currentAction?.sharedWindow?.windowId;
+  expect(windowId, "Skip must target the current shared rescue window").toBeTruthy();
+  return request.post(`${API}/api/rooms`, {
+    data: { action: "skip_rescue", code: seedData.code, token: seedData.players[index].token, windowId },
+  });
+}
+
 async function openPlayer(page, seedData, index, viewport = { width: 390, height: 844 }) {
   const member = seedData.players[index];
   await page.setViewportSize(viewport);
@@ -115,10 +124,8 @@ test("real Hua Tuo First Aid is selected from Skills during Dying and uses only 
     data: { action: "decline_response", code: seedData.code, token: seedData.players[1].token },
   });
   expect(declinedDodge.ok()).toBeTruthy();
-  for (const index of [0, 1]) {
-    const skipped = await request.post(`${API}/api/rooms`, {
-      data: { action: "skip_rescue", code: seedData.code, token: seedData.players[index].token },
-    });
+  for (const index of [0, 1, 3]) {
+    const skipped = await skipRescue(request, seedData, index);
     expect(skipped.ok()).toBeTruthy();
   }
 
@@ -190,10 +197,8 @@ test("W4: First Aid frames the genuine card as Peach for every mobile viewer", a
       data: { action: "decline_response", code: seedData.code, token: seedData.players[1].token },
     });
     expect(declinedDodge.ok()).toBeTruthy();
-    for (const index of [0, 1]) {
-      const skipped = await request.post(`${API}/api/rooms`, {
-        data: { action: "skip_rescue", code: seedData.code, token: seedData.players[index].token },
-      });
+    for (const index of [0, 1, 3]) {
+      const skipped = await skipRescue(request, seedData, index);
       expect(skipped.ok()).toBeTruthy();
     }
 

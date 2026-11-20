@@ -2132,6 +2132,7 @@ export function publicCardAnnouncementCopy(
   }
   const sameEventConversionCopy = action.publicCardEffectFrame?.effectClass === "CONVERSION"
     && action.publicCardEffectFrame.eventId === eventId
+    && action.publicCardEffectFrame.eventId === action.rootEventId
     && Boolean(action.publicNotice)
     && (!action.publicInteractionNarration
       || action.publicInteractionNarration.eventId === action.publicCardEffectFrame.eventId);
@@ -3977,6 +3978,7 @@ function AttackDodgeCardJourney({
   const announcementCopy = publicCardAnnouncementCopy(announcementAction, activeNotice, activeActorName, activeActorId, sourceName, targetName, compactPlayerNamesById, activeEventId);
   const committedFactCopy = publicCardCommittedFactCopy(announcementAction, announcementCopy);
   const negationNarration = action.publicNegationNarration;
+  const publicNarrationOwnsCopy = Boolean(publicNarration && committedFactCopy.message === publicNarration.headline);
   const announcementPhaseNotice = action.settlement || action.publicInteractionNarration || negationNarration ? undefined : action.phaseNotice;
   const announcement = committedFactCopy.message;
   const compactAnnouncement = committedFactCopy.compactMessage;
@@ -4683,7 +4685,7 @@ function AttackDodgeCardJourney({
       segments={committedFactCopy.segments}
       compactMessage={compactAnnouncement}
       accessibleLabel={committedFactCopy.accessibleLabel}
-      presentationNarration={negationNarration ? undefined : publicNarration}
+      presentationNarration={negationNarration || !publicNarrationOwnsCopy ? undefined : publicNarration}
       negationNarration={negationNarration}
       fallbackCardRect={publicEffectFrameOwnsAnnouncementAnchor && journey.center && action.publicCardEffectFrame
         ? battlefieldPublicEffectFrame(journey.center, action.publicCardEffectFrame) : journey.center}

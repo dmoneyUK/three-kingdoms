@@ -501,7 +501,7 @@ test("Barbarian Invasion continues after Cao Cao obtains the staged AOE card wit
     && event.publicFact?.effect?.kind === "gain_damage_cards");
   assert.ok(treacheryOutcome, "the committed public outcome records Treachery without replaying the physical AOE as a new play");
   assert.equal(treacheryOutcome.publicFact.amount, 1);
-  assert.equal(treacheryOutcome.publicFact.outcomeLabel, "obtained the card that caused the damage");
+  assert.equal(treacheryOutcome.publicFact.outcomeLabel, "obtained one damage card");
   assert.equal(JSON.stringify(treacheryOutcome).includes(invasion.id), false, "generic public gain narration carries no card identity");
   const publicTreacheryView = (await state(game.code, finalMember.token)).data;
   assert.equal(publicTreacheryView.timeline.some((event) => event.privateHandTransfer), false, "the recipient-only arrival descriptor is hidden from other seats");
