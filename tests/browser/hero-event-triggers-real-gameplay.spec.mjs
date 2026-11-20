@@ -314,7 +314,12 @@ test("E15: final Judgement, two-card discard and next-turn status stay coherent 
   expect(discardEvent).toBeTruthy();
 
   const discardH4 = page.locator(`[data-public-discard-announcement-event-id="${discardEvent.id}"]`);
+  const renderedDiscardH4 = page.locator(`[data-public-h4-event-id="${discardEvent.id}"]`);
   await expect(discardH4).toBeVisible({ timeout: 15_000 });
+  await expect(renderedDiscardH4).toHaveCount(1);
+  await expect(renderedDiscardH4).toBeVisible();
+  await expect(renderedDiscardH4).toHaveAttribute("data-public-h4-owner", "PublicDiscardAnnouncementLayer");
+  await expect(renderedDiscardH4).toHaveAttribute("data-public-h4-public-sequence", String(discardEvent.publicSequence));
   await expect(discardH4).toContainText("SIMA YI discarded 2 cards: 7♠ Dodge · 7♠ Peach.");
   await expect(discardH4).toHaveAttribute("data-public-discard-announcement-card-ids", discarded.map((card) => card.id).join(","));
   const discardCards = page.locator(`[data-public-zone-transition-event-id="${discardEvent.id}"][data-public-zone-transition-destination="DISCARD"]`);
@@ -332,6 +337,9 @@ test("E15: final Judgement, two-card discard and next-turn status stay coherent 
   await page.getByTestId(`test-view-switch-${observer.id}`).click();
   await expect(page.locator(`.local-player-dock[data-player-anchor="${observer.id}"]`)).toBeVisible({ timeout: 15_000 });
   await expect(page.locator(`[data-public-discard-announcement-event-id="${discardEvent.id}"]`)).toContainText("7♠ Dodge · 7♠ Peach");
+  const switchedDiscardH4 = page.locator(`[data-public-h4-event-id="${discardEvent.id}"]`);
+  await expect(switchedDiscardH4).toHaveCount(1);
+  await expect(switchedDiscardH4).toHaveAttribute("data-public-h4-public-sequence", String(discardEvent.publicSequence));
   await expect(page.locator('[data-public-activity-chip="true"]')).toHaveAttribute("data-public-activity-kind", "discard-handoff");
   await expect(page.locator(".console-guidance")).toContainText("No action needed.");
   await expect(discardCards).toHaveCount(2);
@@ -652,7 +660,7 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
     await expect(inspection).toHaveCount(0);
     await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: "Take 1 damage from Xiahou Dun", exact: true }).click();
-    const confirm = dialog.getByRole("button", { name: "Confirm choice", exact: true });
+    const confirm = dialog.getByRole("button", { name: "Confirm Stauchness card choice", exact: true });
     await expect(confirm).toBeEnabled();
     const submittedPromise = sourcePage.waitForResponse((response) => response.url() === API + "/api/rooms"
       && response.request().method() === "POST"
@@ -756,7 +764,7 @@ test("real Stauchness frames the two committed source cards for actor, payer and
       && response.request().method() === "POST"
       && response.request().postDataJSON()?.action === "trigger"
       && response.request().postDataJSON()?.providerId === "xiahou_dun_ganglie");
-    await dialog.getByRole("button", { name: "Confirm choice", exact: true }).click();
+    await dialog.getByRole("button", { name: /Confirm .* card choice/ }).click();
     const submitted = await submission;
     expect(submitted.ok()).toBeTruthy();
     expect(submitted.request().postDataJSON()).toMatchObject({
@@ -1369,7 +1377,7 @@ test("real Legacy activation reaches the private two-card distribution UI and su
   await expect(inspection).toHaveCount(0);
   await expect(recipients.nth(0)).toHaveValue(seedData.players[1].id);
   await recipients.nth(1).selectOption(seedData.players[2].id);
-  const distribute = dialog.getByRole("button", { name: "Distribute cards", exact: true });
+  const distribute = dialog.getByRole("button", { name: "Confirm card distribution", exact: true });
   await expect(distribute).toBeEnabled();
   const submittedPromise = page.waitForResponse((response) => response.url() === API + "/api/rooms"
     && response.request().method() === "POST"
@@ -1550,7 +1558,7 @@ test("Serpent Spear presents two real cards as one Attack for actor, target and 
     const actorDock = page.locator(`.local-player-dock[data-player-anchor="${seedData.players[0].id}"]`);
     const spearToggle = actorDock.locator('button[data-serpent-spear-control="true"]');
     await expect(spearToggle).toHaveText("Serpent Spear");
-    await expect(spearToggle).toHaveAttribute("aria-label", "Use Serpent Spear");
+    await expect(spearToggle).toHaveAttribute("aria-label", "Serpent Spear");
     await expect(spearToggle).toHaveAttribute("aria-pressed", "false");
     const toggleGeometry = await spearToggle.evaluate((button) => {
       const rect = button.getBoundingClientRect();
@@ -1572,8 +1580,8 @@ test("Serpent Spear presents two real cards as one Attack for actor, target and 
     expect(toggleGeometry.fontSize).toBeGreaterThanOrEqual(7);
     expect(toggleGeometry.scrollWidth).toBeLessThanOrEqual(toggleGeometry.clientWidth + 1);
     await spearToggle.click();
-    await expect(spearToggle).toHaveText("Normal");
-    await expect(spearToggle).toHaveAttribute("aria-label", "Exit Serpent Spear mode");
+    await expect(spearToggle).toHaveText("Serpent Spear");
+    await expect(spearToggle).toHaveAttribute("aria-label", "Serpent Spear");
     await expect(spearToggle).toHaveAttribute("aria-pressed", "true");
     await spearToggle.click();
     await expect(spearToggle).toHaveText("Serpent Spear");

@@ -4,6 +4,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { buildActiveSkillSubmission, buildDecisionPresentation, calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroDetailsPreview, HeroInfoDialog, HeroPortrait, HeroSelection, InteractionStage, MandatoryChoiceDialog, normalizeActiveCardSkillSelection, WaitingRoom } from "../app/page.tsx";
+import { CardPoolDecisionFooter, CardPoolPanel } from "../app/card-pool-panel.tsx";
 import { buildConsoleDecisionDisplay } from "../game/console-decision.ts";
 import { IMPLEMENTED_STANDARD_HERO_IDS, STANDARD_HEROES } from "../game/heroes.ts";
 import { buildPresentationClientView } from "../game/presentation-client.ts";
@@ -30,6 +31,113 @@ function assertNoTransientBusyGuidance(html) {
 test("game messages start minimized while retaining the fold control", () => {
   assert.match(gameRoomSource, /const \[messagesCollapsed, setMessagesCollapsed\] = useState\(true\)/);
   assert.match(gameRoomSource, /aria-label=\{messagesCollapsed \? "Expand game messages" : "Collapse game messages"\}/);
+});
+
+test("shared card-pool footer uses same-sized semantic Skip and Confirm actions", () => {
+  const markup = renderToStaticMarkup(React.createElement(CardPoolDecisionFooter, {
+    selectionCount: "1 / 1 selected",
+    confirmAction: { accessibleLabel: "Confirm Retaliation selection", disabled: false, onClick: () => {} },
+    skipAction: { accessibleLabel: "Skip Retaliation", disabled: false, onClick: () => {} },
+    cancelAction: { accessibleLabel: "Cancel Retaliation selection", disabled: false, onClick: () => {} },
+    className: "target-card-picker-actions",
+  }));
+  assert.match(markup, /data-pool-action-footer="true"/);
+  assert.match(markup, /data-action-count="2"/);
+  assert.match(markup, /wtk-card-pool-action--skip/);
+  assert.match(markup, /wtk-card-pool-action--confirm/);
+  assert.match(markup, /data-pool-action="skip"[^>]*aria-label="Skip Retaliation"[^>]*>Skip<\/button>/);
+  assert.match(markup, /data-pool-action="confirm"[^>]*aria-label="Confirm Retaliation selection"[^>]*>Confirm<\/button>/);
+  assert.match(markup, /aria-label="Cancel Retaliation selection"[^>]*>Cancel<\/button>/);
+  assert.match(sequenceStyleSource, /--wtk-card-pool-action-width:\s*96px/);
+  assert.match(sequenceStyleSource, /--wtk-card-pool-action-height:\s*44px/);
+  assert.match(sequenceStyleSource, /--wtk-card-pool-action-font-size:\s*10px/);
+  assert.match(sequenceStyleSource, /\.card-pool-decision-footer__pair\[data-action-count="2"\]\s*\{\s*grid-template-columns:\s*repeat\(2,\s*var\(--wtk-card-pool-action-width\)\)/);
+  assert.match(sequenceStyleSource, /\.card-pool-decision-footer__button\s*\{[^}]*width:\s*var\(--wtk-card-pool-action-width\);[^}]*height:\s*var\(--wtk-card-pool-action-height\);/s);
+  assert.match(sequenceStyleSource, /@media \(max-width: 380px\) \{\s*\.game-shell \.card-pool-decision-footer \{\s*--wtk-card-pool-action-width:\s*88px/s);
+  assert.match(sequenceStyleSource, /\.game-shell \.wtk-card-pool-action--confirm\s*\{\s*background:\s*#be9b53/);
+  assert.match(sequenceStyleSource, /\.game-shell \.wtk-card-pool-action--skip\s*\{\s*background:\s*#8b302a/);
+});
+
+test("shared pool actions do not relabel specialized non-pool controls", () => {
+  assert.match(gameRoomSource, /const responseDeclineLabel = borrowedSwordForcedChoiceActive \? "Give up Weapon" : declineAcceptsDamage \? "TAKE DAMAGE" : sharedNegationWindow \? "Pass" : "Skip";/);
+  assert.match(gameRoomSource, /end-turn-confirmation__confirm/);
+  assert.match(gameRoomSource, />Confirm End<\/button>/);
+  assert.match(gameRoomSource, /data-deck-reorder-submit="true"/);
+  assert.match(gameRoomSource, />COMPLETE STARGAZING<\/button>/);
+  assert.match(gameRoomSource, /turnConversionPrecommitControls\?\.primaryLabel/);
+  assert.match(gameRoomSource, /turnConversionPrecommitControls\?\.primaryEnabled/);
+  assert.match(gameRoomSource, /data-serpent-spear-control="true"[^\n]*aria-label=\{SERPENT_SPEAR_LABEL\}[^\n]*aria-pressed=\{serpentMode\}/);
+  assert.doesNotMatch(gameRoomSource, /serpentMode \? "Form Attack"|serpentMode \? "Normal"/);
+  const endTurnStart = gameRoomSource.indexOf('data-end-turn-confirmation="true"');
+  const endTurnEnd = gameRoomSource.indexOf("</BattlefieldChoiceStage>}", endTurnStart);
+  assert.ok(endTurnStart >= 0 && endTurnEnd > endTurnStart, "End Turn keeps its own confirmation stage");
+  assert.doesNotMatch(gameRoomSource.slice(endTurnStart, endTurnEnd), /CardPoolDecisionFooter/);
+});
+
+test("Harvest actor pools use the shared footer while public pools stay action-free", () => {
+  const publicChoice = {
+    type: "public-card",
+    publicCardFace: card("harvest-face"),
+    cardName: "Attack",
+    state: "available",
+    accessibleLabel: "Attack, available",
+    statusLabel: "Available",
+  };
+  const common = {
+    title: "Bumper Harvest",
+    instruction: "Choose one revealed card",
+    accessibilityLabel: "Bumper Harvest cards",
+    rowAccessibilityLabel: "Public Harvest cards",
+    choices: [publicChoice],
+    onInfo: () => {},
+  };
+  const actor = renderToStaticMarkup(React.createElement(CardPoolPanel, {
+    ...common, mode: "actor-select", selectionCount: "Choose 1 card", confirmDisabled: false, onToggle: () => {}, onConfirm: () => {},
+  }));
+  assert.match(actor, /data-pool-action-footer="true"/);
+  assert.match(actor, /aria-label="Confirm Bumper Harvest choice"[^>]*>Confirm<\/button>/);
+  assert.doesNotMatch(actor, />Skip<\/button>/);
+
+  const readOnly = renderToStaticMarkup(React.createElement(CardPoolPanel, { ...common, mode: "public-readonly" }));
+  assert.match(readOnly, /data-choice-mode="public-readonly"/);
+  assert.doesNotMatch(readOnly, /data-pool-action-footer|data-pool-action=/, "read-only public cards expose no choice actions");
+
+  const fanjian = renderToStaticMarkup(React.createElement(CardPoolPanel, {
+    title: "SOWING DISTRUST", instruction: "Choose a suit and one hidden card.", accessibilityLabel: "Sowing Distrust choice",
+    mode: "actor-target-select", publicTarget: { handCount: 5, equipmentCards: [], judgementCards: [] },
+    zones: [{ id: "hand", title: "HAND 5", accessibleName: "Hand", choices: Array.from({ length: 5 }, (_, position) => ({
+      type: "concealed-position", opaqueKey: `hand:${position}`, accessibleLabel: `Hidden Hand position ${position + 1}`,
+      position, state: "available",
+    })) }],
+    selectionControls: React.createElement("div", { className: "fanjian-combined-controls" }, "Suit choice"),
+    scrollHint: "Swipe to see all", handCountHeading: "Hand (5)", selectionCount: "0 / 1 selected",
+    confirmAccessibleLabel: "Confirm Sowing Distrust selection", disabled: false, confirmDisabled: true,
+    onToggle: () => {}, onConfirm: () => {}, onInfo: () => {},
+  }));
+  assert.equal((fanjian.match(/class="card-pool-panel__target-public-position/g) ?? []).length, 5, "all five concealed positions remain present");
+  assert.match(fanjian, /data-hand-scrollable="true"/);
+  assert.match(fanjian, /data-pool-action-footer="true"/);
+  assert.match(fanjian, /aria-label="Confirm Sowing Distrust selection"[^>]*disabled=""[^>]*>Confirm<\/button>/);
+  assert.doesNotMatch(fanjian, /data-pool-action="skip"/, "the shared footer does not invent an optional Skip");
+});
+
+test("target card pools preserve five hidden hand positions and paired legal actions", () => {
+  const pool = renderToStaticMarkup(React.createElement(CardPoolPanel, {
+    title: "RETALIATION", instruction: "Choose 1 card to obtain", accessibilityLabel: "Retaliation target card selection",
+    mode: "actor-target-select", publicTarget: { handCount: 5, equipmentCards: [], judgementCards: [] },
+    zones: [{ id: "hand", title: "HAND 5", accessibleName: "Hand", choices: Array.from({ length: 5 }, (_, position) => ({
+      type: "concealed-position", opaqueKey: `hand:${position}`, accessibleLabel: `Hidden Hand position ${position + 1}`,
+      position, state: "available",
+    })) }],
+    selectionCount: "0 / 1 selected", confirmAccessibleLabel: "Confirm Retaliation selection", disabled: false, confirmDisabled: false,
+    skipAction: { accessibleLabel: "Skip Retaliation", disabled: false, onClick: () => {} },
+    onToggle: () => {}, onConfirm: () => {}, onInfo: () => {},
+  }));
+  assert.equal((pool.match(/class="card-pool-panel__target-public-position/g) ?? []).length, 5);
+  assert.match(pool, /data-hand-scrollable="true"/);
+  assert.match(pool, /data-action-count="2"/);
+  assert.match(pool, /data-pool-action="skip"[^>]*aria-label="Skip Retaliation"[^>]*>Skip<\/button>/);
+  assert.match(pool, /data-pool-action="confirm"[^>]*aria-label="Confirm Retaliation selection"[^>]*>Confirm<\/button>/);
 });
 
 test("pre-game Hero information remains separate from the compact active-game preview", () => {
@@ -312,6 +420,7 @@ test("Legacy distribution keeps private cards static and labels recipients by he
   assert.match(gameRoomSource, /<div className="legacy-distribution-card"[\s\S]*<CardFace card=\{card\} \/>/, "Legacy uses the real CardFace artwork");
   assert.match(globalStyleSource, /\.legacy-distribution-card \.played-card\{animation:none;opacity:1;transform:none\}/, "Legacy cards do not use the temporary fade/flight animation");
   assert.doesNotMatch(gameRoomSource, /<option value=\{player\.id\} key=\{player\.id\}>\{player\.name\}<\/option>/, "Legacy does not expose player names in recipient choices");
+  assert.match(gameRoomSource, /function PrivateCardDistributionDialog[\s\S]*<CardPoolDecisionFooter[^>]*selectionCount=\{`\$\{assignedCount\} \/ \$\{cards\.length\} assigned`\}[^>]*confirmAction=\{\{ accessibleLabel: "Confirm card distribution"/);
 });
 
 test("retired public combat stage is absent while the proven Dying handoff remains", () => {
@@ -559,16 +668,22 @@ test("every implemented Standard hero is audited through the shared portrait ren
   assert.deepEqual(unmappedIds, []);
 });
 
-test("hand cards stay naturally packed and compress only when the rail is tight", () => {
+test("hand cards keep at least 75% face width between adjacent cards", () => {
   assert.equal(calculateHandCardStep(320, 1), 68, "one card keeps its physical width");
   assert.equal(calculateHandCardStep(320, 2), 68, "two cards never spread beyond adjacent physical cards");
   assert.equal(calculateHandCardStep(320, 3), 68, "three cards never spread beyond adjacent physical cards");
-  assert.equal(calculateHandCardStep(320, 10), 30, "large hands use controlled compression");
-  assert.equal(calculateHandCardStep(90, 2), 30, "tight rails use the minimum controlled overlap step");
-  assert.equal(calculateHandCardStep(90, 3), 30, "three tight cards remain a controlled stack");
+  assert.equal(calculateHandCardStep(320, 10), 51, "large hands never hide more than one quarter of an unselected face");
+  assert.equal(calculateHandCardStep(90, 2), 51, "a tight rail keeps the 75% minimum and overflows instead of overstacking");
+  assert.equal(calculateHandCardStep(90, 3), 51, "three tight cards keep the same proportional overlap floor");
+  assert.equal(calculateHandCardStep(440, 11), 51, "a crowded eleven-card 440px hand respects the approved minimum step");
+  assert.ok(68 + 10 * calculateHandCardStep(440, 11) > 440, "the crowded hand scrolls rather than shrinking spacing below its minimum");
+  assert.equal(calculateHandCardStep(320, 8, 56), 42, "a responsive 56px face uses a proportional 75% overlap floor");
+  assert.ok(calculateHandCardStep(400, 8, 56) >= 56 * 0.75, "natural responsive spacing never drops below the proportional floor");
   assert.match(gameRoomSource, /const handCardKey = room\.myHand\.map\(\(item\) => item\.id\)\.join\("\\|"\)/, "hand layout keys the actual card IDs and order");
-  assert.match(gameRoomSource, /\[handRailWidth, handCardKey\]/, "hand layout recomputes after card identity, order, or count changes");
-  assert.match(gameRoomSource, /calculateHandCardStep\(handRailWidth, handCardKey \? handCardKey\.split\("\\|"\) : \[\]\)/);
+  assert.match(gameRoomSource, /\[handRailWidth, handCardFaceWidth, handCardKey\]/, "hand layout recomputes after viewport, face width, card identity, order, or count changes");
+  assert.match(gameRoomSource, /getPropertyValue\("--hand-card-face-width"\)/, "responsive face width comes from the rendered CSS contract");
+  assert.match(gameRoomSource, /calculateHandCardStep\(handRailWidth, handCardKey \? handCardKey\.split\("\\|"\) : \[\], handCardFaceWidth\)/);
+  assert.match(gameRoomSource, /handCardLayout\.step - handCardLayout\.cardWidth/, "overlap uses the measured physical face width");
 });
 
 test("UI-11 keeps one local dock and stable opponent anchors across supported player counts", () => {
@@ -794,12 +909,19 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(gameRoomSource, /hiddenCardIds\.has\(card\.id\)/, "in-flight Judgement cards retain their existing hidden-card behavior");
   assert.doesNotMatch(gameRoomSource, /judgementCardLayout\.step - 34/);
   assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*height: var\(--hand-panel-height\)[\s\S]*padding: var\(--hand-top-inset\) 4px var\(--hand-bottom-gutter\)/);
-  const handViewportRule = sequenceStyleSource.match(/\.local-hand-rail\s*\{([^}]*)\}/)?.[1] ?? "";
+  const handViewportRule = sequenceStyleSource.match(/^\.local-hand-rail\s*\{([^}]*)\}/m)?.[1] ?? "";
   assert.match(handViewportRule, /top: calc\(-1 \* var\(--hand-lift-clearance\)\)/);
   assert.match(handViewportRule, /height: calc\(var\(--hand-peek-height\) \+ var\(--hand-lift-clearance\)\)/);
   assert.match(handViewportRule, /padding: var\(--hand-lift-clearance\) 0 0/);
   assert.match(handViewportRule, /overflow-x: auto; overflow-y: hidden/);
-  assert.match(handViewportRule, /pointer-events: none/, "empty lift space preserves underlying Skills/Equipment hits");
+  assert.match(handViewportRule, /pointer-events: auto/, "iOS native scrolling can hit the actual overflow scrollport");
+  assert.match(sequenceStyleSource, /\.local-hand-section:has\(\.card-slot\.single-selected, \.card-slot\.multi-selected, \.card-slot\.details-selected, \.card-slot\.inspect-focused\)\s*\{\s*z-index: 80;\s*\}/, "the selected Hand section forms a paint plane above the Skill layer");
+  assert.match(sequenceStyleSource, /\.local-hand-section:has\(\.card-slot\.single-selected, \.card-slot\.multi-selected, \.card-slot\.details-selected, \.card-slot\.inspect-focused\) \.local-hand\s*\{\s*z-index: auto;\s*\}/, "selected cards are not trapped by the local Hand stacking context");
+  assert.match(sequenceStyleSource, /\.local-hand-section:has\(\.card-slot\.single-selected, \.card-slot\.multi-selected, \.card-slot\.details-selected, \.card-slot\.inspect-focused\) \.local-hand-rail\s*\{\s*z-index: 80;\s*pointer-events: none;\s*\}/, "the selected-state scrollport becomes the visual plane above Skills and passes through empty-area hits");
+  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot\s*\{[^}]*pointer-events: auto;\s*\}/, "real Hand card slots remain interactive within the raised scrollport");
+  assert.match(dockZonesRule, /pointer-events: none/, "transparent Skills/Equipment panel space passes pointer hits through");
+  assert.match(sequenceStyleSource, /\.local-dock-zones \.hero-skill-button \{ position: relative; z-index: 70; pointer-events: auto; \}/, "real Skill buttons remain independently hit-testable in the uncovered area");
+  assert.match(sequenceStyleSource, /\.local-dock-zones \.local-zone-card-button,\s*\.local-dock-zones \.zone-info-button \{ z-index: 70; pointer-events: auto; \}/, "real Equipment and info controls remain independently hit-testable in the uncovered area");
   assert.match(gameRoomSource, /ResizeObserver[\s\S]*handRailWidth[\s\S]*calculateHandCardStep/);
   assert.doesNotMatch(sequenceStyleSource, /margin-left: -38px|margin-left: -34px/);
   assert.match(html, /class="hand-card-visual"[\s\S]*class="game-card/);
@@ -887,7 +1009,7 @@ test("Zhou Yu renders Sowing Distrust from its projected semantic capability", (
     ],
     myHand: [card("zhou-yu-hand", "Attack")], turnSeat: 0, phase: "play", deckCount: 20, discardTop: null,
     log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
-    currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"], triggerOptions: [fanjianOption] },
+    currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card", "trigger"], triggerOptions: [fanjianOption] },
     pendingAttack: null, pendingGreenDragon: null, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null,
     pendingGroup: null, pendingNegation: null, pendingHarvest: null, pendingTargetCard: null, pendingBorrowedSword: null, pendingDying: null,
   };
@@ -900,7 +1022,8 @@ test("Zhou Yu renders Sowing Distrust from its projected semantic capability", (
   assert.doesNotMatch(fanjianButton, /disabled=""/, "Sowing Distrust is enabled when zhou_yu_fanjian is projected");
   assert.match(html, /data-player-anchor="p2"/, "the projected eligible opponent is rendered");
   assert.match(gameRoomSource, /activeSkillTargetMode && activeSkillTargetIds\.includes\(player\.id\)/, "activated semantic target skills make projected opponents selectable across phases");
-  assert.match(gameRoomSource, /setActiveSkillSelectionState\(\(state\) => \{[\s\S]*targetIds: next/, "target selection stores the chosen opponent in the active skill state");
+  assert.match(gameRoomSource, /togglePrecommitDraftTarget\(state, activeSkillScope, playerId, activeSkillTargetIds, max\)/,
+    "active target selection uses the shared scoped toggle with projected eligibility");
   assert.match(gameRoomSource, /onAction\("trigger", activeSkillSubmission\)/, "active skills use the generic trigger action");
   assert.match(gameRoomSource, /activeSkillSubmission =[\s\S]*?providerId: activeSkillOption\.effectId[\s\S]*(?:targetIds: activeSkillSelectedTargetIds|targetId: activeSkillTargetId)/, "the generic trigger payload carries providerId and the selected target field");
 
@@ -1052,9 +1175,22 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.doesNotMatch(pickerHtml, /class="target-card-picker-card hidden(?:\s|[^"]*")/, "hidden hand buttons do not use Tailwind's standalone hidden class");
   assert.match(pickerHtml, /aria-label="Equipment: Nio Shield/);
   assert.doesNotMatch(pickerHtml, /aria-label="not-eligible"/);
+  const kirinRoom = {
+    ...pickerRoom,
+    actionReason: "Use Kirin Bow",
+    currentAction: {
+      ...pickerRoom.currentAction,
+      reason: "Use Kirin Bow",
+      triggerOptions: [{ effectId: "kirin_bow_damage_about_to_apply", label: "Use Kirin Bow", selection: { type: "target_cards", targetId: "p2", min: 1, max: 1, eligibleKeys: ["armor"] } }],
+    },
+  };
+  const kirinHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: kirinRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(kirinHtml, /class="[^"]*card-pool-decision-footer[^"]*target-card-picker-actions/);
+  assert.match(kirinHtml, /aria-label="Confirm Kirin Bow selection"[^>]*>Confirm<\/button>/);
+  assert.doesNotMatch(kirinHtml, />Use Kirin Bow<\/button>/, "Kirin Bow keeps its context outside the shared visible action label");
   const pickerBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: pickerRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Skip<\/button>/);
-  assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Use Frost Sword<\/button>/);
+  assert.match(pickerBusyHtml, /<button[^>]*aria-label="Confirm Frost Sword selection"[^>]*disabled=""[^>]*>Confirm<\/button>/);
   assertNoTransientBusyGuidance(pickerBusyHtml);
 
   const choicePayload = {
@@ -1094,6 +1230,8 @@ test("normalized malformed and unknown response states render safely", () => {
   }));
   assert.equal((discardChoiceHtml.match(/aria-label="Attack [A-Z0-9]+[♠♥♦♣]"/g) ?? []).length, 2, "mandatory discard choice exposes the actor's private hand cards");
   assert.doesNotMatch(discardChoiceHtml, /Hidden hand card|concealed-card|>\?<\/span>/, "mandatory own-hand choices do not use concealed card backs");
+  assert.match(discardChoiceHtml, /aria-label="Confirm Yin-Yang Swords card choice"[^>]*>Confirm<\/button>/);
+  assert.doesNotMatch(discardChoiceHtml, />Confirm choice<\/button>/, "actual card selection uses the shared concise Confirm label");
 
   const noHandRoom = normalizeRoomData({
     ...choicePayload,
@@ -1231,12 +1369,16 @@ test("every card-and-target active hero skill has a valid empty-selection UI con
     assert.doesNotMatch(html, /GAME SCREEN ERROR|Previous game data is no longer compatible/, `${activeSkill.effectId} does not render recovery UI`);
   }
 
-  assert.match(gameRoomSource, /activeEvent: Boolean\(activeEvent && !activeEquipmentArrivalEventId\)/,
+  assert.match(gameRoomSource, /const activeEventBlocksActions = presentationEventBlocksActions\(activeEvent, queuedPublicH4EventIds\)/,
+    "only validated queued H4 messages receive the shared non-blocking presentation rule");
+  assert.match(gameRoomSource, /activeEvent: Boolean\(activeEventBlocksActions && !activeEquipmentArrivalEventId\)/,
     "a committed Equipment arrival remains exempt while other public event animations remain busy");
   assert.match(gameRoomSource, /const presentationBusy = Object\.values\(presentationBusyCauses\)\.some\(Boolean\)/,
     "all explicit presentation busy causes still compose into one status");
-  assert.match(gameRoomSource, /const activeSkillTargetIds = activeSkillSelection\?\.targetIds \?\? activeSkillTargetSelection\?\.targetIds \?\? \[\]/);
-  assert.match(gameRoomSource, /const activeSkillSelectedTargetIds = activeSkillStateIsCurrent \? \(activeSkillSelectionState\?\.targetIds \?\? \[\]\)/);
+  assert.match(gameRoomSource, /const activeSkillDraft = precommitDraftForScope\(activeSkillSelectionState, activeSkillScope\)/,
+    "active-skill draft is consumed only inside its complete current scope");
+  assert.match(gameRoomSource, /const activeSkillSelectedTargetIds = activeSkillDraft \? activeSkillDraft\.targetIds\.filter\(\(id\) => activeSkillTargetIds\.includes\(id\)\) : \[\]/,
+    "active target drafts remain restricted to the projected eligible target IDs");
 
   for (const conversion of [
     { hero: "guan-yu", skill: "God of War", cardId: "wusheng-card", canPlayAs: "attack" },

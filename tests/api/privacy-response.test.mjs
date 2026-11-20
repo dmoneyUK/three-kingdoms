@@ -1,8 +1,98 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { appendSequencedLogRecord } from "../../game/public-log-sequence.ts";
 import {
   advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, requestForViewer, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
+
+function committedSkillOutcome(view, label) {
+  return [...(view.presentationSnapshot?.publicEventFacts ?? []), ...(view.presentationSnapshot?.retainedPublicEventFacts ?? [])]
+    .filter((fact) => fact.category === "SKILL_USED" && fact.label === label && fact.committedOutcome)
+    .sort((left, right) => left.order - right.order)
+    .at(-1);
+}
+
+function committedSkillNarration(view, fact) {
+  return derivePublicInteractionNarration({
+    snapshot: view.presentationSnapshot,
+    players: view.players,
+    rootEventId: fact.rootEventId,
+    interactionId: fact.identity.interactionId,
+    rootFrameId: fact.identity.rootFrameId,
+    eventId: fact.eventId,
+  });
+}
+
+test("room public presentation is viewer-identical while private card events stay owner-only", { timeout: 30_000 }, async () => {
+  const game = await seedPlayingGame({
+    phase: "play",
+    turnSeat: 0,
+    players: ["Lord", "Loyalist", "Rebel", "Renegade"].map((role, index) => ({
+      name: `Timeline Seat ${index + 1}`,
+      role,
+      hero: "cao-cao",
+      hp: 4,
+      maxHp: 4,
+      hand: [],
+    })),
+  });
+  const [source, firstOwner, secondOwner] = game.room.players;
+  const tokenFor = (player) => game.members.find((member) => member.name === player.name)?.token;
+  const root = card("DrawTwo", "viewer-timeline-public-root");
+  setHand(source.id, [root], 4, 4);
+  for (const player of game.room.players.slice(1)) setHand(player.id, [], 4, 4);
+  setTurn(game.code, source.seat);
+  const opened = await request("play_card", { code: game.code, token: tokenFor(source), cardId: root.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+
+  const firstSecret = card("Peach", "viewer-timeline-secret-one", "♥");
+  const secondSecret = card("Dodge", "viewer-timeline-secret-two", "♣");
+  let persistedLog = JSON.parse(query(`SELECT log_json FROM rooms WHERE code=${quote(game.code)}`));
+  persistedLog = appendSequencedLogRecord(persistedLog, "@card:", {
+    id: "viewer-private-card-one", player: firstOwner.name, target: firstOwner.name, card: firstSecret,
+    action: "draw", presentation: true, privateToPlayerId: firstOwner.id,
+  });
+  persistedLog = appendSequencedLogRecord(persistedLog, "@card:", {
+    id: "viewer-private-card-two", player: secondOwner.name, target: secondOwner.name, card: secondSecret,
+    action: "draw", presentation: true, privateToPlayerId: secondOwner.id,
+  });
+  sql(`UPDATE rooms SET log_json=${quote(JSON.stringify(persistedLog))} WHERE code=${quote(game.code)}`);
+
+  const views = await Promise.all(game.room.players.map((player) => state(game.code, tokenFor(player))));
+  const publicProjection = ({ presentationSnapshot, presentationV2 }) => ({
+    snapshot: {
+      stable: presentationSnapshot.stable,
+      interaction: presentationSnapshot.interaction,
+      rootAction: presentationSnapshot.rootAction,
+      publicEventFacts: presentationSnapshot.publicEventFacts,
+      retainedPublicEvent: presentationSnapshot.retainedPublicEvent,
+      retainedPublicEventFacts: presentationSnapshot.retainedPublicEventFacts,
+      publicNextDecision: presentationSnapshot.publicNextDecision,
+      publicCardEffects: presentationSnapshot.publicCardEffects,
+    },
+    presentation: {
+      rootContext: presentationV2.rootContext,
+      activeContext: presentationV2.activeContext,
+      interactionScene: presentationV2.interactionScene,
+      rootAction: presentationV2.rootAction,
+      publicCardEffects: presentationV2.publicCardEffects,
+    },
+  });
+  const expectedPublicProjection = publicProjection(views[0].data);
+  for (const [index, response] of views.entries()) {
+    assert.ok(response.data.timeline.some((event) => event.card?.id === root.id && event.action === "play"), `viewer ${index + 1} retains the committed public root`);
+    assert.deepEqual(publicProjection(response.data), expectedPublicProjection, `viewer ${index + 1} receives the same public presentation`);
+    const serializedPublicProjection = JSON.stringify(publicProjection(response.data));
+    assert.equal(serializedPublicProjection.includes(firstSecret.id), false, "a private card never enters the public presentation");
+    assert.equal(serializedPublicProjection.includes(secondSecret.id), false, "another private card never enters the public presentation");
+  }
+  assert.ok(views[1].data.timeline.some((event) => event.card?.id === firstSecret.id), "the owning viewer retains its own private card event");
+  assert.equal(views[0].data.timeline.some((event) => event.card?.id === firstSecret.id), false, "other viewers do not receive that private card event");
+  assert.ok(views[2].data.timeline.some((event) => event.card?.id === secondSecret.id), "the second owning viewer retains its own private card event");
+  assert.equal(views[0].data.timeline.some((event) => event.card?.id === secondSecret.id), false, "other viewers do not receive the second private card event");
+});
 
 test("shared Negation windows keep submissions private and expose only each viewer's legal response", { timeout: 60_000 }, async () => {
   const nobody = await createHumanGame(); const [nobodySourceMember] = nobody.members; const [nobodySource, ...nobodyOthers] = nobody.room.players; const drawTwo = card("DrawTwo", "privacy-negation");
@@ -542,6 +632,17 @@ test("the three faction lords expose their active skills through the semantic pr
   assert.deepEqual(zhihengOption.selection.eligibleCardIds, [discarded.id, equipped.id]);
   const zhiheng = await requestAndSettle("trigger", { code: zhihengGame.code, token: zhihengHost.token, providerId: "sun_quan_zhiheng", cardIds: [discarded.id, equipped.id] });
   assert.equal(zhiheng.status, 200, JSON.stringify(zhiheng.data));
+  const equilibriumOutcome = committedSkillOutcome(zhiheng.data.room, "Equilibrium");
+  assert.ok(equilibriumOutcome, "Equilibrium reports its actual discard and draw counts through the shared outcome");
+  assert.deepEqual(equilibriumOutcome.committedOutcome.changes, [
+    { kind: "CARD_DISCARDED", playerId: zhihengSun.id, amount: 1, fromZone: "HAND", toZone: "DISCARD" },
+    { kind: "CARD_DISCARDED", playerId: zhihengSun.id, amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+    { kind: "CARD_DRAWN", playerId: zhihengSun.id, amount: 2, fromZone: "DECK", toZone: "HAND" },
+  ]);
+  assert.equal(committedSkillNarration(zhiheng.data.room, equilibriumOutcome)?.headline,
+    `${zhihengSun.name} — Equilibrium: ${zhihengSun.name} discarded 2 cards; ${zhihengSun.name} drew 2 cards.`);
+  assert.equal(JSON.stringify(equilibriumOutcome).includes(drawn.id), false);
+  assert.equal(JSON.stringify(equilibriumOutcome).includes(drawnTwo.id), false);
   const zhihengCostEvent = zhiheng.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === discarded.id));
   assert.deepEqual(zhihengCostEvent.publicCardEffects?.[0]?.materials, [
     { cardId: discarded.id, ownerId: zhihengSun.id, fromZone: "HAND", toZone: "DISCARD" },
@@ -551,6 +652,10 @@ test("the three faction lords expose their active skills through the semantic pr
   assert.deepEqual(new Set(zhiheng.data.room.myHand.map((held) => held.id)), new Set([drawn.id, drawnTwo.id]), "Equilibrium draws one replacement for each discarded card");
   assert.ok(discardIds(zhihengGame.code).includes(discarded.id)); assert.ok(discardIds(zhihengGame.code).includes(equipped.id));
   const zhihengObserver = (await state(zhihengGame.code, zhihengGame.members[1].token)).data;
+  const equilibriumH4 = assertPublicOutcomeHasH4Owner(zhiheng.data.room, equilibriumOutcome.eventId);
+  const equilibriumObserverH4 = assertPublicOutcomeHasH4Owner(zhihengObserver, equilibriumOutcome.eventId);
+  assert.equal(equilibriumObserverH4.narration.headline, equilibriumH4.narration.headline,
+    "actor and observer route distinct Hand/Equipment discards and actual draw count through the one shared H4 owner");
   assert.equal(JSON.stringify(zhihengObserver.presentationSnapshot.publicCardEffects).includes(drawn.id), false);
   assert.equal(JSON.stringify(zhihengObserver.presentationSnapshot.publicCardEffects).includes(drawnTwo.id), false,
     "Equilibrium's private replacement draws never enter public proof");
@@ -671,6 +776,14 @@ test("Benevolence counts exact physical cards cumulatively and spends its thresh
   const two = await open([card("Attack", "rende-two-a"), card("Dodge", "rende-two-b")]);
   const twoResult = await requestAndSettle("trigger", { code: two.game.code, token: two.game.members[0].token, providerId: "liu_bei_rende", cardIds: ["attack-rende-two-a", "dodge-rende-two-b"], targetId: two.target.id });
   assert.equal(twoResult.status, 200, JSON.stringify(twoResult.data)); assert.equal(twoResult.data.room.players.find((player) => player.id === two.source.id).hp, 4, "two cards recover once when Liu Bei is eligible");
+  const benevolenceOutcome = committedSkillOutcome(twoResult.data.room, "Benevolence");
+  assert.ok(benevolenceOutcome, "Benevolence publishes its committed public transfer and actual recovery");
+  assert.deepEqual(benevolenceOutcome.committedOutcome.changes, [
+    { kind: "CARD_TRANSFERRED", fromPlayerId: two.source.id, toPlayerId: two.target.id, amount: 2, fromZone: "HAND", toZone: "HAND" },
+    { kind: "HP_RECOVERED", playerId: two.source.id, amount: 1 },
+  ]);
+  assert.equal(committedSkillNarration(twoResult.data.room, benevolenceOutcome)?.headline,
+    `${two.source.name} — Benevolence: ${two.target.name} received 2 cards from ${two.source.name}; ${two.source.name} recovered 1 HP.`);
   assert.deepEqual(discardIds(two.game.code), [], "Benevolence transfers cards without touching discard");
   const benevolenceRecipient = (await state(two.game.code, two.game.members[1].token)).data;
   assert.deepEqual(benevolenceRecipient.myHand.map((held) => held.id), ["attack-rende-two-a", "dodge-rende-two-b"]);
@@ -680,6 +793,12 @@ test("Benevolence counts exact physical cards cumulatively and spends its thresh
     && event.privateHandTransfer.sourcePlayerId === two.source.id
     && event.privateHandTransfer.recipientId === two.target.id));
   const benevolenceObserver = (await state(two.game.code, two.game.members[2].token)).data;
+  assert.deepEqual(committedSkillOutcome(benevolenceObserver, "Benevolence"), benevolenceOutcome,
+    "all viewers receive the same public outcome while transfer identities remain private");
+  const benevolenceH4 = assertPublicOutcomeHasH4Owner(twoResult.data.room, benevolenceOutcome.eventId);
+  const benevolenceObserverH4 = assertPublicOutcomeHasH4Owner(benevolenceObserver, benevolenceOutcome.eventId);
+  assert.equal(benevolenceObserverH4.narration.headline, benevolenceH4.narration.headline,
+    "actor and observer route the same transfer and recovered-HP fact through the one shared H4 owner");
   assert.equal(benevolenceObserver.timeline.some((event) => event.privateHandTransfer), false, "other seats do not receive private transfer receipts");
   const serializedObserver = JSON.stringify(benevolenceObserver);
   assert.equal(serializedObserver.includes("attack-rende-two-a"), false, "a transferred hidden card ID is not disclosed to observers");

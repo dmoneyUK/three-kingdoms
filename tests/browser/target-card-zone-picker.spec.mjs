@@ -279,7 +279,7 @@ test("Dismantle re-tap clears local selection without Cancel and submits the exi
   const dialog = page.getByRole("dialog", { name: "Burning Bridge target card selection" });
   const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
   const dock = page.locator('[data-console-surface="local-operation"]');
-  const confirm = dialog.getByRole("button", { name: "Use Burning Bridge" });
+  const confirm = dialog.getByRole("button", { name: "Confirm Burning Bridge selection" });
 
   await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
@@ -307,7 +307,7 @@ test("Steal modal preserves the existing public Judgment ID payload", async ({ p
   await expect(dialog.locator("header span")).toHaveText("Choose 1 card to obtain");
   await publicCard.click();
   await expect(publicCard).toHaveAttribute("aria-pressed", "true");
-  await dialog.getByRole("button", { name: "Use Steal" }).click();
+  await dialog.getByRole("button", { name: "Confirm Steal selection" }).click();
   await expect.poll(() => page.evaluate(() => window.__browserActions)).toEqual([
     { action: "choose_target_card", extra: { targetCardZone: "judgement", targetCardId: "browser-target-judgement" } },
   ]);
@@ -359,7 +359,7 @@ test("Dismantle modal selection resets when CurrentAction revision changes", asy
   await loadPendingTargetCard(page, { width: 390 });
   const dialog = page.getByRole("dialog", { name: "Burning Bridge target card selection" });
   const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 1" });
-  const confirm = dialog.getByRole("button", { name: "Use Burning Bridge" });
+  const confirm = dialog.getByRole("button", { name: "Confirm Burning Bridge selection" });
 
   await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
@@ -430,7 +430,7 @@ test("Retaliation modal submits the concealed Hand's existing semantic key exact
   await handZone.click();
   await expect(handZone).toHaveAttribute("aria-pressed", "true");
   await expect(dialog.locator(".target-card-picker-count")).toHaveText("1 / 1 selected");
-  const confirm = dialog.getByRole("button", { name: "Use Retaliation" });
+  const confirm = dialog.getByRole("button", { name: "Confirm Retaliation selection" });
   await expect(confirm).toBeEnabled();
   await confirm.click();
 
@@ -445,7 +445,7 @@ test("Retaliation selection clears locally while Skip remains authoritative", as
 
   const skip = dialog.getByRole("button", { name: "Skip" });
   await expect(skip).toBeVisible();
-  await expect(skip).toHaveClass(/wtk-skip-action/);
+  await expect(skip).toHaveClass(/wtk-card-pool-action--skip/);
   await handZone.click();
   await expect(handZone).toHaveAttribute("aria-pressed", "true");
   await handZone.click();
@@ -468,7 +468,7 @@ for (const { zone, key } of [
     await publicCard.click();
     await expect(publicCard).toHaveAttribute("aria-pressed", "true");
     await expect(handZone).toHaveAttribute("aria-pressed", "false");
-    await dialog.getByRole("button", { name: "Use Retaliation" }).click();
+    await dialog.getByRole("button", { name: "Confirm Retaliation selection" }).click();
 
     await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
       { action: "trigger", extra: { providerId: "browser_retaliation_zone", cardKeys: [key] } },
@@ -479,7 +479,7 @@ for (const { zone, key } of [
 test("a new action revision clears local selectable-detail input", async ({ page }) => {
   const dialog = await loadPicker(page, { width: 390 });
   const handZone = dialog.locator('[data-target-card-zone="hand"]');
-  const confirm = dialog.getByRole("button", { name: "Use Retaliation" });
+  const confirm = dialog.getByRole("button", { name: "Confirm Retaliation selection" });
 
   await handZone.click();
   await expect(handZone).toHaveAttribute("aria-pressed", "true");
@@ -504,7 +504,7 @@ test("supported opaque per-hand keys use anonymous target-card modal selection",
   expect(targetProjection.handCards ?? []).toEqual([]);
 
   await positions.nth(1).click();
-  await dialog.getByRole("button", { name: "Use Retaliation" }).click();
+  await dialog.getByRole("button", { name: "Confirm Retaliation selection" }).click();
   await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
     { action: "trigger", extra: { providerId: "browser-target-card", cardKeys: ["hand:1"] } },
   ]);
@@ -553,7 +553,7 @@ for (const viewport of [
 test("Fanjian modal keeps anonymous selection local and submits the existing key once", async ({ page }) => {
   const dialog = await loadFanjianSelectionModal(page, { width: 390 });
   const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
-  const confirm = dialog.getByRole("button", { name: "Use Sowing Distrust — choose a hidden card" });
+  const confirm = dialog.getByRole("button", { name: "Confirm Sowing Distrust — choose a hidden card selection" });
 
   await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
@@ -568,7 +568,7 @@ test("Fanjian modal keeps anonymous selection local and submits the existing key
 test("Fanjian source selection clears when the CurrentAction revision changes", async ({ page }) => {
   const dialog = await loadFanjianSelectionModal(page, { width: 390 });
   const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 1" });
-  const confirm = dialog.getByRole("button", { name: "Use Sowing Distrust — choose a hidden card" });
+  const confirm = dialog.getByRole("button", { name: "Confirm Sowing Distrust — choose a hidden card selection" });
 
   await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
@@ -618,7 +618,7 @@ for (const viewport of [
     await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
     await expect(page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Use Kirin Bow" })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Confirm Kirin Bow selection" })).toBeDisabled();
     await expect(dialog.locator(".target-card-picker-count")).toHaveText("0 / 1 selected");
     const targetProjection = await page.evaluate(() => window.__browserRoom.players.find((player) => player.id === "p1"));
     expect(targetProjection.equipmentCards.map((card) => card.id)).toEqual([
@@ -642,7 +642,7 @@ for (const viewport of [
     await mounts.nth(1).click();
     await expect(mounts.nth(1)).toHaveAttribute("aria-pressed", "true");
     await expect(dialog.locator(".target-card-picker-count")).toHaveText("1 / 1 selected");
-    await expect(dialog.getByRole("button", { name: "Use Kirin Bow" })).toBeEnabled();
+    await expect(dialog.getByRole("button", { name: "Confirm Kirin Bow selection" })).toBeEnabled();
     await expect(mounts.nth(0)).toBeDisabled();
     await expectSelectionOverlayPassThrough(page);
     const dockAfter = await dock.boundingBox();
@@ -655,7 +655,7 @@ for (const viewport of [
 test("Kirin Bow modal submits exactly the selected authoritative Mount key", async ({ page }) => {
   const { dialog } = await loadKirinBowModal(page, { width: 390, height: 844 });
   const mount = dialog.getByRole("button", { name: "Equipment: Shadowrunner" });
-  const use = dialog.getByRole("button", { name: "Use Kirin Bow" });
+  const use = dialog.getByRole("button", { name: "Confirm Kirin Bow selection" });
 
   await mount.click();
   await expect(mount).toHaveAttribute("aria-pressed", "true");
@@ -671,7 +671,7 @@ test("Kirin Bow Cancel clears only local selection and does not submit", async (
   const { dialog } = await loadKirinBowModal(page, { width: 390, height: 844 });
   const mount = dialog.getByRole("button", { name: "Equipment: Red Hare" });
   const cancel = dialog.getByRole("button", { name: "Cancel" });
-  const use = dialog.getByRole("button", { name: "Use Kirin Bow" });
+  const use = dialog.getByRole("button", { name: "Confirm Kirin Bow selection" });
 
   await mount.click();
   await expect(mount).toHaveAttribute("aria-pressed", "true");
@@ -685,7 +685,7 @@ test("Kirin Bow Cancel clears only local selection and does not submit", async (
 test("Kirin Bow modal selection clears on CurrentAction revision change", async ({ page }) => {
   const { dialog } = await loadKirinBowModal(page, { width: 390, height: 844 });
   const mount = dialog.getByRole("button", { name: "Equipment: Red Hare" });
-  const use = dialog.getByRole("button", { name: "Use Kirin Bow" });
+  const use = dialog.getByRole("button", { name: "Confirm Kirin Bow selection" });
 
   await mount.click();
   await expect(mount).toHaveAttribute("aria-pressed", "true");
@@ -706,7 +706,7 @@ for (const targetCardCase of ["unfocused", "unprojected"]) {
     await expect(dialog.locator("header span")).toHaveText("Choose 1 Mount to discard");
     if (targetCardCase === "unprojected") {
       await expect(dialog.locator(".target-card-picker-zone-equipment")).toHaveCount(0);
-      await expect(dialog.getByRole("button", { name: "Use Kirin Bow" })).toBeDisabled();
+      await expect(dialog.getByRole("button", { name: "Confirm Kirin Bow selection" })).toBeDisabled();
     } else {
       await expect(dialog.locator('.target-card-picker-zone-equipment [data-target-card-zone="equipment"]')).toHaveCount(2);
     }
@@ -795,7 +795,7 @@ test("Frost Sword modal submits a mixed Hand + Equipment selection and requires 
   const hiddenPosition = positions.nth(0);
   const anotherPosition = positions.nth(1);
   const equipment = dialog.locator('[data-target-card-zone="equipment"]');
-  const use = dialog.getByRole("button", { name: "Use Frost Sword" });
+  const use = dialog.getByRole("button", { name: "Confirm Frost Sword selection" });
 
   await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
@@ -814,7 +814,7 @@ test("Frost Sword modal submits a mixed Hand + Equipment selection and requires 
 test("Frost Sword modal selection clears on CurrentAction revision without duplicating Dock controls", async ({ page }) => {
   const { dialog } = await loadFrostSwordModal(page, { width: 390, height: 844 });
   const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
-  const use = dialog.getByRole("button", { name: "Use Frost Sword" });
+  const use = dialog.getByRole("button", { name: "Confirm Frost Sword selection" });
 
   await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
@@ -895,7 +895,7 @@ for (const targetCardCase of ["mixed", "unprojected"]) {
     await expect(page.getByRole("dialog", { name: "Dauntless target card selection" })).toBeVisible();
     await expect(dock.locator(".local-equipment-panel").getByRole("button", { name: /^Select / })).toHaveCount(0);
     if (targetCardCase === "unprojected") {
-      await expect(page.getByRole("dialog").getByRole("button", { name: "Use Dauntless" })).toBeDisabled();
+      await expect(page.getByRole("dialog").getByRole("button", { name: "Confirm Dauntless selection" })).toBeDisabled();
       await expect(page.getByRole("dialog").locator("[aria-label='Eligible cards'] button")).toHaveCount(0);
     } else {
       await expect(page.getByRole("dialog").getByRole("button", { name: "Hand ×2 · Random card" })).toBeVisible();
@@ -945,7 +945,7 @@ for (const viewport of [
     await expect(dialog.locator(".target-card-picker-zone-equipment h3")).toHaveText("EQUIPMENT");
     await expect(dialog.locator(".target-card-picker-zone-judgement")).toHaveCount(0);
     await expect(equipment).toHaveAccessibleName("Equipment: Nio Shield");
-    await expect(dialog.getByRole("button", { name: "Use Retaliation" })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Confirm Retaliation selection" })).toBeDisabled();
     await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Skip", exact: true })).toBeVisible();
     await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
@@ -1003,7 +1003,7 @@ for (const viewport of [
 test("Retaliation grouped-Hand fallback submits the authoritative Hand-zone key", async ({ page }) => {
   const { dialog } = await openRetaliationModal(page, { width: 390 });
   const handZone = dialog.locator('[data-target-card-zone="hand"]');
-  const use = dialog.getByRole("button", { name: "Use Retaliation" });
+  const use = dialog.getByRole("button", { name: "Confirm Retaliation selection" });
 
   await handZone.click();
   await expect(handZone).toHaveAttribute("aria-pressed", "true");
@@ -1027,7 +1027,7 @@ test("Retaliation modal preserves server-projected anonymous Hand positions and 
   await expect(equipment).toHaveAccessibleName("Equipment: Nio Shield");
   await equipment.click();
   await expect(equipment).toHaveAttribute("aria-pressed", "true");
-  await dialog.getByRole("button", { name: "Use Retaliation" }).click();
+  await dialog.getByRole("button", { name: "Confirm Retaliation selection" }).click();
   await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
     { action: "trigger", extra: { providerId: "sima_yi_fankui", cardKeys: ["browser-retaliation-equipment"] } },
   ]);
@@ -1044,7 +1044,7 @@ for (const viewport of [
     await expect(page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
     await position.click();
     await expect(position).toHaveAttribute("aria-pressed", "true");
-    await dialog.getByRole("button", { name: "Use Retaliation" }).click();
+    await dialog.getByRole("button", { name: "Confirm Retaliation selection" }).click();
     await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
       { action: "trigger", extra: { providerId: "sima_yi_fankui", cardKeys: ["hand:2"] } },
     ]);
@@ -1062,7 +1062,7 @@ test("shared modal keeps a public Judgment card face and its authoritative key w
   const judgement = dialog.getByRole("button", { name: "Judgement: Lightning" });
   await expect(judgement.locator(".played-card")).toBeVisible();
   await judgement.click();
-  await dialog.getByRole("button", { name: "Use Retaliation" }).click();
+  await dialog.getByRole("button", { name: "Confirm Retaliation selection" }).click();
   await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
     { action: "trigger", extra: { providerId: "browser_retaliation_zone", cardKeys: ["browser-public-judgement"] } },
   ]);

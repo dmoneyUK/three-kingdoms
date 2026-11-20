@@ -679,7 +679,7 @@ function browserRoom({ state, count, handSize, handKind, targetHandCount, target
     : borrowedSwordFixture
       ? [card("browser-borrowed-sword", "BorrowedSword", "♣", "Q")]
     : state === "normal" && handSize !== null
-    ? Array.from({ length: handSize }, (_, index) => card(`browser-hand-${index + 1}`, handKind))
+    ? Array.from({ length: handSize }, (_, index) => card(`browser-hand-${index + 1}`, handKind === "KirinBow" && index !== 1 ? "Attack" : handKind))
     : bumperHarvestFixture
     ? bumperHarvestLocalFixture ? [card("browser-bumper-harvest-private-negation", "Negation", "♣")] : []
     : oathNegationFixture
@@ -1000,7 +1000,8 @@ function readFixture() {
   const state = params.get("state") || "normal";
   const count = Math.min(10, Math.max(2, Number(params.get("count") || 4)));
   const handSize = params.has("handSize") ? Math.min(30, Math.max(1, Number(params.get("handSize")))) : null;
-  const handKind = params.get("handKind") === "BumperHarvest" ? "BumperHarvest" : "Attack";
+  const requestedHandKind = params.get("handKind");
+  const handKind = requestedHandKind === "BumperHarvest" || requestedHandKind === "KirinBow" ? requestedHandKind : "Attack";
   const targetHandCount = Math.min(30, Math.max(1, Number(params.get("targetHandCount") || 4)));
   const equipmentCase = params.get("equipmentCase") || null;
   const judgementCase = params.get("judgementCase") || null;

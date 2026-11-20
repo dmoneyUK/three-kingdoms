@@ -1663,13 +1663,14 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
   } : null;
   const activeFacts = authority ? (input.presentationV2.publicEventFacts ?? []).map((fact) => ({ ...fact, identity: semanticIdentity })) : [];
   const activeFactIds = new Set(activeFacts.map((fact) => fact.eventId));
-  const continuedFacts = semanticIdentity ? (input.presentationV2.retainedPublicEventFacts ?? [])
+  const retainedFacts = (input.presentationV2.retainedPublicEventFacts ?? [])
     .map(validateRetainedPublicEvent)
-    .filter((fact): fact is PublicPresentationEvent => Boolean(fact
-      && fact.identity.interactionId === semanticIdentity.interactionId
+    .filter((fact): fact is PublicPresentationEvent => Boolean(fact));
+  const continuedFacts = semanticIdentity ? retainedFacts.filter((fact) =>
+    fact.identity.interactionId === semanticIdentity.interactionId
       && fact.identity.rootFrameId === semanticIdentity.rootFrameId
       && fact.identity.presentationRevision <= semanticIdentity.presentationRevision
-      && !activeFactIds.has(fact.eventId))) : [];
+      && !activeFactIds.has(fact.eventId)) : [];
   const semantic = projectPublicPresentationSemantics({
     identity: semanticIdentity,
     events: [...continuedFacts, ...activeFacts],
@@ -1677,6 +1678,11 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
       ? input.publicNextDecision : null,
     viewerNegationChoice: input.viewerNegationChoice,
   });
+  const semanticFactIds = new Set(semantic.events.map((fact) => fact.eventId));
+  // Keep the validated queue in server order even when a retained result is
+  // newer than an active-root fact. The presentation cursor, not this snapshot
+  // boundary, decides which committed event currently owns H4.
+  const exposedRetainedFacts = retainedFacts.filter((fact) => !semanticFactIds.has(fact.eventId));
   const acceptedViewerNegationChoice = semantic.nextDecision?.stage === "NEGATION"
     && semantic.nextDecision.responseWindowOpen ? semantic.viewerNegationChoice : null;
   const publicCardEffects = provenPublicCardEffects(input.presentationV2.publicCardEffects);
@@ -1725,11 +1731,10 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     },
     settlement: provenNegationSettlement(input.presentationV2.negationSettlement),
     publicEventFacts: semantic.events,
+    ...(exposedRetainedFacts.length ? { retainedPublicEventFacts: exposedRetainedFacts } : {}),
     ...(!authority && input.presentationV2.retainedPublicEvent
       && validateRetainedPublicEvent(input.presentationV2.retainedPublicEvent)
-      ? { retainedPublicEvent: validateRetainedPublicEvent(input.presentationV2.retainedPublicEvent)!,
-        retainedPublicEventFacts: (input.presentationV2.retainedPublicEventFacts ?? [])
-          .map(validateRetainedPublicEvent).filter((fact): fact is PublicPresentationEvent => Boolean(fact)) } : {}),
+      ? { retainedPublicEvent: validateRetainedPublicEvent(input.presentationV2.retainedPublicEvent)! } : {}),
     publicNextDecision: semantic.nextDecision,
     publicDrawPhaseDecision: provenPublicDrawPhaseDecision(input.publicDrawPhaseDecision),
     ...(input.presentationV2.sharedResponseRecovery ? { sharedResponseRecovery: input.presentationV2.sharedResponseRecovery } : {}),

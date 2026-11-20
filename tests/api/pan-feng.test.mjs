@@ -2,6 +2,7 @@ import test from "node:test";
 import {
   assert, card, createHumanGame, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setTurn, sql, state,
 } from "./test-support.mjs";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 
 function configure(game, { sourceHp = 4, targetHp = 3, targetHero = "zhao-yun" } = {}) {
   const [source, target, third, fourth] = game.room.players;
@@ -40,9 +41,17 @@ test("Axe of Insanity uses post-damage HP and draws exactly two private cards", 
   assert.equal(publicFact?.category, "SKILL_USED");
   assert.equal(publicFact?.actorId, setup.source.id);
   assert.equal(publicFact?.outcomeLabel, "drew 2 cards");
+  assert.deepEqual(publicFact?.committedOutcome?.changes, [
+    { kind: "CARD_DRAWN", playerId: setup.source.id, amount: 2, fromZone: "DECK", toZone: "HAND" },
+  ], "the shared post-damage draw path records the actual committed count only");
+  assert.equal(publicFact?.committedOutcome?.eventId, publicFact?.eventId);
   const observer = (await state(game.code, setup.targetMember.token)).data;
   assert.deepEqual(observer.presentationSnapshot.retainedPublicEvent, publicFact);
-  assert.equal(JSON.stringify(publicFact).includes(firstDraw.id), false);
+  const publicSnapshot = JSON.stringify(observer.presentationSnapshot);
+  for (const hiddenCard of [firstDraw, secondDraw]) {
+    assert.equal(JSON.stringify(publicFact).includes(hiddenCard.id), false);
+    assert.equal(publicSnapshot.includes(hiddenCard.id), false, "public count proof contains no drawn card identity");
+  }
   assert.equal(JSON.parse(query(`SELECT skill_state_json FROM rooms WHERE code=${quote(game.code)}`)).axeOfInsanityUsed, true);
   assert.equal((await state(game.code, setup.targetMember.token)).data.myHand.some((item) => item.id === firstDraw.id), false);
   assert.equal(roomCardCount(game.code, firstDraw.id), 1);
@@ -60,6 +69,15 @@ test("Axe of Insanity compares equality and greater target HP after damage as HP
     assert.equal(view.players.find((player) => player.id === setup.source.id).hp, expectedSourceHp);
     assert.equal(view.myHand.length, 0, "the HP-loss branch does not draw");
     assert.equal(view.currentAction?.triggerEvent, undefined, "mandatory Axe resolution does not leave a confirmation dialog");
+    const lossEvent = view.timeline.find((event) => event.publicFact?.committedOutcome?.changes?.some((change) =>
+      change.kind === "HP_LOST_TO_EFFECT" && change.playerId === setup.source.id));
+    assert.ok(lossEvent, "the actual HP loss is persisted as a typed public result");
+    assert.deepEqual(lossEvent.publicFact.committedOutcome.changes, [
+      { kind: "HP_LOST_TO_EFFECT", playerId: setup.source.id, amount: 1 },
+    ]);
+    const h4 = assertPublicOutcomeHasH4Owner(view, lossEvent.id);
+    assert.match(h4.narration.headline, /lost 1 HP to an effect\./);
+    assert.doesNotMatch(h4.narration.headline, /dealt 1 damage/);
   }
   const afterDamageComparison = await createHumanGame();
   const comparison = configure(afterDamageComparison, { sourceHp: 3, targetHp: 3 });
@@ -201,6 +219,10 @@ test("Axe of Insanity HP loss uses canonical Dying and resumes the interrupted d
   assert.equal((await request("decline_response", { code: game.code, token: setup.targetMember.token, preserveResponse: true })).status, 200);
   const dying = await state(game.code, setup.sourceMember.token);
   assert.equal(dying.data.phase, "dying", JSON.stringify(dying.data));
+  const dyingLossEvent = dying.data.timeline.find((event) => event.publicFact?.committedOutcome?.changes?.some((change) =>
+    change.kind === "HP_LOST_TO_EFFECT" && change.playerId === setup.source.id));
+  assert.ok(dyingLossEvent, "the HP loss is committed before the Dying continuation opens");
+  assert.match(assertPublicOutcomeHasH4Owner(dying.data, dyingLossEvent.id).narration.headline, /lost 1 HP to an effect\./);
   assert.equal((await request("skip_rescue", { code: game.code, token: setup.sourceMember.token, preserveResponse: true })).status, 200);
   const rescued = await requestAndSettle("give_peach", { code: game.code, token: setup.targetMember.token, cardId: peach.id });
   assert.equal(rescued.status, 200, JSON.stringify(rescued.data));
@@ -208,5 +230,9 @@ test("Axe of Insanity HP loss uses canonical Dying and resumes the interrupted d
   assert.equal(resumed.players.find((player) => player.id === setup.source.id).hp, 1);
   assert.equal(resumed.players.find((player) => player.id === setup.target.id).hp, 1);
   assert.equal(resumed.currentAction?.triggerEvent, undefined);
+  assert.equal(resumed.timeline.filter((event) => event.publicFact?.committedOutcome?.changes?.some((change) =>
+    change.kind === "HP_LOST_TO_EFFECT" && change.playerId === setup.source.id)).length, 1,
+  "Dying rescue and resume keep one durable committed HP-loss fact");
+  assertPublicOutcomeHasH4Owner(resumed, dyingLossEvent.id);
   assert.equal(roomCardCount(game.code, peach.id), 1);
 });

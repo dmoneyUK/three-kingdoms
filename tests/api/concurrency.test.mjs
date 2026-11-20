@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
   restoreSequentialDyingFixture, advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -158,6 +160,11 @@ test("lethal damage trigger exhaustion enters shared Dying and Peach rescue exac
   assert.equal(rescued.data.room.players.find((player) => player.id === alicePlayer.id).alive, true);
   assert.equal(rescued.data.room.pendingDying, null);
   assert.equal(rescued.data.room.causalEnvelope, null, "settled lethal Interaction clears its envelope after rescue");
+  const rescueRecoveryFacts = rescued.data.room.timeline.filter((event) => event.publicFact?.visibility === "PUBLIC"
+    && event.publicFact.committedOutcome?.changes?.some((change) => change.kind === "HP_RECOVERED" && change.playerId === alicePlayer.id));
+  assert.equal(rescueRecoveryFacts.length, 1, "the committed recovery H4 fact survives retirement of the settled Dying envelope");
+  assert.equal(rescueRecoveryFacts[0].publicFact.committedOutcome.changes[0].amount, 1, "the public result carries the actual recovered HP");
+  assertPublicOutcomeHasH4Owner(rescued.data.room, rescueRecoveryFacts[0].id);
   assert.equal(rescued.data.room.currentAction.kind, "turn");
   assert.equal(rescued.data.room.log.filter((entry) => /Alice takes 1 damage/.test(entry)).length, 1, "rescue does not replay damage");
   assert.equal(rescued.data.room.log.filter((entry) => /enters Dying/.test(entry)).length, 1, "Dying begins once");
@@ -183,6 +190,7 @@ test("saved sequential Dying: Dying uses one ordered rescue pass and does not re
   setHand(hostPlayer.id, [card("Attack", "ordered-rescue"), card("Peach", "host-unused")], 4, 4);
   setHand(alicePlayer.id, [], -1, 4);
   sql(`UPDATE players SET role='Rebel' WHERE id=${quote(alicePlayer.id)}`);
+  setDeck(game.code, [card("Dodge", "rebel-reward-1"), card("Attack", "rebel-reward-2"), card("Peach", "rebel-reward-3")]);
   setHand(bobPlayer.id, [card("Peach", "ordered-bob")], 4, 4);
   setHand(carolPlayer.id, [card("Peach", "ordered-carol")], 4, 4);
   setTurn(game.code, hostPlayer.seat);
@@ -203,6 +211,37 @@ test("saved sequential Dying: Dying uses one ordered rescue pass and does not re
   await requestAndSettle("skip_rescue", { code: game.code, token: carol.token });
   const defeated = await waitForState(game.code, host.token, (room) => !room.players.find((player) => player.id === alicePlayer.id).alive);
   assert.equal(defeated.players.find((player) => player.id === alicePlayer.id).role, "Rebel");
+  const rawRewardEvents = defeated.timeline.filter((event) => event.publicFact?.committedOutcome?.source.label === "Rebel Defeat Reward");
+  assert.equal(rawRewardEvents.length, 1, "the committed reward result is persisted as one public event before snapshot projection");
+  const rewardFact = [...(defeated.presentationSnapshot?.retainedPublicEventFacts ?? []), ...(defeated.presentationSnapshot?.publicEventFacts ?? [])]
+    .find((fact) => fact.committedOutcome?.source.label === "Rebel Defeat Reward");
+  assert.ok(rewardFact, "the shared public snapshot retains the persisted reward outcome after Dying defeat");
+  const attackRoots = defeated.timeline.filter((event) => event.type === "card" && event.action === "play" && event.card?.id === "attack-ordered-rescue");
+  assert.equal(attackRoots.length, 1, "the original Attack remains present as the public causal root");
+  assert.equal(rewardFact.rootEventId, attackRoots[0].id, "the committed reward remains linked to the original Attack root");
+  assert.deepEqual(rewardFact.committedOutcome.changes, [
+    { kind: "CARD_DRAWN", playerId: hostPlayer.id, amount: 3, fromZone: "DECK", toZone: "HAND" },
+  ], "the public result reports the actual reward draw count without card identities");
+  const rewardNarration = derivePublicInteractionNarration({
+    snapshot: defeated.presentationSnapshot,
+    players: defeated.players,
+    rootEventId: rewardFact.rootEventId,
+    interactionId: rewardFact.identity.interactionId,
+    rootFrameId: rewardFact.identity.rootFrameId,
+    eventId: rewardFact.eventId,
+  });
+  assert.match(rewardNarration?.headline ?? "", /Host.*drew 3 cards/);
+  assert.equal(JSON.stringify(rewardFact).includes("rebel-reward-"), false, "the public result never reveals drawn card identities");
+  const observer = (await state(game.code, bob.token)).data;
+  const observerReward = derivePublicInteractionNarration({
+    snapshot: observer.presentationSnapshot,
+    players: observer.players,
+    rootEventId: rewardFact.rootEventId,
+    interactionId: rewardFact.identity.interactionId,
+    rootFrameId: rewardFact.identity.rootFrameId,
+    eventId: rewardFact.eventId,
+  });
+  assert.equal(observerReward?.headline, rewardNarration?.headline, "the public reward H4 is identical for a second viewer");
 });
 
 test("saved sequential Dying: the current Dying actor may give multiple Peaches consecutively", { timeout: 30_000 }, async () => {

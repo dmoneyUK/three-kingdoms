@@ -1384,7 +1384,7 @@ test("T3: Ambushment hand discard keeps the turn status clear of Seats", async (
     await Promise.all([installTrace(page), installTrace(observerPage)]);
     const submitted = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
       && response.request().method() === "POST" && response.request().postDataJSON()?.action === "choose_target_card");
-    await picker.getByRole("button", { name: "Use Burning Bridge", exact: true }).click();
+    await picker.getByRole("button", { name: "Confirm Burning Bridge selection", exact: true }).click();
     expect((await submitted).ok()).toBeTruthy();
     const traces = await Promise.all([page, observerPage].map(async (viewerPage) => {
       await viewerPage.waitForFunction(() => {

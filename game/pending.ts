@@ -216,6 +216,8 @@ export type CardDistributionPending = CausalFields & {
   cards: Card[];
   eligibleRecipientIds: string[];
   resumeDamageSuffered: DamageSufferedTriggerContinuation;
+  /** Safe public skill/source label needed to narrate the committed distribution result. */
+  publicOutcomeLabel?: string;
   reason: string;
   deadline?: number;
   resolutionId?: string;
@@ -336,7 +338,7 @@ export type StratagemUsedTriggerContinuation = {
   resume: "negation" | "direct";
   resumePhase: string;
 };
-export type RecoveryRecord = { playerId: string; amountRecovered: number; sourceId?: string; reason?: string };
+export type RecoveryRecord = { playerId: string; amountRecovered: number; sourceId?: string; reason?: string; /** Public recovery result already committed to the shared timeline. */ publicOutcomeEventId?: string } & CausalFields;
 export type RecoveryResume =
   | { kind: "phase"; phase: string; playerId?: string; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "turn_start"; continuation: TurnStartTriggerContinuation }
@@ -365,8 +367,15 @@ export type TriggerPending = CausalFields & {
   resolvedEffectIds?: string[];
   continuation: TriggerContinuation;
 };
-export type DyingResumeEffect = { kind: "draw_cards"; playerId: string; amount: number; label: string };
-export type DyingPending = CausalFields & { kind: "dying"; sharedRescue?: { round: number; responseEventId?: string }; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; resumeTrigger?: DamageSufferedTriggerContinuation; resumeEffect?: DyingResumeEffect; origin?: AttackOrigin; reason: string };
+export type DyingResumeEffect = {
+  kind: "draw_cards";
+  playerId: string;
+  amount: number;
+  label: string;
+  /** Server-owned proof for a later public outcome; absent in older saved continuations. */
+  publicOutcome?: { eventId: string; rootEventId: string; skillLabel: string; hpCostLost: number };
+};
+export type DyingPending = CausalFields & { kind: "dying"; sharedRescue?: { round: number; responseEventId?: string }; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; resumeTrigger?: DamageSufferedTriggerContinuation; resumeEffect?: DyingResumeEffect; rootEventId?: string; origin?: AttackOrigin; reason: string };
 export type SharedResponseWindowPending = CausalFields & {
   kind: "shared_response_window";
   version: 1;

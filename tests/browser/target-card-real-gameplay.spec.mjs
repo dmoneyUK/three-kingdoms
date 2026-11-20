@@ -515,7 +515,7 @@ async function openRealTargetCardDecision({ page, request, kind, viewport, handC
 
   const title = kind === "Dismantle" ? "Burning Bridge" : "Steal";
   const instruction = "Choose one card";
-  const dialog = await expectTargetPool(page, title, instruction, `Use ${title}`);
+  const dialog = await expectTargetPool(page, title, instruction, `Confirm ${title} selection`);
   return { seed, actorView, dialog, hidden, weapon, armor, delayed, title };
 }
 
@@ -606,7 +606,7 @@ test("mandatory target-card picker keeps actor inspection and TEST SWITCH toucha
       localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name: playerName }));
     }, { roomCode: code, sessionToken: token, playerName: name });
     await page.goto(`${API}/`);
-    const dialog = await expectTargetPool(page, "Steal", "Choose one card", "Use Steal");
+    const dialog = await expectTargetPool(page, "Steal", "Choose one card", "Confirm Steal selection");
     const hidden = dialog.getByRole("button", { name: "Choose hidden Hand position 1" });
     await expect(hidden).toBeEnabled({ timeout: 15_000 });
     await tapMobile(page, hidden);
@@ -637,7 +637,7 @@ test("mandatory target-card picker keeps actor inspection and TEST SWITCH toucha
     await expect(page.locator(`.local-player-dock[data-player-anchor="${source.id}"]`)).toBeVisible();
     await expect(dialog).toBeVisible();
     await expect(hidden).toHaveAttribute("aria-pressed", "false");
-    await expect(dialog.getByRole("button", { name: "Use Steal", exact: true })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Confirm Steal selection", exact: true })).toBeDisabled();
     const actorAfterReturn = await controlledRoomView(request, code, token, source.id);
     expect(actorAfterReturn.actionRevision).toBe(actorAction.actionRevision);
     await page.screenshot({ path: testInfo.outputPath("steal-picker-actor-return-390x700.png"), animations: "disabled" });
@@ -690,7 +690,7 @@ for (const kind of ["Steal", "Dismantle"]) {
 
     const action = kind === "Steal" ? "Steal" : "Burning Bridge";
     const instruction = "Choose one card";
-    const dialog = await expectTargetPool(page, action, instruction, `Use ${action}`);
+    const dialog = await expectTargetPool(page, action, instruction, `Confirm ${action} selection`);
     if (kind === "Dismantle" && await page.evaluate(() => innerWidth) <= 520) {
       await expect(page.locator('[data-public-card-display="true"] [data-public-card-announcement="true"]')).toHaveCount(0);
     }
@@ -737,7 +737,7 @@ for (const kind of ["Steal", "Dismantle"]) {
       try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
       catch { return false; }
     });
-    await dialog.getByRole("button", { name: `Use ${action}` }).click();
+    await dialog.getByRole("button", { name: `Confirm ${action} selection` }).click();
     const submitted = await submitPromise;
     if (!submitted.ok()) throw new Error(`${kind} choice failed: ${await submitted.text()}`);
     const requestBody = JSON.parse(submitted.request().postData() ?? "{}");
@@ -775,7 +775,7 @@ test("T3-F1 R5-C keeps one compact actor zone and preserves choice through park 
     ]);
     const actorStage = actorPage.locator(".card-pool-target-stage[data-target-card-choice-actor]");
     await expect(actorStage).toHaveAttribute("data-target-card-pool-revision", String(actorView.actionRevision));
-    const actorPool = await expectTargetPool(actorPage, "Steal", "Choose one card", "Use Steal");
+    const actorPool = await expectTargetPool(actorPage, "Steal", "Choose one card", "Confirm Steal selection");
     const tabs = actorPool.getByRole("tablist", { name: "Target card zones" }).getByRole("tab");
     await expect(tabs).toHaveCount(3);
     await expect(tabs.nth(0)).toHaveAccessibleName("Hand (8)");
@@ -801,7 +801,7 @@ test("T3-F1 R5-C keeps one compact actor zone and preserves choice through park 
     expect(shieldDetailsBounds).toMatchObject({ width: 32, height: 32 });
     await tapMobile(actorPage, shieldChoice);
     await expect(shieldChoice).toHaveAttribute("aria-pressed", "true");
-    await expect(actorPool.getByRole("button", { name: "Use Steal", exact: true })).toBeEnabled();
+    await expect(actorPool.getByRole("button", { name: "Confirm Steal selection", exact: true })).toBeEnabled();
     await tapMobile(actorPage, shieldDetails);
     const cardDetails = actorPage.locator('.card-details-panel[data-card-details-context="public-zone"]');
     await expect(cardDetails).toBeVisible();
@@ -812,7 +812,7 @@ test("T3-F1 R5-C keeps one compact actor zone and preserves choice through park 
     await expect(actorPool.locator(".card-pool-panel__target-public-zones")).toHaveAttribute("data-active-zone", "judgement");
     await expect(actorPool.locator(".card-pool-panel__target-public-zone")).toHaveCount(1);
     await expect(actorPool.getByRole("status")).toContainText("Selection retained · EQUIPMENT 1");
-    await expect(actorPool.getByRole("button", { name: "Use Steal", exact: true })).toBeEnabled();
+    await expect(actorPool.getByRole("button", { name: "Confirm Steal selection", exact: true })).toBeEnabled();
 
     await openGame(spectatorPage, seed, 2, { width: 390, height: 844 });
     const spectatorView = await roomView(request, seed, 2);
@@ -861,14 +861,14 @@ test("T3-F1 R5-C keeps one compact actor zone and preserves choice through park 
     await expect(inspector).toHaveCount(0);
     const afterInspector = await poolGeometry();
     afterInspector.forEach((value, index) => expect(Math.abs(value - beforePark[index])).toBeLessThanOrEqual(2));
-    await expect(actorPool.getByRole("button", { name: "Use Steal", exact: true })).toBeEnabled();
+    await expect(actorPool.getByRole("button", { name: "Confirm Steal selection", exact: true })).toBeEnabled();
     await expect(actorPool.getByRole("status")).toContainText("Selection retained · EQUIPMENT 1");
 
     await tapMobile(actorPage, tabs.nth(1));
     await expect(shieldChoice).toHaveAttribute("aria-pressed", "true");
     await tapMobile(actorPage, shieldChoice);
     await expect(shieldChoice).toHaveAttribute("aria-pressed", "false");
-    const useSteal = actorPool.getByRole("button", { name: "Use Steal", exact: true });
+    const useSteal = actorPool.getByRole("button", { name: "Confirm Steal selection", exact: true });
     await expect(useSteal).toBeDisabled();
     await tapMobile(actorPage, tabs.nth(0));
     const handRow = actorPool.locator(".card-pool-panel__target-public-zones");
@@ -1046,7 +1046,7 @@ for (const kind of ["Steal", "Dismantle"]) {
       }
 
       const instruction = "Choose one card";
-      const dialog = await expectTargetPool(actorPage, modalTitle, instruction, `Use ${modalTitle}`);
+      const dialog = await expectTargetPool(actorPage, modalTitle, instruction, `Confirm ${modalTitle} selection`);
       const hiddenCard = dialog.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
       await hiddenCard.click();
       await expect(hiddenCard).toHaveAttribute("aria-pressed", "true");
@@ -1055,7 +1055,7 @@ for (const kind of ["Steal", "Dismantle"]) {
         try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
         catch { return false; }
       });
-      await dialog.getByRole("button", { name: `Use ${modalTitle}` }).click();
+      await dialog.getByRole("button", { name: `Confirm ${modalTitle} selection` }).click();
       const submitted = await submitPromise;
       expect(submitted.ok()).toBe(true);
       expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
@@ -1112,9 +1112,9 @@ test("settled Steal and Burning Bridges share proven source-to-destination outco
 
       const kindTitle = kind === "Steal" ? "Steal" : "Burning Bridge";
       const instruction = "Choose one card";
-      const dialog = await expectTargetPool(pages[0], kindTitle, instruction, `Use ${kindTitle}`);
-      if (zone === "equipment") await dialog.getByRole("tab", { name: "Equipment (1)" }).click();
-      if (zone === "judgement") await dialog.getByRole("tab", { name: "Judgement (1)" }).click();
+      const dialog = await expectTargetPool(pages[0], kindTitle, instruction, `Confirm ${kindTitle} selection`);
+      if (zone === "equipment") await dialog.getByRole("tab", { name: "EQUIPMENT 1" }).click();
+      if (zone === "judgement") await dialog.getByRole("tab", { name: "JUDGEMENT 1" }).click();
       const option = zone === "hand"
         ? dialog.getByRole("button", { name: "Choose hidden Hand position 1", exact: true })
         : zone === "equipment"
@@ -1131,7 +1131,7 @@ test("settled Steal and Burning Bridges share proven source-to-destination outco
         try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
         catch { return false; }
       });
-      await dialog.getByRole("button", { name: `Use ${kindTitle}` }).click();
+      await dialog.getByRole("button", { name: `Confirm ${kindTitle} selection` }).click();
       const submitted = await submitPromise;
       expect(submitted.ok(), `${effect}/${zone} commits successfully`).toBe(true);
       const submission = JSON.parse(submitted.request().postData() ?? "{}");
@@ -1572,7 +1572,7 @@ test("ST-DM-NEG-UX-01 keeps Steal PAC, H4, and root stable across four mobile vi
     expect(choiceProjection.currentAction).toMatchObject({ kind: "target_card", actorId: authorId });
     expect(choiceProjection.pendingTargetCard).toMatchObject({ kind: "target_card", actorId: authorId, sourceId: authorId });
     await Promise.all(pages.map((page) => page.evaluate(() => { window.__t3ChoiceProjectionConfirmedAt = performance.now(); })));
-    const waitingPool = await expectTargetPool(pages[0], "Steal", "Choose one card", "Use Steal");
+    const waitingPool = await expectTargetPool(pages[0], "Steal", "Choose one card", "Confirm Steal selection");
     const spectatorActivity = pages[1].locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]');
     await expect(pages[1].locator(".card-pool-target-stage--spectator, .card-pool-panel--target-readonly")).toHaveCount(0);
     await expect(spectatorActivity).toBeVisible();
@@ -1643,7 +1643,7 @@ test("ST-DM-NEG-UX-01 keeps Steal PAC, H4, and root stable across four mobile vi
       try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
       catch { return false; }
     });
-    await tapMobile(pages[0], waitingPool.getByRole("button", { name: "Use Steal", exact: true }));
+    await tapMobile(pages[0], waitingPool.getByRole("button", { name: "Confirm Steal selection", exact: true }));
     expect((await submit).ok()).toBe(true);
     const settledProjection = await roomView(request, seed, sourceSeat);
     const settlement = settledProjection.presentationSnapshot.stealSettlements.find((proof) => proof.rootEventId === rootEvent.id);
@@ -1952,7 +1952,7 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
 
       const modalTitle = scenario.kind === "Steal" ? "Steal" : "Burning Bridge";
       const instruction = "Choose one card";
-      const dialog = await expectTargetPool(pages[0], modalTitle, instruction, `Use ${modalTitle}`);
+      const dialog = await expectTargetPool(pages[0], modalTitle, instruction, `Confirm ${modalTitle} selection`);
       const populatedZoneCount = [hiddenHand.length > 0, Boolean(equipment), judgement.length > 0].filter(Boolean).length;
       if (populatedZoneCount > 1) {
         if (scenario.zone === "equipment") await dialog.getByRole("tab", { name: "EQUIPMENT 1" }).click();
@@ -1975,7 +1975,7 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
       expect(["reveal", "move", "parked"]).toContain(rootPhase);
       await tapMobile(pages[0], choice);
       await expect(choice).toHaveAttribute("aria-pressed", "true");
-      const use = dialog.getByRole("button", { name: `Use ${modalTitle}`, exact: true });
+      const use = dialog.getByRole("button", { name: `Confirm ${modalTitle} selection`, exact: true });
       await expect(use).toBeEnabled();
       const submitPromise = pages[0].waitForResponse((response) => {
         if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
@@ -2091,12 +2091,12 @@ test("T3 settlement stays shared across mobile sizes, 4/5/6/8 seats, reloads, an
           await expect(viewerPage.locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-root-event-id", nextRootEvent.id);
           await expect(viewerPage.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`)).toHaveCount(0);
         }
-        const nextDialog = await expectTargetPool(pages[0], "Burning Bridge", "Choose one card", "Use Burning Bridge");
+        const nextDialog = await expectTargetPool(pages[0], "Burning Bridge", "Choose one card", "Confirm Burning Bridge selection");
         await nextDialog.getByRole("tab", { name: "EQUIPMENT 1" }).click();
         const armorChoice = nextDialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true });
         await expect(armorChoice).toBeEnabled();
         await tapMobile(pages[0], armorChoice);
-        const nextUse = nextDialog.getByRole("button", { name: "Use Burning Bridge", exact: true });
+        const nextUse = nextDialog.getByRole("button", { name: "Confirm Burning Bridge selection", exact: true });
         const nextSubmissionPromise = pages[0].waitForResponse((response) => {
           if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
           try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
@@ -2359,11 +2359,11 @@ test("T3 counter-Negation keeps Steal private until the restored root opens its 
       else await expect(viewerPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
       if (index !== 0) expect(JSON.stringify(states[index].presentationSnapshot)).not.toContain(hidden.id);
     }
-    const dialog = await expectTargetPool(pages[0], "Steal", "Choose one card", "Use Steal");
+    const dialog = await expectTargetPool(pages[0], "Steal", "Choose one card", "Confirm Steal selection");
     const hiddenChoice = dialog.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
     await expect(hiddenChoice, "the legal target-card choice stays touchable after counter-Negation restores Steal").toBeEnabled();
     await tapMobile(pages[0], hiddenChoice);
-    const use = dialog.getByRole("button", { name: "Use Steal", exact: true });
+    const use = dialog.getByRole("button", { name: "Confirm Steal selection", exact: true });
     await expect(hiddenChoice).toHaveAttribute("aria-pressed", "true");
     await expect(use, "the actor can submit the selected legal target-card choice").toBeEnabled();
     const submissionPromise = pages[0].waitForResponse((response) => {
@@ -2450,7 +2450,13 @@ for (const kind of ["Steal", "Dismantle"]) {
 test("real Sima Yi Retaliation is compact, deselectable, private, and actor-only at 390x700", async ({ browser, request }, testInfo) => {
   test.setTimeout(90_000);
   const attack = card("Attack", "real-retaliation-attack");
-  const hidden = [card("Peach", "real-retaliation-hidden-a"), card("Dodge", "real-retaliation-hidden-b")];
+  const hidden = [
+    card("Peach", "real-retaliation-hidden-a"),
+    card("Dodge", "real-retaliation-hidden-b"),
+    card("Attack", "real-retaliation-hidden-c"),
+    card("Steal", "real-retaliation-hidden-d"),
+    card("Dismantle", "real-retaliation-hidden-e"),
+  ];
   const seed = await seedGame(request, fourPlayers(
     { hand: [attack, ...hidden] },
     { hero: "simayi", hand: [card("Peach", "real-retaliation-target-peach")] },
@@ -2467,9 +2473,8 @@ test("real Sima Yi Retaliation is compact, deselectable, private, and actor-only
     const option = reaction.currentAction.triggerOptions.find((entry) => entry.effectId === "sima_yi_fankui");
     expect(reaction.currentAction.kind).toBe("trigger");
     expect(reaction.currentAction.legalActions).toEqual(expect.arrayContaining(["trigger", "decline_trigger"]));
-    expect(option?.selection).toMatchObject({ type: "target_cards", targetId: seed.players[0].id, min: 1, max: 1, eligibleKeys: ["hand:0", "hand:1"] });
-    expect(JSON.stringify(reaction.currentAction)).not.toContain(hidden[0].id);
-    expect(JSON.stringify(reaction.currentAction)).not.toContain(hidden[1].id);
+    expect(option?.selection).toMatchObject({ type: "target_cards", targetId: seed.players[0].id, min: 1, max: 1, eligibleKeys: ["hand:0", "hand:1", "hand:2", "hand:3", "hand:4"] });
+    for (const hiddenCard of hidden) expect(JSON.stringify(reaction.currentAction)).not.toContain(hiddenCard.id);
 
     const observerPage = await observerContext.newPage();
     await openGame(observerPage, seed, 2, { width: 440, height: 766 });
@@ -2487,14 +2492,36 @@ test("real Sima Yi Retaliation is compact, deselectable, private, and actor-only
     await expect(duplicate).toHaveCount(0);
     await tapMobile(actorPage, skill);
     await expect(skill).toHaveAttribute("aria-pressed", "true");
-    const dialog = await expectModal(actorPage, "Retaliation", "Choose 1 card to obtain", "Use Retaliation");
+    const dialog = await expectModal(actorPage, "Retaliation", "Choose 1 card to obtain", "Confirm Retaliation selection");
     await expect(dialog).toHaveClass(/target-card-picker-panel--compact/);
     await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
     const skip = dialog.getByRole("button", { name: "Skip", exact: true });
-    const use = dialog.getByRole("button", { name: "Use Retaliation", exact: true });
+    const confirm = dialog.getByRole("button", { name: "Confirm Retaliation selection", exact: true });
     await expect(skip).toBeEnabled();
-    await expect(use).toBeDisabled();
-    const actionRects = await Promise.all([skip, use].map((button) => button.evaluate((element) => {
+    await expect(confirm).toBeDisabled();
+    const handRail = dialog.locator(".target-card-picker-zone-hand .target-card-picker-card-row");
+    await expect(handRail).toHaveAttribute("data-hand-scrollable", "true");
+    const lastHiddenCard = dialog.getByRole("button", { name: "Hidden hand card 5", exact: true });
+    const handOverflow = await handRail.evaluate((element) => element.scrollWidth > element.clientWidth + 1);
+    const scrollCue = dialog.locator(".target-card-picker-zone-scroll-hint");
+    await expect(dialog.getByRole("button", { name: /^Hidden hand card [1-5]$/ })).toHaveCount(5);
+    if (handOverflow) {
+      await expect(scrollCue).toBeVisible();
+      await handRail.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
+    } else {
+      await expect(scrollCue).toHaveCount(0);
+    }
+    await expect(lastHiddenCard).toBeInViewport();
+    const lastCardReachability = await handRail.evaluate((row) => {
+      const card = row.querySelector('[aria-label="Hidden hand card 5"]');
+      if (!card) return null;
+      const rowBox = row.getBoundingClientRect();
+      const cardBox = card.getBoundingClientRect();
+      return { left: cardBox.left >= rowBox.left - 1, right: cardBox.right <= rowBox.right + 1 };
+    });
+    expect(lastCardReachability).toEqual({ left: true, right: true });
+    await expect(lastHiddenCard).not.toContainText(/Peach|Dodge|real-retaliation/);
+    const actionRects = await Promise.all([skip, confirm].map((button) => button.evaluate((element) => {
       const { x, y, right, bottom } = element.getBoundingClientRect();
       return { x, y, right, bottom };
     })));
@@ -2506,10 +2533,10 @@ test("real Sima Yi Retaliation is compact, deselectable, private, and actor-only
     await expect(hiddenPosition).not.toContainText(/Peach|Dodge|real-retaliation/);
     await tapMobile(actorPage, hiddenPosition);
     await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
-    await expect(use).toBeEnabled();
+    await expect(confirm).toBeEnabled();
     await tapMobile(actorPage, hiddenPosition);
     await expect(hiddenPosition).toHaveAttribute("aria-pressed", "false");
-    await expect(use).toBeDisabled();
+    await expect(confirm).toBeDisabled();
     await tapMobile(actorPage, hiddenPosition);
     await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
     await actorPage.screenshot({ path: testInfo.outputPath("bcp3-retaliation-390x700.png") });
@@ -2550,7 +2577,7 @@ test("real Sima Yi Retaliation is compact, deselectable, private, and actor-only
         return body.action === "trigger" && body.providerId === "sima_yi_fankui";
       } catch { return false; }
     });
-    await tapMobile(actorPage, use);
+    await tapMobile(actorPage, confirm);
     const submitted = await submitPromise;
     expect(submitted.ok()).toBe(true);
     expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
@@ -2591,11 +2618,11 @@ test("Retaliation Skip is a distinct authorized server action at 440x766", async
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveAccessibleName("Retaliation target card selection");
     await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
-    const use = dialog.getByRole("button", { name: "Use Retaliation", exact: true });
-    await expect(use).toBeDisabled();
+    const confirm = dialog.getByRole("button", { name: "Confirm Retaliation selection", exact: true });
+    await expect(confirm).toBeDisabled();
     const skip = dialog.getByRole("button", { name: "Skip", exact: true });
     await expect(skip).toBeEnabled();
-    const actionStyles = await Promise.all([skip, use].map((button) => button.evaluate((element) => {
+    const actionStyles = await Promise.all([skip, confirm].map((button) => button.evaluate((element) => {
       const style = getComputedStyle(element);
       const rect = element.getBoundingClientRect();
       return {
@@ -2619,23 +2646,26 @@ test("Retaliation Skip is a distinct authorized server action at 440x766", async
         borderWidth: style.borderWidth,
       };
     })));
-    const [skipStyle, useStyle] = actionStyles;
-    for (const property of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "textTransform", "display", "alignItems", "justifyContent", "height", "borderRadius", "borderWidth"]) {
-      expect(skipStyle[property], `${property} matches the Use action`).toBe(useStyle[property]);
+    const [skipStyle, confirmStyle] = actionStyles;
+    for (const property of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "textTransform", "display", "alignItems", "justifyContent", "height", "width", "borderRadius", "borderWidth"]) {
+      expect(skipStyle[property], `${property} matches the Confirm action`).toBe(confirmStyle[property]);
     }
-    expect(skipStyle.height).toBeGreaterThanOrEqual(44);
-    expect(skipStyle.width).toBeGreaterThanOrEqual(44);
+    expect(skipStyle.height).toBe(44);
+    expect(skipStyle.width).toBeGreaterThanOrEqual(88);
+    expect(skipStyle.width).toBeLessThanOrEqual(104);
+    expect(skipStyle.fontSize).toBe("10px");
     expect(skipStyle.backgroundColor).toBe("rgb(139, 48, 42)");
-    expect(useStyle.backgroundColor).not.toBe(skipStyle.backgroundColor);
+    expect(confirmStyle.backgroundColor).toBe("rgb(190, 155, 83)");
+    await expect(skip).toHaveText("Skip");
+    await expect(confirm).toHaveText("Confirm");
     const footerItems = await dialog.locator(".card-pool-panel__footer > *").evaluateAll((items) => items.map((element) => {
       const rect = element.getBoundingClientRect();
       return { x: rect.x, right: rect.right, top: rect.top, bottom: rect.bottom };
     }));
-    expect(footerItems).toHaveLength(3);
+    expect(footerItems).toHaveLength(2);
     expect(footerItems.every((rect) => rect.x >= 0 && rect.right <= 440 && rect.bottom <= 766)).toBe(true);
     expect(footerItems[0].right).toBeLessThanOrEqual(footerItems[1].x + 2);
-    expect(footerItems[1].right).toBeLessThanOrEqual(footerItems[2].x + 2);
-    const rects = await Promise.all([skip, use].map((button) => button.evaluate((element) => {
+    const rects = await Promise.all([skip, confirm].map((button) => button.evaluate((element) => {
       const { x, y, right, bottom } = element.getBoundingClientRect();
       return { x, y, right, bottom };
     })));
@@ -2747,7 +2777,7 @@ for (const kind of ["Dismantle", "Steal"]) {
       const page = await browser.newPage({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
       const { seed, dialog: pool, hidden, title } = await openRealTargetCardDecision({ page, request, kind, viewport });
       const tabs = pool.getByRole("tab");
-      const use = pool.getByRole("button", { name: `Use ${title}`, exact: true });
+      const use = pool.getByRole("button", { name: `Confirm ${title} selection`, exact: true });
       const hiddenPositions = pool.locator('.card-pool-panel__target-choice[data-choice-key-type="concealed-position"]');
       const [panelBox, useBox, rowGeometry, positions] = await Promise.all([
         pool.boundingBox(), use.boundingBox(), pool.locator(".card-pool-panel__target-row").evaluate((row) => ({
@@ -2830,7 +2860,7 @@ test("real Steal and Burning Bridge pools stay centred inside 5/6/8-seat phone l
       await page.setViewportSize(scenario.viewport);
       const { title } = await openRealTargetCardDecision({ ...scenario, page, request });
       const instruction = "Choose one card";
-      const pool = await expectTargetPool(page, title, instruction, `Use ${title}`);
+      const pool = await expectTargetPool(page, title, instruction, `Confirm ${title} selection`);
       const geometry = await pool.evaluate((element) => {
         const panel = element.getBoundingClientRect();
         const stage = element.parentElement;
@@ -2881,7 +2911,7 @@ test("real Burning Bridge one-card Hand-only choice submits the anonymous positi
   const page = await browser.newPage({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   const { dialog: pool, actorView } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 1, equipment: false, judgement: false });
   const handCard = pool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
-  const use = pool.getByRole("button", { name: "Use Burning Bridge", exact: true });
+  const use = pool.getByRole("button", { name: "Confirm Burning Bridge selection", exact: true });
   const targetStage = page.locator('.card-pool-target-stage[data-target-card-pool-layout="central"]');
   await expect(pool.getByRole("tab")).toHaveCount(0);
   expect(actorView.currentAction.targetCardSelection.eligibleKeys).toEqual(["hand:0"]);
@@ -2966,7 +2996,7 @@ test("real Burning Bridge equipment-only choice omits empty zones and submits th
   const page = await browser.newPage({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   const { seed, dialog: pool, armor } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 0, judgement: false });
   const equipmentCard = pool.getByRole("button", { name: "Equipment: Nio Shield", exact: true });
-  const use = pool.getByRole("button", { name: "Use Burning Bridge", exact: true });
+  const use = pool.getByRole("button", { name: "Confirm Burning Bridge selection", exact: true });
   await expect(pool.getByRole("tab")).toHaveCount(0);
   await expect(pool.locator(".card-pool-panel__target-row .card-pool-panel__target-choice")).toHaveCount(2);
   await expect(use).toBeDisabled();
@@ -3032,7 +3062,7 @@ test("real Burning Bridge Hand-only pool scrolls horizontally without page overf
     try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
     catch { return false; }
   });
-  await tapMobile(page, pool.getByRole("button", { name: "Use Burning Bridge", exact: true }));
+  await tapMobile(page, pool.getByRole("button", { name: "Confirm Burning Bridge selection", exact: true }));
   const submitted = await submittedPromise;
   expect(submitted.ok()).toBe(true);
   expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({ action: "choose_target_card", targetCardZone: "hand", targetCardIndex: 9 });
@@ -3048,7 +3078,7 @@ test("§10.22 real Steal Hand(4) uses the compact shared target pool and submits
     const handTab = pool.getByRole("tab", { name: "Hand (4)", exact: true });
     const handPositions = pool.locator('[data-target-card-public-zone="hand"] .card-pool-panel__target-public-position');
     const emptySelectionMessage = pool.locator(".card-pool-panel__selected-zone.is-empty");
-    const use = pool.getByRole("button", { name: "Use Steal", exact: true });
+    const use = pool.getByRole("button", { name: "Confirm Steal selection", exact: true });
 
     await expect(handTab).toHaveAttribute("aria-selected", "true");
     await expect(pool.locator(".card-pool-panel__target-public-zone-title"), "the tab is the single visible label for the active zone").toHaveCount(0);
@@ -3092,8 +3122,7 @@ test("§10.22 real Steal Hand(4) uses the compact shared target pool and submits
   }
 });
 
-test("§10.36.1 concealed-Hand Steal result is private to both participants through TEST SWITCH", async ({ browser, request }) => {
-  test.setTimeout(90_000);
+async function createPrivateStealScenario(request) {
   const name = `Steal result ${Date.now().toString(36)}`;
   const createdResponse = await request.post(`${API}/api/rooms`, { data: { action: "create", name } });
   const created = await createdResponse.json();
@@ -3172,30 +3201,43 @@ test("§10.36.1 concealed-Hand Steal result is private to both participants thro
   const stolenCard = (await controlledRoomView(request, code, token, target.id)).myHand[0];
   expect(stolenCard).toBeTruthy();
   const fixture = { code, players: room.players.map((player) => ({ ...player, token })) };
-  const seed = fixture;
+  return { name, code, token, source, target, otherViewers, stolenCard, seed: fixture };
+}
+
+async function confirmPrivateStealResult(page, request, scenario) {
+  const { code, seed, source, target, token, stolenCard } = scenario;
+  await openGame(page, seed, 0, { width: 390, height: 844 });
+  const choiceView = await controlledRoomView(request, code, token, source.id);
+  expect(choiceView.pendingTargetCard).toMatchObject({ cardKind: "Steal", actorId: source.id, targetId: target.id });
+  expect((await controlledRoomView(request, code, token, target.id)).myHand).toContainEqual(stolenCard);
+  const pool = page.locator(".card-pool-panel--actor-target-select");
+  await expect(pool).toBeVisible({ timeout: 15_000 });
+  await expect(pool.getByRole("button", { name: "Confirm Steal selection", exact: true })).toBeVisible();
+  const hiddenChoice = pool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
+  await tapMobile(page, hiddenChoice);
+  const submit = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+    catch { return false; }
+  });
+  await tapMobile(page, pool.getByRole("button", { name: "Confirm Steal selection", exact: true }));
+  expect((await submit).ok()).toBe(true);
+  const result = page.locator("[data-public-result-event-id]");
+  await expect(result).toHaveCount(1);
+  await expect(result).toHaveAttribute("data-public-result-face", "private", { timeout: 20_000 });
+  return result;
+}
+
+test("§10.36.1 concealed-Hand Steal result is private to each authorized participant and retires on observer switch", async ({ browser, request }) => {
+  test.setTimeout(90_000);
+  const scenario = await createPrivateStealScenario(request);
+  const { code, token, source, target, otherViewers, stolenCard } = scenario;
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   const page = await context.newPage();
   try {
-    await openGame(page, seed, 0, { width: 390, height: 844 });
-    const choiceView = await controlledRoomView(request, code, token, source.id);
-    expect(choiceView.pendingTargetCard).toMatchObject({ cardKind: "Steal", actorId: source.id, targetId: target.id });
-    expect((await controlledRoomView(request, code, token, target.id)).myHand).toContainEqual(stolenCard);
-    const pool = page.locator(".card-pool-panel--actor-target-select");
-    await expect(pool).toBeVisible({ timeout: 15_000 });
-    await expect(pool.getByRole("button", { name: "Use Steal", exact: true })).toBeVisible();
-    const hiddenChoice = pool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
-    await tapMobile(page, hiddenChoice);
-    const submit = page.waitForResponse((response) => {
-      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
-      try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
-      catch { return false; }
-    });
-    await tapMobile(page, pool.getByRole("button", { name: "Use Steal", exact: true }));
-    expect((await submit).ok()).toBe(true);
-
-    const result = page.locator(`[data-public-result-event-id]`);
-    await expect(result).toHaveCount(1);
-    await expect(result).toHaveAttribute("data-public-result-face", "private", { timeout: 20_000 });
+    const result = await confirmPrivateStealResult(page, request, scenario);
+    const settlementEventId = await result.getAttribute("data-public-result-event-id");
+    expect(settlementEventId).toBeTruthy();
     const actorProof = await controlledRoomView(request, code, token, source.id);
     expect(actorProof.privateStealParticipantResult).toMatchObject({ role: "TAKER", viewerId: source.id, physicalCardId: stolenCard.id, card: stolenCard });
     await expect(result).toHaveAttribute("data-public-result-card-id", stolenCard.id);
@@ -3231,9 +3273,9 @@ test("§10.36.1 concealed-Hand Steal result is private to both participants thro
     const observerView = await controlledRoomView(request, code, token, observer.id);
     expect(observerView.privateStealParticipantResult).toBeNull();
     expect(JSON.stringify(observerView)).not.toContain(stolenCard.id);
-    await expect(result).toHaveAttribute("data-public-result-face", "anonymous-back", { timeout: 5_000 });
-    await expect(result).not.toHaveAttribute("data-public-result-card-id");
-    await expect(page.locator(".public-result-card-layer")).toHaveAttribute("aria-label", `A concealed Hand card was obtained from ${target.name}`);
+    await expect(page.locator(`[data-public-result-event-id="${settlementEventId}"]`)).toHaveCount(0);
+    await expect(page.locator(".public-result-card-layer")).toHaveCount(0);
+    await expect(page.locator(`[data-public-result-card-id="${stolenCard.id}"]`)).toHaveCount(0);
 
     const fourthView = await controlledRoomView(request, code, token, otherViewers[1].id);
     expect(fourthView.privateStealParticipantResult).toBeNull();
@@ -3241,6 +3283,95 @@ test("§10.36.1 concealed-Hand Steal result is private to both participants thro
     await page.reload();
     await expect(page.locator(".game-shell")).toBeVisible();
     await expect(page.locator('[data-public-result-face="private"]')).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test("§10.65 authorized private Steal result stays face up until its result owner retires", async ({ browser, request }) => {
+  test.setTimeout(90_000);
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const page = await context.newPage();
+  try {
+    const viewport = { width: 390, height: 844 };
+    const { seed, dialog } = await openRealTargetCardDecision({
+      page, request, kind: "Steal", viewport, handCount: 5, equipment: false, judgement: false,
+    });
+    const hiddenChoice = dialog.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
+    await tapMobile(page, hiddenChoice);
+    const submit = page.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+      catch { return false; }
+    });
+    await tapMobile(page, dialog.getByRole("button", { name: "Confirm Steal selection", exact: true }));
+    expect((await submit).ok()).toBe(true);
+
+    const result = page.locator("[data-public-result-event-id]");
+    await expect(result).toHaveCount(1);
+    await expect(result).toHaveAttribute("data-public-result-face", "private", { timeout: 20_000 });
+    const oldSettlementEventId = await result.getAttribute("data-public-result-event-id");
+    const oldRootEventId = await result.getAttribute("data-public-result-root-event-id");
+    expect(oldSettlementEventId).toBeTruthy();
+    expect(oldRootEventId).toBeTruthy();
+    await result.evaluate((element) => {
+      const changes = [element.getAttribute("data-public-result-face")];
+      const faceObserver = new MutationObserver((records) => {
+        for (const record of records) {
+          if (record.attributeName === "data-public-result-face") changes.push(element.getAttribute("data-public-result-face"));
+        }
+      });
+      faceObserver.observe(element, { attributes: true, attributeFilter: ["data-public-result-face"] });
+      const removalObserver = new MutationObserver(() => {
+        if (element.isConnected) return;
+        faceObserver.disconnect();
+        removalObserver.disconnect();
+        window.__stealResultLifecycleAudit = { faceChanges: changes, retired: true };
+      });
+      removalObserver.observe(document.body, { childList: true, subtree: true });
+      window.__stealResultLifecycleAudit = { faceChanges: changes, retired: false };
+    });
+
+    // Commit a different player's real end-turn/discard before the private
+    // result's normal read period expires. The new public Discard must own H4
+    // and its zone transition; the old Steal owner must disappear, never turn
+    // into an anonymous back or remain centred behind the new owner.
+    const sourceTurn = await roomView(request, seed, 0);
+    if (sourceTurn.currentAction.legalActions.includes("draw")) await act(request, seed, 0, "draw");
+    await act(request, seed, 0, "end_turn");
+    const targetDraw = await roomView(request, seed, 1);
+    if (targetDraw.currentAction.legalActions.includes("draw")) await act(request, seed, 1, "draw");
+    await act(request, seed, 1, "end_turn");
+    const targetTurn = await roomView(request, seed, 1);
+    expect(targetTurn.currentAction.legalActions).toContain("discard_cards");
+    const target = targetTurn.players.find((player) => player.id === seed.players[1].id);
+    const requiredDiscardCount = Math.max(0, targetTurn.myHand.length - (target?.hp ?? 0));
+    expect(requiredDiscardCount, "the real turn has cards above the server-proven hand limit").toBeGreaterThan(0);
+    const discardedCardIds = targetTurn.myHand.slice(0, requiredDiscardCount).map((held) => held.id);
+    expect(discardedCardIds).toHaveLength(requiredDiscardCount);
+    await act(request, seed, 1, "discard_cards", { cardIds: discardedCardIds });
+    const afterDiscard = await roomView(request, seed, 1);
+    const discardEvent = [...afterDiscard.timeline].reverse().find((event) => {
+      if (event.action !== "discard" || event.presentation === false) return false;
+      const cards = event.type === "card" ? [event.card] : event.type === "cards" ? event.cards : [];
+      return cards.some((held) => discardedCardIds.includes(held.id));
+    });
+    expect(discardEvent).toBeTruthy();
+    const discardH4 = page.locator(`[data-public-card-announcement="true"][data-public-h4-event-id="${discardEvent.id}"]`);
+    await expect(discardH4).toHaveCount(1, { timeout: 15_000 });
+    await expect(discardH4).toBeVisible({ timeout: 15_000 });
+    await expect(discardH4).toContainText(/TARGET.*discarded 2 cards/i);
+    await expect(discardH4).toHaveAttribute("data-public-h4-owner", /^(PublicDiscardAnnouncementLayer|PublicInteractionAnnouncementLayer|PublicCardDisplay)$/);
+    const discardTransitions = page.locator(`[data-public-zone-transition-event-id="${discardEvent.id}"]`);
+    await expect(discardTransitions).toHaveCount(requiredDiscardCount, { timeout: 15_000 });
+    await expect(discardTransitions.first()).toBeVisible();
+    const transitionCardIds = await discardTransitions.evaluateAll((elements) => elements.map((element) => element.getAttribute("data-public-zone-transition-card-id")).sort());
+    expect(transitionCardIds).toEqual([...discardedCardIds].sort());
+    await expect(page.locator(`[data-public-result-event-id="${oldSettlementEventId}"]`)).toHaveCount(0);
+    await expect(page.locator(`[data-public-result-root-event-id="${oldRootEventId}"]`)).toHaveCount(0);
+    const lifecycle = await page.evaluate(() => window.__stealResultLifecycleAudit);
+    expect(lifecycle).toMatchObject({ retired: true });
+    expect(lifecycle.faceChanges).not.toContain("anonymous-back");
   } finally {
     await context.close();
   }

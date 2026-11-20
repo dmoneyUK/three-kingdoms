@@ -12,12 +12,14 @@ const files = readdirSync(new URL("./api/", import.meta.url))
   .sort()
   .map((file) => `tests/api/${file}`);
 
-// Keep two isolated groups explicit to lower concurrent Wrangler/D1 memory.
-// Same-membership process-tree samples measured ~1.65 GiB vs ~2.22 GiB with
-// four groups; API duration rose from ~50s to 54.92s.
+// Keep two isolated groups explicit and run them sequentially. Each shard owns
+// a local Wrangler/Miniflare/D1 process tree; concurrent shards have produced
+// intermittent `fetch failed` errors in otherwise unrelated API scenarios.
+// Serial execution bounds the local Worker count without skipping tests or
+// changing their assertions.
 const shardGroups = [
   ["tests/api/da-qiao.test.mjs", "tests/api/equipment.test.mjs", "tests/api/gongsun-zan.test.mjs", "tests/api/judgement.test.mjs", "tests/api/ma-chao.test.mjs", "tests/api/eight-trigrams-failed-response.test.mjs", "tests/api/lobby-heroes-wei.test.mjs", "tests/api/lightning-overindulgence-preset.test.mjs", "tests/api/bot-scheduler.test.mjs", "tests/api/concurrency.test.mjs", "tests/api/yue-jin-dauntless.test.mjs", "tests/api/huang-yueying.test.mjs", "tests/api/lady-gan.test.mjs", "tests/api/sun-shangxiang.test.mjs", "tests/api/hua-tuo.test.mjs", "tests/api/diao-chan.test.mjs", "tests/api/hua-xiong.test.mjs", "tests/api/pan-feng.test.mjs", "tests/api/huang-gai.test.mjs", "tests/api/public-activity.test.mjs"],
-  ["tests/api/shared-response-window.test.mjs", "tests/api/privacy-response.test.mjs", "tests/api/heroes-wu-shu.test.mjs", "tests/api/stratagems.test.mjs", "tests/api/group-root-public-card-proof.test.mjs", "tests/api/borrowed-sword.test.mjs", "tests/api/play-target-eligibility.test.mjs", "tests/api/presentation-semantics.test.mjs", "tests/api/presentation-v2-engine.test.mjs", "tests/api/presentation-causality.test.mjs", "tests/api/zhuge-liang.test.mjs"],
+  ["tests/api/shared-response-window.test.mjs", "tests/api/privacy-response.test.mjs", "tests/api/heroes-wu-shu.test.mjs", "tests/api/stratagems.test.mjs", "tests/api/group-root-public-card-proof.test.mjs", "tests/api/borrowed-sword.test.mjs", "tests/api/play-target-eligibility.test.mjs", "tests/api/presentation-semantics.test.mjs", "tests/api/presentation-v2-engine.test.mjs", "tests/api/presentation-causality.test.mjs", "tests/api/zhuge-liang.test.mjs", "tests/api/normal-draw-public-outcome.test.mjs", "tests/api/peach-public-outcome.test.mjs"],
 ];
 const assigned = shardGroups.flat();
 if (assigned.length !== files.length || new Set(assigned).size !== files.length || files.some((file) => !assigned.includes(file))) {
@@ -73,7 +75,8 @@ function runShard(shardFiles, index, attempt) {
   });
 }
 
-const results = await Promise.all(shardGroups.map(async (shardFiles, index) => {
+const results = [];
+for (const [index, shardFiles] of shardGroups.entries()) {
   let result = await runShard(shardFiles, index, 1);
   if (shouldRetryApiShard({
     code: result.code,
@@ -85,9 +88,8 @@ const results = await Promise.all(shardGroups.map(async (shardFiles, index) => {
     console.error(`[api-shard-${index + 1}] Retrying the full shard once after Wrangler's known ProxyWorker network disconnect; a new local D1 is created.`);
     result = await runShard(shardFiles, index, 2);
   }
-  return result;
-}));
-
+  results.push(result);
+}
 const durationMs = performance.now() - startedAt;
 const testCount = results.reduce((count, result) => count + Number(result.output.match(/^\s*(?:#|ℹ)\s+tests\s+(\d+)\s*$/m)?.[1] ?? 0), 0);
 console.log(`\nTiming: API tests=${testCount}, duration=${(durationMs / 1000).toFixed(2)}s, files=${files.length}, shards=${shardGroups.length}`);

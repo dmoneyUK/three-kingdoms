@@ -1,7 +1,8 @@
 import test from "node:test";
 import { viewerNegationAcknowledgement, triggerDecisionInstruction } from "../../game/console-decision.ts";
 import assert from "node:assert/strict";
-import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration } from "../../game/public-activity.ts";
+import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, formatCommittedPublicOutcome, isPublicInteractionOutcomeFact, PUBLIC_H4_FACT_CATEGORIES } from "../../game/public-activity.ts";
+import { PUBLIC_PRESENTATION_EVENT_CATEGORIES } from "../../game/presentation-semantics.ts";
 
 const players = [
   { id: "p1", name: "Test Player 1", seat: 0, alive: true },
@@ -269,12 +270,14 @@ test("Bumper Harvest H4 and PAC follow committed recipient Negation facts throug
   const initial = harvestSnapshot();
   const initialH4 = derivePublicNegationNarration({ snapshot: initial, players, rootEventId: "harvest-root-event" });
   assert.equal(initialH4?.headline, "Test Player 1 played Bumper Harvest.");
+  assert.deepEqual(playerIds(initialH4?.headlineSegments), ["p1"]);
   assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: initial })).stage,
     "Negation can prevent Test Player 2 from picking.");
 
   const cancelled = harvestSnapshot({ responseCount: 1, effectState: "BLOCKED", nextEffectKind: "restore_effect" });
-  assert.equal(derivePublicNegationNarration({ snapshot: cancelled, players, rootEventId: "harvest-root-event" })?.headline,
-    "Test Player 3's Negation blocks Test Player 2's pick.");
+  const cancelledH4 = derivePublicNegationNarration({ snapshot: cancelled, players, rootEventId: "harvest-root-event" });
+  assert.equal(cancelledH4?.headline, "Test Player 3's Negation blocks Test Player 2's pick.");
+  assert.deepEqual(playerIds(cancelledH4?.headlineSegments), ["p3", "p2"]);
   assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: cancelled })).stage,
     "Another Negation can restore Test Player 2's pick.");
 
@@ -282,6 +285,7 @@ test("Bumper Harvest H4 and PAC follow committed recipient Negation facts throug
   const restoredH4 = derivePublicNegationNarration({ snapshot: restored, players, rootEventId: "harvest-root-event" });
   assert.equal(restoredH4?.headline,
     "Test Player 4 counters Test Player 3's Negation. Test Player 2's pick is restored.");
+  assert.deepEqual(playerIds(restoredH4?.headlineSegments), ["p4", "p3", "p2"]);
   assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: restored })).stage,
     "Another Negation can prevent Test Player 2 from picking.");
 
@@ -326,6 +330,7 @@ test("a committed public Harvest pick owns the newest H4 through the next Negati
   const snapshotWithPick = { ...base, publicEventFacts: [...base.publicEventFacts, chosenCard], bumperHarvestPicks: [pick] };
   const narration = derivePublicNegationNarration({ snapshot: snapshotWithPick, players, rootEventId: "harvest-root-event" });
   assert.equal(narration?.headline, "Test Player 2 took 6♠ Overindulgence from Bumper Harvest.");
+  assert.deepEqual(playerIds(narration?.headlineSegments), ["p2"]);
   assert.equal(narration?.eventId, chosenCard.eventId);
   assert.equal(narration?.phase, "WINDOW_OPEN");
   assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: snapshotWithPick })).stage,
@@ -411,10 +416,27 @@ test("H4 follows only the committed current-root Negation fact chain", () => {
 
   const firstCopy = derivePublicNegationNarration({ snapshot: withFacts([root, first]), players, rootEventId: "root-event" });
   assert.equal(firstCopy?.headline, "Test Player 3's Negation cancels Test Player 1's Duel effect on Test Player 2.");
+  assert.deepEqual(playerIds(firstCopy?.headlineSegments), ["p3", "p1", "p2"]);
   const secondCopy = derivePublicNegationNarration({ snapshot: withFacts([root, first, second]), players, rootEventId: "root-event" });
   assert.equal(secondCopy?.headline, "Test Player 4 counters Test Player 3's Negation. The Duel effect on Test Player 2 is restored.");
+  assert.deepEqual(playerIds(secondCopy?.headlineSegments), ["p4", "p3", "p2"]);
   const thirdCopy = derivePublicNegationNarration({ snapshot: withFacts([root, first, second, third]), players, rootEventId: "root-event" });
   assert.equal(thirdCopy?.headline, "Test Player 1 counters Test Player 4's Negation. The Duel effect on Test Player 2 is cancelled.");
+  assert.deepEqual(playerIds(thirdCopy?.headlineSegments), ["p1", "p4", "p2"]);
+  assert.equal(secondCopy?.headlineSegments?.map(({ text }) => text).join(""), secondCopy?.headline);
+
+  const duplicateVisibleNames = players.map((player) => ["p1", "p2", "p3"].includes(player.id)
+    ? { ...player, name: "Same Name" } : player);
+  const duplicateCopy = derivePublicNegationNarration({
+    snapshot: withFacts([root, first]), players: duplicateVisibleNames, rootEventId: "root-event",
+  });
+  assert.equal(duplicateCopy?.headline, "Same Name's Negation cancels Duel effect on Same Name.");
+  assert.deepEqual(playerIds(duplicateCopy?.headlineSegments), ["p3", "p2"]);
+  const missingTargetCopy = derivePublicNegationNarration({
+    snapshot: withFacts([root, first]), players: players.filter((player) => player.id !== "p2"), rootEventId: "root-event",
+  });
+  assert.equal(missingTargetCopy?.headline, "Test Player 3's Negation cancels Test Player 1's Duel effect.");
+  assert.deepEqual(playerIds(missingTargetCopy?.headlineSegments), ["p3", "p1"]);
 
   const wrongRoot = { ...third, rootEventId: "another-root" };
   assert.equal(derivePublicNegationNarration({ snapshot: withFacts([root, wrongRoot]), players, rootEventId: "root-event" })?.headline,
@@ -617,17 +639,40 @@ test("generic H4 retains damage through Skip and formats committed public or hid
   const damage = fact("damage", 2, "DAMAGE_APPLIED", { actorId: "p1", affectedPlayerIds: ["p2"], amount: 1 });
   const input = (facts) => ({ snapshot: snapshot({ stage: "DAMAGE", actorId: "p2", publicEventFacts: facts }),
     players, rootEventId: "root-event", interactionId: "interaction-1", rootFrameId: "root-1" });
-  assert.equal(derivePublicInteractionNarration(input([root, damage]))?.headline, "Test Player 1 dealt 1 damage to Test Player 2.");
+  const damageNarration = derivePublicInteractionNarration(input([root, damage]));
+  assert.equal(damageNarration?.headline, "Test Player 1 dealt 1 damage to Test Player 2.");
+  assert.deepEqual(playerIds(damageNarration?.headlineSegments), ["p1", "p2"]);
+  const actorOnlyDamage = fact("actor-only-damage", 2, "DAMAGE_APPLIED", { actorId: "p1", amount: 1 });
+  const actorOnlyNarration = derivePublicInteractionNarration(input([root, actorOnlyDamage]));
+  assert.equal(actorOnlyNarration?.headline, "Test Player 1 dealt 1 damage.");
+  assert.deepEqual(playerIds(actorOnlyNarration?.headlineSegments), ["p1"]);
+  const burningBridges = fact("burning-bridges", 1, "CARD_PLAYED", {
+    actorId: "p3", affectedPlayerIds: ["p2"], label: "Burning Bridges",
+  });
+  const burningNarration = derivePublicInteractionNarration(input([burningBridges]));
+  assert.equal(burningNarration?.headline, "Test Player 3 played Burning Bridges targeting Test Player 2.");
+  assert.deepEqual(playerIds(burningNarration?.headlineSegments), ["p3", "p2"]);
+  const missingTarget = derivePublicInteractionNarration(input([{ ...burningBridges, affectedPlayerIds: ["unverified-target"] }]));
+  assert.equal(missingTarget?.headline, "Test Player 3 played Burning Bridges.");
+  assert.deepEqual(playerIds(missingTarget?.headlineSegments), ["p3"], "unknown IDs never receive a manufactured player-name span");
+  const duplicateNameNarration = derivePublicInteractionNarration({
+    ...input([burningBridges]),
+    players: players.map((player) => player.id === "p3" || player.id === "p2" ? { ...player, name: "Same Name" } : player),
+  });
+  assert.equal(duplicateNameNarration?.headline, "Same Name played Burning Bridges targeting Same Name.");
+  assert.deepEqual(playerIds(duplicateNameNarration?.headlineSegments), ["p3", "p2"], "identical visible names retain their distinct authoritative IDs");
   const fanjianActivation = fact("fanjian-activation", 2, "SKILL_USED", {
     actorId: "p1", affectedPlayerIds: ["p2"], label: "Sowing Distrust", effect: { kind: "targeted_skill" },
   });
-  assert.equal(derivePublicInteractionNarration(input([root, fanjianActivation]))?.headline,
-    "Test Player 1 used Sowing Distrust on Test Player 2.");
+  const fanjianNarration = derivePublicInteractionNarration(input([root, fanjianActivation]));
+  assert.equal(fanjianNarration?.headline, "Test Player 1 used Sowing Distrust on Test Player 2.");
+  assert.deepEqual(playerIds(fanjianNarration?.headlineSegments), ["p1", "p2"]);
   // A Skip adds no skill fact, including when a later decision uses the same causal root.
   assert.equal(derivePublicInteractionNarration(input([root, damage]))?.eventId, "damage");
   const hidden = fact("hidden", 3, "SKILL_USED", { actorId: "p2", affectedPlayerIds: ["p1"], label: "Retaliation", outcomeLabel: "obtained one card", effect: { kind: "gain_target_card" } });
   assert.equal(derivePublicInteractionNarration(input([root, damage, hidden]))?.headline,
     "Test Player 2 used Retaliation and obtained one card from Test Player 1.");
+  assert.deepEqual(playerIds(derivePublicInteractionNarration(input([root, damage, hidden]))?.headlineSegments), ["p2", "p1"]);
   const visible = { ...hidden, eventId: "visible", effect: { kind: "gain_target_card", label: "Nio Shield" } };
   assert.equal(derivePublicInteractionNarration(input([root, damage, visible]))?.headline,
     "Test Player 2 used Retaliation and obtained one card from Test Player 1.");
@@ -665,6 +710,61 @@ test("generic H4 retains damage through Skip and formats committed public or hid
   assert.equal(derivePublicInteractionNarration({ ...input([independent]), rootEventId: "standalone" })?.eventId, "standalone");
 });
 
+test("committed target-choice H4 styles only server-proven player identities", () => {
+  const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
+  const root = { semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "root-event", order: 1,
+    rootEventId: "root-event", category: "CARD_PLAYED", actorId: "p3", affectedPlayerIds: ["p2"], label: "Borrowed Sword" };
+  const chooser = { id: "p3", name: "Zoë 王", seat: 2, alive: true };
+  const target = { id: "p1", name: "O’Neil", seat: 0, alive: true };
+  const holder = { id: "p2", name: "D'Souza", seat: 1, alive: true };
+  const segments = [
+    { kind: "text", text: "chose " },
+    { kind: "player", playerId: target.id, text: target.name },
+    { kind: "text", text: " as " },
+    { kind: "player", playerId: holder.id, text: holder.name },
+    { kind: "text", text: "'s Attack target" },
+  ];
+  const choice = { semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "target-choice", order: 2,
+    rootEventId: "root-event", category: "EFFECT_APPLIED", actorId: chooser.id, affectedPlayerIds: [target.id],
+    outcomeLabel: `chose ${target.name} as ${holder.name}'s Attack target`, outcomeCopySegments: segments,
+    effect: { kind: "target_choice" } };
+  const narrate = (fact, roster = [chooser, target, holder]) => derivePublicInteractionNarration({
+    snapshot: snapshot({ stage: "FORCED_ACTION", actorId: holder.id, publicEventFacts: [root, fact] }),
+    players: roster, rootEventId: "root-event", interactionId: identity.interactionId, rootFrameId: identity.rootFrameId,
+  });
+
+  const result = narrate(choice);
+  assert.equal(result?.headline, "Zoë 王 chose O’Neil as D'Souza's Attack target.");
+  assert.deepEqual(playerIds(result?.headlineSegments), ["p3", "p1", "p2"]);
+  assert.equal(result?.headlineSegments.map((part) => part.text).join(""), result?.headline);
+  assert.equal(result?.accessibleLabel, result?.headline);
+
+  const duplicateNames = [chooser, target, holder].map((player) => ({ ...player, name: "Shared Name" }));
+  const duplicateChoice = { ...choice,
+    outcomeLabel: "chose Shared Name as Shared Name's Attack target",
+    outcomeCopySegments: segments.map((part) => part.kind === "player" ? { ...part, text: "Shared Name" } : part),
+  };
+  const duplicateResult = narrate(duplicateChoice, duplicateNames);
+  assert.equal(duplicateResult?.headline, "Shared Name chose Shared Name as Shared Name's Attack target.");
+  assert.deepEqual(playerIds(duplicateResult?.headlineSegments), ["p3", "p1", "p2"], "equal display names retain their distinct server identities");
+
+  const changedRoster = [chooser, { ...target, name: "Changed Target" }, holder];
+  const changedResult = narrate(choice, changedRoster);
+  assert.equal(changedResult?.headline, "Zoë 王 chose O’Neil as D'Souza's Attack target.");
+  assert.deepEqual(playerIds(changedResult?.headlineSegments), ["p3"], "a name mismatch falls back to plain committed outcome text");
+
+  for (const { fact, roster } of [
+    { fact: { ...choice, outcomeCopySegments: undefined }, roster: [chooser, target, holder] },
+    { fact: { ...choice, outcomeCopySegments: segments.map((part) => part.kind === "player" && part.playerId === target.id
+      ? { ...part, playerId: "p4" } : part) }, roster: [chooser, target, holder, { id: "p4", name: target.name, seat: 3, alive: true }] },
+  ]) {
+    const fallback = narrate(fact, roster);
+    assert.equal(fallback?.headline, "Zoë 王 chose O’Neil as D'Souza's Attack target.");
+    assert.deepEqual(playerIds(fallback?.headlineSegments), ["p3"], "missing or inconsistent identity proof never styles the referenced name");
+    assert.equal(fallback?.accessibleLabel, fallback?.headline);
+  }
+});
+
 test("H4 selects the exact active Judgement event, then its committed result", () => {
   const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
   const root = { semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "overindulgence-play", order: 1,
@@ -696,6 +796,7 @@ test("Equipment H4 uses the exact committed owner and card name for active and r
   const active = derivePublicInteractionNarration(input(snapshot({ stage: "SETTLEMENT", actorId: null,
     stableKind: "REST", publicEventFacts: [equip] })));
   assert.equal(active?.headline, "Test Player 1 equipped Frost Sword.");
+  assert.deepEqual(playerIds(active?.headlineSegments), ["p1"]);
   assert.equal(active?.eventId, equip.eventId);
   assert.equal(active?.readDurationMs, 4_000);
 
@@ -751,4 +852,98 @@ test("a closed Negation window cannot announce another counter opportunity", () 
   const current = harvestSnapshot({ responseWindowOpen: false });
   const result = derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: current }));
   assert.equal(result.kind, "none");
+});
+
+test("committed public outcome copy reports actual mixed HP and card deltas generically", () => {
+  const outcome = {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: "event-1", identity: {
+      interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1,
+    }, order: 3, rootEventId: "root-event", frameId: "root-1", category: "SKILL_USED",
+    actorId: "p1", affectedPlayerIds: ["p1", "p2"], source: { kind: "skill", label: "Self Sacrifice" }, changes: [
+      { kind: "HP_COST_LOST", playerId: "p1", amount: 1 },
+      { kind: "CARD_DRAWN", playerId: "p1", amount: 2, fromZone: "DECK", toZone: "HAND" },
+      { kind: "CARD_TRANSFERRED", fromPlayerId: "p1", toPlayerId: "p2", amount: 1, fromZone: "HAND", toZone: "HAND" },
+    ],
+  };
+  assert.equal(formatCommittedPublicOutcome(outcome, players),
+    "Test Player 1 — Self Sacrifice: Test Player 1 paid 1 HP as a cost; Test Player 1 drew 2 cards; Test Player 2 received 1 card from Test Player 1.");
+  assert.equal(formatCommittedPublicOutcome({ ...outcome, source: { kind: "skill", label: "Axe of Insanity" }, changes: [
+    { kind: "HP_LOST_TO_EFFECT", playerId: "p1", amount: 1 },
+  ] }, players),
+  "Test Player 1 — Axe of Insanity: Test Player 1 lost 1 HP to an effect.",
+  "non-damage HP loss stays distinct from HP costs and damage");
+  assert.equal(formatCommittedPublicOutcome({ ...outcome, source: { kind: "skill", label: "Equilibrium" }, changes: [
+    { kind: "CARD_DISCARDED", playerId: "p1", amount: 1, fromZone: "HAND", toZone: "DISCARD" },
+    { kind: "CARD_DISCARDED", playerId: "p1", amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+    { kind: "CARD_DRAWN", playerId: "p1", amount: 2, fromZone: "DECK", toZone: "HAND" },
+  ] }, players),
+  "Test Player 1 — Equilibrium: Test Player 1 discarded 2 cards; Test Player 1 drew 2 cards.",
+  "one public count can combine matching changes while the proof retains their distinct source zones");
+  assert.equal(formatCommittedPublicOutcome({ ...outcome, changes: [{ ...outcome.changes[1], playerId: "unknown-player" }] }, players), null,
+    "copy fails closed when a public participant name cannot be verified");
+});
+
+test("committed HP, draw, discard, recovery and transfer results own the shared H4 in active and retained views", () => {
+  const semanticIdentity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
+  const root = {
+    semantics: "PROVEN", visibility: "PUBLIC", identity: semanticIdentity,
+    eventId: "root-event", order: 1, rootEventId: "root-event", category: "CARD_PLAYED",
+    actorId: "p1", affectedPlayerIds: ["p2"], label: "Sowing Distrust", effect: { kind: "card_play", label: "Sowing Distrust" },
+  };
+  const outcome = {
+    semantics: "PROVEN", visibility: "PUBLIC", identity: semanticIdentity,
+    eventId: "result-event", order: 2, rootEventId: "root-event", frameId: "root-1", category: "CARD_DISCARDED",
+    actorId: "p2", affectedPlayerIds: ["p1", "p2"], label: "Sowing Distrust", effect: { kind: "skill_result" },
+    committedOutcome: {
+      semantics: "PROVEN", visibility: "PUBLIC", eventId: "result-event", identity: semanticIdentity, order: 2,
+      rootEventId: "root-event", frameId: "root-1", category: "CARD_DISCARDED", actorId: "p2", affectedPlayerIds: ["p1", "p2"],
+      source: { kind: "skill", label: "Sowing Distrust" },
+      changes: [
+        { kind: "CARD_DISCARDED", playerId: "p1", amount: 1, fromZone: "HAND", toZone: "DISCARD" },
+        { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
+        { kind: "CARD_DRAWN", playerId: "p2", amount: 2, fromZone: "DECK", toZone: "HAND" },
+        { kind: "HP_RECOVERED", playerId: "p2", amount: 1 },
+        { kind: "CARD_TRANSFERRED", fromPlayerId: "p1", toPlayerId: "p2", amount: 1, fromZone: "HAND", toZone: "HAND" },
+      ],
+    },
+  };
+  const expected = "Test Player 2 — Sowing Distrust: Test Player 1 discarded 1 card; Test Player 2 lost 1 HP to damage; Test Player 2 drew 2 cards; Test Player 2 recovered 1 HP; Test Player 2 received 1 card from Test Player 1.";
+  const input = { players, rootEventId: root.eventId, interactionId: semanticIdentity.interactionId, rootFrameId: semanticIdentity.rootFrameId };
+  const active = derivePublicInteractionNarration({ ...input,
+    snapshot: snapshot({ stage: "SETTLEMENT", actorId: null, publicEventFacts: [root, outcome] }),
+  });
+  assert.equal(active?.eventId, outcome.eventId);
+  assert.equal(active?.headline, expected);
+  assert.equal(active?.compactHeadline, expected);
+  assert.deepEqual(playerIds(active?.headlineSegments), ["p2", "p1", "p2", "p2", "p2", "p2", "p1"]);
+
+  const retained = derivePublicInteractionNarration({ ...input, snapshot: {
+    identity: null, interaction: null, stable: { kind: "REST" }, publicEventFacts: [],
+    retainedPublicEvent: outcome, retainedPublicEventFacts: [root, outcome],
+  } });
+  assert.equal(retained?.eventId, outcome.eventId);
+  assert.equal(retained?.headline, expected);
+  assert.doesNotMatch(retained?.headline ?? "", /private-card-id|suit|rank/i);
+});
+
+test("every validated public event category has a shared H4 candidate and truthful narration", () => {
+  assert.deepEqual([...PUBLIC_H4_FACT_CATEGORIES].sort(), [...PUBLIC_PRESENTATION_EVENT_CATEGORIES].sort());
+  const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
+  for (const [index, category] of PUBLIC_PRESENTATION_EVENT_CATEGORIES.entries()) {
+    const fact = {
+      semantics: "PROVEN", visibility: "PUBLIC", identity,
+      eventId: `category-${category}`, order: index + 1, frameId: identity.rootFrameId,
+      rootEventId: `category-${category}`, category, actorId: "p1", affectedPlayerIds: ["p2"],
+      label: "Public action", amount: 2,
+      ...(category === "STAGE_COMPLETED" ? { outcomeLabel: "completed the public stage" } : {}),
+      ...(category === "ACTION_DECLINED" ? { effect: { kind: "generic_decline" } } : {}),
+    };
+    assert.equal(isPublicInteractionOutcomeFact(fact), true, `${category} enters the shared H4 candidate predicate`);
+    const narration = derivePublicInteractionNarration({
+      snapshot: snapshot({ stage: "SETTLEMENT", actorId: null, publicEventFacts: [fact] }),
+      players, rootEventId: fact.rootEventId, interactionId: identity.interactionId, rootFrameId: identity.rootFrameId,
+    });
+    assert.equal(narration?.eventId, fact.eventId, `${category} receives one committed public narration`);
+    assert.ok(narration?.headline.trim(), `${category} has non-empty H4 copy`);
+  }
 });

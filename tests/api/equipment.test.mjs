@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { selectPublicH4AnnouncementOwner } from "../../app/public-presentation-routing.ts";
 import {
   advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestForViewer, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -490,6 +492,17 @@ test("committed Equipment H4 is shared by viewers and follows a real slot replac
   assert.equal(firstEvent.publicFact?.label, "Frost Sword");
   assert.equal(firstEvent.publicFact?.cardId, undefined, "the semantic fact does not copy or invent a physical card ID");
   assert.deepEqual(firstEvent.publicFact?.affectedPlayerIds, [hostPlayer.id]);
+  assert.deepEqual(firstEvent.publicFact?.committedOutcome?.changes, [
+    { kind: "CARD_EQUIPPED", playerId: hostPlayer.id, amount: 1, fromZone: "HAND", toZone: "EQUIPMENT" },
+  ], "the actual committed Hand-to-Equipment move enters the shared outcome contract");
+  assert.equal(derivePublicInteractionNarration({
+    snapshot: equipped.data.room.presentationSnapshot,
+    players: equipped.data.room.players,
+    rootEventId: firstEvent.publicFact.rootEventId,
+    interactionId: firstEvent.publicFact.interactionId,
+    rootFrameId: firstEvent.publicFact.committedIdentity.rootFrameId,
+    eventId: firstEvent.id,
+  })?.headline, `${hostPlayer.name} — Frost Sword: ${hostPlayer.name} equipped 1 item.`);
   const firstSlot = equipped.data.room.players.find((player) => player.id === hostPlayer.id).equipmentCards;
   assert.ok(firstSlot.some((item) => item.id === firstCard.id && item.kind === "FrostSword"), "the same original CardFace lands in the real Weapon slot");
   assert.equal(equipped.data.room.presentationSnapshot.retainedPublicEvent?.eventId, firstEvent.id);
@@ -521,6 +534,19 @@ test("committed Equipment H4 is shared by viewers and follows a real slot replac
   assert.ok(replacementDiscardEvent.publicSequence < replacementEvent.publicSequence, "the old slot card exits before its replacement arrives");
   assert.equal(replacementDiscardEvent.privateToPlayerId, undefined, "the outgoing equipment was already public");
   assert.equal(replacementEvent.publicFact?.category, "CARD_EQUIPPED");
+  assert.deepEqual(replacementEvent.publicFact?.committedOutcome?.changes, [
+    { kind: "CARD_DISCARDED", playerId: hostPlayer.id, amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+    { kind: "CARD_EQUIPPED", playerId: hostPlayer.id, amount: 1, fromZone: "HAND", toZone: "EQUIPMENT" },
+  ], "one composite outcome reports both committed zone changes in their true order");
+  assert.equal(derivePublicInteractionNarration({
+    snapshot: replaced.data.room.presentationSnapshot,
+    players: replaced.data.room.players,
+    rootEventId: replacementEvent.publicFact.rootEventId,
+    interactionId: replacementEvent.publicFact.interactionId,
+    rootFrameId: replacementEvent.publicFact.committedIdentity.rootFrameId,
+    eventId: replacementEvent.id,
+  })?.headline,
+  `${hostPlayer.name} — Blue Steel Sword: ${hostPlayer.name} discarded 1 card; ${hostPlayer.name} equipped 1 item.`);
   const replacementSnapshot = replaced.data.room.presentationSnapshot;
   const replacementFact = [
     ...replacementSnapshot.publicEventFacts,
@@ -544,6 +570,16 @@ test("committed Equipment H4 is shared by viewers and follows a real slot replac
     "the same exact public zone proof is visible to other viewers");
   assert.deepEqual(observerAfterReplace.presentationSnapshot.publicEventFacts, replacementSnapshot.publicEventFacts);
   assert.deepEqual(observerAfterReplace.presentationSnapshot.retainedPublicEventFacts, replacementSnapshot.retainedPublicEventFacts);
+  assert.equal(derivePublicInteractionNarration({
+    snapshot: observerAfterReplace.presentationSnapshot,
+    players: observerAfterReplace.players,
+    rootEventId: replacementEvent.publicFact.rootEventId,
+    interactionId: replacementEvent.publicFact.interactionId,
+    rootFrameId: replacementEvent.publicFact.committedIdentity.rootFrameId,
+    eventId: replacementEvent.id,
+  })?.headline,
+  `${hostPlayer.name} — Blue Steel Sword: ${hostPlayer.name} discarded 1 card; ${hostPlayer.name} equipped 1 item.`,
+  "the combined committed result is identical for an observer viewer");
   assert.equal(alicePlayer.id, observer.meId);
 });
 
@@ -916,6 +952,33 @@ test("Nio Shield occupies the Armor slot and prevents black Attack before Dodge 
   assert.equal(preventionFact?.actorId, alicePlayer.id);
   assert.equal(preventionFact?.outcomeLabel, "blocked the Attack");
   assert.equal(preventionFact?.label, "Nio Shield");
+  const preventionNarration = derivePublicInteractionNarration({
+    snapshot: blackAttack.data.room.presentationSnapshot,
+    players: blackAttack.data.room.players,
+    rootEventId: preventionFact.rootEventId,
+    interactionId: preventionFact.identity.interactionId,
+    rootFrameId: preventionFact.identity.rootFrameId,
+    eventId: preventionFact.eventId,
+  });
+  assert.equal(preventionNarration?.headline, `${alicePlayer.name} used Nio Shield and blocked the Attack.`,
+    "a committed zero-HP-loss prevention has a factual H4 and never claims damage was dealt");
+  const preventionOwner = selectPublicH4AnnouncementOwner({ fact: preventionFact });
+  assert.equal(preventionOwner?.eventId, preventionFact.eventId);
+  assert.equal(preventionOwner?.owner, "PublicInteractionAnnouncementLayer");
+  const preventionObserver = (await state(game.code, game.members[2].token)).data;
+  const observerPreventionFact = preventionObserver.presentationSnapshot.retainedPublicEvent;
+  const observerPreventionNarration = derivePublicInteractionNarration({
+    snapshot: preventionObserver.presentationSnapshot,
+    players: preventionObserver.players,
+    rootEventId: observerPreventionFact.rootEventId,
+    interactionId: observerPreventionFact.identity.interactionId,
+    rootFrameId: observerPreventionFact.identity.rootFrameId,
+    eventId: observerPreventionFact.eventId,
+  });
+  assert.equal(observerPreventionFact.eventId, preventionFact.eventId,
+    "the observer retains the identical public prevention event");
+  assert.equal(observerPreventionNarration?.headline, preventionNarration?.headline,
+    "the observer sees the same prevention H4 without a guessed HP change");
 
   const redAttack = { ...card("Attack", "red"), suit: "♥" };
   setHand(hostPlayer.id, [redAttack], 4, 4); setTurn(game.code, hostPlayer.seat);

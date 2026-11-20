@@ -116,6 +116,18 @@ function normalWushengTargetRoom() {
   });
 }
 
+function normalLongdanTargetRoom() {
+  return normalizeRoomData({
+    code: "LONGDAN-TARGET-UI", status: "playing", maxPlayers: 2, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "ZHAO YUN", seat: 0, hero: "zhao-yun", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "TARGET", seat: 1, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    ],
+    myHand: [{ id: "longdan-card", kind: "Dodge", suit: "♠", rank: "Q" }], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play a card", isMyAction: true,
+    actionRevision: "longdan-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: "longdan-card", canPlayAs: "attack" }], playTargetEligibility: [{ mode: "card", cardId: "longdan-card", effectiveKind: "Attack", eligibleTargetIds: ["p2"], rejections: [] }] },
+  });
+}
+
 function serpentTargetRoom() {
   return normalizeRoomData({
     code: "SERPENT-TARGET-UI", status: "playing", maxPlayers: 2, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
@@ -254,6 +266,32 @@ function buttonsContaining(renderer, value) { return renderer.root.findAllByType
 function consoleButtons(renderer) { return nodeWith(renderer, "data-console-surface", "local-operation").findAllByType("button"); }
 function consoleButtonsByClass(renderer, className) { return consoleButtons(renderer).filter((node) => node.props.className === className); }
 function renderedNodeText(node) { return typeof node === "string" || typeof node === "number" ? String(node) : (node?.children ?? []).map(renderedNodeText).join(""); }
+async function verifyResponsePrecommitOwner({ room, ownerLabel, ownerProps, cardId, providerId }) {
+  const actionCalls = [];
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const actionsBeforeSelection = [...actionCalls];
+  const ownerButton = () => button(renderer, ownerProps);
+  assert.equal(renderedNodeText(ownerButton()), ownerLabel);
+  assert.equal(ownerButton().props["aria-pressed"], false);
+  await act(async () => { ownerButton().props.onClick(); });
+  assert.equal(ownerButton().props["aria-pressed"], true, "the current authoritative provider is visibly active");
+  assert.equal(renderedNodeText(ownerButton()), ownerLabel, "activation preserves the stable owner name");
+  await act(async () => { handCardButton(renderer, cardId).props.onClick(); });
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false, "one eligible physical card enables the existing Confirm");
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "the same reversible owner does not add a duplicate Local Cancel");
+  await act(async () => { ownerButton().props.onClick(); });
+  assert.deepEqual(actionCalls, actionsBeforeSelection, "owner retap only clears the unsubmitted local draft");
+  assert.equal(ownerButton().props["aria-pressed"], false);
+  assert.equal(handCardButton(renderer, cardId).props["aria-pressed"], false, "owner retap clears the selected physical card");
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "owner retap removes stale Confirm readiness");
+  await act(async () => { ownerButton().props.onClick(); });
+  await act(async () => { handCardButton(renderer, cardId).props.onClick(); });
+  await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
+  assert.deepEqual(actionCalls.slice(actionsBeforeSelection.length), [["respond", { providerId, cardId }]], "Confirm submits exactly one unchanged server response payload after mount-time timer setup");
+  await act(async () => { renderer.unmount(); });
+}
 function statusText(renderer) { return renderer.root.findAll((node) => node.props?.role === "status").map(renderedNodeText).join(" "); }
 function assertOnlyDeflectionProfile(renderer) {
   const matches = buttonsContaining(renderer, "Deflection");
@@ -330,6 +368,25 @@ function duelResponseRoom({ meId = "p2", actorId = "p2", actionRevision = "duel-
     myHand: meId === actorId ? [attack] : [], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: actorId, actionReason: "Respond to Duel: select Attack or take 1 damage", isMyAction: meId === actorId,
     actionRevision, phase: "response", presentationSnapshot: snapshot, pendingDuel: { sourceId: "p1", targetId: "p2", actorId, opponentId: otherId },
     currentAction: { version: 3, kind: "response", actorId, deadline: 0, reason: "Respond to Duel: select Attack or take 1 damage", legalActions: ["respond", "decline_response"], declineAction: "decline_response", requirement: "attack", ...(meId === actorId ? { options: [{ providerId: "card", satisfies: "attack", label: "Attack", description: "Play Attack", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [attack.id] } }] } : {}) },
+  });
+}
+
+function conversionResponseRoom({ hero, providerId, label, cardId, kind, suit, actionRevision }) {
+  const responseCard = card(cardId, kind, suit);
+  const room = duelResponseRoom({ actionRevision });
+  return normalizeRoomData({
+    ...room,
+    myHand: [responseCard],
+    players: room.players.map((player) => player.id === room.meId
+      ? { ...player, hero, handCount: 1 }
+      : player),
+    currentAction: {
+      ...room.currentAction,
+      options: [
+        { providerId: "card", satisfies: "attack", label: "Attack", description: "Play Attack", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [] } },
+        { providerId, satisfies: "attack", label, description: label, activation: "explicit", playedAs: "attack", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [cardId] } },
+      ],
+    },
   });
 }
 
@@ -533,25 +590,82 @@ test("End Turn opens the in-battlefield confirmation and preserves legal action 
   globalThis.window.confirm = () => false;
 });
 
-test("converted Attack Cancel clears Wusheng mode, card, and target without acting", async () => {
+test("Wusheng keeps its stable name and same-skill retap clears card and target without acting", async () => {
   const room = normalWushengTargetRoom();
   const actionCalls = [];
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   await act(async () => { button(renderer, { "aria-label": "God of War" }).props.onClick(); });
+  assert.equal(renderedNodeText(button(renderer, { "aria-label": "God of War" })), "God of War");
+  assert.equal(button(renderer, { "aria-label": "God of War" }).props["aria-pressed"], true);
   await act(async () => { handCardButton(renderer, "wusheng-card").props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select TARGET" }).props.onClick(); });
-  assert.equal(buttonsContaining(renderer, "Cancel").length, 1);
-  await act(async () => { buttonsContaining(renderer, "Cancel God of War")[0].props.onClick(); });
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false, "one authoritative Confirm is enabled after the legal conversion inputs are selected");
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "the same reversible draft has no duplicate Local Cancel");
+  await act(async () => { button(renderer, { "aria-label": "God of War" }).props.onClick(); });
   assert.equal(actionCalls.length, 0);
   assert.equal(button(renderer, { "aria-label": "God of War" }).props["aria-pressed"], false);
   assert.equal(handCardButton(renderer, "wusheng-card").props.className.includes("selected"), false);
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
+  assert.equal(button(renderer, { children: "Play" }).props.disabled, true, "cleared draft does not leave a stale playable card");
+  await act(async () => { button(renderer, { "aria-label": "God of War" }).props.onClick(); });
+  await act(async () => { handCardButton(renderer, "wusheng-card").props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Select TARGET" }).props.onClick(); });
+  await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
+  assert.deepEqual(actionCalls, [["play_card", { cardId: "wusheng-card", playAs: "attack", targetId: "p2" }],], "Confirm keeps the original physical card and server-projected Attack conversion");
   await act(async () => { renderer.unmount(); });
 });
 
-test("Serpent Spear Cancel clears mode, both cost cards, and target", async () => {
+test("Longdan Play keeps its stable name, toggles locally, and confirms the real Dodge as Attack", async () => {
+  const room = normalLongdanTargetRoom();
+  const actionCalls = [];
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const owner = () => button(renderer, { "aria-label": "Braveheart" });
+  await act(async () => { owner().props.onClick(); });
+  assert.equal(renderedNodeText(owner()), "Braveheart");
+  assert.equal(owner().props["aria-pressed"], true);
+  await act(async () => { handCardButton(renderer, "longdan-card").props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Select TARGET" }).props.onClick(); });
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 0);
+  await act(async () => { owner().props.onClick(); });
+  assert.equal(actionCalls.length, 0, "retap clears a local selection without submitting");
+  assert.equal(owner().props["aria-pressed"], false);
+  assert.equal(handCardButton(renderer, "longdan-card").props["aria-pressed"], false);
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
+  await act(async () => { owner().props.onClick(); });
+  await act(async () => { handCardButton(renderer, "longdan-card").props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Select TARGET" }).props.onClick(); });
+  await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
+  assert.deepEqual(actionCalls, [["play_card", { cardId: "longdan-card", playAs: "attack", targetId: "p2" }]], "Confirm preserves Longdan's original server-authorized conversion payload");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("Wusheng Response retap clears its eligible card and Confirm submits once", async () => {
+  await verifyResponsePrecommitOwner({
+    room: conversionResponseRoom({ hero: "guan-yu", providerId: "guan_yu_red_card_attack", label: "Use God of War", cardId: "wusheng-response-red", kind: "Peach", suit: "♥", actionRevision: "wusheng-response" }),
+    ownerLabel: "God of War", ownerProps: { "aria-label": "God of War" }, cardId: "wusheng-response-red", providerId: "guan_yu_red_card_attack",
+  });
+});
+
+test("Longdan Response retap clears its eligible card and Confirm submits once", async () => {
+  await verifyResponsePrecommitOwner({
+    room: conversionResponseRoom({ hero: "zhao-yun", providerId: "zhao_yun_dodge_as_attack", label: "Use Braveheart", cardId: "longdan-response-dodge", kind: "Dodge", suit: "♠", actionRevision: "longdan-response" }),
+    ownerLabel: "Braveheart", ownerProps: { "aria-label": "Braveheart" }, cardId: "longdan-response-dodge", providerId: "zhao_yun_dodge_as_attack",
+  });
+});
+
+test("generic selectable Response uses the same stable retap and Confirm policy", async () => {
+  await verifyResponsePrecommitOwner({
+    room: conversionResponseRoom({ hero: "liu-bei", providerId: "future_response_cost", label: "Use Future Response", cardId: "future-response-card", kind: "Peach", suit: "♥", actionRevision: "generic-response" }),
+    ownerLabel: "Future Response", ownerProps: { children: "Future Response" }, cardId: "future-response-card", providerId: "future_response_cost",
+  });
+});
+
+test("Serpent Spear stays named, retap clears its draft, and Confirm preserves the server action", async () => {
   const room = serpentTargetRoom();
   const actionCalls = [];
   let renderer;
@@ -559,24 +673,30 @@ test("Serpent Spear Cancel clears mode, both cost cards, and target", async () =
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const modeButton = button(renderer, { "data-serpent-spear-control": "true" });
   assert.equal(renderedNodeText(modeButton), "Serpent Spear");
-  assert.equal(modeButton.props["aria-label"], "Use Serpent Spear");
+  assert.equal(modeButton.props["aria-label"], "Serpent Spear");
   assert.equal(modeButton.props["aria-pressed"], false);
   await act(async () => { modeButton.props.onClick(); });
-  assert.equal(renderedNodeText(button(renderer, { "data-serpent-spear-control": "true" })), "Normal");
-  assert.equal(button(renderer, { "data-serpent-spear-control": "true" }).props["aria-label"], "Exit Serpent Spear mode");
+  assert.equal(renderedNodeText(button(renderer, { "data-serpent-spear-control": "true" })), "Serpent Spear");
+  assert.equal(button(renderer, { "data-serpent-spear-control": "true" }).props["aria-label"], "Serpent Spear");
   assert.equal(button(renderer, { "data-serpent-spear-control": "true" }).props["aria-pressed"], true);
   await act(async () => { handCardButton(renderer, "serpent-cost-one").props.onClick(); });
   await act(async () => { handCardButton(renderer, "serpent-cost-two").props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select TARGET" }).props.onClick(); });
-  assert.equal(buttonsContaining(renderer, "Cancel").length, 1);
-  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
-  const actionCountBeforeCancel = actionCalls.length;
-  assert.equal(actionCountBeforeCancel, 0);
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false, "two physical costs and the eligible target enable the existing Confirm");
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "the active weapon itself owns the local exit");
+  await act(async () => { button(renderer, { "data-serpent-spear-control": "true" }).props.onClick(); });
+  assert.equal(actionCalls.length, 0, "retapping the weapon is local and sends no action");
   assert.equal(button(renderer, { "data-serpent-spear-control": "true" }).props.className.includes("active"), false);
   assert.equal(button(renderer, { "data-serpent-spear-control": "true" }).props["aria-pressed"], false);
   assert.equal(handCardButton(renderer, "serpent-cost-one").props.className.includes("selected"), false);
   assert.equal(handCardButton(renderer, "serpent-cost-two").props.className.includes("selected"), false);
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
+  await act(async () => { button(renderer, { "data-serpent-spear-control": "true" }).props.onClick(); });
+  await act(async () => { handCardButton(renderer, "serpent-cost-one").props.onClick(); });
+  await act(async () => { handCardButton(renderer, "serpent-cost-two").props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Select TARGET" }).props.onClick(); });
+  await act(async () => { await button(renderer, { children: "Confirm" }).props.onClick(); });
+  assert.deepEqual(actionCalls, [["serpent_spear_attack", { cardIds: ["serpent-cost-one", "serpent-cost-two"], targetId: "p2" }]], "Confirm retains the exact two-card weapon action and eligible target");
   await act(async () => { renderer.unmount(); });
 });
 
@@ -606,7 +726,18 @@ test("Serpent Spear response option keeps the full projected weapon name", async
   const spearProviderButton = button(renderer, { children: "Serpent Spear" });
   assert.match(spearProviderButton.props.className, /serpent-control/);
   await act(async () => { spearProviderButton.props.onClick(); });
-  assert.match(button(renderer, { children: "Cancel Serpent Spear" }).props.className, /active/);
+  const activeSpearProviderButton = button(renderer, { children: "Serpent Spear" });
+  assert.match(activeSpearProviderButton.props.className, /active/);
+  assert.equal(activeSpearProviderButton.props["aria-pressed"], true);
+  assert.equal(activeSpearProviderButton.props["aria-label"], "Serpent Spear");
+  await act(async () => { handCardButton(renderer, "spear-response-peach").props.onClick(); });
+  await act(async () => { handCardButton(renderer, "spear-response-dodge").props.onClick(); });
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "the named provider is the only reversible exit");
+  await act(async () => { activeSpearProviderButton.props.onClick(); });
+  assert.equal(button(renderer, { children: "Serpent Spear" }).props["aria-pressed"], false);
+  assert.equal(handCardButton(renderer, "spear-response-peach").props.className.includes("selected"), false);
+  assert.equal(handCardButton(renderer, "spear-response-dodge").props.className.includes("selected"), false);
   await act(async () => { renderer.unmount(); });
 });
 
@@ -655,7 +786,7 @@ test("Borrowed Sword local target clears when the authoritative revision changes
   await act(async () => { renderer.unmount(); });
 });
 
-test("pending Dismantle shared choice keeps opaque selection local across Use and retap deselect", async () => {
+test("pending Dismantle shared choice keeps opaque selection local until Confirm and retap deselect", async () => {
   const room = pendingTargetCardRoom("target-card-revision", { withFocusProjection: true });
   const actionCalls = [];
   const action = async (...args) => { actionCalls.push(args); return true; };
@@ -670,7 +801,7 @@ test("pending Dismantle shared choice keeps opaque selection local across Use an
   assert.equal(nodeWithClass(renderer, "card-pool-panel--actor-target-select").props["aria-label"], "Burning Bridge target card selection");
   assert.equal(renderer.root.findAll((node) => node.props?.role === "dialog").length, 0, "target selection no longer creates a fullscreen dialog");
   assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], false);
-  assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, true, "the effect-specific action waits for an eligible selection");
+  assert.equal(button(renderer, { "aria-label": "Confirm Burning Bridge selection" }).props.disabled, true, "the shared Confirm waits for an eligible selection");
   assert.equal(buttons(renderer, { children: "Cancel" }).length, 0, "mandatory discard has no Cancel control");
   assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "shared-pool submission is not duplicated in the Local Dock");
   await act(async () => { button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props.onClick(); });
@@ -678,7 +809,7 @@ test("pending Dismantle shared choice keeps opaque selection local across Use an
   assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], true);
   assert.deepEqual({ kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] }, mainBefore, "local private selection does not alter public presentation attributes");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props["data-interaction-roles"], publicRolesBefore, "private card selection does not change public seat roles");
-  assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, false);
+  assert.equal(button(renderer, { "aria-label": "Confirm Burning Bridge selection" }).props.disabled, false);
   await act(async () => { button(renderer, { "aria-label": "Judgement (1)" }).props.onClick(); });
   assert.equal(text(renderer, "Selection retained · HAND 2").length, 1, "tab changes retain a legal private selection");
   assert.equal(button(renderer, { "aria-label": "Judgement: Lightning" }).props["aria-pressed"], false);
@@ -687,10 +818,10 @@ test("pending Dismantle shared choice keeps opaque selection local across Use an
   await act(async () => { button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props.onClick(); });
   assert.equal(actionCalls.length, 0, "retap deselect sends no gameplay or decline action");
   assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], false, "retap clears the opaque card selection");
-  assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, true);
+  assert.equal(button(renderer, { "aria-label": "Confirm Burning Bridge selection" }).props.disabled, true);
   await act(async () => { button(renderer, { "aria-label": "Equipment (1)" }).props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Equipment: Nio Shield" }).props.onClick(); });
-  await act(async () => { button(renderer, { children: "Use Burning Bridge" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Confirm Burning Bridge selection" }).props.onClick(); });
   assert.deepEqual(actionCalls, [["choose_target_card", { targetCardZone: "equipment", targetCardId: "target-armor" }]], "Confirm preserves the existing action and payload exactly once");
   await act(async () => { renderer.unmount(); });
 });
@@ -701,7 +832,7 @@ test(`${cardKind} pending card choice uses the nonmodal shared pool without Canc
     const actionName = cardKind === "Dismantle" ? "Burning Bridge" : cardKind;
     const title = cardKind === "Dismantle" ? "BURNING BRIDGES · SOURCE → TARGET" : "STEAL · SOURCE → TARGET";
     const instruction = "Choose one card";
-    const useLabel = `Use ${actionName}`;
+    const confirmAccessibleLabel = `Confirm ${actionName} selection`;
     const actionCalls = [];
     let renderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
@@ -723,8 +854,8 @@ test(`${cardKind} pending card choice uses the nonmodal shared pool without Canc
     const hiddenHandChoice = button(renderer, { "aria-label": "Choose hidden Hand position 1" });
     assert.equal(hiddenHandChoice.props["data-target-card-zone"], undefined, "hidden choices expose no physical zone-card identity");
     assert.equal(hiddenHandChoice.props["aria-pressed"], false);
-    assert.equal(button(renderer, { children: useLabel }).props.disabled, true, "Use waits for one eligible selection");
-    assert.equal(buttons(renderer, { children: "Confirm" }).length, 0, "no duplicate footer Confirm is rendered");
+    assert.equal(button(renderer, { "aria-label": confirmAccessibleLabel }).props.disabled, true, "Confirm waits for one eligible selection");
+    assert.equal(buttons(renderer, { children: "Confirm" }).length, 1, "the pool owns exactly one shared Confirm");
     assert.equal(consoleButtons(renderer).filter((node) => node.props.children === "Cancel").length, 0, "no duplicate footer Cancel is rendered");
     assert.equal(buttons(renderer, { children: "Cancel" }).length, 0, "mandatory card choice has no Cancel button");
     const mainBefore = { kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] };
@@ -732,7 +863,7 @@ test(`${cardKind} pending card choice uses the nonmodal shared pool without Canc
     await act(async () => { button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props.onClick(); });
     assert.equal(actionCalls.length, 0, "hidden-position selection remains local");
     assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], true);
-    assert.equal(button(renderer, { children: useLabel }).props.disabled, false);
+    assert.equal(button(renderer, { "aria-label": confirmAccessibleLabel }).props.disabled, false);
     assert.deepEqual({ kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] }, mainBefore, "private choice does not mutate public presentation");
 
     await act(async () => { button(renderer, { "aria-label": "Equipment (1)" }).props.onClick(); });
@@ -740,8 +871,8 @@ test(`${cardKind} pending card choice uses the nonmodal shared pool without Canc
     assert.equal(button(renderer, { "aria-label": "Equipment: Nio Shield" }).props["aria-pressed"], false);
     await act(async () => { button(renderer, { "aria-label": "Equipment: Nio Shield" }).props.onClick(); });
     assert.equal(button(renderer, { "aria-label": "Equipment: Nio Shield" }).props["aria-pressed"], true, "a new legal choice replaces the prior one-card selection");
-    assert.equal(actionCalls.length, 0, "tab and card selection remain local until Use");
-    await act(async () => { button(renderer, { children: useLabel }).props.onClick(); });
+    assert.equal(actionCalls.length, 0, "tab and card selection remain local until Confirm");
+    await act(async () => { button(renderer, { "aria-label": confirmAccessibleLabel }).props.onClick(); });
     assert.deepEqual(actionCalls, [["choose_target_card", { targetCardZone: "equipment", targetCardId: "target-armor" }]], "shared-pool action keeps the existing public-card payload exactly once");
     assert.equal(text(renderer, "target-armor").length, 0, "physical object IDs are not rendered as player-facing text");
     await act(async () => { renderer.unmount(); });
@@ -777,7 +908,7 @@ test("target-card trigger picker adds local Cancel while preserving Skip and opa
   assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "an empty mandatory picker does not present Cancel as if the trigger could be declined");
   assert.equal(buttonsContaining(renderer, "Skip").length, 1, "Skip remains the separate authoritative action");
   assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "trigger-owned target-card submission is not duplicated in the footer");
-  assert.equal(button(renderer, { children: "Use Future Target Cards" }).props.disabled, true);
+  assert.equal(button(renderer, { "aria-label": "Confirm Future Target Cards selection" }).props.disabled, true);
   await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
   assert.equal(actionCalls.length, actionCountBeforeSelection, "target-card trigger selection sends no action");
   assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], true);
@@ -787,7 +918,7 @@ test("target-card trigger picker adds local Cancel while preserving Skip and opa
   assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false, "modal Cancel resets the full local attempt");
   assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "the local clearing action disappears when nothing is selected");
   await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
-  await act(async () => { button(renderer, { children: "Use Future Target Cards" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Confirm Future Target Cards selection" }).props.onClick(); });
   assert.deepEqual(actionCalls.filter(([actionName]) => actionName === "trigger"), [["trigger", { providerId: "future_target_cards", cardKeys: ["hand:0"] }]], "Confirm preserves the semantic trigger payload exactly once");
   assert.equal(renderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("hand:0")).length, 0, "opaque key is not rendered as public text");
   await act(async () => { renderer.unmount(); });
@@ -804,27 +935,30 @@ test("pending target-card selection clears when authoritative availability chang
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: changed, onRecover: () => {} }, React.createElement(GameRoom, { room: changed, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], false, "availability change clears stale opaque selection");
-  assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, true);
+  assert.equal(button(renderer, { "aria-label": "Confirm Burning Bridge selection" }).props.disabled, true);
   await act(async () => { renderer.unmount(); });
 });
 
-test("generic trigger Cancel clears provider and target without replacing Skip", async () => {
+test("generic selectable trigger keeps its name and retap clears target without replacing Skip", async () => {
   const room = { ...triggerRoom({ triggerOptions: [{ effectId: "future_target", label: "Future Target", selection: { type: "target", targetIds: ["p2"], min: 1, max: 1 } }] }), isMyTurn: true };
   const actionCalls = [];
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const actionsBeforeSelection = [...actionCalls];
   assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "a stale isMyTurn flag cannot expose a turn footer primary during a trigger");
   assert.equal(consoleButtons(renderer).filter((node) => node.props.children === "End").length, 0, "trigger owns the footer instead of stale End");
-  await act(async () => { button(renderer, { children: "Use Future Target" }).props.onClick(); });
+  await act(async () => { button(renderer, { children: "Future Target" }).props.onClick(); });
+  assert.equal(button(renderer, { children: "Future Target" }).props["aria-pressed"], true, "provider selection uses a stable named pressed control");
   await act(async () => { button(renderer, { "aria-label": "Select TARGET" }).props.onClick(); });
-  assert.equal(buttonsContaining(renderer, "Cancel").length, 1, "the provider-owned Cancel is the only cancel surface");
-  assert.ok(!buttonsContaining(renderer, "Cancel")[0].props.className.includes("wtk-skip-action"), "Cancel does not use the Skip variant");
-  const actionCountBeforeCancel = actionCalls.length;
-  await act(async () => { buttonsContaining(renderer, "Cancel")[0].props.onClick(); });
-  assert.equal(actionCalls.length, actionCountBeforeCancel, "provider Cancel does not submit or decline");
-  assert.equal(button(renderer, { children: "Use Future Target" }).props.disabled, false, "the trigger can restart after Cancel");
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false, "the selected legal target enables the existing Confirm");
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "the named provider owns the only local exit");
+  await act(async () => { button(renderer, { children: "Future Target" }).props.onClick(); });
+  assert.deepEqual(actionCalls, actionsBeforeSelection, "provider retap does not submit or decline");
+  assert.equal(button(renderer, { children: "Future Target" }).props["aria-pressed"], false, "provider returns to idle");
+  assert.equal(button(renderer, { children: "Future Target" }).props.disabled, false, "the trigger can restart after retap");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
+  assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "retap removes stale Confirm");
   assert.equal(button(renderer, { children: "Skip" }).props.disabled, false, "Skip remains authoritative and separate");
   assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
   await act(async () => { renderer.unmount(); });
@@ -839,7 +973,7 @@ const activeSkills = [
 ];
 
 for (const skill of activeSkills) {
-  test(`${skill.label} survives click, selection, cancel, re-entry, and submission`, async () => {
+  test(`${skill.label} survives click, selection, owner retap, re-entry, and submission`, async () => {
     const { renderer, actionCalls } = await gameTree(skill);
     const skillButton = () => button(renderer, { "aria-label": skill.skill });
     const useButton = () => button(renderer, { children: "Confirm" });
@@ -866,15 +1000,13 @@ for (const skill of activeSkills) {
       assert.doesNotMatch(renderedNodeText(decisionStatus), /YOUR DECISION|LOCAL CANCEL|Change your selection/, "Lust guidance omits redundant headings and cancel text");
       assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "Lust selection has no redundant Cancel button");
     }
-    const actionCountBeforeCancel = actionCalls.length;
-    await act(async () => {
-      if (skill.effectId === "diao_chan_lust") skillButton().props.onClick();
-      else button(renderer, { children: "Cancel" }).props.onClick();
-    });
-    assert.equal(actionCalls.length, actionCountBeforeCancel, `${skill.label} local cancellation sends no action`);
-    assert.equal(button(renderer, { "aria-label": skill.skill }).props["aria-pressed"], false, `${skill.label} Cancel exits the active local skill flow`);
-    for (const cardId of skill.cardIds) assert.equal(handCardButton(renderer, cardId).props.className.includes("selected"), false, `${skill.label} Cancel clears the selected card`);
-    for (const targetId of skill.targetIds) assert.equal(nodeWith(renderer, "data-player-anchor", targetId).props.className.includes("selected-target"), false, `${skill.label} Cancel clears the selected target`);
+    const actionCountBeforeRetap = actionCalls.length;
+    if (skill.effectId !== "diao_chan_lust") assert.equal(buttonsContaining(renderer, "Cancel").length, 0, `${skill.label} has no duplicate Local Cancel while its stable skill tile can exit the draft`);
+    await act(async () => { skillButton().props.onClick(); });
+    assert.equal(actionCalls.length, actionCountBeforeRetap, `${skill.label} owner retap sends no action`);
+    assert.equal(button(renderer, { "aria-label": skill.skill }).props["aria-pressed"], false, `${skill.label} owner retap exits the active local skill flow`);
+    for (const cardId of skill.cardIds) assert.equal(handCardButton(renderer, cardId).props.className.includes("selected"), false, `${skill.label} owner retap clears the selected card`);
+    for (const targetId of skill.targetIds) assert.equal(nodeWith(renderer, "data-player-anchor", targetId).props.className.includes("selected-target"), false, `${skill.label} owner retap clears the selected target`);
     await act(async () => { skillButton().props.onClick(); });
     for (const cardId of skill.cardIds) await act(async () => { handCardButton(renderer, cardId).props.onClick(); });
     for (const targetId of skill.targetIds) await act(async () => { targetButton(renderer, targetId).props.onClick(); });
@@ -903,6 +1035,8 @@ test("Zhang Liao Assault uses generic target controls during the Draw Phase", as
   assert.equal(inspectionPanels().length, 0, "tapping the inspected Hero closes the Inspector");
 
   await act(async () => { skillButton().props.onClick(); });
+  assert.equal(skillButton().props["data-precommit-owner"], "Assault", "selectable Hero skills expose their stable owner identity");
+  assert.match(skillButton().props.title, /Tap again to cancel this selection\./, "the active owner explains its local retap exit");
   assert.equal(button(renderer, { "aria-label": "Select TARGET ONE" }).props.disabled, false);
   assert.equal(button(renderer, { "aria-label": "Select TARGET TWO" }).props.disabled, false);
   assert.equal(button(renderer, { "aria-label": "Select INVALID TARGET" }).props.disabled, true, "non-eligible targets remain disabled");
@@ -911,29 +1045,30 @@ test("Zhang Liao Assault uses generic target controls during the Draw Phase", as
   await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), true);
   assert.equal(useButton().props.disabled, false, "one Assault target enables submission");
+  const actionCountBeforeOwnerRetap = actionCalls.length;
   await act(async () => { skillButton().props.onClick(); });
-  assert.equal(skillButton().props["aria-pressed"], true, "the skill button is not a second local Cancel surface");
-  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), true, "the second skill click preserves the local target");
-  const actionCountAfterSelection = actionCalls.length;
-  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
-  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "Cancel clears the local amber target");
-  assert.equal(actionCalls.length, actionCountAfterSelection, "local Cancel does not submit a gameplay action");
+  assert.equal(skillButton().props["aria-pressed"], false, "the stable skill owner exits its reversible target draft");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "owner retap clears the local target");
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "the reversible owner has no duplicate Local Cancel");
+  assert.equal(renderer.root.findAllByProps({ children: "Confirm" }).length, 0, "owner retap removes the stale Confirm");
+  assert.equal(actionCalls.length, actionCountBeforeOwnerRetap, "owner retap does not submit a gameplay action");
+
   await act(async () => { skillButton().props.onClick(); });
+  assert.equal(useButton().props.disabled, true, "re-entering the skill starts with an empty target draft");
   await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
-  assert.equal(useButton().props.disabled, false, "the target can be reselected after local Cancel");
   await act(async () => { button(renderer, { "aria-label": "Select TARGET TWO" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "same-target retap removes only that target");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), true, "removing one target preserves the other ordered target");
+  assert.equal(useButton().props.disabled, false, "the remaining legal target still satisfies Assault's minimum");
+  await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), true);
   assert.equal(button(renderer, { "aria-label": "Select INVALID TARGET" }).props.disabled, true);
   assert.doesNotMatch(statusText(renderer), /Lust order/, "Zhang Liao Assault never renders Diao Chan Lust guidance");
   assert.equal(useButton().props.disabled, false, "two Assault targets keep Confirm enabled");
   await act(async () => { useButton().props.onClick(); });
-  assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "zhang_liao_assault", targetIds: ["p2", "p3"] }]);
+  assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "zhang_liao_assault", targetIds: ["p3", "p2"] }], "retapping one target preserves the remaining target's order");
 
-  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
-  assert.equal(opponentHeroButton(renderer, "p2").props.disabled, false, "explicit Cancel exits target mode");
-  await act(async () => { skillButton().props.onClick(); });
-  assert.equal(useButton().props.disabled, true, "reactivation resets target selection");
-  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
   await act(async () => { renderer.unmount(); });
 });
 
@@ -1099,7 +1234,6 @@ test("Da Qiao Deflection is one mounted hero control with shared card/target sel
   assert.equal(profileButton.props.disabled, false);
   assert.equal(button(renderer, { children: "Skip" }).props.disabled, false);
   assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
-  assert.match(button(renderer, { children: "Skip" }).props.className, /\bwtk-skip-action\b/);
   assert.equal(renderer.root.findAllByProps({ children: "Confirm" }).length, 0);
   assert.equal(renderer.root.findAllByProps({ "aria-label": "Select ATTACKER as Deflection target" }).length, 0);
   assert.equal(renderer.root.findAllByProps({ "aria-label": "Select LEGAL TARGET as Deflection target" }).length, 0);
@@ -1139,11 +1273,11 @@ test("Da Qiao Deflection is one mounted hero control with shared card/target sel
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true);
   await act(async () => { button(renderer, { "aria-label": "Select LEGAL TARGET as Deflection target" }).props.onClick(); });
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
-  const actionCountBeforeTargetCancel = actionCalls.length;
-  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
-  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), false, "trigger Cancel clears the local target");
-  assert.equal(handCardButton(renderer, "deflection-hand").props.className.includes("selected"), false, "trigger Cancel clears the local cost card");
-  assert.equal(actionCalls.length, actionCountBeforeTargetCancel, "trigger Cancel does not decline the trigger");
+  const actionCountBeforeRetap = actionCalls.length;
+  await act(async () => { button(renderer, { "aria-label": "Deflection" }).props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), false, "owner retap clears the local target");
+  assert.equal(handCardButton(renderer, "deflection-hand").props.className.includes("selected"), false, "owner retap clears the local cost card");
+  assert.equal(actionCalls.length, actionCountBeforeRetap, "owner retap does not submit or decline the trigger");
   await act(async () => { button(renderer, { "aria-label": "Deflection" }).props.onClick(); });
   await act(async () => { handCardButton(renderer, "deflection-hand").props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select LEGAL TARGET as Deflection target" }).props.onClick(); });
@@ -1175,12 +1309,13 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   assert.equal(skillButton().props["aria-pressed"], true);
   assert.equal(picker().length, 1, "activating Retaliation opens the picker");
   assert.equal(actionCalls.filter(([actionName]) => actionName === "trigger").length, 0, "activation does not submit the trigger");
-  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-skip-action"));
-  assert.ok(button(renderer, { children: "Use Retaliation" }).props.className.includes("wtk-action-button"));
+  assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-card-pool-action--skip"));
+  assert.ok(button(renderer, { "aria-label": "Confirm Retaliation selection" }).props.className.includes("card-pool-decision-footer__confirm"));
+  assert.equal(button(renderer, { "aria-label": "Confirm Retaliation selection" }).props.children, "Confirm");
   const eligibleCard = button(renderer, { "aria-label": "Choose one random Hand card, 1 cards" });
   assert.equal(eligibleCard.props["aria-pressed"], false);
   await act(async () => { eligibleCard.props.onClick(); });
-  assert.equal(button(renderer, { children: "Use Retaliation" }).props.disabled, false);
+  assert.equal(button(renderer, { "aria-label": "Confirm Retaliation selection" }).props.disabled, false);
 
   await act(async () => { skillButton().props.onClick(); });
   assert.equal(picker().length, 0, "clicking active Retaliation cancels the picker");
@@ -1196,7 +1331,7 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   await act(async () => { skillButton().props.onClick(); });
   assert.equal(button(renderer, { "aria-label": "Choose one random Hand card, 1 cards" }).props["aria-pressed"], false, "a new action revision clears stale selection");
   await act(async () => { button(renderer, { "aria-label": "Choose one random Hand card, 1 cards" }).props.onClick(); });
-  await act(async () => { button(renderer, { children: "Use Retaliation" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Confirm Retaliation selection" }).props.onClick(); });
   assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "sima_yi_fankui", cardKeys: ["hand"] }]);
 
   const skipRendererRoom = retaliationRoom("retaliation-ui-skip");

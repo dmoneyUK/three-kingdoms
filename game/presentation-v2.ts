@@ -4369,8 +4369,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     // committed root remains available to the shared public fact projection.
     rootEventId: projectedBumperHarvestProgress?.rootEventId ?? rootEvent?.id ?? null,
   }) : [];
-  const retainedCandidate = input.retainPublicEventAtRest || envelope
-    ? retainedPublicEventFromTimeline(input.publicTimeline ?? input.timeline) : null;
+  const retainedCandidate = retainedPublicEventFromTimeline(input.publicTimeline ?? input.timeline);
   const retainedMatchesEnvelope = Boolean(retainedCandidate && envelope && causalRootFrame
     && retainedCandidate.event.identity.interactionId === envelope.interactionId
     && retainedCandidate.event.identity.rootFrameId === causalRootFrame.frameId
@@ -4455,7 +4454,11 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,
     transitionEvents: input.timeline.filter((event) => event.presentation !== false && relevantIds.includes(event.id)).map((event) => ({ eventId: event.id, type: event.type, resolutionId: event.resolutionId ?? null })),
     publicEventFacts,
-    ...(retainedPublicEvent ? { retainedPublicEvent: retainedPublicEvent.event, retainedPublicEventFacts: retainedPublicEvent.facts } : {}),
+    ...(retainedPublicEvent ? { retainedPublicEvent: retainedPublicEvent.event } : {}),
+    // Keep the validated public history queue available while a newer causal
+    // interaction is active. The snapshot/H4 cursor arbitrates by event order;
+    // the singular retained owner remains restricted to REST or its own frame.
+    ...(retainedCandidate ? { retainedPublicEventFacts: retainedCandidate.facts } : {}),
     stableBoundary: stableBoundaryFor(interactionScene, input.pending, projectedBumperHarvestProgress),
   };
 }

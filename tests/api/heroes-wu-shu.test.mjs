@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
   assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -156,6 +158,30 @@ test("Zhang Liao Assault replaces normal Draw Phase cards with private hand tran
   const oneBefore = new Set([hidden.id, ...oneDeck.map((held) => held.id)]);
   const obtained = await requestAndSettle("trigger", { code: one.code, token: one.members[0].token, providerId: "zhang_liao_assault", targetIds: [target.id] });
   assert.equal(obtained.status, 200, JSON.stringify(obtained.data)); assert.equal(obtained.data.room.phase, "play"); assert.equal(obtained.data.room.deckCount, 2, "Assault does not consume deck cards"); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(target.id)}`)), []); assert.deepEqual(obtained.data.room.myHand.map((held) => held.id), [hidden.id]); assert.deepEqual(new Set([...obtained.data.room.myHand.map((held) => held.id), ...JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(one.code)}`)).map((held) => held.id)]), oneBefore); const publicTimeline = (await state(one.code, one.members[1].token)).data.timeline; assert.equal(publicTimeline.some((entry) => [hidden.id].some((value) => JSON.stringify(entry).includes(value))), false, "public history does not reveal transferred card details");
+  const assaultOutcomeEvent = obtained.data.room.timeline.find((event) => event.publicFact?.committedOutcome?.changes?.some((change) => change.kind === "CARD_TRANSFERRED"));
+  assert.ok(assaultOutcomeEvent, "the committed Draw Phase transfer has a typed public result");
+  assertPublicOutcomeHasH4Owner(obtained.data.room, assaultOutcomeEvent.id);
+  assert.deepEqual(assaultOutcomeEvent.publicFact.committedOutcome.changes, [
+    { kind: "CARD_TRANSFERRED", fromPlayerId: target.id, toPlayerId: source.id, amount: 1, fromZone: "HAND", toZone: "HAND" },
+  ]);
+  const assaultFact = [...(obtained.data.room.presentationSnapshot?.publicEventFacts ?? []), ...(obtained.data.room.presentationSnapshot?.retainedPublicEventFacts ?? [])]
+    .find((fact) => fact.eventId === assaultOutcomeEvent.id);
+  assert.ok(assaultFact?.committedOutcome);
+  const assaultNarration = derivePublicInteractionNarration({
+    snapshot: obtained.data.room.presentationSnapshot,
+    players: obtained.data.room.players,
+    rootEventId: assaultFact.rootEventId,
+    interactionId: assaultFact.identity.interactionId,
+    rootFrameId: assaultFact.identity.rootFrameId,
+    eventId: assaultOutcomeEvent.id,
+  });
+  assert.equal(assaultNarration?.headline, `${source.name} — Assault: ${source.name} received 1 card from ${target.name}.`);
+  const observerResult = (await state(one.code, one.members[1].token)).data;
+  const observerAssaultFact = [...(observerResult.presentationSnapshot?.publicEventFacts ?? []), ...(observerResult.presentationSnapshot?.retainedPublicEventFacts ?? [])]
+    .find((fact) => fact.eventId === assaultOutcomeEvent.id);
+  assert.ok(observerAssaultFact, "the observer retains the committed transfer fact");
+  assert.deepEqual(observerAssaultFact, assaultFact, "observers receive the same public count and participants");
+  assert.equal(JSON.stringify(observerAssaultFact).includes(hidden.id), false, "the public fact contains no transferred card identity");
   const assaultArrival = obtained.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === hidden.id);
   assert.equal(assaultArrival?.privateHandTransfer?.sourceZone, "hand");
   assert.equal(assaultArrival?.privateHandTransfer?.sourcePlayerId, target.id);
@@ -165,6 +191,17 @@ test("Zhang Liao Assault replaces normal Draw Phase cards with private hand tran
   sql(`UPDATE players SET hero='zhang-liao' WHERE id=${quote(twoSource.id)}`); setHand(twoSource.id, [], 4, 4); setHand(twoA.id, [twoCardA], 4, 4); setHand(twoB.id, [twoCardB], 4, 4); setHand(two.room.players[3].id, [], 4, 4); setDeck(two.code, twoDeck); setTurn(two.code, twoSource.seat, "draw");
   await requestAndSettle("draw", { code: two.code, token: two.members[0].token }); const twoResolved = await requestAndSettle("trigger", { code: two.code, token: two.members[0].token, providerId: "zhang_liao_assault", targetIds: [twoA.id, twoB.id] });
   assert.equal(twoResolved.status, 200, JSON.stringify(twoResolved.data)); assert.equal(twoResolved.data.room.myHand.length, 2); assert.equal(twoResolved.data.room.deckCount, 2); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(twoA.id)}`)), []); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(twoB.id)}`)), []); assert.deepEqual(new Set(twoResolved.data.room.myHand.map((held) => held.id)), new Set([twoCardA.id, twoCardB.id]));
+  const twoOutcomeEvent = twoResolved.data.room.timeline.find((event) => event.publicFact?.committedOutcome?.changes?.some((change) => change.kind === "CARD_TRANSFERRED"));
+  assert.ok(twoOutcomeEvent, "the two-target settlement has one public H4 result event");
+  assertPublicOutcomeHasH4Owner(twoResolved.data.room, twoOutcomeEvent.id);
+  const twoTransfers = twoOutcomeEvent.publicFact.committedOutcome.changes
+    .filter((change) => change.kind === "CARD_TRANSFERRED")
+    .sort((left, right) => left.fromPlayerId.localeCompare(right.fromPlayerId));
+  assert.deepEqual(twoTransfers, [twoA, twoB].map((player) => ({
+    kind: "CARD_TRANSFERRED", fromPlayerId: player.id, toPlayerId: twoSource.id, amount: 1, fromZone: "HAND", toZone: "HAND",
+  })).sort((left, right) => left.fromPlayerId.localeCompare(right.fromPlayerId)));
+  assert.equal(JSON.stringify(twoOutcomeEvent.publicFact.committedOutcome).includes(twoCardA.id), false);
+  assert.equal(JSON.stringify(twoOutcomeEvent.publicFact.committedOutcome).includes(twoCardB.id), false);
   assert.equal(twoResolved.data.room.timeline.filter((event) => event.type === "card" && event.privateHandTransfer).length, 2,
     "each physical Hand transfer has a distinct recipient-only CardFace receipt");
 

@@ -62,6 +62,14 @@ test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal"
   assert.ok(transferEvent, "the committed Weapon transfer is linked to the Borrowed Sword root");
   assert.equal(transferEvent.publicFact.actorId, source.id);
   assert.equal(transferEvent.publicFact.label, "Green Dragon Blade");
+  assert.deepEqual(transferEvent.publicFact.committedOutcome?.changes, [{
+    kind: "CARD_TRANSFERRED",
+    fromPlayerId: holder.id,
+    toPlayerId: source.id,
+    amount: 1,
+    fromZone: "EQUIPMENT",
+    toZone: "HAND",
+  }], "the transfer fact records the actual single Equipment-to-Hand state change without a physical card ID");
   const retainedTransferFact = [
     ...(refused.data.room.presentationSnapshot.publicEventFacts ?? []),
     ...(refused.data.room.presentationSnapshot.retainedPublicEventFacts ?? []),
@@ -74,7 +82,8 @@ test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal"
     interactionId: retainedTransferFact.identity.interactionId,
     rootFrameId: retainedTransferFact.identity.rootFrameId,
   });
-  assert.equal(transferNarration?.headline, `${source.name} obtained Green Dragon Blade from ${holder.name}.`);
+  assert.equal(transferNarration?.headline, `${source.name} — Green Dragon Blade: ${source.name} received 1 card from ${holder.name}.`);
+  await assertSameBorrowedSwordPublicProjection(game);
   assert.equal(refused.data.room.causalEnvelope.interactionId, childEnvelope.interactionId);
   assert.equal(refused.data.room.causalEnvelope.activeFrameId, childEnvelope.frames.find((frame) => frame.frameId !== childEnvelope.activeFrameId).frameId);
 
@@ -192,6 +201,8 @@ test("Borrowed Sword public root, private Negation, counter, chooser and forced 
   assert.ok(choiceFact);
   assert.equal(choiceFact.actorId, source.id);
   assert.deepEqual(choiceFact.affectedPlayerIds, [target.id]);
+  assert.deepEqual(choiceFact.outcomeCopySegments.filter((part) => part.kind === "player").map((part) => part.playerId), [target.id, holder.id]);
+  assert.equal(choiceFact.outcomeCopySegments.map((part) => part.text).join(""), choiceFact.outcomeLabel);
   const choiceNarration = derivePublicInteractionNarration({
     snapshot: chosenRoom.presentationSnapshot,
     players: chosenRoom.players,
@@ -200,6 +211,9 @@ test("Borrowed Sword public root, private Negation, counter, chooser and forced 
     rootFrameId: choiceFact.identity.rootFrameId,
   });
   assert.equal(choiceNarration?.headline, `${source.name} chose ${target.name} as ${holder.name}'s Attack target.`);
+  assert.deepEqual(choiceNarration?.headlineSegments.filter((part) => part.kind === "player").map((part) => part.playerId), [source.id, target.id, holder.id]);
+  assert.equal(choiceNarration?.headlineSegments.map((part) => part.text).join(""), choiceNarration?.headline);
+  assert.equal(choiceNarration?.accessibleLabel, choiceNarration?.headline);
   assert.equal(chosenRoom.presentationSnapshot.publicNextDecision?.stageLabel, "Borrowed Sword forced choice");
   assert.match(borrowedSwordPublicStatus(chosenRoom).text, /play Attack or give up their Weapon/);
   assert.doesNotMatch(borrowedSwordPublicStatus(chosenRoom).text, /take damage/i);
@@ -344,6 +358,16 @@ test("Borrowed Sword transfers its Weapon when Empty Fortress leaves no legal fo
   assert.equal(resolved.data.room.pendingBorrowedSword, null);
   assert.equal(resolved.data.room.players.find((player) => player.id === holder.id).equipmentCards.some((item) => item.id === weapon.id), false);
   assert.equal((await state(game.code, host.token)).data.myHand.some((item) => item.id === weapon.id), true, "the source obtains the exact Weapon when no Attack target exists");
+  const noTargetTransfer = resolved.data.room.timeline.find((event) => event.publicFact?.category === "CARD_TRANSFERRED");
+  assert.deepEqual(noTargetTransfer?.publicFact?.committedOutcome?.changes, [{
+    kind: "CARD_TRANSFERRED",
+    fromPlayerId: holder.id,
+    toPlayerId: source.id,
+    amount: 1,
+    fromZone: "EQUIPMENT",
+    toZone: "HAND",
+  }], "the no-target resolution publishes the same committed transfer proof");
+  await assertSameBorrowedSwordPublicProjection(game);
   const transferReceipt = resolved.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === weapon.id);
   assert.equal(transferReceipt?.privateHandTransfer?.sourceZone, "equipment");
   assert.equal(transferReceipt?.privateHandTransfer?.sourcePlayerId, holder.id);
@@ -450,6 +474,76 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
     assert.equal(yinYangProof.outcome, "TARGET_DISCARDED");
     assert.deepEqual(discardEvent.card, discarded, "the event carries the genuine physical card face");
     assert.deepEqual(chosen.data.room.presentationV2.publicCardEffects.find((proof) => proof.eventId === discardEvent.id)?.cards, [discarded]);
+    const committedDiscardFact = [
+      ...chosen.data.room.presentationSnapshot.publicEventFacts,
+      ...(chosen.data.room.presentationSnapshot.retainedPublicEventFacts ?? []),
+      ...(chosen.data.room.presentationSnapshot.retainedPublicEvent ? [chosen.data.room.presentationSnapshot.retainedPublicEvent] : []),
+    ].find((fact) => fact.eventId === discardEvent.id);
+    const publicFactDiagnostic = (fact) => fact ? {
+      eventId: fact.eventId ?? null,
+      category: fact.category ?? null,
+      interactionId: fact.interactionId ?? null,
+      frameId: fact.frameId ?? null,
+      rootEventId: fact.rootEventId ?? null,
+      actorId: fact.actorId ?? null,
+      affectedPlayerIds: fact.affectedPlayerIds ?? null,
+      label: fact.label ?? null,
+      outcomeLabel: fact.outcomeLabel ?? null,
+      committedIdentity: fact.committedIdentity ?? null,
+      committedOutcome: fact.committedOutcome ?? null,
+    } : null;
+    const snapshot = chosen.data.room.presentationSnapshot;
+    assert.ok(committedDiscardFact, `the public discard enters the shared H4 fact stream: ${JSON.stringify({
+      discardEventFact: publicFactDiagnostic(discardEvent.publicFact),
+      snapshotIdentity: snapshot.identity ?? null,
+      snapshotInteraction: snapshot.interaction ? {
+        semantics: snapshot.interaction.semantics,
+        interactionId: snapshot.interaction.interactionId,
+        rootFrameId: snapshot.interaction.rootFrameId,
+        checkpointId: snapshot.interaction.checkpointId,
+        presentationRevision: snapshot.interaction.presentationRevision,
+      } : null,
+      snapshotStableKind: snapshot.stable?.kind ?? null,
+      snapshotFacts: snapshot.publicEventFacts.map((fact) => ({
+        eventId: fact.eventId,
+        category: fact.category,
+        rootEventId: fact.rootEventId,
+        order: fact.order,
+        interactionId: fact.identity?.interactionId ?? null,
+        rootFrameId: fact.identity?.rootFrameId ?? null,
+      })),
+      retainedFacts: (snapshot.retainedPublicEventFacts ?? []).map((fact) => ({
+        eventId: fact.eventId,
+        category: fact.category,
+        rootEventId: fact.rootEventId,
+        order: fact.order,
+        interactionId: fact.identity?.interactionId ?? null,
+        rootFrameId: fact.identity?.rootFrameId ?? null,
+      })),
+      retainedFact: publicFactDiagnostic(snapshot.retainedPublicEvent),
+      timelineFacts: chosen.data.room.timeline.filter((event) => event.publicFact).slice(-12).map((event) => ({
+        eventId: event.id,
+        type: event.type,
+        action: event.action ?? null,
+        fact: publicFactDiagnostic(event.publicFact),
+      })),
+    })}`);
+    assert.deepEqual(committedDiscardFact.committedOutcome?.changes, [
+      { kind: "CARD_DISCARDED", playerId: s.target.id, amount: 1, fromZone: "HAND", toZone: "DISCARD" },
+    ], "the physical discard event carries its server-proven result in the shared H4 outcome contract");
+    const discardNarration = derivePublicInteractionNarration({
+      snapshot: chosen.data.room.presentationSnapshot,
+      players: chosen.data.room.players,
+      rootEventId: committedDiscardFact.rootEventId,
+      interactionId: committedDiscardFact.identity.interactionId,
+      rootFrameId: committedDiscardFact.identity.rootFrameId,
+      eventId: discardEvent.id,
+    });
+    assert.equal(discardNarration?.headline, `${s.target.name} — ${committedDiscardFact.label}: ${s.target.name} discarded 1 card.`);
+    assert.equal(chosen.data.room.timeline.filter((event) => event.publicFact?.committedOutcome?.changes.some((change) => change.kind === "CARD_DISCARDED")).length, 1,
+      "one committed public discard result has one H4 fact owner");
+    assert.equal(chosen.data.room.timeline.some((event) => event.message?.includes("resolves an optional reaction with Yin-Yang Swords")), false,
+      "the result H4 replaces the generic notice instead of announcing the same effect twice");
     const observerAfterCommit = (await state(s.game.code, s.host.token)).data;
     assert.ok(observerAfterCommit.timeline.some((event) => event.type === "card" && event.card?.id === discarded.id),
       "every viewer sees the identity only after it has entered the public discard");
@@ -459,6 +553,21 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
     assert.equal(observerProof?.rootEventId, committedAttack.id);
     assert.equal(observerProof?.rootResolutionId, committedAttack.resolutionId,
       "the independent observer receives the same validated public root/material proof");
+    const observerDiscardFact = [
+      ...observerAfterCommit.presentationSnapshot.publicEventFacts,
+      ...(observerAfterCommit.presentationSnapshot.retainedPublicEventFacts ?? []),
+      ...(observerAfterCommit.presentationSnapshot.retainedPublicEvent ? [observerAfterCommit.presentationSnapshot.retainedPublicEvent] : []),
+    ].find((fact) => fact.eventId === discardEvent.id);
+    assert.deepEqual(observerDiscardFact?.committedOutcome, committedDiscardFact.committedOutcome,
+      "an independent viewer receives the identical public discard result");
+    assert.equal(derivePublicInteractionNarration({
+      snapshot: observerAfterCommit.presentationSnapshot,
+      players: observerAfterCommit.players,
+      rootEventId: observerDiscardFact.rootEventId,
+      interactionId: observerDiscardFact.identity.interactionId,
+      rootFrameId: observerDiscardFact.identity.rootFrameId,
+      eventId: discardEvent.id,
+    })?.headline, discardNarration?.headline, "actor and observer derive the same committed H4 copy");
     assert.equal(discardIds(s.game.code).filter((id) => id === discarded.id).length, 1, "the selected physical card is discarded exactly once");
     assert.equal(chosen.data.room.phase, "play");
   }

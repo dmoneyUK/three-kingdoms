@@ -12,7 +12,7 @@
     "test:fast": "node tests/run-fast-tests.mjs",
     "test:api": "node tests/run-api-suite.mjs",
     "test:browser": "playwright test --config tests/browser/playwright.config.mjs",
-    "test:browser:smoke": "playwright test --config tests/browser/playwright.config.mjs tests/browser/room-creation-real-gameplay.spec.mjs --workers=1",
+    "test:browser:smoke": "playwright test --config tests/browser/playwright.config.mjs tests/browser/room-creation-real-gameplay.spec.mjs tests/browser/public-outcome-h4-render-real-gameplay.spec.mjs tests/browser/local-selected-hand-above-skill.spec.mjs --workers=1",
     "test:all": "npm run build && npm run test:fast && npm run test:api",
     "test": "npm run test:all",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",

@@ -209,6 +209,130 @@ function allPublicFacts(snapshot: AuditSnapshot): readonly PublicPresentationEve
   return [...snapshot.publicEventFacts, ...(snapshot.retainedPublicEventFacts ?? []), ...(snapshot.retainedPublicEvent ? [snapshot.retainedPublicEvent] : [])];
 }
 
+type PublicH4FactOwnerProof = Pick<PublicPresentationEvent,
+  "eventId" | "order" | "frameId" | "parentFrameId" | "rootEventId" | "category" | "actorId" | "identity"
+  | "committedOutcome" | "label" | "outcomeLabel" | "amount" | "effect" | "affectedPlayerIds">;
+
+/**
+ * Active and retained projections may contain the same committed event at
+ * different checkpoints. Keep one durable event owner, prefer its richer
+ * validated result proof, and fail closed on contradictory public semantics.
+ */
+export function uniquePublicH4Facts<T extends PublicH4FactOwnerProof>(facts: readonly T[]): T[] {
+  const byEventId = new Map<string, T>();
+  const conflicts = new Set<string>();
+  for (const fact of facts) {
+    if (!fact.eventId || !Number.isSafeInteger(fact.order) || conflicts.has(fact.eventId)) continue;
+    const previous = byEventId.get(fact.eventId);
+    if (!previous) {
+      byEventId.set(fact.eventId, fact);
+      continue;
+    }
+    const sameProof = previous.order === fact.order
+      && previous.rootEventId === fact.rootEventId
+      && previous.category === fact.category
+      && previous.actorId === fact.actorId
+      && previous.frameId === fact.frameId
+      && previous.parentFrameId === fact.parentFrameId
+      && previous.identity.interactionId === fact.identity.interactionId
+      && previous.identity.rootFrameId === fact.identity.rootFrameId;
+    const sameCopy = previous.label === fact.label && previous.outcomeLabel === fact.outcomeLabel
+      && previous.amount === fact.amount && JSON.stringify(previous.effect) === JSON.stringify(fact.effect)
+      && JSON.stringify(previous.affectedPlayerIds) === JSON.stringify(fact.affectedPlayerIds);
+    const sameOutcome = !previous.committedOutcome || !fact.committedOutcome
+      || JSON.stringify(previous.committedOutcome) === JSON.stringify(fact.committedOutcome);
+    if (!sameProof || !sameCopy || !sameOutcome) {
+      byEventId.delete(fact.eventId);
+      conflicts.add(fact.eventId);
+      continue;
+    }
+    if (!previous.committedOutcome && fact.committedOutcome) byEventId.set(fact.eventId, fact);
+  }
+  return [...byEventId.values()].sort((left, right) => left.order - right.order);
+}
+
+type PresentationQueueEntry = {
+  id: string;
+  resolutionId?: string;
+  importance?: "essential" | "informational";
+  finalResult?: boolean;
+};
+
+/**
+ * Coalesces ordinary visual events by resolution while keeping every validated
+ * public H4 fact already admitted to the queue. A later resolution must not
+ * silently erase a committed result that has not yet had its read turn.
+ */
+export function coalescePresentationQueue<T extends PresentationQueueEntry>(
+  current: readonly T[],
+  incoming: readonly T[],
+  queuedPublicH4EventIds: ReadonlySet<string> = new Set(),
+): T[] {
+  const combined = [...current];
+  for (const event of incoming) {
+    if (!combined.some((existing) => existing.id === event.id)) combined.push(event);
+  }
+  const latestResolutionId = incoming.map((event) => event.resolutionId).filter(Boolean).at(-1);
+  if (!latestResolutionId) return combined;
+  return combined.filter((event) => event.resolutionId === latestResolutionId
+    || event.importance === "essential"
+    || event.finalResult === true
+    || queuedPublicH4EventIds.has(event.id));
+}
+
+/** A queued H4-only message is readable presentation, not a gameplay lock. */
+export function presentationEventBlocksActions(
+  event: { id: string; type: string } | null | undefined,
+  queuedPublicH4EventIds: ReadonlySet<string>,
+): boolean {
+  return Boolean(event && !(event.type === "message" && queuedPublicH4EventIds.has(event.id)));
+}
+
+/** Selects only the fact at/before the presentation cursor, never a future result. */
+export function publicH4FactAtPresentationCursor<T extends { eventId: string; order: number }>(
+  facts: readonly T[],
+  cursor: { id: string; publicSequence?: number } | null,
+): { fact: T | null; isExactCursorFact: boolean } {
+  if (!cursor) return { fact: facts.at(-1) ?? null, isExactCursorFact: false };
+  const exact = facts.find((fact) => fact.eventId === cursor.id);
+  if (exact) return { fact: exact, isExactCursorFact: true };
+  if (!Number.isSafeInteger(cursor.publicSequence)) return { fact: null, isExactCursorFact: false };
+  return {
+    fact: facts.filter((fact) => fact.order <= (cursor.publicSequence ?? -1)).at(-1) ?? null,
+    isExactCursorFact: false,
+  };
+}
+
+export type PublicH4AnnouncementOwner =
+  | "PublicCardDisplay"
+  | "PublicDiscardAnnouncementLayer"
+  | "PublicInteractionAnnouncementLayer"
+  | "PublicSkillEventAnnouncementLayer";
+
+/** Selects one existing H4 surface for the active or newest already-proven candidate. */
+export function selectPublicH4AnnouncementOwner(input: {
+  fact?: PublicH4FactOwnerProof | null;
+  factIsActive?: boolean;
+  cardDisplay?: { enabled: boolean; rootEventId: string; interactionId: string; rootFrameId: string } | null;
+  discard?: { eventId: string; order: number } | null;
+  skillEvent?: { eventId: string } | null;
+}): { eventId: string; owner: PublicH4AnnouncementOwner } | null {
+  const { fact, factIsActive = false, discard, cardDisplay, skillEvent } = input;
+  if (discard && (!fact
+    || (!factIsActive && discard.order > fact.order)
+    || (discard.eventId === fact.eventId && fact.category === "CARD_DISCARDED" && !fact.committedOutcome))) {
+    return { eventId: discard.eventId, owner: "PublicDiscardAnnouncementLayer" };
+  }
+  if (fact) {
+    const cardDisplayOwns = Boolean(cardDisplay?.enabled
+      && fact.rootEventId === cardDisplay.rootEventId
+      && fact.identity.interactionId === cardDisplay.interactionId
+      && fact.identity.rootFrameId === cardDisplay.rootFrameId);
+    return { eventId: fact.eventId, owner: cardDisplayOwns ? "PublicCardDisplay" : "PublicInteractionAnnouncementLayer" };
+  }
+  return skillEvent ? { eventId: skillEvent.eventId, owner: "PublicSkillEventAnnouncementLayer" } : null;
+}
+
 export function publicFactsForEvent(snapshot: AuditSnapshot, eventId: string): PublicPresentationEvent[] {
   const rows = allPublicFacts(snapshot).filter((fact) => fact.eventId === eventId);
   const uniqueRows = rows.filter((fact, index) => rows.findIndex((other) => other.identity.interactionId === fact.identity.interactionId

@@ -36,7 +36,7 @@ import { resolveDamageModifiers, type DamageCause } from "../../../game/capabili
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
 import { attackRootProjectionDiagnosticsFor, projectPresentationV2, publicCardPlayProvesEffectiveKind, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
 import { composePresentationSnapshot, type PresentationPublicDrawPhaseDecision } from "../../../game/presentation-snapshot";
-import type { PublicPhysicalZoneTransition, PublicPresentationDecision, PublicPresentationEventFactDraft, PublicZoneEndpoint, ViewerNegationChoice } from "../../../game/presentation-semantics";
+import { validateCommittedPublicOutcomeDraft, type CommittedPublicOutcomeChange, type CommittedPublicOutcomeDraft, type PublicPhysicalZoneTransition, type PublicPresentationDecision, type PublicPresentationEventFactDraft, type PublicZoneEndpoint, type ViewerNegationChoice } from "../../../game/presentation-semantics";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
 import { childCausalFrame, contextFor, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
@@ -853,70 +853,84 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
   return { ...(meta?.sharedResponseContribution ? { sharedResponseContribution: meta.sharedResponseContribution } : {}), ...(meta?.entourageInvocation ? { entourageInvocation: meta.entourageInvocation } : {}), resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
-function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "amount" | "effect" | "bumperHarvestPickProof">> = {}, envelope?: CausalEnvelope | null): PublicPresentationEventFactDraft | undefined {
+function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "outcomeCopySegments" | "amount" | "effect" | "bumperHarvestPickProof" | "committedOutcome">> = {}, envelope?: CausalEnvelope | null, rootIdentity?: NonNullable<PublicPresentationEventFactDraft["committedIdentity"]>): PublicPresentationEventFactDraft | undefined {
   if (!causal?.interactionId || !causal.frameId) return undefined;
+  const committedOutcome = fields.committedOutcome === undefined ? undefined : validateCommittedPublicOutcomeDraft(fields.committedOutcome, {
+    actorId: fields.actorId,
+    affectedPlayerIds: fields.affectedPlayerIds,
+    publicLabels: [fields.label, fields.effect?.label],
+  });
+  if (fields.committedOutcome !== undefined && !committedOutcome) return undefined;
   const roots = envelope?.frames.filter((frame) => !frame.parentFrameId) ?? [];
   const frame = envelope?.frames.find((candidate) => candidate.frameId === causal.frameId);
   const committedIdentity = envelope && envelope.interactionId === causal.interactionId && roots.length === 1
     && frame && (frame.parentFrameId ?? undefined) === (causal.parentFrameId ?? undefined)
     ? { interactionId: envelope.interactionId, rootFrameId: roots[0].frameId,
       checkpointId: envelope.checkpoint.checkpointId, presentationRevision: envelope.presentationRevision }
-    : undefined;
+    : rootIdentity && rootIdentity.interactionId === causal.interactionId
+      && rootIdentity.rootFrameId === causal.frameId && !causal.parentFrameId
+      ? rootIdentity
+      : undefined;
   return {
     semantics: "PROVEN", visibility: "PUBLIC", interactionId: causal.interactionId,
     frameId: causal.frameId, ...(causal.parentFrameId ? { parentFrameId: causal.parentFrameId } : {}),
-    category, ...fields, ...(committedIdentity ? { committedIdentity } : {}),
+    category, ...fields, ...(committedOutcome ? { committedOutcome } : {}), ...(committedIdentity ? { committedIdentity } : {}),
   };
 }
-function addCommittedPublicSkillOutcome(log: string[], actor: PlayerRow, skillLabel: string) {
+function addCommittedPublicSkillOutcome(
+  log: string[],
+  actor: PlayerRow,
+  skillLabel: string,
+  changes: readonly CommittedPublicOutcomeChange[],
+  noChangeOutcomeLabel = `${skillLabel} resolved without a public HP or card change`,
+) {
   const causal = createCausalRoot({
     stage: "SETTLEMENT",
     origin: { originSourceId: actor.id, originEffect: "public_skill_outcome", originalTargetIds: [] },
     current: { currentSourceId: actor.id, currentEffect: "public_skill_outcome", currentTargetIds: [], resolvingPlayerId: actor.id },
   });
   const eventId = crypto.randomUUID();
+  const affectedPlayerIds = [...new Set(changes.flatMap((change) => change.kind === "CARD_TRANSFERRED"
+    ? [change.fromPlayerId, change.toPlayerId]
+    : [change.playerId]))];
   const fact = publicFactFor(causal.context, "SKILL_USED", {
     rootEventId: eventId,
     actorId: actor.id,
-    affectedPlayerIds: [],
+    affectedPlayerIds,
     label: skillLabel,
     effect: { kind: "skill_use" },
   }, causal.envelope);
+  const committedFact = withCommittedPublicOutcome(fact, {
+    outcomeLabel: changes.length ? `${skillLabel} resolved its committed public result` : noChangeOutcomeLabel,
+    changes,
+    source: { kind: "skill", label: skillLabel },
+  });
   const committed = addLogWithId(log, `${actor.name} used ${skillLabel}.`, undefined, {
     actorId: actor.id,
     importance: "essential",
-    ...(fact ? { publicFact: fact } : {}),
+    ...(committedFact ? { publicFact: committedFact } : {}),
   }, eventId);
   return { log: committed.log, eventId, causal: causal.context, envelope: causal.envelope };
 }
-type PublicTriggerOutcomeSummary = { affectedPlayerIds?: string[]; amount?: number; outcomeLabel: string };
+type PublicTriggerOutcomeSummary = { affectedPlayerIds?: string[]; outcomeLabel: string };
 
 function publicTriggerOutcomeSummary(outcome: { kind: string }): PublicTriggerOutcomeSummary {
   const details = outcome as unknown as Record<string, unknown>;
   const ids = (...values: unknown[]) => [...new Set(values.filter((value): value is string => typeof value === "string" && value.length > 0))];
-  const count = (value: unknown) => Array.isArray(value) ? value.length : null;
   switch (outcome.kind) {
-    case "gain_target_card": return { affectedPlayerIds: ids(details.sourceId), outcomeLabel: "obtained one card" };
+    case "gain_target_card": return { affectedPlayerIds: ids(details.sourceId, details.targetId), outcomeLabel: "obtained one card" };
     case "fanjian_combined": return { affectedPlayerIds: ids(details.targetId), outcomeLabel: "revealed one hidden card" };
-    case "gain_damage_cards": {
-      const gained = count(details.cardIds);
-      return { affectedPlayerIds: ids(details.targetId), ...(gained !== null ? { amount: gained } : {}), outcomeLabel: gained === 1 ? "obtained the card that caused the damage" : "obtained the cards that caused the damage" };
-    }
+    case "gain_damage_cards": return { affectedPlayerIds: ids(details.targetId), outcomeLabel: "obtained damage cards" };
     case "legacy_distribution": return { affectedPlayerIds: ids(details.playerId), outcomeLabel: "began a card distribution" };
-    // These provider outcomes describe requested operations. The server may
-    // cap recovery at max HP or draw fewer cards when the deck is short, so
-    // report the committed amount at the common outcome branch instead.
     case "recover_player": return { affectedPlayerIds: ids(details.playerId), outcomeLabel: "resolved a recovery effect" };
     case "draw_cards": return { outcomeLabel: "resolved a draw effect" };
+    case "draw_target_cards": return { affectedPlayerIds: ids(details.targetId), outcomeLabel: "resolved a draw effect" };
     case "obtain_judgement_card": return { affectedPlayerIds: ids(details.playerId), outcomeLabel: "obtained the final Judgement card" };
     case "damage_player": return { affectedPlayerIds: ids(details.targetId), outcomeLabel: "resolved a damage effect" };
     case "force_damage": return { outcomeLabel: "resolved a damage effect" };
     case "prevent_damage": return { outcomeLabel: "prevented the damage" };
     case "target_discard": return { outcomeLabel: "discarded one selected card" };
-    case "discard_cards": {
-      const discarded = count(details.targetCardIds);
-      return { affectedPlayerIds: ids(details.targetId), ...(discarded !== null ? { amount: discarded } : {}), outcomeLabel: `discarded ${discarded ?? 1} card${(discarded ?? 1) === 1 ? "" : "s"}` };
-    }
+    case "discard_cards": return { affectedPlayerIds: ids(details.targetId), outcomeLabel: "resolved a discard effect" };
     case "judgement": return { outcomeLabel: "started a Judgement" };
     case "attacker_draw": return { outcomeLabel: "allowed the attacker to draw a card" };
     case "follow_up_attack": return { outcomeLabel: "prepared a follow-up Attack" };
@@ -928,18 +942,75 @@ function publicTriggerFactFor(trigger: TriggerPending, players: PlayerRow[], eff
   const context = triggerContextFor(trigger, players, room);
   if (!context || triggerAvailability(effectId, context) !== "public") return undefined;
   const continuation = trigger.continuation as unknown as Record<string, unknown>;
-  const rootEventId = typeof continuation.rootEventId === "string" ? continuation.rootEventId : undefined;
+  const judgementContinuation = continuation.kind === "judgement_effective_event" ? record(continuation.judgement) : null;
+  const rootEventId = typeof continuation.rootEventId === "string" ? continuation.rootEventId
+    : continuation.kind === "judgement_effective_event"
+      ? typeof trigger.readyAfterEventId === "string" ? trigger.readyAfterEventId
+        : typeof judgementContinuation?.revealedEventId === "string" ? judgementContinuation.revealedEventId : undefined
+      : undefined;
   const actorId = triggerActorId(effectId, context) ?? trigger.actorId;
   const option = triggerOptionsFor(trigger, players, room).find((candidate) => candidate.effectId === effectId);
   const summary = publicTriggerOutcomeSummary(outcome);
+  const affectedPlayerIds = [...new Set([
+    ...(summary.affectedPlayerIds ?? []),
+    ...(outcome.kind === "draw_cards" && actorId ? [actorId] : []),
+    ...(outcome.kind === "attacker_draw" && context.sourceId ? [context.sourceId] : []),
+  ])];
   return publicFactFor(trigger.causal, "SKILL_USED", {
     actorId, ...(rootEventId ? { rootEventId } : {}),
-    ...(summary.affectedPlayerIds?.length ? { affectedPlayerIds: summary.affectedPlayerIds } : {}),
+    ...(affectedPlayerIds.length ? { affectedPlayerIds } : {}),
     ...(option?.label ? { label: option.label } : {}),
     ...(summary.outcomeLabel ? { outcomeLabel: summary.outcomeLabel } : {}),
-    ...(summary.amount !== undefined ? { amount: summary.amount } : {}),
     effect: { kind: outcome.kind },
   }, envelope);
+}
+
+/** Adds only server-measured, committed results to a shared public fact. */
+function withCommittedPublicOutcome(
+  fact: PublicPresentationEventFactDraft | undefined,
+  result: { outcomeLabel: string; changes: readonly CommittedPublicOutcomeChange[]; source?: CommittedPublicOutcomeDraft["source"] },
+): PublicPresentationEventFactDraft | undefined {
+  if (!fact || !Number.isSafeInteger(result.changes.reduce((total, change) => total + change.amount, 0))) return fact;
+  const amount = result.changes.reduce((total, change) => total + change.amount, 0);
+  if (result.changes.length === 0) return { ...fact, amount: 0, outcomeLabel: result.outcomeLabel };
+  const committedOutcome = validateCommittedPublicOutcomeDraft({
+    source: result.source ?? { kind: "other", ...(fact.label ? { label: fact.label } : {}) },
+    changes: result.changes,
+  }, {
+    ...(fact.actorId ? { actorId: fact.actorId } : {}),
+    affectedPlayerIds: fact.affectedPlayerIds ?? [],
+    publicLabels: [fact.label],
+  });
+  // Keep the truthful generic event fact if participant/source proof is
+  // incomplete; never attach a guessed amount or an invalid committed delta.
+  return committedOutcome ? { ...fact, amount, outcomeLabel: result.outcomeLabel, committedOutcome } : fact;
+}
+const withCommittedPublicTriggerOutcome = withCommittedPublicOutcome;
+function committedDiscardChangesFromTransitions(
+  eventId: string,
+  playerId: string,
+  transitions: readonly PublicPhysicalZoneTransition[] | undefined,
+): CommittedPublicOutcomeChange[] | null {
+  if (!transitions?.length) return null;
+  const amounts = new Map<"HAND" | "EQUIPMENT" | "JUDGEMENT", number>();
+  const physicalCardIds = new Set<string>();
+  for (const transition of transitions) {
+    const fromZone = transition.from.zone;
+    if (transition.semantics !== "PROVEN" || transition.visibility !== "PUBLIC"
+      || transition.eventId !== eventId || transition.from.ownerId !== playerId
+      || transition.to.zone !== "DISCARD" || transition.to.ownerId !== null
+      || !(fromZone === "HAND" || fromZone === "EQUIPMENT" || fromZone === "JUDGEMENT")
+      || !transition.physicalCardId || physicalCardIds.has(transition.physicalCardId)) return null;
+    physicalCardIds.add(transition.physicalCardId);
+    amounts.set(fromZone, (amounts.get(fromZone) ?? 0) + 1);
+  }
+  return [...amounts].map(([fromZone, amount]) => ({
+    kind: "CARD_DISCARDED" as const,
+    playerId,
+    amount,
+    fromZone,
+    toZone: "DISCARD" as const,
+  }));
 }
 function genericStageLabel(stage: string) {
   return stage.toLowerCase().split("_").map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part).join(" ");
@@ -1607,6 +1678,24 @@ function publicCardMaterials(cards: readonly Card[], owners: readonly { playerId
     ? materials as PresentationPublicCardEffectProof["materials"]
     : null;
 }
+function committedDiscardChangesFromZones(playerId: string, cards: readonly Card[], hand: readonly Card[], equipment: readonly Card[]): CommittedPublicOutcomeChange[] | null {
+  if (!cards.length || new Set(cards.map((card) => card.id)).size !== cards.length) return null;
+  const counts = new Map<"HAND" | "EQUIPMENT", number>();
+  for (const card of cards) {
+    const inHand = hand.some((held) => held.id === card.id);
+    const inEquipment = equipment.some((held) => held.id === card.id);
+    if (inHand === inEquipment) return null;
+    const fromZone = inHand ? "HAND" : "EQUIPMENT";
+    counts.set(fromZone, (counts.get(fromZone) ?? 0) + 1);
+  }
+  return [...counts].map(([fromZone, amount]) => ({
+    kind: "CARD_DISCARDED" as const,
+    playerId,
+    amount,
+    fromZone,
+    toZone: "DISCARD",
+  }));
+}
 function publicEventResolutionId(log: readonly string[], eventId: string | undefined) {
   if (!eventId) return undefined;
   const matches = gameTimeline([...log]).filter((event) => event.id === eventId && (event.type === "card" || event.type === "cards") && event.presentation !== false);
@@ -1615,6 +1704,55 @@ function publicEventResolutionId(log: readonly string[], eventId: string | undef
 function publicRootLink(log: readonly string[], eventId: string | undefined) {
   const resolutionId = publicEventResolutionId(log, eventId);
   return eventId && resolutionId ? { rootEventId: eventId, rootResolutionId: resolutionId } : null;
+}
+function publicIdentityFromCommittedRoot(
+  log: readonly string[],
+  rootEventId: string | undefined,
+  causal: CausalContext | undefined,
+): NonNullable<PublicPresentationEventFactDraft["committedIdentity"]> | undefined {
+  if (!rootEventId || !causal?.interactionId || !causal.frameId || causal.parentFrameId) return undefined;
+  const roots = gameTimeline([...log]).filter((event) => event.id === rootEventId);
+  if (roots.length !== 1) return undefined;
+  const root = roots[0];
+  const fact = record(root.publicFact);
+  const identity = record(fact?.committedIdentity);
+  if (root.presentation === false || typeof root.privateToPlayerId === "string"
+    || fact?.semantics !== "PROVEN" || fact.visibility !== "PUBLIC"
+    || fact.interactionId !== causal.interactionId || fact.frameId !== causal.frameId
+    || fact.rootEventId !== rootEventId || !identity
+    || identity.interactionId !== causal.interactionId || identity.rootFrameId !== causal.frameId
+    || typeof identity.checkpointId !== "string" || !identity.checkpointId.trim() || identity.checkpointId.length > 160
+    || !Number.isSafeInteger(identity.presentationRevision)
+    || (identity.presentationRevision as number) < 0) return undefined;
+  return {
+    interactionId: identity.interactionId as string,
+    rootFrameId: identity.rootFrameId as string,
+    checkpointId: identity.checkpointId as string,
+    presentationRevision: identity.presentationRevision as number,
+  };
+}
+function committedPublicRootForInteraction(
+  log: readonly string[],
+  interactionId: string | undefined,
+): { eventId: string; identity: NonNullable<PublicPresentationEventFactDraft["committedIdentity"]> } | undefined {
+  if (!interactionId) return undefined;
+  const roots = gameTimeline([...log]).flatMap((event) => {
+    const fact = record(event.publicFact);
+    const identity = record(fact?.committedIdentity);
+    if (event.presentation === false || typeof event.privateToPlayerId === "string"
+      || typeof event.id !== "string" || !fact || fact.semantics !== "PROVEN" || fact.visibility !== "PUBLIC"
+      || fact.interactionId !== interactionId || fact.rootEventId !== event.id || !identity
+      || identity.interactionId !== interactionId || identity.rootFrameId !== fact.frameId
+      || typeof identity.checkpointId !== "string" || !identity.checkpointId.trim() || identity.checkpointId.length > 160
+      || !Number.isSafeInteger(identity.presentationRevision) || (identity.presentationRevision as number) < 0) return [];
+    return [{ eventId: event.id, identity: {
+      interactionId,
+      rootFrameId: identity.rootFrameId as string,
+      checkpointId: identity.checkpointId,
+      presentationRevision: identity.presentationRevision as number,
+    } }];
+  });
+  return roots.length === 1 ? roots[0] : undefined;
 }
 function publicConversionEffectId(providerId: string | undefined, resultingCardKind: Card["kind"]) {
   if (resultingCardKind === "Attack" && (providerId === "guan_yu_red_card_attack" || providerId === "zhao_yun_dodge_as_attack" || providerId === "serpent_spear_attack")) return providerId;
@@ -2146,9 +2284,31 @@ function addDiscardEventWithId(log: string[], player: PlayerRow | string, cards:
   const ownerName = typeof player === "string" ? player : player.name;
   const eventId = crypto.randomUUID();
   const publicZoneTransitions = typeof player === "string" ? undefined : publicDiscardTransitions(eventId, player, cards);
+  const discardActorId = typeof player === "string" ? null : player.id;
+  const committedChanges = discardActorId
+    ? committedDiscardChangesFromTransitions(eventId, discardActorId, publicZoneTransitions) ?? []
+    : [];
+  const discardRoot = committedChanges.length && typeof player !== "string"
+    ? createCausalRoot({
+      stage: "SETTLEMENT",
+      origin: { originSourceId: player.id, originEffect: "public_discard", originalTargetIds: [player.id] },
+      current: { currentSourceId: player.id, currentEffect: "public_discard", currentTargetIds: [player.id], resolvingPlayerId: player.id },
+    })
+    : null;
+  const publicFact = discardRoot && typeof player !== "string"
+    ? publicFactFor(discardRoot.context, "CARD_DISCARDED", {
+      rootEventId: eventId,
+      actorId: player.id,
+      affectedPlayerIds: [player.id],
+      label: "Discard",
+      effect: { kind: "discard" },
+      committedOutcome: { source: { kind: "other", label: "Discard" }, changes: committedChanges },
+    }, discardRoot.envelope)
+    : undefined;
   const meta: PresentationMeta = {
     ...(typeof player === "string" ? {} : { actorId: player.id }),
     ...(publicZoneTransitions ? { publicZoneTransitions } : {}),
+    ...(publicFact ? { publicFact } : {}),
   };
   return { ...addCardGroupEventWithId(log, ownerName, cards, "discard", true, ownerName, undefined, meta, eventId), eventId };
 }
@@ -2156,12 +2316,18 @@ function addDiscardEvent(log: string[], player: PlayerRow | string, cards: Card[
   return addDiscardEventWithId(log, player, cards).log;
 }
 
-function addPublicDiscardCardEvent(log: string[], player: PlayerRow, card: Card) {
-  const eventId = crypto.randomUUID();
+function addPublicDiscardCardEvent(
+  log: string[],
+  player: PlayerRow,
+  card: Card,
+  options: { eventId?: string; publicFact?: PublicPresentationEventFactDraft } = {},
+) {
+  const eventId = options.eventId ?? crypto.randomUUID();
   const publicZoneTransitions = publicDiscardTransitions(eventId, player, [card]);
   return addCardEvent(log, player.name, card, player.name, "discard", true, {
     actorId: player.id,
     ...(publicZoneTransitions ? { publicZoneTransitions } : {}),
+    ...(options.publicFact ? { publicFact: options.publicFact } : {}),
   }, eventId);
 }
 function drawCards(deck: Card[], discard: Card[], count: number, log: string[]) {
@@ -2244,7 +2410,31 @@ async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePh
         effect: { kind: "draw_phase_modifier" } }, root.envelope);
       log = addTriggeredEffectNotice(log, target.name, publicDrawSkill.label, fact).log;
     }
-    log = addHistory(log, `${target.name} draws ${draw.drawn.length} cards.`, target.id);
+    if (draw.drawn.length > 0) {
+      const drawRoot = createCausalRoot({
+        stage: "SETTLEMENT",
+        origin: { originSourceId: target.id, originEffect: "normal_draw_phase", originalTargetIds: [target.id] },
+        current: { currentSourceId: target.id, currentEffect: "normal_draw_phase", currentTargetIds: [target.id], resolvingPlayerId: target.id },
+      });
+      const drawEventId = crypto.randomUUID();
+      const drawFact = publicFactFor(drawRoot.context, "EFFECT_APPLIED", {
+        rootEventId: drawEventId,
+        actorId: target.id,
+        affectedPlayerIds: [target.id],
+        label: "Draw Phase",
+        effect: { kind: "draw_phase" },
+        committedOutcome: {
+          source: { kind: "phase", label: "Draw Phase" },
+          changes: [{ kind: "CARD_DRAWN", playerId: target.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }],
+        },
+      }, drawRoot.envelope);
+      log = drawFact?.committedOutcome
+        ? addLogWithId(log, `${target.name} draws ${draw.drawn.length} cards.`, target.id,
+          { actorId: target.id, importance: "essential", publicFact: drawFact }, drawEventId).log
+        : addHistory(log, `${target.name} draws ${draw.drawn.length} cards.`, target.id);
+    } else {
+      log = addHistory(log, `${target.name} draws 0 cards.`, target.id);
+    }
     for (const drawn of drawnCards) log = addPrivateDrawEvent(log, target, drawn);
     const hand = [...parse<Card[]>(target.hand_json, []), ...draw.drawn];
     writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), target.id));
@@ -2258,7 +2448,7 @@ async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePh
 }
 
 /** Settles a semantic Draw Phase replacement with physical hidden-hand transfers. */
-async function resolveDrawPhaseReplacement(room: RoomRow, target: PlayerRow, targets: PlayerRow[], resumePhase: string, deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = []) {
+async function resolveDrawPhaseReplacement(room: RoomRow, target: PlayerRow, targets: PlayerRow[], resumePhase: string, deck: Card[], discard: Card[], log: string[], sourceLabel: string, writes: D1PreparedStatement[] = []) {
   let targetHand = parse<Card[]>(target.hand_json, []);
   const transferred: Card[] = [];
   const transferSourceIds: string[] = [];
@@ -2273,11 +2463,41 @@ async function resolveDrawPhaseReplacement(room: RoomRow, target: PlayerRow, tar
     transferSourceIds.push(source.id);
     writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id));
   }
-  const sourceNames = targets.map((source) => source.name);
   for (const [index, obtained] of transferred.entries()) {
     log = addPrivateHandArrivalEvent(log, target, obtained, { sourceZone: "hand", sourcePlayerId: transferSourceIds[index] });
   }
-  log = addHistory(log, `${target.name} uses Assault and obtains 1 hand card from ${sourceNames.join(" and ")}.`, target.id);
+  const transferCounts = new Map<string, number>();
+  for (const sourceId of transferSourceIds) transferCounts.set(sourceId, (transferCounts.get(sourceId) ?? 0) + 1);
+  const changes: CommittedPublicOutcomeChange[] = [...transferCounts].map(([fromPlayerId, amount]): CommittedPublicOutcomeChange => ({
+    kind: "CARD_TRANSFERRED",
+    fromPlayerId,
+    toPlayerId: target.id,
+    amount,
+    fromZone: "HAND",
+    toZone: "HAND",
+  }));
+  const causal = createCausalRoot({
+    stage: "SETTLEMENT",
+    origin: { originSourceId: target.id, originEffect: "draw_phase_replacement", originalTargetIds: [...transferCounts.keys()] },
+    current: { currentSourceId: target.id, currentEffect: "draw_phase_replacement", currentTargetIds: [...transferCounts.keys()], resolvingPlayerId: target.id },
+  });
+  const eventId = crypto.randomUUID();
+  const affectedPlayerIds = [...new Set([target.id, ...transferCounts.keys()])];
+  const committedFact = withCommittedPublicOutcome(publicFactFor(causal.context, "SKILL_USED", {
+    rootEventId: eventId,
+    actorId: target.id,
+    affectedPlayerIds,
+    label: sourceLabel,
+    effect: { kind: "card_transfer" },
+  }, causal.envelope), {
+    outcomeLabel: `received ${transferred.length} card${transferred.length === 1 ? "" : "s"}`,
+    changes,
+    source: { kind: "skill", label: sourceLabel },
+  });
+  log = committedFact?.committedOutcome
+    ? addLogWithId(log, `${target.name} used ${sourceLabel} and received ${transferred.length} hand card${transferred.length === 1 ? "" : "s"}.`, target.id,
+      { actorId: target.id, importance: "essential", finalResult: true, publicFact: committedFact }, eventId).log
+    : addHistory(log, `${target.name} used ${sourceLabel} and received ${transferred.length} hand card${transferred.length === 1 ? "" : "s"}.`, target.id);
   const flags = drawPhaseFlags(resumePhase);
   writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id));
   writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
@@ -2459,6 +2679,8 @@ async function beginLegacyDistribution(room: RoomRow, continuation: DamageSuffer
     cards: draw.drawn,
     eligibleRecipientIds: legacyRecipients(players),
     resumeDamageSuffered: continuation,
+    ...(continuation.causal ? { causal: continuation.causal } : {}),
+    ...(publicFact?.label ? { publicOutcomeLabel: publicFact.label } : {}),
     reason: `${actor.name} privately assigns the 2 Legacy cards to living characters`,
     deadline: nextResponseDeadline(actor),
     resolutionId: continuation.resolutionId,
@@ -2519,11 +2741,25 @@ async function resolveAutomaticDamageSufferedTrigger(room: RoomRow, continuation
   const context = damageSufferedTriggerContext(source, target, continuation.amount, undefined, continuation.damageCards ?? [], continuation.damageCause ?? "other", continuation.physicalSuit, state, continuation.resumePhase.startsWith("play"), recoverableCardIds);
   const committedFact = (outcomeLabel: string, amount: number) => {
     if (triggerAvailability(execution.effectId, context) !== "public") return undefined;
+    const publicSkillLabel = execution.presentation?.label?.split(" — ")[0] ?? "a skill";
+    const committedOutcome = source && amount > 0 && execution.outcome.kind === "draw_cards"
+      ? {
+        source: { kind: "skill" as const, label: publicSkillLabel },
+        changes: [{ kind: "CARD_DRAWN" as const, playerId: source.id, amount, fromZone: "DECK" as const, toZone: "HAND" as const }],
+      }
+      : source && amount > 0 && execution.outcome.kind === "lose_hp"
+        ? {
+          source: { kind: "skill" as const, label: publicSkillLabel },
+          changes: [{ kind: "HP_LOST_TO_EFFECT" as const, playerId: source.id, amount }],
+        }
+        : undefined;
     return publicFactFor(continuation.causal, "SKILL_USED", {
       rootEventId: continuation.rootEventId ?? notice.eventId,
       actorId: triggerActorId(execution.effectId, context) ?? source?.id ?? target.id,
-      label: execution.presentation?.label?.split(" — ")[0] ?? "a skill",
+      affectedPlayerIds: source ? [source.id] : [target.id],
+      label: publicSkillLabel,
       outcomeLabel, amount, effect: { kind: execution.outcome.kind },
+      ...(committedOutcome ? { committedOutcome } : {}),
     }, parseCausalEnvelope(room.causal_envelope_json));
   };
   const attachNoticeFact = (entries: string[], fact: PublicPresentationEventFactDraft | undefined) => {
@@ -2558,12 +2794,14 @@ async function resolveAutomaticDamageSufferedTrigger(room: RoomRow, continuation
     if (!source || execution.outcome.playerId !== source.id || execution.outcome.amount !== 1) return continueDamageSufferedEvent(room, nextContinuation, players, deck, discard, addLog(nextLog, "The passive HP-loss effect has no valid source and ends."));
     // This is explicit HP loss, not sourced damage: do not route it through
     // resolveSourcedDamage or emit another damage_suffered event.
-    const hp = Math.max(0, (source.hp ?? 0) - execution.outcome.amount);
-    nextLog = attachNoticeFact(nextLog, committedFact("lost 1 HP", 1));
+    const hpBefore = source.hp ?? 0;
+    const hp = Math.max(0, hpBefore - execution.outcome.amount);
+    const actualHpLost = Math.max(0, hpBefore - hp);
+    nextLog = attachNoticeFact(nextLog, committedFact(actualHpLost > 0 ? `lost ${actualHpLost} HP` : "lost no HP", actualHpLost));
     nextLog = addLog(nextLog, `${source.name} loses 1 HP from Axe of Insanity${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`);
     const updatedSource = { ...source, hp } satisfies PlayerRow;
     if (isDying(hp)) {
-      await startDyingRescue(room, null, updatedSource, players, deck, discard, nextLog, [db().prepare("UPDATE rooms SET skill_state_json = ? WHERE id = ?").bind(JSON.stringify(nextState), room.id)], source, continuation.resumePhase, undefined, hp, continuation.origin, nextContinuation);
+      await startDyingRescue(room, null, updatedSource, players, deck, discard, nextLog, [db().prepare("UPDATE rooms SET skill_state_json = ? WHERE id = ?").bind(JSON.stringify(nextState), room.id)], source, continuation.resumePhase, undefined, hp, continuation.origin, nextContinuation, undefined, continuation.causal, continuation.rootEventId);
       return;
     }
     const updatedPlayers = players.map((player) => player.id === source.id ? updatedSource : player);
@@ -3259,6 +3497,118 @@ async function resumeTurnStartEvent(room: RoomRow, continuation: TurnStartTrigge
 async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[], resume: RecoveryResume, initialResolvedEffectIds: readonly string[] = []) {
   let remaining = [...records];
   let resolvedEffectIds = [...initialResolvedEffectIds];
+  let committedOutcomeLog: string[] | null = null;
+  let committedOutcomeEnvelope: CausalEnvelope | null = null;
+  const unpublishedRecoveries = records.filter((recovery) => !recovery.publicOutcomeEventId
+    && Number.isSafeInteger(recovery.amountRecovered) && recovery.amountRecovered > 0);
+  if (unpublishedRecoveries.length) {
+    const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+    const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
+    if (room) {
+      const amounts = new Map<string, number>();
+      for (const recovery of unpublishedRecoveries) amounts.set(recovery.playerId, (amounts.get(recovery.playerId) ?? 0) + recovery.amountRecovered);
+      const changes: CommittedPublicOutcomeChange[] = [...amounts].map(([playerId, amount]) => ({ kind: "HP_RECOVERED", playerId, amount }));
+      const affectedPlayerIds = [...amounts.keys()];
+      const outcomeLabel = changes.map((change) => {
+        const playerName = players.find((player) => player.id === change.playerId)?.name ?? "A player";
+        return `${playerName} recovered ${change.amount} HP`;
+      }).join("; ");
+      const eventId = crypto.randomUUID();
+      const resumeCausal = resume.kind === "turn_start" ? resume.continuation.causal
+        : resume.kind === "damage_suffered" ? resume.continuation.causal
+          : resume.kind === "dying" ? resume.pending.causal ?? resume.pending.resumeTrigger?.causal
+            : undefined;
+      const explicitRootEventId = resume.kind === "damage_suffered" ? resume.continuation.rootEventId
+        : resume.kind === "dying" ? resume.pending.rootEventId
+          ?? resume.pending.sharedRescue?.responseEventId ?? resume.pending.resumeTrigger?.rootEventId
+          ?? resume.pending.resumeEffect?.publicOutcome?.rootEventId
+          : undefined;
+      const existingEnvelope = parseCausalEnvelope(room.causal_envelope_json);
+      const existingRootFrame = existingEnvelope?.frames.filter((frame) => frame.parentFrameId == null) ?? [];
+      const recoveryLog = parse<string[]>(room.log_json, []);
+      const recoveryTimeline = gameTimeline(recoveryLog);
+      const canContinueCausal = Boolean(resumeCausal && existingEnvelope
+        && existingEnvelope.interactionId === resumeCausal.interactionId
+        && existingEnvelope.activeFrameId === resumeCausal.frameId
+        && existingEnvelope.checkpoint.frameId === resumeCausal.frameId
+        && existingRootFrame.length === 1);
+      const matchingRootEvents = canContinueCausal ? recoveryTimeline.filter((event) => {
+        const publicFact = record(event.publicFact);
+        const identity = record(publicFact?.committedIdentity);
+        return event.presentation !== false && typeof event.privateToPlayerId !== "string"
+          && publicFact?.semantics === "PROVEN" && publicFact.visibility === "PUBLIC"
+          && publicFact.interactionId === existingEnvelope!.interactionId
+          && publicFact.frameId === existingRootFrame[0]!.frameId
+          && publicFact.rootEventId === event.id
+          && identity?.interactionId === existingEnvelope!.interactionId
+          && identity.rootFrameId === existingRootFrame[0]!.frameId;
+      }) : [];
+      const inheritedRootEvent = explicitRootEventId
+        ? matchingRootEvents.find((event) => event.id === explicitRootEventId) ?? null
+        : matchingRootEvents.length === 1 ? matchingRootEvents[0] : null;
+      const explicitRootEvents = explicitRootEventId ? recoveryTimeline.filter((event) => event.id === explicitRootEventId
+        && event.presentation !== false && typeof event.privateToPlayerId !== "string"
+        && ((event.type === "card" || event.type === "cards") && event.action === "play"
+          || event.importance === "essential")) : [];
+      // A server-persisted continuation may prove the original root even when
+      // that root's public fact is synthesized by the snapshot rather than
+      // stored on the root event itself. Bind only when the same persisted
+      // causal envelope and one public root event agree with that reference.
+      const explicitContinuationRoot = canContinueCausal && explicitRootEvents.length === 1
+        && resumeCausal && existingEnvelope && explicitRootEventId
+        ? { context: resumeCausal, envelope: existingEnvelope, rootEventId: explicitRootEventId }
+        : null;
+      const inheritedCausal = inheritedRootEvent && resumeCausal && existingEnvelope
+        ? { context: resumeCausal, envelope: existingEnvelope, rootEventId: inheritedRootEvent.id }
+        : explicitContinuationRoot;
+      // A continuation may retain the original committed root even after its
+      // active envelope has advanced. Reuse that identity only when the root
+      // event itself proves the exact causal interaction and frame.
+      const provenRootCandidates = resumeCausal && !resumeCausal.parentFrameId
+        ? recoveryTimeline.flatMap((event) => {
+          const committedIdentity = publicIdentityFromCommittedRoot(recoveryLog, event.id, resumeCausal);
+          return committedIdentity ? [{ event, committedIdentity }] : [];
+        })
+        : [];
+      const fallbackCommittedRoot = inheritedCausal ? null : explicitRootEventId
+        ? provenRootCandidates.find((candidate) => candidate.event.id === explicitRootEventId) ?? null
+        : provenRootCandidates.length === 1 ? provenRootCandidates[0] : null;
+      const standaloneCausal = inheritedCausal || fallbackCommittedRoot || resumeCausal ? null : createCausalRoot({
+        stage: "SETTLEMENT",
+        origin: { originSourceId: null, originEffect: "recovery", originalTargetIds: affectedPlayerIds },
+        current: { currentSourceId: null, currentEffect: "recovery", currentTargetIds: affectedPlayerIds, resolvingPlayerId: null },
+      });
+      const recoveryCausal = inheritedCausal?.context ?? (fallbackCommittedRoot ? resumeCausal : standaloneCausal?.context);
+      const outcomeRootEventId = inheritedCausal?.rootEventId ?? fallbackCommittedRoot?.event.id ?? eventId;
+      const fact = recoveryCausal ? publicFactFor(recoveryCausal, "EFFECT_APPLIED", {
+        rootEventId: outcomeRootEventId,
+        affectedPlayerIds,
+        label: "Recovery",
+        outcomeLabel,
+        effect: { kind: "hp_recovery", label: "Recovery" },
+        committedOutcome: { source: { kind: "recovery", label: "Recovery" }, changes },
+      }, inheritedCausal?.envelope ?? standaloneCausal?.envelope, fallbackCommittedRoot?.committedIdentity) : undefined;
+      if (fact?.committedOutcome) {
+        committedOutcomeLog = addLogWithId(parse<string[]>(room.log_json, []), outcomeLabel, undefined, {
+          importance: "essential",
+          finalResult: true,
+          publicFact: fact,
+        }, eventId).log;
+        if (standaloneCausal) committedOutcomeEnvelope = standaloneCausal.envelope;
+        const unpublishedIds = new Set(unpublishedRecoveries.map((recovery) => recovery.playerId));
+        remaining = remaining.map((recovery) => unpublishedIds.has(recovery.playerId) && !recovery.publicOutcomeEventId
+          ? { ...recovery, publicOutcomeEventId: eventId, causal: recoveryCausal }
+          : recovery);
+      }
+    }
+  }
+  const recoveryEnvelopeFor = (room: RoomRow, candidates: readonly RecoveryRecord[]) => {
+    if (committedOutcomeEnvelope) return committedOutcomeEnvelope;
+    const context = candidates.find((recovery) => recovery.publicOutcomeEventId)?.causal;
+    const envelope = parseCausalEnvelope(room.causal_envelope_json);
+    return context && envelope?.interactionId === context.interactionId
+      && envelope.frames.some((frame) => frame.frameId === context.frameId) ? envelope : null;
+  };
   while (remaining.length) {
     const [recovery, ...rest] = remaining;
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
@@ -3276,19 +3626,25 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
       continue;
     }
     const labels = options.map((option) => option.label).join(" or ");
-    const presentation = addLogWithId(parse<string[]>(room.log_json, []), `${player.name} may use ${labels}.`);
-    const continuation: HpRecoveredTriggerContinuation = { kind: "hp_recovered_event", recovery, remaining: rest, resume, ...(resolvedEffectIds.length ? { resolvedEffectIds } : {}) };
+    const log = committedOutcomeLog ?? parse<string[]>(room.log_json, []);
+    const presentation = addLogWithId(log, `${player.name} may use ${labels}.`);
+    const continuation: HpRecoveredTriggerContinuation = { kind: "hp_recovered_event", recovery, remaining: rest, resume, ...(recovery.causal ? { causal: recovery.causal } : {}), ...(resolvedEffectIds.length ? { resolvedEffectIds } : {}) };
     const pending: TriggerPending = withPresentationBarrier({
       kind: "trigger",
       event: "hp_recovered",
       actorId: player.id,
       reason: `${player.name} may use ${labels}, or decline`,
       deadline: nextResponseDeadline(player),
+      ...(recovery.causal ? { causal: recovery.causal } : {}),
       resolvedEffectIds: resolvedEffectIds.length ? resolvedEffectIds : undefined,
       continuation,
     }, presentation.log, presentation.eventId);
-    const updated = await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json IS NULL")
-      .bind(serializePending(pending), JSON.stringify(presentation.log), roomId).run();
+    const causalEnvelope = recoveryEnvelopeFor(room, [recovery, ...rest]);
+    const updated = causalEnvelope
+      ? await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json IS NULL")
+        .bind(serializePending(pending), JSON.stringify(presentation.log), JSON.stringify(causalEnvelope), roomId).run()
+      : await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json IS NULL")
+        .bind(serializePending(pending), JSON.stringify(presentation.log), roomId).run();
     if ((updated.meta.changes ?? 0) > 0) return;
     return;
   }
@@ -3297,37 +3653,50 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
   if (!room) return;
   const deck = parse<Card[]>(room.deck_json, []);
   const discard = parse<Card[]>(room.discard_json, []);
-  const log = parse<string[]>(room.log_json, []);
+  const log = committedOutcomeLog ?? parse<string[]>(room.log_json, []);
+  const recoveryEnvelope = recoveryEnvelopeFor(room, records);
   if (resume.kind === "turn_start") {
     const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
-    await resumeTurnStartEvent(room, resume.continuation, players, deck, discard, log);
+    const resumedRoom = recoveryEnvelope ? { ...room, causal_envelope_json: JSON.stringify(recoveryEnvelope) } : room;
+    if (committedOutcomeLog && recoveryEnvelope) {
+      await causalRoomStateWrite(roomId, { phase: room.phase ?? "resolving", pending: null, deck, discard, log, causalEnvelope: recoveryEnvelope }).run();
+    }
+    await resumeTurnStartEvent(resumedRoom, resume.continuation, players, deck, discard, log);
     return;
   }
   if (resume.kind === "phase") {
-    await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-      .bind(resume.phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
+    if (recoveryEnvelope) {
+      await causalRoomStateWrite(roomId, { phase: resume.phase, pending: null, deck, discard, log, causalEnvelope: recoveryEnvelope }).run();
+    } else {
+      await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
+        .bind(resume.phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
+    }
     if (resume.handLoss) await maybeOpenHandLossTrigger(roomId, resume.handLoss.playerId, resume.handLoss.beforeHand);
     return;
   }
   if (resume.kind === "dying") {
+    const resumedRoom = recoveryEnvelope ? { ...room, causal_envelope_json: JSON.stringify(recoveryEnvelope) } : room;
     const target = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(resume.pending.targetId, roomId).first<PlayerRow>();
     if (!target) return;
     if (resume.pending.sharedRescue && resume.handLoss) {
       const nextResume: RecoveryResume = { kind: "dying", pending: resume.pending };
+      if (committedOutcomeLog && recoveryEnvelope) {
+        await causalRoomStateWrite(roomId, { phase: room.phase ?? "resolving", pending: null, deck, discard, log, causalEnvelope: recoveryEnvelope }).run();
+      }
       if (await maybeOpenHandLossTrigger(roomId, resume.handLoss.playerId, resume.handLoss.beforeHand,
         { records: [], resume: nextResume })) return;
     }
     if (isDying(target.hp ?? 0)) {
       const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
       if (resume.pending.sharedRescue) {
-        await startSharedDyingWindow(room, resume.pending, players, deck, discard, log);
+        await startSharedDyingWindow(resumedRoom, resume.pending, players, deck, discard, log);
         return;
       }
-      const transition = nextDyingTransition(room, resume.pending, players, [resume.pending.actorId, ...(resume.pending.remainingIds ?? [])]);
+      const transition = nextDyingTransition(resumedRoom, resume.pending, players, [resume.pending.actorId, ...(resume.pending.remainingIds ?? [])]);
       if (transition.pending) {
         await causalRoomStateWrite(roomId, { phase: "dying", pending: transition.pending, deck, discard, log, causalEnvelope: transition.causalEnvelope }).run();
       } else {
-        await causalRoomStateWrite(roomId, { phase: "resolving", pending: null, deck, discard, log, causalEnvelope: null }).run();
+        await causalRoomStateWrite(roomId, { phase: "resolving", pending: null, deck, discard, log, causalEnvelope: recoveryEnvelope }).run();
         const settledRoom = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
         const settledTarget = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(resume.pending.targetId, roomId).first<PlayerRow>();
         const settledSource = resume.pending.sourceId ? await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(resume.pending.sourceId, roomId).first<PlayerRow>() : null;
@@ -3337,14 +3706,27 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
     }
     const resumePlayer = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(resume.pending.resumePlayerId, roomId).first<PlayerRow>();
     const next = dyingResumeState(resume.pending, resumePlayer);
-    await db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-      .bind(next.phase, next.pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
+    const hasCausalContinuation = Boolean(resume.pending.resumePending
+      || resume.pending.resumeTrigger
+      || resume.pending.resumeEffect);
+    // A shared-rescue Hand-loss check may have already committed the recovery
+    // fact and advanced its checkpoint. Re-read the CAS inputs after that
+    // write so the terminal Dying transition does not strand the room in
+    // `resolving` by comparing against the pre-commit envelope.
+    const transitionRoom = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+    if (!transitionRoom) return;
+    const nextEnvelope = hasCausalContinuation ? transitionRoom.causal_envelope_json : null;
+    const resumed = await db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = ? AND pending_json IS ? AND causal_envelope_json IS ?")
+      .bind(next.phase, next.pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), nextEnvelope,
+        roomId, transitionRoom.phase, transitionRoom.pending_json, transitionRoom.causal_envelope_json).run();
+    if ((resumed.meta.changes ?? 0) <= 0) return;
     await continueDyingResolution(roomId, resume.pending);
     return;
   }
   if (resume.kind === "damage_suffered") {
     const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
-    await continueDamageSufferedEvent(room, resume.continuation, players, deck, discard, log);
+    const resumedRoom = recoveryEnvelope ? { ...room, causal_envelope_json: JSON.stringify(recoveryEnvelope) } : room;
+    await continueDamageSufferedEvent(resumedRoom, resume.continuation, players, deck, discard, log);
     return;
   }
 }
@@ -3393,14 +3775,18 @@ async function settleBorrowedSwordNoAttackTarget(input: {
     const sourceHand = [...sourceHandBefore, weapon];
     const weaponName = cardDefinition(weapon.kind).name;
     const transferEventId = crypto.randomUUID();
-    const transferFact = input.rootEventId ? publicFactFor(input.causal, "CARD_TRANSFERRED", {
+    const transferFact = input.rootEventId ? withCommittedPublicOutcome(publicFactFor(input.causal, "CARD_TRANSFERRED", {
       rootEventId: input.rootEventId,
       actorId: source.id,
       affectedPlayerIds: [holder.id],
       label: weaponName,
       outcomeLabel: `obtained ${weaponName} from ${holder.name}`,
       effect: { kind: "equipment_to_hand", label: weaponName },
-    }, input.causalEnvelope) : undefined;
+    }, input.causalEnvelope), {
+      outcomeLabel: `transferred ${weaponName}`,
+      changes: [{ kind: "CARD_TRANSFERRED", fromPlayerId: holder.id, toPlayerId: source.id, amount: 1, fromZone: "EQUIPMENT", toZone: "HAND" }],
+      source: { kind: "equipment", label: weaponName },
+    }) : undefined;
     let log = addLogWithId(input.log, `${source.name} obtains ${weaponName} from ${holder.name} because no legal forced Attack target is available.`, undefined,
       { ...(input.rootResolutionId ? { resolutionId: input.rootResolutionId } : {}), actorId: source.id, ...(transferFact ? { publicFact: transferFact } : {}) }, transferEventId).log;
     log = addPrivateHandArrivalEvent(log, source, weapon, { sourceZone: "equipment", sourcePlayerId: holder.id });
@@ -3568,6 +3954,11 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
       const presentation = publicLabels
         ? addLogWithId(log, `${actor.name} may use ${publicLabels} at the end of ${endingPlayer.name}'s turn.`)
         : null;
+      const publicTriggerRoot = publicOptions.length > 0 ? createCausalRoot({
+        stage: "SETTLEMENT",
+        origin: { originSourceId: actor.id, originEffect: "turn_end_trigger", originalTargetIds: [endingPlayer.id] },
+        current: { currentSourceId: actor.id, currentEffect: "turn_end_trigger", currentTargetIds: [endingPlayer.id], resolvingPlayerId: actor.id },
+      }) : null;
       const labels = options.map((option) => option.label).join(" or ");
       const pendingWithoutBarrier = {
         kind: "trigger",
@@ -3576,13 +3967,20 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
         reason: labels ? `${actor.name} may use ${labels} at the end of ${endingPlayer.name}'s turn, or decline` : "Turn-end check; Pass to continue.",
         deadline: nextResponseDeadline(actor),
         resolvedEffectIds: resolved,
+        ...(publicTriggerRoot ? { causal: publicTriggerRoot.context } : {}),
         continuation: { ...continuation, stage: "activation" },
       } satisfies TriggerPending;
       const pending: TriggerPending = presentation
         ? withPresentationBarrier(pendingWithoutBarrier, presentation.log, presentation.eventId)
         : pendingWithoutBarrier;
-      await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-        .bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(presentation?.log ?? log), room.id).run();
+      await causalRoomStateWrite(room.id, {
+        phase: "response",
+        pending,
+        deck,
+        discard,
+        log: presentation?.log ?? log,
+        causalEnvelope: publicTriggerRoot?.envelope ?? parseCausalEnvelope(room.causal_envelope_json),
+      }).run();
       return;
     }
   }
@@ -4153,7 +4551,7 @@ async function continueDyingResolution(roomId: string, pending: DyingPending) {
     await resumeGroupAfterDying(roomId, pending);
     await advanceGroup(roomId);
   }
-  else if (pending.resumeEffect) await continueDyingResumeEffect(roomId, pending.resumeEffect);
+  else if (pending.resumeEffect) await continueDyingResumeEffect(roomId, pending.resumeEffect, pending.causal);
   else if (pending.resumeTrigger) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
@@ -4163,7 +4561,73 @@ async function continueDyingResolution(roomId: string, pending: DyingPending) {
 }
 
 /** Resume a small persisted effect after canonical Dying/rescue settles. */
-async function continueDyingResumeEffect(roomId: string, effect: DyingResumeEffect) {
+function appendDyingResumePublicOutcome(
+  log: string[],
+  player: PlayerRow,
+  effect: DyingResumeEffect,
+  causal: CausalContext | undefined,
+  envelope: CausalEnvelope | null,
+  drawnCount: number,
+) {
+  const proof = effect.publicOutcome;
+  if (!proof || !causal || !envelope || !proof.eventId || !proof.rootEventId || proof.eventId === proof.rootEventId
+    || !proof.skillLabel.trim() || !Number.isSafeInteger(proof.hpCostLost) || proof.hpCostLost < 0
+    || !Number.isSafeInteger(effect.amount) || effect.amount < 0
+    || !Number.isSafeInteger(drawnCount) || drawnCount < 0 || drawnCount > effect.amount
+    || envelope.interactionId !== causal.interactionId
+    || envelope.activeFrameId !== causal.frameId || envelope.checkpoint.frameId !== causal.frameId
+    || !envelope.frames.some((frame) => frame.frameId === causal.frameId)) return log;
+
+  const existingEvents = log.flatMap((entry) => {
+    if (!entry.startsWith("@event:")) return [];
+    try {
+      const event = JSON.parse(entry.slice(7)) as Record<string, unknown>;
+      return event.id === proof.eventId ? [event] : [];
+    } catch { return []; }
+  });
+  if (existingEvents.length > 0) return log;
+
+  const rootEvents = log.flatMap((entry) => {
+    if (!entry.startsWith("@event:")) return [];
+    try {
+      const event = JSON.parse(entry.slice(7)) as Record<string, unknown>;
+      return event.id === proof.rootEventId ? [event] : [];
+    } catch { return []; }
+  });
+  const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
+  const rootFact = record(rootEvent?.publicFact);
+  const rootIdentity = record(rootFact?.committedIdentity);
+  const rootFrames = envelope.frames.filter((frame) => frame.parentFrameId === null);
+  if (!rootEvent || rootEvent.actorId !== player.id || !rootFact || rootFact.semantics !== "PROVEN"
+    || rootFact.visibility !== "PUBLIC" || rootFact.category !== "SKILL_USED"
+    || rootFact.rootEventId !== proof.rootEventId || rootFact.interactionId !== causal.interactionId
+    || rootFact.frameId !== causal.frameId || rootFact.actorId !== player.id
+    || rootFact.label !== proof.skillLabel || !rootIdentity || rootIdentity.interactionId !== causal.interactionId
+    || rootFrames.length !== 1 || rootIdentity.rootFrameId !== rootFrames[0].frameId) return log;
+
+  const changes: NonNullable<PublicPresentationEventFactDraft["committedOutcome"]>["changes"][number][] = [];
+  if (proof.hpCostLost > 0) changes.push({ kind: "HP_COST_LOST", playerId: player.id, amount: proof.hpCostLost });
+  if (drawnCount > 0) changes.push({ kind: "CARD_DRAWN", playerId: player.id, amount: drawnCount, fromZone: "DECK", toZone: "HAND" });
+  if (changes.length === 0) return log;
+  const rootOutcome = record(rootFact.committedOutcome);
+  if (drawnCount === 0 && rootOutcome?.source && record(rootOutcome.source)?.kind === "skill"
+    && record(rootOutcome.source)?.label === proof.skillLabel
+    && JSON.stringify(rootOutcome.changes) === JSON.stringify(changes)) return log;
+
+  const publicFact = publicFactFor(causal, "SKILL_USED", {
+    rootEventId: proof.rootEventId,
+    actorId: player.id,
+    affectedPlayerIds: [player.id],
+    label: proof.skillLabel,
+    effect: { kind: "skill_use" },
+    committedOutcome: { source: { kind: "skill", label: proof.skillLabel }, changes },
+  }, envelope);
+  if (!publicFact?.committedIdentity) return log;
+  return addLogWithId(log, `${player.name} completed ${proof.skillLabel}.`, undefined,
+    { actorId: player.id, importance: "essential", publicFact }, proof.eventId).log;
+}
+
+async function continueDyingResumeEffect(roomId: string, effect: DyingResumeEffect, causal?: CausalContext) {
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   if (!room || room.phase !== "resolving" || room.pending_json !== null) return;
   const player = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(effect.playerId, roomId).first<PlayerRow>();
@@ -4174,6 +4638,7 @@ async function continueDyingResumeEffect(roomId: string, effect: DyingResumeEffe
   const draw = drawCards(deck, discard, effect.amount, log);
   let nextLog = addHistory(draw.log, `${player.name} ${effect.label} and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, player.id);
   for (const drawn of draw.drawn) nextLog = addPrivateDrawEvent(nextLog, player, drawn);
+  nextLog = appendDyingResumePublicOutcome(nextLog, player, effect, causal, parseCausalEnvelope(room.causal_envelope_json), draw.drawn.length);
   const hand = parse<Card[]>(player.hand_json, []);
   const updated = await db().prepare("UPDATE players SET hand_json = ? WHERE id = ? AND hand_json = ?").bind(JSON.stringify([...hand, ...draw.drawn]), player.id, player.hand_json).run();
   if ((updated.meta.changes ?? 0) <= 0) return;
@@ -4207,7 +4672,31 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
     for (const drawn of reward.drawn) log = addPrivateDrawEvent(log, source, drawn);
     const sourceHand = [...parse<Card[]>(source.hand_json, []), ...reward.drawn];
     writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id));
-    log = addLog(log, `${source.name} defeated Rebel ${target.name} and draws ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}.`, source.id);
+    const rewardMessage = `${source.name} defeated Rebel ${target.name} and draws ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}.`;
+    if (reward.drawn.length > 0) {
+      const rewardEventId = crypto.randomUUID();
+      const rewardEnvelope = parseCausalEnvelope(room.causal_envelope_json);
+      const committedRoot = committedPublicRootForInteraction(log, pending.causal?.interactionId);
+      const rewardFact = pending.causal ? publicFactFor(pending.causal, "EFFECT_APPLIED", {
+        rootEventId: pending.rootEventId ?? committedRoot?.eventId ?? rewardEventId,
+        actorId: source.id,
+        affectedPlayerIds: [source.id, target.id],
+        label: "Rebel Defeat Reward",
+        effect: { kind: "draw" },
+      }, rewardEnvelope, committedRoot?.identity) : undefined;
+      const committedRewardFact = withCommittedPublicOutcome(rewardFact, {
+        outcomeLabel: `drew ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}`,
+        source: { kind: "other", label: "Rebel Defeat Reward" },
+        changes: [{ kind: "CARD_DRAWN", playerId: source.id, amount: reward.drawn.length, fromZone: "DECK", toZone: "HAND" }],
+      });
+      log = addLogWithId(log, rewardMessage, source.id, {
+        actorId: source.id,
+        importance: "essential",
+        ...(committedRewardFact?.committedIdentity && committedRewardFact.committedOutcome ? { publicFact: committedRewardFact } : {}),
+      }, rewardEventId).log;
+    } else {
+      log = addLog(log, rewardMessage, source.id);
+    }
   } else if (target?.role === "Loyalist" && source?.role === "Lord") {
     const lordHand = parse<Card[]>(source.hand_json, []);
     const lordEquipment = equipmentCards(source);
@@ -4221,6 +4710,10 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
     }
     writes.push(db().prepare("UPDATE players SET hand_json = '[]', equipment_json = '{}' WHERE id = ?").bind(source.id));
     log = addLog(log, `${source.name} defeated Loyalist ${target.name} and discards all cards as the Lord's penalty.`);
+  }
+  if (target && pending.resumeEffect) {
+    log = appendDyingResumePublicOutcome(log, target, pending.resumeEffect, pending.causal,
+      parseCausalEnvelope(room.causal_envelope_json), 0);
   }
   const next = dyingResumeState(pending, resume);
   writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(next.phase, next.pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
@@ -4301,9 +4794,10 @@ async function expireDyingRescue(roomId: string) {
   }
 }
 
-async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], extraWrites: D1PreparedStatement[] = [], resumePlayer: PlayerRow = source ?? target, resumePhase = source ? phaseAfterAttack(source) : "draw", resumePending?: ResponsePending, dyingHp = target.hp ?? 0, origin?: AttackOrigin, resumeTrigger?: DamageSufferedTriggerContinuation, resumeEffect?: DyingResumeEffect, causal?: CausalContext) {
+async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], extraWrites: D1PreparedStatement[] = [], resumePlayer: PlayerRow = source ?? target, resumePhase = source ? phaseAfterAttack(source) : "draw", resumePending?: ResponsePending, dyingHp = target.hp ?? 0, origin?: AttackOrigin, resumeTrigger?: DamageSufferedTriggerContinuation, resumeEffect?: DyingResumeEffect, causal?: CausalContext, rootEventId?: string) {
   const order = playersInTurnOrder(players, room.turn_seat ?? source?.seat ?? target.seat);
-  const basePending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: "", remainingIds: order.map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending, ...(causal ? { causal } : {}), ...(origin ? { origin } : {}), ...(resumeTrigger ? { resumeTrigger } : {}), ...(resumeEffect ? { resumeEffect } : {}), reason: `Decide whether to give Peach to ${target.name}` };
+  const committedRootEventId = rootEventId ?? resumeTrigger?.rootEventId ?? resumeEffect?.publicOutcome?.rootEventId;
+  const basePending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: "", remainingIds: order.map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending, ...(causal ? { causal } : {}), ...(committedRootEventId ? { rootEventId: committedRootEventId } : {}), ...(origin ? { origin } : {}), ...(resumeTrigger ? { resumeTrigger } : {}), ...(resumeEffect ? { resumeEffect } : {}), reason: `Decide whether to give Peach to ${target.name}` };
   await startSharedDyingWindow(room, basePending, players, deck, discard, log, extraWrites, dyingHp);
 }
 
@@ -4597,7 +5091,71 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
   if (!source) return [];
   if (pending.effect.kind === "draw_two") {
     const playedIndex = discard.findIndex((card) => card.id === pending.effect.cardId); const played = playedIndex >= 0 ? discard.splice(playedIndex, 1)[0] : null;
-    const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; if (played) discard.push(played); log = addHistory(draw.log, `${source.name} plays Something Out of Nothing and draws ${draw.drawn.length} cards.`, source.id);
+    const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; if (played) discard.push(played);
+    const drawEventId = crypto.randomUUID();
+    const drawOutcome: { outcomeLabel: string; changes: readonly CommittedPublicOutcomeChange[] } = {
+      outcomeLabel: draw.drawn.length > 0
+        ? `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`
+        : "resolved the draw effect; no cards were available",
+      changes: draw.drawn.length > 0
+        ? [{ kind: "CARD_DRAWN", playerId: source.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }]
+        : [],
+    };
+    const linkedDrawFact = pending.causal && pending.rootEventId
+      ? publicFactFor(pending.causal, "EFFECT_APPLIED", {
+        rootEventId: pending.rootEventId,
+        actorId: source.id,
+        affectedPlayerIds: [source.id],
+        label: pending.cardName,
+        effect: { kind: "draw", label: pending.cardName },
+      }, resumedEnvelope)
+      : undefined;
+    const committedLinkedDrawFact = withCommittedPublicOutcome(linkedDrawFact, {
+      ...drawOutcome,
+      source: { kind: "card", label: pending.cardName },
+    });
+    const linkedDrawOutcomeValid = drawOutcome.changes.length === 0 || Boolean(committedLinkedDrawFact?.committedOutcome);
+    let publishableDrawFact = committedLinkedDrawFact?.committedIdentity && linkedDrawOutcomeValid ? committedLinkedDrawFact : undefined;
+    const drawSourceLabel = publishableDrawFact ? pending.cardName : undefined;
+    if (!publishableDrawFact) {
+      // If a legacy continuation lacks a verifiable original root, publish
+      // only the actor and server-measured count under this committed result's
+      // own identity; never guess a causal card/root link.
+      const resultRoot = createCausalRoot({
+        stage: "SETTLEMENT",
+        origin: { originSourceId: source.id, originEffect: "committed_draw_result", originalTargetIds: [source.id] },
+        current: { currentSourceId: source.id, currentEffect: "committed_draw_result", currentTargetIds: [source.id], resolvingPlayerId: source.id },
+      });
+      const genericDrawFact = publicFactFor(resultRoot.context, "EFFECT_APPLIED", {
+        rootEventId: drawEventId,
+        actorId: source.id,
+        affectedPlayerIds: [source.id],
+        effect: { kind: "draw" },
+      }, resultRoot.envelope);
+      const committedGenericDrawFact = withCommittedPublicOutcome(genericDrawFact, {
+        ...drawOutcome,
+        source: { kind: "other" },
+      });
+      const genericDrawOutcomeValid = drawOutcome.changes.length === 0 || Boolean(committedGenericDrawFact?.committedOutcome);
+      publishableDrawFact = committedGenericDrawFact?.committedIdentity && genericDrawOutcomeValid ? committedGenericDrawFact : undefined;
+    }
+    const drawHistoryMessage = `${source.name} plays ${pending.cardName} and draws ${draw.drawn.length} cards.`;
+    const drawMessage = `${source.name} resolves the committed draw effect.`;
+    const linkedResolutionId = pending.rootResolutionId ?? pending.resolutionId;
+    const drawResolutionId = drawSourceLabel && linkedResolutionId ? linkedResolutionId : drawEventId;
+    // Preserve the legacy informational history contract; the committed event
+    // below is the sole H4 owner for the actual public draw outcome.
+    log = addHistory(draw.log, drawHistoryMessage, source.id);
+    log = publishableDrawFact
+      ? addLogWithId(log, drawMessage, source.id, {
+        resolutionId: drawResolutionId,
+        actorId: source.id,
+        importance: "essential",
+        finalResult: true,
+        effectNotice: true,
+        publicFact: publishableDrawFact,
+      }, drawEventId).log
+      : log;
     for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, source, drawn);
     const hand = [...parse<Card[]>(source.hand_json, []), ...draw.drawn];
     const settled = await db().batch([
@@ -5537,7 +6095,7 @@ type SourcedDamageTransition = {
   resumeDamageSuffered?: DamageSufferedTriggerContinuation;
   resumeTurnEnd?: TurnEndTriggerContinuation;
   onDamageApplied?: (hp: number) => Promise<void> | void;
-  finalizeDamageLog?: (log: string[], resolvedDamageAmount: number) => string[];
+  finalizeDamageLog?: (log: string[], actualHpLost: number) => string[];
   finalizeAttackHitLog?: (log: string[]) => string[];
 };
 
@@ -5550,14 +6108,27 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
   const skillState = parse<KingSkillState>(room.skill_state_json, {});
   const playPhase = resumePhase.startsWith("play");
   const hp = applyDamage(target.hp ?? 1, finalAmount);
-  const description = typeof damageDescription === "function" ? damageDescription(finalAmount) : damageDescription ?? `${target.name} takes ${finalAmount} damage${label !== "Attack" && label ? ` from ${label}` : ""}`;
-  const damageFact = amount > 0 ? publicFactFor(inheritedCausal, finalAmount > 0 ? "DAMAGE_APPLIED" : "DAMAGE_PREVENTED", {
-    ...(rootEventId ? { rootEventId } : {}), ...(source ? { actorId: source.id } : {}),
-    affectedPlayerIds: [target.id], amount: finalAmount,
-  }, parseCausalEnvelope(room.causal_envelope_json)) : undefined;
-  const unfinalizedDamageLog = addLog(log, `${description}${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`, undefined,
-    damageFact ? { ...(source ? { actorId: source.id } : {}), publicFact: damageFact } : undefined);
-  const damageLog = finalizeDamageLog ? finalizeDamageLog(unfinalizedDamageLog, finalAmount) : unfinalizedDamageLog;
+  const actualHpLost = Math.max(0, (target.hp ?? 1) - hp);
+  const description = actualHpLost === 0
+    ? `Damage to ${target.name} was prevented`
+    : typeof damageDescription === "function" ? damageDescription(actualHpLost) : damageDescription ?? `${target.name} takes ${actualHpLost} damage${label !== "Attack" && label ? ` from ${label}` : ""}`;
+  const damageEventId = crypto.randomUUID();
+  const damageFact = amount > 0 ? publicFactFor(inheritedCausal, actualHpLost > 0 ? "DAMAGE_APPLIED" : "DAMAGE_PREVENTED", {
+    rootEventId: rootEventId ?? damageEventId,
+    ...(actualHpLost > 0 && source ? { actorId: source.id } : {}),
+    affectedPlayerIds: [target.id], label, amount: actualHpLost,
+    outcomeLabel: actualHpLost > 0 ? `lost ${actualHpLost} HP to damage` : "damage was prevented",
+    effect: { kind: actualHpLost > 0 ? "damage_applied" : "damage_prevented" },
+    ...(actualHpLost > 0 ? { committedOutcome: {
+      source: { kind: "damage", label },
+      changes: [{ kind: "DAMAGE_APPLIED", playerId: target.id, amount: actualHpLost }],
+    } } : {}),
+  }, parseCausalEnvelope(room.causal_envelope_json),
+  publicIdentityFromCommittedRoot(log, rootEventId, inheritedCausal)) : undefined;
+  const damageLogEntry = addLogWithId(log, `${description}${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`, undefined,
+    damageFact ? { ...(actualHpLost > 0 && source ? { actorId: source.id } : {}), publicFact: damageFact } : undefined, damageEventId);
+  const unfinalizedDamageLog = damageLogEntry.log;
+  const damageLog = finalizeDamageLog ? finalizeDamageLog(unfinalizedDamageLog, actualHpLost) : unfinalizedDamageLog;
   const damageContinuation: DamageSufferedTriggerContinuation = {
     kind: "damage_suffered_event",
     ...(source ? { sourceId: source.id } : {}),
@@ -5590,7 +6161,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
       ? damageSufferedTriggerOptions(dyingSource?.alive ? dyingSource : null, dyingTarget, finalAmount, undefined, [], damageCards, [], cause, physicalSuit, skillState, playPhase, recoverableCardIds)
       : [];
     const needsPostDamageResume = pendingPostDamageOptions.length > 0 || Boolean(effectiveResumeGroup || resumeDamageSuffered || resumeTurnEnd);
-    await startDyingRescue(room, source, dyingTarget, players, deck, discard, damageLog, writes, resumePlayer, resumePhase, effectiveResumePending, hp, origin, needsPostDamageResume ? damageContinuation : undefined, undefined, inheritedCausal);
+    await startDyingRescue(room, source, dyingTarget, players, deck, discard, damageLog, writes, resumePlayer, resumePhase, effectiveResumePending, hp, origin, needsPostDamageResume ? damageContinuation : undefined, undefined, inheritedCausal, rootEventId);
     return { kind: "dying" };
   }
 
@@ -6953,7 +7524,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     delete safeEvent.privateStealParticipantResult;
     return [safeEvent];
   });
-  const publicTimeline = gameTimeline(rawLog).filter((event) => event.presentation !== false && typeof event.privateToPlayerId !== "string");
+  const publicTimeline = viewerTimeline.filter((event) => event.presentation !== false && typeof event.privateToPlayerId !== "string");
   const presentationInput = {
     ...(sharedWindow ? { sharedResponseWindow: { semantics: "PROVEN" as const, windowId: sharedWindow.windowId, mode: sharedWindow.continuation.mode, requesterId: sharedWindow.requesterId, targetId: sharedWindow.targetId, openedAt: sharedWindow.openedAt, deadline: sharedWindow.deadline, stage: sharedWindow.settlement ? "SETTLING" as const : "COLLECTING" as const } } : {}),
     pending: negationWindow ? {
@@ -7141,7 +7712,9 @@ export async function GET(request: Request) {
     const result = await env.DB.prepare("SELECT id,event_key,event_type,actor_id,actor_name,action,phase_before,phase_after,turn_seat_before,turn_seat_after,acting_player_before,acting_player_after,detail_json,created_at FROM game_audit WHERE room_id = ? ORDER BY id").bind(room.id).all();
     return json({ code, audit: result.results ?? [] });
   }
-  let state = await roomState(code, token, Boolean(uxTraceId), requestedViewerId);
+  // The first projection exists only to identify the authenticated viewer and
+  // advance the discard handoff. Diagnostics belong to the final fresh view.
+  let state = await roomState(code, token, false, requestedViewerId);
   if (!state) return json({ error: "Room not found." }, 404);
   if (requestedViewerId && state.meId !== requestedViewerId) {
     return json({ error: "That test viewer is not controlled by this session." }, 403);
@@ -7306,14 +7879,18 @@ async function commitCanonicalResponse(input: {
       const sourceHand = [...parse<Card[]>(currentSource.hand_json, []), weapon];
       const weaponName = cardDefinition(weapon.kind).name;
       const transferFact = continuation.rootEventId
-        ? publicFactFor(continuation.causal, "CARD_TRANSFERRED", {
+        ? withCommittedPublicOutcome(publicFactFor(continuation.causal, "CARD_TRANSFERRED", {
           rootEventId: continuation.rootEventId,
           actorId: currentSource.id,
           affectedPlayerIds: [currentHolder.id],
           label: weaponName,
           outcomeLabel: `obtained ${weaponName} from ${currentHolder.name}`,
           effect: { kind: "equipment_to_hand", label: weaponName },
-        }, activeEnvelope)
+        }, activeEnvelope), {
+          outcomeLabel: `transferred ${weaponName}`,
+          changes: [{ kind: "CARD_TRANSFERRED", fromPlayerId: currentHolder.id, toPlayerId: currentSource.id, amount: 1, fromZone: "EQUIPMENT", toZone: "HAND" }],
+          source: { kind: "equipment", label: weaponName },
+        })
         : undefined;
       const transferEvent = addLogWithId(logBase, `${source.name} obtains ${weaponName} from ${currentHolder.name} after the forced Attack fails.`, undefined,
         { actorId: currentSource.id, ...(transferFact ? { publicFact: transferFact } : {}) });
@@ -7721,18 +8298,80 @@ async function commitCanonicalResponse(input: {
     if (action === "give_peach" && !peach) return json({ error: "Select a valid Peach or First Aid card for this rescue." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'dying' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Peach rescue decision has already moved on." }, 409);
     if (peach) {
-      hand = hand.filter((card) => card.id !== peach.id); const resumedPending = appendDyingSequenceCard(pending, peach); const discard = pending.resumePending ? parse<Card[]>(liveRoom.discard_json, []) : [...parse<Card[]>(liveRoom.discard_json, []), peach]; let log = parse<string[]>(liveRoom.log_json, []); const firstAid = selectedExecution?.providerId === "hua_tuo_first_aid"; const jiuyuan = !firstAid && target?.hero === "sun-quan" && target.role === "Lord" && target.id !== me.id && me.hero ? STANDARD_HEROES.find((hero) => hero.id === me.hero)?.faction === "Wu" : false; const recoveryAmount = jiuyuan ? 2 : 1; const beforeHp = target?.hp ?? 0; const maxHp = target?.max_hp ?? beforeHp; const nextHp = applyRecovery(beforeHp, recoveryAmount, maxHp); const amountRecovered = recoveredAmount(beforeHp, maxHp, recoveryAmount); const firstAidMaterials = firstAid ? publicCardMaterials([peach], [{ playerId: me.id, hand: handBeforePeach, equipment: equipmentCards(liveActor) }], "PUBLIC_PLAY") : null; const peachEventId = crypto.randomUUID(); const contribution = committedSharedContribution(liveRoom, peachEventId, me, [peach], `${me.name} gave Peach to ${target.name}, restoring ${amountRecovered} HP.`); const peachMeta: PresentationMeta = { actorId: me.id, ...(contribution ? { sharedResponseContribution: contribution } : {}), ...(firstAid ? { playedAs: "peach" } : {}) }; const peachPresentation = firstAid && firstAidMaterials ? addCardEventWithPublicEffect(log, me.name, peach, target.name, "play", { effectId: "hua_tuo_first_aid", effectClass: "CONVERSION", activationOwnerId: me.id, materials: firstAidMaterials, targetId: target.id, resultingCardKind: "Peach", outcome: "AS_PEACH" }, peachMeta, peachEventId) : addCardEventWithId(log, me.name, peach, target.name, "play", true, peachMeta, peachEventId); log = addLog(peachPresentation.log, firstAid ? `${me.name} uses ${peach.rank}${peach.suit} as Peach with First Aid to rescue ${target?.name ?? "the dying player"}, restoring ${amountRecovered} HP (${nextHp} HP).` : `${me.name} gives Peach to ${target?.name ?? "the dying player"}${jiuyuan ? "; Deliverance provides an additional recovery" : ""}, restoring ${amountRecovered} HP (${nextHp} HP).`);
+      hand = hand.filter((card) => card.id !== peach.id);
+      const resumedPending = appendDyingSequenceCard(pending, peach);
+      const discard = pending.resumePending ? parse<Card[]>(liveRoom.discard_json, []) : [...parse<Card[]>(liveRoom.discard_json, []), peach];
+      let log = parse<string[]>(liveRoom.log_json, []);
+      const firstAid = selectedExecution?.providerId === "hua_tuo_first_aid";
+      const jiuyuan = !firstAid && target.hero === "sun-quan" && target.role === "Lord" && target.id !== me.id && me.hero
+        ? STANDARD_HEROES.find((hero) => hero.id === me.hero)?.faction === "Wu"
+        : false;
+      const recoveryAmount = jiuyuan ? 2 : 1;
+      const beforeHp = target.hp ?? 0;
+      const maxHp = target.max_hp ?? beforeHp;
+      const nextHp = applyRecovery(beforeHp, recoveryAmount, maxHp);
+      const amountRecovered = recoveredAmount(beforeHp, maxHp, recoveryAmount);
+      const firstAidMaterials = firstAid
+        ? publicCardMaterials([peach], [{ playerId: me.id, hand: handBeforePeach, equipment: equipmentCards(liveActor) }], "PUBLIC_PLAY")
+        : null;
+      const peachEventId = crypto.randomUUID();
+      const contribution = committedSharedContribution(liveRoom, peachEventId, me, [peach], `${me.name} gave Peach to ${target.name}, restoring ${amountRecovered} HP.`);
+      const recoveryEnvelope = amountRecovered > 0 && pending.causal
+        ? causalEnvelopeAtStage(liveRoom, pending.causal, "DYING", {
+          currentSourceId: pending.sourceId,
+          currentEffect: "peach_rescue",
+          currentTargetIds: [pending.targetId],
+          resolvingPlayerId: pending.actorId,
+        })
+        : null;
+      const outcomeSourceLabel = firstAid ? "First Aid" : "Peach";
+      const committedPeachFact = amountRecovered > 0 && pending.rootEventId && pending.causal && recoveryEnvelope
+        ? withCommittedPublicOutcome(publicFactFor(pending.causal, "CARD_PLAYED", {
+          rootEventId: pending.rootEventId,
+          actorId: me.id,
+          affectedPlayerIds: [target.id],
+          label: outcomeSourceLabel,
+          effect: { kind: "card_play", label: outcomeSourceLabel },
+        }, recoveryEnvelope), {
+          outcomeLabel: `recovered ${amountRecovered} HP`,
+          changes: [{ kind: "HP_RECOVERED", playerId: target.id, amount: amountRecovered }],
+          source: { kind: firstAid ? "skill" : "card", label: outcomeSourceLabel },
+        })
+        : undefined;
+      const peachMeta: PresentationMeta = {
+        actorId: me.id,
+        ...(contribution ? { sharedResponseContribution: contribution } : {}),
+        ...(firstAid ? { playedAs: "peach" } : {}),
+        ...(committedPeachFact?.committedOutcome ? { publicFact: committedPeachFact } : {}),
+      };
+      const peachPresentation = firstAid && firstAidMaterials
+        ? addCardEventWithPublicEffect(log, me.name, peach, target.name, "play", {
+          effectId: "hua_tuo_first_aid",
+          effectClass: "CONVERSION",
+          activationOwnerId: me.id,
+          materials: firstAidMaterials,
+          targetId: target.id,
+          resultingCardKind: "Peach",
+          outcome: "AS_PEACH",
+        }, peachMeta, peachEventId)
+        : addCardEventWithId(log, me.name, peach, target.name, "play", true, peachMeta, peachEventId);
+      log = addLog(peachPresentation.log, firstAid
+        ? `${me.name} uses ${peach.rank}${peach.suit} as Peach with First Aid to rescue ${target.name}, restoring ${amountRecovered} HP (${nextHp} HP).`
+        : `${me.name} gives Peach to ${target.name}${jiuyuan ? "; Deliverance provides an additional recovery" : ""}, restoring ${amountRecovered} HP (${nextHp} HP).`);
       if (amountRecovered > 0) {
         const recoveryPending = { ...resumedPending, actorId: pending.actorId, remainingIds: pending.remainingIds, deadline: 0, ...(pending.sharedRescue ? { sharedRescue: { ...pending.sharedRescue, responseEventId: peachEventId } } : {}) } satisfies DyingPending;
-        const recoveryEnvelope = pending.resumePending && pending.causal
-          ? causalEnvelopeAtStage(liveRoom, pending.causal, "DYING", { currentSourceId: pending.sourceId, currentEffect: "peach_rescue", currentTargetIds: [pending.targetId], resolvingPlayerId: pending.actorId })
-          : null;
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
           db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId),
           causalRoomStateWrite(room.id, { phase: "resolving", pending: null, discard, log, causalEnvelope: recoveryEnvelope }),
         ]);
-        await advanceHpRecoveredEvents(room.id, [{ playerId: pending.targetId, amountRecovered, sourceId: me.id, reason: "peach_rescue" }], { kind: "dying", pending: recoveryPending, ...(pending.sharedRescue ? { handLoss: { playerId: me.id, beforeHand: handBeforePeach } } : {}) });
+        await advanceHpRecoveredEvents(room.id, [{
+          playerId: pending.targetId,
+          amountRecovered,
+          sourceId: me.id,
+          reason: "peach_rescue",
+          ...(committedPeachFact?.committedOutcome ? { publicOutcomeEventId: peachEventId, causal: pending.causal } : {}),
+        }], { kind: "dying", pending: recoveryPending, ...(pending.sharedRescue ? { handLoss: { playerId: me.id, beforeHand: handBeforePeach } } : {}) });
       } else if (isDying(nextHp)) {
         const rescueBase = { ...resumedPending, actorId: "", remainingIds: pending.remainingIds, deadline: 0 } satisfies DyingPending;
         const transition = nextDyingTransition(liveRoom, rescueBase, players, pending.remainingIds);
@@ -8427,6 +9066,41 @@ export async function POST(request: Request, routeContext?: unknown) {
         const hand = [...parse<Card[]>(player.hand_json, []), ...gained];
         return { ...player, hand_json: JSON.stringify(hand) };
       });
+      const distributionEventId = crypto.randomUUID();
+      const distributionCausal = distribution.causal ?? distribution.resumeDamageSuffered.causal;
+      const outcomeRootEventId = distribution.resumeDamageSuffered.rootEventId ?? distributionEventId;
+      const outcomeChanges: Extract<CommittedPublicOutcomeChange, { kind: "CARD_GAINED" }>[] = [...byRecipient]
+        .filter(([, gained]) => gained.length > 0)
+        .map(([playerId, gained]) => ({
+          kind: "CARD_GAINED",
+          playerId,
+          amount: gained.length,
+          fromZone: "DISTRIBUTION",
+          toZone: "HAND",
+        }));
+      const distributionLabel = distribution.publicOutcomeLabel ?? "Card distribution";
+      const distributionFact = distributionCausal ? publicFactFor(distributionCausal, "CARD_OBTAINED", {
+        rootEventId: outcomeRootEventId,
+        actorId: actor.id,
+        affectedPlayerIds: [...new Set(outcomeChanges.map((change) => change.playerId))],
+        label: distributionLabel,
+        outcomeLabel: "completed a card distribution",
+        effect: { kind: "card_distribution" },
+      }, parseCausalEnvelope(liveRoom.causal_envelope_json)) : undefined;
+      const committedDistributionFact = withCommittedPublicOutcome(distributionFact, {
+        outcomeLabel: "completed the card distribution",
+        source: distribution.publicOutcomeLabel
+          ? { kind: "skill", label: distribution.publicOutcomeLabel }
+          : { kind: "other", label: distributionLabel },
+        changes: outcomeChanges,
+      });
+      if (committedDistributionFact?.committedOutcome) {
+        log = addLogWithId(log, `${actor.name} completes a card distribution.`, undefined, {
+          actorId: actor.id,
+          importance: "essential",
+          publicFact: committedDistributionFact,
+        }, distributionEventId).log;
+      }
       const nextContinuation = {
         ...distribution.resumeDamageSuffered,
         resolvedDamagePointEffectIds: [...new Set([...(distribution.resumeDamageSuffered.resolvedDamagePointEffectIds ?? []), "guo_jia_legacy"])],
@@ -8434,7 +9108,12 @@ export async function POST(request: Request, routeContext?: unknown) {
         judgementCard: undefined,
         secondaryEffectId: undefined,
       } satisfies DamageSufferedTriggerContinuation;
-      await db.batch(updatedPlayers.filter((player, index) => player.hand_json !== players[index].hand_json).map((player) => db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(player.hand_json, player.id)));
+      await db.batch([
+        ...updatedPlayers.filter((player, index) => player.hand_json !== players[index].hand_json)
+          .map((player) => db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(player.hand_json, player.id)),
+        db.prepare("UPDATE rooms SET log_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json = ?")
+          .bind(JSON.stringify(log), room.id, liveRoom.pending_json),
+      ]);
       await continueDamageSufferedEvent(liveRoom, nextContinuation, updatedPlayers, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log);
       return json({ room: await roomState(code, token) });
     }
@@ -8594,12 +9273,19 @@ export async function POST(request: Request, routeContext?: unknown) {
             }).log
             : addDiscardEvent(log, liveMe, selected);
           log = addLog(log, `${liveMe.name} uses Prodigal Healer on ${target.name}; ${target.name} recovers ${amountRecovered} HP.`);
+          const discardChanges = committedDiscardChangesFromZones(liveMe.id, selected, liveHand, liveEquipment) ?? [];
+          const outcomeChanges: CommittedPublicOutcomeChange[] = [
+            ...discardChanges,
+            ...(amountRecovered > 0 ? [{ kind: "HP_RECOVERED", playerId: target.id, amount: amountRecovered } as const] : []),
+          ];
+          const publicOutcome = addCommittedPublicSkillOutcome(log, liveMe, option?.label ?? "Prodigal Healer", outcomeChanges);
+          log = publicOutcome.log;
           await db.batch([
             db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), liveMe.id),
             db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(applyRecovery(beforeHp, amountRecovered, maxHp), target.id),
-            db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), room.id),
+            db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, skill_state_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), JSON.stringify(publicOutcome.envelope), room.id),
           ]);
-          await advanceHpRecoveredEvents(room.id, amountRecovered ? [{ playerId: target.id, amountRecovered, sourceId: liveMe.id, reason: "prodigal_healer" }] : [], { kind: "phase", phase: "play", playerId: liveMe.id, handLoss: { playerId: liveMe.id, beforeHand: liveHand } });
+          await advanceHpRecoveredEvents(room.id, amountRecovered ? [{ playerId: target.id, amountRecovered, sourceId: liveMe.id, reason: "prodigal_healer", publicOutcomeEventId: publicOutcome.eventId, causal: publicOutcome.causal }] : [], { kind: "phase", phase: "play", playerId: liveMe.id, handLoss: { playerId: liveMe.id, beforeHand: liveHand } });
         }
       } else if (execution.outcome.kind === "betrothment") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive && heroGender(player.hero) === "male" && (player.hp ?? 0) < (player.max_hp ?? 0));
@@ -8627,12 +9313,21 @@ export async function POST(request: Request, routeContext?: unknown) {
           const recoveryRecords: RecoveryRecord[] = [];
           if (sourceRecovered > 0) recoveryRecords.push({ playerId: liveMe.id, amountRecovered: sourceRecovered, sourceId: liveMe.id, reason: "betrothment" });
           if (targetRecovered > 0) recoveryRecords.push({ playerId: target.id, amountRecovered: targetRecovered, sourceId: liveMe.id, reason: "betrothment" });
+          const discardChanges = committedDiscardChangesFromZones(liveMe.id, selected, liveHand, liveEquipment) ?? [];
+          const outcomeChanges: CommittedPublicOutcomeChange[] = [
+            ...discardChanges,
+            ...(sourceRecovered > 0 ? [{ kind: "HP_RECOVERED", playerId: liveMe.id, amount: sourceRecovered } as const] : []),
+            ...(targetRecovered > 0 ? [{ kind: "HP_RECOVERED", playerId: target.id, amount: targetRecovered } as const] : []),
+          ];
+          const publicOutcome = addCommittedPublicSkillOutcome(log, liveMe, option?.label ?? "Betrothment", outcomeChanges);
+          log = publicOutcome.log;
           await db.batch([
             db.prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), applyRecovery(sourceHp, sourceRecovered, sourceMaxHp), liveMe.id),
             db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(applyRecovery(targetHp, targetRecovered, targetMaxHp), target.id),
-            db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), room.id),
+            db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, skill_state_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), JSON.stringify(publicOutcome.envelope), room.id),
           ]);
-          await advanceHpRecoveredEvents(room.id, recoveryRecords, { kind: "phase", phase: "play", playerId: liveMe.id, handLoss: { playerId: liveMe.id, beforeHand: liveHand } });
+          const publishedRecoveries = recoveryRecords.map((record) => ({ ...record, publicOutcomeEventId: publicOutcome.eventId, causal: publicOutcome.causal }));
+          await advanceHpRecoveredEvents(room.id, publishedRecoveries, { kind: "phase", phase: "play", playerId: liveMe.id, handLoss: { playerId: liveMe.id, beforeHand: liveHand } });
         }
       } else if (execution.outcome.kind === "place_delayed") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive);
@@ -8667,12 +9362,18 @@ export async function POST(request: Request, routeContext?: unknown) {
         const shouldRecover = amountRecovered > 0;
         const nextState = { ...skillState, turnPlayerId: liveMe.id, rendeGiven: given, rendeRecovered: Boolean(skillState.rendeRecovered) || recoveryReached };
         log = addLog(transferLog, shouldRecover ? `${liveMe.name} recovers 1 HP from Benevolence.` : recoveryReached ? `${liveMe.name} reaches Benevolence's recovery threshold but is already at full HP.` : `${liveMe.name} uses Benevolence on ${target.name}.`);
+        const outcomeChanges: CommittedPublicOutcomeChange[] = [
+          ...(selected.length > 0 ? [{ kind: "CARD_TRANSFERRED", fromPlayerId: liveMe.id, toPlayerId: target.id, amount: selected.length, fromZone: "HAND", toZone: "HAND" } as const] : []),
+          ...(shouldRecover ? [{ kind: "HP_RECOVERED", playerId: liveMe.id, amount: amountRecovered } as const] : []),
+        ];
+        const publicOutcome = addCommittedPublicSkillOutcome(log, liveMe, option?.label ?? "Benevolence", outcomeChanges);
+        log = publicOutcome.log;
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), applyRecovery(beforeHp, amountRecovered, maxHp), liveMe.id),
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id),
-          db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(nextState), JSON.stringify(log), room.id),
+          db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, skill_state_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(JSON.stringify(nextState), JSON.stringify(log), JSON.stringify(publicOutcome.envelope), room.id),
         ]);
-        await advanceHpRecoveredEvents(room.id, shouldRecover ? [{ playerId: liveMe.id, amountRecovered, sourceId: liveMe.id, reason: "benevolence" }] : [], { kind: "phase", phase: "play", playerId: liveMe.id });
+        await advanceHpRecoveredEvents(room.id, shouldRecover ? [{ playerId: liveMe.id, amountRecovered, sourceId: liveMe.id, reason: "benevolence", publicOutcomeEventId: publicOutcome.eventId, causal: publicOutcome.causal }] : [], { kind: "phase", phase: "play", playerId: liveMe.id });
       } else if (execution.outcome.kind === "discard_draw") {
         const lostEquipment = selected.filter((card) => liveEquipment.some((equipped) => equipped.id === card.id));
         discard.push(...selected);
@@ -8686,9 +9387,16 @@ export async function POST(request: Request, routeContext?: unknown) {
         const draw = drawCards(deck, discard, selected.length, log); deck = draw.deck; discard = draw.discard; log = addHistory(draw.log, `${liveMe.name} uses Equilibrium and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, liveMe.id);
         for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, liveMe, drawn);
         const nextState = { ...skillState, turnPlayerId: liveMe.id, zhihengUsed: true };
+        const discardChanges = committedDiscardChangesFromZones(liveMe.id, selected, liveHand, liveEquipment) ?? [];
+        const outcomeChanges: CommittedPublicOutcomeChange[] = [
+          ...discardChanges,
+          ...(draw.drawn.length > 0 ? [{ kind: "CARD_DRAWN", playerId: liveMe.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" } as const] : []),
+        ];
+        const publicOutcome = addCommittedPublicSkillOutcome(log, liveMe, option?.label ?? "Equilibrium", outcomeChanges);
+        log = publicOutcome.log;
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify([...hand, ...draw.drawn]), JSON.stringify(equipment), liveMe.id),
-          db.prepare(`UPDATE rooms SET phase = '${lostEquipment.length ? "resolving" : "play"}', pending_json = NULL, deck_json = ?, discard_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?`).bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), room.id),
+          db.prepare(`UPDATE rooms SET phase = '${lostEquipment.length ? "resolving" : "play"}', pending_json = NULL, deck_json = ?, discard_json = ?, skill_state_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?`).bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), JSON.stringify(publicOutcome.envelope), room.id),
         ]);
         if (lostEquipment.length) {
           await advanceEquipmentLostEvents(room.id, equipmentLostRecords(liveMe.id, lostEquipment, "active_skill_cost"), { kind: "phase", phase: "play", playerId: liveMe.id, handLoss: { playerId: liveMe.id, beforeHand: liveHand } });
@@ -8743,20 +9451,29 @@ export async function POST(request: Request, routeContext?: unknown) {
       } else if (execution.outcome.kind === "lose_draw") {
         const hp = Math.max(0, (liveMe.hp ?? 1) - execution.outcome.lose);
         const nextState = { ...skillState, turnPlayerId: liveMe.id };
-        const resumeEffect: DyingResumeEffect = { kind: "draw_cards", playerId: liveMe.id, amount: execution.outcome.draw, label: "uses Self Sacrifice" };
-        const publicSkillOutcome = addCommittedPublicSkillOutcome(log, liveMe, option?.label ?? "a skill");
+        const skillLabel = option?.label ?? "a skill";
+        const hpCostLost = Math.max(0, (liveMe.hp ?? 0) - hp);
+        const publicSkillOutcome = addCommittedPublicSkillOutcome(log, liveMe, skillLabel,
+          hpCostLost > 0 ? [{ kind: "HP_COST_LOST", playerId: liveMe.id, amount: hpCostLost }] : []);
+        const resumeEffect: DyingResumeEffect = {
+          kind: "draw_cards", playerId: liveMe.id, amount: execution.outcome.draw, label: "uses Self Sacrifice",
+          publicOutcome: {
+            eventId: crypto.randomUUID(), rootEventId: publicSkillOutcome.eventId, skillLabel,
+            hpCostLost,
+          },
+        };
         log = publicSkillOutcome.log;
         const publicSkillRoom = { ...liveRoom, causal_envelope_json: JSON.stringify(publicSkillOutcome.envelope) };
         if (hp <= 0) {
           await startDyingRescue(publicSkillRoom, null, { ...liveMe, hp }, livePlayers, deck, discard, log, [
             db.prepare("UPDATE rooms SET skill_state_json = ? WHERE id = ?").bind(JSON.stringify(nextState), room.id),
-          ], liveMe, "play", undefined, hp, undefined, undefined, resumeEffect, publicSkillOutcome.causal);
+          ], liveMe, "play", undefined, hp, undefined, undefined, resumeEffect, publicSkillOutcome.causal, publicSkillOutcome.eventId);
         } else {
           await db.batch([
             db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, liveMe.id),
             db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, skill_state_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(JSON.stringify(nextState), JSON.stringify(log), JSON.stringify(publicSkillOutcome.envelope), room.id),
           ]);
-          await continueDyingResumeEffect(room.id, resumeEffect);
+          await continueDyingResumeEffect(room.id, resumeEffect, publicSkillOutcome.causal);
         }
       }
       return json({ room: await roomState(code, token) });
@@ -8859,7 +9576,13 @@ export async function POST(request: Request, routeContext?: unknown) {
         const draw = drawCards(deck, discard, amount, log);
         deck = draw.deck;
         discard = draw.discard;
-        let nextLog = addTriggeredEffectNotice(draw.log, recoveredPlayer.name, triggerExecution?.presentation?.label ?? "Prudence", triggerPublicFact).log;
+        const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+          outcomeLabel: draw.drawn.length > 0
+            ? `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`
+            : "used a draw effect; no cards were drawn",
+          changes: draw.drawn.length > 0 ? [{ kind: "CARD_DRAWN", playerId: target.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }] : [],
+        });
+        let nextLog = addTriggeredEffectNotice(draw.log, recoveredPlayer.name, triggerExecution?.presentation?.label ?? "Prudence", committedFact).log;
         for (const drawn of draw.drawn) nextLog = addPrivateDrawEvent(nextLog, target, drawn);
         log = addHistory(nextLog, `${target.name} draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"} with Prudence.`, target.id);
         await db.batch([
@@ -8897,7 +9620,13 @@ export async function POST(request: Request, routeContext?: unknown) {
         deck = draw.deck;
         discard = draw.discard;
         const nextHand = [...parse<Card[]>(owner.hand_json, []), ...draw.drawn];
-        log = addTriggeredEffectNotice(draw.log, owner.name, triggerExecution?.presentation?.label ?? "Daredevil", triggerPublicFact).log;
+        const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+          outcomeLabel: draw.drawn.length > 0
+            ? `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`
+            : "used a draw effect; no cards were drawn",
+          changes: draw.drawn.length > 0 ? [{ kind: "CARD_DRAWN", playerId: owner.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }] : [],
+        });
+        log = addTriggeredEffectNotice(draw.log, owner.name, triggerExecution?.presentation?.label ?? "Daredevil", committedFact).log;
         for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, owner, drawn);
         log = addHistory(log, `${owner.name} draws ${draw.drawn.length} cards with Daredevil.`, owner.id);
         await db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), owner.id).run();
@@ -8934,6 +9663,13 @@ export async function POST(request: Request, routeContext?: unknown) {
           nextHand = [...nextHand, ...draw.drawn];
           for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, source, drawn);
         }
+        const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+          outcomeLabel: draw.drawn.length > 0
+            ? `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`
+            : "used a draw effect; no cards were drawn",
+          changes: draw.drawn.length > 0 ? [{ kind: "CARD_DRAWN", playerId: source.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }] : [],
+        });
+        log = addTriggeredEffectNotice(log, source.name, triggerExecution.presentation?.label ?? "an optional effect", committedFact).log;
         log = addHistory(log, `${source.name} uses Cultivation and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, source.id);
         nextPlayers = players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(nextHand) } : player);
       } else {
@@ -8988,17 +9724,27 @@ export async function POST(request: Request, routeContext?: unknown) {
           },
         });
         let nextLog = activation.log;
-        if (draw.drawn.length === 1) {
-          nextLog = addLogWithId(nextLog, `${source.name} used Beauty and drew 1 card.`, undefined, {
+        if (draw.drawn.length > 0) {
+          const outcomeBaseFact = triggerPublicFact
+            ? { ...triggerPublicFact, rootEventId: triggerPublicFact.rootEventId ?? activation.eventId,
+              actorId: source.id, affectedPlayerIds: [...new Set([...(triggerPublicFact.affectedPlayerIds ?? []), source.id])] }
+            : undefined;
+          const committedFact = withCommittedPublicTriggerOutcome(outcomeBaseFact, {
+            outcomeLabel: `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`,
+            source: { kind: "skill", ...(outcomeBaseFact?.label ? { label: outcomeBaseFact.label } : {}) },
+            changes: [{ kind: "CARD_DRAWN", playerId: source.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }],
+          });
+          nextLog = addLogWithId(nextLog, `${source.name} used Beauty and drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, undefined, {
             importance: "essential",
             finalResult: true,
+            ...(committedFact?.committedOutcome ? { publicFact: committedFact } : {}),
             publicDiaoChanNotice: {
               semantics: "PROVEN",
               effectId: "diao_chan_beauty_outshining_moon",
               notice: "DRAWN",
               rootEventId: activation.eventId,
               sourceId: source.id,
-              drawCount: 1,
+              drawCount: draw.drawn.length,
             },
           }).log;
         }
@@ -9050,7 +9796,11 @@ export async function POST(request: Request, routeContext?: unknown) {
           materials, targetId: endingPlayer.id, outcome: "ACTIVATION_COST",
         }).log
         : addDiscardEvent(log, source, [cost]);
-      log = addTriggeredEffectNotice(log, source.name, "Dauntless", triggerPublicFact).log;
+      const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+        outcomeLabel: "discarded 1 card as a cost",
+        changes: [{ kind: "CARD_DISCARDED", playerId: source.id, amount: 1, fromZone: "HAND", toZone: "DISCARD" }],
+      });
+      log = addTriggeredEffectNotice(log, source.name, "Dauntless", committedFact).log;
       const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), "yue_jin_dauntless"])], sourceId: source.id, targetId: endingPlayer.id } satisfies TurnEndTriggerContinuation;
       if (equipmentCards(endingPlayer).length > 0) {
         const presentation = addLogWithId(log, `${endingPlayer.name} must choose 1 Equipment card to discard for Dauntless.`);
@@ -9130,6 +9880,13 @@ export async function POST(request: Request, routeContext?: unknown) {
         log = draw.log;
         nextHand = [...nextHand, ...draw.drawn];
         for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, actor, drawn);
+        const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+          outcomeLabel: draw.drawn.length > 0
+            ? `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`
+            : "used a draw effect; no cards were drawn",
+          changes: draw.drawn.length > 0 ? [{ kind: "CARD_DRAWN", playerId: actor.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }] : [],
+        });
+        log = addTriggeredEffectNotice(log, actor.name, triggerExecution?.presentation?.label ?? "an optional effect", committedFact).log;
         log = addHistory(log, `${actor.name} uses Second Wind and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, actor.id);
       } else {
         log = addHistory(log, `${actor.name} declines Second Wind.`);
@@ -9375,7 +10132,12 @@ export async function POST(request: Request, routeContext?: unknown) {
       const obtained = action === "apply_trigger";
       if (obtained) {
         const hand = [...parse<Card[]>(actor.hand_json, []), finalCard];
-        log = addTriggeredEffectNotice(log, actor.name, "Jealousy of God", triggerPublicFact).log;
+        const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+          outcomeLabel: "obtained the final Judgment card",
+          source: { kind: "skill", label: triggerPublicFact?.label ?? "Jealousy of God" },
+          changes: [{ kind: "CARD_GAINED", playerId: actor.id, amount: 1, fromZone: "JUDGEMENT", toZone: "HAND" }],
+        });
+        log = addTriggeredEffectNotice(log, actor.name, "Jealousy of God", committedFact).log;
         log = addFinalResult(log, `${actor.name} activates Jealousy of God and obtains ${finalCard.rank}${finalCard.suit}.`, undefined, continuation.judgement.resolutionId);
         log = addPrivateHandArrivalEvent(log, actor, finalCard, {
           sourceZone: "judgement",
@@ -9415,10 +10177,10 @@ export async function POST(request: Request, routeContext?: unknown) {
       const publicDrawSkill = drawModifier && drawModifier.amount > 0 && triggerExecution && publicContext
         && triggerAvailability(triggerExecution.effectId, publicContext) === "public"
         ? { label: optionLabel, amount: drawModifier.amount, baseline: Math.max(0, 2 + (continuation.additionalCards ?? 0)) } : undefined;
-      if (action === "apply_trigger" && !publicDrawSkill) log = addTriggeredEffectNotice(log, player.name, optionLabel, triggerPublicFact).log;
+      if (action === "apply_trigger" && !publicDrawSkill && !replacementTargets) log = addTriggeredEffectNotice(log, player.name, optionLabel, triggerPublicFact).log;
       else if (action !== "apply_trigger") log = addLog(log, `${player.name} declines ${optionLabel}; normal Draw Phase draw continues.`);
       if (replacementTargets) {
-        const transferred = await resolveDrawPhaseReplacement(liveRoom, player, replacementTargets, continuation.resumePhase, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log);
+        const transferred = await resolveDrawPhaseReplacement(liveRoom, player, replacementTargets, continuation.resumePhase, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log, optionLabel);
         if (!transferred) return json({ error: "Assault could not be settled safely.", stale: true, room: await roomState(code, token) }, 409);
         return json({ room: await roomState(code, token), gainedCards: transferred });
       }
@@ -9533,9 +10295,38 @@ export async function POST(request: Request, routeContext?: unknown) {
       const deflectionProof = execution?.effectId === "daqiao_deflection" && redirect && redirectTarget && redirectCost && deflectionDiscardEventId
         ? daQiaoDeflectionActionProofFor(liveRoom, continuation.declaration, source, target, redirectTarget, redirectCost, deflectionDiscardEventId, log)
         : undefined;
+      const targetDiscardEventId = execution?.outcome.kind === "target_discard" && discardCard ? crypto.randomUUID() : null;
+      const targetDiscardTransitions = targetDiscardEventId && discardCard
+        ? publicDiscardTransitions(targetDiscardEventId, target, [discardCard])
+        : undefined;
+      const targetDiscardChanges = targetDiscardEventId
+        ? committedDiscardChangesFromTransitions(targetDiscardEventId, target.id, targetDiscardTransitions) ?? []
+        : [];
+      const targetDiscardBaseFact = targetDiscardEventId
+        ? publicFactFor(continuation.declaration.causal, "CARD_DISCARDED", {
+          rootEventId: continuation.declaration.rootEventId ?? targetDiscardEventId,
+          actorId: target.id,
+          affectedPlayerIds: [target.id],
+          label: triggerPublicFact?.label ?? "Discard",
+          effect: { kind: "discard" },
+        }, parseCausalEnvelope(liveRoom.causal_envelope_json),
+        publicIdentityFromCommittedRoot(log, continuation.declaration.rootEventId, continuation.declaration.causal))
+        : undefined;
+      const targetDiscardAmount = targetDiscardChanges.reduce((total, change) => total + change.amount, 0);
+      const targetDiscardDraft = targetDiscardAmount > 0
+        ? withCommittedPublicTriggerOutcome(targetDiscardBaseFact, {
+          outcomeLabel: `discarded ${targetDiscardAmount} card${targetDiscardAmount === 1 ? "" : "s"}`,
+          changes: targetDiscardChanges,
+        })
+        : undefined;
+      const targetDiscardOutcomeFact = targetDiscardDraft?.committedIdentity && targetDiscardDraft.committedOutcome
+        ? targetDiscardDraft
+        : undefined;
       // The dedicated public cost-card journey and verified main sentence fully
       // explain a proven Deflection. Keep the generic toast when proof is absent.
-      if (execution && !deflectionProof) log = addTriggeredEffectNotice(log, me.name, triggerExecution.presentation?.label ?? "an optional effect", triggerPublicFact).log;
+      if (execution && !deflectionProof && execution.outcome.kind !== "attacker_draw" && !targetDiscardOutcomeFact) {
+        log = addTriggeredEffectNotice(log, me.name, triggerExecution.presentation?.label ?? "an optional effect", triggerPublicFact).log;
+      }
       if (redirect && redirectTarget && redirectCost) {
         const nextTargetHand = targetHand.filter((card) => card.id !== redirectCost.id);
         const nextTargetEquipment = Object.fromEntries(Object.entries(targetEquipment).filter(([, card]) => !card || card.id !== redirectCost.id)) as EquipmentZone;
@@ -9601,19 +10392,31 @@ export async function POST(request: Request, routeContext?: unknown) {
             effectId: "yin_yang_swords_attack_targeted", effectClass: "EFFECT", activationOwnerId: source.id,
             materials: yinYangMaterials, targetId: target.id, outcome: "TARGET_DISCARDED",
             ...yinYangRoot,
-          });
+          }, { actorId: target.id, ...(targetDiscardOutcomeFact ? { publicFact: targetDiscardOutcomeFact } : {}) }, targetDiscardEventId ?? undefined);
           log = publicDiscard.log;
         } else {
           // The actual committed discard is public even if its causal root cannot
           // be verified. Keep the physical event, but omit an unproven effect link.
-          log = addPublicDiscardCardEvent(log, target, card);
+          log = addPublicDiscardCardEvent(log, target, card, {
+            ...(targetDiscardEventId ? { eventId: targetDiscardEventId } : {}),
+            ...(targetDiscardOutcomeFact ? { publicFact: targetDiscardOutcomeFact } : {}),
+          });
         }
         discard.push(card); log = addLog(log, `${target.name} discards a hand card.`);
         const nextTargetHand = hand.filter((item) => item.id !== card.id);
         continuationPlayers = players.map((player) => player.id === target.id ? { ...player, hand_json: JSON.stringify(nextTargetHand) } : player);
         await db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextTargetHand), target.id).run();
       } else if (execution?.outcome.kind === "attacker_draw") {
-        const drawn = drawCards(parse<Card[]>(liveRoom.deck_json, []), discard, 1, log); discard = drawn.discard; log = addLog(drawn.drawn[0] ? addPrivateDrawEvent(drawn.log, source, drawn.drawn[0]) : drawn.log, `${target.name} allows ${source.name} to draw a card.`, source.id);
+        const drawn = drawCards(parse<Card[]>(liveRoom.deck_json, []), discard, 1, log); discard = drawn.discard;
+        let drawLog = drawn.drawn[0] ? addPrivateDrawEvent(drawn.log, source, drawn.drawn[0]) : drawn.log;
+        const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+          outcomeLabel: drawn.drawn.length > 0
+            ? `drew ${drawn.drawn.length} card${drawn.drawn.length === 1 ? "" : "s"}`
+            : "allowed a draw; no card was drawn",
+          changes: drawn.drawn.length > 0 ? [{ kind: "CARD_DRAWN", playerId: source.id, amount: drawn.drawn.length, fromZone: "DECK", toZone: "HAND" }] : [],
+        });
+        drawLog = addTriggeredEffectNotice(drawLog, target.name, triggerExecution.presentation?.label ?? "an optional effect", committedFact).log;
+        log = addLog(drawLog, `${target.name} allows ${source.name} to draw ${drawn.drawn.length} card${drawn.drawn.length === 1 ? "" : "s"}.`, source.id);
         const nextSourceHand = [...parse<Card[]>(source.hand_json, []), ...drawn.drawn];
         continuationPlayers = players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(nextSourceHand) } : player);
         await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id), db.prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(drawn.deck), room.id)]);
@@ -9718,29 +10521,37 @@ export async function POST(request: Request, routeContext?: unknown) {
             const maxHp = sourcePlayer.max_hp ?? beforeHp;
             const amountRecovered = recoveredAmount(beforeHp, maxHp, triggerExecution.outcome.amount);
             const nextHp = applyRecovery(beforeHp, amountRecovered, maxHp);
-            const committedFact = triggerPublicFact ? {
-              ...triggerPublicFact,
-              ...(amountRecovered > 0 ? { amount: amountRecovered, outcomeLabel: `recovered ${amountRecovered} HP` }
-                : { amount: 0, outcomeLabel: "used a recovery effect; HP did not change" }),
-            } : undefined;
-            log = addTriggeredEffectNotice(log, sourcePlayer.name, triggerExecution.presentation?.label ?? "an optional effect", committedFact).log;
+            const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
+              outcomeLabel: amountRecovered > 0 ? `recovered ${amountRecovered} HP` : "used a recovery effect; HP did not change",
+              changes: amountRecovered > 0 ? [{ kind: "HP_RECOVERED", playerId: sourcePlayer.id, amount: amountRecovered }] : [],
+            });
+            const recoveryNotice = addTriggeredEffectNotice(log, sourcePlayer.name, triggerExecution.presentation?.label ?? "an optional effect", committedFact);
+            log = recoveryNotice.log;
             log = addLog(log, `${sourcePlayer.name} chooses Triumphant and recovers ${amountRecovered} HP.`);
             await db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(nextHp, sourcePlayer.id).run();
             await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(log), room.id).run();
-            await advanceHpRecoveredEvents(room.id, amountRecovered > 0 ? [{ playerId: sourcePlayer.id, amountRecovered, sourceId: sourcePlayer.id, reason: "triumphant" }] : [], { kind: "damage_suffered", continuation: nextContinuation });
+            const recovery: RecoveryRecord | null = amountRecovered > 0 ? {
+              playerId: sourcePlayer.id,
+              amountRecovered,
+              sourceId: sourcePlayer.id,
+              reason: "triumphant",
+              ...(committedFact?.committedOutcome && committedFact.committedIdentity && trigger.causal
+                ? { publicOutcomeEventId: recoveryNotice.eventId, causal: trigger.causal }
+                : {}),
+            } : null;
+            await advanceHpRecoveredEvents(room.id, recovery ? [recovery] : [], { kind: "damage_suffered", continuation: nextContinuation });
           } else {
             let deck = parse<Card[]>(liveRoom.deck_json, []);
             const draw = drawCards(deck, discard, 1, log);
             deck = draw.deck;
             discard = draw.discard;
             const nextHand = [...parse<Card[]>(sourcePlayer.hand_json, []), ...draw.drawn];
-            const committedFact = triggerPublicFact ? {
-              ...triggerPublicFact,
-              amount: draw.drawn.length,
+            const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
               outcomeLabel: draw.drawn.length > 0
                 ? `drew ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`
                 : "used a draw effect; no cards were drawn",
-            } : undefined;
+              changes: draw.drawn.length > 0 ? [{ kind: "CARD_DRAWN", playerId: sourcePlayer.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }] : [],
+            });
             log = addTriggeredEffectNotice(draw.log, sourcePlayer.name, triggerExecution.presentation?.label ?? "an optional effect", committedFact).log;
             log = addHistory(log, `${sourcePlayer.name} chooses Triumphant and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, sourcePlayer.id);
             for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, sourcePlayer, drawn);
@@ -9762,13 +10573,12 @@ export async function POST(request: Request, routeContext?: unknown) {
           const available = gained.cards;
           discard = gained.discard;
           const hand = [...parse<Card[]>(target.hand_json, []), ...available];
-          const committedFact = triggerPublicFact ? {
-            ...triggerPublicFact,
-            amount: available.length,
+          const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
             outcomeLabel: available.length === 1
-              ? "obtained the card that caused the damage"
-              : "obtained the cards that caused the damage",
-          } : undefined;
+              ? "obtained one damage card"
+              : `obtained ${available.length} damage cards`,
+            changes: available.length > 0 ? [{ kind: "CARD_GAINED", playerId: target.id, amount: available.length, fromZone: "DISCARD", toZone: "HAND" }] : [],
+          });
           log = addTriggeredEffectNotice(log, target.name, triggerExecution.presentation?.label ?? "Treachery", committedFact).log;
           for (const card of available) {
             log = addPrivateHandArrivalEvent(log, target, card, {
@@ -9806,16 +10616,20 @@ export async function POST(request: Request, routeContext?: unknown) {
             ...(continuation.interactionId ? { interactionId: continuation.interactionId } : {}),
             ...(continuation.frameId ? { frameId: continuation.frameId } : {}),
           });
-          const committedFact = triggerPublicFact ? {
-            ...triggerPublicFact,
+          const sourceZoneForOutcome = sourceZone.toUpperCase() as "HAND" | "EQUIPMENT" | "JUDGEMENT";
+          const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
             outcomeLabel: "obtained one card",
+            changes: [{ kind: "CARD_TRANSFERRED", fromPlayerId: sourcePlayer.id, toPlayerId: target.id, amount: 1, fromZone: sourceZoneForOutcome, toZone: "HAND" }],
+          });
+          const publicEffect = committedFact ? {
+            ...committedFact,
             effect: {
               kind: "gain_target_card",
               ...(handIndex < 0 ? { label: cardDefinition(selected.kind).name } : {}),
             },
           } : undefined;
           gainLog = addLogWithId(gainLog, `${target.name} obtains a card from ${sourcePlayer.name} with Retaliation.`, undefined, {
-            effectNotice: true, ...(committedFact ? { publicFact: committedFact } : {}),
+            effectNotice: true, ...(publicEffect ? { publicFact: publicEffect } : {}),
           }).log;
           await db.batch([
             db.prepare("UPDATE players SET hand_json = ?, equipment_json = ?, judgement_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), JSON.stringify(nextEquipment), JSON.stringify(nextJudgement), sourcePlayer.id),
@@ -10262,22 +11076,58 @@ export async function POST(request: Request, routeContext?: unknown) {
     if (pending.cardKind === "Dismantle") {
       const settlementProof = dismantleSettlementProofFor(liveRoom, pending, zone, chosen, log);
       discard.push(chosen);
+      const settlementEventId = crypto.randomUUID();
+      const publicZoneTransitions = publicDiscardTransitions(settlementEventId, target, [chosen]);
+      const sourceLabel = cardDefinition(pending.cardKind).name;
+      const outcomeLabel = `${target.name} discarded one card`;
+      const publicFact = settlementProof && publicZoneTransitions
+        ? withCommittedPublicOutcome(publicFactFor(pending.causal, "CARD_DISCARDED", {
+          rootEventId: settlementProof.rootEventId,
+          actorId: target.id,
+          affectedPlayerIds: [target.id],
+          label: sourceLabel,
+          outcomeLabel,
+        }, parseCausalEnvelope(liveRoom.causal_envelope_json)), {
+          outcomeLabel,
+          changes: [{ kind: "CARD_DISCARDED", playerId: target.id, amount: 1, fromZone: zone === "hand" ? "HAND" : zone === "equipment" ? "EQUIPMENT" : "JUDGEMENT", toZone: "DISCARD" }],
+          source: { kind: "card", label: sourceLabel },
+        })
+        : undefined;
       log = addCardEvent(log, target.name, chosen, target.name, "discard", true, settlementProof ? {
         resolutionId: settlementProof.rootResolutionId,
         importance: "essential",
         finalResult: true,
+        actorId: target.id,
+        ...(publicZoneTransitions ? { publicZoneTransitions } : {}),
+        ...(publicFact ? { publicFact } : {}),
         publicDismantleSettlement: settlementProof,
-      } : undefined);
+      } : undefined, settlementEventId);
       log = addHistory(log, `${me.name} uses Burning Bridges to discard one ${zone === "hand" ? "hidden hand" : zone} card from ${target.name}.`);
     } else {
       const settlementProof = stealSettlementProofFor(liveRoom, pending, zone, chosen, log);
       sourceHand = [...sourceHand, chosen];
       const message = `${me.name} uses Steal to obtain one ${zone === "hand" ? "hidden hand" : zone} card from ${target.name}.`;
       if (settlementProof) {
+        const sourceLabel = cardDefinition(pending.cardKind).name;
+        const outcomeLabel = "transferred one card";
+        const fromZone = zone === "hand" ? "HAND" : zone === "equipment" ? "EQUIPMENT" : "JUDGEMENT";
+        const publicFact = withCommittedPublicOutcome(publicFactFor(pending.causal, "CARD_TRANSFERRED", {
+          rootEventId: settlementProof.rootEventId,
+          actorId: me.id,
+          affectedPlayerIds: [me.id, target.id],
+          label: sourceLabel,
+          outcomeLabel,
+        }, parseCausalEnvelope(liveRoom.causal_envelope_json)), {
+          outcomeLabel,
+          changes: [{ kind: "CARD_TRANSFERRED", fromPlayerId: target.id, toPlayerId: me.id, amount: 1, fromZone, toZone: "HAND" }],
+          source: { kind: "card", label: sourceLabel },
+        });
         const settlementEvent = addLogWithId(log, message, undefined, {
           resolutionId: settlementProof.rootResolutionId,
           importance: "essential",
           finalResult: true,
+          actorId: me.id,
+          ...(publicFact ? { publicFact } : {}),
           publicStealSettlement: settlementProof,
         });
         log = settlementEvent.log;
@@ -10372,6 +11222,13 @@ export async function POST(request: Request, routeContext?: unknown) {
         affectedPlayerIds: [chosen.id],
         label: "Borrowed Sword target choice",
         outcomeLabel: `chose ${chosen.name} as ${holder.name}'s Attack target`,
+        outcomeCopySegments: [
+          { kind: "text", text: "chose " },
+          { kind: "player", playerId: chosen.id, text: chosen.name },
+          { kind: "text", text: " as " },
+          { kind: "player", playerId: holder.id, text: holder.name },
+          { kind: "text", text: "'s Attack target" },
+        ],
         effect: { kind: "target_choice", label: "Borrowed Sword" },
       }, child.envelope)
       : undefined;
@@ -10486,12 +11343,34 @@ export async function POST(request: Request, routeContext?: unknown) {
         const beforeHp = me.hp ?? 0;
         const maxHp = me.max_hp ?? beforeHp;
         const amountRecovered = recoveredAmount(beforeHp, maxHp, 1);
-        log = addCardEvent(log, me.name, card, me.name, "play", true, { selfTargetAction: { semantics: "PROVEN", sourceId: me.id, targetId: me.id, cardKind: "Peach" } }); log = addLog(log, `${me.name} plays Peach and recovers ${amountRecovered} HP.`);
+        const peachEventId = crypto.randomUUID();
+        const peachCausal = createCausalRoot({
+          stage: "SETTLEMENT",
+          origin: { originSourceId: me.id, originEffect: "Peach", originalTargetIds: [me.id] },
+          current: { currentSourceId: me.id, currentEffect: "Peach", currentTargetIds: [me.id], resolvingPlayerId: me.id },
+        });
+        const peachFact = withCommittedPublicOutcome(publicFactFor(peachCausal.context, "CARD_PLAYED", {
+          rootEventId: peachEventId,
+          actorId: me.id,
+          affectedPlayerIds: [me.id],
+          label: "Peach",
+          effect: { kind: "card_play", label: "Peach" },
+        }, peachCausal.envelope), {
+          outcomeLabel: `recovered ${amountRecovered} HP`,
+          source: { kind: "card", label: "Peach" },
+          changes: amountRecovered > 0 ? [{ kind: "HP_RECOVERED", playerId: me.id, amount: amountRecovered }] : [],
+        });
+        const peachPresentation = addCardEventWithId(log, me.name, card, me.name, "play", true, {
+          actorId: me.id,
+          ...(peachFact?.committedIdentity && peachFact.committedOutcome ? { publicFact: peachFact } : {}),
+          selfTargetAction: { semantics: "PROVEN", sourceId: me.id, targetId: me.id, cardKind: "Peach" },
+        }, peachEventId);
+        log = addLog(peachPresentation.log, `${me.name} plays Peach and recovers ${amountRecovered} HP.`);
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), applyRecovery(beforeHp, amountRecovered, maxHp), me.id),
-          db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), room.id),
+          db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), JSON.stringify(peachCausal.envelope), room.id),
         ]);
-        await advanceHpRecoveredEvents(room.id, amountRecovered ? [{ playerId: me.id, amountRecovered, sourceId: me.id, reason: "peach" }] : [], { kind: "phase", phase: liveRoom.phase ?? "play", playerId: me.id });
+        await advanceHpRecoveredEvents(room.id, amountRecovered ? [{ playerId: me.id, amountRecovered, sourceId: me.id, reason: "peach", ...(peachFact?.committedIdentity && peachFact.committedOutcome ? { publicOutcomeEventId: peachEventId, causal: peachCausal.context } : {}) }] : [], { kind: "phase", phase: liveRoom.phase ?? "play", playerId: me.id });
       } else if (cardDefinition(card.kind).equipmentSlot && !playableAttack) {
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         const beforeHand = [...hand];
@@ -10511,6 +11390,15 @@ export async function POST(request: Request, routeContext?: unknown) {
           label: equipmentName,
           effect: { kind: "equipment_play", label: equipmentName },
         }, equipCausal.envelope);
+        const equipOutcomeChanges: CommittedPublicOutcomeChange[] = [
+          ...(replacedEquipment ? [{ kind: "CARD_DISCARDED", playerId: me.id, amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" } as const] : []),
+          { kind: "CARD_EQUIPPED", playerId: me.id, amount: 1, fromZone: "HAND", toZone: "EQUIPMENT" } as const,
+        ];
+        const committedEquipPublicFact = withCommittedPublicOutcome(equipPublicFact, {
+          outcomeLabel: replacedEquipment ? "equipment slot replacement committed" : "equipment committed",
+          changes: equipOutcomeChanges,
+          source: { kind: "card", label: equipmentName },
+        });
         if (replacedEquipment) {
           discard.push(replacedEquipment);
           const replacementEventId = crypto.randomUUID();
@@ -10537,7 +11425,7 @@ export async function POST(request: Request, routeContext?: unknown) {
           }, replacementEventId);
         }
         log = addCardEvent(log, me.name, card, me.name, "equip", true,
-          { actorId: me.id, ...(equipPublicFact ? { publicFact: equipPublicFact } : {}) }, equipEventId);
+          { actorId: me.id, ...(committedEquipPublicFact ? { publicFact: committedEquipPublicFact } : equipPublicFact ? { publicFact: equipPublicFact } : {}) }, equipEventId);
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(hand), JSON.stringify(equipment), me.id),
           db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(replacedEquipment ? "resolving" : liveRoom.phase, JSON.stringify(discard), JSON.stringify(log), room.id),

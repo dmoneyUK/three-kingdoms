@@ -319,7 +319,7 @@ test("real Dauntless damage offers Sima Yi Retaliation and a second event replac
     const useRetaliationPromise = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
       && response.request().method() === "POST"
       && response.request().postDataJSON()?.providerId === "sima_yi_fankui");
-    await dialog.getByRole("button", { name: "Use Retaliation", exact: true }).click();
+    await dialog.getByRole("button", { name: "Confirm Retaliation selection", exact: true }).click();
     const useRetaliation = await useRetaliationPromise;
     expect(useRetaliation.ok()).toBeTruthy();
     expect(useRetaliation.request().postDataJSON()).toMatchObject({
@@ -372,7 +372,7 @@ test("Retaliation uses the shared pool and obtains the selected public weapon", 
   await pool.getByRole("tab", { name: /Equipment/ }).click();
   await pool.getByRole("button", { name: "Equipment: Zhuge Crossbow", exact: true }).click();
   const committed = page.waitForResponse((response) => response.url() === `${API}/api/rooms` && response.request().method() === "POST" && response.request().postDataJSON()?.providerId === "sima_yi_fankui");
-  await pool.getByRole("button", { name: "Use Retaliation", exact: true }).click();
+  await pool.getByRole("button", { name: "Confirm Retaliation selection", exact: true }).click();
   const result = await committed; expect(result.ok()).toBeTruthy();
   const body = await result.json(); expect(body.room.myHand.map((item) => item.id)).toContain(weapon.id);
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useState, type KeyboardEvent, type ReactNode, type RefCallback } from "react";
 import type { Card } from "../game/model";
 import { cardDefinition } from "../game/cards";
 import { CardFace } from "./card-face";
@@ -37,6 +37,7 @@ type ActorSelectProps = PublicPoolProps & {
   mode: "actor-select";
   selectionCount: string;
   confirmDisabled: boolean;
+  confirmPending?: boolean;
   onToggle: (cardId: string) => void;
   onConfirm: () => void;
 };
@@ -84,8 +85,9 @@ type TargetSelectProps = SharedProps & {
   handCountHeading?: string;
   handRailDescription?: string;
   selectionCount: string;
-  actionLabel: string;
-  secondaryAction?: { label: string; variant?: "skip"; disabled: boolean; onClick: () => void };
+  confirmAccessibleLabel: string;
+  confirmPending?: boolean;
+  skipAction?: { disabled: boolean; pending?: boolean; accessibleLabel: string; onClick: () => void };
   disabled: boolean;
   confirmDisabled: boolean;
   error?: string;
@@ -106,6 +108,92 @@ type TargetReadOnlyProps = SharedProps & {
 };
 
 export type CardPoolPanelProps = ReadOnlyProps | ActorSelectProps | TargetSelectProps | TargetReadOnlyProps;
+
+export type CardPoolDecisionButtonAction = {
+  accessibleLabel: string;
+  disabled: boolean;
+  pending?: boolean;
+  onClick: () => void;
+};
+
+export function CardPoolDecisionFooter({
+  selectionCount,
+  confirmAction,
+  skipAction,
+  cancelAction,
+  className = "",
+}: {
+  selectionCount?: string;
+  confirmAction: CardPoolDecisionButtonAction;
+  skipAction?: CardPoolDecisionButtonAction;
+  cancelAction?: { accessibleLabel?: string; disabled: boolean; onClick: () => void };
+  className?: string;
+}) {
+  const hasSelectionCount = Boolean(selectionCount?.trim());
+  return <footer
+    className={`card-pool-panel__footer card-pool-decision-footer${className ? ` ${className}` : ""}`}
+    data-pool-action-footer="true"
+    data-skip-visible={skipAction ? "true" : undefined}
+  >
+    {hasSelectionCount && <span className="card-pool-decision-footer__count" aria-live="polite">{selectionCount}</span>}
+    <div className="card-pool-decision-footer__actions">
+      {cancelAction && <button
+        type="button"
+        className="end card-pool-decision-footer__cancel"
+        aria-label={cancelAction.accessibleLabel ?? "Cancel card selection"}
+        disabled={cancelAction.disabled}
+        onClick={cancelAction.onClick}
+      >Cancel</button>}
+      <div className="card-pool-decision-footer__pair" data-action-count={skipAction ? "2" : "1"}>
+        {skipAction && <button
+          type="button"
+          className="end card-pool-decision-footer__button card-pool-decision-footer__skip wtk-card-pool-action--skip"
+          data-pool-action="skip"
+          aria-label={skipAction.accessibleLabel}
+          disabled={skipAction.disabled}
+          onClick={skipAction.onClick}
+        >{skipAction.pending ? "Skipping…" : "Skip"}</button>}
+        <button
+          type="button"
+          className="primary card-pool-panel__confirm card-pool-decision-footer__button card-pool-decision-footer__confirm wtk-card-pool-action--confirm"
+          data-pool-action="confirm"
+          aria-label={confirmAction.accessibleLabel}
+          disabled={confirmAction.disabled}
+          onClick={confirmAction.onClick}
+        >{confirmAction.pending ? "Confirming…" : "Confirm"}</button>
+      </div>
+    </div>
+  </footer>;
+}
+
+export function useHorizontalOverflow<T extends HTMLElement>(measurementKey: string): readonly [RefCallback<T>, boolean] {
+  const [element, setElement] = useState<T | null>(null);
+  const [measurement, setMeasurement] = useState<{ element: T; key: string; overflowing: boolean } | null>(null);
+  const overflowing = measurement?.element === element && measurement.key === measurementKey ? measurement.overflowing : false;
+  useEffect(() => {
+    if (!element) return;
+    let frame: number | null = null;
+    const measure = () => {
+      if (typeof window === "undefined") return;
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        setMeasurement({ element, key: measurementKey, overflowing: element.scrollWidth > element.clientWidth + 1 });
+      });
+    };
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    if (typeof HTMLElement !== "undefined" && element.firstElementChild instanceof HTMLElement) observer?.observe(element.firstElementChild);
+    if (typeof window !== "undefined") window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      if (typeof window !== "undefined") {
+        window.removeEventListener("resize", measure);
+        if (frame !== null) window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [element, measurementKey]);
+  return [setElement, overflowing] as const;
+}
 
 /**
  * Shared one-row public card pool and pinned action footer.
@@ -163,6 +251,9 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
     focusTargetZone(availableZones[nextIndex].id, event.currentTarget);
   };
   const targetChoices = actorTargetProps?.zones.flatMap((zone) => zone.choices) ?? [];
+  const publicPoolChoiceCount = props.mode === "actor-select" || props.mode === "public-readonly" ? props.choices.length : 0;
+  const [publicPoolRowRef, publicPoolRowOverflowing] = useHorizontalOverflow<HTMLDivElement>(`${props.mode}:public:${publicPoolChoiceCount}`);
+  const [targetZoneOverflowRef, targetZoneOverflowing] = useHorizontalOverflow<HTMLSpanElement>(`${props.mode}:target:${activeTargetZoneTab.id}:${targetPublicHandCount}:${actorTargetProps?.publicTarget.equipmentCards.length ?? 0}:${actorTargetProps?.publicTarget.judgementCards.length ?? 0}`);
   const handChoicesByPosition = new Map(targetChoices.flatMap((choice) => choice.type === "concealed-position"
     ? [[choice.position, choice] as const]
     : []));
@@ -189,6 +280,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
     {!targetSelect && !targetReadOnly && <>
       <div
         className="card-pool-panel__row harvest-card-row"
+        ref={publicPoolRowRef}
         role="region"
         aria-label={props.rowAccessibilityLabel}
         tabIndex={props.choices.length > 1 ? 0 : undefined}
@@ -219,11 +311,11 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
           >i</button>
         </div>)}
       </div>
-      {props.scrollHint && <span className="card-pool-panel__scroll-hint harvest-scroll-hint" aria-hidden="true">{props.scrollHint}</span>}
-      {actorSelect && <footer className="card-pool-panel__footer harvest-confirm-row">
-        <span className="card-pool-panel__selection-count harvest-selection-count" aria-live="polite">{props.selectionCount}</span>
-        <button type="button" className="primary card-pool-panel__confirm" disabled={props.confirmDisabled} onClick={props.onConfirm}>Confirm choice</button>
-      </footer>}
+      {props.scrollHint && publicPoolRowOverflowing && <span className="card-pool-panel__scroll-hint harvest-scroll-hint" aria-hidden="true">{props.scrollHint}</span>}
+      {actorSelect && <CardPoolDecisionFooter
+        selectionCount={props.selectionCount}
+        confirmAction={{ accessibleLabel: "Confirm Bumper Harvest choice", disabled: props.confirmDisabled, pending: props.confirmPending, onClick: props.onConfirm }}
+      />}
     </>}
     {targetPublicProps && <>
     {actorTargetProps?.selectionControls}
@@ -259,9 +351,9 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
         aria-description={actorTargetProps?.handRailDescription}
       >
         {(!actorTargetProps || !showActorTargetZoneTabs) && <b className="card-pool-panel__target-public-zone-title">{actorTargetProps?.handCountHeading ?? `HAND · ${targetPublicHandCount}`}</b>}
-        {actorTargetProps?.scrollHint && targetPublicHandCount > 4 && <small className="card-pool-panel__scroll-hint" aria-hidden="true">{actorTargetProps.scrollHint}</small>}
+        {actorTargetProps?.scrollHint && targetZoneOverflowing && <small className="card-pool-panel__scroll-hint" aria-hidden="true">{actorTargetProps.scrollHint}</small>}
         {targetPublicHandCount > 0
-          ? <span className={`card-pool-panel__target-public-backs${randomHandSelected ? " pending-choice" : ""}`} data-hand-scrollable={targetPublicHandCount > 4 ? "true" : undefined}>
+          ? <span ref={actorTargetProps ? targetZoneOverflowRef : undefined} className={`card-pool-panel__target-public-backs${randomHandSelected ? " pending-choice" : ""}`} data-hand-scrollable={targetPublicHandCount > 4 ? "true" : undefined}>
             {Array.from({ length: targetPublicHandCount }, (_, index) => {
               const choice = handChoicesByPosition.get(index);
               const selected = choice?.state === "selected";
@@ -271,7 +363,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
                 {actorTargetProps && choice && choiceKey && <button
                   type="button"
                   className="card-pool-panel__target-select card-pool-panel__target-public-select harvest-card-select"
-                  disabled={props.disabled || Boolean(choice.selectDisabled)}
+                  disabled={actorTargetProps.disabled || Boolean(choice.selectDisabled)}
                   aria-pressed={selected}
                   aria-label={choice.accessibleLabel}
                   onClick={() => actorTargetProps.onToggle(choiceKey)}
@@ -282,7 +374,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
             {actorTargetProps && randomHandChoice && <button
               type="button"
               className="card-pool-panel__target-select card-pool-panel__target-public-select card-pool-panel__target-public-random-select harvest-card-select"
-              disabled={props.disabled || Boolean(randomHandChoice.selectDisabled)}
+              disabled={actorTargetProps.disabled || Boolean(randomHandChoice.selectDisabled)}
               aria-pressed={randomHandSelected}
               aria-label={randomHandChoice.accessibleLabel}
               onClick={() => actorTargetProps.onToggle(randomHandChoice.opaqueKey)}
@@ -312,7 +404,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
               <button
                 type="button"
                 className="card-pool-panel__target-select card-pool-panel__target-public-select harvest-card-select"
-                disabled={props.disabled || Boolean(choice.selectDisabled)}
+                disabled={actorTargetProps.disabled || Boolean(choice.selectDisabled)}
                 aria-pressed={selected}
                 aria-label={choice.accessibleLabel}
                 onClick={() => actorTargetProps.onToggle(choice.eligibleKey)}
@@ -333,11 +425,11 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
     </div>
       {actorTargetProps && <p className={`card-pool-panel__selected-zone${selectedZoneMessage ? "" : " is-empty"}`} role="status" aria-hidden={selectedZoneMessage ? undefined : "true"}>{selectedZoneMessage ?? ""}</p>}
       {actorTargetProps && <>
-        <footer className="card-pool-panel__footer harvest-confirm-row" data-skip-visible={actorTargetProps.secondaryAction?.variant === "skip" ? "true" : undefined}>
-          <span className="card-pool-panel__selection-count harvest-selection-count" aria-live="polite">{actorTargetProps.selectionCount}</span>
-          {actorTargetProps.secondaryAction && <button type="button" className={`end card-pool-panel__secondary${actorTargetProps.secondaryAction.variant === "skip" ? " wtk-action-button wtk-skip-action" : ""}`} disabled={actorTargetProps.secondaryAction.disabled} onClick={actorTargetProps.secondaryAction.onClick}>{actorTargetProps.secondaryAction.label}</button>}
-          <button type="button" className={`primary card-pool-panel__confirm${actorTargetProps.secondaryAction?.variant === "skip" ? " wtk-action-button" : ""}`} disabled={actorTargetProps.confirmDisabled} onClick={actorTargetProps.onConfirm}>{actorTargetProps.actionLabel}</button>
-        </footer>
+        <CardPoolDecisionFooter
+          selectionCount={actorTargetProps.selectionCount}
+          confirmAction={{ accessibleLabel: actorTargetProps.confirmAccessibleLabel, disabled: actorTargetProps.confirmDisabled, pending: actorTargetProps.confirmPending, onClick: actorTargetProps.onConfirm }}
+          skipAction={actorTargetProps.skipAction}
+        />
         {actorTargetProps.error && <p className="card-pool-panel__error error" role="alert">{actorTargetProps.error}</p>}
       </>}
     </>}

@@ -27,7 +27,7 @@ import { derivePrivateResponseGuidance } from "../game/private-response-guidance
 import { latestPublicMessages } from "../game/messages.js";
 import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice, PresentationSnapshotPublicCardEffect } from "../game/presentation-snapshot";
 import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationLustDuelAttackResponseProof, PresentationPublicCardEffectProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
-import type { PublicPhysicalZoneTransition, PublicPresentationEventFactDraft } from "../game/presentation-semantics";
+import type { PublicPhysicalZoneTransition, PublicPresentationEvent, PublicPresentationEventFactDraft } from "../game/presentation-semantics";
 import { attackDodgeResponseEventMatchesProof, publicCardPlayProvesEffectiveKind } from "../game/presentation-v2";
 import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
 import { attackDodgePublicActionEvents, attackDodgeSettlementSupersessionReason, attackHitSettlementSupersessionReason, parseRetiredAttackDodgeCompositionSnapshot, persistRetiredAttackDodgeComposition, retiredAttackDodgeCompositionServerSnapshot, retiredAttackDodgeCompositionStorageSnapshot, subscribeRetiredAttackDodgeComposition, type AttackDodgeSettlementHoldIdentity, type AttackHitSettlementHoldIdentity } from "../game/attack-dodge-settlement-lifecycle";
@@ -35,11 +35,12 @@ import { buildDyingHandoffView, buildInteractionStageView, buildPresentationClie
 import { buildPresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, triggerDecisionInstruction, viewerNegationAcknowledgement, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
+import { createPrecommitScopeForAction, derivePrecommitOwnerControls, precommitDraftForScope, resetPrecommitOwnerDraft, togglePrecommitDraftCard, togglePrecommitDraftTarget, togglePrecommitOwnerDraft, type PrecommitOwnerKind, type PrecommitSelectionDraft } from "./local-precommit-selection";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
-import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, type PublicInteractionNarration } from "../game/public-activity";
+import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, isPublicInteractionOutcomeFact, type PublicInteractionNarration } from "../game/public-activity";
 import { CardFace } from "./card-face";
 import { fixedUpperHistoryAnnouncementAnchor, publicH4ReservedHeight } from "./public-upper-anchor";
-import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
+import { CardPoolDecisionFooter, CardPoolPanel, useHorizontalOverflow, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
 import { PublicCardDisplay, PublicDiscardAnnouncementLayer, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, publicCardActionKey, publicCardJourneyOwnershipIdentity, publicCardMotionForCommittedCard, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
@@ -58,10 +59,10 @@ import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEv
 import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
 import { layoutPublicResultCards, type PublicResultObstacle } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
-import type { PublicPresentationRoute } from "./public-presentation-routing";
+import { coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
-type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
+type ActiveSkillSelectionState = PrecommitSelectionDraft;
 type InspectorCardDetailDismissRef = { current: (() => boolean) | null };
 type ActiveAttackDodgeSettlement = {
   eventId: string;
@@ -79,6 +80,7 @@ function finalizePublicNegationNarration(
   narration: PublicNegationNarration,
   outcome: "ROOT_CANCELLED" | "ROOT_RESTORED",
   settlementEventId: string,
+  settlementPublicSequence?: number,
 ): PublicNegationNarration {
   const rootEffectState = outcome === "ROOT_CANCELLED" ? "BLOCKED" : "ACTIVE";
   const disposition = outcome === "ROOT_CANCELLED" ? "cancelled" : "restored";
@@ -86,6 +88,7 @@ function finalizePublicNegationNarration(
   return {
     ...narration,
     eventId: settlementEventId,
+    ...(settlementPublicSequence !== undefined ? { publicSequence: settlementPublicSequence } : {}),
     phase: "FINAL",
     rootEffectState,
     headline: publicHeadline,
@@ -126,6 +129,11 @@ type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; playe
 
 type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | ({ type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean } & PresentationEventMeta);
 type EffectNoticeState = EffectNoticeQueueEntry;
+
+function publicSequenceForEvent(timeline: readonly GameEvent[], eventId: string) {
+  const sequence = timeline.find((event) => event.id === eventId)?.publicSequence;
+  return typeof sequence === "number" && Number.isSafeInteger(sequence) ? sequence : undefined;
+}
 
 function privateHandTransferScope(roomCode: string, playerId: string) {
   return `wtk:private-hand-arrivals:v1:${roomCode}:${playerId}`;
@@ -1571,35 +1579,42 @@ type PrivateStealResult = { semantics: "PRIVATE_PROVEN"; roomCode: string; event
 type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; serverNow?: number; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; botDemoEnabled: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; privateStealResult: PrivateStealResult | null; privateStealParticipantResult: PrivateStealParticipantResult | null; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; publicDiscardHandoff?: { eventId: string; actorId: string; cardCount: number } | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealEventId: string | null; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; complete: boolean; countdownUntil: number } | null; publicHarvestPool?: { semantics: "PROVEN"; rootEventId: string; revealEventId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[] } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
 
 function sharedContributionDisplayAction(room: Room, domainPublicCardDisplayAction: PublicCardDisplayAction | null,
-  currentFact: { eventId: string; order: number } | null, seenEventIds: ReadonlySet<string>): PublicCardDisplayAction | null {
-  const proofs = sharedResponseContributions(room.timeline).filter((proof) =>
-    room.presentationSnapshot?.sharedResponseContributions?.some((server) => server.eventId === proof.eventId
-      && server.actorId === proof.actorId && server.windowId === proof.windowId));
-  const proof = proofs.at(-1);
-  if (!proof
-    || domainPublicCardDisplayAction?.rootEventId === proof.eventId
-    || domainPublicCardDisplayAction?.response?.eventId === proof.eventId
-    || domainPublicCardDisplayAction?.responses?.some((response) => response.eventId === proof.eventId)
-    || room.presentationSnapshot?.attackDodgeResponses?.some((response) => response.responseEventId === proof.eventId)) return null;
-  const event = room.timeline.find((entry) => entry.id === proof.eventId);
-  const face = event?.type === "card" ? event.card : event?.type === "cards" ? event.cards[0] : null;
-  if (!event || !face || !room.players.some((player) => player.id === proof.actorId)) return null;
-  const laterPhysicalPlay = room.timeline.some((entry) => (entry.type === "card" || entry.type === "cards")
-    && entry.presentation !== false && !entry.privateToPlayerId && ["play", "equip", "activate"].includes(entry.action)
-    && (entry.publicSequence ?? -1) > (event.publicSequence ?? -1));
-  if (laterPhysicalPlay) return null;
-  if (currentFact && currentFact.eventId !== proof.eventId && currentFact.order > (event.publicSequence ?? -1)) return null;
-  const conversion = room.presentationSnapshot?.publicCardEffects.find((effect) => effect.eventId === proof.eventId
-    && effect.effectClass === "CONVERSION" && effect.activationOwnerId === proof.actorId);
-  return { key: `shared-contribution:${proof.eventId}`, rootEventId: proof.eventId, sourceId: proof.actorId,
-    targetId: proof.requesterId, cardFace: face, cardKind: proof.effectiveKind, cardLabel: proof.effectiveKind.toUpperCase(),
-    ariaLabel: proof.message, publicNotice: proof.message, publicNoticeEventId: proof.eventId,
-    ...(conversion ? { publicCardEffectFrame: createPublicCardEffectFrameView(conversion, {
-      title: `AS ${proof.effectiveKind.toUpperCase()}`, accessibleLabel: proof.message,
-      activationOwnerName: room.players.find((player) => player.id === proof.actorId)?.name ?? "A player",
-      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
-    }) ?? undefined } : {}),
-    motion: { type: "single-target", scopeKey: `${room.code}:shared-contribution:${proof.eventId}`, freshEventIds: seenEventIds.has(proof.eventId) ? [] : [proof.eventId] } };
+  currentFact: { eventId: string; order: number } | null, seenEventIds: ReadonlySet<string>,
+  publicInteractionNarration: PublicInteractionNarration | null): PublicCardDisplayAction | null {
+    const proofs = sharedResponseContributions(room.timeline).filter((proof) =>
+      room.presentationSnapshot?.sharedResponseContributions?.some((server) => server.eventId === proof.eventId
+        && server.actorId === proof.actorId && server.windowId === proof.windowId));
+    const proof = proofs.at(-1);
+    if (!proof
+      || domainPublicCardDisplayAction?.rootEventId === proof.eventId
+      || domainPublicCardDisplayAction?.response?.eventId === proof.eventId
+      || domainPublicCardDisplayAction?.responses?.some((response) => response.eventId === proof.eventId)
+      || room.presentationSnapshot?.attackDodgeResponses?.some((response) => response.responseEventId === proof.eventId)) return null;
+    const event = room.timeline.find((entry) => entry.id === proof.eventId);
+    const face = event?.type === "card" ? event.card : event?.type === "cards" ? event.cards[0] : null;
+    if (!event || !face || !room.players.some((player) => player.id === proof.actorId)) return null;
+    // Recency is the durable committed server sequence, never a client clock.
+    const laterPhysicalPlay = room.timeline.some((entry) => (entry.type === "card" || entry.type === "cards")
+      && entry.presentation !== false && !entry.privateToPlayerId && ["play", "equip", "activate"].includes(entry.action)
+      && (entry.publicSequence ?? -1) > (event.publicSequence ?? -1));
+    if (laterPhysicalPlay) return null;
+    const nextFact = currentFact;
+    if (nextFact && nextFact.eventId !== proof.eventId && nextFact.order > (event.publicSequence ?? -1)) return null;
+    const conversion = room.presentationSnapshot?.publicCardEffects.find((effect) => effect.eventId === proof.eventId
+      && effect.effectClass === "CONVERSION" && effect.activationOwnerId === proof.actorId);
+    const matchingNarration = publicInteractionNarration?.rootEventId === proof.eventId ? publicInteractionNarration : null;
+    return { key: `shared-contribution:${proof.eventId}`, rootEventId: proof.eventId,
+      ...(matchingNarration ? { interactionId: matchingNarration.interactionId, rootFrameId: matchingNarration.rootFrameId,
+        publicInteractionNarration: matchingNarration, suppressAnnouncement: false } : {}),
+      sourceId: proof.actorId, targetId: proof.requesterId, cardFace: face,
+      cardKind: proof.effectiveKind, cardLabel: proof.effectiveKind.toUpperCase(), ariaLabel: proof.message,
+      publicNotice: proof.message, publicNoticeEventId: proof.eventId,
+      ...(conversion ? { publicCardEffectFrame: createPublicCardEffectFrameView(conversion, {
+        title: `AS ${proof.effectiveKind.toUpperCase()}`, accessibleLabel: proof.message,
+        activationOwnerName: room.players.find((player) => player.id === proof.actorId)?.name ?? "A player",
+        ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+      }) ?? undefined } : {}),
+      motion: { type: "single-target", scopeKey: `${room.code}:shared-contribution:${proof.eventId}`, freshEventIds: seenEventIds.has(proof.eventId) ? [] : [proof.eventId] } };
 }
 export const HERO_ART_BY_ID: Record<string, string> = {
   "cao-cao": "/hero-cao-cao.jpg",
@@ -1645,11 +1660,11 @@ export function HeroPortrait({ hero }: { hero: Pick<Hero, "id" | "name"> }) {
 }
 
 export function hpDisplay(hp: number | null) { return hp !== null && hp <= 0 ? `${hp} HP` : "♥".repeat(Math.max(0, hp ?? 0)); }
-export function calculateHandCardStep(handRailWidth: number, cardsOrCount: number | readonly string[], cardWidth = 68, minStep = 30) {
+export function calculateHandCardStep(handRailWidth: number, cardsOrCount: number | readonly string[], cardWidth = 68) {
   const count = typeof cardsOrCount === "number" ? cardsOrCount : cardsOrCount.length;
   if (count <= 1 || handRailWidth <= 0) return cardWidth;
   const naturalStep = (handRailWidth - cardWidth) / (count - 1);
-  return Math.min(cardWidth, Math.max(minStep, naturalStep));
+  return Math.min(cardWidth, Math.max(cardWidth * 0.75, naturalStep));
 }
 function publicPlayerName(name: string) { return name; }
 function delayUntil(deadline: number) { return Math.max(0, deadline - Date.now()); }
@@ -1694,12 +1709,6 @@ function appendUniqueEvents(current: GameEvent[], incoming: GameEvent[]) {
   return incoming.reduce((events, event) => events.some((existing) => existing.id === event.id) ? events : [...events, event], current);
 }
 function eventImportance(event: GameEvent) { return event.importance ?? "informational"; }
-function coalescePresentationQueue(current: GameEvent[], incoming: GameEvent[]) {
-  const combined = appendUniqueEvents(current, incoming);
-  const latestResolutionId = incoming.map((event) => event.resolutionId).filter(Boolean).at(-1);
-  if (!latestResolutionId) return combined;
-  return combined.filter((event) => event.resolutionId === latestResolutionId || eventImportance(event) === "essential" || event.finalResult === true);
-}
 
 const UI_TIMING = {
   roomPoll: 8000,
@@ -2509,6 +2518,9 @@ const SERPENT_SPEAR_LABEL = cardDefinition("SerpentSpear").name;
 function conciseActionLabel(label: string) {
   return ({ "Play Attack": "Attack", "Play Dodge": "Dodge", "Play Negation": "Negate", "Use Serpent Spear": SERPENT_SPEAR_LABEL } as Record<string, string>)[label] ?? label;
 }
+function stablePrecommitOwnerLabel(label: string) {
+  return conciseActionLabel(label).replace(/^Use\s+/i, "").trim();
+}
 function heroDefinition(id?: string | null): Hero | null {
   const hero = HEROES.find((candidate) => candidate.id === id);
   return hero ? { id: hero.id, name: hero.name, faction: hero.faction, hp: hero.hp, ability: hero.ability, skills: hero.skills, skill: heroSkillName(hero.id) ?? undefined } : null;
@@ -2864,7 +2876,7 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
     const hand = document.querySelector<HTMLElement>(".local-hand-rail");
     const activityChip = table.querySelector<HTMLElement>(".public-activity-chip");
     const playerBoard = table.querySelector<HTMLElement>(".player-board");
-    const obstacleSelector = [
+    const obstacleSelectors = [
       ".public-activity-chip",
       ".stage-system-cluster",
       ".visible-countdown",
@@ -2876,7 +2888,14 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
       ".harvest-choice-panel",
       ".target-card-picker-overlay",
       ".target-card-picker-panel",
-    ].join(",");
+    ];
+    const obstacleSelector = obstacleSelectors.join(",");
+    // In the phone top-row layout, the owner-approved Inspector anchor may
+    // cover H4 narration. Keep H4 observed and keep it as a side-column
+    // obstacle, but don't push the top-row panel below it.
+    const topRowObstacleSelector = obstacleSelectors
+      .filter((selector) => selector !== "[data-public-card-announcement='true']")
+      .join(",");
     let seats = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"));
     const visualViewport = window.visualViewport;
     const mobilePhone = () => window.matchMedia("(max-width: 520px)").matches;
@@ -3019,7 +3038,7 @@ function OpponentPublicInspector({ player, playerCount, judgementInFlight, equip
           (visibleRect(hand)?.top ?? Number.POSITIVE_INFINITY) - 8,
         ));
         const obstacleElements = [
-          ...Array.from(table.querySelectorAll<HTMLElement>(obstacleSelector)),
+          ...Array.from(table.querySelectorAll<HTMLElement>(topRowObstacleSelector)),
           ...seats.filter((seat) => seat !== targetSeat),
         ];
         const obstacles = obstacleElements.flatMap((element) => {
@@ -3811,6 +3830,7 @@ type HeroSkillButtonModel = {
   description: string;
   enabled: boolean;
   active: boolean;
+  retapToExit?: boolean;
   passive?: boolean;
   onClick?: () => void;
 };
@@ -4234,6 +4254,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const handRailRef = useRef<HTMLDivElement | null>(null);
   const handViewportSnapshotRef = useRef<HandViewportSnapshot | null>(null);
   const [handRailWidth, setHandRailWidth] = useState(0);
+  const [handCardFaceWidth, setHandCardFaceWidth] = useState(68);
   const [harvestDraft, setHarvestDraft] = useState<{ viewerId: string; actorId: string; actionRevision: string; cardId: string } | null>(null);
   const [harvestSubmitting, setHarvestSubmitting] = useState<{ roomCode: string; viewerId: string; actorId: string; actionRevision: string; cardId: string; playerId: string; playerName: string } | null>(null);
   const harvestLocalIdentityRef = useRef({ roomCode: room.code, viewerId: room.meId });
@@ -4392,12 +4413,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
   }
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
+  const [queuedPublicH4Facts, setQueuedPublicH4Facts] = useState<Map<string, PublicPresentationEvent>>(() => new Map());
+  const queuedPublicH4RoomCode = useRef(room.code);
   const effectNoticeScope = useRef(JSON.stringify([room.code, room.meId]));
   const pendingGroupSettlementEventIds = useRef(new Set<string>());
   const seenDiaoChanNoticeEventIds = useRef(new Set((room.presentationSnapshot?.diaoChanSkillNotices ?? []).map((notice) => notice.eventId)));
   const [activeSkillEffectSettlement, setActiveSkillEffectSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{ eventId: string; roomCode: string; exiting: boolean; journeySettled: boolean; h4VisibleSinceMs: number | null } | null>(null);
-  const [activeStealSettlement, setActiveStealSettlement] = useState<{ eventId: string; roomCode: string; exiting: boolean; journeySettled: boolean; h4VisibleSinceMs: number | null } | null>(null);
+  const [activeStealSettlement, setActiveStealSettlement] = useState<{
+    eventId: string;
+    roomCode: string;
+    rootEventId: string;
+    actionRevision: string | null;
+    privateResultScope?: string;
+    exiting: boolean;
+    journeySettled: boolean;
+    h4VisibleSinceMs: number | null;
+  } | null>(null);
   const [activeAttackHitSettlement, setActiveAttackHitSettlement] = useState<{ eventId: string; exiting: boolean; firstRenderedAt: number | null; lifecycle: AttackHitSettlementHoldIdentity } | null>(null);
   const [activeGroupSettlement, setActiveGroupSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeBumperHarvestSettlement, setActiveBumperHarvestSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
@@ -4702,8 +4734,25 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeSkillSelection = normalizeActiveCardSkillSelection(activeSkillOption?.selection ?? null);
   const activeSkillTargetSelection = activeSkillOption?.selection?.type === "target" ? activeSkillOption.selection : null;
   const activeActionRevision = room.actionRevision ?? "";
-  const activeSkillStateIsCurrent = Boolean(activeSkillOption && activeSkillSelectionState?.revision === activeActionRevision && activeSkillSelectionState.effectId === activeSkillOption.effectId);
-  const activeSkillSelectedCardIds = activeSkillSelection && activeSkillStateIsCurrent ? (activeSkillSelectionState?.cardIds ?? []).filter((id) => activeSkillSelection.eligibleCardIds.includes(id)) : [];
+  const createLocalPrecommitScope = (kind: PrecommitOwnerKind, ownerId: string) => createPrecommitScopeForAction({
+    roomCode: room.code,
+    viewerId: room.meId,
+    actionRevision: activeActionRevision,
+    actionKind: room.currentAction?.kind,
+    kind,
+    ownerId,
+  });
+  const activeSkillScope = activeSkillOption ? createPrecommitScopeForAction({
+    roomCode: room.code,
+    viewerId: room.meId,
+    actionRevision: activeActionRevision,
+    actionKind: room.currentAction?.kind,
+    kind: "skill",
+    ownerId: activeSkillOption.effectId,
+  }) : null;
+  const activeSkillDraft = precommitDraftForScope(activeSkillSelectionState, activeSkillScope);
+  const activeSkillStateIsCurrent = Boolean(activeSkillOption && activeSkillDraft);
+  const activeSkillSelectedCardIds = activeSkillSelection && activeSkillDraft ? activeSkillDraft.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)) : [];
   const activeSkillTargetIds = activeSkillSelection?.targetIds ?? activeSkillTargetSelection?.targetIds ?? [];
   const activeSkillTargetMin = activeSkillSelection?.targetMin ?? (activeSkillTargetSelection?.min ?? 1);
   const activeSkillTargetMax = activeSkillSelection?.targetMax ?? (activeSkillTargetSelection?.max ?? 1);
@@ -4713,7 +4762,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // available outside Play Phase.
   const activeSkillTargetMode = Boolean(activeSkillOption && activeSkillStateIsCurrent && activeSkillTargetIds.length > 0);
   const fanjianTargetSelectionActive = Boolean(activeSkillTargetMode && activeSkillOption?.effectId === "zhou_yu_fanjian");
-  const activeSkillSelectedTargetIds = activeSkillStateIsCurrent ? (activeSkillSelectionState?.targetIds ?? []).filter((id) => activeSkillTargetIds.includes(id)) : [];
+  const activeSkillSelectedTargetIds = activeSkillDraft ? activeSkillDraft.targetIds.filter((id) => activeSkillTargetIds.includes(id)) : [];
   const activeSkillTargetId = activeSkillSelectedTargetIds[0] ?? "";
   const lustLocalSelectionActive = Boolean(
     activeSkillOption?.effectId === "diao_chan_lust"
@@ -4746,8 +4795,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && !busy,
   );
   const activeSkillComplete = Boolean(activeSkillOption && activeSkillStateIsCurrent && (activeSkillSelection ? activeSkillSelectedCardIds.length >= activeSkillSelection.min && activeSkillSelectedCardIds.length <= activeSkillSelection.max : activeSkillTargetSelection) && (activeSkillTargetIds.length === 0 || activeSkillSelectedTargetIds.length >= activeSkillTargetMin && activeSkillSelectedTargetIds.length <= activeSkillTargetMax));
-  const activeSkillSubmission = activeSkillOption && activeSkillSelection && activeSkillStateIsCurrent && activeSkillSelectionState
-    ? buildActiveSkillSubmission(activeSkillOption.effectId, activeSkillSelection, activeSkillSelectionState)
+  const activeSkillSubmission = activeSkillOption && activeSkillSelection && activeSkillStateIsCurrent && activeSkillDraft
+    ? buildActiveSkillSubmission(activeSkillOption.effectId, activeSkillSelection, activeSkillDraft)
     : activeSkillOption && activeSkillStateIsCurrent
       ? { providerId: activeSkillOption.effectId, ...(activeSkillTargetSelection && activeSkillTargetMax > 1 ? { targetIds: activeSkillSelectedTargetIds } : activeSkillTargetId ? { targetId: activeSkillTargetId } : {}) }
       : null;
@@ -4871,13 +4920,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeEventDisplayDuration = activeJudgementZoneTransition ? UI_TIMING.judgementCard
     : activeEvent?.type === "card" || activeEvent?.type === "cards"
     ? isJudgementReveal(activeEvent) ? UI_TIMING.judgementCard : UI_TIMING.playedCard
+    : activeEvent?.type === "message" && queuedPublicH4Facts.has(activeEvent.id) ? UI_TIMING.effectNotice
     : 0;
+  const queuedPublicH4EventIds = new Set(queuedPublicH4Facts.keys());
+  const activeEventBlocksActions = presentationEventBlocksActions(activeEvent, queuedPublicH4EventIds);
+  const queuedEventsBlockActions = eventQueue.some((event) => presentationEventBlocksActions(event, queuedPublicH4EventIds));
   const hasUnseenPresentations = room.timeline.some((event) => (event.type !== "message" || isM3JudgementTransitionEvent(event)) && event.presentation !== false
     && !presentedEventIds.has(event.id) && event.id !== activeEquipmentArrivalEventId);
   const presentationBusyCauses = {
     optimisticPlay: Boolean(optimisticPlay),
-    activeEvent: Boolean(activeEvent && !activeEquipmentArrivalEventId),
-    eventQueue: eventQueue.length > 0,
+    activeEvent: Boolean(activeEventBlocksActions && !activeEquipmentArrivalEventId),
+    eventQueue: queuedEventsBlockActions,
     selfTargetWindowClosing,
     turnNotice: Boolean(turnNotice),
     privateDrawCards: privateDrawCards.length > 0,
@@ -5062,7 +5115,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : triggerCardOption?.selection?.type === "cards" && triggerCardOption.selection.eligibleCardIds.includes(item.id);
   const responseCardSelectionActive = Boolean(responseCardSelectionReady || dyingFirstAidSelectionActive);
   const heroResponseEffectIds = new Set(Object.values(HERO_SKILL_RESPONSE_IDS[me?.hero ?? ""] ?? {}).flat());
-  const genericResponseOptions = semanticResponseOptions.filter((option) => option.activation === "explicit" && !heroResponseEffectIds.has(option.providerId)).map((option) => ({ ...option, label: conciseActionLabel(option.label) }));
+  const genericResponseOptions = semanticResponseOptions.filter((option) => option.activation === "explicit" && !heroResponseEffectIds.has(option.providerId)).map((option) => ({ ...option, label: option.selection ? stablePrecommitOwnerLabel(option.label) : conciseActionLabel(option.label) }));
   const responseDamageAction = canUseAction(room.currentAction, "decline_response") ? "decline_response" as GameplayAction : canUseAction(room.currentAction, "skip_rescue") ? "skip_rescue" as GameplayAction : canUseAction(room.currentAction, "decline_trigger") ? "decline_trigger" as GameplayAction : null;
   const triggerDeclineAction = canUseAction(room.currentAction, "decline_trigger");
   const hasSerpentSpear = getResponseOptions({ hand: room.myHand, equipment: me?.equipmentCards ?? [], hero: me?.hero }, { kind: "attack" }).some((option) => option.providerId === "serpent_spear_attack");
@@ -5136,31 +5189,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       if (daqiaoDeflectionSelectionActive && !activeSkillTargetIds.includes(playerId)) return;
       const max = activeSkillSelection?.targetMax ?? activeSkillTargetSelection?.max ?? 1;
       setActiveSkillSelectionState((state) => {
-        if (!state) return state;
-        const current = state.targetIds.filter((id) => activeSkillTargetIds.includes(id));
-        const next = daqiaoDeflectionSelectionActive
-          ? current.includes(playerId) ? [] : [playerId]
-          : max > 1
-            ? current.includes(playerId) ? current.filter((id) => id !== playerId) : current.length < max ? [...current, playerId] : current
-            : [playerId];
-        return { ...state, targetIds: next };
+        if (!state || !activeSkillScope) return state;
+        return togglePrecommitDraftTarget(state, activeSkillScope, playerId, activeSkillTargetIds, max);
       });
       if (!daqiaoDeflectionSelectionActive) {
-        setTargetIds((current) => max > 1 ? current.includes(playerId) ? current.filter((id) => id !== playerId) : current.length < max ? [...current, playerId] : current : [playerId]);
+        setTargetIds((current) => current.includes(playerId)
+          ? current.filter((id) => id !== playerId)
+          : max === 1 ? [playerId] : current.length < max ? [...current, playerId] : current);
       }
       return;
     }
     setTargetIds((ids) => activeSkillTargetIds.length ? [playerId] : halberdAttack ? ids.includes(playerId) ? ids.filter((id) => id !== playerId) : ids.length < 3 ? [...ids, playerId] : ids : [playerId]);
   };
   const toggleActiveSkillCardSelection = (cardId: string) => setActiveSkillSelectionState((state) => {
-    if (!state || !activeSkillStateIsCurrent || !activeSkillSelection?.eligibleCardIds.includes(cardId)) return state;
-    const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id));
-    if (daqiaoDeflectionSelectionActive) {
-      return { ...state, cardIds: validIds.includes(cardId) ? [] : [cardId] };
-    }
-    return validIds.includes(cardId)
-      ? { ...state, cardIds: validIds.filter((id) => id !== cardId) }
-      : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, cardId] } : { ...state, cardIds: validIds };
+    if (!state || !activeSkillStateIsCurrent || !activeSkillSelection || !activeSkillScope) return state;
+    return togglePrecommitDraftCard(state, activeSkillScope, cardId, activeSkillSelection.eligibleCardIds, activeSkillSelection.max);
   });
   const attackTargetsValid = selectedPlayTargetsValid;
   const canFormSerpentAttack = hasSerpentSpear && room.myHand.length >= 2 && room.isMyTurn && canPlay && canDeclareAttack;
@@ -5176,23 +5219,30 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useLayoutEffect(() => {
     const rail = handRailRef.current;
     if (!rail) return;
-    const updateWidth = () => setHandRailWidth(rail.clientWidth);
-    updateWidth();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", updateWidth);
-      return () => window.removeEventListener("resize", updateWidth);
-    }
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(rail);
-    return () => observer.disconnect();
+    const updateMetrics = () => {
+      setHandRailWidth(rail.clientWidth);
+      const faceWidth = Number.parseFloat(window.getComputedStyle(rail).getPropertyValue("--hand-card-face-width"));
+      if (Number.isFinite(faceWidth) && faceWidth > 0) setHandCardFaceWidth(faceWidth);
+    };
+    updateMetrics();
+    window.addEventListener("resize", updateMetrics);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateMetrics);
+    observer?.observe(rail);
+    const shell = rail.closest<HTMLElement>(".game-shell");
+    if (shell) observer?.observe(shell);
+    return () => {
+      window.removeEventListener("resize", updateMetrics);
+      observer?.disconnect();
+    };
   }, [room.meId]);
   const handCardKey = room.myHand.map((item) => item.id).join("|");
   const handCardLayout = useMemo(() => ({
-    step: calculateHandCardStep(handRailWidth, handCardKey ? handCardKey.split("|") : []),
+    cardWidth: handCardFaceWidth,
+    step: calculateHandCardStep(handRailWidth, handCardKey ? handCardKey.split("|") : [], handCardFaceWidth),
     measured: handRailWidth > 0,
-  }), [handRailWidth, handCardKey]);
+  }), [handRailWidth, handCardFaceWidth, handCardKey]);
   const handOverflows = handRailWidth > 0 && room.myHand.length > 1
-    && 68 + (room.myHand.length - 1) * handCardLayout.step > handRailWidth + 1;
+    && handCardLayout.cardWidth + (room.myHand.length - 1) * handCardLayout.step > handRailWidth + 1;
   useLayoutEffect(() => {
     const rail = handRailRef.current;
     if (!rail) return;
@@ -5307,6 +5357,74 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       && activeSkillSubmission
       && (!(activeSkillTargetSelection || Boolean(activeSkillSelection?.targetIds.length)) || localTargetSelection.canConfirm),
     );
+  const activeSkillPrecommitControls = derivePrecommitOwnerControls({
+    ownerPresent: Boolean(activeSkillOption),
+    scope: activeSkillScope,
+    available: Boolean(room.currentAction?.actorId === room.meId && room.isMyAction && canUseAction(room.currentAction, "trigger")),
+    selected: activeSkillStateIsCurrent,
+    selectionType: activeSkillOption?.selection?.type ?? null,
+    retapSupported: activeSkillOption?.selection?.type === "cards"
+      || activeSkillOption?.selection?.type === "target"
+      || activeSkillOption?.selection?.type === "target_cards",
+    standalonePickerActive: Boolean(activeSkillStateIsCurrent && activeSkillOption?.selection?.type === "target"),
+    busy: busy || activeSkillSelectionBusy,
+    confirmEnabled: activeSkillConfirmEnabled,
+    localCancelAvailable: localTargetSelection.canCancel,
+    existingPrimaryLabel: "Confirm",
+    existingPrimaryEnabled: activeSkillConfirmEnabled,
+  });
+  const wushengConfirmEnabled = wushengMode === "play"
+    ? Boolean(canUseAction(room.currentAction, "play_card") && canDeclareAttack && selectedCanPlayAsAttack && selectedPlayTargetsValid)
+    : Boolean(wushengMode === "response" && canUseAction(room.currentAction, "respond") && responseProviderId === wushengResponseOption?.providerId && responseSelectionComplete);
+  const wushengPrecommitControls = derivePrecommitOwnerControls({
+    ownerPresent: Boolean(wushengMode),
+    scope: wushengMode ? createLocalPrecommitScope("skill", "guan_yu_red_card_attack") : null,
+    available: wushengMode === "play" ? canUseWushengInPlay : Boolean(wushengMode === "response" && canUseWushengInResponse && canUseAction(room.currentAction, "respond")),
+    selected: Boolean(wushengMode),
+    selectionType: "cards",
+    retapSupported: true,
+    busy: busy || wushengMode === "response" && (!responseDecisionReady || sharedWindowExpired),
+    confirmEnabled: wushengConfirmEnabled,
+    localCancelAvailable: localTargetSelection.canCancel,
+    existingPrimaryLabel: "Confirm",
+    existingPrimaryEnabled: wushengConfirmEnabled,
+  });
+  const longdanConfirmEnabled = longdanMode === "play"
+    ? Boolean(canUseAction(room.currentAction, "play_card") && canDeclareAttack && selectedCanPlayAsAttack && selectedPlayTargetsValid)
+    : Boolean(longdanMode === "response" && canUseAction(room.currentAction, "respond") && responseProviderId === longdanResponseOption?.providerId && responseSelectionComplete);
+  const longdanPrecommitControls = derivePrecommitOwnerControls({
+    ownerPresent: Boolean(longdanMode),
+    scope: longdanMode ? createLocalPrecommitScope("skill", longdanMode === "play" ? "zhao_yun_dodge_as_attack" : longdanResponseOption?.providerId ?? "") : null,
+    available: longdanMode === "play" ? canUseLongdanInPlay : Boolean(longdanMode === "response" && longdanResponseOptions.length > 0 && canUseAction(room.currentAction, "respond")),
+    selected: Boolean(longdanMode),
+    selectionType: "cards",
+    retapSupported: true,
+    busy: busy || longdanMode === "response" && (!responseDecisionReady || sharedWindowExpired),
+    confirmEnabled: longdanConfirmEnabled,
+    localCancelAvailable: localTargetSelection.canCancel,
+    existingPrimaryLabel: "Confirm",
+    existingPrimaryEnabled: longdanConfirmEnabled,
+  });
+  const serpentConfirmEnabled = Boolean(canUseAction(room.currentAction, "serpent_spear_attack") && canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid);
+  const serpentPrecommitControls = derivePrecommitOwnerControls({
+    ownerPresent: serpentMode,
+    scope: serpentMode ? createLocalPrecommitScope("weapon", "serpent_spear_attack") : null,
+    available: Boolean(serpentMode && canFormSerpentAttack && canUseAction(room.currentAction, "serpent_spear_attack")),
+    selected: serpentMode,
+    selectionType: "cards",
+    retapSupported: true,
+    busy: busy,
+    confirmEnabled: serpentConfirmEnabled,
+    localCancelAvailable: localTargetSelection.canCancel,
+    existingPrimaryLabel: "Confirm",
+    existingPrimaryEnabled: serpentConfirmEnabled,
+  });
+  const localTargetCancelVisible = localTargetFlow === "active-skill"
+    ? activeSkillPrecommitControls.showLocalCancel
+    : localTargetSelection.canCancel;
+  const localTargetCancelEnabled = localTargetFlow === "active-skill"
+    ? activeSkillPrecommitControls.localCancelEnabled
+    : localTargetSelection.canCancel;
   const selectedExternalPreviewId = localTargetSelection.selectionActive
     ? [...localTargetSelection.selectedTargetIds].reverse().find((id) => id !== room.meId) ?? null
     : null;
@@ -5431,7 +5549,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     return accepted;
   };
   const triggerHasProviderCancelSurface = Boolean(triggerTargetMode && selectedTriggerOption && !heroTriggerEffectIds.has(selectedTriggerOption.effectId));
-  const normalHasProviderCancelSurface = wushengMode === "play" || longdanMode === "play";
+  const normalHasProviderCancelSurface = Boolean(wushengMode === "play" || longdanMode === "play" || serpentMode);
   const resetLocalTargetFlow = (flow: LocalTargetFlow) => {
     setLocalPlayTargetNotice(null);
     closeOpponentInspection(false);
@@ -5445,7 +5563,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       return;
     }
     if (flow === "active-skill") {
-      setKingSkillId(""); setActiveSkillSelectionState(null); setSelected("");
+      setKingSkillId(""); setActiveSkillSelectionState((state) => resetPrecommitOwnerDraft(state, activeSkillScope)); setSelected("");
       return;
     }
     if (flow === "borrowed-sword") {
@@ -5454,6 +5572,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
     setResponseProviderId(""); setSelected(""); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice("");
     setWushengMode(null); setLongdanMode(null); setSerpentMode(false);
+  };
+  const clearLocalPrecommitDrafts = () => {
+    setLocalPlayTargetNotice(null);
+    closeOpponentInspection(false);
+    setSelected(""); setTargetIds([]); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice("");
+    setResponseProviderId(""); setSerpentMode(false); setWushengMode(null); setLongdanMode(null);
+    setKingSkillId(""); setActiveSkillSelectionState(null);
+  };
+  const toggleGenericProviderDraft = (providerId: string) => {
+    const active = responseProviderId === providerId;
+    clearLocalPrecommitDrafts();
+    if (!active) setResponseProviderId(providerId);
   };
   const clearPendingTargetCardSelection = () => {
     setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId("");
@@ -5554,11 +5684,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       description: skill.description,
       enabled: !wushengButtonDisabled || Boolean(wushengMode),
       active: Boolean(wushengMode),
+      retapToExit: true,
       onClick: () => {
-        if (wushengMode === "play") { setWushengMode(null); setSelected(""); setTargetIds([]); return; }
-        if (wushengMode === "response") { setWushengMode(null); setResponseProviderId(""); setSelected(""); setSerpentSelected([]); return; }
-        if (canUseWushengInPlay) { setWushengMode("play"); setSerpentMode(false); setSelected(""); setTargetIds([]); return; }
-        if (canUseWushengInResponse && wushengResponseOption) { setWushengMode("response"); setResponseProviderId(wushengResponseOption.providerId); setSelected(""); setSerpentSelected([]); }
+        if (wushengMode) { clearLocalPrecommitDrafts(); return; }
+        if (canUseWushengInPlay) { clearLocalPrecommitDrafts(); setWushengMode("play"); return; }
+        if (canUseWushengInResponse && responseDecisionReady && canUseAction(room.currentAction, "respond") && wushengResponseOption) { clearLocalPrecommitDrafts(); setWushengMode("response"); setResponseProviderId(wushengResponseOption.providerId); }
       },
     };
     if (me?.hero === "zhao-yun" && skill.name === "Braveheart") return {
@@ -5566,11 +5696,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       description: skill.description,
       enabled: !longdanButtonDisabled || Boolean(longdanMode),
       active: Boolean(longdanMode),
+      retapToExit: true,
       onClick: () => {
-        if (longdanMode === "play") { setLongdanMode(null); setSelected(""); setTargetIds([]); return; }
-        if (longdanMode === "response") { setLongdanMode(null); setResponseProviderId(""); setSelected(""); setSerpentSelected([]); return; }
-        if (canUseLongdanInPlay) { setLongdanMode("play"); setWushengMode(null); setSerpentMode(false); setSelected(""); setTargetIds([]); return; }
-        if (canUseLongdanInResponse && longdanResponseOption) { setLongdanMode("response"); setResponseProviderId(longdanResponseOption.providerId); setSelected(""); setSerpentSelected([]); }
+        if (longdanMode) { clearLocalPrecommitDrafts(); return; }
+        if (canUseLongdanInPlay) { clearLocalPrecommitDrafts(); setLongdanMode("play"); return; }
+        if (canUseLongdanInResponse && responseDecisionReady && canUseAction(room.currentAction, "respond") && longdanResponseOption) { clearLocalPrecommitDrafts(); setLongdanMode("response"); setResponseProviderId(longdanResponseOption.providerId); }
       },
     };
     const responseEffectIds = HERO_SKILL_RESPONSE_IDS[me?.hero ?? ""]?.[skill.name] ?? [];
@@ -5604,21 +5734,34 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     return {
       name: skill.name,
       description: skill.description,
-      enabled: Boolean(option),
+      enabled: Boolean(option && canUseAction(room.currentAction, "trigger")),
       active,
+      retapToExit: Boolean(option?.selection
+        && ["cards", "target", "target_cards"].includes(option.selection.type)),
       onClick: option ? () => {
+        if (!canUseAction(room.currentAction, "trigger") || room.currentAction?.actorId !== room.meId || !room.isMyAction) return;
         if (option.selection?.type === "cards" || option.selection?.type === "target" || option.selection?.type === "target_cards") {
           const activating = kingSkillId !== option.effectId;
           if (!activating && option.effectId === "diao_chan_lust") resetLocalTargetFlow("active-skill");
           else if (!activating && option.effectId === "zhou_yu_fanjian" && option.selection?.type === "target") resetLocalTargetFlow("active-skill");
-          else if (!activating && option.selection?.type === "target") {
-            // Other target skills keep their explicit local Cancel surface.
-            // Lust alone uses a second skill tap to clear its ordered choice.
-            return;
-          } else if (!activating && option.selection?.type === "cards") resetLocalTargetFlow("active-skill");
+          else if (!activating && option.selection?.type === "target") resetLocalTargetFlow("active-skill");
           else {
-            setKingSkillId(activating ? option.effectId : "");
-            setActiveSkillSelectionState(activating ? { revision: activeActionRevision, effectId: option.effectId, cardIds: [], targetIds: [] } : null);
+            const scope = createPrecommitScopeForAction({
+              roomCode: room.code,
+              viewerId: room.meId,
+              actionRevision: activeActionRevision,
+              actionKind: room.currentAction?.kind,
+              kind: "skill",
+              ownerId: option.effectId,
+            });
+            if (!scope) return;
+            const currentDraft = precommitDraftForScope(activeSkillSelectionState, scope);
+            const nextDraft = togglePrecommitOwnerDraft(currentDraft, scope);
+            if (!nextDraft) resetLocalTargetFlow("active-skill");
+            else {
+              setKingSkillId(option.effectId);
+              setActiveSkillSelectionState(nextDraft);
+            }
           }
           setSerpentSelected([]); setSelected(""); setTargetIds([]); setTriggerSelectedKeys([]);
         } else void onAction("trigger", { providerId: option.effectId });
@@ -5628,6 +5771,33 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const responseControlsDisabled = busy || !responseDecisionReady || sharedWindowExpired;
   const triggerControlsDisabled = responseControlsDisabled || !canUseAction(room.currentAction, "trigger");
   const physicalResponseControlsDisabled = responseControlsDisabled || !genericResponse;
+  const genericTriggerPrecommitOption = triggerResponse && responseProviderId
+    ? genericTriggerOptions.find((option) => option.effectId === responseProviderId && (option.selection?.type === "cards" || option.selection?.type === "target")) ?? null
+    : null;
+  const genericResponsePrecommitOption = canRespond && responseProviderId
+    ? genericResponseOptions.find((option) => option.providerId === responseProviderId && option.selection?.type === "cards") ?? null
+    : null;
+  const genericPrecommitOption = genericTriggerPrecommitOption ?? genericResponsePrecommitOption;
+  const genericPrecommitOwnerId = genericTriggerPrecommitOption?.effectId ?? genericResponsePrecommitOption?.providerId ?? "";
+  const genericPrecommitScope = genericPrecommitOption
+    ? createLocalPrecommitScope("provider", genericPrecommitOwnerId)
+    : null;
+  const genericPrecommitConfirmEnabled = genericTriggerPrecommitOption
+    ? genericTriggerPrecommitOption.selection?.type === "target" ? triggerTargetComplete : triggerSubmissionComplete
+    : Boolean(genericResponsePrecommitOption && canUseAction(room.currentAction, "respond") && responseSelectionComplete);
+  const genericPrecommitControls = derivePrecommitOwnerControls({
+    ownerPresent: Boolean(genericPrecommitOption),
+    scope: genericPrecommitScope,
+    available: Boolean(genericTriggerPrecommitOption && canUseAction(room.currentAction, "trigger") || genericResponsePrecommitOption && canUseAction(room.currentAction, "respond")),
+    selected: Boolean(genericPrecommitOption),
+    selectionType: genericPrecommitOption?.selection?.type ?? null,
+    retapSupported: Boolean(genericPrecommitOption?.selection),
+    busy: responseControlsDisabled,
+    confirmEnabled: genericPrecommitConfirmEnabled,
+    localCancelAvailable: localTargetSelection.canCancel,
+    existingPrimaryLabel: "Confirm",
+    existingPrimaryEnabled: genericPrecommitConfirmEnabled,
+  });
   const activeHarvestSelection = canChooseHarvest
     && harvestDraft?.viewerId === room.meId
     && harvestDraft.actorId === room.pendingHarvest?.actorId
@@ -5821,6 +5991,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
   }, [room.code, room.meId, room.myHand, room.serverNow, privateHandEvents]);
   useEffect(() => {
+    if (queuedPublicH4RoomCode.current !== room.code) {
+      queuedPublicH4RoomCode.current = room.code;
+      setQueuedPublicH4Facts(new Map());
+    }
     const noticeScopeKey = JSON.stringify([room.code, room.meId]);
     if (effectNoticeScope.current !== noticeScopeKey) {
       effectNoticeScope.current = noticeScopeKey;
@@ -5830,6 +6004,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       setProcessedTimelineKey(timelineKey);
       setEffectNotices([]);
     }
+    const projectedPublicH4Facts = uniquePublicH4Facts([
+      ...(room.presentationSnapshot?.publicEventFacts ?? []),
+      ...(room.presentationSnapshot?.retainedPublicEventFacts ?? []),
+    ].filter((fact) => fact.rootEventId && isPublicInteractionOutcomeFact(fact)));
+    const projectedPublicH4FactsById = new Map(projectedPublicH4Facts.map((fact) => [fact.eventId, fact]));
     const fresh = (room.timeline ?? []).filter((event) => !seenEvents.current.has(event.id));
     fresh.forEach((event) => seenEvents.current.add(event.id));
     fresh.forEach((event) => {
@@ -5875,7 +6054,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ? [proof]
         : [];
     });
-    if (freshStealSettlements.length === 1) setActiveStealSettlement({ eventId: freshStealSettlements[0].eventId, roomCode: room.code, exiting: false, journeySettled: false, h4VisibleSinceMs: null });
+    if (freshStealSettlements.length === 1) setActiveStealSettlement({
+      eventId: freshStealSettlements[0].eventId,
+      roomCode: room.code,
+      rootEventId: freshStealSettlements[0].rootEventId,
+      actionRevision: room.actionRevision ?? null,
+      exiting: false,
+      journeySettled: false,
+      h4VisibleSinceMs: null,
+    });
     const freshAttackHitSettlements = fresh.flatMap((event) => {
       if (event.type !== "message") return [];
       const proofs = attackHitSettlements.filter((proof) => proof.eventId === event.id);
@@ -6008,8 +6195,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const immediatelyPresented = new Set<string>();
     const visible = fresh.filter((event) => {
       if (event.presentation === false) return false;
-      // Informational text is not a blocking visual presentation.
-      if (event.type === "message") return isM3JudgementTransitionEvent(event);
+      // Ordinary messages remain non-blocking. A projected public H4 result
+      // enters the ordered presentation queue so a poll burst cannot replace
+      // its copy before every viewer gets a read turn.
+      if (event.type === "message") return isM3JudgementTransitionEvent(event) || projectedPublicH4FactsById.has(event.id);
       if (event.type === "card" && settlesInJudgement(event)
         && validatedJudgementTransitionSourceEventIds.has(event.id)) {
         // Its proven zone-transition owner presents the same physical card;
@@ -6026,24 +6215,38 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       }
       return true;
     });
+    const newlyQueuedFacts = visible.flatMap((event) => {
+      const fact = projectedPublicH4FactsById.get(event.id);
+      return fact ? [[event.id, fact] as const] : [];
+    });
+    if (newlyQueuedFacts.length) setQueuedPublicH4Facts((current) => {
+      const next = new Map(current);
+      newlyQueuedFacts.forEach(([eventId, fact]) => next.set(eventId, fact));
+      return next;
+    });
     if (immediatelyPresented.size) setPresentedEventIds((ids) => new Set([...ids, ...immediatelyPresented]));
     if (visible.length) {
       setSelfTargetWindowClosing(false);
       const cardsArrived = visible.some((event) => eventCards(event).length > 0);
       if (cardsArrived) selfTargetWindowRevision.current += 1;
       const latestResolutionId = visible.map((event) => event.resolutionId).filter(Boolean).at(-1);
-      if (latestResolutionId && activeEvent?.resolutionId && activeEvent.resolutionId !== latestResolutionId && eventImportance(activeEvent) === "informational") setActiveEvent(null);
+      if (latestResolutionId && activeEvent?.resolutionId && activeEvent.resolutionId !== latestResolutionId
+        && eventImportance(activeEvent) === "informational" && !queuedPublicH4Facts.has(activeEvent.id)) setActiveEvent(null);
       if (!optimisticPlay && !activeEvent && eventQueue.length === 0) {
         const first = visible[0];
         if (first) {
           setActiveEvent(first);
           if (retainsAtPlayer(first)) setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [first]));
         }
-        setEventQueue(coalescePresentationQueue([], visible.slice(1)));
-      } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
+        setEventQueue(coalescePresentationQueue([], visible.slice(1), new Set([
+          ...queuedPublicH4Facts.keys(), ...projectedPublicH4FactsById.keys(),
+        ])));
+      } else setEventQueue((queue) => coalescePresentationQueue(queue, visible, new Set([
+        ...queuedPublicH4Facts.keys(), ...projectedPublicH4FactsById.keys(),
+      ])));
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, lustFramePresentationBlocked, optimisticPlay, activeEvent, activeGroupSettlement?.eventId, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements, validatedJudgementTransitionSourceEventIds]);
+  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, room.presentationSnapshot?.publicEventFacts, room.presentationSnapshot?.retainedPublicEventFacts, lustFramePresentationBlocked, optimisticPlay, activeEvent, activeGroupSettlement?.eventId, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements, validatedJudgementTransitionSourceEventIds]);
   const effectNoticeEventId = effectNotice?.eventId ?? "";
   const effectNoticeProofEventId = effectNotice?.beautyProofEventId ?? effectNoticeEventId;
   const effectNoticeRoomCode = effectNotice?.roomCode ?? "";
@@ -6077,7 +6280,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const timer = setTimeout(() => setHarvestSubmitting((current) => current === harvestSubmitting ? null : current), 0);
     return () => clearTimeout(timer);
   }, [harvestSubmitting, room.actionRevision, room.code, room.meId, room.pendingHarvest]);
-  useEffect(() => { const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || !room.phase?.startsWith("draw") || !canUseAction(room.currentAction, "draw") || activeEvent || eventQueue.length || hasUnseenPresentations || privateDrawCards.length || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey && canUseAction(room.currentAction, "draw")) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, UI_TIMING.turnDrawStart); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, room.currentAction, current?.name, lastTimelineId, hasUnseenPresentations, activeEvent, eventQueue.length, privateDrawCards.length]);
+  useEffect(() => { const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || !room.phase?.startsWith("draw") || !canUseAction(room.currentAction, "draw") || activeEventBlocksActions || queuedEventsBlockActions || hasUnseenPresentations || privateDrawCards.length || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey && canUseAction(room.currentAction, "draw")) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, UI_TIMING.turnDrawStart); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, room.currentAction, current?.name, lastTimelineId, hasUnseenPresentations, activeEventBlocksActions, queuedEventsBlockActions, privateDrawCards.length]);
   useEffect(() => { if (optimisticPlay || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { const next = eventQueue[0]; setActiveEvent(next); if (retainsAtPlayer(next)) setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [next])); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue]);
   useEffect(() => {
     if (!activeEventTimerEventId) return;
@@ -6113,6 +6316,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const timer = setTimeout(() => {
       fired = true;
       traceTimer("fired");
+      setQueuedPublicH4Facts((current) => {
+        if (!current.has(activeEventTimerEventId)) return current;
+        const next = new Map(current);
+        next.delete(activeEventTimerEventId);
+        return next;
+      });
       setPresentedEventIds((ids) => ids.has(activeEventTimerEventId) ? ids : new Set([...ids, activeEventTimerEventId]));
       setActiveEvent((currentEvent) => currentEvent?.id === activeEventTimerEventId ? null : currentEvent);
     }, activeEventDisplayDuration);
@@ -6121,6 +6330,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       if (!fired) traceTimer("cancelled");
     };
   }, [activeEventTimerEventId, activeEventTimerKind, activeEventTimerIdentity, activeEventDisplayDuration, activeEquipmentArrivalKey, activeJudgementTransitionKey, activePublicDiscardTransitionKey, activePublicHandRevealTransitionKey]);
+  useEffect(() => {
+    const pendingIds = new Set([activeEvent, ...eventQueue].flatMap((event) => event ? [event.id] : []));
+    setQueuedPublicH4Facts((current) => {
+      const next = new Map(current);
+      for (const eventId of current.keys()) {
+        if (!pendingIds.has(eventId) && presentedEventIds.has(eventId)) next.delete(eventId);
+      }
+      return next.size === current.size ? current : next;
+    });
+  }, [activeEvent, eventQueue, presentedEventIds]);
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || selfTargetWindowClosing || !selfTargetWindowEvents.length) return; const timer = setTimeout(() => setSelfTargetWindowClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, selfTargetWindowClosing, selfTargetWindowEvents.length]);
   useEffect(() => { if (!selfTargetWindowClosing) return; const closingRevision = selfTargetWindowRevision.current; const timer = setTimeout(() => { if (selfTargetWindowRevision.current !== closingRevision) { setSelfTargetWindowClosing(false); return; } setSelfTargetWindowEvents([]); setSelfTargetWindowStartId(""); setSelfTargetWindowClosing(false); }, UI_TIMING.selfTargetWindowClose); return () => clearTimeout(timer); }, [selfTargetWindowClosing]);
   useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawPresentation({ playerId: room.meId, cards: [], transferIds: [] }), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, room.meId, activeEvent, eventQueue.length]);
@@ -6160,7 +6379,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   }, [inspectOnlyHandCardId, room.myHand]);
   useEffect(() => { if (!visibleInfoCard && !infoHero && !expandedOpponentId) return; const close = (event: KeyboardEvent) => { if (event.key !== "Escape") return; if (visibleInfoCard) { closeCardDetails(); return; } if (infoHero) { closeHeroDetails(); return; } if (nestedInspectorCardDetailDismissRef.current?.()) return; closeOpponentInspection(); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [visibleInfoCard, infoHero, expandedOpponentId, closeCardDetails, closeHeroDetails, closeOpponentInspection]);
   useEffect(() => { heroInfoReturnFocusRef.current = null; const timer = setTimeout(() => setInfoHero(null), 0); return () => clearTimeout(timer); }, [room.code, room.meId]);
-  useEffect(() => { const timer = setTimeout(() => { setSelected(""); setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setTargetIds([]); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setDiscardSelected([]); setSerpentMode(false); setSerpentSelected([]); setResponseProviderId(""); }, 0); return () => clearTimeout(timer); }, [room.turnSeat, room.phase, room.meId]);
+  useEffect(() => { const timer = setTimeout(() => { setSelected(""); setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setTargetIds([]); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setDiscardSelected([]); setSerpentMode(false); setSerpentSelected([]); setResponseProviderId(""); }, 0); return () => clearTimeout(timer); }, [room.code, room.turnSeat, room.phase, room.meId]);
   // A response may advance to another decision without changing the turn,
   // phase, or acting seat. The authoritative revision identifies that new
   // decision and prevents a previous provider/cost from leaking into it.
@@ -6267,7 +6486,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     // Only the server-selected winner may create a public card presentation.
     const presentImmediately = Boolean(optimisticEvent && !room.currentAction?.negationWindowId && !room.currentAction?.sharedWindow && !optimisticPlay && !activeEvent && eventQueue.length === 0);
     if (presentImmediately && optimisticEvent) { selfTargetWindowRevision.current += 1; materials.forEach((item) => optimisticallyPresentedCards.current.add(item.id)); setSelfTargetWindowClosing(false); setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [optimisticEvent])); setOptimisticPlay(optimisticEvent); }
-    setResponseProviderId(""); setLongdanMode(null); setSelected(""); setSerpentSelected([]);
+    setResponseProviderId(""); setWushengMode(null); setLongdanMode(null); setSelected(""); setSerpentSelected([]); setTargetIds([]);
     const accepted = await onAction("respond", { providerId: provider.providerId, ...(selectedIds.length === 1 ? { cardId: selectedIds[0] } : selectedIds.length > 1 ? { cardIds: selectedIds } : {}) });
     if (!accepted && presentImmediately && optimisticEvent) { materials.forEach((item) => optimisticallyPresentedCards.current.delete(item.id)); setOptimisticPlay(null); setSelfTargetWindowEvents((events) => events.filter((event) => event.id !== optimisticEvent.id)); }
   };
@@ -7650,6 +7869,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const stealSettlementCandidate = (() => {
     const settlement = stealSettlements.find((candidate) => candidate.eventId === activeStealSettlement?.eventId);
     if (!settlement || settlement.semantics !== "PROVEN" || settlement.outcome !== "STEAL_RESOLVED") return null;
+    if (activeStealSettlement?.roomCode !== room.code
+      || activeStealSettlement.rootEventId !== settlement.rootEventId
+      || activeStealSettlement.actionRevision !== (room.actionRevision ?? null)) return null;
     const liveRootEventId = clientPresentation.rootAction?.rootEventId;
     if (liveRootEventId && liveRootEventId !== settlement.rootEventId) return null;
     const rootEvents = room.timeline.filter((event) => event.id === settlement.rootEventId);
@@ -7700,6 +7922,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || result.role === "FORMER_OWNER" && room.meId !== action.targetId) return null;
     return result;
   })();
+  const currentPrivateStealSettlementScope = privateStealSettlementParticipant
+    ? privateStealParticipantScope(privateStealSettlementParticipant)
+    : null;
   useEffect(() => {
     const result = activePrivateStealParticipantResult;
     if (privateStealViewerSwitchPending || !result || result.viewerId !== room.meId || result.roomCode !== room.code
@@ -7727,16 +7952,32 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || settlementEvent.publicStealSettlement.targetId !== result.targetId
       || settlementEvent.publicStealSettlement.sourceZone !== "hand") return;
     setActiveStealSettlement((current) => {
-      if (current?.eventId === result.settlementEventId && !current.exiting) return current;
+      const privateResultScope = privateStealParticipantScope(result);
+      if (current?.eventId === result.settlementEventId && !current.exiting) {
+        if (current.roomCode !== room.code || current.rootEventId !== result.rootEventId
+          || current.actionRevision !== (room.actionRevision ?? null)) return current;
+        if (current.privateResultScope === privateResultScope && current.journeySettled) return current;
+        return {
+          ...current,
+          privateResultScope,
+          journeySettled: true,
+          h4VisibleSinceMs: current.privateResultScope === privateResultScope ? current.h4VisibleSinceMs : null,
+        };
+      }
       return {
         eventId: result.settlementEventId,
         roomCode: result.roomCode,
+        rootEventId: result.rootEventId,
+        actionRevision: room.actionRevision ?? null,
+        privateResultScope,
         exiting: false,
-        journeySettled: current?.eventId === result.settlementEventId ? current.journeySettled : true,
+        journeySettled: true,
         h4VisibleSinceMs: null,
       };
     });
-  }, [activePrivateStealParticipantResult, privateStealViewerSwitchPending, room.code, room.meId, room.presentationV2?.stealSettlements, room.serverNow, room.timeline]);
+  }, [activePrivateStealParticipantResult, privateStealViewerSwitchPending, room.actionRevision, room.code, room.meId,
+    room.presentationV2?.stealSettlements, room.serverNow, room.timeline,
+    stealSettlementCandidate?.action.eventId, stealSettlementCandidate?.journeySettled]);
   const attackHitSettlementRetirementReason = activeAttackHitSettlement
     ? attackHitSettlementSupersessionReason(activeAttackHitSettlement.lifecycle, {
       roomCode: room.code,
@@ -8050,6 +8291,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           activePublicNegationRead.action.publicNegationNarration,
           provenDuelNegationSettlement.proof.outcome,
           provenDuelNegationSettlement.settlementEvent.id,
+          publicSequenceForEvent(room.timeline, provenDuelNegationSettlement.settlementEvent.id),
         ) }
         : {}),
       ...(activePublicNegationRead.action.cardKind === "BumperHarvest" ? {
@@ -8141,7 +8383,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ariaLabel: `${singleTargetNegationProofCandidate.root.source.name} played ${cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name} targeting ${singleTargetNegationProofCandidate.root.targets[0]!.name}`,
       ...(singleTargetNegationUsesJourney && singleTargetNegationNarration ? {
         publicNegationNarration: singleTargetNegationSettlement
-          ? finalizePublicNegationNarration(singleTargetNegationNarration, singleTargetNegationSettlement.outcome, singleTargetNegationSettlement.eventId)
+          ? finalizePublicNegationNarration(singleTargetNegationNarration, singleTargetNegationSettlement.outcome,
+            singleTargetNegationSettlement.eventId, publicSequenceForEvent(room.timeline, singleTargetNegationSettlement.eventId))
           : singleTargetNegationNarration,
       } : {}),
       phaseNotice: singleTargetNegationUsesJourney && clientPresentation.stage === "NEGATION"
@@ -9018,6 +9261,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       },
       settlement: {
         eventId: dismantleSettlementCandidate.action.eventId,
+        rootEventId: dismantleSettlementCandidate.action.rootEventId,
+        rootResolutionId: dismantleSettlementCandidate.action.rootResolutionId,
+        sourceId: dismantleSettlementCandidate.action.sourceId,
+        targetId: dismantleSettlementCandidate.action.targetId,
         outcome: dismantleSettlementCandidate.action.outcome,
         exiting: dismantleSettlementCandidate.exiting,
         targetCardMovement: {
@@ -9330,20 +9577,22 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       rootEventId: selectedPublicCardAction.rootEventId,
     })
     : null;
-  const narratableInteractionFacts = [
+  const narratableInteractionFacts = uniquePublicH4Facts([
     ...(room.presentationSnapshot?.publicEventFacts ?? []),
     ...(room.presentationSnapshot?.retainedPublicEventFacts ?? []),
+    ...queuedPublicH4Facts.values(),
   ].filter((fact) => fact.rootEventId && (
-        ["DAMAGE_APPLIED", "DAMAGE_PREVENTED", "SKILL_USED", "EFFECT_APPLIED", "CARD_OBTAINED", "CARD_TRANSFERRED", "CARD_EQUIPPED"].includes(fact.category)
-        || fact.category === "ACTION_DECLINED" && fact.effect?.kind === "entourage_declined"
-        || fact.category === "CARD_PLAYED" && fact.eventId === fact.rootEventId
-          && fact.effect?.label === "Borrowed Sword"
-      ))
-    .sort((left, right) => left.order - right.order);
+        isPublicInteractionOutcomeFact(fact)
+      )));
+  const publicH4PresentationCursor = activeEvent ?? eventQueue[0] ?? null;
+  const { fact: currentFactAtPresentationCursor, isExactCursorFact: cursorPublicH4Fact } = publicH4FactAtPresentationCursor(
+    narratableInteractionFacts,
+    publicH4PresentationCursor ? { id: publicH4PresentationCursor.id, publicSequence: publicH4PresentationCursor.publicSequence } : null,
+  );
   const currentInteractionFactCandidate = room.presentationSnapshot?.interaction?.stage !== "NEGATION"
-    ? (activeEvent ? narratableInteractionFacts.find((fact) => fact.eventId === activeEvent.id) : null)
-      ?? narratableInteractionFacts.at(-1)
-      ?? room.presentationSnapshot?.retainedPublicEvent
+    ? publicH4PresentationCursor
+      ? currentFactAtPresentationCursor
+      : currentFactAtPresentationCursor ?? room.presentationSnapshot?.retainedPublicEvent
     : null;
   const currentInteractionFact = currentInteractionFactCandidate
     ? selectPublicAnnouncementCandidate([
@@ -9352,17 +9601,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         rootEventId: currentInteractionFactCandidate.rootEventId ?? currentInteractionFactCandidate.eventId,
         checkpointEventId: currentInteractionFactCandidate.eventId,
         priority: 1,
-        supersedeOnNewerPublicPlay: true,
+        supersedeOnNewerPublicPlay: !cursorPublicH4Fact,
       },
     ], publicAnnouncementTimelineEventIds, laterPublicCardPlayEventIds)
     : null;
   const activeEventSupersedesDiscard = Boolean(activeEvent && activeEvent.id !== latestPublicDiscardAnnouncement?.eventId
     && Number.isSafeInteger((activeEvent as GameEvent & { publicSequence?: number }).publicSequence)
     && ((activeEvent as GameEvent & { publicSequence?: number }).publicSequence ?? -1) > (latestPublicDiscardAnnouncement?.order ?? -1));
-  const publicDiscardOwnsAnnouncement = Boolean(latestPublicDiscardAnnouncement
+  const publicDiscardCandidate = latestPublicDiscardAnnouncement
     && !presentedEventIds.has(latestPublicDiscardAnnouncement.eventId)
     && !activeEventSupersedesDiscard
-    && latestPublicDiscardAnnouncement.order > (currentInteractionFact?.order ?? -1));
+    ? { eventId: latestPublicDiscardAnnouncement.eventId, order: latestPublicDiscardAnnouncement.order }
+    : null;
   const fanjianSettlementNarration: PublicInteractionNarration | null = skillEffectSettlementCandidate ? (() => {
     const settlement = skillEffectSettlementCandidate.action;
     const card = skillEffectSettlementCandidate.revealEvent.card;
@@ -9374,6 +9624,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         : `Suits differ; ${skillEffectSettlementCandidate.target.name} takes ${settlement.damage.amount} damage.`;
     return {
       eventId: settlement.eventId,
+      publicSequence: publicSequenceForEvent(room.timeline, settlement.eventId),
       rootEventId: settlement.rootEventId,
       interactionId: settlement.interactionId,
       rootFrameId: settlement.rootFrameId,
@@ -9691,7 +9942,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     } : {}),
     deflection: activeDeflectionAction ?? undefined,
   } : null;
-  const sharedContributionAction = sharedContributionDisplayAction(room, domainPublicCardDisplayAction, currentInteractionFact, publicCardJourneySeenEventIds);
+  const sharedContributionAction = sharedContributionDisplayAction(room, domainPublicCardDisplayAction, currentInteractionFact,
+    publicCardJourneySeenEventIds, publicInteractionNarration);
   const publicCardDisplayAction = sharedContributionAction ?? domainPublicCardDisplayAction;
   const publicCardDisplayOwnershipIdentity = publicCardDisplayAction
     ? publicCardJourneyOwnershipIdentity(publicCardDisplayAction, room.code)
@@ -9839,6 +10091,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       semantics: "PROVEN",
       kind: "SKILL_OUTCOME",
       eventId: effectNotice.eventId,
+      publicSequence: publicSequenceForEvent(room.timeline, effectNotice.eventId),
       rootEventId: effectNotice.beautyRootEventId,
       sourceId: effectNotice.beautySourceId,
       proofEventId: effectNotice.beautyProofEventId,
@@ -9849,14 +10102,53 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       exiting: effectNotice.exiting,
     }
     : null;
-  const visibleBeautyAnnouncement = beautyNotice
-    && !publicDiscardOwnsAnnouncement
+  const beautyNoticeEligible = beautyNotice
     && effectNotice?.roomCode === room.code
     && effectNotice.viewerId === room.meId
     && Boolean(beautyNotice.sourceId && beautyNotice.proofEventId)
     && !publicCardDisplayOwnsPresentation
-    ? beautyNotice
-    : null;
+    && !publicInteractionNarration;
+  const publicH4Owner = selectPublicH4AnnouncementOwner({
+    fact: publicInteractionNarration ? currentInteractionFact : null,
+    factIsActive: Boolean(publicH4PresentationCursor && cursorPublicH4Fact),
+    cardDisplay: publicInteractionNarration && publicCardDisplayAction ? {
+      enabled: publicCardDisplayEnabled,
+      rootEventId: publicCardDisplayAction.rootEventId,
+      interactionId: publicCardDisplayAction.interactionId ?? "",
+      rootFrameId: publicCardDisplayAction.rootFrameId ?? "",
+    } : null,
+    discard: publicDiscardCandidate,
+    skillEvent: beautyNoticeEligible && beautyNotice ? { eventId: beautyNotice.eventId } : null,
+  });
+  const publicDiscardOwnsAnnouncement = publicH4Owner?.owner === "PublicDiscardAnnouncementLayer";
+  const visibleBeautyAnnouncement = publicH4Owner?.owner === "PublicSkillEventAnnouncementLayer" ? beautyNotice : null;
+  const activeStealSettlementSequence = activeStealSettlement
+    ? publicSequenceForEvent(room.timeline, activeStealSettlement.eventId)
+    : undefined;
+  const publicH4OwnerSequence = publicH4Owner
+    ? publicSequenceForEvent(room.timeline, publicH4Owner.eventId)
+    : undefined;
+  const activeStealSettlementHasNewerH4Owner = Boolean(activeStealSettlement
+    && publicH4Owner && publicH4Owner.eventId !== activeStealSettlement.eventId
+    && activeStealSettlementSequence !== undefined && publicH4OwnerSequence !== undefined
+    && publicH4OwnerSequence > activeStealSettlementSequence);
+  const activeStealSettlementHasNewerDiscardTransition = Boolean(activeStealSettlement
+    && activePublicDiscardTransition
+    && activePublicDiscardTransition.eventId !== activeStealSettlement.eventId
+    && activeStealSettlementSequence !== undefined
+    && (publicSequenceForEvent(room.timeline, activePublicDiscardTransition.eventId) ?? -1) > activeStealSettlementSequence);
+  const activeStealSettlementActionAdvanced = Boolean(activeStealSettlement
+    && activeStealSettlement.actionRevision !== (room.actionRevision ?? null));
+  const activeStealSettlementScopeChanged = Boolean(activeStealSettlement?.privateResultScope
+    && activeStealSettlement.privateResultScope !== currentPrivateStealSettlementScope);
+  const activeStealSettlementRootChanged = Boolean(activeStealSettlement
+    && clientPresentation.rootAction?.rootEventId
+    && clientPresentation.rootAction.rootEventId !== activeStealSettlement.rootEventId);
+  const activeStealSettlementMustHide = Boolean(activeStealSettlement
+    && (activeStealSettlement.roomCode !== room.code || privateStealViewerSwitchPending
+      || activeStealSettlementScopeChanged || activeStealSettlementActionAdvanced
+      || activeStealSettlementHasNewerH4Owner || activeStealSettlementHasNewerDiscardTransition
+      || activeStealSettlementRootChanged));
   const publicCardJourneyEventIds = publicCardDisplayAction?.motion?.type === "attack-dodge"
     ? [publicCardDisplayAction.rootEventId, publicCardDisplayAction.response?.eventId, publicCardDisplayAction.deflection?.eventId].filter((eventId): eventId is string => Boolean(eventId))
     : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation" || publicCardDisplayAction?.motion?.type === "group-root"
@@ -10030,30 +10322,42 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeTargetCardSettlementExiting = Boolean(activeTargetCardSettlement?.eventId === activeTargetCardSettlementEventId
     && activeTargetCardSettlement.exiting);
   const activeDismantleSettlementEventKey = activeDismantleSettlement?.eventId ?? null;
-  const activeStealSettlementEventKey = activeStealSettlement?.eventId ?? null;
   useEffect(() => {
     const liveRootEventId = clientPresentation.rootAction?.rootEventId;
-    if (!liveRootEventId) return;
     const supersededDismantleEventId = activeDismantleSettlementEventKey
+      && liveRootEventId
       && dismantleSettlements.find((proof) => proof.eventId === activeDismantleSettlementEventKey)?.rootEventId !== liveRootEventId
       ? activeDismantleSettlementEventKey
-      : null;
-    const supersededStealEventId = activeStealSettlementEventKey
-      && stealSettlements.find((proof) => proof.eventId === activeStealSettlementEventKey)?.rootEventId !== liveRootEventId
-      ? activeStealSettlementEventKey
       : null;
     if (supersededDismantleEventId) {
       setActiveDismantleSettlement((current) => current?.eventId === supersededDismantleEventId ? null : current);
     }
-    if (supersededStealEventId) {
-      setActiveStealSettlement((current) => current?.eventId === supersededStealEventId ? null : current);
+
+    if (!activeStealSettlement) return;
+    const currentScope = currentPrivateStealSettlementScope;
+    const canReplaceViewerOwner = Boolean(activeStealSettlement.privateResultScope && currentScope
+      && currentScope !== activeStealSettlement.privateResultScope && !privateStealViewerSwitchPending
+      && !privateStealResultWasSeen(currentScope));
+    const privateOwnerWasRevoked = Boolean(activeStealSettlement.privateResultScope
+      && currentScope !== activeStealSettlement.privateResultScope
+      && !privateStealViewerSwitchPending && !canReplaceViewerOwner);
+    const rootWasSuperseded = Boolean(liveRootEventId && liveRootEventId !== activeStealSettlement.rootEventId);
+    const shouldRetire = activeStealSettlement.roomCode !== room.code
+      || activeStealSettlement.actionRevision !== (room.actionRevision ?? null)
+      || activeStealSettlementHasNewerH4Owner || activeStealSettlementHasNewerDiscardTransition
+      || rootWasSuperseded || privateOwnerWasRevoked;
+    if (shouldRetire) {
+      setActiveStealSettlement((current) => current?.eventId === activeStealSettlement.eventId ? null : current);
     }
-  }, [activeDismantleSettlementEventKey, activeStealSettlementEventKey, clientPresentation.rootAction?.rootEventId,
-    dismantleSettlements, stealSettlements]);
+  }, [activeDismantleSettlementEventKey, activeStealSettlement,
+    activeStealSettlementHasNewerH4Owner, activeStealSettlementHasNewerDiscardTransition,
+    clientPresentation.rootAction?.rootEventId, currentPrivateStealSettlementScope,
+    dismantleSettlements, privateStealViewerSwitchPending, room.actionRevision, room.code]);
   useEffect(() => {
     if (!activeTargetCardSettlementEventId || !activeTargetCardSettlementJourneySettled
       || !publicCardDisplayReady || activeTargetCardSettlementExiting
-      || activeTargetCardSettlement?.roomCode !== room.code) return;
+      || activeTargetCardSettlement?.roomCode !== room.code
+      || activeTargetCardSettlementOutcome === "STEAL_RESOLVED" && activeStealSettlementMustHide) return;
     const eventId = activeTargetCardSettlementEventId;
     const outcome = activeTargetCardSettlementOutcome;
     let visibleSinceMs = activeTargetCardSettlement.h4VisibleSinceMs;
@@ -10161,7 +10465,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   }, [activeTargetCardSettlement?.eventId, activeTargetCardSettlement?.exiting, activeTargetCardSettlement?.journeySettled,
     activeTargetCardSettlement?.h4VisibleSinceMs, activeTargetCardSettlement?.roomCode,
     activeTargetCardSettlementEventId, activeTargetCardSettlementExiting, activeTargetCardSettlementJourneySettled,
-    activeTargetCardSettlementOutcome, publicActivityStatus.kind, publicCardDisplayReady, room.code, room.status,
+    activeTargetCardSettlementOutcome, activeStealSettlementMustHide, publicActivityStatus.kind, publicCardDisplayReady, room.code, room.status,
     stealSettlementCandidate?.action.eventId, stealSettlementCandidate?.action.sourceZone]);
   useEffect(() => {
     if (!activeDismantleSettlement?.exiting) return;
@@ -10889,6 +11193,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       "data-public-card-journey-target-top", "data-public-card-journey-target-width", "data-public-card-journey-target-height",
       "data-settlement-event-id", "data-settlement-card-id", "data-player-anchor",
       "data-public-card-announcement-key", "data-public-card-announcement-event-id", "data-public-card-copy-anchor-event-id",
+      "data-public-h4-event-id", "data-public-h4-public-sequence", "data-public-h4-owner",
       "data-effect-notice-event-id", "data-seat-topology", "data-countdown-urgency",
     ];
     const attributesFor = (element: Element) => Object.fromEntries(safeAttributes.flatMap((name) => {
@@ -11221,18 +11526,30 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           : room.phase === "discard"
             ? { active: true, hasInput: discardSelected.length > 0, count: discardSelected.length, min: excessCards, max: excessCards, summary: `${discardSelected.length} of ${excessCards} selected` }
             : undefined;
+  const turnConversionPrecommitControls = serpentMode
+    ? serpentPrecommitControls
+    : wushengMode === "play"
+      ? wushengPrecommitControls
+      : longdanMode === "play"
+        ? longdanPrecommitControls
+        : null;
+  const responseConversionPrecommitControls = wushengMode === "response"
+    ? wushengPrecommitControls
+    : longdanMode === "response"
+      ? longdanPrecommitControls
+      : null;
   const consolePrimaryCandidates = [
     ...(borrowedSwordTargetSelectionActive && canUseAction(room.currentAction, "choose_borrowed_sword_target") ? [{ id: "borrowed-sword", label: "Confirm", enabled: localTargetSelection.canConfirm, priority: 80 }] : []),
-    ...(activeSkillSelection || activeSkillTargetSelection ? [{ id: "active-skill", label: "Confirm", enabled: activeSkillConfirmEnabled, priority: 70 }] : []),
+    ...(activeSkillSelection || activeSkillTargetSelection ? [{ id: "active-skill", label: activeSkillPrecommitControls.primaryLabel ?? "Confirm", enabled: activeSkillPrecommitControls.primaryEnabled, priority: 70 }] : []),
     ...(targetCardPickerInLocalDock ? [{ id: "target-card-picker", label: "Confirm", enabled: targetCardPickerSelectionComplete && !responseControlsDisabled, priority: 70 }] : []),
-    ...(triggerResponse && canUseAction(room.currentAction, "trigger") && selectedTriggerOption?.selection?.type === "cards" ? [{ id: "trigger-cards", label: "Confirm", enabled: triggerSubmissionComplete, priority: 70 }] : []),
-    ...(triggerResponse && canUseAction(room.currentAction, "trigger") && selectedTriggerOption?.selection?.type === "target" ? [{ id: "trigger-target", label: "Confirm", enabled: localTargetSelection.canConfirm, priority: 70 }] : []),
-    ...(canRespond && selectedResponseProvider ? [{ id: "response", label: "Confirm", enabled: canUseAction(room.currentAction, "respond") && responseSelectionComplete, priority: 60 }] : []),
+    ...(triggerResponse && canUseAction(room.currentAction, "trigger") && selectedTriggerOption?.selection?.type === "cards" ? [{ id: "trigger-cards", label: genericPrecommitControls.primaryLabel ?? "Confirm", enabled: genericTriggerPrecommitOption?.effectId === selectedTriggerOption.effectId ? genericPrecommitControls.primaryEnabled : triggerSubmissionComplete, priority: 70 }] : []),
+    ...(triggerResponse && canUseAction(room.currentAction, "trigger") && selectedTriggerOption?.selection?.type === "target" ? [{ id: "trigger-target", label: genericPrecommitControls.primaryLabel ?? "Confirm", enabled: genericTriggerPrecommitOption?.effectId === selectedTriggerOption.effectId ? genericPrecommitControls.primaryEnabled : localTargetSelection.canConfirm, priority: 70 }] : []),
+    ...(canRespond && selectedResponseProvider ? [{ id: "response", label: responseConversionPrecommitControls?.primaryLabel ?? genericPrecommitControls.primaryLabel ?? "Confirm", enabled: responseConversionPrecommitControls?.primaryEnabled ?? (genericResponsePrecommitOption?.providerId === selectedResponseProvider.providerId ? genericPrecommitControls.primaryEnabled : canUseAction(room.currentAction, "respond") && responseSelectionComplete), priority: 60 }] : []),
     ...(dyingFirstAidSelectionActive ? [{ id: "first-aid", label: "Confirm", enabled: canUseAction(room.currentAction, "respond") && responseSelectionComplete, priority: 65 }] : []),
     ...(sharedDyingPeachAvailable ? [{ id: "shared-dying-peach", label: "Confirm", enabled: sharedDyingPeachSelectionComplete, priority: 66 }] : []),
     ...(rescueDecisionReady && !canRespond && !sharedDyingPeachWindowActive ? [{ id: "rescue", label: "Peach", enabled: canUseAction(room.currentAction, "give_peach") && card?.kind === "Peach", priority: 60 }] : []),
     ...(room.isMyTurn && room.phase === "discard" && currentActionOwnedByViewer ? [{ id: "discard", label: `Discard ${excessCards} selected`, enabled: canUseAction(room.currentAction, "discard_cards") && discardSelected.length === excessCards, priority: 60 }] : []),
-    ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play", enabled: (canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack) && (!selectedCardNeedsTarget || selectedPlayTargetsValid) && (!(["Dodge", "Negation"].includes(card?.kind ?? "")) || selectedCanPlayAsAttack)), priority: 40 }] : []),
+    ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: turnConversionPrecommitControls?.primaryLabel ?? (normalTargetSelectionActive ? "Confirm" : "Play"), enabled: turnConversionPrecommitControls?.primaryEnabled ?? ((canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack) && (!selectedCardNeedsTarget || selectedPlayTargetsValid) && (!(["Dodge", "Negation"].includes(card?.kind ?? "")) || selectedCanPlayAsAttack))), priority: 40 }] : []),
   ];
   const consoleIsDecisionActor = currentActionOwnedByViewer;
   const currentPublicGroupResponse = (() => {
@@ -11338,8 +11655,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? activeHarvestSubmission
       ? "Submitting your Bumper Harvest choice…"
       : activeHarvestSelection
-        ? "1 card selected in Bumper Harvest. Tap Confirm choice."
-        : "Choose 1 card from Bumper Harvest, then tap Confirm choice."
+        ? "1 card selected in Bumper Harvest. Tap Confirm."
+        : "Choose 1 card from Bumper Harvest, then tap Confirm."
     : null;
   const privateTurnGuidance = (() => {
     const action = room.currentAction;
@@ -11388,9 +11705,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && targetCardPickerSelectedKeys.length > 0,
   );
   const consoleSecondaryControls = [
-    ...(genericTriggerOptions.map((option) => option.label)),
+    ...(genericTriggerOptions.map((option) => option.selection ? stablePrecommitOwnerLabel(option.label) : option.label)),
     ...(genericResponseOptions.map((option) => option.label)),
-    ...(canFormSerpentAttack ? [serpentMode ? "Normal" : SERPENT_SPEAR_LABEL] : []),
+    ...(canFormSerpentAttack ? [SERPENT_SPEAR_LABEL] : []),
     ...(room.isMyTurn && canPlay ? ["End"] : []),
   ].filter((label, index, all) => Boolean(label) && all.indexOf(label) === index);
   const ordinaryPlayTargetSelection = Boolean(
@@ -11402,12 +11719,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && !normalHasProviderCancelSurface,
   );
   const consoleLocalCancelVisible = !fiveSeatPhoneAttackMode && !lustLocalSelectionActive && (
-    localTargetSelection.canCancel && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface && !ordinaryPlayTargetSelection
+    localTargetCancelVisible && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface && !genericPrecommitControls.ownerCanRetapToExit && !ordinaryPlayTargetSelection
     || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal)
     || canClearTargetCardPickerSelection
   ) && !fanjianTargetSelectionActive;
-  const consoleLocalCancelEnabled = !lustLocalSelectionActive && (
-    localTargetSelection.canCancel
+  const consoleLocalCancelEnabled = consoleLocalCancelVisible && !lustLocalSelectionActive && (
+    localTargetCancelEnabled
     || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal)
     || canClearTargetCardPickerSelection
   ) && !fanjianTargetSelectionActive;
@@ -11487,6 +11804,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         mode: "actor-select" as const,
         selectionCount: harvestSelectedCard ? "1 selected" : "Choose 1 card",
         confirmDisabled: busy || !harvestSelectedCard || Boolean(activeHarvestSubmission),
+        confirmPending: busy || Boolean(activeHarvestSubmission),
         onToggle: toggleHarvestSelection,
         onConfirm: confirmHarvestChoice,
       }
@@ -11522,7 +11840,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         card: dismantleSettlementCandidate.action.affectedCardFace,
         accessibleLabel: `Public discarded card from ${dismantleSettlementCandidate.target.name}`,
       }} />}
-      {stealSettlementCandidate?.journeySettled && (stealSettlementCandidate.action.affectedCardFace || stealSettlementCandidate.action.sourceZone === "hand") && <PublicSettlementCardResult key={`${stealSettlementCandidate.action.eventId}:${privateStealSettlementParticipant ? privateStealParticipantScope(privateStealSettlementParticipant) : "anonymous"}`} result={{
+      {!activeStealSettlementMustHide && stealSettlementCandidate?.journeySettled && (stealSettlementCandidate.action.affectedCardFace || stealSettlementCandidate.action.sourceZone === "hand") && <PublicSettlementCardResult key={`${room.code}:${stealSettlementCandidate.action.rootEventId}:${stealSettlementCandidate.action.eventId}:${privateStealSettlementParticipant ? privateStealParticipantScope(privateStealSettlementParticipant) : "anonymous"}`} result={{
         eventId: stealSettlementCandidate.action.eventId,
         rootEventId: stealSettlementCandidate.action.rootEventId,
         outcome: "obtained",
@@ -11594,6 +11912,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           accessibilityLabel="Sowing Distrust combined choice"
           publicTarget={combinedChoicePoolTarget}
           zones={combinedChoicePoolZones}
+          scrollHint={combinedChoiceSelection.eligibleKeys.length > 4 ? "Swipe to see all" : undefined}
           handCountHeading={`Hand (${combinedChoiceSelection.eligibleKeys.length})`}
           handRailDescription={combinedChoiceSelection.eligibleKeys.length > 4 ? "Swipe horizontally to reach all hidden Hand positions." : undefined}
           selectionControls={<div className="fanjian-combined-controls">
@@ -11614,7 +11933,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             </fieldset>
           </div>}
           selectionCount=""
-          actionLabel="Confirm"
+          confirmAccessibleLabel="Confirm Sowing Distrust selection"
           disabled={triggerControlsDisabled}
           confirmDisabled={triggerControlsDisabled || !combinedChoiceSelection.choices.some((choice) => choice.id === triggerChoice) || triggerSelectedKeys.filter((key) => combinedChoiceSelection.eligibleKeys.includes(key)).length !== 1}
           error={error}
@@ -11659,8 +11978,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           accessibilityLabel={targetCardChoicePanelLabel}
           publicTarget={pendingTargetCardPublicPool}
           zones={pendingTargetCardPoolZones}
+          scrollHint={pendingTargetCardSelectableSelection.eligibleKeys.length > 4 ? "Swipe to see all" : undefined}
           selectionCount={`${pendingTargetCardSelectedKeys.length} / ${pendingTargetCardSelectableSelection.max} selected`}
-          actionLabel={`Use ${pendingTargetCardActionName}`}
+          confirmAccessibleLabel={`Confirm ${pendingTargetCardActionName} selection`}
           disabled={busy || !canUseAction(room.currentAction, "choose_target_card")}
           confirmDisabled={busy || !pendingTargetCardSelectionComplete || !canUseAction(room.currentAction, "choose_target_card")}
           error={error}
@@ -11780,7 +12100,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
       <PublicStageLayoutProvider roomId={room.code} scopeId={publicCardDisplayAction?.rootEventId ?? null} viewerId={room.meId} interactionId={publicCardDisplayAction?.interactionId ?? null}>
-      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} suppressAnnouncement={targetCardChoiceMergeActive || publicDiscardOwnsAnnouncement} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} protectFirstParkedMiniature={protectPublicInteractionUpperH4} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} responseHistoryOwnership={publicDisplayOwnedResponseHistory.map((response) => ({ eventId: response.eventId, cardIds: (response.cardFaces ?? [response.cardFace]).map((card) => card.id) }))} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardDisplayEventParked} onJourneyRevealCompleted={markPublicCardJourneyRevealCompleted} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
+      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} suppressAnnouncement={targetCardChoiceMergeActive || publicDiscardOwnsAnnouncement} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} protectFirstParkedMiniature={protectPublicInteractionUpperH4} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} publicSequenceForEvent={(eventId) => publicSequenceForEvent(room.timeline, eventId)} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} responseHistoryOwnership={publicDisplayOwnedResponseHistory.map((response) => ({ eventId: response.eventId, cardIds: (response.cardFaces ?? [response.cardFace]).map((card) => card.id) }))} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardDisplayEventParked} onJourneyRevealCompleted={markPublicCardJourneyRevealCompleted} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
         setActiveDismantleSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
           ? { ...current, journeySettled: true }
           : current);
@@ -11791,14 +12111,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {publicDiscardOwnsAnnouncement && latestPublicDiscardAnnouncement && <PublicDiscardAnnouncementLayer
         announcement={latestPublicDiscardAnnouncement} roomCode={room.code} viewerId={room.meId}
       />}
-      {!sharedContributionAction && !publicDiscardOwnsAnnouncement && publicInteractionNarration && (!interactionNarrationBelongsToAction || !publicCardDisplayEnabled) && <PublicInteractionAnnouncementLayer
+      {!sharedContributionAction && publicH4Owner?.owner === "PublicInteractionAnnouncementLayer" && publicInteractionNarration && <PublicInteractionAnnouncementLayer
         narration={publicInteractionNarration} roomCode={room.code} viewerId={room.meId}
         anchorEventId={fanjianSettlementNarration ? skillEffectSettlementCandidate?.revealEvent.id : null}
         protectFirstParkedMiniature={protectPublicInteractionUpperH4}
         keepCenterAnchorClear={Boolean(fanjianSettlementNarration)}
         preferredVerticalMode={fanjianSettlementNarration ? "above" : undefined}
       />}
-      {visibleBeautyAnnouncement && !publicInteractionNarration && <PublicSkillEventAnnouncementLayer
+      {publicH4Owner?.owner === "PublicSkillEventAnnouncementLayer" && visibleBeautyAnnouncement && <PublicSkillEventAnnouncementLayer
         announcement={visibleBeautyAnnouncement}
         roomCode={room.code}
         viewerId={room.meId}
@@ -11819,10 +12139,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         <section className="hero-skills local-hero-skills" data-hero-id={localHero?.id ?? undefined} aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive
             ? <div key={skill.name} className="hero-skill-button hero-skill-passive" role="group" aria-label={`${skill.name}, passive skill`}>{skill.name}</div>
-            : <button type="button" key={skill.name} className={`hero-skill-button ${skill.active ? "active" : ""}`} aria-label={skill.name} aria-pressed={skill.active} title={skill.description} disabled={!skill.enabled || (busy && !(skill.name === "Deflection" && canActivateDaqiaoDeflectionDuringTimerStart)) || (presentationBusy && !responseDecisionReady && !skill.active && !(skill.name === "Deflection" && canActivateDaqiaoDeflection))} onClick={() => skill.onClick?.()}>
-              {skill.active && (me?.hero === "guan-yu" || me?.hero === "zhao-yun")
-                ? `Cancel ${skill.name}`
-                : me?.hero === "diao-chan" && skill.name === "Beauty Outshining the Moon"
+            : <button type="button" key={skill.name} className={`hero-skill-button ${skill.active ? "active" : ""}`} aria-label={skill.name} aria-pressed={skill.active} data-precommit-owner={skill.retapToExit ? skill.name : undefined} title={skill.active && skill.retapToExit ? `${skill.description} Tap again to cancel this selection.` : skill.description} disabled={!skill.enabled || (busy && !(skill.name === "Deflection" && canActivateDaqiaoDeflectionDuringTimerStart)) || (presentationBusy && !responseDecisionReady && !skill.active && !(skill.name === "Deflection" && canActivateDaqiaoDeflection))} onClick={() => skill.onClick?.()}>
+              {me?.hero === "diao-chan" && skill.name === "Beauty Outshining the Moon"
                   ? <>
                     <span className="diao-chan-beauty-label diao-chan-beauty-label-wide">Beauty Outshining{"\n"}the Moon</span>
                     <span className="diao-chan-beauty-label diao-chan-beauty-label-compact">Beauty{"\n"}Outshining the Moon</span>
@@ -11922,7 +12240,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               const inspectionDetailsSelected = inspectFocused && !actionDetailsSelected;
               const detailsCard = actionDetailsSelected ? selectedHandDetailsCard : inspectionDetailsSelected ? item : null;
               const skillModeEligible = wushengMode && wushengEligibleCardIds.has(item.id) || longdanMode && longdanEligibleCardIds.has(item.id) || activeSkillSelection?.eligibleCardIds.includes(item.id) === true;
-              return <div className={`card-slot ${singleSelected ? "single-selected" : ""} ${multiSelected ? "multi-selected" : ""} ${detailsSelected ? "details-selected" : ""} ${inspectFocused ? "inspect-focused" : ""}`} data-hand-card-id={item.id} data-card-selected={isSelected ? "true" : "false"} data-card-inspect-focused={inspectFocused ? "true" : "false"} key={`rail-${item.id}`} style={{ marginLeft: index === 0 ? 0 : `${handCardLayout.step - 68}px`, ...(multiSelected ? { zIndex: 100 + Math.max(0, selectedCardIds.length - multiSelectionOrder) } : {}) }}>
+              return <div className={`card-slot ${singleSelected ? "single-selected" : ""} ${multiSelected ? "multi-selected" : ""} ${detailsSelected ? "details-selected" : ""} ${inspectFocused ? "inspect-focused" : ""}`} data-hand-card-id={item.id} data-card-selected={isSelected ? "true" : "false"} data-card-inspect-focused={inspectFocused ? "true" : "false"} key={`rail-${item.id}`} style={{ marginLeft: index === 0 ? 0 : `${handCardLayout.step - handCardLayout.cardWidth}px`, ...(multiSelected ? { zIndex: 100 + Math.max(0, selectedCardIds.length - multiSelectionOrder) } : {}) }}>
                 {(detailsSelected || inspectionDetailsSelected) && <span className="hand-card-details-frame" aria-hidden="true" />}
                 <div className="hand-card-visual">
                   <button aria-pressed={isSelected} aria-label={`${isSelected ? "Deselect" : "Select"} ${definition.name}`} disabled={cardActionDisabled} onClick={() => { if (!cardActionDisabled) toggleHandCard(item); }} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}>
@@ -11954,9 +12272,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       <div className="turn-controls" data-console-surface="local-operation" data-ordinary-play-target-selection={ordinaryPlayTargetSelection ? "true" : undefined} data-skip-visible={consoleDecline?.label === "Skip" ? "true" : undefined} aria-label="Local operation console">
         <div data-action-extras="true">
           {triggerResponse && responseDecisionReady && inlineChoiceTriggerOption?.selection?.type === "choice" && inlineChoiceTriggerOption.selection.choices.map((choice) => <button type="button" key={`${inlineChoiceTriggerOption.effectId}:${choice.id}`} className="serpent-control" data-trigger-choice-provider={inlineChoiceTriggerOption.effectId} data-trigger-choice-action={choice.id} aria-label={`${inlineChoiceTriggerOption.label}: ${choice.label}`} disabled={responseControlsDisabled || !canUseAction(room.currentAction, "trigger")} onClick={() => void onAction("trigger", { providerId: inlineChoiceTriggerOption.effectId, choice: choice.id })}>{choice.label}</button>)}
-          {triggerResponse && genericTriggerOptions.map((option) => option.selection?.type === "target_cards" || option.selection?.type === "choice" && option.allowDecline === false ? null : option.selection ? <button key={option.effectId} className={`serpent-control ${responseProviderId === option.effectId ? "active" : ""}`} disabled={triggerControlsDisabled} onClick={() => { const active = responseProviderId === option.effectId; if (active) resetLocalTargetFlow("trigger"); else { setResponseProviderId(option.effectId); setSelected(""); setTargetIds([]); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); } }}>{responseProviderId === option.effectId ? `Cancel ${option.label}` : option.selection.type === "target" ? `Use ${option.label}` : option.label}</button> : <button key={option.effectId} className="serpent-control" disabled={triggerControlsDisabled} onClick={() => onAction("trigger", { providerId: option.effectId })}>{`Use ${option.label}`}</button>)}
-          {canRespond && genericResponse && semanticResponseOptions.length > 0 && genericResponseOptions.map((option) => option.selection ? <button key={option.providerId} className={`serpent-control ${responseProviderId === option.providerId ? "active" : ""}`} disabled={physicalResponseControlsDisabled} onClick={() => { const active = responseProviderId === option.providerId; setResponseProviderId(active ? "" : option.providerId); setSelected(""); setSerpentSelected([]); }}>{responseProviderId === option.providerId ? `Cancel ${option.label}` : option.label}</button> : <button key={option.providerId} className="serpent-control" disabled={physicalResponseControlsDisabled} onClick={() => submitResponseProvider(option)}>{busy ? "Resolving…" : option.label}</button>)}
-          {room.isMyTurn && canPlay && consoleKind === "turn" && canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} data-serpent-spear-control="true" aria-label={serpentMode ? "Exit Serpent Spear mode" : "Use Serpent Spear"} aria-pressed={serpentMode} onClick={() => { setSerpentMode((active) => !active); setSerpentSelected([]); setSelected(""); setTarget(""); }}>{serpentMode ? "Normal" : SERPENT_SPEAR_LABEL}</button>}
+          {triggerResponse && genericTriggerOptions.map((option) => {
+            if (option.selection?.type === "target_cards" || option.selection?.type === "choice" && option.allowDecline === false) return null;
+            if (!option.selection) return <button key={option.effectId} className="serpent-control" disabled={triggerControlsDisabled} onClick={() => onAction("trigger", { providerId: option.effectId })}>{`Use ${option.label}`}</button>;
+            const active = responseProviderId === option.effectId;
+            const label = stablePrecommitOwnerLabel(option.label);
+            return <button key={option.effectId} className={`serpent-control ${active ? "active" : ""}`} aria-label={label} aria-pressed={active} title={active ? "Tap again to cancel this selection." : option.description} data-precommit-provider={option.effectId} disabled={triggerControlsDisabled} onClick={() => toggleGenericProviderDraft(option.effectId)}>{label}</button>;
+          })}
+          {canRespond && genericResponse && semanticResponseOptions.length > 0 && genericResponseOptions.map((option) => {
+            if (option.selection) {
+              const active = responseProviderId === option.providerId;
+              return <button key={option.providerId} className={`serpent-control ${active ? "active" : ""}`} aria-label={option.label} aria-pressed={active} title={active ? "Tap again to cancel this selection." : option.description} data-precommit-provider={option.providerId} disabled={physicalResponseControlsDisabled} onClick={() => toggleGenericProviderDraft(option.providerId)}>{option.label}</button>;
+            }
+            return <button key={option.providerId} className="serpent-control" disabled={physicalResponseControlsDisabled} onClick={() => submitResponseProvider(option)}>{busy ? "Resolving…" : option.label}</button>;
+          })}
+          {room.isMyTurn && canPlay && consoleKind === "turn" && canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} data-serpent-spear-control="true" data-precommit-owner="serpent_spear_attack" aria-label={SERPENT_SPEAR_LABEL} title={serpentMode ? "Tap again to cancel this selection." : `Use ${SERPENT_SPEAR_LABEL}`} aria-pressed={serpentMode} disabled={busy} onClick={() => { clearLocalPrecommitDrafts(); if (!serpentMode) setSerpentMode(true); }}>{SERPENT_SPEAR_LABEL}</button>}
         </div>
         <div data-action-slots="true">
           <div data-action-slot="cancel">
@@ -11977,7 +12307,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {(activeSkillSelection || activeSkillTargetSelection) && consolePrimaryId === "active-skill" && <button className="primary" disabled={busy || !activeSkillConfirmEnabled || !consoleDecision.primary?.enabled} onClick={() => activeSkillSubmission && submitWithLocalTargetPreview(() => onAction("trigger", activeSkillSubmission))}>Confirm</button>}
             {canRespond && genericResponse && semanticResponseOptions.length > 0 && selectedResponseProvider && consolePrimaryId === "response" && <button className="primary" disabled={responseControlsDisabled || !responseSelectionComplete || !consoleDecision.primary?.enabled} onClick={() => submitResponseProvider()}>{busy ? "Confirming…" : "Confirm"}</button>}
             {room.isMyTurn && room.phase === "discard" && consolePrimaryId === "discard" && <button className="primary" disabled={busy || discardSelected.length !== excessCards || !consoleDecision.primary?.enabled} onClick={() => onAction("discard_cards", { cardIds: discardSelected })}>{busy ? "Discarding…" : `Discard ${excessCards} selected`}</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy && !ordinaryTurnPlayAuthorized || !card || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play"}</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy && !ordinaryTurnPlayAuthorized || !card || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : turnConversionPrecommitControls?.primaryLabel ?? (normalTargetSelectionActive ? "Confirm" : "Play")}</button>}
           </div>
           <div data-action-slot="decline">
             {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName(busy ? "Skipping…" : "Skip")} disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}
@@ -12417,11 +12747,12 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
 function PrivateCardDistributionDialog({ cards, players, disabled, error, onSubmit }: { cards: Card[]; players: Player[]; disabled: boolean; error: string; onSubmit: (assignments: Array<{ cardId: string; recipientId: string }>) => void }) {
   const [assignments, setAssignments] = useState<Record<string, string>>({});
   const complete = cards.length > 0 && cards.every((card) => Boolean(assignments[card.id]));
+  const assignedCount = cards.filter((card) => Boolean(assignments[card.id])).length;
   const submit = () => onSubmit(cards.map((card) => ({ cardId: card.id, recipientId: assignments[card.id] })));
   return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel choice-trigger-panel" role="dialog" aria-modal="false" aria-label="Legacy card distribution">
     <header><strong>LEGACY</strong><span>Look at the top 2 cards, then give each card to any living character.</span></header>
     <div className="legacy-distribution-row">{cards.map((card) => <div className="legacy-distribution-card" key={card.id}><CardFace card={card} /><label>Give this card to<select value={assignments[card.id] ?? ""} disabled={disabled} onChange={(event) => setAssignments((current) => ({ ...current, [card.id]: event.target.value }))}><option value="">Choose a hero</option>{players.map((player) => <option value={player.id} key={player.id}>{heroName(player.hero)}</option>)}</select></label></div>)}</div>
-    <div className="target-card-picker-actions"><button type="button" className="primary" disabled={disabled || !complete} onClick={submit}>Distribute cards</button></div>
+    <CardPoolDecisionFooter className="target-card-picker-actions" selectionCount={`${assignedCount} / ${cards.length} assigned`} confirmAction={{ accessibleLabel: "Confirm card distribution", disabled: disabled || !complete, pending: disabled, onClick: submit }} />
     {error && <p className="error" role="alert">{error}</p>}
   </section></div>;
 }
@@ -12431,6 +12762,7 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
   const handKeys = selection.eligibleHandKeys
     .filter((key) => /^hand:\d+$/.test(key))
     .sort((a, b) => Number(a.slice(5)) - Number(b.slice(5)));
+  const [handRowRef, handRowOverflowing] = useHorizontalOverflow<HTMLDivElement>(`mandatory-choice:${option.effectId}:${handKeys.length}`);
   const requiredHandCount = selectedChoice ? selection.cardCountByChoice?.[selectedChoice] ?? (selectedChoice === "discard" ? 1 : 0) : 0;
   const needsHandCard = requiredHandCount > 0;
   const complete = Boolean(selectedChoice && validSelectedKeys.length === requiredHandCount);
@@ -12438,8 +12770,13 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
   return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel choice-trigger-panel" role="dialog" aria-modal="false" aria-label={`${option.label} decision`}>
     <header><strong>{option.label.toUpperCase()}</strong><span>{option.description ?? "Choose one:"}</span></header>
     <div className="choice-trigger-options">{selection.choices.map((choice) => <button type="button" key={choice.id} className={selectedChoice === choice.id ? "selected" : ""} disabled={disabled} aria-pressed={selectedChoice === choice.id} onClick={() => onChoice(choice.id)}>{labelForChoice(choice)}</button>)}</div>
-    {needsHandCard && <><div className="target-card-picker-card-row choice-trigger-card-row" aria-label="Eligible hand cards">{handKeys.map((key) => { const index = Number(key.slice(5)); const card = hand[index]; if (!card) return null; const selected = validSelectedKeys.includes(key); return <button type="button" key={key} className={`target-card-picker-card ${selected ? "selected" : ""}`} disabled={disabled} aria-pressed={selected} aria-label={`${cardDefinition(card.kind).name} ${card.rank}${card.suit}`} onClick={() => onToggle(key)}><CardFace card={card} />{selected && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>; })}</div><div className="target-card-picker-count" aria-live="polite">{validSelectedKeys.length} / {requiredHandCount} selected</div></>}
-    <div className="target-card-picker-actions"><button type="button" className="primary" disabled={disabled || !complete} onClick={() => onConfirm(selectedChoice, validSelectedKeys)}>Confirm choice</button></div>
+    {needsHandCard && <>
+      {handRowOverflowing && <span className="target-card-picker-zone-scroll-hint">Swipe to see all hand cards</span>}
+      <div ref={handRowRef} className="target-card-picker-card-row choice-trigger-card-row" aria-label="Eligible hand cards" data-hand-scrollable={handKeys.length > 4 ? "true" : undefined}>{handKeys.map((key) => { const index = Number(key.slice(5)); const card = hand[index]; if (!card) return null; const selected = validSelectedKeys.includes(key); return <button type="button" key={key} className={`target-card-picker-card ${selected ? "selected" : ""}`} disabled={disabled} aria-pressed={selected} aria-label={`${cardDefinition(card.kind).name} ${card.rank}${card.suit}`} onClick={() => onToggle(key)}><CardFace card={card} />{selected && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>; })}</div>
+    </>}
+    {needsHandCard
+      ? <CardPoolDecisionFooter selectionCount={`${validSelectedKeys.length} / ${requiredHandCount} selected`} confirmAction={{ accessibleLabel: `Confirm ${option.label} card choice`, disabled: disabled || !complete, pending: disabled, onClick: () => onConfirm(selectedChoice, validSelectedKeys) }} className="target-card-picker-actions" />
+      : <div className="target-card-picker-actions"><button type="button" className="primary" disabled={disabled || !complete} onClick={() => onConfirm(selectedChoice, validSelectedKeys)}>Confirm choice</button></div>}
     {error && <p className="error" role="alert">{error}</p>}
   </section></div>;
 }
@@ -12458,9 +12795,10 @@ function RetaliationCardPool({ selection, target, selectedKeys, playerCount, sco
     style={{ top: top === null ? undefined : `${top}px`, left: insets ? `${insets.left}px` : undefined, right: insets?.width ? "auto" : insets ? `${insets.right}px` : undefined, width: insets?.width ? `${insets.width}px` : undefined, "--retaliation-pool-max-height": maxHeight === null ? undefined : `${maxHeight}px` } as CSSProperties}>
     <CardPoolPanel mode="actor-target-select" title="RETALIATION" instruction="Choose 1 card to obtain" accessibilityLabel="Retaliation target card selection"
       publicTarget={{ handCount: target.handCount, equipmentCards: target.equipmentCards, judgementCards: target.judgementCards }} zones={zones}
-      selectionCount={`${selectedKeys.length} / ${selection.max} selected`} actionLabel="Use Retaliation" disabled={disabled}
+      scrollHint={target.handCount > 4 ? "Swipe to see all" : undefined}
+      selectionCount={`${selectedKeys.length} / ${selection.max} selected`} confirmAccessibleLabel="Confirm Retaliation selection" disabled={disabled}
       confirmDisabled={disabled || selectedKeys.length < selection.min || selectedKeys.length > selection.max}
-      secondaryAction={canDecline ? { label: "Skip", variant: "skip", disabled, onClick: onDecline } : undefined}
+      skipAction={canDecline ? { accessibleLabel: "Skip Retaliation", disabled, onClick: onDecline } : undefined}
       error={error} onToggle={onToggle} onConfirm={onConfirm} onInfo={onInfo} />
   </BattlefieldChoiceStage>;
 }
@@ -12481,6 +12819,8 @@ function retaliationTargetZones(selection: PublicTargetCardSelection, target: Pl
 }
 
 function TargetCardPicker({ option, presentationCopy, compact = false, selection, target, selectedKeys, disabled, canDecline, showCancel, allowPublicCardInfo = false, error, onToggle, onUse, onCancel, onDecline, onInfoCard, poolPlayerCount = 0, poolScope = "" }: { poolPlayerCount?: number; poolScope?: string; option: TriggerOptionView | null; presentationCopy?: { title: string; accessibleName: string; instruction: string; actionLabel: string }; compact?: boolean; selection: PublicTargetCardSelection; target: Player; selectedKeys: string[]; disabled: boolean; canDecline: boolean; showCancel: boolean; allowPublicCardInfo?: boolean; error: string; onToggle: (key: string) => void; onUse: (keys: string[]) => void; onCancel: () => void; onDecline: () => void; onInfoCard?: (card: Card, trigger: HTMLButtonElement) => void }) {
+  const concealedHandCount = selection.eligibleKeys.filter((key) => /^hand:\d+$/.test(key)).length;
+  const [handRowRef, handRowOverflowing] = useHorizontalOverflow<HTMLDivElement>(`target-card-picker:${target.id}:${concealedHandCount}`);
   if (option?.effectId === "sima_yi_fankui" && compact) return <RetaliationCardPool selection={selection} target={target}
     selectedKeys={selectedKeys.filter((key) => selection.eligibleKeys.includes(key))} playerCount={poolPlayerCount} scope={poolScope}
     disabled={disabled} canDecline={canDecline} error={error} onToggle={onToggle} onConfirm={() => onUse(selectedKeys.filter((key) => selection.eligibleKeys.includes(key)))}
@@ -12532,18 +12872,19 @@ function TargetCardPicker({ option, presentationCopy, compact = false, selection
     <header><strong>{effectLabel.toUpperCase()}</strong><span>{subtitle}</span></header>
     <div className="target-card-picker-zones" data-zone-count={zones.length} data-zone-composition={zoneComposition}>
       {zones.map((zone) => <section className={`target-card-picker-zone target-card-picker-zone-${zone.id}`} aria-label={zone.accessibleName} key={zone.id}>
-        <div className="target-card-picker-zone-heading"><h3>{zone.title}</h3>{zone.id === "hand" && handKeys.length > 4 && <span className="target-card-picker-zone-scroll-hint">Swipe to see all</span>}</div>
-        <div className="target-card-picker-card-row" aria-label={`Eligible ${zone.accessibleName}`} data-hand-scrollable={zone.id === "hand" && handKeys.length > 4 ? "true" : undefined}>
+        <div className="target-card-picker-zone-heading"><h3>{zone.title}</h3>{zone.id === "hand" && handRowOverflowing && <span className="target-card-picker-zone-scroll-hint">Swipe to see all</span>}</div>
+        <div ref={zone.id === "hand" && handKeys.length > 4 ? handRowRef : undefined} className="target-card-picker-card-row" aria-label={`Eligible ${zone.accessibleName}`} data-hand-scrollable={zone.id === "hand" && handKeys.length > 4 ? "true" : undefined}>
           {zone.items.map(renderItem)}
         </div>
       </section>)}
     </div>
-    <div className="target-card-picker-count" aria-live="polite">{validSelectedKeys.length} / {selection.max} selected</div>
-    <div className="target-card-picker-actions" data-skip-visible={canDecline ? "true" : undefined}>
-      {showCancel && <button type="button" className="end" disabled={disabled} onClick={onCancel}>Cancel</button>}
-      {canDecline && <button type="button" className={gameplayDeclineButtonClassName("Skip")} disabled={disabled} onClick={onDecline}>Skip</button>}
-      <button type="button" className={`primary${canDecline ? " wtk-action-button" : ""}`} disabled={disabled || !complete} onClick={() => onUse(validSelectedKeys)}>{presentationCopy?.actionLabel ?? `Use ${effectLabel}`}</button>
-    </div>
+    <CardPoolDecisionFooter
+      className="target-card-picker-actions"
+      selectionCount={`${validSelectedKeys.length} / ${selection.max} selected`}
+      cancelAction={showCancel ? { accessibleLabel: `Cancel ${effectLabel} selection`, disabled, onClick: onCancel } : undefined}
+      skipAction={canDecline ? { accessibleLabel: `Skip ${effectLabel}`, disabled, onClick: onDecline } : undefined}
+      confirmAction={{ accessibleLabel: `Confirm ${effectLabel} selection`, disabled: disabled || !complete, onClick: () => onUse(validSelectedKeys) }}
+    />
     {error && <p className="error" role="alert">{error}</p>}
   </section></div>;
 }
@@ -12949,23 +13290,18 @@ type PublicSettlementCardResult = {
 
 function PublicSettlementCardResult({ result }: { result: PublicSettlementCardResult }) {
   const cardRef = useRef<HTMLDivElement>(null);
-  const [privateFaceState, setPrivateFaceState] = useState(() => ({
-    scope: result.privateResultScope ?? null,
-    visible: Boolean(result.privateResultScope && !privateStealResultWasSeen(result.privateResultScope)),
-  }));
-  const privateFaceVisible = Boolean(result.privateResultScope
-    && privateFaceState.scope === result.privateResultScope && privateFaceState.visible);
+  const [initialPrivateFaceScope] = useState(() => result.privateResultScope
+    && !privateStealResultWasSeen(result.privateResultScope) ? result.privateResultScope : null);
+  const privateFaceVisible = Boolean(result.privateResultScope && initialPrivateFaceScope === result.privateResultScope);
   const renderedCard = result.privateResultScope ? privateFaceVisible ? result.card : undefined : result.card;
   const showAnonymousBack = result.anonymousHandBack || Boolean(result.privateResultScope && !privateFaceVisible);
 
   useEffect(() => {
     const scope = result.privateResultScope;
     if (!scope || !privateFaceVisible) return;
-    let elapsedVisibleMs = 0;
-    let previousFrameAt: number | null = null;
     let markedSeen = false;
     let frame = 0;
-    const sample = (now: number) => {
+    const markWhenFirstVisible = () => {
       const card = cardRef.current;
       const bounds = card?.getBoundingClientRect();
       const style = card ? window.getComputedStyle(card) : null;
@@ -12978,17 +13314,12 @@ function PublicSettlementCardResult({ result }: { result: PublicSettlementCardRe
         if (!markedSeen) {
           markPrivateStealResultSeen(scope);
           markedSeen = true;
-        }
-        if (previousFrameAt !== null) elapsedVisibleMs += Math.min(100, Math.max(0, now - previousFrameAt));
-        previousFrameAt = now;
-        if (elapsedVisibleMs >= UI_TIMING.publicTargetCardSettlementRead) {
-          setPrivateFaceState((current) => current.scope === scope && current.visible ? { ...current, visible: false } : current);
           return;
         }
       }
-      frame = window.requestAnimationFrame(sample);
+      frame = window.requestAnimationFrame(markWhenFirstVisible);
     };
-    frame = window.requestAnimationFrame(sample);
+    frame = window.requestAnimationFrame(markWhenFirstVisible);
     return () => window.cancelAnimationFrame(frame);
   }, [privateFaceVisible, result.privateResultScope]);
 

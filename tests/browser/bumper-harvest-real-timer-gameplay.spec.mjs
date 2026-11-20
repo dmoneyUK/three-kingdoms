@@ -593,7 +593,7 @@ test("NEG-A1 restores Harvest choice and deduplicates public Negation cards on p
         await expect(stage).toHaveAttribute("data-harvest-choice-action-revision", actorRoom.actionRevision);
         await expect(viewerPage.locator(".harvest-choice-panel--actor")).toBeVisible();
         await expect(viewerPage.locator(".harvest-card-select:not([disabled])").first()).toBeVisible();
-        await expect(viewerPage.getByRole("button", { name: "Confirm choice" })).toBeDisabled();
+        await expect(viewerPage.getByRole("button", { name: "Confirm Bumper Harvest choice" })).toBeDisabled();
       } else {
         await expect(stage).toHaveAttribute("data-harvest-choice-authorized", "false");
         await expect(stage).toHaveAttribute("data-harvest-readonly", "true");
@@ -700,7 +700,7 @@ test("NEG-A1 restores Harvest choice and deduplicates public Negation cards on p
     await expect(chooserPage.locator(".game-shell")).toBeVisible();
     await expect(stage).toHaveAttribute("data-harvest-choice-authorized", "true");
     await expect(stage.locator(".harvest-card-select:not([disabled])").first()).toBeEnabled();
-    await expect(chooserPage.getByRole("button", { name: "Confirm choice" })).toBeDisabled();
+    await expect(chooserPage.getByRole("button", { name: "Confirm Bumper Harvest choice" })).toBeDisabled();
     const choiceViewports = [
       { width: 390, height: 700 },
       { width: 390, height: 844 },
@@ -709,7 +709,7 @@ test("NEG-A1 restores Harvest choice and deduplicates public Negation cards on p
     const firstCard = stage.locator(".harvest-card-select:not([disabled])").first();
     const chosenCardId = await firstCard.locator("xpath=..").getAttribute("data-harvest-card-id");
     expect(actorRoom.pendingHarvest.availableIds).toContain(chosenCardId);
-    const confirm = chooserPage.getByRole("button", { name: "Confirm choice" });
+    const confirm = chooserPage.getByRole("button", { name: "Confirm Bumper Harvest choice" });
     for (const viewport of choiceViewports) {
       await chooserPage.setViewportSize(viewport);
       await expect(stage).toHaveAttribute("data-harvest-choice-authorized", "true");

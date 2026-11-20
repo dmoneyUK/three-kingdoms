@@ -4,6 +4,7 @@ import { projectPresentationV2 } from "../../game/presentation-v2.ts";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import { baseUrl } from "./harness.mjs";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
   advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestForViewer, requestAndSettle, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -193,6 +194,13 @@ test("Something Out of Nothing preserves Play Phase and reveals the stratagem wi
   assert.equal(publicPlay.target, "Host");
   const drawHistory = result.data.room.timeline.find((event) => /plays Something Out of Nothing and draws 2 cards/.test(event.message ?? ""));
   assert.equal(drawHistory.presentation, false);
+  const drawOutcomeEvent = result.data.room.timeline.find((event) => event.publicFact?.committedOutcome?.changes?.some((change) =>
+    change.kind === "CARD_DRAWN" && change.playerId === hostPlayer.id));
+  assert.deepEqual(drawOutcomeEvent?.publicFact?.committedOutcome?.changes, [
+    { kind: "CARD_DRAWN", playerId: hostPlayer.id, amount: 2, fromZone: "DECK", toZone: "HAND" },
+  ]);
+  const publicDrawRoom = (await state(game.code, game.members[1].token)).data;
+  assertPublicOutcomeHasH4Owner(publicDrawRoom, drawOutcomeEvent.id);
   const arrivals = result.data.room.timeline.filter((event) => event.type === "card" && event.privateHandTransfer);
   assert.equal(arrivals.length, 2, "each committed draw has one private physical-card receipt");
   assert.ok(arrivals.every((event) => event.privateHandTransfer.recipientId === hostPlayer.id
@@ -938,7 +946,7 @@ test("committed Steal exposes a root-linked public settlement without revealing 
   assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: settledView.timeline.map((event) => event.id === settlement.eventId ? { ...event, publicStealSettlement: { ...event.publicStealSettlement, rootEventId: "missing-root" } } : event) }).stealSettlements, [], "a mismatched root link fails closed");
 });
 
-test("Steal and Burning Bridges publish authoritative destination proofs for Hand, Equipment, and Judgement", { timeout: 120_000 }, async () => {
+test("Steal and Burning Bridges publish committed outcomes and one shared H4 owner for Hand, Equipment, and Judgement", { timeout: 120_000 }, async () => {
   const cases = [
     { effect: "Steal", kind: "Steal", zone: "hand" },
     { effect: "Steal", kind: "Steal", zone: "equipment" },
@@ -1009,10 +1017,32 @@ test("Steal and Burning Bridges publish authoritative destination proofs for Han
     const { eventId: settlementEventId, ...proofOnEvent } = proof;
     assert.equal(settlementEvent.id, settlementEventId);
     assert.deepEqual(effect === "Steal" ? settlementEvent.publicStealSettlement : settlementEvent.publicDismantleSettlement, proofOnEvent);
+    const h4 = assertPublicOutcomeHasH4Owner(sourceView, settlementEvent.id);
+    const sourceLabel = effect === "Dismantle" ? "Burning Bridges" : "Steal";
+    const fromZone = zone === "hand" ? "HAND" : zone === "equipment" ? "EQUIPMENT" : "JUDGEMENT";
+    assert.equal(h4.fact.label, sourceLabel);
+    assert.deepEqual(h4.fact.committedOutcome.changes, effect === "Steal" ? [{
+      kind: "CARD_TRANSFERRED", fromPlayerId: target.id, toPlayerId: source.id,
+      amount: 1, fromZone, toZone: "HAND",
+    }] : [{
+      kind: "CARD_DISCARDED", playerId: target.id, amount: 1, fromZone, toZone: "DISCARD",
+    }], `${effect}/${zone} H4 reports the actual public zone change without a card identity`);
+    assert.equal(h4.narration.headline, effect === "Steal"
+      ? `${source.name} — Steal: ${source.name} received 1 card from ${target.name}.`
+      : `${target.name} — Burning Bridges: ${target.name} discarded 1 card.`,
+    `${effect}/${zone} H4 uses shared copy for the verified settlement result`);
+    assert.equal(JSON.stringify(h4.fact.committedOutcome).includes(sourceZoneCard.id), false,
+      `${effect}/${zone} committed outcome contains no physical card identity`);
     for (const { data: view } of settledViews) {
       const viewerSettlements = effect === "Steal" ? view.presentationV2.stealSettlements : view.presentationV2.dismantleSettlements;
       assert.deepEqual(viewerSettlements, settlements, `${effect}/${zone} proof is identical for every authenticated viewer`);
       assert.deepEqual(effect === "Steal" ? view.presentationSnapshot.stealSettlements : view.presentationSnapshot.dismantleSettlements, settlements);
+      const viewerH4Fact = [
+        ...(view.presentationSnapshot.publicEventFacts ?? []),
+        ...(view.presentationSnapshot.retainedPublicEventFacts ?? []),
+      ].find((fact) => fact.eventId === settlementEvent.id);
+      assert.deepEqual(viewerH4Fact?.committedOutcome, h4.fact.committedOutcome,
+        `${effect}/${zone} public H4 result is identical for every viewer`);
       assert.equal(view.currentAction.targetCardSelection, undefined);
       assert.equal(view.pendingTargetCard, null);
       const publicPayload = JSON.stringify({
@@ -1646,6 +1676,14 @@ test("committed Discard-phase cards carry one public physical HAND-to-Discard pr
   const observerEvent = observer.timeline.find((event) => event.id === ownerEvent.id);
   assert.deepEqual(observerEvent?.publicZoneTransitions, ownerEvent.publicZoneTransitions,
     "public transition evidence is identical for every viewer");
+  const ownerH4 = assertPublicOutcomeHasH4Owner(discarded.data.room, ownerEvent.id);
+  const observerH4 = assertPublicOutcomeHasH4Owner(observer, ownerEvent.id);
+  assert.equal(ownerH4.fact.committedOutcome.changes[0]?.kind, "CARD_DISCARDED");
+  assert.equal(ownerH4.fact.committedOutcome.changes[0]?.amount, 1);
+  assert.match(ownerH4.narration.headline, /discarded 1 card/,
+    "ordinary Discard Phase H4 reports the committed discard count");
+  assert.equal(observerH4.narration.headline, ownerH4.narration.headline,
+    "actor and observer share the same single-owner H4 result for the public discard");
 });
 
 test("delayed Judgement Negation and counter-Negation reuse one activation frame", { timeout: 30_000 }, async () => {

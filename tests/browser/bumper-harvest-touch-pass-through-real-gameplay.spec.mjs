@@ -600,7 +600,7 @@ test("§10.49 Harvest choice stays anchored, private and continuous across TEST 
     const actorTop = actorGeometry.panel.top;
     expect(Math.abs(actorTop - initialReadOnlyGeometry.panel.top), JSON.stringify({ initialReadOnlyGeometry, actorGeometry })).toBeLessThanOrEqual(2);
     await expect(page.locator(".local-player-dock .console-guidance"))
-      .toContainText("Choose 1 card from Bumper Harvest, then tap Confirm choice.");
+      .toContainText("Choose 1 card from Bumper Harvest, then tap Confirm.");
 
     const rootEventId = opened.presentationV2?.bumperHarvestProgress?.rootEventId;
     expect(rootEventId).toBeTruthy();
@@ -623,7 +623,7 @@ test("§10.49 Harvest choice stays anchored, private and continuous across TEST 
     await expect(page.locator(`.local-player-dock[data-player-anchor="${source.id}"]`)).toBeVisible();
     await expect(page.locator('.harvest-choice-stage[data-choice-mode="actor-select"]')).toBeVisible();
     await expect(page.locator(".local-player-dock .console-guidance"))
-      .toContainText("Choose 1 card from Bumper Harvest, then tap Confirm choice.");
+      .toContainText("Choose 1 card from Bumper Harvest, then tap Confirm.");
     const returnedActorTop = await page.locator('.harvest-choice-stage[data-choice-mode="actor-select"] .harvest-choice-panel')
       .evaluate((element) => element.getBoundingClientRect().top);
     expect(Math.abs(returnedActorTop - actorTop), JSON.stringify({ returnedActorTop, actorGeometry })).toBeLessThanOrEqual(2);
@@ -632,10 +632,10 @@ test("§10.49 Harvest choice stays anchored, private and continuous across TEST 
     expect(selected).toBeTruthy();
     await tapHarvestCard(page, page.locator(`.harvest-choice-stage [data-harvest-card-id="${selected.id}"] .harvest-card-select`));
     await expect(page.locator(".local-player-dock .console-guidance"))
-      .toContainText("1 card selected in Bumper Harvest. Tap Confirm choice.");
+      .toContainText("1 card selected in Bumper Harvest. Tap Confirm.");
     const selectedTop = await actorPool.evaluate((element) => element.getBoundingClientRect().top);
     expect(Math.abs(selectedTop - actorTop), JSON.stringify({ selectedTop, actorGeometry })).toBeLessThanOrEqual(2);
-    await tap(page, page.getByRole("button", { name: "Confirm choice" }));
+    await tap(page, page.getByRole("button", { name: "Confirm Bumper Harvest choice" }));
 
     await expect.poll(async () => {
       const current = await readRoom(request, seed.code, source.token);
@@ -1703,7 +1703,7 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     })).toBeVisible({ timeout: 20_000 });
     const firstHarvestChoice = firstChooserPage.locator(".harvest-card-select:not([disabled])").first();
     await tapHarvestCard(firstChooserPage, firstHarvestChoice);
-    const firstHarvestConfirm = firstChooserPage.getByRole("button", { name: "Confirm choice" });
+    const firstHarvestConfirm = firstChooserPage.getByRole("button", { name: "Confirm Bumper Harvest choice" });
     await expect(firstHarvestConfirm).toBeEnabled();
     const firstHarvestChoiceResponse = firstChooserPage.waitForResponse((response) => {
       if (response.request().method() !== "POST" || response.url() !== `${API}/api/rooms`) return false;
@@ -3113,7 +3113,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await waitForStableTouchTarget(page, ".harvest-card-info");
     await tap(page, page.locator(".harvest-card-info").first());
     await expect(page.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
-    await expect(page.getByRole("button", { name: "Confirm choice" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Confirm Bumper Harvest choice" })).toHaveCount(0);
     await expect(page.locator(".harvest-card-select")).toHaveCount(0);
     await expect(page.locator(".harvest-card-choice[data-harvest-card-state='selected']")).toHaveCount(0);
     await tap(page, page.getByRole("button", { name: "Close card details" }));
@@ -3272,12 +3272,12 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await tap(page, page.getByRole("button", { name: "Close card details" }));
     await tapHarvestCard(page, firstCard);
     await expect(firstCard).toHaveAttribute("aria-pressed", "false");
-    const firstConfirm = page.getByRole("button", { name: "Confirm choice" });
+    const firstConfirm = page.getByRole("button", { name: "Confirm Bumper Harvest choice" });
     await expect(firstConfirm).toBeDisabled();
     await tapHarvestCard(page, firstCard);
     await expect(firstCard).toHaveAttribute("aria-pressed", "true");
     await expect(firstConfirm).toBeEnabled();
-    await expect(page.getByRole("button", { name: "Confirm choice" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Confirm Bumper Harvest choice" })).toHaveCount(1);
     const beforeDraftSwitch = await readRoom(request, code, token, source.id);
     expect(beforeDraftSwitch.pendingHarvest.actorId).toBe(initialActorId);
     expect(beforeDraftSwitch.pendingHarvest.choices.map((choice) => choice.cardId)).toEqual(initialChoices);
@@ -3289,7 +3289,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(activeSpectatorDock).toBeFocused();
     await expect(page.locator(".harvest-choice-panel--actor")).toHaveCount(0);
     await expect(page.locator(".harvest-card-select[aria-pressed='true']")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Confirm choice" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Confirm Bumper Harvest choice" })).toHaveCount(0);
     const afterDraftSwitch = await readRoom(request, code, token, activeSwitchTarget.id);
     expect(afterDraftSwitch.pendingHarvest.actorId).toBe(initialActorId);
     expect(afterDraftSwitch.pendingHarvest.choices.map((choice) => choice.cardId)).toEqual(initialChoices);
@@ -3371,7 +3371,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(secondHarvestCard).toBeVisible();
     await tapHarvestCard(page, secondHarvestCard);
     await expect(secondHarvestCard).toHaveAttribute("aria-pressed", "true");
-    const secondConfirm = page.getByRole("button", { name: "Confirm choice" });
+    const secondConfirm = page.getByRole("button", { name: "Confirm Bumper Harvest choice" });
     await expect(secondConfirm).toBeEnabled();
     const secondChoiceResponse = page.waitForResponse((response) => {
       if (response.request().method() !== "POST" || response.url() !== `${API}/api/rooms`) return false;

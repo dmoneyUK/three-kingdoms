@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import { projectPresentationV2 } from "../../game/presentation-v2.ts";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
   assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, runBotStep, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -340,11 +342,21 @@ test("Guo Jia Jealousy of God waits for the final Judgment card and handles Necr
   const acceptedResult = await requestAndSettle("trigger", { code: accepted.game.code, token: accepted.guoMember.token, providerId: "guo_jia_jealousy_of_god" });
   assert.equal(acceptedResult.status, 200, JSON.stringify(acceptedResult.data));
   assert.ok(acceptedResult.data.room.myHand.some((held) => held.id === replacement.id), "the replacement Judgment card enters Guo Jia's hand");
+  const jealousyOutcomeEvent = acceptedResult.data.room.timeline.find((event) => event.publicFact?.committedOutcome?.changes?.some((change) =>
+    change.kind === "CARD_GAINED" && change.playerId === accepted.guo.id && change.fromZone === "JUDGEMENT"));
+  assert.ok(jealousyOutcomeEvent, "the public result records the actual Judgement-to-Hand gain");
+  assert.deepEqual(jealousyOutcomeEvent.publicFact.committedOutcome.changes, [
+    { kind: "CARD_GAINED", playerId: accepted.guo.id, amount: 1, fromZone: "JUDGEMENT", toZone: "HAND" },
+  ]);
+  assertPublicOutcomeHasH4Owner(acceptedResult.data.room, jealousyOutcomeEvent.id);
   const jealousyArrival = acceptedResult.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer?.cardId === replacement.id);
   assert.equal(jealousyArrival?.privateHandTransfer?.sourceZone, "judgement");
   assert.equal(jealousyArrival?.privateHandTransfer?.recipientId, accepted.guo.id);
   const jealousyObserver = (await state(accepted.game.code, accepted.simaMember.token)).data;
   assert.equal(jealousyObserver.timeline.some((event) => event.privateHandTransfer), false, "only Guo Jia receives the private Hand arrival receipt");
+  const observerJealousyOutcome = jealousyObserver.timeline.find((event) => event.id === jealousyOutcomeEvent.id);
+  assert.deepEqual(observerJealousyOutcome?.publicFact?.committedOutcome, jealousyOutcomeEvent.publicFact.committedOutcome,
+    "every viewer receives the same public count without the private arrival receipt");
   assert.equal(roomCardCount(accepted.game.code, original.id), 1, "the original revealed card remains exactly once after normal discard/reshuffle processing");
   assert.equal(roomCardCount(accepted.game.code, replacement.id), 1, "the obtained replacement remains exactly once");
   assert.equal(JSON.parse(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(accepted.sima.id)} AND json_extract(value,'$.id')=${quote(replacement.id)}`)), 0, "Necromancy removes the replacement from Sima Yi");
@@ -530,6 +542,15 @@ test("Legacy privately distributes top two cards and repeats once per damage poi
   assert.deepEqual(settled.room.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
   const legacyOwner = (await state(one.game.code, one.guoMember.token)).data;
   const legacyObserver = (await state(one.game.code, one.game.members[2].token)).data;
+  const distributionEvent = legacyObserver.timeline.find((event) => event.publicFact?.committedOutcome?.changes?.some((change) =>
+    change.kind === "CARD_GAINED" && change.fromZone === "DISTRIBUTION"));
+  assert.ok(distributionEvent, "completed Legacy distribution publishes its actual recipient count");
+  assert.deepEqual(distributionEvent.publicFact.committedOutcome.changes, [
+    { kind: "CARD_GAINED", playerId: one.guo.id, amount: 2, fromZone: "DISTRIBUTION", toZone: "HAND" },
+  ]);
+  assertPublicOutcomeHasH4Owner(legacyObserver, distributionEvent.id);
+  assert.equal(JSON.stringify(distributionEvent.publicFact.committedOutcome).includes(firstCards[0].id), false,
+    "the public count result excludes the private Legacy card identity");
   const legacyArrivals = legacyOwner.timeline.filter((event) => event.type === "card" && event.privateHandTransfer);
   assert.deepEqual(legacyArrivals.map((event) => event.privateHandTransfer.cardId), [firstCards[0].id, firstCards[1].id]);
   assert.ok(legacyArrivals.every((event) => event.privateHandTransfer.sourceZone === "distribution"
@@ -1114,13 +1135,47 @@ test("Wu hero skills complete through the normal semantic API", async () => {
   await requestAndSettle("draw", { code: acceptedGame.code, token: acceptedGame.members[0].token });
   const acceptedYingzi = await requestAndSettle("trigger", { code: acceptedGame.code, token: acceptedGame.members[0].token, providerId: "zhou_yu_yingzi" }); assert.equal(acceptedYingzi.status, 200, JSON.stringify(acceptedYingzi.data)); assert.equal(acceptedYingzi.data.room.myHand.length, 3, "accepting Yingzi draws exactly three normal cards"); assert.equal(acceptedYingzi.data.room.phase, "play");
   assert.equal(acceptedYingzi.data.room.presentationSnapshot.publicDrawPhaseDecision, null);
-  const heroicFact = acceptedYingzi.data.room.presentationSnapshot.retainedPublicEvent;
+  const acceptedYingziSnapshot = acceptedYingzi.data.room.presentationSnapshot;
+  const acceptedYingziFacts = [
+    ...(acceptedYingziSnapshot.publicEventFacts ?? []),
+    ...(acceptedYingziSnapshot.retainedPublicEventFacts ?? []),
+  ];
+  const heroicFact = acceptedYingziFacts.find((fact) => fact.actorId === acceptedSource.id && fact.label === "Heroic");
+  assert.ok(heroicFact, "the committed Heroic fact remains in the public result queue after the Draw Phase result");
   assert.equal(heroicFact?.category, "SKILL_USED");
   assert.equal(heroicFact?.actorId, acceptedSource.id);
   assert.equal(heroicFact?.label, "Heroic");
   assert.equal(heroicFact?.outcomeLabel, "drew one additional card");
+  const completedDrawFact = acceptedYingziFacts.find((fact) => fact.committedOutcome?.changes?.some((change) =>
+    change.kind === "CARD_DRAWN" && change.playerId === acceptedSource.id));
+  assert.ok(completedDrawFact, "the committed Draw Phase result is present after Heroic");
+  assert.equal(completedDrawFact?.committedOutcome?.changes?.find((change) => change.kind === "CARD_DRAWN")?.amount, 3,
+    "the latest public result reports the three cards actually drawn after Heroic");
+  const completedDrawNarration = derivePublicInteractionNarration({
+    snapshot: acceptedYingziSnapshot,
+    players: acceptedYingzi.data.room.players,
+    rootEventId: completedDrawFact.rootEventId,
+    interactionId: completedDrawFact.identity.interactionId,
+    rootFrameId: completedDrawFact.identity.rootFrameId,
+    eventId: completedDrawFact.eventId,
+  });
+  assert.equal(completedDrawNarration?.eventId, completedDrawFact.eventId);
+  assert.match(completedDrawNarration?.headline ?? "", /drew 3 cards/, "H4 reports Heroic's actual three-card draw, not only its extra card");
+  assert.equal(acceptedYingziSnapshot.retainedPublicEvent?.eventId, completedDrawFact?.eventId,
+    "the latest retained event follows the committed public sequence");
   const heroicObserver = await state(acceptedGame.code, acceptedGame.members[1].token);
-  assert.deepEqual(heroicObserver.data.presentationSnapshot.retainedPublicEvent, heroicFact);
+  const observerDrawNarration = derivePublicInteractionNarration({
+    snapshot: heroicObserver.data.presentationSnapshot,
+    players: heroicObserver.data.players,
+    rootEventId: completedDrawFact.rootEventId,
+    interactionId: completedDrawFact.identity.interactionId,
+    rootFrameId: completedDrawFact.identity.rootFrameId,
+    eventId: completedDrawFact.eventId,
+  });
+  assert.equal(observerDrawNarration?.headline, completedDrawNarration?.headline);
+  assert.deepEqual(heroicObserver.data.presentationSnapshot.retainedPublicEvent, acceptedYingziSnapshot.retainedPublicEvent);
+  assert.deepEqual(heroicObserver.data.presentationSnapshot.retainedPublicEventFacts, acceptedYingziSnapshot.retainedPublicEventFacts,
+    "every viewer receives the same ordered public result queue");
   assert.equal(JSON.stringify(heroicObserver.data.presentationSnapshot).includes("yingzi-a"), false, "private draw identities stay private");
   assert.notEqual(skippedYingzi.data.room.presentationSnapshot.retainedPublicEvent?.label, "Heroic", "declining does not publish Heroic success");
 
