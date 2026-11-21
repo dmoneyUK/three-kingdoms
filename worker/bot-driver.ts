@@ -1,4 +1,5 @@
 import { createBotActionPrincipal } from "./bot-principal";
+import { emitBotDiagnostic, isBotWorkStatus, type BotErrorCode, type BotSchedulerDiagnosticContext, type BotWorkStatus } from "./bot-diagnostics";
 
 type PublicBotRoom = {
   status?: string;
@@ -28,7 +29,7 @@ type BotWorkRow = {
 };
 
 type BotRoomRow = { id: string; code: string; bot_count: number };
-type SchedulerOptions = { maxRoomsPerWakeup?: number; maxStepsPerWakeup?: number };
+type SchedulerOptions = { maxRoomsPerWakeup?: number; maxStepsPerWakeup?: number; roomCode?: string };
 
 const MAX_BOT_SEATS_PER_ROOM = 3;
 const MAX_ATTEMPTS = 3;
@@ -47,6 +48,7 @@ export type BotSchedulerSummary = {
   unsupported: number;
   stale: number;
   failed: number;
+  retries: number;
   skippedLocked: number;
 };
 
@@ -125,10 +127,40 @@ async function acquireRoomLease(db: Pick<D1Database, "prepare">, roomId: string,
   return (result.meta.changes ?? 0) > 0;
 }
 
-async function markWork(db: Pick<D1Database, "prepare">, work: BotWorkRow, status: string, errorCode: string | null, now: number) {
-  await db.prepare(`UPDATE bot_work SET status = ?, error_code = ?, lease_token = NULL,
-    lease_until = NULL, updated_at = ? WHERE decision_id = ?`)
-    .bind(status, errorCode, now, work.decision_id).run();
+async function markWork(
+  db: Pick<D1Database, "prepare">,
+  work: BotWorkRow,
+  status: BotWorkStatus,
+  errorCode: BotErrorCode,
+  now: number,
+) {
+  const result = await db.prepare(`UPDATE bot_work SET status = ?, error_code = ?, lease_token = NULL,
+    lease_until = NULL, updated_at = ? WHERE decision_id = ? AND status = ?`)
+    .bind(status, errorCode, now, work.decision_id, work.status).run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+function logWorkTransition(
+  diagnostics: BotSchedulerDiagnosticContext | undefined,
+  roomCode: string,
+  decisionId: string,
+  previousStatus: string,
+  nextStatus: BotWorkStatus,
+  errorCode: BotErrorCode | undefined,
+  attempts: number,
+  elapsedMs?: number,
+) {
+  if (!isBotWorkStatus(previousStatus)) return;
+  emitBotDiagnostic(diagnostics, {
+    event: "bot_work_transition",
+    roomCode,
+    decisionId,
+    previousStatus,
+    nextStatus,
+    ...(errorCode ? { errorCode } : {}),
+    attempts,
+    ...(elapsedMs === undefined ? {} : { elapsedMs }),
+  });
 }
 
 function testOptions(value: unknown, maximum: number) {
@@ -145,6 +177,8 @@ function testOptions(value: unknown, maximum: number) {
 export async function runBotScheduler(
   db: Pick<D1Database, "prepare">,
   options: SchedulerOptions = {},
+  diagnostics?: BotSchedulerDiagnosticContext,
+  dispatchStep: typeof runBotStep = runBotStep,
 ): Promise<BotSchedulerSummary> {
   const summary: BotSchedulerSummary = {
     roomsConsidered: 0,
@@ -155,6 +189,7 @@ export async function runBotScheduler(
     unsupported: 0,
     stale: 0,
     failed: 0,
+    retries: 0,
     skippedLocked: 0,
   };
   const roomLimit = testOptions(options.maxRoomsPerWakeup, MAX_ROOMS_PER_WAKEUP);
@@ -164,11 +199,12 @@ export async function runBotScheduler(
     FROM rooms JOIN players ON players.room_id = rooms.id
     LEFT JOIN bot_room_scheduler ON bot_room_scheduler.room_id = rooms.id
     WHERE rooms.status IN ('heroes', 'playing') AND rooms.test_room = 0
+      AND (? IS NULL OR rooms.code = ?)
       AND players.controller_type = 'bot' AND players.is_test_player = 0
     GROUP BY rooms.id, rooms.code, rooms.created_at, bot_room_scheduler.updated_at
     HAVING COUNT(players.id) BETWEEN 1 AND ?
     ORDER BY scheduler_updated_at, rooms.created_at LIMIT ?`)
-    .bind(MAX_BOT_SEATS_PER_ROOM, roomLimit).all<BotRoomRow>();
+    .bind(options.roomCode ?? null, options.roomCode ?? null, MAX_BOT_SEATS_PER_ROOM, roomLimit).all<BotRoomRow>();
   const rooms = roomsResult.results ?? [];
 
   for (const candidate of rooms) {
@@ -192,10 +228,19 @@ export async function runBotScheduler(
         // Any older decision is obsolete once the authoritative room revision
         // advances. An expired in-flight decision is safe to mark stale: the
         // canonical action path compares the same revision before mutation.
-        await db.prepare(`UPDATE bot_work SET status = 'stale', error_code = 'revision_changed',
-          lease_token = NULL, lease_until = NULL, updated_at = ?
+        const obsoleteWork = await db.prepare(`SELECT decision_id, status, attempts FROM bot_work
           WHERE room_id = ? AND status IN ('pending', 'claimed') AND action_revision <> ?`)
-          .bind(Date.now(), candidate.id, room.actionRevision).run();
+          .bind(candidate.id, room.actionRevision).all<{ decision_id: string; status: string; attempts: number }>();
+        for (const obsolete of obsoleteWork.results ?? []) {
+          const updated = await db.prepare(`UPDATE bot_work SET status = 'stale', error_code = 'revision_changed',
+            lease_token = NULL, lease_until = NULL, updated_at = ?
+            WHERE decision_id = ? AND status = ? AND action_revision <> ?`)
+            .bind(Date.now(), obsolete.decision_id, obsolete.status, room.actionRevision).run();
+          if ((updated.meta.changes ?? 0) > 0) {
+            summary.stale++;
+            logWorkTransition(diagnostics, candidate.code, obsolete.decision_id, obsolete.status, "stale", "revision_changed", obsolete.attempts);
+          }
+        }
 
         const now = Date.now();
         const proposedDecisionId = crypto.randomUUID();
@@ -211,8 +256,10 @@ export async function runBotScheduler(
         if (work.status === "claimed" && (work.lease_until ?? 0) > now) break;
         if (work.available_at > now) break;
         if (work.attempts >= MAX_ATTEMPTS) {
-          await markWork(db, work, "failed", "retry_limit", now);
-          summary.failed++;
+          if (await markWork(db, work, "failed", "retry_limit", now)) {
+            summary.failed++;
+            logWorkTransition(diagnostics, candidate.code, work.decision_id, work.status, "failed", "retry_limit", work.attempts);
+          }
           break;
         }
 
@@ -224,8 +271,10 @@ export async function runBotScheduler(
           const budget = await db.prepare(`SELECT actions_reserved, lease_token FROM bot_room_scheduler WHERE room_id = ?`)
             .bind(candidate.id).first<{ actions_reserved: number; lease_token: string | null }>();
           if (budget?.lease_token !== roomLeaseToken || budget.actions_reserved >= MAX_ROOM_ACTIONS) {
-            await markWork(db, work, "failed", "action_budget_exhausted", now);
-            summary.failed++;
+            if (await markWork(db, work, "failed", "action_budget_exhausted", now)) {
+              summary.failed++;
+              logWorkTransition(diagnostics, candidate.code, work.decision_id, work.status, "failed", "action_budget_exhausted", work.attempts);
+            }
             break;
           }
           // Reserve once per decision before dispatch. The cap is deliberately
@@ -234,8 +283,10 @@ export async function runBotScheduler(
             WHERE room_id = ? AND lease_token = ? AND actions_reserved < ?`)
             .bind(now, candidate.id, roomLeaseToken, MAX_ROOM_ACTIONS).run();
           if ((reserved.meta.changes ?? 0) <= 0) {
-            await markWork(db, work, "failed", "action_budget_exhausted", now);
-            summary.failed++;
+            if (await markWork(db, work, "failed", "action_budget_exhausted", now)) {
+              summary.failed++;
+              logWorkTransition(diagnostics, candidate.code, work.decision_id, work.status, "failed", "action_budget_exhausted", work.attempts);
+            }
             break;
           }
           await db.prepare("UPDATE bot_work SET budget_reserved = 1 WHERE decision_id = ? AND budget_reserved = 0")
@@ -251,9 +302,10 @@ export async function runBotScheduler(
         if ((claimed.meta.changes ?? 0) <= 0) break;
         summary.steps++;
 
+        const dispatchStartedAt = Date.now();
         let actionResponse: Response;
         try {
-          actionResponse = await runBotStep(db, {
+          actionResponse = await dispatchStep(db, {
             code: candidate.code,
             botId: actor.id,
             actionRevision: room.actionRevision,
@@ -261,21 +313,29 @@ export async function runBotScheduler(
           });
         } catch {
           const attempts = work.attempts + 1;
-          const transientStatus = attempts >= MAX_ATTEMPTS ? "failed" : "pending";
-          await db.prepare(`UPDATE bot_work SET status = ?, available_at = ?, error_code = 'dispatch_error',
+          const transientStatus: BotWorkStatus = attempts >= MAX_ATTEMPTS ? "failed" : "pending";
+          const retryAt = Date.now();
+          const updated = await db.prepare(`UPDATE bot_work SET status = ?, available_at = ?, error_code = 'dispatch_error',
             lease_token = NULL, lease_until = NULL, updated_at = ? WHERE decision_id = ? AND lease_token = ?`)
-            .bind(transientStatus, now + (attempts === 1 ? 1_000 : 5_000), Date.now(), work.decision_id, decisionLeaseToken).run();
-          if (transientStatus === "failed") summary.failed++;
+            .bind(transientStatus, retryAt + (attempts === 1 ? 1_000 : 5_000), retryAt, work.decision_id, decisionLeaseToken).run();
+          if ((updated.meta.changes ?? 0) > 0) {
+            if (transientStatus === "failed") summary.failed++;
+            else summary.retries++;
+            logWorkTransition(diagnostics, candidate.code, work.decision_id, "claimed", transientStatus, "dispatch_error", attempts, Date.now() - dispatchStartedAt);
+          }
           break;
         }
 
         let result: { state?: unknown; code?: unknown } = {};
         try { result = await actionResponse.json() as typeof result; } catch { /* Status classification below fails closed. */ }
         if (result.state === "unsupported" || result.code === "UNSUPPORTED_BOT_DECISION") {
-          await db.prepare(`UPDATE bot_work SET status = 'unsupported', error_code = 'unsupported_bot_decision',
+          const updated = await db.prepare(`UPDATE bot_work SET status = 'unsupported', error_code = 'unsupported_bot_decision',
             lease_token = NULL, lease_until = NULL, updated_at = ? WHERE decision_id = ? AND lease_token = ?`)
             .bind(Date.now(), work.decision_id, decisionLeaseToken).run();
-          summary.unsupported++;
+          if ((updated.meta.changes ?? 0) > 0) {
+            summary.unsupported++;
+            logWorkTransition(diagnostics, candidate.code, work.decision_id, "claimed", "unsupported", "unsupported_bot_decision", work.attempts + 1, Date.now() - dispatchStartedAt);
+          }
           break;
         }
         if (result.state === "waiting_for_human") {
@@ -286,33 +346,48 @@ export async function runBotScheduler(
           break;
         }
         if (actionResponse.status === 409) {
-          await db.prepare(`UPDATE bot_work SET status = 'stale', error_code = 'revision_changed',
+          const updated = await db.prepare(`UPDATE bot_work SET status = 'stale', error_code = 'revision_changed',
             lease_token = NULL, lease_until = NULL, updated_at = ? WHERE decision_id = ? AND lease_token = ?`)
             .bind(Date.now(), work.decision_id, decisionLeaseToken).run();
-          summary.stale++;
+          if ((updated.meta.changes ?? 0) > 0) {
+            summary.stale++;
+            logWorkTransition(diagnostics, candidate.code, work.decision_id, "claimed", "stale", "revision_changed", work.attempts + 1, Date.now() - dispatchStartedAt);
+          }
           break;
         }
         if (actionResponse.status >= 500) {
           const attempts = work.attempts + 1;
           const retry = attempts < MAX_ATTEMPTS;
-          await db.prepare(`UPDATE bot_work SET status = ?, available_at = ?, error_code = 'dispatch_error',
+          const nextStatus: BotWorkStatus = retry ? "pending" : "failed";
+          const retryAt = Date.now();
+          const updated = await db.prepare(`UPDATE bot_work SET status = ?, available_at = ?, error_code = 'dispatch_error',
             lease_token = NULL, lease_until = NULL, updated_at = ? WHERE decision_id = ? AND lease_token = ?`)
-            .bind(retry ? "pending" : "failed", now + (attempts === 1 ? 1_000 : 5_000), Date.now(), work.decision_id, decisionLeaseToken).run();
-          if (!retry) summary.failed++;
+            .bind(nextStatus, retryAt + (attempts === 1 ? 1_000 : 5_000), retryAt, work.decision_id, decisionLeaseToken).run();
+          if ((updated.meta.changes ?? 0) > 0) {
+            if (retry) summary.retries++;
+            else summary.failed++;
+            logWorkTransition(diagnostics, candidate.code, work.decision_id, "claimed", nextStatus, "dispatch_error", attempts, Date.now() - dispatchStartedAt);
+          }
           break;
         }
         if (!actionResponse.ok) {
-          await db.prepare(`UPDATE bot_work SET status = 'failed', error_code = 'dispatch_rejected',
+          const updated = await db.prepare(`UPDATE bot_work SET status = 'failed', error_code = 'dispatch_rejected',
             lease_token = NULL, lease_until = NULL, updated_at = ? WHERE decision_id = ? AND lease_token = ?`)
             .bind(Date.now(), work.decision_id, decisionLeaseToken).run();
-          summary.failed++;
+          if ((updated.meta.changes ?? 0) > 0) {
+            summary.failed++;
+            logWorkTransition(diagnostics, candidate.code, work.decision_id, "claimed", "failed", "dispatch_rejected", work.attempts + 1, Date.now() - dispatchStartedAt);
+          }
           break;
         }
 
         const consumed = await db.prepare(`UPDATE bot_work SET status = 'consumed', error_code = NULL,
           lease_token = NULL, lease_until = NULL, updated_at = ? WHERE decision_id = ? AND lease_token = ?`)
           .bind(Date.now(), work.decision_id, decisionLeaseToken).run();
-        if ((consumed.meta.changes ?? 0) > 0) summary.consumed++;
+        if ((consumed.meta.changes ?? 0) > 0) {
+          summary.consumed++;
+          logWorkTransition(diagnostics, candidate.code, work.decision_id, "claimed", "consumed", undefined, work.attempts + 1, Date.now() - dispatchStartedAt);
+        }
       }
     } finally {
       await db.prepare(`UPDATE bot_room_scheduler SET lease_token = NULL, lease_until = 0, updated_at = ?

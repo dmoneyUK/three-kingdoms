@@ -27,7 +27,8 @@
       ],
       "vars": {
         "BOT_AI_ENABLED": "false",
-        "BOT_DEMO_ENABLED": "true"
+        "BOT_DEMO_ENABLED": "true",
+        "BOT_DIAGNOSTICS_ENABLED": "true"
       }
     }
   }

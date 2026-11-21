@@ -3,12 +3,14 @@ import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } fr
 import handler from "vinext/server/app-router-entry";
 import { seedPlayingGame, type SeedPlayingGameInput } from "./test-playing-game";
 import { BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP, runBotScheduler, runBotStep } from "./bot-driver";
+import { runBotSchedulerWake, type BotSchedulerDiagnosticContext, type BotSchedulerOutcome, type BotWakeSource } from "./bot-diagnostics";
 
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   WTK_TEST_CAPABILITIES?: string;
   BOT_DEMO_ENABLED?: string;
+  BOT_DIAGNOSTICS_ENABLED?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -29,13 +31,37 @@ async function setupTestCapabilities(env: Env) {
   await testCapabilitySetup;
 }
 
-async function runBoundedPostWriteBotScheduler(db: D1Database) {
-  const first = await runBotScheduler(db);
-  if (first.steps < BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP) return;
+function botSchedulerDiagnostics(env: Env, wakeSource: BotWakeSource, sink?: BotSchedulerDiagnosticContext["sink"]): BotSchedulerDiagnosticContext {
+  return {
+    enabled: env.BOT_DIAGNOSTICS_ENABLED === "true",
+    wakeSource,
+    maxSuccessfulTransitions: BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP * 2,
+    successfulTransitionsLogged: 0,
+    ...(sink ? { sink } : {}),
+  };
+}
+
+function combineBotSchedulerOutcomes(first: BotSchedulerOutcome, second: BotSchedulerOutcome): BotSchedulerOutcome {
+  return {
+    roomsConsidered: first.roomsConsidered + second.roomsConsidered,
+    roomsLocked: first.roomsLocked + second.roomsLocked,
+    steps: first.steps + second.steps,
+    consumed: first.consumed + second.consumed,
+    unsupported: first.unsupported + second.unsupported,
+    stale: first.stale + second.stale,
+    failed: first.failed + second.failed,
+    retries: first.retries + second.retries,
+  };
+}
+
+async function runBoundedPostWriteBotScheduler(db: D1Database, diagnostics: BotSchedulerDiagnosticContext): Promise<BotSchedulerOutcome> {
+  const first = await runBotScheduler(db, {}, diagnostics);
+  if (first.steps < BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP) return first;
   // A single human write may wake the bounded scheduler twice. Each pass
   // retains its own 4-step cap, while this fixed limit avoids minute-long
   // pauses halfway through the 3-bot mobile demo.
-  await runBotScheduler(db);
+  const second = await runBotScheduler(db, {}, diagnostics);
+  return combineBotSchedulerOutcomes(first, second);
 }
 
 interface ExecutionContext {
@@ -87,15 +113,27 @@ const worker = {
       });
     }
     if (url.pathname === "/__test/run-bot-scheduler" && env.WTK_TEST_CAPABILITIES === "1" && request.method === "POST") {
-      const body = await request.json<{ maxRoomsPerWakeup?: unknown; maxStepsPerWakeup?: unknown }>().catch(() => ({}));
+      const body = await request.json<{ maxRoomsPerWakeup?: unknown; maxStepsPerWakeup?: unknown; captureDiagnostics?: unknown; roomCode?: unknown; simulateDispatchError?: unknown }>().catch(() => ({}));
       if (body.maxRoomsPerWakeup !== undefined && typeof body.maxRoomsPerWakeup !== "number"
-        || body.maxStepsPerWakeup !== undefined && typeof body.maxStepsPerWakeup !== "number") {
-        return Response.json({ error: "Scheduler test limits must be numeric." }, { status: 400 });
+        || body.maxStepsPerWakeup !== undefined && typeof body.maxStepsPerWakeup !== "number"
+        || body.captureDiagnostics !== undefined && typeof body.captureDiagnostics !== "boolean"
+        || body.simulateDispatchError !== undefined && typeof body.simulateDispatchError !== "boolean"
+        || body.roomCode !== undefined && (typeof body.roomCode !== "string" || !/^[A-Z0-9]{1,5}$/i.test(body.roomCode))) {
+        return Response.json({ error: "Scheduler test options are invalid." }, { status: 400 });
       }
-      return Response.json(await runBotScheduler(env.DB, {
+      const capturedLines: string[] = [];
+      const diagnostics = botSchedulerDiagnostics(env, "cron", body.captureDiagnostics === true ? (line) => capturedLines.push(line) : undefined);
+      const outcome = await runBotSchedulerWake(diagnostics, () => runBotScheduler(env.DB, {
+        ...(typeof body.roomCode === "string" ? { roomCode: body.roomCode.toUpperCase() } : {}),
         ...(typeof body.maxRoomsPerWakeup === "number" ? { maxRoomsPerWakeup: body.maxRoomsPerWakeup } : {}),
         ...(typeof body.maxStepsPerWakeup === "number" ? { maxStepsPerWakeup: body.maxStepsPerWakeup } : {}),
-      }));
+      }, diagnostics, body.simulateDispatchError === true
+        ? async () => { throw new Error("test-only dispatch exception token=must-not-be-logged"); }
+        : undefined));
+      return Response.json({
+        ...(outcome ?? {}),
+        ...(body.captureDiagnostics === true ? { diagnostics: capturedLines.map((line) => JSON.parse(line) as unknown) } : {}),
+      });
     }
     if (url.pathname === "/__test/enable-seeded-controller" && env.WTK_TEST_CAPABILITIES === "1" && request.method === "POST") {
       const body = await request.json<{ code?: unknown; hostToken?: unknown; targetPlayerId?: unknown }>().catch(() => ({}));
@@ -174,14 +212,16 @@ const worker = {
     const response = await handler.fetch(request, env, ctx);
     if (env.BOT_DEMO_ENABLED === "true" && env.WTK_TEST_CAPABILITIES !== "1"
       && request.method === "POST" && url.pathname === "/api/rooms") {
-      ctx.waitUntil(runBoundedPostWriteBotScheduler(env.DB).catch(() => undefined));
+      const diagnostics = botSchedulerDiagnostics(env, "postwrite");
+      ctx.waitUntil(runBotSchedulerWake(diagnostics, () => runBoundedPostWriteBotScheduler(env.DB, diagnostics)));
     }
     return response;
   },
 
   scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     if (env.BOT_DEMO_ENABLED !== "true") return;
-    ctx.waitUntil(runBotScheduler(env.DB).catch(() => undefined));
+    const diagnostics = botSchedulerDiagnostics(env, "cron");
+    ctx.waitUntil(runBotSchedulerWake(diagnostics, () => runBotScheduler(env.DB, {}, diagnostics)));
   },
 };
 

@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 
 const fastTests = [
+  "tests/bot-diagnostics.test.mjs",
   "tests/equipment-arrival.test.mjs",
   "tests/dying.test.mjs",
   "tests/ai-decision-prototype.test.mjs",

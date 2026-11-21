@@ -62,9 +62,10 @@ test("persistent scheduler waits for a human Hero choice, then consumes one uniq
   let room = (await state(code, token)).data;
   assert.equal(room.actionPlayerId, hostId, "the Lord owns the first Hero decision");
   const revision = room.actionRevision;
-  const waiting = await runBotScheduler({ maxStepsPerWakeup: 4 });
+  const waiting = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 4, captureDiagnostics: true });
   assert.equal(waiting.status, 200, JSON.stringify(waiting.data));
   assert.equal(waiting.data.steps, 0, "no bot acts while the human owns Hero selection");
+  assert.deepEqual(waiting.data.diagnostics, [], "idle scheduler wakes and human-owned choices emit no custom Bot diagnostics");
   assert.equal((await state(code, token)).data.actionRevision, revision);
   assert.equal(query(`SELECT COUNT(*) FROM bot_work WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)})`), "0");
 
@@ -72,16 +73,20 @@ test("persistent scheduler waits for a human Hero choice, then consumes one uniq
   assert.ok(hero);
   const chosen = await requestAndSettle("choose_hero", { code, token, heroId: hero.id });
   assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
-  const scheduled = await runBotScheduler({ maxStepsPerWakeup: 3 });
+  const scheduled = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 3, captureDiagnostics: true });
   assert.equal(scheduled.status, 200, JSON.stringify(scheduled.data));
   assert.equal(scheduled.data.steps, 3);
   assert.equal(scheduled.data.consumed, 3);
+  assert.equal(scheduled.data.diagnostics.filter((event) => event.event === "bot_work_transition" && event.nextStatus === "consumed").length, 3);
+  assert.ok(scheduled.data.diagnostics.every((event) => event.roomCode === code && event.wakeSource === "cron"));
   room = (await state(code, token)).data;
   assert.equal(room.status, "playing");
   assert.ok(room.players.filter((player) => player.isBot).every((player) => player.hero), "bots use their assigned Hero choices");
   assert.equal(query(`SELECT COUNT(*) FROM bot_work WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)}) AND status='consumed'`), "3");
   assert.equal(query(`SELECT actions_reserved FROM bot_room_scheduler WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)})`), "3");
   assert.equal(JSON.stringify(scheduled.data).includes("myHand"), false, "scheduler evidence contains only bounded counters");
+  const duplicateWake = await runBotScheduler({ roomCode: code, captureDiagnostics: true });
+  assert.deepEqual(duplicateWake.data.diagnostics, [], "repeated wakeups do not duplicate completed-work logs");
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
@@ -144,10 +149,14 @@ test("duplicate wakes and an expired claim recover through one canonical draw wi
   const beforeDraw = (await state(code, token)).data;
 
   const concurrent = await Promise.all([
-    runBotScheduler({ maxStepsPerWakeup: 1 }),
-    runBotScheduler({ maxStepsPerWakeup: 1 }),
+    runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true }),
+    runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true }),
   ]);
   assert.ok(concurrent.every((result) => result.status === 200));
+  const originalDecisionId = query(`SELECT decision_id FROM bot_work WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)}) AND bot_id=${quote(bot.id)} AND action_revision=${quote(beforeDraw.actionRevision)}`);
+  const concurrentLogs = concurrent.flatMap((result) => result.data.diagnostics);
+  assert.equal(concurrentLogs.filter((event) => event.event === "bot_work_transition" && event.nextStatus === "consumed" && event.decisionId === originalDecisionId).length, 1,
+    "duplicate wakes emit one consumed transition only after the D1 compare-and-set succeeds");
   const afterDraw = (await state(code, token)).data;
   assert.equal(afterDraw.players.find((player) => player.id === bot.id).handCount, 2, "the revision's canonical draw runs once even across duplicate wakes");
   assert.ok(["thinking", "waiting_for_human"].includes(afterDraw.players.find((player) => player.id === bot.id).botStatus), "duplicate wakeups expose only a safe in-progress or waiting status");
@@ -165,8 +174,10 @@ test("duplicate wakes and an expired claim recover through one canonical draw wi
   const oldTime = Date.now() - 120_000;
   sql(`INSERT INTO bot_work (decision_id, room_id, bot_id, action_revision, status, attempts, available_at, lease_token, lease_until, budget_reserved, created_at, updated_at)
     VALUES (${quote(decisionId)}, ${quote(roomId)}, ${quote(bot.id)}, ${quote(restartState.actionRevision)}, 'claimed', 1, ${oldTime}, 'abandoned-worker-lease', ${oldTime}, 1, ${oldTime}, ${oldTime})`);
-  const recovered = await runBotScheduler({ maxStepsPerWakeup: 1 });
+  const recovered = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
   assert.equal(recovered.data.consumed, 1, JSON.stringify(recovered.data));
+  assert.equal(recovered.data.diagnostics.filter((event) => event.event === "bot_work_transition" && event.nextStatus === "consumed").length, 1,
+    "an expired claim logs its successful recovered transition once");
   assert.equal(query(`SELECT status FROM bot_work WHERE decision_id=${quote(decisionId)}`), "consumed");
   assert.equal(query(`SELECT attempts FROM bot_work WHERE decision_id=${quote(decisionId)}`), "2");
   const afterRecovery = (await state(code, token)).data;
@@ -182,8 +193,9 @@ test("human turns and the exhausted per-room action budget leave bot actions unt
   setTurn(code, human.seat, "play");
   const humanState = (await state(code, token)).data;
   assert.equal(humanState.actionPlayerId, hostId, "the human owns the current authoritative turn");
-  const waiting = await runBotScheduler({ maxStepsPerWakeup: 2 });
+  const waiting = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 2, captureDiagnostics: true });
   assert.equal(waiting.data.steps, 0);
+  assert.deepEqual(waiting.data.diagnostics, [], "a human-turn cron wake emits no work event");
   const publicHumanState = (await state(code, token)).data;
   assert.equal(publicHumanState.actionRevision, humanState.actionRevision, "no timer or gameplay mutation is applied to a human turn");
   assert.ok(publicHumanState.players.filter((player) => player.isBot).every((player) => player.botStatus === "waiting_for_human"), "the public projection reports only the safe waiting state");
@@ -200,7 +212,7 @@ test("human turns and the exhausted per-room action budget leave bot actions unt
     VALUES (${quote(delayedDecisionId)}, ${quote(roomId)}, ${quote(bot.id)}, ${quote(queuedBotTurn.actionRevision)}, 'pending', 0, ${queuedAt}, 0, ${queuedAt}, ${queuedAt})`);
   setTurn(code, human.seat, "play");
   const lateHumanState = (await state(code, token)).data;
-  const lateWake = await runBotScheduler({ maxStepsPerWakeup: 1 });
+  const lateWake = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1 });
   assert.equal(lateWake.data.steps, 0, "a queued bot revision cannot execute after a human takes the turn");
   assert.equal(query(`SELECT status FROM bot_work WHERE decision_id=${quote(delayedDecisionId)}`), "pending");
   assert.equal((await state(code, token)).data.actionRevision, lateHumanState.actionRevision);
@@ -213,8 +225,13 @@ test("human turns and the exhausted per-room action budget leave bot actions unt
   const retryTime = Date.now();
   sql(`INSERT INTO bot_work (decision_id, room_id, bot_id, action_revision, status, attempts, available_at, budget_reserved, created_at, updated_at)
     VALUES (${quote(exhaustedDecisionId)}, ${quote(roomId)}, ${quote(bot.id)}, ${quote(retryState.actionRevision)}, 'pending', 3, ${retryTime}, 0, ${retryTime}, ${retryTime})`);
-  const retries = await runBotScheduler({ maxStepsPerWakeup: 1 });
+  const retries = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
   assert.equal(retries.data.failed, 1);
+  assert.equal(retries.data.diagnostics.filter((event) => event.event === "bot_work_transition" && event.nextStatus === "failed" && event.errorCode === "retry_limit").length, 1);
+  assert.ok(retries.data.diagnostics.some((event) => event.event === "bot_work_transition"
+    && event.decisionId === delayedDecisionId && event.previousStatus === "pending" && event.nextStatus === "stale"
+    && event.errorCode === "revision_changed"), "obsolete work records one revision-change transition");
+  assert.ok(retries.data.diagnostics.some((event) => event.event === "bot_scheduler_summary"), "an abnormal wake gets at most one bounded summary");
   assert.equal(query(`SELECT error_code FROM bot_work WHERE decision_id=${quote(exhaustedDecisionId)}`), "retry_limit");
   assert.equal(query(`SELECT status FROM bot_work WHERE decision_id=${quote(delayedDecisionId)}`), "stale", "the next bot revision expires the abandoned human-era work");
   assert.equal((await state(code, token)).data.actionRevision, retryState.actionRevision, "a retry-exhausted decision is not dispatched");
@@ -225,9 +242,10 @@ test("human turns and the exhausted per-room action budget leave bot actions unt
   setTurn(code, bot.seat, "draw");
   const budgetState = (await state(code, token)).data;
   sql(`UPDATE bot_room_scheduler SET lease_token=NULL, lease_until=0, actions_reserved=200, updated_at=${Date.now()} WHERE room_id=${quote(roomId)}`);
-  const bounded = await runBotScheduler({ maxStepsPerWakeup: 1 });
+  const bounded = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
   assert.equal(bounded.data.steps, 0);
   assert.equal(bounded.data.failed, 1);
+  assert.equal(bounded.data.diagnostics.filter((event) => event.event === "bot_work_transition" && event.errorCode === "action_budget_exhausted").length, 1);
   assert.equal(query(`SELECT error_code FROM bot_work WHERE room_id=${quote(roomId)} AND action_revision=${quote(budgetState.actionRevision)}`), "action_budget_exhausted");
   assert.equal((await state(code, token)).data.players.find((player) => player.id === bot.id).botStatus, "error");
   assert.equal((await state(code, token)).data.actionRevision, budgetState.actionRevision, "the 200-action cap blocks dispatch");
@@ -246,8 +264,13 @@ test("unsupported bot responses stop without advancing and reveal no private wor
   assert.equal(attack.data.room.actionPlayerId, bot.id);
   const hpBefore = attack.data.room.players.find((player) => player.id === bot.id).hp;
 
-  const stopped = await runBotScheduler({ maxStepsPerWakeup: 1 });
+  const stopped = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
   assert.equal(stopped.data.unsupported, 1);
+  assert.equal(stopped.data.diagnostics.filter((event) => event.event === "bot_work_transition" && event.nextStatus === "unsupported").length, 1);
+  assert.equal(stopped.data.diagnostics.filter((event) => event.event === "bot_scheduler_summary").length, 1);
+  assert.equal(JSON.stringify(stopped.data.diagnostics).includes("scheduler-unsupported-dodge"), false, "diagnostics never include a private card ID");
+  const repeated = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
+  assert.deepEqual(repeated.data.diagnostics, [], "unsupported terminal work does not duplicate logs on later wakes");
   const publicRoom = (await state(code, token)).data;
   assert.equal(publicRoom.players.find((player) => player.id === bot.id).botStatus, "unsupported");
   assert.equal(publicRoom.players.find((player) => player.id === bot.id).hp, hpBefore, "a legal Dodge option is never silently declined");
@@ -255,5 +278,56 @@ test("unsupported bot responses stop without advancing and reveal no private wor
   assert.equal(serialized.includes("scheduler-unsupported-dodge"), false);
   assert.equal(serialized.includes("token_hash"), false);
   assert.equal(serialized.includes("error_code"), false);
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("a bot's canonical empty-response decline logs one consumed transition", async () => {
+  const { code, token, hostId, bots, room } = await createBotGame();
+  const bot = bots[0];
+  const host = room.players.find((player) => player.id === hostId);
+  setHand(hostId, [card("Attack", "scheduler-decline-attack")], 4, 4);
+  setHand(bot.id, [card("Peach", "scheduler-decline-peach")], 4, 4);
+  setTurn(code, host.seat, "play");
+  const attack = await requestAndSettle("play_card", { code, token, cardId: "attack-scheduler-decline-attack", targetId: bot.id });
+  assert.equal(attack.status, 200, JSON.stringify(attack.data));
+  const hpBefore = attack.data.room.players.find((player) => player.id === bot.id).hp;
+
+  const declined = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
+  assert.equal(declined.data.consumed, 1);
+  assert.equal(declined.data.diagnostics.filter((event) => event.event === "bot_work_transition" && event.nextStatus === "consumed").length, 1);
+  assert.equal((await state(code, token)).data.players.find((player) => player.id === bot.id).hp, hpBefore - 1,
+    "the canonical decline resolves the Attack when the bot has no legal Dodge option");
+  const repeated = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
+  assert.deepEqual(repeated.data.diagnostics, [], "the consumed decline does not produce a duplicate event");
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("a thrown dispatch records one sanitized retry transition and does not leak exception text", async () => {
+  const { code, token, bots } = await createBotGame();
+  const bot = bots[0];
+  setHand(bot.id, [], 4, 4);
+  setDeck(code, [card("Attack", "scheduler-throw-held"), card("Dodge", "scheduler-throw-next")]);
+  setTurn(code, bot.seat, "draw");
+
+  const failedDispatch = await runBotScheduler({
+    roomCode: code,
+    maxStepsPerWakeup: 1,
+    captureDiagnostics: true,
+    simulateDispatchError: true,
+  });
+  assert.equal(failedDispatch.data.retries, 1);
+  const transitions = failedDispatch.data.diagnostics.filter((event) => event.event === "bot_work_transition");
+  assert.equal(transitions.length, 1);
+  assert.equal(transitions[0].previousStatus, "claimed");
+  assert.equal(transitions[0].nextStatus, "pending");
+  assert.equal(transitions[0].errorCode, "dispatch_error");
+  assert.equal(failedDispatch.data.diagnostics.filter((event) => event.event === "bot_scheduler_summary").length, 1);
+  assert.equal(JSON.stringify(failedDispatch.data.diagnostics).includes("test-only dispatch exception"), false);
+  assert.equal(JSON.stringify(failedDispatch.data.diagnostics).includes("must-not-be-logged"), false);
+
+  sql(`UPDATE bot_work SET available_at=${Date.now() + 60_000} WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)}) AND error_code='dispatch_error'`);
+  const repeated = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
+  assert.deepEqual(repeated.data.diagnostics, [], "a scheduled retry is not logged again before its next state transition");
+  assert.equal((await state(code, token)).data.players.find((player) => player.id === bot.id).handCount, 0);
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });

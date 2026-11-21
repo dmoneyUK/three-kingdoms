@@ -25,6 +25,9 @@ export function verifyAiStagingConfig(config) {
   if (config?.vars?.BOT_DEMO_ENABLED !== "true") {
     throw new Error("BOT_DEMO_ENABLED must be the string true in the verified Staging deployment config");
   }
+  if (config?.vars?.BOT_DIAGNOSTICS_ENABLED !== "true") {
+    throw new Error("BOT_DIAGNOSTICS_ENABLED must be the string true only in the verified Staging deployment config");
+  }
   if (config?.triggers?.crons?.length !== 1 || config.triggers.crons[0] !== "* * * * *") {
     throw new Error("the Staging Worker must have exactly the bounded one-minute bot recovery Cron");
   }
@@ -54,6 +57,7 @@ export function verifyAiStagingConfig(config) {
     workersDev: true,
     botAiEnabled: false,
     botDemoEnabled: true,
+    botDiagnosticsEnabled: true,
     persistentSchedulerCronEnabled: true,
   });
 }
