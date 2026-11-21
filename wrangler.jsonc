@@ -28,6 +28,7 @@
       "vars": {
         "BOT_AI_ENABLED": "false",
         "BOT_DEMO_ENABLED": "true",
+        "BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT": "true",
         "BOT_DIAGNOSTICS_ENABLED": "true"
       }
     }

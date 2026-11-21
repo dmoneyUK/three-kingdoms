@@ -54,30 +54,32 @@ function readWranglerLogs(path) {
   } catch { return ""; }
 }
 
-function runShard(shardFiles, index, attempt) {
+function runShard(shardFiles, index, attempt, { label = `api-shard-${index + 1}`, envOverrides = {} } = {}) {
   const port = 3137 + index;
   const wranglerLogPath = logPathFor(index, attempt);
   if (!wranglerLogPath.endsWith(".log")) mkdirSync(wranglerLogPath, { recursive: true });
   const child = spawn(process.execPath, ["tests/run-tests.mjs"], {
     cwd: root,
-    env: { ...process.env, WRANGLER_LOG_PATH: wranglerLogPath, GAME_TEST_FILES: shardFiles.join(","), GAME_TEST_PORT: String(port), GAME_TEST_URL: `http://localhost:${port}`, GAME_TEST_INSPECTOR_PORT: String(9229 + index) },
+    env: { ...process.env, ...envOverrides, WRANGLER_LOG_PATH: wranglerLogPath, GAME_TEST_FILES: shardFiles.join(","), GAME_TEST_PORT: String(port), GAME_TEST_URL: `http://localhost:${port}`, GAME_TEST_INSPECTOR_PORT: String(9229 + index) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
   for (const stream of [child.stdout, child.stderr]) stream.on("data", (chunk) => {
     const text = chunk.toString();
     output += text;
-    process.stdout.write(`[api-shard-${index + 1}] ${text.replaceAll("\n", `\n[api-shard-${index + 1}] `)}`);
+    process.stdout.write(`[${label}] ${text.replaceAll("\n", `\n[${label}] `)}`);
   });
   return new Promise((resolve) => {
-    child.on("error", (error) => resolve({ index, code: 1, output: `${output}\n${error.message}`, wranglerLog: readWranglerLogs(wranglerLogPath) }));
-    child.on("exit", (code, signal) => resolve({ index, code: code ?? 1, signal, output, wranglerLog: readWranglerLogs(wranglerLogPath) }));
+    child.on("error", (error) => resolve({ index, label, code: 1, output: `${output}\n${error.message}`, wranglerLog: readWranglerLogs(wranglerLogPath) }));
+    child.on("exit", (code, signal) => resolve({ index, label, code: code ?? 1, signal, output, wranglerLog: readWranglerLogs(wranglerLogPath) }));
   });
 }
 
 const results = [];
 for (const [index, shardFiles] of shardGroups.entries()) {
-  let result = await runShard(shardFiles, index, 1);
+  let result = await runShard(shardFiles, index, 1, {
+    envOverrides: { GAME_TEST_BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT: "false" },
+  });
   if (shouldRetryApiShard({
     code: result.code,
     wasReady: result.output.includes("[api-test-worker] ready"),
@@ -86,17 +88,40 @@ for (const [index, shardFiles] of shardGroups.entries()) {
     attempt: 1,
   })) {
     console.error(`[api-shard-${index + 1}] Retrying the full shard once after Wrangler's known ProxyWorker network disconnect; a new local D1 is created.`);
-    result = await runShard(shardFiles, index, 2);
+    result = await runShard(shardFiles, index, 2, {
+      envOverrides: { GAME_TEST_BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT: "false" },
+    });
   }
   results.push(result);
 }
+// Exercise the explicit AI Staging quota opt-out against a fresh local D1.
+// The full API shards above keep the flag absent and prove the default 12/hour cap.
+const optOutLabel = "bot-hourly-limit-opt-out";
+let optOutResult = await runShard(["tests/api/bot-scheduler.test.mjs"], 2, 1, {
+  label: optOutLabel,
+  envOverrides: { GAME_TEST_BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT: "true" },
+});
+if (shouldRetryApiShard({
+  code: optOutResult.code,
+  wasReady: optOutResult.output.includes("[api-test-worker] ready"),
+  log: optOutResult.wranglerLog,
+  isCI: process.env.CI === "true",
+  attempt: 1,
+})) {
+  console.error(`[${optOutLabel}] Retrying the focused opt-out regression once after Wrangler's known ProxyWorker network disconnect; a new local D1 is created.`);
+  optOutResult = await runShard(["tests/api/bot-scheduler.test.mjs"], 2, 2, {
+    label: optOutLabel,
+    envOverrides: { GAME_TEST_BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT: "true" },
+  });
+}
+results.push(optOutResult);
 const durationMs = performance.now() - startedAt;
 const testCount = results.reduce((count, result) => count + Number(result.output.match(/^\s*(?:#|ℹ)\s+tests\s+(\d+)\s*$/m)?.[1] ?? 0), 0);
-console.log(`\nTiming: API tests=${testCount}, duration=${(durationMs / 1000).toFixed(2)}s, files=${files.length}, shards=${shardGroups.length}`);
+console.log(`\nTiming: API tests=${testCount}, duration=${(durationMs / 1000).toFixed(2)}s, files=${files.length}, shards=${shardGroups.length} plus focused Staging opt-out`);
 const timings = results.flatMap((result) => parseTestTimings(result.output)).sort((a, b) => b.duration - a.duration);
 console.log("Top 10 slowest API tests across shards:");
 for (const entry of timings.slice(0, 10)) console.log(`  ${(entry.duration / 1000).toFixed(2)}s  ${entry.name}`);
 for (const result of results) {
-  if (result.code !== 0) console.error(`API shard ${result.index + 1} failed${result.signal ? ` (${result.signal})` : ""}.`);
+  if (result.code !== 0) console.error(`${result.label} failed${result.signal ? ` (${result.signal})` : ""}.`);
 }
 process.exit(results.every((result) => result.code === 0) ? 0 : 1);

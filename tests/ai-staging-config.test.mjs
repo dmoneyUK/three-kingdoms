@@ -9,7 +9,7 @@ function validConfig() {
     targetEnvironment: "ai-staging",
     name: AI_STAGING_TARGET.workerName,
     workers_dev: true,
-    vars: { BOT_AI_ENABLED: "false", BOT_DEMO_ENABLED: "true", BOT_DIAGNOSTICS_ENABLED: "true" },
+    vars: { BOT_AI_ENABLED: "false", BOT_DEMO_ENABLED: "true", BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT: "true", BOT_DIAGNOSTICS_ENABLED: "true" },
     triggers: { crons: ["* * * * *"] },
     d1_databases: [{
       binding: "DB",
@@ -28,6 +28,7 @@ test("accepts the exact isolated Staging Worker and D1 target", () => {
     workersDev: true,
     botAiEnabled: false,
     botDemoEnabled: true,
+    botDemoHourlyAddLimitDisabled: true,
     botDiagnosticsEnabled: true,
     persistentSchedulerCronEnabled: true,
   });
@@ -39,8 +40,10 @@ test("the recovery Cron is configured only in the AI Staging Wrangler environmen
   assert.equal(config.triggers, undefined, "root/default production config has no Cron trigger");
   assert.deepEqual(config.env?.["ai-staging"]?.triggers?.crons, ["* * * * *"]);
   assert.notEqual(config.vars?.BOT_DEMO_ENABLED, "true", "root/default Worker cannot enable bot demo seats");
+  assert.notEqual(config.vars?.BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT, "true", "root/default Worker cannot disable the hourly Bot-add guard");
   assert.notEqual(config.vars?.BOT_DIAGNOSTICS_ENABLED, "true", "root/default Worker cannot enable Bot diagnostics");
   assert.equal(config.env?.["ai-staging"]?.vars?.BOT_DEMO_ENABLED, "true", "only AI Staging enables the deterministic bot demo");
+  assert.equal(config.env?.["ai-staging"]?.vars?.BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT, "true", "only AI Staging disables the hourly Bot-add guard");
   assert.equal(config.env?.["ai-staging"]?.vars?.BOT_DIAGNOSTICS_ENABLED, "true", "only AI Staging enables bounded Bot diagnostics");
 });
 
@@ -63,7 +66,8 @@ test("rejects unsafe Worker flags, AI enablement, or extra D1 bindings", () => {
   assert.throws(() => verifyAiStagingConfig({ ...validConfig(), workers_dev: false }), /workers_dev/);
   assert.throws(() => verifyAiStagingConfig({ ...validConfig(), vars: { BOT_AI_ENABLED: "true" } }), /BOT_AI_ENABLED/);
   assert.throws(() => verifyAiStagingConfig({ ...validConfig(), vars: { BOT_AI_ENABLED: "false", BOT_DEMO_ENABLED: "false" } }), /BOT_DEMO_ENABLED/);
-  assert.throws(() => verifyAiStagingConfig({ ...validConfig(), vars: { BOT_AI_ENABLED: "false", BOT_DEMO_ENABLED: "true", BOT_DIAGNOSTICS_ENABLED: "false" } }), /BOT_DIAGNOSTICS_ENABLED/);
+  assert.throws(() => verifyAiStagingConfig({ ...validConfig(), vars: { BOT_AI_ENABLED: "false", BOT_DEMO_ENABLED: "true", BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT: "false" } }), /BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT/);
+  assert.throws(() => verifyAiStagingConfig({ ...validConfig(), vars: { BOT_AI_ENABLED: "false", BOT_DEMO_ENABLED: "true", BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT: "true", BOT_DIAGNOSTICS_ENABLED: "false" } }), /BOT_DIAGNOSTICS_ENABLED/);
   assert.throws(() => verifyAiStagingConfig({ ...validConfig(), triggers: {} }), /one-minute bot recovery Cron/);
   assert.throws(() => verifyAiStagingConfig({ ...validConfig(), d1_databases: [...validConfig().d1_databases, {}] }), /exactly one/);
 });

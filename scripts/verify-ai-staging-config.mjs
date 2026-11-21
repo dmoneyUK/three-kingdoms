@@ -25,6 +25,9 @@ export function verifyAiStagingConfig(config) {
   if (config?.vars?.BOT_DEMO_ENABLED !== "true") {
     throw new Error("BOT_DEMO_ENABLED must be the string true in the verified Staging deployment config");
   }
+  if (config?.vars?.BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT !== "true") {
+    throw new Error("BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT must be the string true only in the verified Staging deployment config");
+  }
   if (config?.vars?.BOT_DIAGNOSTICS_ENABLED !== "true") {
     throw new Error("BOT_DIAGNOSTICS_ENABLED must be the string true only in the verified Staging deployment config");
   }
@@ -57,6 +60,7 @@ export function verifyAiStagingConfig(config) {
     workersDev: true,
     botAiEnabled: false,
     botDemoEnabled: true,
+    botDemoHourlyAddLimitDisabled: true,
     botDiagnosticsEnabled: true,
     persistentSchedulerCronEnabled: true,
   });

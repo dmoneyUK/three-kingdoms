@@ -87,6 +87,7 @@ const MAX_BOT_SEATS_PER_ROOM = 3;
 const MAX_BOT_DEMO_ACTIVE_ROOMS = 8;
 const MAX_BOT_ADDS_PER_HOUR = 12;
 const botDemoEnabled = () => (env as typeof env & { BOT_DEMO_ENABLED?: string }).BOT_DEMO_ENABLED === "true";
+const botDemoHourlyAddLimitDisabled = () => (env as typeof env & { BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT?: string }).BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT === "true";
 // Human decisions do not begin their clock until the client has finished the
 // public presentation and explicitly arms it.
 const nextResponseDeadline = (_actor?: PlayerRow | null, startHumanClock = false) => startHumanClock ? Date.now() + HUMAN_RESPONSE_TIMEOUT_MS : 0;
@@ -282,16 +283,19 @@ async function beginStandardHeroSelection(roomId: string, players: PlayerRow[], 
   const assigned = players.map((player, index) => ({ player, role: roles[index], options: optionsByPlayerId.get(player.id) ?? [] }));
   const claim = `hero-selection:${crypto.randomUUID()}`;
   const botDemoRoom = botDemoEnabled() && players.some((player) => player.controller_type === "bot" && player.is_test_player === 0);
+  const activeRoomCutoff = Date.now() - ROOM_IDLE_TIMEOUT_MS;
   const activeBotRoomGuard = botDemoRoom
     ? `AND (
         SELECT COUNT(*) FROM rooms AS active_room
         WHERE active_room.status IN ('heroes', 'playing') AND active_room.test_room = 0
+          AND (active_room.status = 'heroes' OR active_room.phase = 'resolving'
+            OR COALESCE(active_room.last_activity_at, active_room.created_at) > ?)
           AND EXISTS (SELECT 1 FROM players AS active_bot WHERE active_bot.room_id = active_room.id
             AND active_bot.controller_type = 'bot' AND active_bot.is_test_player = 0)
       ) < ?`
     : "";
   const startBindings: Array<string | number> = [claim, roomId, players.length, MAX_AVAILABLE_CLASSIC_PLAYERS];
-  if (botDemoRoom) startBindings.push(MAX_BOT_DEMO_ACTIVE_ROOMS);
+  if (botDemoRoom) startBindings.push(activeRoomCutoff, MAX_BOT_DEMO_ACTIVE_ROOMS);
   const startRoom = db().prepare(`UPDATE rooms SET status = 'heroes', turn_seat = NULL, phase = ?, pending_json = NULL
       WHERE id = ? AND status = 'lobby'
         AND (SELECT COUNT(*) FROM players WHERE room_id = rooms.id) = ?
@@ -308,9 +312,11 @@ async function beginStandardHeroSelection(roomId: string, players: PlayerRow[], 
     const liveRoom = await db().prepare("SELECT status FROM rooms WHERE id = ?").bind(roomId).first<{ status: string }>();
     const activeRooms = await db().prepare(`SELECT COUNT(*) AS count FROM rooms AS active_room
       WHERE active_room.status IN ('heroes', 'playing') AND active_room.test_room = 0
+        AND (active_room.status = 'heroes' OR active_room.phase = 'resolving'
+          OR COALESCE(active_room.last_activity_at, active_room.created_at) > ?)
         AND EXISTS (SELECT 1 FROM players AS active_bot WHERE active_bot.room_id = active_room.id
           AND active_bot.controller_type = 'bot' AND active_bot.is_test_player = 0)`)
-      .first<{ count: number }>();
+      .bind(activeRoomCutoff).first<{ count: number }>();
     if (liveRoom?.status === "lobby" && (activeRooms?.count ?? 0) >= MAX_BOT_DEMO_ACTIVE_ROOMS) return "active_room_limit";
   }
   return false;
@@ -8611,16 +8617,18 @@ export async function POST(request: Request, routeContext?: unknown) {
       while (seat < room.max_players && occupiedSeats.has(seat)) seat++;
       if (seat >= room.max_players) return json({ error: "This room is full." }, 409);
 
-      const rateNow = Date.now();
-      const hourBucket = Math.floor(rateNow / 3_600_000);
-      const rateReservation = await db.prepare(`INSERT INTO bot_demo_rate_limits (hour_bucket, bot_add_count)
-        VALUES (?, 1) ON CONFLICT(hour_bucket) DO UPDATE SET bot_add_count = bot_add_count + 1
-        WHERE bot_add_count < ?`).bind(hourBucket, MAX_BOT_ADDS_PER_HOUR).run();
-      if ((rateReservation.meta.changes ?? 0) <= 0) {
-        const retryAfterSeconds = Math.max(1, Math.ceil(((hourBucket + 1) * 3_600_000 - rateNow) / 1000));
-        return json({ error: "The Staging bot creation limit has been reached. Try again after the current hour." }, 429, { "Retry-After": String(retryAfterSeconds) });
+      if (!botDemoHourlyAddLimitDisabled()) {
+        const rateNow = Date.now();
+        const hourBucket = Math.floor(rateNow / 3_600_000);
+        const rateReservation = await db.prepare(`INSERT INTO bot_demo_rate_limits (hour_bucket, bot_add_count)
+          VALUES (?, 1) ON CONFLICT(hour_bucket) DO UPDATE SET bot_add_count = bot_add_count + 1
+          WHERE bot_add_count < ?`).bind(hourBucket, MAX_BOT_ADDS_PER_HOUR).run();
+        if ((rateReservation.meta.changes ?? 0) <= 0) {
+          const retryAfterSeconds = Math.max(1, Math.ceil(((hourBucket + 1) * 3_600_000 - rateNow) / 1000));
+          return json({ error: "The Staging bot creation limit has been reached. Try again after the current hour." }, 429, { "Retry-After": String(retryAfterSeconds) });
+        }
+        await db.prepare("DELETE FROM bot_demo_rate_limits WHERE hour_bucket < ?").bind(hourBucket - 24).run();
       }
-      await db.prepare("DELETE FROM bot_demo_rate_limits WHERE hour_bucket < ?").bind(hourBucket - 24).run();
 
       const botId = crypto.randomUUID();
       const noLoginTokenHash = `bot:no-login:${botId}`;

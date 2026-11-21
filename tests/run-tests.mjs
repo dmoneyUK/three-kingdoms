@@ -30,7 +30,10 @@ if (migration.status !== 0) {
   throw new Error(`Failed to initialize local D1 for tests.\n${migration.stdout}\n${migration.stderr}`);
 }
 
-server = spawn(process.execPath, [wranglerCli, "dev", "-c", "dist/server/wrangler.json", "--assets", "dist/client", "--port", String(port), "--inspector-port", String(inspectorPort), "--local", "--persist-to", testStatePath, "--var", "WTK_TEST_CAPABILITIES:1", "--var", "BOT_DEMO_ENABLED:true", "--var", "BOT_DIAGNOSTICS_ENABLED:true", "--show-interactive-dev-session=false"], { cwd: new URL("../", import.meta.url), env: { ...process.env, GAME_TEST_STATE_PATH: testStatePath }, stdio: ["ignore", "pipe", "pipe"] });
+const wranglerArgs = [wranglerCli, "dev", "-c", "dist/server/wrangler.json", "--assets", "dist/client", "--port", String(port), "--inspector-port", String(inspectorPort), "--local", "--persist-to", testStatePath, "--var", "WTK_TEST_CAPABILITIES:1", "--var", "BOT_DEMO_ENABLED:true"];
+if (process.env.GAME_TEST_BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT === "true") wranglerArgs.push("--var", "BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT:true");
+wranglerArgs.push("--var", "BOT_DIAGNOSTICS_ENABLED:true", "--show-interactive-dev-session=false");
+server = spawn(process.execPath, wranglerArgs, { cwd: new URL("../", import.meta.url), env: { ...process.env, GAME_TEST_STATE_PATH: testStatePath }, stdio: ["ignore", "pipe", "pipe"] });
 server.stdout.on("data", (chunk) => { output += chunk; });
 server.stderr.on("data", (chunk) => { output += chunk; });
 

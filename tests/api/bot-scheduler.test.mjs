@@ -1,8 +1,21 @@
 import test from "node:test";
 import {
-  assert, card, query, quote, requestAndSettle, runBotScheduler, runBotStep,
+  assert, card, query, quote, request, requestAndSettle, runBotScheduler, runBotStep,
   setDeck, setHand, setTurn, roomCardCount, sql, state,
 } from "./test-support.mjs";
+
+const hourlyAddLimitDisabledForTest = process.env.GAME_TEST_BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT === "true";
+
+function seedActiveBotRoom({ code, phase = "play", lastActivityAt = Date.now() }) {
+  const roomId = crypto.randomUUID();
+  const botId = crypto.randomUUID();
+  sql(`INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at, last_activity_at, phase, test_room)
+    VALUES (${quote(roomId)}, ${quote(code)}, ${quote(crypto.randomUUID())}, 'playing', 4,
+      ${lastActivityAt}, ${lastActivityAt}, ${quote(phase)}, 0)`);
+  sql(`INSERT INTO players (id, room_id, name, token_hash, seat, connected_at, controller_type)
+    VALUES (${quote(botId)}, ${quote(roomId)}, 'CAP BOT', ${quote(`bot:no-login:${botId}`)}, 0, ${Date.now()}, 'bot')`);
+  return roomId;
+}
 
 async function createBotGame() {
   sql("DELETE FROM bot_demo_rate_limits");
@@ -90,7 +103,7 @@ test("persistent scheduler waits for a human Hero choice, then consumes one uniq
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
-test("public Staging bot creation stops at its global per-hour limit", async () => {
+test("default bot creation stops at its global per-hour limit", { skip: hourlyAddLimitDisabledForTest }, async () => {
   sql("DELETE FROM bot_demo_rate_limits");
   const hosts = [];
   for (let index = 0; index < 13; index++) {
@@ -113,16 +126,47 @@ test("public Staging bot creation stops at its global per-hour limit", async () 
   sql("UPDATE rooms SET status='finished', phase='finished' WHERE host_player_id IN (SELECT id FROM players WHERE name LIKE 'Rate Limit Host %')");
 });
 
+test("AI Staging hourly-limit opt-out admits 25 distinct bot additions without touching quota rows", { skip: !hourlyAddLimitDisabledForTest }, async () => {
+  sql("DELETE FROM bot_demo_rate_limits");
+  const hourBucket = Math.floor(Date.now() / 3_600_000);
+  sql(`INSERT INTO bot_demo_rate_limits (hour_bucket, bot_add_count) VALUES (${hourBucket}, 12)`);
+
+  const hosts = [];
+  for (let index = 0; index < 25; index++) {
+    const created = await requestAndSettle("create", { name: `Rate Opt Out ${index + 1}` });
+    assert.equal(created.status, 201);
+    hosts.push({ ...created.data, requestId: crypto.randomUUID() });
+  }
+
+  const results = await Promise.all(hosts.map((host) => request("add_bot", {
+    code: host.room.code,
+    token: host.token,
+    requestId: host.requestId,
+  })));
+  assert.ok(results.every((result) => result.status === 201), JSON.stringify(results.map((result) => result.status)));
+  const replay = await request("add_bot", {
+    code: hosts[0].room.code,
+    token: hosts[0].token,
+    requestId: hosts[0].requestId,
+  });
+  assert.equal(replay.status, 200, "retrying one request ID returns its existing bot instead of creating a second seat");
+
+  const hostCodes = hosts.map((host) => quote(host.room.code)).join(",");
+  assert.equal(query(`SELECT COUNT(*) FROM players WHERE controller_type='bot' AND room_id IN (SELECT id FROM rooms WHERE code IN (${hostCodes}))`), "25");
+  assert.equal(query(`SELECT bot_add_count FROM bot_demo_rate_limits WHERE hour_bucket=${hourBucket}`), "12",
+    "the Staging opt-out neither reserves a quota slot nor cleans historical quota rows");
+
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code IN (${hostCodes})`);
+  sql(`DELETE FROM bot_demo_rate_limits WHERE hour_bucket=${hourBucket}`);
+});
+
 test("Staging caps concurrent active bot rooms without starting a ninth room", async () => {
   sql("DELETE FROM bot_demo_rate_limits");
+  sql("UPDATE rooms SET status='finished', phase='finished' WHERE status IN ('heroes', 'playing') AND id IN (SELECT DISTINCT room_id FROM players WHERE controller_type='bot' AND is_test_player=0)");
+  const activeAt = Date.now();
   for (let index = 0; index < 8; index++) {
-    const roomId = crypto.randomUUID();
-    const botId = crypto.randomUUID();
     const code = `CAP${String(index).padStart(2, "0")}`;
-    sql(`INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at)
-      VALUES (${quote(roomId)}, ${quote(code)}, ${quote(crypto.randomUUID())}, 'playing', 4, ${Date.now()})`);
-    sql(`INSERT INTO players (id, room_id, name, token_hash, seat, connected_at, controller_type)
-      VALUES (${quote(botId)}, ${quote(roomId)}, 'CAP BOT', ${quote(`bot:no-login:${botId}`)}, 0, ${Date.now()}, 'bot')`);
+    seedActiveBotRoom({ code, lastActivityAt: activeAt });
   }
 
   const created = await requestAndSettle("create", { name: "Room Cap Host" });
@@ -138,6 +182,41 @@ test("Staging caps concurrent active bot rooms without starting a ninth room", a
   assert.equal((await state(code, created.data.token)).data.status, "lobby", "the cap leaves the candidate room unchanged");
   sql("UPDATE rooms SET status='finished', phase='finished' WHERE code LIKE 'CAP%'");
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("eight-room admission excludes timed-out idle games but counts resolving and Hero-selection rooms", async () => {
+  sql("DELETE FROM bot_demo_rate_limits");
+  sql("UPDATE rooms SET status='finished', phase='finished' WHERE status IN ('heroes', 'playing') AND id IN (SELECT DISTINCT room_id FROM players WHERE controller_type='bot' AND is_test_player=0)");
+  const now = Date.now();
+  const staleAt = now - 6 * 60_000;
+  for (let index = 0; index < 6; index++) seedActiveBotRoom({ code: `LIVE${index}`, lastActivityAt: now });
+  seedActiveBotRoom({ code: "RESOLV", phase: "resolving", lastActivityAt: staleAt });
+  seedActiveBotRoom({ code: "IDLE0", lastActivityAt: staleAt });
+
+  async function createBotLobby(name) {
+    const created = await requestAndSettle("create", { name });
+    assert.equal(created.status, 201);
+    for (let index = 0; index < 3; index++) {
+      const added = await request("add_bot", { code: created.data.room.code, token: created.data.token, requestId: crypto.randomUUID() });
+      assert.equal(added.status, 201, JSON.stringify(added.data));
+    }
+    return created.data;
+  }
+
+  const first = await createBotLobby("First Active Candidate");
+  const firstStart = await requestAndSettle("start", { code: first.room.code, token: first.token });
+  assert.equal(firstStart.status, 200, JSON.stringify(firstStart.data));
+  assert.equal(query(`SELECT status FROM rooms WHERE code=${quote(first.room.code)}`), "heroes");
+
+  const second = await createBotLobby("Second Active Candidate");
+  const secondStart = await requestAndSettle("start", { code: second.room.code, token: second.token });
+  assert.equal(secondStart.status, 429, JSON.stringify(secondStart.data));
+  assert.match(secondStart.data.error, /eight active rooms/);
+  assert.equal(query(`SELECT status FROM rooms WHERE code=${quote(second.room.code)}`), "lobby");
+  assert.equal(query("SELECT status FROM rooms WHERE code='IDLE0'"), "playing", "admission ignores an expired room without sweeping or mutating it");
+
+  sql("UPDATE rooms SET status='finished', phase='finished' WHERE code LIKE 'LIVE%' OR code IN ('RESOLV', 'IDLE0')");
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code IN (${quote(first.room.code)}, ${quote(second.room.code)})`);
 });
 
 test("duplicate wakes and an expired claim recover through one canonical draw without double mutation", async () => {
