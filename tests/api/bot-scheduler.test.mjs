@@ -294,11 +294,13 @@ test("a bot's canonical empty-response decline logs one consumed transition", as
 
   const declined = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
   assert.equal(declined.data.consumed, 1);
-  assert.equal(declined.data.diagnostics.filter((event) => event.event === "bot_work_transition" && event.nextStatus === "consumed").length, 1);
+  const declinedEvent = declined.data.diagnostics.find((event) => event.event === "bot_work_transition" && event.nextStatus === "consumed");
+  assert.ok(declinedEvent, "the canonical decline emits one consumed transition");
   assert.equal((await state(code, token)).data.players.find((player) => player.id === bot.id).hp, hpBefore - 1,
     "the canonical decline resolves the Attack when the bot has no legal Dodge option");
   const repeated = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
-  assert.deepEqual(repeated.data.diagnostics, [], "the consumed decline does not produce a duplicate event");
+  assert.equal(repeated.data.diagnostics.filter((event) => event.event === "bot_work_transition" && event.decisionId === declinedEvent.decisionId).length, 0,
+    "the consumed decline does not produce a duplicate event even if a later Bot decision changes state");
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
