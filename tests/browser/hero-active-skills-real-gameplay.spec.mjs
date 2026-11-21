@@ -1179,6 +1179,114 @@ test("W4: converted public Judgement discard settles with one shared H4", async 
   }
 });
 
+test("UX2-DISMANTLE-SETTLEMENT-RETIRE-01 retires Gan Ning's Shadowrunner result after the next public turn", async ({ page, request }) => {
+  test.setTimeout(60_000);
+  const material = { ...card("FerganaSteed", "dismantle-retire-qixi-material", "♠"), rank: "K" };
+  const sourceHand = [
+    card("Peach", "dismantle-retire-source-peach", "♥"),
+    card("Dodge", "dismantle-retire-source-dodge", "♣"),
+    card("Attack", "dismantle-retire-source-attack", "♦"),
+    card("Duel", "dismantle-retire-source-duel", "♠"),
+  ];
+  const targetHand = ["Peach", "Dodge", "Attack", "Duel", "Steal"].map((kind, index) =>
+    card(kind, `dismantle-retire-target-${index + 1}`, index % 2 ? "♦" : "♣"));
+  const shadowrunner = { ...card("Shadowrunner", "dismantle-retire-shadowrunner", "♠"), rank: "5" };
+  const seed = await seedSkillRoom(request, {
+    hero: "gan-ning", hand: [material, ...sourceHand],
+    targets: [{ name: "TARGET", role: "Loyalist", hero: "lü-bu", hp: 4, maxHp: 4,
+      hand: targetHand, equipment: { defensiveHorse: shadowrunner } }],
+  });
+  const source = await openSkillUser(page, seed);
+
+  await completeSkillSelection({ page, request, seed, skillName: "Ambushment", providerId: "gan_ning_qixi",
+    cardIds: [material.id], targetIndexes: [1] });
+  const opened = await projectedRoom(request, seed, seed.players[1]);
+  expect(opened.currentAction).toMatchObject({ kind: "response", actorId: seed.players[1].id, requirement: "negate" });
+  const windowId = opened.currentAction.negationWindowId;
+  expect(windowId).toBeTruthy();
+  for (const player of seed.players) {
+    const passed = await request.post(`${API}/api/rooms`, {
+      data: { action: "decline_response", code: seed.code, token: player.token, context: { windowId } },
+    });
+    expect(passed.ok(), `${player.name} passes the public Negation window`).toBeTruthy();
+  }
+
+  const targetChoice = await projectedRoom(request, seed, source);
+  expect(targetChoice.currentAction?.legalActions).toContain("choose_target_card");
+  expect(targetChoice.currentAction.targetCardSelection?.eligibleKeys).toContain(shadowrunner.id);
+  const chose = await request.post(`${API}/api/rooms`, { data: {
+    action: "choose_target_card", code: seed.code, token: source.token,
+    targetCardZone: "equipment", targetCardId: shadowrunner.id,
+  } });
+  expect(chose.ok(), await chose.text()).toBeTruthy();
+
+  const settled = await projectedRoom(request, seed, source);
+  const rootEvent = settled.timeline.find((event) => event.type === "card" && event.action === "play" && event.card?.id === material.id);
+  const settlementEvent = settled.timeline.find((event) => event.type === "card" && event.action === "discard"
+    && event.publicDismantleSettlement?.rootEventId === rootEvent?.id);
+  expect(rootEvent?.publicCardEffects).toContainEqual(expect.objectContaining({ effectId: "gan_ning_qixi", resultingCardKind: "Dismantle" }));
+  expect(settlementEvent).toMatchObject({
+    card: shadowrunner,
+    publicDismantleSettlement: { semantics: "PROVEN", outcome: "DISMANTLE_RESOLVED", sourceId: source.id,
+      targetId: seed.players[1].id, sourceZone: "equipment", affectedCardFace: shadowrunner },
+  });
+  const display = page.locator(`.public-card-display[data-public-card-settlement-event-id="${settlementEvent.id}"]`);
+  const result = page.locator(`[data-public-result-event-id="${settlementEvent.id}"]`);
+  const announcement = page.locator(`[data-public-card-announcement-event-id="${settlementEvent.id}"]`);
+  await expect(display).toBeVisible({ timeout: 12_000 });
+  await expect(result).toBeVisible({ timeout: 12_000 });
+  await expect(announcement).toContainText("discarded 1 card");
+
+  const originalVisibility = await announcement.evaluate((element) => element.style.visibility);
+  await announcement.evaluate((element) => { element.style.visibility = "hidden"; });
+  await page.waitForTimeout(350);
+  await expect(display).toBeVisible();
+  await expect(result).toBeVisible();
+  await announcement.evaluate((element, value) => { element.style.visibility = value; }, originalVisibility);
+
+  const ended = await request.post(`${API}/api/rooms`, { data: { action: "end_turn", code: seed.code, token: source.token } });
+  expect(ended.ok(), await ended.text()).toBeTruthy();
+  const targetTurn = await projectedRoom(request, seed, seed.players[1]);
+  expect(targetTurn.turnSeat).toBe(seed.players[1].seat);
+  expect(targetTurn.presentationV2.rootAction).toBeNull();
+  expect(targetTurn.currentAction?.kind).toBe("turn");
+
+  const drew = await request.post(`${API}/api/rooms`, { data: { action: "draw", code: seed.code, token: seed.players[1].token } });
+  expect(drew.ok(), await drew.text()).toBeTruthy();
+  const endedTargetTurn = await request.post(`${API}/api/rooms`, { data: { action: "end_turn", code: seed.code, token: seed.players[1].token } });
+  expect(endedTargetTurn.ok(), await endedTargetTurn.text()).toBeTruthy();
+  const targetDiscard = await projectedRoom(request, seed, seed.players[1]);
+  expect(targetDiscard.phase).toBe("discard");
+  expect(targetDiscard.currentAction?.legalActions).toContain("discard_cards");
+  const discardCount = Math.max(0, targetDiscard.myHand.length - targetDiscard.players[1].hp);
+  expect(discardCount).toBeGreaterThan(0);
+  const targetDiscardIds = targetDiscard.myHand.slice(0, discardCount).map((entry) => entry.id);
+  const discarded = await request.post(`${API}/api/rooms`, { data: { action: "discard_cards", code: seed.code,
+    token: seed.players[1].token, cardIds: targetDiscardIds } });
+  expect(discarded.ok(), await discarded.text()).toBeTruthy();
+  const nextTurn = await projectedRoom(request, seed, source);
+  const discardEvent = nextTurn.timeline.find((event) => {
+    if (event.action !== "discard" || event.presentation === false) return false;
+    const discardedCards = event.type === "card" ? [event.card] : event.type === "cards" ? event.cards : [];
+    return discardedCards.some((entry) => targetDiscardIds.includes(entry.id));
+  });
+  expect(discardEvent).toBeTruthy();
+  expect(nextTurn.turnSeat).toBe(seed.players[2].seat);
+  expect(nextTurn.presentationV2.rootAction).toBeNull();
+
+  await expect(result).toHaveCount(0, { timeout: 8_000 });
+  await expect(page.locator(`.public-card-display[data-public-card-root-event-id="${rootEvent.id}"]`)).toHaveCount(0);
+  const discardH4 = page.locator(`[data-public-card-announcement="true"][data-public-h4-event-id="${discardEvent.id}"]`);
+  await expect(discardH4).toBeVisible({ timeout: 8_000 });
+  await expect(discardH4).toContainText(new RegExp(`TARGET.*discarded ${discardCount} cards?`, "i"));
+  await expect(page.locator(".public-activity-chip")).toContainText(seed.players[2].name);
+
+  await page.reload();
+  await expect(page.locator(".game-shell")).toBeVisible();
+  await expect(page.locator(`[data-public-result-event-id="${settlementEvent.id}"]`)).toHaveCount(0);
+  await expect(page.locator(`.public-card-display[data-public-card-root-event-id="${rootEvent.id}"]`)).toHaveCount(0);
+});
+
 test("T6: Ambushment reveal keeps H4 and PAC visible with the real card", async ({ page, browser, request }, testInfo) => {
   const viewport = process.env.T6_SHORT_SCREEN === "1" ? { width: 390, height: 700 } : { width: 440, height: 894 };
   const material = { ...card("Negation", "t6-ambushment-black-material", "♠"), rank: "6" };

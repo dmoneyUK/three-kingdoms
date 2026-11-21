@@ -31,6 +31,7 @@ import type { PublicPhysicalZoneTransition, PublicPresentationEvent, PublicPrese
 import { attackDodgeResponseEventMatchesProof, publicCardPlayProvesEffectiveKind } from "../game/presentation-v2";
 import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
 import { attackDodgePublicActionEvents, attackDodgeSettlementSupersessionReason, attackHitSettlementSupersessionReason, parseRetiredAttackDodgeCompositionSnapshot, persistRetiredAttackDodgeComposition, retiredAttackDodgeCompositionServerSnapshot, retiredAttackDodgeCompositionStorageSnapshot, subscribeRetiredAttackDodgeComposition, type AttackDodgeSettlementHoldIdentity, type AttackHitSettlementHoldIdentity } from "../game/attack-dodge-settlement-lifecycle";
+import { latestProvenPublicEventSequence, publicDismantleSettlementIdentityFromEvent, publicDismantleSettlementRetirementKey, publicDismantleSettlementRetirementReason } from "../game/public-target-card-settlement-lifecycle";
 import { buildDyingHandoffView, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildPresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
@@ -4407,7 +4408,19 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const pendingGroupSettlementEventIds = useRef(new Set<string>());
   const seenDiaoChanNoticeEventIds = useRef(new Set((room.presentationSnapshot?.diaoChanSkillNotices ?? []).map((notice) => notice.eventId)));
   const [activeSkillEffectSettlement, setActiveSkillEffectSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
-  const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{ eventId: string; roomCode: string; exiting: boolean; journeySettled: boolean; h4VisibleSinceMs: number | null } | null>(null);
+  const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{
+    eventId: string;
+    roomCode: string;
+    rootEventId: string;
+    actionRevision: string | null;
+    turnSeat: number;
+    sourceSeat: number;
+    publicSequence: number;
+    exiting: boolean;
+    journeySettled: boolean;
+    h4VisibleSinceMs: number | null;
+  } | null>(null);
+  const retiredDismantleSettlementIds = useRef(new Set<string>());
   const [activeStealSettlement, setActiveStealSettlement] = useState<{
     eventId: string;
     roomCode: string;
@@ -4870,6 +4883,26 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
     return route ? publicDiscardAnnouncement({ event, route, players: room.players }) : null;
   }, [room.timeline, room.code, room.meId, room.players, presentedEventIds, validatedPublicDiscardTransitionEventIds]);
+  const latestDismantleSettlementPublicSequence = useMemo(() => {
+    const publicOutcomeFacts = uniquePublicH4Facts([
+      ...(room.presentationSnapshot?.publicEventFacts ?? []),
+      ...(room.presentationSnapshot?.retainedPublicEventFacts ?? []),
+    ].filter((fact) => fact.rootEventId && isPublicInteractionOutcomeFact(fact)));
+    return latestProvenPublicEventSequence({
+      timeline: room.timeline,
+      publicOutcomeFacts,
+      validatedPublicDiscardEventIds: validatedPublicDiscardTransitionEventIds,
+      validatedPublicSettlementEventIds: new Set([
+        ...dismantleSettlements.map((proof) => proof.eventId),
+        ...stealSettlements.map((proof) => proof.eventId),
+        ...skillEffectSettlements.map((proof) => proof.eventId),
+        ...attackHitSettlements.map((proof) => proof.eventId),
+        ...(clientPresentation.groupSettlements ?? []).map((proof) => proof.eventId),
+      ]),
+    });
+  }, [room.timeline, room.presentationSnapshot?.publicEventFacts, room.presentationSnapshot?.retainedPublicEventFacts,
+    validatedPublicDiscardTransitionEventIds, dismantleSettlements, stealSettlements, skillEffectSettlements,
+    attackHitSettlements, clientPresentation.groupSettlements]);
   const activePublicHandRevealTransition = useMemo(() => {
     if (!activeEvent) return null;
     return routePublicHandRevealTransition({
@@ -6029,7 +6062,36 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ? [proof]
         : [];
     });
-    if (freshDismantleSettlements.length === 1) setActiveDismantleSettlement({ eventId: freshDismantleSettlements[0].eventId, roomCode: room.code, exiting: false, journeySettled: false, h4VisibleSinceMs: null });
+    if (freshDismantleSettlements.length === 1) {
+      const settlement = freshDismantleSettlements[0];
+      const settlementEvents = room.timeline.filter((event) => event.id === settlement.eventId);
+      const source = room.players.find((player) => player.id === settlement.sourceId);
+      const sourceSeat = source?.seat;
+      const identity = publicDismantleSettlementIdentityFromEvent({
+        roomCode: room.code,
+        eventId: settlement.eventId,
+        rootEventId: settlement.rootEventId,
+        actionRevision: room.actionRevision ?? null,
+        turnSeat: room.turnSeat,
+        sourceSeat: typeof sourceSeat === "number" ? sourceSeat : Number.NaN,
+        status: room.status,
+        event: settlementEvents.length === 1 ? settlementEvents[0] : null,
+      });
+      if (identity) {
+        const retirementReason = publicDismantleSettlementRetirementReason(identity, {
+          roomCode: room.code,
+          status: room.status,
+          actionRevision: room.actionRevision ?? null,
+          turnSeat: room.turnSeat,
+          liveRootEventId: clientPresentation.rootAction?.rootEventId ?? null,
+          latestPublicSequence: latestDismantleSettlementPublicSequence,
+        }, retiredDismantleSettlementIds.current);
+        if (!retirementReason) setActiveDismantleSettlement({
+          ...identity, exiting: false, journeySettled: false, h4VisibleSinceMs: null,
+        });
+        else retiredDismantleSettlementIds.current.add(publicDismantleSettlementRetirementKey(identity));
+      }
+    }
     const freshStealSettlements = fresh.flatMap((event) => {
       if (event.type !== "message") return [];
       const proofs = stealSettlements.filter((proof) => proof.eventId === event.id);
@@ -6234,7 +6296,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ])));
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, room.presentationSnapshot?.publicEventFacts, room.presentationSnapshot?.retainedPublicEventFacts, lustFramePresentationBlocked, optimisticPlay, activeEvent, activeGroupSettlement?.eventId, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements, validatedJudgementTransitionSourceEventIds]);
+  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.actionRevision, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, room.presentationSnapshot?.publicEventFacts, room.presentationSnapshot?.retainedPublicEventFacts, lustFramePresentationBlocked, optimisticPlay, activeEvent, activeGroupSettlement?.eventId, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.rootAction?.rootEventId, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements, validatedJudgementTransitionSourceEventIds, latestDismantleSettlementPublicSequence]);
   const effectNoticeEventId = effectNotice?.eventId ?? "";
   const effectNoticeProofEventId = effectNotice?.beautyProofEventId ?? effectNoticeEventId;
   const effectNoticeRoomCode = effectNotice?.roomCode ?? "";
@@ -7802,9 +7864,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (currentSettlementEventId !== settlement.eventId) return null;
     return { action: settlement, rootEvent, settlementEvent, revealEvent, source, target, exiting: activeSkillEffectSettlement?.exiting === true };
   })();
+  const activeDismantleSettlementRetirementReason = activeDismantleSettlement
+    ? publicDismantleSettlementRetirementReason(activeDismantleSettlement, {
+      roomCode: room.code,
+      status: room.status,
+      actionRevision: room.actionRevision ?? null,
+      turnSeat: room.turnSeat,
+      liveRootEventId: clientPresentation.rootAction?.rootEventId ?? null,
+      latestPublicSequence: latestDismantleSettlementPublicSequence,
+    }, retiredDismantleSettlementIds.current)
+    : null;
   const dismantleSettlementCandidate = (() => {
     const settlement = dismantleSettlements.find((candidate) => candidate.eventId === activeDismantleSettlement?.eventId);
     if (!settlement || settlement.semantics !== "PROVEN" || settlement.outcome !== "DISMANTLE_RESOLVED") return null;
+    if (activeDismantleSettlementRetirementReason
+      || activeDismantleSettlement?.roomCode !== room.code
+      || activeDismantleSettlement.rootEventId !== settlement.rootEventId
+      || activeDismantleSettlement.publicSequence !== publicSequenceForEvent(room.timeline, settlement.eventId)) return null;
     const liveRootEventId = clientPresentation.rootAction?.rootEventId;
     if (liveRootEventId && liveRootEventId !== settlement.rootEventId) return null;
     const rootEvents = room.timeline.filter((event) => event.id === settlement.rootEventId);
@@ -10312,13 +10388,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeDismantleSettlementEventKey = activeDismantleSettlement?.eventId ?? null;
   useEffect(() => {
     const liveRootEventId = clientPresentation.rootAction?.rootEventId;
-    const supersededDismantleEventId = activeDismantleSettlementEventKey
-      && liveRootEventId
-      && dismantleSettlements.find((proof) => proof.eventId === activeDismantleSettlementEventKey)?.rootEventId !== liveRootEventId
-      ? activeDismantleSettlementEventKey
-      : null;
-    if (supersededDismantleEventId) {
-      setActiveDismantleSettlement((current) => current?.eventId === supersededDismantleEventId ? null : current);
+    if (activeDismantleSettlement && activeDismantleSettlementRetirementReason) {
+      retiredDismantleSettlementIds.current.add(publicDismantleSettlementRetirementKey(activeDismantleSettlement));
+      setActiveDismantleSettlement((current) => current?.eventId === activeDismantleSettlement.eventId
+        && current.roomCode === activeDismantleSettlement.roomCode ? null : current);
     }
 
     if (!activeStealSettlement) return;
@@ -10337,10 +10410,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (shouldRetire) {
       setActiveStealSettlement((current) => current?.eventId === activeStealSettlement.eventId ? null : current);
     }
-  }, [activeDismantleSettlementEventKey, activeStealSettlement,
+  }, [activeDismantleSettlement, activeDismantleSettlementEventKey, activeDismantleSettlementRetirementReason, activeStealSettlement,
     activeStealSettlementHasNewerH4Owner, activeStealSettlementHasNewerDiscardTransition,
     clientPresentation.rootAction?.rootEventId, currentPrivateStealSettlementScope,
-    dismantleSettlements, privateStealViewerSwitchPending, room.actionRevision, room.code]);
+    privateStealViewerSwitchPending, room.actionRevision, room.code]);
   useEffect(() => {
     if (!activeTargetCardSettlementEventId || !activeTargetCardSettlementJourneySettled
       || !publicCardDisplayReady || activeTargetCardSettlementExiting
@@ -10432,7 +10505,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       const concealedHandSteal = outcome === "STEAL_RESOLVED"
         && stealSettlementCandidate?.action.eventId === eventId
         && stealSettlementCandidate.action.sourceZone === "hand";
-      const requiredReadMs = concealedHandSteal ? UI_TIMING.publicTargetCardSettlementRead
+      const requiredReadMs = outcome === "DISMANTLE_RESOLVED" || concealedHandSteal
+        ? UI_TIMING.publicTargetCardSettlementRead
         : turnReady ? 2_000 : UI_TIMING.publicTargetCardSettlementRead;
       if (visibleSinceMs !== null && now - visibleSinceMs >= requiredReadMs) {
         if (outcome === "DISMANTLE_RESOLVED") {
@@ -10458,7 +10532,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => {
     if (!activeDismantleSettlement?.exiting) return;
     const eventId = activeDismantleSettlement.eventId;
-    const timer = window.setTimeout(() => setActiveDismantleSettlement((current) => current?.eventId === eventId ? null : current), UI_TIMING.interactionSettlementFade);
+    const identity = activeDismantleSettlement;
+    const timer = window.setTimeout(() => {
+      retiredDismantleSettlementIds.current.add(publicDismantleSettlementRetirementKey(identity));
+      setActiveDismantleSettlement((current) => current?.eventId === eventId && current.roomCode === identity.roomCode ? null : current);
+    }, UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
   }, [activeDismantleSettlement?.eventId, activeDismantleSettlement?.exiting]);
   useEffect(() => {

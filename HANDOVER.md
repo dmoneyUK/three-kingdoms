@@ -1,26 +1,27 @@
-# HANDOVER — Next task: UX2-DISMANTLE-SETTLEMENT-RETIRE-01
+# HANDOVER — UX2-DISMANTLE-SETTLEMENT-RETIRE-01
 
-## Latest checkpoint — 2026-11-21
+**Updated:** 2026-11-21 23:41 UTC
+**Status:** Implemented and locally verified. Remote delivery and Owner iPhone review are pending.
 
-- Reviewed `docs/UX2-refine.md` revision 2026-11-19 23:32 UTC. Accepted §§10.49/10.57/10.59/10.61/10.62/10.63/10.65 remain **USER-ACCEPTED/CLOSED**. Preserve their regression contracts; do not reopen their entire scopes.
-- Human iPhone Chrome report from **AI Staging** build `824e79d14d682dd05d5f224ca9155d0149a08838` (feature branch **88 commits ahead of ux-v2**): Gan Ning Seat 0 used converted Dismantle/Burning Bridges against Lv Bu Seat 1; targeted Equipment `Shadowrunner` (5♠) was discarded but its large centre result CardFace persisted through later Bots' turns. Screenshot shows `BOT 2 — Discard` H4 and `BOT 3's turn` PAC while the old result and the small Burning Bridges root are visible.
-- Owner-provided `wtk-game-ux-trace-2026-11-21T22-34-57.933Z.json` (conversation attachment; not tracked in Git): `choose_target_card` HTTP 200 at elapsed 86.915s; public Shadowrunner discard event ID begins `16c39384`; `end_turn` HTTP 200 at 106.006s. Game states continue through Seats 1, 2 and 3. Repeated `presentation-dom` samples show old root event `883715da` as `parked` after turn advancement. The trace dropped 379 earlier entries; the **screenshot**, not its DOM sample, confirms the stale **centre result**. Do not misdiagnose gameplay/zone conservation from a visual symptom.
-- Source review confirmed relevant lifecycle exists on both branches: `app/page.tsx` sets `activeDismantleSettlement` on fresh proof, renders `PublicSettlementCardResult` for `journeySettled`; its supersession guard only checks a *non-null different* `clientPresentation.rootAction?.rootEventId` (ux-v2 ~10313), so `null` on subsequent turn cannot retire old state. Its shared `hasReadableH4()` loop (~10415–10450) keeps scheduling frames when Dismantle's own H4 is replaced/occluded; no `exiting` or fade is reached. These are **strong code-level hypotheses**, not an instrumented proof of the exact branch taken on the phone.
-- Prior `§10.64-A` Worker 1102 Ray `a5ba0c010b821669` remains **EVIDENCE BLOCKED** pending authoritative Cloudflare invocation details; `§10.51` remains conditional. They are historical deferred investigations, **not** a second active HANDOVER task.
+## Current result
 
-## ONE CURRENT CODING AGENT TASK — P0
+Dismantle settlement lifecycle now binds a visible result to its committed public event, room, source root/turn, action revision and public sequence. A proven later public event or turn handoff retires the centre result and old root ownership, including when the next `rootAction` is null. Temporary H4 occlusion pauses readable time; it does not retire the current result. A valid Dismantle result retains the 3-second read period. Steal privacy and unrelated Duel/Attack history are unchanged.
 
-**ID:** `UX2-DISMANTLE-SETTLEMENT-RETIRE-01`  
-**Branch:** `ux-v2` only; do **not** modify or deploy `main`, `feature/smart-bot-player`, `AI_PLAYER_HANDOVER.md`, bot logic/config, or production. Feature branch's independent AIP queue stays intact. Any transfer of this core fix to AI Staging requires a separately authorized sync/integration.
+Changed files: `app/page.tsx`, `game/public-target-card-settlement-lifecycle.ts`, `tests/public-target-card-settlement-lifecycle.test.mjs`, `tests/browser/hero-active-skills-real-gameplay.spec.mjs`, `tests/run-fast-tests.mjs`, and this handover.
 
-**Goal:** Real Dismantle/Burning Bridges root and target-card settlement can be read for their finite authorized time, then retire on proven newer public event or turn handoff even if new `rootAction` is null. The old centre result and wrongly-current root must not overlay subsequent Bots' turns. Do not remove unrelated committed Duel/Attack histories or hide a valid unsuperseded result prematurely.
+## Verification
 
-### Execute in this order
+2026-11-21 (individual test command timestamps were not captured):
 
-1. **Revalidate context.** Read latest `AGENTS.md`, `docs/UX2-refine.md` (R1–R3, §§10.36/10.41/10.45 and accepted target-card/Steal safeguards), current worktree and this handover. Preserve unrelated changes. Trace `app/page.tsx` fresh Dismantle proof → active settlement → `publicCardDisplayAction` → `PublicSettlementCardResult` → H4 readability → retirement, plus `app/public-card-display.tsx`, `app/public-result-layout.ts` and source-proof types if needed. Compare Steal's action-revision/newer-H4/discard guards, **not** concealed-Hand content policy.
-2. **Add failing focused regression first.** Use genuine Gan Ning conversion, Lv Bu equipment `Shadowrunner`, validated target-card discard and public proof; then a newer Discard H4 and next turn with `rootAction = null`. Before fix demonstrate stale centre `[data-public-result-event-id]` and stale current root. Also test H4 temporarily occluded while the settlement remains current: do not retire unfairly before legitimate read. Cover duplicated/out-of-order polls, late observer, and revisiting a previously retired event.
-3. **Implement lifecycle-safe cleanup.** Derive Dismantle expiry from authenticated event/proof/monotonic public ownership and actual turn advancement, including **null successor root** and later event/Discard. Distinguish transient invisible H4 from permanently superseded H4, so `requestAnimationFrame` cannot wait forever. Guard both central result and root journey ownership; old GET or React rerenders must not resurrect retired state. Preserve standard ~3s result read and ~4s physical reveal where truly current; do not delay server actions. Do not guess actor/target/cards from UI, timeline-tail alone or client timers.
-4. **Test exact acceptance matrix.** Valid result initially readable, then stale centre card absent and old root no longer *current* after a later turn/Discard; correct latest H4/PAC; honest actual author and card-face identity; no duplicate or wrong card, no private Hand leak, no card count/HP/rule change. Cover ordinary Dismantle vs converted Gan Ning, Hand/Equipment targets, Steal (including concealed Hand), chained Negation, new public card interruption, Duel stable history, 4–6 seats. Focused unit/UI/API tests and targeted lint/`git diff --check`; local browser/UI budget ≤5min, following accepted UX2 testing convention.
-5. **Deliver & stop.** One bounded code/tests/handover commit on `ux-v2`. Report exact source SHA, focused test results, exact-SHA GitHub Actions status, deployment status (do not invent), remaining risks and iPhone acceptance steps. **Never self-approve Owner PASS**. Bot Staging validation only after Owner-authorized integration. If investigation refutes hypotheses above, show trace/source evidence and implement the smallest correct fix; do not force a misleading fix.
+- Lifecycle unit tests: 9 passed.
+- Focused Gan Ning conversion → Negation pass → Shadowrunner discard → next-turn/discard browser regression: 1 passed after a fresh build.
+- `npm run build`, focused test-file ESLint, and `git diff --check`: passed.
+- `app/page.tsx` ESLint still hits a React Hooks stack overflow; the same failure reproduces on the unmodified base, so this run does not establish a task-specific lint failure or pass for that file.
 
-**Done when:** A server-advanced new turn no longer displays a prior Dismantle discarded target CardFace/full centre nor retains its obsolete root as the *current* visual owner; an actual current Dismantle still presents correctly with truthful H4/PAC and physical-card conservation.
+## Delivery state and next step
+
+Implementation is committed locally on `codex/ux2-1057-card-pool-footer`, based on `origin/ux-v2` at `d5e0e4984dfceb4be8f0a21b17b28f08dfc8e222`; the task worktree is clean. It has not been pushed. No exact-implementation-SHA GitHub Actions run, remote deployment, or production smoke check has been performed.
+
+The `ux-v2` branch is checked out in `/Users/jingedai/.codex/worktrees/neg-a1/WTK` and that worktree contains local changes in `HANDOVER.md`, `app/page.tsx`, and `tests/browser/bumper-harvest-real-timer-gameplay.spec.mjs`. Do not overwrite or discard them. Reconcile a safe `ux-v2` delivery boundary, then run the exact-SHA workflow and required deployment/smoke checks. Owner iPhone re-review remains pending; do not mark user-accepted.
+
+**Only current task:** finish remote delivery and hand off `UX2-DISMANTLE-SETTLEMENT-RETIRE-01` for Owner iPhone review. Do not start another task before that boundary is resolved.
