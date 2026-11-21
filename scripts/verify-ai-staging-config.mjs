@@ -19,6 +19,15 @@ export function verifyAiStagingConfig(config) {
   if (config?.workers_dev !== true) {
     throw new Error("Staging Worker must have workers_dev enabled");
   }
+  if (config?.observability?.enabled !== true || config?.observability?.logs?.enabled === false) {
+    throw new Error("Cloudflare Workers Logs must be enabled in the effective Staging config");
+  }
+  if (config?.observability?.head_sampling_rate !== 1) {
+    throw new Error("Staging Workers Logs head_sampling_rate must be 1");
+  }
+  if (config?.observability?.logs?.head_sampling_rate !== undefined && config.observability.logs.head_sampling_rate !== 1) {
+    throw new Error("Staging Workers Logs sampling rate must be 1");
+  }
   if (config?.vars?.BOT_AI_ENABLED !== "false") {
     throw new Error("BOT_AI_ENABLED must be the string false");
   }
@@ -58,6 +67,8 @@ export function verifyAiStagingConfig(config) {
     stagingDatabaseIdMatches: true,
     productionDatabaseExcluded: true,
     workersDev: true,
+    workersLogsEnabled: true,
+    headSamplingRate: 1,
     botAiEnabled: false,
     botDemoEnabled: true,
     botDemoHourlyAddLimitDisabled: true,
