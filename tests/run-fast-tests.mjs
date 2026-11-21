@@ -6,6 +6,7 @@ const fastTests = [
   "tests/equipment-arrival.test.mjs",
   "tests/dying.test.mjs",
   "tests/ai-decision-prototype.test.mjs",
+  "tests/ai-response-candidates.test.mjs",
   "tests/standard-deck.test.mjs",
   "tests/test-hand-presets.test.mjs",
   "tests/private-hand.test.mjs",
