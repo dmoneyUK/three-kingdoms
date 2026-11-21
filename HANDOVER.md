@@ -1,27 +1,22 @@
 # HANDOVER — UX2-DISMANTLE-SETTLEMENT-RETIRE-01
 
-**Updated:** 2026-11-21 23:41 UTC
-**Status:** Implemented and locally verified. Remote delivery and Owner iPhone review are pending.
+**Updated:** 2026-11-21 23:51 UTC
+**Status:** IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW
 
-## Current result
+## Design and result
 
-Dismantle settlement lifecycle now binds a visible result to its committed public event, room, source root/turn, action revision and public sequence. A proven later public event or turn handoff retires the centre result and old root ownership, including when the next `rootAction` is null. Temporary H4 occlusion pauses readable time; it does not retire the current result. A valid Dismantle result retains the 3-second read period. Steal privacy and unrelated Duel/Attack history are unchanged.
+Reviewed `docs/UX2-refine.md` at revision 2026-11-19 23:32 UTC. Dismantle settlement ownership is tied to its committed public event, room, source root/turn, action revision and public sequence. A later proven public event or turn handoff retires the centre result and old root ownership, including when the next `rootAction` is null. Temporary H4 occlusion pauses readable time and does not retire a still-current result. A valid Dismantle result keeps its 3-second read period. Steal privacy and unrelated Duel/Attack history are unchanged.
 
-Changed files: `app/page.tsx`, `game/public-target-card-settlement-lifecycle.ts`, `tests/public-target-card-settlement-lifecycle.test.mjs`, `tests/browser/hero-active-skills-real-gameplay.spec.mjs`, `tests/run-fast-tests.mjs`, and this handover.
+Implementation source SHA: `a8b0de80708c23e78723593fef68c2a758be46d9` on `ux-v2`.
 
-## Verification
-
-2026-11-21 (individual test command timestamps were not captured):
+## Verification and deployment
 
 - Lifecycle unit tests: 9 passed.
 - Focused Gan Ning conversion → Negation pass → Shadowrunner discard → next-turn/discard browser regression: 1 passed after a fresh build.
-- `npm run build`, focused test-file ESLint, and `git diff --check`: passed.
-- `app/page.tsx` ESLint still hits a React Hooks stack overflow; the same failure reproduces on the unmodified base, so this run does not establish a task-specific lint failure or pass for that file.
+- Local build, focused test-file ESLint and `git diff --check`: passed. `app/page.tsx` ESLint reproduces the React Hooks stack overflow on the unmodified base.
+- Exact-SHA [GitHub Actions run 44963186592](https://github.com/dmoneyUK/three-kingdoms/actions/runs/44963186592): lint/fast, API, browser smoke and deploy jobs all passed. D1 migration and production smoke completed successfully.
+- Worker version: `02a4773a-a15e-458c-9d25-c815c636f431`. Production `/api/health` returned `{"ok":true,"worker":"available"}`.
 
-## Delivery state and next step
+## Current handoff
 
-Implementation is committed locally on `codex/ux2-1057-card-pool-footer`, based on `origin/ux-v2` at `d5e0e4984dfceb4be8f0a21b17b28f08dfc8e222`; the task worktree is clean. It has not been pushed. No exact-implementation-SHA GitHub Actions run, remote deployment, or production smoke check has been performed.
-
-The `ux-v2` branch is checked out in `/Users/jingedai/.codex/worktrees/neg-a1/WTK` and that worktree contains local changes in `HANDOVER.md`, `app/page.tsx`, and `tests/browser/bumper-harvest-real-timer-gameplay.spec.mjs`. Do not overwrite or discard them. Reconcile a safe `ux-v2` delivery boundary, then run the exact-SHA workflow and required deployment/smoke checks. Owner iPhone re-review remains pending; do not mark user-accepted.
-
-**Only current task:** finish remote delivery and hand off `UX2-DISMANTLE-SETTLEMENT-RETIRE-01` for Owner iPhone review. Do not start another task before that boundary is resolved.
+**Only current task:** Owner iPhone re-review of `UX2-DISMANTLE-SETTLEMENT-RETIRE-01`. Verify the Gan Ning converted Dismantle result remains readable while current, then disappears after the later public Discard/turn transition; confirm the new H4/PAC is visible and the old card/root does not return after refresh. Do not mark USER-ACCEPTED until the Owner confirms.
