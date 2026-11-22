@@ -607,7 +607,14 @@ test("role policy filters converted, Serpent Spear, and multi-target Attacks thr
   after = (await state(code, token)).data;
   assert.equal(after.phase, "response");
   assert.notEqual(after.actionPlayerId, hostId, "the multi-target canonical Attack set excludes the Lord");
-  assert.equal(roomCardCount(code, halberdAttack.id), 1);
+  const groupPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(code)}`));
+  assert.equal(groupPending.kind, "response");
+  assert.equal(groupPending.continuation.kind, "group");
+  assert.equal(groupPending.continuation.cardKind, "SkyPiercingHalberdAttack");
+  assert.deepEqual(groupPending.continuation.heldCards.map(({ id }) => id), [halberdAttack.id]);
+  assert.ok(groupPending.continuation.participantProgress.participants.length >= 2);
+  assert.ok(groupPending.continuation.participantProgress.participants.every(({ playerId }) => playerId !== hostId),
+    "the complete canonical Halberd target set excludes the Lord");
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
@@ -691,8 +698,9 @@ test("a Loyalist's targeted active skill selects a non-Lord using its resolved e
   const result = await runBotStep(code, loyalist.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
   assert.equal(result.status, 200, JSON.stringify(result.data));
   const pending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(code)}`));
-  assert.equal(pending.kind, "target_card");
-  assert.notEqual(pending.targetId, hostId, "resolved targeted skill harm never selects the public Lord");
+  assert.equal(pending.kind, "negation_window", "canonical Qixi Dismantle enters Negation before target-card selection");
+  assert.equal(pending.continuation.effect.kind, "dismantle");
+  assert.notEqual(pending.continuation.effectTargetId, hostId, "resolved targeted skill harm never selects the public Lord");
   assert.equal(roomCardCount(code, blackCard.id), 1);
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
@@ -817,6 +825,10 @@ test("Bots submit distinct shared Negation passes without taking the human decis
 test("Bot Steal resumes through Negation and selects an opaque target-hand slot", async () => {
   const { code, token, hostId, bots } = await createBotGame();
   const actor = bots[0];
+  sql(`UPDATE players SET role='Lord' WHERE id=${quote(hostId)};
+    UPDATE players SET role='Rebel' WHERE id=${quote(actor.id)};
+    UPDATE players SET role='Loyalist' WHERE id=${quote(bots[1].id)};
+    UPDATE players SET role='Renegade' WHERE id=${quote(bots[2].id)}`);
   const steal = card("Steal", "bot-steal");
   const hidden = card("Dodge", "bot-steal-target-private");
   sql(`UPDATE players SET hero='zhang-fei', equipment_json='{}' WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)})`);
