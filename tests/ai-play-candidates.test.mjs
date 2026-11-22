@@ -59,3 +59,36 @@ test("catalogue returns an explicit overflow rather than a partial list", () => 
   input.currentAction.playTargetEligibility = input.selfHand.map(({ id }) => eligibility(id, ["target-one"]));
   assert.deepEqual(buildPlayCandidates(input), { status: "unsupported", reason: "candidate_overflow" });
 });
+
+test("Halberd target counts and stratagem targets come from distinct canonical authority", () => {
+  const input = fixture({ selfHand: [{ id: "a", kind: "Attack" }, { id: "d", kind: "Duel" }] });
+  input.currentAction.playTargetEligibility = [
+    eligibility("a", ["target-one", "target-two"]),
+    { ...eligibility("d", ["target-two"]), effectiveKind: "Duel" },
+  ];
+  const ordinary = buildPlayCandidates(input);
+  assert.deepEqual(ordinary.publicChoices.map(({ kind }) => kind), ["attack", "attack", "stratagem", "end_turn"]);
+  const duel = ordinary.publicChoices.find(({ kind }) => kind === "stratagem");
+  assert.deepEqual(ordinary.resolve(duel.id, authority), { action: "play_card", cardId: "d", targetId: "target-two", actionRevision: authority.actionRevision });
+
+  const halberd = buildPlayCandidates({
+    ...input, attackTargetLimit: 3, selfHand: [{ id: "a", kind: "Attack" }],
+    currentAction: { ...input.currentAction, playTargetEligibility: [eligibility("a", ["target-one", "target-two"])] },
+  });
+  assert.deepEqual(halberd.publicChoices.map(({ kind }) => kind), ["attack", "attack", "attack", "end_turn"]);
+  const payload = halberd.resolve(halberd.publicChoices[0].id, authority);
+  assert.deepEqual(payload.targetIds, ["target-one", "target-two"]);
+  assert.ok(Object.isFrozen(payload.targetIds));
+});
+
+test("Serpent Spear uses two owned materials and its own projected range", () => {
+  const input = fixture({ selfHand: [{ id: "a", kind: "Dodge" }, { id: "b", kind: "Peach" }] });
+  input.currentAction.legalActions.push("serpent_spear_attack");
+  input.currentAction.playTargetEligibility = [
+    { mode: "serpent_spear_attack", effectiveKind: "Attack", eligibleTargetIds: ["target-two"], rejections: [] },
+  ];
+  const catalogue = buildPlayCandidates(input);
+  assert.deepEqual(catalogue.publicChoices.map(({ kind }) => kind), ["attack", "end_turn"]);
+  assert.deepEqual(catalogue.resolve(catalogue.publicChoices[0].id, authority),
+    { action: "serpent_spear_attack", cardIds: ["a", "b"], targetId: "target-two", actionRevision: authority.actionRevision });
+});

@@ -222,7 +222,7 @@ test("eight-room admission excludes timed-out idle games but counts resolving an
 test("duplicate wakes and an expired claim recover through one canonical draw without double mutation", async () => {
   const { code, token, bots } = await createBotGame();
   const bot = bots[0];
-  sql(`UPDATE players SET hero='sun-quan' WHERE id=${quote(bot.id)}`);
+  sql(`UPDATE players SET hero='zhang-fei' WHERE id=${quote(bot.id)}`);
   setHand(bot.id, [], 4, 4);
   // A second wake may legitimately claim a later revision. Keep this draw
   // fixture free of playable cards so an Attack cannot change the observation.
@@ -458,7 +458,7 @@ test("a Bot answers an ordinary Attack with its single canonical physical Dodge"
 test("a wounded Bot heals first, equips an empty slot, and keeps the spare weapon", async () => {
   const { code, token, bots } = await createBotGame();
   const bot = bots[0];
-  sql(`UPDATE players SET hero='sun-quan', equipment_json='{}' WHERE id=${quote(bot.id)}`);
+  sql(`UPDATE players SET hero='zhang-fei', equipment_json='{}' WHERE id=${quote(bot.id)}`);
   const peach = card("Peach", "basic-play");
   const weapon = card("ZhugeCrossbow", "basic-play");
   const spare = card("SkyPiercingHalberd", "basic-play");
@@ -480,6 +480,196 @@ test("a wounded Bot heals first, equips an empty slot, and keeps the spare weapo
   assert.equal(JSON.parse(query(`SELECT equipment_json FROM players WHERE id=${quote(bot.id)}`)).weapon.id, spare.id);
   assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(bot.id)}`))[0].id, weapon.id);
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("Bots submit distinct shared Negation passes without taking the human decision", async () => {
+  const { code, token, hostId, bots, room } = await createBotGame();
+  const host = room.players.find(({ id }) => id === hostId);
+  const draw = card("DrawTwo", "shared-negation-bots");
+  sql(`UPDATE players SET hero='zhang-fei' WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)})`);
+  setHand(hostId, [draw], 4, 4);
+  for (const bot of bots) setHand(bot.id, [], 4, 4);
+  setDeck(code, [card("Attack", "shared-negation-draw-a"), card("Dodge", "shared-negation-draw-b")]);
+  setTurn(code, host.seat, "play");
+
+  const played = await request("play_card", { code, token, cardId: draw.id });
+  assert.equal(played.status, 200, JSON.stringify(played.data));
+  const open = (await state(code, token)).data;
+  const windowId = open.currentAction.negationWindowId;
+  assert.ok(windowId);
+  assert.equal(open.actionPlayerId, null);
+
+  const result = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 4 });
+  assert.equal(result.data.consumed, 3, JSON.stringify(result.data));
+  assert.equal(query(`SELECT COUNT(*) FROM negation_window_submissions WHERE window_id=${quote(windowId)}`), "3");
+  assert.equal(query(`SELECT COUNT(*) FROM negation_window_submissions WHERE window_id=${quote(windowId)} AND player_id=${quote(hostId)}`), "0");
+  const repeated = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 4 });
+  assert.equal(repeated.data.steps, 0);
+  const pass = await request("decline_response", { code, token, context: { windowId } });
+  assert.equal(pass.status, 200, JSON.stringify(pass.data));
+  const after = (await state(code, token)).data;
+  assert.equal(after.phase, "play");
+  assert.equal(after.myHand.length, 2);
+  assert.equal(roomCardCount(code, draw.id), 1);
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("Bot Steal resumes through Negation and selects an opaque target-hand slot", async () => {
+  const { code, token, hostId, bots } = await createBotGame();
+  const actor = bots[0];
+  const steal = card("Steal", "bot-steal");
+  const hidden = card("Dodge", "bot-steal-target-private");
+  sql(`UPDATE players SET hero='zhang-fei', equipment_json='{}' WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)})`);
+  for (const bot of bots) setHand(bot.id, bot.id === actor.id ? [steal] : [], 4, 4);
+  setHand(hostId, [hidden], 4, 4);
+  setTurn(code, actor.seat, "play");
+  const opening = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 4 });
+  assert.equal(opening.data.consumed, 4, JSON.stringify(opening.data));
+  const negation = (await state(code, token)).data;
+  assert.ok(negation.currentAction.negationWindowId);
+  const passed = await request("decline_response", { code, token, context: { windowId: negation.currentAction.negationWindowId } });
+  assert.equal(passed.status, 200, JSON.stringify(passed.data));
+
+  const pending = (await state(code, token)).data;
+  assert.equal(pending.currentAction.kind, "target_card");
+  assert.equal(pending.actionPlayerId, actor.id);
+  const taken = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1 });
+  assert.equal(taken.data.consumed, 1, JSON.stringify(taken.data));
+  assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(actor.id)}`))[0].id, hidden.id);
+  assert.equal(roomCardCount(code, hidden.id), 1);
+  assert.equal(roomCardCount(code, steal.id), 1);
+  assert.ok(!JSON.stringify((await state(code, "")).data).includes(hidden.id));
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("shared rescue consumes at most one of two Bot Peach intents", async () => {
+  const { code, token, hostId, bots } = await createBotGame();
+  const [attacker, first, second] = bots;
+  const peaches = [card("Peach", "shared-rescue-first"), card("Peach", "shared-rescue-second")];
+  const handCount = (id) => Number(query(`SELECT json_array_length(hand_json) FROM players WHERE id=${quote(id)}`));
+  sql(`UPDATE players SET hero='zhang-fei', equipment_json='{}' WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)})`);
+  setHand(hostId, [], 1, 4);
+  setHand(attacker.id, [card("Attack", "shared-rescue-attack")], 4, 4);
+  setHand(first.id, [peaches[0]], 4, 4);
+  setHand(second.id, [peaches[1]], 4, 4);
+  setTurn(code, attacker.seat, "play");
+  assert.equal((await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1 })).data.consumed, 1);
+  assert.equal((await request("decline_response", { code, token })).status, 200);
+  const dying = (await state(code, token)).data;
+  const windowId = dying.currentAction.sharedWindow?.windowId;
+  assert.ok(windowId);
+  assert.equal(dying.actionPlayerId, null);
+  const wakes = await Promise.all([
+    runBotScheduler({ roomCode: code, maxStepsPerWakeup: 4 }),
+    runBotScheduler({ roomCode: code, maxStepsPerWakeup: 4 }),
+  ]);
+  assert.equal(wakes.reduce((sum, { data }) => sum + data.consumed, 0), 3);
+  assert.equal(handCount(first.id) + handCount(second.id), 2, "intents do not use a Peach before arbitration");
+  assert.equal((await request("skip_rescue", { code, token, windowId })).status, 200);
+  const rescued = (await state(code, token)).data.players.find(({ id }) => id === hostId);
+  assert.ok(rescued.alive && rescued.hp === 1);
+  assert.equal(handCount(first.id) + handCount(second.id), 1);
+  for (const peach of peaches) assert.equal(roomCardCount(code, peach.id), 1);
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+for (const scenario of [
+  { name: "Lord and Loyalist victory", hostRole: "Rebel", attackerRole: "Lord", otherSeatsAlive: false },
+  { name: "Rebel victory", hostRole: "Lord", attackerRole: "Rebel", otherSeatsAlive: true },
+  { name: "Traitor victory", hostRole: "Lord", attackerRole: "Renegade", otherSeatsAlive: false },
+]) {
+  test(`canonical Bot combat and shared rescue finish the match with ${scenario.name}`, async () => {
+    const { code, token, hostId, bots } = await createBotGame();
+    const [attacker, ...otherBots] = bots;
+    const attack = card("Attack", "bot-terminal-combat");
+    setHand(hostId, [], 1, 4);
+    setHand(attacker.id, [attack], 4, 4);
+    for (const other of otherBots) setHand(other.id, [], scenario.otherSeatsAlive ? 4 : 0, 4);
+    sql(`UPDATE players SET hero='zhang-fei', equipment_json='{}' WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)})`);
+    sql(`UPDATE players SET role=${quote(scenario.hostRole)} WHERE id=${quote(hostId)}`);
+    sql(`UPDATE players SET role=${quote(scenario.attackerRole)} WHERE id=${quote(attacker.id)}`);
+    for (const [index, other] of otherBots.entries()) {
+      sql(`UPDATE players SET alive=${scenario.otherSeatsAlive ? 1 : 0},
+        role=${quote(index === 0 ? "Rebel" : "Renegade")} WHERE id=${quote(other.id)}`);
+    }
+    setTurn(code, attacker.seat, "play");
+    const opening = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1 });
+    assert.equal(opening.data.consumed, 1, JSON.stringify(opening.data));
+    const response = (await state(code, token)).data;
+    assert.equal(response.actionPlayerId, hostId);
+    assert.ok(response.currentAction.legalActions.includes("decline_response"));
+    const declined = await request("decline_response", { code, token });
+    assert.equal(declined.status, 200, JSON.stringify(declined.data));
+
+    const dying = (await state(code, token)).data;
+    assert.equal(dying.status, "playing");
+    assert.ok(dying.currentAction.legalActions.includes("skip_rescue"));
+    const skipped = await request("skip_rescue", { code, token, windowId: dying.currentAction.sharedWindow?.windowId });
+    assert.equal(skipped.status, 200, JSON.stringify(skipped.data));
+    const rescue = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 4 });
+    assert.equal(rescue.data.unsupported, 0, JSON.stringify(rescue.data));
+    const terminal = (await state(code, token)).data;
+    assert.equal(terminal.status, "finished");
+    assert.equal(terminal.phase, "finished");
+    assert.ok(terminal.log.some((entry) => entry.includes(`${scenario.name}! The match is over.`)));
+    assert.equal(roomCardCount(code, attack.id), 1);
+  });
+}
+
+test("one human and three genuine Bots progress through a stratagem, Hero trigger and rescue to a winner", async () => {
+  const { code, token, hostId, bots, room } = await createBotGame();
+  const [attacker, helper, renegade] = bots;
+  const draw = card("DrawTwo", "complete-bot-match");
+  const attack = card("Attack", "complete-bot-match");
+  const bow = card("KirinBow", "complete-bot-match");
+  setHand(hostId, [], 3, 4);
+  setHand(attacker.id, [draw, attack], 3, 3);
+  setHand(helper.id, [card("Attack", "complete-bot-match-helper")], 4, 4);
+  setHand(renegade.id, [card("Attack", "complete-bot-match-renegade")], 4, 4);
+  setDeck(code, Array.from({ length: 12 }, (_, index) => card("Dodge", `complete-bot-match-${index}`)));
+  sql(`UPDATE players SET hero='zhang-fei', equipment_json='{}' WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)})`);
+  sql(`UPDATE players SET role='Lord' WHERE id=${quote(hostId)}`);
+  sql(`UPDATE players SET role='Rebel', hero='huang-yueying' WHERE id=${quote(attacker.id)}`);
+  sql(`UPDATE players SET role='Rebel', equipment_json=${quote(JSON.stringify({ weapon: bow }))} WHERE id=${quote(helper.id)}`);
+  sql(`UPDATE players SET role='Renegade' WHERE id=${quote(renegade.id)}`);
+  setTurn(code, room.players.find(({ id }) => id === hostId).seat, "play");
+  assert.equal((await request("end_turn", { code, token })).status, 200);
+
+  let steps = 0;
+  let passedNegation = false;
+  let declinedAttacks = 0;
+  let skippedRescue = false;
+  let final;
+  for (let turn = 0; turn < 16; turn++) {
+    const scheduled = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 4 });
+    assert.equal(scheduled.status, 200);
+    assert.equal(scheduled.data.unsupported + scheduled.data.failed, 0, JSON.stringify(scheduled.data));
+    steps += scheduled.data.steps;
+    final = (await state(code, token)).data;
+    if (final.status === "finished") break;
+    const decision = final.currentAction;
+    if (decision.actorId !== hostId) continue;
+    let human;
+    if (decision.negationWindowId && decision.legalActions.includes("decline_response")) {
+      human = await request("decline_response", { code, token, context: { windowId: decision.negationWindowId } });
+      passedNegation = true;
+    } else if (decision.legalActions.includes("decline_response")) {
+      human = await request("decline_response", { code, token });
+      declinedAttacks++;
+    } else if (decision.sharedWindow?.windowId && !decision.sharedWindow.locked && decision.legalActions.includes("skip_rescue")) {
+      human = await request("skip_rescue", { code, token, windowId: decision.sharedWindow.windowId });
+      skippedRescue = true;
+    }
+    if (human) assert.equal(human.status, 200, JSON.stringify(human.data));
+  }
+  assert.equal(final?.status, "finished");
+  assert.ok(passedNegation && declinedAttacks >= 3 && skippedRescue);
+  assert.ok(steps > 0 && steps <= 200);
+  assert.match(final.log.join("\n"), /Cultivation/);
+  assert.match(final.log.join("\n"), /Rebel victory! The match is over\./);
+  assert.equal(final.players.filter(({ isBot }) => isBot).length, 3);
+  assert.equal(roomCardCount(code, draw.id), 1);
+  assert.equal(roomCardCount(code, attack.id), 1);
 });
 
 test("a two-Dodge requirement uses one canonical response per revision", async () => {

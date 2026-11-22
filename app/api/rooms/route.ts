@@ -14,6 +14,7 @@ import { canDeclareAttack as canDeclareAttackFor, effectiveDistanceBetween, next
 import { canRespondWithNegation, getAttackCardProvider, getPlayPhaseActions, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
 import { buildPlayCandidates } from "../../../ai/play-candidates";
+import { botTriggerChoices } from "../../../ai/trigger-selection";
 import { responseCostActor, semanticResponseActor } from "../../../game/response-identity";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
 import { borrowedSwordLegality as resolveBorrowedSwordLegality, type BorrowedSwordPlayer } from "../../../game/capabilities/borrowed-sword";
@@ -768,6 +769,9 @@ function playTargetFailureFor(rejection: PlayTargetRejection, kind: Card["kind"]
 }
 function hasSerpentSpear(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SerpentSpear"; }
 function hasSkyPiercingHalberd(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SkyPiercingHalberd"; }
+function physicalAttackTargetLimit(player: PlayerRow, handCount: number): 1 | 3 {
+  return hasSkyPiercingHalberd(player) && handCount === 1 ? 3 : 1;
+}
 function hasBlueSteelSword(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "BlueSteelSword"; }
 function passiveAttackPrevention(target?: PlayerRow | null, attack?: Card | null, source?: PlayerRow | null) {
   return target ? resolvePassiveAttackModifiers({ targetEquipment: equipmentCards(target), sourceEquipment: equipmentCards(source), attack }) : null;
@@ -8478,12 +8482,69 @@ function pendingForDomainResolution(room: RoomRow | null | undefined): Pending |
   if (pending?.kind === "shared_response_window" && isSharedDomainResolution(room)) return pending.settlement?.winner?.pending ?? (pending.continuation.mode === "INFLUENCING_ATTACK" ? pending.continuation.response : null);
   return pending;
 }
+type BotResponseWindow = Extract<Pending, { kind: "shared_response_window" | "negation_window" }>;
+
+function botResponseWindow(pending: Pending | null): BotResponseWindow | null {
+  return pending?.kind === "shared_response_window" || pending?.kind === "negation_window" ? pending : null;
+}
+
+async function unlockedBotWindowResponses(room: RoomRow, pending: BotResponseWindow, players: PlayerRow[]) {
+  if (pending.settlement || Date.now() >= pending.deadline
+    || (pending.kind === "negation_window" ? room.phase !== "response" : !["response", "dying"].includes(room.phase ?? ""))) return [];
+  const rows = await responseWindowRows(db(), pending.kind === "negation_window" ? "negation_window_submissions" : "shared_response_window_submissions",
+    room.id, pending.windowId);
+  const locked = new Set(rows.map(({ player_id }) => player_id));
+  return players.flatMap((player) => {
+    if (player.controller_type !== "bot" || player.is_test_player || !player.alive || locked.has(player.id)) return [];
+    const response = pending.kind === "negation_window"
+      ? pending.seatOrderPlayerIds.includes(player.id) ? responseForNegationWindow(pending, player) : null
+      : sharedResponseForPlayer(pending, player);
+    return response ? [response] : [];
+  });
+}
+
+/** Internal Worker import. Public room projections continue to omit an actor for shared windows. */
+export async function botControllerSnapshot(code: string, advanceExpiredWindows = false): Promise<{
+  roomId: string; status: RoomRow["status"]; botIds: string[]; eligibleBotIds: string[]; actionRevision: string;
+} | null> {
+  const room = await db().prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
+  if (!room || room.test_room || !botDemoEnabled()) return null;
+  const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
+  const botIds = players.filter((player) => player.controller_type === "bot" && !player.is_test_player).map(({ id }) => id);
+  const handoff = parseDiscardTurnHandoff(room.pending_json);
+  if (advanceExpiredWindows && handoff && handoff.deadline <= Date.now()) {
+    await advanceDiscardTurnHandoff(room.id);
+    return botControllerSnapshot(code);
+  }
+  const pending = parsePersistedPending(room.pending_json);
+  const window = botResponseWindow(pending);
+  if (advanceExpiredWindows && room.status === "playing" && pending?.kind === "harvest" && pending.completeAt
+    && Date.now() >= pending.completeAt) {
+    await advanceHarvest(room.id);
+    return botControllerSnapshot(code);
+  }
+  if (advanceExpiredWindows && room.status === "playing" && window && (Date.now() >= window.deadline || window.settlement)) {
+    if (window.kind === "negation_window") await advanceNegation(room.id);
+    else await advanceSharedResponseWindow(room.id, code, "");
+    return botControllerSnapshot(code);
+  }
+  const actorId = room.status === "heroes" ? nextGeneralSelector(players)?.id ?? null : actionPlayerIdForPending(room, pending, players);
+  const activePhase = room.phase?.startsWith("play") || room.phase?.startsWith("draw")
+    || room.phase === "discard" || room.phase === "response" || room.phase === "dying";
+  const completingHarvest = pending?.kind === "harvest" && Boolean(pending.completeAt);
+  const eligibleBotIds = window
+    ? (await unlockedBotWindowResponses(room, window, players)).map(({ actorId }) => actorId)
+    : (room.status === "heroes" || activePhase && !completingHarvest) && actorId && botIds.includes(actorId) ? [actorId] : [];
+  return { roomId: room.id, status: room.status, botIds, eligibleBotIds, actionRevision: await actionRevisionFor(room, players, actorId) };
+}
+
 export async function POST(request: Request, routeContext?: unknown) {
   const internalBot = isBotActionPrincipal(routeContext) ? routeContext : null;
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
   const uxTraceId = typeof body.uxTraceId === "string" && /^[a-zA-Z0-9-]{8,80}$/.test(body.uxTraceId) ? body.uxTraceId : null;
   let action = String(body.action ?? "");
-  const internalBotPlayActions = ["draw", "play_card", "end_turn", "discard_cards", "decline_response", "respond", "skip_rescue"];
+  const internalBotPlayActions = ["draw", "play_card", "serpent_spear_attack", "end_turn", "discard_cards", "decline_response", "respond",
+    "skip_rescue", "choose_harvest", "choose_target_card", "choose_borrowed_sword_target", "trigger", "decline_trigger"];
   const internalBotActions = new Set(["bot_step", "choose_hero", ...internalBotPlayActions]);
   if (action === "bot_step" && !internalBot) return json({ error: "Unknown action." }, 404);
   if (internalBot && (!botDemoEnabled() || !internalBotActions.has(action))) return json({ error: "The server bot principal cannot perform this action." }, 403);
@@ -8577,10 +8638,14 @@ export async function POST(request: Request, routeContext?: unknown) {
   let me = isTestController
     ? actionPlayerIdForController && controlledPlayerIds.has(actionPlayerIdForController) ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? controllerFallback : controllerFallback
     : sessionPlayers[0];
+  const controllerWindow = internalBot ? botResponseWindow(pendingForController) : null;
+  const botWindowResponse = controllerWindow
+    ? (await unlockedBotWindowResponses(room, controllerWindow, allRoomPlayers)).find(({ actorId }) => actorId === internalBot?.botId)
+    : undefined;
   if (internalBot) {
     const bot = sessionPlayers[0];
     const expectedRevision = await actionRevisionFor(room, allRoomPlayers, actionPlayerIdForController);
-    if (!bot || bot.id !== internalBot.botId || actionPlayerIdForController !== bot.id) {
+    if (!bot || bot.id !== internalBot.botId || (controllerWindow ? !botWindowResponse : actionPlayerIdForController !== bot.id)) {
       return json({ error: "The bot is not the current server-authorized actor." , stale: true }, 409);
     }
     if (expectedRevision !== internalBot.actionRevision) return json({ error: "The bot action revision is stale." , stale: true }, 409);
@@ -8602,9 +8667,10 @@ export async function POST(request: Request, routeContext?: unknown) {
     };
     const ownHand = parse<Card[]>(actor.hand_json, []);
     const ownEquipment = equipmentCards(actor);
-    const responseData = responseForBotDiagnostics(pendingForController, actor, allRoomPlayers, room.turn_seat);
+    const responseData = responseForBotDiagnostics(botWindowResponse ?? pendingForController, actor, allRoomPlayers, room.turn_seat);
     const responseDecision = responseData.decision;
     const ownCardIds = new Set(ownHand.map((card) => card.id));
+    const ownedCostIds = new Set([...ownHand, ...ownEquipment].map(({ id }) => id));
     const diagnosticOptions: BotDecisionOption[] = responseDecision?.options.map((option) => ({
       providerId: option.providerId,
       satisfies: option.satisfies,
@@ -8735,16 +8801,14 @@ export async function POST(request: Request, routeContext?: unknown) {
       return finishDecision(result, "choose_hero", "non_response_decision");
     }
 
-    const legalActions = legalActionsFor(room, actor, pendingForController, allRoomPlayers);
+    const legalActions = legalActionsFor(room, actor, botWindowResponse ?? pendingForController, allRoomPlayers);
     let nextAction: string | null = null;
     let actionFields: Record<string, unknown> = {};
     let decisionCause = "no_supported_action";
     if (room.phase?.startsWith("draw") && pendingForController === null && legalActions.includes("draw")) {
       const delayed = takeNextDelayedCard(parse<Card[]>(actor.judgement_json, []))?.delayed ?? null;
-      if (!delayed) {
-        nextAction = "draw";
-        decisionCause = "non_response_decision";
-      }
+      nextAction = "draw";
+      decisionCause = delayed ? "canonical_judgement" : "non_response_decision";
     } else if (room.phase === "discard" && pendingForController === null && legalActions.includes("discard_cards")) {
       const hand = parse<Card[]>(actor.hand_json, []);
       const required = Math.max(0, hand.length - (actor.hp ?? 0));
@@ -8756,14 +8820,20 @@ export async function POST(request: Request, routeContext?: unknown) {
         actionRevision: internalBot.actionRevision, decisionConsumed: false };
       const canDeclareAttack = canDeclareAttackFor({ ...actor, ...attackUseLimitContext(actor) }, room.phase);
       const playPhaseActions = getPlayPhaseActions(responseContext(actor, allRoomPlayers));
-      const basicPlays: { cardId: string; kind: "heal" | "draw" | "equip" }[] = [];
+      const basicPlays: { cardId: string; kind: "heal" | "draw" | "equip" | "stratagem" }[] = [];
       const equipped = equipmentZone(actor);
+      const hasOtherLivingPlayer = allRoomPlayers.some((player) => player.alive && player.id !== actor.id);
+      const hasLightning = parse<Card[]>(actor.judgement_json, []).some(({ kind }) => kind === "Lightning");
       for (const card of ownHand) {
         const slot = cardDefinition(card.kind).equipmentSlot;
         if (card.kind === "Peach" && (actor.hp ?? 0) < (actor.max_hp ?? 0)) {
           basicPlays.push({ cardId: card.id, kind: "heal" });
         } else if (card.kind === "DrawTwo") {
           basicPlays.push({ cardId: card.id, kind: "draw" });
+        } else if (card.kind === "Oath" || card.kind === "BumperHarvest"
+          || (card.kind === "BarbarianInvasion" || card.kind === "RainingArrows") && hasOtherLivingPlayer
+          || card.kind === "Lightning" && !hasLightning) {
+          basicPlays.push({ cardId: card.id, kind: "stratagem" });
         } else if (slot && !equipped[slot]) {
           // Filling empty slots avoids replacement loops and gives a stable policy.
           basicPlays.push({ cardId: card.id, kind: "equip" });
@@ -8771,68 +8841,143 @@ export async function POST(request: Request, routeContext?: unknown) {
       }
       const catalogue = buildPlayCandidates({
         ...authority, phase: room.phase, selfHand: ownHand, basicPlays,
+        attackTargetLimit: physicalAttackTargetLimit(actor, ownHand.length),
         publicSeatContext: allRoomPlayers.map(({ id, seat }) => ({ id, seat })),
         currentAction: { version: 3, kind: "turn", actorId: actionPlayerIdForController ?? null, deadline: 0, reason: "",
           legalActions, canDeclareAttack, playPhaseActions,
           playTargetEligibility: playTargetEligibilityFor(actor, allRoomPlayers, playPhaseActions, canDeclareAttack) },
       });
       if (catalogue.status === "ready") {
-        const choice = catalogue.publicChoices[0];
+        const choice = catalogue.publicChoices.find(({ kind }) => kind !== "end_turn") ?? catalogue.publicChoices[0];
         const selected = choice && catalogue.resolve(choice.id, authority);
         if (selected) {
           nextAction = selected.action;
           if (selected.action === "play_card") {
             actionFields = { cardId: selected.cardId, ...(selected.targetId ? { targetId: selected.targetId } : {}),
-              ...(selected.playAs ? { playAs: selected.playAs } : {}) };
+              ...(selected.targetIds ? { targetIds: selected.targetIds } : {}), ...(selected.playAs ? { playAs: selected.playAs } : {}) };
+          } else if (selected.action === "serpent_spear_attack") {
+            actionFields = { cardIds: selected.cardIds, targetId: selected.targetId };
           }
           decisionCause = "non_response_decision";
         }
       } else {
         decisionCause = catalogue.reason;
       }
-    } else if (pendingForController?.kind === "response" && legalActions.includes("decline_response")) {
-      const options = responseDecision?.options ?? [];
-      const { requirement, continuation, delegation } = pendingForController;
-      const supportedCombat = !delegation && (requirement.kind === "dodge" || requirement.kind === "attack")
-        && (continuation.kind === "attack" || continuation.kind === "duel" || continuation.kind === "group");
-      if (!supportedCombat || !responseDecision) {
-        decisionCause = "unsupported_pending_family";
-      } else if (!options.length) {
-        nextAction = "decline_response";
-        decisionCause = "no_legal_defense_declined";
-      } else {
-        decisionCause = "unsupported_response_provider";
-        const context = responseContext(actor, allRoomPlayers, room.turn_seat);
-        // The canonical provider owns the card cost. The continuation owns
-        // remaining responses, including one-at-a-time multi-Dodge windows.
-        for (const option of options) {
-          const selection = option.selection;
-          if (selection?.type !== "cards" || !Number.isSafeInteger(selection.min)
-            || selection.min < 1 || selection.min > selection.max) continue;
-          const eligible = [...new Set(selection.eligibleCardIds)].filter((id) => ownCardIds.has(id)).sort();
-          if (eligible.length < selection.min) continue;
-          const cardIds = eligible.slice(0, selection.min);
-          const execution = resolveResponseDecision(pendingForController, context, option.providerId, { cardIds });
-          if (execution?.status !== "satisfied" || execution.satisfies !== requirement.kind
-            || execution.consumeCardIds?.length !== cardIds.length
-            || !execution.consumeCardIds.every((id, index) => id === cardIds[index])) continue;
-          nextAction = "respond";
-          actionFields = { providerId: option.providerId, cardIds };
-          decisionCause = requirement.kind === "dodge" && (requirement.count ?? 1) === 1
-            && option.providerId === "card" && eligible.length === 1 && options.length === 1
-            ? "single_physical_dodge_supported" : "canonical_combat_response";
-          break;
+      if (nextAction === "end_turn" && legalActions.includes("trigger")) {
+        const active = activeHeroSkillOptions(actor, room, allRoomPlayers).find((option) => {
+          if (option.effectId === "huang_gai_kurou") return (actor.hp ?? 0) > 2 && ownHand.length < 2;
+          if (option.effectId === "liu_bei_rende") {
+            return (actor.hp ?? 0) < (actor.max_hp ?? 0) && ownHand.length >= 2;
+          }
+          return botTriggerChoices(option, ownedCostIds).length > 0;
+        });
+        const choice = active && botTriggerChoices(active, ownedCostIds)[0];
+        if (choice) {
+          nextAction = "trigger";
+          actionFields = choice;
         }
       }
-    } else if (pendingForController?.kind === "dying" && pendingForController.actorId === actor.id && legalActions.includes("skip_rescue")) {
-      if (!(responseDecision?.options.length)) {
-        nextAction = "skip_rescue";
+    } else if (pendingForController?.kind === "harvest" && legalActions.includes("choose_harvest")) {
+      const available = harvestAvailableIds(pendingForController);
+      const chosen = pendingForController.revealed.find(({ id }) => available.includes(id));
+      if (!pendingForController.completeAt && chosen) {
+        nextAction = "choose_harvest";
+        actionFields = { cardId: chosen.id };
+      }
+    } else if (pendingForController?.kind === "target_card" && legalActions.includes("choose_target_card")) {
+      const { targetId } = pendingForController;
+      const target = allRoomPlayers.find(({ id }) => id === targetId);
+      const selection = targetCardSelectionFor(pendingForController, target);
+      const key = selection?.eligibleKeys[0];
+      if (key && target) {
+        if (/^hand:\d+$/.test(key)) {
+          actionFields = { targetCardZone: "hand", targetCardIndex: Number(key.slice(5)) };
+        } else if (equipmentCards(target).some(({ id }) => id === key)) {
+          actionFields = { targetCardZone: "equipment", targetCardId: key };
+        } else if (parse<Card[]>(target.judgement_json, []).some(({ id }) => id === key)) {
+          actionFields = { targetCardZone: "judgement", targetCardId: key };
+        }
+        if (actionFields.targetCardZone) nextAction = "choose_target_card";
+      }
+    } else if (pendingForController?.kind === "borrowed_sword" && legalActions.includes("choose_borrowed_sword_target")) {
+      const targetId = borrowedSwordForcedTargetIds(allRoomPlayers, pendingForController.sourceId, pendingForController.holderId)[0];
+      nextAction = "choose_borrowed_sword_target";
+      // The canonical handler also owns settlement if no target remains.
+      actionFields = targetId ? { targetId } : {};
+    } else if (pendingForController?.kind === "card_distribution" && legalActions.includes("trigger")) {
+      const { eligibleRecipientIds } = pendingForController;
+      const recipient = allRoomPlayers.find((player) => player.alive && eligibleRecipientIds.includes(player.id));
+      if (recipient && pendingForController.cards.length) {
+        nextAction = "trigger";
+        actionFields = { providerId: "private_card_distribution",
+          assignments: pendingForController.cards.map(({ id }) => ({ cardId: id, recipientId: recipient.id })) };
+      }
+    } else if (pendingForController?.kind === "deck_reorder" && legalActions.includes("trigger")) {
+      const { cards, minTop, maxTop } = pendingForController;
+      if (Number.isSafeInteger(minTop) && minTop >= 0 && minTop <= maxTop && minTop <= cards.length) {
+        nextAction = "trigger";
+        actionFields = { providerId: "private_deck_reorder",
+          topCardIds: cards.slice(0, minTop).map(({ id }) => id),
+          bottomCardIds: cards.slice(minTop).map(({ id }) => id) };
+      }
+    } else if (botWindowResponse || pendingForController?.kind === "response" || pendingForController?.kind === "dying") {
+      const pending = botWindowResponse ?? pendingForController;
+      if (!pending || pending.kind !== "response" && pending.kind !== "dying") throw new Error("Invalid Bot response window");
+      const options = responseDecision?.options ?? [];
+      const requirementKind = responseDecision?.requirement;
+      const declineAction = responseDecision?.declineAction;
+      const context = responseContext(actor, allRoomPlayers, room.turn_seat);
+      const optionalNegation = pending.kind === "response" && pending.continuation.kind === "negation"
+        && (pending.continuation.effectTargetId !== actor.id || !["dismantle", "steal", "duel", "group", "overindulgence"].includes(pending.continuation.effect.kind));
+      decisionCause = "unsupported_response_provider";
+      for (const option of optionalNegation ? [] : options) {
+        const selection = option.selection;
+        if (selection && (!Number.isSafeInteger(selection.min) || selection.min < 1 || selection.min > selection.max)) continue;
+        const eligible = selection ? [...new Set(selection.eligibleCardIds)].filter((id) => ownCardIds.has(id)).sort() : [];
+        if (selection && eligible.length < selection.min) continue;
+        const cardIds = selection ? eligible.slice(0, selection.min) : [];
+        const execution = resolveResponseDecision(pending, context, option.providerId, { cardIds });
+        if (!execution || execution.satisfies !== requirementKind) continue;
+        if (execution.status === "satisfied") {
+          if (!cardIds.length || execution.consumeCardIds?.length !== cardIds.length
+            || !execution.consumeCardIds.every((id, index) => id === cardIds[index])) continue;
+        } else if (controllerWindow || cardIds.length) continue;
+        nextAction = "respond";
+        actionFields = { providerId: option.providerId, ...(cardIds.length ? { cardIds } : {}) };
+        decisionCause = pending.kind === "response" && requirementKind === "dodge" && pending.requirement.kind === "dodge"
+          && (pending.requirement.count ?? 1) === 1 && option.providerId === "card" && eligible.length === 1 && options.length === 1
+          ? "single_physical_dodge_supported" : "canonical_combat_response";
+        break;
+      }
+      if (!nextAction && declineAction && legalActions.includes(declineAction)
+        && (!options.length || optionalNegation || controllerWindow && options.every(({ selection }) => !selection))) {
+        nextAction = declineAction;
         decisionCause = "no_legal_defense_declined";
       }
     }
+    if (!nextAction && !controllerWindow) {
+      const trigger = asTriggerPending(pendingForController);
+      if (trigger?.actorId === actor.id) {
+        const context = triggerContextFor(trigger, allRoomPlayers, room);
+        const options = triggerOptionsFor(trigger, allRoomPlayers, room);
+        if (context && legalActions.includes("trigger")) {
+          for (const option of options) {
+            const choice = botTriggerChoices(option, ownedCostIds).find((candidate) => resolveTriggeredEffect(option.effectId, context, candidate));
+            if (!choice) continue;
+            nextAction = "trigger";
+            actionFields = choice;
+            break;
+          }
+        }
+        if (!nextAction && legalActions.includes("decline_trigger")) nextAction = "decline_trigger";
+      }
+    }
+    if (nextAction && decisionCause === "no_supported_action") decisionCause = "non_response_decision";
     emitEvaluation(nextAction, decisionCause);
     if (!nextAction) return finishDecision(json({ state: "unsupported", code: "UNSUPPORTED_BOT_DECISION", actionRevision: internalBot.actionRevision }), null, decisionCause);
-    const expectedPendingKind = pendingForController?.kind === "response" || pendingForController?.kind === "negation_window"
+    const expectedPendingKind = botWindowResponse
+      ? botWindowResponse.kind
+      : pendingForController?.kind === "response" || pendingForController?.kind === "negation_window"
       ? "response"
       : asTriggerPending(pendingForController) ? "trigger" : pendingForController?.kind ?? null;
     const nextBody = {
@@ -8846,6 +8991,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         phase: room.phase ?? null,
         pendingKind: expectedPendingKind,
         actorId: actionPlayerIdForController ?? null,
+        ...(controllerWindow ? { windowId: controllerWindow.windowId } : {}),
       },
     };
     let result: Response;
@@ -11817,9 +11963,10 @@ export async function POST(request: Request, routeContext?: unknown) {
       if (!canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, liveRoom.phase)) return json({ error: "You may play only one Attack per turn." }, 409);
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
         const requestedTargetIds = Array.isArray(body.targetIds) ? body.targetIds.map(String) : [String(body.targetId ?? "")];
-        const halberdAttack = hasSkyPiercingHalberd(me) && hand.length === 1;
+        const targetLimit = physicalAttackTargetLimit(me, hand.length);
+        const halberdAttack = targetLimit === 3;
         const targetIds = [...new Set(requestedTargetIds.filter(Boolean))];
-        if (!targetIds.length || targetIds.length > (halberdAttack ? 3 : 1)) return json({ error: halberdAttack ? "Sky Piercing Halberd can target from one to three opponents." : "Choose one living opponent as the target." }, 400);
+        if (!targetIds.length || targetIds.length > targetLimit) return json({ error: halberdAttack ? "Sky Piercing Halberd can target from one to three opponents." : "Choose one living opponent as the target." }, 400);
         if (!halberdAttack && targetIds.length !== 1) return json({ error: "Choose one living opponent as the target." }, 400);
         const targets = playersInTurnOrder(players, me.seat).filter((player) => targetIds.includes(player.id));
         if (targets.length !== targetIds.length || targets.some((target) => !target.alive || target.id === me.id)) return json({ error: "Choose living opponents as Attack targets." }, 400);

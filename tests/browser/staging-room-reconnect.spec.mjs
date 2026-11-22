@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { botTriggerChoices } from "../../ai/trigger-selection.ts";
 
 function isPostAction(response, action) {
   if (new URL(response.url()).pathname !== "/api/rooms" || response.request().method() !== "POST") return false;
@@ -12,6 +13,40 @@ function hasCompletedBotTurn(room, botName, afterLogIndex = 0) {
 
 function unsupportedBots(room) {
   return (room.players ?? []).filter((player) => player.isBot && ["unsupported", "error"].includes(player.botStatus));
+}
+
+function humanContinuation(room, hostId) {
+  const decision = room.currentAction;
+  if (decision?.actorId !== hostId || decision.sharedWindow?.locked) return null;
+  const legal = decision.legalActions;
+  const ownCards = new Set((room.myHand ?? []).map(({ id }) => id));
+  if (legal.includes("choose_harvest") && room.pendingHarvest?.availableIds[0]) {
+    return { action: "choose_harvest", cardId: room.pendingHarvest.availableIds[0] };
+  }
+  if (legal.includes("choose_borrowed_sword_target")) {
+    return { action: "choose_borrowed_sword_target", targetId: room.pendingBorrowedSword?.eligibleTargetIds[0] };
+  }
+  if (legal.includes("choose_target_card")) {
+    const target = room.players.find(({ id }) => id === decision.targetCardSelection?.targetId);
+    const key = decision.targetCardSelection?.eligibleKeys[0];
+    if (key?.startsWith("hand:")) return { action: "choose_target_card", targetCardZone: "hand", targetCardIndex: Number(key.slice(5)) };
+    if (key && target?.equipmentCards.some(({ id }) => id === key)) return { action: "choose_target_card", targetCardZone: "equipment", targetCardId: key };
+    if (key && target?.judgementCards.some(({ id }) => id === key)) return { action: "choose_target_card", targetCardZone: "judgement", targetCardId: key };
+  }
+  if (legal.includes("trigger") && !legal.includes("decline_trigger") && decision.kind !== "turn") {
+    if (decision.distribution?.eligibleRecipientIds[0]) {
+      return { action: "trigger", providerId: "private_card_distribution",
+        assignments: decision.distribution.cards.map(({ id }) => ({ cardId: id, recipientId: decision.distribution.eligibleRecipientIds[0] })) };
+    }
+    if (decision.deckReorder) {
+      const { cards, minTop } = decision.deckReorder;
+      return { action: "trigger", providerId: "private_deck_reorder", topCardIds: cards.slice(0, minTop).map(({ id }) => id),
+        bottomCardIds: cards.slice(minTop).map(({ id }) => id) };
+    }
+    const selection = (decision.triggerOptions ?? []).flatMap((option) => botTriggerChoices(option, ownCards))[0];
+    if (selection) return { action: "trigger", ...selection };
+  }
+  return null;
 }
 
 async function waitForRoom(request, roomCode, token, predicate, { timeoutMs = 90_000, label = "room state", beforePoll, onState } = {}) {
@@ -163,6 +198,12 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
           data: { action: "respond", code: roomCode, token: created.token, context, providerId: dodge.providerId, cardId },
         });
         if (response.status() !== 409) expect(response.status()).toBe(200);
+        return true;
+      }
+      const continuation = humanContinuation(room, hostId);
+      if (continuation) {
+        const result = await request.post("/api/rooms", { data: { code: roomCode, token: created.token, context, ...continuation } });
+        if (result.status() !== 409) expect(result.status()).toBe(200);
         return true;
       }
       const action = legal.find((candidate) => ["decline_response", "decline_trigger", "skip_rescue"].includes(candidate));

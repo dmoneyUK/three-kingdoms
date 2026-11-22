@@ -1,13 +1,6 @@
 import { createBotActionPrincipal } from "./bot-principal";
 import { emitBotDiagnostic, isBotWorkStatus, type BotErrorCode, type BotSchedulerDiagnosticContext, type BotWorkStatus } from "./bot-diagnostics";
 
-type PublicBotRoom = {
-  status?: string;
-  actionRevision?: string;
-  actionPlayerId?: string | null;
-  players?: Array<{ id?: string; isBot?: boolean }>;
-};
-
 type BotStepInput = {
   code: string;
   botId: string;
@@ -59,27 +52,20 @@ async function loadRoomRouteHandlers() {
   return import("../app/api/rooms/route");
 }
 
-export async function runBotStep(db: Pick<D1Database, "prepare">, input: BotStepInput): Promise<Response> {
+export async function runBotStep(_db: Pick<D1Database, "prepare">, input: BotStepInput): Promise<Response> {
   const code = input.code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
   if (!code || !input.botId) return Response.json({ error: "A room code and bot ID are required." }, { status: 400 });
-  const roomRow = await db.prepare("SELECT id FROM rooms WHERE code = ?").bind(code).first<{ id: string }>();
-  if (!roomRow) return Response.json({ error: "Room not found." }, { status: 404 });
-  const roomRequest = new Request(`https://internal.invalid/api/rooms?code=${encodeURIComponent(code)}`);
-  const { GET: getRoom, POST: postRoom } = await loadRoomRouteHandlers();
-  const roomResponse = await getRoom(roomRequest);
-  if (!roomResponse.ok) return roomResponse;
-  const room = await roomResponse.json() as PublicBotRoom;
-  const bot = room.players?.find((player) => player.id === input.botId && player.isBot);
-  if (!bot) return Response.json({ error: "The requested actor is not a bot in this room." }, { status: 403 });
-  if (room.status !== "heroes" && room.status !== "playing") return Response.json({ state: "waiting_for_human" });
-  if (room.actionPlayerId !== input.botId) return Response.json({ state: "waiting_for_human", actionRevision: room.actionRevision ?? null });
-  if (!room.actionRevision) return Response.json({ error: "The server did not provide an action revision." }, { status: 409 });
+  const { botControllerSnapshot, POST: postRoom } = await loadRoomRouteHandlers();
+  const room = await botControllerSnapshot(code);
+  if (!room) return Response.json({ error: "Room not found." }, { status: 404 });
+  if (!room.botIds.includes(input.botId)) return Response.json({ error: "The requested actor is not a bot in this room." }, { status: 403 });
+  if (!room.eligibleBotIds.includes(input.botId)) return Response.json({ state: "waiting_for_human", actionRevision: room.actionRevision });
   if (input.actionRevision && input.actionRevision !== room.actionRevision) {
     return Response.json({ error: "The bot decision is stale." }, { status: 409 });
   }
 
   const principal = createBotActionPrincipal({
-    roomId: roomRow.id,
+    roomId: room.roomId,
     botId: input.botId,
     actionRevision: room.actionRevision,
     decisionId: input.decisionId ?? crypto.randomUUID(),
@@ -109,13 +95,6 @@ export async function runBotStep(db: Pick<D1Database, "prepare">, input: BotStep
     return Response.json(safePayload, { status: actionResponse.status });
   }
   return Response.json({ error: "The internal bot action returned an invalid payload." }, { status: 502 });
-}
-
-async function publicRoom(code: string): Promise<PublicBotRoom | null> {
-  const { GET: getRoom } = await loadRoomRouteHandlers();
-  const response = await getRoom(new Request(`https://internal.invalid/api/rooms?code=${encodeURIComponent(code)}`));
-  if (!response.ok) return null;
-  return await response.json() as PublicBotRoom;
 }
 
 async function acquireRoomLease(db: Pick<D1Database, "prepare">, roomId: string, now: number, leaseToken: string) {
@@ -221,11 +200,11 @@ export async function runBotScheduler(
 
     try {
       while (summary.steps < stepLimit) {
-        const room = await publicRoom(candidate.code);
+        const { botControllerSnapshot } = await loadRoomRouteHandlers();
+        const room = await botControllerSnapshot(candidate.code, true);
         if (!room || room.status !== "heroes" && room.status !== "playing") break;
-        const actorId = room.actionPlayerId ?? null;
-        const actor = room.players?.find((player) => player.id === actorId && player.isBot);
-        if (!actor || !room.actionRevision) break;
+        const actorId = room.eligibleBotIds[0];
+        if (!actorId || !room.actionRevision) break;
 
         // Any older decision is obsolete once the authoritative room revision
         // advances. An expired in-flight decision is safe to mark stale: the
@@ -249,10 +228,10 @@ export async function runBotScheduler(
         await db.prepare(`INSERT OR IGNORE INTO bot_work
           (decision_id, room_id, bot_id, action_revision, status, attempts, available_at, budget_reserved, created_at, updated_at)
           VALUES (?, ?, ?, ?, 'pending', 0, ?, 0, ?, ?)`)
-          .bind(proposedDecisionId, candidate.id, actor.id, room.actionRevision, now, now, now).run();
+          .bind(proposedDecisionId, candidate.id, actorId, room.actionRevision, now, now, now).run();
         const work = await db.prepare(`SELECT * FROM bot_work
           WHERE room_id = ? AND bot_id = ? AND action_revision = ?`)
-          .bind(candidate.id, actor.id, room.actionRevision).first<BotWorkRow>();
+          .bind(candidate.id, actorId, room.actionRevision).first<BotWorkRow>();
         if (!work) break;
         if (["consumed", "waiting_for_human", "unsupported", "stale", "failed"].includes(work.status)) break;
         if (work.status === "claimed" && (work.lease_until ?? 0) > now) break;
@@ -309,7 +288,7 @@ export async function runBotScheduler(
         try {
           actionResponse = await dispatchStep(db, {
             code: candidate.code,
-            botId: actor.id,
+            botId: actorId,
             actionRevision: room.actionRevision,
             decisionId: work.decision_id,
             diagnostics,
