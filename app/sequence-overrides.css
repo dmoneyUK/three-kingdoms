@@ -8339,3 +8339,198 @@
 .game-shell .card-pool-decision-footer__count:empty {
   display: none;
 }
+
+/* §10.67: compact private Stargazing picker. Keep both authentic zones inside
+   the real play-table footprint and reserve the footer action below them. */
+.deck-reorder-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.game-shell .play-table > .target-card-picker-overlay.deck-reorder-overlay {
+  align-items: flex-end;
+  padding: var(--interaction-safe-top, 8px) 8px 8px;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: min(440px, 100%);
+  max-width: 100%;
+  max-height: calc(100% - 16px);
+  margin: 0 0 8px;
+  padding: 8px;
+  overflow: hidden;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel > header {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 0 2px 2px;
+  text-align: center;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel > header strong {
+  font-size: 14px;
+  line-height: 1.1;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel > header span {
+  margin: 0;
+  color: #c6b88f;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel > .deck-reorder-sequences {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 5px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0;
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-group {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid #a88a4d99;
+  border-radius: 5px;
+  background: #0f120edb;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-group[data-drop-eligible="true"] {
+  border-color: #d1b76b;
+  background: #292619e8;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-group.is-drop-active {
+  border-color: #ffe08a;
+  background: #6d542055;
+  box-shadow: inset 0 0 0 1px #f1ca6a55, 0 0 14px #e4ba5b2a;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-zone-top .deck-reorder-card-row {
+  min-height: 92px;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-zone-bottom .deck-reorder-card-row {
+  min-height: 72px;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card-row {
+  display: flex;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  margin: 0;
+  padding: 2px 0;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card-row::-webkit-scrollbar {
+  display: none;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card {
+  flex: 0 0 min(76px, calc((100% - 16px) / 5));
+  width: min(76px, calc((100% - 16px) / 5));
+  min-width: 66px;
+  gap: 0;
+  scroll-snap-align: start;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card:focus-visible {
+  z-index: 3;
+  outline: 2px solid #ffe08a;
+  outline-offset: 2px;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card-face {
+  width: 100%;
+  aspect-ratio: 5 / 7;
+  touch-action: none;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card-face > .played-card {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  animation: none;
+  opacity: 1;
+  transform: none;
+  translate: 0 0;
+  pointer-events: none;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card.is-drag-source {
+  opacity: .28;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-zone-label {
+  display: flex;
+  flex: 0 0 15px;
+  min-height: 15px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 2px;
+  color: #e3cc91;
+  font: 700 9px/1 Arial, sans-serif;
+  letter-spacing: .1em;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-zone-label span {
+  color: #c6b88f;
+  font: 9px/1 Arial, sans-serif;
+  letter-spacing: normal;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-drop-placeholder {
+  flex: 1 0 68px;
+  min-width: 0;
+  min-height: 68px;
+  border: 0;
+  border-radius: 3px;
+  background: #a88a4d0a;
+  pointer-events: none;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-insertion-indicator {
+  flex: 0 0 3px;
+  width: 3px;
+  height: 82px;
+  border-radius: 3px;
+  background: #ffe08a;
+  box-shadow: 0 0 8px #ffe08a;
+  pointer-events: none;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-completion {
+  position: sticky;
+  z-index: 2;
+  bottom: 0;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 2px 0 0;
+  background: #151812;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-completion button {
+  width: 100%;
+  min-height: 44px;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

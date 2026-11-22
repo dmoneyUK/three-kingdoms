@@ -60,6 +60,21 @@ test("Stargazing is optional, private, exact-card, reload-safe, and resumes Draw
   assert.equal(replay.status, 409);
 });
 
+test("Stargazing accepts the initial all-Top draft without reordering the deck", async () => {
+  const game = await createHumanSetupGame();
+  const opened = await openStargazing(game);
+  const { code, actorToken } = opened;
+  const trigger = await request("trigger", { code, token: actorToken, providerId: "zhuge_liang_stargazing" });
+  assert.equal(trigger.status, 200, JSON.stringify(trigger.data));
+  const actor = (await state(code, actorToken)).data;
+  const topCardIds = actor.currentAction.deckReorder.cards.map((item) => item.id);
+  const confirmed = await request("trigger", { code, token: actorToken, providerId: "private_deck_reorder", topCardIds, bottomCardIds: [] });
+  assert.equal(confirmed.status, 200, JSON.stringify(confirmed.data));
+  assert.deepEqual(JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(code)}`)).map((item) => item.id), [
+    ...topCardIds, "negation-star-e", "attack-star-f",
+  ]);
+});
+
 test("Quick Test keeps Stargazing cards private to the acting controlled seat", async () => {
   const game = await createTestGame();
   const { room, token } = game.data;

@@ -62,8 +62,11 @@ test("shared pool actions do not relabel specialized non-pool controls", () => {
   assert.match(gameRoomSource, /const responseDeclineLabel = borrowedSwordForcedChoiceActive \? "Give up Weapon" : declineAcceptsDamage \? "TAKE DAMAGE" : sharedNegationWindow \? "Pass" : "Skip";/);
   assert.match(gameRoomSource, /end-turn-confirmation__confirm/);
   assert.match(gameRoomSource, />Confirm End<\/button>/);
-  assert.match(gameRoomSource, /data-deck-reorder-submit="true"/);
-  assert.match(gameRoomSource, />COMPLETE STARGAZING<\/button>/);
+  const stargazingSource = gameRoomSource.slice(gameRoomSource.indexOf("function PrivateDeckReorderDialog"), gameRoomSource.indexOf("function PrivateCardDistributionDialog"));
+  assert.match(stargazingSource, /data-deck-reorder-submit="true"/);
+  assert.match(stargazingSource, />CONFIRM<\/button>/);
+  assert.match(stargazingSource, /top: cards\.map\(\(card\) => card\.id\), bottom: \[\]/);
+  assert.doesNotMatch(stargazingSource, /unassigned|REVEALED CARDS|COMPLETE STARGAZING|deck-reorder-menu-toggle|deck-reorder-progress/);
   assert.match(gameRoomSource, /turnConversionPrecommitControls\?\.primaryLabel/);
   assert.match(gameRoomSource, /turnConversionPrecommitControls\?\.primaryEnabled/);
   assert.match(gameRoomSource, /data-serpent-spear-control="true"[^\n]*aria-label=\{SERPENT_SPEAR_LABEL\}[^\n]*aria-pressed=\{serpentMode\}/);

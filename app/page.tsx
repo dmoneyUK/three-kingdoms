@@ -12411,7 +12411,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
 
 type ChoiceTriggerSelection = Extract<NonNullable<TriggerOptionView["selection"]>, { type: "choice" }>;
 
-type DeckZone = "unassigned" | "top" | "bottom";
+type DeckZone = "top" | "bottom";
 type DeckArrangement = Record<DeckZone, string[]>;
 type DeckDrag = {
   pointerId: number;
@@ -12436,9 +12436,8 @@ type DeckDrag = {
 };
 type DeckEdgeScroll = { row: HTMLElement; zone: DeckZone; direction: -1 | 1; pointerId: number };
 
-const DECK_ZONES: readonly DeckZone[] = ["unassigned", "top", "bottom"];
+const DECK_ZONES: readonly DeckZone[] = ["top", "bottom"];
 const DECK_ZONE_LABELS: Readonly<Record<DeckZone, string>> = {
-  unassigned: "Revealed Cards",
   top: "Top of Deck",
   bottom: "Bottom of Deck",
 };
@@ -12446,12 +12445,10 @@ const DECK_ZONE_LABELS: Readonly<Record<DeckZone, string>> = {
 function insertDeckCard(arrangement: DeckArrangement, cardId: string, destination: DeckZone, insertionIndex: number): DeckArrangement {
   const source = DECK_ZONES.find((zone) => arrangement[zone].includes(cardId));
   if (!source) return arrangement;
-  const next: DeckArrangement = {
-    unassigned: [...arrangement.unassigned],
-    top: [...arrangement.top],
-    bottom: [...arrangement.bottom],
-  };
-  next[source].splice(next[source].indexOf(cardId), 1);
+  const sourceIndex = arrangement[source].indexOf(cardId);
+  if (source === destination && sourceIndex === insertionIndex) return arrangement;
+  const next: DeckArrangement = { top: [...arrangement.top], bottom: [...arrangement.bottom] };
+  next[source].splice(sourceIndex, 1);
   const target = next[destination];
   target.splice(Math.max(0, Math.min(insertionIndex, target.length)), 0, cardId);
   return next;
@@ -12467,7 +12464,7 @@ function zoneInsertionIndex(row: HTMLElement, cardId: string, pointerX: number):
 }
 
 function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSubmit }: { cards: Card[]; minTop: number; maxTop: number; disabled: boolean; error: string; onSubmit: (topCardIds: string[], bottomCardIds: string[]) => void }) {
-  const [arrangement, setArrangement] = useState<DeckArrangement>(() => ({ unassigned: cards.map((card) => card.id), top: [], bottom: [] }));
+  const [arrangement, setArrangement] = useState<DeckArrangement>(() => ({ top: cards.map((card) => card.id), bottom: [] }));
   const arrangementRef = useRef(arrangement);
   const [drag, setDrag] = useState<DeckDrag | null>(null);
   const dragRef = useRef<DeckDrag | null>(null);
@@ -12475,11 +12472,10 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
   const edgeScrollRef = useRef<DeckEdgeScroll | null>(null);
   const edgeScrollIntervalRef = useRef<number | null>(null);
   const [edgeScrollZone, setEdgeScrollZone] = useState<DeckZone | null>(null);
-  const [moveMenuCardId, setMoveMenuCardId] = useState<string | null>(null);
   const [focusCardId, setFocusCardId] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const dialogRef = useRef<HTMLElement | null>(null);
-  const moveButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const cardRefs = useRef(new Map<string, HTMLElement>());
   const previousCardRectsRef = useRef(new Map<string, { left: number; top: number; zone: string | null }>());
   const held = useMemo(() => new Map(cards.map((card) => [card.id, card])), [cards]);
   useEffect(() => {
@@ -12524,10 +12520,11 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     releaseCapture(session);
   };
   const commitMove = (cardId: string, zone: DeckZone, index: number) => {
-    const next = insertDeckCard(arrangementRef.current, cardId, zone, index);
+    const current = arrangementRef.current;
+    const next = insertDeckCard(current, cardId, zone, index);
+    if (next === current) return;
     arrangementRef.current = next;
     setArrangement(next);
-    setMoveMenuCardId(null);
     setFocusCardId(cardId);
     const card = held.get(cardId);
     const finalIndex = next[zone].indexOf(cardId);
@@ -12639,7 +12636,6 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
       return;
     }
     dragRef.current = session;
-    setMoveMenuCardId(null);
     if (event.pointerType === "touch") {
       holdTimerRef.current = window.setTimeout(() => activateDrag(session), 260);
     }
@@ -12687,11 +12683,27 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     }
     clearDrag(session);
   };
-  const moveCardByMenu = (cardId: string, zone: DeckZone, index?: number) => {
+  const moveCardByKeyboard = (event: React.KeyboardEvent<HTMLElement>, cardId: string) => {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+    event.preventDefault();
+    if (disabled) return;
     const current = arrangementRef.current;
     const source = DECK_ZONES.find((candidate) => current[candidate].includes(cardId));
-    const insertionIndex = index ?? current[zone].length - (source === zone ? 1 : 0);
-    commitMove(cardId, zone, insertionIndex);
+    if (!source) return;
+    const sourceIndex = current[source].indexOf(cardId);
+    let destination = source;
+    let insertionIndex = sourceIndex;
+    if (event.key === "ArrowLeft") {
+      if (sourceIndex === 0) return;
+      insertionIndex -= 1;
+    } else if (event.key === "ArrowRight") {
+      if (sourceIndex >= current[source].length - 1) return;
+      insertionIndex += 1;
+    } else {
+      destination = event.key === "ArrowUp" ? "top" : "bottom";
+      insertionIndex = Math.min(sourceIndex, current[destination].length);
+    }
+    commitMove(cardId, destination, insertionIndex);
   };
   useLayoutEffect(() => {
     arrangementRef.current = arrangement;
@@ -12705,7 +12717,7 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
       const bounds = element.getBoundingClientRect();
       const zone = element.closest<HTMLElement>("[data-deck-zone]")?.dataset.deckZone ?? null;
       const previous = previousRects.get(id);
-      if (!reduceMotion && previous && previous.zone === zone && zone !== "unassigned") {
+      if (!reduceMotion && previous && previous.zone === zone) {
         const deltaX = previous.left - bounds.left;
         const deltaY = previous.top - bounds.top;
         // Only animate horizontal reorders in assigned strips. Animating
@@ -12723,7 +12735,7 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     previousCardRectsRef.current = nextRects;
     if (!focusCardId) return;
     const frame = window.requestAnimationFrame(() => {
-      moveButtonRefs.current.get(focusCardId)?.focus();
+      cardRefs.current.get(focusCardId)?.focus({ preventScroll: true });
       setFocusCardId(null);
     });
     return () => window.cancelAnimationFrame(frame);
@@ -12734,45 +12746,30 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     edgeScrollIntervalRef.current = null;
     edgeScrollRef.current = null;
   }, []);
-  const arrangedCount = arrangement.top.length + arrangement.bottom.length;
   const everyCardExactlyOnce = (() => {
-    const ids = [...arrangement.unassigned, ...arrangement.top, ...arrangement.bottom];
+    const ids = [...arrangement.top, ...arrangement.bottom];
     return ids.length === cards.length && new Set(ids).size === cards.length && cards.every((card) => ids.includes(card.id));
   })();
-  const complete = arrangement.unassigned.length === 0 && arrangement.top.length >= minTop
-    && arrangement.top.length <= maxTop && arrangement.top.length + arrangement.bottom.length === cards.length
+  const complete = arrangement.top.length >= minTop
+    && arrangement.top.length <= maxTop
+    && arrangement.top.length + arrangement.bottom.length === cards.length
     && everyCardExactlyOnce;
   const renderCard = (id: string, zone: DeckZone, index: number, count: number) => {
     const card = held.get(id);
     if (!card) return null;
     const name = cardDefinition(card.kind).name;
-    const menuId = "stargazing-card-menu-" + cards.findIndex((item) => item.id === id);
-    const currentMenuOpen = moveMenuCardId === id;
-    const zoneIds = arrangement[zone];
-    const sourceIndex = zoneIds.indexOf(id);
-    const appendIndex = (target: DeckZone) => arrangement[target].length - (target === zone ? 1 : 0);
-    return <article className={"deck-reorder-card" + (drag?.active && drag.cardId === id ? " is-drag-source" : "")}
-      role="listitem" key={id} data-deck-card-id={id} data-deck-zone-name={zone} data-order-index={index}
+    return <article ref={(node) => { if (node) cardRefs.current.set(id, node); else cardRefs.current.delete(id); }}
+      className={"deck-reorder-card" + (drag?.active && drag.cardId === id ? " is-drag-source" : "")}
+      role="listitem" tabIndex={0} key={id} data-deck-card-id={id} data-deck-zone-name={zone} data-order-index={index}
       data-dragging={drag?.active && drag.cardId === id ? "true" : "false"}
-      aria-label={name + ", " + DECK_ZONE_LABELS[zone] + ", position " + (index + 1) + " of " + count}>
+      aria-label={name + " " + card.rank + card.suit + ", " + DECK_ZONE_LABELS[zone] + ", position " + (index + 1) + " of " + count}
+      aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"
+      onKeyDown={(event) => moveCardByKeyboard(event, id)}>
       <div className="deck-reorder-card-face" onPointerDown={(event) => beginDrag(event, id, zone, index)}
         onLostPointerCapture={(event) => finishPointer(event, true)}
         onDragStart={(event) => event.preventDefault()} data-deck-card-face={id}>
         <CardFace card={card} />
-        <span className="deck-reorder-drag-grip" data-deck-touch-handle="true" aria-hidden="true">⠿</span>
       </div>
-      <button ref={(node) => { if (node) moveButtonRefs.current.set(id, node); else moveButtonRefs.current.delete(id); }}
-        type="button" className="deck-reorder-menu-toggle" disabled={disabled}
-        aria-label={"Move " + name} aria-expanded={currentMenuOpen} aria-controls={menuId}
-        onClick={() => setMoveMenuCardId(currentMenuOpen ? null : id)}>Move</button>
-      {currentMenuOpen && <div className="deck-reorder-card-actions" id={menuId} role="group"
-        aria-label={name + " move options"} data-deck-reorder-menu-for={id}>
-        {zone !== "top" && <button type="button" disabled={disabled} onClick={() => moveCardByMenu(id, "top", appendIndex("top"))} aria-label={"Move " + name + " to top of deck"}>Top</button>}
-        {zone !== "bottom" && <button type="button" disabled={disabled} onClick={() => moveCardByMenu(id, "bottom", appendIndex("bottom"))} aria-label={"Move " + name + " to bottom of deck"}>Bottom</button>}
-        {zone !== "unassigned" && <button type="button" disabled={disabled} onClick={() => moveCardByMenu(id, "unassigned", arrangement.unassigned.length)} aria-label={"Return " + name + " to revealed cards"}>Return</button>}
-        {(zone === "top" || zone === "bottom") && sourceIndex > 0 && <button type="button" disabled={disabled} onClick={() => moveCardByMenu(id, zone, sourceIndex - 1)} aria-label={"Move " + name + " earlier"}>Earlier</button>}
-        {(zone === "top" || zone === "bottom") && sourceIndex >= 0 && sourceIndex < zoneIds.length - 1 && <button type="button" disabled={disabled} onClick={() => moveCardByMenu(id, zone, sourceIndex + 1)} aria-label={"Move " + name + " later"}>Later</button>}
-      </div>}
     </article>;
   };
   const renderZoneItems = (zone: DeckZone) => {
@@ -12787,21 +12784,22 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
         data-deck-insertion-indicator="true" data-insertion-index={activeTarget ?? undefined} aria-hidden="true" key={"marker-" + zone + "-" + index} />);
       if (index < ids.length) children.push(renderCard(ids[index], zone, index, ids.length) as ReactNode);
     }
-    if (!ids.length) children.push(<span className="deck-reorder-drop-placeholder" key={"empty-" + zone}>{zone === "unassigned" ? "All revealed cards are arranged." : "Drop cards here"}</span>);
-    return <div className="deck-reorder-card-row" role="list" aria-label={DECK_ZONE_LABELS[zone] + " order"}
+    if (!ids.length) children.push(<span className="deck-reorder-drop-placeholder" key={"empty-" + zone} aria-hidden="true" />);
+    return <div className="deck-reorder-card-row" role="list" aria-label={DECK_ZONE_LABELS[zone] + " cards"}
       data-deck-zone-items="true" data-deck-reorder-sequence={zone} data-edge-scroll-active={edgeScrollActive ? "true" : "false"} key={"items-" + zone}>{children}</div>;
   };
   const renderZone = (zone: DeckZone) => {
     const ids = arrangement[zone];
-    const orderHint = zone === "top" ? "Draws first →" : zone === "bottom" ? "After remaining deck →" : arrangement.unassigned.length + " left";
-    const hint = ids.length > 4 ? orderHint + " · Swipe ↔" : orderHint;
     const isTarget = drag?.active && drag.targetZone === zone;
+    const labelId = "stargazing-zone-" + zone;
     return <section className={"deck-reorder-group deck-reorder-zone-" + zone + (ids.length ? " has-cards" : " is-empty") + (isTarget ? " is-drop-active" : "")}
-      aria-label={DECK_ZONE_LABELS[zone]} data-deck-zone={zone}
-      data-deck-sequence={zone === "unassigned" ? undefined : zone} data-card-count={ids.length}
+      role="group" aria-labelledby={labelId} data-deck-zone={zone} data-deck-sequence={zone} data-card-count={ids.length}
       data-drop-eligible={drag?.active ? "true" : "false"} data-drop-active={isTarget ? "true" : "false"}>
-      <header><strong>{zone === "unassigned" ? "REVEALED CARDS" : zone === "top" ? "TOP OF DECK" : "BOTTOM OF DECK"}</strong><span>{hint}</span></header>
       {renderZoneItems(zone)}
+      <footer className="deck-reorder-zone-label" data-deck-zone-label="true">
+        <strong id={labelId}>{zone === "top" ? "TOP OF DECK" : "BOTTOM OF DECK"}</strong>
+        <span aria-hidden="true">{ids.length}</span>
+      </footer>
     </section>;
   };
   const cancelActiveDrag = () => {
@@ -12811,16 +12809,15 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
   return <div className="target-card-picker-overlay deck-reorder-overlay" role="presentation"
     onPointerMove={handlePointerMove} onPointerUp={(event) => finishPointer(event)} onPointerCancel={(event) => finishPointer(event, true)}
     onLostPointerCapture={(event) => finishPointer(event, true)}
-    onKeyDown={(event) => { if (event.key === "Escape" && dragRef.current) { event.preventDefault(); cancelActiveDrag(); } else if (event.key === "Escape" && moveMenuCardId) { event.preventDefault(); setFocusCardId(moveMenuCardId); setMoveMenuCardId(null); } }}>
-    <section ref={dialogRef} className="target-card-picker-panel choice-trigger-panel deck-reorder-panel" role="dialog" aria-modal="false" aria-label="Stargazing deck reorder" aria-describedby="stargazing-deck-instructions">
-      <header><strong id="stargazing-deck-title">STARGAZING</strong><span id="stargazing-deck-instructions">Hold and drag a card to Top or Bottom; drag again to change order. Use each card’s Move menu for keyboard and screen-reader controls.</span></header>
+    onKeyDown={(event) => { if (event.key === "Escape" && dragRef.current) { event.preventDefault(); cancelActiveDrag(); } }}>
+    <section ref={dialogRef} className="target-card-picker-panel choice-trigger-panel deck-reorder-panel" role="dialog" aria-modal="false" aria-label="Stargazing deck reorder" aria-describedby="stargazing-deck-accessible-instructions">
+      <header><strong id="stargazing-deck-title">STARGAZING</strong><span>Hold and drag cards to change position.</span></header>
+      <p id="stargazing-deck-accessible-instructions" className="deck-reorder-sr-only">Keyboard controls: focus a card, use Left or Right to reorder within its zone, and Up or Down to move it between Top and Bottom. The card name, suit, zone and position are available to assistive technology.</p>
       <div className="deck-reorder-sequences">
         {renderZone("top")}
-        {renderZone("unassigned")}
         {renderZone("bottom")}
       </div>
-      <div className="deck-reorder-progress" aria-live="polite" data-deck-reorder-progress="true">{arrangedCount} / {cards.length} arranged</div>
-      <div className="target-card-picker-actions deck-reorder-completion"><button type="button" className="primary" data-deck-reorder-submit="true" disabled={disabled || !complete} onClick={() => onSubmit(arrangement.top, arrangement.bottom)}>COMPLETE STARGAZING</button></div>
+      <div className="target-card-picker-actions deck-reorder-completion"><button type="button" className="primary" data-deck-reorder-submit="true" disabled={disabled || !complete} onClick={() => onSubmit(arrangement.top, arrangement.bottom)}>CONFIRM</button></div>
       {error && <p className="error" role="alert">{error}</p>}
       <p className="deck-reorder-live" aria-live="polite" aria-atomic="true">{announcement}</p>
     </section>
