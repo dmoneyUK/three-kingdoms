@@ -459,6 +459,10 @@ test("multiple eligible Dodges select one deterministically and keep private det
 test("a Bot commits its physical Attack and the human Dodge window together", async () => {
   const { code, token, hostId, bots } = await createBotGame();
   const bot = bots[0];
+  sql(`UPDATE players SET role='Lord' WHERE id=${quote(hostId)};
+    UPDATE players SET role='Rebel' WHERE id=${quote(bot.id)};
+    UPDATE players SET role='Loyalist' WHERE id=${quote(bots[1].id)};
+    UPDATE players SET role='Renegade' WHERE id=${quote(bots[2].id)}`);
   sql(`UPDATE players SET hero='sun-quan', equipment_json='{}' WHERE id IN (${quote(hostId)}, ${quote(bot.id)})`);
   setHand(hostId, [card("Dodge", "bot-attack-human-dodge")], 4, 4);
   const physicalAttack = card("Attack", "bot-active-attack");
@@ -918,7 +922,8 @@ test("one human and three genuine Bots progress through a stratagem, Hero trigge
   const draw = card("DrawTwo", "complete-bot-match");
   const attack = card("Attack", "complete-bot-match");
   const bow = card("KirinBow", "complete-bot-match");
-  setHand(hostId, [], 3, 4);
+  // Two Rebel hits should reach rescue; the Renegade now correctly avoids the Lord in a four-player game.
+  setHand(hostId, [], 2, 4);
   setHand(attacker.id, [draw, attack], 3, 3);
   setHand(helper.id, [card("Attack", "complete-bot-match-helper")], 4, 4);
   setHand(renegade.id, [card("Attack", "complete-bot-match-renegade")], 4, 4);
@@ -970,7 +975,7 @@ test("one human and three genuine Bots progress through a stratagem, Hero trigge
     steps, passedNegation, declinedAttacks, skippedRescue,
     seats: final?.players.map(({ seat, hp, botStatus }) => ({ seat, hp, botStatus })),
   }));
-  assert.ok(passedNegation && declinedAttacks >= 3 && skippedRescue);
+  assert.ok(passedNegation && declinedAttacks >= 2 && skippedRescue);
   assert.ok(steps > 0 && steps <= 200);
   assert.match(final.log.join("\n"), /Cultivation/);
   assert.match(final.log.join("\n"), /Rebel victory! The match is over\./);
