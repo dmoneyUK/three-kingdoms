@@ -1,6 +1,6 @@
 # Smart Bot Player — Coding Agent Handover
 
-Branch: `feature/smart-bot-player` · Worktree: `/private/tmp/WTK-AIP-SYNC-04-20261119` · Design reviewed: AIP-D33 (2026-11-22).
+Branch: `feature/smart-bot-player` · Worktree: `/private/tmp/WTK-AIP-SYNC-02-20261122` · Design reviewed: AIP-D33 (2026-11-22).
 
 ## Latest result — AIP-ROLE-01 (`PENDING_REVIEW`)
 
@@ -18,4 +18,6 @@ Perform one pinned, one-way merge from `origin/ux-v2` into `feature/smart-bot-pl
 
 **Pushed code checkpoint:** Merge commit `f8813eb5aca048a53a7197ecaea3c9042993a8f1` has both required parents (`de35dbc68d164eb464b794374df25ed6ef01c1c1`, `dbf57a7c11ce44c4ca438f44a0de345d763e0451`) and is pushed to `feature/smart-bot-player`. Changed local focused presentation/render tests passed 52/52 with the project `tsx` loader; `git diff --cached --check` passed. API and browser integration tests were not run locally; exact-SHA GitHub Actions is responsible for those source/build-dependent checks.
 
-**Current acceptance gate:** Exact-SHA [Actions run 45066768247](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45066768247) is in progress on `f8813eb5aca048a53a7197ecaea3c9042993a8f1`. Await all lint/build/fast/API/browser jobs, isolated AI Staging migration/Worker/mobile smoke, and confirm production `deploy` is skipped. Verify Staging Worker version and applied D1 journal through AI 0017 before setting AIP-SYNC-02 `PENDING_REVIEW`; combined physical iPhone review remains required.
+**Exact-SHA Actions attempt 1:** [Run 45066768247](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45066768247) on `f8813eb5aca048a53a7197ecaea3c9042993a8f1` passed lint/fast, API and browser smoke; the Staging target guard, build, D1 apply and Worker deploy also passed. Production `deploy` was skipped. The mobile smoke failed because test room `W4FZF` defeated the human host before their first turn (BOT 2 Attack, then two BOT 4 Duels); the public log shows Bots continued taking turns. No deployment/migration failure was reported and a merge regression is not established. Staging health is available; Worker version is `f641e41e-b82f-4abb-b4fa-92be4ff14eec`; read-only D1 verification shows migration id 18 `0017_confused_marvel_boy.sql` applied and no migrations pending.
+
+**Next step:** Rerun the failed Staging job once at the same code SHA and inspect the exact result. Keep AIP-SYNC-02 `IN_PROGRESS` until all exact-SHA jobs and mobile Staging smoke pass. Then update this handover and only AIP-SYNC-02 evidence/status in the design to `PENDING_REVIEW`; combined physical iPhone review is still required. Do not start gameplay work or another sync.
