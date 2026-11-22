@@ -60,13 +60,15 @@ function combineBotSchedulerOutcomes(first: BotSchedulerOutcome, second: BotSche
 }
 
 async function runBoundedPostWriteBotScheduler(db: D1Database, roomCode: string, diagnostics: BotSchedulerDiagnosticContext): Promise<BotSchedulerOutcome> {
-  const first = await runBotScheduler(db, { roomCode }, diagnostics);
-  if (first.steps < BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP) return first;
-  // A single human write may wake the bounded scheduler twice. Each pass
-  // retains its own 4-step cap, while this fixed limit avoids minute-long
-  // pauses halfway through the 3-bot mobile demo.
-  const second = await runBotScheduler(db, { roomCode }, diagnostics);
-  return combineBotSchedulerOutcomes(first, second);
+  let latest = await runBotScheduler(db, { roomCode }, diagnostics);
+  let total = latest;
+  // Continue only after a full pass. Three bounded passes let a room with
+  // active play make more progress without changing the per-pass or room cap.
+  for (let pass = 1; pass < 3 && latest.steps === BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP; pass++) {
+    latest = await runBotScheduler(db, { roomCode }, diagnostics);
+    total = combineBotSchedulerOutcomes(total, latest);
+  }
+  return total;
 }
 
 interface ExecutionContext {
@@ -229,7 +231,7 @@ const worker = {
         ctx.waitUntil(runBotSchedulerWake(diagnostics, () => runBoundedPostWriteBotScheduler(env.DB, roomCode, diagnostics)));
       }
     } else if (postWriteRequest) {
-      await postWriteRequest.body?.cancel().catch(() => {});
+      void postWriteRequest.body?.cancel().catch(() => {});
     }
     return response;
   },
