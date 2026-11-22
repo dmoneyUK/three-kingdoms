@@ -6,7 +6,7 @@
 > AI product / executable task authority: `docs/AI_PLAYER_DESIGN.md`
 > Coding-agent execution protocol: `docs/AI_PLAYER_AGENT_WORKFLOW.md`
 > Coding-agent-only checkpoint: `AI_PLAYER_HANDOVER.md`
-> Version: `AIP-G2` (2026-10-18)
+> Version: **`AIP-G3` (2026-11-22)** — Owner-required accepted-spec compaction and exact-SHA GitHub test delegation
 >
 > **Permanent, task-neutral PROCESS GUIDE, not a current task/status report.** Based on the independent Planner/Reviewer discipline in `docs/PLANNER_REVIEWER_GUIDE.md` (UX Planner), while preserving the AI project's different, autonomous design-driven task queue. **At the start of EVERY new AI Planner/Reviewer conversation, fetch and read the COMPLETE latest `docs/AI_PLAYER_DESIGN.md` on the AI branch BEFORE designing or reviewing.**
 
@@ -35,7 +35,7 @@ Build an autonomous, progressively smarter WTK Standard AI player using existing
 - The **human Product Owner** states objectives/feedback, controls product acceptance and production-release decisions. They do **not** need to forward a freshly written task to the Coding Agent every cycle.
 - The **Planner / Reviewer (this ChatGPT conversation)** owns complete, precise, executable AI-specific design specifications and independent review of evidence. It publishes/revises authorized tasks in `docs/AI_PLAYER_DESIGN.md`. It NEVER does Coding Agent work or edits a handover.
 - The **single Coding Agent** repeatedly re-reads the latest design, autonomously selects the next eligible, explicitly APPROVED and dependency-satisfied task, implements that bounded slice, validates CI/Staging as appropriate, writes its OWN handover and design task evidence, then searches the design again. It need not await a new pasted task if another independent approved task is eligible.
-- The **review gate is real**: implementation goes `PENDING_REVIEW`. Coding Agent cannot mark `ACCEPTED` or use its own green CI as acceptance. It may take another independent approved task if safe; a successor that depends on the pending task must wait. If none is eligible, pause and request review. Never self-approve to maintain throughput.
+- The **review gate is real**: `PENDING_REVIEW` is not `ACCEPTED`; only the human Owner or specifically delegated reviewer can accept. **Narrow exception**: where the Owner explicitly approves a *named sequential integrated batch* (AIP-PLAY-01–07 in design AIP-D28), the Agent may advance to its next slice after predecessor exact-SHA full GitHub Actions GREEN without intermediate human acceptance; it must stop at the batch's explicit human acceptance milestone. No exception for model spend, external-data transfer or production.
 - Agent autonomous iteration happens **while its agent runtime is operating / when invoked again**; a Markdown file cannot cause a dormant agent to wake itself up indefinitely. An external runner/orchestrator is required for truly continuous unattended execution. This guide removes *per-task manual prompting*, not Cloudflare permissions, user-acceptance gates or platform runtime limits.
 - Product Owner's explicit newer instructions supersede old process decisions. A new **Planner** conversation carries out the user's current request; merely reading a task status does NOT authorize Planner to start code work or accept old tasks. The separately running **Coding Agent** can autonomously pick previously authorized work from the design. Never conflate these two authorization boundaries.
 
@@ -83,7 +83,7 @@ In both loops, new instructions go **into the design**, not into `AI_PLAYER_HAND
 `docs/AI_PLAYER_DESIGN.md` must contain:
 - Long-term AI-only roadmap with outcomes/dependencies, WITHOUT presenting every roadmap idea as authorization.
 - Current detailed executable tasks (small enough for one Agent cycle). Include **explicit state**, stable task ID, dependency IDs, implementation boundary, instructions and test/acceptance evidence.
-- Reviewer findings/feedback tied to an exact task and code SHA. Revisions are changes to the specification; evidence belongs alongside its task but the document must not become a raw append-only log.
+- Reviewer findings/feedback tied to an exact task and code SHA. **On human acceptance, compact that task** into a short permanent architecture/decision ledger entry: ID, delivered capability, key constraints/privacy rule, acceptance date and at most one SHA. Remove obsolete implementation steps, commands, line-number references, old runs, long event transcripts and superseded queue text. Preserve unresolved risks and unaccepted work verbatim. Git history/Actions remain the execution evidence; the design must not become a raw append-only log.
 - Separate production/Staging protection and costs/privacy gates. Reference canonical game/UX docs; don't repeat their designs.
 - An **eligibility decision expressible by inspection of design alone**, not requiring the user to paste the next assignment.
 
@@ -95,7 +95,7 @@ Required **task template** (copy into design, fill every field; no placeholder t
 ### AIP-XX — Small, observable outcome
 **Status:** DRAFT | APPROVED | IN_PROGRESS | PENDING_REVIEW | CHANGES_REQUESTED | ACCEPTED | BLOCKED
 **Priority:** P0 | P1 | P2
-**Dependencies:** AIP-... (must be ACCEPTED), or NONE
+**Dependencies:** AIP-... (normally must be HUMAN ACCEPTED), or one explicitly Owner-authorized **sequential integrated-batch predecessor** with exact-SHA GitHub Actions GREEN; no general waiver.
 **Authorization / risk gate:** approved-by-user scope, cloud/paid actions allowed or forbidden
 **Outcome and reason:** observable behavior, success scenario
 **Current code anchors:** verified functions/files; distinguish existing vs proposed
@@ -116,7 +116,7 @@ High-level design pages are NOT sufficient agent tasks. A stage such as “AI ga
 | Status | Who sets | Meaning / Agent behavior |
 | --- | --- | --- |
 | `DRAFT` | Planner | Proposed; not executable, even if roadmap lists it |
-| `APPROVED` | Planner reflecting user-approved batch/explicit delegation | Fully specified, authorized. Agent may choose automatically once **all dependencies ACCEPTED**, no conflicting in-flight task, risk gate met |
+| `APPROVED` | Planner reflecting user-approved batch/explicit delegation | Fully specified; usual dependencies HUMAN ACCEPTED, except one explicitly designated integrated-batch predecessor verified full exact-SHA CI GREEN. No overlapping in-flight task or unmet privacy/cost gate |
 | `IN_PROGRESS` | Agent | One bounded task is owned and being implemented |
 | `PENDING_REVIEW` | Agent | Code + evidence submitted; Reviewer must inspect. Agent must **not** rework or self-accept without feedback, but can select another independent APPROVED task |
 | `CHANGES_REQUESTED` | Planner after review/human feedback | Specific actionable defect with acceptance; Agent may resume the **same** task automatically if changes are bounded and explicitly authorized in design, otherwise BLOCKED |
@@ -133,7 +133,7 @@ The Planner may record **TECHNICALLY VERIFIED / RECOMMEND ACCEPT** for CI-only t
 
 1. If an actual `IN_PROGRESS` task remains in handover, validate against current design and resume only if still authorized and compatible. Preserve uncommitted work. Never reset/clean/force push.
 2. If design contains `CHANGES_REQUESTED` task with actionable, authorized feedback and no unsafe dependency conflict, handle it before new feature work. Feedback must name the failing evidence and expected correction.
-3. Else find all `APPROVED` tasks with dependencies `ACCEPTED`, human/cloud/cost gates satisfied, no competing file-conflict or shared architectural decision. Sort deterministic: Priority P0 > P1 > P2, then design order/task ID. Choose exactly **one** to implement.
+3. Else find all `APPROVED` tasks with HUMAN-ACCEPTED dependencies, **except** a specifically designated sequential integrated batch whose direct predecessor is code-shipped and all exact-SHA GitHub jobs GREEN. Check human/cloud/cost gates and competing file/conflict/architecture review. Sort P0 > P1 > P2, then the design's explicit current priority/ID. Choose exactly **one** to implement.
 4. If prior task is `PENDING_REVIEW`, leave its status/evidence untouched. Another task can proceed only when **independent** (does not depend on it or invalidate its review, and no overlapping ownership/conflicting files). If dependent or ambiguous, pause. Keep handover as single current checkpoint; design holds completed pending-review evidence.
 5. If none eligible, STOP with `WAITING_FOR_REVIEW / NO_ELIGIBLE_TASK` or `BLOCKED`. Do not rewrite handover as a design backlog, invent approval, bypass missing credentials, or spin endlessly.
 6. For each implementation: scope & test -> check precommit CI -> commit/push -> check exact-SHA required CI -> safe Staging deploy **only if authorized and configured** -> update own handover and own task evidence to PENDING_REVIEW -> re-read remote design, repeat.
@@ -152,6 +152,12 @@ Planner must update only the task's requirements/reviewer-note/status in `docs/A
 - If incompatible, clearly mark task `BLOCKED / CHANGES_REQUESTED` in design with conflict and a narrow question. Agent must stop at the next safe checkpoint and preserve work.
 - Do not overwrite Agent status/evidence in a wholesale design rewrite; use careful targeted edits, confirm blob SHA and re-read before write.
 - Do not change the scope of a task already PENDING_REVIEW to manufacture retroactive acceptance. Create a follow-up task with a new ID for genuinely new requirements.
+
+## 5.1. Local tests versus authoritative GitHub Actions (Owner 2026-11-22)
+
+- **Coding Agent locally runs ONLY newly added or modified task-focused tests**. Do not run full local lint/build/fast/API/browser suites or full repository test; `git diff --check` and static review are permitted.
+- Commit/push task code and verify **ALL** required GitHub Actions lint/build/fast/API/browser/Staging jobs on that **exact source SHA**. A complete GREEN run and production deploy SKIPPED are mandatory to submit implementation for review. CI failures require diagnosis, correction and a new pushed SHA, not test suppression. Markdown-only updates are not code-bearing CI.
+- On human acceptance, Planner/Reviewer cleans accepted specs in the same design; never edits either Agent handover. Preserve open task details; accepted source history remains in Git/Actions.
 
 ## 6. Branch, Cloudflare environments and code/data isolation
 
