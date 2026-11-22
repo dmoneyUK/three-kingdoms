@@ -14,6 +14,8 @@ import { canDeclareAttack as canDeclareAttackFor, effectiveDistanceBetween, next
 import { canRespondWithNegation, getAttackCardProvider, getPlayPhaseActions, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
 import { buildPlayCandidates } from "../../../ai/play-candidates";
+import { buildBotObservation, type BotChoiceKind } from "../../../ai/bot-observation";
+import { chooseExact, openBotDecision, policyForBotDispatch, selectBotChoice, type BotDecisionPlan } from "../../../ai/decision-router";
 import { botTriggerChoices } from "../../../ai/trigger-selection";
 import { responseCostActor, semanticResponseActor } from "../../../game/response-identity";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
@@ -8805,6 +8807,18 @@ export async function POST(request: Request, routeContext?: unknown) {
     let nextAction: string | null = null;
     let actionFields: Record<string, unknown> = {};
     let decisionCause = "no_supported_action";
+    const authority = { decisionId: internalBot.decisionId, actorId: actor.id,
+      actionRevision: internalBot.actionRevision, decisionConsumed: false };
+    const workerFlags = env as { BOT_AI_ENABLED?: string; WTK_TEST_CAPABILITIES?: string };
+    const mockPolicy = policyForBotDispatch(workerFlags.WTK_TEST_CAPABILITIES === "1" ? "true" : workerFlags.BOT_AI_ENABLED,
+      workerFlags.WTK_TEST_CAPABILITIES === "1" ? internalBot.mockPolicy : undefined);
+    type BotDispatch = { action: string; fields: Record<string, unknown> };
+    const alternatives: BotDecisionPlan<BotDispatch>[] = [];
+    let plansIncomplete = false;
+    let preferredKind: BotChoiceKind | undefined;
+    const offer = (kind: BotChoiceKind, action: string, fields: Record<string, unknown>) => {
+      if (mockPolicy && alternatives.length <= 256) alternatives.push({ kind, payload: { action, fields } });
+    };
     if (room.phase?.startsWith("draw") && pendingForController === null && legalActions.includes("draw")) {
       const delayed = takeNextDelayedCard(parse<Card[]>(actor.judgement_json, []))?.delayed ?? null;
       nextAction = "draw";
@@ -8814,10 +8828,12 @@ export async function POST(request: Request, routeContext?: unknown) {
       const required = Math.max(0, hand.length - (actor.hp ?? 0));
       nextAction = "discard_cards";
       actionFields = { cardIds: hand.slice(0, required).map((card) => card.id) };
+      if (mockPolicy) for (const ids of chooseExact(hand.map(({ id }) => id), required)) {
+        offer("discard", "discard_cards", { cardIds: ids });
+        if (alternatives.length > 256) break;
+      }
       decisionCause = "non_response_decision";
     } else if (room.phase?.startsWith("play") && pendingForController === null) {
-      const authority = { decisionId: internalBot.decisionId, actorId: actor.id,
-        actionRevision: internalBot.actionRevision, decisionConsumed: false };
       const canDeclareAttack = canDeclareAttackFor({ ...actor, ...attackUseLimitContext(actor) }, room.phase);
       const playPhaseActions = getPlayPhaseActions(responseContext(actor, allRoomPlayers));
       const basicPlays: { cardId: string; kind: "heal" | "draw" | "equip" | "stratagem" }[] = [];
@@ -8848,10 +8864,15 @@ export async function POST(request: Request, routeContext?: unknown) {
           playTargetEligibility: playTargetEligibilityFor(actor, allRoomPlayers, playPhaseActions, canDeclareAttack) },
       });
       if (catalogue.status === "ready") {
+        if (mockPolicy) for (const { kind, payload } of catalogue.serverPlans()) {
+          const { action, actionRevision: _revision, ...fields } = payload;
+          offer(kind, action, fields);
+        }
         const choice = catalogue.publicChoices.find(({ kind }) => kind !== "end_turn") ?? catalogue.publicChoices[0];
         const selected = choice && catalogue.resolve(choice.id, authority);
         if (selected) {
           nextAction = selected.action;
+          preferredKind = choice.kind;
           if (selected.action === "play_card") {
             actionFields = { cardId: selected.cardId, ...(selected.targetId ? { targetId: selected.targetId } : {}),
               ...(selected.targetIds ? { targetIds: selected.targetIds } : {}), ...(selected.playAs ? { playAs: selected.playAs } : {}) };
@@ -8863,23 +8884,31 @@ export async function POST(request: Request, routeContext?: unknown) {
       } else {
         decisionCause = catalogue.reason;
       }
-      if (nextAction === "end_turn" && legalActions.includes("trigger")) {
-        const active = activeHeroSkillOptions(actor, room, allRoomPlayers).find((option) => {
+      if ((nextAction === "end_turn" || mockPolicy) && legalActions.includes("trigger")) {
+        const activeOptions = activeHeroSkillOptions(actor, room, allRoomPlayers);
+        if (mockPolicy) for (const option of activeOptions) {
+          for (const choice of botTriggerChoices(option, ownedCostIds)) offer("skill", "trigger", choice);
+        }
+        const active = nextAction === "end_turn" ? activeOptions.find((option) => {
           if (option.effectId === "huang_gai_kurou") return (actor.hp ?? 0) > 2 && ownHand.length < 2;
           if (option.effectId === "liu_bei_rende") {
             return (actor.hp ?? 0) < (actor.max_hp ?? 0) && ownHand.length >= 2;
           }
           return botTriggerChoices(option, ownedCostIds).length > 0;
-        });
+        }) : undefined;
         const choice = active && botTriggerChoices(active, ownedCostIds)[0];
         if (choice) {
           nextAction = "trigger";
+          preferredKind = "skill";
           actionFields = choice;
         }
       }
     } else if (pendingForController?.kind === "harvest" && legalActions.includes("choose_harvest")) {
       const available = harvestAvailableIds(pendingForController);
       const chosen = pendingForController.revealed.find(({ id }) => available.includes(id));
+      if (!pendingForController.completeAt) {
+        for (const id of available) offer("choose_card", "choose_harvest", { cardId: id });
+      }
       if (!pendingForController.completeAt && chosen) {
         nextAction = "choose_harvest";
         actionFields = { cardId: chosen.id };
@@ -8888,29 +8917,55 @@ export async function POST(request: Request, routeContext?: unknown) {
       const { targetId } = pendingForController;
       const target = allRoomPlayers.find(({ id }) => id === targetId);
       const selection = targetCardSelectionFor(pendingForController, target);
-      const key = selection?.eligibleKeys[0];
-      if (key && target) {
+      for (const key of selection?.eligibleKeys ?? []) {
+        if (!target) break;
+        let fields: Record<string, unknown> | null = null;
         if (/^hand:\d+$/.test(key)) {
-          actionFields = { targetCardZone: "hand", targetCardIndex: Number(key.slice(5)) };
+          fields = { targetCardZone: "hand", targetCardIndex: Number(key.slice(5)) };
         } else if (equipmentCards(target).some(({ id }) => id === key)) {
-          actionFields = { targetCardZone: "equipment", targetCardId: key };
+          fields = { targetCardZone: "equipment", targetCardId: key };
         } else if (parse<Card[]>(target.judgement_json, []).some(({ id }) => id === key)) {
-          actionFields = { targetCardZone: "judgement", targetCardId: key };
+          fields = { targetCardZone: "judgement", targetCardId: key };
         }
-        if (actionFields.targetCardZone) nextAction = "choose_target_card";
+        if (!fields) continue;
+        offer("choose_card", "choose_target_card", fields);
+        if (!nextAction) {
+          nextAction = "choose_target_card";
+          actionFields = fields;
+        }
+        if (!mockPolicy) break;
       }
     } else if (pendingForController?.kind === "borrowed_sword" && legalActions.includes("choose_borrowed_sword_target")) {
-      const targetId = borrowedSwordForcedTargetIds(allRoomPlayers, pendingForController.sourceId, pendingForController.holderId)[0];
+      const targetIds = borrowedSwordForcedTargetIds(allRoomPlayers, pendingForController.sourceId, pendingForController.holderId);
+      const targetId = targetIds[0];
+      for (const id of targetIds) offer("choose_target", "choose_borrowed_sword_target", { targetId: id });
       nextAction = "choose_borrowed_sword_target";
       // The canonical handler also owns settlement if no target remains.
       actionFields = targetId ? { targetId } : {};
     } else if (pendingForController?.kind === "card_distribution" && legalActions.includes("trigger")) {
-      const { eligibleRecipientIds } = pendingForController;
-      const recipient = allRoomPlayers.find((player) => player.alive && eligibleRecipientIds.includes(player.id));
+      const { cards, eligibleRecipientIds } = pendingForController;
+      const recipients = allRoomPlayers.filter((player) => player.alive && eligibleRecipientIds.includes(player.id));
+      const recipient = recipients[0];
       if (recipient && pendingForController.cards.length) {
         nextAction = "trigger";
         actionFields = { providerId: "private_card_distribution",
-          assignments: pendingForController.cards.map(({ id }) => ({ cardId: id, recipientId: recipient.id })) };
+          assignments: cards.map(({ id }) => ({ cardId: id, recipientId: recipient.id })) };
+        if (mockPolicy) {
+          const assignments: { cardId: string; recipientId: string }[] = [];
+          const assign = (index: number): void => {
+            if (alternatives.length > 256) return;
+            if (index === cards.length) {
+              offer("skill", "trigger", { providerId: "private_card_distribution", assignments: [...assignments] });
+              return;
+            }
+            for (const { id } of recipients) {
+              assignments.push({ cardId: cards[index].id, recipientId: id });
+              assign(index + 1);
+              assignments.pop();
+            }
+          };
+          assign(0);
+        }
       }
     } else if (pendingForController?.kind === "deck_reorder" && legalActions.includes("trigger")) {
       const { cards, minTop, maxTop } = pendingForController;
@@ -8919,6 +8974,19 @@ export async function POST(request: Request, routeContext?: unknown) {
         actionFields = { providerId: "private_deck_reorder",
           topCardIds: cards.slice(0, minTop).map(({ id }) => id),
           bottomCardIds: cards.slice(minTop).map(({ id }) => id) };
+        if (mockPolicy) {
+          const reorder = (ordered: readonly string[], remaining: readonly string[]): void => {
+            if (alternatives.length > 256) return;
+            if (!remaining.length) {
+              for (let top = minTop; top <= Math.min(maxTop, ordered.length) && alternatives.length <= 256; top++) {
+                offer("skill", "trigger", { providerId: "private_deck_reorder", topCardIds: ordered.slice(0, top), bottomCardIds: ordered.slice(top) });
+              }
+              return;
+            }
+            remaining.forEach((id, index) => reorder([...ordered, id], remaining.filter((_, next) => next !== index)));
+          };
+          reorder([], cards.map(({ id }) => id));
+        }
       }
     } else if (botWindowResponse || pendingForController?.kind === "response" || pendingForController?.kind === "dying") {
       const pending = botWindowResponse ?? pendingForController;
@@ -8930,7 +8998,9 @@ export async function POST(request: Request, routeContext?: unknown) {
       const optionalNegation = pending.kind === "response" && pending.continuation.kind === "negation"
         && (pending.continuation.effectTargetId !== actor.id || !["dismantle", "steal", "duel", "group", "overindulgence"].includes(pending.continuation.effect.kind));
       decisionCause = "unsupported_response_provider";
-      for (const option of optionalNegation ? [] : options) {
+      const responseKind: BotChoiceKind = requirementKind === "peach" ? "rescue" : requirementKind === "negate" ? "counter"
+        : requirementKind === "attack" ? "attack" : "defend";
+      for (const option of optionalNegation && !mockPolicy ? [] : options) {
         const selection = option.selection;
         if (selection && (!Number.isSafeInteger(selection.min) || selection.min < 1 || selection.min > selection.max)) continue;
         const eligible = selection ? [...new Set(selection.eligibleCardIds)].filter((id) => ownCardIds.has(id)).sort() : [];
@@ -8942,13 +9012,42 @@ export async function POST(request: Request, routeContext?: unknown) {
           if (!cardIds.length || execution.consumeCardIds?.length !== cardIds.length
             || !execution.consumeCardIds.every((id, index) => id === cardIds[index])) continue;
         } else if (controllerWindow || cardIds.length) continue;
+        const fields = { providerId: option.providerId, ...(cardIds.length ? { cardIds } : {}) };
+        offer(responseKind, "respond", fields);
+        if (mockPolicy && selection) {
+          const max = Math.min(eligible.length, selection.max);
+          let examined = 0;
+          const offerCosts = (start: number, count: number, chosen: string[]): void => {
+            if (plansIncomplete || alternatives.length > 256) return;
+            if (!count) {
+              if (++examined > 256) {
+                plansIncomplete = true;
+                return;
+              }
+              const verified = resolveResponseDecision(pending, context, option.providerId, { cardIds: chosen });
+              if (verified?.status === "satisfied" && verified.satisfies === requirementKind
+                && verified.consumeCardIds?.length === chosen.length
+                && verified.consumeCardIds.every((id, index) => id === chosen[index])) {
+                offer(responseKind, "respond", { providerId: option.providerId, cardIds: chosen });
+              }
+              return;
+            }
+            for (let index = start; index <= eligible.length - count && !plansIncomplete && alternatives.length <= 256; index++) {
+              offerCosts(index + 1, count - 1, [...chosen, eligible[index]]);
+            }
+          };
+          for (let count = selection.min; count <= max && !plansIncomplete && alternatives.length <= 256; count++) offerCosts(0, count, []);
+        }
+        if (optionalNegation || nextAction) continue;
         nextAction = "respond";
-        actionFields = { providerId: option.providerId, ...(cardIds.length ? { cardIds } : {}) };
+        preferredKind = responseKind;
+        actionFields = fields;
         decisionCause = pending.kind === "response" && requirementKind === "dodge" && pending.requirement.kind === "dodge"
           && (pending.requirement.count ?? 1) === 1 && option.providerId === "card" && eligible.length === 1 && options.length === 1
           ? "single_physical_dodge_supported" : "canonical_combat_response";
-        break;
+        if (!mockPolicy) break;
       }
+      if (declineAction && legalActions.includes(declineAction)) offer("pass", declineAction, {});
       if (!nextAction && declineAction && legalActions.includes(declineAction)
         && (!options.length || optionalNegation || controllerWindow && options.every(({ selection }) => !selection))) {
         nextAction = declineAction;
@@ -8962,15 +9061,84 @@ export async function POST(request: Request, routeContext?: unknown) {
         const options = triggerOptionsFor(trigger, allRoomPlayers, room);
         if (context && legalActions.includes("trigger")) {
           for (const option of options) {
-            const choice = botTriggerChoices(option, ownedCostIds).find((candidate) => resolveTriggeredEffect(option.effectId, context, candidate));
-            if (!choice) continue;
-            nextAction = "trigger";
-            actionFields = choice;
-            break;
+            for (const choice of botTriggerChoices(option, ownedCostIds)) {
+              if (!resolveTriggeredEffect(option.effectId, context, choice)) continue;
+              offer("skill", "trigger", choice);
+              if (!nextAction) {
+                nextAction = "trigger";
+                actionFields = choice;
+              }
+              if (!mockPolicy) break;
+            }
+            if (!mockPolicy && nextAction) break;
           }
         }
-        if (!nextAction && legalActions.includes("decline_trigger")) nextAction = "decline_trigger";
+        if (legalActions.includes("decline_trigger")) {
+          offer("pass", "decline_trigger", {});
+          if (!nextAction) nextAction = "decline_trigger";
+        }
       }
+    }
+    if (nextAction) {
+      const actionKinds: Partial<Record<string, BotChoiceKind>> = {
+        draw: "draw", discard_cards: "discard", end_turn: "end_turn", trigger: "skill",
+        decline_response: "pass", decline_trigger: "pass", skip_rescue: "pass",
+        choose_harvest: "choose_card", choose_target_card: "choose_card", choose_borrowed_sword_target: "choose_target",
+      };
+      const initial = { action: nextAction, fields: actionFields };
+      const seen = new Set<string>();
+      const plans = [{ kind: preferredKind ?? actionKinds[nextAction] ?? "stratagem", payload: initial }, ...alternatives]
+        .filter(({ payload }) => {
+          const key = JSON.stringify([payload.action, Object.entries(payload.fields).sort(([left], [right]) => left.localeCompare(right))]);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      const offeredPlans = mockPolicy ? plans.map((plan) => {
+        const fields = plan.payload.fields;
+        const targetIds = Array.isArray(fields.targetIds) ? fields.targetIds : typeof fields.targetId === "string" ? [fields.targetId] : [];
+        const targetSeats = targetIds.flatMap((id) => {
+          const target = allRoomPlayers.find((player) => player.id === id);
+          return target ? [target.seat] : [];
+        });
+        const cardIds = Array.isArray(fields.cardIds) ? fields.cardIds : typeof fields.cardId === "string" ? [fields.cardId] : [];
+        const ownCost = cardIds.filter((id) => ownedCostIds.has(id));
+        const cardKind = ownHand.find(({ id }) => id === ownCost[0])?.kind;
+        return { ...plan, details: { targetSeats, cardKind, cardCost: ownCost.length } };
+      }) : plans;
+      const router = openBotDecision(authority, plansIncomplete ? [] : offeredPlans);
+      const observation = mockPolicy && router.choices.length > 1 ? buildBotObservation({
+        authority, actorId: actor.id, phase: room.phase ?? "",
+        self: { seat: actor.seat, hp: actor.hp, maxHp: actor.max_hp, role: actor.role, hero: actor.hero,
+          canUseSkill: legalActions.includes("trigger"), hand: ownHand, equipment: ownEquipment },
+        publicSeats: allRoomPlayers.filter(({ id }) => id !== actor.id).map((player) => ({
+          seat: player.seat, hp: player.hp ?? 0, alive: Boolean(player.alive),
+          handCount: parse<Card[]>(player.hand_json, []).length,
+          ...(player.role && (player.role === "Lord" || !player.alive) ? { revealedRole: player.role } : {}),
+        })),
+        publicHistory: gameTimeline(parse<string[]>(room.log_json, [])).flatMap((event) => {
+          const fact = record(event.publicFact);
+          const kind = record(event.card)?.kind;
+          return event.type === "card" && event.action === "play" && !event.privateToPlayerId
+            && fact?.semantics === "PROVEN" && CARD_KINDS.includes(kind as Card["kind"]) ? [kind as Card["kind"]] : [];
+        }),
+        choices: router.choices,
+      }) : null;
+      const chosen = await selectBotChoice(router.choices, observation, mockPolicy);
+      if ("error" in chosen) {
+        emitEvaluation(null, "policy_decision_rejected");
+        return finishDecision(json({ state: "unsupported", code: "BOT_POLICY_DECISION_REJECTED" }), null, "policy_decision_rejected");
+      }
+      const latest = mockPolicy ? await botControllerSnapshot(code) : null;
+      const liveAuthority = mockPolicy ? { ...authority, actionRevision: latest?.actionRevision ?? "",
+        decisionConsumed: latest?.eligibleBotIds.includes(actor.id) !== true } : authority;
+      const resolved = router.resolve(chosen.id, liveAuthority);
+      if (!resolved) {
+        emitEvaluation(null, "stale_action_revision");
+        return finishDecision(json({ error: "The Bot decision is stale.", stale: true }, 409), null, "stale_action_revision");
+      }
+      nextAction = resolved.action;
+      actionFields = resolved.fields;
     }
     if (nextAction && decisionCause === "no_supported_action") decisionCause = "non_response_decision";
     emitEvaluation(nextAction, decisionCause);

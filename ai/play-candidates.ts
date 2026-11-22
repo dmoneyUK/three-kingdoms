@@ -131,6 +131,12 @@ export function buildPlayCandidates(input: PlayCandidateInput) {
   return Object.freeze({
     status: "ready" as const,
     publicChoices,
+    serverPlans() {
+      return publicChoices.flatMap(({ id, kind }) => {
+        const payload = payloads.get(id);
+        return payload ? [{ kind, payload }] : [];
+      });
+    },
     resolve(choiceId: string, latest: PlayCandidateAuthority): Payload | null {
       if (resolved || latest.decisionConsumed !== false || latest.decisionId !== decisionId
         || latest.actorId !== actorId || latest.actionRevision !== actionRevision) return null;

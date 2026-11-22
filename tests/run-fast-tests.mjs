@@ -11,6 +11,7 @@ const fastTests = [
   "tests/ai-play-candidates.test.mjs",
   "tests/ai-trigger-selection.test.mjs",
   "tests/ai-standard-coverage.test.mjs",
+  "tests/ai-decision-router.test.mjs",
   "tests/standard-deck.test.mjs",
   "tests/test-hand-presets.test.mjs",
   "tests/private-hand.test.mjs",

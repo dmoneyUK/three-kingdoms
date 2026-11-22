@@ -1,3 +1,4 @@
+import type { BotPolicy } from "../ai/decision-router";
 import { createBotActionPrincipal } from "./bot-principal";
 import { emitBotDiagnostic, isBotWorkStatus, type BotErrorCode, type BotSchedulerDiagnosticContext, type BotWorkStatus } from "./bot-diagnostics";
 
@@ -7,6 +8,7 @@ type BotStepInput = {
   actionRevision?: string;
   decisionId?: string;
   diagnostics?: BotSchedulerDiagnosticContext;
+  mockPolicy?: BotPolicy;
 };
 
 type BotWorkRow = {
@@ -72,6 +74,7 @@ export async function runBotStep(_db: Pick<D1Database, "prepare">, input: BotSte
     actionRevision: room.actionRevision,
     decisionId: input.decisionId ?? crypto.randomUUID(),
     ...(input.diagnostics ? { diagnostics: input.diagnostics } : {}),
+    ...(input.mockPolicy ? { mockPolicy: input.mockPolicy } : {}),
   });
   const actionRequest = new Request("https://internal.invalid/api/rooms", {
     method: "POST",

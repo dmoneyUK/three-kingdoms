@@ -397,6 +397,27 @@ test("a Bot actively plays its physical Attack and hands the pending Dodge to th
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
+test("the injected Responses mock can choose a canonical alternative and cannot invent one", async () => {
+  const { code, token, bots } = await createBotGame();
+  const bot = bots[0];
+  const attack = card("Attack", "mock-policy-attack");
+  sql(`UPDATE players SET hero='zhang-fei', equipment_json='{}' WHERE id=${quote(bot.id)}`);
+  setHand(bot.id, [attack], 4, 4);
+  setTurn(code, bot.seat, "play");
+  const before = (await state(code, token)).data;
+  const invalid = await runBotStep(code, bot.id, { actionRevision: before.actionRevision, mockChoiceKind: "heal" });
+  assert.equal(invalid.status, 200, JSON.stringify(invalid.data));
+  assert.equal(invalid.data.code, "BOT_POLICY_DECISION_REJECTED");
+  assert.equal((await state(code, token)).data.actionRevision, before.actionRevision);
+  assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(bot.id)}`))[0].id, attack.id);
+
+  const ended = await runBotStep(code, bot.id, { actionRevision: before.actionRevision, mockChoiceKind: "end_turn" });
+  assert.equal(ended.status, 200, JSON.stringify(ended.data));
+  assert.notEqual((await state(code, token)).data.actionPlayerId, bot.id);
+  assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(bot.id)}`))[0].id, attack.id);
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
 test("a Bot answers an ordinary Attack with its single canonical physical Dodge", async () => {
   const { code, token, hostId, bots, room } = await createBotGame();
   const bot = bots[0];

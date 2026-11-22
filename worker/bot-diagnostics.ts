@@ -262,7 +262,7 @@ const DECISION_CAUSES = new Set([
   "ambiguous_multiple_cards", "converted_skill_only", "requires_multiple_dodges", "unsupported_pending_family",
   "unsupported_response_provider", "canonical_validation_rejected", "canonical_response_succeeded", "dispatch_threw",
   "stale_action_revision", "non_response_decision", "no_supported_action", "bot_action_succeeded", "bot_action_rejected",
-  "invalid_authority", "missing_target_eligibility", "candidate_overflow", "no_supported_play", "canonical_combat_response", "canonical_judgement",
+  "invalid_authority", "missing_target_eligibility", "candidate_overflow", "no_supported_play", "canonical_combat_response", "canonical_judgement", "policy_decision_rejected",
 ]);
 const DECISION_ACTIONS = new Set(["choose_hero", "draw", "play_card", "serpent_spear_attack", "discard_cards", "end_turn", "decline_response", "skip_rescue", "respond", "choose_harvest", "choose_target_card", "choose_borrowed_sword_target", "trigger", "decline_trigger"]);
 const WORK_STATUS_VALUES = new Set(["pending", "claimed", "waiting_for_human", "consumed", "unsupported", "stale", "failed"]);

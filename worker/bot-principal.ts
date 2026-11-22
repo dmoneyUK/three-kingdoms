@@ -1,3 +1,4 @@
+import type { BotPolicy } from "../ai/decision-router";
 import type { BotSchedulerDiagnosticContext } from "./bot-diagnostics";
 
 const BOT_ACTION_CAPABILITY = Symbol("server-owned-bot-action");
@@ -8,6 +9,7 @@ export type BotActionPrincipalInput = {
   actionRevision: string;
   decisionId: string;
   diagnostics?: BotSchedulerDiagnosticContext;
+  mockPolicy?: BotPolicy;
 };
 
 export type BotActionPrincipal = BotActionPrincipalInput & {

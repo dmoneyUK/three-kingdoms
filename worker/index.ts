@@ -1,3 +1,5 @@
+import { BOT_CHOICE_KINDS, type BotChoiceKind } from "../ai/bot-observation";
+import { createOpenAIMockDecisionPolicy } from "../ai/openai-decision-transport";
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
@@ -106,10 +108,11 @@ const worker = {
       }
     }
     if (url.pathname === "/__test/run-bot-step" && env.WTK_TEST_CAPABILITIES === "1" && request.method === "POST") {
-      const body = await request.json<{ code?: unknown; botId?: unknown; actionRevision?: unknown; decisionId?: unknown }>().catch(() => ({}));
+      const body = await request.json<{ code?: unknown; botId?: unknown; actionRevision?: unknown; decisionId?: unknown; mockChoiceKind?: unknown }>().catch(() => ({}));
       if (typeof body.code !== "string" || typeof body.botId !== "string"
         || body.actionRevision !== undefined && typeof body.actionRevision !== "string"
-        || body.decisionId !== undefined && typeof body.decisionId !== "string") {
+        || body.decisionId !== undefined && typeof body.decisionId !== "string"
+        || body.mockChoiceKind !== undefined && !BOT_CHOICE_KINDS.includes(body.mockChoiceKind as BotChoiceKind)) {
         return Response.json({ error: "A valid room, bot, and optional revision/decision ID are required." }, { status: 400 });
       }
       return runBotStep(env.DB, {
@@ -117,6 +120,21 @@ const worker = {
         botId: body.botId,
         ...(typeof body.actionRevision === "string" ? { actionRevision: body.actionRevision } : {}),
         ...(typeof body.decisionId === "string" ? { decisionId: body.decisionId } : {}),
+        ...(body.mockChoiceKind ? { mockPolicy: createOpenAIMockDecisionPolicy({
+          enabled: "true",
+          model: "ci-mock",
+          fetch: async (_url, init) => {
+            const envelope = JSON.parse(String(init.body)) as { input: string };
+            const observation = JSON.parse(envelope.input) as {
+              observationVersion: number; decisionId: string; choices: { id: string; kind: BotChoiceKind }[];
+            };
+            const result = { observationVersion: observation.observationVersion, decisionId: observation.decisionId,
+              selectedCandidateId: observation.choices.find(({ kind }) => kind === body.mockChoiceKind)?.id ?? "not-offered",
+              reason: "CI mock selection" };
+            return Response.json({ status: "completed", output: [{ type: "message", status: "completed",
+              content: [{ type: "output_text", text: JSON.stringify(result) }] }] });
+          },
+        }) } : {}),
       });
     }
     if (url.pathname === "/__test/run-bot-scheduler" && env.WTK_TEST_CAPABILITIES === "1" && request.method === "POST") {
