@@ -1,13 +1,15 @@
 # Smart Bot Player — Coding Agent Handover
 
-Branch `feature/smart-bot-player`, worktree `/private/tmp/WTK-AIP-SYNC-04-20261119`. Reviewed complete current design AIP-D33 and `docs/AI_PLAYER_AGENT_WORKFLOW.md`.
+Branch `feature/smart-bot-player`, worktree `/private/tmp/WTK-AIP-SYNC-04-20261119`. Reviewed the complete current AIP-D33 design and `docs/AI_PLAYER_AGENT_WORKFLOW.md`.
 
-## Current task — AIP-EVAL-01 (IN_PROGRESS)
+## Previous checkpoint — AIP-EVAL-01 (PENDING_REVIEW)
 
-The offline evaluator at `c4981a3247e57ccfceae93e321a87d88c0f87ee1` reports 20/20 synthetic cases: 12 legal selections, one abstention, seven expected rejections, zero model tokens/spend. Current code SHA `cdba99e2fcc48b6d3ceda6ee038d9d6e9c6675f6` contains the evaluator and focused CI repairs. No local test/build/lint suite ran.
+Exact code SHA `59552a97b6cfde7362ac3bafd3a85e5e8ebca09a`, [Actions 45039156995](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45039156995), succeeded across lint/build/fast, API, browser startup smoke, isolated Staging guards, D1 migration check, Worker deploy and mobile refresh/rejoin smoke (`1 passed`, 8.1m). Staging Worker Version ID `bad1d95f-1445-4b64-b029-1978518bd519`; no Staging migrations were pending; production `deploy` was skipped. The evaluator reported 20/20 synthetic cases (12 legal, 1 abstention, 7 expected rejections), zero model tokens/spend. This is submitted for human review, not accepted. No local suites ran; only static `node --check` and `git diff --check` were used.
 
-Exact-SHA Actions [45035214890](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45035214890), attempt 2: lint/build/fast, API, browser startup smoke and Staging target guard/deploy/migration steps passed; production `deploy` was skipped. The Staging mobile smoke failed after the 280-second first-Bot-turn wait in room `TF565`, at `playing / response`, actor seat 2. Read-only Staging D1 inspection later showed the room had progressed into a subsequent Harvest window; it also showed old inactive Bot rooms and an expired `claimed` work row. This proves post-timeout progress, not the precise reason for the delay; Worker tail yielded no matching diagnostic. No Staging data was changed.
+## Current task — AIP-ROLE-01 (IN_PROGRESS)
 
-**Current bounded repair:** align the first-turn browser smoke with the later Bot-cycle wait: track authoritative revision progress, allow up to eight minutes total, and fail after three minutes without revision progress. Raise the Playwright/Staging-job ceilings coherently while keeping the test bounded. Do not change scheduler/gameplay behavior or begin AIP-ROLE-01. Push the repair and require all exact-SHA Actions, including Staging mobile smoke, GREEN before submitting AIP-EVAL-01 as `PENDING_REVIEW`.
+Implement the approved minimal role-aware deterministic Bot hostility guard. Next inspect the live `bot_step` candidate creation/selection/dispatch and canonical candidate/resolver contracts, then implement only the task's pure server-only filter and scoped call sites in `app/api/rooms/route.ts`; add focused pure/API regressions. Required invariants: Loyalist never voluntarily harms the living public Lord, including hostile AOE/Lightning and supported converted/targeted attacks; Rebel prioritizes a legally reachable Lord; Renegade delays Lord attacks while more than two remain and can target Lord in the final duel. Do not read other living players' hidden roles, invent legality, alter human actions, or change canonical rules.
 
-Boundaries: no local full test/build/lint; no production deploy/migration, UX2 edits, CPU/pacing work, live model/API call, Cloudflare resource creation, or gameplay changes outside the current task. AIP-PERF-01 remains `PENDING_REVIEW` with Owner/Planner.
+Preserve all existing AIP-PERF-01 edits in `app/api/rooms/route.ts` exactly. No UX2, UI, D1 migration, production deployment, CPU/pacing change, or live OpenAI call. Run only new/modified focused tests locally; no full local suites. Push the scoped task and require exact-SHA GitHub Actions plus isolated Staging smoke green, with production `deploy` skipped. Human Owner/Reviewer acceptance remains required.
+
+Role source changes have not started. AIP-PERF-01 remains `PENDING_REVIEW` with Owner/Planner for CPU profile analysis.
