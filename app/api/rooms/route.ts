@@ -8865,8 +8865,8 @@ export async function POST(request: Request, routeContext?: unknown) {
       });
       if (catalogue.status === "ready") {
         if (mockPolicy) for (const { kind, payload } of catalogue.serverPlans()) {
-          const { action, actionRevision: _revision, ...fields } = payload;
-          offer(kind, action, fields);
+          const fields = Object.fromEntries(Object.entries(payload).filter(([key]) => key !== "action" && key !== "actionRevision"));
+          offer(kind, payload.action, fields);
         }
         const choice = catalogue.publicChoices.find(({ kind }) => kind !== "end_turn") ?? catalogue.publicChoices[0];
         const selected = choice && catalogue.resolve(choice.id, authority);
