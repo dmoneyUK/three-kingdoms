@@ -182,7 +182,9 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
 
     const resolveHumanInterruption = async (room) => {
       const decision = room.currentAction;
-      if (decision?.actorId !== hostId || decision.sharedWindow?.locked) return false;
+      const negationChoice = room.presentationSnapshot?.viewerNegationChoice;
+      if (decision?.actorId !== hostId || decision.sharedWindow?.locked
+        || (negationChoice?.locked && negationChoice.windowId === decision.negationWindowId)) return false;
       const legal = decision.legalActions;
       const context = {
         actionRevision: room.actionRevision, meId: hostId, phase: room.phase, actorId: room.actionPlayerId,
@@ -208,15 +210,15 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
       }
       const action = legal.find((candidate) => ["decline_response", "decline_trigger", "skip_rescue"].includes(candidate));
       if (!action) return false;
-      const label = action === "decline_response" ? /^(TAKE DAMAGE|Pass|Skip)$/i : /^Skip$/i;
-      const response = page.waitForResponse((reply) => isPostAction(reply, action));
-      await page.getByRole("button", { name: label }).click({ timeout: 20_000 });
-      expect((await response).status()).toBe(200);
+      const response = await request.post("/api/rooms", { data: { action, code: roomCode, token: created.token, context } });
+      if (response.status() === 409) return false;
+      expect(response.status(), `human ${action} in ${room.phase}`).toBe(200);
       return true;
     };
-    currentRoom = await waitForRoom(request, roomCode, created.token, (room) => room.status === "playing" && room.turnSeat === hostSeat && room.phase?.startsWith("play") && room.currentAction?.actorId === hostId && room.currentAction.legalActions.includes("end_turn"), {
+    currentRoom = await waitForRoom(request, roomCode, created.token, (room) => room.status === "playing" && room.turnSeat === hostSeat && room.currentAction?.actorId === hostId
+      && (room.currentAction.legalActions.includes("end_turn") || room.currentAction.legalActions.includes("discard_cards")), {
       timeoutMs: 280_000,
-      label: "human Play Phase",
+      label: "human play or discard after opening Bot turns",
       beforePoll: triggerLocalRecovery,
       onState: resolveHumanInterruption,
     });
@@ -226,18 +228,19 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
     const heldHumanTurn = await readRoom(request, roomCode, created.token);
     expect(heldHumanTurn.turnSeat).toBe(hostSeat);
     expect(heldHumanTurn.actionRevision).toBe(humanRevision, "the scheduler does not advance a pending human turn");
-    await expect(page.getByRole("button", { name: "End", exact: true })).toBeEnabled({ timeout: 30_000 });
+    if (currentRoom.currentAction.legalActions.includes("end_turn")) {
+      await expect(page.getByRole("button", { name: "End", exact: true })).toBeEnabled({ timeout: 30_000 });
+    } else {
+      await expect(page.getByRole("button", { name: /^Discard .* selected$/ })).toBeVisible({ timeout: 30_000 });
+    }
     const humanTurnDeadline = Date.now() + 60_000;
-    let botCycleLogStart = 0;
+    let botCycleLogStart = (currentRoom.log ?? []).length;
     let endTurnSubmitted = false;
     while (Date.now() < humanTurnDeadline) {
       currentRoom = await readRoom(request, roomCode, created.token);
       if (currentRoom.status !== "playing" || currentRoom.turnSeat !== hostSeat) break;
-      if (currentRoom.currentAction?.actorId === hostId && currentRoom.currentAction.legalActions.includes("decline_trigger")) {
-        const skipResponsePromise = page.waitForResponse((response) => isPostAction(response, "decline_trigger"));
-        await page.getByRole("button", { name: "Skip", exact: true }).click();
-        expect((await skipResponsePromise).status()).toBe(200);
-      } else if (currentRoom.phase === "discard" && currentRoom.currentAction?.legalActions.includes("discard_cards")) {
+      if (await resolveHumanInterruption(currentRoom)) continue;
+      if (currentRoom.phase === "discard" && currentRoom.currentAction?.legalActions.includes("discard_cards")) {
         const host = currentRoom.players.find((player) => player.id === hostId);
         const required = Math.max(0, currentRoom.myHand.length - (host?.hp ?? currentRoom.myHand.length));
         for (const card of currentRoom.myHand.slice(0, required)) await page.locator(`[data-hand-card-id="${card.id}"] button.game-card`).click();
