@@ -4310,8 +4310,20 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [infoCard, setInfoCard] = useState<Card | null>(null);
   const [infoCardContext, setInfoCardContext] = useState<CardDetailsContext>("private-hand");
   const [infoCardEquipmentSourceId, setInfoCardEquipmentSourceId] = useState<string | null>(null);
+  const [infoCardSourceIdentity, setInfoCardSourceIdentity] = useState<{ roomCode: string; viewerId: string; actionRevision: string | number | null } | null>(null);
+  const infoCardDeckReorderSourceActive = room.currentAction?.kind === "deck_reorder"
+    && room.currentAction.actorId === room.meId
+    && room.isMyAction;
   const infoCardSourceAvailable = !infoCard || (
     (infoCardContext !== "private-hand" || room.myHand.some((card) => card.id === infoCard.id))
+    && (infoCardContext !== "private-deck-reorder" || Boolean(
+      infoCardSourceIdentity?.roomCode === room.code
+      && infoCardSourceIdentity.viewerId === room.meId
+      && infoCardSourceIdentity.actionRevision === (room.actionRevision ?? null)
+      && infoCardDeckReorderSourceActive
+      && room.currentAction?.kind === "deck_reorder"
+      && room.currentAction.deckReorder?.cards.some((card) => card.id === infoCard.id)
+    ))
     && (!infoCardEquipmentSourceId || Boolean(room.players.find((player) => player.id === room.meId)?.equipmentCards.some((card) => card.id === infoCardEquipmentSourceId)))
   );
   const visibleInfoCard = infoCardSourceAvailable ? infoCard : null;
@@ -4340,13 +4352,20 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const trigger = cardInfoReturnFocusRef.current;
     cardInfoReturnFocusRef.current = null;
     setInfoCardEquipmentSourceId(null);
+    setInfoCardSourceIdentity(null);
     setInfoCard(null);
     if (restoreFocus && trigger?.isConnected) window.requestAnimationFrame(() => {
       if (trigger.isConnected) trigger.focus({ preventScroll: true });
     });
   }, []);
   const openCardDetails = useCallback((card: Card, context: CardDetailsContext, trigger?: HTMLElement | null) => {
-    if (infoCard?.id === card.id && infoCardSourceAvailable) {
+    if (context === "private-deck-reorder" && !(
+      room.currentAction?.kind === "deck_reorder"
+      && room.currentAction.actorId === room.meId
+      && room.isMyAction
+      && room.currentAction.deckReorder?.cards.some((current) => current.id === card.id)
+    )) return;
+    if (infoCard?.id === card.id && infoCardContext === context && infoCardSourceAvailable) {
       closeCardDetails();
       return;
     }
@@ -4354,10 +4373,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     cardInfoReturnFocusRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     heroInfoReturnFocusRef.current = null;
     setInfoCardEquipmentSourceId(equipmentSourceId);
+    setInfoCardSourceIdentity(context === "private-deck-reorder"
+      ? { roomCode: room.code, viewerId: room.meId, actionRevision: room.actionRevision ?? null }
+      : null);
     setInfoCardContext(context);
     setInfoHero(null);
     setInfoCard(card);
-  }, [closeCardDetails, infoCard?.id, infoCardSourceAvailable]);
+  }, [closeCardDetails, infoCard?.id, infoCardContext, infoCardSourceAvailable, room.actionRevision, room.code, room.currentAction, room.isMyAction, room.meId]);
   const closeHeroDetails = useCallback((restoreFocus = true) => {
     const trigger = heroInfoReturnFocusRef.current;
     heroInfoReturnFocusRef.current = null;
@@ -4374,6 +4396,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     heroInfoReturnFocusRef.current = trigger;
     cardInfoReturnFocusRef.current = null;
     setInfoCardEquipmentSourceId(null);
+    setInfoCardSourceIdentity(null);
     setInfoCard(null);
     setInfoHero(hero);
   }, [closeHeroDetails, infoHero?.id]);
@@ -6017,7 +6040,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       rememberPrivateHandTransfers(room.code, room.meId, result.ignoredTransferIds);
       setPrivateDrawPresentation({ playerId: room.meId, cards: result.drawn, transferIds: result.presentedTransferIds });
       cardInfoReturnFocusRef.current = null;
-      setInfoCard(null); setTriggerSelectedKeys([]);
+      setInfoCard(null); setInfoCardSourceIdentity(null); setTriggerSelectedKeys([]);
       return;
     }
     if (result.drawn.length) {
@@ -11915,7 +11938,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {turnNotice && !borrowedSwordContinuationConsole && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
       {privateDrawVisible && <div className="played-card-stage private-draw-stage" role="status"><div className="private-draw-content"><div className="private-draw-row" role="region" aria-label="Private drawn cards; scroll horizontally to view all" tabIndex={privateDrawCards.length > 3 ? 0 : undefined}>{privateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div></div>}
       {privateDistribution && !presentationBusy && <PrivateCardDistributionDialog key={room.actionRevision} cards={privateDistribution.cards} players={room.players.filter((player) => privateDistribution.eligibleRecipientIds.includes(player.id) && player.alive)} disabled={busy} error={error} onSubmit={(assignments) => onAction("trigger", { providerId: "private_card_distribution", assignments })} />}
-      {privateDeckReorder && <PrivateDeckReorderDialog key={room.actionRevision} cards={privateDeckReorder.cards} minTop={privateDeckReorder.minTop} maxTop={privateDeckReorder.maxTop} disabled={busy} error={error} onSubmit={(topCardIds, bottomCardIds) => onAction("trigger", { providerId: "private_deck_reorder", topCardIds, bottomCardIds })} />}
+      {privateDeckReorder && <PrivateDeckReorderDialog key={room.actionRevision} cards={privateDeckReorder.cards} minTop={privateDeckReorder.minTop} maxTop={privateDeckReorder.maxTop} disabled={busy} error={error} onCardDetails={(card, trigger) => openCardDetails(card, "private-deck-reorder", trigger)} onSubmit={(topCardIds, bottomCardIds) => onAction("trigger", { providerId: "private_deck_reorder", topCardIds, bottomCardIds })} />}
       {activeJudgementRevealRoute && activeEvent?.type === "card" && <PublicJudgementOriginalReveal event={activeEvent} route={activeJudgementRevealRoute} />}
       {activeEquipmentZoneTransition && activeEvent?.type === "card" && <PublicEquipmentCardTransition event={activeEvent} route={activeEquipmentZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicEquipmentTransitionPresented} />}
       {activeJudgementZoneTransition && activeJudgementTransitionCard && activeEvent && <PublicJudgementCardTransition event={activeEvent} card={activeJudgementTransitionCard} route={activeJudgementZoneTransition} players={room.players} myTableIndex={myTableIndex} skipCentralRevealAfterPriorRead={Boolean(completedPriorJudgementPlayReveal)} onPresented={markPublicJudgementTransitionPresented} />}
@@ -12463,12 +12486,14 @@ function zoneInsertionIndex(row: HTMLElement, cardId: string, pointerX: number):
   return items.length;
 }
 
-function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSubmit }: { cards: Card[]; minTop: number; maxTop: number; disabled: boolean; error: string; onSubmit: (topCardIds: string[], bottomCardIds: string[]) => void }) {
+function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onCardDetails, onSubmit }: { cards: Card[]; minTop: number; maxTop: number; disabled: boolean; error: string; onCardDetails: (card: Card, trigger: HTMLElement) => void; onSubmit: (topCardIds: string[], bottomCardIds: string[]) => void }) {
   const [arrangement, setArrangement] = useState<DeckArrangement>(() => ({ top: cards.map((card) => card.id), bottom: [] }));
   const arrangementRef = useRef(arrangement);
   const [drag, setDrag] = useState<DeckDrag | null>(null);
   const dragRef = useRef<DeckDrag | null>(null);
   const holdTimerRef = useRef<number | null>(null);
+  const suppressDetailsClickRef = useRef(false);
+  const suppressDetailsClickTimerRef = useRef<number | null>(null);
   const edgeScrollRef = useRef<DeckEdgeScroll | null>(null);
   const edgeScrollIntervalRef = useRef<number | null>(null);
   const [edgeScrollZone, setEdgeScrollZone] = useState<DeckZone | null>(null);
@@ -12672,6 +12697,12 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     if (!session || event.pointerId !== session.pointerId) return;
     clearHoldTimer();
     if (!cancelled && session.active) {
+      suppressDetailsClickRef.current = true;
+      if (suppressDetailsClickTimerRef.current !== null) window.clearTimeout(suppressDetailsClickTimerRef.current);
+      suppressDetailsClickTimerRef.current = window.setTimeout(() => {
+        suppressDetailsClickRef.current = false;
+        suppressDetailsClickTimerRef.current = null;
+      }, 0);
       const target = locateDropTarget(session, event.clientX, event.clientY);
       if (target) commitMove(session.cardId, target.zone, target.index);
       else {
@@ -12740,6 +12771,7 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
   }, [arrangement, focusCardId]);
   useEffect(() => () => {
     if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
+    if (suppressDetailsClickTimerRef.current !== null) window.clearTimeout(suppressDetailsClickTimerRef.current);
     if (edgeScrollIntervalRef.current !== null) window.clearInterval(edgeScrollIntervalRef.current);
     edgeScrollIntervalRef.current = null;
     edgeScrollRef.current = null;
@@ -12761,13 +12793,25 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
       data-dragging={drag?.active && drag.cardId === id ? "true" : "false"}>
       <button ref={(node) => { if (node) cardRefs.current.set(id, node); else cardRefs.current.delete(id); }}
         type="button" className="deck-reorder-card-control" data-deck-card-control="true"
-        aria-label={name + " " + card.rank + card.suit + ", " + DECK_ZONE_LABELS[zone] + ", position " + (index + 1) + " of " + count}
-        aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"
+        aria-label={name + " " + card.rank + card.suit + ", " + DECK_ZONE_LABELS[zone] + ", position " + (index + 1) + " of " + count + ". Tap or press Enter to view details; hold to drag."}
+        aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Enter Space"
         onKeyDown={(event) => moveCardByKeyboard(event, id)}
+        onClick={(event) => {
+          if (suppressDetailsClickRef.current) {
+            suppressDetailsClickRef.current = false;
+            if (suppressDetailsClickTimerRef.current !== null) window.clearTimeout(suppressDetailsClickTimerRef.current);
+            suppressDetailsClickTimerRef.current = null;
+            event.preventDefault();
+            return;
+          }
+          onCardDetails(card, event.currentTarget);
+        }}
         onPointerDown={(event) => beginDrag(event, id, zone, index)}
         onLostPointerCapture={(event) => finishPointer(event, true)}
         onDragStart={(event) => event.preventDefault()}>
-        <CardPoolMiniFace card={card} variant="compact-target" className="deck-reorder-card-face" data-deck-card-face={id} />
+        <CardPoolMiniFace card={card} variant="compact-target" className="deck-reorder-card-face" data-deck-card-face={id}>
+          <span className="deck-reorder-card-details-cue" aria-hidden="true">i</span>
+        </CardPoolMiniFace>
       </button>
     </article>;
   };
@@ -12811,12 +12855,16 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     onKeyDown={(event) => { if (event.key === "Escape" && dragRef.current) { event.preventDefault(); cancelActiveDrag(); } }}>
     <section ref={dialogRef} className="target-card-picker-panel choice-trigger-panel deck-reorder-panel" role="dialog" aria-modal="false" aria-label="Stargazing deck reorder" aria-describedby="stargazing-deck-accessible-instructions">
       <header><strong id="stargazing-deck-title">STARGAZING</strong><span>Hold and drag cards to change position.</span></header>
-      <p id="stargazing-deck-accessible-instructions" className="deck-reorder-sr-only">Keyboard controls: focus a card, use Left or Right to reorder within its zone, and Up or Down to move it between Top and Bottom. The card name, suit, zone and position are available to assistive technology.</p>
+      <p id="stargazing-deck-accessible-instructions" className="deck-reorder-sr-only">Tap a card or press Enter or Space to view its details. Hold a card for about 260 milliseconds to drag it. Use Left or Right to reorder within its zone, and Up or Down to move it between Top and Bottom. The card name, suit, zone and position are available to assistive technology.</p>
       <div className="deck-reorder-sequences">
         {renderZone("top")}
         {renderZone("bottom")}
       </div>
-      <div className="target-card-picker-actions deck-reorder-completion"><button type="button" className="primary" data-deck-reorder-submit="true" disabled={disabled || !complete} onClick={() => onSubmit(arrangement.top, arrangement.bottom)}>CONFIRM</button></div>
+      <CardPoolDecisionFooter className="deck-reorder-completion" confirmAction={{
+        accessibleLabel: "CONFIRM",
+        disabled: disabled || !complete,
+        onClick: () => onSubmit(arrangement.top, arrangement.bottom),
+      }} />
       {error && <p className="error" role="alert">{error}</p>}
       <p className="deck-reorder-live" aria-live="polite" aria-atomic="true">{announcement}</p>
     </section>

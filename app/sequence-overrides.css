@@ -8299,13 +8299,18 @@
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  width: min(440px, 100%);
-  max-width: 100%;
+  align-items: stretch;
+  gap: 4px;
+  width: max-content;
+  max-width: min(330px, calc(100vw - 16px));
+  min-width: 0;
   max-height: calc(100% - 16px);
   margin: 0 0 8px;
-  padding: 8px;
+  padding: 6px;
   overflow: hidden;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel {
+  justify-self: center;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel > header {
   display: grid;
@@ -8327,12 +8332,14 @@
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel > .deck-reorder-sequences {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  width: 100%;
   min-height: 0;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: visible;
   padding: 0;
   overscroll-behavior: contain;
   touch-action: pan-x pan-y;
@@ -8341,15 +8348,22 @@
   position: relative;
   display: flex;
   flex: 0 0 auto;
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   margin: 0;
-  padding: 4px;
+  padding: 3px;
   border: 1px solid #a88a4d99;
   border-radius: 5px;
   background: #0f120edb;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-group.is-empty {
+  align-self: stretch;
+  width: auto;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-group[data-drop-eligible="true"] {
   border-color: #d1b76b;
@@ -8369,20 +8383,25 @@
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card-row {
   display: flex;
   flex: 0 0 auto;
-  width: 100%;
+  width: max-content;
   min-width: 0;
+  max-width: 100%;
   flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-start;
   gap: 4px;
   margin: 0;
-  padding: 2px 0;
+  padding: 0;
   overflow-x: auto;
   overflow-y: visible;
   scrollbar-width: none;
   overscroll-behavior-x: contain;
   touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-group.is-empty .deck-reorder-card-row {
+  width: 100%;
+  min-width: 100%;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card-row::-webkit-scrollbar {
   display: none;
@@ -8423,13 +8442,30 @@
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card-face {
   touch-action: none;
 }
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card-details-cue {
+  position: absolute;
+  z-index: 2;
+  right: 3px;
+  bottom: 3px;
+  display: grid;
+  width: 10px;
+  height: 10px;
+  place-items: center;
+  border: 1px solid #d5b96e;
+  border-radius: 50%;
+  background: #11140fdf;
+  color: #f4d98e;
+  font: 700 7px/1 Arial, sans-serif;
+  pointer-events: none;
+}
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card.is-drag-source {
   opacity: .28;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-zone-label {
   display: flex;
-  flex: 0 0 15px;
-  min-height: 15px;
+  flex: 0 0 14px;
+  width: 100%;
+  min-height: 14px;
   align-items: center;
   justify-content: space-between;
   gap: 6px;
@@ -8444,9 +8480,10 @@
   letter-spacing: normal;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-drop-placeholder {
-  flex: 1 0 50px;
+  flex: 1 0 44px;
+  width: 100%;
   min-width: 0;
-  min-height: 50px;
+  min-height: 44px;
   border: 0;
   border-radius: 3px;
   background: #a88a4d0a;
@@ -8462,15 +8499,15 @@
   pointer-events: none;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-completion {
-  position: static;
   flex: 0 0 auto;
-  margin: 0;
-  padding: 2px 0 0;
-  background: transparent;
-}
-.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-completion button {
-  width: 100%;
   min-height: 44px;
+  padding: 0;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-completion .card-pool-decision-footer__actions {
+  width: 100%;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-completion .card-pool-decision-footer__confirm {
+  text-transform: uppercase;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-live {
   position: absolute;

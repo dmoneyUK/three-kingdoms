@@ -191,8 +191,8 @@ async function assertCompactGeometry({ dialog, cards, expectedTopIds, expectedBo
       const row = root.querySelector("[data-deck-zone-items]");
       const label = root.querySelector("[data-deck-zone-label]").getBoundingClientRect();
       return {
-        left: frame.left, right: frame.right, top: frame.top, bottom: frame.bottom, height: frame.height,
-        width: row.clientWidth, scrollWidth: row.scrollWidth, labelLeft: label.left, labelRight: label.right,
+        left: frame.left, right: frame.right, top: frame.top, bottom: frame.bottom, frameWidth: frame.width, height: frame.height,
+        rowWidth: row.clientWidth, scrollWidth: row.scrollWidth, labelLeft: label.left, labelRight: label.right,
         labelTop: label.top, labelBottom: label.bottom,
         cardIds: [...row.querySelectorAll("[data-deck-card-id]")].map((item) => item.dataset.deckCardId),
       };
@@ -235,13 +235,13 @@ async function assertCompactGeometry({ dialog, cards, expectedTopIds, expectedBo
         opacity: style ? Number(style.opacity) : null, animation: style?.animationName ?? null,
       };
     });
-    const confirm = panel.querySelector("[data-deck-reorder-submit]").getBoundingClientRect();
+    const confirm = panel.querySelector('[data-pool-action="confirm"]').getBoundingClientRect();
     return {
-      panel: { left: panelBox.left, top: panelBox.top, right: panelBox.right, bottom: panelBox.bottom, height: panelBox.height, clientHeight: panel.clientHeight, scrollHeight: panel.scrollHeight },
+      panel: { left: panelBox.left, top: panelBox.top, right: panelBox.right, bottom: panelBox.bottom, width: panelBox.width, height: panelBox.height, clientHeight: panel.clientHeight, scrollHeight: panel.scrollHeight },
       table: { left: tableBox.left, top: tableBox.top, right: tableBox.right, bottom: tableBox.bottom },
       top: readZone("top"), bottom: readZone("bottom"), cards,
       sequences: { clientHeight: sequences.clientHeight, scrollHeight: sequences.scrollHeight },
-      confirm: { left: confirm.left, top: confirm.top, right: confirm.right, bottom: confirm.bottom, height: confirm.height },
+      confirm: { left: confirm.left, top: confirm.top, right: confirm.right, bottom: confirm.bottom, width: confirm.width, height: confirm.height },
       viewport: { width: innerWidth, height: innerHeight, pageWidth: document.documentElement.scrollWidth, scrollY },
     };
   });
@@ -252,15 +252,25 @@ async function assertCompactGeometry({ dialog, cards, expectedTopIds, expectedBo
   expect(geometry.table.bottom).toBeGreaterThanOrEqual(geometry.panel.bottom);
   expect(geometry.panel.left).toBeGreaterThanOrEqual(0);
   expect(geometry.panel.right).toBeLessThanOrEqual(viewport.width);
+  expect(geometry.panel.width).toBeLessThanOrEqual(330);
+  expect(geometry.panel.width).toBeLessThan(440, "the full pool window is compact rather than using the prior full-width cap");
   expect(geometry.panel.bottom).toBeLessThanOrEqual(viewport.height);
   expect(geometry.panel.scrollHeight).toBeLessThanOrEqual(geometry.panel.clientHeight + 1);
   expect(geometry.sequences.scrollHeight).toBeLessThanOrEqual(geometry.sequences.clientHeight + 1);
-  expect(geometry.top.scrollWidth).toBeLessThanOrEqual(geometry.top.width + 1);
-  expect(geometry.bottom.scrollWidth).toBeLessThanOrEqual(geometry.bottom.width + 1);
+  expect(geometry.top.scrollWidth).toBeLessThanOrEqual(geometry.top.rowWidth + 1);
+  expect(geometry.bottom.scrollWidth).toBeLessThanOrEqual(geometry.bottom.rowWidth + 1);
   expect(geometry.top.cardIds).toEqual(expectedTopIds);
   expect(geometry.bottom.cardIds).toEqual(expectedBottomIds);
   expect(geometry.top.height).toBeGreaterThanOrEqual(expectedTopIds.length ? 98 : 70);
   expect(geometry.bottom.height).toBeGreaterThanOrEqual(expectedBottomIds.length ? 98 : 70);
+  for (const [zoneName, expectedIds] of [["top", expectedTopIds], ["bottom", expectedBottomIds]]) {
+    if (expectedIds.length > 0) {
+      const zoneGeometry = geometry[zoneName];
+      expect(zoneGeometry.frameWidth).toBeLessThanOrEqual(expectedIds.length * 50 + Math.max(0, expectedIds.length - 1) * 4 + 20);
+    }
+  }
+  expect(geometry.confirm.width).toBeGreaterThanOrEqual(88);
+  expect(geometry.confirm.width).toBeLessThanOrEqual(96);
   expect(geometry.top.labelTop).toBeGreaterThanOrEqual(geometry.top.top);
   expect(geometry.bottom.labelTop).toBeGreaterThanOrEqual(geometry.bottom.top);
   expect(geometry.top.labelBottom).toBeLessThanOrEqual(geometry.top.bottom + 1);
@@ -298,7 +308,8 @@ async function assertCompactGeometry({ dialog, cards, expectedTopIds, expectedBo
   expect(geometry.viewport.scrollY).toBe(0);
   await expect(dialog.locator("[data-deck-zone]")).toHaveCount(2);
   await expect(dialog.locator("[data-deck-card-control]")).toHaveCount(cards.length);
-  await expect(dialog.locator('[data-deck-reorder-submit]')).toHaveCount(1);
+  await expect(dialog.locator('[data-pool-action="confirm"]')).toHaveCount(1);
+  await expect(dialog.locator('[data-pool-action-footer]')).toHaveCount(1);
   await expect(dialog.getByRole("button", { name: "CONFIRM", exact: true })).toBeEnabled();
   await expect(dialog.locator(".deck-reorder-menu-toggle, .deck-reorder-card-actions, [data-deck-reorder-progress]")).toHaveCount(0);
   await assertCardConservation(dialog, cards);
@@ -333,6 +344,19 @@ test("Stargazing uses two compact private zones, supports touch and keyboard mov
     dialog, cards, sharedMiniature,
     expectedTopIds: cards.map((item) => item.id), expectedBottomIds: [],
   });
+
+  await cardControl(dialog, peach.id).click();
+  const privateDetails = actorPage.locator('.card-details-panel[data-card-details-context="private-deck-reorder"]');
+  await expect(privateDetails).toBeVisible();
+  await expect(privateDetails).toHaveAttribute("data-card-details-card-id", peach.id);
+  await expect(privateDetails.locator(".card-details-rules")).not.toHaveValue("");
+  await privateDetails.getByRole("button", { name: "Close card details" }).click();
+  await expect(privateDetails).toHaveCount(0);
+  await expect(cardControl(dialog, peach.id)).toBeFocused();
+  await cardControl(dialog, peach.id).press("Enter");
+  await expect(privateDetails).toBeVisible();
+  await actorPage.keyboard.press("Escape");
+  await expect(privateDetails).toHaveCount(0);
 
   const observer = await roomView(request, opened.seed, 2);
   expect(observer.currentAction.kind).toBe("deck_reorder");

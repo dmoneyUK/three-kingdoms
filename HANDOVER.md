@@ -1,19 +1,17 @@
 # HANDOVER — UX2 §10.67 STARGAZING-COMPACT-TWO-ZONE-POOL-01
 
-**Updated:** 2026-11-22 09:48 UTC
+**Updated:** 2026-11-22 14:35 UTC
 
-**Status:** IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW
+**Status:** IMPLEMENTATION LOCALLY VERIFIED — COMMIT / EXACT-SHA CI / DEPLOY PENDING
 
-**Design reviewed:** `docs/UX2-refine.md` at `158d559445012f1bc4faf9263c9646943a1f82ff`, §10.67 (Owner iPhone verdict 2026-11-22 09:08 UTC).
+**Design reviewed:** `docs/UX2-refine.md` at `f1679fb4` (latest `ux-v2`), §§10.67–10.68. Current bounded task is §10.67 only; §10.68 begins after its source boundary.
 
 ## Current task
 
-Correct the original §10.67 only. Replace Stargazing's oversized custom face with the same reusable 50×75 CSS px, 2:3 CardFace miniature used by the Steal/Dismantle public target pool. Make four cards in a two-Top/two-Bottom arrangement, both zone labels, and the single Confirm fully visible together without clipping or required scrolling. Preserve accepted zones, copy, card order/identity, drag, keyboard, privacy, and submission behavior.
+Apply Owner clarification 2026-11-22 14:07: keep the existing approved shared 50×75 / 2:3 `CardPoolMiniFace` unchanged. Compact the complete Stargazing window and occupied zone frames, retain a real ≥44px empty-zone drop target, replace the full-width Confirm with the shared 88–96×44 card-pool action, and add actor-private Card Details via tap/Enter/Space while preserving long-press drag, keyboard reorder, privacy, and the existing server submission.
 
-## Delivery and verification
+## Latest result
 
-Implementation commit: `e7fceb4d80290ff001d323334ffba80ef87a0288` (pushed to `ux-v2`). Shared `CardPoolMiniFace` now owns the same authentic 50×75px / 2:3 CardFace used in the public target Equipment/Judgement pool and Stargazing. Removed Stargazing's old large 5:7 face metrics, restored the compact two-zone rows and non-overlay Confirm footer. Four-card 2+2 arrangement remains wholly visible, and existing private card identity/order, drag, keyboard, submission and privacy behavior are preserved.
+Changed `app/sequence-overrides.css`, `app/page.tsx`, `app/card-details-preview.tsx`, and the existing Stargazing browser scenario. One focused 440×894 four-player scenario passed (9.9s): 4+0 and 2+2 layouts fit; existing 50×75 mini parity remains; compact dialog and Confirm bounds pass; touch drag, keyboard reorder, tap/Enter Details, observer privacy, card conservation, and one authorized submission pass. `npm run build`, `node --check`, `git diff --check`, and ESLint on `app/card-details-preview.tsx` passed. Focused ESLint on `app/page.tsx` stopped with `react-hooks/rules-of-hooks` `RangeError: Maximum call stack size exceeded` at line 4134; no rule was changed. The first browser invocation used stale `dist`; after rebuilding, the final focused scenario passed.
 
-Validation: focused render/reorder 31/31 PASS; Stargazing API 9/9 PASS; local build, focused ESLint, `node --check`, and `git diff --check` PASS. One focused 440×894 browser scenario PASS (9.1s): exact shared-face presentation and dimensions match, all cards/labels/Confirm fit without scrolling or clipping, touch/keyboard movement works, and the authorized ordered submission occurs once.
-
-Exact-SHA [GitHub Actions run 45008759066](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45008759066) for `e7fceb4d` completed successfully: Lint/fast, API, browser startup smoke, D1 migration, Worker deployment and production smoke all PASS. Cloudflare Worker version: `d53e00c5-8f11-4863-b355-3e2b04a5ccdb`. Live production checks: homepage HTTP 200; `/api/health` HTTP 200 with `{"ok":true,"worker":"available"}`. Remaining gate: Owner iPhone re-review; do not mark USER-ACCEPTED.
+Prior shared-mini delivery remains `e7fceb4d80290ff001d323334ffba80ef87a0288`, exact-SHA [Actions 45008759066](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45008759066) green, Worker `d53e00c5-8f11-4863-b355-3e2b04a5ccdb`. New §10.67 changes are locally verified; push, exact-SHA CI, and deployment remain pending. Latest remote `ux-v2` is `f1679fb4` (docs-only §10.69 addition; no code conflict). Exact-SHA CI/deployment will validate the §10.67 and §10.68 implementation tip together, per Owner instruction. Do not mark USER-ACCEPTED; Owner iPhone re-review remains required.

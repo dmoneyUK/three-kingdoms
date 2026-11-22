@@ -5,7 +5,7 @@ import { cardDefinition } from "../game/cards";
 import type { Card } from "../game/model";
 import { CardFace } from "./card-face";
 
-export type CardDetailsContext = "private-hand" | "public-zone";
+export type CardDetailsContext = "private-hand" | "private-deck-reorder" | "public-zone";
 
 export function CardDetailsPreview({
   card,
@@ -53,7 +53,11 @@ export function CardDetailsPreview({
     >
       <button ref={closeButtonRef} type="button" className="card-info-close card-details-close" onClick={onClose} aria-label="Close card details">×</button>
       <h2 className="card-details-sr-only" id="card-details-title">{definition.name}, {card.rank}{card.suit}</h2>
-      <p className="card-details-sr-only" id="card-details-context">{context === "public-zone" ? "Public card details." : "Private card details, visible only to you."}</p>
+      <p className="card-details-sr-only" id="card-details-context">{context === "public-zone"
+        ? "Public card details."
+        : context === "private-deck-reorder"
+          ? "Private revealed deck card details, visible only to the acting player."
+          : "Private card details, visible only to you."}</p>
       <div className="card-details-body">
         <div className="card-details-illustration" role="img" aria-label={`${card.rank} ${card.suit}, ${definition.name}`}>
           <CardFace card={card} />
