@@ -25,7 +25,7 @@ const standardCardDecision = {
 
 const standardHeroDecisionFamilies = {
   "cao-cao": ["trigger", "delegation"], simayi: ["target cards", "own cards"],
-  "xiahou-dun": ["judgement", "choice"], "zhang-liao": ["targets"], "xu-chu": ["trigger"],
+  "xiahou-dun": ["judgement then choice"], "zhang-liao": ["targets"], "xu-chu": ["trigger"],
   "guo-jia": ["trigger", "distribution"], "zhen-ji": ["conversion", "judgement"], "yue-jin": ["own cards and target"],
   "liu-bei": ["active cards and target", "delegation"], "guan-yu": ["conversion"],
   "zhang-fei": ["passive"], "zhuge-liang": ["deck reorder", "passive"], "zhao-yun": ["conversion", "conversion"],

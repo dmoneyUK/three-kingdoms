@@ -640,7 +640,8 @@ test("one human and three genuine Bots progress through a stratagem, Hero trigge
   let declinedAttacks = 0;
   let skippedRescue = false;
   let final;
-  for (let turn = 0; turn < 16; turn++) {
+  const deadline = Date.now() + 20_000;
+  for (let poll = 0; poll < 100 && Date.now() < deadline; poll++) {
     const scheduled = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 4 });
     assert.equal(scheduled.status, 200);
     assert.equal(scheduled.data.unsupported + scheduled.data.failed, 0, JSON.stringify(scheduled.data));
@@ -648,7 +649,12 @@ test("one human and three genuine Bots progress through a stratagem, Hero trigge
     final = (await state(code, token)).data;
     if (final.status === "finished") break;
     const decision = final.currentAction;
-    if (decision.actorId !== hostId) continue;
+    if (decision.actorId !== hostId) {
+      // A committed discard handoff deliberately waits out its presentation
+      // deadline before the next seat can draw.
+      if (!scheduled.data.steps) await new Promise((resolve) => setTimeout(resolve, 100));
+      continue;
+    }
     let human;
     if (decision.negationWindowId && decision.legalActions.includes("decline_response")) {
       human = await request("decline_response", { code, token, context: { windowId: decision.negationWindowId } });
@@ -661,8 +667,13 @@ test("one human and three genuine Bots progress through a stratagem, Hero trigge
       skippedRescue = true;
     }
     if (human) assert.equal(human.status, 200, JSON.stringify(human.data));
+    else if (!scheduled.data.steps) await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  assert.equal(final?.status, "finished");
+  assert.equal(final?.status, "finished", JSON.stringify({
+    phase: final?.phase, turnSeat: final?.turnSeat, pending: final?.currentAction?.kind,
+    steps, passedNegation, declinedAttacks, skippedRescue,
+    seats: final?.players.map(({ seat, hp, botStatus }) => ({ seat, hp, botStatus })),
+  }));
   assert.ok(passedNegation && declinedAttacks >= 3 && skippedRescue);
   assert.ok(steps > 0 && steps <= 200);
   assert.match(final.log.join("\n"), /Cultivation/);
