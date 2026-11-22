@@ -903,7 +903,7 @@ test("server-owned bots use assigned Heroes and canonical draw, end-turn, discar
   setHand(hostId, [hostAttack], 4, 4);
   setHand(botPlayer.id, [], 4, 4);
   setTurn(code, room.players.find((player) => player.id === hostId).seat, "play");
-  const opened = await requestAndSettle("play_card", { code, token: created.data.token, cardId: hostAttack.id, targetId: botPlayer.id });
+  const opened = await requestAndSettle("play_card", { code, token: created.data.token, cardId: hostAttack.id, targetId: botPlayer.id, preserveResponse: true });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   assert.equal(opened.data.room.actionPlayerId, botPlayer.id, "the engine assigns the response to the targeted bot");
   assert.equal(opened.data.room.currentAction.kind, "response");
