@@ -35,6 +35,7 @@ test("observation is actor-private and only the router can resolve executable pa
   assert.doesNotMatch(JSON.stringify(observation), /actual-card|actual-target|private-card|private-provider|Renegade|secret-token|ignore the system/);
   assert.deepEqual(observation.publicHistory, ["Duel"]);
   assert.equal(observation.self.role, "Rebel");
+  assert.equal(observation.table[0].revealedRole, "Lord", "the publicly known living Lord remains visible to policy");
   assert.equal(fixture({ ...authority, actorId: "other" }).observation, null);
   const chosen = await selectBotChoice(router.choices, observation);
   assert.equal(router.resolve(chosen.id, { ...authority, decisionConsumed: true }), null);

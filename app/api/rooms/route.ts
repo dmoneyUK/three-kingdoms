@@ -14,6 +14,7 @@ import { canDeclareAttack as canDeclareAttackFor, effectiveDistanceBetween, next
 import { canRespondWithNegation, getAttackCardProvider, getPlayPhaseActions, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
 import { buildPlayCandidates } from "../../../ai/play-candidates";
+import { assessRoleAction, filterAndRankRoleActions, type RoleActionIntent, type RolePolicyContext } from "../../../ai/role-target-policy";
 import { buildBotObservation, type BotChoiceKind } from "../../../ai/bot-observation";
 import { chooseExact, openBotDecision, policyForBotDispatch, selectBotChoice, type BotDecisionPlan } from "../../../ai/decision-router";
 import { botTriggerChoices } from "../../../ai/trigger-selection";
@@ -33,7 +34,7 @@ import { determineMatchOutcome } from "../../../game/match/outcome";
 import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
 import { deckReorderCount, rebuildDeckForReorder } from "../../../game/decisions/deck-reorder";
 import { asTriggerPending, isGroupParticipantProgressOutcomeAllowed, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestChoice, type HarvestNegationResponseRecord, type HarvestParticipantProgress, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type HarvestPending, type HeroChoiceTriggerContinuation, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type NegationWindowPending, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
-import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
+import { getActiveHeroSkillOptions, KING_SKILL_IDS, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
 import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { evaluatePlayTarget, type PlayTargetEligibilityPlayer, type PlayTargetMode, type PlayTargetRejection } from "../../../game/capabilities/play-target-eligibility";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
@@ -8541,8 +8542,9 @@ async function unlockedBotWindowResponses(room: RoomRow, pending: BotResponseWin
 }
 
 /** Internal Worker import. Public room projections continue to omit an actor for shared windows. */
-export async function botControllerSnapshot(code: string, advanceExpiredWindows = false): Promise<{
+export async function botControllerSnapshot(code: string, advanceExpiredWindows = false, roleBotId?: string): Promise<{
   roomId: string; status: RoomRow["status"]; botIds: string[]; eligibleBotIds: string[]; actionRevision: string;
+  rolePolicyContext?: RolePolicyContext;
 } | null> {
   const room = await db().prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
   if (!room || room.test_room || !botDemoEnabled()) return null;
@@ -8551,19 +8553,19 @@ export async function botControllerSnapshot(code: string, advanceExpiredWindows 
   const handoff = parseDiscardTurnHandoff(room.pending_json);
   if (advanceExpiredWindows && handoff && handoff.deadline <= Date.now()) {
     await advanceDiscardTurnHandoff(room.id);
-    return botControllerSnapshot(code);
+    return botControllerSnapshot(code, false, roleBotId);
   }
   const pending = parsePersistedPending(room.pending_json);
   const window = botResponseWindow(pending);
   if (advanceExpiredWindows && room.status === "playing" && pending?.kind === "harvest" && pending.completeAt
     && Date.now() >= pending.completeAt) {
     await advanceHarvest(room.id);
-    return botControllerSnapshot(code);
+    return botControllerSnapshot(code, false, roleBotId);
   }
   if (advanceExpiredWindows && room.status === "playing" && window && (Date.now() >= window.deadline || window.settlement)) {
     if (window.kind === "negation_window") await advanceNegation(room.id);
     else await advanceSharedResponseWindow(room.id, code, "");
-    return botControllerSnapshot(code);
+    return botControllerSnapshot(code, false, roleBotId);
   }
   const actorId = room.status === "heroes" ? nextGeneralSelector(players)?.id ?? null : actionPlayerIdForPending(room, pending, players);
   const activePhase = room.phase?.startsWith("play") || room.phase?.startsWith("draw")
@@ -8572,7 +8574,15 @@ export async function botControllerSnapshot(code: string, advanceExpiredWindows 
   const eligibleBotIds = window
     ? (await unlockedBotWindowResponses(room, window, players)).map(({ actorId }) => actorId)
     : (room.status === "heroes" || activePhase && !completingHarvest) && actorId && botIds.includes(actorId) ? [actorId] : [];
-  return { roomId: room.id, status: room.status, botIds, eligibleBotIds, actionRevision: await actionRevisionFor(room, players, actorId) };
+  const roleActor = roleBotId ? players.find((player) => player.id === roleBotId && player.controller_type === "bot" && !player.is_test_player) : null;
+  const rolePolicyContext = roleActor ? {
+    actorId: roleActor.id,
+    actorRole: roleActor.role,
+    publicLordId: players.find((player) => player.role === "Lord" && player.alive)?.id ?? null,
+    livingPlayerIds: players.filter((player) => player.alive).map(({ id }) => id),
+  } : undefined;
+  return { roomId: room.id, status: room.status, botIds, eligibleBotIds, actionRevision: await actionRevisionFor(room, players, actorId),
+    ...(rolePolicyContext ? { rolePolicyContext } : {}) };
 }
 
 export async function POST(request: Request, routeContext?: unknown) {
@@ -8708,6 +8718,7 @@ export async function POST(request: Request, routeContext?: unknown) {
     const responseDecision = responseData.decision;
     const ownCardIds = new Set(ownHand.map((card) => card.id));
     const ownedCostIds = new Set([...ownHand, ...ownEquipment].map(({ id }) => id));
+    const policyPending = botWindowResponse ?? pendingForController;
     const diagnosticOptions: BotDecisionOption[] = responseDecision?.options.map((option) => ({
       providerId: option.providerId,
       satisfies: option.satisfies,
@@ -8847,12 +8858,163 @@ export async function POST(request: Request, routeContext?: unknown) {
     const workerFlags = env as { BOT_AI_ENABLED?: string; WTK_TEST_CAPABILITIES?: string };
     const mockPolicy = policyForBotDispatch(workerFlags.WTK_TEST_CAPABILITIES === "1" ? "true" : workerFlags.BOT_AI_ENABLED,
       workerFlags.WTK_TEST_CAPABILITIES === "1" ? internalBot.mockPolicy : undefined);
+    const rolePolicyContext: RolePolicyContext = {
+      actorId: actor.id,
+      actorRole: actor.role,
+      publicLordId: allRoomPlayers.find((player) => player.role === "Lord" && player.alive)?.id ?? null,
+      livingPlayerIds: allRoomPlayers.filter((player) => player.alive).map(({ id }) => id),
+    };
     type BotDispatch = { action: string; fields: Record<string, unknown> };
     const alternatives: BotDecisionPlan<BotDispatch>[] = [];
     let plansIncomplete = false;
     let preferredKind: BotChoiceKind | undefined;
+    let activeRoleOptions: ReturnType<typeof activeHeroSkillOptions> = [];
+    const blockedRoleReasons = new Set<string>();
+    const roleSkillState = parse<KingSkillState>(room.skill_state_json, {});
+    const harmfulRoleOutcomes = new Set(["follow_up_attack", "force_damage", "target_discard", "discard_cards", "damage_player",
+      "gain_target_card", "gain_damage_cards", "fanjian_guess", "fanjian_card", "fanjian_combined",
+      "draw_phase_replacement", "redirect_attack", "dismantle", "fanjian", "place_delayed", "lust", "influencing_attack"]);
+    const helpfulRoleOutcomes = new Set(["attacker_draw", "deck_reorder", "judgement_replacement", "obtain_judgement_card",
+      "legacy_distribution", "draw_phase_modifier", "draw_cards", "recover_player", "draw_target_cards",
+      "discard_all_hand_recover", "skip_discard", "give_cards", "betrothment", "prodigal_healer"]);
+    const neutralRoleOutcomes = new Set(["prevent_damage", "continue_event", "lose_draw", "discard_draw"]);
+    const targetIdsForFields = (fields: Record<string, unknown>) => [
+      ...(typeof fields.targetId === "string" ? [fields.targetId] : []),
+      ...(Array.isArray(fields.targetIds) ? fields.targetIds.filter((id): id is string => typeof id === "string") : []),
+    ];
+    const outcomeIntent = (outcome: unknown, fallbackTargetIds: readonly string[] = []): RoleActionIntent => {
+      const value = record(outcome);
+      const kind = typeof value?.kind === "string" ? value.kind : "";
+      const ownTargets = [
+        ...(typeof value?.targetId === "string" ? [value.targetId] : []),
+        ...(Array.isArray(value?.targetIds) ? value.targetIds.filter((id): id is string => typeof id === "string") : []),
+        ...(typeof value?.playerId === "string" && ["damage_player", "recover_player", "lose_hp", "draw_target_cards", "legacy_distribution", "discard_all_hand_recover"].includes(kind) ? [value.playerId] : []),
+      ];
+      const targetIds = [...new Set([...ownTargets, ...fallbackTargetIds])];
+      const disposition = harmfulRoleOutcomes.has(kind) ? "hostile" : helpfulRoleOutcomes.has(kind) ? "helpful"
+        : neutralRoleOutcomes.has(kind) ? "neutral" : "unknown";
+      return { disposition, ...(targetIds.length ? { targetIds } : {}),
+        ...(disposition === "unknown" && !targetIds.length ? { mayAffectLord: true } : {}) };
+    };
+    const activeSkillContextFor = (option: (typeof activeRoleOptions)[number]) => {
+      const targetIds = option.selection && "targetIds" in option.selection ? option.selection.targetIds ?? [] : [];
+      const base = {
+        playerId: actor.id, hero: actor.hero, role: actor.role, hand: ownHand, equipment: ownEquipment,
+        livingTargetIds: allRoomPlayers.filter((player) => player.alive && player.id !== actor.id).map(({ id }) => id),
+        skillState: roleSkillState,
+        canDeclareAttack: canDeclareAttackFor({ ...actor, ...attackUseLimitContext(actor) }, room.phase),
+      };
+      if (option.effectId === KING_SKILL_IDS.rende || option.effectId === KING_SKILL_IDS.fanjian) return { ...base, livingTargetIds: targetIds };
+      if (option.effectId === "liu_bei_jijiang") return { ...base, attackTargetIds: targetIds, influencingAvailable: true };
+      if (option.effectId === KING_SKILL_IDS.qixi) return { ...base, targetableTargetIds: targetIds };
+      if (option.effectId === KING_SKILL_IDS.captivating) return { ...base, overindulgenceTargetIds: targetIds };
+      if (option.effectId === KING_SKILL_IDS.betrothment) return { ...base, betrothmentTargetIds: targetIds };
+      if (option.effectId === KING_SKILL_IDS.prodigalHealer) return { ...base, injuredLivingTargetIds: targetIds };
+      if (option.effectId === KING_SKILL_IDS.lust) return { ...base, lustTargetIds: targetIds };
+      return base;
+    };
+    const triggerChoicesForRole = (option: (typeof activeRoleOptions)[number]) => {
+      const selection = option.selection;
+      const choices: ReturnType<typeof botTriggerChoices> = [];
+      const append = (candidate: typeof option) => {
+        choices.push(...botTriggerChoices(candidate, ownedCostIds));
+      };
+      const targetIds = selection && "targetIds" in selection ? selection.targetIds ?? [] : [];
+      if (!selection || !targetIds.length || selection.type !== "target" && selection.type !== "cards") {
+        append(option);
+        return choices;
+      }
+      const min = selection.type === "target" ? selection.min ?? 1 : selection.targetMin ?? 1;
+      const max = selection.type === "target" ? selection.max ?? 1 : selection.targetMax ?? 1;
+      for (let count = min; count <= max && choices.length < 256; count++) {
+        for (const selectedTargets of chooseExact(targetIds, count)) {
+          if (choices.length >= 256) break;
+          const narrowedSelection = selection.type === "target"
+            ? { ...selection, targetIds: [...selectedTargets], min: count, max: count }
+            : { ...selection, targetIds: [...selectedTargets], targetMin: count, targetMax: count };
+          append({ ...option, selection: narrowedSelection });
+        }
+      }
+      return choices;
+    };
+    const roleIntentForDispatch = (action: string, fields: Record<string, unknown>): RoleActionIntent => {
+      const fieldTargets = targetIdsForFields(fields);
+      const comparisonKey = action === "serpent_spear_attack" ? "Attack:2"
+        : action === "play_card" ? (() => {
+          const card = ownHand.find(({ id }) => id === fields.cardId);
+          return `${fields.playAs === "attack" ? "Attack" : card?.kind ?? "unknown"}:1`;
+        })()
+        : action === "trigger" ? `skill:${String(fields.providerId ?? "unknown")}`
+        : action === "respond" && responseDecision?.requirement === "attack" ? "Attack:forced"
+        : action === "choose_borrowed_sword_target" ? "Attack:borrowed_sword"
+        : action;
+      if (action === "serpent_spear_attack") return { disposition: "hostile", targetIds: fieldTargets, comparisonKey };
+      if (action === "play_card") {
+        const card = ownHand.find(({ id }) => id === fields.cardId);
+        if (!card) return { disposition: "unknown", targetIds: fieldTargets, comparisonKey };
+        const effectiveKind = fields.playAs === "attack" ? "Attack" : card.kind;
+        const definition = cardDefinition(effectiveKind);
+        if (effectiveKind === "Lightning") return { disposition: "delayed_harm", mayAffectLord: true, comparisonKey };
+        if (definition.target === "all-opponents") return { disposition: "global_harm", mayAffectLord: true, comparisonKey };
+        if (definition.target === "opponent") return { disposition: "hostile", targetIds: fieldTargets, comparisonKey };
+        if (definition.target === "self") return { disposition: "helpful", comparisonKey };
+        return { disposition: "neutral", targetIds: fieldTargets, comparisonKey };
+      }
+      if (action === "choose_target_card" && pendingForController?.kind === "target_card") {
+        return { disposition: "hostile", targetIds: [pendingForController.targetId], forced: true, comparisonKey };
+      }
+      if (action === "choose_borrowed_sword_target") return { disposition: "hostile", targetIds: fieldTargets, forced: true, comparisonKey };
+      if (action === "respond" && responseDecision?.requirement === "attack") {
+        const continuation = policyPending?.kind === "response" ? policyPending.continuation : null;
+        const forcedTargetId = continuation?.kind === "duel" ? continuation.opponentId
+          : continuation?.kind === "borrowed_sword_attack" || continuation?.kind === "influencing_attack" ? continuation.targetId
+          : continuation?.kind === "group" ? continuation.sourceId : null;
+        const forcedTargets = forcedTargetId ? [forcedTargetId] : fieldTargets;
+        return { disposition: forcedTargets.length ? "hostile" : "unknown", targetIds: forcedTargets,
+          mayAffectLord: !forcedTargets.length, forced: true, comparisonKey };
+      }
+      if (action === "trigger") {
+        const providerId = fields.providerId;
+        const activeOption = activeRoleOptions.find((option) => option.effectId === providerId);
+        if (activeOption) {
+          const cardIds = Array.isArray(fields.cardIds) ? fields.cardIds : typeof fields.cardId === "string" ? [fields.cardId] : [];
+          const targetIds = Array.isArray(fields.targetIds) ? fields.targetIds : typeof fields.targetId === "string" ? [fields.targetId] : [];
+          const execution = resolveActiveHeroSkill(providerId, activeSkillContextFor(activeOption), {
+            cardIds, targetId: fields.targetId, targetIds,
+          });
+          return execution ? { ...outcomeIntent(execution.outcome, fieldTargets), comparisonKey }
+            : { disposition: "unknown", targetIds: fieldTargets, mayAffectLord: true, comparisonKey };
+        }
+        if (policyPending) {
+          const trigger = asTriggerPending(policyPending);
+          const context = trigger ? triggerContextFor(trigger, allRoomPlayers, room) : null;
+          const option = trigger ? triggerOptionsFor(trigger, allRoomPlayers, room).find(({ effectId }) => effectId === providerId) : null;
+          const execution = context && option ? resolveTriggeredEffect(option.effectId, context, fields) : null;
+          if (execution) return { ...outcomeIntent(execution.outcome, [...fieldTargets, ...(context?.targetId ? [context.targetId] : []),
+            ...(execution.outcome.kind === "judgement" && context?.sourceId ? [context.sourceId] : [])]),
+            ...(option?.allowDecline === false ? { forced: true } : {}), comparisonKey };
+          if (context && option) return { disposition: "unknown", targetIds: fieldTargets,
+            mayAffectLord: true, ...(option.allowDecline === false ? { forced: true } : {}), comparisonKey };
+        }
+        if (providerId === "private_card_distribution") return { disposition: "helpful", comparisonKey };
+        if (providerId === "private_deck_reorder") return { disposition: "neutral", comparisonKey };
+        return { disposition: "unknown", targetIds: fieldTargets, mayAffectLord: true, comparisonKey };
+      }
+      if (fieldTargets.length) return { disposition: "unknown", targetIds: fieldTargets, comparisonKey };
+      if (["draw", "discard_cards", "end_turn", "decline_response", "decline_trigger", "skip_rescue", "choose_harvest", "choose_hero", "respond"].includes(action)) {
+        return { disposition: "neutral", comparisonKey };
+      }
+      return { disposition: "unknown", mayAffectLord: true, comparisonKey };
+    };
     const offer = (kind: BotChoiceKind, action: string, fields: Record<string, unknown>) => {
+      const intent = roleIntentForDispatch(action, fields);
+      const assessment = assessRoleAction(rolePolicyContext, intent);
+      if (!assessment.allowed) {
+        blockedRoleReasons.add(assessment.reason ?? "unknown_harm_requires_review");
+        return false;
+      }
       if (mockPolicy && alternatives.length <= 256) alternatives.push({ kind, payload: { action, fields } });
+      return true;
     };
     if (room.phase?.startsWith("draw") && pendingForController === null && legalActions.includes("draw")) {
       const delayed = takeNextDelayedCard(parse<Card[]>(actor.judgement_json, []))?.delayed ?? null;
@@ -8890,8 +9052,14 @@ export async function POST(request: Request, routeContext?: unknown) {
           basicPlays.push({ cardId: card.id, kind: "equip" });
         }
       }
+      const safeBasicPlays = basicPlays.filter(({ cardId }) => {
+        const intent = roleIntentForDispatch("play_card", { cardId });
+        const assessment = assessRoleAction(rolePolicyContext, intent);
+        if (!assessment.allowed) blockedRoleReasons.add(assessment.reason ?? "unknown_harm_requires_review");
+        return assessment.allowed;
+      });
       const catalogue = buildPlayCandidates({
-        ...authority, phase: room.phase, selfHand: ownHand, basicPlays,
+        ...authority, phase: room.phase, selfHand: ownHand, basicPlays: safeBasicPlays,
         attackTargetLimit: physicalAttackTargetLimit(actor, ownHand.length),
         publicSeatContext: allRoomPlayers.map(({ id, seat }) => ({ id, seat })),
         currentAction: { version: 3, kind: "turn", actorId: actionPlayerIdForController ?? null, deadline: 0, reason: "",
@@ -8899,11 +9067,21 @@ export async function POST(request: Request, routeContext?: unknown) {
           playTargetEligibility: playTargetEligibilityFor(actor, allRoomPlayers, playPhaseActions, canDeclareAttack) },
       });
       if (catalogue.status === "ready") {
-        if (mockPolicy) for (const { kind, payload } of catalogue.serverPlans()) {
-          const fields = Object.fromEntries(Object.entries(payload).filter(([key]) => key !== "action" && key !== "actionRevision"));
-          offer(kind, payload.action, fields);
+        const serverPlans = catalogue.serverPlans();
+        const planByChoiceId = new Map(catalogue.publicChoices.map((choice, index) => [choice.id, serverPlans[index]]));
+        const safeChoices = filterAndRankRoleActions(rolePolicyContext, catalogue.publicChoices.map((choice) => {
+          const plan = planByChoiceId.get(choice.id);
+          const fields = plan ? Object.fromEntries(Object.entries(plan.payload).filter(([key]) => key !== "action" && key !== "actionRevision")) : {};
+          return { value: choice, intent: plan ? roleIntentForDispatch(plan.payload.action, fields) : { disposition: "unknown" as const } };
+        }));
+        for (const rejected of safeChoices.rejected) blockedRoleReasons.add(rejected.reason);
+        if (mockPolicy) for (const choice of safeChoices.allowed) {
+          const plan = planByChoiceId.get(choice.id);
+          if (!plan) continue;
+          const fields = Object.fromEntries(Object.entries(plan.payload).filter(([key]) => key !== "action" && key !== "actionRevision"));
+          offer(plan.kind, plan.payload.action, fields);
         }
-        const choice = catalogue.publicChoices.find(({ kind }) => kind !== "end_turn") ?? catalogue.publicChoices[0];
+        const choice = safeChoices.allowed.find(({ kind }) => kind !== "end_turn") ?? safeChoices.allowed[0];
         const selected = choice && catalogue.resolve(choice.id, authority);
         if (selected) {
           nextAction = selected.action;
@@ -8920,18 +9098,18 @@ export async function POST(request: Request, routeContext?: unknown) {
         decisionCause = catalogue.reason;
       }
       if ((nextAction === "end_turn" || mockPolicy) && legalActions.includes("trigger")) {
-        const activeOptions = activeHeroSkillOptions(actor, room, allRoomPlayers);
-        if (mockPolicy) for (const option of activeOptions) {
-          for (const choice of botTriggerChoices(option, ownedCostIds)) offer("skill", "trigger", choice);
+        activeRoleOptions = activeHeroSkillOptions(actor, room, allRoomPlayers);
+        if (mockPolicy) for (const option of activeRoleOptions) {
+          for (const choice of triggerChoicesForRole(option)) offer("skill", "trigger", choice);
         }
-        const active = nextAction === "end_turn" ? activeOptions.find((option) => {
+        const active = nextAction === "end_turn" ? activeRoleOptions.find((option) => {
           if (option.effectId === "huang_gai_kurou") return (actor.hp ?? 0) > 2 && ownHand.length < 2;
           if (option.effectId === "liu_bei_rende") {
             return (actor.hp ?? 0) < (actor.max_hp ?? 0) && ownHand.length >= 2;
           }
-          return botTriggerChoices(option, ownedCostIds).length > 0;
+          return triggerChoicesForRole(option).some((choice) => assessRoleAction(rolePolicyContext, roleIntentForDispatch("trigger", choice)).allowed);
         }) : undefined;
-        const choice = active && botTriggerChoices(active, ownedCostIds)[0];
+        const choice = active && triggerChoicesForRole(active).find((candidate) => assessRoleAction(rolePolicyContext, roleIntentForDispatch("trigger", candidate)).allowed);
         if (choice) {
           nextAction = "trigger";
           preferredKind = "skill";
@@ -8963,6 +9141,12 @@ export async function POST(request: Request, routeContext?: unknown) {
           fields = { targetCardZone: "judgement", targetCardId: key };
         }
         if (!fields) continue;
+        const intent = roleIntentForDispatch("choose_target_card", fields);
+        const assessment = assessRoleAction(rolePolicyContext, intent);
+        if (!assessment.allowed) {
+          blockedRoleReasons.add(assessment.reason ?? "unknown_harm_requires_review");
+          continue;
+        }
         offer("choose_card", "choose_target_card", fields);
         if (!nextAction) {
           nextAction = "choose_target_card";
@@ -8972,9 +9156,14 @@ export async function POST(request: Request, routeContext?: unknown) {
       }
     } else if (pendingForController?.kind === "borrowed_sword" && legalActions.includes("choose_borrowed_sword_target")) {
       const targetIds = borrowedSwordForcedTargetIds(allRoomPlayers, pendingForController.sourceId, pendingForController.holderId);
-      const targetId = targetIds[0];
+      const safeTargetIds = targetIds.filter((id) => {
+        const assessment = assessRoleAction(rolePolicyContext, roleIntentForDispatch("choose_borrowed_sword_target", { targetId: id }));
+        if (!assessment.allowed) blockedRoleReasons.add(assessment.reason ?? "unknown_harm_requires_review");
+        return assessment.allowed;
+      });
+      const targetId = safeTargetIds[0];
       for (const id of targetIds) offer("choose_target", "choose_borrowed_sword_target", { targetId: id });
-      nextAction = "choose_borrowed_sword_target";
+      if (targetId) nextAction = "choose_borrowed_sword_target";
       // The canonical handler also owns settlement if no target remains.
       actionFields = targetId ? { targetId } : {};
     } else if (pendingForController?.kind === "card_distribution" && legalActions.includes("trigger")) {
@@ -9048,7 +9237,8 @@ export async function POST(request: Request, routeContext?: unknown) {
             || !execution.consumeCardIds.every((id, index) => id === cardIds[index])) continue;
         } else if (controllerWindow || cardIds.length) continue;
         const fields = { providerId: option.providerId, ...(cardIds.length ? { cardIds } : {}) };
-        offer(responseKind, "respond", fields);
+        const roleAllowed = offer(responseKind, "respond", fields);
+        if (!roleAllowed) continue;
         if (mockPolicy && selection) {
           const max = Math.min(eligible.length, selection.max);
           let examined = 0;
@@ -9084,9 +9274,10 @@ export async function POST(request: Request, routeContext?: unknown) {
       }
       if (declineAction && legalActions.includes(declineAction)) offer("pass", declineAction, {});
       if (!nextAction && declineAction && legalActions.includes(declineAction)
-        && (!options.length || optionalNegation || controllerWindow && options.every(({ selection }) => !selection))) {
+        && (!options.length || optionalNegation || controllerWindow && options.every(({ selection }) => !selection)
+          || blockedRoleReasons.size > 0)) {
         nextAction = declineAction;
-        decisionCause = "no_legal_defense_declined";
+        decisionCause = blockedRoleReasons.size ? [...blockedRoleReasons][0] : "no_legal_defense_declined";
       }
     }
     if (!nextAction && !controllerWindow) {
@@ -9096,9 +9287,9 @@ export async function POST(request: Request, routeContext?: unknown) {
         const options = triggerOptionsFor(trigger, allRoomPlayers, room);
         if (context && legalActions.includes("trigger")) {
           for (const option of options) {
-            for (const choice of botTriggerChoices(option, ownedCostIds)) {
+            for (const choice of triggerChoicesForRole(option)) {
               if (!resolveTriggeredEffect(option.effectId, context, choice)) continue;
-              offer("skill", "trigger", choice);
+              if (!offer("skill", "trigger", choice)) continue;
               if (!nextAction) {
                 nextAction = "trigger";
                 actionFields = choice;
@@ -9110,8 +9301,35 @@ export async function POST(request: Request, routeContext?: unknown) {
         }
         if (legalActions.includes("decline_trigger")) {
           offer("pass", "decline_trigger", {});
-          if (!nextAction) nextAction = "decline_trigger";
+          if (!nextAction) {
+            nextAction = "decline_trigger";
+            if (blockedRoleReasons.size) decisionCause = [...blockedRoleReasons][0];
+          }
         }
+      }
+    }
+    const legalRoleFallback = (): { kind: BotChoiceKind; payload: BotDispatch } | null => {
+      if (responseDecision?.declineAction && legalActions.includes(responseDecision.declineAction)) {
+        return { kind: "pass", payload: { action: responseDecision.declineAction, fields: {} } };
+      }
+      if (legalActions.includes("decline_trigger")) return { kind: "pass", payload: { action: "decline_trigger", fields: {} } };
+      if (room.phase?.startsWith("play") && legalActions.includes("end_turn")) {
+        return { kind: "end_turn", payload: { action: "end_turn", fields: {} } };
+      }
+      return null;
+    };
+    if (!nextAction && blockedRoleReasons.size) {
+      const fallback = legalRoleFallback();
+      if (fallback) {
+        nextAction = fallback.payload.action;
+        actionFields = fallback.payload.fields;
+        decisionCause = [...blockedRoleReasons][0];
+        preferredKind = fallback.kind;
+      } else {
+        const reason = blockedRoleReasons.has("authority_gap_forced_harm") ? "authority_gap_forced_harm" : [...blockedRoleReasons][0];
+        const code = reason === "authority_gap_forced_harm" ? "BOT_ROLE_AUTHORITY_GAP_FORCED_HARM" : "BOT_ROLE_DECISION_REQUIRES_REVIEW";
+        emitEvaluation(null, reason);
+        return finishDecision(json({ state: "unsupported", code, reason }), null, reason);
       }
     }
     if (nextAction) {
@@ -9129,7 +9347,23 @@ export async function POST(request: Request, routeContext?: unknown) {
           seen.add(key);
           return true;
         });
-      const offeredPlans = mockPolicy ? plans.map((plan) => {
+      const roleFilteredPlans = filterAndRankRoleActions(rolePolicyContext, plans.map((plan) => ({
+        value: plan, intent: roleIntentForDispatch(plan.payload.action, plan.payload.fields),
+      })));
+      for (const rejected of roleFilteredPlans.rejected) blockedRoleReasons.add(rejected.reason);
+      let safePlans = roleFilteredPlans.allowed;
+      if (!safePlans.length) {
+        const fallback = legalRoleFallback();
+        if (!fallback) {
+          const reason = blockedRoleReasons.has("authority_gap_forced_harm") ? "authority_gap_forced_harm"
+            : [...blockedRoleReasons][0] ?? "unknown_harm_requires_review";
+          const code = reason === "authority_gap_forced_harm" ? "BOT_ROLE_AUTHORITY_GAP_FORCED_HARM" : "BOT_ROLE_DECISION_REQUIRES_REVIEW";
+          emitEvaluation(null, reason);
+          return finishDecision(json({ state: "unsupported", code, reason }), null, reason);
+        }
+        safePlans = [fallback];
+      }
+      const offeredPlans = mockPolicy ? safePlans.map((plan) => {
         const fields = plan.payload.fields;
         const targetIds = Array.isArray(fields.targetIds) ? fields.targetIds : typeof fields.targetId === "string" ? [fields.targetId] : [];
         const targetSeats = targetIds.flatMap((id) => {
@@ -9140,7 +9374,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         const ownCost = cardIds.filter((id) => ownedCostIds.has(id));
         const cardKind = ownHand.find(({ id }) => id === ownCost[0])?.kind;
         return { ...plan, details: { targetSeats, cardKind, cardCost: ownCost.length } };
-      }) : plans;
+      }) : safePlans;
       const router = openBotDecision(authority, plansIncomplete ? [] : offeredPlans);
       const observation = mockPolicy && router.choices.length > 1 ? buildBotObservation({
         authority, actorId: actor.id, phase: room.phase ?? "",
@@ -9164,16 +9398,39 @@ export async function POST(request: Request, routeContext?: unknown) {
         emitEvaluation(null, "policy_decision_rejected");
         return finishDecision(json({ state: "unsupported", code: "BOT_POLICY_DECISION_REJECTED" }), null, "policy_decision_rejected");
       }
-      const latest = mockPolicy ? await botControllerSnapshot(code) : null;
-      const liveAuthority = mockPolicy ? { ...authority, actionRevision: latest?.actionRevision ?? "",
+      const needsRoleRevalidation = rolePolicyContext.actorRole === "Loyalist" || rolePolicyContext.actorRole === "Rebel"
+        || rolePolicyContext.actorRole === "Renegade";
+      const latest = mockPolicy || needsRoleRevalidation ? await botControllerSnapshot(code, false, actor.id) : null;
+      const liveAuthority = mockPolicy || needsRoleRevalidation ? { ...authority, actionRevision: latest?.actionRevision ?? "",
         decisionConsumed: latest?.eligibleBotIds.includes(actor.id) !== true } : authority;
       const resolved = router.resolve(chosen.id, liveAuthority);
       if (!resolved) {
         emitEvaluation(null, "stale_action_revision");
         return finishDecision(json({ error: "The Bot decision is stale.", stale: true }, 409), null, "stale_action_revision");
       }
-      nextAction = resolved.action;
-      actionFields = resolved.fields;
+      let resolvedAction = resolved;
+      if (needsRoleRevalidation) {
+        const latestPolicyContext = latest?.rolePolicyContext;
+        if (!latestPolicyContext || latestPolicyContext.actorRole !== actor.role) {
+          emitEvaluation(null, "stale_action_revision");
+          return finishDecision(json({ error: "The Bot role policy snapshot is stale.", stale: true }, 409), null, "stale_action_revision");
+        }
+        const assessment = assessRoleAction(latestPolicyContext, roleIntentForDispatch(resolved.action, resolved.fields));
+        if (!assessment.allowed) {
+          const fallback = safePlans.find((plan) => assessRoleAction(latestPolicyContext,
+            roleIntentForDispatch(plan.payload.action, plan.payload.fields)).allowed) ?? legalRoleFallback();
+          if (!fallback) {
+            const reason = assessment.reason ?? "unknown_harm_requires_review";
+            const code = reason === "authority_gap_forced_harm" ? "BOT_ROLE_AUTHORITY_GAP_FORCED_HARM" : "BOT_ROLE_DECISION_REQUIRES_REVIEW";
+            emitEvaluation(null, reason);
+            return finishDecision(json({ state: "unsupported", code, reason }), null, reason);
+          }
+          resolvedAction = fallback.payload;
+          decisionCause = assessment.reason ?? "unknown_harm_requires_review";
+        }
+      }
+      nextAction = resolvedAction.action;
+      actionFields = resolvedAction.fields;
     }
     if (nextAction && decisionCause === "no_supported_action") decisionCause = "non_response_decision";
     emitEvaluation(nextAction, decisionCause);

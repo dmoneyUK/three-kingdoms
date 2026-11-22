@@ -2,7 +2,7 @@ import test from "node:test";
 import { appendSequencedLogRecord } from "../../game/public-log-sequence.ts";
 import {
   assert, card, query, quote, request, requestAndSettle, runBotScheduler, runBotStep,
-  setDeck, setHand, setTurn, roomCardCount, sql, state,
+  setDeck, setEquipment, setHand, setTurn, roomCardCount, sql, state,
 } from "./test-support.mjs";
 
 const hourlyAddLimitDisabledForTest = process.env.GAME_TEST_BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT === "true";
@@ -517,6 +517,179 @@ test("the injected Responses mock can choose a canonical alternative and cannot 
   assert.equal(ended.status, 200, JSON.stringify(ended.data));
   assert.notEqual((await state(code, token)).data.actionPlayerId, bot.id);
   assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(bot.id)}`))[0].id, attack.id);
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("a Loyalist Bot rejects Lord-harming AOE policy choices and attacks another legal seat", async () => {
+  const { code, token, hostId, bots } = await createBotGame();
+  const loyalist = bots[0];
+  sql(`UPDATE players SET role='Lord' WHERE id=${quote(hostId)};
+    UPDATE players SET role='Loyalist', hero='zhang-fei' WHERE id=${quote(loyalist.id)};
+    UPDATE players SET role='Rebel' WHERE id=${quote(bots[1].id)};
+    UPDATE players SET role='Renegade' WHERE id=${quote(bots[2].id)}`);
+  const invasion = card("BarbarianInvasion", "role-guard-invasion");
+  const arrows = card("RainingArrows", "role-guard-arrows");
+  const lightning = card("Lightning", "role-guard-lightning");
+  const attack = card("Attack", "role-guard-attack");
+  setHand(loyalist.id, [invasion, arrows, lightning, attack], 4, 4);
+  setTurn(code, loyalist.seat, "play");
+
+  const before = (await state(code, token)).data;
+  const blockedPolicy = await runBotStep(code, loyalist.id, {
+    actionRevision: before.actionRevision, decisionId: crypto.randomUUID(), mockChoiceKind: "stratagem",
+  });
+  assert.equal(blockedPolicy.status, 200, JSON.stringify(blockedPolicy.data));
+  assert.equal(blockedPolicy.data.code, "BOT_POLICY_DECISION_REJECTED", "the harmful AOE was not offered to the mock policy");
+  assert.equal((await state(code, token)).data.actionRevision, before.actionRevision, "a rejected policy choice does not mutate the match");
+  assert.equal(roomCardCount(code, invasion.id), 1);
+  assert.equal(roomCardCount(code, arrows.id), 1);
+  assert.equal(roomCardCount(code, lightning.id), 1);
+
+  const safeAttack = await runBotStep(code, loyalist.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
+  assert.equal(safeAttack.status, 200, JSON.stringify(safeAttack.data));
+  const after = (await state(code, token)).data;
+  assert.equal(after.phase, "response");
+  assert.notEqual(after.actionPlayerId, hostId, "the canonical Attack targets an eligible non-Lord seat");
+  assert.ok(bots.slice(1).some(({ id }) => id === after.actionPlayerId));
+  assert.equal(roomCardCount(code, attack.id), 1);
+  assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(loyalist.id)}`)).map(({ id }) => id),
+    [invasion.id, arrows.id, lightning.id], "both harmful AOEs and delayed Lightning remain in the Loyalist's hand");
+  assert.equal(after.players.find(({ id }) => id === hostId).role, "Lord", "the public Lord role remains visible");
+  assert.ok(after.players.filter(({ id }) => id !== hostId).every(({ role }) => role !== "Loyalist" && role !== "Rebel" && role !== "Renegade"),
+    "other living players' private roles remain hidden in the public room projection");
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("role policy filters converted, Serpent Spear, and multi-target Attacks through canonical candidates", async () => {
+  const { code, token, hostId, bots } = await createBotGame();
+  const loyalist = bots[0];
+  sql(`UPDATE players SET role='Lord' WHERE id=${quote(hostId)};
+    UPDATE players SET role='Loyalist' WHERE id=${quote(loyalist.id)};
+    UPDATE players SET role='Rebel' WHERE id=${quote(bots[1].id)};
+    UPDATE players SET role='Renegade' WHERE id=${quote(bots[2].id)}`);
+
+  const convertedDodge = card("Dodge", "role-guard-longdan");
+  sql(`UPDATE players SET hero='zhao-yun' WHERE id=${quote(loyalist.id)}`);
+  setHand(loyalist.id, [convertedDodge], 4, 4);
+  setTurn(code, loyalist.seat, "play");
+  let before = (await state(code, token)).data;
+  let result = await runBotStep(code, loyalist.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
+  assert.equal(result.status, 200, JSON.stringify(result.data));
+  let after = (await state(code, token)).data;
+  assert.equal(after.phase, "response");
+  assert.notEqual(after.actionPlayerId, hostId, "a converted Dodge Attack avoids the public Lord");
+  assert.equal(roomCardCount(code, convertedDodge.id), 1);
+
+  const spearCost = [card("Peach", "role-guard-spear-peach"), card("Dodge", "role-guard-spear-dodge")];
+  sql(`UPDATE players SET hero='guan-yu' WHERE id=${quote(loyalist.id)}`);
+  setEquipment(loyalist.id, { weapon: card("SerpentSpear", "role-guard-spear") });
+  setHand(loyalist.id, spearCost, 4, 4);
+  setTurn(code, loyalist.seat, "play");
+  before = (await state(code, token)).data;
+  result = await runBotStep(code, loyalist.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
+  assert.equal(result.status, 200, JSON.stringify(result.data));
+  after = (await state(code, token)).data;
+  assert.equal(after.phase, "response");
+  assert.notEqual(after.actionPlayerId, hostId, "Serpent Spear cannot launder a Lord target");
+  for (const cost of spearCost) assert.equal(roomCardCount(code, cost.id), 1);
+
+  const halberdAttack = card("Attack", "role-guard-halberd");
+  setEquipment(loyalist.id, { weapon: card("SkyPiercingHalberd", "role-guard-halberd-weapon") });
+  setHand(loyalist.id, [halberdAttack], 4, 4);
+  setTurn(code, loyalist.seat, "play");
+  before = (await state(code, token)).data;
+  result = await runBotStep(code, loyalist.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
+  assert.equal(result.status, 200, JSON.stringify(result.data));
+  after = (await state(code, token)).data;
+  assert.equal(after.phase, "response");
+  assert.notEqual(after.actionPlayerId, hostId, "the multi-target canonical Attack set excludes the Lord");
+  assert.equal(roomCardCount(code, halberdAttack.id), 1);
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("a Loyalist ends safely when a targeted Stratagem can only harm the living Lord", async () => {
+  const { code, token, hostId, bots } = await createBotGame();
+  const loyalist = bots[0];
+  const steal = card("Steal", "role-guard-only-lord");
+  sql(`UPDATE players SET role='Lord' WHERE id=${quote(hostId)};
+    UPDATE players SET role='Loyalist' WHERE id=${quote(loyalist.id)};
+    UPDATE players SET role='Rebel' WHERE id=${quote(bots[1].id)};
+    UPDATE players SET role='Renegade' WHERE id=${quote(bots[2].id)}`);
+  setHand(loyalist.id, [steal], 4, 4);
+  setHand(hostId, [card("Dodge", "role-guard-only-lord-target")], 4, 4);
+  setHand(bots[1].id, [], 4, 4);
+  setHand(bots[2].id, [], 4, 4);
+  setEquipment(hostId, {});
+  setEquipment(bots[1].id, {});
+  setEquipment(bots[2].id, {});
+  setTurn(code, loyalist.seat, "play");
+  const before = (await state(code, token)).data;
+  const result = await runBotStep(code, loyalist.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
+  assert.equal(result.status, 200, JSON.stringify(result.data));
+  const after = (await state(code, token)).data;
+  assert.notEqual(after.actionPlayerId, loyalist.id, "the Bot uses a legally offered safe End Turn fallback instead of retrying");
+  assert.equal(roomCardCount(code, steal.id), 1, "the Lord-targeted Steal remains unplayed");
+  assert.equal(after.phase, "draw");
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("Rebel prefers the public Lord and Renegade delays him until the final duel", async () => {
+  const { code, token, hostId, bots } = await createBotGame();
+  const [rebel, renegade, loyalist] = bots;
+  sql(`UPDATE players SET role='Lord' WHERE id=${quote(hostId)};
+    UPDATE players SET role='Rebel' WHERE id=${quote(rebel.id)};
+    UPDATE players SET role='Renegade' WHERE id=${quote(renegade.id)};
+    UPDATE players SET role='Loyalist' WHERE id=${quote(loyalist.id)}`);
+  const rebelAttack = card("Attack", "role-guard-rebel");
+  setHand(rebel.id, [rebelAttack], 4, 4);
+  setTurn(code, rebel.seat, "play");
+  let before = (await state(code, token)).data;
+  let result = await runBotStep(code, rebel.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
+  assert.equal(result.status, 200, JSON.stringify(result.data));
+  let after = (await state(code, token)).data;
+  assert.equal(after.actionPlayerId, hostId, "Rebel chooses a legally reachable Lord over comparable seats");
+
+  const earlyAttack = card("Attack", "role-guard-renegade-early");
+  setHand(renegade.id, [earlyAttack], 4, 4);
+  setTurn(code, renegade.seat, "play");
+  before = (await state(code, token)).data;
+  result = await runBotStep(code, renegade.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
+  assert.equal(result.status, 200, JSON.stringify(result.data));
+  after = (await state(code, token)).data;
+  assert.ok([rebel.id, loyalist.id].includes(after.actionPlayerId), "with four living seats, Renegade chooses a safe non-Lord target");
+
+  sql(`UPDATE players SET hp=0, alive=0 WHERE id IN (${quote(rebel.id)}, ${quote(loyalist.id)})`);
+  const finalAttack = card("Attack", "role-guard-renegade-final");
+  setHand(renegade.id, [finalAttack], 4, 4);
+  setTurn(code, renegade.seat, "play");
+  before = (await state(code, token)).data;
+  result = await runBotStep(code, renegade.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
+  assert.equal(result.status, 200, JSON.stringify(result.data));
+  after = (await state(code, token)).data;
+  assert.equal(after.actionPlayerId, hostId, "Renegade may target the Lord in the two-player final duel");
+  assert.equal(roomCardCount(code, finalAttack.id), 1);
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("a Loyalist's targeted active skill selects a non-Lord using its resolved effect", async () => {
+  const { code, token, hostId, bots } = await createBotGame();
+  const loyalist = bots[0];
+  sql(`UPDATE players SET role='Lord' WHERE id=${quote(hostId)};
+    UPDATE players SET role='Loyalist', hero='gan-ning' WHERE id=${quote(loyalist.id)};
+    UPDATE players SET role='Rebel' WHERE id=${quote(bots[1].id)};
+    UPDATE players SET role='Renegade' WHERE id=${quote(bots[2].id)}`);
+  const blackCard = card("Peach", "role-guard-qixi", "♣");
+  setHand(loyalist.id, [blackCard], 4, 4);
+  setHand(bots[1].id, [card("Dodge", "role-guard-qixi-target")], 4, 4);
+  setHand(bots[2].id, [card("Dodge", "role-guard-qixi-other")], 4, 4);
+  setTurn(code, loyalist.seat, "play");
+  const before = (await state(code, token)).data;
+  const result = await runBotStep(code, loyalist.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
+  assert.equal(result.status, 200, JSON.stringify(result.data));
+  const pending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(code)}`));
+  assert.equal(pending.kind, "target_card");
+  assert.notEqual(pending.targetId, hostId, "resolved targeted skill harm never selects the public Lord");
+  assert.equal(roomCardCount(code, blackCard.id), 1);
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
