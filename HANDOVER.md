@@ -1,26 +1,21 @@
 # HANDOVER — UX2 §10.66 TURN-BOUNDARY-PUBLIC-PRESENTATION-CLEAR-01
 
-**Updated:** 2026-11-22 01:06 UTC
-**Status:** Implementation pushed; exact-SHA CI repair required before deployment.
+**Updated:** 2026-11-22 01:15 UTC
+**Status:** IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW
 
-## Current task
+## Delivered
 
-Reviewed `docs/UX2-refine.md` §10.66 (Owner requirement 2026-11-21 23:59 UTC) on `ux-v2` HEAD `4d48145a621796f298e584fa7250deb73ce5a2e7`.
+Reviewed `docs/UX2-refine.md` §10.66 (Owner design 2026-11-21 23:59 UTC). Turn-scoped public presentation now retires transient H4/PAC/card journeys only after the server confirms a new turn, while preserving the full event history and persistent Equipment/Judgement zones. The real final-Discard handoff remains visible until turn advancement. Client handling rejects stale turn responses and resets transient presentation ownership at the authoritative boundary.
 
-The implementation adds a server-owned turn epoch and public-sequence boundary at the canonical successful `beginTurnStart`. Public transient presentation is scoped to the current turn while complete event history remains available. The client rejects stale turn responses and remounts transient presentation ownership on a proven turn/viewer boundary. The final Discard remains visible through the real pending handoff; persistent equipment and Judgement zones are retained.
+Implementation: `bb7819db2ed54d03511bde0caba24856a270c711`. CI assertion repair: `d189fc18446da8bda6904df08a067525cf078173`. Both are pushed to `origin/ux-v2`.
 
-## Local verification
+## Verification and deployment
 
-- `npm run build`: passed.
-- `npm run test:fast`: 452/452 passed.
-- Focused room-safety tests: 39/39 passed.
-- Focused Da Qiao API regression after build: 18/18 passed, including the final-Discard handoff boundary.
-- One focused 440px four-player browser scenario: passed in 10.5s; old H4, PAC and Attack journey clear at the next authoritative turn while the real Equipment/Judgement cards and next-turn controls remain.
-- Targeted ESLint on changed files other than `app/page.tsx`: passed. ESLint on `app/page.tsx` terminated with the existing React Hooks rule stack overflow at line 4134; no source change was made to weaken or bypass the rule.
-- `git diff --check`: passed.
+- Local: build passed; fast tests 452/452; room-safety tests 39/39; Da Qiao API 18/18; Diao Chan + Huang Gai API 17/17; focused 440px browser scenario passed in 10.5s; `git diff --check` passed.
+- Targeted local ESLint passed except `app/page.tsx`, where the local React Hooks rule hit a maximum call stack. The exact-SHA GitHub lint job passed without changing or weakening that rule.
+- Exact implementation SHA Actions: [run 44969910626](https://github.com/dmoneyUK/three-kingdoms/actions/runs/44969910626) — browser smoke, API tests, lint/fast tests, D1 migration, deployment, and production smoke all passed for `d189fc18446da8bda6904df08a067525cf078173`.
+- Cloudflare Worker version: `f5e1758f-24fc-4773-a7f5-c445296f8704`. Production home and `/api/health` smoke passed; live `/api/health` returned `{"ok":true,"worker":"available"}`.
 
-## Delivery state and one next task
+## Sole pending task
 
-Source commit `bb7819db2ed54d03511bde0caba24856a270c711` is pushed to `ux-v2`. Exact-SHA [Actions run 44969041509](https://github.com/dmoneyUK/three-kingdoms/actions/runs/44969041509) failed in API tests because two existing assertions required completed Diao Chan/Huang Gai H4 facts to remain in the current presentation snapshot after a new turn had begun. Browser smoke and Lint/fast passed; deployment was skipped. The focused test correction now checks that committed facts remain in complete history while old H4 ownership is retired from the current-turn presentation: Diao Chan + Huang Gai API files passed 17/17 locally, and their targeted ESLint and `git diff --check` passed.
-
-**Only current task:** Commit and push the focused §10.66 CI assertion repair, then verify exact-SHA Actions, Worker deployment and production health. Owner iPhone review remains required; do not mark USER-ACCEPTED.
+Owner: perform the iPhone review of §10.66 turn-boundary behavior, especially final-Discard handoff, clearing old transient H4/PAC/journey at the next real turn, and retaining Equipment/Judgement. Keep status **PENDING OWNER iPHONE REVIEW** until explicit approval; do not mark USER-ACCEPTED.
