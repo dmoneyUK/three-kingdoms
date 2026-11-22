@@ -7800,18 +7800,25 @@ export async function GET(request: Request) {
     const result = await env.DB.prepare("SELECT id,event_key,event_type,actor_id,actor_name,action,phase_before,phase_after,turn_seat_before,turn_seat_after,acting_player_before,acting_player_after,detail_json,created_at FROM game_audit WHERE room_id = ? ORDER BY id").bind(room.id).all();
     return json({ code, audit: result.results ?? [] });
   }
-  // The first projection exists only to identify the authenticated viewer and
-  // advance the discard handoff. Diagnostics belong to the final fresh view.
-  let state = await roomState(code, token, false, requestedViewerId);
+  // A member may advance the discard handoff, but identifying that member
+  // requires no timeline or presentation projection. Project once from fresh
+  // storage after the canonical handoff has had a chance to settle.
+  let authenticated = false;
+  if (token) {
+    const membership = await env.DB.prepare(`SELECT rooms.id AS room_id
+      FROM rooms JOIN players ON players.room_id = rooms.id
+      WHERE rooms.code = ? AND players.token_hash = ? AND (? IS NULL OR players.id = ?)
+      LIMIT 1`).bind(code, await hash(token), requestedViewerId || null, requestedViewerId || null)
+      .first<{ room_id: string }>();
+    if (membership) {
+      authenticated = true;
+      await advanceDiscardTurnHandoff(membership.room_id);
+    }
+  }
+  const state = await roomState(code, token, authenticated && Boolean(uxTraceId), requestedViewerId);
   if (!state) return json({ error: "Room not found." }, 404);
   if (requestedViewerId && state.meId !== requestedViewerId) {
     return json({ error: "That test viewer is not controlled by this session." }, 403);
-  }
-  if (state.meId) {
-    const room = await env.DB.prepare("SELECT id FROM rooms WHERE code = ?").bind(code).first<{ id: string }>();
-    if (room) await advanceDiscardTurnHandoff(room.id);
-    state = await roomState(code, token, Boolean(uxTraceId), requestedViewerId);
-    if (!state) return json({ error: "Room not found." }, 404);
   }
   if (uxTraceId) {
     if (!state.meId) return json({ error: "A valid room member session is required for UX diagnostics." }, 403);

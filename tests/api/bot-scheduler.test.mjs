@@ -1,4 +1,5 @@
 import test from "node:test";
+import { appendSequencedLogRecord } from "../../game/public-log-sequence.ts";
 import {
   assert, card, query, quote, request, requestAndSettle, runBotScheduler, runBotStep,
   setDeck, setHand, setTurn, roomCardCount, sql, state,
@@ -56,6 +57,89 @@ async function createBotGame() {
   }
   return { code, token: created.data.token, hostId, room, bots };
 }
+
+test("a long Bot room refreshes the final authenticated projection without leaking private state", async () => {
+  const { code, token, hostId, bots } = await createBotGame();
+  const hostSeat = Number(query(`SELECT seat FROM players WHERE id=${quote(hostId)}`));
+  const privateBotCard = card("Dodge", "perf-bot-private");
+  const newCards = [card("Peach", "perf-draw"), card("Dismantle", "perf-draw")];
+  setHand(bots[0].id, [privateBotCard], 4, 4);
+  setHand(hostId, [], 3, 3);
+  setDeck(code, newCards);
+  const roomId = query(`SELECT id FROM rooms WHERE code=${quote(code)}`);
+  sql(`UPDATE players SET hero='sun-quan', role='Renegade', alive=1 WHERE id=${quote(hostId)};
+    UPDATE players SET role='Lord' WHERE id=${quote(bots[0].id)};
+    UPDATE players SET role='Rebel' WHERE id IN (${quote(bots[1].id)},${quote(bots[2].id)});`);
+  setTurn(code, hostSeat, "draw");
+
+  let log = [];
+  for (let index = 0; index < 199; index++) {
+    log = index % 3 === 0
+      ? appendSequencedLogRecord(log, "@card:", {
+        id: `perf-event-${index}`, actor: "Fixture Bot", action: "equip",
+        card: card("RedHare", `perf-public-${index}`), resolutionId: `perf-resolution-${index}`,
+      })
+      : appendSequencedLogRecord(log, "@event:", { id: `perf-event-${index}`, message: `Fixture action ${index}` });
+  }
+  log = appendSequencedLogRecord(log, "@card:", {
+    id: "perf-private-event", action: "gain", presentation: false, privateToPlayerId: bots[0].id, card: privateBotCard,
+  });
+  sql(`UPDATE rooms SET log_json=${quote(JSON.stringify(log))} WHERE id=${quote(roomId)}`);
+  const now = Date.now();
+  const work = Array.from({ length: 120 }, (_, index) => {
+    const bot = bots[index % bots.length];
+    const status = index < bots.length ? "unsupported" : "consumed";
+    return `(${quote(`${roomId}-perf-work-${index}`)},${quote(roomId)},${quote(bot.id)},${quote(`perf-revision-${index}`)},
+      ${quote(status)},${now + index},${now + index},${now + index})`;
+  });
+  sql(`INSERT INTO bot_work (decision_id,room_id,bot_id,action_revision,status,available_at,created_at,updated_at) VALUES ${work.join(",")}`);
+
+  const start = performance.now();
+  const owner = await state(code, token);
+  const anonymous = await state(code, "");
+  const denied = await state(code, token, false, bots[0].id);
+  assert.equal(owner.status, 200);
+  assert.equal(anonymous.status, 200);
+  assert.equal(denied.status, 403);
+  assert.equal(owner.data.timeline.length, 199);
+  assert.deepEqual(owner.data.timeline, anonymous.data.timeline);
+  assert.equal(owner.data.actionRevision, anonymous.data.actionRevision);
+  assert.equal(owner.data.currentAction.actorId, hostId);
+  assert.equal(owner.data.myRole, "Renegade");
+  assert.equal(anonymous.data.myRole, null);
+  assert.equal(anonymous.data.players.find(({ id }) => id === hostId).role, null);
+  assert.equal(anonymous.data.players.find(({ id }) => id === bots[0].id).role, "Lord");
+  assert.ok(owner.data.players.filter(({ isBot }) => isBot).every(({ botStatus }) => botStatus === "waiting_for_human"));
+  assert.ok(!JSON.stringify(owner.data).includes(privateBotCard.id));
+
+  const drawn = await request("draw", { code, token });
+  assert.equal(drawn.status, 200, JSON.stringify(drawn.data));
+  const refreshed = await state(code, token);
+  assert.equal(refreshed.data.actionRevision, drawn.data.room.actionRevision);
+  assert.deepEqual(refreshed.data.currentAction, drawn.data.room.currentAction);
+  assert.deepEqual(refreshed.data.timeline, drawn.data.room.timeline);
+  assert.deepEqual(refreshed.data.presentationSnapshot, drawn.data.room.presentationSnapshot);
+  assert.deepEqual(refreshed.data.myHand, newCards);
+
+  const stratagem = await request("play_card", { code, token, cardId: newCards[1].id, targetId: bots[0].id });
+  assert.equal(stratagem.status, 200, JSON.stringify(stratagem.data));
+  const response = await state(code, token);
+  assert.equal(response.data.phase, "response");
+  assert.equal(response.data.currentAction.kind, "response");
+  assert.equal(response.data.actionRevision, stratagem.data.room.actionRevision);
+  assert.ok(!JSON.stringify(response.data).includes(privateBotCard.id));
+
+  sql(`UPDATE players SET hp=0, alive=0 WHERE id=${quote(hostId)}`);
+  setTurn(code, bots[0].seat, "play");
+  const defeated = await state(code, token);
+  assert.equal(defeated.data.players.find(({ id }) => id === hostId).alive, false);
+  assert.equal(defeated.data.players.find(({ id }) => id === hostId).hp, 0);
+  assert.deepEqual(defeated.data.currentAction.legalActions, []);
+  assert.ok(!JSON.stringify(defeated.data).includes(privateBotCard.id));
+  console.info(JSON.stringify({ fixture: "long-bot-room", requests: 8, wallMs: Math.round(performance.now() - start),
+    logEntries: log.length, responseBytes: Buffer.byteLength(JSON.stringify(owner.data)), schedulerRows: work.length }));
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
 
 test("persistent scheduler waits for a human Hero choice, then consumes one unique revision per bot", async () => {
   sql("DELETE FROM bot_demo_rate_limits");
