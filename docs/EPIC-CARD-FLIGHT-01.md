@@ -2,7 +2,7 @@
 
 **Registered:** 2026-11-21, by explicit Owner request after the UX2 flight-path design review.
 **Status:** **MAJOR EPIC / DESIGN REGISTERED / NOT IMPLEMENTED / NOT IN UX2 §10.x SMALL-TASK NUMBERING / NOT AUTONOMOUSLY DISPATCHED**.
-**Working branch for future explicitly authorized implementation:** \`ux-v2\` unless Owner later selects another branch. This document is a **future design reference**, not a current coding HANDOVER.
+**Working branch for future explicitly authorized implementation:** `ux-v2` unless Owner later selects another branch. This document is a **future design reference**, not a current coding HANDOVER.
 **Owner instruction:** Keep small cleanup/refinement tasks inside the existing UX2 numbered list. This large unified-card-flight initiative has its **own stable epic ID**. Do not borrow §10.66 or schedule this epic ahead of authorized UX2 bug fixes.
 
 ## Product outcome
@@ -17,11 +17,11 @@ Each event must be matched to server-proven room, viewer, event ID, root/interac
 
 ## Current-state evidence reviewed
 
-- \`docs/UX2-refine.md\` R1–R7/§3, §§10.10, 10.27 and §10.36 own currently accepted privacy, card identity, centre duration and destination semantics. In particular ordinary public cards have ~4,000ms **first visibly readable centre** and ~380ms outgoing author parking, with new confirmed response interruption; §10.42 Fanjian has accepted ~0.3s inbound + ~3.4s readable centre + ~0.3s outbound; §10.55 avoids a duplicate delayed-Judgement central reveal.
-- \`app/public-presentation-routing.ts\` E01–E21 is the existing auditable coverage taxonomy and routes \`public-journey\`, \`zone-transition\`, \`fact-only\`, \`private-receipt\`, \`no-public-card-action\`. Reuse this identity/claim gate rather than creating a second rule engine.
-- \`app/public-card-display.tsx\` has several journey state implementations, mostly \`reveal → move → parked\`. \`app/page.tsx\` separately animates Equipment, Judgement, Discard, Hand-to-Hand and settlement result; \`app/sequence-overrides.css\` has \`equipmentCardToSlot\`, \`judgementCardToZone\`, \`revealedCardsToDiscard\` and \`revealedCardToHand\`. Those paths already contain real anchors; unification is not permission to remove tested working behavior.
-- \`game/presentation-v2.ts\`, \`game/presentation-snapshot.ts\` and \`game/presentation-semantics.ts\` validate target-card proof and privacy. \`app/public-hand-reveal-transition.ts\` guards public Hand-to-Hand disclosure, and accepted R7/§10.65 restrict concealed-Hand Steal faces to authenticated recipients/parties.
-- Separate bounded \`UX2-DISMANTLE-SETTLEMENT-RETIRE-01\` received Owner PASS on 2026-11-21 23:59 UTC after code \`a8b0de80708c23e78723593fef68c2a758be46d9\`; do **not** reopen that fix as a prerequisite or create another stale-result task. Retained §10.66 (new small-task turn-boundary reset) remains separate.
+- `docs/UX2-refine.md` R1–R7/§3, §§10.10, 10.27 and §10.36 own currently accepted privacy, card identity, centre duration and destination semantics. In particular ordinary public cards have ~4,000ms **first visibly readable centre** and ~380ms outgoing author parking, with new confirmed response interruption; §10.42 Fanjian has accepted ~0.3s inbound + ~3.4s readable centre + ~0.3s outbound; §10.55 avoids a duplicate delayed-Judgement central reveal.
+- `app/public-presentation-routing.ts` E01–E21 is the existing auditable coverage taxonomy and routes `public-journey`, `zone-transition`, `fact-only`, `private-receipt`, `no-public-card-action`. Reuse this identity/claim gate rather than creating a second rule engine.
+- `app/public-card-display.tsx` has several journey state implementations, mostly `reveal → move → parked`. `app/page.tsx` separately animates Equipment, Judgement, Discard, Hand-to-Hand and settlement result; `app/sequence-overrides.css` has `equipmentCardToSlot`, `judgementCardToZone`, `revealedCardsToDiscard` and `revealedCardToHand`. Those paths already contain real anchors; unification is not permission to remove tested working behavior.
+- `game/presentation-v2.ts`, `game/presentation-snapshot.ts` and `game/presentation-semantics.ts` validate target-card proof and privacy. `app/public-hand-reveal-transition.ts` guards public Hand-to-Hand disclosure, and accepted R7/§10.65 restrict concealed-Hand Steal faces to authenticated recipients/parties.
+- Separate bounded `UX2-DISMANTLE-SETTLEMENT-RETIRE-01` received Owner PASS on 2026-11-21 23:59 UTC after code `a8b0de80708c23e78723593fef68c2a758be46d9`; do **not** reopen that fix as a prerequisite or create another stale-result task. Retained §10.66 (new small-task turn-boundary reset) remains separate.
 
 ## Coverage and flight semantics — keep genuine author and physical final zone distinct
 
@@ -33,24 +33,24 @@ Each event must be matched to server-proven room, viewer, event ID, root/interac
 | E11–E12 Equipment play / replacement / loss | Hand → central → actual specific Equipment slot; loss/replacement Equipment slot → permitted display → actual Discard or recipient private Hand | Never park equipped original in author-play history instead of equipment slot; distinct old/new equipment IDs |
 | E13–E14 delayed Judgement / later Deck Judgement | Original Hand card → one central reveal → target's Judgement slot; independently revealed Deck card → centre → actual final zone | No duplicate Overindulgence full centre; Sima Yi replacement is a separate proven original; unknown/hidden never guessed |
 | E15 public Discard (including batches), E16 public Hand→Hand reveal | Real source zone(s) → contained readable display → Discard exit / genuine destination recipient | Card count/identity and order proven; no duplicate public identities or unrelated private Hand exposure |
-| E17–E18 Hero/Equipment COST, CONVERSION, EFFECT | Each actual paid/transformed original from its **material owner** to one card-backed public Frame and proven final zone | Preserve original printed rank/suit/name; \`AS ATTACK/DODGE/BURNING BRIDGES\` semantic label is not a fabricated printed card |
+| E17–E18 Hero/Equipment COST, CONVERSION, EFFECT | Each actual paid/transformed original from its **material owner** to one card-backed public Frame and proven final zone | Preserve original printed rank/suit/name; `AS ATTACK/DODGE/BURNING BRIDGES` semantic label is not a fabricated printed card |
 | E19 fact-only skill, E20 private Draw/acquire, E21 pending choice/Pass | E19 one true public H4 without fabricated card; E20 viewer-authorized private arrival only; E21 **no public flight** | Never expose private faces, roles, uncommitted responses, pending target cards, or private selectors |
 
 For delegated effects (Entourage, Influencing, Borrowed Sword), the provider's **genuine material-owner/author** — not the beneficiary or current viewer — determines the card's source and history. For Fanjian retain accepted one-real-face direct two-segment movement.
 
 ## Proposed common motion and ownership architecture
 
-\`COMMITTED → INBOUND → STATIONARY_REVEAL → OUTBOUND → PARKED or RETIRED\`.
+`COMMITTED → INBOUND → STATIONARY_REVEAL → OUTBOUND → PARKED or RETIRED`.
 
-- **COMMITTED:** only after exact server proof validated by \`PresentationSnapshot/routePublicPresentation\`; no optimistic public preview of Hand cards.
+- **COMMITTED:** only after exact server proof validated by `PresentationSnapshot/routePublicPresentation`; no optimistic public preview of Hand cards.
 - **INBOUND:** propose ~240–300ms measured short straight segment from the real owner/zone's viewer-relative anchor into the existing H4-aware safe centred CardFace. This **is new and not yet owner-phone accepted**; if exact source/visibility proof is missing, skip the animation without inventing an origin.
 - **STATIONARY_REVEAL:** preserve already accepted ordinary ~4s from actual first visible frame, specific Fanjian ~3.4s and other card-specific/zone-visible durations. A later genuinely committed response must not wait behind a prior animation; nothing delays server timers or legal actions.
 - **OUTBOUND:** normally ~300–380ms to actual Seat/Dock author history or true final material zone, retaining unique card identity and correct scale; no dogleg, shortcut behind a HUD, duplicated central card or public-route connector.
 - **PARKED/RETIRED:** played-card history is temporary scene UI; only actual authoritative persistent Equipment/Judgement/Hand/Deck state survives. §10.66 defines the separate turn-boundary retirement gate for ephemeral H4/PAC/visual history. Poll/reconnect/TEST SWITCH/viewport remeasure never restart expired flight or leak another viewer's card.
 
-**Presentation-only typed plan (design sketch, not an existing API):** \`{roomCode, viewerId, eventId, rootEventId, physicalCardId, publicSequence, actorId, source: {zone,ownerId,slot?}, destination: {kind:'AUTHOR_HISTORY'|'EQUIPMENT'|'JUDGEMENT'|'HAND'|'DISCARD',ownerId?,slot?}, visibility:'PUBLIC_FACE'|'PUBLIC_BACK'|'AUTHORISED_VIEWER_PRIVATE_FACE', phase}\`. A private-face plan must **only** be created in an authenticated viewer-specific projection; no public broadcast of hidden card data.
+**Presentation-only typed plan (design sketch, not an existing API):** `{roomCode, viewerId, eventId, rootEventId, physicalCardId, publicSequence, actorId, source: {zone,ownerId,slot?}, destination: {kind:'AUTHOR_HISTORY'|'EQUIPMENT'|'JUDGEMENT'|'HAND'|'DISCARD',ownerId?,slot?}, visibility:'PUBLIC_FACE'|'PUBLIC_BACK'|'AUTHORISED_VIEWER_PRIVATE_FACE', phase}`. A private-face plan must **only** be created in an authenticated viewer-specific projection; no public broadcast of hidden card data.
 
-Reuse \`app/public-presentation-routing.ts\` one claimant/route; extract shared source/centre/destination Rect resolution from already existing \`data-player-anchor\`, local \`data-card-origin-anchor\`, exact equipment/judgement slot, \`data-draw-anchor\` and \`data-discard-anchor\`. Existing presenter components may remain specialized; only ownership, validation, timing and geometry become shared. No new game rules, no rewritten server legality, no replacement of accepted pickers.
+Reuse `app/public-presentation-routing.ts` one claimant/route; extract shared source/centre/destination Rect resolution from already existing `data-player-anchor`, local `data-card-origin-anchor`, exact equipment/judgement slot, `data-draw-anchor` and `data-discard-anchor`. Existing presenter components may remain specialized; only ownership, validation, timing and geometry become shared. No new game rules, no rewritten server legality, no replacement of accepted pickers.
 
 ## Critical Owner decision required before E05 changes are implemented
 
