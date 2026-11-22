@@ -516,7 +516,11 @@ test("Beauty draws from a shuffled discard pile and reports an empty-deck outcom
   assert.equal(shuffledOwner.log.some((entry) => entry.includes("The discard pile is shuffled into a new draw deck.")), true);
   const shuffledObservers = await Promise.all(shuffled.members.slice(1).map(async (member) => (await state(shuffled.code, member.token)).data));
   for (const observer of shuffledObservers) {
-    assert.deepEqual(observer.presentationSnapshot.diaoChanSkillNotices.map((notice) => notice.notice), ["ACTIVATION", "DRAWN"]);
+    const archivedNotices = observer.timeline.flatMap((event) => event.publicDiaoChanNotice ? [event.publicDiaoChanNotice] : []);
+    assert.deepEqual(archivedNotices.map((notice) => notice.notice), ["ACTIVATION", "DRAWN"],
+      "the complete event history retains the committed Beauty draw notice");
+    assert.deepEqual(observer.presentationSnapshot.diaoChanSkillNotices, [],
+      "the completed prior-turn Beauty notices no longer own current H4 presentation");
     assert.equal(JSON.stringify(observer).includes(shuffledCard.id), false);
   }
 
@@ -533,11 +537,15 @@ test("Beauty draws from a shuffled discard pile and reports an empty-deck outcom
   const emptyAccepted = await requestAndSettle("trigger", { code: exhausted.code, token: exhausted.members[0].token, providerId: "diao_chan_beauty_outshining_moon", preserveResponse: true });
   assert.equal(emptyAccepted.status, 200, JSON.stringify(emptyAccepted.data));
   const emptyOwner = (await state(exhausted.code, exhausted.members[0].token)).data;
-  assert.deepEqual(emptyOwner.presentationSnapshot.diaoChanSkillNotices.map((notice) => notice.notice), ["ACTIVATION"]);
+  assert.deepEqual(emptyOwner.timeline.flatMap((event) => event.publicDiaoChanNotice ? [event.publicDiaoChanNotice.notice] : []), ["ACTIVATION"],
+    "the committed activation remains in complete event history without an invented draw result");
+  assert.deepEqual(emptyOwner.presentationSnapshot.diaoChanSkillNotices, [],
+    "the prior-turn activation is retired from the current H4 presentation");
   assert.equal(JSON.stringify(emptyOwner).includes("used Beauty and drew 1 card"), false);
   for (const member of exhausted.members.slice(1)) {
     const observer = (await state(exhausted.code, member.token)).data;
-    assert.deepEqual(observer.presentationSnapshot.diaoChanSkillNotices.map((notice) => notice.notice), ["ACTIVATION"]);
+    assert.deepEqual(observer.timeline.flatMap((event) => event.publicDiaoChanNotice ? [event.publicDiaoChanNotice.notice] : []), ["ACTIVATION"]);
+    assert.deepEqual(observer.presentationSnapshot.diaoChanSkillNotices, []);
     assert.equal(JSON.stringify(observer).includes("used Beauty and drew 1 card"), false);
   }
 });

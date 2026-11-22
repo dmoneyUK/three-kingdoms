@@ -27,6 +27,14 @@ function publicSkillOutcomeFact(view, rootEventId) {
     .at(-1);
 }
 
+function committedPublicSkillOutcomeFromHistory(view, rootEventId) {
+  return view.timeline.flatMap((event) => event.publicFact ? [event.publicFact] : [])
+    .filter((fact) => fact.category === "SKILL_USED" && fact.label === "Self Sacrifice"
+      && fact.rootEventId === rootEventId && fact.committedOutcome)
+    .sort((left, right) => left.order - right.order)
+    .at(-1);
+}
+
 function assertDyingPeachRecoveryFact(view, { peachId, rootEventId, actorId, targetId, sourceLabel, amount }) {
   const event = view.timeline.find((candidate) => candidate.action === "play" && candidate.card?.id === peachId);
   assert.ok(event, "the genuine rescue card remains the public physical-card event");
@@ -263,7 +271,11 @@ test("failed 1 HP Self Sacrifice rescue defeats Huang Gai without drawing", asyn
   assert.deepEqual(JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(game.code)}`)).map((item) => item.id), drawn.map((item) => item.id));
   assert.equal(roomCardCount(game.code, drawn[0].id), 1);
   assert.equal(roomCardCount(game.code, drawn[1].id), 1);
-  const outcome = publicSkillOutcomeFact(after, skillRoot.eventId);
+  const outcome = committedPublicSkillOutcomeFromHistory(after, skillRoot.eventId);
+  assert.equal(publicSkillOutcomeFact(after, skillRoot.eventId), undefined,
+    "the completed prior-turn H4 fact is retired from the current presentation snapshot");
+  assert.equal(after.publicPresentationTimeline.some((event) => event.publicFact?.rootEventId === skillRoot.eventId), false,
+    "the prior-turn effect no longer owns a transient current-turn presentation");
   assert.deepEqual(outcome?.committedOutcome?.changes, [
     { kind: "HP_COST_LOST", playerId: setup.source.id, amount: 1 },
   ], "a failed rescue reports the committed HP cost without claiming a draw");

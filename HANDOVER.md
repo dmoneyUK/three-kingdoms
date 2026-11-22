@@ -1,7 +1,7 @@
 # HANDOVER — UX2 §10.66 TURN-BOUNDARY-PUBLIC-PRESENTATION-CLEAR-01
 
-**Updated:** 2026-11-22 00:54 UTC
-**Status:** Implementation locally validated; commit, exact-SHA CI, deployment and production smoke pending.
+**Updated:** 2026-11-22 01:06 UTC
+**Status:** Implementation pushed; exact-SHA CI repair required before deployment.
 
 ## Current task
 
@@ -21,6 +21,6 @@ The implementation adds a server-owned turn epoch and public-sequence boundary a
 
 ## Delivery state and one next task
 
-The latest pre-change `ux-v2` Actions run was successful: [44963186592](https://github.com/dmoneyUK/three-kingdoms/actions/runs/44963186592). The task changes are not yet committed or pushed, so their exact-SHA CI, Worker deployment and production smoke remain unverified.
+Source commit `bb7819db2ed54d03511bde0caba24856a270c711` is pushed to `ux-v2`. Exact-SHA [Actions run 44969041509](https://github.com/dmoneyUK/three-kingdoms/actions/runs/44969041509) failed in API tests because two existing assertions required completed Diao Chan/Huang Gai H4 facts to remain in the current presentation snapshot after a new turn had begun. Browser smoke and Lint/fast passed; deployment was skipped. The focused test correction now checks that committed facts remain in complete history while old H4 ownership is retired from the current-turn presentation: Diao Chan + Huang Gai API files passed 17/17 locally, and their targeted ESLint and `git diff --check` passed.
 
-**Only current task:** Commit and push §10.66 to `ux-v2`, verify all exact-SHA Actions/deployment jobs and production health, then update this handover with actual commit, run and Worker evidence. Owner iPhone review remains required; do not mark USER-ACCEPTED.
+**Only current task:** Commit and push the focused §10.66 CI assertion repair, then verify exact-SHA Actions, Worker deployment and production health. Owner iPhone review remains required; do not mark USER-ACCEPTED.
