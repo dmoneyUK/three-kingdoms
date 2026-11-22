@@ -1,13 +1,13 @@
 # Smart Bot Player — Coding Agent Handover
 
-Branch: `feature/smart-bot-player` · Worktree: `/private/tmp/WTK-AIP-SYNC-02-20261122` · Design reviewed: AIP-D33 (2026-11-22).
+Branch: `feature/smart-bot-player` · Worktree: `/private/tmp/WTK-AIP-PERF-01-20261122` · Design reviewed: AIP-D35 (2026-11-22).
 
-## Latest result — AIP-SYNC-02 (`PENDING_REVIEW`)
+## Latest accepted baseline
 
-Pinned one-way merge `ux-v2` → AI feature branch is code SHA `f8813eb5aca048a53a7197ecaea3c9042993a8f1`, with AI parent `de35dbc68d164eb464b794374df25ed6ef01c1c1` and UX2 parent `dbf57a7c11ce44c4ca438f44a0de345d763e0451`. [Exact-SHA Actions run 45066768247, attempt 2](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45066768247) passed lint/fast, API, browser smoke, Staging target guard/build/dry-run, D1 migration check, Worker deploy and mobile refresh/rejoin smoke; production `deploy` was skipped. Attempt 1 failed because its randomized game defeated the human before their first turn; Bots continued, and the same code SHA passed on attempt 2. Successful smoke evidence: [artifact 14772388985](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45066768247/artifacts/14772388985).
+AIP-ROLE-01 and the single AIP-SYNC-02 merge are Owner-accepted in AIP-D35. Current code-bearing baseline is merge SHA `f8813eb5aca048a53a7197ecaea3c9042993a8f1`; exact-SHA [Actions 45066768247, attempt 2](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45066768247) passed and deployed isolated AI Staging Worker version `e0c1dd5e-7402-47bc-81ca-7fd7ecd2c360`. CPU 1102 failures on that version remain open under AIP-PERF-01.
 
-AI Staging Worker `three-kingdoms-ai-staging` is healthy at `https://three-kingdoms-ai-staging.dai-jinge.workers.dev`, version `e0c1dd5e-7402-47bc-81ca-7fd7ecd2c360`. Remote D1 migration id 18 `0017_confused_marvel_boy.sql` is applied; no migrations are pending. Focused local presentation/render checks passed 52/52; `git diff --check` passed. No production deployment or migration occurred. `main` and `ux-v2` were not modified. AIP-ROLE-01 and AIP-PERF-01 remain `PENDING_REVIEW`.
+## Current task — AIP-PERF-01 (`IN_PROGRESS`)
 
-## Current task — Owner's combined physical iPhone review
+Investigate and correct the 2026-11-22 23:04 Staging incident in room `24V7K`: one `/api/rooms` POST and three separate authenticated GET polls hit CPU 1102 on Worker `e0c1dd5e-7402-47bc-81ca-7fd7ecd2c360`. The supplied Logpush analysis is in AIP-D35; its raw export and request tokens must not enter Git or logs. The 101-byte profile contained one 1ms sample, root→idle, and no application stack. Earlier change `c2bf6c1b` removed a duplicate authenticated GET projection; this incident shows further measured investigation is needed.
 
-On real iPhone Safari, create an AI Staging room, add three Bots, start and select a Hero, observe Bot turns and return of human control, then refresh/rejoin and inspect the merged UX2 board/response presentation. Record the phone outcome and any feedback. Chromium mobile emulation does not replace this review. Keep AIP-SYNC-02 and AIP-ROLE-01 pending until the human Reviewer accepts them; AIP-PERF-01 remains separately pending its profiler review. Do not start the next gameplay task or perform another branch sync before that review.
+**Next step:** read-only verify persisted `24V7K` state/pending/work lease, effective AI Staging CPU limit/settings, and profile/CPU telemetry access. Then build the same-fixture long-room measurements specified in AIP-D35 before selecting a source change. No Cloudflare setting has been changed during this task yet. Keep all capture/deploy scope on AI Staging; no production access, migration, quota increase, UX2 edit, or gameplay change. Only task-focused local tests may run; full validation is exact-SHA GitHub Actions. The task stays open until measured Staging GET/POST headroom, no 1102, exact-SHA CI green and one Owner review are documented.
