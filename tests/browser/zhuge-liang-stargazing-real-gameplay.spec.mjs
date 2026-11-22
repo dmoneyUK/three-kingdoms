@@ -96,6 +96,7 @@ async function openRealStargazingDecision({ page, request, browser, viewport }) 
 
 const zone = (dialog, name) => dialog.locator(`[data-deck-zone="${name}"]`);
 const cardNode = (dialog, id) => dialog.locator(`[data-deck-card-id="${id}"]`);
+const cardControl = (dialog, id) => cardNode(dialog, id).locator("[data-deck-card-control]");
 
 async function orderIn(dialog, zoneName) {
   return zone(dialog, zoneName).locator("[data-deck-card-id]").evaluateAll((items) => items.map((item) => item.dataset.deckCardId));
@@ -202,7 +203,8 @@ async function assertCompactGeometry({ dialog, cards }) {
   expect(geometry.viewport.pageWidth).toBeLessThanOrEqual(viewport.width);
   expect(geometry.viewport.scrollY).toBe(0);
   await expect(dialog.locator("[data-deck-zone]")).toHaveCount(2);
-  await expect(dialog.getByRole("button")).toHaveCount(1);
+  await expect(dialog.locator("[data-deck-card-control]")).toHaveCount(cards.length);
+  await expect(dialog.locator('[data-deck-reorder-submit]')).toHaveCount(1);
   await expect(dialog.getByRole("button", { name: "CONFIRM", exact: true })).toBeEnabled();
   await expect(dialog.locator(".deck-reorder-menu-toggle, .deck-reorder-card-actions, [data-deck-reorder-progress]")).toHaveCount(0);
   await assertCardConservation(dialog, cards);
@@ -247,21 +249,21 @@ test("Stargazing uses two compact private zones, supports touch and keyboard mov
     catch { actorActions.push("invalid-request"); }
   };
   actorPage.on("request", recordActorAction);
-  await cardNode(dialog, dodge.id).focus();
-  expect(await cardNode(dialog, dodge.id).getAttribute("tabindex")).toBe("0");
-  await cardNode(dialog, dodge.id).press("ArrowRight");
+  await cardControl(dialog, dodge.id).focus();
+  await expect(cardControl(dialog, dodge.id)).toBeFocused();
+  await cardControl(dialog, dodge.id).press("ArrowRight");
   await expect(dialog.locator(".deck-reorder-live")).toHaveText("Dodge moved to Top of Deck, position 3.");
-  await expect(cardNode(dialog, dodge.id)).toBeFocused();
+  await expect(cardControl(dialog, dodge.id)).toBeFocused();
   expect(await orderIn(dialog, "top")).toEqual([attack.id, peach.id, dodge.id, duel.id]);
 
   const cdp = await actorPage.context().newCDPSession(actorPage);
   await touchDrag({ page: actorPage, cdp, dialog, cardId: attack.id, zoneName: "bottom", index: 0 });
   expect(await orderIn(dialog, "top")).toEqual([peach.id, dodge.id, duel.id]);
   expect(await orderIn(dialog, "bottom")).toEqual([attack.id]);
-  await cardNode(dialog, attack.id).press("ArrowUp");
+  await cardControl(dialog, attack.id).press("ArrowUp");
   expect(await orderIn(dialog, "top")).toEqual([attack.id, peach.id, dodge.id, duel.id]);
   expect(await orderIn(dialog, "bottom")).toEqual([]);
-  await cardNode(dialog, attack.id).press("ArrowDown");
+  await cardControl(dialog, attack.id).press("ArrowDown");
   expect(await orderIn(dialog, "top")).toEqual([peach.id, dodge.id, duel.id]);
   expect(await orderIn(dialog, "bottom")).toEqual([attack.id]);
   await assertCardConservation(dialog, cards);

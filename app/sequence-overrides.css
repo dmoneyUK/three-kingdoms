@@ -8455,7 +8455,27 @@
   gap: 0;
   scroll-snap-align: start;
 }
-.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card:focus-visible {
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card-control {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card-control:focus-visible {
   z-index: 3;
   outline: 2px solid #ffe08a;
   outline-offset: 2px;

@@ -12604,8 +12604,6 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
   };
   const beginDrag = (event: ReactPointerEvent<HTMLElement>, cardId: string, zone: DeckZone, index: number) => {
     if (disabled || !event.isPrimary || event.button !== 0 || dragRef.current) return;
-    const eventTarget = event.target as Element;
-    if (event.pointerType !== "touch" && eventTarget.closest("button")) return;
     const face = event.currentTarget.matches(".deck-reorder-card-face")
       ? event.currentTarget
       : event.currentTarget.querySelector<HTMLElement>(".deck-reorder-card-face");
@@ -12758,18 +12756,21 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     const card = held.get(id);
     if (!card) return null;
     const name = cardDefinition(card.kind).name;
-    return <article ref={(node) => { if (node) cardRefs.current.set(id, node); else cardRefs.current.delete(id); }}
-      className={"deck-reorder-card" + (drag?.active && drag.cardId === id ? " is-drag-source" : "")}
-      role="listitem" tabIndex={0} key={id} data-deck-card-id={id} data-deck-zone-name={zone} data-order-index={index}
-      data-dragging={drag?.active && drag.cardId === id ? "true" : "false"}
-      aria-label={name + " " + card.rank + card.suit + ", " + DECK_ZONE_LABELS[zone] + ", position " + (index + 1) + " of " + count}
-      aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"
-      onKeyDown={(event) => moveCardByKeyboard(event, id)}>
-      <div className="deck-reorder-card-face" onPointerDown={(event) => beginDrag(event, id, zone, index)}
+    return <article className={"deck-reorder-card" + (drag?.active && drag.cardId === id ? " is-drag-source" : "")}
+      role="listitem" key={id} data-deck-card-id={id} data-deck-zone-name={zone} data-order-index={index}
+      data-dragging={drag?.active && drag.cardId === id ? "true" : "false"}>
+      <button ref={(node) => { if (node) cardRefs.current.set(id, node); else cardRefs.current.delete(id); }}
+        type="button" className="deck-reorder-card-control" data-deck-card-control="true"
+        aria-label={name + " " + card.rank + card.suit + ", " + DECK_ZONE_LABELS[zone] + ", position " + (index + 1) + " of " + count}
+        aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"
+        onKeyDown={(event) => moveCardByKeyboard(event, id)}
+        onPointerDown={(event) => beginDrag(event, id, zone, index)}
         onLostPointerCapture={(event) => finishPointer(event, true)}
-        onDragStart={(event) => event.preventDefault()} data-deck-card-face={id}>
-        <CardFace card={card} />
-      </div>
+        onDragStart={(event) => event.preventDefault()}>
+        <div className="deck-reorder-card-face" data-deck-card-face={id}>
+          <CardFace card={card} />
+        </div>
+      </button>
     </article>;
   };
   const renderZoneItems = (zone: DeckZone) => {
