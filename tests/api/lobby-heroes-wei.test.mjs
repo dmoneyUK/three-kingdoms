@@ -901,6 +901,9 @@ test("server-owned bots use assigned Heroes and canonical draw, end-turn, discar
     assert.equal(roomCardCount(code, cardId), 1, `${cardId} remains in exactly one room zone`);
   }
 
+  // Hero assignment above is intentionally real. Fix the attacker's Hero
+  // only for this part so a random on-target skill cannot precede Dodge.
+  sql(`UPDATE players SET hero='zhang-fei' WHERE id=${quote(hostId)}`);
   const hostAttack = card("Attack", "bot-response-attack");
   setHand(hostId, [hostAttack], 4, 4);
   setHand(botPlayer.id, [], 4, 4);
