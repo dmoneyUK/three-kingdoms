@@ -31,8 +31,19 @@
 }
 
 .active-table-reveal.public-judgement-original-reveal {
-  left: 50%;
-  top: 50%;
+  left: var(--judgement-center-x, 50%);
+  top: var(--judgement-center-y, 50%);
+}
+.active-table-reveal.public-judgement-original-reveal:not([data-public-reveal-positioned="true"]),
+.active-table-reveal.public-judgement-original-reveal[data-public-reveal-geometry-safe="false"] {
+  visibility: hidden;
+}
+.active-table-reveal.judgement-flight:not([data-public-reveal-positioned="true"]) {
+  visibility: hidden;
+  animation: none !important;
+}
+.active-table-reveal.judgement-flight[data-public-reveal-geometry-safe="false"] {
+  visibility: hidden;
 }
 
 .active-table-reveal.direct-discard {
@@ -112,7 +123,7 @@
 }
 @keyframes judgementCardToZone {
   0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
-  10%, 85% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  10%, 85% { left: var(--public-reveal-x, 50%); top: var(--public-reveal-y, 50%); opacity: 1; transform: scale(1); }
   100% { left: var(--judgement-x, 50%); top: var(--judgement-y, 50%); opacity: 1; transform: scale(var(--judgement-scale-x, .32), var(--judgement-scale-y, .32)); }
 }
 

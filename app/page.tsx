@@ -44,7 +44,7 @@ import { fixedUpperHistoryAnnouncementAnchor, publicH4ReservedHeight } from "./p
 import { CardPoolDecisionFooter, CardPoolMiniFace, CardPoolPanel, useHorizontalOverflow, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
-import { PublicCardDisplay, PublicDiscardAnnouncementLayer, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, publicCardActionKey, publicCardJourneyOwnershipIdentity, publicCardMotionForCommittedCard, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
+import { PublicCardDisplay, PublicDiscardAnnouncementLayer, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, h4SafeBattlefieldCardRect, publicCardActionKey, publicCardJourneyOwnershipIdentity, publicCardMotionForCommittedCard, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
 import { VerifiedPlayerCopy } from "./verified-player-copy";
 import { PublicStageLayoutProvider } from "./public-stage-layout-context";
@@ -13028,6 +13028,92 @@ function centerRelativeToTable(table: HTMLElement, element: HTMLElement): TableP
   return { x: rect.left + rect.width / 2 - tableRect.left, y: rect.top + rect.height / 2 - tableRect.top };
 }
 
+function measurePublicJudgementSafeCentre(table: HTMLElement, reveal: HTMLElement): boolean {
+  const face = reveal.querySelector<HTMLElement>(".played-card");
+  if (!face || face.offsetWidth <= 0 || face.offsetHeight <= 0) {
+    reveal.dataset.publicRevealGeometrySafe = "false";
+    return false;
+  }
+  const safe = h4SafeBattlefieldCardRect({ width: face.offsetWidth, height: face.offsetHeight });
+  if (!safe) {
+    reveal.dataset.publicRevealGeometrySafe = "false";
+    return false;
+  }
+  const tableRect = table.getBoundingClientRect();
+  const x = safe.left + safe.width / 2 - tableRect.left;
+  const y = safe.top + safe.height / 2 - tableRect.top;
+  reveal.style.setProperty("--judgement-center-x", `${x}px`);
+  reveal.style.setProperty("--judgement-center-y", `${y}px`);
+  reveal.style.setProperty("--public-reveal-x", `${x}px`);
+  reveal.style.setProperty("--public-reveal-y", `${y}px`);
+  reveal.dataset.publicRevealPositioned = "true";
+  reveal.dataset.publicRevealGeometrySafe = "true";
+  return true;
+}
+
+function observePublicJudgementSafeCentre(table: HTMLElement, reveal: HTMLElement): () => void {
+  let scheduledFrame = 0;
+  const observedGeometry = new Set<HTMLElement>();
+  const geometrySelector = [
+    "[data-public-card-announcement='true']", ".opponent-player-card[data-player-anchor]", ".player-square",
+    ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip",
+    ".opponent-inspection-floating-shell", ".card-details-panel", ".hero-details-panel",
+    ".interaction-stage-dying", ".dying-handoff-compact", ".card-pool-target-stage", ".battlefield-choice-stage",
+    ".local-player-dock", ".local-hand-rail", ".local-hand", ".console-guidance",
+  ].join(", ");
+  const measure = () => {
+    scheduledFrame = 0;
+    measurePublicJudgementSafeCentre(table, reveal);
+  };
+  function scheduleMeasure() {
+    if (!scheduledFrame) scheduledFrame = window.requestAnimationFrame(measure);
+  }
+  const resizeObserver = new ResizeObserver(() => {
+    measurePublicJudgementSafeCentre(table, reveal);
+    scheduleMeasure();
+  });
+  const syncObservedGeometry = () => {
+    const current = new Set(Array.from(table.querySelectorAll<HTMLElement>(geometrySelector)));
+    for (const element of observedGeometry) {
+      if (!current.has(element)) resizeObserver.unobserve(element);
+    }
+    for (const element of current) {
+      if (!observedGeometry.has(element)) resizeObserver.observe(element);
+    }
+    observedGeometry.clear();
+    for (const element of current) observedGeometry.add(element);
+  };
+  const mutationObserver = new MutationObserver((mutations) => {
+    if (mutations.every((mutation) => mutation.target === reveal || reveal.contains(mutation.target))) return;
+    syncObservedGeometry();
+    measurePublicJudgementSafeCentre(table, reveal);
+    scheduleMeasure();
+  });
+  mutationObserver.observe(table, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["data-public-card-announcement-positioned", "data-public-card-announcement-fixed-upper", "class", "style", "data-side-column", "data-side-row", "data-player-anchor"],
+  });
+  resizeObserver.observe(table);
+  resizeObserver.observe(reveal);
+  const face = reveal.querySelector<HTMLElement>(".played-card");
+  if (face) resizeObserver.observe(face);
+  syncObservedGeometry();
+  scheduleMeasure();
+  window.addEventListener("resize", scheduleMeasure);
+  window.visualViewport?.addEventListener("resize", scheduleMeasure);
+  window.visualViewport?.addEventListener("scroll", scheduleMeasure);
+  return () => {
+    mutationObserver.disconnect();
+    resizeObserver.disconnect();
+    window.removeEventListener("resize", scheduleMeasure);
+    window.visualViewport?.removeEventListener("resize", scheduleMeasure);
+    window.visualViewport?.removeEventListener("scroll", scheduleMeasure);
+    if (scheduledFrame) window.cancelAnimationFrame(scheduledFrame);
+  };
+}
+
 function findAnchor(root: ParentNode, attribute: string, value: string): HTMLElement | null {
   const dataKey = attribute.slice(5).replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
   return Array.from(root.querySelectorAll<HTMLElement>(`[${attribute}]`)).find((element) => element.dataset[dataKey] === value) ?? null;
@@ -13120,9 +13206,16 @@ function PublicJudgementOriginalReveal({ event, route }: {
   event: Extract<GameEvent, { type: "card" }>;
   route: PublicJudgementRevealRoute;
 }) {
+  const revealRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const reveal = revealRef.current;
+    const table = reveal?.closest<HTMLElement>(".play-table");
+    if (!reveal || !table) return;
+    return observePublicJudgementSafeCentre(table, reveal);
+  }, [event.card.id, event.id, route.claimId]);
   if (event.id !== route.eventId || event.card.id !== route.physicalCardId) return null;
   return <div className="table-resolution-layer public-judgement-reveal-layer" role="status" aria-label="Public Judgement card revealed">
-    <div className="active-table-reveal public-judgement-original-reveal" key={route.claimId}
+    <div ref={revealRef} className="active-table-reveal public-judgement-original-reveal" key={route.claimId}
       data-public-card-owner={route.claimedBy}
       data-public-judgement-reveal-event-id={route.eventId}
       data-public-judgement-reveal-card-id={route.physicalCardId}
@@ -13221,7 +13314,13 @@ function PublicJudgementCardTransition({ event, card, route, players, myTableInd
     observer.observe(table);
     if (source) observer.observe(source);
     if (destination) observer.observe(destination);
-    return () => observer.disconnect();
+    const stopSafeCentreObservation = arrivingInJudgement
+      ? observePublicJudgementSafeCentre(table, reveal)
+      : () => {};
+    return () => {
+      observer.disconnect();
+      stopSafeCentreObservation();
+    };
   }, [arrivingInJudgement, card.id, myTableIndex, players, route.destination, route.from, sourceOwnerId]);
 
   useEffect(() => {
@@ -13239,6 +13338,7 @@ function PublicJudgementCardTransition({ event, card, route, players, myTableInd
     <div ref={revealRef} className={`active-table-reveal ${arrivingInJudgement ? "judgement-flight" : "direct-discard"}${isPublicJudgementDiscard ? " public-discard-neutral" : ""}`}
       data-settlement-event-id={event.id} data-public-zone-transition-event-id={route.eventId}
       data-public-zone-transition-card-id={route.physicalCardId} data-public-zone-transition-destination={route.destination}
+      data-public-reveal-positioned="false" data-public-reveal-geometry-safe="false"
       key={route.claimId} onAnimationEnd={(animation) => {
         if (animation.target !== animation.currentTarget || animation.animationName !== expectedAnimation) return;
         onPresented(route);
