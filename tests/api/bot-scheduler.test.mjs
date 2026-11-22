@@ -105,7 +105,7 @@ test("a long Bot room refreshes the final authenticated projection without leaki
   assert.deepEqual(owner.data.timeline, anonymous.data.timeline);
   assert.equal(owner.data.actionRevision, anonymous.data.actionRevision);
   assert.equal(owner.data.currentAction.actorId, hostId);
-  assert.equal(owner.data.myRole, "Renegade");
+  assert.equal(owner.data.myRole, "Spy");
   assert.equal(anonymous.data.myRole, null);
   assert.equal(anonymous.data.players.find(({ id }) => id === hostId).role, null);
   assert.equal(anonymous.data.players.find(({ id }) => id === bots[0].id).role, "Lord");
