@@ -14,7 +14,7 @@ function unsupportedBots(room) {
   return (room.players ?? []).filter((player) => player.isBot && ["unsupported", "error"].includes(player.botStatus));
 }
 
-async function waitForRoom(request, roomCode, token, predicate, { timeoutMs = 90_000, label = "room state", beforePoll } = {}) {
+async function waitForRoom(request, roomCode, token, predicate, { timeoutMs = 90_000, label = "room state", beforePoll, onState } = {}) {
   const deadline = Date.now() + timeoutMs;
   let latest = null;
   while (Date.now() < deadline) {
@@ -26,6 +26,7 @@ async function waitForRoom(request, roomCode, token, predicate, { timeoutMs = 90
     const unsupported = unsupportedBots(latest);
     if (unsupported.length) throw new Error(`Bot decision stopped safely as unsupported: ${unsupported.map((player) => player.name).join(", ")}`);
     if (predicate(latest)) return latest;
+    await onState?.(latest);
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
   throw new Error(`Timed out waiting for ${label}; latest state: ${JSON.stringify({ status: latest?.status, phase: latest?.phase, turnSeat: latest?.turnSeat, actionPlayerId: latest?.actionPlayerId })}`);
@@ -144,7 +145,17 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
     await expect(page.getByTestId(/^bot-status-/)).toHaveCount(3);
     for (const bot of bots) await expect(page.getByTestId(`bot-status-${bot.id}`)).toHaveAttribute("aria-label", /Bot/);
 
-    currentRoom = await waitForRoom(request, roomCode, created.token, (room) => room.status === "playing" && room.turnSeat === hostSeat && room.phase?.startsWith("play") && room.currentAction?.actorId === hostId && room.currentAction.legalActions.includes("end_turn"), { timeoutMs: 150_000, label: "human Play Phase", beforePoll: triggerLocalRecovery });
+    currentRoom = await waitForRoom(request, roomCode, created.token, (room) => room.status === "playing" && room.turnSeat === hostSeat && room.phase?.startsWith("play") && room.currentAction?.actorId === hostId && room.currentAction.legalActions.includes("end_turn"), {
+      timeoutMs: 150_000,
+      label: "human Play Phase",
+      beforePoll: triggerLocalRecovery,
+      onState: async (room) => {
+        if (room.turnSeat !== hostSeat || room.currentAction?.actorId !== hostId || !room.currentAction.legalActions.includes("decline_trigger")) return;
+        const skipResponsePromise = page.waitForResponse((response) => isPostAction(response, "decline_trigger"));
+        await page.getByRole("button", { name: "Skip", exact: true }).click();
+        expect((await skipResponsePromise).status()).toBe(200);
+      },
+    });
     expect(currentRoom.players.filter((player) => player.isBot).every((player) => player.botStatus === "waiting_for_human")).toBe(true);
     const humanRevision = currentRoom.actionRevision;
     await page.waitForTimeout(1_000);
