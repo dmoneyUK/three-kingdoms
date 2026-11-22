@@ -436,12 +436,15 @@ test("a multi-Dodge Attack remains unsupported without spending either card", as
   const { code, token, hostId, bots, room } = await createBotGame();
   const bot = bots[0];
   const host = room.players.find((player) => player.id === hostId);
+  sql(`UPDATE players SET hero='sun-quan' WHERE id IN (${quote(hostId)}, ${quote(bot.id)})`);
   setHand(hostId, [card("Attack", "scheduler-multi-dodge-attack")], 4, 4);
   setHand(bot.id, [card("Dodge", "scheduler-multi-dodge-a"), card("Dodge", "scheduler-multi-dodge-b")], 4, 4);
   setTurn(code, host.seat, "play");
   const attack = await requestAndSettle("play_card", { code, token, cardId: "attack-scheduler-multi-dodge-attack", targetId: bot.id });
   assert.equal(attack.status, 200, JSON.stringify(attack.data));
   const pending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(code)}`));
+  assert.equal(pending.kind, "response", "the fixture is an ordinary card Attack Dodge window");
+  assert.ok(pending.requirement, "the ordinary response window carries its explicit Dodge requirement");
   pending.requirement.count = 2;
   pending.continuation.requiredDodgeCount = 2;
   sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(pending))} WHERE code=${quote(code)}`);
