@@ -3510,43 +3510,10 @@
   scroll-snap-align: start;
 }
 .deck-reorder-card-face {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 5 / 7;
-  overflow: hidden;
-}
-.deck-reorder-card-face > .played-card {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  padding: 4px 2px;
-  border-width: 1px;
-  border-radius: 5px;
-  box-shadow: 0 5px 12px #0009;
-  animation: none !important;
-  animation-duration: 0s !important;
-  opacity: 1 !important;
-  transform: none !important;
-  translate: 0 0 !important;
-  transition: none !important;
-}
-.deck-reorder-card-face > .played-card > i {
-  left: 4px;
-  top: 4px;
-  font-size: clamp(11px, 2.8vw, 16px);
-  line-height: 1;
-}
-.deck-reorder-card-face > .played-card > i small {
-  font-size: .85em;
-}
-.deck-reorder-card-face > .played-card .card-name-mark {
-  max-width: 94%;
-  font-size: clamp(10px, 3.25vw, 16px);
-  line-height: 1.05;
-}
-.deck-reorder-card-face > .played-card > strong {
-  margin-top: 4px;
-  font-size: clamp(5px, 1.55vw, 7px);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 .deck-reorder-card-actions {
   display: grid;
@@ -3645,9 +3612,6 @@
   .deck-reorder-group[data-card-count="4"] .deck-reorder-scroll-hint,
   .deck-reorder-group[data-card-count="5"] .deck-reorder-scroll-hint {
     display: block;
-  }
-  .deck-reorder-card-face > .played-card .card-name-mark {
-    font-size: 10px;
   }
 }
 
@@ -3781,48 +3745,10 @@
   opacity: .25;
 }
 .deck-reorder-card-face {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 5 / 7;
-  overflow: visible;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-}
-.deck-reorder-card-face > .played-card {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  padding: 4px 2px;
-  border-width: 1px;
-  border-radius: 5px;
-  box-shadow: 0 5px 12px #0009;
-  animation: none !important;
-  animation-duration: 0s !important;
-  opacity: 1 !important;
-  transform: none !important;
-  translate: 0 0 !important;
-  transition: none !important;
-  pointer-events: none;
-}
-.deck-reorder-card-face > .played-card > i {
-  left: 4px;
-  top: 4px;
-  font-size: clamp(11px, 2.8vw, 16px);
-  line-height: 1;
-}
-.deck-reorder-card-face > .played-card > i small {
-  font-size: .85em;
-}
-.deck-reorder-card-face > .played-card .card-name-mark {
-  max-width: 94%;
-  font-size: clamp(10px, 3.25vw, 16px);
-  line-height: 1.05;
-}
-.deck-reorder-card-face > .played-card > strong {
-  margin-top: 4px;
-  font-size: clamp(5px, 1.55vw, 7px);
 }
 .deck-reorder-drag-grip {
   position: absolute;
@@ -3982,7 +3908,6 @@
 }
 @media (max-width: 360px) {
   .deck-reorder-card { flex-basis: 64px; width: 64px; }
-  .deck-reorder-card-face > .played-card .card-name-mark { font-size: 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .deck-reorder-card, .deck-reorder-group { transition: none; }
@@ -6987,8 +6912,9 @@
   gap: 3px;
 }
 
-.game-shell .card-pool-panel__target-public-face {
+.game-shell .card-pool-mini-face {
   position: relative;
+  display: block;
   box-sizing: border-box;
   flex: 0 0 50px;
   width: 50px;
@@ -6996,22 +6922,27 @@
   overflow: hidden;
   border: 1px solid #a88a50;
   border-radius: 4px;
+  container-type: inline-size;
 }
 
-.game-shell .card-pool-panel__target-public-face > .played-card {
+.game-shell .card-pool-mini-face > .played-card {
   box-sizing: border-box;
   width: 100%;
   height: 100%;
   padding: 4px 2px;
   border-radius: 3px;
   animation: none;
+  animation-duration: 0s;
+  opacity: 1;
+  transform: none;
+  translate: 0 0;
+  transition: none;
   box-shadow: none;
 }
 
-.game-shell .card-pool-panel__target-public-face > .played-card > i { left: 3px; top: 2px; font-size: 8px; }
-.game-shell .card-pool-panel__target-public-face > .played-card > i small { font-size: 7px; }
-.game-shell .card-pool-panel--actor-target-select [data-target-card-public-zone="equipment"] .card-pool-panel__target-public-face > .played-card > i,
-.game-shell .card-pool-panel--actor-target-select [data-target-card-public-zone="judgement"] .card-pool-panel__target-public-face > .played-card > i {
+.game-shell .card-pool-mini-face > .played-card > i { left: 3px; top: 2px; font-size: 8px; }
+.game-shell .card-pool-mini-face > .played-card > i small { font-size: 7px; }
+.game-shell .card-pool-mini-face--compact-target > .played-card > i {
   box-sizing: border-box;
   left: 2px;
   top: 2px;
@@ -7023,10 +6954,23 @@
   font-size: 6.5px;
   line-height: .95;
 }
-.game-shell .card-pool-panel--actor-target-select [data-target-card-public-zone="equipment"] .card-pool-panel__target-public-face > .played-card > i small,
-.game-shell .card-pool-panel--actor-target-select [data-target-card-public-zone="judgement"] .card-pool-panel__target-public-face > .played-card > i small { font-size: 5.5px; line-height: 1; }
-.game-shell .card-pool-panel__target-public-face > .played-card .card-name-mark { font-size: 7px; }
-.game-shell .card-pool-panel__target-public-face > .played-card > strong { font-size: 4px; }
+.game-shell .card-pool-mini-face--compact-target > .played-card > i small { font-size: 5.5px; line-height: 1; }
+.game-shell .card-pool-mini-face > .played-card .card-name-mark {
+  max-width: 96%;
+  font-size: 7px;
+  line-height: 1.04;
+  letter-spacing: normal;
+}
+.game-shell .card-pool-mini-face > .played-card > strong {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 4px;
+  font-size: 4px;
+  line-height: 1;
+  letter-spacing: .035em;
+  text-align: center;
+  white-space: nowrap;
+}
 
 .game-shell .play-table[data-seat-topology="side-column"] .card-pool-panel--actor-target-select.harvest-choice-panel,
 .game-shell .play-table[data-seat-topology="side-column"] .card-pool-panel--target-readonly.harvest-choice-panel {
@@ -7825,7 +7769,6 @@
 .target-card-picker-card,
 .local-hand-rail .card-slot,
 .card-details-illustration,
-.deck-reorder-card-face,
 .discard-card-row .played-card {
   container-type: inline-size;
 }
@@ -7844,7 +7787,6 @@
 .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"] .played-card .card-name-mark,
 .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] .played-card .card-name-mark,
 .card-details-illustration > .played-card .card-name-mark,
-.deck-reorder-card-face > .played-card .card-name-mark,
 .discard-card-row .played-card .card-name-mark {
   max-width: 96%;
   font-size: clamp(7px, 3vw, 16px);
@@ -7856,7 +7798,7 @@
 }
 
 .played-card[data-card-title-fit="long"] { --card-title-cqi: 10.5; }
-:is(.public-result-card, .active-table-reveal, .public-card-journey-card[data-public-card-journey-size="reveal"], .public-card-effect-frame-material, .target-card-picker-card, .card-details-illustration, .deck-reorder-card-face, .discard-card-row) .played-card[data-card-title-fit="long"] .card-name-mark {
+:is(.public-result-card, .active-table-reveal, .public-card-journey-card[data-public-card-journey-size="reveal"], .public-card-effect-frame-material, .target-card-picker-card, .card-details-illustration, .discard-card-row) .played-card[data-card-title-fit="long"] .card-name-mark {
   -webkit-line-clamp: 4;
 }
 
@@ -7870,7 +7812,6 @@
 .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"] .played-card > strong,
 .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] .played-card > strong,
 .card-details-illustration > .played-card > strong,
-.deck-reorder-card-face > .played-card > strong,
 .discard-card-row .played-card > strong {
   width: 100%;
   max-width: 100%;
@@ -7921,7 +7862,6 @@
   .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"] .played-card .card-name-mark,
   .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] .played-card .card-name-mark,
   .card-details-illustration > .played-card .card-name-mark,
-  .deck-reorder-card-face > .played-card .card-name-mark,
   .discard-card-row .played-card .card-name-mark {
     font-size: clamp(6px, calc(var(--card-title-cqi, 13) * 1cqi), 22px);
   }
@@ -7935,7 +7875,6 @@
   .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"] .played-card > strong,
   .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] .played-card > strong,
   .card-details-illustration > .played-card > strong,
-  .deck-reorder-card-face > .played-card > strong,
   .discard-card-row .played-card > strong {
     font-size: clamp(4px, 7.5cqi, 10px);
   }
@@ -8422,10 +8361,10 @@
   box-shadow: inset 0 0 0 1px #f1ca6a55, 0 0 14px #e4ba5b2a;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-zone-top .deck-reorder-card-row {
-  min-height: 92px;
+  min-height: 75px;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-zone-bottom .deck-reorder-card-row {
-  min-height: 72px;
+  min-height: 75px;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card-row {
   display: flex;
@@ -8449,16 +8388,17 @@
   display: none;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card {
-  flex: 0 0 min(76px, calc((100% - 16px) / 5));
-  width: min(76px, calc((100% - 16px) / 5));
-  min-width: 66px;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
   gap: 0;
   scroll-snap-align: start;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card-control {
   position: relative;
   display: block;
-  width: 100%;
+  width: fit-content;
+  max-width: 100%;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -8481,19 +8421,7 @@
   outline-offset: 2px;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card-face {
-  width: 100%;
-  aspect-ratio: 5 / 7;
   touch-action: none;
-}
-.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card-face > .played-card {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  animation: none;
-  opacity: 1;
-  transform: none;
-  translate: 0 0;
-  pointer-events: none;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-card.is-drag-source {
   opacity: .28;
@@ -8516,9 +8444,9 @@
   letter-spacing: normal;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-drop-placeholder {
-  flex: 1 0 68px;
+  flex: 1 0 50px;
   min-width: 0;
-  min-height: 68px;
+  min-height: 50px;
   border: 0;
   border-radius: 3px;
   background: #a88a4d0a;
@@ -8534,13 +8462,11 @@
   pointer-events: none;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-completion {
-  position: sticky;
-  z-index: 2;
-  bottom: 0;
+  position: static;
   flex: 0 0 auto;
   margin: 0;
   padding: 2px 0 0;
-  background: #151812;
+  background: transparent;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel .deck-reorder-completion button {
   width: 100%;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type KeyboardEvent, type ReactNode, type RefCallback } from "react";
+import { useEffect, useState, type HTMLAttributes, type KeyboardEvent, type ReactNode, type RefCallback } from "react";
 import type { Card } from "../game/model";
 import { cardDefinition } from "../game/cards";
 import { CardFace } from "./card-face";
@@ -108,6 +108,23 @@ type TargetReadOnlyProps = SharedProps & {
 };
 
 export type CardPoolPanelProps = ReadOnlyProps | ActorSelectProps | TargetSelectProps | TargetReadOnlyProps;
+
+type CardPoolMiniFaceProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> & {
+  card: Card;
+  variant?: "standard" | "compact-target";
+  children?: ReactNode;
+};
+
+/** Shared physical CardFace used for compact public target zones and private
+ * deck ordering. This component owns only neutral card appearance; callers
+ * retain their own selection and drag controls. */
+export function CardPoolMiniFace({ card, variant = "standard", className = "", children, ...attributes }: CardPoolMiniFaceProps) {
+  const classes = `card-pool-mini-face${variant === "compact-target" ? " card-pool-mini-face--compact-target" : ""}${className ? ` ${className}` : ""}`;
+  return <div {...attributes} className={classes}>
+    <CardFace card={card} />
+    {children}
+  </div>;
+}
 
 export type CardPoolDecisionButtonAction = {
   accessibleLabel: string;
@@ -394,31 +411,32 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
           {zone.cards.map((card) => {
             const choice = publicChoicesById.get(card.id);
             const selected = choice?.state === "selected";
-            return <div
-            className={`card-pool-panel__target-public-face${selected ? " pending-choice" : ""}`}
-            aria-label={`Public ${zone.id}: ${cardDefinition(card.kind).name}`}
-            key={card.id}
-          >
-            <CardFace card={card} />
-            {actorTargetProps && choice && <>
-              <button
-                type="button"
-                className="card-pool-panel__target-select card-pool-panel__target-public-select harvest-card-select"
-                disabled={actorTargetProps.disabled || Boolean(choice.selectDisabled)}
-                aria-pressed={selected}
-                aria-label={choice.accessibleLabel}
-                onClick={() => actorTargetProps.onToggle(choice.eligibleKey)}
-              />
-              {selected && <span className="card-pool-panel__target-selected" aria-hidden="true">✓</span>}
-              <button
-                type="button"
-                className="card-pool-panel__target-info harvest-card-info"
-                aria-label={`Card details: ${choice.accessibleLabel}`}
-                title={`Card details: ${choice.accessibleLabel}`}
-                onClick={(event) => { event.stopPropagation(); actorTargetProps.onInfo(choice.publicCardFace, event.currentTarget); }}
-              >i</button>
-            </>}
-          </div>;
+            return <CardPoolMiniFace
+              card={card}
+              variant={actorTargetProps ? "compact-target" : "standard"}
+              className={`card-pool-panel__target-public-face${selected ? " pending-choice" : ""}`}
+              aria-label={`Public ${zone.id}: ${cardDefinition(card.kind).name}`}
+              key={card.id}
+            >
+              {actorTargetProps && choice && <>
+                <button
+                  type="button"
+                  className="card-pool-panel__target-select card-pool-panel__target-public-select harvest-card-select"
+                  disabled={actorTargetProps.disabled || Boolean(choice.selectDisabled)}
+                  aria-pressed={selected}
+                  aria-label={choice.accessibleLabel}
+                  onClick={() => actorTargetProps.onToggle(choice.eligibleKey)}
+                />
+                {selected && <span className="card-pool-panel__target-selected" aria-hidden="true">✓</span>}
+                <button
+                  type="button"
+                  className="card-pool-panel__target-info harvest-card-info"
+                  aria-label={`Card details: ${choice.accessibleLabel}`}
+                  title={`Card details: ${choice.accessibleLabel}`}
+                  onClick={(event) => { event.stopPropagation(); actorTargetProps.onInfo(choice.publicCardFace, event.currentTarget); }}
+                >i</button>
+              </>}
+            </CardPoolMiniFace>;
           })}
         </div> : <span className="card-pool-panel__target-public-empty">0 cards</span>}
       </div>)}

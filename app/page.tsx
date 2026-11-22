@@ -41,7 +41,7 @@ import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, isPublicInteractionOutcomeFact, type PublicInteractionNarration } from "../game/public-activity";
 import { CardFace } from "./card-face";
 import { fixedUpperHistoryAnnouncementAnchor, publicH4ReservedHeight } from "./public-upper-anchor";
-import { CardPoolDecisionFooter, CardPoolPanel, useHorizontalOverflow, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
+import { CardPoolDecisionFooter, CardPoolMiniFace, CardPoolPanel, useHorizontalOverflow, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
 import { PublicCardDisplay, PublicDiscardAnnouncementLayer, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, publicCardActionKey, publicCardJourneyOwnershipIdentity, publicCardMotionForCommittedCard, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
@@ -12767,9 +12767,7 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
         onPointerDown={(event) => beginDrag(event, id, zone, index)}
         onLostPointerCapture={(event) => finishPointer(event, true)}
         onDragStart={(event) => event.preventDefault()}>
-        <div className="deck-reorder-card-face" data-deck-card-face={id}>
-          <CardFace card={card} />
-        </div>
+        <CardPoolMiniFace card={card} variant="compact-target" className="deck-reorder-card-face" data-deck-card-face={id} />
       </button>
     </article>;
   };
@@ -12824,7 +12822,7 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     </section>
     {drag?.active && held.get(drag.cardId) && <div className="deck-reorder-drag-preview" aria-hidden="true" data-deck-drag-preview={drag.cardId}
       style={{ left: drag.left, top: drag.top, width: drag.width, height: drag.height }}>
-      <div className="deck-reorder-card-face"><CardFace card={held.get(drag.cardId)!} /></div>
+      <CardPoolMiniFace card={held.get(drag.cardId)!} variant="compact-target" className="deck-reorder-card-face" />
     </div>}
   </div>;
 }

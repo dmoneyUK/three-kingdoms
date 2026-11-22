@@ -143,7 +143,43 @@ async function touchDrag({ page, cdp, dialog, cardId, zoneName, index }) {
   await expect(cardNode(dialog, cardId)).toHaveAttribute("data-deck-zone-name", zoneName);
 }
 
-async function assertCompactGeometry({ dialog, cards }) {
+async function readMiniaturePresentation(miniature) {
+  return miniature.evaluate((element) => {
+    const cardFace = element.querySelector(".played-card");
+    const rank = cardFace?.querySelector("i");
+    const suit = rank?.querySelector("small");
+    const title = cardFace?.querySelector(".card-name-mark");
+    const category = cardFace?.querySelector("strong");
+    const box = element.getBoundingClientRect();
+    const innerBox = cardFace?.getBoundingClientRect();
+    const computed = (node) => node ? getComputedStyle(node) : null;
+    const rankStyle = computed(rank);
+    const suitStyle = computed(suit);
+    const titleStyle = computed(title);
+    const categoryStyle = computed(category);
+    const frameStyle = getComputedStyle(element);
+    return {
+      width: box.width,
+      height: box.height,
+      ratio: box.width / box.height,
+      innerWidth: innerBox?.width ?? null,
+      innerHeight: innerBox?.height ?? null,
+      border: frameStyle.borderTopWidth + " " + frameStyle.borderTopStyle + " " + frameStyle.borderTopColor,
+      borderRadius: frameStyle.borderTopLeftRadius,
+      rankFont: rankStyle?.fontSize ?? null,
+      suitFont: suitStyle?.fontSize ?? null,
+      titleFont: titleStyle?.fontSize ?? null,
+      titleLineHeight: titleStyle?.lineHeight ?? null,
+      categoryFont: categoryStyle?.fontSize ?? null,
+    };
+  });
+}
+
+async function assertCompactGeometry({ dialog, cards, expectedTopIds, expectedBottomIds, sharedMiniature }) {
+  await dialog.evaluate(async (panel) => {
+    const animations = [...panel.querySelectorAll("[data-deck-card-id]")].flatMap((element) => element.getAnimations());
+    await Promise.all(animations.map((animation) => animation.finished.catch(() => undefined)));
+  });
   const geometry = await dialog.evaluate((panel) => {
     const panelBox = panel.getBoundingClientRect();
     const table = panel.closest(".play-table");
@@ -151,20 +187,52 @@ async function assertCompactGeometry({ dialog, cards }) {
     const sequences = panel.querySelector(".deck-reorder-sequences");
     const readZone = (name) => {
       const root = panel.querySelector(`[data-deck-zone="${name}"]`);
-      const row = root.querySelector("[data-deck-zone-items]");
       const frame = root.getBoundingClientRect();
+      const row = root.querySelector("[data-deck-zone-items]");
       const label = root.querySelector("[data-deck-zone-label]").getBoundingClientRect();
-      return { top: frame.top, bottom: frame.bottom, height: frame.height, width: row.clientWidth, scrollWidth: row.scrollWidth, labelTop: label.top, labelBottom: label.bottom };
-    };
-    const cards = [...panel.querySelectorAll('[data-deck-zone="top"] [data-deck-card-id]')].map((item) => {
-      const face = item.querySelector(".played-card");
-      const bounds = face.getBoundingClientRect();
-      const style = getComputedStyle(face);
       return {
-        id: item.dataset.deckCardId, width: bounds.width, height: bounds.height,
+        left: frame.left, right: frame.right, top: frame.top, bottom: frame.bottom, height: frame.height,
+        width: row.clientWidth, scrollWidth: row.scrollWidth, labelLeft: label.left, labelRight: label.right,
+        labelTop: label.top, labelBottom: label.bottom,
+        cardIds: [...row.querySelectorAll("[data-deck-card-id]")].map((item) => item.dataset.deckCardId),
+      };
+    };
+    const cards = [...panel.querySelectorAll("[data-deck-card-id]")].map((item) => {
+      const mini = item.querySelector(".card-pool-mini-face");
+      const face = mini?.querySelector(".played-card");
+      const bounds = mini.getBoundingClientRect();
+      const style = face ? getComputedStyle(face) : null;
+      const rank = face?.querySelector("i");
+      const suit = rank?.querySelector("small");
+      const title = face?.querySelector(".card-name-mark");
+      const category = face?.querySelector("strong");
+      const frameStyle = getComputedStyle(mini);
+      const rankStyle = rank ? getComputedStyle(rank) : null;
+      const suitStyle = suit ? getComputedStyle(suit) : null;
+      const titleStyle = title ? getComputedStyle(title) : null;
+      const categoryStyle = category ? getComputedStyle(category) : null;
+      const zone = item.closest("[data-deck-zone]").getBoundingClientRect();
+      const label = item.closest("[data-deck-zone]").querySelector("[data-deck-zone-label]").getBoundingClientRect();
+      return {
+        id: item.dataset.deckCardId, zoneName: item.dataset.deckZoneName,
+        left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom,
+        zoneLeft: zone.left, zoneRight: zone.right, zoneTop: zone.top, zoneBottom: zone.bottom,
+        labelTop: label.top,
+        presentation: {
+          width: bounds.width, height: bounds.height, ratio: bounds.width / bounds.height,
+          innerWidth: face?.getBoundingClientRect().width ?? null,
+          innerHeight: face?.getBoundingClientRect().height ?? null,
+          border: frameStyle.borderTopWidth + " " + frameStyle.borderTopStyle + " " + frameStyle.borderTopColor,
+          borderRadius: frameStyle.borderTopLeftRadius,
+          rankFont: rankStyle?.fontSize ?? null,
+          suitFont: suitStyle?.fontSize ?? null,
+          titleFont: titleStyle?.fontSize ?? null,
+          titleLineHeight: titleStyle?.lineHeight ?? null,
+          categoryFont: categoryStyle?.fontSize ?? null,
+        },
         name: face.querySelector(".card-name-mark")?.textContent?.trim(),
         rankSuit: face.querySelector("i")?.textContent?.replaceAll("\\n", "").replaceAll(" ", ""),
-        opacity: Number(style.opacity), animation: style.animationName,
+        opacity: style ? Number(style.opacity) : null, animation: style?.animationName ?? null,
       };
     });
     const confirm = panel.querySelector("[data-deck-reorder-submit]").getBoundingClientRect();
@@ -188,16 +256,42 @@ async function assertCompactGeometry({ dialog, cards }) {
   expect(geometry.panel.scrollHeight).toBeLessThanOrEqual(geometry.panel.clientHeight + 1);
   expect(geometry.sequences.scrollHeight).toBeLessThanOrEqual(geometry.sequences.clientHeight + 1);
   expect(geometry.top.scrollWidth).toBeLessThanOrEqual(geometry.top.width + 1);
-  expect(geometry.top.height).toBeGreaterThanOrEqual(100);
-  expect(geometry.bottom.height).toBeGreaterThanOrEqual(90);
-  expect(geometry.top.labelTop).toBeGreaterThanOrEqual(geometry.top.bottom - 22);
-  expect(geometry.bottom.labelTop).toBeGreaterThanOrEqual(geometry.bottom.bottom - 22);
+  expect(geometry.bottom.scrollWidth).toBeLessThanOrEqual(geometry.bottom.width + 1);
+  expect(geometry.top.cardIds).toEqual(expectedTopIds);
+  expect(geometry.bottom.cardIds).toEqual(expectedBottomIds);
+  expect(geometry.top.height).toBeGreaterThanOrEqual(expectedTopIds.length ? 98 : 70);
+  expect(geometry.bottom.height).toBeGreaterThanOrEqual(expectedBottomIds.length ? 98 : 70);
+  expect(geometry.top.labelTop).toBeGreaterThanOrEqual(geometry.top.top);
+  expect(geometry.bottom.labelTop).toBeGreaterThanOrEqual(geometry.bottom.top);
   expect(geometry.top.labelBottom).toBeLessThanOrEqual(geometry.top.bottom + 1);
   expect(geometry.bottom.labelBottom).toBeLessThanOrEqual(geometry.bottom.bottom + 1);
-  expect(geometry.cards.map((item) => item.id)).toEqual(cards.map((item) => item.id));
-  expect(geometry.cards.every((item) => item.width >= 66 && item.width <= 76 && item.height >= 92 && item.height <= 107)).toBe(true);
+  expect(geometry.top.labelLeft).toBeGreaterThanOrEqual(geometry.top.left);
+  expect(geometry.top.labelRight).toBeLessThanOrEqual(geometry.top.right);
+  expect(geometry.bottom.labelLeft).toBeGreaterThanOrEqual(geometry.bottom.left);
+  expect(geometry.bottom.labelRight).toBeLessThanOrEqual(geometry.bottom.right);
+  expect(geometry.top.labelBottom).toBeLessThanOrEqual(geometry.confirm.top);
+  expect(geometry.bottom.labelBottom).toBeLessThanOrEqual(geometry.confirm.top);
+  expect(new Set(geometry.cards.map((item) => item.id))).toEqual(new Set(cards.map((item) => item.id)));
+  for (const item of geometry.cards) {
+    expect(item.presentation.width).toBeCloseTo(sharedMiniature.width, 1);
+    expect(item.presentation.height).toBeCloseTo(sharedMiniature.height, 1);
+    expect(item.presentation.width).toBeCloseTo(50, 0);
+    expect(item.presentation.height).toBeCloseTo(75, 0);
+    expect(item.presentation.ratio).toBeCloseTo(2 / 3, 2);
+    expect(item.presentation).toEqual(sharedMiniature);
+    const geometryLabel = `${item.id} in ${item.zoneName}: card (${item.left},${item.top})–(${item.right},${item.bottom}), zone (${item.zoneLeft},${item.zoneTop})–(${item.zoneRight},${item.zoneBottom})`;
+    expect(item.left, geometryLabel).toBeGreaterThanOrEqual(item.zoneLeft);
+    expect(item.right).toBeLessThanOrEqual(item.zoneRight);
+    expect(item.top).toBeGreaterThanOrEqual(item.zoneTop);
+    expect(item.bottom).toBeLessThanOrEqual(item.labelTop);
+    expect(item.bottom).toBeLessThanOrEqual(geometry.confirm.top);
+  }
   expect(geometry.cards.every((item) => item.opacity === 1 && item.animation === "none")).toBe(true);
-  expect(geometry.cards.map((item) => [item.name, item.rankSuit])).toEqual(cards.map((item) => [item.kind, `${item.rank}${item.suit}`]));
+  const cardsById = new Map(cards.map((item) => [item.id, item]));
+  expect(geometry.cards.map((item) => [item.id, item.name, item.rankSuit])).toEqual([...geometry.top.cardIds, ...geometry.bottom.cardIds].map((id) => {
+    const card = cardsById.get(id);
+    return [id, card.kind, `${card.rank}${card.suit}`];
+  }));
   expect(geometry.confirm.height).toBeGreaterThanOrEqual(44);
   expect(geometry.confirm.bottom).toBeLessThanOrEqual(viewport.height);
   expect(geometry.viewport.pageWidth).toBeLessThanOrEqual(viewport.width);
@@ -212,6 +306,14 @@ async function assertCompactGeometry({ dialog, cards }) {
 
 test("Stargazing uses two compact private zones, supports touch and keyboard moves, and confirms once", async ({ page, request, browser }) => {
   const viewport = { width: 440, height: 894 };
+  await page.setViewportSize(viewport);
+  await page.goto(`/tests/browser/fixture.html?state=pending-target-card&count=4&targetHandCount=0`);
+  await page.getByRole("tab", { name: "Equipment (1)" }).click();
+  const publicCardPool = page.locator('.card-pool-panel--actor-target-select [data-target-card-public-zone="equipment"]');
+  const sharedTargetMiniature = publicCardPool.locator(".card-pool-mini-face").first();
+  await expect(sharedTargetMiniature).toBeVisible();
+  const sharedMiniature = await readMiniaturePresentation(sharedTargetMiniature);
+
   const opened = await openRealStargazingDecision({ page, request, browser, viewport });
   const { dialog, cards, actorPage, actorView } = opened;
   const [attack, dodge, peach, duel] = cards;
@@ -225,7 +327,12 @@ test("Stargazing uses two compact private zones, supports touch and keyboard mov
   await expect(zone(dialog, "bottom")).toHaveAttribute("data-card-count", "0");
   await expect(zone(dialog, "unassigned")).toHaveCount(0);
   await expect(await orderIn(dialog, "top")).toEqual(cards.map((item) => item.id));
-  await assertCompactGeometry({ dialog, cards });
+  const stargazingMiniature = dialog.locator(".deck-reorder-card-face").first();
+  expect(await readMiniaturePresentation(stargazingMiniature)).toEqual(sharedMiniature);
+  await assertCompactGeometry({
+    dialog, cards, sharedMiniature,
+    expectedTopIds: cards.map((item) => item.id), expectedBottomIds: [],
+  });
 
   const observer = await roomView(request, opened.seed, 2);
   expect(observer.currentAction.kind).toBe("deck_reorder");
@@ -266,6 +373,13 @@ test("Stargazing uses two compact private zones, supports touch and keyboard mov
   await cardControl(dialog, attack.id).press("ArrowDown");
   expect(await orderIn(dialog, "top")).toEqual([peach.id, dodge.id, duel.id]);
   expect(await orderIn(dialog, "bottom")).toEqual([attack.id]);
+  await cardControl(dialog, peach.id).press("ArrowDown");
+  expect(await orderIn(dialog, "top")).toEqual([dodge.id, duel.id]);
+  expect(await orderIn(dialog, "bottom")).toEqual([peach.id, attack.id]);
+  await assertCompactGeometry({
+    dialog, cards, sharedMiniature,
+    expectedTopIds: [dodge.id, duel.id], expectedBottomIds: [peach.id, attack.id],
+  });
   await assertCardConservation(dialog, cards);
   expect(actorActions).toEqual([], "dragging and keyboard edits remain a private local draft");
 
@@ -282,8 +396,8 @@ test("Stargazing uses two compact private zones, supports touch and keyboard mov
     code: opened.seed.code,
     token: opened.actor.token,
     providerId: "private_deck_reorder",
-    topCardIds: [peach.id, dodge.id, duel.id],
-    bottomCardIds: [attack.id],
+    topCardIds: [dodge.id, duel.id],
+    bottomCardIds: [peach.id, attack.id],
   });
   expect(payload.context?.actionRevision).toBe(revision);
   expect(actorActions.filter((action) => action === "trigger")).toHaveLength(1);
