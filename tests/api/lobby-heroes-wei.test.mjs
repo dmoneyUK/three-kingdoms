@@ -866,7 +866,9 @@ test("server-owned bots use assigned Heroes and canonical draw, end-turn, discar
   assert.equal((await state(code, created.data.token)).data.actionRevision, humanTurn.actionRevision);
 
   setHand(botPlayer.id, [], 4, 4);
-  setDeck(code, [card("Attack", "bot-draw-1"), card("Dodge", "bot-draw-2"), card("Peach", "bot-draw-3")]);
+  // This fixture isolates draw, end turn and discard. Active Attack has
+  // its own scheduler fixture, so both drawn cards are inert in play.
+  setDeck(code, [card("Dodge", "bot-draw-1"), card("Dodge", "bot-draw-2"), card("Peach", "bot-draw-3")]);
   setTurn(code, botPlayer.seat, "draw");
   const beforeDraw = (await state(code, created.data.token)).data;
   const drawDecisionId = crypto.randomUUID();

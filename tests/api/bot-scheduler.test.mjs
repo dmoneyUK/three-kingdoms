@@ -222,8 +222,11 @@ test("eight-room admission excludes timed-out idle games but counts resolving an
 test("duplicate wakes and an expired claim recover through one canonical draw without double mutation", async () => {
   const { code, token, bots } = await createBotGame();
   const bot = bots[0];
+  sql(`UPDATE players SET hero='sun-quan' WHERE id=${quote(bot.id)}`);
   setHand(bot.id, [], 4, 4);
-  setDeck(code, [card("Attack", "scheduler-draw-a"), card("Dodge", "scheduler-draw-b"), card("Peach", "scheduler-draw-c")]);
+  // A second wake may legitimately claim a later revision. Keep this draw
+  // fixture free of playable cards so an Attack cannot change the observation.
+  setDeck(code, [card("Dodge", "scheduler-draw-a"), card("Dodge", "scheduler-draw-b"), card("Peach", "scheduler-draw-c")]);
   setTurn(code, bot.seat, "draw");
   const beforeDraw = (await state(code, token)).data;
 
@@ -239,12 +242,12 @@ test("duplicate wakes and an expired claim recover through one canonical draw wi
   const afterDraw = (await state(code, token)).data;
   assert.equal(afterDraw.players.find((player) => player.id === bot.id).handCount, 2, "the revision's canonical draw runs once even across duplicate wakes");
   assert.ok(["thinking", "waiting_for_human"].includes(afterDraw.players.find((player) => player.id === bot.id).botStatus), "duplicate wakeups expose only a safe in-progress or waiting status");
-  for (const held of ["attack-scheduler-draw-a", "dodge-scheduler-draw-b"]) assert.equal(roomCardCount(code, held), 1);
+  for (const held of ["dodge-scheduler-draw-a", "dodge-scheduler-draw-b"]) assert.equal(roomCardCount(code, held), 1);
   assert.equal(query(`SELECT COUNT(*) FROM bot_work WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)}) AND bot_id=${quote(bot.id)} AND action_revision=${quote(beforeDraw.actionRevision)}`), "1");
   assert.equal(query(`SELECT status FROM bot_work WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)}) AND bot_id=${quote(bot.id)} AND action_revision=${quote(beforeDraw.actionRevision)}`), "consumed");
 
   // A later Worker wake can take over a persisted claim whose lease expired.
-  setHand(bot.id, [card("Attack", "scheduler-restart-held")], 4, 4);
+  setHand(bot.id, [card("Dodge", "scheduler-restart-held")], 4, 4);
   setDeck(code, [card("Dodge", "scheduler-restart-a"), card("Peach", "scheduler-restart-b"), card("Attack", "scheduler-restart-c")]);
   setTurn(code, bot.seat, "draw");
   const restartState = (await state(code, token)).data;
@@ -261,7 +264,7 @@ test("duplicate wakes and an expired claim recover through one canonical draw wi
   assert.equal(query(`SELECT attempts FROM bot_work WHERE decision_id=${quote(decisionId)}`), "2");
   const afterRecovery = (await state(code, token)).data;
   assert.equal(afterRecovery.players.find((player) => player.id === bot.id).handCount, 3, "the expired unexecuted claim resumes once");
-  for (const held of ["attack-scheduler-restart-held", "dodge-scheduler-restart-a", "peach-scheduler-restart-b"]) assert.equal(roomCardCount(code, held), 1);
+  for (const held of ["dodge-scheduler-restart-held", "dodge-scheduler-restart-a", "peach-scheduler-restart-b"]) assert.equal(roomCardCount(code, held), 1);
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
@@ -361,7 +364,9 @@ test("multiple eligible Dodges select one deterministically and keep private det
   const publicRoom = (await state(code, token)).data;
   assert.equal(publicRoom.players.find((player) => player.id === bot.id).hp, hpBefore);
   const serialized = JSON.stringify(publicRoom);
-  assert.equal(serialized.includes("scheduler-unsupported-dodge"), false);
+  assert.ok(serialized.includes("dodge-scheduler-unsupported-dodge-a"), "the played Dodge is now a public card");
+  assert.ok(!serialized.includes("dodge-scheduler-unsupported-dodge-b"), "the unplayed Dodge stays private");
+  assert.ok(!serialized.includes("bot_decision_context"), "private diagnostic events stay server-side");
   assert.equal(serialized.includes("token_hash"), false);
   assert.equal(serialized.includes("error_code"), false);
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
