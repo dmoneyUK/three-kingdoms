@@ -121,7 +121,7 @@ The engine must still verify that `a1` is authoritative and executable at that r
 
 | Order / milestone | Task | Status and required gate |
 | --- | --- | --- |
-| Accepted foundation | AIP-00A/00B/00C/01, AIP-OBS-01, AIP-RATE-01, AIP-LOG-01 | **ACCEPTED** (architecture ledger §7.1); no rerun |
+| Accepted foundation | AIP-00A, AIP-00B, AIP-00C, AIP-01, AIP-OBS-01, AIP-RATE-01, AIP-LOG-01 | **ACCEPTED** (architecture ledger §7.1); no rerun |
 | Current one-Agent batch | **AIP-LOG-02 → AIP-OBS-02 → AIP-RSP-01** | **IN_PROGRESS** shared delivery by Owner's earlier explicit exception; exact-SHA CI/Staging then human review required; cannot self-accept |
 | Unresolved earlier reviews | AIP-SYNC-01, AIP-MOB-01, AIP-02A | **PENDING_REVIEW / IN_PROGRESS** as specified below; reconcile rather than silently assume approval or discard code |
 | Playable match batch | **AIP-PLAY-01 → 02 → 03 → 04 → 05 → 05B → 06 → 06B → 07** | **APPROVED** Staging-only, owner direction 2026-11-22; starts only after current three-task batch HUMAN-ACCEPTED and no overlapping unreviewed source; integrated no-intermediate-acceptance rule in §7.2 |
@@ -139,7 +139,7 @@ The engine must still verify that `a1` is authoritative and executable at that r
 
 | Accepted ID | Stable decision / delivered capability |
 | --- | --- |
-| **AIP-00A / 00B / 00C** | Isolated AI feature-branch CI, guarded Staging Worker/D1, automatic deploy ONLY after all required GitHub checks; prod `deploy` job skipped, no feature-branch production DB migration. |
+| **AIP-00A / AIP-00B / AIP-00C** | Isolated AI feature-branch CI, guarded Staging Worker/D1, automatic deploy ONLY after all required GitHub checks; prod `deploy` job skipped, no feature-branch production DB migration. |
 | **AIP-01** | A versioned offline/mock-only typed AI decision contract (`ai/decision-prototype.ts`): sanitized request, finite candidate IDs, parse/refusal/stale/unknown-candidate rejection. **No live OpenAI calls**. |
 | **AIP-OBS-01** | Staging-only low-noise structured `bot_scheduler` events for meaningful work state changes/error; one state transition per genuinely committed work; no idle-noise or sensitive client leak. |
 | **AIP-RATE-01** | In isolated Staging only, hourly 12-add Bot quota disabled; still host-only, ≤3 Bots/room and ≤8 genuinely live demo rooms. Timed-out idle `playing` rooms excluded from active admission without deleting history. Real iPhone acceptance 2026-11-21 22:42 UTC. |
