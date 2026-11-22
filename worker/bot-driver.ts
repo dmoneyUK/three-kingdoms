@@ -31,6 +31,8 @@ const MAX_ROOM_ACTIONS = 200;
 const ROOM_LEASE_MS = 60_000;
 const WORK_LEASE_MS = 60_000;
 const MAX_ROOMS_PER_WAKEUP = 8;
+const LIVE_HUMAN_PRESENCE_MS = 90_000;
+const RECENT_ROOM_ACTIVITY_MS = 5 * 60_000;
 export const BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP = 4;
 
 export type BotSchedulerSummary = {
@@ -175,6 +177,7 @@ export async function runBotScheduler(
   };
   const roomLimit = testOptions(options.maxRoomsPerWakeup, MAX_ROOMS_PER_WAKEUP);
   const stepLimit = testOptions(options.maxStepsPerWakeup, BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP);
+  const now = Date.now();
   const roomsResult = await db.prepare(`SELECT rooms.id, rooms.code, COUNT(players.id) AS bot_count,
       COALESCE(bot_room_scheduler.updated_at, 0) AS scheduler_updated_at
     FROM rooms JOIN players ON players.room_id = rooms.id
@@ -184,8 +187,14 @@ export async function runBotScheduler(
       AND players.controller_type = 'bot' AND players.is_test_player = 0
     GROUP BY rooms.id, rooms.code, rooms.created_at, bot_room_scheduler.updated_at
     HAVING COUNT(players.id) BETWEEN 1 AND ?
-    ORDER BY scheduler_updated_at, rooms.created_at LIMIT ?`)
-    .bind(options.roomCode ?? null, options.roomCode ?? null, MAX_BOT_SEATS_PER_ROOM, roomLimit).all<BotRoomRow>();
+    ORDER BY CASE
+      WHEN EXISTS (SELECT 1 FROM players AS human WHERE human.room_id = rooms.id
+        AND human.controller_type = 'human' AND human.is_test_player = 0 AND human.connected_at >= ?) THEN 0
+      WHEN COALESCE(NULLIF(rooms.last_activity_at, 0), rooms.created_at) >= ? THEN 1
+      ELSE 2 END ASC,
+      scheduler_updated_at, rooms.created_at LIMIT ?`)
+    .bind(options.roomCode ?? null, options.roomCode ?? null, MAX_BOT_SEATS_PER_ROOM,
+      now - LIVE_HUMAN_PRESENCE_MS, now - RECENT_ROOM_ACTIVITY_MS, roomLimit).all<BotRoomRow>();
   const rooms = roomsResult.results ?? [];
 
   for (const candidate of rooms) {

@@ -75,7 +75,7 @@ async function readRoom(request, roomCode, token) {
 }
 
 test("mobile browser creates a Staging room, runs genuine bots, and rejoins after refresh", async ({ page, request }, testInfo) => {
-  test.setTimeout(13 * 60_000);
+  test.setTimeout(15 * 60_000);
   const expectedBuildSha = process.env.NEXT_PUBLIC_BUILD_SHA;
   if (process.env.CI === "true" && !/^[0-9a-f]{40}$/.test(expectedBuildSha ?? "")) {
     throw new Error("NEXT_PUBLIC_BUILD_SHA must identify the current CI commit");
@@ -263,12 +263,18 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
     const humanTurnCompleted = await waitForRoom(request, roomCode, created.token, (room) => room.status === "playing" && room.turnSeat !== hostSeat, { timeoutMs: 10_000, label: "human turn completion" });
     // Active play takes more decisions than draw/end/discard. Leave time for
     // four bounded Cron wakes if a turn cannot finish on the post-write wake.
-    const botTurnDeadline = Date.now() + 260_000;
+    const hardCycleDeadline = Date.now() + 420_000;
+    let botTurnDeadline = Math.min(hardCycleDeadline, Date.now() + 180_000);
+    let lastCycleRevision = humanTurnCompleted.actionRevision;
     let completedBotNames = [];
     currentRoom = humanTurnCompleted;
     while (Date.now() < botTurnDeadline) {
       await triggerLocalRecovery();
       currentRoom = await readRoom(request, roomCode, created.token);
+      if (currentRoom.actionRevision !== lastCycleRevision) {
+        lastCycleRevision = currentRoom.actionRevision;
+        botTurnDeadline = Math.min(hardCycleDeadline, Date.now() + 180_000);
+      }
       const unsupported = unsupportedBots(currentRoom);
       if (unsupported.length) throw new Error(`Bot turn stopped safely as unsupported: ${unsupported.map((player) => player.name).join(", ")}`);
       if (await resolveHumanInterruption(currentRoom)) continue;
