@@ -59,13 +59,13 @@ function combineBotSchedulerOutcomes(first: BotSchedulerOutcome, second: BotSche
   };
 }
 
-async function runBoundedPostWriteBotScheduler(db: D1Database, diagnostics: BotSchedulerDiagnosticContext): Promise<BotSchedulerOutcome> {
-  const first = await runBotScheduler(db, {}, diagnostics);
+async function runBoundedPostWriteBotScheduler(db: D1Database, roomCode: string, diagnostics: BotSchedulerDiagnosticContext): Promise<BotSchedulerOutcome> {
+  const first = await runBotScheduler(db, { roomCode }, diagnostics);
   if (first.steps < BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP) return first;
   // A single human write may wake the bounded scheduler twice. Each pass
   // retains its own 4-step cap, while this fixed limit avoids minute-long
   // pauses halfway through the 3-bot mobile demo.
-  const second = await runBotScheduler(db, {}, diagnostics);
+  const second = await runBotScheduler(db, { roomCode }, diagnostics);
   return combineBotSchedulerOutcomes(first, second);
 }
 
@@ -218,11 +218,18 @@ const worker = {
       }, allowedWidths);
     }
 
+    const postWriteRequest = env.BOT_DEMO_ENABLED === "true" && env.WTK_TEST_CAPABILITIES !== "1"
+      && request.method === "POST" && url.pathname === "/api/rooms" ? request.clone() : null;
     const response = await handler.fetch(request, env, ctx);
-    if (env.BOT_DEMO_ENABLED === "true" && env.WTK_TEST_CAPABILITIES !== "1"
-      && request.method === "POST" && url.pathname === "/api/rooms") {
+    if (postWriteRequest && response.ok) {
       const diagnostics = botSchedulerDiagnostics(env, "postwrite");
-      ctx.waitUntil(runBotSchedulerWake(diagnostics, () => runBoundedPostWriteBotScheduler(env.DB, diagnostics)));
+      const body = await postWriteRequest.json<{ code?: unknown }>().catch(() => null);
+      if (typeof body?.code === "string" && /^[A-Z0-9]{5}$/i.test(body.code)) {
+        const roomCode = body.code.toUpperCase();
+        ctx.waitUntil(runBotSchedulerWake(diagnostics, () => runBoundedPostWriteBotScheduler(env.DB, roomCode, diagnostics)));
+      }
+    } else if (postWriteRequest) {
+      await postWriteRequest.body?.cancel().catch(() => {});
     }
     return response;
   },

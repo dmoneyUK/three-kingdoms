@@ -40,7 +40,7 @@ async function readRoom(request, roomCode, token) {
 }
 
 test("mobile browser creates a Staging room, runs genuine bots, and rejoins after refresh", async ({ page, request }, testInfo) => {
-  test.setTimeout(8 * 60_000);
+  test.setTimeout(10 * 60_000);
   const expectedBuildSha = process.env.NEXT_PUBLIC_BUILD_SHA;
   if (process.env.CI === "true" && !/^[0-9a-f]{40}$/.test(expectedBuildSha ?? "")) {
     throw new Error("NEXT_PUBLIC_BUILD_SHA must identify the current CI commit");
@@ -197,7 +197,9 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
       }
     }
     const humanTurnCompleted = await waitForRoom(request, roomCode, created.token, (room) => room.status === "playing" && room.turnSeat !== hostSeat, { timeoutMs: 10_000, label: "human turn completion" });
-    const botTurnDeadline = Date.now() + 180_000;
+    // Active play takes more decisions than draw/end/discard. Leave time for
+    // four bounded Cron wakes if a turn cannot finish on the post-write wake.
+    const botTurnDeadline = Date.now() + 260_000;
     let completedBotNames = [];
     currentRoom = humanTurnCompleted;
     while (Date.now() < botTurnDeadline) {
@@ -221,7 +223,13 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
       if (completedBotNames.length === bots.length) break;
       await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
-    expect(completedBotNames).toEqual(bots.map((bot) => bot.name));
+    expect(completedBotNames, JSON.stringify({
+      code: roomCode,
+      phase: currentRoom.phase,
+      actorSeat: currentRoom.players.find(({ id }) => id === currentRoom.actionPlayerId)?.seat,
+      turnSeat: currentRoom.turnSeat,
+      botStatuses: currentRoom.players.filter(({ isBot }) => isBot).map(({ seat, botStatus }) => ({ seat, botStatus })),
+    })).toEqual(bots.map((bot) => bot.name));
     currentRoom = await waitForRoom(request, roomCode, created.token, (room) => room.status === "playing" && room.turnSeat === hostSeat && room.actionPlayerId === hostId && room.currentAction?.actorId === hostId && room.phase !== "draw", { timeoutMs: 30_000, label: "human turn after bot cycle" });
     if (currentRoom.currentAction.legalActions.includes("end_turn")) {
       await expect(page.getByRole("button", { name: "End", exact: true })).toBeEnabled({ timeout: 15_000 });
