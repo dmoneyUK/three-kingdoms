@@ -4,7 +4,7 @@ const API = "http://127.0.0.1:3137";
 const card = (kind, id, suit, rank) => ({ kind, id, suit, rank });
 const revealedCards = [
   card("Attack", "real-stargazing-attack", "♠", "A"),
-  card("Dodge", "real-stargazing-dodge", "♣", "2"),
+  card("Dodge", "real-stargazing-dodge", "♣", "10"),
   card("Peach", "real-stargazing-peach", "♥", "Q"),
   card("Duel", "real-stargazing-duel", "♦", "K"),
 ];
@@ -232,6 +232,8 @@ async function assertCompactGeometry({ dialog, cards, expectedTopIds, expectedBo
         },
         name: face.querySelector(".card-name-mark")?.textContent?.trim(),
         rankSuit: face.querySelector("i")?.textContent?.replaceAll("\\n", "").replaceAll(" ", ""),
+        cornerClear: rank.getBoundingClientRect().bottom <= title.getBoundingClientRect().top
+          && suit.getBoundingClientRect().right <= rank.getBoundingClientRect().right,
         opacity: style ? Number(style.opacity) : null, animation: style?.animationName ?? null,
       };
     });
@@ -289,6 +291,7 @@ async function assertCompactGeometry({ dialog, cards, expectedTopIds, expectedBo
     expect(item.presentation.height).toBeCloseTo(75, 0);
     expect(item.presentation.ratio).toBeCloseTo(2 / 3, 2);
     expect(item.presentation).toEqual(sharedMiniature);
+    expect(item.cornerClear, item.rankSuit).toBe(true);
     const geometryLabel = `${item.id} in ${item.zoneName}: card (${item.left},${item.top})–(${item.right},${item.bottom}), zone (${item.zoneLeft},${item.zoneTop})–(${item.zoneRight},${item.zoneBottom})`;
     expect(item.left, geometryLabel).toBeGreaterThanOrEqual(item.zoneLeft);
     expect(item.right).toBeLessThanOrEqual(item.zoneRight);
@@ -324,6 +327,12 @@ test("Stargazing uses two compact private zones, supports touch and keyboard mov
   const sharedTargetMiniature = publicCardPool.locator(".card-pool-mini-face").first();
   await expect(sharedTargetMiniature).toBeVisible();
   const sharedMiniature = await readMiniaturePresentation(sharedTargetMiniature);
+  expect(sharedMiniature.rankFont).toBe("11px");
+  expect(sharedMiniature.suitFont).toBe("9px");
+  const handCorner = page.locator(".local-hand-rail .game-card.attack .card-rank-suit").first();
+  await expect(handCorner).toHaveCSS("font-size", "15px");
+  await expect(handCorner.locator(".card-rank-suit-glyph")).toHaveCSS("font-size", "12px");
+
 
   const opened = await openRealStargazingDecision({ page, request, browser, viewport });
   const { dialog, cards, actorPage, actorView } = opened;

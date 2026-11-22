@@ -5,6 +5,12 @@ function suitColorClass(suit: Card["suit"]) {
   return suit === "♥" || suit === "♦" ? "red-suit" : "black-suit";
 }
 
+export function CardRankSuit({ card, hand = false }: { card: Pick<Card, "rank" | "suit">; hand?: boolean }) {
+  return hand
+    ? <span className="corner card-rank-suit">{card.rank}<i className="card-rank-suit-glyph">{card.suit}</i></span>
+    : <i className="card-rank-suit">{card.rank}<small className="card-rank-suit-glyph">{card.suit}</small></i>;
+}
+
 export function CardFace({ card, settlementCardId, harvestChoice = false, publicEffectFrameCardId }: { card: Card; settlementCardId?: string; harvestChoice?: boolean; publicEffectFrameCardId?: string }) {
   const definition = cardDefinition(card.kind);
   // This single long word cannot fit a phone Harvest card face at the
@@ -15,7 +21,7 @@ export function CardFace({ card, settlementCardId, harvestChoice = false, public
     ? "Overindul\u00adgence"
     : definition.name;
   return <div className={`played-card ${card.kind.toLowerCase()} ${suitColorClass(card.suit)}`} data-card-title-fit={definition.name.length > 20 ? "long" : undefined} data-settlement-card-id={settlementCardId} data-public-card-effect-frame-card-id={publicEffectFrameCardId}>
-    <i>{card.rank}<small>{card.suit}</small></i>
+    <CardRankSuit card={card} />
     <b className="card-name-mark">{displayName}</b>
     <strong>{definition.category} card</strong>
   </div>;

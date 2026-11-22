@@ -903,22 +903,20 @@ test("Bumper Harvest keeps the root reveal and move while the proven Negation po
       expect(narrationGeometry.bottom).toBeLessThanOrEqual(narrationGeometry.viewportHeight);
       expect(narrationGeometry.lines).toBeLessThanOrEqual(3);
       expect(narrationGeometry.headline).toContain("played Bumper Harvest");
-      await expect.poll(async () => {
-        const current = await measureJourney("thumbnail-transition");
-        return Math.abs(current.corner.width / current.face.width - revealed.corner.width / revealed.face.width);
-      }, { timeout: 2_000 }).toBeLessThanOrEqual(.06);
+      await expect.poll(async () => (await measureJourney("thumbnail-transition")).cornerFontSize,
+        { timeout: 2_000 }).toBe("9px");
       const parked = await measureJourney("negation-parked");
       journeyMeasurements.push(parked);
       expect(parked.cardId).toBe(rootCardId);
       expect(parked.eventId).toBe(revealed.eventId);
       expect(parked.face).toMatchObject({ width: 32, height: 48 });
       expect(Number.parseInt(parked.cardZIndex, 10)).toBeLessThan(Number.parseInt(parked.poolZIndex, 10));
-      expect(Math.abs(parked.corner.width / parked.face.width - revealed.corner.width / revealed.face.width)).toBeLessThanOrEqual(.06);
-      expect(Math.abs(parked.corner.height / parked.face.height - revealed.corner.height / revealed.face.height)).toBeLessThanOrEqual(.06);
-      expect(Math.abs(Number.parseFloat(parked.cornerFontSize) / parked.face.width
-        - Number.parseFloat(revealed.cornerFontSize) / revealed.face.width)).toBeLessThanOrEqual(.06);
-      expect(Math.abs(Number.parseFloat(parked.suitFontSize) / parked.face.width
-        - Number.parseFloat(revealed.suitFontSize) / revealed.face.width)).toBeLessThanOrEqual(.06);
+      expect(parked.cornerFontSize).toBe("9px");
+      expect(parked.suitFontSize).toBe("8px");
+      expect(parked.corner.left).toBeGreaterThanOrEqual(parked.face.left);
+      expect(parked.corner.top).toBeGreaterThanOrEqual(parked.face.top);
+      expect(parked.corner.right).toBeLessThanOrEqual(parked.face.right);
+      expect(parked.corner.bottom).toBeLessThanOrEqual(parked.face.bottom);
       expect(Math.abs(Number.parseFloat(parked.titleFontSize) / parked.face.width
         - Number.parseFloat(revealed.titleFontSize) / revealed.face.width)).toBeLessThanOrEqual(.06);
       expect(Math.abs(Number.parseFloat(parked.typeFontSize) / parked.face.width

@@ -304,16 +304,6 @@
   box-shadow: 0 8px 18px #000b;
 }
 
-.target-card-picker-card .played-card > i {
-  left: 8px;
-  top: 7px;
-  font-size: 15px;
-}
-
-.target-card-picker-card .played-card > i small {
-  font-size: 13px;
-}
-
 .target-card-picker-card .played-card > b {
   font-size: 23px;
 }
@@ -534,8 +524,6 @@
     width: 100%;
   }
 }
-
-
 
 /* The local hand sits below the table. Resolution cards must be able to leave
    that real origin and travel across the board without being clipped. */
@@ -812,8 +800,6 @@
 .local-zone-card .local-equipment-inspect-button:focus-visible { opacity: 1; border: 1px solid #fff0b4; border-radius: 2px; outline: 2px solid #fff0b4; outline-offset: -2px; background: rgb(12 14 11 / 82%); }
 
 .local-zone-card > .played-card { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; animation: none; pointer-events: none; }
-.local-zone-card > .played-card > i { left: -1px; top: -1px; width: 12px !important; min-height: 17px !important; padding: 1px !important; border-width: 1px; font-size: 6px !important; line-height: 1; }
-.local-zone-card > .played-card > i small { font-size: 5px !important; }
 .local-zone-card > .played-card .card-name-mark { max-width: 90%; font-size: 6px !important; line-height: .95; }
 .local-zone-card > .played-card > strong { margin-top: 3px; font-size: 3px; letter-spacing: .04em; }
 .local-zone-card.selected-cost { color: inherit; border: 2px solid #ffe28a; box-shadow: 0 0 0 2px #ffe28a, 0 0 10px #ffd15f99, 0 7px 14px #000b; translate: 0 -3px; }
@@ -874,8 +860,6 @@
 .local-hand-rail .card-slot.multi-selected .hand-card-details-action { transform: translateY(calc(0px - var(--selected-face-rise))); }
 .local-hand-rail .game-card .card-name-mark { max-width: 92%; font-size: clamp(10px, 3vw, 13px) !important; line-height: .95; }
 .local-hand-rail .game-card > strong { font-size: 5px; letter-spacing: .06em; }
-.local-hand-rail .game-card .corner { width: 17px; min-height: 23px; padding: 1px 1px 4px; border-width: 1px; border-radius: 0 0 5px 0; font-size: 8px; }
-.local-hand-rail .game-card .corner i { font-size: 7px; }
 /* CurrentAction already enables only legal response cards; preserve that authority visually. */
 .local-hand-section[data-raining-arrows-dodge-providers="available"] .local-hand-rail .game-card:not(:disabled):not(.selected) {
   border-color: #e5bd68;
@@ -1494,8 +1478,6 @@
   }
 }
 
-
-
 /* CardFace variants must size the whole shield, not only its typography. */
 .player-equipment-card > i {
   left: 3px;
@@ -1510,93 +1492,6 @@
 .mini-zone-card small {
   font-size: 6px;
 }
-
-.target-card-picker-card .played-card > i {
-  left: 8px;
-  top: 7px;
-  width: 24px;
-  min-height: 33px;
-  padding: 1px 2px 6px;
-  border-width: 1px;
-  border-radius: 0 0 7px 0;
-  font-size: 10px;
-  line-height: .95;
-}
-
-.target-card-picker-card .played-card > i small {
-  margin-top: 0;
-  font-size: 8px;
-  line-height: 1;
-}
-
-.player-judgement-card .played-card > i {
-  left: -1px;
-  top: -1px;
-  width: 11px;
-  min-height: 15px;
-  padding: 1px 1px 2px;
-  border-width: 1px;
-  border-radius: 0 0 3px 0;
-  font-size: 5px;
-  line-height: .9;
-}
-
-.player-judgement-card .played-card > i small {
-  margin-top: 0;
-  font-size: 4px;
-  line-height: 1;
-}
-
-.harvest-card-choice .played-card > i {
-  left: -1px;
-  top: -1px;
-  width: 23px;
-  min-height: 32px;
-  padding: 1px 2px 6px;
-  border-width: 1px;
-  border-radius: 0 0 7px 0;
-  font-size: 10px;
-  line-height: .95;
-}
-
-.harvest-card-choice .played-card > i small {
-  margin-top: 0;
-  font-size: 8px;
-  line-height: 1;
-}
-
-.discard-card-row .played-card > i {
-  left: -1px;
-  top: -1px;
-  width: 23px;
-  min-height: 32px;
-  padding: 1px 2px 6px;
-  border-width: 1px;
-  border-radius: 0 0 7px 0;
-  font-size: 10px;
-  line-height: .95;
-}
-
-.discard-card-row .played-card > i small {
-  margin-top: 0;
-  font-size: 8px;
-  line-height: 1;
-}
-
-@media (max-width: 700px) {
-  .discard-card-row .played-card > i {
-    width: 18px;
-    min-height: 25px;
-    padding: 1px 1px 4px;
-    font-size: 8px;
-  }
-
-  .discard-card-row .played-card > i small {
-    margin-top: 0;
-    font-size: 6px;
-  }
-}
-
 
 @media (max-width: 520px) {
   .player-equipment-card > i {
@@ -1613,46 +1508,8 @@
     font-size: 5px;
   }
 
-  .target-card-picker-card .played-card > i {
-    width: 21px;
-    min-height: 29px;
-    padding: 1px 1px 5px;
-    font-size: 10px;
-  }
-
-  .target-card-picker-card .played-card > i small {
-    font-size: 7px;
-  }
-
-  .player-judgement-card .played-card > i {
-    width: 10px;
-    min-height: 14px;
-  }
-
-  .harvest-card-choice .played-card > i {
-    width: 20px;
-    min-height: 28px;
-    padding: 1px 1px 5px;
-    font-size: 9px;
-  }
-
-  .harvest-card-choice .played-card > i small {
-    font-size: 7px;
-  }
 }
 
-@media (max-width: 480px) {
-  .discard-card-row .played-card > i {
-    width: 17px;
-    min-height: 24px;
-    padding: 1px 1px 3px;
-    font-size: 7px;
-  }
-
-  .discard-card-row .played-card > i small {
-    font-size: 5px;
-  }
-}
 
 /* Mobile board seats: the relative seat classes remain the source of truth,
    but the four-player composition uses one shared arc instead of three grid
@@ -2188,10 +2045,6 @@
   background: #090b0870;
 }
 
-.opponent-inspection-floating-shell .opponent-inspection-card .played-card > i {
-  transform: scale(.38);
-  transform-origin: top left;
-}
 
 .opponent-inspection-floating-shell .opponent-inspection-overflow {
   position: relative;
@@ -2267,9 +2120,6 @@
     max-width: min(76vw, 300px);
   }
 
-  .opponent-inspection-floating-shell .opponent-inspection-card .played-card > i {
-    transform: scale(.34);
-  }
 }
 
 /* UX2 §10.32 — Judgement and Equipment share one compact public-zone face.
@@ -2301,38 +2151,6 @@
 
 .opponent-inspection-floating-shell .opponent-inspection-card .played-card > strong {
   display: none;
-}
-
-.opponent-inspection-floating-shell .opponent-inspection-card .played-card > i {
-  left: 0;
-  top: 0;
-  width: clamp(12px, 3.1vw, 14px);
-  box-sizing: border-box;
-  min-height: clamp(17px, 4.75vw, 21px);
-  padding: 1px 1px 3px;
-  border-width: 1px;
-  border-radius: 0 0 4px 0;
-  font-size: clamp(7px, 1.8vw, 8px);
-  line-height: .9;
-  transform: none;
-}
-
-.opponent-inspection-floating-shell .opponent-inspection-card .played-card > i small {
-  margin-top: 0;
-  font-size: clamp(6px, 1.8vw, 7px);
-  line-height: 1;
-}
-
-.opponent-inspection-floating-shell .opponent-inspection-card .played-card.red-suit > i {
-  border-color: #ff9da8;
-  background: #210910f2;
-  color: #ff5a6d;
-}
-
-.opponent-inspection-floating-shell .opponent-inspection-card .played-card.black-suit > i {
-  border-color: #fff;
-  background: #f7f8f8f2;
-  color: #16181c;
 }
 
 .opponent-inspection-card:focus-visible {
@@ -5178,19 +4996,6 @@
     padding: 3.73px 2.13px;
     border-radius: 3.73px;
   }
-  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card > i {
-    left: 3.33px;
-    top: 2.67px;
-    width: 8px;
-    min-height: 10.67px;
-    padding: .53px .53px 1.6px;
-    border-width: .53px;
-    border-radius: 0 0 2.67px 0;
-    font-size: 4px;
-  }
-  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card > i small {
-    font-size: 3.33px;
-  }
   .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card .card-name-mark {
     font-size: clamp(5.33px, 1.6vw, 6.67px);
   }
@@ -5446,8 +5251,6 @@
   box-shadow: none;
   transition: filter .15s ease, opacity .15s ease, translate .15s ease, box-shadow .15s ease;
 }
-.game-shell .harvest-card-choice > .played-card > i { left: 2px; top: 2px; width: 16px; min-height: 23px; padding: 1px 1px 3px; border-width: 1px; border-radius: 0 0 4px 0; font-size: 10px; }
-.game-shell .harvest-card-choice > .played-card > i small { margin-top: 0; font-size: 8px; }
 .game-shell .harvest-card-choice > .played-card > strong { display: none; }
 .game-shell .harvest-card-choice > .played-card .card-name-mark {
   max-width: 96%;
@@ -6940,21 +6743,6 @@
   box-shadow: none;
 }
 
-.game-shell .card-pool-mini-face > .played-card > i { left: 3px; top: 2px; font-size: 8px; }
-.game-shell .card-pool-mini-face > .played-card > i small { font-size: 7px; }
-.game-shell .card-pool-mini-face--compact-target > .played-card > i {
-  box-sizing: border-box;
-  left: 2px;
-  top: 2px;
-  width: 12px;
-  min-height: 16px;
-  padding: 1px 1px 2px;
-  border-width: 1px;
-  border-radius: 0 0 4px 0;
-  font-size: 6.5px;
-  line-height: .95;
-}
-.game-shell .card-pool-mini-face--compact-target > .played-card > i small { font-size: 5.5px; line-height: 1; }
 .game-shell .card-pool-mini-face > .played-card .card-name-mark {
   max-width: 96%;
   font-size: 7px;
@@ -8516,4 +8304,82 @@
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* §10.68: one rank/suit badge, sized by the physical face's display role. */
+:where(
+  .local-hand-rail, .harvest-card-choice, .target-card-picker-card,
+  .card-pool-mini-face, .opponent-inspection-card, .discard-card-row, .public-card-effect-frame-material,
+  .local-zone-card, .mini-equipment-card, .player-judgement-card,
+  [data-public-card-journey-size="thumbnail"]
+) :is(.played-card, .game-card) > .card-rank-suit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  display: inline-flex;
+  flex-direction: var(--card-mark-direction, column);
+  align-items: center;
+  justify-content: center;
+  gap: var(--card-mark-gap, 0);
+  width: max-content;
+  min-width: var(--card-mark-width, 17px);
+  min-height: 0;
+  padding: 1px 2px var(--card-mark-tail, 4px);
+  border-width: 0;
+  font: 700 var(--card-mark-rank, 11px)/1 Arial, sans-serif;
+  letter-spacing: normal;
+  white-space: nowrap;
+  text-shadow: none;
+  pointer-events: none;
+}
+
+:where(
+  .local-hand-rail, .harvest-card-choice, .target-card-picker-card,
+  .card-pool-mini-face, .opponent-inspection-card, .discard-card-row, .public-card-effect-frame-material,
+  .local-zone-card, .mini-equipment-card, .player-judgement-card,
+  [data-public-card-journey-size="thumbnail"]
+) :is(.played-card, .game-card) > .card-rank-suit > .card-rank-suit-glyph {
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  font-size: var(--card-mark-suit, 9px);
+}
+
+:where(.local-hand-rail, .harvest-card-choice) .card-rank-suit {
+  --card-mark-rank: 15px;
+  --card-mark-suit: 12px;
+  --card-mark-width: 21px;
+}
+
+.harvest-card-choice .card-rank-suit {
+  --card-mark-direction: row;
+  --card-mark-gap: 1px;
+  --card-mark-tail: 3px;
+}
+
+[data-public-card-compact-response="true"] .card-rank-suit {
+  --card-mark-rank: 9px;
+  --card-mark-suit: 8px;
+  --card-mark-width: 13px;
+  --card-mark-tail: 3px;
+}
+
+:where(.local-zone-card, .mini-equipment-card, .player-judgement-card) .card-rank-suit {
+  --card-mark-direction: row;
+  --card-mark-gap: 1px;
+  --card-mark-rank: 9px;
+  --card-mark-suit: 8px;
+  --card-mark-width: 0px;
+  --card-mark-tail: 3px;
+}
+
+:is(.played-card, .game-card).red-suit > .card-rank-suit {
+  background: #210910;
+  color: #ff6d7d;
+}
+
+:is(.played-card, .game-card).black-suit > .card-rank-suit {
+  background: #f4f5f7;
+  color: #16181c;
 }

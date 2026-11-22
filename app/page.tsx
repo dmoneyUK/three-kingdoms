@@ -39,7 +39,7 @@ import { buildConsoleDecisionDisplay, triggerDecisionInstruction, viewerNegation
 import { createPrecommitScopeForAction, derivePrecommitOwnerControls, precommitDraftForScope, resetPrecommitOwnerDraft, togglePrecommitDraftCard, togglePrecommitDraftTarget, togglePrecommitOwnerDraft, type PrecommitOwnerKind, type PrecommitSelectionDraft } from "./local-precommit-selection";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, isPublicInteractionOutcomeFact, type PublicInteractionNarration } from "../game/public-activity";
-import { CardFace } from "./card-face";
+import { CardFace, CardRankSuit } from "./card-face";
 import { fixedUpperHistoryAnnouncementAnchor, publicH4ReservedHeight } from "./public-upper-anchor";
 import { CardPoolDecisionFooter, CardPoolMiniFace, CardPoolPanel, useHorizontalOverflow, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
@@ -12354,7 +12354,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                 {(detailsSelected || inspectionDetailsSelected) && <span className="hand-card-details-frame" aria-hidden="true" />}
                 <div className="hand-card-visual">
                   <button aria-pressed={isSelected} aria-label={`${isSelected ? "Deselect" : "Select"} ${definition.name}`} disabled={cardActionDisabled} onClick={() => { if (!cardActionDisabled) toggleHandCard(item); }} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}>
-                    <span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong>
+                    <CardRankSuit card={item} hand /><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong>
                   </button>
                   {fiveSeatPhoneAttackMode && singleSelected && item.kind === "Attack" && <button type="button" className="hand-card-retap-extension" aria-label={`Deselect ${definition.name}`} onClick={() => { if (!cardActionDisabled) toggleHandCard(item); }} />}
                   {inspectionAvailable && <button type="button" className="hand-card-inspection-action" data-testid="hand-card-inspection-action" aria-label={`Inspect ${definition.name}`} aria-pressed={inspectFocused} onClick={() => {
