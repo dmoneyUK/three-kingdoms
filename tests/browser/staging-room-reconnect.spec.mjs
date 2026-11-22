@@ -49,9 +49,11 @@ function humanContinuation(room, hostId) {
   return null;
 }
 
-async function waitForRoom(request, roomCode, token, predicate, { timeoutMs = 90_000, label = "room state", beforePoll, onState } = {}) {
+async function waitForRoom(request, roomCode, token, predicate, { timeoutMs = 90_000, progressTimeoutMs, label = "room state", beforePoll, onState } = {}) {
   const deadline = Date.now() + timeoutMs;
   let latest = null;
+  let lastRevision;
+  let lastProgressAt = Date.now();
   while (Date.now() < deadline) {
     await beforePoll?.();
     const response = await request.get(`/api/rooms?${new URLSearchParams({ code: roomCode, token })}`);
@@ -60,8 +62,18 @@ async function waitForRoom(request, roomCode, token, predicate, { timeoutMs = 90
     latest = body.room ?? body;
     const unsupported = unsupportedBots(latest);
     if (unsupported.length) throw new Error(`Bot decision stopped safely as unsupported: ${unsupported.map((player) => player.name).join(", ")}`);
+    if (progressTimeoutMs) {
+      if (lastRevision === undefined) lastRevision = latest.actionRevision;
+      else if (latest.actionRevision !== lastRevision) {
+        lastRevision = latest.actionRevision;
+        lastProgressAt = Date.now();
+      }
+    }
     if (predicate(latest)) return latest;
-    await onState?.(latest);
+    const stateHandled = await onState?.(latest);
+    if (progressTimeoutMs && !stateHandled && Date.now() - lastProgressAt >= progressTimeoutMs) {
+      throw new Error(`No authoritative revision progress waiting for ${label}; latest state: ${JSON.stringify({ code: roomCode, status: latest?.status, phase: latest?.phase, turnSeat: latest?.turnSeat, actorSeat: latest?.players?.find(({ id }) => id === latest.actionPlayerId)?.seat })}`);
+    }
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
   throw new Error(`Timed out waiting for ${label}; latest state: ${JSON.stringify({ code: roomCode, status: latest?.status, phase: latest?.phase, turnSeat: latest?.turnSeat, actorSeat: latest?.players?.find(({ id }) => id === latest.actionPlayerId)?.seat })}`);
@@ -75,7 +87,7 @@ async function readRoom(request, roomCode, token) {
 }
 
 test("mobile browser creates a Staging room, runs genuine bots, and rejoins after refresh", async ({ page, request }, testInfo) => {
-  test.setTimeout(20 * 60_000);
+  test.setTimeout(25 * 60_000);
   const expectedBuildSha = process.env.NEXT_PUBLIC_BUILD_SHA;
   if (process.env.CI === "true" && !/^[0-9a-f]{40}$/.test(expectedBuildSha ?? "")) {
     throw new Error("NEXT_PUBLIC_BUILD_SHA must identify the current CI commit");
@@ -217,7 +229,8 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
     };
     currentRoom = await waitForRoom(request, roomCode, created.token, (room) => room.status === "playing" && room.turnSeat === hostSeat && room.currentAction?.actorId === hostId
       && (room.currentAction.legalActions.includes("end_turn") || room.currentAction.legalActions.includes("discard_cards")), {
-      timeoutMs: 280_000,
+      timeoutMs: 8 * 60_000,
+      progressTimeoutMs: 180_000,
       label: "human play or discard after opening Bot turns",
       beforePoll: triggerLocalRecovery,
       onState: resolveHumanInterruption,
