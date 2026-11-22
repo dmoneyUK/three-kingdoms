@@ -701,7 +701,8 @@ test("a Loyalist's targeted active skill selects a non-Lord using its resolved e
   assert.equal(pending.kind, "negation_window", "canonical Qixi Dismantle enters Negation before target-card selection");
   assert.equal(pending.continuation.effect.kind, "dismantle");
   assert.notEqual(pending.continuation.effectTargetId, hostId, "resolved targeted skill harm never selects the public Lord");
-  assert.equal(roomCardCount(code, blackCard.id), 1);
+  assert.deepEqual(pending.continuation.heldCards.map(({ id }) => id), [blackCard.id],
+    "the skill card stays conserved in the canonical targeted-effect continuation");
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
@@ -857,6 +858,10 @@ test("Bot Steal resumes through Negation and selects an opaque target-hand slot"
 test("shared rescue consumes at most one of two Bot Peach intents", async () => {
   const { code, token, hostId, bots } = await createBotGame();
   const [attacker, first, second] = bots;
+  sql(`UPDATE players SET role='Lord' WHERE id=${quote(hostId)};
+    UPDATE players SET role='Rebel' WHERE id=${quote(attacker.id)};
+    UPDATE players SET role='Loyalist' WHERE id=${quote(first.id)};
+    UPDATE players SET role='Renegade' WHERE id=${quote(second.id)}`);
   const peaches = [card("Peach", "shared-rescue-first"), card("Peach", "shared-rescue-second")];
   const handCount = (id) => Number(query(`SELECT json_array_length(hand_json) FROM players WHERE id=${quote(id)}`));
   sql(`UPDATE players SET hero='zhang-fei', equipment_json='{}' WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)})`);
