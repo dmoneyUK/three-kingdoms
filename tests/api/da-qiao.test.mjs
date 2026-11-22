@@ -347,6 +347,10 @@ test("E15: committed discard supersedes the completed Overindulgence Judgement f
   assert.ok(discardEvent.publicSequence > judgementResult.order, "the committed discard supersedes the earlier Judgement H4");
   assert.equal(discarded.data.room.phase, "resolving");
   assert.equal(discarded.data.room.turnSeat, next.seat);
+  assert.equal(discarded.data.room.publicPresentationTurn.epoch, replaced.data.room.publicPresentationTurn.epoch,
+    "the final Discard handoff is still part of the outgoing turn");
+  assert.ok(discarded.data.room.publicPresentationTimeline.some((event) => event.id === discardEvent.id),
+    "the final public Discard remains presented while its authoritative handoff is pending");
   const local = (await state(game.code, simaMember.token)).data;
   const observer = (await state(game.code, nextMember.token)).data;
   for (const viewer of [local, observer]) {
@@ -373,6 +377,12 @@ test("E15: committed discard supersedes the completed Overindulgence Judgement f
   const resumed = (await state(game.code, nextMember.token)).data;
   assert.equal(resumed.phase, "draw", "an authenticated room read idempotently expires the elapsed handoff");
   assert.equal(resumed.currentAction.actorId, next.id);
+  assert.equal(resumed.publicPresentationTurn.epoch, discarded.data.room.publicPresentationTurn.epoch + 1,
+    "the canonical next-turn start advances the identity only after the finite Discard handoff");
+  assert.equal(resumed.timeline.some((event) => event.id === discardEvent.id), true,
+    "turn cleanup does not erase persisted event history");
+  assert.equal(resumed.publicPresentationTimeline.some((event) => event.id === discardEvent.id), false,
+    "the completed turn's Discard is retired from transient public presentation at the new boundary");
   const postDeadlineDraw = await request("draw", { code: game.code, token: nextMember.token });
   assert.equal(postDeadlineDraw.status, 200, JSON.stringify(postDeadlineDraw.data));
   assert.deepEqual(discardEvent.cards.map(({ id }) => id).sort(), [retained[0].id, retained[1].id].sort());

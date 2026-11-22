@@ -26,6 +26,7 @@ const fastTests = [
   "tests/presentation-snapshot.test.mjs",
   "tests/presentation-client.test.mjs",
   "tests/public-presentation-routing.test.mjs",
+  "tests/public-presentation-turn.test.mjs",
   "tests/public-equipment-transition.test.mjs",
   "tests/public-discard-transition.test.mjs",
   "tests/public-hand-reveal-transition.test.mjs",

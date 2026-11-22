@@ -61,6 +61,7 @@ import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDis
 import { layoutPublicResultCards, type PublicResultObstacle } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
 import { coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
+import { shouldAcceptPublicPresentationTurn, type PublicPresentationTurnScope, type PublicPresentationTurnViewer } from "../game/public-presentation-turn";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = PrecommitSelectionDraft;
@@ -1577,7 +1578,7 @@ type LocalTargetPreviewPresentation = { id: string; name: string; hero: Hero | n
 type LocalTargetPreviewSubmission = { targetId: string; presentationKey: string; actionRevision: string; currentActionKey: string };
 type LocalOpponentInspectionPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null; handCount: number; equipmentCards: Card[]; judgementCards: Card[] };
 type PrivateStealResult = { semantics: "PRIVATE_PROVEN"; roomCode: string; eventId: string; rootEventId: string; rootResolutionId: string; sourceId: string; targetId: string; sourceZone: "hand"; card: Card };
-type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; serverNow?: number; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; privateStealResult: PrivateStealResult | null; privateStealParticipantResult: PrivateStealParticipantResult | null; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; publicDiscardHandoff?: { eventId: string; actorId: string; cardCount: number } | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealEventId: string | null; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; complete: boolean; countdownUntil: number } | null; publicHarvestPool?: { semantics: "PROVEN"; rootEventId: string; revealEventId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[] } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
+type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; serverNow?: number; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; privateStealResult: PrivateStealResult | null; privateStealParticipantResult: PrivateStealParticipantResult | null; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; timelineHistory?: GameEvent[]; publicPresentationTurn?: PublicPresentationTurnScope; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; publicDiscardHandoff?: { eventId: string; actorId: string; cardCount: number } | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealEventId: string | null; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; complete: boolean; countdownUntil: number } | null; publicHarvestPool?: { semantics: "PROVEN"; rootEventId: string; revealEventId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[] } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
 
 function sharedContributionDisplayAction(room: Room, domainPublicCardDisplayAction: PublicCardDisplayAction | null,
   currentFact: { eventId: string; order: number } | null, seenEventIds: ReadonlySet<string>,
@@ -1781,6 +1782,7 @@ export default function Home() {
   const [pageVisible, setPageVisible] = useState(true);
   const [publicCounterReadUntil, setPublicCounterReadUntil] = useState(0);
   const stateEpoch = useRef(0);
+  const latestTurnPresentationScope = useRef<PublicPresentationTurnViewer | null>(null);
   const mutationInFlight = useRef<string | null>(null);
   const latestAppliedMutation = useRef(0);
   const lastPublicCounterReadIdentity = useRef<string | null>(null);
@@ -1792,6 +1794,17 @@ export default function Home() {
   const harvestCompletionRequestInFlightRef = useRef(false);
   const sharedResponseExpiryWatcherRef = useRef<{ key: string; attempt: number; inFlight: boolean; timer: ReturnType<typeof setTimeout> | null } | null>(null);
   const sharedResponseExpiryAdvanceRef = useRef<() => Promise<boolean>>(async () => false);
+
+  const acceptPublicPresentationTurn = useCallback((nextRoom: Room) => {
+    const incoming: PublicPresentationTurnViewer = {
+      roomCode: nextRoom.code,
+      viewerId: nextRoom.meId,
+      scope: nextRoom.publicPresentationTurn ?? { epoch: 0, startPublicSequence: null },
+    };
+    if (!shouldAcceptPublicPresentationTurn(latestTurnPresentationScope.current, incoming)) return false;
+    latestTurnPresentationScope.current = incoming;
+    return true;
+  }, []);
 
   useEffect(() => { setTraceAvailable(hasAttackDodgeUxTrace()); }, []);
 
@@ -1845,6 +1858,7 @@ export default function Home() {
           return fetchRoomRequest(roomCode, playerToken, quiet, hostId);
         }
       }
+      if (!acceptPublicPresentationTurn(nextRoom)) return false;
       if (serverDiagnostic) {
         recordAttackDodgeUxTrace("server-projection-evaluation", sanitizeAttackDodgeUxTraceData(
           serverDiagnostic,
@@ -1898,7 +1912,7 @@ export default function Home() {
     } finally {
       pollRecovery.current.end(requestKey);
     }
-  }, []);
+  }, [acceptPublicPresentationTurn]);
 
   const notePublicCounterReadVisible = useCallback((identity: string, durationMs = UI_TIMING.publicCounterRead, renew = false) => {
     if (!identity || (!renew && lastPublicCounterReadIdentity.current === identity)) return;
@@ -2023,14 +2037,17 @@ export default function Home() {
       if (preserveTestViewer && data.room) {
         await fetchRoom(data.room.code, token, true, preservedTestViewerId!);
       }
-      if (data.room && !preserveTestViewer) recordPublicGameRoomSnapshot(data.room, "action");
-      if (data.room?.status === "finished") stopAttackDodgeUxTrace("game-finished");
       const responseMayApply = maintenanceAction ? epoch === stateEpoch.current : nonBlocking || epoch === stateEpoch.current;
-      if (data.room && !preserveTestViewer && mutationSequence >= latestAppliedMutation.current && responseMayApply) { latestAppliedMutation.current = Math.max(latestAppliedMutation.current, mutationSequence); setToken(data.token ?? token); setRoom(data.room); setCode(data.room.code); }
+      const responseTurnMayApply = Boolean(data.room && !preserveTestViewer
+        && mutationSequence >= latestAppliedMutation.current && responseMayApply
+        && acceptPublicPresentationTurn(data.room));
+      if (responseTurnMayApply && data.room) recordPublicGameRoomSnapshot(data.room, "action");
+      if (data.room?.status === "finished") stopAttackDodgeUxTrace("game-finished");
+      if (responseTurnMayApply && data.room) { latestAppliedMutation.current = Math.max(latestAppliedMutation.current, mutationSequence); setToken(data.token ?? token); setRoom(data.room); setCode(data.room.code); }
       if (!response.ok || action !== "heartbeat" && !data.room) throw new Error(data.error ?? "Something went wrong.");
       if (action === "heartbeat") return true;
       const nextToken = data.token ?? token;
-      if (!preserveTestViewer && epoch === stateEpoch.current && mutationSequence >= latestAppliedMutation.current) { latestAppliedMutation.current = mutationSequence; setToken(nextToken); setRoom(data.room); setCode(data.room.code); }
+      if (responseTurnMayApply && data.room && epoch === stateEpoch.current && mutationSequence >= latestAppliedMutation.current) { latestAppliedMutation.current = mutationSequence; setToken(nextToken); setRoom(data.room); setCode(data.room.code); }
       localStorage.setItem("three-realms-session", JSON.stringify({ code: data.room.code, token: nextToken, name: name.trim() }));
       return true;
     } catch (cause) {
@@ -2270,7 +2287,10 @@ export default function Home() {
   const presentationView = room ? buildPresentationClientView(room.presentationSnapshot, room.meId) : null;
   const connectionStatus = <div role="status" className="room-connection-status" hidden={!connectionInterrupted}>Connection interrupted. Reconnecting…</div>;
 
-  if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <>{connectionStatus}<GameRoomErrorBoundary room={room} onRecover={retryGameScreen} onLeave={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy || connectionInterrupted} busyAction={busyAction} error={error} onAction={send} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary></>;
+  if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") {
+    const presentationTurnKey = [room.code, room.meId, room.publicPresentationTurn?.epoch ?? 0, room.publicPresentationTurn?.retireAll ? "finished" : "active"].join(":");
+    return <>{connectionStatus}<GameRoomErrorBoundary key={presentationTurnKey} room={room} onRecover={retryGameScreen} onLeave={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy || connectionInterrupted} busyAction={busyAction} error={error} onAction={send} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary></>;
+  }
   if (room?.status === "heroes") return <>{connectionStatus}<HeroSelection room={room} busy={busy || connectionInterrupted} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} /></>;
   if (room) return <>{connectionStatus}<WaitingRoom room={room} busy={busy || connectionInterrupted} error={error} onStart={() => send("start")} onAddTestPlayers={(count) => send("add_test_players", { count })} onEnableTestRoom={() => send("enable_test_room")} onConfigureTestHands={(presetId, handsBySeat, expectedRevision) => send("configure_test_hands", { presetId, handsBySeat, expectedRevision })} onLeave={leave} /></>;
 
@@ -5296,7 +5316,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (cardBounds.left < viewport.left) rail.scrollLeft += cardBounds.left - viewport.left;
     else if (cardBounds.right > viewport.right) rail.scrollLeft += cardBounds.right - viewport.right;
   }, [selected, room.meId]);
-  const gameMessages = useMemo(() => latestPublicMessages(room.timeline, describeEvent), [room.timeline]);
+  const historyTimeline = room.timelineHistory ?? room.timeline;
+  const gameMessages = useMemo(() => latestPublicMessages(historyTimeline, describeEvent), [historyTimeline]);
   // A response is one decision, even when it has several providers.  Do not
   // expose (or start timing) one provider before the preceding public effect
   // has finished presenting: every provider and the decline branch open

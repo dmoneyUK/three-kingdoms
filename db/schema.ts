@@ -8,6 +8,8 @@ export const rooms = sqliteTable("rooms", {
   maxPlayers: integer("max_players").notNull().default(8),
   createdAt: integer("created_at").notNull(),
   turnSeat: integer("turn_seat"),
+  turnEpoch: integer("turn_epoch").notNull().default(0),
+  turnStartPublicSequence: integer("turn_start_public_sequence"),
   phase: text("phase"),
   deckJson: text("deck_json"),
   discardJson: text("discard_json"),

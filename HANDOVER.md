@@ -1,22 +1,26 @@
-# HANDOVER — UX2-DISMANTLE-SETTLEMENT-RETIRE-01
+# HANDOVER — UX2 §10.66 TURN-BOUNDARY-PUBLIC-PRESENTATION-CLEAR-01
 
-**Updated:** 2026-11-21 23:51 UTC
-**Status:** IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE RE-REVIEW
+**Updated:** 2026-11-22 00:54 UTC
+**Status:** Implementation locally validated; commit, exact-SHA CI, deployment and production smoke pending.
 
-## Design and result
+## Current task
 
-Reviewed `docs/UX2-refine.md` at revision 2026-11-19 23:32 UTC. Dismantle settlement ownership is tied to its committed public event, room, source root/turn, action revision and public sequence. A later proven public event or turn handoff retires the centre result and old root ownership, including when the next `rootAction` is null. Temporary H4 occlusion pauses readable time and does not retire a still-current result. A valid Dismantle result keeps its 3-second read period. Steal privacy and unrelated Duel/Attack history are unchanged.
+Reviewed `docs/UX2-refine.md` §10.66 (Owner requirement 2026-11-21 23:59 UTC) on `ux-v2` HEAD `4d48145a621796f298e584fa7250deb73ce5a2e7`.
 
-Implementation source SHA: `a8b0de80708c23e78723593fef68c2a758be46d9` on `ux-v2`.
+The implementation adds a server-owned turn epoch and public-sequence boundary at the canonical successful `beginTurnStart`. Public transient presentation is scoped to the current turn while complete event history remains available. The client rejects stale turn responses and remounts transient presentation ownership on a proven turn/viewer boundary. The final Discard remains visible through the real pending handoff; persistent equipment and Judgement zones are retained.
 
-## Verification and deployment
+## Local verification
 
-- Lifecycle unit tests: 9 passed.
-- Focused Gan Ning conversion → Negation pass → Shadowrunner discard → next-turn/discard browser regression: 1 passed after a fresh build.
-- Local build, focused test-file ESLint and `git diff --check`: passed. `app/page.tsx` ESLint reproduces the React Hooks stack overflow on the unmodified base.
-- Exact-SHA [GitHub Actions run 44963186592](https://github.com/dmoneyUK/three-kingdoms/actions/runs/44963186592): lint/fast, API, browser smoke and deploy jobs all passed. D1 migration and production smoke completed successfully.
-- Worker version: `02a4773a-a15e-458c-9d25-c815c636f431`. Production `/api/health` returned `{"ok":true,"worker":"available"}`.
+- `npm run build`: passed.
+- `npm run test:fast`: 452/452 passed.
+- Focused room-safety tests: 39/39 passed.
+- Focused Da Qiao API regression after build: 18/18 passed, including the final-Discard handoff boundary.
+- One focused 440px four-player browser scenario: passed in 10.5s; old H4, PAC and Attack journey clear at the next authoritative turn while the real Equipment/Judgement cards and next-turn controls remain.
+- Targeted ESLint on changed files other than `app/page.tsx`: passed. ESLint on `app/page.tsx` terminated with the existing React Hooks rule stack overflow at line 4134; no source change was made to weaken or bypass the rule.
+- `git diff --check`: passed.
 
-## Current handoff
+## Delivery state and one next task
 
-**Only current task:** Owner iPhone re-review of `UX2-DISMANTLE-SETTLEMENT-RETIRE-01`. Verify the Gan Ning converted Dismantle result remains readable while current, then disappears after the later public Discard/turn transition; confirm the new H4/PAC is visible and the old card/root does not return after refresh. Do not mark USER-ACCEPTED until the Owner confirms.
+The latest pre-change `ux-v2` Actions run was successful: [44963186592](https://github.com/dmoneyUK/three-kingdoms/actions/runs/44963186592). The task changes are not yet committed or pushed, so their exact-SHA CI, Worker deployment and production smoke remain unverified.
+
+**Only current task:** Commit and push §10.66 to `ux-v2`, verify all exact-SHA Actions/deployment jobs and production health, then update this handover with actual commit, run and Worker evidence. Owner iPhone review remains required; do not mark USER-ACCEPTED.

@@ -110,6 +110,19 @@ export function publicEventSequencesFromLog(log: readonly string[]): ReadonlyMap
   return state.hasMetadata && state.valid ? state.publicSequences : null;
 }
 
+/** Returns the validated public sequence watermark, or null when persisted metadata is malformed. */
+export function publicSequenceWatermarkFromLog(log: readonly string[]): number | null {
+  const state = inspectSequenceState(log);
+  if (!state.valid) return null;
+  if (state.hasMetadata) return state.watermark;
+  // appendSequencedLogRecord bootstraps legacy structured history in append
+  // order. Return that same derived watermark here so a turn boundary written
+  // immediately before the first sequenced append does not accidentally
+  // classify pre-boundary legacy events as new-turn events.
+  return structuredRecords(log).reduce((watermark, record) =>
+    watermark + (isPublicPresentational(record) ? 1 : 0), 0);
+}
+
 /** Adds one structured log record, bootstrapping retained legacy records when needed. */
 export function appendSequencedLogRecord(
   log: readonly string[],

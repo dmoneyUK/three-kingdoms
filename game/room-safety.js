@@ -443,11 +443,27 @@ export function normalizeTimeline(value) {
 
 export function normalizeRoomData(value) {
   if (!isRecord(value) || typeof value.code !== "string" || !ROOM_STATUSES.has(value.status) || !Array.isArray(value.players)) return null;
+  const timelineHistory = normalizeTimeline(value.timeline);
+  const publicPresentationTurn = isRecord(value.publicPresentationTurn)
+    && Number.isSafeInteger(value.publicPresentationTurn.epoch) && value.publicPresentationTurn.epoch >= 0
+    && (value.publicPresentationTurn.startPublicSequence === null
+      || Number.isSafeInteger(value.publicPresentationTurn.startPublicSequence) && value.publicPresentationTurn.startPublicSequence >= 0)
+    ? {
+      epoch: value.publicPresentationTurn.epoch,
+      startPublicSequence: value.publicPresentationTurn.startPublicSequence,
+      ...(value.publicPresentationTurn.retireAll === true ? { retireAll: true } : {}),
+    }
+    : { epoch: 0, startPublicSequence: null };
   const normalized = {
     ...value,
     players: normalizePlayers(value.players),
     myHand: normalizeCards(value.myHand),
-    timeline: normalizeTimeline(value.timeline),
+    // The original projection remains available for the System Menu history.
+    // All event-driven visual owners consume the server-scoped presentation
+    // timeline, which retires earlier-turn public events as one group.
+    timelineHistory,
+    timeline: normalizeTimeline(Array.isArray(value.publicPresentationTimeline) ? value.publicPresentationTimeline : value.timeline),
+    publicPresentationTurn,
     privateStealResult: normalizePrivateStealResult(value.privateStealResult, value.code, value.meId),
     privateStealParticipantResult: normalizePrivateStealParticipantResult(value.privateStealParticipantResult, value.code, value.meId, value.serverNow),
     publicHarvestPool: normalizePublicHarvestPool(value.publicHarvestPool),
