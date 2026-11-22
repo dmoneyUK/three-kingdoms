@@ -372,15 +372,32 @@ test("multiple eligible Dodges select one deterministically and keep private det
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
-test("a Bot actively plays its physical Attack and hands the pending Dodge to the human", async () => {
+test("a Bot commits its physical Attack and the human Dodge window together", async () => {
   const { code, token, hostId, bots } = await createBotGame();
   const bot = bots[0];
   sql(`UPDATE players SET hero='sun-quan', equipment_json='{}' WHERE id IN (${quote(hostId)}, ${quote(bot.id)})`);
   setHand(hostId, [card("Dodge", "bot-attack-human-dodge")], 4, 4);
-  setHand(bot.id, [card("Attack", "bot-active-attack")], 4, 4);
+  const physicalAttack = card("Attack", "bot-active-attack");
+  setHand(bot.id, [physicalAttack], 4, 4);
   setTurn(code, bot.seat, "play");
   const before = (await state(code, token)).data;
   assert.equal(before.actionPlayerId, bot.id);
+
+  // Abort the second statement of the D1 batch. Its room transition must
+  // roll back so a later wake can still use the same decision revision.
+  sql(`CREATE TRIGGER bot_attack_hand_write_abort BEFORE UPDATE OF hand_json ON players
+    WHEN OLD.id = ${quote(bot.id)} AND NEW.hand_json <> OLD.hand_json
+    BEGIN SELECT RAISE(ABORT, 'bot attack fixture write failure'); END;`);
+  try {
+    const failed = await runBotStep(code, bot.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
+    assert.equal(failed.status, 500, JSON.stringify(failed.data));
+    const afterFailure = (await state(code, token)).data;
+    assert.equal(afterFailure.actionRevision, before.actionRevision);
+    assert.equal(afterFailure.phase, "play");
+    assert.equal(roomCardCount(code, physicalAttack.id), 1);
+  } finally {
+    sql("DROP TRIGGER bot_attack_hand_write_abort");
+  }
 
   const attack = await runBotStep(code, bot.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
   assert.equal(attack.status, 200, JSON.stringify(attack.data));
@@ -389,6 +406,7 @@ test("a Bot actively plays its physical Attack and hands the pending Dodge to th
   assert.equal(pending.currentAction.kind, "response");
   assert.equal(pending.currentAction.requirement, "dodge");
   assert.equal(pending.players.find((player) => player.id === bot.id).handCount, 0);
+  assert.equal(roomCardCount(code, physicalAttack.id), 1);
 
   const replay = await runBotStep(code, bot.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
   assert.equal(replay.status, 200, JSON.stringify(replay.data));
