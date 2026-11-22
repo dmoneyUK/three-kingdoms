@@ -62,8 +62,12 @@ test("shared pool actions do not relabel specialized non-pool controls", () => {
   assert.match(gameRoomSource, /const responseDeclineLabel = borrowedSwordForcedChoiceActive \? "Give up Weapon" : declineAcceptsDamage \? "TAKE DAMAGE" : sharedNegationWindow \? "Pass" : "Skip";/);
   assert.match(gameRoomSource, /end-turn-confirmation__confirm/);
   assert.match(gameRoomSource, />Confirm End<\/button>/);
-  assert.match(gameRoomSource, /data-deck-reorder-submit="true"/);
-  assert.match(gameRoomSource, />COMPLETE STARGAZING<\/button>/);
+  const stargazingSource = gameRoomSource.slice(gameRoomSource.indexOf("function PrivateDeckReorderDialog"), gameRoomSource.indexOf("function PrivateCardDistributionDialog"));
+  assert.equal((stargazingSource.match(/<CardPoolDecisionFooter/g) ?? []).length, 1);
+  assert.match(stargazingSource, /confirmAction=\{\{\s*accessibleLabel: "CONFIRM",\s*disabled: disabled \|\| !complete,\s*onClick: \(\) => onSubmit\(arrangement.top, arrangement.bottom\)/);
+  assert.doesNotMatch(stargazingSource, /skipAction=|cancelAction=/);
+  assert.match(stargazingSource, /top: cards\.map\(\(card\) => card\.id\), bottom: \[\]/);
+  assert.doesNotMatch(stargazingSource, /unassigned|REVEALED CARDS|COMPLETE STARGAZING|deck-reorder-menu-toggle|deck-reorder-progress/);
   assert.match(gameRoomSource, /turnConversionPrecommitControls\?\.primaryLabel/);
   assert.match(gameRoomSource, /turnConversionPrecommitControls\?\.primaryEnabled/);
   assert.match(gameRoomSource, /data-serpent-spear-control="true"[^\n]*aria-label=\{SERPENT_SPEAR_LABEL\}[^\n]*aria-pressed=\{serpentMode\}/);
@@ -937,7 +941,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /\.local-hand-rail \.hand-card-details-action\s*\{[^}]*width: 44px; min-width: 44px; height: 44px; min-height: 44px;/, "the attached Details hit area remains at least 44 by 44 CSS pixels");
   assert.match(sequenceStyleSource, /\.local-hand-rail \.hand-card-details-action\s*\{[^}]*top: calc\(var\(--hand-card-height\) - 44px\)/, "the DETAILS hit target starts at the CardFace's lower interior edge");
   assert.match(sequenceStyleSource, /\.card-slot\.details-selected \.hand-card-details-action\s*\{\s*transform: translateY\(calc\(0px - var\(--selected-face-rise\)\)\)/, "DETAILS follows the selected card's face movement");
-  assert.match(sequenceStyleSource, /\.local-hand-rail \.game-card \.corner\s*\{[\s\S]*width: 17px[\s\S]*min-height: 23px/);
+  assert.match(sequenceStyleSource, /:where\(\.local-hand-rail, \.harvest-card-choice\) \.card-rank-suit\s*\{[^}]*--card-mark-rank: 15px;[^}]*--card-mark-suit: 12px;/);
   assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*z-index: 50/);
   assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls\s*\{[\s\S]*z-index: 100/);
   assert.match(globalStyleSource, /\.player-square\{[\s\S]*aspect-ratio:2 \/ 3[\s\S]*width:100%[\s\S]*@media\(max-width:700px\)[\s\S]*\.player-square\{width:clamp\(92px,26vw,112px\)/);
@@ -1073,8 +1077,8 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.match(ganglieDiscardChoiceHtml, /class="played-card peach red-suit/);
   assert.match(ganglieDiscardChoiceHtml, />Dodge<\//);
   assert.match(ganglieDiscardChoiceHtml, />Peach<\//);
-  assert.match(ganglieDiscardChoiceHtml, /7<small>♠<\/small>/);
-  assert.match(ganglieDiscardChoiceHtml, /Q<small>♥<\/small>/);
+  assert.match(ganglieDiscardChoiceHtml, /7<small class="card-rank-suit-glyph">♠<\/small>/);
+  assert.match(ganglieDiscardChoiceHtml, /Q<small class="card-rank-suit-glyph">♥<\/small>/);
   assert.match(ganglieDiscardChoiceHtml, /♠/);
   assert.match(ganglieDiscardChoiceHtml, /♥/);
   assert.equal((ganglieDiscardChoiceHtml.match(/class="target-card-picker-card selected/g) ?? []).length, 2, "Stauchness allows exactly the two eligible hand cards to be selected");

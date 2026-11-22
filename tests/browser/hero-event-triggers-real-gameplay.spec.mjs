@@ -452,17 +452,38 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
         if (!element || !table) return null;
         const face = element.getBoundingClientRect();
         const stage = table.getBoundingClientRect();
+        const h4 = table.querySelector("[data-public-card-announcement='true']");
+        const announcement = h4?.getBoundingClientRect();
+        const pac = table.querySelector("[data-public-activity-chip='true']");
+        const activity = pac && getComputedStyle(pac).display !== "none" && getComputedStyle(pac).visibility !== "hidden"
+          ? pac.getBoundingClientRect() : null;
+        const reveal = element.closest(".active-table-reveal");
+        const revealStyle = reveal ? getComputedStyle(reveal) : null;
         return {
           width: face.width, height: face.height,
           centerOffsetX: Math.abs(face.left + face.width / 2 - (stage.left + stage.width / 2)),
-          centerOffsetY: Math.abs(face.top + face.height / 2 - (stage.top + stage.height / 2)),
+          sharedWaypoint: {
+            x: Number.parseFloat(revealStyle?.getPropertyValue("--public-reveal-x") ?? "NaN"),
+            y: Number.parseFloat(revealStyle?.getPropertyValue("--public-reveal-y") ?? "NaN"),
+            expectedX: face.left + face.width / 2 - stage.left,
+            expectedY: face.top + face.height / 2 - stage.top,
+          },
+          h4: announcement ? { top: announcement.top, bottom: announcement.bottom, height: announcement.height } : null,
+          pac: activity ? { top: activity.top, bottom: activity.bottom } : null,
+          face: { top: face.top, bottom: face.bottom, left: face.left, right: face.right },
+          ready: reveal?.dataset.publicRevealPositioned === "true",
         };
       }, { eventId: originalReveal.id });
       expect(geometry).not.toBeNull();
       expect(geometry.width).toBeCloseTo(90, 0);
       expect(geometry.height).toBeCloseTo(135, 0);
+      expect(geometry.ready).toBe(true);
       expect(geometry.centerOffsetX).toBeLessThan(2);
-      expect(geometry.centerOffsetY).toBeLessThan(2);
+      expect(Math.abs(geometry.sharedWaypoint.x - geometry.sharedWaypoint.expectedX)).toBeLessThan(1);
+      expect(Math.abs(geometry.sharedWaypoint.y - geometry.sharedWaypoint.expectedY)).toBeLessThan(1);
+      expect(geometry.h4, "the committed Judgement reveal keeps its actual H4 anchor").not.toBeNull();
+      expect(geometry.face.top - geometry.h4.bottom, "the full Judgement face clears H4 by at least 8px").toBeGreaterThanOrEqual(8);
+      if (geometry.pac) expect(geometry.pac.top - geometry.face.bottom, "the full Judgement face clears PAC by at least 8px").toBeGreaterThanOrEqual(8);
       return { eventId: originalReveal.id, cardId: originalReveal.card.id, geometry };
     }));
     expect(revealEvidence.map(({ eventId, cardId }) => ({ eventId, cardId }))).toEqual([
@@ -573,9 +594,14 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
       expect(evidence.announcement).toContain("replace");
       expect(evidence.announcement).toContain("Judgement");
     }
+    await expect(page.locator(`[data-public-card-journey-event-id="${replacementEvent.id}"]`))
+      .toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 8_000 });
+    await expect(page.locator(`.active-table-reveal.judgement-flight[data-public-zone-transition-card-id="${replacement.id}"]`),
+      "the completed genuine public reveal remains the sole central owner for this exact card").toHaveCount(0);
     expect(await view(request, game, 3).then((projection) => JSON.stringify(projection))).not.toContain(privateCard.id);
     await expect(observerPage.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(0);
     await expect(page.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(1);
+
   } finally {
     await observerPage.close();
   }

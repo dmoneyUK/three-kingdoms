@@ -813,6 +813,11 @@ function battlefieldCenterCard(
   return safe ?? (safety.requireProtectedClearance ? null : boundCardRect(preferredLeft, preferredTop, size.width, size.height));
 }
 
+/** Full-size public reveal placement that clears the real upper H4 and protected controls. */
+export function h4SafeBattlefieldCardRect(size: { width: number; height: number }) {
+  return battlefieldCenterCard(size, { requireProtectedClearance: true, respectFixedUpperH4: true });
+}
+
 function singleTargetBattlefieldRevealCard(size: { width: number; height: number }): CardRect | null {
   const table = document.querySelector<HTMLElement>(".play-table");
   if (!table) return null;

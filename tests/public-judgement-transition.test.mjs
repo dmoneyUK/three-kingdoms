@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEvent, publicJudgementTransitionUsesCompletedPriorReveal, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition } from "../app/public-judgement-transition.ts";
 
@@ -132,6 +133,21 @@ test("a Deck-to-Discard judgement movement reuses the original reveal owner; del
   const delayedCard = setup({ from: { zone: "JUDGEMENT", ownerId: targetId }, to: { zone: "DISCARD", ownerId: null }, sourceAction: "activate" });
   const delayedRoute = route(delayedCard);
   assert.equal(publicJudgementTransitionUsesExistingRevealOwner(delayedRoute), false);
+});
+
+test("static Judgement and its zone-flight hold share the measured H4-safe centre", () => {
+  const pageSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
+  const transitionSource = pageSource.slice(
+    pageSource.indexOf("function PublicJudgementCardTransition"),
+    pageSource.indexOf("const PUBLIC_RESULT_PROTECTED_SELECTORS"),
+  );
+
+  assert.match(pageSource, /function measurePublicJudgementSafeCentre\(table: HTMLElement, reveal: HTMLElement\)[\s\S]*?h4SafeBattlefieldCardRect\(\{ width: face\.offsetWidth, height: face\.offsetHeight \}\)/);
+  assert.match(pageSource, /function PublicJudgementOriginalReveal[\s\S]*?observePublicJudgementSafeCentre\(table, reveal\)/);
+  assert.match(transitionSource, /arrivingInJudgement\s*\?\s*observePublicJudgementSafeCentre\(table, reveal\)/);
+  assert.match(sequenceStyleSource, /\.active-table-reveal\.public-judgement-original-reveal\s*\{\s*left: var\(--judgement-center-x, 50%\);\s*top: var\(--judgement-center-y, 50%\);/);
+  assert.match(sequenceStyleSource, /@keyframes judgementCardToZone\s*\{[\s\S]*?0% \{ left: var\(--origin-x, 50%\);[\s\S]*?10%, 85% \{ left: var\(--public-reveal-x, 50%\); top: var\(--public-reveal-y, 50%\);[\s\S]*?100% \{ left: var\(--judgement-x, 50%\);/);
 });
 
 test("cancelled placement and private, mismatched, or replayed proof never create a public card route", () => {
