@@ -13,6 +13,7 @@ import { testHandPresetCompatibilityError, testHandPresetFor, validateStoredTest
 import { canDeclareAttack as canDeclareAttackFor, effectiveDistanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithNegation, getAttackCardProvider, getPlayPhaseActions, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
+import { buildPlayCandidates } from "../../../ai/play-candidates";
 import { responseCostActor, semanticResponseActor } from "../../../game/response-identity";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
 import { borrowedSwordLegality as resolveBorrowedSwordLegality, type BorrowedSwordPlayer } from "../../../game/capabilities/borrowed-sword";
@@ -8482,7 +8483,8 @@ export async function POST(request: Request, routeContext?: unknown) {
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
   const uxTraceId = typeof body.uxTraceId === "string" && /^[a-zA-Z0-9-]{8,80}$/.test(body.uxTraceId) ? body.uxTraceId : null;
   let action = String(body.action ?? "");
-  const internalBotActions = new Set(["bot_step", "choose_hero", "draw", "end_turn", "discard_cards", "decline_response", "respond", "skip_rescue"]);
+  const internalBotPlayActions = ["draw", "play_card", "end_turn", "discard_cards", "decline_response", "respond", "skip_rescue"];
+  const internalBotActions = new Set(["bot_step", "choose_hero", ...internalBotPlayActions]);
   if (action === "bot_step" && !internalBot) return json({ error: "Unknown action." }, 404);
   if (internalBot && (!botDemoEnabled() || !internalBotActions.has(action))) return json({ error: "The server bot principal cannot perform this action." }, 403);
   if (internalBot && (!/^[0-9a-f-]{36}$/i.test(internalBot.roomId) || !/^[0-9a-f-]{36}$/i.test(internalBot.botId)
@@ -8583,7 +8585,7 @@ export async function POST(request: Request, routeContext?: unknown) {
     }
     if (expectedRevision !== internalBot.actionRevision) return json({ error: "The bot action revision is stale." , stale: true }, 409);
     if (room.status === "heroes" && action !== "bot_step" && action !== "choose_hero"
-      || room.status === "playing" && action !== "bot_step" && !["draw", "end_turn", "discard_cards", "decline_response", "respond", "skip_rescue"].includes(action)) {
+      || room.status === "playing" && action !== "bot_step" && !internalBotPlayActions.includes(action)) {
       return json({ error: "The internal bot action does not match the current game stage." }, 409);
     }
     if (room.status !== "heroes" && room.status !== "playing") return json({ error: "The bot room is not in an actionable stage." }, 409);
@@ -8749,41 +8751,78 @@ export async function POST(request: Request, routeContext?: unknown) {
       nextAction = "discard_cards";
       actionFields = { cardIds: hand.slice(0, required).map((card) => card.id) };
       decisionCause = "non_response_decision";
-    } else if (room.phase?.startsWith("play") && pendingForController === null && legalActions.includes("end_turn")) {
-      nextAction = "end_turn";
-      decisionCause = "non_response_decision";
-    } else if (pendingForController?.kind === "response" && legalActions.includes("decline_response")) {
-      const options = responseDecision?.options ?? [];
-      const continuation = pendingForController.continuation;
-      const requiredDodgeCount = pendingForController.requirement.kind === "dodge"
-        ? pendingForController.requirement.count ?? (continuation.kind === "attack" ? continuation.requiredDodgeCount : undefined) ?? 1
-        : 0;
-      if (!options.length) {
-        nextAction = "decline_response";
-        decisionCause = "no_legal_defense_declined";
-      } else if (continuation.kind === "attack" && continuation.origin === "card"
-        && pendingForController.requirement.kind === "dodge" && requiredDodgeCount !== 1) {
-        decisionCause = "requires_multiple_dodges";
-      } else if (continuation.kind === "attack" && continuation.origin === "card"
-        && pendingForController.requirement.kind === "dodge" && requiredDodgeCount === 1) {
-        const option = options.length === 1 ? options[0] : null;
-        const eligibleIds = option?.selection?.type === "cards" ? option.selection.eligibleCardIds : [];
-        const eligibleDodge = eligibleIds.length === 1 ? ownHand.find((card) => card.id === eligibleIds[0] && card.kind === "Dodge") : null;
-        if (option?.providerId === "card" && option.satisfies === "dodge" && option.playedAs === undefined
-          && option.selection?.type === "cards" && option.selection.min === 1 && option.selection.max === 1 && eligibleDodge) {
-          nextAction = "respond";
-          actionFields = { providerId: "card", cardId: eligibleDodge.id };
-          decisionCause = "single_physical_dodge_supported";
-        } else if (options.length > 1 || eligibleIds.length > 1) {
-          decisionCause = "ambiguous_multiple_cards";
-        } else if (options.some((candidate) => candidate.providerId !== "card" || candidate.playedAs !== undefined)) {
-          decisionCause = "converted_skill_only";
-        } else {
-          decisionCause = "single_physical_dodge_available_but_unsupported";
+    } else if (room.phase?.startsWith("play") && pendingForController === null) {
+      const authority = { decisionId: internalBot.decisionId, actorId: actor.id,
+        actionRevision: internalBot.actionRevision, decisionConsumed: false };
+      const canDeclareAttack = canDeclareAttackFor({ ...actor, ...attackUseLimitContext(actor) }, room.phase);
+      const playPhaseActions = getPlayPhaseActions(responseContext(actor, allRoomPlayers));
+      const basicPlays: { cardId: string; kind: "heal" | "draw" | "equip" }[] = [];
+      const equipped = equipmentZone(actor);
+      for (const card of ownHand) {
+        const slot = cardDefinition(card.kind).equipmentSlot;
+        if (card.kind === "Peach" && (actor.hp ?? 0) < (actor.max_hp ?? 0)) {
+          basicPlays.push({ cardId: card.id, kind: "heal" });
+        } else if (card.kind === "DrawTwo") {
+          basicPlays.push({ cardId: card.id, kind: "draw" });
+        } else if (slot && !equipped[slot]) {
+          // Filling empty slots avoids replacement loops and gives a stable policy.
+          basicPlays.push({ cardId: card.id, kind: "equip" });
+        }
+      }
+      const catalogue = buildPlayCandidates({
+        ...authority, phase: room.phase, selfHand: ownHand, basicPlays,
+        publicSeatContext: allRoomPlayers.map(({ id, seat }) => ({ id, seat })),
+        currentAction: { version: 3, kind: "turn", actorId: actionPlayerIdForController ?? null, deadline: 0, reason: "",
+          legalActions, canDeclareAttack, playPhaseActions,
+          playTargetEligibility: playTargetEligibilityFor(actor, allRoomPlayers, playPhaseActions, canDeclareAttack) },
+      });
+      if (catalogue.status === "ready") {
+        const choice = catalogue.publicChoices[0];
+        const selected = choice && catalogue.resolve(choice.id, authority);
+        if (selected) {
+          nextAction = selected.action;
+          if (selected.action === "play_card") {
+            actionFields = { cardId: selected.cardId, ...(selected.targetId ? { targetId: selected.targetId } : {}),
+              ...(selected.playAs ? { playAs: selected.playAs } : {}) };
+          }
+          decisionCause = "non_response_decision";
         }
       } else {
-        decisionCause = options.some((candidate) => candidate.providerId !== "card" || candidate.playedAs !== undefined)
-          ? "converted_skill_only" : "unsupported_pending_family";
+        decisionCause = catalogue.reason;
+      }
+    } else if (pendingForController?.kind === "response" && legalActions.includes("decline_response")) {
+      const options = responseDecision?.options ?? [];
+      const { requirement, continuation, delegation } = pendingForController;
+      const supportedCombat = !delegation && (requirement.kind === "dodge" || requirement.kind === "attack")
+        && (continuation.kind === "attack" || continuation.kind === "duel" || continuation.kind === "group");
+      if (!supportedCombat || !responseDecision) {
+        decisionCause = "unsupported_pending_family";
+      } else if (!options.length) {
+        nextAction = "decline_response";
+        decisionCause = "no_legal_defense_declined";
+      } else {
+        decisionCause = "unsupported_response_provider";
+        const context = responseContext(actor, allRoomPlayers, room.turn_seat);
+        // The canonical provider owns the card cost. The continuation owns
+        // remaining responses, including one-at-a-time multi-Dodge windows.
+        for (const option of options) {
+          const selection = option.selection;
+          if (selection?.type !== "cards" || !Number.isSafeInteger(selection.min)
+            || selection.min < 1 || selection.min > selection.max) continue;
+          const eligible = [...new Set(selection.eligibleCardIds)].filter((id) => ownCardIds.has(id)).sort();
+          if (eligible.length < selection.min) continue;
+          const cardIds = eligible.slice(0, selection.min);
+          const execution = resolveResponseDecision(pendingForController, context, option.providerId, { cardIds });
+          if (execution?.status !== "satisfied" || execution.satisfies !== requirement.kind
+            || execution.consumeCardIds?.length !== cardIds.length
+            || !execution.consumeCardIds.every((id, index) => id === cardIds[index])) continue;
+          nextAction = "respond";
+          actionFields = { providerId: option.providerId, cardIds };
+          decisionCause = requirement.kind === "dodge" && (requirement.count ?? 1) === 1
+            && option.providerId === "card" && eligible.length === 1 && options.length === 1
+            ? "single_physical_dodge_supported" : "canonical_combat_response";
+          break;
+        }
       }
     } else if (pendingForController?.kind === "dying" && pendingForController.actorId === actor.id && legalActions.includes("skip_rescue")) {
       if (!(responseDecision?.options.length)) {

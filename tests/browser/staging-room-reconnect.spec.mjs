@@ -205,6 +205,18 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
       currentRoom = await readRoom(request, roomCode, created.token);
       const unsupported = unsupportedBots(currentRoom);
       if (unsupported.length) throw new Error(`Bot turn stopped safely as unsupported: ${unsupported.map((player) => player.name).join(", ")}`);
+      const decision = currentRoom.currentAction;
+      if (decision?.actorId === hostId && !decision.sharedWindow?.locked) {
+        const action = decision.legalActions.find((candidate) =>
+          ["decline_response", "decline_trigger", "skip_rescue"].includes(candidate));
+        if (action) {
+          const label = action === "decline_response" ? /^(TAKE DAMAGE|Pass|Skip)$/i : /^Skip$/i;
+          const response = page.waitForResponse((reply) => isPostAction(reply, action));
+          await page.getByRole("button", { name: label }).click({ timeout: 20_000 });
+          expect((await response).status()).toBe(200);
+          continue;
+        }
+      }
       completedBotNames = bots.filter((bot) => hasCompletedBotTurn(currentRoom, bot.name, botCycleLogStart)).map((bot) => bot.name);
       if (completedBotNames.length === bots.length) break;
       await new Promise((resolve) => setTimeout(resolve, 1_000));

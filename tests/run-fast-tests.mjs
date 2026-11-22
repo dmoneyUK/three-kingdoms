@@ -8,6 +8,7 @@ const fastTests = [
   "tests/dying.test.mjs",
   "tests/ai-decision-prototype.test.mjs",
   "tests/ai-response-candidates.test.mjs",
+  "tests/ai-play-candidates.test.mjs",
   "tests/standard-deck.test.mjs",
   "tests/test-hand-presets.test.mjs",
   "tests/private-hand.test.mjs",
