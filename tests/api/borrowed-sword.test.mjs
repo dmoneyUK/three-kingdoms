@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { botTriggerChoices } from "../../ai/trigger-selection.ts";
 import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration } from "../../game/public-activity.ts";
 import {
   advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
@@ -456,7 +457,15 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
       "the target's selected identity is not public while the choice is still open");
     assert.equal(JSON.stringify(observerBeforeCommit.presentationSnapshot.publicCardEffects).includes(discarded.id), false,
       "no public typed proof exists before the physical discard commits");
-    const chosen = await requestAndSettle("trigger", { code: s.game.code, token: s.game.members[2].token, providerId: "yin_yang_swords_attack_targeted", choice: "discard", cardKeys: ["hand:0"] }); assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+    const option = targetDecision.currentAction.triggerOptions.find(({ effectId }) => effectId === "yin_yang_swords_attack_targeted");
+    assert.ok(option);
+    const choices = botTriggerChoices(option, new Set(targetDecision.myHand.map(({ id }) => id)));
+    assert.deepEqual(choices, [
+      { providerId: option.effectId, choice: "discard", cardKeys: ["hand:0"] },
+      { providerId: option.effectId, choice: "draw", cardKeys: [] },
+    ]);
+    const chosen = await requestAndSettle("trigger", { code: s.game.code, token: s.game.members[2].token, ...choices[0] });
+    assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
     assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(s.target.id)}`)).some((item) => item.id === discarded.id), false, "the target loses the selected hand card");
     const discardEvent = chosen.data.room.timeline.find((event) => event.type === "card" && event.action === "discard" && event.card?.id === discarded.id);
     assert.ok(discardEvent, "the exact committed physical card has one public discard event");

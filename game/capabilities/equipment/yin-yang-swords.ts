@@ -9,8 +9,12 @@ export const yinYangSwordsAttackTargeted = {
     if (context.event !== "attack_targeted" || !context.sourceEquipment.some((card) => card.kind === "YinYangSwords")) return null;
     if (!context.sourceGender || !context.targetGender || context.sourceGender === context.targetGender) return null;
     const choices = [{ id: "draw", label: "Allow attacker to draw 1 card" }];
-    if ((context.targetHand?.length ?? 0) > 0) choices.unshift({ id: "discard", label: "Discard 1 hand card" });
-    return { effectId: id, label: "Yin-Yang Swords", allowDecline: false, timeoutChoiceId: "draw", selection: { type: "choice", choices, eligibleHandKeys: (context.targetHand ?? []).map((_, index) => `hand:${index}`) } };
+    const eligibleHandKeys = (context.targetHand ?? []).map((_, index) => `hand:${index}`);
+    if (eligibleHandKeys.length) choices.unshift({ id: "discard", label: "Discard 1 hand card" });
+    return {
+      effectId: id, label: "Yin-Yang Swords", allowDecline: false, timeoutChoiceId: "draw",
+      selection: { type: "choice", choices, eligibleHandKeys, ...(eligibleHandKeys.length ? { cardCountByChoice: { discard: 1 } } : {}) },
+    };
   },
   resolve(context: TriggerContext, selection: { choice?: unknown; cardKeys?: unknown }): TriggerExecution | null {
     const option = yinYangSwordsAttackTargeted.getOption(context); const choice = String(selection.choice ?? "");
