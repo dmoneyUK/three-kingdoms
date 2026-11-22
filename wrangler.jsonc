@@ -14,9 +14,15 @@
   "env": {
     "ai-staging": {
       "workers_dev": true,
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      },
       "observability": {
         "enabled": true,
-        "head_sampling_rate": 1
+        "head_sampling_rate": 1,
+        "logs": {
+          "invocation_logs": false
+        }
       },
       "triggers": {
         "crons": ["* * * * *"]
@@ -33,7 +39,8 @@
         "BOT_AI_ENABLED": "false",
         "BOT_DEMO_ENABLED": "true",
         "BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT": "true",
-        "BOT_DIAGNOSTICS_ENABLED": "true"
+        "BOT_DIAGNOSTICS_ENABLED": "true",
+        "BOT_DIAGNOSTICS_PRIVATE_STAGING": "true"
       }
     }
   }

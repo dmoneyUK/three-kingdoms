@@ -1,3 +1,5 @@
+import type { BotSchedulerDiagnosticContext } from "./bot-diagnostics";
+
 const BOT_ACTION_CAPABILITY = Symbol("server-owned-bot-action");
 
 export type BotActionPrincipalInput = {
@@ -5,6 +7,7 @@ export type BotActionPrincipalInput = {
   botId: string;
   actionRevision: string;
   decisionId: string;
+  diagnostics?: BotSchedulerDiagnosticContext;
 };
 
 export type BotActionPrincipal = BotActionPrincipalInput & {

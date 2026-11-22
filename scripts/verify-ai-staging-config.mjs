@@ -19,11 +19,17 @@ export function verifyAiStagingConfig(config) {
   if (config?.workers_dev !== true) {
     throw new Error("Staging Worker must have workers_dev enabled");
   }
+  if (config?.version_metadata?.binding !== "CF_VERSION_METADATA") {
+    throw new Error("Staging Worker must bind its deployed version metadata");
+  }
   if (config?.observability?.enabled !== true || config?.observability?.logs?.enabled === false) {
     throw new Error("Cloudflare Workers Logs must be enabled in the effective Staging config");
   }
   if (config?.observability?.head_sampling_rate !== 1) {
     throw new Error("Staging Workers Logs head_sampling_rate must be 1");
+  }
+  if (config?.observability?.logs?.invocation_logs !== false) {
+    throw new Error("AI Staging automatic invocation logs must be disabled without sampling custom logs");
   }
   if (config?.observability?.logs?.head_sampling_rate !== undefined && config.observability.logs.head_sampling_rate !== 1) {
     throw new Error("Staging Workers Logs sampling rate must be 1");
@@ -39,6 +45,12 @@ export function verifyAiStagingConfig(config) {
   }
   if (config?.vars?.BOT_DIAGNOSTICS_ENABLED !== "true") {
     throw new Error("BOT_DIAGNOSTICS_ENABLED must be the string true only in the verified Staging deployment config");
+  }
+  if (config?.vars?.BOT_DIAGNOSTICS_PRIVATE_STAGING !== "true") {
+    throw new Error("BOT_DIAGNOSTICS_PRIVATE_STAGING must be the string true only in the verified Staging deployment config");
+  }
+  if (config?.vars?.BOT_DIAGNOSTICS_PRIVATE_STAGING === "true" && config.targetEnvironment !== "ai-staging") {
+    throw new Error("private Bot diagnostics may only be enabled for AI Staging");
   }
   if (config?.triggers?.crons?.length !== 1 || config.triggers.crons[0] !== "* * * * *") {
     throw new Error("the Staging Worker must have exactly the bounded one-minute bot recovery Cron");
@@ -68,11 +80,14 @@ export function verifyAiStagingConfig(config) {
     productionDatabaseExcluded: true,
     workersDev: true,
     workersLogsEnabled: true,
+    automaticInvocationLogsDisabled: true,
     headSamplingRate: 1,
     botAiEnabled: false,
     botDemoEnabled: true,
     botDemoHourlyAddLimitDisabled: true,
     botDiagnosticsEnabled: true,
+    privateStagingBotDiagnosticsEnabled: true,
+    versionMetadataBound: true,
     persistentSchedulerCronEnabled: true,
   });
 }

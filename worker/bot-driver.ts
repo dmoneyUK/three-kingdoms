@@ -13,6 +13,7 @@ type BotStepInput = {
   botId: string;
   actionRevision?: string;
   decisionId?: string;
+  diagnostics?: BotSchedulerDiagnosticContext;
 };
 
 type BotWorkRow = {
@@ -82,6 +83,7 @@ export async function runBotStep(db: Pick<D1Database, "prepare">, input: BotStep
     botId: input.botId,
     actionRevision: room.actionRevision,
     decisionId: input.decisionId ?? crypto.randomUUID(),
+    ...(input.diagnostics ? { diagnostics: input.diagnostics } : {}),
   });
   const actionRequest = new Request("https://internal.invalid/api/rooms", {
     method: "POST",
@@ -310,6 +312,7 @@ export async function runBotScheduler(
             botId: actor.id,
             actionRevision: room.actionRevision,
             decisionId: work.decision_id,
+            diagnostics,
           });
         } catch {
           const attempts = work.attempts + 1;

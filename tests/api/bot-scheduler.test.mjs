@@ -331,12 +331,13 @@ test("human turns and the exhausted per-room action budget leave bot actions unt
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
-test("unsupported bot responses stop without advancing and reveal no private work data", async () => {
+test("ambiguous multi-Dodge bot responses stop without advancing and keep private details server-only", async () => {
   const { code, token, hostId, bots, room } = await createBotGame();
   const bot = bots[0];
   const host = room.players.find((player) => player.id === hostId);
+  sql(`UPDATE players SET hero='sun-quan' WHERE id IN (${quote(hostId)}, ${quote(bot.id)})`);
   setHand(hostId, [card("Attack", "scheduler-unsupported-attack")], 4, 4);
-  setHand(bot.id, [card("Dodge", "scheduler-unsupported-dodge")], 4, 4);
+  setHand(bot.id, [card("Dodge", "scheduler-unsupported-dodge-a"), card("Dodge", "scheduler-unsupported-dodge-b")], 4, 4);
   setTurn(code, host.seat, "play");
   const attack = await requestAndSettle("play_card", { code, token, cardId: "attack-scheduler-unsupported-attack", targetId: bot.id });
   assert.equal(attack.status, 200, JSON.stringify(attack.data));
@@ -347,7 +348,20 @@ test("unsupported bot responses stop without advancing and reveal no private wor
   assert.equal(stopped.data.unsupported, 1);
   assert.equal(stopped.data.diagnostics.filter((event) => event.event === "bot_work_transition" && event.nextStatus === "unsupported").length, 1);
   assert.equal(stopped.data.diagnostics.filter((event) => event.event === "bot_scheduler_summary").length, 1);
-  assert.equal(JSON.stringify(stopped.data.diagnostics).includes("scheduler-unsupported-dodge"), false, "diagnostics never include a private card ID");
+  const decisionContext = stopped.data.decisionDiagnostics.find((event) => event.event === "bot_decision_context");
+  const evaluation = stopped.data.decisionDiagnostics.find((event) => event.event === "bot_decision_evaluation");
+  const result = stopped.data.decisionDiagnostics.find((event) => event.event === "bot_decision_result");
+  assert.ok(decisionContext, "a claimed Bot response captures the complete Staging-only hand");
+  assert.equal(decisionContext.hand.length, 2);
+  assert.ok(decisionContext.hand.some((held) => held.cardId === "dodge-scheduler-unsupported-dodge-a"), "the first physical Dodge ID is retained for authorized local diagnostics");
+  assert.ok(decisionContext.hand.some((held) => held.cardId === "dodge-scheduler-unsupported-dodge-b"), "the second physical Dodge ID is retained for authorized local diagnostics");
+  assert.equal(evaluation.cause, "ambiguous_multiple_cards");
+  assert.equal(evaluation.options[0].providerId, "card");
+  assert.equal(evaluation.options[0].selection.eligibleCardIds.length, 2);
+  assert.ok(result, "the decision result is correlated with the canonical bot_work transition");
+  assert.equal(result.decisionId, decisionContext.decisionId);
+  assert.equal(result.mutationCommitted, false);
+  assert.equal(result.workStatus, "claimed", "the persisted terminal status follows in the same decisionId transition event");
   const repeated = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
   assert.deepEqual(repeated.data.diagnostics, [], "unsupported terminal work does not duplicate logs on later wakes");
   const publicRoom = (await state(code, token)).data;
@@ -360,10 +374,157 @@ test("unsupported bot responses stop without advancing and reveal no private wor
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
+test("a Bot answers an ordinary Attack with its single canonical physical Dodge", async () => {
+  const { code, token, hostId, bots, room } = await createBotGame();
+  const bot = bots[0];
+  const host = room.players.find((player) => player.id === hostId);
+  // Keep this a plain physical-card response even when random Hero assignment
+  // would otherwise add a Cao Cao Hujia provider or a converted-card skill.
+  sql(`UPDATE players SET hero='sun-quan' WHERE id IN (${quote(hostId)}, ${quote(bot.id)})`);
+  setHand(hostId, [card("Attack", "scheduler-one-dodge-attack")], 4, 4);
+  setHand(bot.id, [card("Dodge", "scheduler-one-dodge-card")], 4, 4);
+  setTurn(code, host.seat, "play");
+  const attack = await requestAndSettle("play_card", { code, token, cardId: "attack-scheduler-one-dodge-attack", targetId: bot.id });
+  assert.equal(attack.status, 200, JSON.stringify(attack.data));
+  const hpBefore = attack.data.room.players.find((player) => player.id === bot.id).hp;
+
+  const result = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
+  assert.equal(result.data.consumed, 1, JSON.stringify({
+    consumed: result.data.consumed,
+    unsupported: result.data.unsupported,
+    decisions: result.data.decisionDiagnostics.map(({ event, cause, selectedAction, response, options }) => ({
+      event, cause, selectedAction, requiredCount: response?.requiredCount,
+      providers: options?.map((option) => option.providerId),
+    })),
+  }));
+  assert.equal(result.data.unsupported, 0);
+  const contextEvent = result.data.decisionDiagnostics.find((event) => event.event === "bot_decision_context");
+  const evaluation = result.data.decisionDiagnostics.find((event) => event.event === "bot_decision_evaluation");
+  const resultEvent = result.data.decisionDiagnostics.find((event) => event.event === "bot_decision_result");
+  assert.ok(contextEvent, "decision context is present");
+  assert.equal(contextEvent.hand.length, 1);
+  assert.ok(contextEvent.hand[0].cardId === "dodge-scheduler-one-dodge-card", "the full physical Bot card ID is present only in the captured diagnostic event");
+  assert.equal(contextEvent.hand[0].canonicalKind, "Dodge");
+  assert.equal(contextEvent.response.continuationKind, "attack");
+  assert.equal(contextEvent.response.requirement, "dodge");
+  assert.equal(evaluation.selectedAction, "respond");
+  assert.equal(evaluation.cause, "single_physical_dodge_supported");
+  assert.equal(evaluation.options.length, 1);
+  assert.equal(evaluation.options[0].providerId, "card");
+  assert.ok(evaluation.options[0].selection.eligibleCardIds[0] === "dodge-scheduler-one-dodge-card", "the canonical candidate is linked to that same physical card");
+  assert.equal(resultEvent.decisionId, contextEvent.decisionId);
+  assert.equal(resultEvent.selectedAction, "respond");
+  assert.equal(resultEvent.httpStatus, 200);
+  assert.equal(resultEvent.canonicalOutcome, "accepted");
+  assert.equal(resultEvent.mutationCommitted, true);
+  assert.equal(resultEvent.before.hand.length, 1);
+  assert.equal(resultEvent.after.hand.length, 0);
+  assert.equal(resultEvent.before.hp, resultEvent.after.hp);
+  assert.equal(result.data.diagnostics.filter((event) => event.event === "bot_work_transition" && event.decisionId === contextEvent.decisionId && event.nextStatus === "consumed").length, 1);
+
+  const publicRoom = (await state(code, token)).data;
+  assert.equal(publicRoom.players.find((player) => player.id === bot.id).hp, hpBefore, "canonical Dodge avoids damage");
+  assert.equal(publicRoom.players.find((player) => player.id === bot.id).handCount, 0, "the Bot no longer holds the response card");
+  assert.equal(publicRoom.players.find((player) => player.id === bot.id).botStatus, "waiting_for_human", "the successful response clears the Bot work and returns control to the human turn");
+  const serialized = JSON.stringify(publicRoom);
+  assert.equal(serialized.includes(contextEvent.decisionId), false, "private decision correlation never enters gameplay JSON");
+  assert.equal(serialized.includes("bot_decision_context"), false, "private server diagnostics never enter gameplay JSON");
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("a multi-Dodge Attack remains unsupported without spending either card", async () => {
+  const { code, token, hostId, bots, room } = await createBotGame();
+  const bot = bots[0];
+  const host = room.players.find((player) => player.id === hostId);
+  setHand(hostId, [card("Attack", "scheduler-multi-dodge-attack")], 4, 4);
+  setHand(bot.id, [card("Dodge", "scheduler-multi-dodge-a"), card("Dodge", "scheduler-multi-dodge-b")], 4, 4);
+  setTurn(code, host.seat, "play");
+  const attack = await requestAndSettle("play_card", { code, token, cardId: "attack-scheduler-multi-dodge-attack", targetId: bot.id });
+  assert.equal(attack.status, 200, JSON.stringify(attack.data));
+  const pending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(code)}`));
+  pending.requirement.count = 2;
+  pending.continuation.requiredDodgeCount = 2;
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(pending))} WHERE code=${quote(code)}`);
+  const hpBefore = attack.data.room.players.find((player) => player.id === bot.id).hp;
+
+  const unsupported = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
+  assert.equal(unsupported.data.unsupported, 1);
+  const evaluation = unsupported.data.decisionDiagnostics.find((event) => event.event === "bot_decision_evaluation");
+  const result = unsupported.data.decisionDiagnostics.find((event) => event.event === "bot_decision_result");
+  assert.equal(evaluation.cause, "requires_multiple_dodges");
+  assert.equal(evaluation.selectedAction, null);
+  assert.equal(result.mutationCommitted, false);
+  assert.equal(result.after.hand.length, 2);
+  assert.equal((await state(code, token)).data.players.find((player) => player.id === bot.id).hp, hpBefore);
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("concurrent scheduler wakeups consume one eligible Dodge at most once", async () => {
+  const { code, token, hostId, bots, room } = await createBotGame();
+  const bot = bots[0];
+  const host = room.players.find((player) => player.id === hostId);
+  sql(`UPDATE players SET hero='sun-quan' WHERE id IN (${quote(hostId)}, ${quote(bot.id)})`);
+  setHand(hostId, [card("Attack", "scheduler-race-attack")], 4, 4);
+  setHand(bot.id, [card("Dodge", "scheduler-race-dodge")], 4, 4);
+  setTurn(code, host.seat, "play");
+  const attack = await requestAndSettle("play_card", { code, token, cardId: "attack-scheduler-race-attack", targetId: bot.id });
+  assert.equal(attack.status, 200, JSON.stringify(attack.data));
+  const hpBefore = attack.data.room.players.find((player) => player.id === bot.id).hp;
+
+  const wakeups = await Promise.all([
+    runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true }),
+    runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true }),
+  ]);
+  const initialConsumed = wakeups.reduce((sum, wake) => sum + wake.data.consumed, 0);
+  assert.ok(initialConsumed <= 1, "concurrent scheduler wakeups cannot consume the same Dodge more than once");
+  if (initialConsumed === 0) wakeups.push(await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true }));
+  assert.equal(wakeups.reduce((sum, wake) => sum + wake.data.consumed, 0), 1, JSON.stringify(wakeups.map((wake) => ({
+    consumed: wake.data.consumed, unsupported: wake.data.unsupported, stale: wake.data.stale, failed: wake.data.failed,
+    skippedLocked: wake.data.skippedLocked, steps: wake.data.steps,
+    decisions: wake.data.decisionDiagnostics.map(({ event, cause, selectedAction, httpStatus }) => ({ event, cause, selectedAction, httpStatus })),
+  }))));
+  const consumedTransitions = wakeups.flatMap((wake) => wake.data.diagnostics)
+    .filter((event) => event.event === "bot_work_transition" && event.nextStatus === "consumed");
+  assert.equal(consumedTransitions.length, 1);
+  const publicRoom = (await state(code, token)).data;
+  assert.equal(publicRoom.players.find((player) => player.id === bot.id).hp, hpBefore);
+  assert.equal(query(`SELECT COUNT(*) FROM players WHERE id=${quote(bot.id)} AND hand_json='[]'`), "1");
+  assert.equal(query(`SELECT COUNT(*) FROM bot_work WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)}) AND status='consumed'`), "1");
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("skill-converted Dodge stays unsupported and is classified without spending the card", async () => {
+  const { code, token, hostId, bots, room } = await createBotGame();
+  const bot = bots[0];
+  const host = room.players.find((player) => player.id === hostId);
+  sql(`UPDATE players SET hero='sun-quan' WHERE id=${quote(hostId)}`);
+  sql(`UPDATE players SET hero='zhen-ji' WHERE id=${quote(bot.id)}`);
+  setHand(hostId, [card("Attack", "scheduler-skill-attack")], 4, 4);
+  setHand(bot.id, [card("Attack", "scheduler-skill-black-card", "♣")], 4, 4);
+  setTurn(code, host.seat, "play");
+  const attack = await requestAndSettle("play_card", { code, token, cardId: "attack-scheduler-skill-attack", targetId: bot.id });
+  assert.equal(attack.status, 200, JSON.stringify(attack.data));
+  const hpBefore = attack.data.room.players.find((player) => player.id === bot.id).hp;
+
+  const unsupported = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
+  assert.equal(unsupported.data.unsupported, 1);
+  const evaluation = unsupported.data.decisionDiagnostics.find((event) => event.event === "bot_decision_evaluation");
+  assert.equal(evaluation.cause, "converted_skill_only", JSON.stringify({
+    cause: evaluation.cause,
+    requiredCount: unsupported.data.decisionDiagnostics.find((event) => event.event === "bot_decision_context").response?.requiredCount,
+    providers: evaluation.options.map((option) => option.providerId),
+  }));
+  assert.equal(evaluation.options[0].providerId, "zhen_ji_black_card_dodge");
+  assert.equal((await state(code, token)).data.players.find((player) => player.id === bot.id).hp, hpBefore);
+  assert.equal(query(`SELECT hand_json FROM players WHERE id=${quote(bot.id)}`).includes("attack-scheduler-skill-black-card"), true);
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
 test("a bot's canonical empty-response decline logs one consumed transition", async () => {
   const { code, token, hostId, bots, room } = await createBotGame();
   const bot = bots[0];
   const host = room.players.find((player) => player.id === hostId);
+  sql(`UPDATE players SET hero='sun-quan' WHERE id IN (${quote(hostId)}, ${quote(bot.id)})`);
   setHand(hostId, [card("Attack", "scheduler-decline-attack")], 4, 4);
   setHand(bot.id, [card("Peach", "scheduler-decline-peach")], 4, 4);
   setTurn(code, host.seat, "play");
@@ -372,7 +533,21 @@ test("a bot's canonical empty-response decline logs one consumed transition", as
   const hpBefore = attack.data.room.players.find((player) => player.id === bot.id).hp;
 
   const declined = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
-  assert.equal(declined.data.consumed, 1);
+  assert.equal(declined.data.consumed, 1, JSON.stringify({
+    consumed: declined.data.consumed,
+    unsupported: declined.data.unsupported,
+    stale: declined.data.stale,
+    failed: declined.data.failed,
+    decisions: declined.data.decisionDiagnostics.map(({ event, selectedAction, cause, httpStatus, canonicalOutcome, workStatus }) => ({ event, selectedAction, cause, httpStatus, canonicalOutcome, workStatus })),
+    transitions: declined.data.diagnostics.map(({ event, nextStatus, errorCode }) => ({ event, nextStatus, errorCode })),
+  }));
+  const evaluation = declined.data.decisionDiagnostics.find((event) => event.event === "bot_decision_evaluation");
+  const result = declined.data.decisionDiagnostics.find((event) => event.event === "bot_decision_result");
+  assert.equal(evaluation.cause, "no_legal_defense_declined");
+  assert.equal(evaluation.selectedAction, "decline_response");
+  assert.equal(result.before.hand.length, 1);
+  assert.equal(result.after.hand.length, 1);
+  assert.equal(result.mutationCommitted, true, "declining is correlated with canonical HP/pending progression");
   const declinedEvent = declined.data.diagnostics.find((event) => event.event === "bot_work_transition" && event.nextStatus === "consumed");
   assert.ok(declinedEvent, "the canonical decline emits one consumed transition");
   assert.equal((await state(code, token)).data.players.find((player) => player.id === bot.id).hp, hpBefore - 1,

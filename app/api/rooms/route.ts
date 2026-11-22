@@ -42,6 +42,7 @@ import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presenta
 import { childCausalFrame, contextFor, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
 import { advanceCausalSemanticCheckpoint } from "../causal-envelope";
 import { isBotActionPrincipal, type BotActionPrincipal } from "../../../worker/bot-principal";
+import { emitBotDecisionDiagnostic, type BotDecisionCard, type BotDecisionDiagnosticContext, type BotDecisionOption } from "../../../worker/bot-diagnostics";
 import { appendSequencedLogRecord, publicEventSequencesFromLog } from "../../../game/public-log-sequence";
 import { PRIVATE_HAND_REVEAL_DURATION_MS } from "../../../game/private-hand.js";
 
@@ -578,6 +579,52 @@ function responseContext(player?: PlayerRow | null, players: PlayerRow[] = [], t
     ? playersInTurnOrder(players, player.seat).slice(1).filter((candidate) => candidate.alive).map((candidate) => ({ id: candidate.id, hero: candidate.hero, hand: parse<Card[]>(candidate.hand_json, []), equipment: equipmentCards(candidate) }))
     : [];
   return { hand: parse<Card[]>(player?.hand_json ?? null, []), equipment: equipmentCards(player), hero: player?.hero, role: player?.role, playerId: player?.id, turnPlayerId: players.find((candidate) => candidate.seat === turnSeat)?.id, delegates };
+}
+function botDiagnosticCard(card: Card): BotDecisionCard {
+  let canonicalName = String(card?.kind ?? "Unknown");
+  try { canonicalName = cardDefinition(card.kind).name; } catch { /* The bounded diagnostic emitter records incomplete malformed card data. */ }
+  return { cardId: String(card?.id ?? ""), canonicalKind: String(card?.kind ?? ""), canonicalName, suit: String(card?.suit ?? ""), rank: String(card?.rank ?? "") };
+}
+function pendingKindForDiagnostic(pending: Pending | null) { return pending?.kind ?? null; }
+function seatForDiagnostic(players: PlayerRow[], playerId: string | null | undefined) {
+  return players.find((player) => player.id === playerId)?.seat ?? null;
+}
+function responseForBotDiagnostics(pending: Pending | null, actor: PlayerRow, players: PlayerRow[], turnSeat: number | null) {
+  if (pending?.kind === "response") {
+    const continuation = pending.continuation;
+    const attack = continuation.kind === "attack" ? continuation : null;
+    return {
+      decision: responseDecisionFor(pending, responseContext(actor, players, turnSeat)),
+      context: {
+        continuationKind: continuation.kind,
+        requirement: pending.requirement.kind,
+        requiredCount: pending.requirement.kind === "dodge" ? pending.requirement.count ?? attack?.requiredDodgeCount ?? 1 : pending.requirement.count ?? 1,
+        attackOrigin: attack?.origin ?? null,
+        sourceSeat: seatForDiagnostic(players, attack?.sourceId ?? ("sourceId" in continuation ? continuation.sourceId : null)),
+        targetSeat: seatForDiagnostic(players, attack?.targetId ?? ("targetId" in continuation ? continuation.targetId : null)),
+        attackCardKind: null,
+        attackCardSuit: attack?.physicalSuit ?? null,
+        attackCardRank: null,
+      },
+    };
+  }
+  if (pending?.kind === "dying") {
+    return {
+      decision: responseDecisionFor(pending, responseContext(actor, players, turnSeat)),
+      context: {
+        continuationKind: "dying",
+        requirement: "peach",
+        requiredCount: 1,
+        attackOrigin: pending.origin ?? null,
+        sourceSeat: seatForDiagnostic(players, pending.sourceId),
+        targetSeat: seatForDiagnostic(players, pending.targetId),
+        attackCardKind: null,
+        attackCardSuit: null,
+        attackCardRank: null,
+      },
+    };
+  }
+  return { decision: null, context: undefined };
 }
 function heroDisplayName(player?: PlayerRow | null) { return player ? STANDARD_HEROES.find((hero) => hero.id === player.hero)?.name ?? player.name : "The requester"; }
 function delegatedResponseReason(response: ResponsePending, viewer: PlayerRow | undefined, players: PlayerRow[]) {
@@ -8435,7 +8482,7 @@ export async function POST(request: Request, routeContext?: unknown) {
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
   const uxTraceId = typeof body.uxTraceId === "string" && /^[a-zA-Z0-9-]{8,80}$/.test(body.uxTraceId) ? body.uxTraceId : null;
   let action = String(body.action ?? "");
-  const internalBotActions = new Set(["bot_step", "choose_hero", "draw", "end_turn", "discard_cards", "decline_response", "skip_rescue"]);
+  const internalBotActions = new Set(["bot_step", "choose_hero", "draw", "end_turn", "discard_cards", "decline_response", "respond", "skip_rescue"]);
   if (action === "bot_step" && !internalBot) return json({ error: "Unknown action." }, 404);
   if (internalBot && (!botDemoEnabled() || !internalBotActions.has(action))) return json({ error: "The server bot principal cannot perform this action." }, 403);
   if (internalBot && (!/^[0-9a-f-]{36}$/i.test(internalBot.roomId) || !/^[0-9a-f-]{36}$/i.test(internalBot.botId)
@@ -8536,7 +8583,7 @@ export async function POST(request: Request, routeContext?: unknown) {
     }
     if (expectedRevision !== internalBot.actionRevision) return json({ error: "The bot action revision is stale." , stale: true }, 409);
     if (room.status === "heroes" && action !== "bot_step" && action !== "choose_hero"
-      || room.status === "playing" && action !== "bot_step" && !["draw", "end_turn", "discard_cards", "decline_response", "skip_rescue"].includes(action)) {
+      || room.status === "playing" && action !== "bot_step" && !["draw", "end_turn", "discard_cards", "decline_response", "respond", "skip_rescue"].includes(action)) {
       return json({ error: "The internal bot action does not match the current game stage." }, 409);
     }
     if (room.status !== "heroes" && room.status !== "playing") return json({ error: "The bot room is not in an actionable stage." }, 409);
@@ -8544,35 +8591,208 @@ export async function POST(request: Request, routeContext?: unknown) {
   if (action === "bot_step" && internalBot) {
     const actor = sessionPlayers[0];
     if (!actor) return json({ error: "The bot actor is unavailable." }, 409);
+    const diagnosticContext: BotDecisionDiagnosticContext = {
+      enabled: internalBot.diagnostics?.enabled === true,
+      privateStagingEnabled: internalBot.diagnostics?.privateStagingEnabled === true,
+      scriptVersion: internalBot.diagnostics?.scriptVersion,
+      wakeSource: internalBot.diagnostics?.wakeSource,
+      sink: internalBot.diagnostics?.sink,
+    };
+    const ownHand = parse<Card[]>(actor.hand_json, []);
+    const ownEquipment = equipmentCards(actor);
+    const responseData = responseForBotDiagnostics(pendingForController, actor, allRoomPlayers, room.turn_seat);
+    const responseDecision = responseData.decision;
+    const ownCardIds = new Set(ownHand.map((card) => card.id));
+    const diagnosticOptions: BotDecisionOption[] = responseDecision?.options.map((option) => ({
+      providerId: option.providerId,
+      satisfies: option.satisfies,
+      activation: option.activation,
+      selection: option.selection?.type === "cards" ? {
+        min: option.selection.min,
+        max: option.selection.max,
+        eligibleCardIds: option.selection.eligibleCardIds.filter((cardId) => ownCardIds.has(cardId)),
+      } : null,
+      ...(option.playedAs ? { playedAs: option.playedAs } : {}),
+    })) ?? [];
+    const before = {
+      hp: actor.hp,
+      hand: ownHand.map(botDiagnosticCard),
+      phase: room.phase,
+      pendingKind: pendingKindForDiagnostic(pendingForController),
+    };
+    const beforeFingerprint = JSON.stringify({ hp: before.hp, hand: ownHand.map((card) => card.id), phase: before.phase, pending: room.pending_json });
+    const decisionStartedAt = Date.now();
+    const decisionPath = pendingForController?.kind === "response" || pendingForController?.kind === "dying"
+      ? "bot_step.response"
+      : room.status === "heroes" ? "bot_step.hero_selection" : `bot_step.${room.phase ?? "unknown"}`;
+    emitBotDecisionDiagnostic(diagnosticContext, {
+      event: "bot_decision_context",
+      roomCode: code,
+      decisionId: internalBot.decisionId,
+      actionRevision: internalBot.actionRevision,
+      botSeat: actor.seat,
+      hero: actor.hero,
+      role: actor.role,
+      hp: actor.hp,
+      maxHp: actor.max_hp,
+      phase: room.phase,
+      pendingKind: pendingKindForDiagnostic(pendingForController),
+      hand: ownHand.map(botDiagnosticCard),
+      equipment: ownEquipment.map(botDiagnosticCard),
+      activeSkills: STANDARD_HEROES.find((hero) => hero.id === actor.hero)?.skills.map((skill) => skill.name) ?? [],
+      ...(responseData.context ? { response: responseData.context } : {}),
+    });
+    const finishDecision = async (response: Response, selectedAction: string | null, cause: string) => {
+      let responseBody: { state?: unknown; code?: unknown; error?: unknown; stale?: unknown } | null = null;
+      try { responseBody = await response.clone().json() as typeof responseBody; } catch { /* Canonical outcome below remains fixed and body-free. */ }
+      let currentRoom: { phase: string | null; pending_json: string | null } | null = null;
+      let currentActor: { hp: number | null; hand_json: string | null } | null = null;
+      let work: { status: string; error_code: string | null; attempts: number } | null = null;
+      try {
+        [currentRoom, currentActor, work] = await Promise.all([
+          db.prepare("SELECT phase, pending_json FROM rooms WHERE id = ?").bind(room.id).first<{ phase: string | null; pending_json: string | null }>(),
+          db.prepare("SELECT hp, hand_json FROM players WHERE room_id = ? AND id = ? AND controller_type = 'bot'").bind(room.id, actor.id).first<{ hp: number | null; hand_json: string | null }>(),
+          db.prepare("SELECT status, error_code, attempts FROM bot_work WHERE decision_id = ? AND room_id = ?").bind(internalBot.decisionId, room.id).first<{ status: string; error_code: string | null; attempts: number }>(),
+        ]);
+      } catch {
+        emitBotDecisionDiagnostic(diagnosticContext, {
+          event: "diagnostic_incomplete", roomCode: code, decisionId: internalBot.decisionId,
+          actionRevision: internalBot.actionRevision, botSeat: actor.seat, hero: actor.hero, role: actor.role,
+          decisionPath, expectedHandCount: ownHand.length, loggedHandCount: 0,
+          missingFields: ["post_dispatch_state", "bot_work_transition"],
+        });
+        return response;
+      }
+      const afterHand = parse<Card[]>(currentActor?.hand_json ?? null, []);
+      const afterPending = parsePersistedPending(currentRoom?.pending_json ?? null);
+      const after = {
+        hp: currentActor?.hp ?? null,
+        hand: afterHand.map(botDiagnosticCard),
+        phase: currentRoom?.phase ?? null,
+        pendingKind: pendingKindForDiagnostic(afterPending),
+      };
+      const afterFingerprint = JSON.stringify({ hp: after.hp, hand: afterHand.map((card) => card.id), phase: after.phase, pending: currentRoom?.pending_json ?? null });
+      const causeAfterDispatch = responseBody?.stale === true ? "stale_action_revision"
+        : responseBody?.error && response.status < 500 ? "canonical_validation_rejected" : cause;
+      const canonicalOutcome = responseBody?.state === "unsupported" ? "unsupported"
+        : responseBody?.stale === true || response.status >= 400 && response.status < 500 ? "canonical_validation_rejected"
+          : response.ok ? "accepted" : "failed";
+      emitBotDecisionDiagnostic(diagnosticContext, {
+        event: "bot_decision_result",
+        roomCode: code,
+        decisionId: internalBot.decisionId,
+        actionRevision: internalBot.actionRevision,
+        botSeat: actor.seat,
+        hero: actor.hero,
+        role: actor.role,
+        decisionPath,
+        selectedAction,
+        cause: causeAfterDispatch,
+        httpStatus: response.status,
+        canonicalOutcome,
+        mutationCommitted: beforeFingerprint !== afterFingerprint,
+        before,
+        after,
+        workStatus: work?.status ?? null,
+        workErrorCode: work?.error_code ?? null,
+        attempts: work?.attempts ?? null,
+        elapsedMs: Date.now() - decisionStartedAt,
+      });
+      return response;
+    };
+    const emitEvaluation = (selectedAction: string | null, cause: string) => emitBotDecisionDiagnostic(diagnosticContext, {
+      event: "bot_decision_evaluation",
+      roomCode: code,
+      decisionId: internalBot.decisionId,
+      actionRevision: internalBot.actionRevision,
+      botSeat: actor.seat,
+      hero: actor.hero,
+      role: actor.role,
+      phase: room.phase,
+      pendingKind: pendingKindForDiagnostic(pendingForController),
+      decisionPath,
+      options: diagnosticOptions,
+      selectedAction,
+      cause,
+    });
     if (room.status === "heroes") {
       const selector = nextGeneralSelector(allRoomPlayers);
       const hero = selector?.id === actor.id ? currentHeroOptions(selector.hero_options_json)[0] : null;
-      if (!hero) return json({ state: "unsupported", code: "UNSUPPORTED_BOT_DECISION", actionRevision: internalBot.actionRevision });
+      if (!hero) {
+        emitEvaluation(null, "no_supported_action");
+        return finishDecision(json({ state: "unsupported", code: "UNSUPPORTED_BOT_DECISION", actionRevision: internalBot.actionRevision }), null, "no_supported_action");
+      }
       const nextBody = { action: "choose_hero", code, token: "", heroId: hero.id };
-      return POST(new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(nextBody) }), internalBot satisfies BotActionPrincipal);
+      emitEvaluation("choose_hero", "non_response_decision");
+      let result: Response;
+      try {
+        result = await POST(new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(nextBody) }), internalBot satisfies BotActionPrincipal);
+      } catch {
+        return finishDecision(json({ error: "The canonical Bot action dispatch failed." }, 500), "choose_hero", "dispatch_threw");
+      }
+      return finishDecision(result, "choose_hero", "non_response_decision");
     }
 
     const legalActions = legalActionsFor(room, actor, pendingForController, allRoomPlayers);
     let nextAction: string | null = null;
     let actionFields: Record<string, unknown> = {};
+    let decisionCause = "no_supported_action";
     if (room.phase?.startsWith("draw") && pendingForController === null && legalActions.includes("draw")) {
       const delayed = takeNextDelayedCard(parse<Card[]>(actor.judgement_json, []))?.delayed ?? null;
-      if (!delayed) nextAction = "draw";
+      if (!delayed) {
+        nextAction = "draw";
+        decisionCause = "non_response_decision";
+      }
     } else if (room.phase === "discard" && pendingForController === null && legalActions.includes("discard_cards")) {
       const hand = parse<Card[]>(actor.hand_json, []);
       const required = Math.max(0, hand.length - (actor.hp ?? 0));
       nextAction = "discard_cards";
       actionFields = { cardIds: hand.slice(0, required).map((card) => card.id) };
+      decisionCause = "non_response_decision";
     } else if (room.phase?.startsWith("play") && pendingForController === null && legalActions.includes("end_turn")) {
       nextAction = "end_turn";
+      decisionCause = "non_response_decision";
     } else if (pendingForController?.kind === "response" && legalActions.includes("decline_response")) {
-      const response = responseDecisionFor(pendingForController, responseContext(actor, allRoomPlayers, room.turn_seat));
-      if (!(response?.options.length)) nextAction = "decline_response";
+      const options = responseDecision?.options ?? [];
+      const continuation = pendingForController.continuation;
+      const requiredDodgeCount = pendingForController.requirement.kind === "dodge"
+        ? pendingForController.requirement.count ?? (continuation.kind === "attack" ? continuation.requiredDodgeCount : undefined) ?? 1
+        : 0;
+      if (!options.length) {
+        nextAction = "decline_response";
+        decisionCause = "no_legal_defense_declined";
+      } else if (continuation.kind === "attack" && continuation.origin === "card"
+        && pendingForController.requirement.kind === "dodge" && requiredDodgeCount !== 1) {
+        decisionCause = "requires_multiple_dodges";
+      } else if (continuation.kind === "attack" && continuation.origin === "card"
+        && pendingForController.requirement.kind === "dodge" && requiredDodgeCount === 1) {
+        const option = options.length === 1 ? options[0] : null;
+        const eligibleIds = option?.selection?.type === "cards" ? option.selection.eligibleCardIds : [];
+        const eligibleDodge = eligibleIds.length === 1 ? ownHand.find((card) => card.id === eligibleIds[0] && card.kind === "Dodge") : null;
+        if (option?.providerId === "card" && option.satisfies === "dodge" && option.playedAs === undefined
+          && option.selection?.type === "cards" && option.selection.min === 1 && option.selection.max === 1 && eligibleDodge) {
+          nextAction = "respond";
+          actionFields = { providerId: "card", cardId: eligibleDodge.id };
+          decisionCause = "single_physical_dodge_supported";
+        } else if (options.length > 1 || eligibleIds.length > 1) {
+          decisionCause = "ambiguous_multiple_cards";
+        } else if (options.some((candidate) => candidate.providerId !== "card" || candidate.playedAs !== undefined)) {
+          decisionCause = "converted_skill_only";
+        } else {
+          decisionCause = "single_physical_dodge_available_but_unsupported";
+        }
+      } else {
+        decisionCause = options.some((candidate) => candidate.providerId !== "card" || candidate.playedAs !== undefined)
+          ? "converted_skill_only" : "unsupported_pending_family";
+      }
     } else if (pendingForController?.kind === "dying" && pendingForController.actorId === actor.id && legalActions.includes("skip_rescue")) {
-      const response = responseDecisionFor(pendingForController, responseContext(actor, allRoomPlayers, room.turn_seat));
-      if (!(response?.options.length)) nextAction = "skip_rescue";
+      if (!(responseDecision?.options.length)) {
+        nextAction = "skip_rescue";
+        decisionCause = "no_legal_defense_declined";
+      }
     }
-    if (!nextAction) return json({ state: "unsupported", code: "UNSUPPORTED_BOT_DECISION", actionRevision: internalBot.actionRevision });
+    emitEvaluation(nextAction, decisionCause);
+    if (!nextAction) return finishDecision(json({ state: "unsupported", code: "UNSUPPORTED_BOT_DECISION", actionRevision: internalBot.actionRevision }), null, decisionCause);
     const expectedPendingKind = pendingForController?.kind === "response" || pendingForController?.kind === "negation_window"
       ? "response"
       : asTriggerPending(pendingForController) ? "trigger" : pendingForController?.kind ?? null;
@@ -8589,7 +8809,13 @@ export async function POST(request: Request, routeContext?: unknown) {
         actorId: actionPlayerIdForController ?? null,
       },
     };
-    return POST(new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(nextBody) }), internalBot satisfies BotActionPrincipal);
+    let result: Response;
+    try {
+      result = await POST(new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(nextBody) }), internalBot satisfies BotActionPrincipal);
+    } catch {
+      return finishDecision(json({ error: "The canonical Bot action dispatch failed." }, 500), nextAction, "dispatch_threw");
+    }
+    return finishDecision(result, nextAction, decisionCause);
   }
   if (action === "add_bot" || action === "remove_bot") {
     if (!botDemoEnabled()) return json({ error: "The bot demo is not enabled in this environment." }, 404);

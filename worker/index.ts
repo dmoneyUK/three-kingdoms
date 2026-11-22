@@ -11,6 +11,8 @@ interface Env {
   WTK_TEST_CAPABILITIES?: string;
   BOT_DEMO_ENABLED?: string;
   BOT_DIAGNOSTICS_ENABLED?: string;
+  BOT_DIAGNOSTICS_PRIVATE_STAGING?: string;
+  CF_VERSION_METADATA?: { id: string; tag?: string; timestamp?: string };
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -34,6 +36,9 @@ async function setupTestCapabilities(env: Env) {
 function botSchedulerDiagnostics(env: Env, wakeSource: BotWakeSource, sink?: BotSchedulerDiagnosticContext["sink"]): BotSchedulerDiagnosticContext {
   return {
     enabled: env.BOT_DIAGNOSTICS_ENABLED === "true",
+    privateStagingEnabled: env.BOT_DIAGNOSTICS_PRIVATE_STAGING === "true"
+      || env.WTK_TEST_CAPABILITIES === "1" && Boolean(sink),
+    scriptVersion: env.CF_VERSION_METADATA?.id ?? (env.WTK_TEST_CAPABILITIES === "1" && sink ? "local-test" : "unavailable"),
     wakeSource,
     maxSuccessfulTransitions: BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP * 2,
     successfulTransitionsLogged: 0,
@@ -130,9 +135,13 @@ const worker = {
       }, diagnostics, body.simulateDispatchError === true
         ? async () => { throw new Error("test-only dispatch exception token=must-not-be-logged"); }
         : undefined));
+      const captured = body.captureDiagnostics === true ? capturedLines.map((line) => JSON.parse(line) as { event?: string }) : null;
       return Response.json({
         ...(outcome ?? {}),
-        ...(body.captureDiagnostics === true ? { diagnostics: capturedLines.map((line) => JSON.parse(line) as unknown) } : {}),
+        ...(captured ? {
+          diagnostics: captured.filter((event) => ["bot_work_transition", "bot_scheduler_summary", "bot_scheduler_error"].includes(event.event ?? "")),
+          decisionDiagnostics: captured.filter((event) => ["bot_decision_context", "bot_decision_evaluation", "bot_decision_result", "diagnostic_incomplete"].includes(event.event ?? "")),
+        } : {}),
       });
     }
     if (url.pathname === "/__test/enable-seeded-controller" && env.WTK_TEST_CAPABILITIES === "1" && request.method === "POST") {
