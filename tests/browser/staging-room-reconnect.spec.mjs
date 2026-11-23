@@ -308,20 +308,30 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
       turnSeat: currentRoom.turnSeat,
       botStatuses: currentRoom.players.filter(({ isBot }) => isBot).map(({ seat, botStatus }) => ({ seat, botStatus })),
     })).toEqual(bots.map((bot) => bot.name));
-    currentRoom = await waitForRoom(request, roomCode, created.token, (room) => room.status === "playing" && room.turnSeat === hostSeat && room.actionPlayerId === hostId && room.currentAction?.actorId === hostId && room.phase !== "draw", { timeoutMs: 30_000, label: "human turn after bot cycle" });
-    if (currentRoom.currentAction.legalActions.includes("end_turn")) {
-      await expect(page.getByRole("button", { name: "End", exact: true })).toBeEnabled({ timeout: 15_000 });
-    } else if (currentRoom.currentAction.legalActions.includes("discard_cards")) {
-      const host = currentRoom.players.find((player) => player.id === hostId);
-      const required = Math.max(0, currentRoom.myHand.length - (host?.hp ?? currentRoom.myHand.length));
-      await expect(page.getByRole("button", { name: `Discard ${required} selected` })).toBeVisible({ timeout: 15_000 });
-    } else if (currentRoom.currentAction.legalActions.includes("decline_trigger")) {
-      await expect(page.getByRole("button", { name: "Skip", exact: true })).toBeEnabled({ timeout: 15_000 });
-    } else {
-      throw new Error(`Unsupported human UI action at return from bot cycle: ${currentRoom.currentAction.kind}`);
+    currentRoom = await waitForRoom(request, roomCode, created.token, (room) => {
+      const host = room.players.find((player) => player.id === hostId);
+      return room.status === "finished"
+        || (room.status === "playing" && host?.alive === false)
+        || (room.status === "playing" && room.turnSeat === hostSeat && room.actionPlayerId === hostId
+          && room.currentAction?.actorId === hostId && room.phase !== "draw");
+    }, { timeoutMs: 30_000, label: "human turn or defeated observer after bot cycle" });
+    const hostAfterBotCycle = currentRoom.players.find((player) => player.id === hostId);
+    if (currentRoom.status === "playing" && hostAfterBotCycle?.alive !== false) {
+      if (currentRoom.currentAction.legalActions.includes("end_turn")) {
+        await expect(page.getByRole("button", { name: "End", exact: true })).toBeEnabled({ timeout: 15_000 });
+      } else if (currentRoom.currentAction.legalActions.includes("discard_cards")) {
+        const required = Math.max(0, currentRoom.myHand.length - (hostAfterBotCycle?.hp ?? currentRoom.myHand.length));
+        await expect(page.getByRole("button", { name: `Discard ${required} selected` })).toBeVisible({ timeout: 15_000 });
+      } else if (currentRoom.currentAction.legalActions.includes("decline_trigger")) {
+        await expect(page.getByRole("button", { name: "Skip", exact: true })).toBeEnabled({ timeout: 15_000 });
+      } else {
+        throw new Error(`Unsupported human UI action at return from bot cycle: ${currentRoom.currentAction.kind}`);
+      }
+      expect(currentRoom.players.filter((player) => player.isBot).every((player) => player.botStatus === "waiting_for_human")).toBe(true);
+    } else if (currentRoom.status === "playing") {
+      expect(hostAfterBotCycle?.alive).toBe(false);
     }
     expect(currentRoom.players.filter((player) => player.isBot)).toHaveLength(3);
-    expect(currentRoom.players.filter((player) => player.isBot).every((player) => player.botStatus === "waiting_for_human")).toBe(true);
     const humanTokenAfterBots = await page.evaluate(() => JSON.parse(localStorage.getItem("three-realms-session") ?? "null")?.token);
     expect(humanTokenAfterBots).toBe(created.token);
     await page.screenshot({ path: testInfo.outputPath("staging-bot-demo.png"), fullPage: true });
@@ -345,7 +355,7 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
   await expect(page.locator(".game-shell")).toBeVisible();
   if (expectedBuildSha) await expect(page.locator(".stage-system-build-sha")).toHaveAttribute("data-build-sha", expectedBuildSha);
 
-  const stateBeforeRefresh = await waitForRoom(request, roomCode, created.token, (room) => room.status === "playing");
+  const stateBeforeRefresh = await waitForRoom(request, roomCode, created.token, (room) => room.status === "playing" || room.status === "finished");
   const rejoinResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return url.pathname === "/api/rooms"
@@ -359,8 +369,16 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
   const rejoined = await rejoinResponse.json();
   const rejoinedRoom = rejoined.room ?? rejoined;
   expect(rejoinedRoom.code).toBe(roomCode);
-  expect(rejoinedRoom.status).toBe("playing");
-  expect(rejoinedRoom.actionRevision).toBe(stateBeforeRefresh.actionRevision);
+  expect(rejoinedRoom.status).toBe(stateBeforeRefresh.status);
+  const hostBeforeRefresh = stateBeforeRefresh.players.find((player) => player.id === hostId);
+  const hostAfterRefresh = rejoinedRoom.players.find((player) => player.id === hostId);
+  if (hostBeforeRefresh?.alive === false) expect(hostAfterRefresh?.alive).toBe(false);
+  if (stateBeforeRefresh.status === "playing" && hostBeforeRefresh?.alive !== false
+    && stateBeforeRefresh.currentAction?.actorId === hostId) {
+    expect(rejoinedRoom.actionRevision).toBe(stateBeforeRefresh.actionRevision, "rejoining an active human decision does not advance the room");
+  } else {
+    expect(rejoinedRoom.actionRevision).toBeGreaterThanOrEqual(stateBeforeRefresh.actionRevision);
+  }
   if (botDemoEnabled) expect(rejoinedRoom.players.filter((player) => player.isBot)).toHaveLength(3);
 
   await expect(page.locator(".game-shell")).toBeVisible();
