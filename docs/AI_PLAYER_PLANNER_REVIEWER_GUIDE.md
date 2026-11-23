@@ -98,9 +98,9 @@ In both loops, new instructions go **into the design**, not into `AI_PLAYER_HAND
 2. Inspect remote `feature/smart-bot-player` HEAD, latest commits/workflows, `AGENTS.md`, this guide, **complete latest** `docs/AI_PLAYER_DESIGN.md`, `docs/AI_PLAYER_AGENT_WORKFLOW.md` and, read-only, `AI_PLAYER_HANDOVER.md`. Read only relevant source/test files after task identification.
 3. Consult the current `main` Product Manager guide/status and recent PM-authored AI-design changes; check relevant `ux-v2` authority when there is an integration overlap. Apply §0A's impact classification before a verdict or next-task dispatch.
 4. From **design**, enumerate `PENDING_REVIEW`, `CHANGES_REQUESTED`, `BLOCKED`, `APPROVED`, `IN_PROGRESS`. Cross-check handover and remote commit history. Design task status alone and agent claims are **not proof** of completion.
-4. Independently inspect actual code diff(s), relevant source, GitHub Actions exact code SHA/job steps, current Staging deployment URL/version and appropriate testing evidence. Distinguish factual result, inference, missing verification. Do not pretend a Markdown-only tip commit passed CI.
-5. Report concise Chinese findings and the exact next action(s): spec change, acceptance decision needed, blocked credential, fix request, or approved next executable task. Preserve unknowns and version-specific evidence.
-6. Only edit `docs/AI_PLAYER_DESIGN.md` for routine planning/review (and this guide/workflow only if human explicitly requests governance changes); never edit any handover, source or production deployment.
+5. Independently inspect actual code diff(s), relevant source, GitHub Actions exact code SHA/job steps, current Staging deployment URL/version and appropriate testing evidence. Distinguish factual result, inference, missing verification. Do not pretend a Markdown-only tip commit passed CI.
+6. Report concise Chinese findings and the exact next action(s): spec change, acceptance decision needed, blocked credential, fix request, or approved next executable task. Preserve unknowns and version-specific evidence.
+7. Only edit `docs/AI_PLAYER_DESIGN.md` for routine planning/review (and this guide/workflow only if human explicitly requests governance changes); never edit any handover, source or production deployment.
 
 **Quick links:** repo root https://github.com/dmoneyUK/three-kingdoms ; AI branch https://github.com/dmoneyUK/three-kingdoms/tree/feature/smart-bot-player ; Actions https://github.com/dmoneyUK/three-kingdoms/actions .
 
