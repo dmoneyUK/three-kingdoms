@@ -119,10 +119,23 @@ test("Daredevil observes Steal taking Equipment into the attacker's Hand", async
   setHand(source.id, [steal], 4, 4); setHand(sun.id, [card("Dodge", "steal-spare")], 3, 3); setEquipment(sun.id, { weapon }); setTurn(game.code, source.seat, "play");
   const played = await requestAndSettle("play_card", { code: game.code, token: game.members[0].token, cardId: steal.id, targetId: sun.id });
   assert.equal(played.status, 200, JSON.stringify(played.data));
-  const chosen = await request("choose_target_card", { code: game.code, token: game.members[0].token, targetCardZone: "equipment", targetCardId: weapon.id });
-  assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
-  assert.equal(chosen.data.room.currentAction.actorId, sun.id);
-  assert.equal(chosen.data.room.currentAction.triggerEvent, "equipment_lost");
+  // The physical transfer must commit with the next legal action present.
+  // An implementation that only opens this trigger after the batch fails here.
+  sql(`CREATE TRIGGER require_equipment_loss_handoff BEFORE UPDATE OF hand_json ON players
+    WHEN OLD.id=${quote(source.id)} AND NEW.hand_json IS NOT OLD.hand_json
+      AND NOT EXISTS (SELECT 1 FROM rooms WHERE id=OLD.room_id AND phase='response'
+        AND json_extract(pending_json,'$.event')='equipment_lost'
+        AND json_extract(pending_json,'$.actorId')=${quote(sun.id)})
+    BEGIN SELECT RAISE(ABORT, 'missing atomic equipment-loss handoff'); END;`);
+  try {
+    const chosen = await request("choose_target_card", { code: game.code, token: game.members[0].token, targetCardZone: "equipment", targetCardId: weapon.id });
+    assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+  } finally {
+    sql("DROP TRIGGER require_equipment_loss_handoff");
+  }
+  const refreshed = (await state(game.code, game.members[1].token)).data;
+  assert.equal(refreshed.currentAction.actorId, sun.id);
+  assert.equal(refreshed.currentAction.triggerEvent, "equipment_lost");
   const declined = await request("decline_trigger", { code: game.code, token: game.members[1].token });
   assert.equal(declined.status, 200, JSON.stringify(declined.data));
   assert.equal(declined.data.room.players.find((player) => player.id === source.id).handCount, 1);

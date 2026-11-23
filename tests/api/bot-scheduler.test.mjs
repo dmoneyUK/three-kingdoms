@@ -893,8 +893,45 @@ test("Bot Steal resumes through Negation and selects an opaque target-hand slot"
   const pending = (await state(code, token)).data;
   assert.equal(pending.currentAction.kind, "target_card");
   assert.equal(pending.actionPlayerId, actor.id);
-  const taken = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1 });
-  assert.equal(taken.data.consumed, 1, JSON.stringify(taken.data));
+  const roomId = query(`SELECT id FROM rooms WHERE code=${quote(code)}`);
+  const workFilter = `room_id=${quote(roomId)} AND action_revision=${quote(pending.actionRevision)}`;
+  sql(`CREATE TRIGGER abort_bot_target_card BEFORE UPDATE OF hand_json ON players
+    WHEN OLD.id=${quote(hostId)} AND NEW.hand_json IS NOT OLD.hand_json
+    BEGIN SELECT RAISE(ABORT, 'interrupted bot target card'); END;`);
+  try {
+    const failed = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1 });
+    assert.equal(failed.data.retries, 1, JSON.stringify(failed.data));
+    const retry = (await state(code, token)).data;
+    assert.equal(retry.actionRevision, pending.actionRevision);
+    assert.equal(retry.currentAction.kind, "target_card");
+    assert.equal(retry.myHand[0].id, hidden.id);
+  } finally {
+    sql("DROP TRIGGER abort_bot_target_card");
+  }
+  const decisionId = query(`SELECT decision_id FROM bot_work WHERE ${workFilter}`);
+  assert.ok(decisionId);
+  sql(`UPDATE bot_work SET status='claimed', lease_token='expired-target-card', lease_until=1, available_at=1 WHERE decision_id=${quote(decisionId)};
+    CREATE TRIGGER abort_bot_target_ack BEFORE UPDATE OF status ON bot_work
+    WHEN OLD.decision_id=${quote(decisionId)} AND NEW.status='consumed'
+    BEGIN SELECT RAISE(ABORT, 'interrupted bot target acknowledgment'); END;`);
+  try {
+    const interrupted = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
+    assert.equal(interrupted.status, 200);
+    assert.ok(interrupted.data.diagnostics.some((event) => event.event === "bot_scheduler_error"));
+    const committed = (await state(code, token)).data;
+    assert.equal(committed.phase, "play");
+    assert.equal(committed.pendingTargetCard, null);
+    assert.equal(committed.myHand.length, 0);
+    assert.equal(query(`SELECT status FROM bot_work WHERE decision_id=${quote(decisionId)}`), "claimed");
+  } finally {
+    sql("DROP TRIGGER abort_bot_target_ack");
+  }
+  sql(`UPDATE bot_work SET lease_until=1 WHERE decision_id=${quote(decisionId)}`);
+  await Promise.all([
+    runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1 }),
+    runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1 }),
+  ]);
+  assert.equal(query(`SELECT status FROM bot_work WHERE decision_id=${quote(decisionId)}`), "stale");
   assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(actor.id)}`))[0].id, hidden.id);
   assert.equal(roomCardCount(code, hidden.id), 1);
   assert.equal(roomCardCount(code, steal.id), 1);

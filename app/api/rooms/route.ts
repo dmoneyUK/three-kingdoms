@@ -3907,6 +3907,20 @@ async function settleBorrowedSwordNoAttackTarget(input: {
   if ((settled.meta.changes ?? 0) > 0 && source) await continueAfterDying(input.roomId, source.id);
 }
 
+function equipmentLossTriggerTransition(player: PlayerRow, loss: EquipmentLostRecord, rest: EquipmentLostRecord[], resume: EquipmentLostResume, log: string[]) {
+  const context = { event: "equipment_lost" as const, sourceId: player.id, sourceEquipment: equipmentCards(player), sourceHand: parse<Card[]>(player.hand_json, []), lostCards: loss.lostCards, playerId: player.id, hero: player.hero };
+  const options = getTriggeredEffects(context);
+  if (!options.length) return null;
+  const labels = options.map((option) => option.label).join(" or ");
+  const presentation = addLogWithId(log, `${player.name} may use ${labels}.`);
+  const pending: TriggerPending = withPresentationBarrier({
+    kind: "trigger", event: "equipment_lost", actorId: player.id,
+    reason: `${player.name} may use ${labels}, or decline`, deadline: nextResponseDeadline(player),
+    continuation: { kind: "equipment_lost_event", loss, remaining: rest, resume },
+  }, presentation.log, presentation.eventId);
+  return { pending, log: presentation.log };
+}
+
 /** Opens one Daredevil opportunity per physical Equipment card that left a zone. */
 async function advanceEquipmentLostEvents(roomId: string, records: EquipmentLostRecord[], resume: EquipmentLostResume) {
   let remaining = [...records];
@@ -3916,18 +3930,10 @@ async function advanceEquipmentLostEvents(roomId: string, records: EquipmentLost
     const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
     const player = players.find((candidate) => candidate.id === loss.playerId && candidate.alive);
     if (!room || !player) { remaining = rest; continue; }
-    const context = { event: "equipment_lost" as const, sourceId: player.id, sourceEquipment: equipmentCards(player), sourceHand: parse<Card[]>(player.hand_json, []), lostCards: loss.lostCards, playerId: player.id, hero: player.hero };
-    const options = getTriggeredEffects(context);
-    if (!options.length) { remaining = rest; continue; }
-    const labels = options.map((option) => option.label).join(" or ");
-    const presentation = addLogWithId(parse<string[]>(room.log_json, []), `${player.name} may use ${labels}.`);
-    const pending: TriggerPending = withPresentationBarrier({
-      kind: "trigger", event: "equipment_lost", actorId: player.id,
-      reason: `${player.name} may use ${labels}, or decline`, deadline: nextResponseDeadline(player),
-      continuation: { kind: "equipment_lost_event", loss, remaining: rest, resume },
-    }, presentation.log, presentation.eventId);
+    const transition = equipmentLossTriggerTransition(player, loss, rest, resume, parse<string[]>(room.log_json, []));
+    if (!transition) { remaining = rest; continue; }
     const updated = await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json IS NULL")
-      .bind(serializePending(pending), JSON.stringify(presentation.log), roomId).run();
+      .bind(serializePending(transition.pending), JSON.stringify(transition.log), roomId).run();
     if ((updated.meta.changes ?? 0) > 0) return;
     return;
   }
@@ -12024,13 +12030,10 @@ export async function POST(request: Request, routeContext?: unknown) {
     } else if (zone === "equipment") chosen = equipmentCards(target).find((card) => card.id === String(body.targetCardId ?? ""));
     else if (zone === "judgement") chosen = targetJudgement.find((card) => card.id === String(body.targetCardId ?? ""));
     if (!chosen) return json({ error: "Choose one of the target's current cards." }, 400);
-    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That card choice has already resolved." }, 409);
     if (zone === "hand") targetHand = targetHand.filter((card) => card.id !== chosen?.id);
     else if (zone === "judgement") targetJudgement = targetJudgement.filter((card) => card.id !== chosen?.id);
     else for (const key of Object.keys(targetEquipment) as (keyof EquipmentZone)[]) if (targetEquipment[key]?.id === chosen.id) delete targetEquipment[key];
     let sourceHand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
-    const lostEquipment = zone === "equipment" ? [chosen] : [];
     discard.push(...(pending.heldCards ?? []));
     if (pending.cardKind === "Dismantle") {
       const settlementProof = dismantleSettlementProofFor(liveRoom, pending, zone, chosen, log);
@@ -12103,16 +12106,39 @@ export async function POST(request: Request, routeContext?: unknown) {
         });
       }
     }
-    await db.batch([
-      db.prepare("UPDATE players SET hand_json = ?, judgement_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), JSON.stringify(targetJudgement), JSON.stringify(targetEquipment), target.id),
-      db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), me.id),
-      db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(lostEquipment.length ? "resolving" : pending.resumePhase, JSON.stringify(discard), JSON.stringify(log), room.id),
+    // Persist the next legal state with the payment. There is no separate
+    // resolving claim and no post-commit equipment/hand-loss activation gap.
+    const nextEquipment = JSON.stringify(targetEquipment);
+    const targetAfterChoice = { ...target, equipment_json: nextEquipment, hand_json: JSON.stringify(targetHand) };
+    const handoff = zone === "equipment"
+      ? equipmentLossTriggerTransition(targetAfterChoice, { playerId: target.id, lostCards: [chosen], reason: pending.cardKind === "Steal" ? "steal" : "dismantle" }, [], {
+        kind: "phase", phase: pending.resumePhase, playerId: me.id, handLoss: { playerId: target.id, beforeHand: targetHandBefore },
+      }, log)
+      : null;
+    const next = handoff ?? handLossTriggerTransition(targetAfterChoice, targetHandBefore, targetHand, {
+      phase: pending.resumePhase, turnSeat: liveRoom.turn_seat, pending: null, log,
+    });
+    const committedLog = JSON.stringify(next?.log ?? log);
+    const [settled] = await db.batch([
+      db.prepare(`UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ?
+        WHERE id = ? AND status = 'playing' AND phase = 'response' AND turn_seat IS ? AND turn_epoch IS ?
+          AND pending_json IS ? AND log_json IS ? AND discard_json IS ? AND causal_envelope_json IS ? AND skill_state_json IS ?
+          AND EXISTS (SELECT 1 FROM players WHERE id = ? AND room_id = rooms.id AND alive = 1 AND hand_json IS ?)
+          AND EXISTS (SELECT 1 FROM players WHERE id = ? AND room_id = rooms.id AND alive = 1
+            AND hand_json IS ? AND judgement_json IS ? AND equipment_json IS ?)`)
+        .bind(next ? "response" : pending.resumePhase, next ? serializePending(next.pending) : null, JSON.stringify(discard), committedLog,
+          room.id, liveRoom.turn_seat, liveRoom.turn_epoch, liveRoom.pending_json, liveRoom.log_json, liveRoom.discard_json,
+          liveRoom.causal_envelope_json, liveRoom.skill_state_json, me.id, me.hand_json,
+          target.id, target.hand_json, target.judgement_json, target.equipment_json),
+      // The new event ID in committedLog ties each player write to this batch's room update.
+      db.prepare(`UPDATE players SET hand_json = ?, judgement_json = ?, equipment_json = ? WHERE id = ? AND room_id = ?
+        AND EXISTS (SELECT 1 FROM rooms WHERE id = players.room_id AND log_json = ?)`)
+        .bind(targetAfterChoice.hand_json, JSON.stringify(targetJudgement), nextEquipment, target.id, room.id, committedLog),
+      db.prepare(`UPDATE players SET hand_json = ? WHERE id = ? AND room_id = ?
+        AND EXISTS (SELECT 1 FROM rooms WHERE id = players.room_id AND log_json = ?)`)
+        .bind(JSON.stringify(sourceHand), me.id, room.id, committedLog),
     ]);
-    if (lostEquipment.length) await advanceEquipmentLostEvents(room.id, equipmentLostRecords(target.id, lostEquipment, pending.cardKind === "Steal" ? "steal" : "dismantle"), { kind: "phase", phase: pending.resumePhase, playerId: me.id, handLoss: { playerId: target.id, beforeHand: targetHandBefore } });
-    else {
-      await maybeOpenHandLossTrigger(room.id, target.id, targetHandBefore);
-      await continueAfterDying(room.id, me.id);
-    }
+    if ((settled.meta.changes ?? 0) === 0) return json({ error: "That card choice has already resolved or changed.", stale: true, room: await roomState(code, token) }, 409);
     return json({ room: await roomState(code, token) });
   }
 

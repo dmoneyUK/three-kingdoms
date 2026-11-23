@@ -994,8 +994,30 @@ test("Steal and Burning Bridges publish committed outcomes and one shared H4 own
     const choice = zone === "hand"
       ? { targetCardZone: "hand", targetCardIndex: 0 }
       : { targetCardZone: zone, targetCardId: sourceZoneCard.id };
-    const settled = await requestAndSettle("choose_target_card", { code: game.code, token: sourceMember.token, ...choice });
-    assert.equal(settled.status, 200, `${effect}/${zone} choice: ${JSON.stringify(settled.data)}`);
+    const snapshot = () => query(`SELECT json_array(r.phase,r.pending_json,r.discard_json,r.log_json,
+      a.hand_json,b.hand_json,b.equipment_json,b.judgement_json) FROM rooms r
+      JOIN players a ON a.id=${quote(source.id)} JOIN players b ON b.id=${quote(target.id)} WHERE r.code=${quote(game.code)}`);
+    const before = snapshot();
+    const selection = {
+      code: game.code, token: sourceMember.token, ...choice,
+      context: { actionRevision: actorView.actionRevision, meId: source.id, actorId: source.id, phase: "response", pendingKind: "target_card" },
+    };
+    sql(`CREATE TRIGGER interrupted_target_selection BEFORE UPDATE ON players
+      WHEN OLD.id=${quote(target.id)} AND (NEW.hand_json IS NOT OLD.hand_json OR NEW.equipment_json IS NOT OLD.equipment_json OR NEW.judgement_json IS NOT OLD.judgement_json)
+      BEGIN SELECT RAISE(ABORT, 'injected target-card interruption'); END;`);
+    try {
+      const failed = await fetch(`${baseUrl}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "choose_target_card", ...selection }) });
+      assert.equal(failed.status, 500);
+      await failed.body?.cancel();
+      assert.equal(snapshot(), before, `${effect}/${zone}: a failed settlement leaves the exact decision and all cards unchanged`);
+      const retryView = (await state(game.code, sourceMember.token)).data;
+      assert.equal(retryView.actionRevision, actorView.actionRevision);
+      assert.deepEqual(retryView.currentAction.legalActions, ["choose_target_card"]);
+    } finally {
+      sql("DROP TRIGGER interrupted_target_selection");
+    }
+    const results = await Promise.all([request("choose_target_card", selection), request("choose_target_card", selection)]);
+    assert.deepEqual(results.map(({ status }) => status).sort(), [200, 409], `${effect}/${zone}: only one competing retry commits`);
     const settledViews = await Promise.all(game.members.map((member) => state(game.code, member.token)));
     const sourceView = settledViews[0].data;
     const settlements = effect === "Steal" ? sourceView.presentationV2.stealSettlements : sourceView.presentationV2.dismantleSettlements;
