@@ -6,7 +6,7 @@
 > AI product / executable task authority: `docs/AI_PLAYER_DESIGN.md`
 > Coding-agent execution protocol: `docs/AI_PLAYER_AGENT_WORKFLOW.md`
 > Coding-agent-only checkpoint: `AI_PLAYER_HANDOVER.md`
-> Version: **`AIP-G3` (2026-11-22)** — Owner-required accepted-spec compaction and exact-SHA GitHub test delegation
+> Version: **`AIP-G4` (2026-11-23)** — adds the independent Product Manager coordination and cross-domain design-change review gate, preserving accepted-spec compaction and exact-SHA CI delegation
 >
 > **Permanent, task-neutral PROCESS GUIDE, not a current task/status report.** Based on the independent Planner/Reviewer discipline in `docs/PLANNER_REVIEWER_GUIDE.md` (UX Planner), while preserving the AI project's different, autonomous design-driven task queue. **At the start of EVERY new AI Planner/Reviewer conversation, fetch and read the COMPLETE latest `docs/AI_PLAYER_DESIGN.md` on the AI branch BEFORE designing or reviewing.**
 
@@ -25,6 +25,30 @@ This rule is mandatory even if the user only says “check progress” or “rev
 
 **Keep this distinction absolute:** this guide says HOW to work; `docs/AI_PLAYER_DESIGN.md` says WHAT the AI Player is, WHAT tasks are approved and HOW they must be implemented/tested; `AI_PLAYER_HANDOVER.md` is only the Coding Agent's factual execution checkpoint.
 
+
+## 0A. Product Manager coordination — mandatory cross-domain review gate (Owner 2026-11-23)
+
+The Owner has appointed a separate **Game Product Manager / independent cross-domain Planner** to coordinate **overall future product direction, UI↔UX integration, shared game/session architecture and multiple simultaneously active rooms**. This is a third planning/review role, not the AI Coding Agent and not a replacement for the UX2 Planner or the human Product Owner. The existing **`docs/AI_PLAYER_DESIGN.md §0A / PM-GATE-01`** contains task-specific PM gates and remains the AI task authority.
+
+**Canonical PM sources:** read `main/docs/GAME_PRODUCT_PLANNER_GUIDE.md` (especially ownership and architecture decisions) and `main/docs/GAME_PRODUCT_PLANNER_STATUS.md` (latest cross-agent checkpoint). PM's status file is an *as-of evidence snapshot*, not an approved coding queue; refresh live `main`, `ux-v2`, and `feature/smart-bot-player` HEADs and applicable code/design before relying on it. At each **new Planner session**, read the full current AI design **first**, then the current PM guide/status and relevant UX design. At **each task review, next-task assignment, status change or AI design edit**, recheck the PM checkpoint/recent PM and AI design changes; fully reread the applicable PM/UX authority when the change crosses domains. Do not confuse a stale PM status pin with the actual code-bearing SHA.
+
+**Responsibilities and authority:**
+
+- **PM:** unifies product roadmap and architecture across AI, UX2, canonical game state, frontend state transport and multi-room scalability; identifies incompatible assumptions, ownership splits and integration/merge order. PM may contribute edits to the AI design **when separately authorized for that file/branch**. Such edits are real new input to review, not text to remove because this AI Planner did not author it. PM technical review/recommendations do **not** by themselves authorize implementation or mark `ACCEPTED`.
+- **AI Planner / independent Reviewer (this chat):** owns Bot-specific design, detailed tasks, source/CI review and the AI task queue. Integrates authorized PM decisions into the **latest** AI design, preserves valid PM changes, and assesses their effect before recommending completion or moving the Agent forward. Does not change PM/UX2-owned documents or Agent handovers without an explicit new user permission.
+- **UX2 Planner:** owns accepted player-facing visuals, presentation timing, UI/layout and UX2 interaction contracts; obtain UX2 review/permission for frontend-visible changes rather than defining rival UI semantics in AI tasks.
+- **Product Owner (human):** remains the final authority for new material implementation scope, acceptance, product tradeoffs, real-device UX, capacity/cost, external API/data and production. A PM architecture proposal or a `DRAFT` task is **not** an implementation approval.
+
+**Mandatory change-impact check BEFORE issuing an AI review verdict or next Agent assignment:**
+
+1. Read latest AI design completely at session start; refresh the affected sections immediately before decisions. Compare current AI design blob/branch HEAD and recent commits against the task's pinned design revision, Agent handover and last reviewed code SHA. Identify **who changed what and why**; do not blindly treat the older AI-only plan or a PM-edited file as universally authoritative.
+2. Check new PM architecture/status decisions on `main`, and the *current* relevant UX2 design on `ux-v2`, for any intersection with the task: frontend room/session store, polling/view version, `CurrentAction`, public event sequencing/H4/CardFace, private viewer projection, command schema, canonical rule authority, Bot scheduling/Worker/D1, multi-room admission/fairness/scale, branch sync or UI acceptance.
+3. Classify each change: **(a)** compatible clarification in existing approved scope — preserve it and continue; **(b)** changed dependency, design contract, file owner or sequencing — update the affected task's precise requirements/approval gate before implementation; **(c)** conflict with previously accepted behavior, security/privacy, a new billable/production/merge operation or missing approval — **hold only the disputed scope** as `WAITING_FOR_PM_ARCHITECTURE_DECISION` / `BLOCKED` as appropriate, show both alternatives and request the responsible PM/UX2/Owner decision. An independent, safe, already-approved P0 task may proceed unchanged.
+4. Verify actual implementation evidence separately: diff and exact code SHA, local focused-test claims, all required exact-SHA Actions jobs, isolated Staging and private/public semantics. PM's product-level review is additional context, not a substitute for code-level proof, a 15-minute CPU validation, or Owner's physical iPhone sign-off. Keep separate outcome claims for **G** (completed match), **M** (multiple active rooms), and **S** (security/operations).
+5. If PM legitimately updates AI design while Agent is running, **do not erase, revert, overwrite or silently adopt** the change. Preserve in-progress work. Reconcile source/authorization/dependencies; if incompatible, give the Agent an explicit safe-stop/replan instruction **in the AI design**. Do not edit `AI_PLAYER_HANDOVER.md` yourself and do not automatically mark a task `CHANGES_REQUESTED` solely because a PM proposal appeared.
+6. In the Owner-facing review, state which PM/UX change was checked, its effect (`NO IMPACT`, `REQUIRES PM/UX2 ALIGNMENT`, `CHANGED DEPENDENCY` or `OWNER DECISION REQUIRED`), what code evidence actually passed, and exactly whether the Agent should continue, pause disputed scope, or await human acceptance.
+
+**No blanket PM stop:** current authorized `AIP-PERF-01` recovery and other non-overlapping permitted work continue. New `AIP-PERF-GET-02`, `AIP-PERF-BOT-02`, `AIP-SCALE-*` and shared UX/transport designs retain their existing `DRAFT`/PM/UX2/Owner gates. PM decisions never supersede authoritative server legality, card conservation, private hands/roles, previously human-accepted UX2 behavior or human acceptance without an explicit authorized change.
 
 ## 1. Mission and non-negotiable operating model
 
@@ -57,13 +81,14 @@ In both loops, new instructions go **into the design**, not into `AI_PLAYER_HAND
 | **`docs/AI_PLAYER_PLANNER_REVIEWER_GUIDE.md`** (this file) | Permanent instructions for new design/review conversations; task-neutral | Read every new session; edit only when user explicitly asks to revise governance | READ ONLY |
 | **`docs/AI_PLAYER_AGENT_WORKFLOW.md`** | Coding Agent's auto-selection, execution, CI, safe Staging, review-gate procedure | READ ONLY for normal Planner work; change only on explicit user request to change workflow | READ ONLY unless user explicitly authorizes a process edit |
 | **`AI_PLAYER_HANDOVER.md`** | Agent's **one current/resume checkpoint + latest implementation evidence**; not a task queue | **NEVER edit**; do not tidy it, fix its status, mark ACCEPTED or pre-fill next task. May read/quote/check it | **EXCLUSIVE WRITE OWNER**. Refresh one current/last task, keep concise, remove stale execution clutter safely |
+| **`main/docs/GAME_PRODUCT_PLANNER_GUIDE.md` + `GAME_PRODUCT_PLANNER_STATUS.md`** | Cross-product charter/architecture and last PM checkpoint; NOT executable AI tasks | READ for cross-domain review; update only on explicit Owner authority | READ ONLY; respect PM gates in latest AI design |
 | **`HANDOVER.md`** | Separate UX2 work handover | **NEVER edit** for AI work | **NEVER edit** for AI work |
 | **`AGENTS.md`** | Repo-wide rules, privacy, game authority, CI principles | READ ONLY in routine AI planning | READ ONLY for normal AI work |
 | **`docs/UX2-refine.md`**, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` and other UX/OS/overall-game designs | Their own independent design authorities | **NEVER edit** for an AI-only task; reference rather than duplicate | **NEVER edit** for an AI-only task |
 | `docs/OFFICIAL_CARD_REFERENCE.md`, `docs/STANDARD_HERO_REFERENCE.md`, `docs/STANDARD_108_DECK_MANIFEST.md` | Canonical local rules/references | Read as needed; no duplicated rulebook in AI design | Use as references; existing game rules stay authoritative |
 | `.github/workflows/deploy.yml`, `wrangler.jsonc`, `db/schema.ts`, source, tests, D1 | Implementation and deployment truth | **DO NOT edit** as Planner/Reviewer | Edit **only** within an approved task, valid branch, after safety/CI checks |
 
-**Precedence:** latest direct human instruction > binding repo `AGENTS.md`/canonical engine rules > current AI design specification for AI-only behavior > role-specific workflow/guide > handover as **historical execution evidence only**. Resolve conflicts openly before implementing. An AI task may add adapters but cannot quietly override server legality, visible/private projections or UX2 layout authority.
+**Precedence:** latest direct human instruction > binding repo `AGENTS.md`/canonical engine rules > current AI design specification for AI-only behavior (including authorized PM contributions and PM gates) > role-specific workflow/guide > handover as **historical execution evidence only**. The PM charter governs cross-domain architecture coordination, not unilateral AI coding approval or replacement of accepted UX2 design. Resolve conflicts openly before implementing. An AI task may add adapters but cannot quietly override server legality, visible/private projections or UX2 layout authority.
 
 **Important:** user authorization to create or revise this governance guide is not permission to modify `AI_PLAYER_HANDOVER.md`. Any old handover preview conflicting with a newer approved design is reconciled **by Coding Agent at the start of its next run**, never by Planner.
 
@@ -71,7 +96,8 @@ In both loops, new instructions go **into the design**, not into `AI_PLAYER_HAND
 
 1. Identify the request's role: **design**, **review**, **feedback follow-up**, **release decision**, or **status check**. Do not auto-start coding or open a cloud deployment just because a task exists.
 2. Inspect remote `feature/smart-bot-player` HEAD, latest commits/workflows, `AGENTS.md`, this guide, **complete latest** `docs/AI_PLAYER_DESIGN.md`, `docs/AI_PLAYER_AGENT_WORKFLOW.md` and, read-only, `AI_PLAYER_HANDOVER.md`. Read only relevant source/test files after task identification.
-3. From **design**, enumerate `PENDING_REVIEW`, `CHANGES_REQUESTED`, `BLOCKED`, `APPROVED`, `IN_PROGRESS`. Cross-check handover and remote commit history. Design task status alone and agent claims are **not proof** of completion.
+3. Consult the current `main` Product Manager guide/status and recent PM-authored AI-design changes; check relevant `ux-v2` authority when there is an integration overlap. Apply §0A's impact classification before a verdict or next-task dispatch.
+4. From **design**, enumerate `PENDING_REVIEW`, `CHANGES_REQUESTED`, `BLOCKED`, `APPROVED`, `IN_PROGRESS`. Cross-check handover and remote commit history. Design task status alone and agent claims are **not proof** of completion.
 4. Independently inspect actual code diff(s), relevant source, GitHub Actions exact code SHA/job steps, current Staging deployment URL/version and appropriate testing evidence. Distinguish factual result, inference, missing verification. Do not pretend a Markdown-only tip commit passed CI.
 5. Report concise Chinese findings and the exact next action(s): spec change, acceptance decision needed, blocked credential, fix request, or approved next executable task. Preserve unknowns and version-specific evidence.
 6. Only edit `docs/AI_PLAYER_DESIGN.md` for routine planning/review (and this guide/workflow only if human explicitly requests governance changes); never edit any handover, source or production deployment.
