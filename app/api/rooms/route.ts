@@ -7417,9 +7417,13 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const players = result.results ?? [];
   const latestBotWorkStatus = new Map<string, string>();
   if (players.some((player) => player.controller_type === "bot")) {
-    const botWork = await db.prepare(`SELECT bot_id, status FROM bot_work
-      WHERE room_id = ? ORDER BY updated_at DESC, created_at DESC, decision_id DESC`).bind(room.id).all<{ bot_id: string; status: string }>();
-    for (const work of botWork.results ?? []) if (!latestBotWorkStatus.has(work.bot_id)) latestBotWorkStatus.set(work.bot_id, work.status);
+    const botWork = await db.prepare(`SELECT bot_id, status FROM (
+      SELECT bot_id, status, ROW_NUMBER() OVER (
+        PARTITION BY bot_id ORDER BY updated_at DESC, created_at DESC, decision_id DESC
+      ) AS work_rank
+      FROM bot_work WHERE room_id = ?
+    ) WHERE work_rank = 1`).bind(room.id).all<{ bot_id: string; status: string }>();
+    for (const work of botWork.results ?? []) latestBotWorkStatus.set(work.bot_id, work.status);
   }
   const rawLog = parse<string[]>(room.log_json, []);
   const serverNow = Date.now();

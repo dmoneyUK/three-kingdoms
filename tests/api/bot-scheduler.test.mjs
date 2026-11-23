@@ -1,5 +1,4 @@
 import test from "node:test";
-import { appendSequencedLogRecord } from "../../game/public-log-sequence.ts";
 import {
   assert, card, query, quote, request, requestAndSettle, runBotScheduler, runBotStep,
   setDeck, setEquipment, setHand, setTurn, roomCardCount, sql, state,
@@ -72,21 +71,17 @@ test("a long Bot room refreshes the final authenticated projection without leaki
     UPDATE players SET role='Rebel' WHERE id IN (${quote(bots[1].id)},${quote(bots[2].id)});`);
   setTurn(code, hostSeat, "draw");
 
-  let log = [];
-  for (let index = 0; index < 199; index++) {
-    log = index % 3 === 0
-      ? appendSequencedLogRecord(log, "@card:", {
-        id: `perf-event-${index}`, actor: "Fixture Bot", action: "equip",
-        card: card("RedHare", `perf-public-${index}`), resolutionId: `perf-resolution-${index}`,
-      })
-      : appendSequencedLogRecord(log, "@event:", { id: `perf-event-${index}`, message: `Fixture action ${index}` });
-  }
-  log = appendSequencedLogRecord(log, "@card:", {
-    id: "perf-private-event", action: "gain", presentation: false, privateToPlayerId: bots[0].id, card: privateBotCard,
+  const publicEventCount = 203;
+  const log = Array.from({ length: publicEventCount }, (_, index) => {
+    const publicSequence = index + 1;
+    return `@event:${JSON.stringify({ id: `perf-event-${index}`, message: `Fixture action ${index}`, publicSequence, publicSequenceWatermark: publicSequence })}`;
   });
+  log.push(`@card:${JSON.stringify({ id: "perf-private-event", action: "gain", presentation: false,
+    privateToPlayerId: bots[0].id, card: privateBotCard, publicSequenceWatermark: publicEventCount })}`);
+  assert.equal(log.filter((entry) => entry.startsWith("@event:")).length, publicEventCount);
   sql(`UPDATE rooms SET log_json=${quote(JSON.stringify(log))} WHERE id=${quote(roomId)}`);
   const now = Date.now();
-  const work = Array.from({ length: 120 }, (_, index) => {
+  const work = Array.from({ length: 150 }, (_, index) => {
     const bot = bots[index % bots.length];
     const status = index < bots.length ? "unsupported" : "consumed";
     return `(${quote(`${roomId}-perf-work-${index}`)},${quote(roomId)},${quote(bot.id)},${quote(`perf-revision-${index}`)},
@@ -101,7 +96,7 @@ test("a long Bot room refreshes the final authenticated projection without leaki
   assert.equal(owner.status, 200);
   assert.equal(anonymous.status, 200);
   assert.equal(denied.status, 403);
-  assert.equal(owner.data.timeline.length, 199);
+  assert.ok(owner.data.timeline.length >= 200, "the synthetic long room returns at least 200 public timeline events");
   assert.deepEqual(owner.data.timeline, anonymous.data.timeline);
   assert.equal(owner.data.actionRevision, anonymous.data.actionRevision);
   assert.equal(owner.data.currentAction.actorId, hostId);
@@ -128,6 +123,17 @@ test("a long Bot room refreshes the final authenticated projection without leaki
   assert.equal(response.data.currentAction.kind, "response");
   assert.equal(response.data.actionRevision, stratagem.data.room.actionRevision);
   assert.ok(!JSON.stringify(response.data).includes(privateBotCard.id));
+  const windowId = response.data.currentAction.negationWindowId;
+  assert.ok(windowId, "the real Dismantle action opens the server-owned shared Negation response");
+  const botPasses = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 4, captureDiagnostics: true });
+  assert.equal(botPasses.data.consumed, 3, JSON.stringify(botPasses.data));
+  assert.equal(query(`SELECT COUNT(*) FROM negation_window_submissions WHERE window_id=${quote(windowId)}`), "3");
+  assert.equal((await state(code, token)).data.currentAction.negationWindowId, windowId,
+    "the shared response remains open for the human after all three Bot passes");
+  const passed = await request("decline_response", { code, token });
+  assert.equal(passed.status, 200, JSON.stringify(passed.data));
+  assert.equal((await state(code, token)).data.pendingTargetCard?.targetId, bots[0].id,
+    "the canonical Negation pass resumes Dismantle's target-card continuation");
 
   sql(`UPDATE players SET hp=0, alive=0 WHERE id=${quote(hostId)}`);
   setTurn(code, bots[0].seat, "play");
@@ -136,8 +142,9 @@ test("a long Bot room refreshes the final authenticated projection without leaki
   assert.equal(defeated.data.players.find(({ id }) => id === hostId).hp, 0);
   assert.deepEqual(defeated.data.currentAction.legalActions, []);
   assert.ok(!JSON.stringify(defeated.data).includes(privateBotCard.id));
-  console.info(JSON.stringify({ fixture: "long-bot-room", requests: 8, wallMs: Math.round(performance.now() - start),
-    logEntries: log.length, responseBytes: Buffer.byteLength(JSON.stringify(owner.data)), schedulerRows: work.length }));
+  console.info(JSON.stringify({ fixture: "long-bot-room-shared-negation", publicEvents: publicEventCount,
+    seededBotWorkRows: work.length, botNegationPasses: botPasses.data.consumed,
+    wallMs: Math.round(performance.now() - start), responseBytes: Buffer.byteLength(JSON.stringify(owner.data)) }));
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
