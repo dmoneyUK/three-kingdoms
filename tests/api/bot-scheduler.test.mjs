@@ -628,9 +628,10 @@ test("role policy filters converted, Serpent Spear, and multi-target Attacks thr
 test("a Loyalist ends safely when a targeted Stratagem can only harm the living Lord", async () => {
   const { code, token, hostId, bots } = await createBotGame();
   const loyalist = bots[0];
+  // Huang Gai can spend a one-card hand with Kurou, which would mask the End Turn fallback under test.
   const steal = card("Steal", "role-guard-only-lord");
   sql(`UPDATE players SET role='Lord' WHERE id=${quote(hostId)};
-    UPDATE players SET role='Loyalist' WHERE id=${quote(loyalist.id)};
+    UPDATE players SET role='Loyalist', hero='cao-cao' WHERE id=${quote(loyalist.id)};
     UPDATE players SET role='Rebel' WHERE id=${quote(bots[1].id)};
     UPDATE players SET role='Renegade' WHERE id=${quote(bots[2].id)}`);
   setHand(loyalist.id, [steal], 4, 4);
@@ -654,9 +655,10 @@ test("a Loyalist ends safely when a targeted Stratagem can only harm the living 
 test("Rebel prefers the public Lord and Renegade delays him until the final duel", async () => {
   const { code, token, hostId, bots } = await createBotGame();
   const [rebel, renegade, loyalist] = bots;
+  // A passive-only Hero keeps an optional active skill from changing the target-policy fixture.
   sql(`UPDATE players SET role='Lord' WHERE id=${quote(hostId)};
     UPDATE players SET role='Rebel' WHERE id=${quote(rebel.id)};
-    UPDATE players SET role='Renegade' WHERE id=${quote(renegade.id)};
+    UPDATE players SET role='Renegade', hero='cao-cao' WHERE id=${quote(renegade.id)};
     UPDATE players SET role='Loyalist' WHERE id=${quote(loyalist.id)}`);
   const rebelAttack = card("Attack", "role-guard-rebel");
   setHand(rebel.id, [rebelAttack], 4, 4);
