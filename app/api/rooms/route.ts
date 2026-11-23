@@ -4010,21 +4010,22 @@ async function beginTurnStart(roomId: string, turnSeat: number, expectedPendingJ
   if ((update.meta.changes ?? 0) <= 0) return;
 }
 
-async function advanceDiscardTurnHandoff(roomId: string) {
-  let room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
-  let handoff = parseDiscardTurnHandoff(room?.pending_json ?? null);
-  if (!room || room.status !== "playing" || room.phase !== "resolving" || !handoff) return false;
-  let expectedPendingJson = room.pending_json!;
+async function advanceDiscardTurnHandoff(roomId: string, observedPendingJson?: string | null) {
+  const currentHandoff = db().prepare("SELECT pending_json FROM rooms WHERE id = ? AND status = 'playing' AND phase = 'resolving'").bind(roomId);
+  let expectedPendingJson = observedPendingJson === undefined
+    ? await currentHandoff.first<string>("pending_json")
+    : observedPendingJson;
+  let handoff = parseDiscardTurnHandoff(expectedPendingJson);
+  if (!expectedPendingJson || !handoff) return false;
   if (handoff.state === "waiting") {
     if (handoff.deadline > Date.now()) return false;
     const advancing = { ...handoff, state: "advancing" as const };
     const update = await db().prepare("UPDATE rooms SET pending_json = ? WHERE id = ? AND status = 'playing' AND phase = 'resolving' AND pending_json = ?")
       .bind(JSON.stringify(advancing), roomId, expectedPendingJson).run();
     if ((update.meta.changes ?? 0) <= 0) {
-      room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
-      handoff = parseDiscardTurnHandoff(room?.pending_json ?? null);
-      if (!room || room.phase !== "resolving" || handoff?.state !== "advancing") return true;
-      expectedPendingJson = room.pending_json!;
+      expectedPendingJson = await currentHandoff.first<string>("pending_json");
+      handoff = parseDiscardTurnHandoff(expectedPendingJson);
+      if (!expectedPendingJson || handoff?.state !== "advancing") return true;
     } else {
       handoff = advancing;
       expectedPendingJson = JSON.stringify(advancing);
@@ -7853,19 +7854,19 @@ export async function GET(request: Request) {
     const result = await env.DB.prepare("SELECT id,event_key,event_type,actor_id,actor_name,action,phase_before,phase_after,turn_seat_before,turn_seat_after,acting_player_before,acting_player_after,detail_json,created_at FROM game_audit WHERE room_id = ? ORDER BY id").bind(room.id).all();
     return json({ code, audit: result.results ?? [] });
   }
-  // A member may advance the discard handoff, but identifying that member
-  // requires no timeline or presentation projection. Project once from fresh
+  // Read only a potential handoff in the member lookup. Project from fresh
   // storage after the canonical handoff has had a chance to settle.
   let authenticated = false;
   if (token) {
-    const membership = await env.DB.prepare(`SELECT rooms.id AS room_id
+    const membership = await env.DB.prepare(`SELECT rooms.id AS room_id,
+      CASE WHEN rooms.status = 'playing' AND rooms.phase = 'resolving' THEN rooms.pending_json END AS handoff_pending_json
       FROM rooms JOIN players ON players.room_id = rooms.id
       WHERE rooms.code = ? AND players.token_hash = ? AND (? IS NULL OR players.id = ?)
       LIMIT 1`).bind(code, await hash(token), requestedViewerId || null, requestedViewerId || null)
-      .first<{ room_id: string }>();
+      .first<{ room_id: string; handoff_pending_json: string | null }>();
     if (membership) {
       authenticated = true;
-      await advanceDiscardTurnHandoff(membership.room_id);
+      if (membership.handoff_pending_json) await advanceDiscardTurnHandoff(membership.room_id, membership.handoff_pending_json);
     }
   }
   const state = await roomState(code, token, authenticated && Boolean(uxTraceId), requestedViewerId);

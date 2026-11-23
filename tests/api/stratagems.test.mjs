@@ -1361,6 +1361,12 @@ test("Lu Xun's Second Wind is a private once-per-loss continuation", { timeout: 
   const earlyNextDraw = await request("draw", { code: discardGame.code, token: nextSeatMember.token });
   assert.equal(earlyNextDraw.status, 409, "the next seat cannot act before the Discard handoff deadline");
   sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.deadline',${Date.now() - 1}) WHERE code=${quote(discardGame.code)} AND json_extract(pending_json,'$.kind')='discard_turn_handoff'`);
+  for (const token of ["", "invalid-discard-handoff-member"]) {
+    const observer = (await state(discardGame.code, token)).data;
+    assert.equal(observer.phase, "resolving", "a non-member read does not advance the expired handoff");
+    assert.equal(observer.currentAction.kind, "none");
+    assert.deepEqual(observer.currentAction.legalActions, []);
+  }
   const afterHandoff = (await state(discardGame.code, nextSeatMember.token)).data;
   assert.equal(afterHandoff.currentAction.kind, "turn", "the authenticated next-seat read resumes the turn after the deadline");
   assert.equal(afterHandoff.currentAction.actorId, discardGame.room.players[2].id);
