@@ -714,9 +714,12 @@ test("successive Bot Attacks account for committed public pressure before choosi
     const selected = await runBotStep(code, actor.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
     assert.equal(selected.status, 200, JSON.stringify(selected.data));
     const after = (await state(code, token)).data;
-    assert.equal(after.currentAction.requirement, "dodge");
+    const pending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(code)}`));
+    assert.equal(pending?.requirement?.kind, "dodge", "canonical server response requires Dodge");
+    assert.equal(pending?.continuation?.sourceId, actor.id);
+    assert.equal(pending?.actorId, pending?.continuation?.targetId);
     assert.ok(!JSON.stringify(after).includes("botTargetPressure"), "server pressure records never enter the viewer projection");
-    return after.actionPlayerId;
+    return pending.actorId;
   };
   assert.equal(await targetFor(loyalist, 1), hostId, "the host is a legitimate fresh target and the Lord is protected");
   assert.equal(await targetFor(lord, 2), loyalist.id, "the Lord chooses a comparably useful target that has not just been attacked");

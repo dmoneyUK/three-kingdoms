@@ -10,6 +10,8 @@ Implementation ranks comparable hostile choices, including converted attacks, ta
 
 Validation: focused targeting and play-candidate tests passed (13/13). Focused ESLint and diff checks passed. The prior exact-SHA Staging job failed at the rejoin assertion because it compared an opaque string revision numerically. The test correction is included so this push can verify the same isolated Staging gate without changing room protocol.
 
+Run [45101565419](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45101565419) for `55806f09` passed the lint/build/fast and browser jobs. API failed because the new integration test expected a non-viewer Bot’s Dodge requirement in the human projection. The fixture now checks canonical persisted pending state for Bot targets while preserving the client privacy check. Staging was skipped on that run.
+
 Next: verify exact-SHA GitHub Actions, isolated AI Staging deployment and mobile smoke, with production skipped. Keep this task in progress until those outcomes are observed, then stop at PENDING_REVIEW for Owner gameplay acceptance.
 
 AIP-PERF-01 remains open. Its previous local checkpoint is saved at `/private/tmp/WTK-AIP-PERF-01-before-STRAT-01A.md`. Resume that task only from the latest design and recorded CPU evidence.
