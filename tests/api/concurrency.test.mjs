@@ -365,6 +365,66 @@ test("stale and concurrent response submissions claim each transition once", { t
   assert.equal(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`), "", "the response does not strand the room");
 });
 
+test("interrupted Dodge against a converted Attack remains retryable in a long room", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [attacker, defender] = game.members;
+  const [source, target] = game.room.players;
+  const attack = { ...card("Dodge", "interrupted-dodge-attack"), rank: "2", suit: "♥" };
+  const dodge = { ...card("Dodge", "interrupted-dodge-response"), rank: "J", suit: "♦" };
+  sql(`UPDATE players SET hero='zhao-yun', equipment_json='{}' WHERE id=${quote(source.id)};
+    UPDATE players SET hero='zhen-ji', equipment_json='{}' WHERE id=${quote(target.id)};`);
+  setHand(source.id, [attack], 4, 4);
+  setHand(target.id, [dodge], 3, 3);
+  setTurn(game.code, source.seat, "play");
+  const history = Array.from({ length: 198 }, (_, index) => `@event:${JSON.stringify({
+    id: `interrupted-dodge-history-${index}`, message: `Committed public history ${index}`,
+  })}`);
+  sql(`UPDATE rooms SET log_json=${quote(JSON.stringify(history))} WHERE code=${quote(game.code)}`);
+  const opened = await requestAndSettle("play_card", { code: game.code, token: attacker.token, cardId: attack.id, playAs: "attack", targetId: target.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const before = (await state(game.code, defender.token)).data;
+  assert.equal(before.currentAction.requirement, "dodge");
+  const snapshot = () => query(`SELECT json_object('phase',phase,'pending',pending_json,'log',log_json,'discard',discard_json,'causal',causal_envelope_json) FROM rooms WHERE code=${quote(game.code)}`);
+  const beforeCommit = snapshot();
+  const context = { actionRevision: before.actionRevision, meId: target.id, phase: "response", pendingKind: "response", actorId: target.id };
+  const payload = { code: game.code, token: defender.token, providerId: "card", cardId: dodge.id, context };
+  const respond = () => request("respond", payload);
+
+  // Abort the card write after the room statement. An earlier standalone
+  // phase claim would survive this failure and strand the response.
+  sql(`CREATE TRIGGER interrupted_dodge_payment BEFORE UPDATE OF hand_json ON players
+    WHEN OLD.id=${quote(target.id)} AND NEW.hand_json IS NOT OLD.hand_json
+    BEGIN SELECT RAISE(ABORT, 'injected interrupted Dodge payment'); END;`);
+  try {
+    const interrupted = await fetch(new URL("/api/rooms", process.env.GAME_TEST_URL ?? "http://localhost:3137"), {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "respond", ...payload }),
+    });
+    assert.equal(interrupted.status, 500);
+    await interrupted.body?.cancel();
+    assert.equal(snapshot(), beforeCommit, "a failed write leaves the exact room response retryable");
+    const refreshed = (await state(game.code, defender.token)).data;
+    assert.equal(refreshed.actionRevision, before.actionRevision);
+    assert.equal(refreshed.currentAction.requirement, "dodge");
+    assert.ok(refreshed.myHand.some(({ id }) => id === dodge.id));
+    assert.ok(!discardIds(game.code).includes(dodge.id));
+  } finally {
+    sql("DROP TRIGGER interrupted_dodge_payment");
+  }
+
+  const replay = await Promise.all([respond(), respond()]);
+  assert.deepEqual(replay.map(({ status }) => status).sort(), [200, 409]);
+  const after = (await state(game.code, defender.token)).data;
+  assert.equal(after.phase, "play-struck");
+  assert.equal(after.players.find(({ id }) => id === target.id).hp, 3);
+  assert.equal(after.myHand.length, 0);
+  assert.equal(discardIds(game.code).filter((id) => id === dodge.id).length, 1);
+  assert.equal(roomCardCount(game.code, dodge.id), 1);
+  const cards = after.timeline.filter((event) => event.action === "play" && event.card?.id === dodge.id);
+  assert.equal(cards.length, 1, "the committed Dodge is recorded once");
+  assert.equal(cards[0].attackDodgeResponse?.counterRelation, "BLOCKS_TARGET_EFFECT", "canonical presentation proof survives the atomic commit");
+  assert.equal(cards[0].attackDodgeResponse?.responseActorId, target.id);
+});
+
 test("FIX9 Group stale response preserves causal identity and card state", { timeout: 30_000 }, async () => {
   const opened = await openGanglieGroup({ kind: "RainingArrows", suffix: "fix8-group-stale", judge: { ...card("Dodge", "fix8-group-stale-judge"), suit: "♥", rank: "2" } });
   const advanced = await requestAndSettle("decline_trigger", { code: opened.code, token: opened.targetMember.token });

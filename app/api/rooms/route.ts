@@ -4176,17 +4176,13 @@ async function beginMatch(roomId: string, players: PlayerRow[]) {
 }
 function db() { return sharedResponseDatabase(env.DB); }
 
-/** Open a private semantic hand-loss trigger after the completed mutation. */
-async function maybeOpenHandLossTrigger(roomId: string, playerId: string, beforeHand: Card[], resumeRecovery?: { records: RecoveryRecord[]; resume: RecoveryResume }) {
-  if (beforeHand.length === 0) return;
-  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
-  const player = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(playerId, roomId).first<PlayerRow>();
-  if (!room || !player) return;
-  const afterHand = parse<Card[]>(player.hand_json, []);
-  if (afterHand.length !== 0) return;
-  const afterIds = new Set(afterHand.map((card) => card.id));
-  const lostCards = beforeHand.filter((card) => !afterIds.has(card.id));
-  if (!lostCards.length) return;
+function handLossTriggerTransition(player: PlayerRow, beforeHand: Card[], afterHand: Card[],
+  state: { phase: string | null; turnSeat: number | null; pending: Pending | null; log: string[] },
+  resumeRecovery?: { records: RecoveryRecord[]; resume: RecoveryResume }) {
+  if (!beforeHand.length || afterHand.length) return null;
+  const existing = state.pending;
+  if (existing?.kind === "trigger" && existing.event === "hand_lost" && existing.continuation.kind === "hand_loss_event" && existing.continuation.playerId === player.id) return null;
+  const lostCards = beforeHand;
   const context = {
     event: "hand_lost" as const,
     sourceId: player.id,
@@ -4196,10 +4192,8 @@ async function maybeOpenHandLossTrigger(roomId: string, playerId: string, before
     playerId: player.id,
     hero: player.hero,
   };
-  if (!getTriggeredEffects(context).length) return;
-  const existing = parse<Pending | null>(room.pending_json, null);
-  if (existing?.kind === "trigger" && existing.event === "hand_lost" && existing.continuation.kind === "hand_loss_event" && existing.continuation.playerId === player.id) return;
-  const presentation = addLogWithId(parse<string[]>(room.log_json, []), `${player.name} may use Second Wind to draw 1 card, or decline.`);
+  if (!getTriggeredEffects(context).length) return null;
+  const presentation = addLogWithId(state.log, `${player.name} may use Second Wind to draw 1 card, or decline.`);
   const pending: TriggerPending = withPresentationBarrier({
     kind: "trigger",
     event: "hand_lost",
@@ -4210,15 +4204,29 @@ async function maybeOpenHandLossTrigger(roomId: string, playerId: string, before
       kind: "hand_loss_event",
       playerId: player.id,
       lostCards,
-      resumePhase: room.phase ?? "play",
-      resumeTurnSeat: room.turn_seat,
+      resumePhase: state.phase ?? "play",
+      resumeTurnSeat: state.turnSeat,
       ...(existing ? { resumePending: existing } : {}),
       ...(resumeRecovery ? { resumeRecovery } : {}),
     },
   }, presentation.log, presentation.eventId);
-  const update = room.pending_json === null
-    ? await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ? AND pending_json IS NULL").bind(serializePending(pending), JSON.stringify(presentation.log), roomId).run()
-    : await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ? AND pending_json = ?").bind(serializePending(pending), JSON.stringify(presentation.log), roomId, room.pending_json).run();
+  return { pending, log: presentation.log };
+}
+
+/** Open a private semantic hand-loss trigger after the completed mutation. */
+async function maybeOpenHandLossTrigger(roomId: string, playerId: string, beforeHand: Card[], resumeRecovery?: { records: RecoveryRecord[]; resume: RecoveryResume }) {
+  if (!beforeHand.length) return;
+  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+  const player = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(playerId, roomId).first<PlayerRow>();
+  if (!room || !player) return;
+  const afterHand = parse<Card[]>(player.hand_json, []);
+  if (afterHand.length) return;
+  const transition = handLossTriggerTransition(player, beforeHand, afterHand, {
+    phase: room.phase, turnSeat: room.turn_seat, pending: parse<Pending | null>(room.pending_json, null), log: parse<string[]>(room.log_json, []),
+  }, resumeRecovery);
+  if (!transition) return;
+  const update = await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ? AND pending_json IS ?")
+    .bind(serializePending(transition.pending), JSON.stringify(transition.log), roomId, room.pending_json).run();
   return (update.meta.changes ?? 0) > 0;
 }
 
@@ -6370,11 +6378,11 @@ function prepareAttackDodgePublicResponse(room: RoomRow, response: ResponsePendi
         responseEventId = crypto.randomUUID();
         attackDodgeEvaluation = attackDodgeResponseProof(
           log, response, actor.id, room.turn_seat, dodgeCards[0], responseExecution, actor.hero,
-          provenEntourageDecision(response, parseCausalEnvelope(room.causal_envelope_json), gameTimeline(log)), responseEventId,
+          response.delegation?.publicEntourage ? provenEntourageDecision(response, parseCausalEnvelope(room.causal_envelope_json), gameTimeline(log)) : null, responseEventId,
         );
         const attackDodgeResponse = attackDodgeEvaluation.proof ?? undefined;
         const conversion = publicConversionDraft(responseExecution?.providerId, actor.id, [dodgeCards[0]], { playerId: actor.id, hand: handBefore, equipment: equipmentCards(actor) }, semanticTarget.id, "Dodge");
-        const responseRoot = publicRootLink(log, continuation.rootEventId);
+        const responseRoot = conversion ? publicRootLink(log, continuation.rootEventId) : null;
         const provenConversion = conversion ? { ...conversion, ...(responseRoot ?? {}) } : null;
         const entourageFact = attackDodgeResponse?.entourage ? publicFactFor(response.causal, "EFFECT_APPLIED", {
           rootEventId: attackDodgeResponse.rootEventId, actorId: actor.id, affectedPlayerIds: [semanticTarget.id],
@@ -6437,6 +6445,28 @@ async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, targe
     .bind(transition.phase, transition.pending ? serializePending(transition.pending) : null, JSON.stringify(discard), JSON.stringify(transition.log), transition.clearEnvelope ? null : room.causal_envelope_json, room.id));
   await db().batch(writes);
   if (!transition.pending && (resumePlayerId ?? source?.id)) await continueAfterDying(room.id, resumePlayerId ?? source!.id);
+}
+
+/** An ordinary Dodge has no durable intermediate claim. The exact response
+ * and card payment either both advance or are both available for a retry. */
+async function commitAttackDodge(room: RoomRow, payer: PlayerRow, hand: Card[], discard: Card[], state: ReturnType<typeof dodgedAttackTransition>) {
+  const database = db();
+  const committedLog = JSON.stringify(state.log);
+  const [updatedRoom] = await database.batch([
+    database.prepare(`UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ?
+      WHERE id = ? AND status = 'playing' AND phase = 'response' AND turn_seat IS ? AND pending_json IS ?
+        AND log_json IS ? AND discard_json IS ? AND causal_envelope_json IS ?
+        AND EXISTS (SELECT 1 FROM players WHERE id = ? AND room_id = rooms.id AND alive = 1
+          AND hand_json IS ? AND equipment_json IS ?)`)
+      .bind(state.phase, state.pending ? serializePending(state.pending) : null, JSON.stringify(discard), committedLog,
+        state.clearEnvelope ? null : room.causal_envelope_json, room.id, room.turn_seat, room.pending_json,
+        room.log_json, room.discard_json, room.causal_envelope_json, payer.id, payer.hand_json, payer.equipment_json),
+    // The freshly generated public event identifies this exact commit.
+    database.prepare(`UPDATE players SET hand_json = ? WHERE id = ? AND room_id = ?
+      AND EXISTS (SELECT 1 FROM rooms WHERE id = players.room_id AND log_json = ?)`)
+      .bind(JSON.stringify(hand), payer.id, room.id, committedLog),
+  ]);
+  return (updatedRoom.meta.changes ?? 0) > 0;
 }
 
 /** Applies the semantic force-damage outcome after an Attack has been dodged. */
@@ -8322,7 +8352,11 @@ async function commitCanonicalResponse(input: {
     const dodgeIds = canonicalDodge ? (responseExecution?.consumeCardIds ?? []) : [];
     const dodgeCards = dodgeIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
     if (canonicalDodge && dodgeCards.length !== dodgeIds.length) return json({ error: "That Dodge provider is no longer available." }, 409);
-    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Attack response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
+    const atomicDodge = canonicalDodge && !isSharedDomainResolution(liveRoom);
+    if (!atomicDodge) {
+      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+      if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Attack response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
+    }
     let attackDodgeEvaluation: AttackDodgeProofEvaluation | null = null;
     let responseEventId: string | null = null;
     if (canonicalDodge) {
@@ -8339,7 +8373,16 @@ async function commitCanonicalResponse(input: {
       const reopened = responseAfterSemanticSuccess(response)
         ? reopenSemanticResponse(response, semanticTarget, log, `${semanticTarget.name} must provide another Dodge.`)
         : null;
-      if (reopened) {
+      if (atomicDodge) {
+        const next = reopened
+          ? { phase: "response", pending: reopened.pending, log: reopened.log, clearEnvelope: false }
+          : dodgedAttackTransition(liveRoom, source, semanticTarget, log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", continuation.origin, continuation.resumePlayerId, continuation.rootEventId);
+        const handLoss = handLossTriggerTransition(me, handBeforeResponse, hand, { ...next, turnSeat: liveRoom.turn_seat });
+        const transition = handLoss ? { ...next, ...handLoss, phase: "response" } : next;
+        if (!await commitAttackDodge(liveRoom, me, hand, discard, transition)) {
+          return json({ error: "That Attack response has already changed.", stale: true, room: await roomState(code, token) }, 409);
+        }
+      } else if (reopened) {
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
           db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(reopened.pending), JSON.stringify(discard), JSON.stringify(reopened.log), room.id),
@@ -8347,7 +8390,7 @@ async function commitCanonicalResponse(input: {
       } else {
         await finishDodgedAttack(liveRoom, source, semanticTarget, discard, log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId)], continuation.origin, continuation.resumePlayerId, continuation.rootEventId);
       }
-      await maybeOpenHandLossTrigger(room.id, me.id, handBeforeResponse);
+      if (!atomicDodge) await maybeOpenHandLossTrigger(room.id, me.id, handBeforeResponse);
     } else {
       if (!source?.alive) {
         await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(continuation.resumePhase ?? "play", JSON.stringify(addLog(log, "The Attack source is no longer available; the response ends.")), room.id).run();

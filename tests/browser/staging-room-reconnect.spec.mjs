@@ -229,7 +229,9 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
     };
     currentRoom = await waitForRoom(request, roomCode, created.token, (room) => room.status === "playing" && room.turnSeat === hostSeat && room.currentAction?.actorId === hostId
       && (room.currentAction.legalActions.includes("end_turn") || room.currentAction.legalActions.includes("discard_cards")), {
-      timeoutMs: 8 * 60_000,
+      // Three opening Bot turns can continue through multiple Cron wakes.
+      // Keep the independent no-revision-progress deadline below.
+      timeoutMs: 10 * 60_000,
       progressTimeoutMs: 180_000,
       label: "human play or discard after opening Bot turns",
       beforePoll: triggerLocalRecovery,
