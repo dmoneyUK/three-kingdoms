@@ -691,6 +691,41 @@ test("Rebel prefers the public Lord and Renegade delays him until the final duel
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
+test("successive Bot Attacks account for committed public pressure before choosing comparable targets", async () => {
+  const { code, token, hostId, bots, room } = await createBotGame();
+  const [loyalist, lord, rebel] = bots;
+  sql(`UPDATE players SET hero='cao-cao', equipment_json='{}' WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)});
+    UPDATE players SET role='Renegade' WHERE id=${quote(hostId)};
+    UPDATE players SET role='Loyalist' WHERE id=${quote(loyalist.id)};
+    UPDATE players SET role='Lord' WHERE id=${quote(lord.id)};
+    UPDATE players SET role='Rebel' WHERE id=${quote(rebel.id)}`);
+
+  const opening = card("Attack", "pressure-opening");
+  setHand(hostId, [opening], 4, 4);
+  setTurn(code, room.players.find(({ id }) => id === hostId).seat, "play");
+  const human = await request("play_card", { code, token, cardId: opening.id, targetId: rebel.id });
+  assert.equal(human.status, 200, JSON.stringify(human.data));
+
+  const targetFor = async (actor, index) => {
+    setEquipment(actor.id, { weapon: card("BlueSteelSword", `pressure-weapon-${index}`) });
+    setHand(actor.id, [card("Attack", `pressure-attack-${index}`)], 4, 4);
+    setTurn(code, actor.seat, "play");
+    const before = (await state(code, token)).data;
+    const selected = await runBotStep(code, actor.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
+    assert.equal(selected.status, 200, JSON.stringify(selected.data));
+    const after = (await state(code, token)).data;
+    assert.equal(after.currentAction.requirement, "dodge");
+    assert.ok(!JSON.stringify(after).includes("botTargetPressure"), "server pressure records never enter the viewer projection");
+    return after.actionPlayerId;
+  };
+  assert.equal(await targetFor(loyalist, 1), hostId, "the host is a legitimate fresh target and the Lord is protected");
+  assert.equal(await targetFor(lord, 2), loyalist.id, "the Lord chooses a comparably useful target that has not just been attacked");
+  assert.equal(await targetFor(rebel, 3), lord.id, "public Lord priority remains in force");
+  assert.equal(query(`SELECT COUNT(*) FROM rooms r,json_each(r.log_json) e WHERE r.code=${quote(code)} AND e.value LIKE '%"botTargetPressure"%'`), "4");
+  assert.ok(!JSON.stringify((await state(code, "")).data).includes("botTargetPressure"));
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
 test("a Loyalist's targeted active skill selects a non-Lord using its resolved effect", async () => {
   const { code, token, hostId, bots } = await createBotGame();
   const loyalist = bots[0];

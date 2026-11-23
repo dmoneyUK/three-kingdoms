@@ -369,15 +369,20 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
   const rejoined = await rejoinResponse.json();
   const rejoinedRoom = rejoined.room ?? rejoined;
   expect(rejoinedRoom.code).toBe(roomCode);
-  expect(rejoinedRoom.status).toBe(stateBeforeRefresh.status);
   const hostBeforeRefresh = stateBeforeRefresh.players.find((player) => player.id === hostId);
   const hostAfterRefresh = rejoinedRoom.players.find((player) => player.id === hostId);
+  expect(hostAfterRefresh?.id).toBe(hostId);
   if (hostBeforeRefresh?.alive === false) expect(hostAfterRefresh?.alive).toBe(false);
   if (stateBeforeRefresh.status === "playing" && hostBeforeRefresh?.alive !== false
     && stateBeforeRefresh.currentAction?.actorId === hostId) {
+    expect(rejoinedRoom.status).toBe("playing");
     expect(rejoinedRoom.actionRevision).toBe(stateBeforeRefresh.actionRevision, "rejoining an active human decision does not advance the room");
   } else {
-    expect(rejoinedRoom.actionRevision).toBeGreaterThanOrEqual(stateBeforeRefresh.actionRevision);
+    // Revisions are opaque state fingerprints; background Bot decisions may
+    // change them while a defeated viewer refreshes, so they have no ordering.
+    expect(typeof rejoinedRoom.actionRevision).toBe("string");
+    expect(rejoinedRoom.actionRevision.length).toBeGreaterThan(0);
+    expect(stateBeforeRefresh.status === "finished" ? ["finished"] : ["playing", "finished"]).toContain(rejoinedRoom.status);
   }
   if (botDemoEnabled) expect(rejoinedRoom.players.filter((player) => player.isBot)).toHaveLength(3);
 

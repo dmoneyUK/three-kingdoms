@@ -1,3 +1,5 @@
+import { targetTieRank, type TargetRanking } from "./target-pressure";
+
 export type RoleActionDisposition = "hostile" | "global_harm" | "delayed_harm" | "helpful" | "neutral" | "unknown";
 
 export type RolePolicyContext = Readonly<{
@@ -15,6 +17,8 @@ export type RoleActionIntent = Readonly<{
   mayAffectLord?: boolean;
   /** A canonical continuation requires this action; it is not a voluntary play. */
   forced?: boolean;
+  /** A continuation permits the acting player to choose a target. */
+  targetDiscretion?: boolean;
   /** Comparable actions (same effective kind and cost) retain their normal order. */
   comparisonKey?: string;
 }>;
@@ -80,6 +84,7 @@ export function assessRoleAction(context: RolePolicyContext, intent: RoleActionI
 export function filterAndRankRoleActions<T>(
   context: RolePolicyContext,
   entries: readonly Readonly<{ value: T; intent: RoleActionIntent }>[],
+  targeting?: TargetRanking,
 ): { allowed: T[]; rejected: Array<Readonly<{ value: T; reason: RolePolicyDenialReason }>> } {
   const allowedEntries: Array<{ value: T; intent: RoleActionIntent; preference: 0 | 1; groupKey: string }> = [];
   const rejected: Array<Readonly<{ value: T; reason: RolePolicyDenialReason }>> = [];
@@ -99,8 +104,31 @@ export function filterAndRankRoleActions<T>(
     groups.set(groupKey, group);
   }
 
+  const rankTargets = (values: Array<typeof allowedEntries[number]>) => {
+    if (!targeting || values.length < 2) return values;
+    const byCount = new Map<number, Array<{ entry: typeof allowedEntries[number]; pressure: number; key: string; tie: number }>>();
+    const targetCount = (intent: RoleActionIntent) => intent.disposition === "hostile" && (!intent.forced || intent.targetDiscretion)
+      ? intent.targetIds?.length ?? 0 : 0;
+    const scores = new Map<string, { pressure: number; tie: number }>();
+    for (const entry of values) {
+      const count = targetCount(entry.intent);
+      if (!count) continue;
+      const ids = [...new Set(entry.intent.targetIds)].sort();
+      const key = JSON.stringify(ids);
+      let score = scores.get(key);
+      if (!score) {
+        score = { pressure: ids.reduce((total, id) => total + (targeting.recentPressure.get(id) ?? 0), 0), tie: targetTieRank(targeting.seed, key) };
+        scores.set(key, score);
+      }
+      const bucket = byCount.get(count) ?? [];
+      bucket.push({ entry, key, ...score });
+      byCount.set(count, bucket);
+    }
+    for (const bucket of byCount.values()) bucket.sort((a, b) => a.pressure - b.pressure || a.tie - b.tie || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)).reverse();
+    return values.map((entry) => byCount.get(targetCount(entry.intent))?.pop()?.entry ?? entry);
+  };
   const cursors = new Map<string, { values: Array<typeof allowedEntries[number]>; index: number }>();
-  for (const [key, group] of groups) cursors.set(key, { values: [...group.preferred, ...group.ordinary], index: 0 });
+  for (const [key, group] of groups) cursors.set(key, { values: [...rankTargets(group.preferred), ...rankTargets(group.ordinary)], index: 0 });
   const ordered = allowedEntries.map(({ groupKey }) => {
     const cursor = cursors.get(groupKey)!;
     return cursor.values[cursor.index++].value;

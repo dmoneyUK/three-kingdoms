@@ -15,6 +15,7 @@ import { canRespondWithNegation, getAttackCardProvider, getPlayPhaseActions, typ
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
 import { buildPlayCandidates } from "../../../ai/play-candidates";
 import { assessRoleAction, filterAndRankRoleActions, type RoleActionIntent, type RolePolicyContext } from "../../../ai/role-target-policy";
+import { recentTargetPressure, type TargetPressureRecord } from "../../../ai/target-pressure";
 import { buildBotObservation, type BotChoiceKind } from "../../../ai/bot-observation";
 import { chooseExact, openBotDecision, policyForBotDispatch, selectBotChoice, type BotDecisionPlan } from "../../../ai/decision-router";
 import { botTriggerChoices } from "../../../ai/trigger-selection";
@@ -57,7 +58,7 @@ export const runtime = "edge";
 type TargetCardZone = "hand" | "equipment" | "judgement";
 const PRIVATE_STEAL_RESULT_WINDOW_MS = 12_000;
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { sharedResponseContribution?: SharedResponseContribution; entourageInvocation?: EntourageInvocation; resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; actorId?: string; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicFact?: PublicPresentationEventFactDraft; publicZoneTransition?: PublicPhysicalZoneTransition; publicZoneTransitions?: readonly PublicPhysicalZoneTransition[]; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PresentationMeta = { botTargetPressure?: TargetPressureRecord; sharedResponseContribution?: SharedResponseContribution; entourageInvocation?: EntourageInvocation; resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; actorId?: string; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicFact?: PublicPresentationEventFactDraft; publicZoneTransition?: PublicPhysicalZoneTransition; publicZoneTransitions?: readonly PublicPhysicalZoneTransition[]; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type AttackDodgeProofDiagnostic = {
   result: "PROVEN" | "REJECTED" | "NOT_ATTEMPTED";
   reason: string;
@@ -941,7 +942,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { ...(meta?.sharedResponseContribution ? { sharedResponseContribution: meta.sharedResponseContribution } : {}), ...(meta?.entourageInvocation ? { entourageInvocation: meta.entourageInvocation } : {}), resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
+  return { ...(meta?.botTargetPressure ? { botTargetPressure: meta.botTargetPressure } : {}), ...(meta?.sharedResponseContribution ? { sharedResponseContribution: meta.sharedResponseContribution } : {}), ...(meta?.entourageInvocation ? { entourageInvocation: meta.entourageInvocation } : {}), resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
 function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "outcomeCopySegments" | "amount" | "effect" | "bumperHarvestPickProof" | "committedOutcome">> = {}, envelope?: CausalEnvelope | null, rootIdentity?: NonNullable<PublicPresentationEventFactDraft["committedIdentity"]>): PublicPresentationEventFactDraft | undefined {
   if (!causal?.interactionId || !causal.frameId) return undefined;
@@ -1408,6 +1409,9 @@ function addTriggeredEffectNotice(log: string[], actor: string, label: string, p
     ? { ...publicFact, rootEventId: eventId } : publicFact;
   return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined,
     { effectNotice: true, ...(fact ? { publicFact: fact } : {}) }, eventId);
+}
+function hostileTargetMeta(room: RoomRow, targetIds: readonly string[]): PresentationMeta {
+  return botDemoEnabled() ? { botTargetPressure: { turnEpoch: room.turn_epoch, targetIds } } : {};
 }
 function addLog(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) {
   return appendSequencedLogRecord(log, "@event:", { id: crypto.randomUUID(), message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) });
@@ -3281,6 +3285,7 @@ function messageEvent(entry: string, index: number) {
 }
 function timelineRecordFields(value: Record<string, unknown>, publicSequences: ReadonlyMap<string, number> | null) {
   const fields = { ...value };
+  delete fields.botTargetPressure;
   delete fields.publicSequenceWatermark;
   delete fields.publicSequence;
   const sequence = typeof value.id === "string" ? publicSequences?.get(value.id) : undefined;
@@ -8881,6 +8886,16 @@ export async function POST(request: Request, routeContext?: unknown) {
       publicLordId: allRoomPlayers.find((player) => player.role === "Lord" && player.alive)?.id ?? null,
       livingPlayerIds: allRoomPlayers.filter((player) => player.alive).map(({ id }) => id),
     };
+    let targeting: { seed: string; recentPressure: ReadonlyMap<string, number> } | undefined;
+    const rankRoleActions = <T,>(entries: readonly { value: T; intent: RoleActionIntent }[]) => {
+      if (!targeting && entries.some(({ intent }) => intent.disposition === "hostile" && (!intent.forced || intent.targetDiscretion))) {
+        // The action revision contains a fingerprint of private hands. Seed
+        // the tie from match, actor and public turn context instead.
+        targeting = { seed: JSON.stringify([room.id, actor.id, room.turn_epoch, room.phase, pendingForController?.kind]),
+          recentPressure: recentTargetPressure(room.log_json, room.turn_epoch) };
+      }
+      return filterAndRankRoleActions(rolePolicyContext, entries, targeting);
+    };
     type BotDispatch = { action: string; fields: Record<string, unknown> };
     const alternatives: BotDecisionPlan<BotDispatch>[] = [];
     let plansIncomplete = false;
@@ -8980,7 +8995,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       if (action === "choose_target_card" && pendingForController?.kind === "target_card") {
         return { disposition: "hostile", targetIds: [pendingForController.targetId], forced: true, comparisonKey };
       }
-      if (action === "choose_borrowed_sword_target") return { disposition: "hostile", targetIds: fieldTargets, forced: true, comparisonKey };
+      if (action === "choose_borrowed_sword_target") return { disposition: "hostile", targetIds: fieldTargets, forced: true, targetDiscretion: true, comparisonKey };
       if (action === "respond" && responseDecision?.requirement === "attack") {
         const continuation = policyPending?.kind === "response" ? policyPending.continuation : null;
         const forcedTargetId = continuation?.kind === "duel" ? continuation.opponentId
@@ -9086,7 +9101,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       if (catalogue.status === "ready") {
         const serverPlans = catalogue.serverPlans();
         const planByChoiceId = new Map(catalogue.publicChoices.map((choice, index) => [choice.id, serverPlans[index]]));
-        const safeChoices = filterAndRankRoleActions(rolePolicyContext, catalogue.publicChoices.map((choice) => {
+        const safeChoices = rankRoleActions(catalogue.publicChoices.map((choice) => {
           const plan = planByChoiceId.get(choice.id);
           const fields = plan ? Object.fromEntries(Object.entries(plan.payload).filter(([key]) => key !== "action" && key !== "actionRevision")) : {};
           return { value: choice, intent: plan ? roleIntentForDispatch(plan.payload.action, fields) : { disposition: "unknown" as const } };
@@ -9126,7 +9141,9 @@ export async function POST(request: Request, routeContext?: unknown) {
           }
           return triggerChoicesForRole(option).some((choice) => assessRoleAction(rolePolicyContext, roleIntentForDispatch("trigger", choice)).allowed);
         }) : undefined;
-        const choice = active && triggerChoicesForRole(active).find((candidate) => assessRoleAction(rolePolicyContext, roleIntentForDispatch("trigger", candidate)).allowed);
+        const choice = active && rankRoleActions(triggerChoicesForRole(active).map((value) => ({
+          value, intent: roleIntentForDispatch("trigger", value),
+        }))).allowed[0];
         if (choice) {
           nextAction = "trigger";
           preferredKind = "skill";
@@ -9173,13 +9190,12 @@ export async function POST(request: Request, routeContext?: unknown) {
       }
     } else if (pendingForController?.kind === "borrowed_sword" && legalActions.includes("choose_borrowed_sword_target")) {
       const targetIds = borrowedSwordForcedTargetIds(allRoomPlayers, pendingForController.sourceId, pendingForController.holderId);
-      const safeTargetIds = targetIds.filter((id) => {
-        const assessment = assessRoleAction(rolePolicyContext, roleIntentForDispatch("choose_borrowed_sword_target", { targetId: id }));
-        if (!assessment.allowed) blockedRoleReasons.add(assessment.reason ?? "unknown_harm_requires_review");
-        return assessment.allowed;
-      });
-      const targetId = safeTargetIds[0];
-      for (const id of targetIds) offer("choose_target", "choose_borrowed_sword_target", { targetId: id });
+      const ranked = rankRoleActions(targetIds.map((id) => ({
+        value: id, intent: roleIntentForDispatch("choose_borrowed_sword_target", { targetId: id }),
+      })));
+      for (const rejected of ranked.rejected) blockedRoleReasons.add(rejected.reason);
+      const targetId = ranked.allowed[0];
+      for (const id of ranked.allowed) offer("choose_target", "choose_borrowed_sword_target", { targetId: id });
       if (targetId) nextAction = "choose_borrowed_sword_target";
       // The canonical handler also owns settlement if no target remains.
       actionFields = targetId ? { targetId } : {};
@@ -9364,7 +9380,7 @@ export async function POST(request: Request, routeContext?: unknown) {
           seen.add(key);
           return true;
         });
-      const roleFilteredPlans = filterAndRankRoleActions(rolePolicyContext, plans.map((plan) => ({
+      const roleFilteredPlans = rankRoleActions(plans.map((plan) => ({
         value: plan, intent: roleIntentForDispatch(plan.payload.action, plan.payload.fields),
       })));
       for (const rejected of roleFilteredPlans.rejected) blockedRoleReasons.add(rejected.reason);
@@ -10088,7 +10104,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         const fact = publicFactFor(root.context, "SKILL_USED", { actorId: liveMe.id, affectedPlayerIds: [target.id],
           label: "Influencing", effect: { kind: "influencing_invocation" } }, root.envelope);
         const presentation = addLogWithId(parse<string[]>(liveRoom.log_json, []), `${liveMe.name} (Liu Bei) used Influencing.`, undefined,
-          { actorId: liveMe.id, ...(fact ? { publicFact: fact } : {}), importance: "essential" });
+          { ...hostileTargetMeta(liveRoom, [target.id]), actorId: liveMe.id, ...(fact ? { publicFact: fact } : {}), importance: "essential" });
         const original: ResponsePending = { kind: "response", actorId: liveMe.id,
           requirement: { kind: "attack", sourceId: liveMe.id, actorId: liveMe.id }, reason: "Influencing Attack", causal: root.context,
           continuation: { kind: "influencing_attack", sourceId: liveMe.id, targetId: target.id, resumePhase: "play",
@@ -10124,6 +10140,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         log = lustCostPresentation?.log ?? addDiscardEvent(log, liveMe, selected);
         const lustActivation = first && second
           ? addLogWithId(log, `${liveMe.name} uses Lust: ${first.name} and ${second.name} enter a Duel. ${first.name} plays Attack first.`, undefined, {
+            ...hostileTargetMeta(liveRoom, [first.id, second.id]),
             importance: "essential",
             publicDiaoChanNotice: {
               semantics: "PROVEN",
@@ -10237,8 +10254,8 @@ export async function POST(request: Request, routeContext?: unknown) {
             ? addCardEventWithPublicEffect(log, liveMe.name, physicalCard, target.name, "play", {
               effectId: "daqiao_captivating", effectClass: "CONVERSION", activationOwnerId: liveMe.id,
               materials, targetId: target.id, resultingCardKind: "Overindulgence", outcome: "AS_OVERINDULGENCE",
-            })
-            : addCardEventWithId(log, liveMe.name, physicalCard, target.name);
+            }, hostileTargetMeta(liveRoom, [target.id]))
+            : addCardEventWithId(log, liveMe.name, physicalCard, target.name, "play", true, hostileTargetMeta(liveRoom, [target.id]));
           log = addLog(presentation.log, `${liveMe.name} uses Captivating to play ${physicalCard.rank}${physicalCard.suit} as Overindulgence on ${target.name}.`);
           await beginStratagemUse(liveRoom, { ...liveMe, hand_json: JSON.stringify(hand) }, livePlayers, physicalCard, delayed, target.name, target.id, { kind: "overindulgence", targetId: target.id, cardId: delayed.id }, hand, deck, discard, log);
         }
@@ -10305,9 +10322,10 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (!target || !card) await recoverClaimedHeroSkill(liveRoom, liveMe, hand, selected, discard, log, `${liveMe.name}'s Ambushment could not find a valid target and was settled safely.`);
         else {
           const proof = publicConversionDraft("gan_ning_qixi", liveMe.id, [card], { playerId: liveMe.id, hand: liveHand, equipment: liveEquipment }, target.id, "Dismantle");
+          const pressure = hostileTargetMeta(liveRoom, [target.id]);
           const presentation = proof
-            ? addCardEventWithPublicEffect(log, liveMe.name, card, target.name, "play", proof)
-            : addCardEventWithId(log, liveMe.name, card, target.name);
+            ? addCardEventWithPublicEffect(log, liveMe.name, card, target.name, "play", proof, pressure)
+            : addCardEventWithId(log, liveMe.name, card, target.name, "play", true, pressure);
           const qixiLog = addLog(presentation.log, `${liveMe.name} uses Ambushment as Burning Bridges on ${target.name}.`);
           await beginStratagemUse(liveRoom, { ...liveMe, hand_json: JSON.stringify(hand) }, livePlayers, card, card, target.name, target.id, { kind: "dismantle", targetId: target.id }, hand, deck, discard, qixiLog);
         }
@@ -10331,6 +10349,7 @@ export async function POST(request: Request, routeContext?: unknown) {
           effect: { kind: "targeted_skill" },
         }, choiceCausal.envelope);
         const presentation = addLogWithId(log, `${liveMe.name} uses Sowing Distrust on ${target.name}; ${target.name} must choose a suit and one hidden card from ${liveMe.name}'s hand.`, undefined, {
+          ...hostileTargetMeta(liveRoom, [target.id]),
           actorId: liveMe.id,
           publicSkillEffect: { effectId: "zhou_yu_fanjian", sourceId: liveMe.id, targetId: target.id },
           ...(activationFact ? { publicFact: activationFact } : {}),
@@ -12138,7 +12157,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       continuation: { kind: "borrowed_sword_attack", sourceId: pending.sourceId, holderId: holder.id, targetId: chosen.id, resumePhase: pending.resumePhase, resumePlayerId: pending.sourceId, weaponId: pending.weaponId ?? weapon.id, ...(pending.rootEventId ? { rootEventId: pending.rootEventId } : {}), ...(pending.rootResolutionId ? { rootResolutionId: pending.rootResolutionId } : {}), ...(pending.rootCardId ? { rootCardId: pending.rootCardId } : {}), ...(pending.negationHistory ? { negationHistory: pending.negationHistory } : {}), origin: "borrowed_sword", causal: forcedCausal },
     };
     const choiceEvent = addLogWithId(log, `${me.name} chooses ${chosen.name} as the target of ${holder.name}'s forced Attack.`, undefined,
-      { actorId: me.id, ...(targetChoiceFact ? { publicFact: targetChoiceFact } : {}) });
+      { ...hostileTargetMeta(liveRoom, [chosen.id]), actorId: me.id, ...(targetChoiceFact ? { publicFact: targetChoiceFact } : {}) });
     log = choiceEvent.log;
     await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(forced), JSON.stringify(log), child ? JSON.stringify(child.envelope) : liveRoom.causal_envelope_json, room.id).run();
     return json({ room: await roomState(code, token) });
@@ -12208,7 +12227,8 @@ export async function POST(request: Request, routeContext?: unknown) {
       const serpentPresentation = serpentProof
         ? addCardGroupEventWithPublicEffect(log, me.name, materials, "play", target.name, serpentProof, undefined, { playedAs: "attack" })
         : { log: addCardGroupEvent(log, me.name, materials, "play", true, target.name), eventId: undefined };
-      log = addLog(serpentPresentation.log, `${me.name} discards 2 cards with Serpent Spear to form an Attack on ${target.name}.`);
+      log = addLog(serpentPresentation.log, `${me.name} discards 2 cards with Serpent Spear to form an Attack on ${target.name}.`,
+        undefined, hostileTargetMeta(liveRoom, [target.id]));
       const { value: declaration, createdEnvelope } = attackDeclaration(me, target, "serpent_spear", materials, phaseAfterAttack(me), undefined, undefined, serpentPresentation.eventId);
       if (attackTargetedOptions(me, target, [], players).length) {
         const targetedPresentation = addLogWithId(log, `${me.name}'s Attack-targeted abilities open for ${target.name}.`);
@@ -12364,8 +12384,9 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id);
         const requiredKind = card.kind === "BarbarianInvasion" ? "Attack" : "Dodge"; const cardName = card.kind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows";
-        const presentation = addCardEventWithId(log, me.name, card, "All other players"); log = addLog(presentation.log, `${me.name} plays ${cardName}.`);
         const orderedTargetIds = targets.map((player) => player.id);
+        const presentation = addCardEventWithId(log, me.name, card, "All other players", "play", true, hostileTargetMeta(liveRoom, orderedTargetIds));
+        log = addLog(presentation.log, `${me.name} plays ${cardName}.`);
         const groupCreation = groupResponseDecision(card.kind, "GROUP", me.id, targets[0].id, orderedTargetIds, orderedTargetIds.slice(1), requiredKind, liveRoom.phase, `Respond to ${cardName}: select ${requiredKind} or take 1 damage`, nextResponseDeadline(targets[0]), [card], latestResolutionId(log), [card], undefined, presentation.eventId);
         const pending = withPresentationBarrier(groupCreation.value, log, presentation.eventId);
         await beginStratagemUse(liveRoom, me, players, card, card, "all other players", targets[0].id, { kind: "group", pending }, hand, deck, discard, log, groupCreation.createdEnvelope);
@@ -12383,7 +12404,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
-        log = addCardEvent(log, me.name, card, target.name); log = addLog(log, `${me.name} plays Overindulgence on ${target.name}.`);
+        log = addCardEvent(log, me.name, card, target.name, "play", true, hostileTargetMeta(liveRoom, [target.id])); log = addLog(log, `${me.name} plays Overindulgence on ${target.name}.`);
         await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "overindulgence", targetId: target.id, cardId: card.id }, hand, deck, discard, log);
       } else if (card.kind === "RationsDepleted" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
@@ -12393,7 +12414,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
-        hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name);
+        hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name, "play", true, hostileTargetMeta(liveRoom, [target.id]));
         await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "rations_depleted", targetId: target.id, cardId: card.id }, hand, deck, discard, log);
       } else if (card.kind === "BorrowedSword" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
@@ -12402,7 +12423,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
-        hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name); log = addLog(log, `${me.name} plays Borrowed Sword on ${target.name}.`);
+        hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name, "play", true, hostileTargetMeta(liveRoom, [target.id])); log = addLog(log, `${me.name} plays Borrowed Sword on ${target.name}.`);
         await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "borrowed_sword", targetId: target.id }, hand, deck, discard, log);
       } else if (card.kind === "Dismantle" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
@@ -12411,7 +12432,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 400);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
-        hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name);
+        hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name, "play", true, hostileTargetMeta(liveRoom, [target.id]));
         await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "dismantle", targetId: target.id }, hand, deck, discard, log);
       } else if (card.kind === "Steal" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
@@ -12421,7 +12442,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, targetEvaluation.rejection.code === "NO_TARGETABLE_CARDS" ? 400 : 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
-        hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name);
+        hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name, "play", true, hostileTargetMeta(liveRoom, [target.id]));
         await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "steal", targetId: target.id }, hand, deck, discard, log);
       } else if (card.kind === "Duel" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
@@ -12431,7 +12452,8 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
-        const presentation = addCardEventWithId(log, me.name, card, target.name); log = addLog(presentation.log, `${me.name} starts a Duel with ${target.name}.`);
+        const presentation = addCardEventWithId(log, me.name, card, target.name, "play", true, hostileTargetMeta(liveRoom, [target.id]));
+        log = addLog(presentation.log, `${me.name} starts a Duel with ${target.name}.`);
         const wushuangPlayerId = me.hero === "lü-bu" ? me.id : target.hero === "lü-bu" ? target.id : undefined;
         const duelCreation = duelResponseDecision(me.id, target.id, me.id, liveRoom.phase, "Respond to Duel: select Attack or take 1 damage", nextResponseDeadline(target), [card], wushuangPlayerId, undefined, undefined, presentation.eventId);
         const pending = withPresentationBarrier(duelCreation.value, log, presentation.eventId);
@@ -12460,7 +12482,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         const target = targets[0];
         hand = hand.filter((item) => item.id !== card.id);
         if (!(halberdAttack && targets.length > 1)) discard.push(card);
-        const attackMeta: PresentationMeta = playedAsAttack ? { playedAs: "attack" } : {};
+        const attackMeta: PresentationMeta = { ...hostileTargetMeta(liveRoom, targets.map(({ id }) => id)), ...(playedAsAttack ? { playedAs: "attack" } : {}) };
         const effectProofs: PresentationPublicCardEffectDraft[] = [];
         const cardOwnerSnapshot = { playerId: me.id, hand: handBeforeAction, equipment: equipmentCards(me) };
         const conversion = publicConversionDraft(attackCardProvider?.providerId, me.id, [card], cardOwnerSnapshot, target.id, "Attack");
@@ -12474,7 +12496,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         }
         const attackPresentation = effectProofs.length
           ? addCardEventWithPublicEffects(log, me.name, card, targets.map((entry) => entry.name).join(", "), "play", effectProofs, attackMeta)
-          : addCardEventWithId(log, me.name, card, targets.map((entry) => entry.name).join(", "), "play", true, playedAsAttack ? attackMeta : undefined);
+          : addCardEventWithId(log, me.name, card, targets.map((entry) => entry.name).join(", "), "play", true, attackMeta);
         log = attackPresentation.log;
         if (halberdAttack && targets.length > 1) {
           if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
