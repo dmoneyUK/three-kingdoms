@@ -312,11 +312,19 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
     })).toEqual(bots.map((bot) => bot.name));
     currentRoom = await waitForRoom(request, roomCode, created.token, (room) => {
       const host = room.players.find((player) => player.id === hostId);
+      const decision = room.currentAction;
+      // Wait for the browser's automatic draw, including delayed-card draw variants.
+      // A host-owned turn can still be between actions at this point.
       return room.status === "finished"
         || (room.status === "playing" && host?.alive === false)
-        || (room.status === "playing" && room.turnSeat === hostSeat && room.actionPlayerId === hostId
-          && room.currentAction?.actorId === hostId && room.phase !== "draw");
-    }, { timeoutMs: 30_000, label: "human turn or defeated observer after bot cycle" });
+        || (room.status === "playing" && room.turnSeat === hostSeat && decision?.actorId === hostId
+          && decision.legalActions.some((action) => ["end_turn", "discard_cards", "decline_trigger"].includes(action)));
+    }, {
+      timeoutMs: 30_000,
+      label: "testable human action or defeated observer after bot cycle",
+      beforePoll: triggerLocalRecovery,
+      onState: resolveHumanInterruption,
+    });
     const hostAfterBotCycle = currentRoom.players.find((player) => player.id === hostId);
     if (currentRoom.status === "playing" && hostAfterBotCycle?.alive !== false) {
       if (currentRoom.currentAction.legalActions.includes("end_turn")) {
@@ -324,10 +332,8 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
       } else if (currentRoom.currentAction.legalActions.includes("discard_cards")) {
         const required = Math.max(0, currentRoom.myHand.length - (hostAfterBotCycle?.hp ?? currentRoom.myHand.length));
         await expect(page.getByRole("button", { name: `Discard ${required} selected` })).toBeVisible({ timeout: 15_000 });
-      } else if (currentRoom.currentAction.legalActions.includes("decline_trigger")) {
-        await expect(page.getByRole("button", { name: "Skip", exact: true })).toBeEnabled({ timeout: 15_000 });
       } else {
-        throw new Error(`Unsupported human UI action at return from bot cycle: ${currentRoom.currentAction.kind}`);
+        await expect(page.getByRole("button", { name: "Skip", exact: true })).toBeEnabled({ timeout: 15_000 });
       }
       expect(currentRoom.players.filter((player) => player.isBot).every((player) => player.botStatus === "waiting_for_human")).toBe(true);
     } else if (currentRoom.status === "playing") {
