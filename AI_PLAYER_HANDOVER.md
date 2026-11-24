@@ -1,15 +1,20 @@
 # Smart Bot Player — Coding Agent Handover
 
-Branch `feature/smart-bot-player`. Latest design reviewed: `c7e379d0`.
+Branch `feature/smart-bot-player`. Latest design reviewed: `c7e379d0` (AIP-D37).
 
-## Current task — AIP-PERF-01 (`IN_PROGRESS` — reviewer `CHANGES_REQUESTED`)
+## Current task — AIP-PERF-01 (`IN_PROGRESS` — `CHANGES_REQUESTED`)
 
-Preserve `e262a4355fb051041e59cee2ef234e4ba81c5a56`'s durable end-turn checkpoint and the green `dd8f8d6b00dc` target-card settlement. The bounded classifier/scheduler correction is code SHA `2d45c5b5451280939f8fd033198e719fe4ff1922`; the bounded-progress test correction is `317fa1bf3728c7895d7289d8993186f7147287af`.
+Preserve `e262a4355fb051041e59cee2ef234e4ba81c5a56`'s durable end-turn checkpoint and `dd8f8d6b00dc`'s target-card atomic settlement. The current source slice repairs the remaining Dauntless end-turn interruption window: cost/HP/log/discard and a typed `turn_end_checkpoint` are committed with exact room, pending, hand, HP and equipment guards; existing `advanceTurnEndCheckpoint` performs the idempotent continuation. Damage-suffered response claims that feed this continuation now clear the old pending handle in the same CAS, preventing a stale response from stranding `resolving`. No UX2, production, model or ruleset changes were made.
 
-Exact-SHA Actions [45369946319](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45369946319) for `2d45c5b5451280939f8fd033198e719fe4ff1922` passed Lint/Fast, API and browser startup; production `deploy` was skipped. Staging target guard, build, migration and Worker deploy passed, but mobile refresh/rejoin failed at the fixed 10-minute “human play or discard” wait for `YFQWY` while the room was still making authoritative Bot progress (`response`, Bot work claimed). Read-only D1 later showed the same room advanced to the host's draw phase; Cloudflare aggregate evidence for 10:04–10:18 UTC showed 667 fetch-200, 4 fetch-201 and 5 Cron invocations, 0 errors/5xx, fetch CPU P50/P95/P99 9.7/24.4/104 ms, and D1 4,134 reads / 394 writes. This is a smoke-budget/progress-boundary failure, not proof of CPU safety or scheduler acceptance. Old investigation rooms were read-only and unchanged by this run.
+Focused evidence on the rebuilt Worker bundle:
 
-Exact-SHA Actions [45374594792](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45374594792) for `317fa1bf3728c7895d7289d8993186f7147287af` passed Lint/Fast, API and browser startup; production `deploy` was skipped and Staging guard/build/migration/Worker deploy passed. Mobile smoke failed at `staging-room-reconnect.spec.mjs:342` after 6m51s because the new classifier's boolean `botCycleResult.ok` was compared to the Bot-name array; this is a test assertion defect, not a hosted scheduler/CPU failure. Read-only D1 for `3GJ99` showed `playing/response`, 30 consumed and 1 stale Bot work row, 193 audit rows, and no writes from inspection. The temporary Staging ingress/Cron were closed and verified afterward: public/preview false, schedules empty, no matching domains, queues or routes.
+- `npm run build` passed.
+- `tests/api/yue-jin-dauntless.test.mjs`: 6 passed, including fault injection after checkpoint creation, one-time recovery, card conservation, refresh/rejoin and four-view private-hand isolation.
+- `tests/api/concurrency.test.mjs`: 19 passed, including interrupted end-turn/Beauty recovery and duplicate/stale response races.
+- `npx eslint app/api/rooms/route.ts`, `node --check tests/api/yue-jin-dauntless.test.mjs` and `git diff --check` passed.
 
-Current bounded corrective slice: retain the progress-only opening wait (180-second no-progress failure, hard 15-minute cap) and correct its final classifier assertion to check the boolean result. No gameplay, UX2, GET-02, BOT-02 or PLAY scope.
+No new commit, exact-SHA Actions run or deployment exists yet. Staging ingress/Cron/diagnostic processes remain closed; Production was untouched. Effective Worker CPU limit and representative 10–15-minute GET/POST/Cron evidence (>=200 public events and >=140 Bot work rows, CPU versus D1 wait/wall time, 1102/5xx counts, lease recovery and privacy) remain unknown/unproven. Harvest and Borrowed Sword claim-first windows are follow-up observations only and are outside this repair. Do not start AIP-PERF-GET-02, AIP-PERF-BOT-02 or PLAY work; do not mark `PENDING_REVIEW` or `ACCEPTED` yet.
 
-Next: commit/push the one-line assertion correction with the changed focused checks already passing, then verify a new exact-SHA full CI with Staging mobile green and production skipped. Only after that gate is green may one controlled 10–15-minute authenticated long-room fixture collect per-request GET/Bot-POST CPU, D1 wait, 1102/5xx, lease/Cron recovery, idempotency, rejoin and privacy evidence. Harvest/Borrowed Sword claim-first windows remain follow-up suggestions only. CPU limit/headroom, hosted long-room proof and real iPhone Safari acceptance remain unproven; do not mark `PENDING_REVIEW` or `ACCEPTED`. Owner still needs one actual iPhone Safari 10–15-minute game review.
+## Next bounded task
+
+Commit/push this scoped repair, verify the exact-SHA full GitHub Actions with Production `SKIPPED`, then (only if green) run one controlled isolated Staging long-room evidence fixture, close all temporary access afterward, and update this handover before the eventual `PENDING_REVIEW` / Owner iPhone Safari 10–15-minute gate.

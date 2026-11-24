@@ -75,6 +75,61 @@ test("Dauntless uses the shared turn_end event, private Basic cost, and target-o
   assert.equal((await state(game.code, game.members[1].token)).data.phase, "draw", "turn-end continues to the next living seat exactly once");
 });
 
+test("interrupted Dauntless damage leaves a durable turn-end checkpoint and resumes exactly once", { timeout: 60_000 }, async () => {
+  const game = await createHumanGame();
+  const { target, yue, others } = configure(game, { yueCards: [card("Peach", "dauntless-checkpoint-cost")] });
+  const privateCards = others.map((player, index) => card("Dodge", `dauntless-checkpoint-private-${index}`));
+  others.forEach((player, index) => setHand(player.id, [privateCards[index]], 4, 4));
+  const opened = await openDauntless(game, game.members[0], game.members[1]);
+  const roomId = query(`SELECT id FROM rooms WHERE code=${quote(game.code)}`);
+  const pendingBefore = JSON.parse(query(`SELECT pending_json FROM rooms WHERE id=${quote(roomId)}`));
+  assert.equal(pendingBefore.kind, "trigger");
+  assert.equal(pendingBefore.continuation.kind, "turn_end_event");
+  const payload = {
+    code: game.code, token: game.members[1].token,
+    providerId: "yue_jin_dauntless", cardId: "peach-dauntless-checkpoint-cost",
+    preserveResponse: true,
+  };
+  const failed = async () => {
+    const { preserveResponse: _preserveResponse, ...requestValues } = payload;
+    const response = await fetch(new URL("/api/rooms", process.env.GAME_TEST_URL ?? "http://localhost:3137"), {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "trigger", ...requestValues }),
+    });
+    assert.equal(response.status, 500, JSON.stringify(response.data));
+    await response.body?.cancel();
+  };
+  sql(`CREATE TRIGGER abort_dauntless_checkpoint_settlement BEFORE UPDATE OF phase ON rooms
+    WHEN OLD.id=${quote(roomId)} AND json_extract(OLD.pending_json,'$.kind')='turn_end_checkpoint'
+    BEGIN SELECT RAISE(ABORT, 'interrupted Dauntless checkpoint settlement'); END;`);
+  try {
+    await failed();
+  } finally {
+    sql("DROP TRIGGER abort_dauntless_checkpoint_settlement");
+  }
+
+  const paused = JSON.parse(query(`SELECT json_object('phase',phase,'pending',pending_json,'turnEpoch',turn_epoch,'log',log_json) FROM rooms WHERE id=${quote(roomId)}`));
+  assert.equal(paused.phase, "resolving");
+  const pendingKind = paused.pending ? JSON.parse(paused.pending).kind : null;
+  assert.equal(pendingKind, "turn_end_checkpoint");
+  assert.equal(JSON.parse(query(`SELECT hp FROM players WHERE id=${quote(target.id)}`)), 3, "Dauntless damage commits before the continuation wake");
+  assert.equal(roomCardCount(game.code, "peach-dauntless-checkpoint-cost"), 1, "the private Basic cost is discarded exactly once");
+  assert.equal(JSON.parse(paused.log).filter((entry) => entry.includes("takes 1 damage from ") && entry.includes(" with Dauntless")).length, 1, JSON.stringify(JSON.parse(paused.log)));
+
+  const recovered = (await state(game.code, game.members[1].token)).data;
+  assert.equal(recovered.phase, "draw");
+  assert.equal(recovered.currentAction.actorId, game.room.players.find((player) => player.seat === 1)?.id);
+  assert.equal(Number(query(`SELECT turn_epoch FROM rooms WHERE id=${quote(roomId)}`)), Number(paused.turnEpoch) + 1);
+  assert.equal(roomCardCount(game.code, "peach-dauntless-checkpoint-cost"), 1);
+  const views = await Promise.all(game.members.map((member) => state(game.code, member.token)));
+  for (const [index, { data }] of views.entries()) {
+    assert.deepEqual(data.myHand.map(({ id }) => id), index === 0 ? [] : index === 1 ? [] : [privateCards[index - 2].id]);
+    for (const [otherIndex, privateCard] of privateCards.entries()) {
+      if (otherIndex !== index - 2) assert.ok(!JSON.stringify(data).includes(privateCard.id));
+    }
+  }
+});
+
 test("Dauntless activation, own-turn exclusion, no-Basic private Pass, decline, and stale submissions are safe", async () => {
   const declined = await createHumanGame();
   const declineSetup = configure(declined, { yueCards: [card("Peach", "dauntless-decline")] });

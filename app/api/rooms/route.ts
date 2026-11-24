@@ -122,7 +122,7 @@ type CausalRoomState = {
   deck?: Card[];
   discard?: Card[];
 };
-function causalRoomStateWrite(roomId: string, state: CausalRoomState, expectedPendingJson?: string | null) {
+function causalRoomStateWrite(roomId: string, state: CausalRoomState, expectedPendingJson?: string | null, expectedPhase?: string | null) {
   const columns = ["phase = ?", "pending_json = ?", "log_json = ?", "causal_envelope_json = ?"];
   const values: unknown[] = [state.phase, state.pending ? serializePending(state.pending) : null, JSON.stringify(state.log), state.causalEnvelope ? JSON.stringify(state.causalEnvelope) : null];
   if (state.deck) { columns.push("deck_json = ?"); values.push(JSON.stringify(state.deck)); }
@@ -130,6 +130,7 @@ function causalRoomStateWrite(roomId: string, state: CausalRoomState, expectedPe
   let where = "id = ?";
   values.push(roomId);
   if (expectedPendingJson !== undefined) { where += " AND pending_json = ?"; values.push(expectedPendingJson); }
+  if (expectedPhase !== undefined) { where += " AND phase = ?"; values.push(expectedPhase); }
   return db().prepare(`UPDATE rooms SET ${columns.join(", ")} WHERE ${where}`).bind(...values);
 }
 function causalEnvelopeAtStage(room: RoomRow, causal: CausalContext | undefined, stage: CausalEnvelope["checkpoint"]["stage"], current: { currentSourceId?: string | null; currentEffect?: string; currentTargetIds?: string[]; resolvingPlayerId?: string | null }) {
@@ -2819,7 +2820,8 @@ async function finishDamageSufferedEvent(room: RoomRow, continuation: DamageSuff
     return;
   }
   if (continuation.resumeTurnEnd) {
-    await continueTurnEndEvent({ ...room, phase: "resolving", pending_json: null }, continuation.resumeTurnEnd, players, deck, discard, log);
+    const checkpointJson = await persistTurnEndCheckpoint({ ...room, phase: "resolving", pending_json: null }, continuation.resumeTurnEnd, deck, discard, log);
+    if (checkpointJson) await advanceTurnEndCheckpoint(room.id, checkpointJson);
     return;
   }
   if (continuation.resumeGroup) {
@@ -4062,6 +4064,53 @@ function turnEndContinuation(endingPlayer: PlayerRow, discardHandoff?: TurnEndTr
   return { kind: "turn_end_event", endingPlayerId: endingPlayer.id, endingSeat: endingPlayer.seat, stage: "activation", resolvedEffectIds: [], ...(discardHandoff ? { discardHandoff } : {}) };
 }
 
+function createTurnEndCheckpoint(continuation: TurnEndTriggerContinuation, lostHand?: Card[]): TurnEndCheckpoint {
+  return {
+    kind: "turn_end_checkpoint", version: 1, id: crypto.randomUUID(), continuation,
+    ...(lostHand?.length ? { lostHand } : {}),
+  };
+}
+
+type TurnEndCheckpointGuards = {
+  hp?: { playerId: string; value: number | null };
+  hand?: { playerId: string; value: string };
+  equipment?: { playerId: string; value: string };
+};
+
+function turnEndCheckpointWrite(room: RoomRow, continuation: TurnEndTriggerContinuation, deck: Card[], discard: Card[], log: string[], lostHand?: Card[], causalEnvelopeJson: string | null = room.causal_envelope_json, guards?: TurnEndCheckpointGuards) {
+  const checkpoint = createTurnEndCheckpoint(continuation, lostHand);
+  const pendingJson = JSON.stringify(checkpoint);
+  let where = "id = ? AND status = 'playing' AND phase IS ? AND pending_json IS ? AND turn_seat IS ? AND turn_epoch = ?";
+  const guardValues: unknown[] = [];
+  if (guards?.hp) {
+    where += " AND EXISTS (SELECT 1 FROM players WHERE room_id = rooms.id AND id = ? AND hp IS ?)";
+    guardValues.push(guards.hp.playerId, guards.hp.value);
+  }
+  if (guards?.hand) {
+    where += " AND EXISTS (SELECT 1 FROM players WHERE room_id = rooms.id AND id = ? AND hand_json IS ?)";
+    guardValues.push(guards.hand.playerId, guards.hand.value);
+  }
+  if (guards?.equipment) {
+    where += " AND EXISTS (SELECT 1 FROM players WHERE room_id = rooms.id AND id = ? AND equipment_json IS ?)";
+    guardValues.push(guards.equipment.playerId, guards.equipment.value);
+  }
+  const statement = db().prepare(`UPDATE rooms SET phase = 'resolving', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ?
+    WHERE ${where}`)
+    .bind(pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), causalEnvelopeJson,
+      room.id, room.phase, room.pending_json, room.turn_seat, room.turn_epoch, ...guardValues);
+  return { pendingJson, statement };
+}
+
+/** Persist the canonical end-turn continuation before invoking the next step.
+ * A worker may terminate after this CAS; the normal authenticated GET, Bot
+ * wake, or timer path can then resume the same checkpoint without guessing
+ * which private action had already committed. */
+async function persistTurnEndCheckpoint(room: RoomRow, continuation: TurnEndTriggerContinuation, deck: Card[], discard: Card[], log: string[], lostHand?: Card[]) {
+  const { pendingJson, statement } = turnEndCheckpointWrite(room, continuation, deck, discard, log, lostHand);
+  const update = await statement.run();
+  return (update.meta.changes ?? 0) > 0 ? pendingJson : null;
+}
+
 async function commitTurnBoundary(room: RoomRow, actor: PlayerRow, state: {
   phase: string;
   pending: TriggerPending | null;
@@ -4071,10 +4120,7 @@ async function commitTurnBoundary(room: RoomRow, actor: PlayerRow, state: {
 }) {
   const { payment, continuation } = state;
   const database = db();
-  const checkpoint: TurnEndCheckpoint | null = continuation ? {
-    kind: "turn_end_checkpoint", version: 1, id: crypto.randomUUID(), continuation,
-    ...(payment?.lostHand?.length ? { lostHand: payment.lostHand } : {}),
-  } : null;
+  const checkpoint: TurnEndCheckpoint | null = continuation ? createTurnEndCheckpoint(continuation, payment?.lostHand) : null;
   const pendingJson = checkpoint ? JSON.stringify(checkpoint) : state.pending ? serializePending(state.pending) : null;
   const write = database.prepare(`UPDATE rooms SET phase = ?, pending_json = ?, log_json = ?, discard_json = ?, deck_json = ?
     WHERE id = ? AND status = 'playing' AND turn_seat IS ? AND turn_epoch = ? AND phase IS ?
@@ -5019,11 +5065,11 @@ async function expireDyingRescue(roomId: string) {
   }
 }
 
-async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], extraWrites: D1PreparedStatement[] = [], resumePlayer: PlayerRow = source ?? target, resumePhase = source ? phaseAfterAttack(source) : "draw", resumePending?: ResponsePending, dyingHp = target.hp ?? 0, origin?: AttackOrigin, resumeTrigger?: DamageSufferedTriggerContinuation, resumeEffect?: DyingResumeEffect, causal?: CausalContext, rootEventId?: string) {
+async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], extraWrites: D1PreparedStatement[] = [], resumePlayer: PlayerRow = source ?? target, resumePhase = source ? phaseAfterAttack(source) : "draw", resumePending?: ResponsePending, dyingHp = target.hp ?? 0, origin?: AttackOrigin, resumeTrigger?: DamageSufferedTriggerContinuation, resumeEffect?: DyingResumeEffect, causal?: CausalContext, rootEventId?: string, expectedPendingJson?: string | null, expectedPhase?: string | null) {
   const order = playersInTurnOrder(players, room.turn_seat ?? source?.seat ?? target.seat);
   const committedRootEventId = rootEventId ?? resumeTrigger?.rootEventId ?? resumeEffect?.publicOutcome?.rootEventId;
   const basePending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: "", remainingIds: order.map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending, ...(causal ? { causal } : {}), ...(committedRootEventId ? { rootEventId: committedRootEventId } : {}), ...(origin ? { origin } : {}), ...(resumeTrigger ? { resumeTrigger } : {}), ...(resumeEffect ? { resumeEffect } : {}), reason: `Decide whether to give Peach to ${target.name}` };
-  await startSharedDyingWindow(room, basePending, players, deck, discard, log, extraWrites, dyingHp);
+  await startSharedDyingWindow(room, basePending, players, deck, discard, log, extraWrites, dyingHp, expectedPendingJson, expectedPhase);
 }
 
 async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePending; continuation: DuelContinuation }, loser: PlayerRow, opponent: PlayerRow, discard: Card[], log: string[]) {
@@ -6319,13 +6365,16 @@ type SourcedDamageTransition = {
   resumePending?: GroupResponsePending;
   resumeDamageSuffered?: DamageSufferedTriggerContinuation;
   resumeTurnEnd?: TurnEndTriggerContinuation;
+  expectedRoomPhase?: string | null;
+  expectedPendingJson?: string | null;
+  resumeTurnEndPayment?: { playerId: string; hand: Card[]; expectedHandJson: string };
   onDamageApplied?: (hp: number) => Promise<void> | void;
   finalizeDamageLog?: (log: string[], actualHpLost: number) => string[];
   finalizeAttackHitLog?: (log: string[]) => string[];
 };
 
 /** Applies sourced damage, then discovers the generic post-damage event. */
-async function resolveSourcedDamage({ room, source, target, players, amount, deck = parse<Card[]>(room.deck_json, []), discard, log, resumePhase, resumePlayerId, sequenceStartCardId, rootEventId, damageCards = [], physicalSuit, origin, causal, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumeChildCausal, resumePending, resumeDamageSuffered, resumeTurnEnd, onDamageApplied, finalizeDamageLog, finalizeAttackHitLog }: SourcedDamageTransition): Promise<AttackDamageResult> {
+async function resolveSourcedDamage({ room, source, target, players, amount, deck = parse<Card[]>(room.deck_json, []), discard, log, resumePhase, resumePlayerId, sequenceStartCardId, rootEventId, damageCards = [], physicalSuit, origin, causal, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumeChildCausal, resumePending, resumeDamageSuffered, resumeTurnEnd, expectedRoomPhase, expectedPendingJson, resumeTurnEndPayment, onDamageApplied, finalizeDamageLog, finalizeAttackHitLog }: SourcedDamageTransition): Promise<AttackDamageResult> {
   const inheritedCausal = causal ?? resumeGroup?.causal ?? resumePending?.causal ?? resumeDamageSuffered?.causal ?? resumeTurnEnd?.causal;
   const finalAmount = resolveDamageModifiers({ sourceId: source?.id, sourceHero: source?.hero, cause, baseAmount: amount, turnState: parse<KingSkillState>(room.skill_state_json, {}) });
   const effectiveResumeGroup = finalAmount > 0 ? withPendingGroupDamageOutcome(resumeGroup, target.id) : resumeGroup;
@@ -6386,7 +6435,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
       ? damageSufferedTriggerOptions(dyingSource?.alive ? dyingSource : null, dyingTarget, finalAmount, undefined, [], damageCards, [], cause, physicalSuit, skillState, playPhase, recoverableCardIds)
       : [];
     const needsPostDamageResume = pendingPostDamageOptions.length > 0 || Boolean(effectiveResumeGroup || resumeDamageSuffered || resumeTurnEnd);
-    await startDyingRescue(room, source, dyingTarget, players, deck, discard, damageLog, writes, resumePlayer, resumePhase, effectiveResumePending, hp, origin, needsPostDamageResume ? damageContinuation : undefined, undefined, inheritedCausal, rootEventId);
+    await startDyingRescue(room, source, dyingTarget, players, deck, discard, damageLog, writes, resumePlayer, resumePhase, effectiveResumePending, hp, origin, needsPostDamageResume ? damageContinuation : undefined, undefined, inheritedCausal, rootEventId, expectedPendingJson, expectedRoomPhase);
     return { kind: "dying" };
   }
 
@@ -6411,11 +6460,19 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     const pendingResult = damageSufferedTriggerPending(source, updatedTarget, finalAmount, resumePhase, sequenceStartCardId, presentation.eventId, origin, resumePlayerId, effectiveResumeGroup, resumeDamageSuffered, damageCards, resumeTurnEnd, cause, physicalSuit, actor.id, inheritedCausal, rootEventId);
     const pending = pendingResult.value;
     const causalEnvelope = pendingResult.createdEnvelope ?? causalEnvelopeAtStage(room, inheritedCausal, "DAMAGE", { currentSourceId: source?.id ?? null, currentEffect: label, currentTargetIds: [target.id], resolvingPlayerId: actor.id });
-    await db().batch([
-      ...writes,
-      db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id),
-      causalRoomStateWrite(room.id, { phase: "response", pending, discard, log: presentation.log, causalEnvelope }),
-    ]);
+    const roomWrite = causalRoomStateWrite(room.id, { phase: "response", pending, discard, log: presentation.log, causalEnvelope }, expectedPendingJson, expectedRoomPhase);
+    const persistedPendingJson = serializePending(pending);
+    const guardedPayment = resumeTurnEndPayment
+      ? db().prepare("UPDATE players SET hand_json = ? WHERE id = ? AND hand_json IS ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND pending_json = ?)")
+        .bind(JSON.stringify(resumeTurnEndPayment.hand), resumeTurnEndPayment.playerId, resumeTurnEndPayment.expectedHandJson, room.id, persistedPendingJson)
+      : null;
+    const guardedHp = resumeTurnEndPayment
+      ? db().prepare("UPDATE players SET hp = ? WHERE id = ? AND hp IS ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND pending_json = ?)")
+        .bind(hp, target.id, target.hp, room.id, persistedPendingJson)
+      : db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id);
+    await db().batch(resumeTurnEndPayment
+      ? [roomWrite, guardedPayment!, guardedHp]
+      : [...writes, guardedHp, roomWrite]);
     return { kind: "reaction_pending" };
   }
 
@@ -6425,9 +6482,19 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     return { kind: "damage_applied", hp, log: damageLog };
   }
   if (resumeTurnEnd) {
-    await db().batch([...writes, db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id), causalRoomStateWrite(room.id, { phase: "resolving", pending: null, deck, discard, log: damageLog, causalEnvelope: null })]);
-    const updatedPlayers = players.map((player) => player.id === target.id ? updatedTarget : player);
-    await continueTurnEndEvent({ ...room, phase: "resolving", pending_json: null }, resumeTurnEnd, updatedPlayers, deck, discard, damageLog);
+    const checkpoint = turnEndCheckpointWrite(room, resumeTurnEnd, deck, discard, damageLog, undefined, null, {
+      hp: { playerId: target.id, value: target.hp },
+      ...(resumeTurnEndPayment ? { hand: { playerId: resumeTurnEndPayment.playerId, value: resumeTurnEndPayment.expectedHandJson } } : {}),
+    });
+    const guardedHp = db().prepare("UPDATE players SET hp = ? WHERE id = ? AND hp IS ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND pending_json = ?)")
+      .bind(hp, target.id, target.hp, room.id, checkpoint.pendingJson);
+    const guardedPayment = resumeTurnEndPayment
+      ? db().prepare("UPDATE players SET hand_json = ? WHERE id = ? AND hand_json IS ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND pending_json = ?)")
+        .bind(JSON.stringify(resumeTurnEndPayment.hand), resumeTurnEndPayment.playerId, resumeTurnEndPayment.expectedHandJson, room.id, checkpoint.pendingJson)
+      : null;
+    const committed = await db().batch([checkpoint.statement, guardedHp, ...(guardedPayment ? [guardedPayment] : [])]);
+    if ((committed[0]?.meta.changes ?? 0) <= 0) return { kind: "damage_applied", hp: target.hp ?? 0, log };
+    await advanceTurnEndCheckpoint(room.id, checkpoint.pendingJson);
     return { kind: "damage_applied", hp, log: damageLog };
   }
   if (effectiveResumeGroup) {
@@ -8017,7 +8084,8 @@ function sharedWindowFor(room: RoomRow): SharedResponseWindowPending | null {
   return pending?.kind === "shared_response_window" ? pending : null;
 }
 async function startSharedDyingWindow(room: RoomRow, pending: DyingPending, players: PlayerRow[],
-  deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], hp?: number) {
+  deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], hp?: number,
+  expectedPendingJson?: string | null, expectedPhase?: string | null) {
   const target = players.find((player) => player.id === pending.targetId);
   if (!target) return;
   const source = players.find((player) => player.id === pending.sourceId);
@@ -8030,7 +8098,7 @@ async function startSharedDyingWindow(room: RoomRow, pending: DyingPending, play
       causalEnvelope: causalEnvelopeAtStage(room, pending.causal, "DYING", {
         currentSourceId: pending.sourceId, currentEffect: pending.origin ?? "damage",
         currentTargetIds: [pending.targetId], resolvingPlayerId: null,
-      }) })]);
+      }) }, expectedPendingJson, expectedPhase)]);
 }
 async function advanceSharedResponseWindow(roomId: string, code: string, token: string) {
   const room = await env.DB.prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
@@ -10847,8 +10915,6 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (!committed) return json({ error: "That turn-end decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
         return json({ room: await roomState(code, token) });
       }
-      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-      if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That turn-end decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
       if (continuation.stage === "equipment") {
         const selectedId = (triggerExecution.outcome as { kind: "target_discard"; targetCardId: string }).targetCardId;
         const equipment = equipmentZone(endingPlayer);
@@ -10867,11 +10933,32 @@ export async function POST(request: Request, routeContext?: unknown) {
           : addDiscardEvent(log, endingPlayer, [selected]);
         log = addLog(log, `${endingPlayer.name} discards Equipment with Dauntless; no damage is dealt.`);
         const resolved = { ...continuation, stage: "activation" as const, sourceId: undefined, targetId: undefined, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), "yue_jin_dauntless"])] } satisfies TurnEndTriggerContinuation;
-        await db.batch([
-          db.prepare("UPDATE players SET equipment_json = ? WHERE id = ?").bind(JSON.stringify(equipment), endingPlayer.id),
-          db.prepare("UPDATE rooms SET deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.deck_json, JSON.stringify(discard), JSON.stringify(log), room.id),
+        const updatedEndingPlayer = { ...endingPlayer, equipment_json: JSON.stringify(equipment) } satisfies PlayerRow;
+        const loss = equipmentLostRecords(endingPlayer.id, [selected], "dauntless")[0];
+        const lossTransition = loss
+          ? equipmentLossTriggerTransition(updatedEndingPlayer, loss, [], { kind: "turn_end", continuation: resolved }, log)
+          : null;
+        if (lossTransition) {
+          const pendingJson = serializePending(lossTransition.pending);
+          const committed = await db.batch([
+            db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ? AND status = 'playing' AND phase = 'response' AND pending_json = ? AND EXISTS (SELECT 1 FROM players WHERE id = ? AND equipment_json IS ?)")
+              .bind(pendingJson, JSON.stringify(discard), JSON.stringify(lossTransition.log), room.id, liveRoom.pending_json, endingPlayer.id, endingPlayer.equipment_json),
+            db.prepare("UPDATE players SET equipment_json = ? WHERE id = ? AND equipment_json IS ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND pending_json = ?)")
+              .bind(updatedEndingPlayer.equipment_json, endingPlayer.id, endingPlayer.equipment_json, room.id, pendingJson),
+          ]);
+          if ((committed[0]?.meta.changes ?? 0) <= 0) return json({ error: "That Equipment decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+          return json({ room: await roomState(code, token) });
+        }
+        const checkpoint = turnEndCheckpointWrite(liveRoom, resolved, parse<Card[]>(liveRoom.deck_json, []), discard, log, undefined, liveRoom.causal_envelope_json, {
+          equipment: { playerId: endingPlayer.id, value: endingPlayer.equipment_json },
+        });
+        const committed = await db.batch([
+          checkpoint.statement,
+          db.prepare("UPDATE players SET equipment_json = ? WHERE id = ? AND equipment_json IS ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND pending_json = ?)")
+            .bind(updatedEndingPlayer.equipment_json, endingPlayer.id, endingPlayer.equipment_json, room.id, checkpoint.pendingJson),
         ]);
-        await advanceEquipmentLostEvents(room.id, equipmentLostRecords(endingPlayer.id, [selected], "dauntless"), { kind: "turn_end", continuation: resolved });
+        if ((committed[0]?.meta.changes ?? 0) <= 0) return json({ error: "That Equipment decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+        await advanceTurnEndCheckpoint(room.id, checkpoint.pendingJson);
         return json({ room: await roomState(code, token) });
       }
       const costId = (triggerExecution.outcome as { kind: "discard_cards"; targetCardIds: string[] }).targetCardIds[0];
@@ -10922,7 +11009,11 @@ export async function POST(request: Request, routeContext?: unknown) {
         label: "Dauntless",
         damageDescription: `${endingPlayer.name} takes 1 damage from ${source.name} with Dauntless`,
         resumeTurnEnd: resolved,
-        writes: [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), source.id)],
+        expectedRoomPhase: "response",
+        expectedPendingJson: liveRoom.pending_json,
+        resumeTurnEndPayment: { playerId: source.id, hand: nextHand, expectedHandJson: source.hand_json },
+        writes: [db.prepare("UPDATE players SET hand_json = ? WHERE id = ? AND hand_json IS ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND phase = ? AND pending_json IS ?)")
+          .bind(JSON.stringify(nextHand), source.id, source.hand_json, room.id, "response", liveRoom.pending_json)],
       });
       return json({ room: await roomState(code, token) });
     }
@@ -11586,7 +11677,7 @@ export async function POST(request: Request, routeContext?: unknown) {
           retaliationSelection = { sourceHand, sourceHandBefore: [...sourceHand], sourceEquipment, sourceJudgement, selected, handIndex };
         }
         if (action === "apply_trigger" && execution?.outcome.kind !== "legacy_distribution" && execution?.outcome.kind !== "gain_damage_cards" && execution?.outcome.kind !== "gain_target_card" && (!source || execution.outcome.kind === "recover_player" && (execution.outcome.playerId !== source.id || execution.outcome.amount !== 1) || execution.outcome.kind === "draw_cards" && execution.outcome.amount !== 1)) return json({ error: "The damage source is no longer available for this post-damage reaction.", stale: true, room: await roomState(code, token) }, 409);
-        const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+        const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That post-damage reaction has already moved on.", stale: true, room: await roomState(code, token) }, 409);
         if (action === "decline_trigger_effect") {
           const decliningPlayer = trigger.actorId === source?.id ? source : target;
@@ -11765,7 +11856,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         const resolvedEffectIds = continuation.secondaryEffectId
           ? [...new Set([...(continuation.resolvedEffectIds ?? []), continuation.secondaryEffectId])]
           : continuation.resolvedEffectIds;
-        const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+        const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That post-damage consequence has already moved on.", stale: true, room: await roomState(code, token) }, 409);
         await continueDamageSufferedEvent(liveRoom, { ...continuation, stage: "reaction", resolvedEffectIds, secondaryEffectId: undefined, judgementCard: undefined }, players, parse<Card[]>(liveRoom.deck_json, []), discard, addLog(log, "The damage source is no longer available; the post-damage consequence ends."));
         return json({ room: await roomState(code, token) });
@@ -11777,7 +11868,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         const hand = parse<Card[]>(source.hand_json, []); const handBeforeStauchness = [...hand];
         const selected = execution.outcome.targetCardIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
         if (selected.length !== 2) return json({ error: "The selected hand cards are no longer available.", stale: true, room: await roomState(code, token) }, 409);
-        const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+        const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Stauchness consequence has already moved on.", stale: true, room: await roomState(code, token) }, 409);
         const nextHand = hand.filter((card) => !execution.outcome.targetCardIds.includes(card.id));
         discard.push(...selected);
@@ -11802,7 +11893,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       }
 
       if (execution.outcome.targetId !== source.id || execution.outcome.amount !== 1) return json({ error: "That Stauchness damage consequence is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Stauchness consequence has already moved on.", stale: true, room: await roomState(code, token) }, 409);
       const resolvedEffectIds = continuation.secondaryEffectId
         ? [...new Set([...(continuation.resolvedEffectIds ?? []), continuation.secondaryEffectId])]
