@@ -75,6 +75,23 @@ type TurnEndCheckpoint = {
   continuation: TurnEndTriggerContinuation;
   lostHand?: Card[];
 };
+/**
+ * A private checkpoint for the one canonical Bot action that can be stranded
+ * after the room is fenced into `resolving` and before its D1 settlement.
+ * This is deliberately not part of the public Pending union: projections must
+ * continue to hide the internal Bot revision and recovery fields.
+ */
+type BotActionCheckpoint = {
+  kind: "bot_action_checkpoint";
+  version: 1;
+  id: string;
+  action: "draw";
+  actorId: string;
+  actorSeat: number;
+  actionRevision: string;
+  resumePhase: string;
+  fields: Record<string, unknown>;
+};
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; is_test_player: number; controller_type: "human" | "bot" | "test"; controller_request_id: string | null; connected_at: number };
 type CausalCreation<T> = { value: T; createdEnvelope: CausalEnvelope | null };
@@ -186,6 +203,24 @@ function parseTurnEndCheckpoint(value: string | null): TurnEndCheckpoint | null 
     && pending.continuation?.kind === "turn_end_event" && pending.continuation.stage === "activation"
     && typeof pending.continuation.endingPlayerId === "string" && Number.isSafeInteger(pending.continuation.endingSeat)
     && (pending.lostHand === undefined || Array.isArray(pending.lostHand)) ? pending : null;
+}
+
+function parseBotActionCheckpoint(value: string | null): BotActionCheckpoint | null {
+  const pending = parse<Record<string, unknown> | null>(value, null);
+  const fields = record(pending?.fields);
+  return pending?.kind === "bot_action_checkpoint" && pending.version === 1 && typeof pending.id === "string" && pending.id.length > 0
+    && pending.action === "draw" && typeof pending.actorId === "string" && pending.actorId.length > 0
+    && Number.isSafeInteger(pending.actorSeat) && typeof pending.actionRevision === "string" && pending.actionRevision.length > 0
+    && typeof pending.resumePhase === "string" && pending.resumePhase.startsWith("draw") && Boolean(fields)
+    ? { ...pending, fields: fields as Record<string, unknown> } as BotActionCheckpoint
+    : null;
+}
+
+function resumableBotActionCheckpoint(room: RoomRow, checkpoint: BotActionCheckpoint | null, players: PlayerRow[]) {
+  if (!checkpoint || room.status !== "playing" || room.phase !== "resolving" || room.turn_seat !== checkpoint.actorSeat) return null;
+  const actor = players.find((player) => player.id === checkpoint.actorId && player.seat === checkpoint.actorSeat
+    && player.controller_type === "bot" && player.is_test_player === 0 && player.alive);
+  return actor ? checkpoint : null;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -346,8 +381,8 @@ async function beginStandardHeroSelection(roomId: string, players: PlayerRow[], 
   return false;
 }
 function parsePersistedPending(value: string | null): Pending | null {
-  const pending = parse<Pending | TurnEndCheckpoint | null>(value, null);
-  return pending?.kind === "turn_end_checkpoint" ? null : pending;
+  const pending = parse<Pending | TurnEndCheckpoint | BotActionCheckpoint | null>(value, null);
+  return pending?.kind === "turn_end_checkpoint" || pending?.kind === "bot_action_checkpoint" ? null : pending;
 }
 function actionPlayerIdForPending(room: RoomRow, pending: Pending | null, players: PlayerRow[]) {
   if (room.status !== "playing") return null;
@@ -8823,11 +8858,15 @@ export async function botControllerSnapshot(code: string, advanceExpiredWindows 
     else await advanceSharedResponseWindow(room.id, code, "");
     return botControllerSnapshot(code, false, roleBotId);
   }
-  const actorId = room.status === "heroes" ? nextGeneralSelector(players)?.id ?? null : actionPlayerIdForPending(room, pending, players);
+  const botActionCheckpoint = resumableBotActionCheckpoint(room, parseBotActionCheckpoint(room.pending_json), players);
+  const actorId = room.status === "heroes" ? nextGeneralSelector(players)?.id ?? null
+    : botActionCheckpoint?.actorId ?? actionPlayerIdForPending(room, pending, players);
   const activePhase = room.phase?.startsWith("play") || room.phase?.startsWith("draw")
     || room.phase === "discard" || room.phase === "response" || room.phase === "dying";
   const completingHarvest = pending?.kind === "harvest" && Boolean(pending.completeAt);
-  const eligibleBotIds = window
+  const eligibleBotIds = botActionCheckpoint
+    ? [botActionCheckpoint.actorId]
+    : window
     ? (await unlockedBotWindowResponses(room, window, players)).map(({ actorId }) => actorId)
     : (room.status === "heroes" || activePhase && !completingHarvest) && actorId && botIds.includes(actorId) ? [actorId] : [];
   const roleActor = roleBotId ? players.find((player) => player.id === roleBotId && player.controller_type === "bot" && !player.is_test_player) : null;
@@ -8837,7 +8876,8 @@ export async function botControllerSnapshot(code: string, advanceExpiredWindows 
     publicLordId: players.find((player) => player.role === "Lord" && player.alive)?.id ?? null,
     livingPlayerIds: players.filter((player) => player.alive).map(({ id }) => id),
   } : undefined;
-  return { roomId: room.id, status: room.status, botIds, eligibleBotIds, actionRevision: await actionRevisionFor(room, players, actorId),
+  return { roomId: room.id, status: room.status, botIds, eligibleBotIds,
+    actionRevision: botActionCheckpoint?.actionRevision ?? await actionRevisionFor(room, players, actorId),
     ...(rolePolicyContext ? { rolePolicyContext } : {}) };
 }
 
@@ -8925,6 +8965,7 @@ export async function POST(request: Request, routeContext?: unknown) {
     if (!bot) return json({ error: "The internal bot actor is no longer a bot in this room." }, 403);
     sessionPlayers = [bot];
   }
+  let botActionCheckpoint = resumableBotActionCheckpoint(room, parseBotActionCheckpoint(room.pending_json), allRoomPlayers);
   let rawControllerPending = parsePersistedPending(room.pending_json);
   if (!internalBot && action !== "advance_timers" && room.phase === "response" && rawControllerPending?.kind === "response" && rawControllerPending.continuation.kind === "negation") {
     await advanceNegation(room.id);
@@ -8934,7 +8975,8 @@ export async function POST(request: Request, routeContext?: unknown) {
     rawControllerPending = parsePersistedPending(room.pending_json);
   }
   let pendingForController = rawControllerPending;
-  let actionPlayerIdForController = room.status === "heroes" ? nextGeneralSelector(allRoomPlayers)?.id : actionPlayerIdForPending(room, pendingForController, allRoomPlayers);
+  let actionPlayerIdForController = room.status === "heroes" ? nextGeneralSelector(allRoomPlayers)?.id
+    : botActionCheckpoint?.actorId ?? actionPlayerIdForPending(room, pendingForController, allRoomPlayers);
   let isTestController = sessionPlayers.length > 1 && sessionPlayers.some((player) => player.id === room.host_player_id);
   const controlledPlayerIds = new Set(sessionPlayers.map((player) => player.id));
   const controllerFallback = sessionPlayers.find((player) => player.id === room.host_player_id) ?? sessionPlayers[0];
@@ -8947,7 +8989,8 @@ export async function POST(request: Request, routeContext?: unknown) {
     : undefined;
   if (internalBot) {
     const bot = sessionPlayers[0];
-    const expectedRevision = await actionRevisionFor(room, allRoomPlayers, actionPlayerIdForController);
+    const expectedRevision = botActionCheckpoint?.actionRevision
+      ?? await actionRevisionFor(room, allRoomPlayers, actionPlayerIdForController);
     if (!bot || bot.id !== internalBot.botId || (controllerWindow ? !botWindowResponse : actionPlayerIdForController !== bot.id)) {
       return json({ error: "The bot is not the current server-authorized actor." , stale: true }, 409);
     }
@@ -9087,6 +9130,30 @@ export async function POST(request: Request, routeContext?: unknown) {
       selectedAction,
       cause,
     });
+    if (botActionCheckpoint && botActionCheckpoint.actorId === actor.id
+      && botActionCheckpoint.actionRevision === internalBot.actionRevision) {
+      const nextBody = {
+        ...botActionCheckpoint.fields,
+        action: botActionCheckpoint.action,
+        code,
+        token: "",
+        context: {
+          actionRevision: internalBot.actionRevision,
+          meId: actor.id,
+          phase: botActionCheckpoint.resumePhase,
+          pendingKind: null,
+          actorId: actor.id,
+        },
+      };
+      emitEvaluation("draw", "durable_checkpoint_recovery");
+      let result: Response;
+      try {
+        result = await POST(new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(nextBody) }), internalBot satisfies BotActionPrincipal);
+      } catch {
+        return finishDecision(json({ error: "The canonical Bot action dispatch failed." }, 500), "draw", "dispatch_threw");
+      }
+      return finishDecision(result, "draw", "durable_checkpoint_recovery");
+    }
     if (room.status === "heroes") {
       const selector = nextGeneralSelector(allRoomPlayers);
       const hero = selector?.id === actor.id ? currentHeroOptions(selector.hero_options_json)[0] : null;
@@ -9721,6 +9788,26 @@ export async function POST(request: Request, routeContext?: unknown) {
         ...(controllerWindow ? { windowId: controllerWindow.windowId } : {}),
       },
     };
+    if (nextAction === "draw" && room.status === "playing" && room.phase?.startsWith("draw")
+      && !pendingForController && !controllerWindow) {
+      const checkpoint: BotActionCheckpoint = {
+        kind: "bot_action_checkpoint",
+        version: 1,
+        id: crypto.randomUUID(),
+        action: "draw",
+        actorId: actor.id,
+        actorSeat: actor.seat,
+        actionRevision: internalBot.actionRevision,
+        resumePhase: room.phase,
+        fields: {},
+      };
+      const checkpointed = await db.prepare(`UPDATE rooms SET phase = 'resolving', pending_json = ?
+        WHERE id = ? AND status = 'playing' AND turn_seat = ? AND phase = ? AND pending_json IS NULL`)
+        .bind(JSON.stringify(checkpoint), room.id, actor.seat, room.phase).run();
+      if ((checkpointed.meta.changes ?? 0) <= 0) {
+        return finishDecision(json({ error: "The Bot turn changed before its durable checkpoint was written.", stale: true }, 409), nextAction, "stale_action_revision");
+      }
+    }
     let result: Response;
     try {
       result = await POST(new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(nextBody) }), internalBot satisfies BotActionPrincipal);
@@ -9869,9 +9956,11 @@ export async function POST(request: Request, routeContext?: unknown) {
     sessionPlayers = internalBot
       ? allRoomPlayers.filter((player) => player.id === internalBot.botId && player.controller_type === "bot" && player.is_test_player === 0)
       : currentSessionPlayers;
+    botActionCheckpoint = resumableBotActionCheckpoint(room, parseBotActionCheckpoint(room.pending_json), allRoomPlayers);
     const rawCurrentPending = parsePersistedPending(room.pending_json);
     pendingForController = rawCurrentPending;
-    actionPlayerIdForController = room.status === "heroes" ? nextGeneralSelector(allRoomPlayers)?.id : actionPlayerIdForPending(room, pendingForController, allRoomPlayers);
+    actionPlayerIdForController = room.status === "heroes" ? nextGeneralSelector(allRoomPlayers)?.id
+      : botActionCheckpoint?.actorId ?? actionPlayerIdForPending(room, pendingForController, allRoomPlayers);
     isTestController = sessionPlayers.length > 1 && sessionPlayers.some((player) => player.id === room.host_player_id);
     me = isTestController
       ? actionPlayerIdForController && sessionPlayers.some((player) => player.id === actionPlayerIdForController) ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? controllerFallback : controllerFallback
@@ -9880,9 +9969,15 @@ export async function POST(request: Request, routeContext?: unknown) {
     if (action !== "advance_timers" && (pendingForController?.kind === "negation_window" || pendingForController?.kind === "shared_response_window") && isTestController && typeof submitted?.meId === "string" && controlledPlayerIds.has(submitted.meId)) {
       me = allRoomPlayers.find((player) => player.id === submitted.meId) ?? controllerFallback;
     }
-    const expectedRevision = await actionRevisionFor(room, allRoomPlayers, actionPlayerIdForController);
+    const expectedRevision = botActionCheckpoint?.actionRevision
+      ?? await actionRevisionFor(room, allRoomPlayers, actionPlayerIdForController);
     const expectedPendingKind = pendingForController?.kind === "shared_response_window" ? pendingForController.continuation.mode === "DYING_PEACH" ? "dying" : "response" : pendingForController?.kind === "response" || pendingForController?.kind === "negation_window" ? "response" : asTriggerPending(pendingForController) ? "trigger" : pendingForController?.kind ?? null;
-    const expectedContext = { meId: me?.id ?? null, phase: room.phase ?? null, pendingKind: expectedPendingKind, actorId: actionPlayerIdForController ?? null };
+    const expectedContext = {
+      meId: me?.id ?? null,
+      phase: botActionCheckpoint?.resumePhase ?? room.phase ?? null,
+      pendingKind: botActionCheckpoint ? null : expectedPendingKind,
+      actorId: actionPlayerIdForController ?? null,
+    };
     const submittedPendingKind = submitted?.pendingKind === undefined ? undefined : String(submitted.pendingKind);
     const contextMismatchReasons: string[] = [];
     if (submitted?.actorId !== undefined && String(submitted.actorId) !== String(expectedContext.actorId)) contextMismatchReasons.push("ACTOR_CONTEXT");
@@ -12475,27 +12570,32 @@ export async function POST(request: Request, routeContext?: unknown) {
     const deck = parse<Card[]>(liveRoom.deck_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []); let hand = parse<Card[]>(me.hand_json, []); const handBeforeAction = [...hand]; let drawnCards: Card[] = [];
 
     if (action === "draw") {
-      if (!liveRoom.phase?.startsWith("draw")) return json({ error: "You have already drawn this turn." }, 409);
-      if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+      const drawCheckpoint = internalBot
+        ? resumableBotActionCheckpoint(liveRoom, parseBotActionCheckpoint(liveRoom.pending_json), allRoomPlayers)
+        : null;
+      const drawPhase = drawCheckpoint?.resumePhase ?? liveRoom.phase;
+      if (!drawPhase?.startsWith("draw")) return json({ error: "You have already drawn this turn." }, 409);
+      if (!drawCheckpoint && !await claimTurnAction(room.id, me.seat, liveRoom.phase ?? drawPhase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+      const drawRoom = drawCheckpoint ? { ...liveRoom, phase: drawPhase } : liveRoom;
       const delayed = takeNextDelayedCard(parse<Card[]>(me.judgement_json, []))?.delayed ?? null;
       if (delayed) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-        const negationStart = await startJudgementNegation(liveRoom, me, rows.results ?? [], delayed, deck, discard, log);
+        const negationStart = await startJudgementNegation(drawRoom, me, rows.results ?? [], delayed, deck, discard, log);
         if (negationStart.handled) return json({ room: await roomState(code, token) });
         const players = rows.results ?? [];
         const selectedDelayed = takeNextDelayedCard(parse<Card[]>(me.judgement_json, []));
         if (selectedDelayed) {
-          const delayedDrawn = await beginDelayedJudgement(liveRoom, me, players, selectedDelayed.delayed, selectedDelayed.remaining, deck, discard, log, liveRoom.phase ?? "draw", [db.prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(selectedDelayed.remaining), me.id)], negationStart.causalRoot);
+          const delayedDrawn = await beginDelayedJudgement(drawRoom, me, players, selectedDelayed.delayed, selectedDelayed.remaining, deck, discard, log, drawPhase, [db.prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(selectedDelayed.remaining), me.id)], negationStart.causalRoot);
           return json({ room: await roomState(code, token), ...(delayedDrawn?.length ? { drawnCards: delayedDrawn } : {}) });
         }
       }
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
       const selectedDelayed = takeNextDelayedCard(parse<Card[]>(me.judgement_json, []));
       if (selectedDelayed) {
-        const delayedDrawn = await beginDelayedJudgement(liveRoom, me, players, selectedDelayed.delayed, selectedDelayed.remaining, deck, discard, log, liveRoom.phase ?? "draw", [db.prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(selectedDelayed.remaining), me.id)]);
+        const delayedDrawn = await beginDelayedJudgement(drawRoom, me, players, selectedDelayed.delayed, selectedDelayed.remaining, deck, discard, log, drawPhase, [db.prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(selectedDelayed.remaining), me.id)]);
         return json({ room: await roomState(code, token), ...(delayedDrawn?.length ? { drawnCards: delayedDrawn } : {}) });
       }
-      drawnCards = await beginDrawPhaseDecision(liveRoom, me, liveRoom.phase ?? "draw", deck, discard, log, 0, [], players);
+      drawnCards = await beginDrawPhaseDecision(drawRoom, me, drawPhase, deck, discard, log, 0, [], players);
     } else if (action === "serpent_spear_attack") {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Draw before forming an Attack." }, 409);
       if (!canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, liveRoom.phase)) return json({ error: "You may use only one Attack per turn." }, 409);

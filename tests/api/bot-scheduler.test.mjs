@@ -391,6 +391,46 @@ test("duplicate wakes and an expired claim recover through one canonical draw wi
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
+test("an interrupted Bot draw keeps a private checkpoint and resumes exactly once", async () => {
+  const { code, token, bots } = await createBotGame();
+  const bot = bots[0];
+  const roomId = query(`SELECT id FROM rooms WHERE code=${quote(code)}`);
+  sql(`UPDATE players SET hero='zhang-fei' WHERE id=${quote(bot.id)}`);
+  setHand(bot.id, [], 4, 4);
+  const held = [card("Dodge", "scheduler-checkpoint-a"), card("Peach", "scheduler-checkpoint-b")];
+  setDeck(code, held);
+  setTurn(code, bot.seat, "draw");
+  const before = (await state(code, token)).data;
+  const triggerName = "abort_bot_draw_checkpoint";
+  sql(`CREATE TRIGGER ${triggerName} BEFORE UPDATE OF hand_json ON players
+    WHEN OLD.room_id=${quote(roomId)} AND EXISTS (
+      SELECT 1 FROM rooms WHERE rooms.id=OLD.room_id
+        AND json_extract(rooms.pending_json, '$.kind')='bot_action_checkpoint'
+    )
+    BEGIN SELECT RAISE(ABORT, 'interrupted Bot draw checkpoint settlement'); END;`);
+  try {
+    const interrupted = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
+    assert.equal(interrupted.data.retries, 1, JSON.stringify(interrupted.data));
+    assert.equal(query(`SELECT phase FROM rooms WHERE id=${quote(roomId)}`), "resolving");
+    assert.equal(query(`SELECT json_extract(pending_json, '$.kind') FROM rooms WHERE id=${quote(roomId)}`), "bot_action_checkpoint");
+    assert.equal(query(`SELECT json_extract(pending_json, '$.actionRevision') FROM rooms WHERE id=${quote(roomId)}`), before.actionRevision);
+    assert.equal(query(`SELECT json_array_length(hand_json) FROM players WHERE id=${quote(bot.id)}`), "0");
+    assert.equal(query(`SELECT status FROM bot_work WHERE room_id=${quote(roomId)} AND action_revision=${quote(before.actionRevision)}`), "pending");
+  } finally {
+    sql(`DROP TRIGGER ${triggerName}`);
+  }
+
+  sql(`UPDATE bot_work SET available_at=1 WHERE room_id=${quote(roomId)} AND action_revision=${quote(before.actionRevision)}`);
+  const recovered = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
+  assert.equal(recovered.data.consumed, 1, JSON.stringify(recovered.data));
+  assert.equal(query(`SELECT status FROM bot_work WHERE room_id=${quote(roomId)} AND action_revision=${quote(before.actionRevision)}`), "consumed");
+  assert.equal(query(`SELECT phase FROM rooms WHERE id=${quote(roomId)}`), "play");
+  assert.equal(query(`SELECT pending_json IS NULL FROM rooms WHERE id=${quote(roomId)}`), "1");
+  assert.equal(query(`SELECT json_array_length(hand_json) FROM players WHERE id=${quote(bot.id)}`), "2");
+  for (const heldCard of held) assert.equal(roomCardCount(code, heldCard.id), 1, `${heldCard.id} remains physically conserved`);
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
 test("human turns and the exhausted per-room action budget leave bot actions untouched", async () => {
   const { code, token, hostId, bots } = await createBotGame();
   const bot = bots[0];
