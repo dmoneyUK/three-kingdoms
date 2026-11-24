@@ -2677,16 +2677,19 @@ test("Retaliation Skip is a distinct authorized server action at 440x766", async
 
 for (const weapon of ["FrostSword", "KirinBow"]) {
   test(`real ${weapon} Attack reaction reaches and submits through its unified modal`, async ({ page, request }) => {
-    const attack = card("Attack", `real-${weapon.toLowerCase()}-attack`);
+    const attack = card("Attack", `real-${weapon.toLowerCase()}-attack`, weapon === "KirinBow" ? "♥" : "♠");
     const mounts = weapon === "KirinBow"
       ? { offensiveHorse: card("FerganaSteed", "real-kirin-offensive-mount"), defensiveHorse: card("Shadowrunner", "real-kirin-defensive-mount") }
       : { offensiveHorse: card("FerganaSteed", "real-frost-public-mount") };
     const targetHand = weapon === "FrostSword"
       ? [card("Peach", "real-frost-hidden-a"), card("Dodge", "real-frost-hidden-b")]
       : [card("Peach", "real-kirin-hidden")];
+    const targetEquipment = weapon === "KirinBow"
+      ? { ...mounts, armor: card("NioShield", "real-kirin-unrelated-armor") }
+      : mounts;
     const seed = await seedGame(request, fourPlayers(
       { hand: [attack], equipment: { weapon: card(weapon, `real-${weapon.toLowerCase()}-weapon`) } },
-      { hand: targetHand, equipment: mounts },
+      { hand: targetHand, equipment: targetEquipment },
     ));
     await openGame(page, seed);
     await playCardThroughPage(page, attack.id, "TARGET");
@@ -2700,47 +2703,132 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
     expect(option.selection.targetId).toBe(seed.players[1].id);
     expect(option.selection.eligibleKeys).toHaveLength(weapon === "FrostSword" ? 3 : 2);
 
-    const actionTitle = weapon === "FrostSword" ? "Frost Sword" : "Kirin Bow";
-    const instruction = weapon === "FrostSword" ? "Choose 2 cards to discard" : "Choose 1 Mount to discard";
-    const dialog = await expectModal(page, actionTitle, instruction, `Use ${actionTitle}`);
-    const skip = dialog.getByRole("button", { name: "Skip", exact: true });
-    if (current.currentAction.legalActions.includes("decline_trigger")) await expect(skip).toBeVisible();
-    else await expect(skip).toHaveCount(0);
-    const selectableCards = dialog.locator(".target-card-picker-card");
     if (weapon === "FrostSword") {
+      const dialog = await expectModal(page, "Frost Sword", "Choose 2 cards to discard", "Use Frost Sword");
+      const skip = dialog.getByRole("button", { name: "Skip", exact: true });
+      if (current.currentAction.legalActions.includes("decline_trigger")) await expect(skip).toBeVisible();
+      else await expect(skip).toHaveCount(0);
       const positions = dialog.locator('[data-target-card-zone="hand-position"]');
       await expect(positions).toHaveCount(2);
       await positions.nth(0).click();
       await positions.nth(1).click();
       await expect(dialog.locator(".target-card-picker-count")).toHaveText("2 / 2 selected");
+      const use = dialog.getByRole("button", { name: "Use Frost Sword" });
+      await expect(use).toBeEnabled();
+      const submitPromise = page.waitForResponse((response) => {
+        if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+        try { const body = JSON.parse(response.request().postData() ?? "{}"); return body.action === "trigger" && body.providerId === expectedProvider; }
+        catch { return false; }
+      });
+      await use.click();
+      const submitted = await submitPromise;
+      expect(submitted.ok()).toBe(true);
+      expect(JSON.parse(submitted.request().postData() ?? "{}").cardKeys).toEqual(["hand:0", "hand:1"]);
+      await expect.poll(async () => (await roomView(request, seed, 0)).currentAction.kind !== "trigger").toBe(true);
     } else {
-      await expect(dialog.locator('[data-target-card-zone="hand-position"]')).toHaveCount(0);
-      await expect(selectableCards).toHaveCount(2);
-      await selectableCards.first().click();
-      await expect(dialog.locator(".target-card-picker-count")).toHaveText("1 / 1 selected");
+      const targetView = current.players.find((player) => player.id === option.selection.targetId);
+      expect(targetView).toBeTruthy();
+      expect(targetView.equipmentCards.some((item) => item.id === "real-kirin-unrelated-armor")).toBe(true);
+      const eligibleIds = option.selection.eligibleKeys;
+      expect(eligibleIds).toHaveLength(2);
+      expect(eligibleIds.every((id) => targetView.equipmentCards.some((item) => item.id === id))).toBe(true);
+      expect(eligibleIds).not.toContain("real-kirin-unrelated-armor");
+
+      const stage = page.locator('.card-pool-target-stage[data-trigger-target-pool="true"]');
+      const pool = stage.locator(".card-pool-panel--actor-target-select");
+      await expect(pool).toBeVisible({ timeout: 15_000 });
+      await expect(stage).toHaveAttribute("data-target-card-pool-layout", "central");
+      await expect(stage).toHaveAttribute("data-target-card-pool-ready", "true");
+      await expect(pool).toHaveAccessibleName(`${targetView.name} · Kirin Bow Mount discard selection`);
+      await expect(pool.locator(".card-pool-panel__title")).toHaveText("KIRIN BOW");
+      await expect(pool.locator(".card-pool-panel__instruction")).toHaveText("Choose 1 Mount to discard");
+      await expect(page.locator(".target-card-picker-overlay, .target-card-picker-panel--zones")).toHaveCount(0);
+      await expect(pool.locator(".card-pool-decision-footer")).toHaveCount(1);
+      await expect(pool.getByRole("button", { name: /Cancel|Clear selection|Back/ })).toHaveCount(0);
+      await expect(pool.locator(".card-pool-panel__target-public-zone")).toHaveCount(1);
+      await expect(pool.locator('[data-target-card-public-zone="equipment"]')).toBeVisible();
+      await expect(pool.locator('[data-target-card-public-zone="hand"], [data-target-card-public-zone="judgement"], [role="tab"]')).toHaveCount(0);
+      const publicFaces = pool.locator("[data-public-card-id]");
+      await expect(publicFaces).toHaveCount(2);
+      expect(await publicFaces.evaluateAll((elements) => elements.map((element) => element.getAttribute("data-public-card-id")))).toEqual(eligibleIds);
+      const faceGeometry = await publicFaces.evaluateAll((elements) => elements.map((element) => {
+        const rect = element.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      }));
+      expect(faceGeometry).toEqual([{ width: 50, height: 75 }, { width: 50, height: 75 }]);
+      expect(faceGeometry.every(({ width, height }) => Math.abs(width / height - 2 / 3) < 0.005)).toBe(true);
+
+      const collisionCheck = await page.evaluate(() => {
+        const panel = document.querySelector('.card-pool-target-stage[data-trigger-target-pool="true"] .card-pool-panel--actor-target-select');
+        if (!panel) return { missing: true, overlaps: [] };
+        const panelRect = panel.getBoundingClientRect();
+        const overlaps = [...document.querySelectorAll([
+          ".player-square", ".opponent-player-card[data-player-anchor]", ".local-player-dock",
+          '[data-console-guidance="true"]', '[data-console-surface="local-operation"]',
+          '[data-public-card-announcement="true"]', '[data-public-activity-chip="true"]',
+          ".visible-countdown", "[data-inspector]",
+        ].join(","))].filter((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none"
+            && panelRect.left < rect.right && panelRect.right > rect.left && panelRect.top < rect.bottom && panelRect.bottom > rect.top;
+        }).map((element) => element.className?.baseVal ?? element.className ?? element.tagName);
+        return { missing: false, overlaps };
+      });
+      expect(collisionCheck.missing).toBe(false);
+      expect(collisionCheck.overlaps).toEqual([]);
+
+      const confirm = pool.getByRole("button", { name: "Confirm Kirin Bow selection", exact: true });
+      await expect(confirm).toBeDisabled();
+      const skip = pool.getByRole("button", { name: "Skip Kirin Bow", exact: true });
+      if (current.currentAction.legalActions.includes("decline_trigger")) await expect(skip).toBeVisible();
+      else await expect(skip).toHaveCount(0);
+
+      const chosenId = eligibleIds[0];
+      const choice = pool.locator(`[data-public-card-id="${chosenId}"]`);
+      const choiceButton = choice.locator(".card-pool-panel__target-public-select");
+      await tapMobile(page, choiceButton);
+      await expect(choiceButton).toHaveAttribute("aria-pressed", "true");
+      await expect(confirm).toBeEnabled();
+      await tapMobile(page, choiceButton);
+      await expect(choiceButton).toHaveAttribute("aria-pressed", "false");
+      await expect(confirm).toBeDisabled();
+      await tapMobile(page, choiceButton);
+      await expect(confirm).toBeEnabled();
+
+      const detailsAction = choice.getByRole("button", { name: /Card details:/ });
+      await tapMobile(page, detailsAction);
+      const details = page.locator('.card-details-panel[data-card-details-context="public-zone"]');
+      await expect(details).toBeVisible();
+      await expect(details).toHaveAttribute("data-card-details-card-id", chosenId);
+      await tapMobile(page, page.getByRole("button", { name: "Close card details" }));
+      await expect(details).toHaveCount(0);
+      await expect(choiceButton).toHaveAttribute("aria-pressed", "true");
+      await expect(confirm).toBeEnabled();
+
+      const submitPromise = page.waitForResponse((response) => {
+        if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+        try {
+          const body = JSON.parse(response.request().postData() ?? "{}");
+          return body.action === "trigger" && body.providerId === expectedProvider;
+        } catch { return false; }
+      });
+      await tapMobile(page, confirm);
+      const submitted = await submitPromise;
+      expect(submitted.ok()).toBe(true);
+      expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({ action: "trigger", providerId: expectedProvider, cardKeys: [chosenId] });
+      await expect.poll(async () => {
+        const latest = await roomView(request, seed, 0);
+        const target = latest.players.find((player) => player.id === option.selection.targetId);
+        return latest.currentAction.kind !== "trigger" && target?.hp === targetView.hp - 1 && !target.equipmentCards.some((item) => item.id === chosenId);
+      }).toBe(true);
+      const settled = await roomView(request, seed, 0);
+      const settledTarget = settled.players.find((player) => player.id === option.selection.targetId);
+      expect(settledTarget.equipmentCards.map((item) => item.id)).toContain(eligibleIds.find((id) => id !== chosenId));
+      expect(settledTarget.equipmentCards.map((item) => item.id)).toContain("real-kirin-unrelated-armor");
+      expect(settledTarget.equipmentCards.map((item) => item.id)).not.toContain(chosenId);
+      expect(settledTarget.hp).toBe(targetView.hp - 1);
     }
-    const use = dialog.getByRole("button", { name: `Use ${actionTitle}` });
-    await expect(use).toBeEnabled();
-    const submitPromise = page.waitForResponse((response) => {
-      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
-      try {
-        const body = JSON.parse(response.request().postData() ?? "{}");
-        return body.action === "trigger" && body.providerId === expectedProvider;
-      } catch { return false; }
-    });
-    await use.click();
-    const submitted = await submitPromise;
-    expect(submitted.ok()).toBe(true);
-    const submission = JSON.parse(submitted.request().postData() ?? "{}");
-    expect(submission.action).toBe("trigger");
-    expect(submission.providerId).toBe(expectedProvider);
-    expect(submission.cardKeys).toHaveLength(weapon === "FrostSword" ? 2 : 1);
-    expect(submission.cardKeys.every((key) => option.selection.eligibleKeys.includes(key))).toBe(true);
-    if (weapon === "FrostSword") expect(submission.cardKeys).toEqual(["hand:0", "hand:1"]);
-    await expect.poll(async () => {
-      const latest = await roomView(request, seed, 0);
-      return latest.currentAction.kind !== "trigger";
-    }).toBe(true);
   });
 }
 

@@ -7805,8 +7805,8 @@
   }
 }
 
-.game-shell [data-retaliation-pool="true"] .card-pool-panel--actor-target-select {
-  max-height: var(--retaliation-pool-max-height, none);
+.game-shell [data-trigger-target-pool="true"] .card-pool-panel--actor-target-select {
+  max-height: var(--trigger-target-pool-max-height, none);
   overflow-y: auto;
   overscroll-behavior-y: contain;
   scroll-padding-block: 6px;

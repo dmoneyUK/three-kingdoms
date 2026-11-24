@@ -911,6 +911,29 @@ test("Frost Sword prevents Attack damage only when its owner discards exactly tw
 
 });
 
+test("declining Kirin Bow keeps every Mount and continues Attack damage", async () => {
+  const game = await createHumanGame(); const [host, alice] = game.members; const [hostPlayer, alicePlayer] = game.room.players;
+  setEquipment(hostPlayer.id, { weapon: card("KirinBow", "skip-bow") }); setHand(hostPlayer.id, [card("Attack", "skip-attack", "♥")], 4, 4);
+  setEquipment(alicePlayer.id, { offensiveHorse: card("FerganaSteed", "skip-offensive"), defensiveHorse: card("Shadowrunner", "skip-defensive"), armor: card("NioShield", "skip-armor") });
+  setHand(alicePlayer.id, [card("Peach", "skip-hidden")], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const attack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-skip-attack", targetId: alicePlayer.id });
+  assert.equal(attack.status, 200);
+  const responsePassed = await requestAndSettle("decline_response", { code: game.code, token: alice.token });
+  assert.equal(responsePassed.status, 200, JSON.stringify(responsePassed.data));
+  const trigger = await state(game.code, host.token);
+  assert.equal(trigger.data.currentAction.kind, "trigger");
+  assert.equal(trigger.data.currentAction.actorId, hostPlayer.id);
+  assert.equal(trigger.data.currentAction.triggerOptions[0].effectId, "kirin_bow_damage_about_to_apply");
+  assert.ok(trigger.data.currentAction.legalActions.includes("decline_trigger"));
+
+  const skipped = await requestAndSettle("decline_trigger", { code: game.code, token: host.token });
+  assert.equal(skipped.status, 200, JSON.stringify(skipped.data));
+  const target = skipped.data.room.players.find((player) => player.id === alicePlayer.id);
+  assert.equal(target.hp, 3, "the original Attack damage proceeds after Skip");
+  assert.deepEqual(target.equipmentCards.map((item) => item.id).sort(), ["ferganasteed-skip-offensive", "nioshield-skip-armor", "shadowrunner-skip-defensive"].sort(), "Skip discards no target Equipment");
+  assert.equal(discardIds(game.code).some((id) => id === "ferganasteed-skip-offensive" || id === "shadowrunner-skip-defensive"), false);
+});
+
 test("Kirin Bow discards one damaged target Mount and then applies the Attack damage", async () => {
   const game = await createHumanGame(); const [host, alice] = game.members; const [hostPlayer, alicePlayer] = game.room.players;
   setEquipment(hostPlayer.id, { weapon: card("KirinBow", "bow") }); setHand(hostPlayer.id, [card("Attack", "attack")], 4, 4);

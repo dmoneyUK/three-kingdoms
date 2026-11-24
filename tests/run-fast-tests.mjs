@@ -13,6 +13,7 @@ const fastTests = [
   "tests/distance-capabilities.test.mjs",
   "tests/deck-reorder.test.mjs",
   "tests/targeting-capabilities.test.mjs",
+  "tests/public-equipment-target-pool.test.mjs",
   "tests/room-safety.test.mjs",
   "tests/room-poll-recovery.test.mjs",
   "tests/game-screen-recovery.test.mjs",

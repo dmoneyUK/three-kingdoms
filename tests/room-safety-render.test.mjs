@@ -1145,19 +1145,39 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.doesNotMatch(pickerHtml, /class="target-card-picker-card hidden(?:\s|[^"]*")/, "hidden hand buttons do not use Tailwind's standalone hidden class");
   assert.match(pickerHtml, /aria-label="Equipment: Nio Shield/);
   assert.doesNotMatch(pickerHtml, /aria-label="not-eligible"/);
+  const kirinEquipment = [card("mount-a", "FerganaSteed"), card("unrelated-armor", "NioShield"), card("mount-b", "Shadowrunner")];
   const kirinRoom = {
     ...pickerRoom,
+    players: pickerRoom.players.map((player) => player.id === "p2"
+      ? { ...player, handCount: 3, equipmentCards: kirinEquipment, judgementCards: [card("unrelated-judgement", "Lightning")] }
+      : player),
     actionReason: "Use Kirin Bow",
     currentAction: {
       ...pickerRoom.currentAction,
       reason: "Use Kirin Bow",
-      triggerOptions: [{ effectId: "kirin_bow_damage_about_to_apply", label: "Use Kirin Bow", selection: { type: "target_cards", targetId: "p2", min: 1, max: 1, eligibleKeys: ["armor"] } }],
+      triggerOptions: [{ effectId: "kirin_bow_damage_about_to_apply", label: "Use Kirin Bow", selection: { type: "target_cards", targetId: "p2", min: 1, max: 1, eligibleKeys: ["mount-a", "mount-b"] } }],
     },
   };
   const kirinHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: kirinRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(kirinHtml, /class="[^"]*card-pool-decision-footer[^"]*target-card-picker-actions/);
+  assert.match(kirinHtml, /data-trigger-target-pool="true"[^>]*data-target-card-pool-layout="central"/);
+  assert.match(kirinHtml, /class="[^"]*card-pool-panel--actor-target-select/);
+  assert.match(kirinHtml, /class="card-pool-panel__title">KIRIN BOW<\/b>/);
+  assert.match(kirinHtml, /class="card-pool-panel__instruction">Choose 1 Mount to discard<\/span>/);
+  assert.match(kirinHtml, /data-public-card-id="mount-a"/);
+  assert.match(kirinHtml, /data-public-card-id="mount-b"/);
+  assert.doesNotMatch(kirinHtml, /data-public-card-id="(?:unrelated-armor|unrelated-judgement)"/);
+  assert.deepEqual([...kirinHtml.matchAll(/data-target-card-public-zone="([^"]+)"/g)].map((match) => match[1]), ["equipment"], "the scoped picker has one populated equipment area and no Hand/Judgement zone");
+  assert.doesNotMatch(kirinHtml, /target-card-picker-overlay|target-card-picker-panel--zones|card-pool-decision-footer__cancel/);
   assert.match(kirinHtml, /aria-label="Confirm Kirin Bow selection"[^>]*>Confirm<\/button>/);
+  assert.match(kirinHtml, /aria-label="Skip Kirin Bow"[^>]*>Skip<\/button>/);
   assert.doesNotMatch(kirinHtml, />Use Kirin Bow<\/button>/, "Kirin Bow keeps its context outside the shared visible action label");
+
+  const invalidKirinRoom = {
+    ...kirinRoom,
+    currentAction: { ...kirinRoom.currentAction, triggerOptions: [{ effectId: "kirin_bow_damage_about_to_apply", label: "Use Kirin Bow", selection: { type: "target_cards", targetId: "p2", min: 1, max: 1, eligibleKeys: ["hand:0"] } }] },
+  };
+  const invalidKirinHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: invalidKirinRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.doesNotMatch(invalidKirinHtml, /target-card-picker-overlay|target-card-picker-panel--zones|data-trigger-target-pool="true"/, "inconsistent Kirin authority fails closed without restoring the legacy picker");
   const pickerBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: pickerRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Skip<\/button>/);
   assert.match(pickerBusyHtml, /<button[^>]*aria-label="Confirm Frost Sword selection"[^>]*disabled=""[^>]*>Confirm<\/button>/);

@@ -416,6 +416,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
               variant={actorTargetProps ? "compact-target" : "standard"}
               className={`card-pool-panel__target-public-face${selected ? " pending-choice" : ""}`}
               aria-label={`Public ${zone.id}: ${cardDefinition(card.kind).name}`}
+              data-public-card-id={card.id}
               key={card.id}
             >
               {actorTargetProps && choice && <>
