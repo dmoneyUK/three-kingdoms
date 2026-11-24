@@ -1,19 +1,36 @@
 # Smart Bot Player — Coding Agent Handover
 
-Branch `feature/smart-bot-player` (local worktree `codex/aip-perf-01-20261122`); latest design reviewed `8b90e7e8` / AIP-D37. `AIP-PERF-01` remains `CHANGES_REQUESTED`, not accepted. Do not start AIP-PERF-GET-02, AIP-PERF-BOT-02 or PLAY work.
+Branch `feature/smart-bot-player` (local worktree `codex/aip-perf-01-20261122`). Latest design reviewed: AIP-D37 / `c5fbba9d`; `AIP-PERF-01` remains **CHANGES_REQUESTED**, not accepted. Do not start AIP-PERF-GET-02, AIP-PERF-BOT-02, PLAY work or another hosted retry.
 
-## Delivered bounded fix
+## Current result
 
-Code SHA `49fd9c734ac70ca5471c2d0e3e38083d5e74f764` removes the old three sequential four-step post-write passes. `worker/postwrite-bot-scheduler.ts` invokes the existing room-scoped scheduler once with `maxStepsPerWakeup: 1`; Cron, the general four-step scheduler limit, lease/CAS, action budget, role policy and canonical handlers are unchanged. Focused regressions cover injected call count, sequential durable wakes, and the existing 203-public-event/150-Bot-work long-room privacy/card/replay path. Local evidence: Worker regression 2/2 pass; modified API file 35 pass, 1 pre-existing opt-out skip, 0 fail; targeted ESLint and `git diff --check` pass.
+Code SHA `4210d4033e9e097cb0229fd53e40e4f2b886fcbe` implements the request-local LOG-DECODE fix: one decoded structured-log representation is reused for public sequence validation, viewer-filtered timeline and legacy text log. It does not change polling, rules, UI, SQL or cross-request caching.
 
-Exact-SHA [Actions 45475568347](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45475568347) for this code SHA passed API, lint/build/fast, browser startup/H4 and isolated AI Staging deploy/mobile refresh-rejoin; Production `deploy` was `skipped`. Staging URL was `https://three-kingdoms-ai-staging.dai-jinge.workers.dev`, isolated D1 `three-kingdoms-ai-staging-db`, Worker Version `ed17638c-be57-4b4a-b482-6e7bb7e9d816`, with `BOT_AI_ENABLED=false`.
+Focused local validation passed:
 
-## Long-room gate result / blocker
+- `tests/room-log-decode.test.mjs`: 2/2;
+- `tests/public-presentation-turn.test.mjs`: 5/5;
+- targeted ESLint: 0 errors (existing hook warnings only);
+- `git diff --check`: passed.
 
-One disposable Staging fixture `X3QAG` ran 2026-11-24 20:23:20–20:30:04 UTC on that version. It started with 203 public records and 150 seeded Bot-work rows, reached 36 revisions and 2 target-card settlements, and ended at 200 retained records/193 Bot-work rows/38 live consumed rows before the driver’s HTTP/2 fetch was terminated by repeated CPU failures. Tail observed 231 GET 200, 9 GET HTTP 503 `exceededCpu` plus one GET `exceededCpu` without a response status; POST 49 HTTP 200, one 409 and 3 HTTP 503 `exceededCpu`; three Cron wakes were observed, including one four-decision Cron at 149ms CPU/44,970ms wall. Aggregate sampled GET CPU P50/P95/P99/max was 8/17/24/41ms; POST was 54/95/116/116ms. D1 analytics for the bounded window reported 4,535 read queries/280,037 rows read and 549 writes/2,072 rows written. Effective CPU limit remains UNKNOWN.
+Exact-SHA [Actions 45486329645](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45486329645) passed Lint/Fast, API, Browser and isolated AI Staging deployment/mobile refresh-rejoin. Staging Worker Version: `6c76a713-a477-411d-984f-49506395296e`; URL: `https://three-kingdoms-ai-staging.dai-jinge.workers.dev`; D1: `three-kingdoms-ai-staging-db`; `BOT_AI_ENABLED=false`; production `deploy` was `skipped`.
 
-The driver proved two target-card settlements, a stale replay 409 and no duplicate card mutation before failure, but did not reach its final privacy/rejoin probes. Cleanup completed: room archived `finished`, tail stopped, no Staging ingress/previews, Cron schedules, domains, queues or zone routes remained. Because POST and GET `exceededCpu` recurred, AIP-D37’s post-fix CPU gate is failed; this change must not be marked `PENDING_REVIEW` as CPU-safe.
+## Reliability gate and blocker
 
-## Required next step
+The one post-green-CI disposable long-room run used `25VF2` from 21:23:03–21:35:35 UTC, seeded with 203 public records and 150 Bot-work rows. It reached 34 turn epochs, 95 authoritative revisions and 4 target-card settlements. Before archive, D1 readback was `status=playing`, 200 retained records, 241 Bot-work rows and 88 live consumed rows; the room was then archived `finished`.
 
-Stop for Planner/Reviewer direction on a second narrowly scoped, source-backed CPU proposal. The remaining evidence points to the canonical `roomState`/projection work still executed by authenticated GETs and final POST settlement (`app/api/rooms/route.ts`), while tail decision diagnostics show no multi-decision post-write aggregation; exact hotspot and effective limit are still unproven. Do not start a broad GET refactor, six-hour loop, new infrastructure, production action or another hosted run. PM/UX2 impact: `NO IMPACT`; human iPhone Safari acceptance remains a separate Owner gate.
+Tail evidence from the dedicated driver window:
+
+- authenticated GET: 456 samples; CPU P50/P95/P99/max `6/13/26/34 ms`; wall `58/104/136/211 ms`;
+- room POST: 105 samples; CPU `40/72/88/102 ms`; wall `755/1011/1148/1190 ms`;
+- 8 GET and 3 POST HTTP 503 `outcome=exceededCpu`; HTTP 1102: 0;
+- first repeated CPU-failure window: 21:34:50–21:35:04 UTC. The run stopped and was not retried;
+- D1 account analytics for 21:22:00–21:37:31 UTC: 6,409 read queries / 620,534 rows read and 984 write queries / 2,370 rows written.
+
+The long fixture did not reach its final privacy/rejoin probes. Exact-SHA CI mobile smoke did pass refresh/rejoin, and focused log projections covered host/other/anonymous/invalid-viewer secrecy. Cloudflare account/version settings reported `usage_model=standard` but no `limits.cpu_ms`, so the effective Staging CPU ceiling is **UNKNOWN**; observed 9–10 ms terminations are runtime evidence, not configuration proof.
+
+Cleanup is complete: fixture archived, no tail/driver process remains, and final Staging inventory is ingress `false`, previews `false`, Cron schedules `0`, domains `0`, matching queue consumers `0`, matching zone routes `0`.
+
+## One next bounded task
+
+Planner/Reviewer must choose one source-backed follow-up to measure and optimize the remaining canonical `roomState` projection/serialization path, including the final settlement POST. Keep the scope inside AIP-PERF-01; do not modify UX2, raise `cpu_ms`, add infrastructure, start GET-02/BOT-02/PLAY, or reopen Staging until that proposal is approved. Owner still needs one real iPhone Safari 10–15 minute 1-human+3-Bot acceptance after engineering evidence is green.
