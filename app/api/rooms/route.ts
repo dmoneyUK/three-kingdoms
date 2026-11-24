@@ -102,7 +102,7 @@ type RecoveryCheckpoint = {
   kind: "recovery_checkpoint";
   version: 1;
   id: string;
-  effect: "oath";
+  effect: "oath" | "peach";
   records: RecoveryRecord[];
   resume: RecoveryResume;
 };
@@ -236,7 +236,7 @@ function parseRecoveryCheckpoint(value: string | null): RecoveryCheckpoint | nul
   const resume = record(checkpoint?.resume);
   return checkpoint?.kind === "recovery_checkpoint" && checkpoint.version === 1
     && typeof checkpoint.id === "string" && checkpoint.id.length > 0
-    && checkpoint.effect === "oath" && Array.isArray(records)
+    && (checkpoint.effect === "oath" || checkpoint.effect === "peach") && Array.isArray(records)
     && resume?.kind === "phase" && typeof resume.phase === "string"
     ? checkpoint as unknown as RecoveryCheckpoint : null;
 }
@@ -8150,7 +8150,9 @@ export async function GET(request: Request) {
       .first<{ room_id: string; handoff_pending_json: string | null }>();
     if (membership) {
       authenticated = true;
-      if (membership.handoff_pending_json && !await advanceTurnEndCheckpoint(membership.room_id, membership.handoff_pending_json)) {
+      if (membership.handoff_pending_json
+        && !await advanceRecoveryCheckpoint(membership.room_id, membership.handoff_pending_json)
+        && !await advanceTurnEndCheckpoint(membership.room_id, membership.handoff_pending_json)) {
         await advanceDiscardTurnHandoff(membership.room_id, membership.handoff_pending_json);
       }
     }
@@ -12712,7 +12714,6 @@ export async function POST(request: Request, routeContext?: unknown) {
       if (card.kind === "Negation" && !playableAttack) return json({ error: "Negation can only be played while answering a stratagem." }, 400);
       if (card.kind === "Peach" && !playableAttack) {
         if ((me.hp ?? 0) >= (me.max_hp ?? 0)) return json({ error: "You are already at full health." }, 409);
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
         const beforeHp = me.hp ?? 0;
         const maxHp = me.max_hp ?? beforeHp;
@@ -12740,11 +12741,41 @@ export async function POST(request: Request, routeContext?: unknown) {
           selfTargetAction: { semantics: "PROVEN", sourceId: me.id, targetId: me.id, cardKind: "Peach" },
         }, peachEventId);
         log = addLog(peachPresentation.log, `${me.name} plays Peach and recovers ${amountRecovered} HP.`);
-        await db.batch([
-          db.prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), applyRecovery(beforeHp, amountRecovered, maxHp), me.id),
-          db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), JSON.stringify(peachCausal.envelope), room.id),
-        ]);
-        await advanceHpRecoveredEvents(room.id, amountRecovered ? [{ playerId: me.id, amountRecovered, sourceId: me.id, reason: "peach", ...(peachFact?.committedIdentity && peachFact.committedOutcome ? { publicOutcomeEventId: peachEventId, causal: peachCausal.context } : {}) }] : [], { kind: "phase", phase: liveRoom.phase ?? "play", playerId: me.id });
+        const recovery: RecoveryRecord = {
+          playerId: me.id,
+          amountRecovered,
+          sourceId: me.id,
+          reason: "peach",
+          ...(peachFact?.committedIdentity && peachFact.committedOutcome
+            ? { publicOutcomeEventId: peachEventId, causal: peachCausal.context }
+            : {}),
+        };
+        const checkpoint: RecoveryCheckpoint = {
+          kind: "recovery_checkpoint",
+          version: 1,
+          id: crypto.randomUUID(),
+          effect: "peach",
+          records: amountRecovered > 0 ? [recovery] : [],
+          resume: { kind: "phase", phase: liveRoom.phase ?? "play", playerId: me.id },
+        };
+        const checkpointJson = JSON.stringify(checkpoint);
+        const roomWrite = db.prepare(`UPDATE rooms SET phase = 'resolving', pending_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ?
+          WHERE id = ? AND status = 'playing' AND turn_seat IS ? AND turn_epoch = ? AND phase IS ? AND pending_json IS ?
+            AND log_json IS ? AND discard_json IS ? AND causal_envelope_json IS ?
+            AND EXISTS (SELECT 1 FROM players WHERE room_id = rooms.id AND id = ? AND alive = 1
+              AND hand_json IS ? AND hp IS ? AND hero IS ? AND equipment_json IS ?)`)
+          .bind(checkpointJson, JSON.stringify(discard), JSON.stringify(log), JSON.stringify(peachCausal.envelope),
+            liveRoom.id, liveRoom.turn_seat, liveRoom.turn_epoch, liveRoom.phase, liveRoom.pending_json,
+            liveRoom.log_json, liveRoom.discard_json, liveRoom.causal_envelope_json,
+            me.id, me.hand_json, me.hp, me.hero, me.equipment_json);
+        const playerWrite = db.prepare(`UPDATE players SET hand_json = ?, hp = ?
+          WHERE room_id = ? AND id = ? AND hand_json IS ? AND hp IS ?
+            AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND pending_json = ?)`)
+          .bind(JSON.stringify(hand), applyRecovery(beforeHp, amountRecovered, maxHp), liveRoom.id, me.id,
+            me.hand_json, me.hp, liveRoom.id, checkpointJson);
+        const writes = await db.batch([roomWrite, playerWrite]);
+        if ((writes[0]?.meta.changes ?? 0) <= 0) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        await advanceRecoveryCheckpoint(liveRoom.id, checkpointJson);
       } else if (cardDefinition(card.kind).equipmentSlot && !playableAttack) {
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         const beforeHand = [...hand];
