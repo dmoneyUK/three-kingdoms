@@ -344,13 +344,70 @@ function publicOutcomeCopyParts(
   return parts;
 }
 
+type PublicOutcomeEventFact = PresentationSnapshot["publicEventFacts"][number];
+
+function samePublicOutcomeIdentity(left: PublicOutcomeEventFact["identity"], right: PublicOutcomeEventFact["identity"]) {
+  return left.interactionId === right.interactionId
+    && left.rootFrameId === right.rootFrameId
+    && left.checkpointId === right.checkpointId
+    && left.presentationRevision === right.presentationRevision;
+}
+
+function formatCommittedEquipmentOutcomeCopy(
+  outcome: CommittedPublicOutcome,
+  players: readonly Pick<PublicActivityPlayer, "id" | "name">[],
+  facts: readonly PublicOutcomeEventFact[],
+) {
+  if (outcome.category !== "CARD_EQUIPPED" || outcome.source.kind !== "card" || !outcome.actorId
+    || outcome.affectedPlayerIds.length !== 1 || outcome.affectedPlayerIds[0] !== outcome.actorId) return null;
+
+  const equipChanges = outcome.changes.filter((change) => change.kind === "CARD_EQUIPPED");
+  const replacementChanges = outcome.changes.filter((change) => change.kind === "CARD_DISCARDED" && change.fromZone === "EQUIPMENT");
+  if (equipChanges.length !== 1 || outcome.changes.length !== equipChanges.length + replacementChanges.length
+    || replacementChanges.length > 1) return null;
+  const equip = equipChanges[0];
+  if (equip.playerId !== outcome.actorId || equip.amount !== 1 || equip.fromZone !== "HAND" || equip.toZone !== "EQUIPMENT"
+    || replacementChanges.some((change) => change.playerId !== outcome.actorId || change.amount !== 1 || change.toZone !== "DISCARD")) return null;
+
+  const eventFact = facts.find((fact) => fact.eventId === outcome.eventId);
+  const equipmentName = eventFact?.label?.trim();
+  if (!eventFact || eventFact.category !== "CARD_EQUIPPED" || eventFact.rootEventId !== outcome.rootEventId
+    || eventFact.actorId !== outcome.actorId || eventFact.affectedPlayerIds.length !== 1
+    || eventFact.affectedPlayerIds[0] !== outcome.actorId || eventFact.effect?.kind !== "equipment_play"
+    || !equipmentName || eventFact.label !== equipmentName || eventFact.effect.label !== equipmentName
+    || outcome.source.label !== equipmentName || !samePublicOutcomeIdentity(eventFact.identity, outcome.identity)) return null;
+
+  const actor = narrationPlayerPart(players, outcome.actorId);
+  if (!actor) return null;
+
+  let replacementCopy = "";
+  if (replacementChanges.length === 1) {
+    const oldEquipmentFacts = facts.filter((fact) => fact.eventId !== eventFact.eventId
+      && fact.rootEventId === outcome.rootEventId
+      && samePublicOutcomeIdentity(fact.identity, outcome.identity)
+      && fact.category === "CARD_DISCARDED"
+      && fact.actorId === outcome.actorId
+      && fact.affectedPlayerIds.length === 1 && fact.affectedPlayerIds[0] === outcome.actorId
+      && fact.effect?.kind === "equipment_replaced"
+      && Boolean(fact.label?.trim()) && fact.label === fact.label?.trim()
+      && fact.effect.label === fact.label);
+    const oldEquipmentName = oldEquipmentFacts.length === 1 ? oldEquipmentFacts[0].label : null;
+    replacementCopy = oldEquipmentName ? `, replacing ${oldEquipmentName}` : ", replacing 1 item";
+  }
+
+  return verifiedPlayerCopy([actor, " equipped ", equipmentName, replacementCopy, "."]);
+}
+
 /** Formats verified public state deltas without consulting a card, Hero, or skill rule. */
 function formatCommittedPublicOutcomeCopy(
   outcome: CommittedPublicOutcome,
   players: readonly Pick<PublicActivityPlayer, "id" | "name">[],
+  facts: readonly PublicOutcomeEventFact[] = [],
 ): { message: string; segments: VerifiedPlayerCopySegment[] } | null {
   if (!outcome || outcome.semantics !== "PROVEN" || outcome.visibility !== "PUBLIC"
     || !outcome.eventId || !outcome.rootEventId || !Array.isArray(outcome.changes) || outcome.changes.length === 0) return null;
+  const equipmentCopy = formatCommittedEquipmentOutcomeCopy(outcome, players, facts);
+  if (equipmentCopy) return equipmentCopy;
   const amountText = (amount: number, singular: string, plural: string) => `${amount} ${amount === 1 ? singular : plural}`;
   if (outcome.source.label === "Stauchness" && outcome.actorId && outcome.changes.length === 1) {
     const actor = narrationPlayerPart(players, outcome.actorId);
@@ -433,8 +490,9 @@ function isEmptyGenericCompletion(fact: PresentationSnapshot["publicEventFacts"]
 export function formatCommittedPublicOutcome(
   outcome: CommittedPublicOutcome,
   players: readonly Pick<PublicActivityPlayer, "id" | "name">[],
+  facts?: readonly PublicOutcomeEventFact[],
 ): string | null {
-  return formatCommittedPublicOutcomeCopy(outcome, players)?.message ?? null;
+  return formatCommittedPublicOutcomeCopy(outcome, players, facts)?.message ?? null;
 }
 
 /**
@@ -528,7 +586,7 @@ export function derivePublicInteractionNarration(input: {
   const target = targetPart?.name ?? null;
   const amount = Number.isSafeInteger(latest.amount) && (latest.amount ?? 0) > 0 ? latest.amount : null;
   const committedOutcomeCopy = latest.committedOutcome
-    ? formatCommittedPublicOutcomeCopy(latest.committedOutcome, input.players)
+    ? formatCommittedPublicOutcomeCopy(latest.committedOutcome, input.players, verifiedFacts)
     : null;
   if (latest.committedOutcome && !committedOutcomeCopy) return null;
   let headlineCopy: { message: string; segments: VerifiedPlayerCopySegment[] } | null = null;

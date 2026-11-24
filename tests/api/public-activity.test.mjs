@@ -809,6 +809,74 @@ test("Equipment H4 uses the exact committed owner and card name for active and r
   assert.equal(derivePublicInteractionNarration({ ...input(retainedSnapshot), interactionId: "different-interaction" }), null);
 });
 
+test("committed own-hand equipment H4 names only the proven item and replacement", () => {
+  const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
+  const makeEquip = (name, { eventId = `equip-${name}`, rootEventId = eventId, order = 1, changes } = {}) => {
+    const outcome = {
+      semantics: "PROVEN", visibility: "PUBLIC", eventId, identity, order, rootEventId, frameId: identity.rootFrameId,
+      category: "CARD_EQUIPPED", actorId: "p1", affectedPlayerIds: ["p1"], source: { kind: "card", label: name },
+      changes: changes ?? [{ kind: "CARD_EQUIPPED", playerId: "p1", amount: 1, fromZone: "HAND", toZone: "EQUIPMENT" }],
+    };
+    const fact = {
+      ...outcome, label: name, effect: { kind: "equipment_play", label: name }, committedOutcome: outcome,
+    };
+    return { outcome, fact };
+  };
+
+  for (const [slot, name] of [["weapon", "Frost Sword"], ["armor", "Eight Trigrams Formation"], ["mount", "Shadowrunner"]]) {
+    const { outcome, fact } = makeEquip(name);
+    assert.equal(formatCommittedPublicOutcome(outcome, players, [fact]), `Test Player 1 equipped ${name}.`,
+      `${slot} copy uses the same category-based proof path`);
+    const narration = derivePublicInteractionNarration({
+      snapshot: snapshot({ stage: "SETTLEMENT", publicEventFacts: [fact] }), players,
+      rootEventId: fact.rootEventId, interactionId: identity.interactionId, rootFrameId: identity.rootFrameId,
+      eventId: fact.eventId,
+    });
+    assert.equal(narration?.headline, `Test Player 1 equipped ${name}.`);
+    assert.equal(narration?.headlineSegments?.map((segment) => segment.text).join(""), narration?.headline);
+    assert.deepEqual(playerIds(narration?.headlineSegments), ["p1"]);
+  }
+
+  const { outcome: replacing, fact: equipFact } = makeEquip("Blue Steel Sword", {
+    eventId: "equip-replacement", order: 2,
+    changes: [
+      { kind: "CARD_DISCARDED", playerId: "p1", amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+      { kind: "CARD_EQUIPPED", playerId: "p1", amount: 1, fromZone: "HAND", toZone: "EQUIPMENT" },
+    ],
+  });
+  const oldEquipmentFact = {
+    semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "replacement-discard", order: 1,
+    rootEventId: "equip-replacement", frameId: identity.rootFrameId, category: "CARD_DISCARDED", actorId: "p1",
+    affectedPlayerIds: ["p1"], label: "Frost Sword", effect: { kind: "equipment_replaced", label: "Frost Sword" },
+  };
+  assert.equal(formatCommittedPublicOutcome(replacing, players, [oldEquipmentFact, equipFact]),
+    "Test Player 1 equipped Blue Steel Sword, replacing Frost Sword.");
+  assert.equal(formatCommittedPublicOutcome(replacing, players, [equipFact]),
+    "Test Player 1 equipped Blue Steel Sword, replacing 1 item.",
+    "replacement count remains truthful when old public identity is unavailable");
+  assert.equal(formatCommittedPublicOutcome(replacing, players, [
+    { ...oldEquipmentFact, rootEventId: "unrelated-root" }, equipFact,
+  ]), "Test Player 1 equipped Blue Steel Sword, replacing 1 item.",
+  "an unrelated discard cannot supply the old Equipment name");
+  assert.equal(formatCommittedPublicOutcome(replacing, players, [
+    { ...oldEquipmentFact, actorId: "p2", affectedPlayerIds: ["p2"] }, equipFact,
+  ]), "Test Player 1 equipped Blue Steel Sword, replacing 1 item.",
+  "a different player's discarded Equipment cannot supply the old name");
+
+  const { outcome: ordinary, fact: ordinaryFact } = makeEquip("Eight Trigrams Formation");
+  assert.equal(formatCommittedPublicOutcome(ordinary, players, [
+    { ...ordinaryFact, label: "Unrelated source", effect: { kind: "equipment_play", label: "Unrelated source" } },
+  ]), "Test Player 1 Eight Trigrams Formation: Test Player 1 equipped 1 item.",
+  "source label mismatch retains the truthful generic fallback");
+  const mismatchedOwner = {
+    ...ordinary,
+    changes: [{ kind: "CARD_EQUIPPED", playerId: "p2", amount: 1, fromZone: "HAND", toZone: "EQUIPMENT" }],
+  };
+  assert.equal(formatCommittedPublicOutcome(mismatchedOwner, players, [ordinaryFact]),
+    "Test Player 1 Eight Trigrams Formation: Test Player 2 equipped 1 item.",
+    "actor and equipment owner must agree before using concise copy");
+});
+
 test("Entourage PAC follows only the current public helper checkpoint and H4 reports committed invocation", () => {
   const current = snapshot({ stage: "ATTACK_RESPONSE", actorId: "p3", effect: "Attack" });
   const identity = { ...current.identity, rootFrameId: "root-1" };
