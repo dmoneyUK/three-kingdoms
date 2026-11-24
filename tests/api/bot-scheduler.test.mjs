@@ -431,6 +431,34 @@ test("an interrupted Bot draw keeps a private checkpoint and resumes exactly onc
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
+test("Cron resumes a private Oath recovery checkpoint before scheduling Bot work", async () => {
+  const { code, token, hostId, bots } = await createBotGame();
+  const bot = bots[0];
+  const roomId = query(`SELECT id FROM rooms WHERE code=${quote(code)}`);
+  const hostSeat = Number(query(`SELECT seat FROM players WHERE id=${quote(hostId)}`));
+  sql(`UPDATE players SET hero='zhao-yun' WHERE id=${quote(bot.id)}`);
+  // The recovery checkpoint represents the already-committed HP write; Cron
+  // must publish/resume it, not apply the HP a second time.
+  setHand(bot.id, [], 4, 4);
+  setTurn(code, hostSeat, "play");
+  const checkpoint = {
+    kind: "recovery_checkpoint", version: 1, id: crypto.randomUUID(), effect: "oath",
+    records: [{ playerId: bot.id, amountRecovered: 1, sourceId: bot.id, reason: "oath" }],
+    resume: { kind: "phase", phase: "play", playerId: bot.id },
+  };
+  sql(`UPDATE rooms SET phase='resolving', pending_json=${quote(JSON.stringify(checkpoint))} WHERE id=${quote(roomId)}`);
+
+  const wake = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
+  assert.equal(wake.status, 200, JSON.stringify(wake.data));
+  assert.equal(wake.data.steps, 0, "the Cron wake only resumes the durable checkpoint");
+  assert.equal(query(`SELECT phase FROM rooms WHERE id=${quote(roomId)}`), "play");
+  assert.equal(query(`SELECT pending_json IS NULL FROM rooms WHERE id=${quote(roomId)}`), "1");
+  assert.equal(query(`SELECT hp FROM players WHERE id=${quote(bot.id)}`), "4");
+  assert.equal((await state(code, token)).data.currentAction.actorId, hostId);
+  assert.equal(JSON.stringify((await state(code, token)).data).includes("recovery_checkpoint"), false);
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE id=${quote(roomId)}`);
+});
+
 test("human turns and the exhausted per-room action budget leave bot actions untouched", async () => {
   const { code, token, hostId, bots } = await createBotGame();
   const bot = bots[0];

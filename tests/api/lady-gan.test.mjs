@@ -1,6 +1,6 @@
 import test from "node:test";
 import {
-  assert, card, createHumanGame, createHumanSetupGame, createTestGame, discardIds, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending,
+  assert, card, createHumanGame, createHumanSetupGame, createTestGame, discardIds, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending,
 } from "./test-support.mjs";
 
 function setupLadyGan(game, { hp = 2, maxHp = 3, hand = [], turnIndex = 1 } = {}) {
@@ -168,6 +168,64 @@ test("Prudence follows Peach and Oath recovery, and Quick Test projects the acti
   const quickView = (await state(quick.data.room.code, quick.data.token)).data;
   assert.equal(quickView.meId, quickLady.id);
   assert.equal(quickView.currentAction.triggerOptions.some((option) => option.effectId === "lady_gan_divine_wisdom"), true);
+});
+
+test("interrupted Oath recovery keeps a private checkpoint and resumes exactly once", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const source = game.room.players[0];
+  const token = game.members[0].token;
+  const oath = card("Oath", "recovery-checkpoint");
+  for (const player of game.room.players) {
+    const wounded = player.id === source.id;
+    sql(`UPDATE players SET hero='zhao-yun', hp=${wounded ? 1 : 4}, max_hp=${wounded ? 3 : 4}, alive=1 WHERE id=${quote(player.id)}`);
+    setHand(player.id, player.id === source.id ? [oath] : [], wounded ? 1 : 4, wounded ? 3 : 4);
+  }
+  setDeck(game.code, [card("Dodge", "recovery-next")]);
+  setTurn(game.code, source.seat, "play");
+
+  const opened = await request("play_card", { code: game.code, token, cardId: oath.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const windowId = opened.data.room.currentAction.negationWindowId;
+  assert.ok(windowId);
+  const roomId = query(`SELECT id FROM rooms WHERE code=${quote(game.code)}`);
+  const deadline = Date.now() - 1;
+  sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.openedAt',${deadline - 8000},'$.deadline',${deadline})
+    WHERE id=${quote(roomId)} AND json_extract(pending_json,'$.windowId')=${quote(windowId)}`);
+  sql(`CREATE TRIGGER abort_oath_recovery_settlement BEFORE UPDATE OF phase ON rooms
+    WHEN OLD.id=${quote(roomId)} AND json_extract(OLD.pending_json,'$.kind')='recovery_checkpoint' AND NEW.pending_json IS NULL
+    BEGIN SELECT RAISE(ABORT, 'interrupted Oath recovery settlement'); END;`);
+  try {
+    const failed = await fetch(new URL("/api/rooms", process.env.GAME_TEST_URL ?? "http://localhost:3137"), {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "advance_timers", code: game.code, token }),
+    });
+    assert.equal(failed.status, 500);
+    await failed.body?.cancel();
+    assert.equal(query(`SELECT phase FROM rooms WHERE id=${quote(roomId)}`), "resolving");
+    assert.equal(query(`SELECT json_extract(pending_json,'$.kind') FROM rooms WHERE id=${quote(roomId)}`), "recovery_checkpoint");
+    assert.equal(query(`SELECT hp FROM players WHERE id=${quote(source.id)}`), "2", "the Oath HP write is committed with its checkpoint");
+    const hidden = (await state(game.code, token)).data;
+    assert.equal(hidden.pending, null, "the private checkpoint is omitted from the public projection");
+    assert.equal(hidden.currentAction.kind, "none");
+    assert.equal(JSON.stringify(hidden).includes("recovery_checkpoint"), false);
+  } finally {
+    sql("DROP TRIGGER abort_oath_recovery_settlement");
+  }
+
+  const recovered = await request("advance_timers", { code: game.code, token });
+  assert.equal(recovered.status, 200, JSON.stringify(recovered.data));
+  const after = (await state(game.code, token)).data;
+  assert.equal(after.phase, "play");
+  assert.equal(after.pending, null);
+  assert.equal(after.players.find((player) => player.id === source.id).hp, 2);
+  assert.equal(after.log.filter((entry) => entry.includes("recover 1 HP")).length, 1);
+  assert.equal(after.log.filter((entry) => entry.includes("recovered 1 HP")).length, 1);
+  assert.equal(roomCardCount(game.code, oath.id), 1, "the physical Oath card is conserved");
+
+  await Promise.all([request("advance_timers", { code: game.code, token }), request("advance_timers", { code: game.code, token })]);
+  const replay = (await state(game.code, token)).data;
+  assert.equal(replay.log.filter((entry) => entry.includes("recovered 1 HP")).length, 1, "duplicate wakes do not publish recovery twice");
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE id=${quote(roomId)}`);
 });
 
 test("Prudence preserves the Dying rescue continuation", async () => {

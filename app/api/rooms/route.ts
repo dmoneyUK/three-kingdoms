@@ -92,6 +92,20 @@ type BotActionCheckpoint = {
   resumePhase: string;
   fields: Record<string, unknown>;
 };
+/**
+ * A private checkpoint for a card effect that has committed its domain result
+ * (for example Oath's HP writes) but still has to publish and resume the
+ * canonical recovery event.  It is intentionally outside Pending so public
+ * projections never expose internal recovery records or actor data.
+ */
+type RecoveryCheckpoint = {
+  kind: "recovery_checkpoint";
+  version: 1;
+  id: string;
+  effect: "oath";
+  records: RecoveryRecord[];
+  resume: RecoveryResume;
+};
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; is_test_player: number; controller_type: "human" | "bot" | "test"; controller_request_id: string | null; connected_at: number };
 type CausalCreation<T> = { value: T; createdEnvelope: CausalEnvelope | null };
@@ -214,6 +228,17 @@ function parseBotActionCheckpoint(value: string | null): BotActionCheckpoint | n
     && typeof pending.resumePhase === "string" && pending.resumePhase.startsWith("draw") && Boolean(fields)
     ? { ...pending, fields: fields as Record<string, unknown> } as BotActionCheckpoint
     : null;
+}
+
+function parseRecoveryCheckpoint(value: string | null): RecoveryCheckpoint | null {
+  const checkpoint = parse<Record<string, unknown> | null>(value, null);
+  const records = checkpoint?.records;
+  const resume = record(checkpoint?.resume);
+  return checkpoint?.kind === "recovery_checkpoint" && checkpoint.version === 1
+    && typeof checkpoint.id === "string" && checkpoint.id.length > 0
+    && checkpoint.effect === "oath" && Array.isArray(records)
+    && resume?.kind === "phase" && typeof resume.phase === "string"
+    ? checkpoint as unknown as RecoveryCheckpoint : null;
 }
 
 function resumableBotActionCheckpoint(room: RoomRow, checkpoint: BotActionCheckpoint | null, players: PlayerRow[]) {
@@ -381,8 +406,8 @@ async function beginStandardHeroSelection(roomId: string, players: PlayerRow[], 
   return false;
 }
 function parsePersistedPending(value: string | null): Pending | null {
-  const pending = parse<Pending | TurnEndCheckpoint | BotActionCheckpoint | null>(value, null);
-  return pending?.kind === "turn_end_checkpoint" || pending?.kind === "bot_action_checkpoint" ? null : pending;
+  const pending = parse<Pending | TurnEndCheckpoint | BotActionCheckpoint | RecoveryCheckpoint | null>(value, null);
+  return pending?.kind === "turn_end_checkpoint" || pending?.kind === "bot_action_checkpoint" || pending?.kind === "recovery_checkpoint" ? null : pending;
 }
 function actionPlayerIdForPending(room: RoomRow, pending: Pending | null, players: PlayerRow[]) {
   if (room.status !== "playing") return null;
@@ -3646,7 +3671,7 @@ async function resumeTurnStartEvent(room: RoomRow, continuation: TurnStartTrigge
 }
 
 /** Opens each actual recovery reaction in order, then resumes its saved domain. */
-async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[], resume: RecoveryResume, initialResolvedEffectIds: readonly string[] = []) {
+async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[], resume: RecoveryResume, initialResolvedEffectIds: readonly string[] = [], expectedPendingJson?: string) {
   let remaining = [...records];
   let resolvedEffectIds = [...initialResolvedEffectIds];
   let committedOutcomeLog: string[] | null = null;
@@ -3792,11 +3817,16 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
       continuation,
     }, presentation.log, presentation.eventId);
     const causalEnvelope = recoveryEnvelopeFor(room, [recovery, ...rest]);
+    const pendingGuard = expectedPendingJson === undefined ? "pending_json IS NULL" : "pending_json = ?";
     const updated = causalEnvelope
-      ? await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json IS NULL")
-        .bind(serializePending(pending), JSON.stringify(presentation.log), JSON.stringify(causalEnvelope), roomId).run()
-      : await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json IS NULL")
-        .bind(serializePending(pending), JSON.stringify(presentation.log), roomId).run();
+      ? await db().prepare(`UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving' AND ${pendingGuard}`)
+        .bind(...(expectedPendingJson === undefined
+          ? [serializePending(pending), JSON.stringify(presentation.log), JSON.stringify(causalEnvelope), roomId]
+          : [serializePending(pending), JSON.stringify(presentation.log), JSON.stringify(causalEnvelope), roomId, expectedPendingJson])).run()
+      : await db().prepare(`UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving' AND ${pendingGuard}`)
+        .bind(...(expectedPendingJson === undefined
+          ? [serializePending(pending), JSON.stringify(presentation.log), roomId]
+          : [serializePending(pending), JSON.stringify(presentation.log), roomId, expectedPendingJson])).run();
     if ((updated.meta.changes ?? 0) > 0) return;
     return;
   }
@@ -3818,10 +3848,14 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
   }
   if (resume.kind === "phase") {
     if (recoveryEnvelope) {
-      await causalRoomStateWrite(roomId, { phase: resume.phase, pending: null, deck, discard, log, causalEnvelope: recoveryEnvelope }).run();
+      const settled = await causalRoomStateWrite(roomId, { phase: resume.phase, pending: null, deck, discard, log, causalEnvelope: recoveryEnvelope }, expectedPendingJson, expectedPendingJson === undefined ? undefined : "resolving").run();
+      if (expectedPendingJson !== undefined && (settled.meta.changes ?? 0) <= 0) return;
     } else {
-      await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-        .bind(resume.phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
+      const pendingGuard = expectedPendingJson === undefined ? "" : " AND phase = 'resolving' AND pending_json = ?";
+      await db().prepare(`UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?${pendingGuard}`)
+        .bind(...(expectedPendingJson === undefined
+          ? [resume.phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId]
+          : [resume.phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId, expectedPendingJson])).run();
     }
     if (resume.handLoss) await maybeOpenHandLossTrigger(roomId, resume.handLoss.playerId, resume.handLoss.beforeHand);
     return;
@@ -4188,6 +4222,17 @@ async function advanceTurnEndCheckpoint(roomId: string, observedPendingJson: str
   const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
   await continueTurnEndEvent(room, checkpoint.continuation, players, parse<Card[]>(room.deck_json, []),
     parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []), checkpoint);
+  return true;
+}
+
+/** Resumes a private post-effect recovery checkpoint exactly once. */
+async function advanceRecoveryCheckpoint(roomId: string, observedPendingJson: string) {
+  const checkpoint = parseRecoveryCheckpoint(observedPendingJson);
+  if (!checkpoint) return false;
+  const room = await db().prepare("SELECT * FROM rooms WHERE id = ? AND status = 'playing' AND phase = 'resolving' AND pending_json = ?")
+    .bind(roomId, observedPendingJson).first<RoomRow>();
+  if (!room) return true;
+  await advanceHpRecoveredEvents(roomId, checkpoint.records, checkpoint.resume, [], observedPendingJson);
   return true;
 }
 
@@ -5482,11 +5527,29 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
       const before = player.hp ?? 0;
       return { playerId: player.id, amountRecovered: recoveredAmount(before, player.max_hp ?? before, 1), sourceId: pending.sourceId, reason: "oath" };
     }).filter((recovery) => recovery.amountRecovered > 0);
-    await db().batch([
-      ...wounded.map((player) => db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(applyRecovery(player.hp ?? 0, 1, player.max_hp ?? player.hp ?? 0), player.id)),
-      db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(log), roomId),
+    const checkpoint: RecoveryCheckpoint = {
+      kind: "recovery_checkpoint",
+      version: 1,
+      id: crypto.randomUUID(),
+      effect: "oath",
+      records: recoveries,
+      resume: { kind: "phase", phase: pending.resumePhase, playerId: source?.id },
+    };
+    const checkpointJson = JSON.stringify(checkpoint);
+    const expectedRoomPending = expectedPendingJson ?? room.pending_json;
+    const roomGuard = expectedRoomPending === null ? "pending_json IS NULL" : "pending_json = ?";
+    const writes = await db().batch([
+      ...wounded.map((player) => db().prepare(`UPDATE players SET hp = ? WHERE id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND phase = 'resolving' AND ${roomGuard})`)
+        .bind(...(expectedRoomPending === null
+          ? [applyRecovery(player.hp ?? 0, 1, player.max_hp ?? player.hp ?? 0), player.id, roomId]
+          : [applyRecovery(player.hp ?? 0, 1, player.max_hp ?? player.hp ?? 0), player.id, roomId, expectedRoomPending]))),
+      db().prepare(`UPDATE rooms SET phase = 'resolving', pending_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving' AND ${roomGuard}`)
+        .bind(...(expectedRoomPending === null
+          ? [checkpointJson, JSON.stringify(log), roomId]
+          : [checkpointJson, JSON.stringify(log), roomId, expectedRoomPending])),
     ]);
-    await advanceHpRecoveredEvents(roomId, recoveries, { kind: "phase", phase: pending.resumePhase, playerId: source?.id });
+    const checkpointWrite = writes[writes.length - 1];
+    if ((checkpointWrite?.meta.changes ?? 0) > 0) await advanceRecoveryCheckpoint(roomId, checkpointJson);
   } else if (pending.effect.kind === "dismantle" || pending.effect.kind === "steal") {
     const target = players.find((player) => player.id === pending.effect.targetId && player.alive);
     if (!target || targetableCardCount(target) === 0) {
@@ -7711,7 +7774,8 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     : null;
   const tokenHash = token ? await hash(token) : "";
   const turnEndInProgress = room.phase === "resolving" && Boolean(parseTurnEndCheckpoint(room.pending_json));
-  const actualActionPlayerId = discardTurnHandoff || turnEndInProgress ? null : actionPlayerIdForPending(room, pending, players);
+  const recoveryInProgress = room.phase === "resolving" && Boolean(parseRecoveryCheckpoint(room.pending_json));
+  const actualActionPlayerId = discardTurnHandoff || turnEndInProgress || recoveryInProgress ? null : actionPlayerIdForPending(room, pending, players);
   const sessionPlayers = players.filter((player) => player.token_hash === tokenHash);
   // A host token may control the host plus generated test seats. In a mixed
   // room, only project an active seat when that seat belongs to this token;
@@ -7845,7 +7909,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     : undefined;
   const currentAction: CurrentAction = {
     version: 3,
-    kind: sharedWindow ? sharedWindow.continuation.mode === "DYING_PEACH" ? "dying" : "response" : concealPrivateTriggerDecision || discardTurnHandoff ? "none" : responsePending || negationWindow ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
+    kind: sharedWindow ? sharedWindow.continuation.mode === "DYING_PEACH" ? "dying" : "response" : concealPrivateTriggerDecision || discardTurnHandoff || recoveryInProgress ? "none" : responsePending || negationWindow ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
     actorId: sharedWindow ? sharedPendingForViewer ? me?.id ?? null : null : concealPrivateTriggerDecision ? null : room.status === "heroes" ? projectedActionPlayerId : negationWindow ? me?.id ?? null : actionPlayerId,
     deadline: concealPrivateTriggerDecision ? 0 : responseDeadline,
     reason: actionReason,
@@ -8839,6 +8903,8 @@ export async function botControllerSnapshot(code: string, advanceExpiredWindows 
   if (!room || room.test_room || !botDemoEnabled()) return null;
   const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
   const botIds = players.filter((player) => player.controller_type === "bot" && !player.is_test_player).map(({ id }) => id);
+  if (advanceExpiredWindows && room.phase === "resolving" && room.pending_json
+    && await advanceRecoveryCheckpoint(room.id, room.pending_json)) return botControllerSnapshot(code, false, roleBotId);
   if (advanceExpiredWindows && room.phase === "resolving" && room.pending_json
     && await advanceTurnEndCheckpoint(room.id, room.pending_json)) return botControllerSnapshot(code, false, roleBotId);
   const handoff = parseDiscardTurnHandoff(room.pending_json);
@@ -9895,6 +9961,13 @@ export async function POST(request: Request, routeContext?: unknown) {
       return json({ error: target ? "Only a bot seat can be removed." : "That bot seat is no longer available." }, 409);
     }
     return json({ room: await roomState(code, token) });
+  }
+
+  if (GAMEPLAY_ACTION_SET.has(action) && sessionPlayers.length && room.phase === "resolving" && room.pending_json
+    && await advanceRecoveryCheckpoint(room.id, room.pending_json)) {
+    const refreshed = await roomState(code, token, false, typeof body.testViewerId === "string" ? body.testViewerId : undefined);
+    return action === "advance_timers" ? json({ room: refreshed })
+      : json({ error: "The effect is being resumed. Refresh for the current legal action.", stale: true, room: refreshed }, 409);
   }
 
   if (GAMEPLAY_ACTION_SET.has(action) && sessionPlayers.length && room.phase === "resolving" && room.pending_json
