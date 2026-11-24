@@ -320,6 +320,37 @@ test("measured upper H4 and reserved text height pin the reveal across text chan
   assert.ok(long.layout.card.bottom + 8 <= long.layout.activity.top);
 });
 
+test("full effect frame keeps an eight-pixel gap below wrapped upper H4 and reports no fit", () => {
+  const geometry = {
+    viewport: { left: 0, top: 0, right: 390, bottom: 844 },
+    table: { left: 0, top: 0, right: 390, bottom: 620 },
+    activityBottom: 620,
+    upperH4: { top: 150, reservedHeight: 70, gap: 8 },
+    preferredCard: { left: 111, top: 300 },
+    card: { width: 168, height: 190 },
+    announcement: { width: 340, height: 48 },
+    activity: { width: 340, height: 60 },
+    obstacles: [{ id: "upper-seats", rect: { left: 0, top: 0, right: 390, bottom: 100 } }],
+  };
+  const wrapped = calculatePublicStageLayout(input(geometry));
+  const rewrapped = calculatePublicStageLayout(input({ ...geometry, announcement: { width: 340, height: 70 } }));
+  assert.equal(wrapped.status, "placed");
+  assert.equal(rewrapped.status, "placed");
+  if (wrapped.status !== "placed" || rewrapped.status !== "placed") return;
+  assert.equal(wrapped.layout.card.top, 228);
+  assert.deepEqual(wrapped.layout.card, rewrapped.layout.card);
+  assert.ok(wrapped.layout.card.top >= geometry.upperH4.top + geometry.upperH4.reservedHeight + 8);
+  assert.ok(wrapped.layout.card.bottom + 8 <= wrapped.layout.activity.top);
+
+  const noFit = calculatePublicStageLayout(input({
+    ...geometry,
+    activityBottom: 440,
+    table: { ...geometry.table, bottom: 440 },
+  }));
+  assert.equal(noFit.status, "unavailable");
+  if (noFit.status === "unavailable") assert.equal(noFit.reason, "NO_SAFE_STAGE_BAND");
+});
+
 test("measured upper H4 remains fixed during move and parked phases", () => {
   const upperH4 = { top: 150, reservedHeight: 71, gap: 4 };
   const viewport = { left: 0, top: 0, right: 440, bottom: 766 };

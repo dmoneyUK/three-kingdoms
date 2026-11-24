@@ -232,7 +232,13 @@ export function PublicStageLayoutProvider({
       };
       const tableBounds = rectOf(table);
       const upper = fixedUpperHistoryAnnouncementAnchor(table);
-      const upperH4 = upper ? { top: upper.top, reservedHeight: publicH4ReservedHeight(announcement), gap: 4 } : undefined;
+      const kirinBowEffectFrame = phase === "REVEAL"
+        && primary.querySelector<HTMLElement>(".public-card-effect-frame-panel[data-public-card-frame-effect-id='kirin_bow_damage_about_to_apply']");
+      const upperH4 = upper ? {
+        top: upper.top,
+        reservedHeight: publicH4ReservedHeight(announcement),
+        gap: kirinBowEffectFrame ? 8 : 4,
+      } : undefined;
       const harvestPoolWrapper = [...table.querySelectorAll<HTMLElement>(".battlefield-choice-stage")]
         .find((element) => element.dataset.harvestRootEventId === scopeId) ?? null;
       const harvestPoolPanel = harvestPoolWrapper?.querySelector<HTMLElement>(".harvest-choice-panel") ?? null;

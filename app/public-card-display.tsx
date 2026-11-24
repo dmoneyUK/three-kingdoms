@@ -368,6 +368,7 @@ type JourneyState = {
   center: CardRect | null;
   suppressTransitions: boolean;
   layoutPending: boolean;
+  framePlacementUnavailable?: boolean;
 };
 type AttackDodgeJourneyLifecycle = {
   phase: "reveal" | "move" | "parked";
@@ -384,6 +385,7 @@ function PublicJourneyCard({
   card,
   parkingTargetKnown = true,
   preservePendingParking = false,
+  visualPlacementUnavailable = false,
   authorReservation,
   className = "",
   size,
@@ -401,6 +403,7 @@ function PublicJourneyCard({
   card: JourneyCard;
   parkingTargetKnown?: boolean;
   preservePendingParking?: boolean;
+  visualPlacementUnavailable?: boolean;
   authorReservation?: CardRect | null;
   className?: string;
   size: string;
@@ -416,7 +419,7 @@ function PublicJourneyCard({
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
   const sharedPublicStage = usePublicStageLayout();
-  const sharesCurrentStageIdentity = Boolean(sharedPublicStage && primary
+  const sharesCurrentStageIdentity = Boolean(sharedPublicStage && primary && !visualPlacementUnavailable
     && card.eventId === sharedPublicStage.primaryEventId
     && card.cardFace.id === sharedPublicStage.primaryCardId
     && card.phase.toUpperCase() === sharedPublicStage.layout.scene.phase);
@@ -427,7 +430,8 @@ function PublicJourneyCard({
   const journeyTop = usesSharedRevealLayout && sharedPublicStage
     ? sharedPublicStage.layout.card.top - sharedPublicStage.primaryOffset.top
     : card.rect.top;
-  const placementUnavailable = !parkingTargetKnown && card.phase === "parked" && !preservePendingParking;
+  const placementUnavailable = visualPlacementUnavailable
+    || !parkingTargetKnown && card.phase === "parked" && !preservePendingParking;
   const inspectable = !placementUnavailable && !passive && card.phase === "parked" && Boolean(onInspectCard);
   const publicFrameAccessible = !placementUnavailable && Boolean(publicCardEffectFrame && card.phase !== "move");
   const frameMaterials = publicCardEffectFrame?.materials ?? [];
@@ -872,12 +876,67 @@ function singleTargetBattlefieldRevealCard(size: { width: number; height: number
   return overlapsProtectedControl ? null : candidate;
 }
 
-function battlefieldPublicEffectFrameCard(frame?: PublicCardEffectFrameView): CardRect {
+function battlefieldPublicEffectFrameCard(): CardRect;
+function battlefieldPublicEffectFrameCard(frame: PublicCardEffectFrameView): CardRect | null;
+function battlefieldPublicEffectFrameCard(frame?: PublicCardEffectFrameView): CardRect | null {
   const table = document.querySelector<HTMLElement>(".play-table");
   const bounds = table?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
   const safeLeft = Math.max(8, bounds.left + 8);
   const safeRight = Math.min(window.innerWidth - 8, bounds.right - 8);
   const frameLayout = publicCardEffectFrameLayout(frame?.materials.length ?? 1, window.innerWidth, window.innerHeight, frame);
+  if (frame?.effectId === "kirin_bow_damage_about_to_apply") {
+    const upperAnnouncement = table?.querySelector<HTMLElement>(
+      "[data-public-card-announcement='true'][data-public-card-announcement-fixed-upper='true'][data-public-card-announcement-positioned='true']",
+    );
+    const announcementRect = upperAnnouncement?.getBoundingClientRect();
+    const announcementStyle = upperAnnouncement ? window.getComputedStyle(upperAnnouncement) : null;
+    if (!announcementRect || announcementRect.width <= 0 || announcementRect.height <= 0
+      || announcementStyle?.display === "none" || announcementStyle?.visibility === "hidden"
+      || Number(announcementStyle?.opacity) === 0) return null;
+
+    const renderedFrame = table
+      ? [...table.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel")].find((element) =>
+        element.dataset.publicCardFrameEffectId === frame.effectId
+        && element.dataset.publicCardFrameCardEventId === frame.eventId)
+      : undefined;
+    const renderedFrameRect = renderedFrame?.getBoundingClientRect();
+    const renderedCard = renderedFrame
+      ? [...renderedFrame.querySelectorAll<HTMLElement>("[data-public-card-effect-frame-card-id]")]
+        .find((element) => element.dataset.publicCardEffectFrameCardId === frame.materials[0]?.card.id)
+      : undefined;
+    const renderedTitle = renderedFrame?.querySelector<HTMLElement>(".public-card-effect-frame-title");
+    const renderedCardRect = renderedCard?.getBoundingClientRect();
+    const renderedTitleRect = renderedTitle?.getBoundingClientRect();
+    const measuredRects = [renderedFrameRect, renderedCardRect, renderedTitleRect]
+      .filter((rect): rect is DOMRect => Boolean(rect && rect.width > 0 && rect.height > 0));
+    const measuredFrame = measuredRects.length > 0
+      ? {
+        left: Math.min(...measuredRects.map((rect) => rect.left)),
+        top: Math.min(...measuredRects.map((rect) => rect.top)),
+        right: Math.max(...measuredRects.map((rect) => rect.right)),
+        bottom: Math.max(...measuredRects.map((rect) => rect.bottom)),
+      }
+      : null;
+    const frameWidth = measuredFrame ? measuredFrame.right - measuredFrame.left : frameLayout.frameWidth;
+    const frameHeight = measuredFrame ? measuredFrame.bottom - measuredFrame.top : frameLayout.frameHeight;
+    const cardOffsetLeft = measuredFrame && renderedCardRect
+      ? renderedCardRect.left - measuredFrame.left
+      : frameLayout.cardOffsetLeft;
+    const cardOffsetTop = measuredFrame && renderedCardRect
+      ? renderedCardRect.top - measuredFrame.top
+      : frameLayout.cardOffsetTop;
+    const safeFrame = battlefieldCenterCard({ width: frameWidth, height: frameHeight }, {
+      requireProtectedClearance: true,
+      respectFixedUpperH4: true,
+    });
+    if (!safeFrame) return null;
+    return {
+      left: safeFrame.left + cardOffsetLeft,
+      top: safeFrame.top + cardOffsetTop,
+      width: REVEAL_CARD.width,
+      height: REVEAL_CARD.height,
+    };
+  }
   const frameWidth = Math.max(1, Math.min(frameLayout.frameWidth, safeRight - safeLeft));
   const safeTop = Math.max(8, bounds.top + 8);
   const safeBottom = Math.min(window.innerHeight - 8, bounds.bottom - 2);
@@ -929,8 +988,12 @@ function battlefieldPublicEffectFrameCard(frame?: PublicCardEffectFrameView): Ca
   };
 }
 
+function isKirinBowPublicEffectFrame(frame?: PublicCardEffectFrameView): frame is PublicCardEffectFrameView {
+  return frame?.effectId === "kirin_bow_damage_about_to_apply";
+}
+
 function battlefieldLustCostCard(): CardRect {
-  return battlefieldPublicEffectFrameCard();
+  return battlefieldPublicEffectFrameCard()!;
 }
 
 function battlefieldPublicEffectFrame(card: CardRect, frame?: PublicCardEffectFrameView): CardRect {
@@ -4018,10 +4081,15 @@ function AttackDodgeCardJourney({
     const motion = currentAction.motion?.type === "attack-dodge" ? currentAction.motion : null;
     if (!enabled || !motion) return;
     const publicFrameJourneyEventIds = [currentAction.rootEventId, currentAction.response?.eventId].filter(Boolean);
-    const center = currentAction.publicCardEffectFrame && publicFrameJourneyEventIds.includes(currentAction.publicCardEffectFrame.eventId)
-      ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
+    const currentPublicFrame = currentAction.publicCardEffectFrame && publicFrameJourneyEventIds.includes(currentAction.publicCardEffectFrame.eventId)
+      ? currentAction.publicCardEffectFrame : undefined;
+    const center = currentPublicFrame
+      ? battlefieldPublicEffectFrameCard(currentPublicFrame)
       : battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
     const previousState = journeyRef.current;
+    const centerUnavailableForKirin = isKirinBowPublicEffectFrame(currentPublicFrame) && center === null;
+    const pendingRevealCenter = center ?? previousState.center
+      ?? boundCardRect((window.innerWidth - REVEAL_CARD.width) / 2, (window.innerHeight - REVEAL_CARD.height) / 2, REVEAL_CARD.width, REVEAL_CARD.height);
     const sameInteraction = previousState.scopeKey === scopeKey;
     const viewerChanged = sameInteraction && previousState.viewerId !== viewerId;
     const previous = sameInteraction ? previousState.cards : [];
@@ -4064,7 +4132,7 @@ function AttackDodgeCardJourney({
     const nextCards = incoming.map((candidate) => {
       const prior = previous.find((card) => card.eventId === candidate.eventId);
       const target = actorParkedCard(candidate.actorId);
-      const parkedTarget = target ?? center;
+      const parkedTarget = target ?? center ?? pendingRevealCenter;
       if (prior) {
         if (viewerChanged) {
           const phase = prior.phase === "move" ? "parked" as const : prior.phase;
@@ -4077,9 +4145,10 @@ function AttackDodgeCardJourney({
             semanticLabel: candidate.semanticLabel,
             phase,
             target: parkedTarget,
-            rect: phase === "parked" ? parkedTarget : phase === "reveal" ? center : prior.rect,
+            rect: phase === "parked" ? parkedTarget : phase === "reveal" ? center ?? prior.rect : prior.rect,
             moveStartedAtMs: null,
-            layoutPending: phase === "parked" && !target,
+            layoutPending: (centerUnavailableForKirin && phase === "reveal"
+              && candidate.eventId === currentPublicFrame?.eventId) || phase === "parked" && !target,
             layoutChangeReason: "viewer-switch",
           };
         }
@@ -4125,7 +4194,7 @@ function AttackDodgeCardJourney({
           ariaLabel: candidate.ariaLabel,
           semanticLabel: candidate.semanticLabel,
           target: parkedTarget,
-          rect: prior.phase === "parked" ? parkedTarget : prior.phase === "reveal" ? center : prior.rect,
+          rect: prior.phase === "parked" ? parkedTarget : prior.phase === "reveal" ? center ?? prior.rect : prior.rect,
           layoutPending: prior.phase === "parked" && !target,
         };
       }
@@ -4151,14 +4220,15 @@ function AttackDodgeCardJourney({
         semanticLabel: candidate.semanticLabel,
         role: candidate.role,
         phase,
-        rect: phase === "reveal" ? center : parkedTarget,
+        rect: phase === "reveal" ? center ?? pendingRevealCenter : parkedTarget,
         target: parkedTarget,
         revealStartedAtMs: retainedReveal ? retained.revealStartedAtMs : retained?.revealStartedAtMs ?? null,
         revealStartedAtIso: retained?.revealStartedAtIso ?? null,
         revealElapsedMs: retained?.revealElapsedMs ?? 0,
         revealRemainingMs: retained?.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
         moveStartedAtMs: null,
-        layoutPending: phase === "parked" && !target,
+        layoutPending: (centerUnavailableForKirin && phase === "reveal"
+          && candidate.eventId === currentPublicFrame?.eventId) || phase === "parked" && !target,
         layoutChangeReason: phase === "reveal"
           ? "public-event-committed"
           : latestNewResponseEventId && candidate.role !== "root"
@@ -4211,14 +4281,22 @@ function AttackDodgeCardJourney({
     }
     const roleOrder: Record<JourneyCard["role"], number> = { root: 0, response: 1, deflection: 2 };
     nextCards.sort((left, right) => roleOrder[left.role] - roleOrder[right.role]);
-    const layoutPending = nextCards.some((card) => card.layoutPending);
+    const framePlacementUnavailable = centerUnavailableForKirin
+      && nextCards.some((card) => card.eventId === currentPublicFrame?.eventId && card.phase === "reveal");
+    const presentationCards = framePlacementUnavailable
+      ? nextCards.map((card) => card.eventId === currentPublicFrame?.eventId && card.phase === "reveal"
+        ? { ...card, layoutPending: true, layoutChangeReason: "kirin-effect-frame-awaiting-h4-safe-geometry" }
+        : card)
+      : nextCards;
+    const layoutPending = framePlacementUnavailable || presentationCards.some((card) => card.layoutPending);
     const nextState: JourneyState = {
       scopeKey,
       viewerId,
-      cards: nextCards,
-      center,
+      cards: presentationCards,
+      center: center ?? (framePlacementUnavailable ? pendingRevealCenter : center),
       suppressTransitions: viewerChanged || previousState.suppressTransitions || previousState.layoutPending || layoutPending,
       layoutPending,
+      framePlacementUnavailable,
     };
     journeyRef.current = nextState;
     setJourney(nextState);
@@ -4226,7 +4304,7 @@ function AttackDodgeCardJourney({
 
   useEffect(() => {
     if (!enabled || !documentVisible || journey.scopeKey !== scopeKey
-      || !activeJourneyCard || activePhase !== "reveal" || activeRevealStartedAtMs !== null) return;
+      || journey.framePlacementUnavailable || !activeJourneyCard || activePhase !== "reveal" || activeRevealStartedAtMs !== null) return;
     let firstFrame = 0;
     let secondFrame = 0;
     const tryMarkFirstPaint = () => {
@@ -4267,7 +4345,7 @@ function AttackDodgeCardJourney({
       window.cancelAnimationFrame(firstFrame);
       window.cancelAnimationFrame(secondFrame);
     };
-  }, [enabled, documentVisible, journey.scopeKey, scopeKey, activeJourneyCard?.eventId, activePhase, activeRevealStartedAtMs]);
+  }, [enabled, documentVisible, journey.framePlacementUnavailable, journey.scopeKey, scopeKey, activeJourneyCard?.eventId, activePhase, activeRevealStartedAtMs]);
 
   useEffect(() => {
     if (!enabled || !documentVisible || journey.scopeKey !== scopeKey || !activeJourneyCard || !activePhase) return;
@@ -4502,7 +4580,10 @@ function AttackDodgeCardJourney({
     let sampledLayoutFrames = 0;
     const observedAnchors = new WeakSet<Element>();
     const observePlayerAnchors = () => {
-      document.querySelectorAll<HTMLElement>("[data-player-anchor]").forEach((anchor) => {
+      const announcements = isKirinBowPublicEffectFrame(actionRef.current.publicCardEffectFrame)
+        ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
+        : [];
+      [...document.querySelectorAll<HTMLElement>("[data-player-anchor]"), ...announcements].forEach((anchor) => {
         if (observedAnchors.has(anchor)) return;
         observedAnchors.add(anchor);
         observer?.observe(anchor);
@@ -4514,31 +4595,39 @@ function AttackDodgeCardJourney({
       const center = currentAction.publicCardEffectFrame?.eventId === currentAction.rootEventId
         ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
         : battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
+      const framePlacementUnavailable = isKirinBowPublicEffectFrame(currentAction.publicCardEffectFrame)
+        && center === null
+        && current.cards.some((card) => card.eventId === currentAction.publicCardEffectFrame?.eventId && card.phase === "reveal");
+      const pendingCenter = center ?? current.center
+        ?? boundCardRect((window.innerWidth - REVEAL_CARD.width) / 2, (window.innerHeight - REVEAL_CARD.height) / 2, REVEAL_CARD.width, REVEAL_CARD.height);
       const next = {
         ...current,
-        center,
+        center: center ?? (framePlacementUnavailable ? pendingCenter : center),
+        framePlacementUnavailable,
         suppressTransitions: true,
-        layoutPending: false,
         cards: current.cards.map((card) => {
           const target = actorParkedCard(card.actorId);
           if (target) return {
             ...card,
             phase: card.phase === "move" ? "parked" as const : card.phase,
             target,
-            rect: card.phase === "reveal" ? center : target,
+            rect: card.phase === "reveal" ? center ?? card.rect : target,
             moveStartedAtMs: null,
-            layoutPending: false,
-            layoutChangeReason: "viewport-or-seat-anchor-reflow",
+            layoutPending: framePlacementUnavailable && card.eventId === currentAction.publicCardEffectFrame?.eventId
+              || false,
+            layoutChangeReason: framePlacementUnavailable && card.eventId === currentAction.publicCardEffectFrame?.eventId
+              ? "kirin-effect-frame-awaiting-h4-safe-geometry" : "viewport-or-seat-anchor-reflow",
           };
           return {
             ...card,
             phase: card.phase === "move" ? "parked" as const : card.phase,
-            layoutPending: card.phase === "parked" || card.phase === "move",
+            layoutPending: framePlacementUnavailable && card.eventId === currentAction.publicCardEffectFrame?.eventId
+              || card.phase === "parked" || card.phase === "move",
             layoutChangeReason: "viewport-or-seat-anchor-reflow",
           };
         }),
       };
-      next.layoutPending = next.cards.some((card) => card.layoutPending);
+      next.layoutPending = framePlacementUnavailable || next.cards.some((card) => card.layoutPending);
       if (journeyGeometryMatches(current, next) && !current.layoutPending && !next.layoutPending) return;
       journeyRef.current = next;
       setJourney(next);
@@ -4564,7 +4653,12 @@ function AttackDodgeCardJourney({
       sampledLayoutFrames = 0;
       const repositionAfterLayoutSettles = () => {
         const table = document.querySelector<HTMLElement>(".play-table");
-        const anchors = [...document.querySelectorAll<HTMLElement>("[data-player-anchor]")];
+        const anchors = [
+          ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
+          ...(isKirinBowPublicEffectFrame(actionRef.current.publicCardEffectFrame)
+            ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
+            : []),
+        ];
         const signature = [window.innerWidth, window.innerHeight, window.visualViewport?.width ?? 0, window.visualViewport?.height ?? 0,
           ...(table ? [table] : []), ...anchors].flatMap((elementOrValue) => {
           if (typeof elementOrValue === "number") return [elementOrValue];
@@ -4592,11 +4686,20 @@ function AttackDodgeCardJourney({
     if (shell) observer?.observe(shell);
     observePlayerAnchors();
     const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
-      const containsPlayerAnchor = (node: Node) => node instanceof Element
-        && (node.matches("[data-player-anchor]") || Boolean(node.querySelector("[data-player-anchor]")));
+      const watchesKirinAnnouncement = isKirinBowPublicEffectFrame(actionRef.current.publicCardEffectFrame);
+      const containsRelevantAnchor = (node: Node) => node instanceof Element
+        && (node.matches(watchesKirinAnnouncement
+          ? "[data-player-anchor], [data-public-card-announcement='true']" : "[data-player-anchor]")
+          || Boolean(node.querySelector(watchesKirinAnnouncement
+            ? "[data-player-anchor], [data-public-card-announcement='true']" : "[data-player-anchor]")));
+      const kirinAnnouncementChanged = watchesKirinAnnouncement
+        && records.some((record) => record.type === "attributes"
+          ? record.target instanceof Element && record.target.matches("[data-public-card-announcement='true']")
+          : [...record.addedNodes, ...record.removedNodes].some(containsRelevantAnchor));
       const anchorsChanged = records.some((record) => record.type === "attributes"
-        || [...record.addedNodes, ...record.removedNodes].some(containsPlayerAnchor));
-      if (anchorsChanged) {
+        ? record.target instanceof Element && record.target.matches("[data-player-anchor]")
+        : [...record.addedNodes, ...record.removedNodes].some(containsRelevantAnchor));
+      if (anchorsChanged || kirinAnnouncementChanged) {
         observePlayerAnchors();
         scheduleReposition();
       }
@@ -4605,7 +4708,8 @@ function AttackDodgeCardJourney({
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["data-player-anchor"],
+      attributeFilter: ["data-player-anchor", "style", "data-public-card-announcement-positioned",
+        "data-public-card-announcement-fixed-upper", "data-public-card-announcement-lines"],
     });
     scheduleReposition();
     return () => {
@@ -4616,7 +4720,7 @@ function AttackDodgeCardJourney({
       mutationObserver?.disconnect();
       window.cancelAnimationFrame(reflowFrame);
     };
-  }, [enabled, hasAttackDodgeMotion, journey.scopeKey, scopeKey]);
+  }, [action.publicCardEffectFrame?.effectId, enabled, hasAttackDodgeMotion, journey.scopeKey, scopeKey]);
 
   useEffect(() => {
     if (!journey.suppressTransitions || journey.layoutPending || journey.scopeKey !== scopeKey) return;
@@ -4629,7 +4733,7 @@ function AttackDodgeCardJourney({
     return () => window.cancelAnimationFrame(frame);
   }, [journey.layoutPending, journey.scopeKey, journey.suppressTransitions, scopeKey]);
 
-  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
+  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center && !journey.framePlacementUnavailable) return null;
   const cards = journey.cards;
   const viewerLayoutPending = journey.scopeKey === scopeKey && journey.viewerId !== viewerId;
   return <section
@@ -4642,6 +4746,7 @@ function AttackDodgeCardJourney({
     data-public-card-viewer-id={viewerId}
     data-public-card-layout-viewer-id={journey.viewerId || undefined}
     data-public-card-layout-pending={journey.layoutPending || viewerLayoutPending ? "true" : "false"}
+    data-public-card-effect-frame-placement={journey.framePlacementUnavailable ? "no-fit-awaiting-safe-geometry" : undefined}
     data-public-card-interaction-id={action.interactionId ?? undefined}
     data-public-card-root-frame-id={action.rootFrameId ?? undefined}
     data-public-card-checkpoint-id={action.checkpointId ?? undefined}
@@ -4663,6 +4768,8 @@ function AttackDodgeCardJourney({
       return <PublicJourneyCard
         key={card.eventId}
         card={card}
+        visualPlacementUnavailable={Boolean(journey.framePlacementUnavailable
+          && card.eventId === action.publicCardEffectFrame?.eventId && card.phase === "reveal")}
         onInspectCard={onInspectCard}
         size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
         className={`${isCurrent ? "is-current" : ""} ${isHistorical ? "is-prior" : ""} ${card.role === "deflection" ? "is-deflection" : ""}`}
@@ -4690,11 +4797,11 @@ function AttackDodgeCardJourney({
       accessibleLabel={committedFactCopy.accessibleLabel}
       presentationNarration={negationNarration ? undefined : publicNarration}
       negationNarration={negationNarration}
-      fallbackCardRect={publicEffectFrameOwnsAnnouncementAnchor && journey.center && action.publicCardEffectFrame
+      fallbackCardRect={journey.framePlacementUnavailable ? null : publicEffectFrameOwnsAnnouncementAnchor && journey.center && action.publicCardEffectFrame
         ? battlefieldPublicEffectFrame(journey.center, action.publicCardEffectFrame) : journey.center}
       ignoreJourneyLayoutPending
-      keepCenterAnchorClear={publicEffectFrameOwnsAnnouncementAnchor}
-      stableCenterAnchor={publicEffectFrameOwnsAnnouncementAnchor}
+      keepCenterAnchorClear={publicEffectFrameOwnsAnnouncementAnchor && !journey.framePlacementUnavailable}
+      stableCenterAnchor={publicEffectFrameOwnsAnnouncementAnchor && !journey.framePlacementUnavailable}
       preferredVerticalMode={publicEffectFrameOwnsAnnouncementAnchor ? "above" : undefined}
       phaseNotice={announcementPhaseNotice}
       outcome={action.settlement?.outcome}
@@ -4980,6 +5087,7 @@ function SingleTargetCardJourney({
       : currentMotion.type === "lust-cost" && currentAction.lustCostFrame
         ? battlefieldLustCostCard()
       : singleTargetReveal ?? fallbackCenter;
+    const frameCenterUnavailable = isKirinBowPublicEffectFrame(currentAction.publicCardEffectFrame) && center === null;
     const pendingCenter = center ?? previous.center
       ?? boundCardRect((window.innerWidth - REVEAL_CARD.width) / 2, (window.innerHeight - REVEAL_CARD.height) / 2, REVEAL_CARD.width, REVEAL_CARD.height);
     const sameInteraction = previous.scopeKey === scopeKey;
@@ -5153,9 +5261,17 @@ function SingleTargetCardJourney({
             : "public-event-restored",
       };
     });
-    const layoutPending = center === null || cards.some((card) => !measuredTargetEventIds.has(card.eventId));
+    const framePlacementUnavailable = frameCenterUnavailable && cards.some((card) =>
+      card.eventId === currentAction.publicCardEffectFrame?.eventId && card.phase === "reveal");
+    const presentationCards = framePlacementUnavailable
+      ? cards.map((card) => card.eventId === currentAction.publicCardEffectFrame?.eventId && card.phase === "reveal"
+        ? { ...card, layoutPending: true, layoutChangeReason: "kirin-effect-frame-awaiting-h4-safe-geometry" }
+        : card)
+      : cards;
+    const layoutPending = framePlacementUnavailable || center === null
+      || presentationCards.some((card) => !measuredTargetEventIds.has(card.eventId));
     const presentedCards = historyOnly
-      ? cards.map((card) => ({
+      ? presentationCards.map((card) => ({
         ...card,
         phase: "parked" as const,
         rect: card.target,
@@ -5164,16 +5280,17 @@ function SingleTargetCardJourney({
         moveStartedAtMs: null,
         layoutChangeReason: card.layoutPending ? "inspector-history-retained-awaiting-author-anchor" : "inspector-history-retained",
       }))
-      : viewerChanged || !center ? cards : withFirstQueuedSingleTargetReveal(cards, center);
+      : viewerChanged || !center ? presentationCards : withFirstQueuedSingleTargetReveal(presentationCards, center);
     const next: SingleTargetJourneyState = {
       scopeKey,
       viewerId,
       harvestPoolReadOnly,
       showNegationChainOrdinals: hasNegationChainParking,
       cards: presentedCards,
-      center,
+      center: center ?? (framePlacementUnavailable ? pendingCenter : null),
       suppressTransitions: viewerChanged || harvestLayoutChanged || ordinalLayoutChanged || hasNegationChainParking || previous.suppressTransitions,
       layoutPending,
+      framePlacementUnavailable,
     };
     journeyRef.current = next;
     setJourney(next);
@@ -5411,11 +5528,13 @@ function SingleTargetCardJourney({
         protectSingleTargetControls: isSingleTarget,
       });
     };
+    const watchesKirinAnnouncement = action.publicCardEffectFrame?.effectId === "kirin_bow_damage_about_to_apply";
     const layoutElements = () => [...new Set([
       document.querySelector<HTMLElement>(".play-table"),
       document.querySelector<HTMLElement>(".player-board"),
       ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
-      ...(isBumperHarvest ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")] : []),
+      ...(isBumperHarvest || watchesKirinAnnouncement
+        ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")] : []),
       ...parkingSelectors().flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]),
     ].filter((element): element is HTMLElement => Boolean(element)))];
     const readLayoutSignature = () => [
@@ -5477,6 +5596,11 @@ function SingleTargetCardJourney({
           : currentMotion?.type === "lust-cost" && currentAction.lustCostFrame
             ? battlefieldLustCostCard()
             : singleTargetReveal ?? fallbackCenter;
+        const framePlacementUnavailable = isKirinBowPublicEffectFrame(currentAction.publicCardEffectFrame)
+          && center === null
+          && current.cards.some((card) => card.eventId === currentAction.publicCardEffectFrame?.eventId && card.phase === "reveal");
+        const pendingCenter = current.center
+          ?? boundCardRect((window.innerWidth - REVEAL_CARD.width) / 2, (window.innerHeight - REVEAL_CARD.height) / 2, REVEAL_CARD.width, REVEAL_CARD.height);
         const occupied: CardRect[] = [];
         const measuredRectsByActor = new Map<string, CardRect[]>();
         const actorIndexes = new Map<string, number>();
@@ -5541,7 +5665,7 @@ function SingleTargetCardJourney({
               : measuredTarget ? "viewport-resize-author-anchor-measured" : "author-parking-unavailable-awaiting-remeasure",
           };
         });
-        const layoutPending = center === null || cards.some((card) => !measuredTargets.has(card.eventId));
+        const layoutPending = framePlacementUnavailable || center === null || cards.some((card) => !measuredTargets.has(card.eventId));
         if (layoutPending && sampledFrames < 8) {
           resizeFrame = window.requestAnimationFrame(measureWhenSettled);
           return;
@@ -5556,7 +5680,17 @@ function SingleTargetCardJourney({
             && cardRectsMatch(card.rect, current.cards[index].rect)
             && cardRectsMatch(card.target, current.cards[index].target));
         if (unchanged) return;
-        const next = { ...current, center, cards, suppressTransitions: true, layoutPending };
+        const next = {
+          ...current,
+          center: center ?? (framePlacementUnavailable ? pendingCenter : null),
+          cards: framePlacementUnavailable ? cards.map((card) => card.eventId === currentAction.publicCardEffectFrame?.eventId
+            && card.phase === "reveal"
+            ? { ...card, layoutPending: true, layoutChangeReason: "kirin-effect-frame-awaiting-h4-safe-geometry" }
+            : card) : cards,
+          suppressTransitions: true,
+          layoutPending,
+          framePlacementUnavailable,
+        };
         journeyRef.current = next;
         setJourney(next);
       };
@@ -5578,7 +5712,8 @@ function SingleTargetCardJourney({
     observeLayout();
     const shell = document.querySelector<HTMLElement>(".game-shell");
     mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
-      const relevantSelectors = ["[data-player-anchor]", ...parkingSelectors()];
+      const relevantSelectors = ["[data-player-anchor]", ...parkingSelectors(),
+        ...(watchesKirinAnnouncement ? ["[data-public-card-announcement='true']"] : [])];
       const containsRelevantLayout = (node: Node) => node instanceof Element
         && (relevantSelectors.some((selector) => node.matches(selector) || Boolean(node.querySelector(selector))));
       if (records.some((record) => record.type === "attributes"
@@ -5589,7 +5724,7 @@ function SingleTargetCardJourney({
       }
     });
     if (shell) mutationObserver?.observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-player-anchor", "class", "style", "hidden"] });
-    if (isBumperHarvest && typeof MutationObserver !== "undefined") {
+    if ((isBumperHarvest || watchesKirinAnnouncement) && typeof MutationObserver !== "undefined") {
       const announcementLayoutSignature = () => [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
         .map((element) => {
           const rect = element.getBoundingClientRect();
@@ -5621,7 +5756,7 @@ function SingleTargetCardJourney({
       window.cancelAnimationFrame(resizeFrame);
       window.clearTimeout(placementRetryTimer);
     };
-  }, [journeyEnabled, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, isBumperHarvest, journey.layoutPending, journey.scopeKey, scopeKey, placementFailureReporter]);
+  }, [action.publicCardEffectFrame?.effectId, journeyEnabled, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, isBumperHarvest, journey.layoutPending, journey.scopeKey, scopeKey, placementFailureReporter]);
 
   const currentCard = activeCard ?? journey.cards.find((card) => card.eventId === activeEventId) ?? null;
   const allParked = !journey.layoutPending && journey.cards.length > 0 && journey.cards.every((card) => card.phase === "parked");
@@ -5858,7 +5993,7 @@ function SingleTargetCardJourney({
       onJourneyOwnershipChange?.(roomCode, ownershipIdentity, viewerId, ownershipScopeGeneration, false, []);
     };
   }, [onJourneyOwnershipChange, ownershipIdentity, ownershipScopeGeneration, ownershipScopeKey, roomCode, viewerId]);
-  if (!journeyEnabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
+  if (!journeyEnabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center && !journey.framePlacementUnavailable) return null;
   return <section
     className={`public-card-display public-card-display-journey${harvestPoolAboveRoot ? " is-harvest-pool-active" : ""}${historyOnly ? " is-harvest-history-passive" : ""}${showNegationChainOrdinals ? " is-negation-chain-ordinal" : ""}${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}${viewerLayoutPending ? " is-viewer-layout-pending" : ""}`}
     data-public-card-display="true"
@@ -5870,6 +6005,7 @@ function SingleTargetCardJourney({
     data-public-card-kind={action.cardKind}
     data-public-card-viewer-id={viewerId}
     data-public-card-layout-pending={sharedStageLayoutPending || viewerLayoutPending ? "true" : "false"}
+    data-public-card-effect-frame-placement={journey.framePlacementUnavailable ? "no-fit-awaiting-safe-geometry" : undefined}
     data-public-card-layout-viewer-id={journey.viewerId || undefined}
     data-public-card-harvest-active={harvestRootPoolVisible ? "true" : undefined}
     data-public-card-harvest-history-passive={historyOnly ? "true" : undefined}
@@ -5914,6 +6050,8 @@ function SingleTargetCardJourney({
       return <PublicJourneyCard
         key={card.eventId}
         card={card}
+        visualPlacementUnavailable={Boolean(journey.framePlacementUnavailable
+          && card.eventId === action.publicCardEffectFrame?.eventId && card.phase === "reveal")}
         parkingTargetKnown={!card.layoutPending}
         preservePendingParking={Boolean(singleTargetRoot && card.phase === "parked" && card.layoutPending
           && card.parkingTargetViewerId === viewerId && !viewerLayoutPending)}
@@ -5971,7 +6109,7 @@ function SingleTargetCardJourney({
       compactSupportingMessage={dismantleFaceCopy || !negationNarrationOwnsCopy ? undefined : negationNarration?.compactSupportingMessage}
       presentationNarration={dismantleFaceCopy || !interactionNarrationOwnsCopy ? undefined : action.publicInteractionNarration}
       negationNarration={dismantleFaceCopy || !negationNarrationOwnsCopy ? undefined : negationNarration}
-      fallbackCardRect={harvestPoolVisible
+      fallbackCardRect={journey.framePlacementUnavailable ? null : harvestPoolVisible
         ? journey.center
       : motion?.type === "lust-cost" && journey.center
         ? battlefieldLustDuelAnnouncementAnchor(journey.center)
@@ -5982,7 +6120,7 @@ function SingleTargetCardJourney({
       outcome={allParked ? action.settlement?.outcome : undefined}
       negationWaiting={Boolean(!dismantleFaceCopy && (negationNarration || !action.publicInteractionNarration && action.phaseNotice?.includes("NEGATION")))}
       stableCenterAnchor={motion?.type === "lust-cost"}
-      keepCenterAnchorClear={publicEffectFrameOwnsAnnouncementAnchor}
+      keepCenterAnchorClear={publicEffectFrameOwnsAnnouncementAnchor && !journey.framePlacementUnavailable}
       stableHarvestAnchor={harvestPoolVisible}
       protectFirstParkedMiniature={protectFirstParkedMiniature}
       // The banner validates current-viewer geometry independently; thumbnail
@@ -6033,6 +6171,7 @@ type SingleTargetJourneyState = {
   center: CardRect | null;
   suppressTransitions: boolean;
   layoutPending: boolean;
+  framePlacementUnavailable?: boolean;
 };
 
 function duelJourneyEvents(action: PublicCardDisplayAction, sourceName: string | null): DuelJourneyEvent[] {

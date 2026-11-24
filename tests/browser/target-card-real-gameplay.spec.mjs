@@ -2691,6 +2691,7 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
       { hand: [attack], equipment: { weapon: card(weapon, `real-${weapon.toLowerCase()}-weapon`) } },
       { hand: targetHand, equipment: targetEquipment },
     ));
+    if (weapon === "KirinBow") await page.setViewportSize({ width: 390, height: 844 });
     await openGame(page, seed);
     await playCardThroughPage(page, attack.id, "TARGET");
     await act(request, seed, 1, "decline_response");
@@ -2879,6 +2880,63 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
       const submitted = await submitPromise;
       expect(submitted.ok()).toBe(true);
       expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({ action: "trigger", providerId: expectedProvider, cardKeys: [chosenId] });
+      if (weapon === "KirinBow") {
+        const effectFrame = page.locator('.public-card-journey-card[data-public-card-journey-phase="reveal"] .public-card-effect-frame-panel[data-public-card-frame-effect-id="kirin_bow_damage_about_to_apply"]');
+        await expect(effectFrame).toBeVisible({ timeout: 15_000 });
+        const placement = await page.evaluate(() => {
+          const frame = [...document.querySelectorAll('.public-card-effect-frame-panel[data-public-card-frame-effect-id="kirin_bow_damage_about_to_apply"]')]
+            .find((element) => element.getAttribute("data-public-card-frame-card-event-id"));
+          const h4 = [...document.querySelectorAll('[data-public-card-announcement="true"][data-public-card-announcement-fixed-upper="true"][data-public-card-announcement-positioned="true"]')]
+            .find((element) => {
+              const rect = element.getBoundingClientRect();
+              const style = getComputedStyle(element);
+              return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+            });
+          const pac = document.querySelector('[data-public-activity-chip="true"]');
+          const box = (element) => {
+            if (!element) return null;
+            const rect = element.getBoundingClientRect();
+            return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
+          };
+          const face = frame?.querySelector('[data-public-card-effect-frame-card-id]');
+          const title = frame?.querySelector('.public-card-effect-frame-title');
+          const protectedSelectors = [
+            ".opponent-player-card[data-player-anchor]", ".player-square", ".player-board-status", ".visible-countdown",
+            ".stage-system-cluster", ".local-player-dock", ".console-guidance", ".opponent-inspection-floating-shell",
+            ".card-details-panel", ".hero-details-panel", ".interaction-stage-dying", ".dying-handoff-compact",
+            ".card-pool-target-stage", ".battlefield-choice-stage",
+          ];
+          const protectedRects = [...document.querySelectorAll(protectedSelectors.join(","))].flatMap((element) => {
+            const rect = element.getBoundingClientRect();
+            const style = getComputedStyle(element);
+            return style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0 ? [] : [box(element)];
+          });
+          return {
+            frame: box(frame), h4: box(h4), pac: box(pac), face: box(face), title: box(title),
+            cardId: face?.getAttribute("data-public-card-effect-frame-card-id") ?? null,
+            faceText: face?.textContent ?? "", titleText: title?.textContent ?? "",
+            journeyCards: frame?.getAttribute("data-public-card-frame-card-event-id")
+              ? document.querySelectorAll(`[data-public-card-journey-event-id="${CSS.escape(frame.getAttribute("data-public-card-frame-card-event-id"))}"]`).length : 0,
+            protectedRects,
+          };
+        });
+        expect(placement.frame).toBeTruthy();
+        expect(placement.h4).toBeTruthy();
+        expect(placement.pac).toBeTruthy();
+        expect(placement.cardId).toBe(chosenId);
+        expect(placement.titleText).toContain("KIRIN BOW");
+        expect(placement.faceText.trim().length).toBeGreaterThan(0);
+        expect(placement.journeyCards).toBe(1);
+        expect(placement.frame.top - placement.h4.bottom).toBeGreaterThanOrEqual(8);
+        expect(placement.pac.top - placement.frame.bottom).toBeGreaterThanOrEqual(8);
+        expect(placement.face.left).toBeGreaterThanOrEqual(placement.frame.left);
+        expect(placement.face.top).toBeGreaterThanOrEqual(placement.frame.top);
+        expect(placement.face.right).toBeLessThanOrEqual(placement.frame.right);
+        expect(placement.face.bottom).toBeLessThanOrEqual(placement.frame.bottom);
+        const overlaps = (left, right) => left.left < right.right && left.right > right.left
+          && left.top < right.bottom && left.bottom > right.top;
+        expect(placement.protectedRects.some((rect) => overlaps(placement.frame, rect))).toBe(false);
+      }
       await expect.poll(async () => {
         const latest = await roomView(request, seed, 0);
         const target = latest.players.find((player) => player.id === option.selection.targetId);
