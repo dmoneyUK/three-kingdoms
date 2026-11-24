@@ -1778,6 +1778,7 @@ export default function Home() {
   const [connectionInterrupted, setConnectionInterrupted] = useState(false);
   const pollRecovery = useRef(new RoomPollRecovery());
   const [traceAvailable, setTraceAvailable] = useState(false);
+  const [clientReady, setClientReady] = useState(false);
   const [pageVisible, setPageVisible] = useState(true);
   const [publicCounterReadUntil, setPublicCounterReadUntil] = useState(0);
   const stateEpoch = useRef(0);
@@ -1805,7 +1806,10 @@ export default function Home() {
     return true;
   }, []);
 
-  useEffect(() => { setTraceAvailable(hasAttackDodgeUxTrace()); }, []);
+  useEffect(() => {
+    setTraceAvailable(hasAttackDodgeUxTrace());
+    setClientReady(true);
+  }, []);
 
   const fetchRoom = useCallback(async function fetchRoomRequest(roomCode: string, playerToken: string, quiet = false, requestedViewerId?: string) {
     if (testViewerRoomCodeRef.current !== roomCode) {
@@ -2295,7 +2299,7 @@ export default function Home() {
   if (room) return <>{connectionStatus}<WaitingRoom room={room} busy={busy || connectionInterrupted} error={error} onStart={() => send("start")} onAddTestPlayers={(count) => send("add_test_players", { count })} onAddBot={() => send("add_bot", { requestId: crypto.randomUUID() })} onRemoveBot={(botId) => send("remove_bot", { botId })} onEnableTestRoom={() => send("enable_test_room")} onConfigureTestHands={(presetId, handsBySeat, expectedRevision) => send("configure_test_hands", { presetId, handsBySeat, expectedRevision })} onLeave={leave} /></>;
 
   return (
-    <main className="landing-shell">
+    <main className="landing-shell" data-client-ready={clientReady ? "true" : undefined}>
       <div className="mist mist-one" /><div className="mist mist-two" />
       <header className="landing-nav"><Brand /><span>CLASSIC HIDDEN-ROLE MODE</span></header>
       <section className="landing-grid">
