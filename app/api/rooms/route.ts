@@ -48,6 +48,7 @@ import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presenta
 import { childCausalFrame, contextFor, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
 import { advanceCausalSemanticCheckpoint } from "../causal-envelope";
 import { isBotActionPrincipal, type BotActionPrincipal } from "../../../worker/bot-principal";
+import { shouldLookupAuthenticatedSession } from "../internal-bot-session";
 import { emitBotDecisionDiagnostic, type BotDecisionCard, type BotDecisionDiagnosticContext, type BotDecisionOption } from "../../../worker/bot-diagnostics";
 import { appendSequencedLogRecord, decodePublicLog, publicEventSequencesFromLog, publicSequenceWatermarkFromLog, type DecodedPublicLog } from "../../../game/public-log-sequence";
 import { legacyLogMessages, roomLogTimeline } from "../../../game/room-log-decode";
@@ -9046,9 +9047,13 @@ export async function POST(request: Request, routeContext?: unknown) {
     return json({ token: playerToken, room: await roomState(code, playerToken) }, 201);
   }
 
-  const tokenHash = await hash(token);
-  const authenticated = await db.prepare("SELECT * FROM players WHERE room_id = ? AND token_hash = ? ORDER BY seat").bind(room.id, tokenHash).all<PlayerRow>();
-  let sessionPlayers = authenticated.results ?? [];
+  let tokenHash = "";
+  let sessionPlayers: PlayerRow[] = [];
+  if (shouldLookupAuthenticatedSession(Boolean(internalBot))) {
+    tokenHash = await hash(token);
+    const authenticated = await db.prepare("SELECT * FROM players WHERE room_id = ? AND token_hash = ? ORDER BY seat").bind(room.id, tokenHash).all<PlayerRow>();
+    sessionPlayers = authenticated.results ?? [];
+  }
   let allPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
   let allRoomPlayers = allPlayers.results ?? [];
   if (internalBot) {
