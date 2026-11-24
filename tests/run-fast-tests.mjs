@@ -48,6 +48,7 @@ const fastTests = [
   "tests/verified-player-copy.test.mjs",
   "tests/public-card-effect-frame-view.test.mjs",
   "tests/wrangler-worker-supervisor.test.mjs",
+  "tests/browser/staging-room-reconnect-logic.test.mjs",
 ];
 
 // rendered-html exercises the built SSR bundle, so test:fast includes it when

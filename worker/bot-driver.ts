@@ -181,12 +181,25 @@ export async function runBotScheduler(
   const roomLimit = testOptions(options.maxRoomsPerWakeup, MAX_ROOMS_PER_WAKEUP);
   const stepLimit = testOptions(options.maxStepsPerWakeup, BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP);
   const now = Date.now();
+  // Use an empty sentinel instead of a nullable bind for the unscoped Cron
+  // query. It keeps the admission predicate explicit across local D1 and
+  // Cloudflare D1's parameter coercion paths.
+  const requestedRoomCode = options.roomCode ?? "";
   const roomsResult = await db.prepare(`SELECT rooms.id, rooms.code, COUNT(players.id) AS bot_count,
       COALESCE(bot_room_scheduler.updated_at, 0) AS scheduler_updated_at
     FROM rooms JOIN players ON players.room_id = rooms.id
     LEFT JOIN bot_room_scheduler ON bot_room_scheduler.room_id = rooms.id
     WHERE rooms.status IN ('heroes', 'playing') AND rooms.test_room = 0
-      AND (? IS NULL OR rooms.code = ?)
+      AND (? = '' OR rooms.code = ?)
+      -- A global Cron wake may only touch a room with recent activity or a
+      -- live human. Explicit post-write/diagnostic room targeting remains
+      -- available for durable recovery of a known room, including a stale
+      -- checkpoint, without allowing an unscoped wake to mutate old forensic
+      -- rooms.
+      AND (? <> '' OR COALESCE(NULLIF(rooms.last_activity_at, 0), rooms.created_at) >= ?
+        OR EXISTS (SELECT 1 FROM players AS active_human WHERE active_human.room_id = rooms.id
+          AND active_human.controller_type = 'human' AND active_human.is_test_player = 0
+          AND active_human.connected_at >= ?))
       AND players.controller_type = 'bot' AND players.is_test_player = 0
     GROUP BY rooms.id, rooms.code, rooms.created_at, bot_room_scheduler.updated_at
     HAVING COUNT(players.id) BETWEEN 1 AND ?
@@ -196,7 +209,8 @@ export async function runBotScheduler(
       WHEN COALESCE(NULLIF(rooms.last_activity_at, 0), rooms.created_at) >= ? THEN 1
       ELSE 2 END ASC,
       scheduler_updated_at, rooms.created_at LIMIT ?`)
-    .bind(options.roomCode ?? null, options.roomCode ?? null, MAX_BOT_SEATS_PER_ROOM,
+    .bind(requestedRoomCode, requestedRoomCode, requestedRoomCode,
+      now - RECENT_ROOM_ACTIVITY_MS, now - LIVE_HUMAN_PRESENCE_MS, MAX_BOT_SEATS_PER_ROOM,
       now - LIVE_HUMAN_PRESENCE_MS, now - RECENT_ROOM_ACTIVITY_MS, roomLimit).all<BotRoomRow>();
   const rooms = roomsResult.results ?? [];
 

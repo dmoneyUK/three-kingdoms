@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { botTriggerChoices } from "../../ai/trigger-selection.ts";
+import { classifyBotCycle } from "./staging-room-reconnect-logic.mjs";
 
 function isPostAction(response, action) {
   if (new URL(response.url()).pathname !== "/api/rooms" || response.request().method() !== "POST") return false;
@@ -286,6 +287,7 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
     let botTurnDeadline = Math.min(hardCycleDeadline, Date.now() + noProgressTimeoutMs);
     let lastCycleRevision = humanTurnCompleted.actionRevision;
     let completedBotNames = [];
+    let botCycleResult = { ok: false, outcome: "not_started" };
     currentRoom = humanTurnCompleted;
     while (Date.now() < botTurnDeadline) {
       await triggerLocalRecovery();
@@ -298,12 +300,20 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
       if (unsupported.length) throw new Error(`Bot turn stopped safely as unsupported: ${unsupported.map((player) => player.name).join(", ")}`);
       if (await resolveHumanInterruption(currentRoom)) continue;
       completedBotNames = bots.filter((bot) => hasCompletedBotTurn(currentRoom, bot.name, botCycleLogStart)).map((bot) => bot.name);
-      if (completedBotNames.length === bots.length) break;
+      botCycleResult = classifyBotCycle({
+        room: currentRoom,
+        hostId,
+        completedBotNames,
+        expectedBotNames: bots.map((bot) => bot.name),
+      });
+      if (botCycleResult.ok) break;
       await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
-    expect(completedBotNames, JSON.stringify({
+    expect(botCycleResult.ok, JSON.stringify({
       code: roomCode,
       timeout: Date.now() >= hardCycleDeadline ? "cycle_budget" : "no_revision_progress",
+      outcome: botCycleResult.outcome,
+      completedBotNames,
       phase: currentRoom.phase,
       pendingKind: currentRoom.pending?.kind ?? null,
       actorSeat: currentRoom.players.find(({ id }) => id === currentRoom.actionPlayerId)?.seat,
@@ -318,7 +328,10 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
       return room.status === "finished"
         || (room.status === "playing" && host?.alive === false)
         || (room.status === "playing" && room.turnSeat === hostSeat && decision?.actorId === hostId
-          && decision.legalActions.some((action) => ["end_turn", "discard_cards", "decline_trigger"].includes(action)));
+          && decision.legalActions.some((action) => ["end_turn", "discard_cards", "decline_trigger"].includes(action)))
+        || (room.status === "playing" && ["human_dying_response", "human_response"].includes(botCycleResult.outcome)
+          && decision?.actorId === hostId
+          && decision.legalActions.some((action) => ["give_peach", "skip_rescue", "respond", "decline_response"].includes(action)));
     }, {
       timeoutMs: 30_000,
       label: "testable human action or defeated observer after bot cycle",
@@ -327,7 +340,10 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
     });
     const hostAfterBotCycle = currentRoom.players.find((player) => player.id === hostId);
     if (currentRoom.status === "playing" && hostAfterBotCycle?.alive !== false) {
-      if (currentRoom.currentAction.legalActions.includes("end_turn")) {
+      if (["human_dying_response", "human_response"].includes(botCycleResult.outcome)) {
+        expect(currentRoom.currentAction.actorId).toBe(hostId);
+        expect(currentRoom.currentAction.legalActions.some((action) => ["give_peach", "skip_rescue", "respond", "decline_response"].includes(action))).toBe(true);
+      } else if (currentRoom.currentAction.legalActions.includes("end_turn")) {
         await expect(page.getByRole("button", { name: "End", exact: true })).toBeEnabled({ timeout: 15_000 });
       } else if (currentRoom.currentAction.legalActions.includes("discard_cards")) {
         const required = Math.max(0, currentRoom.myHand.length - (hostAfterBotCycle?.hp ?? currentRoom.myHand.length));

@@ -194,6 +194,38 @@ test("persistent scheduler waits for a human Hero choice, then consumes one uniq
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
+test("unscoped scheduler ignores stale rooms while an explicit target can recover one", async () => {
+  const { code, token, bots } = await createBotGame();
+  const bot = bots[0];
+  const roomId = query(`SELECT id FROM rooms WHERE code=${quote(code)}`);
+  // Keep this test's candidate set isolated from rooms left by an earlier
+  // focused case. The local fixture is disposable; no hosted D1 is touched.
+  sql(`UPDATE rooms SET status='finished', phase='finished'
+    WHERE status IN ('heroes', 'playing') AND id <> ${quote(roomId)}
+      AND id IN (SELECT DISTINCT room_id FROM players WHERE controller_type='bot' AND is_test_player=0)`);
+  setHand(bot.id, [], 4, 4);
+  setDeck(code, [card("Dodge", "stale-room-draw-a"), card("Peach", "stale-room-draw-b")]);
+  setTurn(code, bot.seat, "draw");
+  const before = (await state(code, token)).data;
+  const staleAt = Date.now() - 6 * 60_000;
+  sql(`UPDATE rooms SET last_activity_at=${staleAt} WHERE id=${quote(roomId)};
+    UPDATE players SET connected_at=${staleAt} WHERE room_id=${quote(roomId)}`);
+  assert.equal(query(`SELECT last_activity_at FROM rooms WHERE id=${quote(roomId)}`), String(staleAt));
+
+  const unscoped = await runBotScheduler({ maxRoomsPerWakeup: 8, maxStepsPerWakeup: 1, captureDiagnostics: true });
+  assert.equal(unscoped.status, 200, JSON.stringify(unscoped.data));
+  assert.equal(unscoped.data.steps, 0, "a global Cron-shaped wake does not select an idle historical room");
+  assert.deepEqual(unscoped.data.diagnostics, []);
+  assert.equal((await state(code, token)).data.actionRevision, before.actionRevision, "the stale room is not mutated by an unscoped wake");
+  assert.equal(query(`SELECT COUNT(*) FROM bot_work WHERE room_id=${quote(roomId)}`), "0");
+
+  const targeted = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
+  assert.equal(targeted.status, 200, JSON.stringify(targeted.data));
+  assert.equal(targeted.data.consumed, 1, "a post-write/diagnostic target can recover the known stale room");
+  assert.equal(query(`SELECT COUNT(*) FROM bot_work WHERE room_id=${quote(roomId)} AND status='consumed'`), "1");
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE id=${quote(roomId)}`);
+});
+
 test("default bot creation stops at its global per-hour limit", { skip: hourlyAddLimitDisabledForTest }, async () => {
   sql("DELETE FROM bot_demo_rate_limits");
   const hosts = [];
