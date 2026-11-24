@@ -125,8 +125,15 @@ test("a long Bot room refreshes the final authenticated projection without leaki
   assert.ok(!JSON.stringify(response.data).includes(privateBotCard.id));
   const windowId = response.data.currentAction.negationWindowId;
   assert.ok(windowId, "the real Dismantle action opens the server-owned shared Negation response");
-  const botPasses = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 4, captureDiagnostics: true });
-  assert.equal(botPasses.data.consumed, 3, JSON.stringify(botPasses.data));
+  const botPasses = [];
+  for (let wake = 0; wake < 3; wake++) {
+    const pass = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true });
+    assert.equal(pass.status, 200, JSON.stringify(pass.data));
+    assert.equal(pass.data.steps, 1, `room-scoped wake ${wake + 1} must dispatch one Bot decision`);
+    botPasses.push(pass);
+  }
+  assert.equal(botPasses.reduce((total, pass) => total + pass.data.consumed, 0), 3,
+    JSON.stringify(botPasses.map((pass) => pass.data)));
   assert.equal(query(`SELECT COUNT(*) FROM negation_window_submissions WHERE window_id=${quote(windowId)}`), "3");
   assert.equal((await state(code, token)).data.currentAction.negationWindowId, windowId,
     "the shared response remains open for the human after all three Bot passes");
@@ -143,7 +150,7 @@ test("a long Bot room refreshes the final authenticated projection without leaki
   assert.deepEqual(defeated.data.currentAction.legalActions, []);
   assert.ok(!JSON.stringify(defeated.data).includes(privateBotCard.id));
   console.info(JSON.stringify({ fixture: "long-bot-room-shared-negation", publicEvents: publicEventCount,
-    seededBotWorkRows: work.length, botNegationPasses: botPasses.data.consumed,
+    seededBotWorkRows: work.length, botNegationPasses: botPasses.reduce((total, pass) => total + pass.data.consumed, 0),
     wallMs: Math.round(performance.now() - start), responseBytes: Buffer.byteLength(JSON.stringify(owner.data)) }));
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });

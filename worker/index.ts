@@ -5,7 +5,8 @@ import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } fr
 import handler from "vinext/server/app-router-entry";
 import { seedPlayingGame, type SeedPlayingGameInput } from "./test-playing-game";
 import { BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP, runBotScheduler, runBotStep } from "./bot-driver";
-import { runBotSchedulerWake, type BotSchedulerDiagnosticContext, type BotSchedulerOutcome, type BotWakeSource } from "./bot-diagnostics";
+import { runBotSchedulerWake, type BotSchedulerDiagnosticContext, type BotWakeSource } from "./bot-diagnostics";
+import { runBoundedPostWriteBotScheduler } from "./postwrite-bot-scheduler";
 
 interface Env {
   ASSETS: Fetcher;
@@ -46,31 +47,6 @@ function botSchedulerDiagnostics(env: Env, wakeSource: BotWakeSource, sink?: Bot
     successfulTransitionsLogged: 0,
     ...(sink ? { sink } : {}),
   };
-}
-
-function combineBotSchedulerOutcomes(first: BotSchedulerOutcome, second: BotSchedulerOutcome): BotSchedulerOutcome {
-  return {
-    roomsConsidered: first.roomsConsidered + second.roomsConsidered,
-    roomsLocked: first.roomsLocked + second.roomsLocked,
-    steps: first.steps + second.steps,
-    consumed: first.consumed + second.consumed,
-    unsupported: first.unsupported + second.unsupported,
-    stale: first.stale + second.stale,
-    failed: first.failed + second.failed,
-    retries: first.retries + second.retries,
-  };
-}
-
-async function runBoundedPostWriteBotScheduler(db: D1Database, roomCode: string, diagnostics: BotSchedulerDiagnosticContext): Promise<BotSchedulerOutcome> {
-  let latest = await runBotScheduler(db, { roomCode }, diagnostics);
-  let total = latest;
-  // Continue only after a full pass. Three bounded passes let a room with
-  // active play make more progress without changing the per-pass or room cap.
-  for (let pass = 1; pass < 3 && latest.steps === BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP; pass++) {
-    latest = await runBotScheduler(db, { roomCode }, diagnostics);
-    total = combineBotSchedulerOutcomes(total, latest);
-  }
-  return total;
 }
 
 interface ExecutionContext {
