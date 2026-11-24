@@ -49,7 +49,8 @@ import { childCausalFrame, contextFor, createCausalRoot, resumeCausalFrame, type
 import { advanceCausalSemanticCheckpoint } from "../causal-envelope";
 import { isBotActionPrincipal, type BotActionPrincipal } from "../../../worker/bot-principal";
 import { emitBotDecisionDiagnostic, type BotDecisionCard, type BotDecisionDiagnosticContext, type BotDecisionOption } from "../../../worker/bot-diagnostics";
-import { appendSequencedLogRecord, publicEventSequencesFromLog, publicSequenceWatermarkFromLog } from "../../../game/public-log-sequence";
+import { appendSequencedLogRecord, decodePublicLog, publicEventSequencesFromLog, publicSequenceWatermarkFromLog, type DecodedPublicLog } from "../../../game/public-log-sequence";
+import { legacyLogMessages, roomLogTimeline } from "../../../game/room-log-decode";
 import { publicPresentationTimelineForTurn } from "../../../game/public-presentation-turn";
 import { PRIVATE_HAND_REVEAL_DURATION_MS } from "../../../game/private-hand.js";
 
@@ -975,12 +976,17 @@ async function commitSingleTargetAttack(room: RoomRow, source: PlayerRow, hand: 
   ]);
   return (updatedRoom.meta.changes ?? 0) > 0;
 }
-function latestResolutionId(log: string[]) {
+function latestResolutionId(log: string[], decodedLog?: DecodedPublicLog) {
   for (let index = log.length - 1; index >= 0; index--) {
     const entry = log[index];
     const marker = entry.match(/^@(event|card|cards|history):(.*)$/);
     if (!marker) continue;
-    try { const value = JSON.parse(marker[2]) as { resolutionId?: unknown }; if (typeof value.resolutionId === "string") return value.resolutionId; } catch { /* Ignore legacy entries. */ }
+    try {
+      const decoded = decodedLog?.entries[index];
+      if (decoded?.prefix === `@${marker[1]}:` && decoded.parsed === undefined) continue;
+      const value = (decoded?.prefix === `@${marker[1]}:` ? decoded.parsed : JSON.parse(marker[2])) as { resolutionId?: unknown };
+      if (typeof value.resolutionId === "string") return value.resolutionId;
+    } catch { /* Ignore legacy entries. */ }
   }
   return crypto.randomUUID();
 }
@@ -3440,11 +3446,13 @@ function privateStealResultForEvent(event: Record<string, unknown>, roomCode: st
     card: card as unknown as Card,
   };
 }
-function privateStealParticipantProofEvents(log: readonly string[], settlementEventId: string) {
-  return log.flatMap((entry) => {
+function privateStealParticipantProofEvents(log: readonly string[], settlementEventId: string, decodedLog?: DecodedPublicLog) {
+  return log.flatMap((entry, index) => {
     if (!entry.startsWith("@card:")) return [];
     try {
-      const value: unknown = JSON.parse(entry.slice(6));
+      const decoded = decodedLog?.entries[index];
+      if (decoded?.prefix === "@card:" && decoded.parsed === undefined) return [];
+      const value: unknown = decoded?.prefix === "@card:" ? decoded.parsed : JSON.parse(entry.slice(6));
       if (!value || typeof value !== "object" || Array.isArray(value)) return [];
       const event = value as Record<string, unknown>;
       const proof = record(event.privateStealParticipantResult);
@@ -7744,6 +7752,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     for (const work of botWork.results ?? []) latestBotWorkStatus.set(work.bot_id, work.status);
   }
   const rawLog = parse<string[]>(room.log_json, []);
+  const decodedLog = decodePublicLog(rawLog);
   const serverNow = Date.now();
   const causalEnvelope = parseCausalEnvelope(room.causal_envelope_json);
   const discardTurnHandoff = parseDiscardTurnHandoff(room.pending_json);
@@ -7889,7 +7898,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const legacyFrostAvailable = triggerPending?.event === "damage_about_to_apply"
     && triggerOptionsFor(triggerPending, players, room).some((option) => option.effectId === "frost_sword_damage_about_to_apply");
   const presentation = room.phase === "response" && pending
-    ? { resolutionId: decisionResponsePending?.resolutionId ?? triggerPending?.resolutionId ?? latestResolutionId(rawLog), readyAfterEventId: decisionResponsePending?.readyAfterEventId ?? triggerPending?.readyAfterEventId ?? null }
+    ? { resolutionId: decisionResponsePending?.resolutionId ?? triggerPending?.resolutionId ?? latestResolutionId(rawLog, decodedLog), readyAfterEventId: decisionResponsePending?.readyAfterEventId ?? triggerPending?.readyAfterEventId ?? null }
     : undefined;
   const legalActions = sharedWindow ? sharedPendingForViewer
     ? ([...(sharedDecisionForViewer?.options.length ? ["respond"] : []), sharedPendingForViewer.kind === "dying" ? "skip_rescue" : "decline_response"] as GameplayAction[]) : [] : negationWindow ? sharedWindowResponse && me ? legalActionsFor(room, me, sharedWindowResponse, players) : []
@@ -7931,7 +7940,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     ...(deckReorderPending && me?.id === deckReorderPending.actorId ? { deckReorder: { cards: deckReorderPending.cards, minTop: deckReorderPending.minTop, maxTop: deckReorderPending.maxTop } } : {}),
     ...(!concealPrivateTriggerDecision && presentation ? { presentation } : {}),
   };
-  const viewerTimeline = gameTimeline(rawLog, me?.id);
+  const viewerTimeline = roomLogTimeline(rawLog, me?.id, decodedLog);
   const privateStealResultEvents = viewerTimeline.filter((event) => event.privateStealResult !== undefined);
   const projectedTimeline = viewerTimeline.flatMap((event) => {
     const participantProof = record(event.privateStealParticipantResult);
@@ -7990,7 +7999,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     : [];
   const privateStealResult = privateStealResultCandidates.length === 1 ? privateStealResultCandidates[0] : null;
   const participantProofEvents = me && latestStealSettlement?.sourceZone === "hand"
-    ? privateStealParticipantProofEvents(rawLog, latestStealSettlement.eventId)
+    ? privateStealParticipantProofEvents(rawLog, latestStealSettlement.eventId, decodedLog)
     : [];
   const participantResults = participantProofEvents.flatMap((event) => {
     const proof = record(event.privateStealParticipantResult);
@@ -8038,7 +8047,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
     myHeroOptions,
     turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null,
-    log: rawLog.flatMap((entry, index) => { if (entry.startsWith("@card:") || entry.startsWith("@cards:")) return []; if (entry.startsWith("@history:")) { try { return [(JSON.parse(entry.slice(9)) as { message: string }).message]; } catch { return []; } } const event = messageEvent(entry, index); return event ? [event.message] : []; }),
+    log: legacyLogMessages(decodedLog),
     timeline: projectedTimeline, publicPresentationTimeline, publicPresentationTurn, presentationV2, privateStealResult, privateStealParticipantResult, myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && !discardTurnHandoff && !turnEndInProgress && me?.seat === room.turn_seat, actionPlayerId: concealPrivateTriggerDecision || discardTurnHandoff ? null : actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && !discardTurnHandoff && (sharedWindow ? Boolean(sharedPendingForViewer) : negationWindow ? Boolean(sharedWindowResponse) : me?.id === actualActionPlayerId),
     pendingAttack,
     // Compatibility projection for old clients/tests; canonical damage

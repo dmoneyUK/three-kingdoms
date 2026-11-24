@@ -1,5 +1,26 @@
 export type SequencedLogRecordPrefix = "@event:" | "@card:" | "@cards:" | "@history:";
 
+/**
+ * A decoded room-log entry.  `parsed` intentionally retains the JSON value
+ * (including non-object values) so callers can preserve the existing
+ * malformed/legacy handling without parsing the same entry again.
+ */
+export type DecodedLogEntry = {
+  index: number;
+  entry: string;
+  prefix: SequencedLogRecordPrefix | null;
+  parsed: unknown;
+  value: Record<string, unknown> | null;
+};
+
+export type DecodedPublicLog = {
+  entries: readonly DecodedLogEntry[];
+  hasMetadata: boolean;
+  valid: boolean;
+  publicSequences: ReadonlyMap<string, number> | null;
+  publicSequenceWatermark: number | null;
+};
+
 type ParsedRecord = {
   index: number;
   prefix: SequencedLogRecordPrefix;
@@ -21,22 +42,27 @@ function owns(value: Record<string, unknown>, key: string) {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-function structuredRecords(log: readonly string[]): ParsedRecord[] {
-  const records: ParsedRecord[] = [];
-  for (let index = 0; index < log.length; index++) {
-    const entry = log[index];
-    const prefix = prefixes.find((candidate) => entry.startsWith(candidate));
-    if (!prefix) continue;
+export function decodeLogEntries(log: readonly string[]): DecodedLogEntry[] {
+  return log.map((entry, index) => {
+    const prefix = prefixes.find((candidate) => entry.startsWith(candidate)) ?? null;
+    if (!prefix) return { index, entry, prefix, parsed: undefined, value: null };
     try {
-      const value: unknown = JSON.parse(entry.slice(prefix.length));
-      if (value && typeof value === "object" && !Array.isArray(value)) {
-        records.push({ index, prefix, value: value as Record<string, unknown> });
-      }
+      const parsed: unknown = JSON.parse(entry.slice(prefix.length));
+      const value = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : null;
+      return { index, entry, prefix, parsed, value };
     } catch {
       // Unparseable historical records do not supply semantic facts or ordinals.
+      return { index, entry, prefix, parsed: undefined, value: null };
     }
-  }
-  return records;
+  });
+}
+
+function structuredRecords(decoded: readonly DecodedLogEntry[]): ParsedRecord[] {
+  return decoded.flatMap((entry) => entry.prefix && entry.value
+    ? [{ index: entry.index, prefix: entry.prefix, value: entry.value }]
+    : []);
 }
 
 function isPublicPresentational(record: Pick<ParsedRecord, "prefix" | "value">) {
@@ -45,8 +71,7 @@ function isPublicPresentational(record: Pick<ParsedRecord, "prefix" | "value">) 
     && typeof record.value.privateToPlayerId !== "string";
 }
 
-function inspectSequenceState(log: readonly string[]): SequenceState {
-  const records = structuredRecords(log);
+function inspectSequenceState(records: readonly ParsedRecord[]): SequenceState {
   const hasMetadata = records.some(({ value }) => owns(value, watermarkKey) || owns(value, sequenceKey));
   if (!hasMetadata) return { hasMetadata: false, valid: true, watermark: 0, publicSequences: new Map() };
 
@@ -88,9 +113,27 @@ function inspectSequenceState(log: readonly string[]): SequenceState {
   return { hasMetadata, valid: true, watermark: previousWatermark ?? 0, publicSequences };
 }
 
-function bootstrapLegacyLog(log: readonly string[]) {
+export function decodePublicLog(log: readonly string[]): DecodedPublicLog {
+  const entries = decodeLogEntries(log);
+  const records = structuredRecords(entries);
+  const state = inspectSequenceState(records);
+  const publicSequenceWatermark = !state.valid
+    ? null
+    : state.hasMetadata
+      ? state.watermark
+      : records.reduce((watermark, record) => watermark + (isPublicPresentational(record) ? 1 : 0), 0);
+  return {
+    entries,
+    hasMetadata: state.hasMetadata,
+    valid: state.valid,
+    publicSequences: state.hasMetadata && state.valid ? state.publicSequences : null,
+    publicSequenceWatermark,
+  };
+}
+
+function bootstrapLegacyLog(log: readonly string[], decoded: readonly DecodedLogEntry[]) {
   let watermark = 0;
-  const recordsByIndex = new Map(structuredRecords(log).map((record) => [record.index, record]));
+  const recordsByIndex = new Map(structuredRecords(decoded).map((record) => [record.index, record]));
   const bootstrapped = log.map((entry, index) => {
     const parsed = recordsByIndex.get(index);
     if (!parsed) return entry;
@@ -106,21 +149,16 @@ function bootstrapLegacyLog(log: readonly string[]) {
 
 /** Returns validated ordinals for public, presentational structured records; legacy or invalid logs fail closed. */
 export function publicEventSequencesFromLog(log: readonly string[]): ReadonlyMap<string, number> | null {
-  const state = inspectSequenceState(log);
-  return state.hasMetadata && state.valid ? state.publicSequences : null;
+  return decodePublicLog(log).publicSequences;
 }
 
 /** Returns the validated public sequence watermark, or null when persisted metadata is malformed. */
 export function publicSequenceWatermarkFromLog(log: readonly string[]): number | null {
-  const state = inspectSequenceState(log);
-  if (!state.valid) return null;
-  if (state.hasMetadata) return state.watermark;
   // appendSequencedLogRecord bootstraps legacy structured history in append
   // order. Return that same derived watermark here so a turn boundary written
   // immediately before the first sequenced append does not accidentally
   // classify pre-boundary legacy events as new-turn events.
-  return structuredRecords(log).reduce((watermark, record) =>
-    watermark + (isPublicPresentational(record) ? 1 : 0), 0);
+  return decodePublicLog(log).publicSequenceWatermark;
 }
 
 /** Adds one structured log record, bootstrapping retained legacy records when needed. */
@@ -129,13 +167,13 @@ export function appendSequencedLogRecord(
   prefix: SequencedLogRecordPrefix,
   value: Record<string, unknown>,
 ): string[] {
-  const state = inspectSequenceState(log);
-  if (state.hasMetadata && !state.valid) throw new Error("ROOM_LOG_PUBLIC_SEQUENCE_INVALID");
+  const decoded = decodePublicLog(log);
+  if (decoded.hasMetadata && !decoded.valid) throw new Error("ROOM_LOG_PUBLIC_SEQUENCE_INVALID");
 
-  const base = state.hasMetadata ? [...log] : bootstrapLegacyLog(log).log;
-  const baseState = state.hasMetadata ? state : inspectSequenceState(base);
-  if (!baseState.valid) throw new Error("ROOM_LOG_PUBLIC_SEQUENCE_INVALID");
-  const watermark = baseState.hasMetadata ? baseState.watermark : 0;
+  const base = decoded.hasMetadata ? [...log] : bootstrapLegacyLog(log, decoded.entries).log;
+  const baseDecoded = decoded.hasMetadata ? decoded : decodePublicLog(base);
+  if (!baseDecoded.valid) throw new Error("ROOM_LOG_PUBLIC_SEQUENCE_INVALID");
+  const watermark = baseDecoded.hasMetadata ? baseDecoded.publicSequenceWatermark ?? 0 : 0;
   const isPublic = isPublicPresentational({ prefix, value });
   const nextWatermark = watermark + (isPublic ? 1 : 0);
   if (!Number.isSafeInteger(nextWatermark)) throw new Error("ROOM_LOG_PUBLIC_SEQUENCE_EXHAUSTED");

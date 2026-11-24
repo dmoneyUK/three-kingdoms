@@ -5,6 +5,7 @@ import { performance } from "node:perf_hooks";
 const fastTests = [
   "tests/bot-diagnostics.test.mjs",
   "tests/postwrite-bot-scheduler.test.mjs",
+  "tests/room-log-decode.test.mjs",
   "tests/equipment-arrival.test.mjs",
   "tests/dying.test.mjs",
   "tests/ai-decision-prototype.test.mjs",
