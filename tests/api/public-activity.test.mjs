@@ -883,6 +883,66 @@ test("committed public outcome copy reports actual mixed HP and card deltas gene
     "copy fails closed when a public participant name cannot be verified");
 });
 
+test("an empty same-resolution completion cannot erase a proven Stauchness result, while a newer resolution wins", () => {
+  const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
+  const root = {
+    semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "stauchness-root", order: 1,
+    rootEventId: "stauchness-root", frameId: "root-1", category: "CARD_PLAYED", actorId: "p1",
+    affectedPlayerIds: ["p2"], label: "Attack",
+  };
+  const result = {
+    semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "stauchness-result", resolutionId: "resolution-1", order: 2,
+    rootEventId: "stauchness-root", frameId: "root-1", category: "EFFECT_APPLIED", actorId: "p2",
+    affectedPlayerIds: ["p1", "p2"], label: "Stauchness", effect: { kind: "skill_result", label: "Stauchness" },
+    committedOutcome: {
+      semantics: "PROVEN", visibility: "PUBLIC", eventId: "stauchness-result", identity, resolutionId: "resolution-1", order: 2,
+      rootEventId: "stauchness-root", frameId: "root-1", category: "EFFECT_APPLIED", actorId: "p2", affectedPlayerIds: ["p1", "p2"],
+      source: { kind: "skill", label: "Stauchness" },
+      changes: [{ kind: "CARD_DISCARDED", playerId: "p1", amount: 2, fromZone: "HAND", toZone: "DISCARD" }],
+    },
+  };
+  const emptyCompletion = {
+    ...result, eventId: "stauchness-empty-completion", order: 3,
+    committedOutcome: undefined, outcomeLabel: undefined, effect: { kind: "generic_completion" },
+  };
+  const input = {
+    players, rootEventId: "stauchness-root", interactionId: identity.interactionId, rootFrameId: identity.rootFrameId,
+  };
+  const sameResolution = derivePublicInteractionNarration({
+    ...input,
+    snapshot: snapshot({ stage: "SETTLEMENT", publicEventFacts: [root, result, emptyCompletion] }),
+    eventId: emptyCompletion.eventId,
+  });
+  assert.equal(sameResolution?.eventId, result.eventId);
+  assert.equal(sameResolution?.headline, "Test Player 2 used Stauchness: Test Player 1 discarded 2 Hand cards.");
+
+  const prevented = {
+    ...result, eventId: "stauchness-prevented", resolutionId: "resolution-prevented", order: 2,
+    category: "DAMAGE_PREVENTED", amount: 0, affectedPlayerIds: ["p1"], committedOutcome: undefined,
+    effect: { kind: "damage_prevented", label: "Stauchness" },
+  };
+  const preventedNarration = derivePublicInteractionNarration({
+    ...input,
+    snapshot: snapshot({ stage: "SETTLEMENT", publicEventFacts: [root, prevented] }),
+    eventId: prevented.eventId,
+  });
+  assert.equal(preventedNarration?.headline, "Test Player 2 used Stauchness: damage to Test Player 1 was prevented.");
+  assert.doesNotMatch(preventedNarration?.headline ?? "", /1 damage/,
+    "a prevented result never claims the intended one damage was applied");
+
+  const independent = {
+    ...emptyCompletion, eventId: "new-independent-completion", resolutionId: "resolution-2", order: 4,
+    outcomeLabel: "completed a separate effect", label: "Separate effect",
+  };
+  const newerResolution = derivePublicInteractionNarration({
+    ...input,
+    snapshot: snapshot({ stage: "SETTLEMENT", publicEventFacts: [root, result, emptyCompletion, independent] }),
+    eventId: independent.eventId,
+  });
+  assert.equal(newerResolution?.eventId, independent.eventId);
+  assert.equal(newerResolution?.headline, "Test Player 2 completed a separate effect.");
+});
+
 test("committed H4 source prefixes use one space and preserve verified player punctuation across all public deltas", () => {
   const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
   const cases = [

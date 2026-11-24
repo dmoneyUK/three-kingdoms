@@ -1,8 +1,30 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import {
   assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
+
+function stauchnessNarration(room) {
+  const snapshot = room.presentationSnapshot;
+  const factsById = new Map([...(snapshot?.retainedPublicEventFacts ?? []), ...(snapshot?.publicEventFacts ?? [])]
+    .filter((fact) => fact.label === "Stauchness" || fact.committedOutcome?.source.label === "Stauchness")
+    .map((fact) => [fact.eventId, fact]));
+  const facts = [...factsById.values()].sort((left, right) => left.order - right.order);
+  const fact = facts.at(-1);
+  assert.ok(fact?.rootEventId && fact.identity?.interactionId && fact.identity?.rootFrameId, "Stauchness H4 fact is linked to its proven public root");
+  return {
+    fact,
+    narration: derivePublicInteractionNarration({
+      snapshot,
+      players: room.players,
+      rootEventId: fact.rootEventId,
+      interactionId: fact.identity.interactionId,
+      rootFrameId: fact.identity.rootFrameId,
+      eventId: fact.eventId,
+    }),
+  };
+}
 
 test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through the generic source choice", { timeout: 30_000 }, async () => {
   const declined = await openGanglieAttack({ judge: { ...card("Dodge", "ganglie-decline-judge"), suit: "♠", rank: "7" } });
@@ -28,25 +50,49 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   assert.equal(sourceView.currentAction.triggerEvent, "damage_suffered");
   assert.equal(sourceView.currentAction.actorId, resolved.source.id);
   assert.ok(sourceView.currentAction.presentation?.readyAfterEventId, "the mandatory source choice retains its presentation barrier");
+  const targetView = (await state(resolved.code, resolved.targetMember.token)).data;
+  const pendingStauchness = stauchnessNarration(accepted.data.room);
+  assert.equal(pendingStauchness.narration?.headline,
+    `${resolved.target.name} used Stauchness: waiting for ${resolved.source.name} to choose a consequence.`);
+  const attackRoot = accepted.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-ganglie-discard-attack");
+  assert.equal(pendingStauchness.fact.rootEventId, attackRoot?.id);
+  const pendingResultEvent = accepted.data.room.timeline.find((event) => event.id === pendingStauchness.fact.eventId);
+  assert.equal(pendingResultEvent?.resolutionId, pendingStauchness.fact.resolutionId,
+    "the projected decision result retains its committed event resolution identity");
+  assert.deepEqual(pendingStauchness.narration?.headlineSegments?.filter((segment) => segment.kind === "player").map((segment) => segment.playerId),
+    [resolved.target.id, resolved.source.id], "pending copy keeps the skill owner and chooser as typed public identities");
+  const sourcePendingView = (await state(resolved.code, resolved.sourceMember.token)).data;
+  assert.deepEqual(sourcePendingView.presentationSnapshot.publicEventFacts, targetView.presentationSnapshot.publicEventFacts,
+    "the pending Stauchness result is the same public fact for all viewers");
   const choice = sourceView.currentAction.triggerOptions.find((option) => option.effectId === "xiahou_dun_ganglie");
   assert.equal(choice.description, "The Judgement is not a Heart. Choose one: discard exactly 2 cards from your hand, or take 1 damage from Xiahou Dun. Equipment and Judgement Zone cards cannot be discarded for this choice.");
   assert.deepEqual(choice.selection.choices.map((entry) => entry.id), ["discard_two", "take_damage"]);
   assert.equal(choice.selection.choices[0].label, "Discard exactly 2 cards from your hand");
   assert.equal(choice.selection.cardCountByChoice.discard_two, 2);
   assert.deepEqual(choice.selection.eligibleHandKeys, ["hand:0", "hand:1"]);
-  const targetView = (await state(resolved.code, resolved.targetMember.token)).data;
   assert.deepEqual(targetView.currentAction.triggerOptions, [], "the mandatory source choice is not projected to Xiahou Dun");
   const discarded = await requestAndSettle("trigger", { code: resolved.code, token: resolved.sourceMember.token, providerId: "xiahou_dun_ganglie", choice: "discard_two", cardKeys: ["hand:0", "hand:1"] });
   assert.equal(discarded.status, 200, JSON.stringify(discarded.data));
   assert.equal(discarded.data.room.phase, "play-struck");
+  const discardedStauchness = stauchnessNarration(discarded.data.room);
+  assert.equal(discardedStauchness.narration?.headline,
+    `${resolved.target.name} used Stauchness: ${resolved.source.name} discarded 2 Hand cards.`);
+  assert.equal(discardedStauchness.fact.rootEventId, attackRoot?.id);
+  assert.deepEqual(discardedStauchness.narration?.headlineSegments?.filter((segment) => segment.kind === "player").map((segment) => segment.playerId),
+    [resolved.target.id, resolved.source.id]);
+  assert.doesNotMatch(JSON.stringify(discardedStauchness.fact.committedOutcome), /ganglie-cost|private-card-id/,
+    "public outcome proof contains counts and zones, never private card identities");
   const stauchnessCost = discarded.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "dodge-ganglie-cost-a"));
+  assert.equal(stauchnessCost?.id, discardedStauchness.fact.eventId);
+  assert.equal(stauchnessCost?.resolutionId, discardedStauchness.fact.resolutionId,
+    "the public outcome is projected from the committed cost event's resolution identity");
   assert.equal(stauchnessCost.publicCardEffects?.[0]?.effectId, "xiahou_dun_ganglie");
   assert.equal(stauchnessCost.publicCardEffects?.[0]?.activationOwnerId, resolved.target.id, "Xiahou Dun owns the skill activation");
   assert.deepEqual(stauchnessCost.publicCardEffects?.[0]?.materials.map(({ cardId, ownerId, fromZone, toZone }) => ({ cardId, ownerId, fromZone, toZone })), [
     { cardId: "dodge-ganglie-cost-a", ownerId: resolved.source.id, fromZone: "HAND", toZone: "DISCARD" },
     { cardId: "peach-ganglie-cost-b", ownerId: resolved.source.id, fromZone: "HAND", toZone: "DISCARD" },
   ], "the damage source owns the two paid cards even though Xiahou Dun activated Stauchness");
-  assert.equal(stauchnessCost.publicCardEffects?.[0]?.rootEventId, accepted.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-ganglie-discard-attack")?.id);
+  assert.equal(stauchnessCost.publicCardEffects?.[0]?.rootEventId, attackRoot?.id);
   assert.equal(discarded.data.room.players.find((player) => player.id === resolved.target.id).hp, 2);
   assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(resolved.source.id)}`)).length, 0);
   for (const id of ["dodge-ganglie-spade-judge", "dodge-ganglie-cost-a", "peach-ganglie-cost-b"]) assert.ok(discardIds(resolved.code).includes(id), `${id} is conserved in discard`);
@@ -98,6 +144,8 @@ test("Stauchness uses the final Guicai card, limits discard choices, and resumes
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
   assert.equal(accepted.data.room.phase, "play-struck");
   assert.ok(accepted.data.room.log.some((entry) => /Heart result means Stauchness has no effect/.test(entry)));
+  assert.equal(stauchnessNarration(accepted.data.room).narration?.headline,
+    `${game.target.name} used Stauchness: no effect.`);
   assert.ok(discardIds(game.code).includes("dodge-ganglie-heart-judge"));
 
   const guicai = await openGanglieAttack({ judge: { ...card("Dodge", "ganglie-guicai-original"), suit: "♠", rank: "9" } });
@@ -355,6 +403,14 @@ test("Stauchness take-damage choice enters the normal Dying flow and stale concu
   assert.equal(damaged.data.room.pendingDying.targetId, dying.source.id);
   assert.equal(damaged.data.room.players.find((player) => player.id === dying.source.id).hp, 0);
   assert.ok(damaged.data.room.log.some((entry) => /takes 1 damage from Alice for Stauchness and enters Dying/.test(entry)));
+  const damageStauchness = stauchnessNarration(damaged.data.room);
+  assert.equal(damageStauchness.narration?.headline,
+    `${dying.target.name} dealt 1 damage to ${dying.source.name} with Stauchness.`);
+  const damageRoot = damaged.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-ganglie-dying-attack");
+  assert.equal(damageStauchness.fact.rootEventId, damageRoot?.id);
+  const damageEvent = damaged.data.room.timeline.find((event) => event.id === damageStauchness.fact.eventId);
+  assert.equal(damageEvent?.resolutionId, damageStauchness.fact.resolutionId,
+    "the damage fact retains its committed event resolution identity and original Attack root");
 
   for (let attempt = 0; attempt < 4; attempt++) {
     const race = await openGanglieAttack({ judge: { ...card("Dodge", `ganglie-race-${attempt}`), suit: "♥", rank: "2" } });

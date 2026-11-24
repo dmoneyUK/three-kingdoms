@@ -352,6 +352,23 @@ function formatCommittedPublicOutcomeCopy(
   if (!outcome || outcome.semantics !== "PROVEN" || outcome.visibility !== "PUBLIC"
     || !outcome.eventId || !outcome.rootEventId || !Array.isArray(outcome.changes) || outcome.changes.length === 0) return null;
   const amountText = (amount: number, singular: string, plural: string) => `${amount} ${amount === 1 ? singular : plural}`;
+  if (outcome.source.label === "Stauchness" && outcome.actorId && outcome.changes.length === 1) {
+    const actor = narrationPlayerPart(players, outcome.actorId);
+    const [change] = outcome.changes;
+    if (actor && change.kind === "CARD_DISCARDED" && change.fromZone === "HAND" && change.toZone === "DISCARD") {
+      const player = narrationPlayerPart(players, change.playerId);
+      if (player && outcome.source.kind === "skill") {
+        const cards = amountText(change.amount, "Hand card", "Hand cards");
+        return verifiedPlayerCopy([actor, " used Stauchness: ", player, ` discarded ${cards}.`]);
+      }
+    }
+    if (actor && change.kind === "DAMAGE_APPLIED") {
+      const player = narrationPlayerPart(players, change.playerId);
+      if (player && outcome.source.kind === "damage") {
+        return verifiedPlayerCopy([actor, " dealt ", amountText(change.amount, "damage", "damage"), " to ", player, " with Stauchness."]);
+      }
+    }
+  }
   const detail = (change: CommittedPublicOutcomeChange, amount: number) => {
     if (!Number.isSafeInteger(amount) || amount <= 0) return null;
     if (change.kind === "CARD_TRANSFERRED") {
@@ -401,6 +418,16 @@ function formatCommittedPublicOutcomeCopy(
   });
   parts.push(".");
   return verifiedPlayerCopy(parts);
+}
+
+function isStauchnessTerminalFact(fact: PresentationSnapshot["publicEventFacts"][number]) {
+  return fact.committedOutcome?.source.label === "Stauchness"
+    || fact.label === "Stauchness" && (fact.category === "DAMAGE_PREVENTED"
+      || fact.category === "EFFECT_APPLIED" && fact.effect?.kind === "skill_result" && Boolean(fact.outcomeLabel?.trim()));
+}
+
+function isEmptyGenericCompletion(fact: PresentationSnapshot["publicEventFacts"][number]) {
+  return fact.category === "EFFECT_APPLIED" && !fact.committedOutcome && !fact.outcomeLabel?.trim();
 }
 
 export function formatCommittedPublicOutcome(
@@ -481,6 +508,10 @@ export function derivePublicInteractionNarration(input: {
       ? narratable.find((fact) => fact.eventId === input.eventId)
       : narratable.at(-1);
   }
+  if (latest && isEmptyGenericCompletion(latest) && latest.resolutionId) {
+    latest = verifiedFacts.filter((fact) => fact.order < latest!.order
+      && fact.resolutionId === latest!.resolutionId && isStauchnessTerminalFact(fact)).at(-1) ?? latest;
+  }
   if (!latest) return null;
 
   const actorPart = narrationPlayerPart(input.players, latest.actorId ?? undefined);
@@ -523,7 +554,9 @@ export function derivePublicInteractionNarration(input: {
       : targetPart ? fromParts([targetPart, " took ", damage, "."])
         : actorPart ? fromParts([actorPart, " dealt ", damage, "."]) : `Damage was applied${amount ? ` (${amount})` : ""}.`;
   } else if (latest.category === "DAMAGE_PREVENTED") {
-    headline = actorPart ? fromParts([actorPart, " prevented damage", ...(targetPart ? [" to ", targetPart] : []), "."]) : "Damage was prevented.";
+    headline = latest.label === "Stauchness" && actorPart && targetPart
+      ? fromParts([actorPart, " used Stauchness: damage to ", targetPart, " was prevented."])
+      : actorPart ? fromParts([actorPart, " prevented damage", ...(targetPart ? [" to ", targetPart] : []), "."]) : "Damage was prevented.";
   } else if (latest.category === "SKILL_USED") {
     const skill = latest.label?.trim().replace(/^Use\s+/i, "") || "a skill";
     const effectKind = latest.effect?.kind;

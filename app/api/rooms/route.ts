@@ -2912,7 +2912,25 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
     if (result.status === "satisfied") {
       const source = players.find((player) => player.id === damageResume.sourceId && player.alive) ?? null;
       if (source) {
-        const presentation = addLogWithId(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for Stauchness. ${source.name} must choose a consequence.`, undefined, { resolutionId: judgement.resolutionId, importance: "essential", finalResult: true });
+        const stauchnessPendingFact = damageResume.secondaryEffectId === "xiahou_dun_ganglie" && damageResume.rootEventId
+          ? publicFactFor(judgement.causal, "EFFECT_APPLIED", {
+            rootEventId: damageResume.rootEventId,
+            actorId: target.id,
+            affectedPlayerIds: [target.id, source.id],
+            label: "Stauchness",
+            outcomeLabel: `used Stauchness: waiting for ${source.name} to choose a consequence`,
+            outcomeCopySegments: [
+              { kind: "text", text: "used Stauchness: waiting for " },
+              { kind: "player", playerId: source.id, text: source.name },
+              { kind: "text", text: " to choose a consequence" },
+            ],
+            effect: { kind: "skill_pending_choice", label: "Stauchness" },
+          }, parseCausalEnvelope(room.causal_envelope_json), publicIdentityFromCommittedRoot(log, damageResume.rootEventId, judgement.causal))
+          : undefined;
+        const presentation = addLogWithId(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for Stauchness. ${source.name} must choose a consequence.`, undefined, {
+          resolutionId: judgement.resolutionId, importance: "essential", finalResult: true,
+          actorId: target.id, ...(stauchnessPendingFact ? { publicFact: stauchnessPendingFact } : {}),
+        });
         const pending: TriggerPending = withPresentationBarrier({
           kind: "trigger",
           event: "damage_suffered",
@@ -2935,7 +2953,19 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
       const resultText = damageResume.secondaryEffectId === "xiahou_dun_ganglie"
         ? "The Heart result means Stauchness has no effect."
         : "The Heart result ends the post-damage reaction.";
-      log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit}. ${resultText}`, undefined, judgement.resolutionId);
+      const stauchnessNoEffectFact = damageResume.secondaryEffectId === "xiahou_dun_ganglie" && damageResume.rootEventId
+        ? publicFactFor(judgement.causal, "EFFECT_APPLIED", {
+          rootEventId: damageResume.rootEventId,
+          actorId: target.id,
+          affectedPlayerIds: [target.id],
+          label: "Stauchness",
+          outcomeLabel: "used Stauchness: no effect",
+          effect: { kind: "skill_result", label: "Stauchness" },
+        }, parseCausalEnvelope(room.causal_envelope_json), publicIdentityFromCommittedRoot(log, damageResume.rootEventId, judgement.causal))
+        : undefined;
+      log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit}. ${resultText}`, undefined, judgement.resolutionId, {
+        ...(stauchnessNoEffectFact ? { actorId: target.id, publicFact: stauchnessNoEffectFact } : {}),
+      });
     }
     const resolvedEffectIds = damageResume.secondaryEffectId
       ? [...new Set([...(damageResume.resolvedEffectIds ?? []), damageResume.secondaryEffectId])]
@@ -6006,6 +6036,7 @@ type SourcedDamageTransition = {
   resumePlayerId?: string;
   sequenceStartCardId: string;
   rootEventId?: string;
+  resolutionId?: string;
   damageCards?: Card[];
   physicalSuit?: Card["suit"];
   origin?: AttackOrigin;
@@ -6025,7 +6056,7 @@ type SourcedDamageTransition = {
 };
 
 /** Applies sourced damage, then discovers the generic post-damage event. */
-async function resolveSourcedDamage({ room, source, target, players, amount, deck = parse<Card[]>(room.deck_json, []), discard, log, resumePhase, resumePlayerId, sequenceStartCardId, rootEventId, damageCards = [], physicalSuit, origin, causal, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumeChildCausal, resumePending, resumeDamageSuffered, resumeTurnEnd, onDamageApplied, finalizeDamageLog, finalizeAttackHitLog }: SourcedDamageTransition): Promise<AttackDamageResult> {
+async function resolveSourcedDamage({ room, source, target, players, amount, deck = parse<Card[]>(room.deck_json, []), discard, log, resumePhase, resumePlayerId, sequenceStartCardId, rootEventId, resolutionId, damageCards = [], physicalSuit, origin, causal, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumeChildCausal, resumePending, resumeDamageSuffered, resumeTurnEnd, onDamageApplied, finalizeDamageLog, finalizeAttackHitLog }: SourcedDamageTransition): Promise<AttackDamageResult> {
   const inheritedCausal = causal ?? resumeGroup?.causal ?? resumePending?.causal ?? resumeDamageSuffered?.causal ?? resumeTurnEnd?.causal;
   const finalAmount = resolveDamageModifiers({ sourceId: source?.id, sourceHero: source?.hero, cause, baseAmount: amount, turnState: parse<KingSkillState>(room.skill_state_json, {}) });
   const effectiveResumeGroup = finalAmount > 0 ? withPendingGroupDamageOutcome(resumeGroup, target.id) : resumeGroup;
@@ -6040,7 +6071,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
   const damageEventId = crypto.randomUUID();
   const damageFact = amount > 0 ? publicFactFor(inheritedCausal, actualHpLost > 0 ? "DAMAGE_APPLIED" : "DAMAGE_PREVENTED", {
     rootEventId: rootEventId ?? damageEventId,
-    ...(actualHpLost > 0 && source ? { actorId: source.id } : {}),
+    ...(source && (actualHpLost > 0 || label === "Stauchness") ? { actorId: source.id } : {}),
     affectedPlayerIds: [target.id], label, amount: actualHpLost,
     outcomeLabel: actualHpLost > 0 ? `lost ${actualHpLost} HP to damage` : "damage was prevented",
     effect: { kind: actualHpLost > 0 ? "damage_applied" : "damage_prevented" },
@@ -6051,7 +6082,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
   }, parseCausalEnvelope(room.causal_envelope_json),
   publicIdentityFromCommittedRoot(log, rootEventId, inheritedCausal)) : undefined;
   const damageLogEntry = addLogWithId(log, `${description}${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`, undefined,
-    damageFact ? { ...(actualHpLost > 0 && source ? { actorId: source.id } : {}), publicFact: damageFact } : undefined, damageEventId);
+    damageFact ? { ...(resolutionId ? { resolutionId } : {}), ...(source && (actualHpLost > 0 || label === "Stauchness") ? { actorId: source.id } : {}), publicFact: damageFact } : undefined, damageEventId);
   const unfinalizedDamageLog = damageLogEntry.log;
   const damageLog = finalizeDamageLog ? finalizeDamageLog(unfinalizedDamageLog, actualHpLost) : unfinalizedDamageLog;
   const damageContinuation: DamageSufferedTriggerContinuation = {
@@ -10458,12 +10489,31 @@ export async function POST(request: Request) {
         const materials = continuation.secondaryEffectId === "xiahou_dun_ganglie"
           ? publicCardMaterials(selected, [{ playerId: source.id, hand: handBeforeStauchness, equipment: [] }], "DISCARD")
           : null;
-        log = materials && root
-          ? addCardGroupEventWithPublicEffect(log, source.name, selected, "discard", source.name, {
+        if (materials && root) {
+          const discardEventId = crypto.randomUUID();
+          const stauchnessDiscardFact = continuation.secondaryEffectId === "xiahou_dun_ganglie"
+            ? publicFactFor(continuation.causal, "EFFECT_APPLIED", {
+              rootEventId: continuation.rootEventId,
+              actorId: target.id,
+              affectedPlayerIds: [target.id, source.id],
+              label: "Stauchness",
+              effect: { kind: "skill_result", label: "Stauchness" },
+              committedOutcome: {
+                source: { kind: "skill", label: "Stauchness" },
+                changes: [{ kind: "CARD_DISCARDED", playerId: source.id, amount: selected.length, fromZone: "HAND", toZone: "DISCARD" }],
+              },
+            }, parseCausalEnvelope(liveRoom.causal_envelope_json), publicIdentityFromCommittedRoot(log, continuation.rootEventId, continuation.causal))
+            : undefined;
+          log = addCardGroupEventWithPublicEffect(log, source.name, selected, "discard", source.name, {
             effectId: "xiahou_dun_ganglie", effectClass: "COST", activationOwnerId: target.id,
             materials, targetId: source.id, outcome: "SOURCE_DISCARDED_TWO", ...root,
-          }).log
-          : addDiscardEvent(log, source, selected);
+          }, undefined, {
+            resolutionId: continuation.resolutionId,
+            ...(stauchnessDiscardFact ? { actorId: target.id, publicFact: stauchnessDiscardFact } : {}),
+          }, discardEventId).log;
+        } else {
+          log = addDiscardEvent(log, source, selected);
+        }
         log = addLog(log, `${source.name} discards 2 hand cards to resolve Stauchness.`);
         await db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), source.id).run();
         const resolvedEffectIds = continuation.secondaryEffectId
@@ -10498,6 +10548,8 @@ export async function POST(request: Request) {
         resumePhase: continuation.resumePhase,
         resumePlayerId: continuation.resumePlayerId ?? target.id,
         sequenceStartCardId: continuation.sequenceStartCardId,
+        rootEventId: continuation.rootEventId,
+        resolutionId: continuation.resolutionId,
         origin: continuation.origin,
         label: "Stauchness",
         damageDescription: `${source.name} takes 1 damage from ${target.name} for Stauchness`,
