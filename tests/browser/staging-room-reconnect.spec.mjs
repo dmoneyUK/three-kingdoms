@@ -339,7 +339,7 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
       actorSeat: currentRoom.players.find(({ id }) => id === currentRoom.actionPlayerId)?.seat,
       turnSeat: currentRoom.turnSeat,
       botStatuses: currentRoom.players.filter(({ isBot }) => isBot).map(({ seat, botStatus }) => ({ seat, botStatus })),
-    })).toEqual(bots.map((bot) => bot.name));
+    })).toBe(true);
     currentRoom = await waitForRoom(request, roomCode, created.token, (room) => {
       const host = room.players.find((player) => player.id === hostId);
       const decision = room.currentAction;
