@@ -6,7 +6,7 @@ AI task authority: `docs/AI_PLAYER_DESIGN.md` (always the latest revision)
 Execution handover: `AI_PLAYER_HANDOVER.md` (**only Coding Agent writes**)
 Planner/Reviewer onboarding: `docs/AI_PLAYER_PLANNER_REVIEWER_GUIDE.md`
 General repo authority: `AGENTS.md`
-Current workflow revision: **`AIP-AUTO-3` (2026-11-23)** — adds Product Manager/UX2 cross-domain change detection without weakening focused-local-only tests, exact-SHA CI or existing integrated-play authorization
+Current workflow revision: **`AIP-AUTO-4` (2026-11-24)** — retains Product Manager/UX2 coordination and clarifies that short Planner-supplied Agent startup commands are task pointers, never substitutes for reading the latest design/workflow or for authorization
 
 This is an **autonomous, design-driven task queue**, not a sequence of user-pasted prompts. A running Coding Agent may implement successive **APPROVED, fully specified, dependency-cleared tasks**, one bounded task at a time, while preserving independent Reviewer gates. The document itself cannot schedule an agent that is not running; external agent runtime/orchestration governs resumption.
 
@@ -22,6 +22,8 @@ This is an **autonomous, design-driven task queue**, not a sequence of user-past
 - No client-side private-role/hand leaks. Game Server/`CurrentAction` owns legality; do not make parallel bot/game rule engines or build public bot impersonation tokens. Distinct genuine bot seats are not Test Players.
 
 ## 2. Startup, one time AND after every task
+
+**Short Agent launch commands (Owner 2026-11-24).** The AI Planner now ends each newly published executable task/correction with a one- or two-sentence `Agent 启动命令`, usually containing a task ID such as `AIP-PERF-01`. This is only a convenient manual **resume/start pointer** from the user, not a copy of the implementation specification, a new approval, a branch/head pin, or a replacement for this workflow. On receipt, ALWAYS perform the complete current startup checklist below, including reading the **entire latest `docs/AI_PLAYER_DESIGN.md`**, `AGENTS.md`, this workflow and your own `AI_PLAYER_HANDOVER.md`; compare the specified ID/checkpoint to the newest task authorization, status, PM/UX2 gates and any in-flight work. Execute the detailed design task if eligible; if the pointer has become stale, `PENDING_REVIEW`, blocked or incompatible, report the actual status instead of following older pasted text. Only the Coding Agent updates its handover, and a short command cannot bypass safety/acceptance/CI rules.
 
 1. Inspect git status/current branch and remote `origin/feature/smart-bot-player`. Preserve user/agent uncommitted work; never reset/clean/force-push/silently stash. Synchronize safely only when non-destructive.
 2. Read **complete latest** `AGENTS.md`, `docs/AI_PLAYER_DESIGN.md`, THIS workflow, and `AI_PLAYER_HANDOVER.md`; read relevant rules/code/tests for the candidate task. Treat this guide's task queue as part of the active project when human has activated autonomous mode, as done on 2026-10-17.
