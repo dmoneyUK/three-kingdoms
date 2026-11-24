@@ -8394,3 +8394,91 @@
   background: #f4f5f7;
   color: #16181c;
 }
+
+/* §10.70 — opt-in compact density for Kirin Bow's shared target pool.
+   Other accepted actor-target pools keep their existing dimensions. */
+@media (max-width: 520px) {
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--actor-target-select.harvest-choice-panel.card-pool-panel--compact-density {
+    width: fit-content;
+    max-width: min(calc(100vw - 16px), 440px);
+    min-width: 160px;
+    padding: 4px;
+    gap: 2px;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__heading {
+    align-self: stretch;
+    flex: 0 0 auto;
+    min-height: 0;
+    height: auto;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 2px;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__title,
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__instruction {
+    flex: 0 0 auto;
+    max-width: 100%;
+    overflow: visible;
+    overflow-wrap: normal;
+    text-align: left;
+    text-overflow: clip;
+    white-space: normal;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__target-public-zones {
+    align-self: stretch;
+    flex: 0 0 auto;
+    justify-content: center;
+    gap: 0;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__target-public-zone {
+    flex: 0 0 auto;
+    width: max-content;
+    min-width: 0;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 2px;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__target-public-zone-title {
+    align-self: center;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-density {
+    --wtk-card-pool-action-width: 72px;
+    --wtk-card-pool-action-height: 44px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 48px;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-density .card-pool-decision-footer__count {
+    min-width: 0;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-density:has(.card-pool-decision-footer__pair[data-action-count="2"]) {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 2px;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-density:has(.card-pool-decision-footer__pair[data-action-count="2"]) .card-pool-decision-footer__actions {
+    justify-content: center;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-density .card-pool-decision-footer__actions {
+    justify-content: center;
+    gap: 0;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-density .card-pool-decision-footer__pair[data-action-count="2"] {
+    grid-template-columns: repeat(2, 72px);
+    gap: 6px;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-density .card-pool-decision-footer__button {
+    width: 72px;
+    min-width: 72px;
+    max-width: 72px;
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
+  }
+}

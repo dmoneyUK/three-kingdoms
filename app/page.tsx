@@ -12924,10 +12924,10 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
   </section></div>;
 }
 
-function TriggerTargetCardPool({ selection, publicTarget, selectedKeys, playerCount, scope, title, instruction, accessibilityLabel, confirmAccessibleLabel, skipAccessibleLabel, disabled, canDecline, error, isRetaliation = false, protectSharedPublicStage = false, scrollHint, onToggle, onConfirm, onDecline, onInfo }: {
+function TriggerTargetCardPool({ selection, publicTarget, selectedKeys, playerCount, scope, title, instruction, accessibilityLabel, confirmAccessibleLabel, skipAccessibleLabel, disabled, canDecline, error, isRetaliation = false, protectSharedPublicStage = false, compactDensity = false, scrollHint, onToggle, onConfirm, onDecline, onInfo }: {
   selection: PublicTargetCardSelection; publicTarget: PublicTargetPoolView; selectedKeys: string[]; playerCount: number; scope: string;
   title: string; instruction: string; accessibilityLabel: string; confirmAccessibleLabel: string; skipAccessibleLabel: string;
-  disabled: boolean; canDecline: boolean; error: string; isRetaliation?: boolean; protectSharedPublicStage?: boolean; scrollHint?: string;
+  disabled: boolean; canDecline: boolean; error: string; isRetaliation?: boolean; protectSharedPublicStage?: boolean; compactDensity?: boolean; scrollHint?: string;
   onToggle: (key: string) => void; onConfirm: () => void; onDecline: () => void; onInfo: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
   const zones = publicTargetCardPoolZones(selection, publicTarget, selectedKeys);
@@ -12939,7 +12939,8 @@ function TriggerTargetCardPool({ selection, publicTarget, selectedKeys, playerCo
     data-target-card-pool-ready={ready ? "true" : "false"} aria-hidden={!ready}
     style={{ top: top === null ? undefined : `${top}px`, left: insets ? `${insets.left}px` : undefined, right: insets?.width ? "auto" : insets ? `${insets.right}px` : undefined, width: insets?.width ? `${insets.width}px` : undefined, "--trigger-target-pool-max-height": maxHeight === null ? undefined : `${maxHeight}px` } as CSSProperties}>
     <CardPoolPanel mode="actor-target-select" title={title} instruction={instruction} accessibilityLabel={accessibilityLabel}
-      publicTarget={publicTarget} zones={zones} scrollHint={scrollHint}
+      publicTarget={publicTarget} zones={zones} scrollHint={scrollHint} compactDensity={compactDensity}
+      compactSelectionCount={compactDensity ? `${selectedKeys.length}/${selection.max}` : undefined}
       selectionCount={`${selectedKeys.length} / ${selection.max} selected`} confirmAccessibleLabel={confirmAccessibleLabel} disabled={disabled}
       confirmDisabled={disabled || selectedKeys.length < selection.min || selectedKeys.length > selection.max}
       skipAction={canDecline ? { accessibleLabel: skipAccessibleLabel, disabled, onClick: onDecline } : undefined}
@@ -12985,7 +12986,7 @@ function TargetCardPicker({ option, presentationCopy, compact = false, forceShar
     return <TriggerTargetCardPool selection={selection} publicTarget={kirinBowPool.publicTarget} selectedKeys={validSelectedKeys}
       playerCount={poolPlayerCount} scope={poolScope} title="KIRIN BOW" instruction="Choose 1 Mount to discard"
       accessibilityLabel={`${target.name} · Kirin Bow Mount discard selection`} confirmAccessibleLabel="Confirm Kirin Bow selection" skipAccessibleLabel="Skip Kirin Bow"
-      disabled={disabled} canDecline={canDecline} error={error} scrollHint={undefined} protectSharedPublicStage
+      disabled={disabled} canDecline={canDecline} error={error} scrollHint={undefined} protectSharedPublicStage compactDensity
       onToggle={onToggle} onConfirm={() => onUse(validSelectedKeys)} onDecline={onDecline} onInfo={(card, trigger) => onInfoCard?.(card, trigger)} />;
   }
   if (option?.effectId === "sima_yi_fankui" && compact) return <RetaliationCardPool selection={selection} target={target}

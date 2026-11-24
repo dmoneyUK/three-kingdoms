@@ -84,6 +84,8 @@ type TargetSelectProps = SharedProps & {
   scrollHint?: string;
   handCountHeading?: string;
   handRailDescription?: string;
+  compactDensity?: boolean;
+  compactSelectionCount?: string;
   selectionCount: string;
   confirmAccessibleLabel: string;
   confirmPending?: boolean;
@@ -135,24 +137,33 @@ export type CardPoolDecisionButtonAction = {
 
 export function CardPoolDecisionFooter({
   selectionCount,
+  selectionCountDisplay,
   confirmAction,
   skipAction,
   cancelAction,
   className = "",
+  compactDensity = false,
 }: {
   selectionCount?: string;
+  selectionCountDisplay?: string;
   confirmAction: CardPoolDecisionButtonAction;
   skipAction?: CardPoolDecisionButtonAction;
   cancelAction?: { accessibleLabel?: string; disabled: boolean; onClick: () => void };
   className?: string;
+  compactDensity?: boolean;
 }) {
   const hasSelectionCount = Boolean(selectionCount?.trim());
   return <footer
-    className={`card-pool-panel__footer card-pool-decision-footer${className ? ` ${className}` : ""}`}
+    className={`card-pool-panel__footer card-pool-decision-footer${compactDensity ? " card-pool-decision-footer--compact-density" : ""}${className ? ` ${className}` : ""}`}
     data-pool-action-footer="true"
     data-skip-visible={skipAction ? "true" : undefined}
   >
-    {hasSelectionCount && <span className="card-pool-decision-footer__count" aria-live="polite">{selectionCount}</span>}
+    {hasSelectionCount && <span
+      className="card-pool-decision-footer__count"
+      role={selectionCountDisplay ? "status" : undefined}
+      aria-label={selectionCountDisplay ? selectionCount : undefined}
+      aria-live="polite"
+    >{selectionCountDisplay ?? selectionCount}</span>}
     <div className="card-pool-decision-footer__actions">
       {cancelAction && <button
         type="button"
@@ -284,7 +295,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
     { id: "judgement" as const, label: "JUDGEMENT", cards: targetPublicProps.publicTarget.judgementCards },
   ].filter((zone) => targetReadOnly ? zone.cards.length > 0 : zone.id === activeTargetZoneTab.id) : [];
   return <section
-    className={`card-pool-panel card-pool-panel--${props.mode} harvest-choice-panel${actorSelect || targetSelect ? " harvest-choice-panel--actor" : ""}`}
+    className={`card-pool-panel card-pool-panel--${props.mode} harvest-choice-panel${actorSelect || targetSelect ? " harvest-choice-panel--actor" : ""}${actorTargetProps?.compactDensity ? " card-pool-panel--compact-density" : ""}`}
     data-choice-mode={props.mode}
     data-target-card-pool-readonly={targetReadOnly ? "true" : undefined}
     aria-label={props.accessibilityLabel}
@@ -446,8 +457,10 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
       {actorTargetProps && <>
         <CardPoolDecisionFooter
           selectionCount={actorTargetProps.selectionCount}
+          selectionCountDisplay={actorTargetProps.compactSelectionCount}
           confirmAction={{ accessibleLabel: actorTargetProps.confirmAccessibleLabel, disabled: actorTargetProps.confirmDisabled, pending: actorTargetProps.confirmPending, onClick: actorTargetProps.onConfirm }}
           skipAction={actorTargetProps.skipAction}
+          compactDensity={actorTargetProps.compactDensity}
         />
         {actorTargetProps.error && <p className="card-pool-panel__error error" role="alert">{actorTargetProps.error}</p>}
       </>}

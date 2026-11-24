@@ -2740,6 +2740,7 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
       await expect(stage).toHaveAttribute("data-target-card-pool-layout", "central");
       await expect(stage).toHaveAttribute("data-target-card-pool-ready", "true");
       await expect(pool).toHaveAccessibleName(`${targetView.name} · Kirin Bow Mount discard selection`);
+      await expect(pool).toHaveClass(/card-pool-panel--compact-density/);
       await expect(pool.locator(".card-pool-panel__title")).toHaveText("KIRIN BOW");
       await expect(pool.locator(".card-pool-panel__instruction")).toHaveText("Choose 1 Mount to discard");
       await expect(page.locator(".target-card-picker-overlay, .target-card-picker-panel--zones")).toHaveCount(0);
@@ -2757,6 +2758,65 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
       }));
       expect(faceGeometry).toEqual([{ width: 50, height: 75 }, { width: 50, height: 75 }]);
       expect(faceGeometry.every(({ width, height }) => Math.abs(width / height - 2 / 3) < 0.005)).toBe(true);
+
+      const selectionCount = pool.locator(".card-pool-decision-footer__count");
+      await expect(selectionCount).toHaveText("0/1");
+      await expect(selectionCount).toHaveAttribute("role", "status");
+      await expect(selectionCount).toHaveAttribute("aria-label", "0 / 1 selected");
+      const confirm = pool.getByRole("button", { name: "Confirm Kirin Bow selection", exact: true });
+      const skip = pool.getByRole("button", { name: "Skip Kirin Bow", exact: true });
+      const skipAvailable = current.currentAction.legalActions.includes("decline_trigger");
+      if (skipAvailable) await expect(skip).toBeVisible();
+      else await expect(skip).toHaveCount(0);
+      const compactGeometry = await pool.evaluate((panel) => {
+        const rect = (selector) => {
+          const element = panel.querySelector(selector);
+          if (!element) return null;
+          const box = element.getBoundingClientRect();
+          return { x: box.x, y: box.y, right: box.right, bottom: box.bottom, width: box.width, height: box.height };
+        };
+        const heading = rect(".card-pool-panel__heading");
+        const zone = rect('[data-target-card-public-zone="equipment"]');
+        const zoneTitle = rect(".card-pool-panel__target-public-zone-title");
+        const faceRail = rect(".card-pool-panel__target-public-faces");
+        const footer = rect(".card-pool-decision-footer");
+        const count = rect(".card-pool-decision-footer__count");
+        const actions = rect(".card-pool-decision-footer__actions");
+        const panelBounds = panel.getBoundingClientRect();
+        const buttons = [...panel.querySelectorAll(".card-pool-decision-footer__button")].map((button) => {
+          const box = button.getBoundingClientRect();
+          return { text: button.textContent.trim(), width: box.width, height: box.height, clientWidth: button.clientWidth, scrollWidth: button.scrollWidth };
+        });
+        return {
+          panelWidth: panelBounds.width,
+          headingZoneGap: zone && heading ? zone.y - heading.bottom : null,
+          zoneTitleRailGap: faceRail && zoneTitle ? faceRail.y - zoneTitle.bottom : null,
+          footerWidth: footer?.width ?? null,
+          footerInsidePanel: footer !== null && footer.x >= panelBounds.x && footer.right <= panelBounds.right,
+          countInsidePanel: count !== null && count.x >= panelBounds.x && count.right <= panelBounds.right,
+          countActionsGap: count && actions ? actions.y - count.bottom : null,
+          buttons,
+        };
+      });
+      expect(compactGeometry.panelWidth).toBeLessThan(260);
+      expect(compactGeometry.headingZoneGap).toBeGreaterThanOrEqual(0);
+      expect(compactGeometry.headingZoneGap).toBeLessThanOrEqual(3);
+      expect(compactGeometry.zoneTitleRailGap).toBeGreaterThanOrEqual(0);
+      expect(compactGeometry.zoneTitleRailGap).toBeLessThanOrEqual(3);
+      expect(compactGeometry.footerInsidePanel).toBe(true);
+      expect(compactGeometry.countInsidePanel).toBe(true);
+      expect(compactGeometry.buttons).toHaveLength(skipAvailable ? 2 : 1);
+      for (const action of compactGeometry.buttons) {
+        expect(action.height).toBeGreaterThanOrEqual(44);
+        expect(action.clientWidth).toBeGreaterThanOrEqual(action.scrollWidth);
+      }
+      if (skipAvailable) {
+        expect(compactGeometry.countActionsGap).toBeGreaterThanOrEqual(0);
+        expect(compactGeometry.buttons.map(({ text, width }) => ({ text, width }))).toEqual([
+          { text: "Skip", width: 72 },
+          { text: "Confirm", width: 72 },
+        ]);
+      } else expect(compactGeometry.buttons[0]).toMatchObject({ text: "Confirm", width: 72 });
 
       const collisionCheck = await page.evaluate(() => {
         const panel = document.querySelector('.card-pool-target-stage[data-trigger-target-pool="true"] .card-pool-panel--actor-target-select');
@@ -2778,30 +2838,32 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
       expect(collisionCheck.missing).toBe(false);
       expect(collisionCheck.overlaps).toEqual([]);
 
-      const confirm = pool.getByRole("button", { name: "Confirm Kirin Bow selection", exact: true });
       await expect(confirm).toBeDisabled();
-      const skip = pool.getByRole("button", { name: "Skip Kirin Bow", exact: true });
-      if (current.currentAction.legalActions.includes("decline_trigger")) await expect(skip).toBeVisible();
-      else await expect(skip).toHaveCount(0);
 
       const chosenId = eligibleIds[0];
       const choice = pool.locator(`[data-public-card-id="${chosenId}"]`);
       const choiceButton = choice.locator(".card-pool-panel__target-public-select");
-      await tapMobile(page, choiceButton);
+      await choiceButton.click();
       await expect(choiceButton).toHaveAttribute("aria-pressed", "true");
       await expect(confirm).toBeEnabled();
-      await tapMobile(page, choiceButton);
+      await expect(selectionCount).toHaveText("1/1");
+      await expect(selectionCount).toHaveAttribute("aria-label", "1 / 1 selected");
+      await choiceButton.click();
       await expect(choiceButton).toHaveAttribute("aria-pressed", "false");
       await expect(confirm).toBeDisabled();
-      await tapMobile(page, choiceButton);
+      await expect(selectionCount).toHaveText("0/1");
+      await expect(selectionCount).toHaveAttribute("aria-label", "0 / 1 selected");
+      await choiceButton.click();
       await expect(confirm).toBeEnabled();
+      await expect(selectionCount).toHaveText("1/1");
+      await expect(selectionCount).toHaveAttribute("aria-label", "1 / 1 selected");
 
       const detailsAction = choice.getByRole("button", { name: /Card details:/ });
-      await tapMobile(page, detailsAction);
+      await detailsAction.click();
       const details = page.locator('.card-details-panel[data-card-details-context="public-zone"]');
       await expect(details).toBeVisible();
       await expect(details).toHaveAttribute("data-card-details-card-id", chosenId);
-      await tapMobile(page, page.getByRole("button", { name: "Close card details" }));
+      await page.getByRole("button", { name: "Close card details" }).click();
       await expect(details).toHaveCount(0);
       await expect(choiceButton).toHaveAttribute("aria-pressed", "true");
       await expect(confirm).toBeEnabled();
@@ -2813,7 +2875,7 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
           return body.action === "trigger" && body.providerId === expectedProvider;
         } catch { return false; }
       });
-      await tapMobile(page, confirm);
+      await confirm.click();
       const submitted = await submitPromise;
       expect(submitted.ok()).toBe(true);
       expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({ action: "trigger", providerId: expectedProvider, cardKeys: [chosenId] });
