@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { botTriggerChoices } from "../../ai/trigger-selection.ts";
-import { classifyBotCycle } from "./staging-room-reconnect-logic.mjs";
+import { classifyBotCycle, extendProgressDeadline } from "./staging-room-reconnect-logic.mjs";
 
 function isPostAction(response, action) {
   if (new URL(response.url()).pathname !== "/api/rooms" || response.request().method() !== "POST") return false;
@@ -50,8 +50,16 @@ function humanContinuation(room, hostId) {
   return null;
 }
 
-async function waitForRoom(request, roomCode, token, predicate, { timeoutMs = 90_000, progressTimeoutMs, label = "room state", beforePoll, onState } = {}) {
-  const deadline = Date.now() + timeoutMs;
+async function waitForRoom(request, roomCode, token, predicate, {
+  timeoutMs = 90_000,
+  maxTimeoutMs,
+  progressTimeoutMs,
+  label = "room state",
+  beforePoll,
+  onState,
+} = {}) {
+  const startedAt = Date.now();
+  let deadline = startedAt + timeoutMs;
   let latest = null;
   let lastRevision;
   let lastProgressAt = Date.now();
@@ -68,6 +76,15 @@ async function waitForRoom(request, roomCode, token, predicate, { timeoutMs = 90
       else if (latest.actionRevision !== lastRevision) {
         lastRevision = latest.actionRevision;
         lastProgressAt = Date.now();
+        if (maxTimeoutMs !== undefined) {
+          deadline = extendProgressDeadline({
+            startedAt,
+            now: lastProgressAt,
+            deadline,
+            progressTimeoutMs: progressTimeoutMs ?? timeoutMs,
+            maxTimeoutMs,
+          });
+        }
       }
     }
     if (predicate(latest)) return latest;
@@ -231,8 +248,11 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
     currentRoom = await waitForRoom(request, roomCode, created.token, (room) => room.status === "playing" && room.turnSeat === hostSeat && room.currentAction?.actorId === hostId
       && (room.currentAction.legalActions.includes("end_turn") || room.currentAction.legalActions.includes("discard_cards")), {
       // Three opening Bot turns can continue through multiple Cron wakes.
-      // Keep the independent no-revision-progress deadline below.
+      // Keep the independent no-revision-progress deadline below. The total
+      // budget can extend only on authoritative progress and is hard-capped
+      // at 15 minutes; a stalled room still fails after 180 seconds.
       timeoutMs: 10 * 60_000,
+      maxTimeoutMs: 15 * 60_000,
       progressTimeoutMs: 180_000,
       label: "human play or discard after opening Bot turns",
       beforePoll: triggerLocalRecovery,

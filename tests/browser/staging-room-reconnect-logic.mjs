@@ -5,6 +5,18 @@ const HUMAN_RESPONSE_ACTIONS = new Set([
   "skip_rescue",
 ]);
 
+/**
+ * Extend a bounded browser wait only after an authoritative room revision
+ * advances. The no-progress deadline remains independent, and the hard cap
+ * keeps a slow fixture from becoming an unbounded CI process.
+ */
+export function extendProgressDeadline({ startedAt, now, deadline, progressTimeoutMs, maxTimeoutMs }) {
+  if (![startedAt, now, deadline, progressTimeoutMs, maxTimeoutMs].every((value) => Number.isFinite(value))) return deadline;
+  const maxDeadline = startedAt + Math.max(0, maxTimeoutMs);
+  if (deadline >= maxDeadline) return deadline;
+  return Math.min(maxDeadline, Math.max(deadline, now + Math.max(1, progressTimeoutMs)));
+}
+
 function meaningfulBotProgress(completedBotNames, expectedBotNames) {
   const completed = new Set(Array.isArray(completedBotNames) ? completedBotNames : []);
   const expected = Array.isArray(expectedBotNames) ? expectedBotNames : [];

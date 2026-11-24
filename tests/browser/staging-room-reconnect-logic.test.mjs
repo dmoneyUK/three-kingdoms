@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyBotCycle } from "./staging-room-reconnect-logic.mjs";
+import { classifyBotCycle, extendProgressDeadline } from "./staging-room-reconnect-logic.mjs";
 
 const expectedBotNames = ["BOT 2", "BOT 3", "BOT 4"];
 const hostId = "host";
@@ -10,6 +10,32 @@ const baseRoom = {
   players: [{ id: hostId, alive: true }],
   currentAction: { kind: "turn", actorId: "bot-3", legalActions: ["draw"] },
 };
+
+test("extends a bounded smoke wait only after authoritative progress", () => {
+  const startedAt = 1_000;
+  const initialDeadline = startedAt + 600_000;
+  assert.equal(extendProgressDeadline({
+    startedAt,
+    now: startedAt + 30_000,
+    deadline: initialDeadline,
+    progressTimeoutMs: 180_000,
+    maxTimeoutMs: 900_000,
+  }), initialDeadline, "early progress does not inflate the normal budget");
+  assert.equal(extendProgressDeadline({
+    startedAt,
+    now: startedAt + 600_000,
+    deadline: initialDeadline,
+    progressTimeoutMs: 180_000,
+    maxTimeoutMs: 900_000,
+  }), startedAt + 780_000, "progress near the deadline grants one bounded progress window");
+  assert.equal(extendProgressDeadline({
+    startedAt,
+    now: startedAt + 840_000,
+    deadline: startedAt + 780_000,
+    progressTimeoutMs: 180_000,
+    maxTimeoutMs: 900_000,
+  }), startedAt + 900_000, "repeated progress never exceeds the hard cap");
+});
 
 test("accepts a complete Bot cycle", () => {
   assert.deepEqual(classifyBotCycle({
