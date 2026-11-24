@@ -866,21 +866,92 @@ test("committed public outcome copy reports actual mixed HP and card deltas gene
     ],
   };
   assert.equal(formatCommittedPublicOutcome(outcome, players),
-    "Test Player 1 — Self Sacrifice: Test Player 1 paid 1 HP as a cost; Test Player 1 drew 2 cards; Test Player 2 received 1 card from Test Player 1.");
+    "Test Player 1 Self Sacrifice: Test Player 1 paid 1 HP as a cost; Test Player 1 drew 2 cards; Test Player 2 received 1 card from Test Player 1.");
   assert.equal(formatCommittedPublicOutcome({ ...outcome, source: { kind: "skill", label: "Axe of Insanity" }, changes: [
     { kind: "HP_LOST_TO_EFFECT", playerId: "p1", amount: 1 },
   ] }, players),
-  "Test Player 1 — Axe of Insanity: Test Player 1 lost 1 HP to an effect.",
+  "Test Player 1 Axe of Insanity: Test Player 1 lost 1 HP to an effect.",
   "non-damage HP loss stays distinct from HP costs and damage");
   assert.equal(formatCommittedPublicOutcome({ ...outcome, source: { kind: "skill", label: "Equilibrium" }, changes: [
     { kind: "CARD_DISCARDED", playerId: "p1", amount: 1, fromZone: "HAND", toZone: "DISCARD" },
     { kind: "CARD_DISCARDED", playerId: "p1", amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" },
     { kind: "CARD_DRAWN", playerId: "p1", amount: 2, fromZone: "DECK", toZone: "HAND" },
   ] }, players),
-  "Test Player 1 — Equilibrium: Test Player 1 discarded 2 cards; Test Player 1 drew 2 cards.",
+  "Test Player 1 Equilibrium: Test Player 1 discarded 2 cards; Test Player 1 drew 2 cards.",
   "one public count can combine matching changes while the proof retains their distinct source zones");
   assert.equal(formatCommittedPublicOutcome({ ...outcome, changes: [{ ...outcome.changes[1], playerId: "unknown-player" }] }, players), null,
     "copy fails closed when a public participant name cannot be verified");
+});
+
+test("committed H4 source prefixes use one space and preserve verified player punctuation across all public deltas", () => {
+  const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
+  const cases = [
+    ["HP_COST_LOST", { kind: "HP_COST_LOST", playerId: "p1", amount: 1 }, "Test Player 1 paid 1 HP as a cost.", ["p1", "p1"]],
+    ["HP_LOST_TO_EFFECT", { kind: "HP_LOST_TO_EFFECT", playerId: "p1", amount: 1 }, "Test Player 1 lost 1 HP to an effect.", ["p1", "p1"]],
+    ["DAMAGE_APPLIED", { kind: "DAMAGE_APPLIED", playerId: "p1", amount: 1 }, "Test Player 1 lost 1 HP to damage.", ["p1", "p1"]],
+    ["HP_RECOVERED", { kind: "HP_RECOVERED", playerId: "p1", amount: 1 }, "Test Player 1 recovered 1 HP.", ["p1", "p1"]],
+    ["CARD_DRAWN", { kind: "CARD_DRAWN", playerId: "p1", amount: 1 }, "Test Player 1 drew 1 card.", ["p1", "p1"]],
+    ["CARD_DISCARDED", { kind: "CARD_DISCARDED", playerId: "p1", amount: 1 }, "Test Player 1 discarded 1 card.", ["p1", "p1"]],
+    ["CARD_GAINED", { kind: "CARD_GAINED", playerId: "p1", amount: 1 }, "Test Player 1 gained 1 card.", ["p1", "p1"]],
+    ["CARD_EQUIPPED", { kind: "CARD_EQUIPPED", playerId: "p1", amount: 1 }, "Test Player 1 equipped 1 item.", ["p1", "p1"]],
+    ["CARD_UNEQUIPPED", { kind: "CARD_UNEQUIPPED", playerId: "p1", amount: 1 }, "Test Player 1 unequipped 1 item.", ["p1", "p1"]],
+    ["CARD_TRANSFERRED", { kind: "CARD_TRANSFERRED", fromPlayerId: "p1", toPlayerId: "p2", amount: 1 }, "Test Player 2 received 1 card from Test Player 1.", ["p1", "p2", "p1"]],
+  ];
+
+  for (const [kind, change, detail, expectedPlayerIds] of cases) {
+    const eventId = `committed-${kind}`;
+    const committedOutcome = {
+      semantics: "PROVEN", visibility: "PUBLIC", eventId, identity, order: 1,
+      rootEventId: "root-event", frameId: "root-1", category: "EFFECT_APPLIED", actorId: "p1",
+      affectedPlayerIds: ["p1", "p2"], source: { kind: "skill", label: "Verified Source" }, changes: [change],
+    };
+    const fact = {
+      semantics: "PROVEN", visibility: "PUBLIC", identity, eventId, order: 1,
+      rootEventId: "root-event", frameId: "root-1", category: "EFFECT_APPLIED", actorId: "p1",
+      affectedPlayerIds: ["p1", "p2"], committedOutcome,
+    };
+    const narration = derivePublicInteractionNarration({
+      snapshot: snapshot({ stage: "SETTLEMENT", publicEventFacts: [fact] }),
+      players, rootEventId: "root-event", interactionId: identity.interactionId, rootFrameId: identity.rootFrameId,
+    });
+    const expected = `Test Player 1 Verified Source: ${detail}`;
+    assert.equal(narration?.headline, expected, `${kind} uses the common H4 source separator`);
+    assert.equal(narration?.headlineSegments?.map((segment) => segment.text).join(""), expected,
+      `${kind} typed fragments exactly reconstruct the rendered H4`);
+    assert.deepEqual(playerIds(narration?.headlineSegments), expectedPlayerIds, `${kind} retains verified player IDs`);
+  }
+
+  const base = {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: "source-fallback", identity, order: 1,
+    rootEventId: "root-event", frameId: "root-1", category: "EFFECT_APPLIED",
+    source: { kind: "skill", label: "Kirin Bow — source detail" },
+    changes: [{ kind: "CARD_EQUIPPED", playerId: "p1", amount: 1 }],
+  };
+  assert.equal(formatCommittedPublicOutcome({ ...base, actorId: "p1" }, players),
+    "Test Player 1 Kirin Bow — source detail: Test Player 1 equipped 1 item.");
+  assert.equal(formatCommittedPublicOutcome({ ...base, actorId: "p1", source: { kind: "skill" } }, players),
+    "Test Player 1: Test Player 1 equipped 1 item.");
+  assert.equal(formatCommittedPublicOutcome({ ...base, actorId: undefined }, players),
+    "Kirin Bow — source detail: Test Player 1 equipped 1 item.");
+  assert.equal(formatCommittedPublicOutcome({ ...base, actorId: undefined, source: { kind: "skill" } }, players),
+    "Public outcome: Test Player 1 equipped 1 item.");
+
+  const punctuatedPlayers = [{ ...players[0], name: "A—B" }, ...players.slice(1)];
+  const punctuatedOutcome = {
+    ...base, eventId: "punctuated-name", rootEventId: "punctuated-name", actorId: "p1",
+    source: { kind: "equipment", label: "Kirin Bow — source detail" },
+  };
+  const punctuatedFact = { ...punctuatedOutcome, affectedPlayerIds: ["p1"], committedOutcome: punctuatedOutcome };
+  const punctuated = derivePublicInteractionNarration({
+    snapshot: snapshot({ stage: "SETTLEMENT", publicEventFacts: [punctuatedFact] }),
+    players: punctuatedPlayers, rootEventId: punctuatedOutcome.rootEventId,
+    interactionId: identity.interactionId, rootFrameId: identity.rootFrameId,
+  });
+  assert.equal(punctuated?.headline, "A—B Kirin Bow — source detail: A—B equipped 1 item.");
+  assert.equal(punctuated?.headlineSegments?.map((segment) => segment.text).join(""), punctuated?.headline);
+  assert.deepEqual(playerIds(punctuated?.headlineSegments), ["p1", "p1"]);
+  assert.equal(formatCommittedPublicOutcome({ ...base, semantics: "UNPROVEN" }, players), null);
+  assert.equal(formatCommittedPublicOutcome({ ...base, visibility: "PRIVATE" }, players), null);
 });
 
 test("committed HP, draw, discard, recovery and transfer results own the shared H4 in active and retained views", () => {
@@ -907,7 +978,7 @@ test("committed HP, draw, discard, recovery and transfer results own the shared 
       ],
     },
   };
-  const expected = "Test Player 2 — Sowing Distrust: Test Player 1 discarded 1 card; Test Player 2 lost 1 HP to damage; Test Player 2 drew 2 cards; Test Player 2 recovered 1 HP; Test Player 2 received 1 card from Test Player 1.";
+  const expected = "Test Player 2 Sowing Distrust: Test Player 1 discarded 1 card; Test Player 2 lost 1 HP to damage; Test Player 2 drew 2 cards; Test Player 2 recovered 1 HP; Test Player 2 received 1 card from Test Player 1.";
   const input = { players, rootEventId: root.eventId, interactionId: semanticIdentity.interactionId, rootFrameId: semanticIdentity.rootFrameId };
   const active = derivePublicInteractionNarration({ ...input,
     snapshot: snapshot({ stage: "SETTLEMENT", actorId: null, publicEventFacts: [root, outcome] }),

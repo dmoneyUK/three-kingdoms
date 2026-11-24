@@ -60,7 +60,7 @@ function assertDyingPeachRecoveryFact(view, { peachId, rootEventId, actorId, tar
     rootFrameId: fact.identity.rootFrameId,
     eventId: event.id,
   });
-  assert.equal(narration?.headline, `${view.players.find((player) => player.id === actorId).name} — ${sourceLabel}: ${view.players.find((player) => player.id === targetId).name} recovered ${amount} HP.`);
+  assert.equal(narration?.headline, `${view.players.find((player) => player.id === actorId).name} ${sourceLabel}: ${view.players.find((player) => player.id === targetId).name} recovered ${amount} HP.`);
   assert.equal(view.timeline.some((candidate) => candidate.publicFact?.rootEventId === rootEventId
     && candidate.publicFact?.category === "EFFECT_APPLIED"
     && candidate.publicFact?.label === "Recovery"
@@ -107,7 +107,7 @@ test("Self Sacrifice loses 1 HP before drawing when Huang Gai survives", async (
     rootFrameId: fact.identity.rootFrameId,
     eventId: outcome.eventId,
   });
-  assert.equal(narration?.headline, `${setup.source.name} — Self Sacrifice: ${setup.source.name} paid 1 HP as a cost; ${setup.source.name} drew 2 cards.`);
+  assert.equal(narration?.headline, `${setup.source.name} Self Sacrifice: ${setup.source.name} paid 1 HP as a cost; ${setup.source.name} drew 2 cards.`);
   assert.doesNotMatch(JSON.stringify(result.data.room.presentationSnapshot.publicEventFacts), /huang-safe-[ab]/,
     "public skill narration does not disclose the privately drawn cards");
   for (const member of game.members) {
@@ -125,7 +125,7 @@ test("Self Sacrifice loses 1 HP before drawing when Huang Gai survives", async (
       rootFrameId: viewerFact.identity.rootFrameId,
       eventId: viewerOutcome.eventId,
     });
-    assert.equal(viewerNarration?.headline, `${setup.source.name} — Self Sacrifice: ${setup.source.name} paid 1 HP as a cost; ${setup.source.name} drew 2 cards.`);
+    assert.equal(viewerNarration?.headline, `${setup.source.name} Self Sacrifice: ${setup.source.name} paid 1 HP as a cost; ${setup.source.name} drew 2 cards.`);
   }
 });
 
@@ -158,7 +158,7 @@ test("1 HP Self Sacrifice opens Dying before either draw card is available", asy
     interactionId: fact.identity.interactionId,
     rootFrameId: fact.identity.rootFrameId,
     eventId: outcome.eventId,
-  })?.headline, `${setup.source.name} — Self Sacrifice: ${setup.source.name} paid 1 HP as a cost.`);
+  })?.headline, `${setup.source.name} Self Sacrifice: ${setup.source.name} paid 1 HP as a cost.`);
 });
 
 test("1 HP Self Sacrifice resumes after Peach rescue and draws exactly once", async () => {

@@ -640,7 +640,7 @@ test("the three faction lords expose their active skills through the semantic pr
     { kind: "CARD_DRAWN", playerId: zhihengSun.id, amount: 2, fromZone: "DECK", toZone: "HAND" },
   ]);
   assert.equal(committedSkillNarration(zhiheng.data.room, equilibriumOutcome)?.headline,
-    `${zhihengSun.name} — Equilibrium: ${zhihengSun.name} discarded 2 cards; ${zhihengSun.name} drew 2 cards.`);
+    `${zhihengSun.name} Equilibrium: ${zhihengSun.name} discarded 2 cards; ${zhihengSun.name} drew 2 cards.`);
   assert.equal(JSON.stringify(equilibriumOutcome).includes(drawn.id), false);
   assert.equal(JSON.stringify(equilibriumOutcome).includes(drawnTwo.id), false);
   const zhihengCostEvent = zhiheng.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === discarded.id));
@@ -783,7 +783,7 @@ test("Benevolence counts exact physical cards cumulatively and spends its thresh
     { kind: "HP_RECOVERED", playerId: two.source.id, amount: 1 },
   ]);
   assert.equal(committedSkillNarration(twoResult.data.room, benevolenceOutcome)?.headline,
-    `${two.source.name} — Benevolence: ${two.target.name} received 2 cards from ${two.source.name}; ${two.source.name} recovered 1 HP.`);
+    `${two.source.name} Benevolence: ${two.target.name} received 2 cards from ${two.source.name}; ${two.source.name} recovered 1 HP.`);
   assert.deepEqual(discardIds(two.game.code), [], "Benevolence transfers cards without touching discard");
   const benevolenceRecipient = (await state(two.game.code, two.game.members[1].token)).data;
   assert.deepEqual(benevolenceRecipient.myHand.map((held) => held.id), ["attack-rende-two-a", "dodge-rende-two-b"]);

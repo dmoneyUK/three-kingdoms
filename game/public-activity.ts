@@ -390,7 +390,7 @@ function formatCommittedPublicOutcomeCopy(
   const source = outcome.source.label?.trim();
   const parts: (string | { id: string; name: string })[] = [
     ...(actor ? [actor] : [source || "Public outcome"]),
-    ...(actor && source ? [` — ${source}`] : []),
+    ...(actor && source ? [` ${source}`] : []),
     ": ",
   ];
   details.forEach((entry, index) => {

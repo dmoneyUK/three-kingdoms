@@ -1028,8 +1028,8 @@ test("Steal and Burning Bridges publish committed outcomes and one shared H4 own
       kind: "CARD_DISCARDED", playerId: target.id, amount: 1, fromZone, toZone: "DISCARD",
     }], `${effect}/${zone} H4 reports the actual public zone change without a card identity`);
     assert.equal(h4.narration.headline, effect === "Steal"
-      ? `${source.name} — Steal: ${source.name} received 1 card from ${target.name}.`
-      : `${target.name} — Burning Bridges: ${target.name} discarded 1 card.`,
+      ? `${source.name} Steal: ${source.name} received 1 card from ${target.name}.`
+      : `${target.name} Burning Bridges: ${target.name} discarded 1 card.`,
     `${effect}/${zone} H4 uses shared copy for the verified settlement result`);
     assert.equal(JSON.stringify(h4.fact.committedOutcome).includes(sourceZoneCard.id), false,
       `${effect}/${zone} committed outcome contains no physical card identity`);

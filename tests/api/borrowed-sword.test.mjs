@@ -82,7 +82,7 @@ test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal"
     interactionId: retainedTransferFact.identity.interactionId,
     rootFrameId: retainedTransferFact.identity.rootFrameId,
   });
-  assert.equal(transferNarration?.headline, `${source.name} — Green Dragon Blade: ${source.name} received 1 card from ${holder.name}.`);
+  assert.equal(transferNarration?.headline, `${source.name} Green Dragon Blade: ${source.name} received 1 card from ${holder.name}.`);
   await assertSameBorrowedSwordPublicProjection(game);
   assert.equal(refused.data.room.causalEnvelope.interactionId, childEnvelope.interactionId);
   assert.equal(refused.data.room.causalEnvelope.activeFrameId, childEnvelope.frames.find((frame) => frame.frameId !== childEnvelope.activeFrameId).frameId);
@@ -539,7 +539,7 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
       rootFrameId: committedDiscardFact.identity.rootFrameId,
       eventId: discardEvent.id,
     });
-    assert.equal(discardNarration?.headline, `${s.target.name} — ${committedDiscardFact.label}: ${s.target.name} discarded 1 card.`);
+    assert.equal(discardNarration?.headline, `${s.target.name} ${committedDiscardFact.label}: ${s.target.name} discarded 1 card.`);
     assert.equal(chosen.data.room.timeline.filter((event) => event.publicFact?.committedOutcome?.changes.some((change) => change.kind === "CARD_DISCARDED")).length, 1,
       "one committed public discard result has one H4 fact owner");
     assert.equal(chosen.data.room.timeline.some((event) => event.message?.includes("resolves an optional reaction with Yin-Yang Swords")), false,

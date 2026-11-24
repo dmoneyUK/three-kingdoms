@@ -175,7 +175,7 @@ test("Zhang Liao Assault replaces normal Draw Phase cards with private hand tran
     rootFrameId: assaultFact.identity.rootFrameId,
     eventId: assaultOutcomeEvent.id,
   });
-  assert.equal(assaultNarration?.headline, `${source.name} — Assault: ${source.name} received 1 card from ${target.name}.`);
+  assert.equal(assaultNarration?.headline, `${source.name} Assault: ${source.name} received 1 card from ${target.name}.`);
   const observerResult = (await state(one.code, one.members[1].token)).data;
   const observerAssaultFact = [...(observerResult.presentationSnapshot?.publicEventFacts ?? []), ...(observerResult.presentationSnapshot?.retainedPublicEventFacts ?? [])]
     .find((fact) => fact.eventId === assaultOutcomeEvent.id);

@@ -63,7 +63,7 @@ test("Betrothment uses exactly two Hand cards, recovers Sun first then the injur
     eventId: publicOutcome.eventId,
   });
   assert.equal(narration?.headline,
-    `${sun.name} — Betrothment: ${sun.name} discarded 2 cards; ${sun.name} recovered 1 HP; ${target.name} recovered 1 HP.`);
+    `${sun.name} Betrothment: ${sun.name} discarded 2 cards; ${sun.name} recovered 1 HP; ${target.name} recovered 1 HP.`);
   assert.equal(resolved.myHand.length, 0);
   assert.equal(discardIds(game.code).filter((id) => id.includes("betrothment-")).length, 2);
   assert.equal(resolved.currentAction.triggerOptions?.some((entry) => entry.effectId === "sun_shangxiang_betrothment") ?? false, false);

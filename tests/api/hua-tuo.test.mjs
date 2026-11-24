@@ -56,7 +56,7 @@ test("Prodigal Healer discards exactly one Hand card, heals self or another inju
     { kind: "HP_RECOVERED", playerId: target.id, amount: 1 },
   ]);
   assert.equal(committedSkillNarration(healed, outcome)?.headline,
-    `${hua.name} — Prodigal Healer: ${hua.name} discarded 1 card; ${target.name} recovered 1 HP.`);
+    `${hua.name} Prodigal Healer: ${hua.name} discarded 1 card; ${target.name} recovered 1 HP.`);
   const observer = (await state(game.code, game.members[1].token)).data;
   assert.deepEqual(committedSkillOutcome(observer, "Prodigal Healer"), outcome,
     "all viewers share the same public counts and committed event identity");
