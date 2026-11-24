@@ -66,7 +66,10 @@ async function waitForRoom(request, roomCode, token, predicate, {
   while (Date.now() < deadline) {
     await beforePoll?.();
     const response = await request.get(`/api/rooms?${new URLSearchParams({ code: roomCode, token })}`);
-    expect(response.ok()).toBe(true);
+    if (!response.ok()) {
+      const body = (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 512);
+      throw new Error(`GET /api/rooms failed while waiting for ${label}: HTTP ${response.status()}${body ? `; body=${body}` : ""}`);
+    }
     const body = await response.json();
     latest = body.room ?? body;
     const unsupported = unsupportedBots(latest);
