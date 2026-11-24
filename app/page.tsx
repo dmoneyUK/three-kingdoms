@@ -12931,13 +12931,13 @@ function TriggerTargetCardPool({ selection, publicTarget, selectedKeys, playerCo
   onToggle: (key: string) => void; onConfirm: () => void; onDecline: () => void; onInfo: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
   const zones = publicTargetCardPoolZones(selection, publicTarget, selectedKeys);
-  const placement = useBattlefieldChoicePlacement({ enabled: zones.length > 0, playerCount,
+  const { ref: stageRef, top, insets, ready, maxHeight } = useBattlefieldChoicePlacement({ enabled: zones.length > 0, playerCount,
     placementKey: [scope, selection.targetId, ...selection.eligibleKeys].join("\u001f"), centralTargetLayout: true, requireSafePlacement: true, protectSharedPublicStage });
   if (!zones.length) return null;
-  return <BattlefieldChoiceStage ref={placement.ref} className="game-event-stage harvest-choice-stage card-pool-target-stage"
+  return <BattlefieldChoiceStage ref={stageRef} className="game-event-stage harvest-choice-stage card-pool-target-stage"
     mode="actor-target-select" accessibilityLabel={accessibilityLabel} data-trigger-target-pool="true" data-retaliation-pool={isRetaliation ? "true" : undefined} data-target-card-pool-layout="central"
-    data-target-card-pool-ready={placement.ready ? "true" : "false"} aria-hidden={!placement.ready}
-    style={{ top: placement.top === null ? undefined : `${placement.top}px`, left: placement.insets ? `${placement.insets.left}px` : undefined, right: placement.insets?.width ? "auto" : placement.insets ? `${placement.insets.right}px` : undefined, width: placement.insets?.width ? `${placement.insets.width}px` : undefined, "--trigger-target-pool-max-height": placement.maxHeight === null ? undefined : `${placement.maxHeight}px` } as CSSProperties}>
+    data-target-card-pool-ready={ready ? "true" : "false"} aria-hidden={!ready}
+    style={{ top: top === null ? undefined : `${top}px`, left: insets ? `${insets.left}px` : undefined, right: insets?.width ? "auto" : insets ? `${insets.right}px` : undefined, width: insets?.width ? `${insets.width}px` : undefined, "--trigger-target-pool-max-height": maxHeight === null ? undefined : `${maxHeight}px` } as CSSProperties}>
     <CardPoolPanel mode="actor-target-select" title={title} instruction={instruction} accessibilityLabel={accessibilityLabel}
       publicTarget={publicTarget} zones={zones} scrollHint={scrollHint}
       selectionCount={`${selectedKeys.length} / ${selection.max} selected`} confirmAccessibleLabel={confirmAccessibleLabel} disabled={disabled}
