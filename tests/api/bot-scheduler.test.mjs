@@ -1039,6 +1039,64 @@ test("Bot Steal resumes through Negation and selects an opaque target-hand slot"
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
+test("an expired pending target-card claim recovers once across duplicate wakes", async () => {
+  const { code, token, hostId, bots } = await createBotGame();
+  const actor = bots[0];
+  sql(`UPDATE players SET role='Lord' WHERE id=${quote(hostId)};
+    UPDATE players SET role='Rebel' WHERE id=${quote(actor.id)};
+    UPDATE players SET role='Loyalist' WHERE id=${quote(bots[1].id)};
+    UPDATE players SET role='Renegade' WHERE id=${quote(bots[2].id)}`);
+  const steal = card("Steal", "bot-steal-expired-claim");
+  const hidden = card("Dodge", "bot-steal-expired-claim-private");
+  sql(`UPDATE players SET hero='zhang-fei', equipment_json='{}' WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)})`);
+  for (const bot of bots) setHand(bot.id, bot.id === actor.id ? [steal] : [], 4, 4);
+  setHand(hostId, [hidden], 4, 4);
+  setTurn(code, actor.seat, "play");
+
+  const opening = await runBotScheduler({ roomCode: code, maxStepsPerWakeup: 4 });
+  assert.equal(opening.data.consumed, 4, JSON.stringify(opening.data));
+  const negation = (await state(code, token)).data;
+  assert.ok(negation.currentAction.negationWindowId);
+  const passed = await request("decline_response", { code, token, context: { windowId: negation.currentAction.negationWindowId } });
+  assert.equal(passed.status, 200, JSON.stringify(passed.data));
+
+  const pending = (await state(code, token)).data;
+  assert.equal(pending.currentAction.kind, "target_card");
+  assert.equal(pending.actionPlayerId, actor.id);
+  const roomId = query(`SELECT id FROM rooms WHERE code=${quote(code)}`);
+  let decisionId = query(`SELECT decision_id FROM bot_work WHERE room_id=${quote(roomId)} AND action_revision=${quote(pending.actionRevision)}`);
+  // The human response POST may finish before its post-write waitUntil inserts
+  // the next work row. Seed the same server-owned claim shape when that
+  // response race leaves no row yet; the recovery assertion remains wholly
+  // local and does not bypass the canonical target-card handler.
+  if (!decisionId) {
+    decisionId = crypto.randomUUID();
+    const now = Date.now();
+    sql(`INSERT INTO bot_work (decision_id,room_id,bot_id,action_revision,status,attempts,available_at,lease_token,lease_until,budget_reserved,created_at,updated_at)
+      VALUES (${quote(decisionId)},${quote(roomId)},${quote(actor.id)},${quote(pending.actionRevision)},'claimed',1,1,'abandoned-target-card',1,1,${now},${now})`);
+  }
+  sql(`UPDATE bot_work SET status='claimed', lease_token='abandoned-target-card', lease_until=1, available_at=1
+    WHERE decision_id=${quote(decisionId)}`);
+
+  const wakes = await Promise.all([
+    runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true }),
+    runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true }),
+  ]);
+  const transitions = wakes.flatMap(({ data }) => data.diagnostics ?? [])
+    .filter((event) => event.event === "bot_work_transition" && event.decisionId === decisionId);
+  assert.equal(transitions.filter((event) => event.nextStatus === "consumed").length, 1,
+    "duplicate Cron/waitUntil wakes consume the expired target-card claim once");
+  assert.equal(query(`SELECT status FROM bot_work WHERE decision_id=${quote(decisionId)}`), "consumed");
+  const settled = (await state(code, token)).data;
+  assert.notEqual(settled.currentAction.kind, "target_card");
+  assert.equal((await state(code, token)).data.myHand.some(({ id }) => id === hidden.id), false);
+  assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(actor.id)}`)).some(({ id }) => id === hidden.id), true);
+  assert.equal(roomCardCount(code, hidden.id), 1);
+  assert.equal(roomCardCount(code, steal.id), 1);
+  assert.ok(!JSON.stringify((await state(code, "")).data).includes(hidden.id), "anonymous viewers never receive the stolen card identity");
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
 test("shared rescue consumes at most one of two Bot Peach intents", async () => {
   const { code, token, hostId, bots } = await createBotGame();
   const [attacker, first, second] = bots;
