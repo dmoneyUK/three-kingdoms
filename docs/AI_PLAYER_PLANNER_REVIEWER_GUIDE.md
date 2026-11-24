@@ -6,7 +6,7 @@
 > AI product / executable task authority: `docs/AI_PLAYER_DESIGN.md`
 > Coding-agent execution protocol: `docs/AI_PLAYER_AGENT_WORKFLOW.md`
 > Coding-agent-only checkpoint: `AI_PLAYER_HANDOVER.md`
-> Version: **`AIP-G4` (2026-11-23)** — adds the independent Product Manager coordination and cross-domain design-change review gate, preserving accepted-spec compaction and exact-SHA CI delegation
+> Version: **`AIP-G5` (2026-11-24)** — retains independent PM/UX2 coordination and adds mandatory one-line Agent startup commands after publishing an executable task; startup commands never replace complete design/workflow reading
 >
 > **Permanent, task-neutral PROCESS GUIDE, not a current task/status report.** Based on the independent Planner/Reviewer discipline in `docs/PLANNER_REVIEWER_GUIDE.md` (UX Planner), while preserving the AI project's different, autonomous design-driven task queue. **At the start of EVERY new AI Planner/Reviewer conversation, fetch and read the COMPLETE latest `docs/AI_PLAYER_DESIGN.md` on the AI branch BEFORE designing or reviewing.**
 
@@ -185,6 +185,16 @@ Planner must update only the task's requirements/reviewer-note/status in `docs/A
 - Commit/push task code and verify **ALL** required GitHub Actions lint/build/fast/API/browser/Staging jobs on that **exact source SHA**. A complete GREEN run and production deploy SKIPPED are mandatory to submit implementation for review. CI failures require diagnosis, correction and a new pushed SHA, not test suppression. Markdown-only updates are not code-bearing CI.
 - On human acceptance, Planner/Reviewer cleans accepted specs in the same design; never edits either Agent handover. Preserve open task details; accepted source history remains in Git/Actions.
 
+## 5.2. Mandatory short Agent startup command after publishing a task (Owner 2026-11-24)
+
+**Every time the Planner creates, revises, or authorizes a concrete Coding Agent task / `CHANGES_REQUESTED` correction and publishes it to GitHub, end the user-facing response with a separate, copy-ready `Agent 启动命令`.** This is mandatory even if the detailed task and commit link already appear above. It is a **launcher**, not the specification; the Owner can paste it into the Coding Agent's conversation or use it to resume the Agent. It does not create a background run or itself start a dormant Agent.
+
+- Keep the launch command to **one sentence or at most two short sentences**: identify the **exact task ID** and optionally a 3–8 word outcome/direction, specify `feature/smart-bot-player`, and explicitly instruct the Agent to **read and follow the latest full `docs/AI_PLAYER_DESIGN.md`, `docs/AI_PLAYER_AGENT_WORKFLOW.md` and its own `AI_PLAYER_HANDOVER.md`** (plus `AGENTS.md` under the normal startup rules). A task-section label such as `AIP-PERF-01 CODE-FIX DIRECTIVE` is acceptable where the parent ID has multiple checkpoints.
+- Prefer a **plain fenced code block** so the user can copy it as-is. Do not paste multi-step instructions, long tests, implementation details or full design text inside the launcher. The complete source-backed task, approvals, dependencies, stop conditions and acceptance gates **must already be committed to the latest design** before issuing the launcher.
+- Example (generic, never itself authorization): `执行 feature/smart-bot-player 的 <TASK-ID>。先按工作流完整读取最新 AI_PLAYER_DESIGN.md 和 AI_PLAYER_HANDOVER.md，再严格执行该任务的详细方案。`
+- **Order:** verify GitHub write succeeded and current branch/commit first; then report the design commit/status briefly; **last, show the Agent 启动命令**. Do not claim the Agent has started or that code was changed merely because a design task was committed. In review-only, status-only or blocked/awaiting-Owner situations where **no executable Agent work is being handed off**, do not emit a misleading startup instruction.
+- A startup command does **not override** the task's latest authority, human/PM/UX2 gates, `PENDING_REVIEW`, or safe stop rules. If the user copies an older command after the design has changed, the Agent must obey the newest design after full reread. The command is never written to the Agent-owned handover by the Planner.
+
 ## 6. Branch, Cloudflare environments and code/data isolation
 
 | Environment | Branch / deployment | DB and secrets | Intended use |
@@ -221,11 +231,11 @@ A user starting a **new Planner/Reviewer chat** can say once:
 A user starting the **Coding Agent autonomous session** can say once:
 > "Follow `docs/AI_PLAYER_AGENT_WORKFLOW.md` and latest `docs/AI_PLAYER_DESIGN.md` on `feature/smart-bot-player` in autonomous queue mode. Re-read the design after every task; implement eligible APPROVED tasks with satisfied dependencies, validate CI/Staging, write only your own `AI_PLAYER_HANDOVER.md` and task status/evidence. Do not self-accept reviews, touch UX2 handover, deploy production, or bypass blocked risk gates. Stop when there is no eligible task."
 
-Those are **one-time bootstrap instructions**, not per-task handoffs. The detailed tasks live exclusively in the design document.
+Those are **one-time bootstrap instructions**. Separately, after the Planner publishes each specific executable task/correction, the Planner supplies a **short, copyable per-task startup command** as required by §5.2. Such a command only points to the task; the detailed instructions and authorization live exclusively in the latest design document.
 
 ## 9. What to report to the human each Planner/Reviewer round
 
-Keep the review concise in Chinese: current branch HEAD/design revision, which task(s) are waiting for review and exact evidence; independent findings versus missing checks; whether a detail requires the user's iPhone feedback, Cloudflare permission or acceptance; what was updated in the AI design (file/commit); which already-approved task the agent may select next; what cannot yet be done. Link actual GitHub docs/commits/CI. Never claim background work, deployment, acceptance, or server availability that was not verified.
+Keep the review concise in Chinese: current branch HEAD/design revision, which task(s) are waiting for review and exact evidence; independent findings versus missing checks; whether a detail requires the user's iPhone feedback, Cloudflare permission or acceptance; what was updated in the AI design (file/commit); which already-approved task the agent may select next; what cannot yet be done. Link actual GitHub docs/commits/CI. Never claim background work, deployment, acceptance, or server availability that was not verified. **When you published an executable Agent task or corrective design, finish with the required §5.2 `Agent 启动命令`; do not make the user invent a launch prompt or mistake it for the task specification.**
 
 ## 10. Detailed review / feedback-writing rules for future Planner conversations
 
