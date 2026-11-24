@@ -68,6 +68,13 @@ type AttackDodgeProofDiagnostic = {
 type AttackDodgeProofEvaluation = { proof: PresentationAttackDodgeResponseProof | null; diagnostic: AttackDodgeProofDiagnostic };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; turn_epoch: number; turn_start_public_sequence: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null; test_room: number; test_hand_preset_json: string | null; test_hand_config_revision: number };
 type DiscardTurnHandoffPending = { kind: "discard_turn_handoff"; version: 1; state: "waiting" | "advancing"; eventId: string; actorId: string; cardCount: number; nextTurnSeat: number; deadline: number };
+type TurnEndCheckpoint = {
+  kind: "turn_end_checkpoint";
+  version: 1;
+  id: string;
+  continuation: TurnEndTriggerContinuation;
+  lostHand?: Card[];
+};
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; is_test_player: number; controller_type: "human" | "bot" | "test"; controller_request_id: string | null; connected_at: number };
 type CausalCreation<T> = { value: T; createdEnvelope: CausalEnvelope | null };
@@ -172,6 +179,14 @@ function parseDiscardTurnHandoff(value: string | null): DiscardTurnHandoffPendin
     return pending as DiscardTurnHandoffPending;
   } catch { return null; }
 }
+function parseTurnEndCheckpoint(value: string | null): TurnEndCheckpoint | null {
+  const pending = parse<TurnEndCheckpoint | null>(value, null);
+  return pending?.kind === "turn_end_checkpoint" && pending.version === 1 && typeof pending.id === "string"
+    && pending.continuation?.kind === "turn_end_event" && pending.continuation.stage === "activation"
+    && typeof pending.continuation.endingPlayerId === "string" && Number.isSafeInteger(pending.continuation.endingSeat)
+    && (pending.lostHand === undefined || Array.isArray(pending.lostHand)) ? pending : null;
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -330,7 +345,8 @@ async function beginStandardHeroSelection(roomId: string, players: PlayerRow[], 
   return false;
 }
 function parsePersistedPending(value: string | null): Pending | null {
-  try { return value ? JSON.parse(value) as Pending : null; } catch { return null; }
+  const pending = parse<Pending | TurnEndCheckpoint | null>(value, null);
+  return pending?.kind === "turn_end_checkpoint" ? null : pending;
 }
 function actionPlayerIdForPending(room: RoomRow, pending: Pending | null, players: PlayerRow[]) {
   if (room.status !== "playing") return null;
@@ -3524,15 +3540,19 @@ function groupDamageCards(continuation: GroupContinuation) {
   if (continuation.cardKind === "BarbarianInvasion" || continuation.cardKind === "RainingArrows") return heldCards.filter((card) => card.kind === continuation.cardKind);
   return heldCards.slice(0, 1);
 }
+function matchVictoryLog(log: string[], outcome: NonNullable<ReturnType<typeof determineMatchOutcome>>) {
+  const winner = outcome === "traitor" ? "Traitor victory" : outcome === "rebel" ? "Rebel victory" : "Lord and Loyalist victory";
+  return addLog(log, `${winner}! The match is over.`);
+}
+
 async function finishIfWon(roomId: string) {
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>(); const outcome = determineMatchOutcome(rows.results ?? []);
   if (!outcome) return false;
-  const winner = outcome === "traitor" ? "Traitor victory" : outcome === "rebel" ? "Rebel victory" : "Lord and Loyalist victory";
   const room = await db().prepare("SELECT log_json, discard_json, pending_json FROM rooms WHERE id = ?").bind(roomId).first<{ log_json: string | null; discard_json: string | null; pending_json: string | null }>();
   const stored = parse<Pending | null>(room?.pending_json ?? null, null);
   const sequence = stored?.kind === "response" || stored?.kind === "dying" ? groupSequenceFromPending(stored) : null;
   const discard = sequence ? commitHeldGroupCards(parse<Card[]>(room?.discard_json ?? null, []), sequence) : parse<Card[]>(room?.discard_json ?? null, []);
-  const log = addLog(parse<string[]>(room?.log_json ?? null, []), `${winner}! The match is over.`);
+  const log = matchVictoryLog(parse<string[]>(room?.log_json ?? null, []), outcome);
   await db().prepare("UPDATE rooms SET status = 'finished', phase = 'finished', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), roomId).run(); return true;
 }
 
@@ -3976,31 +3996,11 @@ async function advanceEquipmentLostEvents(roomId: string, records: EquipmentLost
   if (handLoss) await maybeOpenHandLossTrigger(roomId, handLoss.playerId, handLoss.beforeHand);
 }
 
-/** Canonical beginning-of-turn transition. Only this path may offer turn-start capabilities. */
-async function beginTurnStart(roomId: string, turnSeat: number, expectedPendingJson?: string, expectedPhase: "draw" | "resolving" = "resolving") {
-  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
-  const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
-  const players = rows.results ?? [];
-  const player = players.find((candidate) => candidate.seat === turnSeat && candidate.alive);
-  if (!room || !player) return;
-  const options = getTriggeredEffects(turnStartContext(player));
-  const log = parse<string[]>(room.log_json, []);
-  // The boundary is the latest public event committed before this turn's
-  // optional start trigger is appended. Invalid sequence metadata stays
-  // unknown so the client can fail closed for public transient presentation.
+function turnStartTransition(player: PlayerRow, log: string[]) {
   const startPublicSequence = publicSequenceWatermarkFromLog(log);
   const skillState = JSON.stringify(turnHistoryFor(player.id));
-  const boundary = expectedPendingJson !== undefined
-    ? { where: "phase = 'resolving' AND pending_json = ? AND turn_seat = ?", values: [expectedPendingJson, turnSeat] }
-    : expectedPhase === "draw"
-      ? { where: "phase = 'draw' AND pending_json IS NULL AND turn_seat = ? AND turn_epoch = 0", values: [turnSeat] }
-      : { where: "phase = 'resolving' AND pending_json IS NULL AND turn_seat = ?", values: [turnSeat] };
-  if (!options.length) {
-    const update = await db().prepare(`UPDATE rooms SET turn_seat = ?, phase = 'draw', pending_json = NULL, skill_state_json = ?, turn_epoch = turn_epoch + 1, turn_start_public_sequence = ? WHERE id = ? AND status = 'playing' AND ${boundary.where}`)
-      .bind(turnSeat, skillState, startPublicSequence, roomId, ...boundary.values).run();
-    if ((update.meta.changes ?? 0) <= 0) return;
-    return;
-  }
+  const options = getTriggeredEffects(turnStartContext(player));
+  if (!options.length) return { phase: "draw", pending: null, log, skillState, startPublicSequence };
   const labels = options.map((option) => option.label).join(" or ");
   const presentation = addLogWithId(log, `${player.name} may use ${labels}.`);
   const pending: TriggerPending = withPresentationBarrier({
@@ -4011,9 +4011,26 @@ async function beginTurnStart(roomId: string, turnSeat: number, expectedPendingJ
     deadline: nextResponseDeadline(player),
     continuation: { kind: "turn_start_event", playerId: player.id },
   }, presentation.log, presentation.eventId);
-  const update = await db().prepare(`UPDATE rooms SET turn_seat = ?, phase = 'response', pending_json = ?, log_json = ?, skill_state_json = ?, turn_epoch = turn_epoch + 1, turn_start_public_sequence = ? WHERE id = ? AND status = 'playing' AND ${boundary.where}`)
-    .bind(turnSeat, serializePending(pending), JSON.stringify(presentation.log), skillState, startPublicSequence, roomId, ...boundary.values).run();
-  if ((update.meta.changes ?? 0) <= 0) return;
+  return { phase: "response", pending, log: presentation.log, skillState, startPublicSequence };
+}
+
+/** Canonical beginning-of-turn transition. Only this path may offer turn-start capabilities. */
+async function beginTurnStart(roomId: string, turnSeat: number, expectedPendingJson?: string, expectedPhase: "draw" | "resolving" = "resolving") {
+  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+  const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
+  const player = rows.results?.find((candidate) => candidate.seat === turnSeat && candidate.alive);
+  if (!room || !player) return;
+  const next = turnStartTransition(player, parse<string[]>(room.log_json, []));
+  const boundary = expectedPendingJson !== undefined
+    ? { where: "phase = 'resolving' AND pending_json = ? AND turn_seat = ?", values: [expectedPendingJson, turnSeat] }
+    : expectedPhase === "draw"
+      ? { where: "phase = 'draw' AND pending_json IS NULL AND turn_seat = ? AND turn_epoch = 0", values: [turnSeat] }
+      : { where: "phase = 'resolving' AND pending_json IS NULL AND turn_seat = ?", values: [turnSeat] };
+  const logWrite = next.pending ? { column: "log_json = ?,", values: [JSON.stringify(next.log)] } : { column: "", values: [] };
+  await db().prepare(`UPDATE rooms SET turn_seat = ?, phase = ?, pending_json = ?, ${logWrite.column} skill_state_json = ?,
+    turn_epoch = turn_epoch + 1, turn_start_public_sequence = ? WHERE id = ? AND status = 'playing' AND ${boundary.where}`)
+    .bind(turnSeat, next.phase, next.pending ? serializePending(next.pending) : null, ...logWrite.values,
+      next.skillState, next.startPublicSequence, roomId, ...boundary.values).run();
 }
 
 async function advanceDiscardTurnHandoff(roomId: string, observedPendingJson?: string | null) {
@@ -4045,8 +4062,83 @@ function turnEndContinuation(endingPlayer: PlayerRow, discardHandoff?: TurnEndTr
   return { kind: "turn_end_event", endingPlayerId: endingPlayer.id, endingSeat: endingPlayer.seat, stage: "activation", resolvedEffectIds: [], ...(discardHandoff ? { discardHandoff } : {}) };
 }
 
+async function commitTurnBoundary(room: RoomRow, actor: PlayerRow, state: {
+  phase: string;
+  pending: TriggerPending | null;
+  log: string[];
+  continuation?: TurnEndTriggerContinuation;
+  payment?: { hand: Card[]; discard: Card[]; deck?: Card[]; lostHand?: Card[] };
+}) {
+  const { payment, continuation } = state;
+  const database = db();
+  const checkpoint: TurnEndCheckpoint | null = continuation ? {
+    kind: "turn_end_checkpoint", version: 1, id: crypto.randomUUID(), continuation,
+    ...(payment?.lostHand?.length ? { lostHand: payment.lostHand } : {}),
+  } : null;
+  const pendingJson = checkpoint ? JSON.stringify(checkpoint) : state.pending ? serializePending(state.pending) : null;
+  const write = database.prepare(`UPDATE rooms SET phase = ?, pending_json = ?, log_json = ?, discard_json = ?, deck_json = ?
+    WHERE id = ? AND status = 'playing' AND turn_seat IS ? AND turn_epoch = ? AND phase IS ?
+      AND pending_json IS ? AND log_json IS ? AND discard_json IS ? AND deck_json IS ? AND skill_state_json IS ?
+      AND causal_envelope_json IS ?
+      AND EXISTS (SELECT 1 FROM players WHERE room_id = rooms.id AND id = ? AND alive = 1
+        AND hand_json IS ? AND hp IS ? AND hero IS ? AND equipment_json IS ?)`)
+    .bind(state.phase, pendingJson, JSON.stringify(state.log), payment ? JSON.stringify(payment.discard) : room.discard_json,
+      payment?.deck ? JSON.stringify(payment.deck) : room.deck_json,
+      room.id, room.turn_seat, room.turn_epoch, room.phase, room.pending_json, room.log_json,
+      room.discard_json, room.deck_json, room.skill_state_json, room.causal_envelope_json,
+      actor.id, actor.hand_json, actor.hp, actor.hero, actor.equipment_json);
+  // A fresh checkpoint ID ties the hand update to this transaction's successful CAS.
+  const result = payment
+    ? (await database.batch([write, database.prepare(`UPDATE players SET hand_json = ?
+      WHERE room_id = ? AND id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = players.room_id AND pending_json = ?)`)
+      .bind(JSON.stringify(payment.hand), room.id, actor.id, pendingJson)]))[0]
+    : await write.run();
+  if (!(result.meta.changes ?? 0)) return false;
+  if (checkpoint) await advanceTurnEndCheckpoint(room.id, pendingJson!);
+  return true;
+}
+
+async function advanceTurnEndCheckpoint(roomId: string, observedPendingJson: string) {
+  const checkpoint = parseTurnEndCheckpoint(observedPendingJson);
+  if (!checkpoint) return false;
+  const room = await db().prepare("SELECT * FROM rooms WHERE id = ? AND status = 'playing' AND phase = 'resolving' AND pending_json = ?")
+    .bind(roomId, observedPendingJson).first<RoomRow>();
+  if (!room || room.turn_seat !== checkpoint.continuation.endingSeat) return true;
+  const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
+  await continueTurnEndEvent(room, checkpoint.continuation, players, parse<Card[]>(room.deck_json, []),
+    parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []), checkpoint);
+  return true;
+}
+
+async function settleTurnEndCheckpoint(room: RoomRow, checkpoint: TurnEndCheckpoint, endingPlayer: PlayerRow | null, state: {
+  phase: string;
+  pending: Pending | DiscardTurnHandoffPending | null;
+  log: string[];
+  nextSeat?: number;
+  turnStart?: ReturnType<typeof turnStartTransition>;
+  envelope?: CausalEnvelope | null;
+}) {
+  const finished = state.phase === "finished";
+  const turnSeat = state.nextSeat ?? room.turn_seat;
+  const trigger = !finished && endingPlayer && checkpoint.lostHand
+    ? handLossTriggerTransition(endingPlayer, checkpoint.lostHand, parse<Card[]>(endingPlayer.hand_json, []), {
+      phase: state.phase, pending: state.pending as Pending | null, log: state.log, turnSeat,
+    }) : null;
+  const pending = trigger?.pending ?? state.pending;
+  await db().prepare(`UPDATE rooms SET status = ?, phase = ?, pending_json = ?, log_json = ?, turn_seat = ?,
+    turn_epoch = turn_epoch + ?, turn_start_public_sequence = ?, skill_state_json = ?, causal_envelope_json = ?
+    WHERE id = ? AND status = 'playing' AND phase = 'resolving' AND turn_seat IS ? AND turn_epoch = ?
+      AND pending_json = ? AND log_json IS ?`)
+    .bind(finished ? "finished" : "playing", trigger ? "response" : state.phase, pending ? serializePending(pending) : null,
+      JSON.stringify(trigger?.log ?? state.log), turnSeat, state.turnStart ? 1 : 0,
+      state.turnStart ? state.turnStart.startPublicSequence : room.turn_start_public_sequence,
+      state.turnStart?.skillState ?? room.skill_state_json,
+      state.envelope === undefined ? room.causal_envelope_json : state.envelope ? JSON.stringify(state.envelope) : null,
+      room.id, room.turn_seat, room.turn_epoch, room.pending_json, room.log_json).run();
+}
+
 /** Finds turn-end providers, then advances only after the persisted event is exhausted. */
-async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerContinuation, players: PlayerRow[], deck: Card[], discard: Card[], log: string[]) {
+async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerContinuation, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], checkpoint?: TurnEndCheckpoint) {
   const endingPlayer = players.find((player) => player.id === continuation.endingPlayerId) ?? null;
   if (endingPlayer?.alive) {
     const resolved = continuation.resolvedEffectIds ?? [];
@@ -4079,6 +4171,12 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
       const pending: TriggerPending = presentation
         ? withPresentationBarrier(pendingWithoutBarrier, presentation.log, presentation.eventId)
         : pendingWithoutBarrier;
+      if (checkpoint) {
+        await settleTurnEndCheckpoint(room, checkpoint, endingPlayer, {
+          phase: "response", pending, log: presentation?.log ?? log, envelope: publicTriggerRoot?.envelope,
+        });
+        return;
+      }
       await causalRoomStateWrite(room.id, {
         phase: "response",
         pending,
@@ -4090,9 +4188,17 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
       return;
     }
   }
-  if (await finishIfWon(room.id)) return;
-  const currentRoom = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
-  const currentPlayers = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
+  if (checkpoint) {
+    const outcome = determineMatchOutcome(players);
+    if (outcome) {
+      await settleTurnEndCheckpoint(room, checkpoint, endingPlayer, {
+        phase: "finished", pending: null, log: matchVictoryLog(log, outcome),
+      });
+      return;
+    }
+  } else if (await finishIfWon(room.id)) return;
+  const currentRoom = checkpoint ? room : await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
+  const currentPlayers = checkpoint ? players : (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
   if (!currentRoom || currentRoom.status !== "playing") return;
   const next = nextAliveSeat(currentPlayers, continuation.endingSeat);
   const handoff = continuation.discardHandoff;
@@ -4119,21 +4225,26 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
       actorId: handoff.actorId, cardCount: handoff.cardCount, nextTurnSeat: next, deadline: handoff.deadline,
     };
     const nextLog = addLog(log, `${endingPlayer?.name ?? "The ending character"}'s turn-end effects finish; the next turn will begin after the public discard handoff.`);
+    if (checkpoint) {
+      await settleTurnEndCheckpoint(room, checkpoint, endingPlayer, { phase: "resolving", pending, log: nextLog, nextSeat: next });
+      return;
+    }
     await db().prepare("UPDATE rooms SET turn_seat = ?, phase = 'resolving', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ? AND status = 'playing'")
       .bind(next, JSON.stringify(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextLog), room.id).run();
     return;
   }
   const nextLog = addLog(log, `${endingPlayer?.name ?? "The ending character"}'s turn-end effects finish; the next living character begins.`);
+  if (checkpoint) {
+    const player = currentPlayers.find((candidate) => candidate.seat === next && candidate.alive);
+    if (player) {
+      const turnStart = turnStartTransition(player, nextLog);
+      await settleTurnEndCheckpoint(room, checkpoint, endingPlayer, { ...turnStart, nextSeat: next, turnStart });
+    }
+    return;
+  }
   await db().prepare("UPDATE rooms SET turn_seat = ?, phase = 'resolving', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ? AND status = 'playing'")
     .bind(next, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextLog), room.id).run();
   await beginTurnStart(room.id, next);
-}
-
-async function beginTurnEnd(roomId: string, endingPlayer: PlayerRow, discardHandoff?: TurnEndTriggerContinuation["discardHandoff"]) {
-  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
-  if (!room) return;
-  const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
-  await continueTurnEndEvent(room, turnEndContinuation(endingPlayer, discardHandoff), players, parse<Card[]>(room.deck_json, []), parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []));
 }
 
 async function beginMatch(roomId: string, players: PlayerRow[]) {
@@ -7497,7 +7608,8 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     ? { kind: "negation" as const, sourceId: responseContinuation.sourceId, actorId: null, effectTargetId: responseContinuation.effectTargetId, cardName: responseContinuation.cardName, responseTarget: responseContinuation.responseTarget ?? responseContinuation.cardName, latestNegationPlayerId: responseContinuation.latestNegationPlayerId ?? null, latestNegationCardId: responseContinuation.latestNegationCardId ?? null, chainDepth: responseContinuation.chainDepth ?? 0, negated: responseContinuation.negated, deadline: projectedResponsePending.deadline ?? 0 }
     : null;
   const tokenHash = token ? await hash(token) : "";
-  const actualActionPlayerId = discardTurnHandoff ? null : actionPlayerIdForPending(room, pending, players);
+  const turnEndInProgress = room.phase === "resolving" && Boolean(parseTurnEndCheckpoint(room.pending_json));
+  const actualActionPlayerId = discardTurnHandoff || turnEndInProgress ? null : actionPlayerIdForPending(room, pending, players);
   const sessionPlayers = players.filter((player) => player.token_hash === tokenHash);
   // A host token may control the host plus generated test seats. In a mixed
   // room, only project an active seat when that seat belongs to this token;
@@ -7761,7 +7873,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     myHeroOptions,
     turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null,
     log: rawLog.flatMap((entry, index) => { if (entry.startsWith("@card:") || entry.startsWith("@cards:")) return []; if (entry.startsWith("@history:")) { try { return [(JSON.parse(entry.slice(9)) as { message: string }).message]; } catch { return []; } } const event = messageEvent(entry, index); return event ? [event.message] : []; }),
-    timeline: projectedTimeline, publicPresentationTimeline, publicPresentationTurn, presentationV2, privateStealResult, privateStealParticipantResult, myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && !discardTurnHandoff && me?.seat === room.turn_seat, actionPlayerId: concealPrivateTriggerDecision || discardTurnHandoff ? null : actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && !discardTurnHandoff && (sharedWindow ? Boolean(sharedPendingForViewer) : negationWindow ? Boolean(sharedWindowResponse) : me?.id === actualActionPlayerId),
+    timeline: projectedTimeline, publicPresentationTimeline, publicPresentationTurn, presentationV2, privateStealResult, privateStealParticipantResult, myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && !discardTurnHandoff && !turnEndInProgress && me?.seat === room.turn_seat, actionPlayerId: concealPrivateTriggerDecision || discardTurnHandoff ? null : actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && !discardTurnHandoff && (sharedWindow ? Boolean(sharedPendingForViewer) : negationWindow ? Boolean(sharedWindowResponse) : me?.id === actualActionPlayerId),
     pendingAttack,
     // Compatibility projection for old clients/tests; canonical damage
     // reactions are persisted as TriggerPending and submitted via trigger or
@@ -7872,7 +7984,9 @@ export async function GET(request: Request) {
       .first<{ room_id: string; handoff_pending_json: string | null }>();
     if (membership) {
       authenticated = true;
-      if (membership.handoff_pending_json) await advanceDiscardTurnHandoff(membership.room_id, membership.handoff_pending_json);
+      if (membership.handoff_pending_json && !await advanceTurnEndCheckpoint(membership.room_id, membership.handoff_pending_json)) {
+        await advanceDiscardTurnHandoff(membership.room_id, membership.handoff_pending_json);
+      }
     }
   }
   const state = await roomState(code, token, authenticated && Boolean(uxTraceId), requestedViewerId);
@@ -8622,6 +8736,8 @@ export async function botControllerSnapshot(code: string, advanceExpiredWindows 
   if (!room || room.test_room || !botDemoEnabled()) return null;
   const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
   const botIds = players.filter((player) => player.controller_type === "bot" && !player.is_test_player).map(({ id }) => id);
+  if (advanceExpiredWindows && room.phase === "resolving" && room.pending_json
+    && await advanceTurnEndCheckpoint(room.id, room.pending_json)) return botControllerSnapshot(code, false, roleBotId);
   const handoff = parseDiscardTurnHandoff(room.pending_json);
   if (advanceExpiredWindows && handoff && handoff.deadline <= Date.now()) {
     await advanceDiscardTurnHandoff(room.id);
@@ -9624,6 +9740,13 @@ export async function POST(request: Request, routeContext?: unknown) {
       return json({ error: target ? "Only a bot seat can be removed." : "That bot seat is no longer available." }, 409);
     }
     return json({ room: await roomState(code, token) });
+  }
+
+  if (GAMEPLAY_ACTION_SET.has(action) && sessionPlayers.length && room.phase === "resolving" && room.pending_json
+    && await advanceTurnEndCheckpoint(room.id, room.pending_json)) {
+    const refreshed = await roomState(code, token, false, typeof body.testViewerId === "string" ? body.testViewerId : undefined);
+    return action === "advance_timers" ? json({ room: refreshed })
+      : json({ error: "The turn is being handed off. Refresh for the current legal action.", stale: true, room: refreshed }, 409);
   }
 
   if (GAMEPLAY_ACTION_SET.has(action) && sessionPlayers.length && parseDiscardTurnHandoff(room.pending_json)) {
@@ -10661,14 +10784,16 @@ export async function POST(request: Request, routeContext?: unknown) {
         const requestedCost = parse<Card[]>(source.hand_json, []).find((card) => card.id === requestedCostId);
         if (!requestedCost || cardDefinition(requestedCost.kind).category !== "basic") return json({ error: "The Dauntless cost must be exactly 1 Basic card from Yue Jin's hand.", stale: true, room: await roomState(code, token) }, 409);
       }
-      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-      if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That turn-end decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
       const discard = parse<Card[]>(liveRoom.discard_json, []);
       let log = parse<string[]>(liveRoom.log_json, []);
       if (action === "decline_trigger_effect") {
         const privateWindows = context ? privateOpportunityWindowEffectIds(context, trigger.resolvedEffectIds) : [];
         const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), ...available.map((option) => option.effectId), ...privateWindows])] } satisfies TurnEndTriggerContinuation;
-        await continueTurnEndEvent({ ...liveRoom, phase: "resolving", pending_json: null }, resolved, players, parse<Card[]>(liveRoom.deck_json, []), discard, addLog(log, `${source.name} declines the turn-end option; the event continues.`));
+        const committed = await commitTurnBoundary(liveRoom, me, {
+          phase: "resolving", pending: null, continuation: { ...resolved, stage: "activation" },
+          log: addLog(log, `${source.name} declines the turn-end option; the event continues.`),
+        });
+        if (!committed) return json({ error: "That turn-end decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
         return json({ room: await roomState(code, token) });
       }
       if (continuation.stage === "activation" && triggerExecution.outcome.kind === "draw_cards") {
@@ -10715,14 +10840,15 @@ export async function POST(request: Request, routeContext?: unknown) {
         }
         for (const drawn of draw.drawn) nextLog = addPrivateDrawEvent(nextLog, source, drawn);
         const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), triggerExecution.effectId])] } satisfies TurnEndTriggerContinuation;
-        const nextPlayers = players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(nextHand) } : player);
-        await db.batch([
-          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), source.id),
-          db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(nextDiscard), JSON.stringify(nextLog), room.id),
-        ]);
-        await continueTurnEndEvent({ ...liveRoom, phase: "resolving", pending_json: null, deck_json: JSON.stringify(deck), discard_json: JSON.stringify(nextDiscard), log_json: JSON.stringify(nextLog) }, resolved, nextPlayers, deck, nextDiscard, nextLog);
+        const committed = await commitTurnBoundary(liveRoom, me, {
+          phase: "resolving", pending: null, log: nextLog, continuation: resolved,
+          payment: { hand: nextHand, deck, discard: nextDiscard },
+        });
+        if (!committed) return json({ error: "That turn-end decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
         return json({ room: await roomState(code, token) });
       }
+      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+      if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That turn-end decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
       if (continuation.stage === "equipment") {
         const selectedId = (triggerExecution.outcome as { kind: "target_discard"; targetCardId: string }).targetCardId;
         const equipment = equipmentZone(endingPlayer);
@@ -10807,8 +10933,6 @@ export async function POST(request: Request, routeContext?: unknown) {
       const player = (await db.prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(continuation.playerId, room.id).first<PlayerRow>()) ?? null;
       const context = triggerContextFor(trigger, allRoomPlayers, liveRoom);
       if (!player || !player.alive || !context || getTriggeredEffects(context).length === 0) return json({ error: "That Composure decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-      if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Composure decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
       const hand = parse<Card[]>(player.hand_json, []);
       let log = parse<string[]>(liveRoom.log_json, []);
       if (action === "apply_trigger") {
@@ -10816,12 +10940,12 @@ export async function POST(request: Request, routeContext?: unknown) {
       } else {
         log = addLog(log, `${player.name} declines Composure; normal Discard Phase processing continues.`);
       }
-      if (action === "decline_trigger_effect" && hand.length > Math.max(0, player.hp ?? 0)) {
-        await db.prepare("UPDATE rooms SET phase = 'discard', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(addLog(log, `${player.name} enters Discard. Keep at most ${player.hp ?? 0} cards.`)), room.id).run();
-      } else {
-        await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(addLog(log, `${player.name} skips Discard with Composure; the turn-end event begins.`)), room.id).run();
-        await beginTurnEnd(room.id, player);
-      }
+      const mustDiscard = action === "decline_trigger_effect" && hand.length > Math.max(0, player.hp ?? 0);
+      const committed = await commitTurnBoundary(liveRoom, player, mustDiscard
+        ? { phase: "discard", pending: null, log: addLog(log, `${player.name} enters Discard. Keep at most ${player.hp ?? 0} cards.`) }
+        : { phase: "resolving", pending: null, log: addLog(log, `${player.name} skips Discard with Composure; the turn-end event begins.`),
+          continuation: turnEndContinuation(player) });
+      if (!committed) return json({ error: "That Composure decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
       return json({ room: await roomState(code, token) });
     }
     if (liveRoom && trigger && continuation?.kind === "hand_loss_event" && trigger.actorId === me.id) {
@@ -12605,8 +12729,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         return json({ error: "That card is not playable yet." }, 400);
       }
     } else {
-      if (!liveRoom.phase?.startsWith("play")) return json({ error: "Only the active player can finish the Play Phase." }, 409);
-      if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+      if (!liveRoom.phase?.startsWith("play") || liveRoom.pending_json !== null || liveRoom.turn_epoch !== room.turn_epoch) return json({ error: "Only the active player can finish the Play Phase." }, 409);
       const skillState = parse<KingSkillState>(liveRoom.skill_state_json, {});
       const attackUsed = attackWasUsed(skillState, me.id);
       const discardOptions = getTriggeredEffects({
@@ -12618,6 +12741,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         attackUsed,
       });
       const needsDiscard = hand.length > Math.max(0, me.hp ?? 0);
+      let committed: boolean;
       if (needsDiscard && discardOptions.length > 0) {
         const presentation = addLogWithId(log, `${me.name} may use Composure to skip the Discard Phase.`);
         const pending: TriggerPending = {
@@ -12628,17 +12752,20 @@ export async function POST(request: Request, routeContext?: unknown) {
           deadline: nextResponseDeadline(me),
           continuation: { kind: "discard_phase_event", playerId: me.id, attackUsed },
         };
-        await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, presentation.log, presentation.eventId)), JSON.stringify(presentation.log), room.id).run();
-        return json({ room: await roomState(code, token) });
-      }
-      if (hand.length > Math.max(0, me.hp ?? 0)) {
-        await db.prepare("UPDATE rooms SET phase = 'discard', log_json = ? WHERE id = ?").bind(JSON.stringify(addLog(log, `${me.name} finishes Play and enters Discard. Keep at most ${me.hp ?? 0} cards.`)), room.id).run();
+        committed = await commitTurnBoundary(liveRoom, me, {
+          phase: "response", pending: withPresentationBarrier(pending, presentation.log, presentation.eventId), log: presentation.log,
+        });
+      } else if (needsDiscard) {
+        committed = await commitTurnBoundary(liveRoom, me, { phase: "discard", pending: null,
+          log: addLog(log, `${me.name} finishes Play and enters Discard. Keep at most ${me.hp ?? 0} cards.`),
+        });
       } else {
-        await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(addLog(log, `${me.name} finishes Play; the turn-end event begins.`)), room.id).run();
-        await beginTurnEnd(room.id, me);
-        await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
-        const immediateRoom = await roomState(code, token); return json({ room: immediateRoom });
+        committed = await commitTurnBoundary(liveRoom, me, { phase: "resolving", pending: null,
+          log: addLog(log, `${me.name} finishes Play; the turn-end event begins.`), continuation: turnEndContinuation(me),
+        });
       }
+      if (!committed) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+      return json({ room: await roomState(code, token) });
     }
     await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
     if (action === "play_card") return playCardRoomResponse(code, token, uxTraceId);
@@ -12651,12 +12778,20 @@ export async function POST(request: Request, routeContext?: unknown) {
     let hand = parse<Card[]>(me.hand_json, []); const handBeforeDiscard = [...hand]; const required = Math.max(0, hand.length - (me.hp ?? 0)); const requested = Array.isArray(body.cardIds) ? [...new Set(body.cardIds.map(String))] : [];
     if (requested.length !== required) return json({ error: `Choose exactly ${required} card${required === 1 ? "" : "s"} to discard.` }, 400);
     const selectedCards = requested.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)); if (selectedCards.length !== required) return json({ error: "One of those cards is no longer in your hand." }, 409);
-    if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
-    const selectedIds = new Set(requested); hand = hand.filter((card) => !selectedIds.has(card.id)); const discard = [...parse<Card[]>(liveRoom.discard_json, []), ...selectedCards]; const discardEvent = addDiscardEventWithId(parse<string[]>(liveRoom.log_json, []), me, selectedCards); let log = addLog(discardEvent.log, `${me.name} discards ${selectedCards.length} selected card${selectedCards.length === 1 ? "" : "s"}.`);
-    log = addLog(log, `${me.name} completes Discard; the turn-end event begins.`); await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), room.id)]); await beginTurnEnd(room.id, me, discardEvent.eventId ? { eventId: discardEvent.eventId, actorId: me.id, cardCount: selectedCards.length, deadline: Date.now() + PUBLIC_DISCARD_HANDOFF_MS } : undefined);
-    await maybeOpenHandLossTrigger(room.id, me.id, handBeforeDiscard);
-    const immediateRoom = await roomState(code, token);
-    return json({ room: immediateRoom });
+    if (liveRoom.pending_json !== null || liveRoom.turn_epoch !== room.turn_epoch) return json({ error: "The turn changed before that action completed." }, 409);
+    const selectedIds = new Set(requested);
+    hand = hand.filter((item) => !selectedIds.has(item.id));
+    const discard = [...parse<Card[]>(liveRoom.discard_json, []), ...selectedCards];
+    const discardEvent = addDiscardEventWithId(parse<string[]>(liveRoom.log_json, []), me, selectedCards);
+    const log = addLog(addLog(discardEvent.log, `${me.name} discards ${selectedCards.length} selected card${selectedCards.length === 1 ? "" : "s"}.`),
+      `${me.name} completes Discard; the turn-end event begins.`);
+    const handoff = discardEvent.eventId ? { eventId: discardEvent.eventId, actorId: me.id, cardCount: selectedCards.length, deadline: Date.now() + PUBLIC_DISCARD_HANDOFF_MS } : undefined;
+    const committed = await commitTurnBoundary(liveRoom, me, { phase: "resolving", pending: null, log,
+      continuation: turnEndContinuation(me, handoff),
+      payment: { hand, discard, ...(hand.length ? {} : { lostHand: handBeforeDiscard }) },
+    });
+    if (!committed) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+    return json({ room: await roomState(code, token) });
   }
 
   return json({ error: "Unknown action." }, 400);

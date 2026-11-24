@@ -722,3 +722,165 @@ test("classic role deaths apply cleanup, rewards, penalties, and victory rules",
   const rebelVictory = await takeDamageIfPending(rebelVictoryGame.code, fallenLordMember.token);
   assert.equal(rebelVictory.data.room.status, "finished"); assert.ok(rebelVictory.data.room.timeline.some((event) => /Rebel victory/.test(event.message ?? "")));
 });
+
+test("interrupted End Turn and Beauty payment recover from one private checkpoint", { timeout: 60_000 }, async () => {
+  const game = await createHumanGame();
+  const players = game.room.players;
+  const [actor, next] = players;
+  const [member] = game.members;
+  const token = member.token;
+  const code = game.code;
+  const roomId = query(`SELECT id FROM rooms WHERE code=${quote(code)}`);
+  const filter = `id=${quote(roomId)}`;
+  const snapshot = () => JSON.parse(query(`SELECT json_array(phase,pending_json,log_json,turn_epoch) FROM rooms WHERE ${filter}`));
+  const own = players.map((_, seat) => card("Dodge", `turn-end-private-${seat}`));
+  const beautyDraw = card("Peach", "turn-end-beauty-payment");
+  players.forEach((player, seat) => setHand(player.id, [own[seat]], 4, 4));
+  sql(`UPDATE players SET hero=CASE seat WHEN ${actor.seat} THEN 'diao-chan' ELSE 'zhang-fei' END WHERE room_id=${quote(roomId)}`);
+  setDeck(code, [beautyDraw]);
+  setTurn(code, actor.seat);
+  const before = snapshot();
+  const initial = (await state(code, token)).data;
+  const payload = { code, token, context: { actionRevision: initial.actionRevision, meId: actor.id, actorId: actor.id, phase: initial.phase } };
+  const failedPost = async (action, data) => {
+    const response = await fetch(new URL("/api/rooms", process.env.GAME_TEST_URL ?? "http://localhost:3137"), {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...data }),
+    });
+    assert.equal(response.status, 500);
+    await response.body?.cancel();
+  };
+
+  sql(`CREATE TRIGGER abort_end_turn_entry BEFORE UPDATE OF phase ON rooms
+    WHEN OLD.id=${quote(roomId)} AND NEW.phase='resolving'
+    BEGIN SELECT RAISE(ABORT, 'interrupted checkpoint entry'); END;`);
+  try {
+    await failedPost("end_turn", payload);
+    assert.deepEqual(snapshot(), before, "an interrupted first write leaves the legal Play decision unchanged");
+  } finally {
+    sql("DROP TRIGGER abort_end_turn_entry");
+  }
+
+  const stallSettlement = () => sql(`CREATE TRIGGER abort_end_turn_exit BEFORE UPDATE OF phase ON rooms
+    WHEN OLD.id=${quote(roomId)} AND json_extract(OLD.pending_json,'$.kind')='turn_end_checkpoint'
+    BEGIN SELECT RAISE(ABORT, 'interrupted checkpoint settlement'); END;`);
+  stallSettlement();
+  try {
+    await failedPost("end_turn", payload);
+    const paused = snapshot();
+    assert.equal(paused[0], "resolving");
+    assert.equal(JSON.parse(paused[1]).kind, "turn_end_checkpoint");
+    assert.equal(paused[3], before[3]);
+    for (const outsider of ["", "not-a-room-member"]) {
+      const { data } = await state(code, outsider);
+      assert.equal(data.pending, null);
+      assert.equal(data.currentAction.kind, "none");
+      assert.deepEqual(data.currentAction.legalActions, []);
+      assert.ok(own.every(({ id }) => !JSON.stringify(data).includes(id)));
+    }
+    assert.deepEqual(snapshot(), paused, "unauthenticated reads neither reveal nor advance the checkpoint");
+  } finally {
+    sql("DROP TRIGGER abort_end_turn_exit");
+  }
+
+  await Promise.all([request("advance_timers", { code, token }), ...game.members.map((viewer) => state(code, viewer.token))]);
+  const views = await Promise.all(game.members.map((viewer) => state(code, viewer.token)));
+  const triggerView = views[0].data;
+  assert.equal(triggerView.phase, "response");
+  assert.equal(triggerView.currentAction.triggerOptions[0].effectId, "diao_chan_beauty_outshining_moon");
+  for (const [index, { data }] of views.entries()) {
+    assert.deepEqual(data.myHand.map(({ id }) => id), [own[index].id]);
+    assert.ok(own.every(({ id }, seat) => seat === index || !JSON.stringify(data).includes(id)));
+    assert.ok(data.myRole);
+    const lordId = data.players.find(({ role }) => role === "Lord")?.id;
+    for (const publicPlayer of data.players) {
+      if (publicPlayer.id !== players[index].id && publicPlayer.id !== lordId) assert.equal(publicPlayer.role, null);
+    }
+    if (index !== 0) assert.deepEqual(data.currentAction.legalActions, []);
+  }
+  const activation = { code, token, providerId: "diao_chan_beauty_outshining_moon",
+    context: { actionRevision: triggerView.actionRevision, actorId: actor.id, meId: actor.id, phase: "response" } };
+  stallSettlement();
+  try {
+    await failedPost("trigger", activation);
+    const paused = snapshot();
+    assert.equal(JSON.parse(paused[1]).continuation.resolvedEffectIds.includes("diao_chan_beauty_outshining_moon"), true);
+    assert.equal(roomCardCount(code, beautyDraw.id), 1);
+  } finally {
+    sql("DROP TRIGGER abort_end_turn_exit");
+  }
+  const replay = await Promise.all([request("trigger", activation), ...game.members.map((viewer) => state(code, viewer.token))]);
+  assert.equal(replay[0].status, 409);
+  const restored = (await state(code, token)).data;
+  assert.equal(restored.phase, "draw");
+  assert.equal(restored.currentAction.actorId, next.id);
+  assert.equal(snapshot()[3], before[3] + 1);
+  assert.equal(restored.myHand.filter(({ id }) => id === beautyDraw.id).length, 1);
+  assert.equal(restored.log.filter((log) => log.includes("finishes Play; the turn-end event begins")).length, 1);
+  assert.equal(restored.log.filter((log) => log.includes("activated Beauty Outshining the Moon")).length, 1);
+});
+
+test("interrupted Discard commits its payment and public handoff at most once", { timeout: 60_000 }, async () => {
+  const game = await createHumanGame();
+  const [actor, next] = game.room.players;
+  const [{ token }] = game.members;
+  const code = game.code;
+  const roomId = query(`SELECT id FROM rooms WHERE code=${quote(code)}`);
+  const keep = card("Dodge", "recover-discard-keep");
+  const discard = card("Peach", "recover-discard-pay");
+  sql(`UPDATE players SET hero='zhang-fei' WHERE room_id=${quote(roomId)}`);
+  setHand(actor.id, [keep, discard], 1, 4);
+  setTurn(code, actor.seat, "discard");
+  const view = (await state(code, token)).data;
+  const payload = { code, token, cardIds: [discard.id], context: {
+    phase: "discard", actorId: actor.id, meId: actor.id, actionRevision: view.actionRevision,
+  } };
+  const epoch = Number(query(`SELECT turn_epoch FROM rooms WHERE id=${quote(roomId)}`));
+  const failedDiscard = async () => {
+    const response = await fetch(new URL("/api/rooms", process.env.GAME_TEST_URL ?? "http://localhost:3137"), {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "discard_cards", ...payload }),
+    });
+    assert.equal(response.status, 500);
+    await response.body?.cancel();
+  };
+
+  sql(`CREATE TRIGGER abort_discard_payment BEFORE UPDATE OF hand_json ON players
+    WHEN OLD.id=${quote(actor.id)} BEGIN SELECT RAISE(ABORT, 'interrupted discard payment'); END;`);
+  try {
+    await failedDiscard();
+    assert.equal((await state(code, token)).data.actionRevision, view.actionRevision);
+    assert.ok(!discardIds(code).includes(discard.id));
+  } finally {
+    sql("DROP TRIGGER abort_discard_payment");
+  }
+  sql(`CREATE TRIGGER abort_discard_handoff BEFORE UPDATE OF phase ON rooms
+    WHEN OLD.id=${quote(roomId)} AND json_extract(OLD.pending_json,'$.kind')='turn_end_checkpoint'
+    BEGIN SELECT RAISE(ABORT, 'interrupted discard handoff'); END;`);
+  try {
+    await failedDiscard();
+    assert.equal(query(`SELECT json_extract(pending_json,'$.kind') FROM rooms WHERE id=${quote(roomId)}`), "turn_end_checkpoint");
+    assert.equal(discardIds(code).filter((id) => id === discard.id).length, 1);
+    assert.equal(roomCardCount(code, discard.id), 1);
+  } finally {
+    sql("DROP TRIGGER abort_discard_handoff");
+  }
+
+  const [replay] = await Promise.all([request("discard_cards", payload), ...game.members.map((viewer) => state(code, viewer.token))]);
+  assert.equal(replay.status, 409);
+  const handoff = (await state(code, token)).data;
+  assert.equal(handoff.phase, "resolving");
+  assert.equal(handoff.publicDiscardHandoff.cardCount, 1);
+  assert.deepEqual(handoff.currentAction.legalActions, []);
+  assert.equal(Number(query(`SELECT turn_epoch FROM rooms WHERE id=${quote(roomId)}`)), epoch);
+  const eventId = handoff.publicDiscardHandoff.eventId;
+  assert.equal(handoff.timeline.filter(({ id }) => id === eventId).length, 1);
+  assert.equal((await request("draw", { code, token: game.members[1].token })).status, 409);
+
+  sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.deadline',${Date.now() - 1}) WHERE id=${quote(roomId)}`);
+  await Promise.all(game.members.map((viewer) => state(code, viewer.token)));
+  const restored = (await state(code, token)).data;
+  assert.equal(restored.phase, "draw");
+  assert.equal(restored.currentAction.actorId, next.id);
+  assert.equal(Number(query(`SELECT turn_epoch FROM rooms WHERE id=${quote(roomId)}`)), epoch + 1);
+  assert.deepEqual(restored.myHand.map(({ id }) => id), [keep.id]);
+  assert.equal(discardIds(code).filter((id) => id === discard.id).length, 1);
+});

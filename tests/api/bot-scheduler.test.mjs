@@ -1242,3 +1242,42 @@ test("a thrown dispatch records one sanitized retry transition and does not leak
   assert.equal((await state(code, token)).data.players.find((player) => player.id === bot.id).handCount, 0);
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
+
+test("expired Bot End Turn acknowledgement cannot replay the committed turn", async () => {
+  const { code, token, bots } = await createBotGame();
+  const [actor, next] = bots;
+  const roomId = query(`SELECT id FROM rooms WHERE code=${quote(code)}`);
+  sql(`UPDATE players SET hero='zhang-fei' WHERE room_id=${quote(roomId)}`);
+  setHand(actor.id, [], 4, 4);
+  setTurn(code, actor.seat, "play");
+  const before = (await state(code, token)).data;
+  const revision = quote(before.actionRevision);
+  const epoch = Number(query(`SELECT turn_epoch FROM rooms WHERE id=${quote(roomId)}`));
+  const decisionId = quote(crypto.randomUUID());
+  sql(`INSERT INTO bot_work (decision_id,room_id,bot_id,action_revision,status,attempts,available_at,lease_token,lease_until,budget_reserved,created_at,updated_at)
+    VALUES (${decisionId},${quote(roomId)},${quote(actor.id)},${revision},'claimed',1,1,'expired-before-dispatch',1,1,1,1);
+    CREATE TRIGGER abort_end_turn_ack BEFORE UPDATE OF status ON bot_work
+    WHEN OLD.decision_id=${decisionId} AND NEW.status='consumed'
+    BEGIN SELECT RAISE(ABORT, 'interrupted End Turn acknowledgement'); END;`);
+  try {
+    const [interrupted, competingHuman] = await Promise.all([
+      runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1, captureDiagnostics: true }),
+      request("end_turn", { code, token, context: { actionRevision: before.actionRevision, phase: "play" } }),
+    ]);
+    assert.equal(competingHuman.status, 409, "a competing room member cannot end the Bot's turn");
+    assert.ok(interrupted.data.diagnostics.some((event) => event.event === "bot_scheduler_error"));
+    const after = (await state(code, token)).data;
+    assert.equal(after.phase, "draw");
+    assert.equal(after.currentAction.actorId, next.id);
+    assert.equal(query(`SELECT status FROM bot_work WHERE decision_id=${decisionId}`), "claimed");
+  } finally {
+    sql("DROP TRIGGER abort_end_turn_ack");
+  }
+  sql(`UPDATE bot_work SET lease_until=1 WHERE decision_id=${decisionId}`);
+  await Promise.all([runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1 }),
+    runBotScheduler({ roomCode: code, maxStepsPerWakeup: 1 })]);
+  assert.equal(query(`SELECT status FROM bot_work WHERE decision_id=${decisionId}`), "stale");
+  assert.equal(Number(query(`SELECT turn_epoch FROM rooms WHERE id=${quote(roomId)}`)), epoch + 1);
+  const afterRetry = (await state(code, token)).data;
+  assert.equal(afterRetry.log.filter((log) => log.includes(`${actor.name} finishes Play; the turn-end event begins`)).length, 1);
+});
