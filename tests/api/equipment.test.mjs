@@ -720,7 +720,20 @@ test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge
     { cardId: "rockcleavingaxe-cost", ownerId: hostPlayer.id, fromZone: "EQUIPMENT", toZone: "DISCARD" },
   ]);
   assert.equal(axeEffect?.rootEventId, forced.data.room.timeline.find((event) => event.type === "card" && event.card.id === "attack-axe-force")?.id);
-
+  const forcedDamage = forced.data.room.timeline.find((event) => event.publicFact?.category === "DAMAGE_APPLIED"
+    && event.publicFact?.committedOutcome?.changes?.some((change) => change.kind === "DAMAGE_APPLIED" && change.playerId === alicePlayer.id));
+  assert.ok(forcedDamage, "forced damage keeps the originating Attack's committed public damage fact through equipment loss");
+  assert.equal(forcedDamage.publicFact.committedOutcome.source.label, "Attack",
+    "the Axe modifier does not replace the actual Attack source in public H4");
+  const snapshot = forced.data.room.presentationSnapshot;
+  const forcedNarration = derivePublicInteractionNarration({
+    snapshot, players: forced.data.room.players,
+    rootEventId: forcedDamage.publicFact.rootEventId,
+    interactionId: forcedDamage.publicFact.committedIdentity.interactionId,
+    rootFrameId: forcedDamage.publicFact.committedIdentity.rootFrameId,
+    eventId: forcedDamage.id,
+  });
+  assert.equal(forcedNarration?.headline, "Host dealt 1 damage to Alice with Attack.");
 
 });
 

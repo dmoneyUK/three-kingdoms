@@ -1,19 +1,17 @@
 # HANDOVER
 
-## Current bounded task — §10.76-B shared committed Effect Frame delivery
+**Latest verified delivery:** §10.76-B implementation `f492ab18d4ee5723b1aeffdc05f7bec423799abe`; exact-SHA [Actions 45650453378](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45650453378) passed and deployed Worker `0dddffbf-727c-4e21-b954-f2f53b122519`. §10.76-B status remains as recorded in the current design; no work on it is being repeated.
 
-**Status:** IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW. §10.76-B remains NOT CLOSED pending the Owner's phone review.
+## Current bounded task — §10.79 H4-DAMAGE-SOURCE-ATTRIBUTION-01
 
-**Design reviewed:** latest remote `docs/UX2-refine.md` §10.76-B, controlling 15:27 UTC Code Review correction. Work was based on `origin/ux-v2` `83d48d115d6cc8726c3aa819f1099d243353b0a9`.
+**Status:** IMPLEMENTED LOCALLY — targeted validation passed; exact-SHA CI/deployment pending.
 
-**Implementation:** commit `f492ab18d4ee5723b1aeffdc05f7bec423799abe`, pushed to `ux-v2`.
+**Design reviewed:** latest `origin/ux-v2` `b114bd00`; `docs/UX2-refine.md` revision 2026-11-25 21:58 UTC, §10.79. The Owner's execution order begins §10.79 → §10.80 → §10.81-A → §10.81-B → §10.82-A → §10.82-B → §10.83.
 
-- In a proven Effect Frame REVEAL, a matching public H4 remains required; PAC message content may be absent while its canonical reserved band remains mandatory. If a real PAC is mounted, its visibility and measured clearance are still checked.
-- REVEAL requires safe center placement and painted frame. MOVE/PARKED readiness now depends on the current viewer's measured real parking target; these phases no longer require retired reveal-center geometry and remain renderable when that center is absent.
-- Stationary Effect Frame clearance uses actual measured complete-frame, H4 and PAC/reserve rectangles with an exact 5px minimum. The solver keeps 0.5px headroom; ordinary CardFaces and parked miniatures retain their 8px rules.
+**Scope:** At the shared typed committed-damage projection and H4 formatter, include a named effective card/skill only when server proof links it to positive committed damage. Preserve true dealer/recipient/amount, event order, source/card identity and verified player spans; retain truthful fallbacks for unknown source/dealer. Preserve Stauchness terminal copy, conversions, Duel attribution, Lightning's no-dealer semantics, privacy, one H4 owner, §10.76-A synchronization and existing card lifetimes. No gameplay/rule/layout changes.
 
-**Files changed:** `app/public-card-display.tsx`, `app/public-stage-layout-context.tsx`, `game/public-stage-layout.ts`, `tests/public-stage-layout.test.mjs`.
+**Validation boundary:** focused fast/API/projection/formatter/privacy regressions; at most five minutes total local UI/browser testing for this bounded task. Before each commit inspect current branch Actions; after push verify exact-SHA required CI, deployment and production smoke. Update this handoff with actual SHA/results and only then select the next authorized step.
 
-**Validation:** focused layout tests 30/30 passed; targeted ESLint 0 errors (15 existing React Hooks warnings); `git diff --check` passed. Local UI/browser tests were SKIPPED because this bounded task's combined five-minute budget was already exhausted; the budget was not reset. Exact-SHA [GitHub Actions run 45650453378](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45650453378) succeeded: API tests, lint/fast tests, build, required browser startup/visible-H4 smoke, D1 migrations, Worker deploy and production smoke. Worker version `0dddffbf-727c-4e21-b954-f2f53b122519`. Direct production checks returned `/` HTTP 200 and `/api/health` `{"ok":true,"worker":"available"}` (HTTP 200).
+**Validation completed:** `node --import tsx --test tests/api/public-activity.test.mjs tests/api/presentation-semantics.test.mjs` — 60/60 passed; `GAME_TEST_FILES=tests/api/group-root-public-card-proof.test.mjs,tests/api/equipment.test.mjs node tests/run-tests.mjs` — 24/24 passed, including real Raining Arrows damage→H4 and Rock Cleaving Axe forced Attack damage through equipment-loss continuation; `npm run build` passed; `git diff --check` passed. Local UI/browser tests were not needed for this server proof path. Latest relevant remote Actions before commit: run 45650453378 on `f492ab18d4ee5723b1aeffdc05f7bec423799abe`, success and deployed; remote `ux-v2` HEAD `b114bd002f5d59374afbde36af93f7b0223c3b89` is docs-only since that run.
 
-**Owner review still required:** verify on iPhone the real Kirin/Frost complete frame with matching H4 and PAC naturally absent/present, actual ≥5px gaps, bounded REVEAL→MOVE→PARKED completion at the genuine material-owner miniature, and unaffected ordinary-card presentation. CI smoke does not establish this phone geometry/lifecycle. Wait for Owner review; do not start another task or mark USER-ACCEPTED.
+**Resume point:** inspect current typed damage outcome/source proof, canonical `derivePublicInteractionNarration` consumer, and all authoritative positive-damage emitters before editing. Do not infer names from prose, timeline/current turn, conversion-cost materials, or HP deltas. Await final Owner review after all seven ordered steps; never mark USER-ACCEPTED.

@@ -53,6 +53,39 @@ test("idle retention uses committed causal facts and stops at a later public act
   assert.equal(retainedPublicEventFromTimeline([damage, { ...skill, publicFact: { ...skill.publicFact, committedIdentity: undefined } }]), null);
 });
 
+test("committed damage source labels survive projection only when bound to the public event", () => {
+  const current = identity(2);
+  const frame = { frameId: current.rootFrameId, parentFrameId: null,
+    origin: { originSourceId: "player-2", originalTargetIds: ["player-1"] } };
+  const makeEvent = (sourceLabel) => ({
+    id: "damage-event", type: "message", presentation: true, publicSequence: 15, actorId: "player-2",
+    publicFact: {
+      semantics: "PROVEN", visibility: "PUBLIC", interactionId: current.interactionId,
+      frameId: current.rootFrameId, rootEventId: "group-root", committedIdentity: current,
+      category: "DAMAGE_APPLIED", actorId: "player-2", affectedPlayerIds: ["player-1"],
+      label: "Raining Arrows", amount: 1, effect: { kind: "damage_applied" },
+      committedOutcome: { source: { kind: "damage", label: sourceLabel }, changes: [
+        { kind: "DAMAGE_APPLIED", playerId: "player-1", amount: 1 },
+      ] },
+    },
+  });
+  const project = (sourceLabel) => collectPublicPresentationEventFacts({
+    timeline: [makeEvent(sourceLabel)], identity: current, frames: [frame], rootEventId: "group-root",
+  });
+
+  const valid = project("Raining Arrows");
+  assert.equal(valid[0]?.committedOutcome?.actorId, "player-2");
+  assert.equal(valid[0]?.committedOutcome?.source.label, "Raining Arrows");
+  assert.deepEqual(valid[0]?.committedOutcome?.changes, [
+    { kind: "DAMAGE_APPLIED", playerId: "player-1", amount: 1 },
+  ]);
+
+  const mismatched = project("Attack");
+  assert.equal(mismatched.length, 1, "the truthful public damage fact remains available");
+  assert.equal(mismatched[0]?.committedOutcome, undefined,
+    "a source label without matching committed public proof is omitted");
+});
+
 test("idle retention keeps a bounded public fact queue across causal roots in sequence order", () => {
   const earlierIdentity = { interactionId: "interaction-earlier", rootFrameId: "frame-earlier", checkpointId: "checkpoint-earlier", presentationRevision: 2 };
   const latestIdentity = { interactionId: "interaction-latest", rootFrameId: "frame-latest", checkpointId: "checkpoint-latest", presentationRevision: 1 };

@@ -3877,7 +3877,7 @@ async function advanceEquipmentLostEvents(roomId: string, records: EquipmentLost
   else if (resume.kind === "forced_damage") {
     const source = players.find((player) => player.id === resume.sourceId && player.alive);
     const target = players.find((player) => player.id === resume.targetId && player.alive);
-    if (source && target) await resolveSourcedDamage({ room: resolvingRoom, source, target, players, amount: resume.amount, deck, discard, log, resumePhase: resume.resumePhase, resumePlayerId: resume.resumePlayerId, sequenceStartCardId: resume.sequenceStartCardId, damageCards: resume.damageCards, origin: resume.origin, label: resume.label, damageDescription: resume.damageDescription });
+    if (source && target) await resolveSourcedDamage({ room: resolvingRoom, source, target, players, amount: resume.amount, deck, discard, log, resumePhase: resume.resumePhase, resumePlayerId: resume.resumePlayerId, sequenceStartCardId: resume.sequenceStartCardId, rootEventId: resume.rootEventId, damageCards: resume.damageCards, origin: resume.origin, causal: resume.causal, label: resume.label, damageDescription: resume.damageDescription });
   }
   else if (resume.kind === "turn_end") await continueTurnEndEvent(resolvingRoom, resume.continuation, players, deck, discard, log);
   else if (resume.kind === "damage_about_to_apply") await resumeCanonicalTriggerContinuation(resolvingRoom, resume.continuation, players, discard, log);
@@ -5917,7 +5917,7 @@ async function applyAttackResponseOutcome(room: RoomRow, response: ResponsePendi
         .bind(serializePending(reopened.pending), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(reopened.log), room.id).run();
       return;
     }
-    await finishDodgedAttack(nextRoom, source, actor, judged.discard, judged.log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", [db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id)], continuation.origin, continuation.resumePlayerId, continuation.rootEventId);
+    await finishDodgedAttack(nextRoom, source, actor, judged.discard, judged.log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", [db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id)], continuation.origin, continuation.resumePlayerId, continuation.rootEventId, response.causal);
     return;
   }
   judged.log = addLog(judged.log, `${actor.name} judges ${judged.judged ? `${judged.judged.rank}${judged.judged.suit}` : "nothing"} with ${resolution.label}. ${resolution.failureText}`);
@@ -5950,6 +5950,7 @@ async function applyAttackResponseOutcome(room: RoomRow, response: ResponsePendi
     origin: continuation.origin,
     causal: response.causal,
     cause: "attack",
+    label: "Attack",
     damageDescription: (amount) => `${actor.name} takes ${amount} damage from the Attack`,
     writes: [db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id)],
   });
@@ -6386,7 +6387,7 @@ function prepareAttackDodgePublicResponse(room: RoomRow, response: ResponsePendi
 }
 
 function dodgedAttackTransition(room: RoomRow, source: PlayerRow | null, target: PlayerRow | null, log: string[], resumePhase: string,
-  sequenceStartCardId: string, origin?: AttackOrigin, resumePlayerId?: string, rootEventId?: string): { phase: string; pending: Pending | null; log: string[]; clearEnvelope: boolean } {
+  sequenceStartCardId: string, origin?: AttackOrigin, resumePlayerId?: string, rootEventId?: string, causal?: CausalContext): { phase: string; pending: Pending | null; log: string[]; clearEnvelope: boolean } {
   const options = source && target ? getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceHand: parse<Card[]>(source.hand_json, []), targetHand: parse<Card[]>(target.hand_json, []), targetEquipment: equipmentCards(target) }) : [];
   if (source?.alive && target?.alive && options.length) {
     const presentation = addLogWithId(log, `${source.name}'s Attack is blocked. ${options.length === 1 ? options[0].label : "Optional reactions"} may apply.`);
@@ -6394,14 +6395,14 @@ function dodgedAttackTransition(room: RoomRow, source: PlayerRow | null, target:
     const pending: TriggerPending = { kind: "trigger", event: "attack_dodged", actorId: source.id, resolutionId,
       reason: `Choose an optional reaction to ${target.name}'s Dodge, or skip`, deadline: nextResponseDeadline(source),
       continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId,
-        ...(rootEventId ? { rootEventId } : {}), resolutionId, ...(resumePlayerId ? { resumePlayerId } : {}), ...(origin ? { origin } : {}) } };
+        ...(rootEventId ? { rootEventId } : {}), ...(causal ? { causal } : {}), resolutionId, ...(resumePlayerId ? { resumePlayerId } : {}), ...(origin ? { origin } : {}) } };
     const readyAfterEventId = latestDecisionPresentationEventId(presentation.log, resolutionId);
     return { phase: "response", pending: readyAfterEventId ? withPresentationBarrier(pending, presentation.log, readyAfterEventId) : pending, log: presentation.log, clearEnvelope: false };
   }
   return { phase: resumePhase, pending: null, log, clearEnvelope: true };
 }
-async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, target: PlayerRow | null, discard: Card[], log: string[], resumePhase: string, sequenceStartCardId: string, writes: D1PreparedStatement[] = [], origin?: AttackOrigin, resumePlayerId?: string, rootEventId?: string) {
-  const transition = dodgedAttackTransition(room, source, target, log, resumePhase, sequenceStartCardId, origin, resumePlayerId, rootEventId);
+async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, target: PlayerRow | null, discard: Card[], log: string[], resumePhase: string, sequenceStartCardId: string, writes: D1PreparedStatement[] = [], origin?: AttackOrigin, resumePlayerId?: string, rootEventId?: string, causal?: CausalContext) {
+  const transition = dodgedAttackTransition(room, source, target, log, resumePhase, sequenceStartCardId, origin, resumePlayerId, rootEventId, causal);
   writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?")
     .bind(transition.phase, transition.pending ? serializePending(transition.pending) : null, JSON.stringify(discard), JSON.stringify(transition.log), transition.clearEnvelope ? null : room.causal_envelope_json, room.id));
   await db().batch(writes);
@@ -6437,7 +6438,8 @@ async function applyForcedDamageOutcome(room: RoomRow, continuation: AttackDodge
     await advanceEquipmentLostEvents(room.id, equipmentLostRecords(source.id, lostEquipment, "forced_damage"), {
       kind: "forced_damage", sourceId: source.id, targetId: target.id, amount, resumePhase: continuation.resumePhase,
       resumePlayerId: continuation.resumePlayerId ?? source.id, sequenceStartCardId: continuation.sequenceStartCardId,
-      origin: continuation.origin, damageCards: undefined, label: displayLabel,
+      rootEventId: continuation.rootEventId, causal: continuation.causal,
+      origin: continuation.origin, damageCards: undefined, label: "Attack",
       damageDescription: `${target.name} takes ${amount} damage from ${source.name} after ${displayLabel}`,
       handLoss: { playerId: source.id, beforeHand: hand },
     });
@@ -6454,8 +6456,10 @@ async function applyForcedDamageOutcome(room: RoomRow, continuation: AttackDodge
     resumePhase: continuation.resumePhase,
     resumePlayerId: continuation.resumePlayerId ?? source.id,
     sequenceStartCardId: continuation.sequenceStartCardId,
+    rootEventId: continuation.rootEventId,
     origin: continuation.origin,
-    label: displayLabel,
+    causal: continuation.causal,
+    label: "Attack",
     damageDescription: `${target.name} takes ${amount} damage from ${source.name} after ${displayLabel}`,
     writes: sourceWrites,
   });
@@ -6893,6 +6897,7 @@ async function resolveGroupDamage(room: RoomRow, response: ResponsePending, cont
     causal: child?.context ?? response.causal,
     resumeChildCausal: child?.context,
     ...(attackDamage ? { physicalSuit: continuation.physicalSuit, cause: "attack" as const } : {}),
+    label: attackDamage ? "Attack" : cardName,
     damageDescription: `${actor.name} does not play ${continuation.requiredKind} and takes 1 damage from ${cardName}`,
     resumeGroup: pausedResponse,
     resumePending,
@@ -8307,7 +8312,7 @@ async function commitCanonicalResponse(input: {
           db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(reopened.pending), JSON.stringify(discard), JSON.stringify(reopened.log), room.id),
         ]);
       } else {
-        await finishDodgedAttack(liveRoom, source, semanticTarget, discard, log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId)], continuation.origin, continuation.resumePlayerId, continuation.rootEventId);
+        await finishDodgedAttack(liveRoom, source, semanticTarget, discard, log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId)], continuation.origin, continuation.resumePlayerId, continuation.rootEventId, continuation.causal);
       }
       await maybeOpenHandLossTrigger(room.id, me.id, handBeforeResponse);
     } else {

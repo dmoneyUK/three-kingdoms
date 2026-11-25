@@ -316,7 +316,7 @@ export type EquipmentLostResume =
   | { kind: "lust_duel"; ownerId: string; firstId: string; secondId: string; resumePhase: string; rootEventId?: string; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "attack_targeted"; continuation: AttackTargetedTriggerContinuation; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "attack_dodged"; continuation: AttackDodgedTriggerContinuation; handLoss?: { playerId: string; beforeHand: Card[] } }
-  | { kind: "forced_damage"; sourceId: string; targetId: string; amount: number; resumePhase: string; resumePlayerId?: string; sequenceStartCardId: string; origin?: AttackOrigin; damageCards?: Card[]; label: string; damageDescription?: string; handLoss?: { playerId: string; beforeHand: Card[] } }
+  | ({ kind: "forced_damage"; sourceId: string; targetId: string; amount: number; resumePhase: string; resumePlayerId?: string; sequenceStartCardId: string; rootEventId?: string; origin?: AttackOrigin; damageCards?: Card[]; label: string; damageDescription?: string; handLoss?: { playerId: string; beforeHand: Card[] } } & CausalFields)
   | { kind: "turn_end"; continuation: TurnEndTriggerContinuation; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "damage_about_to_apply"; continuation: DamageAboutToApplyTriggerContinuation; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "damage_suffered"; continuation: DamageSufferedTriggerContinuation; handLoss?: { playerId: string; beforeHand: Card[] } };

@@ -437,6 +437,10 @@ function formatCommittedPublicOutcomeCopy(
   const groupedChanges = [...grouped.values()];
   const actor = outcome.actorId ? narrationPlayerPart(players, outcome.actorId) : null;
   const source = outcome.source.label?.trim();
+  const damageSource = outcome.source.kind === "damage" && (!outcome.actorId || actor)
+    && source && !/^(?:damage|generic damage)$/i.test(source)
+    ? source === "Duel damage" ? "Duel" : source
+    : null;
 
   // Damage is an outcome, not an action label. Describe the actual recipient
   // and amount directly, omitting generic titles such as "Damage".
@@ -452,6 +456,7 @@ function formatCommittedPublicOutcomeCopy(
       if (actor) parts.push(amountText(amount, "damage", "damage"), " to ", player!);
       else parts.push(player!, " took ", amountText(amount, "damage", "damage"));
     });
+    if (damageSource) parts.push(actor ? " with " : " from ", damageSource);
     parts.push(".");
     return verifiedPlayerCopy(parts);
   }

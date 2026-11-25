@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { projectPresentationV2 } from "../../game/presentation-v2.ts";
+import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import { oathRecipientIds } from "../../game/oath.ts";
-import { query, quote, requestAndSettle, setTurn, state } from "./test-support.mjs";
+import { advanceNegationWindow, query, quote, requestAndSettle, setTurn, state } from "./test-support.mjs";
 
 function authoritativePending(code) {
   const raw = query(`SELECT pending_json FROM rooms WHERE code=${quote(code)}`);
@@ -103,4 +104,76 @@ test("Group root proof ignores Test Room private draws but rejects duplicate pub
     assert.equal(duplicateProjection.groupResolution?.rootCardProof, undefined,
       `${kind}: a second visible public play of the same physical card still fails closed`);
   }
+});
+
+test("Raining Arrows damage publishes its linked card source and actual recipient in H4", { timeout: 30_000 }, async () => {
+  const created = await requestAndSettle("create", { name: "Raining Arrows damage source" });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const { code } = created.data.room;
+  const token = created.data.token;
+  let lobby = (await requestAndSettle("add_test_players", { code, token, name: "Raining Arrows damage source" })).data.room;
+  lobby = (await requestAndSettle("enable_test_room", { code, token })).data.room;
+  lobby = (await requestAndSettle("configure_test_hands", {
+    code, token, presetId: "custom", handsBySeat: { 0: ["RainingArrows"], 1: [], 2: [], 3: [] },
+    expectedRevision: lobby.testHandPreset.revision,
+  })).data.room;
+  lobby = (await requestAndSettle("start", { code, token })).data.room;
+  const chosenHeroes = new Set();
+  while (lobby.status === "heroes") {
+    const actor = lobby.players.find((player) => player.id === lobby.currentAction?.actorId);
+    const preferred = ["guanyu", "zhaoyun", "cao-cao", "liu-bei"];
+    const hero = lobby.myHeroOptions.find((option) => option.id === preferred[actor?.seat] && !chosenHeroes.has(option.id))
+      ?? lobby.myHeroOptions.find((option) => !chosenHeroes.has(option.id));
+    assert.ok(actor && hero);
+    chosenHeroes.add(hero.id);
+    const chosen = await requestAndSettle("choose_hero", { code, token, heroId: hero.id });
+    assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+    lobby = chosen.data.room;
+  }
+
+  const source = lobby.players[0];
+  const firstTarget = lobby.players[1];
+  setTurn(code, source.seat, "play");
+  const before = (await state(code, token, false, source.id)).data;
+  const card = before.myHand.find((candidate) => candidate.kind === "RainingArrows");
+  assert.ok(card);
+  const played = await requestAndSettle("play_card", { code, token, cardId: card.id, preserveResponse: true });
+  assert.equal(played.status, 200, JSON.stringify(played.data));
+  const negationState = (await state(code, token)).data;
+  const negationWindowId = negationState.currentAction.negationWindowId;
+  assert.ok(negationWindowId, "the first group target gets the normal Negation window");
+  await advanceNegationWindow(code, token, negationWindowId);
+  const targetState = (await state(code, token)).data;
+  assert.equal(targetState.currentAction.actorId, firstTarget.id);
+  assert.ok(targetState.currentAction.legalActions.includes("decline_response"));
+
+  const damaged = await requestAndSettle("decline_response", {
+    code, token, preserveResponse: true,
+  });
+  assert.equal(damaged.status, 200, JSON.stringify(damaged.data));
+  const damageEvent = damaged.data.room.timeline.find((event) => event.publicFact?.category === "DAMAGE_APPLIED"
+    && event.publicFact?.committedOutcome?.changes?.some((change) => change.kind === "DAMAGE_APPLIED" && change.playerId === firstTarget.id));
+  assert.ok(damageEvent, "the committed target loss remains linked to a public damage event");
+  assert.equal(damageEvent.publicFact.actorId, source.id);
+  assert.equal(damageEvent.publicFact.committedOutcome.source.label, "Raining Arrows", JSON.stringify(damageEvent.publicFact));
+  assert.deepEqual(damageEvent.publicFact.committedOutcome.changes, [
+    { kind: "DAMAGE_APPLIED", playerId: firstTarget.id, amount: 1 },
+  ]);
+
+  const snapshot = damaged.data.room.presentationSnapshot;
+  const narration = derivePublicInteractionNarration({
+    snapshot,
+    players: damaged.data.room.players,
+    rootEventId: damageEvent.publicFact.rootEventId,
+    interactionId: snapshot.identity.interactionId,
+    rootFrameId: snapshot.interaction.rootFrameId,
+    eventId: damageEvent.id,
+  });
+  assert.ok(narration, JSON.stringify({
+    snapshotIdentity: snapshot.identity, snapshotInteraction: snapshot.interaction,
+    publicFacts: snapshot.publicEventFacts?.map(({ eventId, rootEventId, frameId, category, order }) => ({ eventId, rootEventId, frameId, category, order })),
+    retainedFacts: snapshot.retainedPublicEventFacts?.map(({ eventId, rootEventId, frameId, category, order }) => ({ eventId, rootEventId, frameId, category, order })),
+    selectedFact: { eventId: damageEvent.id, rootEventId: damageEvent.publicFact.rootEventId },
+  }));
+  assert.equal(narration?.headline, `${source.name} dealt 1 damage to ${firstTarget.name} with Raining Arrows.`);
 });

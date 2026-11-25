@@ -1142,15 +1142,32 @@ test("committed H4 names proven actions and reports only actual public outcomes"
   const attack = narrationFor("attack-damage", { kind: "damage", label: "Attack" }, [
     { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
   ], { category: "DAMAGE_APPLIED" });
-  assert.equal(attack?.headline, "Test Player 1 dealt 1 damage to Test Player 2.");
+  assert.equal(attack?.headline, "Test Player 1 dealt 1 damage to Test Player 2 with Attack.");
   assert.deepEqual(playerIds(attack?.headlineSegments), ["p1", "p2"]);
 
-  const multipleDamage = narrationFor("multiple-damage", { kind: "damage", label: "Damage" }, [
+  const multipleDamage = narrationFor("multiple-damage", { kind: "damage", label: "Raining Arrows" }, [
     { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
     { kind: "DAMAGE_APPLIED", playerId: "p3", amount: 2 },
   ], { affectedPlayerIds: ["p2", "p3"], category: "DAMAGE_APPLIED" });
-  assert.equal(multipleDamage?.headline, "Test Player 1 dealt 1 damage to Test Player 2 and 2 damage to Test Player 3.");
+  assert.equal(multipleDamage?.headline, "Test Player 1 dealt 1 damage to Test Player 2 and 2 damage to Test Player 3 with Raining Arrows.");
   assert.deepEqual(playerIds(multipleDamage?.headlineSegments), ["p1", "p2", "p3"]);
+
+  const duel = narrationFor("duel-damage", { kind: "damage", label: "Duel damage" }, [
+    { kind: "DAMAGE_APPLIED", playerId: "p1", amount: 1 },
+  ], { actorId: "p2", affectedPlayerIds: ["p1"], category: "DAMAGE_APPLIED" });
+  assert.equal(duel?.headline, "Test Player 2 dealt 1 damage to Test Player 1 with Duel.",
+    "the actual damage dealer is retained and the server's canonical Duel label is normalized");
+
+  const lightning = narrationFor("lightning-damage", { kind: "damage", label: "Lightning" }, [
+    { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 3 },
+  ], { actorId: undefined, affectedPlayerIds: ["p2"], category: "DAMAGE_APPLIED" });
+  assert.equal(lightning?.headline, "Test Player 2 took 3 damage from Lightning.",
+    "environmental damage names its source without inventing a dealer");
+
+  const skillDamage = narrationFor("sowing-distrust-damage", { kind: "damage", label: "Sowing Distrust" }, [
+    { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
+  ], { category: "DAMAGE_APPLIED" });
+  assert.equal(skillDamage?.headline, "Test Player 1 dealt 1 damage to Test Player 2 with Sowing Distrust.");
 
   const unknownSourceDamage = narrationFor("unknown-source-damage", { kind: "damage", label: "Damage" }, [
     { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
