@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findBattlefieldChoiceSafeTopOffset, harvestChoicePlacementPanelRect, isBattlefieldChoiceTopOffsetSafe } from "../app/battlefield-choice-stage.tsx";
-import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicStageEffectFrameRevealTargetMatches, publicStagePrimaryOriginFromVisualRect, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard } from "../game/public-stage-layout.ts";
+import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicStageEffectFrameRevealTargetMatches, publicStageFailedRevealMatchesScene, publicStagePrimaryOriginFromVisualRect, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard } from "../game/public-stage-layout.ts";
 
 const scene = {
   semantics: "PROVEN",
@@ -65,6 +65,37 @@ test("shared reveal readiness requires the exact room, root, interaction, event,
     { phase: "MOVE" },
   ]) assert.equal(publicStageSceneMatchesCard(scene, { ...cardIdentity, ...change }), false);
   assert.equal(publicStageSceneMatchesCard({ ...scene, semantics: "INFERRED" }, cardIdentity), false);
+});
+
+test("unavailable reveal geometry can retry only for the same proven scene identity", () => {
+  const failure = {
+    phase: "REVEAL",
+    roomId: scene.roomId,
+    rootEventId: scene.scopeId,
+    interactionId: scene.interactionId,
+    eventId: scene.eventId,
+    cardId: scene.cardId,
+    viewerId: scene.viewerId,
+  };
+  const current = {
+    roomId: scene.roomId,
+    scopeId: scene.scopeId,
+    interactionId: scene.interactionId,
+    eventId: scene.eventId,
+    cardId: scene.cardId,
+    viewerId: scene.viewerId,
+    phase: "REVEAL",
+  };
+  assert.equal(publicStageFailedRevealMatchesScene({ failure, scene: current }), true);
+  for (const change of [
+    { roomId: "room-2" },
+    { scopeId: "root-event-2" },
+    { interactionId: "interaction-2" },
+    { eventId: "event-2" },
+    { cardId: "card-2" },
+    { viewerId: "viewer-2" },
+    { phase: "MOVE" },
+  ]) assert.equal(publicStageFailedRevealMatchesScene({ failure, scene: { ...current, ...change } }), false);
 });
 
 test("shared measured Effect Frame union maps back to the same primary CardFace origin", () => {
@@ -527,6 +558,16 @@ test("Effect Frames use a 5px fixed-band clearance while ordinary card clearance
     assert.ok(frame.layout.card.top - frameGeometry.fixedBands.h4.bottom >= 5);
     assert.ok(frameGeometry.fixedBands.pac.top - frame.layout.card.bottom >= 5);
   }
+
+  const exactApprovedGap = calculatePublicStageLayout(input({
+    ...frameGeometry,
+    stationarySurface: "effect-frame",
+    cardActivityGap: 5,
+  }));
+  assert.equal(exactApprovedGap.status, "placed", "a validated Effect Frame accepts the owner-approved 5px clearance input");
+  const ordinaryBelowEight = calculatePublicStageLayout(input({ ...frameGeometry, cardActivityGap: 5 }));
+  assert.equal(ordinaryBelowEight.status, "unavailable", "ordinary CardFaces keep the existing 8px minimum");
+  if (ordinaryBelowEight.status === "unavailable") assert.equal(ordinaryBelowEight.reason, "INVALID_GEOMETRY");
 
   const ordinary = calculatePublicStageLayout(input(frameGeometry));
   assert.equal(ordinary.status, "unavailable", "the same lane remains too small at the unchanged 8px ordinary-card clearance");

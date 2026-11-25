@@ -6,6 +6,7 @@ import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-d
 import {
   calculatePublicStageLayout,
   publicStageBandClearance,
+  publicStageFailedRevealMatchesScene,
   publicStageRevealNeedsOwnedRemeasure,
   publicStageSceneMatchesCard,
   type PublicStageLayout,
@@ -165,6 +166,7 @@ export function PublicStageLayoutProvider({
   const generationRef = useRef({ sceneKey: "", geometrySignature: "", generation: 0 });
   const movePathRef = useRef<{ sceneKey: string; rect: PublicStageRect } | null>(null);
   const traceSignatureRef = useRef("");
+  const unavailableObservationKeyRef = useRef("");
 
   useLayoutEffect(() => {
     const table = scopeId
@@ -177,6 +179,8 @@ export function PublicStageLayoutProvider({
 
     const clear = () => {
       if (snapshotRef.current && canRetainPublicStageLayout(table, snapshotRef.current)) return;
+      resizeObserver?.disconnect();
+      unavailableObservationKeyRef.current = "";
       generationRef.current = { ...generationRef.current, sceneKey: "", geometrySignature: "" };
       movePathRef.current = null;
       clearCountdownLayoutMetadata(table);
@@ -187,6 +191,15 @@ export function PublicStageLayoutProvider({
       setData(table, "data-public-stage-layout-failure", undefined);
       setData(table, "data-public-stage-layout-identity", undefined);
       setSnapshot((current) => current === null ? current : null);
+    };
+
+    const observeUnavailableGeometry = (key: string, elements: readonly (HTMLElement | null | undefined)[]) => {
+      if (!resizeObserver || unavailableObservationKeyRef.current === key) return;
+      resizeObserver.disconnect();
+      for (const element of new Set(elements.filter((candidate): candidate is HTMLElement => Boolean(candidate?.isConnected)))) {
+        resizeObserver.observe(element);
+      }
+      unavailableObservationKeyRef.current = key;
     };
 
     const measure = () => {
@@ -240,6 +253,12 @@ export function PublicStageLayoutProvider({
         : [];
       const frameFootprint = framePanels.length === 1 ? publicEffectFrameVisualFootprint(primary) : null;
       if (framePanels.length > 0 && !frameFootprint) {
+        observeUnavailableGeometry(JSON.stringify([roomId, scopeId, interactionId, eventId, cardId, viewerId, "frame-footprint"]), [
+          table, display, primary, ...framePanels,
+          ...display.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']"),
+          table.querySelector<HTMLElement>("[data-public-activity-chip='true']"),
+          ...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS),
+        ]);
         setData(table, "data-public-stage-layout-status", "unavailable");
         setData(table, "data-public-stage-layout-phase", phase.toLowerCase());
         setData(table, "data-public-stage-layout-identity", undefined);
@@ -272,6 +291,10 @@ export function PublicStageLayoutProvider({
         return;
       }
       if (frameFootprint && (!announcement || !chip)) {
+        observeUnavailableGeometry(JSON.stringify([roomId, scopeId, interactionId, eventId, cardId, viewerId, "public-bands"]), [
+          table, display, primary, announcement, chip,
+          ...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS),
+        ]);
         setData(table, "data-public-stage-layout-status", "unavailable");
         setData(table, "data-public-stage-layout-phase", phase.toLowerCase());
         setData(table, "data-public-stage-layout-identity", undefined);
@@ -504,6 +527,10 @@ export function PublicStageLayoutProvider({
       });
       if (result.status !== "placed") {
         if (snapshotRef.current && canRetainPublicStageLayout(table, snapshotRef.current)) return;
+        observeUnavailableGeometry(JSON.stringify([roomId, scopeId, interactionId, eventId, cardId, viewerId, phase]), [
+          table, display, primary, announcement, chip,
+          ...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS),
+        ]);
         if (isAttackDodgeUxTraceActive()) {
           const signature = `${eventId}:${viewerId}:${phase}:${result.reason}`;
           if (signature !== traceSignatureRef.current) {
@@ -626,6 +653,7 @@ export function PublicStageLayoutProvider({
       setData(table, "data-public-stage-layout-variant", result.layout.variant);
       setData(table, "data-public-stage-layout-identity", result.layout.identity);
       setData(table, "data-public-stage-layout-failure", undefined);
+      unavailableObservationKeyRef.current = "";
       snapshotRef.current = next;
       setSnapshot((current) => sameSnapshot(current, next) ? current : next);
       resizeObserver?.disconnect();
@@ -642,6 +670,39 @@ export function PublicStageLayoutProvider({
       return element?.matches(
         '.public-card-journey-card[data-public-card-primary-card="true"], [data-public-card-announcement="true"], [data-public-activity-chip="true"]',
       ) ? element : null;
+    };
+    const isUnavailableCurrentRevealGeometry = (target: Node) => {
+      const element = ownedGeometryElement(target);
+      if (!element) return false;
+      let failure: {
+        phase?: string; roomId?: string; rootEventId?: string; scopeId?: string;
+        interactionId?: string | null; eventId?: string; cardId?: string; viewerId?: string;
+      } | null = null;
+      try {
+        failure = JSON.parse(table.dataset.publicStageLayoutFailure ?? "null") as typeof failure;
+      } catch {
+        return false;
+      }
+      if (!failure?.eventId || !failure.cardId || !publicStageFailedRevealMatchesScene({
+        failure,
+        scene: { roomId, scopeId, interactionId, eventId: failure.eventId, cardId: failure.cardId, viewerId, phase: "REVEAL" },
+      })) return false;
+      if (element.matches('[data-public-activity-chip="true"]')) {
+        return element === table.querySelector<HTMLElement>('[data-public-activity-chip="true"]');
+      }
+      const display = element.closest<HTMLElement>(".public-card-display");
+      if (!display || display.dataset.publicCardRootEventId !== scopeId
+        || (display.dataset.publicCardInteractionId ?? null) !== interactionId
+        || display.dataset.publicCardViewerId !== viewerId
+        || display.dataset.publicCardLayoutViewerId !== viewerId) return false;
+      if (element.matches('.public-card-journey-card[data-public-card-primary-card="true"]')) {
+        return element.dataset.publicCardJourneyEventId === failure.eventId
+          && element.dataset.publicCardJourneyCardId === failure.cardId
+          && element.dataset.publicCardJourneyPhase === "reveal";
+      }
+      return element.matches('[data-public-card-announcement="true"]')
+        && (element.dataset.publicCardAnnouncementEventId === failure.eventId
+          || element.dataset.publicCardAnnouncementAnchorEventId === failure.eventId);
     };
     const isPendingCurrentRevealPlacement = (target: Node) => {
       const pending = snapshotRef.current;
@@ -683,7 +744,7 @@ export function PublicStageLayoutProvider({
           // target. Re-measure that same proven REVEAL once those React-owned
           // styles land, otherwise revealReady can stay false forever because
           // the measurement observer intentionally ignores owned style writes.
-          return isPendingCurrentRevealPlacement(record.target);
+          return isPendingCurrentRevealPlacement(record.target) || isUnavailableCurrentRevealGeometry(record.target);
         }
         return true;
       })) schedule();
@@ -698,6 +759,7 @@ export function PublicStageLayoutProvider({
       if (frame) window.cancelAnimationFrame(frame);
       mutationObserver?.disconnect();
       resizeObserver?.disconnect();
+      unavailableObservationKeyRef.current = "";
       clearCountdownLayoutMetadata(table);
       committedLayouts.delete(table);
       window.removeEventListener("resize", onResize);

@@ -59,6 +59,31 @@ export type PublicStageScene = {
   generation: number;
 };
 
+/** A failed REVEAL may be remeasured only while every proven scene identity still matches. */
+export function publicStageFailedRevealMatchesScene(input: {
+  failure: {
+    phase?: string;
+    roomId?: string;
+    rootEventId?: string;
+    scopeId?: string;
+    interactionId?: string | null;
+    eventId?: string;
+    cardId?: string;
+    viewerId?: string;
+  } | null | undefined;
+  scene: Pick<PublicStageScene, "roomId" | "scopeId" | "interactionId" | "eventId" | "cardId" | "viewerId" | "phase">;
+}): boolean {
+  const { failure, scene } = input;
+  return Boolean(failure
+    && failure.phase === "REVEAL" && scene.phase === "REVEAL"
+    && failure.roomId === scene.roomId
+    && (failure.rootEventId ?? failure.scopeId) === scene.scopeId
+    && (failure.interactionId ?? null) === (scene.interactionId ?? null)
+    && failure.eventId === scene.eventId
+    && failure.cardId === scene.cardId
+    && failure.viewerId === scene.viewerId);
+}
+
 export type PublicStageLayoutInput = {
   scene: PublicStageScene;
   viewport: PublicStageRect;
@@ -253,15 +278,16 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
 
   const { viewport, table, card, announcement, activity } = input;
   const announcementCardGap = input.announcementCardGap ?? 8;
-  // One extra CSS pixel absorbs subpixel offsets in CardFace/Frame rendering,
-  // so the measured browser gap still meets the approved 8px minimum.
+  // Keep the ordinary-card safety margin while allowing the approved tighter
+  // clearance for a complete, validated Effect Frame.
   const cardActivityGap = input.cardActivityGap ?? 9;
+  const minimumCardActivityGap = publicStageBandClearance(input.stationarySurface);
   if (!finiteRect(viewport) || !finiteRect(table)
     || !finiteSize(card) || !finiteSize(announcement) || !finiteSize(activity)
     || input.activityBottom !== undefined && !Number.isFinite(input.activityBottom)
     || !Number.isFinite(input.preferredCard.left) || !Number.isFinite(input.preferredCard.top)
     || !Number.isFinite(announcementCardGap) || announcementCardGap < 0
-    || !Number.isFinite(cardActivityGap) || cardActivityGap < 8
+    || !Number.isFinite(cardActivityGap) || cardActivityGap < minimumCardActivityGap
     || !Array.isArray(input.obstacles)
     || input.obstacles.some((obstacle) => !obstacle || typeof obstacle.id !== "string"
       || !obstacle.id.trim() || !finiteRect(obstacle.rect))) {
