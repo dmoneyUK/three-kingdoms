@@ -1,13 +1,19 @@
 # HANDOVER
 
-**Latest delivery:** §10.76-B correction `a17737f9ba8beb3b7ce9bd8f33e608d7549d1fc5` is pushed to `ux-v2`. Exact-SHA [Actions 45636750834](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45636750834) passed API, lint/fast, browser startup/H4 smoke, D1 migration, Worker deployment and production smoke. Worker version `6e4512fb-bbd0-4dcc-826e-565bcbd0b251`; direct `/api/health` returned HTTP 200. Focused layout tests passed 28/28, targeted ESLint and `git diff --check` passed. Local UI/browser tests were skipped because §10.76-B's combined five-minute budget was exhausted in the prior run.
-
 ## Current bounded task — §10.76-B shared committed Effect Frame delivery
 
-**Design:** latest remote `docs/UX2-refine.md`, 2026-11-25 08:17 UTC. Complete stationary Effect Frame clearance is 5 CSS px; ordinary CardFaces and parked miniatures remain at 8 px.
+**Status:** IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW. §10.76-B remains NOT CLOSED pending the Owner's phone review.
 
-**Delivered correction:** failed REVEAL geometry is observed and retried after owned geometry changes only when room, root, interaction, event, physical card and viewer still match. The shared layout validator accepts the approved 5px Effect Frame clearance and preserves ordinary-card 8px validation. No identity, privacy or game rules were loosened.
+**Design reviewed:** latest remote `docs/UX2-refine.md` §10.76-B, controlling 15:27 UTC Code Review correction. Work was based on `origin/ux-v2` `83d48d115d6cc8726c3aa819f1099d243353b0a9`.
 
-**Remaining proof / status:** the actual 390×844 full-frame/H4 clearance, bounded REVEAL → MOVE → PARKED progression and material-owner thumbnail are not verified by this delivery. Keep §10.76-B **NOT CLOSED / PENDING OWNER iPHONE REVIEW**; passing CI and production smoke do not establish that geometry.
+**Implementation:** commit `f492ab18d4ee5723b1aeffdc05f7bec423799abe`, pushed to `ux-v2`.
 
-**Resume point:** obtain the Owner's production iPhone result for this exact deployment. Do not start another task or rerun local UI/browser tests within the exhausted budget.
+- In a proven Effect Frame REVEAL, a matching public H4 remains required; PAC message content may be absent while its canonical reserved band remains mandatory. If a real PAC is mounted, its visibility and measured clearance are still checked.
+- REVEAL requires safe center placement and painted frame. MOVE/PARKED readiness now depends on the current viewer's measured real parking target; these phases no longer require retired reveal-center geometry and remain renderable when that center is absent.
+- Stationary Effect Frame clearance uses actual measured complete-frame, H4 and PAC/reserve rectangles with an exact 5px minimum. The solver keeps 0.5px headroom; ordinary CardFaces and parked miniatures retain their 8px rules.
+
+**Files changed:** `app/public-card-display.tsx`, `app/public-stage-layout-context.tsx`, `game/public-stage-layout.ts`, `tests/public-stage-layout.test.mjs`.
+
+**Validation:** focused layout tests 30/30 passed; targeted ESLint 0 errors (15 existing React Hooks warnings); `git diff --check` passed. Local UI/browser tests were SKIPPED because this bounded task's combined five-minute budget was already exhausted; the budget was not reset. Exact-SHA [GitHub Actions run 45650453378](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45650453378) succeeded: API tests, lint/fast tests, build, required browser startup/visible-H4 smoke, D1 migrations, Worker deploy and production smoke. Worker version `0dddffbf-727c-4e21-b954-f2f53b122519`. Direct production checks returned `/` HTTP 200 and `/api/health` `{"ok":true,"worker":"available"}` (HTTP 200).
+
+**Owner review still required:** verify on iPhone the real Kirin/Frost complete frame with matching H4 and PAC naturally absent/present, actual ≥5px gaps, bounded REVEAL→MOVE→PARKED completion at the genuine material-owner miniature, and unaffected ordinary-card presentation. CI smoke does not establish this phone geometry/lifecycle. Wait for Owner review; do not start another task or mark USER-ACCEPTED.
