@@ -19,6 +19,9 @@ export function verifyAiStagingConfig(config) {
   if (config?.workers_dev !== true) {
     throw new Error("Staging Worker must have workers_dev enabled");
   }
+  if (config?.preview_urls !== false) {
+    throw new Error("Staging Worker preview URLs must be disabled");
+  }
   if (config?.version_metadata?.binding !== "CF_VERSION_METADATA") {
     throw new Error("Staging Worker must bind its deployed version metadata");
   }
@@ -79,6 +82,7 @@ export function verifyAiStagingConfig(config) {
     stagingDatabaseIdMatches: true,
     productionDatabaseExcluded: true,
     workersDev: true,
+    previewUrls: false,
     workersLogsEnabled: true,
     automaticInvocationLogsDisabled: true,
     headSamplingRate: 1,

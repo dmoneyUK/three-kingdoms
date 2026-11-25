@@ -9,6 +9,7 @@ function validConfig() {
     targetEnvironment: "ai-staging",
     name: AI_STAGING_TARGET.workerName,
     workers_dev: true,
+    preview_urls: false,
     version_metadata: { binding: "CF_VERSION_METADATA" },
     observability: { enabled: true, head_sampling_rate: 1, logs: { invocation_logs: false } },
     vars: { BOT_AI_ENABLED: "false", BOT_DEMO_ENABLED: "true", BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT: "true", BOT_DIAGNOSTICS_ENABLED: "true", BOT_DIAGNOSTICS_PRIVATE_STAGING: "true" },
@@ -28,6 +29,7 @@ test("accepts the exact isolated Staging Worker and D1 target", () => {
     stagingDatabaseIdMatches: true,
     productionDatabaseExcluded: true,
     workersDev: true,
+    previewUrls: false,
     workersLogsEnabled: true,
     automaticInvocationLogsDisabled: true,
     headSamplingRate: 1,
@@ -47,6 +49,7 @@ test("the recovery Cron is configured only in the AI Staging Wrangler environmen
   assert.equal(config.triggers, undefined, "root/default production config has no Cron trigger");
   assert.equal(config.observability, undefined, "root/default production config does not enable Workers Logs");
   assert.deepEqual(config.env?.["ai-staging"]?.observability, { enabled: true, head_sampling_rate: 1, logs: { invocation_logs: false } });
+  assert.equal(config.env?.["ai-staging"]?.preview_urls, false, "AI Staging must not publish preview URLs");
   assert.equal(config.observability?.logs?.invocation_logs, undefined, "default Worker keeps existing invocation log behavior");
   assert.deepEqual(config.env?.["ai-staging"]?.triggers?.crons, ["* * * * *"]);
   assert.notEqual(config.vars?.BOT_DEMO_ENABLED, "true", "root/default Worker cannot enable bot demo seats");
@@ -100,6 +103,7 @@ test("rejects a config that contains the production database ID anywhere", () =>
 
 test("rejects unsafe Worker flags, AI enablement, or extra D1 bindings", () => {
   assert.throws(() => verifyAiStagingConfig({ ...validConfig(), workers_dev: false }), /workers_dev/);
+  assert.throws(() => verifyAiStagingConfig({ ...validConfig(), preview_urls: true }), /preview URLs/);
   assert.throws(() => verifyAiStagingConfig({ ...validConfig(), version_metadata: undefined }), /version metadata/);
   assert.throws(() => verifyAiStagingConfig({ ...validConfig(), vars: { BOT_AI_ENABLED: "true" } }), /BOT_AI_ENABLED/);
   assert.throws(() => verifyAiStagingConfig({ ...validConfig(), vars: { BOT_AI_ENABLED: "false", BOT_DEMO_ENABLED: "false" } }), /BOT_DEMO_ENABLED/);

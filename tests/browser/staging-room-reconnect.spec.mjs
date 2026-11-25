@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { botTriggerChoices } from "../../ai/trigger-selection.ts";
 import { classifyBotCycle, classifyRejoinCheckpoint, extendProgressDeadline } from "./staging-room-reconnect-logic.mjs";
+import { classifyRejoinFailure, createRejoinDiagnostics, sessionEvidence, waitForRejoinResponse } from "./staging-room-reconnect-diagnostics.mjs";
 
 function isPostAction(response, action) {
   if (new URL(response.url()).pathname !== "/api/rooms" || response.request().method() !== "POST") return false;
@@ -108,7 +109,10 @@ async function readRoom(request, roomCode, token) {
 }
 
 test("mobile browser creates a Staging room, runs genuine bots, and rejoins after refresh", async ({ page, request }, testInfo) => {
-  test.setTimeout(25 * 60_000);
+  const testStartedAt = Date.now();
+  // Keep the existing 25-minute smoke bounded below the 30-minute job so the
+  // always-run lifecycle containment step has time to execute after a stall.
+  test.setTimeout(24 * 60_000);
   const expectedBuildSha = process.env.NEXT_PUBLIC_BUILD_SHA;
   if (process.env.CI === "true" && !/^[0-9a-f]{40}$/.test(expectedBuildSha ?? "")) {
     throw new Error("NEXT_PUBLIC_BUILD_SHA must identify the current CI commit");
@@ -414,37 +418,96 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
   if (expectedBuildSha) await expect(page.locator(".stage-system-build-sha")).toHaveAttribute("data-build-sha", expectedBuildSha);
 
   const stateBeforeRefresh = await waitForRoom(request, roomCode, created.token, (room) => room.status === "playing" || room.status === "finished");
-  const rejoinResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return url.pathname === "/api/rooms"
-      && response.request().method() === "GET"
-      && url.searchParams.has("code")
-      && url.searchParams.has("token");
-  });
-  await page.reload();
-  const rejoinResponse = await rejoinResponsePromise;
-  expect(rejoinResponse.status()).toBe(200);
-  const rejoined = await rejoinResponse.json();
-  const rejoinedRoom = rejoined.room ?? rejoined;
-  expect(rejoinedRoom.code).toBe(roomCode);
-  const hostBeforeRefresh = stateBeforeRefresh.players.find((player) => player.id === hostId);
-  const hostAfterRefresh = rejoinedRoom.players.find((player) => player.id === hostId);
-  expect(hostAfterRefresh?.id).toBe(hostId);
-  if (hostBeforeRefresh?.alive === false) expect(hostAfterRefresh?.alive).toBe(false);
-  if (stateBeforeRefresh.status === "playing" && hostBeforeRefresh?.alive !== false
-    && stateBeforeRefresh.currentAction?.actorId === hostId) {
-    expect(rejoinedRoom.status).toBe("playing");
-    expect(rejoinedRoom.actionRevision).toBe(stateBeforeRefresh.actionRevision, "rejoining an active human decision does not advance the room");
-  } else {
-    // Revisions are opaque state fingerprints; background Bot decisions may
-    // change them while a defeated viewer refreshes, so they have no ordering.
-    expect(typeof rejoinedRoom.actionRevision).toBe("string");
-    expect(rejoinedRoom.actionRevision.length).toBeGreaterThan(0);
-    expect(stateBeforeRefresh.status === "finished" ? ["finished"] : ["playing", "finished"]).toContain(rejoinedRoom.status);
-  }
-  if (botDemoEnabled) expect(rejoinedRoom.players.filter((player) => player.isBot)).toHaveLength(3);
+  const diagnostics = createRejoinDiagnostics({ roomCode, expectedToken: created.token, startedAt: testStartedAt });
+  const onRequest = (requestEvent) => diagnostics.requestStarted(requestEvent.url(), requestEvent.method(), requestEvent.resourceType());
+  const onRequestFailed = (requestEvent) => {
+    diagnostics.requestFailed(requestEvent.url(), requestEvent.method(), requestEvent.resourceType());
+    diagnostics.failure(classifyRejoinFailure({ requestFailed: true }));
+  };
+  const onResponse = (responseEvent) => {
+    const requestEvent = responseEvent.request();
+    diagnostics.response(responseEvent.url(), requestEvent.method(), responseEvent.status(), requestEvent.resourceType());
+    if (responseEvent.status() === 1102 || responseEvent.status() >= 500) {
+      void responseEvent.text().then((body) => {
+        diagnostics.failure(classifyRejoinFailure({ status: responseEvent.status(), body }));
+      }).catch(() => {});
+    }
+  };
+  const attachDiagnostics = async () => {
+    await testInfo.attach("staging-rejoin-diagnostics", {
+      body: JSON.stringify(diagnostics.snapshot(), null, 2),
+      contentType: "application/json",
+    });
+  };
+  page.on("request", onRequest);
+  page.on("requestfailed", onRequestFailed);
+  page.on("response", onResponse);
+  try {
+    diagnostics.phase("before_reload");
+    const beforeSession = await page.evaluate(() => JSON.parse(localStorage.getItem("three-realms-session") ?? "null"));
+    diagnostics.session("beforeReload", sessionEvidence({ session: beforeSession, roomCode, expectedToken: created.token }));
+    const remainingBudgetMs = Math.max(8_000, testInfo.timeout - (Date.now() - testStartedAt) - 1_000);
+    const rejoinTimeoutMs = Math.min(45_000, remainingBudgetMs);
+    const rejoinResponsePromise = waitForRejoinResponse(page, {
+      roomCode,
+      expectedToken: created.token,
+      diagnostics,
+      timeoutMs: rejoinTimeoutMs,
+    }).catch((error) => ({ error }));
+    let reloadError = null;
+    diagnostics.phase("reload_started");
+    try {
+      await page.reload({ waitUntil: "domcontentloaded", timeout: Math.min(30_000, rejoinTimeoutMs) });
+      diagnostics.phase("reload_completed");
+    } catch (error) {
+      reloadError = error;
+      diagnostics.failure(classifyRejoinFailure({ errorMessage: error?.message }));
+    }
+    const responseResult = await rejoinResponsePromise;
+    if (reloadError) throw reloadError;
+    if (responseResult?.error) throw responseResult.error;
+    const rejoinResponse = responseResult;
+    expect(rejoinResponse.status()).toBe(200);
+    const rejoined = await rejoinResponse.json();
+    const rejoinedRoom = rejoined.room ?? rejoined;
+    expect(rejoinedRoom.code).toBe(roomCode);
+    const hostBeforeRefresh = stateBeforeRefresh.players.find((player) => player.id === hostId);
+    const hostAfterRefresh = rejoinedRoom.players.find((player) => player.id === hostId);
+    expect(hostAfterRefresh?.id).toBe(hostId);
+    if (hostBeforeRefresh?.alive === false) expect(hostAfterRefresh?.alive).toBe(false);
+    if (stateBeforeRefresh.status === "playing" && hostBeforeRefresh?.alive !== false
+      && stateBeforeRefresh.currentAction?.actorId === hostId) {
+      expect(rejoinedRoom.status).toBe("playing");
+      expect(rejoinedRoom.actionRevision).toBe(stateBeforeRefresh.actionRevision, "rejoining an active human decision does not advance the room");
+    } else {
+      // Revisions are opaque state fingerprints; background Bot decisions may
+      // change them while a defeated viewer refreshes, so they have no ordering.
+      expect(typeof rejoinedRoom.actionRevision).toBe("string");
+      expect(rejoinedRoom.actionRevision.length).toBeGreaterThan(0);
+      expect(stateBeforeRefresh.status === "finished" ? ["finished"] : ["playing", "finished"]).toContain(rejoinedRoom.status);
+    }
+    if (botDemoEnabled) expect(rejoinedRoom.players.filter((player) => player.isBot)).toHaveLength(3);
 
-  await expect(page.locator(".game-shell")).toBeVisible();
-  await expect(page.locator(".room b")).toHaveText(roomCode);
-  if (expectedBuildSha) await expect(page.locator(".stage-system-build-sha")).toHaveAttribute("data-build-sha", expectedBuildSha);
+    try {
+      await expect(page.locator('[data-client-ready="true"]')).toBeVisible({ timeout: Math.min(15_000, remainingBudgetMs) });
+      diagnostics.markReady();
+    } catch (error) {
+      diagnostics.failure(classifyRejoinFailure({ errorMessage: error?.message }));
+      throw error;
+    }
+    const afterSession = await page.evaluate(() => JSON.parse(localStorage.getItem("three-realms-session") ?? "null"));
+    diagnostics.session("afterReload", sessionEvidence({ session: afterSession, roomCode, expectedToken: created.token }));
+    expect(diagnostics.snapshot().session.afterReload.matches).toBe(true);
+    await expect(page.locator(".game-shell")).toBeVisible();
+    await expect(page.locator(".room b")).toHaveText(roomCode);
+    if (expectedBuildSha) await expect(page.locator(".stage-system-build-sha")).toHaveAttribute("data-build-sha", expectedBuildSha);
+    await attachDiagnostics();
+  } catch (error) {
+    await attachDiagnostics();
+    throw error;
+  } finally {
+    page.off("request", onRequest);
+    page.off("requestfailed", onRequestFailed);
+    page.off("response", onResponse);
+  }
 });
