@@ -966,6 +966,14 @@ function committedDiscardChangesFromTransitions(
 function genericStageLabel(stage: string) {
   return stage.toLowerCase().split("_").map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part).join(" ");
 }
+function isStauchnessConsequenceChoice(option: ReturnType<typeof triggerOptionsFor>[number]) {
+  const selection = option.selection;
+  if (option.effectId !== "xiahou_dun_ganglie" || option.allowDecline !== false || selection?.type !== "choice") return false;
+  const ids = selection.choices.map((choice) => choice.id);
+  return ids.includes("take_damage")
+    && ids.every((id) => id === "take_damage" || id === "discard_two")
+    && (!ids.includes("discard_two") || selection.cardCountByChoice?.discard_two === 2);
+}
 function publicNextDecisionFor(presentation: PresentationV2, pending: Pending | null, triggerContext: ReturnType<typeof triggerContextFor>, triggerOptions: ReturnType<typeof triggerOptionsFor>): PublicPresentationDecision | null {
   const scene = presentation.interactionScene;
   const stable = presentation.stableBoundary;
@@ -1028,6 +1036,7 @@ function publicNextDecisionFor(presentation: PresentationV2, pending: Pending | 
   } else if (trigger && triggerContext) {
     const privateOpportunity = privateOpportunityWindowEffectIds(triggerContext, trigger.resolvedEffectIds ?? []).length > 0;
     const publicOptions = triggerOptions.filter((option) => triggerAvailability(option.effectId, triggerContext) === "public");
+    const stauchnessConsequenceChoice = publicOptions.some(isStauchnessConsequenceChoice);
     const actorIsPublic = scene.decisionActorId === trigger.actorId
       || publicOptions.length > 0 && !privateOpportunity;
     if (privateOpportunity || !actorIsPublic) {
@@ -1038,7 +1047,8 @@ function publicNextDecisionFor(presentation: PresentationV2, pending: Pending | 
       actorIds = [scene.decisionActorId ?? trigger.actorId];
       actionLabels = publicOptions.map((option) => option.label).filter((label) => label.trim().length > 0 && label.length <= 160);
       if (publicOptions.some(triggerAllowsDecline)) actionLabels.push("Skip");
-      if (publicOptions.length) stageLabel = "Skill decision";
+      if (publicOptions.length) stageLabel = stauchnessConsequenceChoice ? "Stauchness consequence choice" : "Skill decision";
+      if (stauchnessConsequenceChoice) actionLabels = [];
     }
   } else if (scene.decisionActorId && scene.participantRoles.decisionActorId === scene.decisionActorId) {
     actorIds = [scene.decisionActorId];

@@ -9,6 +9,7 @@ import { classifyRoomGetFailure, RoomGetError, RoomPollRecovery } from "../game/
 import { runSharedResponseExpiryAttempt } from "../game/shared-response-expiry";
 import { gameplayDeclineButtonClassName } from "./semantic-action-style";
 import { projectPublicEquipmentTargetPool } from "./public-equipment-target-pool";
+import { normalizeHandChoiceKeys, projectEligibleHandChoices, toggleHandChoiceKey } from "./hand-choice-selection";
 
 import { isEntourageDodgeFor } from "../game/entourage-presentation";
 
@@ -4306,6 +4307,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [targetCardZone, setTargetCardZone] = useState<"hand" | "equipment" | "judgement" | "">("");
   const [targetCardId, setTargetCardId] = useState("");
   const [triggerSelectedKeys, setTriggerSelectedKeys] = useState<string[]>([]);
+  const stauchnessChoiceSelectionIdentityRef = useRef("");
   const targetCardSubmissionRef = useRef("");
   const targetCardPickerSubmissionRef = useRef("");
   const triggerChoiceSubmissionRef = useRef("");
@@ -5077,6 +5079,32 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && option.effectId !== inlineChoiceTriggerOption?.effectId
     && !(option.selection?.type === "choice_and_target_cards" && option.allowDecline === false));
   const choiceTriggerOption = mandatoryChoiceTriggerOption ?? (inlineChoiceTriggerOption ? null : genericChoiceTriggerOption);
+  const stauchnessChoiceActive = Boolean(
+    triggerResponse && responseDecisionReady && choiceTriggerOption
+    && isStauchnessConsequenceOption(choiceTriggerOption)
+    && room.currentAction?.actorId === room.meId
+    && canUseAction(room.currentAction, "trigger"),
+  );
+  const stauchnessEligibleHandChoices = useMemo(() => stauchnessChoiceActive && choiceTriggerOption?.selection?.type === "choice"
+    ? projectEligibleHandChoices(choiceTriggerOption.selection.eligibleHandKeys, room.myHand)
+    : [], [choiceTriggerOption, room.myHand, stauchnessChoiceActive]);
+  const stauchnessEligibleHandKeys = stauchnessEligibleHandChoices.map(({ key }) => key);
+  const stauchnessEligibleKeyByCardId = new Map(stauchnessEligibleHandChoices.map(({ key, cardId }) => [cardId, key]));
+  const stauchnessChoiceSelectionIdentity = stauchnessChoiceActive && choiceTriggerOption?.selection?.type === "choice"
+    ? JSON.stringify([
+      room.code, room.meId, room.actionRevision ?? "", choiceTriggerOption.effectId, triggerChoice,
+      choiceTriggerOption.selection.eligibleHandKeys, stauchnessEligibleHandChoices,
+    ])
+    : "";
+  const stauchnessSelectionContextCurrent = stauchnessChoiceActive
+    && stauchnessChoiceSelectionIdentityRef.current === stauchnessChoiceSelectionIdentity;
+  const stauchnessSelectedKeys = stauchnessSelectionContextCurrent
+    ? normalizeHandChoiceKeys(triggerSelectedKeys, stauchnessEligibleHandKeys)
+    : [];
+  const stauchnessSelectedCardIds = stauchnessSelectedKeys.flatMap((key) => {
+    const projected = stauchnessEligibleHandChoices.find((entry) => entry.key === key);
+    return projected ? [projected.cardId] : [];
+  });
   const selectedTriggerOption = choiceTriggerOption ?? triggerOptions.find((option) => option.effectId === responseProviderId) ?? null;
   // Mapped Hero skills (such as Retaliation) must be activated from the
   // profile before their target-card picker appears. Supported effects route
@@ -5128,7 +5156,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const triggerSelectionUsesChoice = triggerSelection?.type === "choice";
   const triggerSelectionMax = triggerSelectionUsesCards ? triggerSelection.max : 0;
   const triggerSelectedCardIds = triggerSelectionMax === 1 ? (serpentSelected.length ? serpentSelected : selected ? [selected] : []) : serpentSelected;
-  const triggerSelectionKeys = triggerSelectionUsesChoice ? triggerSelectedKeys : [];
+  const triggerSelectionKeys = triggerSelectionUsesChoice
+    ? stauchnessChoiceActive ? stauchnessSelectedKeys : triggerSelectedKeys
+    : [];
   const triggerChoiceHandCount = triggerSelectionUsesChoice && triggerChoice ? triggerSelection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0;
   const triggerSelectionComplete = Boolean(triggerSelection && ((triggerSelectionUsesCards && triggerSelectedCardIds.length >= triggerSelection.min && triggerSelectedCardIds.length <= triggerSelection.max) || (triggerSelectionUsesChoice && triggerChoice && triggerSelectionKeys.length === triggerChoiceHandCount)));
   const selectedHandDetailsCardId = room.phase === "discard"
@@ -5136,7 +5166,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : activeSkillSelection
       ? activeSkillStateIsCurrent ? activeSkillSelectedCardIds.at(-1) ?? "" : ""
       : triggerResponse
-        ? triggerSelectionUsesCards ? triggerSelectedCardIds.at(-1) ?? "" : ""
+        ? stauchnessChoiceActive ? stauchnessSelectedCardIds.at(-1) ?? "" : triggerSelectionUsesCards ? triggerSelectedCardIds.at(-1) ?? "" : ""
         : canRespond && responseSelectionUsesCards
           ? responseSelectionMax > 1 ? responseSelectedCardIds.at(-1) ?? "" : selected
           : serpentMode ? serpentSelected.at(-1) ?? "" : selected;
@@ -5210,9 +5240,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && dyingFirstAidOption,
   );
   const dyingFirstAidSelectionActive = Boolean(dyingFirstAidAvailable && responseProviderId === "hua_tuo_first_aid" && selectedResponseProvider?.providerId === "hua_tuo_first_aid");
-  const responseCardAllowed = (item: Card) => activeSkillSelection ? true : selectedResponseProvider?.selection?.type === "cards"
-    ? selectedResponseProvider.selection.eligibleCardIds.includes(item.id)
-    : triggerCardOption?.selection?.type === "cards" && triggerCardOption.selection.eligibleCardIds.includes(item.id);
+  const responseCardAllowed = (item: Card) => stauchnessChoiceActive
+    ? triggerChoice === "discard_two" && stauchnessEligibleKeyByCardId.has(item.id)
+    : activeSkillSelection ? true : selectedResponseProvider?.selection?.type === "cards"
+      ? selectedResponseProvider.selection.eligibleCardIds.includes(item.id)
+      : triggerCardOption?.selection?.type === "cards" && triggerCardOption.selection.eligibleCardIds.includes(item.id);
   const responseCardSelectionActive = Boolean(responseCardSelectionReady || dyingFirstAidSelectionActive);
   const heroResponseEffectIds = new Set(Object.values(HERO_SKILL_RESPONSE_IDS[me?.hero ?? ""] ?? {}).flat());
   const genericResponseOptions = semanticResponseOptions.filter((option) => option.activation === "explicit" && !heroResponseEffectIds.has(option.providerId)).map((option) => ({ ...option, label: option.selection ? stablePrecommitOwnerLabel(option.label) : conciseActionLabel(option.label) }));
@@ -6510,6 +6542,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => { if (!visibleInfoCard && !infoHero && !expandedOpponentId) return; const close = (event: KeyboardEvent) => { if (event.key !== "Escape") return; if (visibleInfoCard) { closeCardDetails(); return; } if (infoHero) { closeHeroDetails(); return; } if (nestedInspectorCardDetailDismissRef.current?.()) return; closeOpponentInspection(); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [visibleInfoCard, infoHero, expandedOpponentId, closeCardDetails, closeHeroDetails, closeOpponentInspection]);
   useEffect(() => { heroInfoReturnFocusRef.current = null; const timer = setTimeout(() => setInfoHero(null), 0); return () => clearTimeout(timer); }, [room.code, room.meId]);
   useEffect(() => { const timer = setTimeout(() => { setSelected(""); setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setTargetIds([]); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setDiscardSelected([]); setSerpentMode(false); setSerpentSelected([]); setResponseProviderId(""); }, 0); return () => clearTimeout(timer); }, [room.code, room.turnSeat, room.phase, room.meId]);
+  useEffect(() => {
+    if (stauchnessChoiceSelectionIdentityRef.current === stauchnessChoiceSelectionIdentity) return;
+    stauchnessChoiceSelectionIdentityRef.current = stauchnessChoiceSelectionIdentity;
+    setTriggerSelectedKeys([]);
+  }, [stauchnessChoiceSelectionIdentity]);
   // A response may advance to another decision without changing the turn,
   // phase, or acting seat. The authoritative revision identifies that new
   // decision and prevents a previous provider/cost from leaking into it.
@@ -12366,7 +12403,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       }>
         <div className="local-hand-section" data-five-seat-phone-attack-mode={fiveSeatPhoneAttackMode ? "true" : undefined} data-raining-arrows-dodge-providers={rainingArrowsHasHandDodgeProvider ? "available" : undefined}>
           <div className="local-hand" data-card-origin-anchor={room.meId} aria-label="Your hand">{(() => {
-            const multiSelectMode = room.phase === "discard" || Boolean(activeSkillSelection || serpentMode || responseSelectionMax > 1 || triggerSelectionMax > 1);
+            const multiSelectMode = room.phase === "discard" || Boolean(activeSkillSelection || serpentMode || responseSelectionMax > 1 || triggerSelectionMax > 1 || stauchnessChoiceActive);
             const responseSelectionLimit = triggerResponse && triggerSelectionUsesCards ? triggerSelection.max : responseSelectionUsesCards ? responseSelection.max : 2;
             const toggleHandCard = (item: Card) => {
               setLocalPlayTargetNotice(null);
@@ -12374,6 +12411,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               if (infoCard && infoCardContext === "private-hand") closeCardDetails(false);
               const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1;
               if (room.phase === "discard") setDiscardSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < excessCards ? [...ids, item.id] : ids);
+              else if (stauchnessChoiceActive) {
+                const key = stauchnessEligibleKeyByCardId.get(item.id);
+                if (key && triggerChoice === "discard_two") {
+                  setTriggerSelectedKeys((keys) => toggleHandChoiceKey(keys, key, stauchnessEligibleHandKeys, triggerChoiceHandCount));
+                }
+              }
               else if (activeSkillSelection) toggleActiveSkillCardSelection(item.id);
               else if (costSelection) setSerpentSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < responseSelectionLimit ? [...ids, item.id] : ids);
               else { setSelected((id) => id === item.id ? "" : item.id); setTarget(""); }
@@ -12382,14 +12425,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             const renderHandCard = (item: Card, index: number) => {
               const definition = cardDefinition(item.kind);
               const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1;
-              const selectedCardIds = room.phase === "discard" ? discardSelected : activeSkillSelection ? activeSkillSelectedCardIds : costSelection ? serpentSelected : selected ? [selected] : [];
+              const stauchnessKey = stauchnessEligibleKeyByCardId.get(item.id);
+              const stauchnessCardSelected = Boolean(stauchnessKey && stauchnessSelectedKeys.includes(stauchnessKey));
+              const stauchnessCardDisabled = stauchnessChoiceActive && (triggerChoice !== "discard_two" || !stauchnessKey
+                || !stauchnessCardSelected && stauchnessSelectedKeys.length >= triggerChoiceHandCount);
+              const selectedCardIds = room.phase === "discard" ? discardSelected : stauchnessChoiceActive ? stauchnessSelectedCardIds : activeSkillSelection ? activeSkillSelectedCardIds : costSelection ? serpentSelected : selected ? [selected] : [];
               const isSelected = selectedCardIds.includes(item.id);
               const singleSelected = !multiSelectMode && isSelected;
               const multiSelected = multiSelectMode && isSelected;
               const multiSelectionOrder = multiSelected ? selectedCardIds.indexOf(item.id) : -1;
               const maySelect = (room.isMyTurn && (canPlay || room.phase === "discard")) || responseCardSelectionReady || rescueDecisionReady;
               const skillModeCardDisabled = Boolean(activeSkillTargetSelection || wushengMode && !wushengEligibleCardIds.has(item.id) || longdanMode && !longdanEligibleCardIds.has(item.id) || activeSkillSelection && !activeSkillSelection.eligibleCardIds.includes(item.id));
-              const cardActionDisabled = !maySelect || skillModeCardDisabled || responseCardDisabled(item);
+              const cardActionDisabled = !maySelect || skillModeCardDisabled || responseCardDisabled(item) || stauchnessCardDisabled;
               const inspectionAvailable = (room.status === "playing" || room.status === "finished") && cardActionDisabled && !isSelected;
               const inspectFocused = inspectionAvailable && inspectOnlyHandCardId === item.id;
               const actionDetailsSelected = selectedHandDetailsCard?.id === item.id;
@@ -12981,13 +13028,6 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
           onClick={() => onChoice(choice.id)}
         >{stauchnessConsequenceLabel(choice.id)}</button>)}
       </div>
-      {needsHandCard && <>
-        <span className="stauchness-hand-guidance">Hand cards only.</span>
-        {handRowOverflowing && <span className="target-card-picker-zone-scroll-hint">Swipe to see all hand cards</span>}
-        <div ref={handRowRef} className="target-card-picker-card-row choice-trigger-card-row stauchness-choice-card-row" aria-label="Eligible hand cards" data-hand-scrollable={handKeys.length > 4 ? "true" : undefined}>
-          {handKeys.map((key) => { const index = Number(key.slice(5)); const card = hand[index]; if (!card) return null; const selected = validSelectedKeys.includes(key); return <button type="button" key={key} className={`target-card-picker-card ${selected ? "selected" : ""}`} disabled={disabled || !placementReady} tabIndex={placementReady ? 0 : -1} aria-pressed={selected} aria-label={`${cardDefinition(card.kind).name} ${card.rank}${card.suit}`} onClick={() => onToggle(key)}><CardFace card={card} />{selected && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>; })}
-        </div>
-      </>}
       <CardPoolDecisionFooter
         className="stauchness-choice-footer"
         selectionCount={needsHandCard ? `${validSelectedKeys.length} / ${requiredHandCount} selected` : undefined}

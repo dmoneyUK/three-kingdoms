@@ -178,6 +178,20 @@ test("public next-decision copy narrates a combined suit and hidden-card choice"
   assert.deepEqual(playerIds(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: current })).textSegments), ["p2"]);
 });
 
+test("public PAC names the proven Stauchness consequence chooser without exposing the private selection", () => {
+  const current = snapshot({ stage: "SEQUENTIAL_CHOICE", actorId: "p2", stableKind: "CHOICE" });
+  current.publicNextDecision.stageLabel = "Stauchness consequence choice";
+  current.publicNextDecision.actionLabels = [];
+  const views = players.map((viewer) => derivePublicActivityStatus(room({
+    phase: "response", presentationSnapshot: current, viewerId: viewer.id,
+    currentAction: { actorId: viewer.id, triggerSelectedKeys: viewer.id === "p2" ? ["hand:0", "hand:1"] : [] },
+  })));
+  assert.ok(views.every((view) => JSON.stringify(view) === JSON.stringify(views[0])));
+  assert.equal(views[0].text, "Waiting for Test Player 2 to choose a Stauchness consequence.");
+  assert.deepEqual(playerIds(views[0].textSegments), ["p2"]);
+  assert.doesNotMatch(JSON.stringify(views[0]), /hand:0|hand:1|triggerSelectedKeys|discard_two|take_damage/);
+});
+
 test("shared-window PAC exposes only the public requester identity consistently across viewers", () => {
   const current = snapshot({ stage: "ENTOURAGE", actorId: null, stableKind: "SPECIAL" });
   current.sharedResponseWindow = {

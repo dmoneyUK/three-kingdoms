@@ -632,7 +632,9 @@ test("real Jealousy of God obtains the effective delayed-Judgement card through 
 test("real Stauchness reaches its mandatory source-choice continuation after the Skills activation", async ({ page, browser, request }) => {
   test.setTimeout(90_000);
   const attack = card("Attack", "real-ganglie-attack");
-  const sourceCards = [card("Peach", "real-ganglie-source-peach", "♥"), card("Dodge", "real-ganglie-source-dodge", "♣")];
+  const paidSourceCards = [card("Peach", "real-ganglie-source-peach", "♥"), card("Dodge", "real-ganglie-source-dodge", "♣")];
+  const unselectedSourceCard = card("Dodge", "real-ganglie-source-third", "♠");
+  const sourceCards = [...paidSourceCards, unselectedSourceCard];
   const guicaiCard = card("Dodge", "real-ganglie-guicai-card", "♣");
   const seedData = await seed(request, [
     { name: "SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [attack, ...sourceCards] },
@@ -728,6 +730,8 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
       expect((await choiceButton.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
     }
     await expect(dialog.getByRole("button", { name: "Confirm Stauchness choice", exact: true })).toBeDisabled();
+    await expect(sourcePage.locator("[data-public-activity-chip]")).toBeVisible();
+    await expect(sourcePage.locator("[data-public-activity-chip]")).toContainText("Waiting for SOURCE to choose a Stauchness consequence.");
     const inspectedPlayerId = seedData.players[2].id;
     const inspectionOpener = sourcePage.locator(`[data-player-anchor="${inspectedPlayerId}"] .opponent-hero-target`);
     await inspectionOpener.click();
@@ -739,23 +743,41 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
     await expect(dialog).toBeVisible();
     await discardChoice.click();
     await expect(sourcePage.locator(".stauchness-choice-stage")).toHaveAttribute("data-stauchness-choice-ready", "true");
-    await expect(dialog.getByText("Hand cards only.", { exact: true })).toBeVisible();
-    const handCards = dialog.locator(".stauchness-choice-card-row .target-card-picker-card");
-    await expect(handCards).toHaveCount(2);
+    await expect(dialog.getByText("Hand cards only.", { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText("Swipe to see all hand cards", { exact: true })).toHaveCount(0);
+    await expect(dialog.locator(".stauchness-choice-card-row")).toHaveCount(0);
+    const handCards = paidSourceCards.map((paid) => sourcePage.locator(`[data-hand-card-id="${paid.id}"] button.game-card`));
+    const thirdHandCard = sourcePage.locator(`[data-hand-card-id="${unselectedSourceCard.id}"] button.game-card`);
     const confirm = dialog.getByRole("button", { name: "Confirm Stauchness card choice", exact: true });
+    const footerCount = dialog.locator(".card-pool-decision-footer__count");
+    const consoleCount = sourcePage.locator(".local-player-dock [data-console-selection-count]");
+    await expect(footerCount).toHaveText("0 / 2 selected");
+    await expect(consoleCount).toHaveAttribute("data-console-selection-count", "0");
     await expect(confirm).toBeDisabled();
-    await handCards.nth(0).click();
-    await expect(dialog.locator(".card-pool-decision-footer__count")).toHaveText("1 / 2 selected");
+    await handCards[0].click();
+    await expect(handCards[0]).toHaveAttribute("aria-pressed", "true");
+    await expect(footerCount).toHaveText("1 / 2 selected");
+    await expect(consoleCount).toHaveAttribute("data-console-selection-count", "1");
     await damageChoice.click();
+    await expect(handCards[0]).toBeDisabled();
+    await expect(consoleCount).toHaveAttribute("data-console-selection-count", "0");
     await expect(dialog.locator(".stauchness-choice-card-row")).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Confirm Stauchness choice", exact: true })).toBeEnabled();
     await discardChoice.click();
     await expect(sourcePage.locator(".stauchness-choice-stage")).toHaveAttribute("data-stauchness-choice-ready", "true");
-    await expect(dialog.locator(".card-pool-decision-footer__count")).toHaveText("0 / 2 selected");
+    await expect(footerCount).toHaveText("0 / 2 selected");
     await expect(confirm).toBeDisabled();
-    await handCards.nth(0).click();
-    await handCards.nth(1).click();
-    await expect(dialog.locator(".card-pool-decision-footer__count")).toHaveText("2 / 2 selected");
+    await handCards[0].click();
+    await expect(footerCount).toHaveText("1 / 2 selected");
+    await handCards[0].click();
+    await expect(footerCount).toHaveText("0 / 2 selected");
+    await handCards[0].click();
+    await handCards[1].click();
+    await expect(handCards[0]).toHaveAttribute("aria-pressed", "true");
+    await expect(handCards[1]).toHaveAttribute("aria-pressed", "true");
+    await expect(footerCount).toHaveText("2 / 2 selected");
+    await expect(consoleCount).toHaveAttribute("data-console-selection-count", "2");
+    await expect(thirdHandCard).toBeDisabled();
     await expect(confirm).toHaveText("Confirm");
     expect((await confirm.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
     const submittedPromise = sourcePage.waitForResponse((response) => response.url() === API + "/api/rooms"
@@ -767,10 +789,11 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
     expect(submitted.ok()).toBeTruthy();
     expect(submitted.request().postDataJSON()).toMatchObject({ action: "trigger", providerId: "xiahou_dun_ganglie", choice: "discard_two", cardKeys: ["hand:0", "hand:1"] });
     const committed = await submitted.json();
-    expect(committed.room.myHand).toHaveLength(0);
+    expect(committed.room.myHand).toEqual([unselectedSourceCard]);
+    expect(JSON.stringify(await view(request, seedData, 3))).not.toContain(unselectedSourceCard.id);
     expect(committed.room.players.find((player) => player.id === seedData.players[0].id).hp).toBe(4);
     const costEvent = committed.room.timeline.find((event) => event.type === "cards" && event.action === "discard"
-      && sourceCards.every((paid) => event.cards.some((revealed) => revealed.id === paid.id)));
+      && paidSourceCards.every((paid) => event.cards.some((revealed) => revealed.id === paid.id)));
     expect(costEvent).toBeTruthy();
     const committedOutcomeFact = [...(committed.room.presentationSnapshot.publicEventFacts ?? []), ...(committed.room.presentationSnapshot.retainedPublicEventFacts ?? [])]
       .find((fact) => fact.eventId === costEvent.id);

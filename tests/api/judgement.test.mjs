@@ -68,7 +68,22 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
     interaction: accepted.data.room.presentationSnapshot?.interaction,
     stable: accepted.data.room.presentationSnapshot?.stable,
   }));
-  assert.match(pendingPac.text, new RegExp(resolved.source.name));
+  assert.equal(pendingPac.text, `Waiting for ${resolved.source.name} to choose a Stauchness consequence.`);
+  assert.equal(accepted.data.room.presentationSnapshot?.publicNextDecision?.stageLabel, "Stauchness consequence choice");
+  assert.deepEqual(accepted.data.room.presentationSnapshot?.publicNextDecision?.actorIds, [resolved.source.id]);
+  assert.deepEqual(accepted.data.room.presentationSnapshot?.publicNextDecision?.actionLabels, []);
+  const observerView = (await state(resolved.code, resolved.members[3].token)).data;
+  const allViewerViews = [accepted.data.room, sourceView, targetView, observerView];
+  assert.ok(allViewerViews.every((view) => JSON.stringify(view.presentationSnapshot?.publicNextDecision)
+    === JSON.stringify(accepted.data.room.presentationSnapshot?.publicNextDecision)),
+  "the server-authored public decision is identical for chooser, affected player, and observers");
+  const allViewerPac = allViewerViews.map((view) => derivePublicActivityStatus({
+    status: view.status, phase: view.phase, turnSeat: view.turnSeat, players: view.players,
+    presentationSnapshot: view.presentationSnapshot,
+  }));
+  assert.ok(allViewerPac.every((status) => status.text === pendingPac.text), "all viewers receive the same chooser PAC");
+  assert.doesNotMatch(JSON.stringify(accepted.data.room.presentationSnapshot?.publicNextDecision), /hand:\d|ganglie-cost/,
+    "the public decision carries no private hand positions or card identities");
   const attackRoot = accepted.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-ganglie-discard-attack");
   assert.equal(pendingStauchness.fact.rootEventId, attackRoot?.id);
   const pendingResultEvent = accepted.data.room.timeline.find((event) => event.id === pendingStauchness.fact.eventId);

@@ -8495,12 +8495,12 @@
   flex: 0 1 auto;
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
+  gap: 4px;
   width: min(264px, calc(100vw - 24px));
   min-width: 0;
   max-width: min(100%, calc(100vw - 24px));
   max-height: min(240px, calc(100dvh - 24px));
-  padding: 10px;
+  padding: 8px;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -8520,36 +8520,19 @@
 .game-shell .play-table > .battlefield-choice-stage.stauchness-choice-stage .stauchness-choice-options {
   width: 100%;
   max-width: none;
-  gap: 6px;
+  gap: 3px;
   margin: 0;
 }
 .game-shell .play-table > .battlefield-choice-stage.stauchness-choice-stage .stauchness-choice-options > button {
-  min-height: 48px;
-  padding: 8px 9px;
+  min-height: 44px;
+  padding: 6px 8px;
   font: 600 11px/1.2 Arial, sans-serif;
   letter-spacing: 0;
   text-align: left;
   text-transform: none;
 }
-.game-shell .play-table > .battlefield-choice-stage.stauchness-choice-stage .stauchness-hand-guidance {
-  margin: -2px 0 0;
-  color: #d2c8b2;
-  font: 600 9px/1.2 Arial, sans-serif;
-}
-.game-shell .play-table > .battlefield-choice-stage.stauchness-choice-stage .stauchness-choice-card-row {
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 100%;
-  gap: 4px;
-  margin: 0;
-  padding: 0 0 2px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  touch-action: pan-x;
-}
 .game-shell .play-table > .battlefield-choice-stage.stauchness-choice-stage .stauchness-choice-footer {
-  --wtk-card-pool-action-width: 104px;
+  --wtk-card-pool-action-width: 88px;
   --wtk-card-pool-action-height: 44px;
   --wtk-card-pool-action-font-size: 10px;
   min-height: 48px;

@@ -1141,6 +1141,21 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
     }
   }
 
+  if (input.status === "playing" && input.phase === "response"
+    && nextDecision?.visibility === "PUBLIC"
+    && nextDecision.stageLabel === "Stauchness consequence choice"
+    && nextDecision.responseWindowOpen === true
+    && nextDecision.actorIds.length === 1
+    && interaction?.stage === nextDecision.stage
+    && interaction.decisionActorId === nextDecision.actorIds[0]) {
+    const chooser = playerPart(input.players, nextDecision.actorIds[0], true);
+    if (chooser) {
+      const copy = verifiedPlayerCopy(["Waiting for ", chooser, " to choose a Stauchness consequence."]);
+      return { kind: "response", text: copy.message, heading: copy.message, stage: nextDecision.stageLabel,
+        textSegments: copy.segments, headingSegments: copy.segments };
+    }
+  }
+
   if (input.status === "playing" && input.phase === "response" && nextDecision?.actorIds.length === 1) {
     const actor = playerPart(input.players, nextDecision.actorIds[0], true);
     if (actor) {
