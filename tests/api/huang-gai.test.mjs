@@ -35,7 +35,7 @@ function committedPublicSkillOutcomeFromHistory(view, rootEventId) {
     .at(-1);
 }
 
-function assertDyingPeachRecoveryFact(view, { peachId, rootEventId, actorId, targetId, sourceLabel, amount }) {
+function assertDyingPeachRecoveryFact(view, { peachId, rootEventId, actorId, targetId, sourceLabel, amount, expectedHeadline }) {
   const event = view.timeline.find((candidate) => candidate.action === "play" && candidate.card?.id === peachId);
   assert.ok(event, "the genuine rescue card remains the public physical-card event");
   const facts = [...(view.presentationSnapshot?.publicEventFacts ?? []), ...(view.presentationSnapshot?.retainedPublicEventFacts ?? [])];
@@ -60,7 +60,7 @@ function assertDyingPeachRecoveryFact(view, { peachId, rootEventId, actorId, tar
     rootFrameId: fact.identity.rootFrameId,
     eventId: event.id,
   });
-  assert.equal(narration?.headline, `${view.players.find((player) => player.id === actorId).name} ${sourceLabel}: ${view.players.find((player) => player.id === targetId).name} recovered ${amount} HP.`);
+  assert.equal(narration?.headline, expectedHeadline);
   assert.equal(view.timeline.some((candidate) => candidate.publicFact?.rootEventId === rootEventId
     && candidate.publicFact?.category === "EFFECT_APPLIED"
     && candidate.publicFact?.label === "Recovery"
@@ -197,6 +197,7 @@ test("1 HP Self Sacrifice resumes after Peach rescue and draws exactly once", as
     targetId: setup.source.id,
     sourceLabel: "Peach",
     amount: 1,
+    expectedHeadline: `${setup.rescuer.name} played Peach. ${setup.source.name} recovered 1 HP.`,
   });
   const outcome = publicSkillOutcomeFact(after, skillRoot.eventId);
   assert.ok(outcome, "the resumed public result is linked to the original committed skill root");
@@ -244,6 +245,7 @@ test("1 HP Self Sacrifice accepts First Aid rescue before drawing", async () => 
     targetId: setup.source.id,
     sourceLabel: "First Aid",
     amount: 1,
+    expectedHeadline: `${setup.rescuer.name} First Aid: ${setup.source.name} recovered 1 HP.`,
   });
   const outcome = publicSkillOutcomeFact(after, skillRoot.eventId);
   assert.deepEqual(outcome?.committedOutcome?.changes, [
