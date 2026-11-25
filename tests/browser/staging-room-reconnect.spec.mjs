@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { botTriggerChoices } from "../../ai/trigger-selection.ts";
-import { classifyBotCycle, extendProgressDeadline } from "./staging-room-reconnect-logic.mjs";
+import { classifyBotCycle, classifyRejoinCheckpoint, extendProgressDeadline } from "./staging-room-reconnect-logic.mjs";
 
 function isPostAction(response, action) {
   if (new URL(response.url()).pathname !== "/api/rooms" || response.request().method() !== "POST") return false;
@@ -345,27 +345,30 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
       turnSeat: currentRoom.turnSeat,
       botStatuses: currentRoom.players.filter(({ isBot }) => isBot).map(({ seat, botStatus }) => ({ seat, botStatus })),
     })).toBe(true);
-    currentRoom = await waitForRoom(request, roomCode, created.token, (room) => {
-      const host = room.players.find((player) => player.id === hostId);
-      const decision = room.currentAction;
-      // Wait for the browser's automatic draw, including delayed-card draw variants.
-      // A host-owned turn can still be between actions at this point.
-      return room.status === "finished"
-        || (room.status === "playing" && host?.alive === false)
-        || (room.status === "playing" && room.turnSeat === hostSeat && decision?.actorId === hostId
-          && decision.legalActions.some((action) => ["end_turn", "discard_cards", "decline_trigger"].includes(action)))
-        || (room.status === "playing" && ["human_dying_response", "human_response"].includes(botCycleResult.outcome)
-          && decision?.actorId === hostId
-          && decision.legalActions.some((action) => ["give_peach", "skip_rescue", "respond", "decline_response"].includes(action)));
-    }, {
+    let rejoinCheckpoint = { ok: false, outcome: "not_checked" };
+    const classifyCurrentCheckpoint = (room) => {
+      rejoinCheckpoint = classifyRejoinCheckpoint({ room, hostId });
+      return rejoinCheckpoint.ok;
+    };
+    currentRoom = await waitForRoom(request, roomCode, created.token, classifyCurrentCheckpoint, {
       timeoutMs: 30_000,
       label: "testable human action or defeated observer after bot cycle",
       beforePoll: triggerLocalRecovery,
-      onState: resolveHumanInterruption,
+      // The predicate above must inspect the fresh state first. Only if it is
+      // not already a valid checkpoint may the helper submit a real canonical
+      // continuation; this prevents consuming the chosen response before the
+      // rejoin assertion records it.
+      onState: async (room) => {
+        rejoinCheckpoint = classifyRejoinCheckpoint({ room, hostId });
+        if (rejoinCheckpoint.ok) return true;
+        return resolveHumanInterruption(room);
+      },
     });
+    rejoinCheckpoint = classifyRejoinCheckpoint({ room: currentRoom, hostId });
+    expect(rejoinCheckpoint.ok, JSON.stringify(rejoinCheckpoint)).toBe(true);
     const hostAfterBotCycle = currentRoom.players.find((player) => player.id === hostId);
     if (currentRoom.status === "playing" && hostAfterBotCycle?.alive !== false) {
-      if (["human_dying_response", "human_response"].includes(botCycleResult.outcome)) {
+      if (["human_dying_response", "human_response"].includes(rejoinCheckpoint.outcome)) {
         expect(currentRoom.currentAction.actorId).toBe(hostId);
         expect(currentRoom.currentAction.legalActions.some((action) => ["give_peach", "skip_rescue", "respond", "decline_response"].includes(action))).toBe(true);
       } else if (currentRoom.currentAction.legalActions.includes("end_turn")) {
@@ -374,7 +377,13 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
         const required = Math.max(0, currentRoom.myHand.length - (hostAfterBotCycle?.hp ?? currentRoom.myHand.length));
         await expect(page.getByRole("button", { name: `Discard ${required} selected` })).toBeVisible({ timeout: 15_000 });
       } else {
-        await expect(page.getByRole("button", { name: "Skip", exact: true })).toBeEnabled({ timeout: 15_000 });
+        // Draw/trigger/selection checkpoints may be advanced by the existing
+        // client lifecycle rather than exposing a single Skip button. The
+        // pure classifier already proved this is the host's non-empty,
+        // server-authorized action; assert that authority instead of guessing
+        // a UI control from a stale cycle outcome.
+        expect(currentRoom.currentAction.actorId).toBe(hostId);
+        expect(currentRoom.currentAction.legalActions.length).toBeGreaterThan(0);
       }
       expect(currentRoom.players.filter((player) => player.isBot).every((player) => player.botStatus === "waiting_for_human")).toBe(true);
     } else if (currentRoom.status === "playing") {

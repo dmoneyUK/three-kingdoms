@@ -5,6 +5,28 @@ const HUMAN_RESPONSE_ACTIONS = new Set([
   "skip_rescue",
 ]);
 
+// These are the only server-published actions that make a room a useful
+// rejoin checkpoint for the human host. Timer helpers and unknown values do
+// not prove that the host can act, and a Bot-owned decision must never be
+// mistaken for a human checkpoint.
+const HUMAN_CHECKPOINT_ACTIONS = new Set([
+  "draw",
+  "play_card",
+  "serpent_spear_attack",
+  "end_turn",
+  "discard_cards",
+  "respond",
+  "decline_response",
+  "trigger",
+  "decline_trigger",
+  "preview_harvest",
+  "choose_harvest",
+  "choose_target_card",
+  "choose_borrowed_sword_target",
+  "give_peach",
+  "skip_rescue",
+]);
+
 /**
  * Extend a bounded browser wait only after an authoritative room revision
  * advances. The no-progress deadline remains independent, and the hard cap
@@ -25,6 +47,44 @@ function meaningfulBotProgress(completedBotNames, expectedBotNames) {
     allCompleted: expected.length > 0 && expected.every((name) => completed.has(name)),
     anyCompleted: completed.size > 0,
   };
+}
+
+function hasUnsupportedBotState(room) {
+  return (room?.players ?? []).some((player) => player?.isBot
+    && ["unsupported", "error"].includes(player.botStatus));
+}
+
+/**
+ * Classify the *current* state used by the post-cycle rejoin checkpoint.
+ * `classifyBotCycle` records that meaningful Bot work happened; this helper
+ * then re-reads the latest authoritative projection so a later Bot draw/turn
+ * cannot be accepted using a stale cycle outcome.
+ */
+export function classifyRejoinCheckpoint({ room, hostId }) {
+  if (!room || typeof hostId !== "string" || !hostId) return { ok: false, outcome: "invalid_checkpoint" };
+  if (hasUnsupportedBotState(room)) return { ok: false, outcome: "unsupported_bot_state" };
+  if (room.status === "finished") return { ok: true, outcome: "finished" };
+
+  const host = (room.players ?? []).find((player) => player?.id === hostId);
+  if (!host) return { ok: false, outcome: "host_missing" };
+  if (host.alive === false) return { ok: true, outcome: "host_defeated" };
+
+  const decision = room.currentAction;
+  const legalActions = Array.isArray(decision?.legalActions) ? decision.legalActions : [];
+  const viewerNegationChoice = room.presentationSnapshot?.viewerNegationChoice;
+  if (decision?.sharedWindow?.locked === true
+    || decision?.negationWindowId
+    || viewerNegationChoice?.locked === true) {
+    return { ok: false, outcome: "locked_shared_or_negation" };
+  }
+  if (decision?.actorId !== hostId) return { ok: false, outcome: "not_host_action" };
+
+  const actionable = legalActions.filter((action) => HUMAN_CHECKPOINT_ACTIONS.has(action));
+  if (!actionable.length) return { ok: false, outcome: "empty_or_unsupported_host_action" };
+  if (decision.kind === "dying" || room.phase === "dying") return { ok: true, outcome: "human_dying_response" };
+  if (decision.kind === "response" || room.phase === "response") return { ok: true, outcome: "human_response" };
+  if (room.phase === "discard" || actionable.includes("discard_cards")) return { ok: true, outcome: "human_discard" };
+  return { ok: true, outcome: "human_actionable_turn" };
 }
 
 /**

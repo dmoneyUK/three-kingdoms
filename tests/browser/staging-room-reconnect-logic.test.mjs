@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyBotCycle, extendProgressDeadline } from "./staging-room-reconnect-logic.mjs";
+import { classifyBotCycle, classifyRejoinCheckpoint, extendProgressDeadline } from "./staging-room-reconnect-logic.mjs";
 
 const expectedBotNames = ["BOT 2", "BOT 3", "BOT 4"];
 const hostId = "host";
@@ -92,4 +92,73 @@ test("does not accept a Bot draw stall or a bare unresolved Dying state", () => 
     completedBotNames: [],
     expectedBotNames,
   }).outcome, "no_meaningful_bot_progress");
+});
+
+test("classifies a fresh host Dodge after the previous all-Bot outcome", () => {
+  const room = {
+    ...baseRoom,
+    phase: "response",
+    actionRevision: "opaque-revision-2",
+    currentAction: { kind: "response", actorId: hostId, requirement: "dodge", legalActions: ["respond", "decline_response"] },
+  };
+  assert.deepEqual(classifyRejoinCheckpoint({ room, hostId }), { ok: true, outcome: "human_response" });
+});
+
+test("does not accept a newer Bot draw, then accepts the later host response", () => {
+  const botDraw = {
+    ...baseRoom,
+    actionRevision: "opaque-revision-bot",
+    currentAction: { kind: "turn", actorId: "bot-4", legalActions: ["draw"] },
+  };
+  assert.deepEqual(classifyRejoinCheckpoint({ room: botDraw, hostId }), { ok: false, outcome: "not_host_action" });
+  const hostResponse = {
+    ...botDraw,
+    phase: "response",
+    actionRevision: "opaque-revision-host",
+    currentAction: { kind: "response", actorId: hostId, requirement: "dodge", legalActions: ["respond", "decline_response"] },
+  };
+  assert.deepEqual(classifyRejoinCheckpoint({ room: hostResponse, hostId }), { ok: true, outcome: "human_response" });
+});
+
+test("rejects locked shared, Negation and unsupported/error Bot states", () => {
+  const response = { ...baseRoom, phase: "response", currentAction: { kind: "response", actorId: hostId, legalActions: ["respond", "decline_response"] } };
+  assert.deepEqual(classifyRejoinCheckpoint({
+    room: { ...response, currentAction: { ...response.currentAction, sharedWindow: { windowId: "shared-1", locked: true, choice: "intent" } } },
+    hostId,
+  }), { ok: false, outcome: "locked_shared_or_negation" });
+  assert.deepEqual(classifyRejoinCheckpoint({
+    room: { ...response, currentAction: { ...response.currentAction, negationWindowId: "negation-1" } },
+    hostId,
+  }), { ok: false, outcome: "locked_shared_or_negation" });
+  assert.deepEqual(classifyRejoinCheckpoint({
+    room: { ...response, players: [{ id: hostId, alive: true }, { id: "bot-2", isBot: true, botStatus: "unsupported" }] },
+    hostId,
+  }), { ok: false, outcome: "unsupported_bot_state" });
+  assert.deepEqual(classifyRejoinCheckpoint({
+    room: { ...response, players: [{ id: hostId, alive: true }, { id: "bot-2", isBot: true, botStatus: "error" }] },
+    hostId,
+  }), { ok: false, outcome: "unsupported_bot_state" });
+});
+
+test("accepts terminal or defeated state, but rejects another actor and empty actions", () => {
+  assert.deepEqual(classifyRejoinCheckpoint({ room: { ...baseRoom, status: "finished" }, hostId }), { ok: true, outcome: "finished" });
+  assert.deepEqual(classifyRejoinCheckpoint({ room: { ...baseRoom, players: [{ id: hostId, alive: false }] }, hostId }), { ok: true, outcome: "host_defeated" });
+  assert.deepEqual(classifyRejoinCheckpoint({ room: baseRoom, hostId }), { ok: false, outcome: "not_host_action" });
+  assert.deepEqual(classifyRejoinCheckpoint({
+    room: { ...baseRoom, currentAction: { kind: "turn", actorId: hostId, legalActions: [] } },
+    hostId,
+  }), { ok: false, outcome: "empty_or_unsupported_host_action" });
+});
+
+test("preserves an opaque host checkpoint without consuming or rewriting it", () => {
+  const room = {
+    ...baseRoom,
+    actionRevision: "opaque-revision-retained",
+    phase: "response",
+    currentAction: { kind: "response", actorId: hostId, legalActions: ["respond", "decline_response"] },
+  };
+  const before = structuredClone(room);
+  assert.deepEqual(classifyRejoinCheckpoint({ room, hostId }), { ok: true, outcome: "human_response" });
+  assert.deepEqual(room, before);
+  assert.equal(room.actionRevision, "opaque-revision-retained");
 });
