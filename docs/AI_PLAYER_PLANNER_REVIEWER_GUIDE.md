@@ -6,7 +6,7 @@
 > AI product / executable task authority: `docs/AI_PLAYER_DESIGN.md`
 > Coding-agent execution protocol: `docs/AI_PLAYER_AGENT_WORKFLOW.md`
 > Coding-agent-only checkpoint: `AI_PLAYER_HANDOVER.md`
-> Version: **`AIP-G6` (2026-11-25)** — Owner-directed deliverable-sized autonomous units; independent Reviewer retrieves actual source/diffs/CI; short startup pointers only when needed
+> Version: **`AIP-G7` (2026-11-25)** — mandatory executor-only Agent; independent code, design and coverage review exclusively Planner/Reviewer; coherent delivery units
 >
 > **Permanent, task-neutral PROCESS GUIDE, not a current task/status report.** Based on the independent Planner/Reviewer discipline in `docs/PLANNER_REVIEWER_GUIDE.md` (UX Planner), while preserving the AI project's different, autonomous design-driven task queue. **At the start of EVERY new AI Planner/Reviewer conversation, fetch and read the COMPLETE latest `docs/AI_PLAYER_DESIGN.md` on the AI branch BEFORE designing or reviewing.**
 
@@ -51,6 +51,8 @@ The Owner has appointed a separate **Game Product Manager / independent cross-do
 **No blanket PM stop:** current authorized `AIP-PERF-01` recovery and other non-overlapping permitted work continue. New `AIP-PERF-GET-02`, `AIP-PERF-BOT-02`, `AIP-SCALE-*` and shared UX/transport designs retain their existing `DRAFT`/PM/UX2/Owner gates. PM decisions never supersede authoritative server legality, card conservation, private hands/roles, previously human-accepted UX2 behavior or human acceptance without an explicit authorized change.
 
 ## 0B. Owner-directed delivery-unit discipline (2026-11-25; mandatory)
+
+**Absolute Reviewer responsibility (Owner 2026-11-25 17:28 UTC):** NEVER assign the Coding Agent independent code review, source/test coverage audit, architecture analysis, design effectiveness assessment, next-task design, or investigation-only work. The Planner/Reviewer performs these directly using current GitHub source/diffs/CI and applicable PM/UX2 contracts, then specifies exact code changes and acceptance criteria. AIP-GAP-01 and any equivalent existing or future review/audit work are Reviewer-owned, not Agent queue entries. Distinguish execution from review: the Agent may read necessary source to implement the specified change, run targeted tests, fix its own ordinary implementation/CI defects, commit/push, deploy explicitly authorized Staging, and measure actual Cloudflare CPU/errors/health/cleanup AFTER deployment as part of delivery. Fixed operational preflight is allowed for safe execution; do not delegate architectural diagnosis or use standalone monitoring/investigation as a substitute for meaningful code implementation. Reviewer analyzes those factual measurements, independently evaluates code and decides next changes. No Agent-authored diff bundle, code audit, test-strength matrix, design proposal or self-review. If Reviewer cannot access evidence, obtain normal accessible source delivery or state the limitation; do not transfer review responsibility to the Agent. Before publishing each unit, remove superseded conflicting execution directives and confirm it contains an implementable change, delivery target and outcome rather than asking Agent to decide what should be improved.
 
 The Owner rejected fragmented investigation/checkpoint tasks and repeated manual copy/paste. **Plan coherent deliverables, not individual development steps.** This policy governs all future AI Planner reviews and supersedes conflicting micro-stop instructions; task-specific safety/acceptance/cost/PM gates remain binding.
 
