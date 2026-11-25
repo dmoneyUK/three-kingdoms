@@ -2,6 +2,7 @@
 import test from "node:test";
 import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import { selectPublicH4AnnouncementOwner } from "../../app/public-presentation-routing.ts";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
   advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestForViewer, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -891,6 +892,15 @@ test("Frost Sword prevents Attack damage only when its owner discards exactly tw
     { cardId: "peach-one", ownerId: alicePlayer.id, fromZone: "HAND", toZone: "DISCARD" },
     { cardId: "ferganasteed-frost-mount", ownerId: alicePlayer.id, fromZone: "EQUIPMENT", toZone: "DISCARD" },
   ]);
+  assert.equal(frostEvent.publicFact?.rootEventId, attack.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-attack")?.id,
+    "the Frost settlement stays linked to the committed Attack root");
+  assert.deepEqual(frostEvent.publicFact?.committedOutcome?.changes, [
+    { kind: "CARD_DISCARDED", playerId: alicePlayer.id, amount: 1, fromZone: "HAND", toZone: "DISCARD" },
+    { kind: "CARD_DISCARDED", playerId: alicePlayer.id, amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+  ], "the shared outcome contains only actual public discard counts and zones");
+  const frostOutcome = assertPublicOutcomeHasH4Owner(frost.data.room, frostEvent.id);
+  assert.equal(frostOutcome.narration.headline, `${hostPlayer.name} used Frost Sword to discard 2 cards from ${alicePlayer.name}.`);
+  assert.deepEqual(frostOutcome.owner, { eventId: frostEvent.id, owner: "PublicInteractionAnnouncementLayer" });
 
   setHand(hostPlayer.id, [card("Attack", "one-eligible-attack")], 4, 4); setHand(alicePlayer.id, [card("Peach", "one-eligible-target")], 4, 4); setEquipment(alicePlayer.id); setTurn(game.code, hostPlayer.seat);
   const oneEligibleAttack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-one-eligible-attack", targetId: alicePlayer.id });

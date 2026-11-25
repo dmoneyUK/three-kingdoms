@@ -1011,12 +1011,12 @@ test("an empty same-resolution completion cannot erase a proven Stauchness resul
   assert.equal(newerResolution?.headline, "Test Player 2 completed a separate effect.");
 });
 
-test("committed H4 source prefixes use one space and preserve verified player punctuation across all public deltas", () => {
+test("committed H4 uses natural damage copy and preserves verified source punctuation across other public deltas", () => {
   const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
   const cases = [
     ["HP_COST_LOST", { kind: "HP_COST_LOST", playerId: "p1", amount: 1 }, "Test Player 1 paid 1 HP as a cost.", ["p1", "p1"]],
     ["HP_LOST_TO_EFFECT", { kind: "HP_LOST_TO_EFFECT", playerId: "p1", amount: 1 }, "Test Player 1 lost 1 HP to an effect.", ["p1", "p1"]],
-    ["DAMAGE_APPLIED", { kind: "DAMAGE_APPLIED", playerId: "p1", amount: 1 }, "Test Player 1 lost 1 HP to damage.", ["p1", "p1"]],
+    ["DAMAGE_APPLIED", { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 }, "Test Player 1 dealt 1 damage to Test Player 2.", ["p1", "p2"]],
     ["HP_RECOVERED", { kind: "HP_RECOVERED", playerId: "p1", amount: 1 }, "Test Player 1 recovered 1 HP.", ["p1", "p1"]],
     ["CARD_DRAWN", { kind: "CARD_DRAWN", playerId: "p1", amount: 1 }, "Test Player 1 drew 1 card.", ["p1", "p1"]],
     ["CARD_DISCARDED", { kind: "CARD_DISCARDED", playerId: "p1", amount: 1 }, "Test Player 1 discarded 1 card.", ["p1", "p1"]],
@@ -1042,7 +1042,7 @@ test("committed H4 source prefixes use one space and preserve verified player pu
       snapshot: snapshot({ stage: "SETTLEMENT", publicEventFacts: [fact] }),
       players, rootEventId: "root-event", interactionId: identity.interactionId, rootFrameId: identity.rootFrameId,
     });
-    const expected = `Test Player 1 Verified Source: ${detail}`;
+    const expected = kind === "DAMAGE_APPLIED" ? detail : `Test Player 1 Verified Source: ${detail}`;
     assert.equal(narration?.headline, expected, `${kind} uses the common H4 source separator`);
     assert.equal(narration?.headlineSegments?.map((segment) => segment.text).join(""), expected,
       `${kind} typed fragments exactly reconstruct the rendered H4`);
@@ -1058,11 +1058,11 @@ test("committed H4 source prefixes use one space and preserve verified player pu
   assert.equal(formatCommittedPublicOutcome({ ...base, actorId: "p1" }, players),
     "Test Player 1 Kirin Bow — source detail: Test Player 1 equipped 1 item.");
   assert.equal(formatCommittedPublicOutcome({ ...base, actorId: "p1", source: { kind: "skill" } }, players),
-    "Test Player 1: Test Player 1 equipped 1 item.");
+    "Test Player 1 equipped 1 item.");
   assert.equal(formatCommittedPublicOutcome({ ...base, actorId: undefined }, players),
     "Kirin Bow — source detail: Test Player 1 equipped 1 item.");
   assert.equal(formatCommittedPublicOutcome({ ...base, actorId: undefined, source: { kind: "skill" } }, players),
-    "Public outcome: Test Player 1 equipped 1 item.");
+    "Test Player 1 equipped 1 item.");
 
   const punctuatedPlayers = [{ ...players[0], name: "A—B" }, ...players.slice(1)];
   const punctuatedOutcome = {
@@ -1080,6 +1080,136 @@ test("committed H4 source prefixes use one space and preserve verified player pu
   assert.deepEqual(playerIds(punctuated?.headlineSegments), ["p1", "p1"]);
   assert.equal(formatCommittedPublicOutcome({ ...base, semantics: "UNPROVEN" }, players), null);
   assert.equal(formatCommittedPublicOutcome({ ...base, visibility: "PRIVATE" }, players), null);
+});
+
+test("committed H4 names proven actions and reports only actual public outcomes", () => {
+  const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
+  const root = {
+    semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "root-event", order: 1,
+    rootEventId: "root-event", frameId: "root-1", category: "CARD_PLAYED", actorId: "p1",
+    affectedPlayerIds: ["p2"], label: "Attack", effect: { kind: "card_play", label: "Attack" },
+  };
+  const narrationFor = (eventId, source, changes, options = {}) => {
+    const actorId = Object.prototype.hasOwnProperty.call(options, "actorId") ? options.actorId : "p1";
+    const affectedPlayerIds = options.affectedPlayerIds ?? ["p2"];
+    const category = options.category ?? "EFFECT_APPLIED";
+    const label = options.label ?? source.label;
+    const committedOutcome = {
+      semantics: "PROVEN", visibility: "PUBLIC", eventId, identity, order: 2,
+      rootEventId: "root-event", frameId: "root-1", category, actorId, affectedPlayerIds, source, changes,
+    };
+    const fact = { ...committedOutcome, label, committedOutcome };
+    return derivePublicInteractionNarration({
+      snapshot: snapshot({ stage: "SETTLEMENT", stableKind: "REST", actorId: null, publicEventFacts: [root, fact] }),
+      players, rootEventId: "root-event", interactionId: identity.interactionId,
+      rootFrameId: identity.rootFrameId, eventId,
+    });
+  };
+
+  const attack = narrationFor("attack-damage", { kind: "damage", label: "Attack" }, [
+    { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
+  ], { category: "DAMAGE_APPLIED" });
+  assert.equal(attack?.headline, "Test Player 1 dealt 1 damage to Test Player 2.");
+  assert.deepEqual(playerIds(attack?.headlineSegments), ["p1", "p2"]);
+
+  const multipleDamage = narrationFor("multiple-damage", { kind: "damage", label: "Damage" }, [
+    { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
+    { kind: "DAMAGE_APPLIED", playerId: "p3", amount: 2 },
+  ], { affectedPlayerIds: ["p2", "p3"], category: "DAMAGE_APPLIED" });
+  assert.equal(multipleDamage?.headline, "Test Player 1 dealt 1 damage to Test Player 2 and 2 damage to Test Player 3.");
+  assert.deepEqual(playerIds(multipleDamage?.headlineSegments), ["p1", "p2", "p3"]);
+
+  const unknownSourceDamage = narrationFor("unknown-source-damage", { kind: "damage", label: "Damage" }, [
+    { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
+  ], { actorId: undefined, affectedPlayerIds: ["p2"], category: "DAMAGE_APPLIED" });
+  assert.equal(unknownSourceDamage?.headline, "Test Player 2 took 1 damage.");
+  assert.deepEqual(playerIds(unknownSourceDamage?.headlineSegments), ["p2"]);
+
+  const unprojectedActorDamage = narrationFor("unprojected-actor-damage", { kind: "damage", label: "Attack" }, [
+    { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
+  ], { actorId: "unprojected-actor", affectedPlayerIds: ["p2"], category: "DAMAGE_APPLIED" });
+  assert.equal(unprojectedActorDamage?.headline, "Test Player 2 took 1 damage.",
+    "an unknown source projection does not suppress a proven public target result");
+  assert.deepEqual(playerIds(unprojectedActorDamage?.headlineSegments), ["p2"]);
+
+  const hpCost = narrationFor("hp-cost", { kind: "skill", label: "Self Sacrifice" }, [
+    { kind: "HP_COST_LOST", playerId: "p1", amount: 1 },
+  ], { affectedPlayerIds: ["p1"] });
+  assert.equal(hpCost?.headline, "Test Player 1 Self Sacrifice: Test Player 1 paid 1 HP as a cost.");
+  assert.doesNotMatch(hpCost?.headline ?? "", /dealt .* damage/);
+
+  const unattributedHpLoss = narrationFor("unattributed-hp-loss", { kind: "other" }, [
+    { kind: "HP_LOST_TO_EFFECT", playerId: "p2", amount: 1 },
+  ], { actorId: undefined, affectedPlayerIds: ["p2"] });
+  assert.equal(unattributedHpLoss?.headline, "Test Player 2 lost 1 HP.");
+  assert.deepEqual(playerIds(unattributedHpLoss?.headlineSegments), ["p2"]);
+
+  const oath = narrationFor("oath-recovery", { kind: "card", label: "Oath of the Peach Garden" }, [
+    { kind: "HP_RECOVERED", playerId: "p2", amount: 1 },
+  ], { affectedPlayerIds: ["p2"], label: "Oath of the Peach Garden" });
+  assert.equal(oath?.headline, "Test Player 1 played Oath of the Peach Garden. Test Player 2 recovered 1 HP.");
+  assert.deepEqual(playerIds(oath?.headlineSegments), ["p1", "p2"]);
+
+  const oathMany = narrationFor("oath-multiple-recovery", { kind: "card", label: "Oath of the Peach Garden" }, [
+    { kind: "HP_RECOVERED", playerId: "p1", amount: 1 },
+    { kind: "HP_RECOVERED", playerId: "p2", amount: 1 },
+    { kind: "HP_RECOVERED", playerId: "p3", amount: 1 },
+  ], { affectedPlayerIds: ["p1", "p2", "p3"], label: "Oath of the Peach Garden" });
+  assert.equal(oathMany?.headline, "Test Player 1 played Oath of the Peach Garden. Test Player 1, Test Player 2 and Test Player 3 each recovered 1 HP.");
+  assert.deepEqual(playerIds(oathMany?.headlineSegments), ["p1", "p1", "p2", "p3"]);
+
+  const frostSword = narrationFor("frost-sword-discard", { kind: "equipment", label: "Frost Sword" }, [
+    { kind: "CARD_DISCARDED", playerId: "p2", amount: 1, fromZone: "HAND", toZone: "DISCARD" },
+    { kind: "CARD_DISCARDED", playerId: "p2", amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+  ], { affectedPlayerIds: ["p2"], label: "Frost Sword" });
+  assert.equal(frostSword?.headline, "Test Player 1 used Frost Sword to discard 2 cards from Test Player 2.");
+  assert.deepEqual(playerIds(frostSword?.headlineSegments), ["p1", "p2"]);
+
+  const unprovenFrostActor = narrationFor("frost-sword-unknown-actor", { kind: "equipment", label: "Frost Sword" }, [
+    { kind: "CARD_DISCARDED", playerId: "p2", amount: 2, fromZone: "HAND", toZone: "DISCARD" },
+  ], { actorId: undefined, affectedPlayerIds: ["p2"] });
+  assert.equal(unprovenFrostActor?.headline, "2 cards were discarded from Test Player 2.");
+  assert.deepEqual(playerIds(unprovenFrostActor?.headlineSegments), ["p2"]);
+
+  const plainRecovery = narrationFor("unattributed-recovery", { kind: "recovery", label: "Recovery" }, [
+    { kind: "HP_RECOVERED", playerId: "p2", amount: 1 },
+  ], { actorId: undefined, affectedPlayerIds: ["p2"] });
+  assert.equal(plainRecovery?.headline, "Test Player 2 recovered 1 HP.");
+  assert.deepEqual(playerIds(plainRecovery?.headlineSegments), ["p2"]);
+
+  const preventedFact = {
+    ...root, eventId: "damage-prevented", order: 2, category: "DAMAGE_PREVENTED", amount: 0,
+    label: "Frost Sword", effect: { kind: "damage_prevented", label: "Frost Sword" },
+  };
+  const prevented = derivePublicInteractionNarration({
+    snapshot: snapshot({ stage: "SETTLEMENT", stableKind: "REST", actorId: null, publicEventFacts: [root, preventedFact] }),
+    players, rootEventId: "root-event", interactionId: identity.interactionId,
+    rootFrameId: identity.rootFrameId, eventId: preventedFact.eventId,
+  });
+  assert.equal(prevented?.headline, "Test Player 1 prevented damage to Test Player 2.");
+  assert.doesNotMatch(prevented?.headline ?? "", /dealt .* damage/);
+});
+
+test("an empty same-resolution completion keeps the latest specific committed outcome", () => {
+  const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
+  const root = { semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "root-event", order: 1,
+    rootEventId: "root-event", frameId: "root-1", category: "CARD_PLAYED", actorId: "p1", affectedPlayerIds: ["p2"] };
+  const outcome = {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: "damage-result", identity, order: 2,
+    rootEventId: "root-event", frameId: "root-1", resolutionId: "resolution-1", category: "DAMAGE_APPLIED",
+    actorId: "p1", affectedPlayerIds: ["p2"], source: { kind: "damage", label: "Damage" },
+    changes: [{ kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 }],
+  };
+  const result = { ...outcome, committedOutcome: outcome };
+  const completion = { ...root, eventId: "empty-completion", order: 3, resolutionId: "resolution-1",
+    category: "EFFECT_APPLIED", committedOutcome: undefined, outcomeLabel: undefined };
+  const narration = derivePublicInteractionNarration({
+    snapshot: snapshot({ stage: "SETTLEMENT", stableKind: "REST", actorId: null, publicEventFacts: [root, result, completion] }),
+    players, rootEventId: "root-event", interactionId: identity.interactionId, rootFrameId: identity.rootFrameId,
+    eventId: completion.eventId,
+  });
+  assert.equal(narration?.eventId, result.eventId);
+  assert.equal(narration?.headline, "Test Player 1 dealt 1 damage to Test Player 2.");
 });
 
 test("committed HP, draw, discard, recovery and transfer results own the shared H4 in active and retained views", () => {

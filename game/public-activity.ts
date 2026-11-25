@@ -426,6 +426,36 @@ function formatCommittedPublicOutcomeCopy(
       }
     }
   }
+  const grouped = new Map<string, { change: CommittedPublicOutcomeChange; amount: number }>();
+  for (const change of outcome.changes) {
+    const key = change.kind === "CARD_TRANSFERRED"
+      ? `${change.kind}:${change.fromPlayerId}:${change.toPlayerId}`
+      : `${change.kind}:${change.playerId}`;
+    const current = grouped.get(key);
+    grouped.set(key, { change: current?.change ?? change, amount: (current?.amount ?? 0) + change.amount });
+  }
+  const groupedChanges = [...grouped.values()];
+  const actor = outcome.actorId ? narrationPlayerPart(players, outcome.actorId) : null;
+  const source = outcome.source.label?.trim();
+
+  // Damage is an outcome, not an action label. Describe the actual recipient
+  // and amount directly, omitting generic titles such as "Damage".
+  if (groupedChanges.every(({ change }) => change.kind === "DAMAGE_APPLIED")) {
+    const recipients = groupedChanges.map(({ change, amount }) => ({
+      player: narrationPlayerPart(players, change.playerId),
+      amount,
+    }));
+    if (recipients.some(({ player }) => !player)) return null;
+    const parts: (string | { id: string; name: string })[] = actor ? [actor, " dealt "] : [];
+    recipients.forEach(({ player, amount }, index) => {
+      if (index) parts.push(" and ");
+      if (actor) parts.push(amountText(amount, "damage", "damage"), " to ", player!);
+      else parts.push(player!, " took ", amountText(amount, "damage", "damage"));
+    });
+    parts.push(".");
+    return verifiedPlayerCopy(parts);
+  }
+
   const detail = (change: CommittedPublicOutcomeChange, amount: number) => {
     if (!Number.isSafeInteger(amount) || amount <= 0) return null;
     if (change.kind === "CARD_TRANSFERRED") {
@@ -438,7 +468,7 @@ function formatCommittedPublicOutcomeCopy(
     let suffix: string;
     switch (change.kind) {
       case "HP_COST_LOST": suffix = ` paid ${amountText(amount, "HP", "HP")} as a cost`; break;
-      case "HP_LOST_TO_EFFECT": suffix = ` lost ${amountText(amount, "HP", "HP")} to an effect`; break;
+      case "HP_LOST_TO_EFFECT": suffix = ` lost ${amountText(amount, "HP", "HP")}${source ? " to an effect" : ""}`; break;
       case "DAMAGE_APPLIED": suffix = ` lost ${amountText(amount, "HP", "HP")} to damage`; break;
       case "HP_RECOVERED": suffix = ` recovered ${amountText(amount, "HP", "HP")}`; break;
       case "CARD_DRAWN": suffix = ` drew ${amountText(amount, "card", "cards")}`; break;
@@ -449,23 +479,79 @@ function formatCommittedPublicOutcomeCopy(
     }
     return verifiedPlayerCopy([player, suffix]);
   };
-  const grouped = new Map<string, { change: CommittedPublicOutcomeChange; amount: number }>();
-  for (const change of outcome.changes) {
-    const key = change.kind === "CARD_TRANSFERRED"
-      ? `${change.kind}:${change.fromPlayerId}:${change.toPlayerId}`
-      : `${change.kind}:${change.playerId}`;
-    const current = grouped.get(key);
-    grouped.set(key, { change: current?.change ?? change, amount: (current?.amount ?? 0) + change.amount });
+
+  const recoveredOnly = groupedChanges.every(({ change }) => change.kind === "HP_RECOVERED");
+  if (outcome.source.kind === "card" && recoveredOnly && actor && source) {
+    const parts: (string | { id: string; name: string })[] = [actor, " played ", source, ". "];
+    const recoveryGroups = new Map<number, string[]>();
+    for (const { change, amount } of groupedChanges) {
+      if (change.kind !== "HP_RECOVERED" || !Number.isSafeInteger(amount) || amount <= 0) return null;
+      const player = narrationPlayerPart(players, change.playerId);
+      if (!player) return null;
+      recoveryGroups.set(amount, [...(recoveryGroups.get(amount) ?? []), player.id]);
+    }
+    [...recoveryGroups.entries()].forEach(([amount, playerIds], index, entries) => {
+      if (index) parts.push(index === entries.length - 1 ? ", and " : ", ");
+      playerIds.forEach((playerId, playerIndex) => {
+        if (playerIndex) parts.push(playerIndex === playerIds.length - 1 ? " and " : ", ");
+        const player = narrationPlayerPart(players, playerId);
+        if (player) parts.push(player);
+      });
+      parts.push(playerIds.length > 1 ? " each recovered " : " recovered ", amountText(amount, "HP", "HP"));
+    });
+    parts.push(".");
+    return verifiedPlayerCopy(parts);
   }
-  const details = [...grouped.values()].map(({ change, amount }) => detail(change, amount));
+
+  const discardedOnly = groupedChanges.every(({ change }) => change.kind === "CARD_DISCARDED");
+  if (outcome.source.kind === "equipment" && discardedOnly && actor && source
+    && groupedChanges.every(({ change }) => change.kind === "CARD_DISCARDED" && change.playerId !== outcome.actorId)) {
+    const details = groupedChanges.map(({ change, amount }) => {
+      const player = narrationPlayerPart(players, change.playerId);
+      return player ? verifiedPlayerCopy([amountText(amount, "card", "cards"), " from ", player]) : null;
+    });
+    if (details.some((entry) => !entry)) return null;
+    const parts: (string | { id: string; name: string })[] = [actor, " used ", source, " to discard "];
+    details.forEach((entry, index) => {
+      if (index) parts.push(" and ");
+      parts.push(...entry!.segments.map((segment) => segment.kind === "player"
+        ? { id: segment.playerId, name: segment.text }
+        : segment.text));
+    });
+    parts.push(".");
+    return verifiedPlayerCopy(parts);
+  }
+
+  // A committed Equipment-caused discard is not necessarily voluntary from
+  // the affected player's perspective. Keep the result factual when actor or
+  // exact source proof is absent rather than falling back to "B discarded".
+  if (outcome.source.kind === "equipment" && discardedOnly) {
+    const details = groupedChanges.map(({ change, amount }) => {
+      if (change.kind !== "CARD_DISCARDED" || !Number.isSafeInteger(amount) || amount <= 0) return null;
+      const player = narrationPlayerPart(players, change.playerId);
+      return player ? verifiedPlayerCopy([amountText(amount, "card", "cards"), " were discarded from ", player]) : null;
+    });
+    if (details.some((entry) => !entry)) return null;
+    const parts: (string | { id: string; name: string })[] = [];
+    details.forEach((entry, index) => {
+      if (index) parts.push(" and ");
+      parts.push(...entry!.segments.map((segment) => segment.kind === "player"
+        ? { id: segment.playerId, name: segment.text }
+        : segment.text));
+    });
+    parts.push(".");
+    return verifiedPlayerCopy(parts);
+  }
+
+  const details = groupedChanges.map(({ change, amount }) => detail(change, amount));
   if (details.some((entry) => !entry)) return null;
-  const actor = outcome.actorId ? narrationPlayerPart(players, outcome.actorId) : null;
-  if (outcome.actorId && !actor) return null;
-  const source = outcome.source.label?.trim();
+  const omitActionPrefix = !source || Boolean(outcome.actorId && !actor) || outcome.source.kind === "recovery"
+    || outcome.source.kind === "card" && recoveredOnly
+    || outcome.source.kind === "equipment" && discardedOnly;
   const parts: (string | { id: string; name: string })[] = [
-    ...(actor ? [actor] : [source || "Public outcome"]),
-    ...(actor && source ? [` ${source}`] : []),
-    ": ",
+    ...(omitActionPrefix ? [] : actor ? [actor] : [source]),
+    ...(!omitActionPrefix && actor && source ? [` ${source}`] : []),
+    ...(!omitActionPrefix ? [": "] : []),
   ];
   details.forEach((entry, index) => {
     if (index) parts.push("; ");
@@ -481,6 +567,10 @@ function isStauchnessTerminalFact(fact: PresentationSnapshot["publicEventFacts"]
   return fact.committedOutcome?.source.label === "Stauchness"
     || fact.label === "Stauchness" && (fact.category === "DAMAGE_PREVENTED"
       || fact.category === "EFFECT_APPLIED" && fact.effect?.kind === "skill_result" && Boolean(fact.outcomeLabel?.trim()));
+}
+
+function isSpecificCommittedOutcomeFact(fact: PresentationSnapshot["publicEventFacts"][number]) {
+  return Boolean(fact.committedOutcome || fact.outcomeLabel?.trim()) || isStauchnessTerminalFact(fact);
 }
 
 function isEmptyGenericCompletion(fact: PresentationSnapshot["publicEventFacts"][number]) {
@@ -568,7 +658,7 @@ export function derivePublicInteractionNarration(input: {
   }
   if (latest && isEmptyGenericCompletion(latest) && latest.resolutionId) {
     latest = verifiedFacts.filter((fact) => fact.order < latest!.order
-      && fact.resolutionId === latest!.resolutionId && isStauchnessTerminalFact(fact)).at(-1) ?? latest;
+      && fact.resolutionId === latest!.resolutionId && isSpecificCommittedOutcomeFact(fact)).at(-1) ?? latest;
   }
   if (!latest) return null;
 

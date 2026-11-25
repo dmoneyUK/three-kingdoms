@@ -5126,16 +5126,69 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
   } else if (pending.effect.kind === "oath") {
     const woundedIds = new Set(oathRecipientIds(players.map((player) => ({ id: player.id, alive: Boolean(player.alive), hp: player.hp, maxHp: player.max_hp }))));
     const wounded = players.filter((player) => woundedIds.has(player.id));
-    log = addFinalResult(log, wounded.length ? `${wounded.map((player) => player.name).join(", ")} recover 1 HP.` : "No character is wounded, so nobody recovers HP.", undefined, pending.resolutionId);
     const recoveries: RecoveryRecord[] = wounded.map((player) => {
       const before = player.hp ?? 0;
       return { playerId: player.id, amountRecovered: recoveredAmount(before, player.max_hp ?? before, 1), sourceId: pending.sourceId, reason: "oath" };
     }).filter((recovery) => recovery.amountRecovered > 0);
+    const rootMatches = pending.rootEventId ? gameTimeline(log).filter((event) => event.id === pending.rootEventId) : [];
+    const rootEvent = rootMatches.length === 1 ? rootMatches[0] : null;
+    const oathName = cardDefinition("Oath").name;
+    const causal = pending.causal;
+    const rootFrames = resumedEnvelope?.frames.filter((frame) => frame.parentFrameId == null) ?? [];
+    const rootFrame = causal && resumedEnvelope?.frames.find((frame) => frame.frameId === causal.frameId);
+    const exactOathRoot = Boolean(source && source.id === pending.sourceId
+      && pending.rootCardKind === "Oath" && pending.rootCardId && pending.rootEventId
+      && pending.rootResolutionId && pending.rootResolutionId === pending.resolutionId
+      && pending.rootEventId === rootEvent?.id && rootEvent.type === "card"
+      && rootEvent.action === "play" && rootEvent.presentation !== false
+      && typeof rootEvent.privateToPlayerId !== "string" && rootEvent.card?.kind === "Oath"
+      && rootEvent.card.id === pending.rootCardId && rootEvent.resolutionId === pending.rootResolutionId
+      && causal && !causal.parentFrameId && resumedEnvelope
+      && resumedEnvelope.interactionId === causal.interactionId
+      && resumedEnvelope.activeFrameId === causal.frameId
+      && resumedEnvelope.checkpoint.frameId === causal.frameId
+      && rootFrames.length === 1 && rootFrames[0]?.frameId === causal.frameId
+      && rootFrame?.origin.originSourceId === pending.sourceId
+      && rootFrame.origin.originEffect === oathName
+      && rootFrame.origin.originalTargetIds.length === 1
+      && rootFrame.origin.originalTargetIds[0] === pending.sourceId);
+    const recoveryChanges: CommittedPublicOutcomeChange[] = recoveries.map((recovery) => ({
+      kind: "HP_RECOVERED", playerId: recovery.playerId, amount: recovery.amountRecovered,
+    }));
+    const outcomeEventId = crypto.randomUUID();
+    const outcomeFact = exactOathRoot && recoveryChanges.length ? publicFactFor(causal, "EFFECT_APPLIED", {
+      rootEventId: pending.rootEventId,
+      actorId: pending.sourceId,
+      affectedPlayerIds: recoveries.map((recovery) => recovery.playerId),
+      label: oathName,
+      outcomeLabel: "Oath recovery settled",
+      committedOutcome: { source: { kind: "card", label: oathName }, changes: recoveryChanges },
+    }, resumedEnvelope, publicIdentityFromCommittedRoot(log, pending.rootEventId, causal)) : undefined;
+    const resultMessage = wounded.length ? `${wounded.map((player) => player.name).join(", ")} recover 1 HP.` : "No character is wounded, so nobody recovers HP.";
+    let outcomeLog = log;
+    let committedRecoveryEventId: string | undefined;
+    if (outcomeFact?.committedOutcome) {
+      const resultEvent = addLogWithId(log, resultMessage, undefined, {
+        resolutionId: pending.resolutionId, importance: "essential", finalResult: true,
+        actorId: pending.sourceId, publicFact: outcomeFact,
+      }, outcomeEventId);
+      outcomeLog = resultEvent.log;
+      committedRecoveryEventId = resultEvent.eventId;
+    } else {
+      outcomeLog = addFinalResult(log, resultMessage, undefined, pending.resolutionId);
+    }
+    const recoveriesForTriggers = committedRecoveryEventId
+      ? recoveries.map((recovery) => ({
+        ...recovery,
+        publicOutcomeEventId: committedRecoveryEventId,
+        ...(causal ? { causal } : {}),
+      }))
+      : recoveries;
     await db().batch([
       ...wounded.map((player) => db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(applyRecovery(player.hp ?? 0, 1, player.max_hp ?? player.hp ?? 0), player.id)),
-      db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(log), roomId),
+      db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(outcomeLog), roomId),
     ]);
-    await advanceHpRecoveredEvents(roomId, recoveries, { kind: "phase", phase: pending.resumePhase, playerId: source?.id });
+    await advanceHpRecoveredEvents(roomId, recoveriesForTriggers, { kind: "phase", phase: pending.resumePhase, playerId: source?.id });
   } else if (pending.effect.kind === "dismantle" || pending.effect.kind === "steal") {
     const target = players.find((player) => player.id === pending.effect.targetId && player.alive);
     if (!target || targetableCardCount(target) === 0) {
@@ -6365,11 +6418,29 @@ async function applyPreventDamageOutcome(room: RoomRow, continuation: DamageAbou
   const materials = root && effectId === "frost_sword_damage_about_to_apply"
     ? publicCardMaterials(discarded, [{ playerId: target.id, hand, equipment: equipmentCards(target) }], "DISCARD")
     : null;
+  const frostSwordName = cardDefinition("FrostSword").name;
+  const handDiscardCount = discarded.filter((card) => hand.some((held) => held.id === card.id)).length;
+  const equipmentDiscardCount = discarded.length - handDiscardCount;
+  const discardChanges: CommittedPublicOutcomeChange[] = [
+    ...(handDiscardCount ? [{ kind: "CARD_DISCARDED" as const, playerId: target.id, amount: handDiscardCount, fromZone: "HAND" as const, toZone: "DISCARD" as const }] : []),
+    ...(equipmentDiscardCount ? [{ kind: "CARD_DISCARDED" as const, playerId: target.id, amount: equipmentDiscardCount, fromZone: "EQUIPMENT" as const, toZone: "DISCARD" as const }] : []),
+  ];
+  const outcomeEventId = crypto.randomUUID();
+  const outcomeFact = materials && root && continuation.causal && discardChanges.length
+    ? publicFactFor(continuation.causal, "EFFECT_APPLIED", {
+      rootEventId: root.rootEventId,
+      actorId: source.id,
+      affectedPlayerIds: [target.id],
+      label: frostSwordName,
+      outcomeLabel: `discarded ${discarded.length} target cards`,
+      committedOutcome: { source: { kind: "equipment", label: frostSwordName }, changes: discardChanges },
+    }, parseCausalEnvelope(room.causal_envelope_json), publicIdentityFromCommittedRoot(log, root.rootEventId, continuation.causal))
+    : undefined;
   log = materials && root
     ? addCardGroupEventWithPublicEffect(log, target.name, discarded, "discard", target.name, {
       effectId: "frost_sword_damage_about_to_apply", effectClass: "EFFECT", activationOwnerId: source.id,
       materials, targetId: target.id, outcome: "DAMAGE_PREVENTED", ...root,
-    }).log
+    }, undefined, outcomeFact?.committedOutcome ? { resolutionId: root.rootResolutionId, publicFact: outcomeFact } : undefined, outcomeEventId).log
     : addDiscardEvent(log, target, discarded);
   log = addLog(log, `${source.name} uses an optional reaction to prevent damage and discards ${discarded.length} card${discarded.length === 1 ? "" : "s"} from ${target.name}. Action returns to ${source.name}.`);
   await db().batch([

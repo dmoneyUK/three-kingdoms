@@ -1,6 +1,7 @@
 import test from "node:test";
+import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
-  assert, card, createHumanGame, createHumanSetupGame, createTestGame, discardIds, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending,
+  assert, card, createHumanGame, createHumanSetupGame, createTestGame, discardIds, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending,
 } from "./test-support.mjs";
 
 function setupLadyGan(game, { hp = 2, maxHp = 3, hand = [], turnIndex = 1 } = {}) {
@@ -138,6 +139,17 @@ test("Prudence follows Peach and Oath recovery, and Quick Test projects the acti
   const oath = await requestAndSettle("play_card", { code: oathGame.code, token: oathSetup.ladyToken, cardId: "oath-prudence-oath" });
   assert.equal(oath.status, 200, JSON.stringify(oath.data));
   assert.equal(oath.data.room.currentAction.triggerEvent, "hp_recovered");
+  const oathOutcome = oath.data.room.timeline.find((event) => event.publicFact?.committedOutcome?.source.kind === "card"
+    && event.publicFact.committedOutcome.source.label === "Oath of the Peach Garden");
+  assert.ok(oathOutcome, "the Oath's real recovery outcome is committed before Prudence opens");
+  assertPublicOutcomeHasH4Owner(oath.data.room, oathOutcome.id);
+  const recoveryPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(oathGame.code)}`));
+  assert.equal(recoveryPending.causal.interactionId, oathOutcome.publicFact.interactionId,
+    "the Oath-owned hp_recovered decision keeps the same interaction identity");
+  assert.equal(recoveryPending.continuation.recovery.publicOutcomeEventId, oathOutcome.id,
+    "the recovery trigger points to the committed Oath outcome event");
+  assert.equal(recoveryPending.continuation.recovery.causal.frameId, oathOutcome.publicFact.frameId,
+    "the recovery trigger keeps the proven Oath frame identity");
   const oathTarget = oath.data.room.players.find((player) => player.id !== oathSetup.lady.id && player.alive);
   const oathPrudence = await request("trigger", { code: oathGame.code, token: oathSetup.ladyToken, providerId: "lady_gan_prudence", targetId: oathTarget.id });
   assert.equal(oathPrudence.status, 200, JSON.stringify(oathPrudence.data));

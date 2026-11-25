@@ -169,6 +169,59 @@ test("a shared Negation window waits the full fixed interval when nobody submits
   assert.equal(afterDuplicateExpiry.timeline.filter((event) => event.message?.includes("plays Something Out of Nothing and draws 2 cards")).length, 1);
 });
 
+test("Oath H4 binds the committed card source and only actual positive recoveries", { timeout: 90_000 }, async () => {
+  const settleOath = async (suffix, hpValues) => {
+    const game = await createHumanGame();
+    const players = game.room.players;
+    const source = players[0];
+    const oath = card("Oath", `oath-${suffix}`);
+    players.forEach((player, index) => setHand(player.id, index === 0 ? [oath] : [], hpValues[index], 4));
+    setTurn(game.code, source.seat);
+    const opened = await request("play_card", { code: game.code, token: game.members[0].token, cardId: oath.id });
+    assert.equal(opened.status, 200, JSON.stringify(opened.data));
+    assert.ok(opened.data.room.currentAction.negationWindowId, "Oath retains its normal Negation window");
+    await passNegationWindows(game.code, game.members);
+    return { game, players, source, oath, settled: (await state(game.code, game.members[0].token)).data };
+  };
+
+  const single = await settleOath("single", [4, 2, 4, 4]);
+  const singleEvents = single.settled.timeline.filter((event) => event.publicFact?.committedOutcome?.source.kind === "card"
+    && event.publicFact.committedOutcome.source.label === "Oath of the Peach Garden");
+  assert.equal(singleEvents.length, 1, "one specific public recovery outcome replaces the generic Recovery fact");
+  const singleEvent = singleEvents[0];
+  const singleFact = singleEvent.publicFact;
+  const singleRoot = single.settled.timeline.find((event) => event.id === singleFact.rootEventId);
+  assert.equal(singleRoot?.type, "card");
+  assert.equal(singleRoot?.action, "play");
+  assert.equal(singleRoot?.card?.kind, "Oath");
+  assert.equal(singleRoot?.card?.id, single.oath.id);
+  assert.equal(singleEvent.resolutionId, singleRoot?.resolutionId);
+  assert.equal(singleFact.actorId, single.source.id);
+  assert.deepEqual(singleFact.committedOutcome.changes, [
+    { kind: "HP_RECOVERED", playerId: single.players[1].id, amount: 1 },
+  ]);
+  const singleH4 = assertPublicOutcomeHasH4Owner(single.settled, singleEvent.id);
+  assert.equal(singleH4.narration.headline,
+    `${single.source.name} played Oath of the Peach Garden. ${single.players[1].name} recovered 1 HP.`);
+  assert.equal(singleH4.owner.eventId, singleEvent.id);
+
+  const multiple = await settleOath("multiple", [3, 2, 4, 4]);
+  const multipleEvents = multiple.settled.timeline.filter((event) => event.publicFact?.committedOutcome?.source.label === "Oath of the Peach Garden");
+  assert.equal(multipleEvents.length, 1);
+  const multipleEvent = multipleEvents[0];
+  assert.deepEqual(multipleEvent.publicFact.committedOutcome.changes, [
+    { kind: "HP_RECOVERED", playerId: multiple.players[0].id, amount: 1 },
+    { kind: "HP_RECOVERED", playerId: multiple.players[1].id, amount: 1 },
+  ], "the source and other wounded character are both reported from actual recovery records");
+  assert.equal(assertPublicOutcomeHasH4Owner(multiple.settled, multipleEvent.id).narration.headline,
+    `${multiple.source.name} played Oath of the Peach Garden. ${multiple.source.name} and ${multiple.players[1].name} each recovered 1 HP.`);
+
+  const none = await settleOath("none", [4, 4, 4, 4]);
+  const fabricatedRecoveries = none.settled.timeline.flatMap((event) => event.publicFact?.committedOutcome?.changes ?? [])
+    .filter((change) => change.kind === "HP_RECOVERED");
+  assert.deepEqual(fabricatedRecoveries, [], "a fully healthy table creates no recovery outcome fact");
+});
+
 test("Something Out of Nothing preserves Play Phase and reveals the stratagem without exposing drawn cards", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const host = game.members[0];
