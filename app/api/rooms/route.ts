@@ -9142,6 +9142,7 @@ async function commitCanonicalResponse(input: {
         await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId), causalRoomStateWrite(room.id, { phase: next.phase, pending: next.pendingJson ? resumedPending : null, discard, log, causalEnvelope: liveRoom.causal_envelope_json ? causalEnvelopeAtStage(liveRoom, resumedPending.causal, "DAMAGE", { currentSourceId: pending.sourceId, currentEffect: "damage", currentTargetIds: [pending.targetId], resolvingPlayerId: resumedPending.actorId }) : null })]);
         await continueDyingResolution(room.id, resumedPending);
       }
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: peachEventId });
     } else if (pending.remainingIds.length) {
       const transition = nextDyingTransition(liveRoom, pending, players, pending.remainingIds);
       if (transition.pending) {
@@ -9153,7 +9154,6 @@ async function commitCanonicalResponse(input: {
     } else {
       await defeatDyingPlayer(liveRoom, pending, target, source);
     }
-    if (peach) recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: peachEventId });
     if (peach && !pending.sharedRescue) await maybeOpenHandLossTrigger(room.id, me.id, handBeforePeach);
     return json({ room: await roomState(code, token) });
   }
