@@ -239,9 +239,15 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
     : 0;
   const targetZoneTabs: Array<{ id: TargetCardPoolZone["id"]; label: string; count: number }> = targetPublicProps
     ? [
-      { id: "hand", label: "Hand", count: targetPublicHandCount },
-      { id: "equipment", label: "Equipment", count: targetPublicProps.publicTarget.equipmentCards.length },
-      { id: "judgement", label: "Judgement", count: targetPublicProps.publicTarget.judgementCards.length },
+      { id: "hand", label: "Hand", count: actorTargetProps
+        ? actorTargetProps.zones.some((zone) => zone.id === "hand") ? targetPublicHandCount : 0
+        : targetPublicHandCount },
+      { id: "equipment", label: "Equipment", count: actorTargetProps
+        ? actorTargetProps.zones.find((zone) => zone.id === "equipment")?.choices.length ?? 0
+        : targetPublicProps.publicTarget.equipmentCards.length },
+      { id: "judgement", label: "Judgement", count: actorTargetProps
+        ? actorTargetProps.zones.find((zone) => zone.id === "judgement")?.choices.length ?? 0
+        : targetPublicProps.publicTarget.judgementCards.length },
     ]
     : [];
   const populatedTargetZoneTabs = targetZoneTabs.filter((zone) => zone.count > 0);
@@ -253,9 +259,10 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
     ?? targetZoneTabs[0]
     ?? { id: "hand" as const, label: "Hand", count: 0 };
   const activeTargetZone = actorTargetProps?.zones.find((zone) => zone.id === activeTargetZoneTab.id) ?? null;
-  const selectedTargetZone = actorTargetProps?.zones.find((zone) => zone.choices.some((choice) => choice.state === "selected")) ?? null;
-  const selectedZoneMessage = selectedTargetZone && selectedTargetZone.id !== activeTargetZone?.id
-    ? `Selection retained · ${selectedTargetZone.title}`
+  const retainedTargetZones = actorTargetProps?.zones.filter((zone) => zone.id !== activeTargetZone?.id
+    && zone.choices.some((choice) => choice.state === "selected")) ?? [];
+  const selectedZoneMessage = retainedTargetZones.length
+    ? `Selection retained · ${retainedTargetZones.map((zone) => zone.title).join(", ")}`
     : null;
   const focusTargetZone = (zoneId: TargetCardPoolZone["id"], tablist?: HTMLDivElement) => {
     setActiveTargetZoneId(zoneId);
@@ -293,7 +300,12 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
   const publicZonesToRender = targetPublicProps ? [
     { id: "equipment" as const, label: "EQUIPMENT", cards: targetPublicProps.publicTarget.equipmentCards },
     { id: "judgement" as const, label: "JUDGEMENT", cards: targetPublicProps.publicTarget.judgementCards },
-  ].filter((zone) => targetReadOnly ? zone.cards.length > 0 : zone.id === activeTargetZoneTab.id) : [];
+  ].map((zone) => ({
+    ...zone,
+    cards: actorTargetProps
+      ? actorTargetProps.zones.find((choiceZone) => choiceZone.id === zone.id)?.choices.flatMap((choice) => choice.type === "public-card" ? [choice.publicCardFace] : []) ?? []
+      : zone.cards,
+  })).filter((zone) => targetReadOnly ? zone.cards.length > 0 : zone.id === activeTargetZoneTab.id) : [];
   return <section
     className={`card-pool-panel card-pool-panel--${props.mode} harvest-choice-panel${actorSelect || targetSelect ? " harvest-choice-panel--actor" : ""}${actorTargetProps?.compactDensity ? " card-pool-panel--compact-density" : ""}`}
     data-choice-mode={props.mode}

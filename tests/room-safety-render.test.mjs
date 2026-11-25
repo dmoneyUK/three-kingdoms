@@ -144,6 +144,44 @@ test("target card pools preserve five hidden hand positions and paired legal act
   assert.match(pool, /data-pool-action="confirm"[^>]*aria-label="Confirm Retaliation selection"[^>]*>Confirm<\/button>/);
 });
 
+test("shared target tabs and public faces follow authorized zones while retaining mixed selections", () => {
+  const eligibleEquipment = card("eligible-weapon", "FrostSword");
+  const pool = renderToStaticMarkup(React.createElement(CardPoolPanel, {
+    title: "FROST SWORD", instruction: "Choose 2 cards to discard", accessibilityLabel: "Frost Sword target card selection",
+    mode: "actor-target-select",
+    publicTarget: { handCount: 2, equipmentCards: [eligibleEquipment, card("unavailable-armor", "NioShield")], judgementCards: [card("lightning", "Lightning")] },
+    zones: [
+      { id: "hand", title: "HAND 2", accessibleName: "Hand", choices: [
+        { type: "concealed-position", opaqueKey: "hand:0", accessibleLabel: "Hidden Hand position 1", position: 0, state: "selected" },
+        { type: "concealed-position", opaqueKey: "hand:1", accessibleLabel: "Hidden Hand position 2", position: 1, state: "available" },
+      ] },
+      { id: "equipment", title: "EQUIPMENT", accessibleName: "Equipment", choices: [
+        { type: "public-card", eligibleKey: "eligible-weapon", publicCardFace: eligibleEquipment, cardName: "Frost Sword", accessibleLabel: "Equipment: Frost Sword", state: "selected" },
+      ] },
+    ],
+    selectionCount: "2 / 2 selected", confirmAccessibleLabel: "Confirm Frost Sword selection", disabled: false, confirmDisabled: false,
+    skipAction: { accessibleLabel: "Skip Frost Sword", disabled: false, onClick: () => {} },
+    onToggle: () => {}, onConfirm: () => {}, onInfo: () => {},
+  }));
+  assert.deepEqual([...pool.matchAll(/role="tab"[^>]*aria-label="([^"]+)"/g)].map((match) => match[1]), ["Hand (2)", "Equipment (1)"]);
+  assert.match(pool, /Selection retained · EQUIPMENT/);
+  assert.match(pool, /2 \/ 2 selected/);
+
+  const equipmentPool = renderToStaticMarkup(React.createElement(CardPoolPanel, {
+    title: "FROST SWORD", instruction: "Choose 2 cards to discard", accessibilityLabel: "Frost Sword target card selection",
+    mode: "actor-target-select",
+    publicTarget: { handCount: 0, equipmentCards: [eligibleEquipment, card("unavailable-armor", "NioShield")], judgementCards: [card("lightning", "Lightning")] },
+    zones: [{ id: "equipment", title: "EQUIPMENT", accessibleName: "Equipment", choices: [
+      { type: "public-card", eligibleKey: "eligible-weapon", publicCardFace: eligibleEquipment, cardName: "Frost Sword", accessibleLabel: "Equipment: Frost Sword", state: "available" },
+    ] }],
+    selectionCount: "0 / 2 selected", confirmAccessibleLabel: "Confirm Frost Sword selection", disabled: false, confirmDisabled: true,
+    onToggle: () => {}, onConfirm: () => {}, onInfo: () => {},
+  }));
+  assert.deepEqual([...equipmentPool.matchAll(/role="tab"[^>]*aria-label="([^"]+)"/g)].map((match) => match[1]), [], "a single populated zone does not add redundant tabs");
+  assert.match(equipmentPool, /data-public-card-id="eligible-weapon"/);
+  assert.doesNotMatch(equipmentPool, /data-public-card-id="(?:unavailable-armor|lightning)"/);
+});
+
 test("pre-game Hero information remains separate from the compact active-game preview", () => {
   const hero = STANDARD_HEROES.find((candidate) => candidate.id === "huang-yueying");
   assert.ok(hero);
@@ -1143,18 +1181,31 @@ test("normalized malformed and unknown response states render safely", () => {
     code: "SAFE-PICKER", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
     players: [
       { id: "p1", name: "ME", seat: 0, hero: "zhang-fei", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
-      { id: "p2", name: "TARGET", seat: 1, hero: "guan-yu", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 0, equipmentCards: [card("armor", "NioShield")], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+      { id: "p2", name: "TARGET", seat: 1, hero: "guan-yu", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 4, equipmentCards: [card("armor", "NioShield")], judgementCards: [card("lightning", "Lightning")], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
     ],
     myHand: [], turnSeat: null, phase: "response", deckCount: 0, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Use Frost Sword", isMyAction: true,
-    pending: { kind: "trigger" }, currentAction: { version: 3, kind: "trigger", actorId: "p1", deadline: 0, reason: "Use Frost Sword", legalActions: ["trigger", "decline_trigger"], triggerEvent: "damage_about_to_apply", triggerOptions: [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: "p2", min: 2, max: 2, eligibleKeys: ["hand:3", "hand:0", "hand:1", "hand:2", "not-eligible", "armor"] } }], declineAction: "decline_trigger" },
+    pending: { kind: "trigger" }, currentAction: { version: 3, kind: "trigger", actorId: "p1", deadline: 0, reason: "Use Frost Sword", legalActions: ["trigger", "decline_trigger"], triggerEvent: "damage_about_to_apply", triggerOptions: [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: "p2", min: 2, max: 2, eligibleKeys: ["hand:3", "hand:0", "hand:1", "hand:2", "armor"] } }], declineAction: "decline_trigger" },
     pendingAttack: null, pendingGreenDragon: null, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null, pendingGroup: null, pendingNegation: null, pendingHarvest: null, pendingTargetCard: null, pendingBorrowedSword: null, pendingDying: null,
   });
   const pickerHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: pickerRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.equal((pickerHtml.match(/aria-label="Hidden hand card \d+"/g) ?? []).length, 4, "target_cards renders every eligible hidden hand key without using handCount");
-  assert.equal((pickerHtml.match(/class="target-card-picker-card concealed-card/g) ?? []).length, 4, "hidden hand buttons use the picker-specific concealed-card class");
-  assert.doesNotMatch(pickerHtml, /class="target-card-picker-card hidden(?:\s|[^"]*")/, "hidden hand buttons do not use Tailwind's standalone hidden class");
-  assert.match(pickerHtml, /aria-label="Equipment: Nio Shield/);
-  assert.doesNotMatch(pickerHtml, /aria-label="not-eligible"/);
+  assert.match(pickerHtml, /data-trigger-target-pool="true"[^>]*data-target-card-pool-layout="central"/);
+  assert.match(pickerHtml, /class="card-pool-panel__title">FROST SWORD<\/b>/);
+  assert.match(pickerHtml, /class="card-pool-panel__instruction">Choose 2 cards to discard<\/span>/);
+  assert.deepEqual([...pickerHtml.matchAll(/role="tab"[^>]*aria-label="([^"]+)"/g)].map((match) => match[1]), ["Hand (4)", "Equipment (1)"], "only server-authorized populated zones become tabs");
+  assert.equal((pickerHtml.match(/aria-label="Choose hidden Hand position \d+"/g) ?? []).length, 4, "opaque Hand positions retain their original server indices");
+  assert.doesNotMatch(pickerHtml, /data-public-card-id="armor"/, "inactive Equipment is not duplicated below the Hand row");
+  assert.doesNotMatch(pickerHtml, /data-public-card-id="lightning"|Judgement \(/, "Frost Sword does not expose a Judgement choice");
+  assert.match(pickerHtml, /Use Frost Sword, or Skip\./, "the trigger Console does not duplicate the Use prefix");
+  assert.doesNotMatch(pickerHtml, /target-card-picker-overlay|target-card-picker-panel--zones|card-pool-decision-footer__cancel/);
+  assert.match(pickerHtml, /aria-label="Confirm Frost Sword selection"[^>]*disabled=""[^>]*>Confirm<\/button>/);
+  assert.match(pickerHtml, /aria-label="Skip Frost Sword"[^>]*>Skip<\/button>/);
+
+  const invalidFrostRoom = {
+    ...pickerRoom,
+    currentAction: { ...pickerRoom.currentAction, triggerOptions: [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: "p2", min: 2, max: 2, eligibleKeys: ["hand:0", "not-public"] } }] },
+  };
+  const invalidFrostHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: invalidFrostRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.doesNotMatch(invalidFrostHtml, /target-card-picker-overlay|target-card-picker-panel--zones|data-trigger-target-pool="true"/, "unsupported Frost Sword proof fails closed instead of restoring the legacy picker");
   const kirinEquipment = [card("mount-a", "FerganaSteed"), card("unrelated-armor", "NioShield"), card("mount-b", "Shadowrunner")];
   const kirinRoom = {
     ...pickerRoom,

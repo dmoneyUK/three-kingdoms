@@ -13109,6 +13109,25 @@ function RetaliationCardPool({ selection, target, selectedKeys, playerCount, sco
 function TargetCardPicker({ option, presentationCopy, compact = false, forceSharedPool = false, kirinBowPool = null, selection, target, selectedKeys, disabled, canDecline, showCancel, allowPublicCardInfo = false, error, onToggle, onUse, onCancel, onDecline, onInfoCard, poolPlayerCount = 0, poolScope = "" }: { poolPlayerCount?: number; poolScope?: string; option: TriggerOptionView | null; presentationCopy?: { title: string; accessibleName: string; instruction: string; actionLabel: string }; compact?: boolean; forceSharedPool?: boolean; kirinBowPool: ReturnType<typeof projectPublicEquipmentTargetPool> | null; selection: PublicTargetCardSelection; target: Player; selectedKeys: string[]; disabled: boolean; canDecline: boolean; showCancel: boolean; allowPublicCardInfo?: boolean; error: string; onToggle: (key: string) => void; onUse: (keys: string[]) => void; onCancel: () => void; onDecline: () => void; onInfoCard?: (card: Card, trigger: HTMLButtonElement) => void }) {
   const concealedHandCount = selection.eligibleKeys.filter((key) => /^hand:\d+$/.test(key)).length;
   const [handRowRef, handRowOverflowing] = useHorizontalOverflow<HTMLDivElement>(`target-card-picker:${target.id}:${concealedHandCount}`);
+  if (option?.effectId === "frost_sword_damage_about_to_apply") {
+    if (!compact || !supportsAuthoritativeTargetCardSelection(selection, target)) return null;
+    const judgementIds = new Set(target.judgementCards.map((card) => card.id));
+    const equipmentIds = new Set(target.equipmentCards.map((card) => card.id));
+    if (selection.eligibleKeys.some((key) => judgementIds.has(key) || key !== "hand" && !/^hand:(0|[1-9]\d*)$/.test(key) && !equipmentIds.has(key))) return null;
+    const publicTarget = { handCount: target.handCount, equipmentCards: target.equipmentCards, judgementCards: [] };
+    const validSelectedKeys = selectedKeys.filter((key) => selection.eligibleKeys.includes(key));
+    const zones = publicTargetCardPoolZones(selection, publicTarget, validSelectedKeys);
+    const projectedKeys = zones.flatMap((zone) => zone.choices.map((choice) => choice.type === "public-card" ? choice.eligibleKey : choice.opaqueKey));
+    if (!zones.length || zones.some((zone) => zone.id === "judgement")
+      || projectedKeys.length !== selection.eligibleKeys.length
+      || selection.eligibleKeys.some((key) => !projectedKeys.includes(key))) return null;
+    const amount = selection.min === selection.max ? `${selection.min}` : `${selection.min}–${selection.max}`;
+    return <TriggerTargetCardPool selection={selection} publicTarget={publicTarget} selectedKeys={validSelectedKeys}
+      playerCount={poolPlayerCount} scope={poolScope} title="FROST SWORD" instruction={`Choose ${amount} card${selection.max === 1 ? "" : "s"} to discard`}
+      accessibilityLabel="Frost Sword target card selection" confirmAccessibleLabel="Confirm Frost Sword selection" skipAccessibleLabel="Skip Frost Sword"
+      disabled={disabled} canDecline={canDecline} error={error} scrollHint={target.handCount > 4 ? "Swipe to see all" : undefined} protectSharedPublicStage
+      onToggle={onToggle} onConfirm={() => onUse(validSelectedKeys)} onDecline={onDecline} onInfo={(card, trigger) => onInfoCard?.(card, trigger)} />;
+  }
   if (forceSharedPool) {
     if (option?.effectId !== "kirin_bow_damage_about_to_apply" || !compact || !kirinBowPool) return null;
     const validSelectedKeys = selectedKeys.filter((key) => kirinBowPool.eligibleKeys.includes(key));

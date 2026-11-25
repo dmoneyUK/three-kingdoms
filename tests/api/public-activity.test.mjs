@@ -397,6 +397,7 @@ test("local Negation Pass and intent acknowledgements are current-window and vie
   assert.equal(viewerNegationAcknowledgement(intentView, "window-1", "play"), null);
   assert.equal(viewerNegationAcknowledgement({ ...intentView, identity: { ...intentView.identity, checkpointId: "stale" } }, "window-1", "response"), null);
   assert.equal(triggerDecisionInstruction("Treachery", "Obtain the card that caused the damage, if it is still available.", true), "Use Treachery to obtain the card that caused the damage, or Skip.");
+  assert.equal(triggerDecisionInstruction("Use Frost Sword", undefined, true), "Use Frost Sword, or Skip.");
   assert.match(triggerDecisionInstruction("Unknown skill", "Select two cards.", true), /Select two cards, or Skip/);
 
   const staleIntent = { ...intentView, viewerNegationChoice: { ...intentView.viewerNegationChoice, windowId: "old-window" } };

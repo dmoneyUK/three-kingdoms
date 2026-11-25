@@ -128,10 +128,11 @@ export function viewerNegationAcknowledgement(snapshot: PresentationSnapshot | n
 }
 
 export function triggerDecisionInstruction(label: string, description: string | undefined, canSkip: boolean): string {
+  const actionLabel = label.trim().replace(/^Use\s+/i, "");
   const text = (description ?? "").trim().replace(/[.!?]\s*$/, "");
   const concise = text.replace(/^(Obtain the card that caused the damage), if it is still available$/i, "$1");
   const detail = /^Obtain the card that caused the damage$/i.test(concise)
     ? ` to ${concise.charAt(0).toLowerCase()}${concise.slice(1)}`
     : concise ? `: ${concise}` : "";
-  return `Use ${label}${detail}${canSkip ? ", or Skip" : ""}.`;
+  return `Use ${actionLabel}${detail}${canSkip ? ", or Skip" : ""}.`;
 }

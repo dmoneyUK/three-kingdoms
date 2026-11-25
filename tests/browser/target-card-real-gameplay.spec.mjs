@@ -2676,7 +2676,7 @@ test("Retaliation Skip is a distinct authorized server action at 440x766", async
 });
 
 for (const weapon of ["FrostSword", "KirinBow"]) {
-  test(`real ${weapon} Attack reaction reaches and submits through its unified modal`, async ({ browser, page, request }) => {
+  test(`real ${weapon} Attack reaction reaches and submits through its shared target pool`, async ({ browser, page, request }) => {
     const attack = card("Attack", `real-${weapon.toLowerCase()}-attack`, weapon === "KirinBow" ? "♥" : "♠");
     const mounts = weapon === "KirinBow"
       ? { offensiveHorse: card("FerganaSteed", "real-kirin-offensive-mount"), defensiveHorse: card("Shadowrunner", "real-kirin-defensive-mount") }
@@ -2709,16 +2709,34 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
     expect(option.selection.eligibleKeys).toHaveLength(weapon === "FrostSword" ? 3 : 2);
 
     if (weapon === "FrostSword") {
-      const dialog = await expectModal(page, "Frost Sword", "Choose 2 cards to discard", "Use Frost Sword");
-      const skip = dialog.getByRole("button", { name: "Skip", exact: true });
+      const stage = page.locator('.card-pool-target-stage[data-trigger-target-pool="true"]');
+      const dialog = stage.locator('.card-pool-panel--actor-target-select[aria-label="Frost Sword target card selection"]');
+      await expect(dialog).toBeVisible({ timeout: 15_000 });
+      await expect(stage).toHaveAttribute("data-target-card-pool-layout", "central");
+      await expect(stage).toHaveAttribute("data-target-card-pool-ready", "true");
+      await expect(dialog.locator(".card-pool-panel__title")).toHaveText("FROST SWORD");
+      await expect(dialog.locator(".card-pool-panel__instruction")).toHaveText("Choose 2 cards to discard");
+      const skip = dialog.getByRole("button", { name: "Skip Frost Sword" });
       if (current.currentAction.legalActions.includes("decline_trigger")) await expect(skip).toBeVisible();
       else await expect(skip).toHaveCount(0);
-      const positions = dialog.locator('[data-target-card-zone="hand-position"]');
+      await expect(dialog.getByRole("button", { name: /Cancel|Clear selection|Back/ })).toHaveCount(0);
+      const positions = dialog.locator('[data-target-card-public-zone="hand"] .card-pool-panel__target-select');
       await expect(positions).toHaveCount(2);
       await positions.nth(0).click();
-      await positions.nth(1).click();
-      await expect(dialog.locator(".target-card-picker-count")).toHaveText("2 / 2 selected");
-      const use = dialog.getByRole("button", { name: "Use Frost Sword" });
+      await dialog.getByRole("tab", { name: "Equipment (1)" }).click();
+      const equipment = dialog.locator('[data-target-card-public-zone="equipment"] .card-pool-panel__target-select');
+      await expect(equipment).toHaveCount(1);
+      await equipment.click();
+      await expect(dialog.locator(".card-pool-decision-footer__count")).toHaveText("2 / 2 selected");
+      await expect(dialog.locator(".card-pool-panel__selected-zone")).toContainText("Selection retained · HAND");
+      const use = dialog.getByRole("button", { name: "Confirm Frost Sword selection" });
+      await expect(use).toBeEnabled();
+      await dialog.getByRole("tab", { name: "Hand (2)" }).click();
+      await positions.nth(0).click();
+      await expect(dialog.locator(".card-pool-decision-footer__count")).toHaveText("1 / 2 selected");
+      await expect(use).toBeDisabled();
+      await positions.nth(0).click();
+      await dialog.getByRole("tab", { name: "Equipment (1)" }).click();
       await expect(use).toBeEnabled();
       const submitPromise = page.waitForResponse((response) => {
         if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
@@ -2728,8 +2746,14 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
       await use.click();
       const submitted = await submitPromise;
       expect(submitted.ok()).toBe(true);
-      expect(JSON.parse(submitted.request().postData() ?? "{}").cardKeys).toEqual(["hand:0", "hand:1"]);
+      expect(JSON.parse(submitted.request().postData() ?? "{}").cardKeys).toEqual(["hand:0", "real-frost-public-mount"]);
       await expect.poll(async () => (await roomView(request, seed, 0)).currentAction.kind !== "trigger").toBe(true);
+      const settled = await roomView(request, seed, 0);
+      const materialOwner = settled.players.find((player) => player.id === seed.players[1].id);
+      const targetBefore = current.players.find((player) => player.id === seed.players[1].id);
+      expect(materialOwner?.equipmentCards.some((item) => item.id === "real-frost-public-mount")).toBe(false);
+      expect(materialOwner?.handCount).toBe((targetBefore?.handCount ?? 0) - 1);
+      expect(materialOwner?.hp).toBe(targetBefore?.hp);
     } else {
       const targetView = current.players.find((player) => player.id === option.selection.targetId);
       expect(targetView).toBeTruthy();

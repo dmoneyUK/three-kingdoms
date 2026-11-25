@@ -4,10 +4,14 @@
 
 ## Current bounded task — §10.78 FROST-SWORD-SHARED-POOL-AND-DISCARD-DISPLAY-01
 
-**Design:** latest remote `docs/UX2-refine.md`, revision 2026-11-25 08:17 UTC; §10.78. HEAD and `origin/ux-v2` are both `0e85333dd83b49791e448646d7a49d2313adc2c4`.
+**Design:** latest remote `docs/UX2-refine.md`, revision 2026-11-25 08:17 UTC; §10.78. Implementation base HEAD and `origin/ux-v2`: `dec486abbb7806dbce569300c1308b2807eac758`.
 
 **Scope:** Migrate only Frost Sword's authorized opposing-player `target_cards` selector to the existing shared tabbed pool used by Dismantle/Steal. Use one active Hand/Equipment row, preserve anonymous Hand positions and actual public Equipment identities, retain mixed-zone selections/count across tabs, obey CurrentAction min/max, and use shared Confirm/authorized Skip without Cancel. Preserve the existing two-card server rule and privacy. Verify actual committed discards, damage prevention, and the §10.76-B/§10.77 effect-frame/H4 integration without duplicating settlement logic.
 
-**Validation boundary:** Preserve accepted Dismantle, Steal, Retaliation, Kirin, Harvest, Inspector and Hand behavior. No local device/browser test per Owner direction; use focused unit/API/privacy checks plus required exact-SHA Actions, deployment and production smoke. Do not claim Owner acceptance.
+**Implementation checkpoint — 2026-11-25 14:07 UTC:** Frost Sword now routes through the shared central `TriggerTargetCardPool` / `CardPoolPanel`; its Hand and Equipment tabs derive from authorized choices, retain mixed-zone selection/count, show only eligible public Equipment faces, omit Judgement, and use shared Confirm/authorized Skip without Cancel. Invalid target-card proof fails closed. Console wording strips the duplicate `Use` prefix. No game rule or server settlement changed.
 
-**Next action:** Inspect current Frost Sword selector routing and shared tab/selection state, then implement only this §10.78 contract. Keep HANDOVER to this single bounded task.
+**Checks:** Focused render/PAC tests passed 67/67 (`node --import tsx --test --test-concurrency=1 tests/room-safety-render.test.mjs tests/api/public-activity.test.mjs`); focused Equipment API tests passed 22/22 (`GAME_TEST_FILES=tests/api/equipment.test.mjs GAME_TEST_PORT=3137 GAME_TEST_URL=http://localhost:3137 GAME_TEST_INSPECTOR_PORT=9229 node tests/run-tests.mjs`); `git diff --check` passed. An initial raw `node --test` invocation failed because this repository requires the `tsx` loader; the supported invocation above passed. Local UI/browser/device tests and build were skipped per Owner direction. The last green Actions run is the prior §10.75 source SHA `0e85333dd83b49791e448646d7a49d2313adc2c4` ([45626531207](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45626531207)); it does not validate this uncommitted §10.78 implementation.
+
+**Validation boundary:** Preserve accepted Dismantle, Steal, Retaliation, Kirin, Harvest, Inspector and Hand behavior. Do not claim Owner acceptance.
+
+**Next action:** Review the final source diff, commit and push §10.78 to `ux-v2`, then verify exact-SHA Actions, deployment and production smoke. Keep HANDOVER to this single bounded task.
