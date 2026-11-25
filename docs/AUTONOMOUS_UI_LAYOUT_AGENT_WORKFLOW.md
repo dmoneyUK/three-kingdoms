@@ -56,26 +56,11 @@ Do not:
 
 A separate discovered problem should be recorded as a candidate for the next planning boundary unless it blocks the current task.
 
-### Current UX2 refinement sequencing
+### Current UX2 scope
 
-`docs/UX2-refine.md` §5 currently defers the UX2 Interaction Stage Hero/player visualization refactor and Section 6 physical-seat causal-graph work **until all active refinement sections before §5 are complete, including §4A and §4B**.
+The latest `docs/UX2-refine.md` governs active product scope. The former visible causal/relationship-graph design and its implementation phases are **SUPERSEDED / CANCELLED**, not deferred or automatically authorized after another task closes. Never restore visible source/target/response connectors, arrows, graph-only Hero/Seat nodes or central causal diagrams. Preserve authoritative server event relationships and real card identity; this is a presentation restriction, not permission to remove semantic contracts or source code.
 
-Before that boundary:
-
-- do not start or continue a task that changes central combat Hero/player representation, Hero/player geometry, physical Seat/Dock graph nodes, or Hero/player-to-card connector geometry;
-- if the current HANDOVER task is in that deferred scope, stop before source edits and replan from the active non-Hero refinement sections;
-- allowed refinement work includes Local Hero Skills, response Guidance, `TAKE DAMAGE` labeling/behavior, authoritative response-provider emphasis, System Menu/Exit relocation, response-timer relocation, Zhuge Liang skill presentation, and §4A transient-event timer/overlay refinement, and §4B compact other-player Inspect refinement;
-- existing deferred Hero/player presentation may remain as-is and must not be deleted merely because it will later be replaced.
-
-At the clean planning boundary after all active pre-§5 refinements, including §4A and §4B, are closed:
-
-- re-read the latest `docs/UX2-refine.md`;
-- UX2 Section 6 becomes authorized implementation work;
-- begin with §6.25 **Phase A — physical-seat graph foundation** unless a newer direct user instruction changes the order;
-- continue one bounded HANDOVER task at a time;
-- do not skip ahead to later Section 6 phases to compensate for missing typed authority.
-
-This sequencing rule is a product-scope decision, not a CI exception. Keep the existing CI cadence unchanged.
+At a safe planning boundary, use §8 and the current design status index/latest Owner verdicts to choose one authorized bounded task. Do not reopen accepted or superseded items, or redispatch delivered items awaiting Owner phone review. If a stale HANDOVER or historical instruction asks for graph work, stop that conflicting work before source edits and reconcile it against current design and explicit Owner scope; do not resume it. CI cadence and the combined five-minute local UI/browser test limit remain unchanged.
 
 ## 4. Task implementation
 
