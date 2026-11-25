@@ -12920,7 +12920,7 @@ function PrivateCardDistributionDialog({ cards, players, disabled, error, onSubm
 
 export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice, selectedKeys, disabled, error, playerCount = 4, placementKey, onChoice, onToggle, onConfirm }: { option: TriggerOptionView; selection: ChoiceTriggerSelection; hand: Card[]; selectedChoice: string; selectedKeys: string[]; disabled: boolean; error: string; playerCount?: number; placementKey?: string; onChoice: (choice: string) => void; onToggle: (key: string) => void; onConfirm: (choice: string, cardKeys: string[]) => void }) {
   const compactStauchness = isStauchnessConsequenceOption(option);
-  const placement = useBattlefieldChoicePlacement({
+  const { ref: stageRef, top: placementTop, ready: placementReady } = useBattlefieldChoicePlacement({
     enabled: compactStauchness,
     playerCount,
     placementKey: placementKey ?? option.effectId,
@@ -12938,14 +12938,14 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
   const complete = Boolean(choiceAvailable && selectedChoice && validSelectedKeys.length === requiredHandCount);
   const labelForChoice = (choice: { id: string; label: string }) => choice.label;
   if (compactStauchness) return <BattlefieldChoiceStage
-    ref={placement.ref}
+    ref={stageRef}
     className="game-event-stage harvest-choice-stage stauchness-choice-stage"
     mode="actor-select"
     accessibilityLabel="Stauchness consequence choice"
     data-stauchness-choice="true"
-    data-stauchness-choice-ready={placement.ready ? "true" : "false"}
-    aria-hidden={!placement.ready}
-    style={{ top: placement.top === null ? undefined : `${placement.top}px`, visibility: placement.ready ? "visible" : "hidden" }}
+    data-stauchness-choice-ready={placementReady ? "true" : "false"}
+    aria-hidden={!placementReady}
+    style={{ top: placementTop === null ? undefined : `${placementTop}px`, visibility: placementReady ? "visible" : "hidden" }}
   >
     <section className="card-pool-panel harvest-choice-panel harvest-choice-panel--actor stauchness-choice-panel" role="dialog" aria-modal="false" aria-label="Stauchness decision">
       <header className="card-pool-panel__heading harvest-choice-heading stauchness-choice-heading">
@@ -12958,8 +12958,8 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
           key={choice.id}
           data-stauchness-choice-option={choice.id}
           className={selectedChoice === choice.id ? "selected" : ""}
-          disabled={disabled || !placement.ready}
-          tabIndex={placement.ready ? 0 : -1}
+          disabled={disabled || !placementReady}
+          tabIndex={placementReady ? 0 : -1}
           aria-pressed={selectedChoice === choice.id}
           onClick={() => onChoice(choice.id)}
         >{stauchnessConsequenceLabel(choice.id)}</button>)}
@@ -12968,7 +12968,7 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
         <span className="stauchness-hand-guidance">Hand cards only.</span>
         {handRowOverflowing && <span className="target-card-picker-zone-scroll-hint">Swipe to see all hand cards</span>}
         <div ref={handRowRef} className="target-card-picker-card-row choice-trigger-card-row stauchness-choice-card-row" aria-label="Eligible hand cards" data-hand-scrollable={handKeys.length > 4 ? "true" : undefined}>
-          {handKeys.map((key) => { const index = Number(key.slice(5)); const card = hand[index]; if (!card) return null; const selected = validSelectedKeys.includes(key); return <button type="button" key={key} className={`target-card-picker-card ${selected ? "selected" : ""}`} disabled={disabled || !placement.ready} tabIndex={placement.ready ? 0 : -1} aria-pressed={selected} aria-label={`${cardDefinition(card.kind).name} ${card.rank}${card.suit}`} onClick={() => onToggle(key)}><CardFace card={card} />{selected && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>; })}
+          {handKeys.map((key) => { const index = Number(key.slice(5)); const card = hand[index]; if (!card) return null; const selected = validSelectedKeys.includes(key); return <button type="button" key={key} className={`target-card-picker-card ${selected ? "selected" : ""}`} disabled={disabled || !placementReady} tabIndex={placementReady ? 0 : -1} aria-pressed={selected} aria-label={`${cardDefinition(card.kind).name} ${card.rank}${card.suit}`} onClick={() => onToggle(key)}><CardFace card={card} />{selected && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>; })}
         </div>
       </>}
       <CardPoolDecisionFooter
@@ -12976,7 +12976,7 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
         selectionCount={needsHandCard ? `${validSelectedKeys.length} / ${requiredHandCount} selected` : undefined}
         confirmAction={{
           accessibleLabel: needsHandCard ? "Confirm Stauchness card choice" : "Confirm Stauchness choice",
-          disabled: disabled || !placement.ready || !complete,
+          disabled: disabled || !placementReady || !complete,
           pending: disabled,
           onClick: () => onConfirm(selectedChoice, validSelectedKeys),
         }}
