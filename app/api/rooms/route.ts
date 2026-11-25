@@ -798,6 +798,36 @@ function publicFactFor(causal: CausalContext | undefined, category: PublicPresen
     category, ...fields, ...(committedOutcome ? { committedOutcome } : {}), ...(committedIdentity ? { committedIdentity } : {}),
   };
 }
+function stauchnessJudgementPublicFact(input: {
+  log: string[];
+  causal: CausalContext | undefined;
+  rootEventId: string | undefined;
+  envelope?: CausalEnvelope | null;
+  actor: PlayerRow;
+  card: Card;
+  outcome: "revealed" | "not-heart" | "heart" | "source-unavailable";
+  affectedPlayerIds?: readonly string[];
+}) {
+  if (!input.rootEventId) return undefined;
+  const resultCopy = input.outcome === "revealed" ? ""
+    : input.outcome === "not-heart" ? " — not a Heart"
+      : input.outcome === "heart" ? " — no effect"
+        : " — not a Heart; no consequence was applied";
+  const detail = ` used Stauchness. Judgement: ${input.card.rank}${input.card.suit}${resultCopy}`;
+  const outcomeLabel = `${input.actor.name}${detail}`;
+  return publicFactFor(input.causal, "EFFECT_APPLIED", {
+    rootEventId: input.rootEventId,
+    actorId: input.actor.id,
+    affectedPlayerIds: [...new Set([input.actor.id, ...(input.affectedPlayerIds ?? [])])],
+    label: "Stauchness",
+    outcomeLabel,
+    outcomeCopySegments: [
+      { kind: "player", playerId: input.actor.id, text: input.actor.name },
+      { kind: "text", text: detail },
+    ],
+    effect: { kind: "judgement", label: "Stauchness" },
+  }, input.envelope, publicIdentityFromCommittedRoot(input.log, input.rootEventId, input.causal));
+}
 function addCommittedPublicSkillOutcome(
   log: string[],
   actor: PlayerRow,
@@ -2912,22 +2942,19 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
     if (result.status === "satisfied") {
       const source = players.find((player) => player.id === damageResume.sourceId && player.alive) ?? null;
       if (source) {
-        const stauchnessPendingFact = damageResume.secondaryEffectId === "xiahou_dun_ganglie" && damageResume.rootEventId
-          ? publicFactFor(judgement.causal, "EFFECT_APPLIED", {
+        const stauchnessPendingFact = damageResume.secondaryEffectId === "xiahou_dun_ganglie"
+          ? stauchnessJudgementPublicFact({
+            log,
+            causal: judgement.causal,
             rootEventId: damageResume.rootEventId,
-            actorId: target.id,
-            affectedPlayerIds: [target.id, source.id],
-            label: "Stauchness",
-            outcomeLabel: `used Stauchness: waiting for ${source.name} to choose a consequence`,
-            outcomeCopySegments: [
-              { kind: "text", text: "used Stauchness: waiting for " },
-              { kind: "player", playerId: source.id, text: source.name },
-              { kind: "text", text: " to choose a consequence" },
-            ],
-            effect: { kind: "skill_pending_choice", label: "Stauchness" },
-          }, parseCausalEnvelope(room.causal_envelope_json), publicIdentityFromCommittedRoot(log, damageResume.rootEventId, judgement.causal))
+            envelope: parseCausalEnvelope(room.causal_envelope_json),
+            actor: target,
+            card: finalCard,
+            outcome: "not-heart",
+            affectedPlayerIds: [source.id],
+          })
           : undefined;
-        const presentation = addLogWithId(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for Stauchness. ${source.name} must choose a consequence.`, undefined, {
+        const presentation = addLogWithId(log, stauchnessPendingFact?.outcomeLabel ?? `${target.name} judges ${finalCard.rank}${finalCard.suit} for Stauchness.`, undefined, {
           resolutionId: judgement.resolutionId, importance: "essential", finalResult: true,
           actorId: target.id, ...(stauchnessPendingFact ? { publicFact: stauchnessPendingFact } : {}),
         });
@@ -2941,29 +2968,51 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
           ...(judgement.causal ? { causal: judgement.causal } : {}),
           continuation: { ...damageResume, stage: "secondary", secondaryEffectId: damageResume.secondaryEffectId, judgementCard: finalCard, ...(judgement.causal ? { causal: judgement.causal } : {}) },
         }, presentation.log, presentation.eventId);
+        const consequenceEnvelope = causalEnvelopeAtStage(room, judgement.causal, "DAMAGE", {
+          currentSourceId: target.id,
+          currentEffect: "Stauchness",
+          currentTargetIds: [source.id],
+          resolvingPlayerId: source.id,
+        });
         await db().batch([
           ...writes,
-          db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-            .bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(presentation.log), room.id),
+          db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?")
+            .bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(presentation.log),
+              consequenceEnvelope ? JSON.stringify(consequenceEnvelope) : null, room.id),
         ]);
         return [];
       }
-      log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit}, but the damage source is no longer available.` , undefined, judgement.resolutionId);
+      const unavailableFact = damageResume.secondaryEffectId === "xiahou_dun_ganglie"
+        ? stauchnessJudgementPublicFact({
+          log,
+          causal: judgement.causal,
+          rootEventId: damageResume.rootEventId,
+          envelope: parseCausalEnvelope(room.causal_envelope_json),
+          actor: target,
+          card: finalCard,
+          outcome: "source-unavailable",
+          affectedPlayerIds: damageResume.sourceId ? [damageResume.sourceId] : [],
+        })
+        : undefined;
+      log = addFinalResult(log, unavailableFact?.outcomeLabel ?? `${target.name} judges ${finalCard.rank}${finalCard.suit}, but the damage source is no longer available.`, undefined, judgement.resolutionId,
+        unavailableFact ? { actorId: target.id, publicFact: unavailableFact } : undefined);
     } else {
       const resultText = damageResume.secondaryEffectId === "xiahou_dun_ganglie"
         ? "The Heart result means Stauchness has no effect."
         : "The Heart result ends the post-damage reaction.";
-      const stauchnessNoEffectFact = damageResume.secondaryEffectId === "xiahou_dun_ganglie" && damageResume.rootEventId
-        ? publicFactFor(judgement.causal, "EFFECT_APPLIED", {
+      const stauchnessNoEffectFact = damageResume.secondaryEffectId === "xiahou_dun_ganglie"
+        ? stauchnessJudgementPublicFact({
+          log,
+          causal: judgement.causal,
           rootEventId: damageResume.rootEventId,
-          actorId: target.id,
-          affectedPlayerIds: [target.id],
-          label: "Stauchness",
-          outcomeLabel: "used Stauchness: no effect",
-          effect: { kind: "skill_result", label: "Stauchness" },
-        }, parseCausalEnvelope(room.causal_envelope_json), publicIdentityFromCommittedRoot(log, damageResume.rootEventId, judgement.causal))
+          envelope: parseCausalEnvelope(room.causal_envelope_json),
+          actor: target,
+          card: finalCard,
+          outcome: "heart",
+          affectedPlayerIds: damageResume.sourceId ? [damageResume.sourceId] : [],
+        })
         : undefined;
-      log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit}. ${resultText}`, undefined, judgement.resolutionId, {
+      log = addFinalResult(log, stauchnessNoEffectFact?.outcomeLabel ?? `${target.name} judges ${finalCard.rank}${finalCard.suit}. ${resultText}`, undefined, judgement.resolutionId, {
         ...(stauchnessNoEffectFact ? { actorId: target.id, publicFact: stauchnessNoEffectFact } : {}),
       });
     }
@@ -10521,7 +10570,23 @@ export async function POST(request: Request) {
           return json({ room: await roomState(code, token) });
         }
         log = addTriggeredEffectNotice(log, target.name, triggerExecution?.presentation?.label ?? "Stauchness", triggerPublicFact).log;
-        const presentation = addCardEventWithId(log, target.name, draw.card, target.name, "reveal", true, { judgement: true });
+        const stauchnessRevealFact = triggerExecution?.effectId === "xiahou_dun_ganglie"
+          ? stauchnessJudgementPublicFact({
+            log,
+            causal: continuation.causal,
+            rootEventId: continuation.rootEventId,
+            envelope: parseCausalEnvelope(liveRoom.causal_envelope_json),
+            actor: target,
+            card: draw.card,
+            outcome: "revealed",
+            affectedPlayerIds: continuation.sourceId ? [continuation.sourceId] : [],
+          })
+          : undefined;
+        const presentation = addCardEventWithId(log, target.name, draw.card, target.name, "reveal", true, {
+          judgement: true,
+          ...(continuation.resolutionId ? { resolutionId: continuation.resolutionId } : {}),
+          ...(stauchnessRevealFact ? { actorId: target.id, publicFact: stauchnessRevealFact } : {}),
+        });
         const judgement: JudgementContinuation = {
           targetId: target.id,
           purpose: "ganglie",

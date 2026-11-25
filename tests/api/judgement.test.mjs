@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
-import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { derivePublicActivityStatus, derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import {
   assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -53,14 +53,29 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   const targetView = (await state(resolved.code, resolved.targetMember.token)).data;
   const pendingStauchness = stauchnessNarration(accepted.data.room);
   assert.equal(pendingStauchness.narration?.headline,
-    `${resolved.target.name} used Stauchness: waiting for ${resolved.source.name} to choose a consequence.`);
+    `${resolved.target.name} used Stauchness. Judgement: 7♠ — not a Heart.`);
+  const pendingPac = derivePublicActivityStatus({
+    status: accepted.data.room.status,
+    phase: accepted.data.room.phase,
+    turnSeat: accepted.data.room.turnSeat,
+    players: accepted.data.room.players,
+    presentationSnapshot: accepted.data.room.presentationSnapshot,
+  });
+  assert.equal(pendingPac.kind, "response", JSON.stringify({
+    status: accepted.data.room.status,
+    phase: accepted.data.room.phase,
+    publicNextDecision: accepted.data.room.presentationSnapshot?.publicNextDecision,
+    interaction: accepted.data.room.presentationSnapshot?.interaction,
+    stable: accepted.data.room.presentationSnapshot?.stable,
+  }));
+  assert.match(pendingPac.text, new RegExp(resolved.source.name));
   const attackRoot = accepted.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-ganglie-discard-attack");
   assert.equal(pendingStauchness.fact.rootEventId, attackRoot?.id);
   const pendingResultEvent = accepted.data.room.timeline.find((event) => event.id === pendingStauchness.fact.eventId);
   assert.equal(pendingResultEvent?.resolutionId, pendingStauchness.fact.resolutionId,
     "the projected decision result retains its committed event resolution identity");
   assert.deepEqual(pendingStauchness.narration?.headlineSegments?.filter((segment) => segment.kind === "player").map((segment) => segment.playerId),
-    [resolved.target.id, resolved.source.id], "pending copy keeps the skill owner and chooser as typed public identities");
+    [resolved.target.id], "H4 names the skill owner; the current chooser remains in the public PAC");
   const sourcePendingView = (await state(resolved.code, resolved.sourceMember.token)).data;
   assert.deepEqual(sourcePendingView.presentationSnapshot.publicEventFacts, targetView.presentationSnapshot.publicEventFacts,
     "the pending Stauchness result is the same public fact for all viewers");
@@ -76,7 +91,7 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   assert.equal(discarded.data.room.phase, "play-struck");
   const discardedStauchness = stauchnessNarration(discarded.data.room);
   assert.equal(discardedStauchness.narration?.headline,
-    `${resolved.target.name} used Stauchness: ${resolved.source.name} discarded 2 Hand cards.`);
+    `${resolved.target.name} used Stauchness, causing ${resolved.source.name} to discard 2 Hand cards.`);
   assert.equal(discardedStauchness.fact.rootEventId, attackRoot?.id);
   assert.deepEqual(discardedStauchness.narration?.headlineSegments?.filter((segment) => segment.kind === "player").map((segment) => segment.playerId),
     [resolved.target.id, resolved.source.id]);
@@ -111,6 +126,24 @@ test("real Judgement replacement rejects stale and duplicate submissions without
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   const revealed = await state(game.code, simaMember.token);
   assert.equal(revealed.data.currentAction.triggerEvent, "judgement_revealed");
+  const originalJudgement = revealed.data.timeline.find((event) => event.type === "card" && event.action === "reveal" && event.judgement === true);
+  assert.equal(originalJudgement?.card.id, "dodge-judgement-race-original");
+  const originalFact = [...(revealed.data.presentationSnapshot?.publicEventFacts ?? []), ...(revealed.data.presentationSnapshot?.retainedPublicEventFacts ?? [])]
+    .find((fact) => fact.eventId === originalJudgement?.id);
+  assert.ok(originalFact, "the genuine original reveal owns a public H4 fact");
+  const originalNarration = derivePublicInteractionNarration({
+    snapshot: revealed.data.presentationSnapshot,
+    players: revealed.data.players,
+    rootEventId: originalFact.rootEventId,
+    interactionId: originalFact.identity.interactionId,
+    rootFrameId: originalFact.identity.rootFrameId,
+    eventId: originalFact.eventId,
+  });
+  assert.equal(originalNarration?.headline, `${game.target.name} used Stauchness. Judgement: 9♠.`);
+  assert.deepEqual(originalNarration?.headlineSegments?.filter((segment) => segment.kind === "player").map((segment) => segment.playerId), [game.target.id]);
+  const otherViewer = (await state(game.code, game.targetMember.token)).data;
+  assert.deepEqual(otherViewer.presentationSnapshot.publicEventFacts, revealed.data.presentationSnapshot.publicEventFacts,
+    "the committed original Judgement fact is public and identical for every viewer");
   const root = revealed.data.causalEnvelope;
   const pendingBefore = query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`);
   const staleContext = { actionRevision: revealed.data.actionRevision - 1, meId: sima.id, phase: "response", pendingKind: "trigger", actorId: sima.id };
@@ -143,9 +176,9 @@ test("Stauchness uses the final Guicai card, limits discard choices, and resumes
   const accepted = await requestAndSettle("trigger", { code: game.code, token: game.targetMember.token, providerId: "xiahou_dun_ganglie" });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
   assert.equal(accepted.data.room.phase, "play-struck");
-  assert.ok(accepted.data.room.log.some((entry) => /Heart result means Stauchness has no effect/.test(entry)));
+  assert.ok(accepted.data.room.log.some((entry) => entry.includes(`${game.target.name} used Stauchness. Judgement: 2♥ — no effect`)));
   assert.equal(stauchnessNarration(accepted.data.room).narration?.headline,
-    `${game.target.name} used Stauchness: no effect.`);
+    `${game.target.name} used Stauchness. Judgement: 2♥ — no effect.`);
   assert.ok(discardIds(game.code).includes("dodge-ganglie-heart-judge"));
 
   const guicai = await openGanglieAttack({ judge: { ...card("Dodge", "ganglie-guicai-original"), suit: "♠", rank: "9" } });
@@ -180,6 +213,10 @@ test("Stauchness uses the final Guicai card, limits discard choices, and resumes
   const reverseReplaced = await requestAndSettle("trigger", { code: guicaiToNonHeart.code, token: simaMember2.token, providerId: "sima_yi_guicai", cardId: replacementBlack.id });
   assert.equal(reverseReplaced.status, 200, JSON.stringify(reverseReplaced.data));
   assert.equal(reverseReplaced.data.room.currentAction.actorId, guicaiToNonHeart.source.id);
+  const replacedStauchness = stauchnessNarration(reverseReplaced.data.room);
+  assert.equal(replacedStauchness.narration?.headline,
+    `${guicaiToNonHeart.target.name} used Stauchness. Judgement: 7♠ — not a Heart.`,
+    "after Necromancy commits, H4 names the actual effective card and only then states its result");
   const reverseChoice = await requestAndSettle("trigger", { code: guicaiToNonHeart.code, token: guicaiToNonHeart.sourceMember.token, providerId: "xiahou_dun_ganglie", choice: "take_damage" });
   assert.equal(reverseChoice.status, 200, JSON.stringify(reverseChoice.data));
   assert.equal(reverseChoice.data.room.players.find((player) => player.id === guicaiToNonHeart.source.id).hp, 3);
@@ -405,7 +442,7 @@ test("Stauchness take-damage choice enters the normal Dying flow and stale concu
   assert.ok(damaged.data.room.log.some((entry) => /takes 1 damage from Alice for Stauchness and enters Dying/.test(entry)));
   const damageStauchness = stauchnessNarration(damaged.data.room);
   assert.equal(damageStauchness.narration?.headline,
-    `${dying.target.name} dealt 1 damage to ${dying.source.name} with Stauchness.`);
+    `${dying.target.name} used Stauchness, causing ${dying.source.name} to lose 1 HP.`);
   const damageRoot = damaged.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-ganglie-dying-attack");
   assert.equal(damageStauchness.fact.rootEventId, damageRoot?.id);
   const damageEvent = damaged.data.room.timeline.find((event) => event.id === damageStauchness.fact.eventId);

@@ -1620,6 +1620,13 @@ function sharedContributionDisplayAction(room: Room, domainPublicCardDisplayActi
       motion: { type: "single-target", scopeKey: `${room.code}:shared-contribution:${proof.eventId}`, freshEventIds: seenEventIds.has(proof.eventId) ? [] : [proof.eventId] } };
 }
 
+function shouldSuppressDuplicatePublicCardAnnouncement(
+  owner: { eventId: string; owner: string } | null,
+  interactionEventId: string | undefined,
+) {
+  return Boolean(owner && owner.owner !== "PublicCardDisplay" && owner.eventId === interactionEventId);
+}
+
 export const HERO_ART_BY_ID: Record<string, string> = {
   "cao-cao": "/hero-cao-cao.jpg",
   "liu-bei": "/hero-liu-bei.jpg",
@@ -10266,6 +10273,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     skillEvent: beautyNoticeEligible && beautyNotice ? { eventId: beautyNotice.eventId } : null,
   });
   const publicDiscardOwnsAnnouncement = publicH4Owner?.owner === "PublicDiscardAnnouncementLayer";
+  const suppressDuplicatePublicCardAnnouncement = shouldSuppressDuplicatePublicCardAnnouncement(
+    publicH4Owner, publicInteractionNarration?.eventId,
+  );
   const visibleBeautyAnnouncement = publicH4Owner?.owner === "PublicSkillEventAnnouncementLayer" ? beautyNotice : null;
   const activeStealSettlementSequence = activeStealSettlement
     ? publicSequenceForEvent(room.timeline, activeStealSettlement.eventId)
@@ -12247,7 +12257,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
       <PublicStageLayoutProvider roomId={room.code} scopeId={publicCardDisplayAction?.rootEventId ?? null} viewerId={room.meId} interactionId={publicCardDisplayAction?.interactionId ?? null}>
-      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} suppressAnnouncement={targetCardChoiceMergeActive || publicDiscardOwnsAnnouncement} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} protectFirstParkedMiniature={protectPublicInteractionUpperH4} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} publicSequenceForEvent={(eventId) => publicSequenceForEvent(room.timeline, eventId)} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} responseHistoryOwnership={publicDisplayOwnedResponseHistory.map((response) => ({ eventId: response.eventId, cardIds: (response.cardFaces ?? [response.cardFace]).map((card) => card.id) }))} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardDisplayEventParked} onJourneyRevealCompleted={markPublicCardJourneyRevealCompleted} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
+      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} suppressAnnouncement={targetCardChoiceMergeActive || publicDiscardOwnsAnnouncement || suppressDuplicatePublicCardAnnouncement} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} protectFirstParkedMiniature={protectPublicInteractionUpperH4} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} publicSequenceForEvent={(eventId) => publicSequenceForEvent(room.timeline, eventId)} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} responseHistoryOwnership={publicDisplayOwnedResponseHistory.map((response) => ({ eventId: response.eventId, cardIds: (response.cardFaces ?? [response.cardFace]).map((card) => card.id) }))} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardDisplayEventParked} onJourneyRevealCompleted={markPublicCardJourneyRevealCompleted} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
         setActiveDismantleSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
           ? { ...current, journeySettled: true }
           : current);

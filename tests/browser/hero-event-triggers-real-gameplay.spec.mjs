@@ -630,12 +630,14 @@ test("real Jealousy of God obtains the effective delayed-Judgement card through 
 });
 
 test("real Stauchness reaches its mandatory source-choice continuation after the Skills activation", async ({ page, browser, request }) => {
+  test.setTimeout(90_000);
   const attack = card("Attack", "real-ganglie-attack");
   const sourceCards = [card("Peach", "real-ganglie-source-peach", "♥"), card("Dodge", "real-ganglie-source-dodge", "♣")];
+  const guicaiCard = card("Dodge", "real-ganglie-guicai-card", "♣");
   const seedData = await seed(request, [
     { name: "SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [attack, ...sourceCards] },
     { name: "XIAHOU DUN", role: "Loyalist", hero: "xiahou-dun", hp: 4, maxHp: 4, hand: [] },
-    { name: "REBEL", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+    { name: "SIMA YI", role: "Rebel", hero: "simayi", hp: 4, maxHp: 4, hand: [guicaiCard] },
     { name: "RENEGADE", role: "Renegade", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
   ], [card("Dodge", "real-ganglie-spade-judgement", "♠")]);
   const opened = await request.post(API + "/api/rooms", {
@@ -646,14 +648,45 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
   expect(hit.ok()).toBeTruthy();
   expect((await view(request, seedData, 1)).currentAction.triggerOptions.map((option) => option.effectId)).toContain("xiahou_dun_ganglie");
   const xiahou = await activateDirectSkill({ page, request, seedData, playerIndex: 1, label: "Stauchness", providerId: "xiahou_dun_ganglie" });
-  expect((await view(request, seedData, 0)).currentAction).toMatchObject({ kind: "trigger", actorId: seedData.players[0].id, triggerEvent: "damage_suffered" });
-  await expect(page.locator('[data-public-card-frame-effect-id="xiahou_dun_ganglie"]')).toHaveCount(0);
+  const simaView = await view(request, seedData, 2);
+  expect(simaView.currentAction).toMatchObject({ kind: "trigger", actorId: seedData.players[2].id, triggerEvent: "judgement_revealed" });
+  expect(simaView.currentAction.triggerOptions.map((option) => option.effectId)).toContain("sima_yi_guicai");
+  const originalJudgement = simaView.timeline.find((event) => event.type === "card" && event.action === "reveal" && event.judgement === true);
+  expect(originalJudgement?.card).toMatchObject({ id: "real-ganglie-spade-judgement", rank: "7", suit: "♠" });
+  const originalFact = [...(simaView.presentationSnapshot.publicEventFacts ?? []), ...(simaView.presentationSnapshot.retainedPublicEventFacts ?? [])]
+    .find((fact) => fact.eventId === originalJudgement.id);
+  expect(originalFact?.effect?.kind).toBe("judgement");
+  expect(originalFact?.outcomeLabel).toContain("XIAHOU DUN used Stauchness. Judgement: 7♠");
+  const originalH4 = page.locator(`[data-public-h4-event-id="${originalJudgement.id}"]`);
+  await expect(originalH4).toHaveCount(1, { timeout: 10_000 });
+  await expect(originalH4).toBeVisible();
+  await expect(originalH4).toContainText("XIAHOU DUN used Stauchness. Judgement: 7♠.");
+  await expect(originalH4).not.toContainText("not a Heart");
 
   const sourcePage = await browser.newPage();
   try {
     await sourcePage.setViewportSize({ width: 390, height: 844 });
     await openPlayer(sourcePage, seedData, 0);
+    const originalH4ForSource = sourcePage.locator(`[data-public-h4-event-id="${originalJudgement.id}"]`);
+    await expect(originalH4ForSource).toHaveCount(1, { timeout: 10_000 });
+    await expect(originalH4ForSource).toBeVisible();
+    await expect(originalH4ForSource).toContainText("XIAHOU DUN used Stauchness. Judgement: 7♠.");
+
+    const skippedNecromancy = await request.post(API + "/api/rooms", {
+      data: { action: "decline_trigger", code: seedData.code, token: seedData.players[2].token },
+    });
+    expect(skippedNecromancy.ok()).toBeTruthy();
     const sourceView = await view(request, seedData, 0);
+    expect(sourceView.currentAction).toMatchObject({ kind: "trigger", actorId: seedData.players[0].id, triggerEvent: "damage_suffered" });
+    const finalStauchnessFact = [...(sourceView.presentationSnapshot.publicEventFacts ?? []), ...(sourceView.presentationSnapshot.retainedPublicEventFacts ?? [])]
+      .filter((fact) => fact.label === "Stauchness" && fact.outcomeLabel?.includes("not a Heart"))
+      .sort((left, right) => left.order - right.order).at(-1);
+    expect(finalStauchnessFact?.outcomeLabel).toContain("XIAHOU DUN used Stauchness. Judgement: 7♠ — not a Heart");
+    const finalJudgementH4 = sourcePage.locator(`[data-public-h4-event-id="${finalStauchnessFact.eventId}"]`);
+    await expect(finalJudgementH4).toHaveCount(1, { timeout: 10_000 });
+    await expect(finalJudgementH4).toBeVisible();
+    await expect(finalJudgementH4).toContainText("XIAHOU DUN used Stauchness. Judgement: 7♠ — not a Heart");
+    await expect(finalJudgementH4).not.toContainText("discarded 2 Hand cards");
     const choice = sourceView.currentAction.triggerOptions.find((option) => option.effectId === "xiahou_dun_ganglie");
     expect(choice.selection.choices.map((option) => option.id)).toEqual(["discard_two", "take_damage"]);
     const dialog = sourcePage.getByRole("dialog", { name: "Stauchness decision" });
@@ -736,8 +769,18 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
     const committed = await submitted.json();
     expect(committed.room.myHand).toHaveLength(0);
     expect(committed.room.players.find((player) => player.id === seedData.players[0].id).hp).toBe(4);
-    await expect(page.locator('[data-public-card-frame-effect-id="xiahou_dun_ganglie"]')).toHaveCount(0);
-    await expect(sourcePage.locator('[data-public-card-frame-effect-id="xiahou_dun_ganglie"]')).toHaveCount(0);
+    const costEvent = committed.room.timeline.find((event) => event.type === "cards" && event.action === "discard"
+      && sourceCards.every((paid) => event.cards.some((revealed) => revealed.id === paid.id)));
+    expect(costEvent).toBeTruthy();
+    const committedOutcomeFact = [...(committed.room.presentationSnapshot.publicEventFacts ?? []), ...(committed.room.presentationSnapshot.retainedPublicEventFacts ?? [])]
+      .find((fact) => fact.eventId === costEvent.id);
+    expect(committedOutcomeFact?.committedOutcome?.changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "CARD_DISCARDED", playerId: seedData.players[0].id, amount: 2, fromZone: "HAND" }),
+    ]));
+    const committedH4 = sourcePage.locator(`[data-public-h4-event-id="${costEvent.id}"]`);
+    await expect(committedH4).toHaveCount(1, { timeout: 10_000 });
+    await expect(committedH4).toBeVisible();
+    await expect(committedH4).toContainText("XIAHOU DUN used Stauchness, causing SOURCE to discard 2 Hand cards.");
     await expect(xiahou.duplicate).toHaveCount(0);
   } finally {
     await sourcePage.close();

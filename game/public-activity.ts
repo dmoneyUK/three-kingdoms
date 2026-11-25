@@ -416,13 +416,13 @@ function formatCommittedPublicOutcomeCopy(
       const player = narrationPlayerPart(players, change.playerId);
       if (player && outcome.source.kind === "skill") {
         const cards = amountText(change.amount, "Hand card", "Hand cards");
-        return verifiedPlayerCopy([actor, " used Stauchness: ", player, ` discarded ${cards}.`]);
+        return verifiedPlayerCopy([actor, " used Stauchness, causing ", player, ` to discard ${cards}.`]);
       }
     }
     if (actor && change.kind === "DAMAGE_APPLIED") {
       const player = narrationPlayerPart(players, change.playerId);
       if (player && outcome.source.kind === "damage") {
-        return verifiedPlayerCopy([actor, " dealt ", amountText(change.amount, "damage", "damage"), " to ", player, " with Stauchness."]);
+        return verifiedPlayerCopy([actor, " used Stauchness, causing ", player, ` to lose ${amountText(change.amount, "HP", "HP")}.`]);
       }
     }
   }
@@ -714,7 +714,7 @@ export function derivePublicInteractionNarration(input: {
         : actorPart ? fromParts([actorPart, " dealt ", damage, "."]) : `Damage was applied${amount ? ` (${amount})` : ""}.`;
   } else if (latest.category === "DAMAGE_PREVENTED") {
     headline = latest.label === "Stauchness" && actorPart && targetPart
-      ? fromParts([actorPart, " used Stauchness: damage to ", targetPart, " was prevented."])
+      ? fromParts([actorPart, " used Stauchness, but damage to ", targetPart, " was prevented."])
       : actorPart ? fromParts([actorPart, " prevented damage", ...(targetPart ? [" to ", targetPart] : []), "."]) : "Damage was prevented.";
   } else if (latest.category === "SKILL_USED") {
     const skill = latest.label?.trim().replace(/^Use\s+/i, "") || "a skill";
@@ -757,7 +757,9 @@ export function derivePublicInteractionNarration(input: {
       ? publicOutcomeCopyParts(latest.outcomeLabel, latest.outcomeCopySegments, input.players, provenParticipantIds)
       : null;
     if (!outcome) headline = fromParts([actorPart ?? "A player", " resolved an effect."]);
-    else if (latest.effect?.kind === "judgement") headline = `${outcome.replace(/[.!?]+$/, "")}.`;
+    else if (latest.effect?.kind === "judgement") headline = outcomeCopyParts
+      ? fromParts([...outcomeCopyParts, "."])
+      : `${outcome.replace(/[.!?]+$/, "")}.`;
     else if (outcomeCopyParts && actorPart) headline = fromParts([actorPart, " ", ...outcomeCopyParts, "."]);
     else headline = fromParts([...(actorPart ? [actorPart, " "] : []), outcome.replace(/[.!?]+$/, ""), "."]);
   } else if (latest.category === "ACTION_DECLINED") {

@@ -982,7 +982,25 @@ test("an empty same-resolution completion cannot erase a proven Stauchness resul
     eventId: emptyCompletion.eventId,
   });
   assert.equal(sameResolution?.eventId, result.eventId);
-  assert.equal(sameResolution?.headline, "Test Player 2 used Stauchness: Test Player 1 discarded 2 Hand cards.");
+  assert.equal(sameResolution?.headline, "Test Player 2 used Stauchness, causing Test Player 1 to discard 2 Hand cards.");
+
+  const damageResult = {
+    ...result, eventId: "stauchness-damage", resolutionId: "resolution-damage", order: 2,
+    category: "DAMAGE_APPLIED", actorId: "p2", affectedPlayerIds: ["p1"], amount: 1,
+    committedOutcome: {
+      ...result.committedOutcome,
+      eventId: "stauchness-damage", resolutionId: "resolution-damage", order: 2,
+      category: "DAMAGE_APPLIED", actorId: "p2", affectedPlayerIds: ["p1"],
+      source: { kind: "damage", label: "Stauchness" },
+      changes: [{ kind: "DAMAGE_APPLIED", playerId: "p1", amount: 1 }],
+    },
+  };
+  const damageNarration = derivePublicInteractionNarration({
+    ...input,
+    snapshot: snapshot({ stage: "SETTLEMENT", publicEventFacts: [root, damageResult] }),
+    eventId: damageResult.eventId,
+  });
+  assert.equal(damageNarration?.headline, "Test Player 2 used Stauchness, causing Test Player 1 to lose 1 HP.");
 
   const prevented = {
     ...result, eventId: "stauchness-prevented", resolutionId: "resolution-prevented", order: 2,
@@ -994,7 +1012,7 @@ test("an empty same-resolution completion cannot erase a proven Stauchness resul
     snapshot: snapshot({ stage: "SETTLEMENT", publicEventFacts: [root, prevented] }),
     eventId: prevented.eventId,
   });
-  assert.equal(preventedNarration?.headline, "Test Player 2 used Stauchness: damage to Test Player 1 was prevented.");
+  assert.equal(preventedNarration?.headline, "Test Player 2 used Stauchness, but damage to Test Player 1 was prevented.");
   assert.doesNotMatch(preventedNarration?.headline ?? "", /1 damage/,
     "a prevented result never claims the intended one damage was applied");
 
