@@ -271,10 +271,17 @@ export async function preflightStaging({ client, evidenceDir = DEFAULT_EVIDENCE_
 export async function captureStaging({ client, evidenceDir = DEFAULT_EVIDENCE_DIR, owner, now = new Date() } = {}) {
   ensureClientTarget(client);
   const safe = safeOwner(owner);
-  const preflight = await readJson(phasePath(evidenceDir, "preflight"), "preflight");
-  if (preflight.ok !== true || preflight.owner?.tag !== safe.tag) throw blocked("Staging preflight ownership is not valid");
   const evidencePath = phasePath(evidenceDir, "capture");
-  return withEvidence(evidencePath, { phase: "capture", observedAt: isoNow(now), target: AI_STAGING_LIFECYCLE_TARGET, owner: safe }, async () => {
+  const base = { phase: "capture", observedAt: isoNow(now), target: AI_STAGING_LIFECYCLE_TARGET, owner: safe };
+  let preflight;
+  try {
+    preflight = await readJson(phasePath(evidenceDir, "preflight"), "preflight");
+    if (preflight.ok !== true || preflight.owner?.tag !== safe.tag) throw blocked("Staging preflight ownership is not valid");
+  } catch (error) {
+    await recordFailure(evidencePath, base, error);
+    throw error;
+  }
+  return withEvidence(evidencePath, base, async () => {
     const inventory = await client.inventory();
     assertNoUnexpectedExposure(inventory);
     assertActiveExpected(inventory);
@@ -299,8 +306,16 @@ export async function captureStaging({ client, evidenceDir = DEFAULT_EVIDENCE_DI
 export async function containStaging({ client, evidenceDir = DEFAULT_EVIDENCE_DIR, owner, now = new Date() } = {}) {
   ensureClientTarget(client);
   const safe = safeOwner(owner);
-  const preflight = await readJson(phasePath(evidenceDir, "preflight"), "preflight");
-  if (preflight.ok !== true || preflight.owner?.tag !== safe.tag) throw blocked("Staging preflight ownership is not valid");
+  const evidencePath = phasePath(evidenceDir, "contain");
+  const base = { phase: "contain", observedAt: isoNow(now), target: AI_STAGING_LIFECYCLE_TARGET, owner: safe };
+  let preflight;
+  try {
+    preflight = await readJson(phasePath(evidenceDir, "preflight"), "preflight");
+    if (preflight.ok !== true || preflight.owner?.tag !== safe.tag) throw blocked("Staging preflight ownership is not valid");
+  } catch (error) {
+    await recordFailure(evidencePath, base, error);
+    throw error;
+  }
   let capture = null;
   try {
     capture = await readJson(phasePath(evidenceDir, "capture"), "capture");
@@ -312,13 +327,11 @@ export async function containStaging({ client, evidenceDir = DEFAULT_EVIDENCE_DI
       await captureStaging({ client, evidenceDir, owner: safe, now });
       capture = await readJson(phasePath(evidenceDir, "capture"), "capture");
     } catch (error) {
-      const evidencePath = phasePath(evidenceDir, "contain");
-      await recordFailure(evidencePath, { phase: "contain", observedAt: isoNow(now), target: AI_STAGING_LIFECYCLE_TARGET, owner: safe }, error);
+      await recordFailure(evidencePath, base, error);
       throw error;
     }
   }
-  const evidencePath = phasePath(evidenceDir, "contain");
-  return withEvidence(evidencePath, { phase: "contain", observedAt: isoNow(now), target: AI_STAGING_LIFECYCLE_TARGET, owner: safe }, async () => {
+  return withEvidence(evidencePath, base, async () => {
     const operations = [];
     let ownershipVerified = true;
     const attempt = async (name, operation) => {
