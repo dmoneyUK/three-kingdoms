@@ -47,6 +47,7 @@ export type PresentationV2Event = {
   publicSkillEffectSettlement?: unknown;
   publicDismantleSettlement?: unknown;
   publicStealSettlement?: unknown;
+  publicCardAcquisitionSettlement?: unknown;
   publicAttackHitSettlement?: unknown;
   publicGroupSettlement?: unknown;
   publicBumperHarvestSettlement?: unknown;
@@ -269,6 +270,26 @@ export type PresentationStealSettlementProof = {
 
 export type PresentationStealSettlement = PresentationStealSettlementProof & {
   eventId: string;
+};
+
+/** Generic public acquisition owner shared by real Steal and Retaliation settlements. */
+export type PresentationCardAcquisitionSettlement = PresentationTargetCardSettlementMovement & {
+  semantics: "PROVEN";
+  acquisitionKind: "STEAL" | "RETALIATION";
+  providerId: "steal_card" | "sima_yi_fankui";
+  eventId: string;
+  rootEventId: string;
+  rootResolutionId: string;
+  sourceId: string;
+  targetId: string;
+  outcome: "STEAL_RESOLVED" | "RETALIATION_RESOLVED";
+  interactionId?: string;
+  rootFrameId?: string;
+};
+
+export type PresentationCardAcquisitionSettlementProof = Omit<PresentationCardAcquisitionSettlement, "eventId" | "acquisitionKind" | "providerId"> & {
+  acquisitionKind: "RETALIATION";
+  providerId: "sima_yi_fankui";
 };
 
 /** Public result for a direct ordinary Attack that actually applied damage. */
@@ -931,6 +952,7 @@ export type PresentationV2 = {
   diaoChanSkillNotices: readonly PresentationDiaoChanSkillNotice[];
   dismantleSettlements: readonly PresentationDismantleSettlement[];
   stealSettlements: readonly PresentationStealSettlement[];
+  cardAcquisitionSettlements: readonly PresentationCardAcquisitionSettlement[];
   attackHitSettlements: readonly PresentationAttackHitSettlement[];
   groupSettlements: readonly PresentationGroupSettlement[];
   bumperHarvestSettlements: readonly PresentationBumperHarvestSettlement[];
@@ -3331,6 +3353,89 @@ function stealSettlementsFor(timeline: readonly PresentationV2Event[]): Presenta
   });
 }
 
+function retaliationSettlementsFor(timeline: readonly PresentationV2Event[]): PresentationCardAcquisitionSettlement[] {
+  const eventIdCounts = new Map<string, number>();
+  for (const event of timeline) {
+    const eventId = stringValue(event.id);
+    if (eventId) eventIdCounts.set(eventId, (eventIdCounts.get(eventId) ?? 0) + 1);
+  }
+
+  return timeline.flatMap((event) => {
+    const proof = record(event.publicCardAcquisitionSettlement);
+    const eventId = stringValue(event.id);
+    const rootEventId = stringValue(proof?.rootEventId);
+    const rootResolutionId = stringValue(proof?.rootResolutionId);
+    const sourceId = stringValue(proof?.sourceId);
+    const targetId = stringValue(proof?.targetId);
+    const sourceZone = proof?.sourceZone;
+    if (!proof || !eventId || eventIdCounts.get(eventId) !== 1
+      || !rootEventId || rootEventId === eventId || !rootResolutionId
+      || !sourceId || !targetId || sourceId === targetId
+      || proof.semantics !== "PROVEN" || proof.acquisitionKind !== "RETALIATION"
+      || proof.providerId !== "sima_yi_fankui" || proof.outcome !== "RETALIATION_RESOLVED"
+      || (sourceZone !== "hand" && sourceZone !== "equipment" && sourceZone !== "judgement")
+      || proof.destinationZone !== "hand" || proof.destinationOwnerId !== sourceId
+      || proof.affectedCardOwnerId !== (sourceZone === "judgement" ? null : targetId)
+      || event.type !== "message" || event.presentation === false || typeof event.privateToPlayerId === "string"
+      || event.importance !== "essential" || event.finalResult !== true
+      || event.actorId !== sourceId || event.resolutionId !== rootResolutionId || !stringValue(event.message)) return [];
+
+    const roots = timeline.filter((candidate) => candidate.id === rootEventId);
+    const root = roots.length === 1 ? roots[0] : null;
+    if (!root || root.presentation === false || typeof root.privateToPlayerId === "string"
+      || root.resolutionId !== rootResolutionId) return [];
+
+    const fact = record(event.publicFact);
+    const factIdentity = record(fact?.committedIdentity);
+    const publicEffect = record(fact?.effect);
+    const committed = record(fact?.committedOutcome);
+    const changes = Array.isArray(committed?.changes) ? committed.changes.map(record) : [];
+    const expectedFromZone = sourceZone.toUpperCase();
+    const exactTransfer = changes.length === 1
+      && changes[0]?.kind === "CARD_TRANSFERRED"
+      && changes[0].fromPlayerId === targetId && changes[0].toPlayerId === sourceId
+      && changes[0].amount === 1 && changes[0].fromZone === expectedFromZone
+      && changes[0].toZone === "HAND";
+    if (fact?.semantics !== "PROVEN" || fact.visibility !== "PUBLIC" || fact.category !== "SKILL_USED"
+      || fact.rootEventId !== rootEventId || fact.actorId !== sourceId || fact.label !== "Retaliation"
+      || publicEffect?.kind !== "gain_target_card"
+      || !factIdentity || factIdentity.interactionId !== fact.interactionId
+      || !stringValue(factIdentity.rootFrameId)
+      || !committed || !record(committed.source) || committed.source.kind !== "skill" || committed.source.label !== "Retaliation"
+      || !Array.isArray(fact.affectedPlayerIds)
+      || !fact.affectedPlayerIds.includes(sourceId) || !fact.affectedPlayerIds.includes(targetId)
+      || proof.interactionId !== fact.interactionId || proof.rootFrameId !== factIdentity.rootFrameId || !exactTransfer) return [];
+
+    const hasCardFace = Object.prototype.hasOwnProperty.call(proof, "affectedCardFace");
+    let affectedCardFace: Card | undefined;
+    if (sourceZone === "hand") {
+      if (hasCardFace) return [];
+    } else {
+      const candidate = publicPhysicalCard(proof.affectedCardFace);
+      if (!hasCardFace || !candidate) return [];
+      affectedCardFace = candidate;
+    }
+
+    return [{ semantics: "PROVEN", acquisitionKind: "RETALIATION", providerId: "sima_yi_fankui",
+      eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "RETALIATION_RESOLVED",
+      ...(typeof proof.interactionId === "string" ? { interactionId: proof.interactionId } : {}),
+      ...(typeof proof.rootFrameId === "string" ? { rootFrameId: proof.rootFrameId } : {}),
+      sourceZone, affectedCardOwnerId: sourceZone === "judgement" ? null : targetId,
+      destinationZone: "hand", destinationOwnerId: sourceId,
+      ...(affectedCardFace ? { affectedCardFace } : {}),
+    }];
+  });
+}
+
+function cardAcquisitionSettlementsFor(timeline: readonly PresentationV2Event[]): PresentationCardAcquisitionSettlement[] {
+  const steal = stealSettlementsFor(timeline).map((settlement) => ({
+    ...settlement, acquisitionKind: "STEAL" as const, providerId: "steal_card" as const,
+  }));
+  const retaliation = retaliationSettlementsFor(timeline);
+  return [...steal, ...retaliation].sort((left, right) =>
+    timeline.findIndex((event) => event.id === left.eventId) - timeline.findIndex((event) => event.id === right.eventId));
+}
+
 function attackHitSettlementsFor(timeline: readonly PresentationV2Event[]): PresentationAttackHitSettlement[] {
   const eventIdCounts = new Map<string, number>();
   const rootIdCounts = new Map<string, number>();
@@ -4385,6 +4490,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const diaoChanSkillNotices = diaoChanSkillNoticesFor(input.timeline, publicCardEffects);
   const dismantleSettlements = dismantleSettlementsFor(input.timeline);
   const stealSettlements = stealSettlementsFor(input.timeline);
+  const cardAcquisitionSettlements = cardAcquisitionSettlementsFor(input.timeline);
   const attackHitSettlements = attackHitSettlementsFor(input.timeline);
   const groupSettlements = groupSettlementsFor(input.timeline);
   const bumperHarvestSettlements = bumperHarvestSettlementsFor(input.timeline);
@@ -4435,6 +4541,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     diaoChanSkillNotices,
     dismantleSettlements,
     stealSettlements,
+    cardAcquisitionSettlements,
     attackHitSettlements,
     groupSettlements,
     bumperHarvestSettlements,

@@ -171,6 +171,7 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
     skillEffectSettlements: [],
     dismantleSettlements: [],
     stealSettlements: [],
+    cardAcquisitionSettlements: [],
     attackHitSettlements: [],
     groupSettlements: [],
     bumperHarvestSettlements: [],

@@ -369,8 +369,21 @@ test("Retaliation can obtain an eligible public Equipment or Judgement card and 
   assert.equal(tookEquipment.status, 200, JSON.stringify(tookEquipment.data));
   assert.equal(tookEquipment.data.room.presentationSnapshot.retainedPublicEvent?.effect?.label, "Nio Shield", "face-up Equipment may be named in the public outcome");
   assert.deepEqual(tookEquipment.data.room.myHand.map((held) => held.id), [shield.id]);
+  const equipmentSettlement = tookEquipment.data.room.presentationSnapshot.cardAcquisitionSettlements.filter((entry) => entry.acquisitionKind === "RETALIATION");
+  assert.equal(equipmentSettlement.length, 1);
+  assert.deepEqual(equipmentSettlement[0], {
+    semantics: "PROVEN", acquisitionKind: "RETALIATION", providerId: "sima_yi_fankui",
+    eventId: tookEquipment.data.room.timeline.find((event) => event.publicCardAcquisitionSettlement)?.id,
+    rootEventId: equipmentSettlement[0].rootEventId, rootResolutionId: equipmentSettlement[0].rootResolutionId,
+    interactionId: equipmentSettlement[0].interactionId, rootFrameId: equipmentSettlement[0].rootFrameId,
+    sourceId: equipmentGame.target.id, targetId: equipmentGame.source.id, outcome: "RETALIATION_RESOLVED",
+    sourceZone: "equipment", affectedCardOwnerId: equipmentGame.source.id,
+    destinationZone: "hand", destinationOwnerId: equipmentGame.target.id, affectedCardFace: shield,
+  });
   assert.equal(tookEquipment.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer)?.privateHandTransfer?.sourceZone, "equipment");
-  assert.equal((await state(equipmentGame.code, equipmentGame.members[2].token)).data.timeline.some((event) => event.privateHandTransfer), false);
+  const equipmentObserver = (await state(equipmentGame.code, equipmentGame.members[2].token)).data;
+  assert.deepEqual(equipmentObserver.presentationSnapshot.cardAcquisitionSettlements, tookEquipment.data.room.presentationSnapshot.cardAcquisitionSettlements);
+  assert.equal(equipmentObserver.timeline.some((event) => event.privateHandTransfer), false);
   assert.deepEqual(tookEquipment.data.room.players.find((player) => player.id === equipmentGame.source.id).equipmentCards, []);
 
   const delayed = card("Lightning", "fankui-public-judgement");
@@ -380,7 +393,20 @@ test("Retaliation can obtain an eligible public Equipment or Judgement card and 
   const tookJudgement = await requestAndSettle("trigger", { code: judgementGame.code, token: judgementGame.targetMember.token, providerId: "sima_yi_fankui", cardKeys: [delayed.id] });
   assert.equal(tookJudgement.status, 200, JSON.stringify(tookJudgement.data));
   assert.deepEqual(tookJudgement.data.room.myHand.map((held) => held.id), [delayed.id]);
+  const judgementSettlement = tookJudgement.data.room.presentationSnapshot.cardAcquisitionSettlements.filter((entry) => entry.acquisitionKind === "RETALIATION");
+  assert.equal(judgementSettlement.length, 1);
+  assert.deepEqual(judgementSettlement[0], {
+    semantics: "PROVEN", acquisitionKind: "RETALIATION", providerId: "sima_yi_fankui",
+    eventId: tookJudgement.data.room.timeline.find((event) => event.publicCardAcquisitionSettlement)?.id,
+    rootEventId: judgementSettlement[0].rootEventId, rootResolutionId: judgementSettlement[0].rootResolutionId,
+    interactionId: judgementSettlement[0].interactionId, rootFrameId: judgementSettlement[0].rootFrameId,
+    sourceId: judgementGame.target.id, targetId: judgementGame.source.id, outcome: "RETALIATION_RESOLVED",
+    sourceZone: "judgement", affectedCardOwnerId: null,
+    destinationZone: "hand", destinationOwnerId: judgementGame.target.id, affectedCardFace: delayed,
+  });
   assert.equal(tookJudgement.data.room.timeline.find((event) => event.type === "card" && event.privateHandTransfer)?.privateHandTransfer?.sourceZone, "judgement");
+  const judgementObserver = (await state(judgementGame.code, judgementGame.members[2].token)).data;
+  assert.deepEqual(judgementObserver.presentationSnapshot.cardAcquisitionSettlements, tookJudgement.data.room.presentationSnapshot.cardAcquisitionSettlements);
   assert.deepEqual(tookJudgement.data.room.players.find((player) => player.id === judgementGame.source.id).judgementCards, []);
 
   const emptyGame = await openFankuiAttack({ sourceCards: [card("Attack", "fankui-empty-source")], expectReaction: false });
@@ -388,6 +414,29 @@ test("Retaliation can obtain an eligible public Equipment or Judgement card and 
   assert.equal(emptyState.phase, "play-struck", JSON.stringify(emptyState));
   assert.equal(emptyState.currentAction.kind, "turn");
   assert.equal(emptyState.currentAction.triggerEvent, undefined);
+});
+
+test("Retaliation Hand acquisition keeps the public card hidden and gives only both participants a private face", { timeout: 30_000 }, async () => {
+  const stolen = card("Dodge", "fankui-private-acquisition-card", "♣", "J");
+  const game = await openFankuiAttack({ sourceCards: [card("Attack", "fankui-private-acquisition-root"), stolen] });
+  const obtained = await requestAndSettle("trigger", { code: game.code, token: game.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] });
+  assert.equal(obtained.status, 200, JSON.stringify(obtained.data));
+  const event = obtained.data.room.timeline.find((entry) => entry.publicCardAcquisitionSettlement?.acquisitionKind === "RETALIATION");
+  assert.ok(event, "the actual Retaliation settlement event is public");
+  assert.equal(event.publicCardAcquisitionSettlement.sourceZone, "hand");
+  assert.equal(Object.hasOwn(event.publicCardAcquisitionSettlement, "affectedCardFace"), false);
+  assert.equal(JSON.stringify(event).includes(stolen.id), false);
+  assert.ok(obtained.data.room.myHand.some((held) => held.id === stolen.id), "the actual card reaches Sima Yi's Hand");
+  assert.equal(obtained.data.room.privateStealParticipantResult?.role, "TAKER");
+  assert.equal(obtained.data.room.privateStealParticipantResult?.card?.id, stolen.id);
+
+  const formerOwner = (await state(game.code, game.sourceMember.token)).data;
+  assert.equal(formerOwner.privateStealParticipantResult?.role, "FORMER_OWNER");
+  assert.equal(formerOwner.privateStealParticipantResult?.card?.id, stolen.id);
+  const observer = (await state(game.code, game.members[2].token)).data;
+  assert.equal(observer.privateStealParticipantResult, null);
+  assert.deepEqual(observer.presentationSnapshot.cardAcquisitionSettlements, obtained.data.room.presentationSnapshot.cardAcquisitionSettlements);
+  assert.equal(JSON.stringify(observer).includes(stolen.id), false, "unrelated viewers never receive the hidden card ID");
 });
 
 test("Retaliation rejects stale source cards, handles a vanished source, and has one concurrent winner", { timeout: 30_000 }, async () => {

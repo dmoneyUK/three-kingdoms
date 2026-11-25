@@ -57,6 +57,7 @@ function normalizePrivateStealParticipantResult(value, roomCode, viewerId, serve
     || typeof value.settlementEventId !== "string" || !value.settlementEventId
     || typeof value.rootEventId !== "string" || !value.rootEventId
     || typeof value.rootResolutionId !== "string" || !value.rootResolutionId
+    || value.acquisitionKind !== undefined && value.acquisitionKind !== "STEAL" && value.acquisitionKind !== "RETALIATION"
     || value.sourceZone !== "hand"
     || !Number.isSafeInteger(value.committedAt) || !Number.isSafeInteger(value.eligibleUntil)
     || value.eligibleUntil <= value.committedAt || value.eligibleUntil - value.committedAt > 15_000
@@ -75,6 +76,7 @@ function normalizePrivateStealParticipantResult(value, roomCode, viewerId, serve
     rootResolutionId: value.rootResolutionId,
     sourceId: value.sourceId,
     targetId: value.targetId,
+    ...(value.acquisitionKind ? { acquisitionKind: value.acquisitionKind } : {}),
     sourceZone: "hand",
     physicalCardId: card.id,
     committedAt: value.committedAt,
@@ -183,6 +185,38 @@ function normalizePresentationMeta(entry) {
       ...movement,
     };
   }
+  if (isRecord(entry.publicCardAcquisitionSettlement)) {
+    const proof = entry.publicCardAcquisitionSettlement;
+    const kind = proof.acquisitionKind;
+    const sourceZone = proof.sourceZone;
+    const sourceId = proof.sourceId;
+    const targetId = proof.targetId;
+    const expectedProvider = kind === "STEAL" ? "steal_card" : kind === "RETALIATION" ? "sima_yi_fankui" : null;
+    const expectedOutcome = kind === "STEAL" ? "STEAL_RESOLVED" : kind === "RETALIATION" ? "RETALIATION_RESOLVED" : null;
+    const affectedCardOwnerId = sourceZone === "judgement" ? null : targetId;
+    const hiddenHand = sourceZone === "hand";
+    const face = hiddenHand ? null : normalizePhysicalCard(proof.affectedCardFace);
+    const movementValid = (sourceZone === "hand" || sourceZone === "equipment" || sourceZone === "judgement")
+      && proof.destinationZone === "hand" && proof.destinationOwnerId === sourceId
+      && proof.affectedCardOwnerId === affectedCardOwnerId
+      && (hiddenHand ? !Object.hasOwn(proof, "affectedCardFace") : Boolean(face));
+    if (proof.semantics === "PROVEN" && expectedProvider && expectedOutcome
+      && proof.providerId === expectedProvider && proof.outcome === expectedOutcome
+      && typeof proof.rootEventId === "string" && typeof proof.rootResolutionId === "string"
+      && typeof sourceId === "string" && typeof targetId === "string" && sourceId !== targetId
+      && movementValid
+      && (kind !== "RETALIATION" || typeof proof.interactionId === "string" && typeof proof.rootFrameId === "string")) {
+      metadata.publicCardAcquisitionSettlement = {
+        semantics: "PROVEN", acquisitionKind: kind, providerId: expectedProvider,
+        rootEventId: proof.rootEventId, rootResolutionId: proof.rootResolutionId,
+        sourceId, targetId, outcome: expectedOutcome, sourceZone,
+        affectedCardOwnerId, destinationZone: "hand", destinationOwnerId: sourceId,
+        ...(face ? { affectedCardFace: face } : {}),
+        ...(typeof proof.interactionId === "string" ? { interactionId: proof.interactionId } : {}),
+        ...(typeof proof.rootFrameId === "string" ? { rootFrameId: proof.rootFrameId } : {}),
+      };
+    }
+  }
   if (isRecord(entry.publicAttackHitSettlement)
     && entry.publicAttackHitSettlement.semantics === "PROVEN"
     && typeof entry.publicAttackHitSettlement.rootEventId === "string"
@@ -281,6 +315,7 @@ function normalizeTimelineEvent(entry) {
   const event = { ...entry };
   delete event.publicDismantleSettlement;
   delete event.publicStealSettlement;
+  delete event.publicCardAcquisitionSettlement;
   delete event.publicAttackHitSettlement;
   delete event.publicGroupSettlement;
   delete event.publicBumperHarvestSettlement;

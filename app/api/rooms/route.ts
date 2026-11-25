@@ -34,7 +34,7 @@ import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { evaluatePlayTarget, type PlayTargetEligibilityPlayer, type PlayTargetMode, type PlayTargetRejection } from "../../../game/capabilities/play-target-eligibility";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { attackRootProjectionDiagnosticsFor, projectPresentationV2, publicCardPlayProvesEffectiveKind, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
+import { attackRootProjectionDiagnosticsFor, projectPresentationV2, publicCardPlayProvesEffectiveKind, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationCardAcquisitionSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
 import { composePresentationSnapshot, type PresentationPublicDrawPhaseDecision } from "../../../game/presentation-snapshot";
 import { validateCommittedPublicOutcomeDraft, type CommittedPublicOutcomeChange, type CommittedPublicOutcomeDraft, type PublicPhysicalZoneTransition, type PublicPresentationDecision, type PublicPresentationEventFactDraft, type PublicZoneEndpoint, type ViewerNegationChoice } from "../../../game/presentation-semantics";
 import { oathRecipientIds } from "../../../game/oath";
@@ -50,7 +50,7 @@ export const runtime = "edge";
 type TargetCardZone = "hand" | "equipment" | "judgement";
 const PRIVATE_STEAL_RESULT_WINDOW_MS = 12_000;
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { sharedResponseContribution?: SharedResponseContribution; entourageInvocation?: EntourageInvocation; resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; actorId?: string; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicFact?: PublicPresentationEventFactDraft; publicZoneTransition?: PublicPhysicalZoneTransition; publicZoneTransitions?: readonly PublicPhysicalZoneTransition[]; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PresentationMeta = { sharedResponseContribution?: SharedResponseContribution; entourageInvocation?: EntourageInvocation; resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; actorId?: string; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicFact?: PublicPresentationEventFactDraft; publicZoneTransition?: PublicPhysicalZoneTransition; publicZoneTransitions?: readonly PublicPhysicalZoneTransition[]; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicCardAcquisitionSettlement?: PresentationCardAcquisitionSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type AttackDodgeProofDiagnostic = {
   result: "PROVEN" | "REJECTED" | "NOT_ATTEMPTED";
   reason: string;
@@ -772,7 +772,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { ...(meta?.sharedResponseContribution ? { sharedResponseContribution: meta.sharedResponseContribution } : {}), ...(meta?.entourageInvocation ? { entourageInvocation: meta.entourageInvocation } : {}), resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
+  return { ...(meta?.sharedResponseContribution ? { sharedResponseContribution: meta.sharedResponseContribution } : {}), ...(meta?.entourageInvocation ? { entourageInvocation: meta.entourageInvocation } : {}), resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicCardAcquisitionSettlement ? { publicCardAcquisitionSettlement: meta.publicCardAcquisitionSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
 function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "outcomeCopySegments" | "amount" | "effect" | "bumperHarvestPickProof" | "committedOutcome">> = {}, envelope?: CausalEnvelope | null, rootIdentity?: NonNullable<PublicPresentationEventFactDraft["committedIdentity"]>): PublicPresentationEventFactDraft | undefined {
   if (!causal?.interactionId || !causal.frameId) return undefined;
@@ -1557,8 +1557,10 @@ function addPrivateHandArrivalEvent(
     ...(options.privateStealParticipantResult ? { privateStealParticipantResult: options.privateStealParticipantResult } : {}),
   });
 }
-function addPrivateStealParticipantResultEvents(log: string[], source: PlayerRow, target: PlayerRow, roomCode: string, settlementEventId: string, proof: PresentationStealSettlementProof, card: Card) {
+type CardAcquisitionParticipantProof = PresentationStealSettlementProof | PresentationCardAcquisitionSettlementProof;
+function addPrivateStealParticipantResultEvents(log: string[], source: PlayerRow, target: PlayerRow, roomCode: string, settlementEventId: string, proof: CardAcquisitionParticipantProof, card: Card) {
   if (proof.sourceZone !== "hand" || proof.sourceId !== source.id || proof.targetId !== target.id || source.id === target.id || !settlementEventId || !card.id) return log;
+  const acquisitionKind = "acquisitionKind" in proof ? proof.acquisitionKind : "STEAL";
   const committedAt = Date.now();
   const eligibleUntil = committedAt + PRIVATE_STEAL_RESULT_WINDOW_MS;
   const transferId = crypto.randomUUID();
@@ -1571,6 +1573,7 @@ function addPrivateStealParticipantResultEvents(log: string[], source: PlayerRow
     sourceId: proof.sourceId,
     targetId: proof.targetId,
     sourceZone: proof.sourceZone,
+    acquisitionKind,
     physicalCardId: card.id,
     committedAt,
     eligibleUntil,
@@ -1584,6 +1587,7 @@ function addPrivateStealParticipantResultEvents(log: string[], source: PlayerRow
     sourceId: proof.sourceId,
     targetId: proof.targetId,
     sourceZone: proof.sourceZone,
+    acquisitionKind,
   };
   const withTakerResult = addPrivateHandArrivalEvent(log, source, card, {
     sourceZone: "hand", sourcePlayerId: proof.targetId,
@@ -3293,7 +3297,7 @@ function privateStealParticipantResultForEvent(
   event: Record<string, unknown>,
   roomCode: string,
   viewerId: string,
-  settlement: PresentationV2["stealSettlements"][number],
+  settlement: PresentationV2["cardAcquisitionSettlements"][number],
   now: number,
 ) {
   const proof = record(event.privateStealParticipantResult);
@@ -3306,6 +3310,7 @@ function privateStealParticipantResultForEvent(
     || proof.settlementEventId !== settlement.eventId
     || proof.rootEventId !== settlement.rootEventId || proof.rootResolutionId !== settlement.rootResolutionId
     || proof.sourceId !== settlement.sourceId || proof.targetId !== settlement.targetId
+    || (proof.acquisitionKind ?? "STEAL") !== settlement.acquisitionKind
     || proof.sourceZone !== "hand" || settlement.sourceZone !== "hand"
     || role === "TAKER" && viewerId !== settlement.sourceId
     || role === "FORMER_OWNER" && viewerId !== settlement.targetId
@@ -3345,6 +3350,7 @@ function privateStealParticipantResultForEvent(
     rootResolutionId: settlement.rootResolutionId,
     sourceId: settlement.sourceId,
     targetId: settlement.targetId,
+    acquisitionKind: settlement.acquisitionKind,
     sourceZone: "hand" as const,
     physicalCardId: card.id,
     committedAt: proof.committedAt as number,
@@ -7642,28 +7648,28 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   };
   const presentationV2 = projectPresentationV2(presentationInput);
   const publicNextDecision = publicNextDecisionFor(presentationV2, pending, currentTriggerContext, currentTriggerOptions);
-  const latestStealSettlement = presentationV2.stealSettlements.at(-1);
-  const privateStealResultCandidates = me && latestStealSettlement?.sourceZone === "hand" && latestStealSettlement.sourceId === me.id
+  const latestCardAcquisitionSettlement = presentationV2.cardAcquisitionSettlements.at(-1);
+  const privateStealResultCandidates = me && latestCardAcquisitionSettlement?.sourceZone === "hand" && latestCardAcquisitionSettlement.sourceId === me.id
     ? privateStealResultEvents.flatMap((event) => {
       const proof = privateStealResultForEvent(event, room.code, me.id);
-      return proof && proof.eventId === latestStealSettlement.eventId
-        && proof.rootEventId === latestStealSettlement.rootEventId
-        && proof.rootResolutionId === latestStealSettlement.rootResolutionId
-        && proof.sourceId === latestStealSettlement.sourceId
-        && proof.targetId === latestStealSettlement.targetId
+      return proof && proof.eventId === latestCardAcquisitionSettlement.eventId
+        && proof.rootEventId === latestCardAcquisitionSettlement.rootEventId
+        && proof.rootResolutionId === latestCardAcquisitionSettlement.rootResolutionId
+        && proof.sourceId === latestCardAcquisitionSettlement.sourceId
+        && proof.targetId === latestCardAcquisitionSettlement.targetId
         ? [proof]
         : [];
     })
     : [];
   const privateStealResult = privateStealResultCandidates.length === 1 ? privateStealResultCandidates[0] : null;
-  const participantProofEvents = me && latestStealSettlement?.sourceZone === "hand"
-    ? privateStealParticipantProofEvents(rawLog, latestStealSettlement.eventId)
+  const participantProofEvents = me && latestCardAcquisitionSettlement?.sourceZone === "hand"
+    ? privateStealParticipantProofEvents(rawLog, latestCardAcquisitionSettlement.eventId)
     : [];
   const participantResults = participantProofEvents.flatMap((event) => {
     const proof = record(event.privateStealParticipantResult);
     const viewerId = typeof proof?.viewerId === "string" ? proof.viewerId : "";
     const participantResult = viewerId
-      ? privateStealParticipantResultForEvent(event, room.code, viewerId, latestStealSettlement!, serverNow)
+      ? privateStealParticipantResultForEvent(event, room.code, viewerId, latestCardAcquisitionSettlement!, serverNow)
       : null;
     return participantResult ? [participantResult] : [];
   });
@@ -10536,18 +10542,12 @@ export async function POST(request: Request) {
           const sourceZone: PrivateHandTransferSource["sourceZone"] = handIndex >= 0
             ? "hand"
             : Object.values(sourceEquipment).some((card) => card?.id === selected.id) ? "equipment" : "judgement";
-          let gainLog = addPrivateHandArrivalEvent(log, target, selected, {
-            sourceZone,
-            sourcePlayerId: sourcePlayer.id,
-            ...(continuation.rootEventId ? { rootEventId: continuation.rootEventId } : {}),
-            ...(continuation.resolutionId ? { rootResolutionId: continuation.resolutionId } : {}),
-            ...(continuation.interactionId ? { interactionId: continuation.interactionId } : {}),
-            ...(continuation.frameId ? { frameId: continuation.frameId } : {}),
-          });
+          let gainLog = log;
           const sourceZoneForOutcome = sourceZone.toUpperCase() as "HAND" | "EQUIPMENT" | "JUDGEMENT";
           const committedFact = withCommittedPublicTriggerOutcome(triggerPublicFact, {
             outcomeLabel: "obtained one card",
             changes: [{ kind: "CARD_TRANSFERRED", fromPlayerId: sourcePlayer.id, toPlayerId: target.id, amount: 1, fromZone: sourceZoneForOutcome, toZone: "HAND" }],
+            source: { kind: "skill", label: "Retaliation" },
           });
           const publicEffect = committedFact ? {
             ...committedFact,
@@ -10556,9 +10556,43 @@ export async function POST(request: Request) {
               ...(handIndex < 0 ? { label: cardDefinition(selected.kind).name } : {}),
             },
           } : undefined;
-          gainLog = addLogWithId(gainLog, `${target.name} obtains a card from ${sourcePlayer.name} with Retaliation.`, undefined, {
-            effectNotice: true, ...(publicEffect ? { publicFact: publicEffect } : {}),
-          }).log;
+          const rootEvents = continuation.rootEventId
+            ? gameTimeline(log).filter((event) => event.id === continuation.rootEventId && event.presentation !== false && typeof event.privateToPlayerId !== "string")
+            : [];
+          const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
+          const rootResolutionId = rootEvent && typeof rootEvent.resolutionId === "string" ? rootEvent.resolutionId : "";
+          const committedIdentity = record(publicEffect?.committedIdentity);
+          const acquisitionProof: PresentationCardAcquisitionSettlementProof | undefined = publicEffect
+            && rootEvent && rootResolutionId && publicEffect.rootEventId === rootEvent.id
+            && publicEffect.interactionId && committedIdentity?.interactionId === publicEffect.interactionId
+            && typeof committedIdentity.rootFrameId === "string" && committedIdentity.rootFrameId.length > 0
+            ? {
+              semantics: "PROVEN", acquisitionKind: "RETALIATION", providerId: "sima_yi_fankui",
+              rootEventId: rootEvent.id, rootResolutionId, interactionId: publicEffect.interactionId,
+              rootFrameId: committedIdentity.rootFrameId, sourceId: target.id, targetId: sourcePlayer.id,
+              outcome: "RETALIATION_RESOLVED", sourceZone,
+              affectedCardOwnerId: sourceZone === "judgement" ? null : sourcePlayer.id,
+              destinationZone: "hand", destinationOwnerId: target.id,
+              ...(sourceZone === "hand" ? {} : { affectedCardFace: selected }),
+            }
+            : undefined;
+          const committed = addLogWithId(gainLog, `${target.name} obtains a card from ${sourcePlayer.name} with Retaliation.`, undefined, {
+            resolutionId: rootResolutionId || undefined,
+            importance: "essential", finalResult: true, actorId: target.id, effectNotice: true,
+            ...(publicEffect ? { publicFact: publicEffect } : {}),
+            ...(acquisitionProof ? { publicCardAcquisitionSettlement: acquisitionProof } : {}),
+          });
+          gainLog = committed.log;
+          if (acquisitionProof && sourceZone === "hand") {
+            gainLog = addPrivateStealParticipantResultEvents(gainLog, target, sourcePlayer, room.code, committed.eventId, acquisitionProof, selected);
+          } else {
+            gainLog = addPrivateHandArrivalEvent(gainLog, target, selected, {
+              sourceZone, sourcePlayerId: sourcePlayer.id,
+              ...(continuation.rootEventId ? { rootEventId: continuation.rootEventId } : {}),
+              ...(rootResolutionId ? { rootResolutionId } : {}),
+              ...(continuation.causal ? { interactionId: continuation.causal.interactionId, frameId: continuation.causal.frameId } : {}),
+            });
+          }
           await db.batch([
             db.prepare("UPDATE players SET hand_json = ?, equipment_json = ?, judgement_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), JSON.stringify(nextEquipment), JSON.stringify(nextJudgement), sourcePlayer.id),
             db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id),

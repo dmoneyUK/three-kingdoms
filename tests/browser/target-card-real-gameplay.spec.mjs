@@ -95,60 +95,12 @@ async function playCardThroughPage(page, cardId, targetName) {
   if (!response.ok()) throw new Error(`play_card failed: ${await response.text()}`);
 }
 
-async function expectModal(page, title, instruction, cta) {
-  const dialog = page.getByRole("dialog", { name: `${title} target card selection` });
-  await expect(dialog).toBeVisible();
-  await expect(dialog).toHaveAttribute("aria-modal", "false");
-  await expect(dialog.locator("header strong")).toHaveText(title.toUpperCase());
-  await expect(dialog.locator("header span")).toHaveText(instruction);
-  await expect(dialog.getByRole("button", { name: cta })).toBeVisible();
-  await expect(page.locator(".table-hidden-card-picker")).toHaveCount(0);
-  await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
-  const geometry = await dialog.evaluate((element) => {
-    const overlay = element.parentElement;
-    const table = overlay?.parentElement;
-    const box = element.getBoundingClientRect();
-    return {
-      x: box.x, y: box.y, right: box.right, bottom: box.bottom,
-      viewportWidth: innerWidth, viewportHeight: innerHeight,
-      panelWidthCss: getComputedStyle(element).width,
-      panelMaxWidthCss: getComputedStyle(element).maxWidth,
-      rootPosition: overlay && getComputedStyle(overlay).position,
-      rootInsets: overlay && ["top", "right", "bottom", "left"].map((property) => getComputedStyle(overlay)[property]),
-      rootPointerEvents: overlay && getComputedStyle(overlay).pointerEvents,
-      panelPointerEvents: getComputedStyle(element).pointerEvents,
-      panelReceivesInput: document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)?.closest(".target-card-picker-panel") === element,
-      panelWithinTable: Boolean(table && box.left >= table.getBoundingClientRect().left - 1
-        && box.right <= table.getBoundingClientRect().right + 1
-        && box.top >= table.getBoundingClientRect().top - 1
-        && box.bottom <= table.getBoundingClientRect().bottom + 1),
-      cardTargets: [...element.querySelectorAll(".target-card-picker-card")].map((cardElement) => {
-        const cardBox = cardElement.getBoundingClientRect();
-        return { width: cardBox.width, height: cardBox.height };
-      }),
-    };
-  });
-  expect(geometry.x).toBeGreaterThanOrEqual(0);
-  expect(geometry.y).toBeGreaterThanOrEqual(0);
-  expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
-  expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
-  expect(geometry.rootPosition).toBe("absolute");
-  expect(geometry.rootInsets).toEqual(["0px", "0px", "0px", "0px"]);
-  expect(geometry.rootPointerEvents).toBe("none");
-  expect(geometry.panelPointerEvents).toBe("auto");
-  expect(geometry.panelReceivesInput).toBe(true);
-  expect(geometry.panelWithinTable).toBe(true);
-  expect(geometry.cardTargets.length).toBeGreaterThan(0);
-  expect(geometry.cardTargets.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(geometry.viewportWidth);
-  return dialog;
-}
-
-async function expectTargetPool(page, title, instruction, cta) {
+async function expectTargetPool(page, title, instruction, cta, { mergeOnMobile = true, accessibleName = `${title} target card selection` } = {}) {
   const pool = page.locator(".card-pool-panel--actor-target-select");
   const stage = page.locator(".card-pool-target-stage");
   const viewportWidth = await page.evaluate(() => innerWidth);
-  const mergedPhoneSelection = viewportWidth <= 520 && await stage.getAttribute("data-target-card-pool-layout") === "central";
+  const centralPhoneLayout = viewportWidth <= 520 && await stage.getAttribute("data-target-card-pool-layout") === "central";
+  const mergedPhoneSelection = centralPhoneLayout && mergeOnMobile;
   if (viewportWidth <= 520) {
     const layout = await stage.getAttribute("data-target-card-pool-layout");
     expect(layout, `mobile forced choice must merge: ${await stage.getAttribute("data-target-card-pool-merge-miss")}`).toBe("central");
@@ -165,7 +117,7 @@ async function expectTargetPool(page, title, instruction, cta) {
     await expect(page.locator(".public-card-display-journey-copy")).toHaveCount(0);
     await expect(page.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toHaveCount(0);
   } else {
-    await expect(pool).toHaveAccessibleName(`${title} target card selection`);
+    await expect(pool).toHaveAccessibleName(accessibleName);
     await expect(titleNode).toHaveText(title);
     await expect(instructionNode).toHaveText(instruction);
   }
@@ -2430,7 +2382,7 @@ test("real Sima Yi Retaliation is compact, deselectable, private, and actor-only
   const attack = card("Attack", "real-retaliation-attack");
   const hidden = [
     card("Peach", "real-retaliation-hidden-a"),
-    card("Dodge", "real-retaliation-hidden-b"),
+    card("Dodge", "real-retaliation-hidden-b", "♣", "J"),
     card("Attack", "real-retaliation-hidden-c"),
     card("Steal", "real-retaliation-hidden-d"),
     card("Dismantle", "real-retaliation-hidden-e"),
@@ -2441,6 +2393,7 @@ test("real Sima Yi Retaliation is compact, deselectable, private, and actor-only
   ));
   const actorContext = await browser.newContext({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   const observerContext = await browser.newContext({ viewport: { width: 440, height: 766 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const formerOwnerContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   try {
     const actorPage = await actorContext.newPage();
     await openGame(actorPage, seed, 1, { width: 390, height: 700 });
@@ -2470,34 +2423,37 @@ test("real Sima Yi Retaliation is compact, deselectable, private, and actor-only
     await expect(duplicate).toHaveCount(0);
     await tapMobile(actorPage, skill);
     await expect(skill).toHaveAttribute("aria-pressed", "true");
-    const dialog = await expectModal(actorPage, "Retaliation", "Choose 1 card to obtain", "Confirm Retaliation selection");
-    await expect(dialog).toHaveClass(/target-card-picker-panel--compact/);
+    const dialog = await expectTargetPool(actorPage, "RETALIATION", "Choose 1 card to obtain", "Confirm Retaliation selection", { mergeOnMobile: false, accessibleName: "Retaliation target card selection" });
+    await expect(actorPage.locator(".card-pool-target-stage")).toHaveAttribute("data-retaliation-pool", "true");
     await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
-    const skip = dialog.getByRole("button", { name: "Skip", exact: true });
+    const skip = dialog.getByRole("button", { name: "Skip Retaliation", exact: true });
     const confirm = dialog.getByRole("button", { name: "Confirm Retaliation selection", exact: true });
     await expect(skip).toBeEnabled();
     await expect(confirm).toBeDisabled();
-    const handRail = dialog.locator(".target-card-picker-zone-hand .target-card-picker-card-row");
+    const handRail = dialog.locator(".card-pool-panel__target-public-backs");
     await expect(handRail).toHaveAttribute("data-hand-scrollable", "true");
-    const lastHiddenCard = dialog.getByRole("button", { name: "Hidden hand card 5", exact: true });
+    const lastHiddenCard = dialog.getByRole("button", { name: "Choose hidden Hand position 5", exact: true });
     const handOverflow = await handRail.evaluate((element) => element.scrollWidth > element.clientWidth + 1);
-    const scrollCue = dialog.locator(".target-card-picker-zone-scroll-hint");
-    await expect(dialog.getByRole("button", { name: /^Hidden hand card [1-5]$/ })).toHaveCount(5);
+    const scrollCue = dialog.locator(".card-pool-panel__scroll-hint");
+    await expect(dialog.getByRole("button", { name: /^Choose hidden Hand position [1-5]$/ })).toHaveCount(5);
     if (handOverflow) {
       await expect(scrollCue).toBeVisible();
       await handRail.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
     } else {
       await expect(scrollCue).toHaveCount(0);
     }
-    await expect(lastHiddenCard).toBeInViewport();
     const lastCardReachability = await handRail.evaluate((row) => {
-      const card = row.querySelector('[aria-label="Hidden hand card 5"]');
+      const card = row.querySelector('[aria-label="Choose hidden Hand position 5"]');
       if (!card) return null;
       const rowBox = row.getBoundingClientRect();
       const cardBox = card.getBoundingClientRect();
-      return { left: cardBox.left >= rowBox.left - 1, right: cardBox.right <= rowBox.right + 1 };
+      return {
+        left: cardBox.left >= rowBox.left - 1,
+        right: cardBox.right <= rowBox.right + 1,
+        inViewport: cardBox.left >= 0 && cardBox.right <= innerWidth && cardBox.top >= 0 && cardBox.bottom <= innerHeight,
+      };
     });
-    expect(lastCardReachability).toEqual({ left: true, right: true });
+    expect(lastCardReachability).toEqual({ left: true, right: true, inViewport: true });
     await expect(lastHiddenCard).not.toContainText(/Peach|Dodge|real-retaliation/);
     const actionRects = await Promise.all([skip, confirm].map((button) => button.evaluate((element) => {
       const { x, y, right, bottom } = element.getBoundingClientRect();
@@ -2507,7 +2463,7 @@ test("real Sima Yi Retaliation is compact, deselectable, private, and actor-only
     expect(actionRects[0].right).toBeLessThan(actionRects[1].x + 2);
     expect(actionRects.every(({ bottom }) => bottom <= 700)).toBe(true);
 
-    const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
+    const hiddenPosition = dialog.getByRole("button", { name: "Choose hidden Hand position 2" });
     await expect(hiddenPosition).not.toContainText(/Peach|Dodge|real-retaliation/);
     await tapMobile(actorPage, hiddenPosition);
     await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
@@ -2566,9 +2522,47 @@ test("real Sima Yi Retaliation is compact, deselectable, private, and actor-only
     expect(actionPosts[0]).toMatchObject({ action: "trigger", providerId: "sima_yi_fankui", cardKeys: ["hand:1"] });
     await expect(duplicate).toHaveCount(0);
     await expect.poll(async () => (await roomView(request, seed, 1)).myHand.map((held) => held.id)).toContain(hidden[1].id);
+
+    const committedRoom = await submitted.json();
+    const acquisitionEvent = committedRoom.room.timeline.find((event) => event.publicCardAcquisitionSettlement?.acquisitionKind === "RETALIATION");
+    expect(acquisitionEvent, "the committed public result retains the real Retaliation event").toBeTruthy();
+    const settlementId = acquisitionEvent.id;
+    const rootEventId = acquisitionEvent.publicCardAcquisitionSettlement.rootEventId;
+    const actorResult = actorPage.locator(`.public-result-card[data-public-result-event-id="${settlementId}"]`);
+    const actorH4 = actorPage.locator(`[data-public-h4-event-id="${settlementId}"]`);
+    await expect(actorResult).toHaveAttribute("data-public-result-layout", "placed", { timeout: 15_000 });
+    await expect(actorResult).toHaveAttribute("data-public-result-face", "private");
+    await expect(actorResult).toHaveAttribute("data-public-result-card-id", hidden[1].id);
+    await expect(actorH4).toHaveAttribute("data-public-card-announcement-delivery", "VISIBLE");
+    await expect(actorH4).toContainText("Retaliation");
+    await expect(actorH4).toContainText("J♣ Dodge");
+    await expect(actorH4).not.toContainText("played Steal");
+    await expect(actorPage.locator(`.public-card-display[data-public-card-root-event-id="${rootEventId}"][data-public-card-kind="Steal"]`)).toHaveCount(0);
+
+    const formerOwnerPage = await formerOwnerContext.newPage();
+    await openGame(formerOwnerPage, seed, 0, { width: 390, height: 844 });
+    const formerOwnerResult = formerOwnerPage.locator(`.public-result-card[data-public-result-event-id="${settlementId}"]`);
+    const formerOwnerH4 = formerOwnerPage.locator(`[data-public-h4-event-id="${settlementId}"]`);
+    await expect(formerOwnerResult).toHaveAttribute("data-public-result-face", "private", { timeout: 15_000 });
+    await expect(formerOwnerResult).toHaveAttribute("data-public-result-card-id", hidden[1].id);
+    await expect(formerOwnerH4).toContainText("J♣ Dodge");
+
+    const observerResult = observerPage.locator(`.public-result-card[data-public-result-event-id="${settlementId}"]`);
+    const observerH4 = observerPage.locator(`[data-public-h4-event-id="${settlementId}"]`);
+    await expect(observerResult).toHaveAttribute("data-public-result-face", "anonymous-back", { timeout: 15_000 });
+    await expect(observerResult).not.toHaveAttribute("data-public-result-card-id", hidden[1].id);
+    await expect(observerH4).toContainText("a Hand card");
+    await expect(observerH4).not.toContainText("J♣ Dodge");
+    await expect(observerH4).not.toContainText("played Steal");
+    const observerSettlement = (await roomView(request, seed, 2)).presentationSnapshot.cardAcquisitionSettlements
+      .find((entry) => entry.eventId === settlementId);
+    expect(observerSettlement).toMatchObject({ acquisitionKind: "RETALIATION", sourceZone: "hand", outcome: "RETALIATION_RESOLVED" });
+    expect(observerSettlement.affectedCardFace).toBeUndefined();
+    expect(JSON.stringify(await roomView(request, seed, 2))).not.toContain(hidden[1].id);
   } finally {
     await actorContext.close();
     await observerContext.close();
+    await formerOwnerContext.close();
   }
 });
 

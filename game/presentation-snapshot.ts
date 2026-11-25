@@ -16,6 +16,7 @@ import type {
   PresentationRootAction,
   PresentationDismantleSettlement,
   PresentationStealSettlement,
+  PresentationCardAcquisitionSettlement,
   PresentationTargetCardSettlementMovement,
   PresentationAttackHitSettlement,
   PresentationBumperHarvestSettlement,
@@ -93,6 +94,7 @@ export type PresentationSnapshotSkillEffectSettlement = PresentationSkillEffectS
 export type PresentationSnapshotDiaoChanSkillNotice = PresentationDiaoChanSkillNotice;
 export type PresentationSnapshotDismantleSettlement = PresentationDismantleSettlement;
 export type PresentationSnapshotStealSettlement = PresentationStealSettlement;
+export type PresentationSnapshotCardAcquisitionSettlement = PresentationCardAcquisitionSettlement;
 export type PresentationSnapshotAttackHitSettlement = PresentationAttackHitSettlement;
 export type PresentationSnapshotGroupSettlement = PresentationGroupSettlement;
 export type PresentationSnapshotBumperHarvestSettlement = PresentationBumperHarvestSettlement;
@@ -130,6 +132,7 @@ export type PresentationSnapshot = {
   diaoChanSkillNotices: readonly PresentationSnapshotDiaoChanSkillNotice[];
   dismantleSettlements: readonly PresentationSnapshotDismantleSettlement[];
   stealSettlements: readonly PresentationSnapshotStealSettlement[];
+  cardAcquisitionSettlements: readonly PresentationSnapshotCardAcquisitionSettlement[];
   attackHitSettlements: readonly PresentationSnapshotAttackHitSettlement[];
   groupSettlements: readonly PresentationSnapshotGroupSettlement[];
   bumperHarvestSettlements: readonly PresentationSnapshotBumperHarvestSettlement[];
@@ -591,6 +594,38 @@ export function provenStealSettlements(value: unknown): PresentationSnapshotStea
     rootCounts.set(settlement.rootEventId, (rootCounts.get(settlement.rootEventId) ?? 0) + 1);
   });
   return settlements.filter((settlement) => eventCounts.get(settlement.eventId) === 1 && rootCounts.get(settlement.rootEventId) === 1);
+}
+
+export function provenCardAcquisitionSettlements(value: unknown): PresentationSnapshotCardAcquisitionSettlement[] {
+  if (!Array.isArray(value)) return [];
+  const settlements = value.flatMap((candidateValue) => {
+    if (!candidateValue || typeof candidateValue !== "object" || Array.isArray(candidateValue)) return [];
+    const candidate = candidateValue as Record<string, unknown>;
+    const eventId = candidate.eventId;
+    const rootEventId = candidate.rootEventId;
+    const rootResolutionId = candidate.rootResolutionId;
+    const sourceId = candidate.sourceId;
+    const targetId = candidate.targetId;
+    const acquisitionKind = candidate.acquisitionKind;
+    const providerId = candidate.providerId;
+    const outcome = candidate.outcome;
+    if (candidate.semantics !== "PROVEN" || !nonEmptyString(eventId) || !nonEmptyString(rootEventId)
+      || eventId === rootEventId || !nonEmptyString(rootResolutionId) || !nonEmptyString(sourceId)
+      || !nonEmptyString(targetId) || sourceId === targetId
+      || acquisitionKind !== "STEAL" && acquisitionKind !== "RETALIATION"
+      || providerId !== (acquisitionKind === "STEAL" ? "steal_card" : "sima_yi_fankui")
+      || outcome !== (acquisitionKind === "STEAL" ? "STEAL_RESOLVED" : "RETALIATION_RESOLVED")) return [];
+    const movement = provenTargetCardMovement(candidate, "Steal", sourceId, targetId);
+    if (!movement) return [];
+    if (acquisitionKind === "RETALIATION"
+      && (!nonEmptyString(candidate.interactionId) || !nonEmptyString(candidate.rootFrameId))) return [];
+    return [{ semantics: "PROVEN" as const, acquisitionKind, providerId, eventId, rootEventId, rootResolutionId,
+      sourceId, targetId, outcome, ...(typeof candidate.interactionId === "string" ? { interactionId: candidate.interactionId } : {}),
+      ...(typeof candidate.rootFrameId === "string" ? { rootFrameId: candidate.rootFrameId } : {}), ...movement }];
+  });
+  const eventCounts = new Map<string, number>();
+  settlements.forEach((settlement) => eventCounts.set(settlement.eventId, (eventCounts.get(settlement.eventId) ?? 0) + 1));
+  return settlements.filter((settlement) => eventCounts.get(settlement.eventId) === 1);
 }
 
 export function provenAttackHitSettlements(value: unknown): PresentationSnapshotAttackHitSettlement[] {
@@ -1709,6 +1744,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     diaoChanSkillNotices: provenDiaoChanSkillNotices(input.presentationV2.diaoChanSkillNotices, publicCardEffects),
     dismantleSettlements: provenDismantleSettlements(input.presentationV2.dismantleSettlements),
     stealSettlements: provenStealSettlements(input.presentationV2.stealSettlements),
+    cardAcquisitionSettlements: provenCardAcquisitionSettlements(input.presentationV2.cardAcquisitionSettlements),
     attackHitSettlements: provenAttackHitSettlements(input.presentationV2.attackHitSettlements),
     groupSettlements: provenGroupSettlements(input.presentationV2.groupSettlements),
     bumperHarvestSettlements: provenBumperHarvestSettlements(input.presentationV2.bumperHarvestSettlements),

@@ -163,7 +163,7 @@ export type PublicCardDisplayAction = {
     targetId?: string;
     /** Verified resolution copy; does not create a physical card or animation. */
     publicOutcomeMessage?: string;
-    outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "GROUP_RESOLVED" | "BUMPER_HARVEST_RESOLVED" | "ROOT_CANCELLED" | "ROOT_RESTORED" | "LUST_DUEL_DAMAGE_APPLIED" | "LUST_DUEL_DAMAGE_PREVENTED";
+    outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "RETALIATION_RESOLVED" | "GROUP_RESOLVED" | "BUMPER_HARVEST_RESOLVED" | "ROOT_CANCELLED" | "ROOT_RESTORED" | "LUST_DUEL_DAMAGE_APPLIED" | "LUST_DUEL_DAMAGE_PREVENTED";
     exiting: boolean;
     /** Server-derived remaining portion of a proof-backed public-card read, when supplied. */
     readRemainingMs?: number;
@@ -2153,6 +2153,7 @@ function settlementLabel(action: PublicCardDisplayAction, targetName: string | n
     case "SUITS_DIFFERED": return "SUITS DIFFERED";
     case "DISMANTLE_RESOLVED": return "BURNING BRIDGE RESOLVED";
     case "STEAL_RESOLVED": return "STEAL RESOLVED";
+    case "RETALIATION_RESOLVED": return "RETALIATION RESOLVED";
     case "GROUP_RESOLVED": return "GROUP EFFECT RESOLVED";
     case "BUMPER_HARVEST_RESOLVED": return "BUMPER HARVEST RESOLVED";
     case "LUST_DUEL_DAMAGE_APPLIED":

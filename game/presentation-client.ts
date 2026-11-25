@@ -2,7 +2,7 @@ import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgress
 import { CARD_KINDS, type CardKind } from "./model";
 import { CARD_DEFINITIONS } from "./cards";
 import { isProvenGroupRootCardProof, isProvenOrderedAttackRootProof, isProvenRootActionCardProof } from "./presentation-v2";
-import { provenAttackDodgeResponses, provenAttackHitSettlements, provenBumperHarvestSettlements, provenDeflectionActions, provenDismantleSettlements, provenDuelExchange, provenLustDuelExchange, provenGroupSettlements, provenSelfTargetActions, provenSkillEffectAction, provenSkillEffectSettlements, provenStealSettlements, type PresentationSnapshot, type PresentationSnapshotAttackDodgeResponse, type PresentationSnapshotAttackHitSettlement, type PresentationSnapshotBumperHarvestProgress, type PresentationSnapshotBumperHarvestSettlement, type PresentationSnapshotDeflectionAction, type PresentationSnapshotDismantleSettlement, type PresentationSnapshotDuelExchange, type PresentationSnapshotLustDuelExchange, type PresentationSnapshotGroupParticipantProgress, type PresentationSnapshotGroupProgress, type PresentationSnapshotGroupSettlement, type PresentationSnapshotOathRecipientScope, type PresentationSnapshotRootAction, type PresentationSnapshotSelfTargetAction, type PresentationSnapshotSkillEffectAction, type PresentationSnapshotSkillEffectSettlement, type PresentationSnapshotStealSettlement } from "./presentation-snapshot";
+import { provenAttackDodgeResponses, provenAttackHitSettlements, provenBumperHarvestSettlements, provenCardAcquisitionSettlements, provenDeflectionActions, provenDismantleSettlements, provenDuelExchange, provenLustDuelExchange, provenGroupSettlements, provenSelfTargetActions, provenSkillEffectAction, provenSkillEffectSettlements, provenStealSettlements, type PresentationSnapshot, type PresentationSnapshotAttackDodgeResponse, type PresentationSnapshotAttackHitSettlement, type PresentationSnapshotBumperHarvestProgress, type PresentationSnapshotBumperHarvestSettlement, type PresentationSnapshotCardAcquisitionSettlement, type PresentationSnapshotDeflectionAction, type PresentationSnapshotDismantleSettlement, type PresentationSnapshotDuelExchange, type PresentationSnapshotLustDuelExchange, type PresentationSnapshotGroupParticipantProgress, type PresentationSnapshotGroupProgress, type PresentationSnapshotGroupSettlement, type PresentationSnapshotOathRecipientScope, type PresentationSnapshotRootAction, type PresentationSnapshotSelfTargetAction, type PresentationSnapshotSkillEffectAction, type PresentationSnapshotSkillEffectSettlement, type PresentationSnapshotStealSettlement } from "./presentation-snapshot";
 import type {
   PresentationGroupTargetEffectScope,
   InteractionSceneContinuity,
@@ -36,6 +36,7 @@ export type PresentationClientView = {
   skillEffectSettlements: readonly PresentationSnapshotSkillEffectSettlement[];
   dismantleSettlements: readonly PresentationSnapshotDismantleSettlement[];
   stealSettlements: readonly PresentationSnapshotStealSettlement[];
+  cardAcquisitionSettlements: readonly PresentationSnapshotCardAcquisitionSettlement[];
   attackHitSettlements: readonly PresentationSnapshotAttackHitSettlement[];
   groupSettlements: readonly PresentationSnapshotGroupSettlement[];
   bumperHarvestSettlements: readonly PresentationSnapshotBumperHarvestSettlement[];
@@ -221,6 +222,7 @@ function restView(snapshot: PresentationSnapshot | null, meId: string | null): P
     skillEffectSettlements: provenSkillEffectSettlements(snapshot?.skillEffectSettlements),
     dismantleSettlements: provenDismantleSettlements(snapshot?.dismantleSettlements),
     stealSettlements: provenStealSettlements(snapshot?.stealSettlements),
+    cardAcquisitionSettlements: provenCardAcquisitionSettlements(snapshot?.cardAcquisitionSettlements),
     attackHitSettlements: provenAttackHitSettlements(snapshot?.attackHitSettlements),
     groupSettlements: provenGroupSettlements(snapshot?.groupSettlements),
     bumperHarvestSettlements: provenBumperHarvestSettlements(snapshot?.bumperHarvestSettlements),
@@ -841,6 +843,7 @@ export function buildPresentationClientView(
     skillEffectSettlements: provenSkillEffectSettlements(snapshot.skillEffectSettlements),
     dismantleSettlements: provenDismantleSettlements(snapshot.dismantleSettlements),
     stealSettlements: provenStealSettlements(snapshot.stealSettlements),
+    cardAcquisitionSettlements: provenCardAcquisitionSettlements(snapshot.cardAcquisitionSettlements),
     attackHitSettlements: provenAttackHitSettlements(snapshot.attackHitSettlements),
     groupSettlements: provenGroupSettlements(snapshot.groupSettlements),
     bumperHarvestSettlements: provenBumperHarvestSettlements(snapshot.bumperHarvestSettlements),
