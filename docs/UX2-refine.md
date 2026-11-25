@@ -72,7 +72,6 @@ These stages are retained for provenance only. The 2026-11-21 Dismantle retireme
 | Delivered design | Exact implementation and verification | Status |
 | --- | --- | --- |
 | **§10.73 EQUIPMENT-H4-CONCISE-COPY-01** | `298a933368d02b519cb6eed17913ae9f81d3158a`; [Actions 45496587014](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45496587014), Worker `8aae305c-d24e-4b63-809f-523b644ef3ff`, health 200 as reported in Agent HANDOVER | IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW; no new implementation. |
-
 | **§10.74 PUBLIC-DISPLAY-LANE-FIXED-BANDS-01** | `44ded7566a2ed4f23082b78181900b06d5552520`; [Actions 45522229976](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45522229976), Worker `543a1181-c72d-4339-90a8-25741b7ab3d1` (Agent delivery record) | IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW; preserve geometry during §10.76, no duplicate geometry task or implied PASS. |
 
 ### C. Owner-accepted / closed decisions — status index, not duplicated design
@@ -360,7 +359,7 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 
 The **actor-private target-card selector** is distinct from passive Hero Inspector, but it reuses the **single bounded nonmodal `BattlefieldChoiceStage + CardPoolPanel`** under **R5 / §10.17 / accepted §10.22**. It has genuine legal zone tabs, one selectable candidate row, meaningful selected-count, separate public Info and only server-legal Confirm/Use/Skip (no duplicate Dock action, generic Cancel/Clear or invisible hit shield). Selection/retap, minimum touch geometry, mixed zones and safe short-phone scroll obey shared R5 rather than a new picker design.
 
-**Only unique authority details here:** Separately provided `hand:<position>` keys represent real anonymous selectable face-down backs; an offered **single `hand` zone key** represents **one grouped/random-zone choice**, never invented separate positions. Eligible genuine public Equipment/Judgement appear face-up and remain inspectable; empty/ineligible zones are omitted. Real `CurrentAction` keys, revisions and min/max control Confirm; Frost Sword's authorized **1–2 cards** are not generalized to Steal/Dismantle/Retaliation. Large Hands swipe inside the selector; no spectator hidden identity. Genuine effect-specific discard/acquire/Skip semantics live in §§10.10/10.46.
+**Only unique authority details here:** Separately provided `hand:<position>` keys represent real anonymous selectable face-down backs; an offered **single `hand` zone key** represents **one grouped/random-zone choice**, never invented separate positions. Eligible genuine public Equipment/Judgement appear face-up and remain inspectable; empty/ineligible zones are omitted. Real `CurrentAction` keys, revisions and min/max control Confirm; Frost Sword uses its own actual server-authorized min/max; current committed discard implementation requires exactly two distinct eligible cards (§10.78). Do not generalize its count to Steal/Dismantle/Retaliation or change rules in UX work. Large Hands swipe inside the selector; no spectator hidden identity. Genuine effect-specific discard/acquire/Skip semantics live in §§10.10/10.46.
 
 ## 6. Visual quality and production-path acceptance
 
