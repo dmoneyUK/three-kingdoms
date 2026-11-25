@@ -469,7 +469,17 @@ function formatCommittedPublicOutcomeCopy(
     switch (change.kind) {
       case "HP_COST_LOST": suffix = ` paid ${amountText(amount, "HP", "HP")} as a cost`; break;
       case "HP_LOST_TO_EFFECT": suffix = ` lost ${amountText(amount, "HP", "HP")}${source ? " to an effect" : ""}`; break;
-      case "DAMAGE_APPLIED": suffix = ` lost ${amountText(amount, "HP", "HP")} to damage`; break;
+      case "DAMAGE_APPLIED": {
+        const damage = amountText(amount, "damage", "damage");
+        if (outcome.source.kind === "damage" || !source || !actor) {
+          return actor && change.playerId !== outcome.actorId
+            ? verifiedPlayerCopy([actor, " dealt ", damage, " to ", player])
+            : verifiedPlayerCopy([player, " took ", damage]);
+        }
+        if (change.playerId !== outcome.actorId) return verifiedPlayerCopy(["dealt ", damage, " to ", player]);
+        suffix = ` took ${damage}`;
+        break;
+      }
       case "HP_RECOVERED": suffix = ` recovered ${amountText(amount, "HP", "HP")}`; break;
       case "CARD_DRAWN": suffix = ` drew ${amountText(amount, "card", "cards")}`; break;
       case "CARD_DISCARDED": suffix = ` discarded ${amountText(amount, "card", "cards")}`; break;
@@ -546,6 +556,7 @@ function formatCommittedPublicOutcomeCopy(
   const details = groupedChanges.map(({ change, amount }) => detail(change, amount));
   if (details.some((entry) => !entry)) return null;
   const omitActionPrefix = !source || Boolean(outcome.actorId && !actor) || outcome.source.kind === "recovery"
+    || outcome.source.kind === "damage"
     || outcome.source.kind === "card" && recoveredOnly
     || outcome.source.kind === "equipment" && discardedOnly;
   const parts: (string | { id: string; name: string })[] = [

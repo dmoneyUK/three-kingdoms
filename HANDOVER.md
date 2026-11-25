@@ -10,4 +10,10 @@
 
 ## Current bounded task — §10.77 UNIVERSAL-H4-ACTION-OUTCOME-COPY-01
 
-Read the latest remote §10.77 before editing. Implement only the approved shared action/source plus committed-result narration, binding proven source/recipient/amount/root facts (including Oath recovery) without inferred sources or duplicate generic outcomes. Preserve privacy and accepted copy; leave §10.72-specific Stauchness wording and §10.78 Frost Sword pool migration to their ordered tasks. Add focused formatter/projection/API assertions, then follow exact-SHA CI, deployment/smoke and owner-review handoff requirements. Do not start §10.72 or later work in this task.
+**Design reviewed:** latest remote §10.77 at `96c2b611703f46b978e9fd62095f0e7f3546e388`, revision 2026-11-25 08:17 UTC.
+
+**Implementation staged:** generic `Damage` is no longer formatted as an action title or as “lost HP to damage”. Mixed committed outcomes use natural damage wording while preserving a proven actor/source, actual recipient, and other committed deltas. Unknown actors fall back to the affected player’s result. Physical identity and typed player-fragment validation are unchanged.
+
+**Validation:** `tests/api/public-activity.test.mjs` 37/37 pass; targeted ESLint and `git diff --check` pass. Existing focused API coverage verifies actual Attack damage, Oath single/multiple/no-recipient recovery and source/root linkage, Frost Sword discarded cards, and H4 ownership. No local UI/browser scenario was needed. Before this task commit, latest relevant Actions passed on implementation baseline `1c88059f67af4c9986cf471447d9aabe70e21fd3`; handover-only `96c2b611` is excluded by workflow `paths-ignore`. Exact-SHA validation and deployment remain pending for this change.
+
+**Resume:** commit `game/public-activity.ts`, its focused regression tests, and this handoff; push to `ux-v2`, then verify exact-SHA required Actions, deployment and production smoke. Keep §10.72-specific Stauchness wording and §10.78 Frost Sword pool migration in their ordered tasks. No owner acceptance claimed.

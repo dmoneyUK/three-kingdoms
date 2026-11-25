@@ -1132,6 +1132,33 @@ test("committed H4 names proven actions and reports only actual public outcomes"
     "an unknown source projection does not suppress a proven public target result");
   assert.deepEqual(playerIds(unprojectedActorDamage?.headlineSegments), ["p2"]);
 
+  const mixedDamage = narrationFor("mixed-damage", { kind: "damage", label: "Damage" }, [
+    { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
+    { kind: "CARD_DRAWN", playerId: "p1", amount: 1 },
+  ], { affectedPlayerIds: ["p2", "p1"] });
+  assert.equal(mixedDamage?.headline,
+    "Test Player 1 dealt 1 damage to Test Player 2; Test Player 1 drew 1 card.",
+    "mixed results describe damage naturally and do not present generic Damage as an action");
+  assert.deepEqual(playerIds(mixedDamage?.headlineSegments), ["p1", "p2", "p1"]);
+  assert.doesNotMatch(mixedDamage?.headline ?? "", /Damage:|to damage/);
+
+  const mixedSourcedDamage = narrationFor("mixed-sourced-damage", { kind: "skill", label: "Verified Skill" }, [
+    { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
+    { kind: "CARD_DRAWN", playerId: "p1", amount: 1 },
+  ], { affectedPlayerIds: ["p2", "p1"] });
+  assert.equal(mixedSourcedDamage?.headline,
+    "Test Player 1 Verified Skill: dealt 1 damage to Test Player 2; Test Player 1 drew 1 card.",
+    "a separately proven skill source stays visible alongside the natural damage result");
+
+  const mixedDamageWithoutActor = narrationFor("mixed-damage-without-actor", { kind: "damage", label: "Damage" }, [
+    { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
+    { kind: "HP_RECOVERED", playerId: "p3", amount: 1 },
+  ], { actorId: undefined, affectedPlayerIds: ["p2", "p3"] });
+  assert.equal(mixedDamageWithoutActor?.headline,
+    "Test Player 2 took 1 damage; Test Player 3 recovered 1 HP.",
+    "a mixed public result remains truthful when its source actor is not proven");
+  assert.deepEqual(playerIds(mixedDamageWithoutActor?.headlineSegments), ["p2", "p3"]);
+
   const hpCost = narrationFor("hp-cost", { kind: "skill", label: "Self Sacrifice" }, [
     { kind: "HP_COST_LOST", playerId: "p1", amount: 1 },
   ], { affectedPlayerIds: ["p1"] });
@@ -1236,7 +1263,7 @@ test("committed HP, draw, discard, recovery and transfer results own the shared 
       ],
     },
   };
-  const expected = "Test Player 2 Sowing Distrust: Test Player 1 discarded 1 card; Test Player 2 lost 1 HP to damage; Test Player 2 drew 2 cards; Test Player 2 recovered 1 HP; Test Player 2 received 1 card from Test Player 1.";
+  const expected = "Test Player 2 Sowing Distrust: Test Player 1 discarded 1 card; Test Player 2 took 1 damage; Test Player 2 drew 2 cards; Test Player 2 recovered 1 HP; Test Player 2 received 1 card from Test Player 1.";
   const input = { players, rootEventId: root.eventId, interactionId: semanticIdentity.interactionId, rootFrameId: semanticIdentity.rootFrameId };
   const active = derivePublicInteractionNarration({ ...input,
     snapshot: snapshot({ stage: "SETTLEMENT", actorId: null, publicEventFacts: [root, outcome] }),
