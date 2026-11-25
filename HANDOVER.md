@@ -1,15 +1,11 @@
-# HANDOVER — UX2 §10.74 Fixed H4/PAC display lane
+# HANDOVER — UX2 current task §10.75
 
-**Design reviewed:** `docs/UX2-refine.md` revision 2026-11-24 22:38 UTC; remote baseline `d2b1461a13d8e639ca6a493907705e670551f24f`.
+**Latest verified delivery — §10.74 / §10.70 dependent geometry:** source `44ded7566a2ed4f23082b78181900b06d5552520`; exact-SHA [Actions 45522229976](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45522229976) passed Lint/fast, API, browser smoke, D1 migration, Worker deployment and production smoke. Worker version `543a1181-c72d-4339-90a8-25741b7ab3d1`; direct production `/api/health` returned HTTP 200 (`{"ok":true,"worker":"available"}`). §10.74 is **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**; original §10.70 phone acceptance also remains pending.
 
-**Current task:** §10.74 PUBLIC-DISPLAY-LANE-FIXED-BANDS-01, including the remaining §10.70 geometry correction. Implement stable message-free H4/PAC reserves, fixed stationary-card placement, whole-frame centering, and the proven local Kirin material-owner miniature above the PAC reserve. Preserve H4/PAC ownership and timing, real card identity, fail-closed geometry, and all existing selection/parking behavior.
+**Design reviewed:** latest `docs/UX2-refine.md`, revision 2026-11-24 22:38 UTC, remote design baseline `d2b1461a13d8e639ca6a493907705e670551f24f` (current `ux-v2` source tip after delivery: `44ded7566a2ed4f23082b78181900b06d5552520`).
 
-**Implementation status:** Source and focused regression changes are complete in `app/public-card-display.tsx`, `app/public-stage-layout-context.tsx`, `app/public-upper-anchor.ts`, `game/public-stage-layout.ts`, `tests/public-stage-layout.test.mjs`, and `tests/browser/target-card-real-gameplay.spec.mjs`. Copy measurement uses inert clones with the actual parent style context; React-owned H4/PAC nodes are not restyled for measurement. Not yet committed or pushed.
+**Current bounded task — §10.75 STAUCHNESS-COMPACT-CHOICE-MODAL-01:** compact only the server-authorized mandatory Stauchness consequence choice. Reuse `BattlefieldChoiceStage` and shared decision/footer primitives; show `STAUCHNESS`, concise instruction and the actual server-provided “Discard 2 Hand cards” / “Take 1 damage from Xiahou Dun” choice labels. Use one compact gold `Confirm` with ≥44px hit height; no Skip, Cancel or dismiss path. Preserve the own-Hand two-card picker, selection clearing on option change, authenticated action/callback, timeout, stale/busy guards and gameplay rules. Do not alter §10.74 geometry or §10.72 narration.
 
-**Validation:** 62/62 targeted layout, announcement and effect-frame tests passed; targeted ESLint passed with 0 errors and 14 existing Hook-dependency warnings; `npm run build` passed with existing chunk-size and route-classification warnings; focused real Kirin Bow Attack reaction browser scenario passed (1/1); `git diff --check` passed.
+**Next action:** implement only §10.75. Use fast component/API coverage for alternate damage, insufficient cards, stale/unauthorized choice and timeout; run at most one focused four-player phone browser scenario within the five-minute cumulative local UI limit, then commit/push and verify exact-SHA CI, deployment and production smoke.
 
-**Pre-commit CI gate:** remote `ux-v2` is still `d2b1461a13d8e639ca6a493907705e670551f24f`. That documentation-only commit has no check runs because the workflow ignores `**/*.md`; latest relevant push workflow `45496587014` for `298a933368d02b519cb6eed17913ae9f81d3158a` succeeded.
-
-**Next action:** Commit only this task and HANDOVER, push to `origin/ux-v2`, then verify exact-SHA Actions, Worker deployment and production smoke. After that safe boundary, HANDOVER advances to §10.75 only.
-
-**Review boundary:** §10.74 and the §10.70 dependent geometry remain **PENDING OWNER iPHONE REVIEW**. No player-facing UX is marked USER-ACCEPTED.
+**Review boundary:** §10.75 and §10.74 remain **PENDING OWNER iPHONE REVIEW**. No player-facing UX is USER-ACCEPTED by this delivery.
