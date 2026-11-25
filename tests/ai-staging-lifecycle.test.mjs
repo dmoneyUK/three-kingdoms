@@ -29,7 +29,7 @@ function version({ id = "version-1", tag = null, createdOn = "2026-11-25T14:00:0
   };
 }
 
-function inventory({ paused = true, versionId = "version-1", versionTag = null, versionCreatedOn = "2026-11-25T14:00:00.000Z", databaseId = AI_STAGING_LIFECYCLE_TARGET.databaseId, domainsCount = 0, queueConsumers = 0, routeCount = 0, routeCheckFailures = 0, enabled = !paused, previewsEnabled = false, cronSchedules = paused ? [] : [AI_STAGING_LIFECYCLE_TARGET.cron] } = {}) {
+function inventory({ paused = true, versionId = "version-1", versionTag = null, deploymentTag = versionTag, versionCreatedOn = "2026-11-25T14:00:00.000Z", databaseId = AI_STAGING_LIFECYCLE_TARGET.databaseId, domainsCount = 0, queueConsumers = 0, routeCount = 0, routeCheckFailures = 0, enabled = !paused, previewsEnabled = false, cronSchedules = paused ? [] : [AI_STAGING_LIFECYCLE_TARGET.cron] } = {}) {
   return {
     accountId: AI_STAGING_LIFECYCLE_TARGET.accountId,
     workerName: AI_STAGING_LIFECYCLE_TARGET.workerName,
@@ -39,7 +39,7 @@ function inventory({ paused = true, versionId = "version-1", versionTag = null, 
     queueConsumers,
     routeCount,
     routeCheckFailures,
-    deployment: { id: `deployment-${versionId}`, createdOn: versionCreatedOn, versionId, tag: versionTag },
+    deployment: { id: `deployment-${versionId}`, createdOn: versionCreatedOn, versionId, tag: deploymentTag },
     version: version({ id: versionId, tag: versionTag, createdOn: versionCreatedOn, databaseId }),
     deploymentTags: versionTag ? [versionTag] : [],
   };
@@ -92,6 +92,7 @@ test("captures a newly owned version before activation flags are complete", asyn
     cronSchedules: [],
     versionId: "version-2",
     versionTag: owner.tag,
+    deploymentTag: null,
     versionCreatedOn: "2026-11-25T15:00:01.000Z",
   });
   await captureStaging({ client, evidenceDir: dir, owner, now: new Date("2026-11-25T15:00:02.000Z") });

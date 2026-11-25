@@ -309,7 +309,7 @@ function assertOwnedVersion(inventory, owner, capture) {
   if (inventory.deployment?.id !== capture.owned?.deploymentId
     || inventory.deployment?.versionId !== capture.owned?.versionId
     || inventory.version?.id !== capture.owned?.versionId
-    || inventory.deployment?.tag !== owner.tag
+    || (inventory.deployment?.tag !== null && inventory.deployment?.tag !== owner.tag)
     || inventory.version?.tag !== owner.tag
     || inventory.version?.databaseId !== AI_STAGING_LIFECYCLE_TARGET.databaseId) {
     throw blocked("Staging version changed; refusing to pause a newer deployment");
@@ -335,7 +335,8 @@ function assertCapturedDeployment(inventory, owner, preflight) {
     || inventory.deployment.versionId !== inventory.version.id) {
     throw blocked("Staging deployment did not produce a new unambiguous version");
   }
-  if (inventory.deployment.tag !== owner.tag || inventory.version.tag !== owner.tag) {
+  if ((inventory.deployment.tag !== null && inventory.deployment.tag !== owner.tag)
+    || inventory.version.tag !== owner.tag) {
     throw blocked("new Staging version is not owned by this run tag");
   }
   const createdOn = Date.parse(inventory.version.createdOn);
