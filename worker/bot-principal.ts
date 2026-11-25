@@ -10,6 +10,8 @@ export type BotActionPrincipalInput = {
   decisionId: string;
   diagnostics?: BotSchedulerDiagnosticContext;
   mockPolicy?: BotPolicy;
+  /** Only the in-process scheduler may request the compact server result. */
+  compactResult?: boolean;
 };
 
 export type BotActionPrincipal = BotActionPrincipalInput & {
@@ -27,5 +29,6 @@ export function isBotActionPrincipal(value: unknown): value is BotActionPrincipa
     && typeof principal.roomId === "string"
     && typeof principal.botId === "string"
     && typeof principal.actionRevision === "string"
-    && typeof principal.decisionId === "string";
+    && typeof principal.decisionId === "string"
+    && (principal.compactResult === undefined || typeof principal.compactResult === "boolean");
 }

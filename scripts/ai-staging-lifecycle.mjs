@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -25,6 +26,27 @@ const API_BASE = "https://api.cloudflare.com/client/v4";
 const DEFAULT_EVIDENCE_DIR = ".wrangler/ai-staging-lifecycle";
 const DEFAULT_TIMEOUT_MS = 8_000;
 const DEFAULT_ATTEMPTS = 2;
+const ROOM_GUARD_TASK_ID = "AIP-PERF-BOT-02 S1 staging room guard";
+const ROOM_GUARD_SQL = `SELECT
+  rooms.id AS room_id,
+  rooms.status AS status,
+  rooms.test_room AS test_room,
+  rooms.created_at AS created_at,
+  rooms.last_activity_at AS last_activity_at,
+  SUM(CASE WHEN players.controller_type = 'bot' AND players.is_test_player = 0 THEN 1 ELSE 0 END) AS genuine_bot_count,
+  SUM(CASE WHEN players.controller_type = 'human' AND players.is_test_player = 0 THEN 1 ELSE 0 END) AS genuine_human_count,
+  MAX(CASE WHEN players.controller_type = 'human' AND players.is_test_player = 0 THEN players.connected_at ELSE NULL END) AS latest_genuine_human_connected_at,
+  (SELECT COUNT(*) FROM bot_work WHERE bot_work.room_id = rooms.id) AS bot_work_count,
+  (SELECT COUNT(*) FROM bot_work WHERE bot_work.room_id = rooms.id AND bot_work.status IN ('pending', 'claimed')) AS live_bot_work_count,
+  (SELECT COALESCE(MAX(bot_work.updated_at), 0) FROM bot_work WHERE bot_work.room_id = rooms.id) AS latest_bot_work_at,
+  (SELECT COALESCE(MAX(bot_room_scheduler.lease_until), 0) FROM bot_room_scheduler WHERE bot_room_scheduler.room_id = rooms.id) AS scheduler_lease_until,
+  (SELECT COUNT(*) FROM negation_window_submissions WHERE negation_window_submissions.room_id = rooms.id) +
+    (SELECT COUNT(*) FROM shared_response_window_submissions WHERE shared_response_window_submissions.room_id = rooms.id) AS response_submission_count
+FROM rooms
+LEFT JOIN players ON players.room_id = rooms.id
+WHERE rooms.status IN ('heroes', 'playing')
+GROUP BY rooms.id, rooms.status, rooms.test_room, rooms.created_at, rooms.last_activity_at
+ORDER BY rooms.id`;
 
 export class StagingLifecycleError extends Error {
   constructor(message, { code = "blocked", exitCode = LIFECYCLE_EXIT_CODES.blocked, endpoint = null } = {}) {
@@ -231,6 +253,108 @@ function sanitizeInventory(inventory) {
   };
 }
 
+function roomFingerprint(row) {
+  const canonical = JSON.stringify([
+    row.roomId, row.status, row.testRoom, row.createdAt, row.lastActivityAt,
+    row.genuineBotCount, row.genuineHumanCount, row.latestGenuineHumanConnectedAt,
+    row.botWorkCount, row.liveBotWorkCount, row.latestBotWorkAt, row.schedulerLeaseUntil, row.responseSubmissionCount,
+  ]);
+  return createHash("sha256").update(canonical).digest("hex");
+}
+
+function normalizeGuardRow(row) {
+  if (!isRecord(row) || typeof row.room_id !== "string" || row.room_id.length === 0
+    || !["heroes", "playing"].includes(row.status)
+    || ![0, 1].includes(Number(row.test_room))
+    || !Number.isFinite(Number(row.created_at))
+    || (row.last_activity_at !== null && !Number.isFinite(Number(row.last_activity_at)))
+    || !Number.isFinite(Number(row.genuine_bot_count))
+    || !Number.isFinite(Number(row.genuine_human_count))
+    || (row.latest_genuine_human_connected_at !== null && !Number.isFinite(Number(row.latest_genuine_human_connected_at)))
+    || !Number.isFinite(Number(row.bot_work_count)) || !Number.isFinite(Number(row.live_bot_work_count))
+    || !Number.isFinite(Number(row.latest_bot_work_at)) || !Number.isFinite(Number(row.scheduler_lease_until))
+    || !Number.isFinite(Number(row.response_submission_count))) {
+    return null;
+  }
+  const normalized = {
+    roomId: row.room_id,
+    status: row.status,
+    testRoom: Number(row.test_room),
+    createdAt: Number(row.created_at),
+    lastActivityAt: row.last_activity_at === null ? null : Number(row.last_activity_at),
+    genuineBotCount: Number(row.genuine_bot_count),
+    genuineHumanCount: Number(row.genuine_human_count),
+    latestGenuineHumanConnectedAt: row.latest_genuine_human_connected_at === null ? null : Number(row.latest_genuine_human_connected_at),
+    botWorkCount: Number(row.bot_work_count),
+    liveBotWorkCount: Number(row.live_bot_work_count),
+    latestBotWorkAt: Number(row.latest_bot_work_at),
+    schedulerLeaseUntil: Number(row.scheduler_lease_until),
+    responseSubmissionCount: Number(row.response_submission_count),
+  };
+  if (![0, 1].includes(normalized.testRoom)
+    || normalized.genuineBotCount < 0 || normalized.genuineHumanCount < 0
+    || normalized.createdAt <= 0 || normalized.botWorkCount < 0 || normalized.liveBotWorkCount < 0
+    || normalized.latestBotWorkAt < 0 || normalized.schedulerLeaseUntil < 0 || normalized.responseSubmissionCount < 0) return null;
+  return normalized;
+}
+
+function rowIsEligible(row, now) {
+  const recentActivityAt = row.lastActivityAt || row.createdAt;
+  const recentActivity = recentActivityAt >= now - 5 * 60_000;
+  const liveHuman = row.latestGenuineHumanConnectedAt !== null
+    && row.latestGenuineHumanConnectedAt >= now - 90_000;
+  return row.testRoom === 0 && row.genuineBotCount >= 1 && row.genuineBotCount <= 3
+    && (recentActivity || liveHuman);
+}
+
+function digestFingerprints(fingerprints) {
+  return createHash("sha256").update(fingerprints.join("\n")).digest("hex");
+}
+
+/**
+ * Read-only S1 admission proof.  It intentionally returns only counts and
+ * opaque hashes: room IDs, codes, names, roles, hands and session material do
+ * not enter the persisted evidence.
+ */
+export function evaluateStagingRoomGuard({ rows, now = Date.now(), baseline = null, phase = "baseline", activationAt = null } = {}) {
+  if (!Array.isArray(rows) || !Number.isFinite(Number(now))) throw blocked("Staging room guard readback is incomplete");
+  const normalized = rows.map(normalizeGuardRow);
+  if (normalized.some((row) => row === null)) throw blocked("Staging room guard contains an unknown or malformed room");
+  const complete = normalized.length === rows.length;
+  if (!complete) throw blocked("Staging room guard inventory is incomplete");
+  const fingerprints = normalized.map(roomFingerprint).sort();
+  const eligible = normalized.filter((row) => rowIsEligible(row, Number(now)));
+  const result = {
+    phase,
+    observedAt: isoNow(new Date(Number(now))),
+    complete,
+    roomCount: normalized.length,
+    eligibleCount: eligible.length,
+    eligibleFingerprintCount: eligible.map(roomFingerprint).length,
+    fingerprintDigest: digestFingerprints(fingerprints),
+    fingerprints,
+  };
+  if (phase === "baseline") {
+    if (eligible.length > 0) throw blocked("pre-existing eligible Staging rooms require isolation before activation");
+    return result;
+  }
+  if (!baseline || baseline.complete !== true || !Array.isArray(baseline.fingerprints)) {
+    throw blocked("Staging room guard baseline is missing or incomplete");
+  }
+  const currentSet = new Set(fingerprints);
+  const missing = baseline.fingerprints.filter((fingerprint) => !currentSet.has(fingerprint));
+  if (missing.length > 0) throw blocked("a pre-existing Staging room changed or disappeared during the hosted window");
+  if (phase === "pre_activation" && result.fingerprintDigest !== baseline.fingerprintDigest) {
+    throw blocked("Staging room inventory changed before activation");
+  }
+  if (phase === "post_closure" && activationAt !== null) {
+    const baselineIds = new Set(baseline.fingerprints);
+    const unexpectedOld = normalized.some((row) => !baselineIds.has(roomFingerprint(row)) && row.createdAt < Number(activationAt));
+    if (unexpectedOld) throw blocked("Staging room inventory gained an unknown pre-existing room");
+  }
+  return { ...result, baselineFingerprintDigest: baseline.fingerprintDigest, missingFingerprintCount: missing.length };
+}
+
 function serializeError(error) {
   if (error instanceof StagingLifecycleError) {
     return { code: error.code, exitCode: error.exitCode, endpoint: error.endpoint };
@@ -397,6 +521,35 @@ export async function preflightStaging({ client, evidenceDir = DEFAULT_EVIDENCE_
   });
 }
 
+export async function guardStagingRooms({ client, evidenceDir = DEFAULT_EVIDENCE_DIR, owner, phase = "baseline", now = new Date(), activationAt = null } = {}) {
+  ensureClientTarget(client);
+  const safe = safeOwner(owner);
+  if (!["baseline", "pre_activation", "post_closure"].includes(phase)) throw invalidTarget("Staging room guard phase is invalid");
+  const evidencePath = phasePath(evidenceDir, `room-guard-${phase}`);
+  const base = { task: ROOM_GUARD_TASK_ID, phase: `room-guard-${phase}`, observedAt: isoNow(now), target: AI_STAGING_LIFECYCLE_TARGET, owner: safe };
+  let baseline = null;
+  if (phase !== "baseline") {
+    baseline = await readJson(phasePath(evidenceDir, "room-guard-baseline"), "room guard baseline");
+    if (baseline.ok !== true || baseline.result?.complete !== true) throw blocked("room guard baseline evidence is not valid");
+  }
+  return withEvidence(evidencePath, base, async () => {
+    const readback = await client.roomGuard();
+    if (!isRecord(readback) || !Array.isArray(readback.result) || readback.result.length !== 1
+      || !isRecord(readback.result[0]) || !Array.isArray(readback.result[0].results)) {
+      throw blocked("Staging room guard D1 readback is incomplete or paginated");
+    }
+    const rows = readback.result[0].results;
+    const result = evaluateStagingRoomGuard({
+      rows,
+      now: now instanceof Date ? now.getTime() : Number(now),
+      baseline: baseline?.result ?? null,
+      phase,
+      activationAt: activationAt instanceof Date ? activationAt.getTime() : activationAt,
+    });
+    return { result };
+  });
+}
+
 export async function captureStaging({ client, evidenceDir = DEFAULT_EVIDENCE_DIR, owner, now = new Date() } = {}) {
   ensureClientTarget(client);
   const safe = safeOwner(owner);
@@ -548,6 +701,7 @@ export function createCloudflareClient({ token, accountId = AI_STAGING_LIFECYCLE
   if (typeof token !== "string" || token.length === 0) throw blocked("Cloudflare credentials are unavailable");
   if (typeof fetchImpl !== "function") throw blocked("Cloudflare HTTP client is unavailable");
   const workerPath = `/accounts/${AI_STAGING_LIFECYCLE_TARGET.accountId}/workers/scripts/${AI_STAGING_LIFECYCLE_TARGET.workerName}`;
+  const databaseQueryPath = `/accounts/${AI_STAGING_LIFECYCLE_TARGET.accountId}/d1/database/${AI_STAGING_LIFECYCLE_TARGET.databaseId}/query`;
 
   async function request(label, path, { method = "GET", body, raw = false } = {}) {
     let lastError = null;
@@ -669,6 +823,11 @@ export function createCloudflareClient({ token, accountId = AI_STAGING_LIFECYCLE
   return Object.freeze({
     accountId: AI_STAGING_LIFECYCLE_TARGET.accountId,
     inventory,
+    roomGuard: () => request("read-only D1 room guard", databaseQueryPath, {
+      method: "POST",
+      body: { sql: ROOM_GUARD_SQL, params: [] },
+      raw: true,
+    }),
     setSchedules: (schedules) => request("schedule update", `${workerPath}/schedules`, { method: "PUT", body: schedules }),
     setSubdomain: (state) => request("subdomain update", `${workerPath}/subdomain`, { method: "POST", body: state }),
   });
@@ -697,7 +856,7 @@ function resolveAccountId(env = process.env) {
 
 async function cli() {
   const mode = process.argv[2];
-  if (!new Set(["preflight", "capture", "contain", "emergency-contain"]).has(mode)) throw invalidTarget("usage: ai-staging-lifecycle.mjs <preflight|capture|contain|emergency-contain>");
+  if (!new Set(["preflight", "capture", "contain", "emergency-contain", "room-guard"]).has(mode)) throw invalidTarget("usage: ai-staging-lifecycle.mjs <preflight|capture|contain|emergency-contain|room-guard>");
   const evidenceDir = process.env.STAGING_LIFECYCLE_EVIDENCE_DIR ?? DEFAULT_EVIDENCE_DIR;
   const accountId = resolveAccountId();
   if (accountId !== AI_STAGING_LIFECYCLE_TARGET.accountId) throw invalidTarget("Cloudflare credentials select the wrong account");
@@ -709,12 +868,20 @@ async function cli() {
       ? await captureStaging({ client, evidenceDir, owner })
       : mode === "contain"
         ? await containStaging({ client, evidenceDir, owner })
-        : await emergencyContainStaging({
-          client,
-          evidenceDir,
-          expectedVersionId: process.env.STAGING_EMERGENCY_VERSION_ID,
-          confirmation: process.env.STAGING_EMERGENCY_CONFIRM,
-        });
+        : mode === "room-guard"
+          ? await guardStagingRooms({
+            client,
+            evidenceDir,
+            owner,
+            phase: process.env.STAGING_ROOM_GUARD_PHASE ?? "baseline",
+            activationAt: process.env.STAGING_LIFECYCLE_STARTED_EPOCH ? Number(process.env.STAGING_LIFECYCLE_STARTED_EPOCH) * 1000 : null,
+          })
+          : await emergencyContainStaging({
+            client,
+            evidenceDir,
+            expectedVersionId: process.env.STAGING_EMERGENCY_VERSION_ID,
+            confirmation: process.env.STAGING_EMERGENCY_CONFIRM,
+          });
   console.log(JSON.stringify({ task: TASK_ID, phase: mode, ok: true, target: AI_STAGING_LIFECYCLE_TARGET, result }));
 }
 

@@ -1,13 +1,19 @@
 # Smart Bot Player — Coding Agent Handover
 
-Branch `feature/smart-bot-player`. Latest design reviewed: AIP-D38 / 2026-11-25. Parent `AIP-PERF-01` remains **CHANGES_REQUESTED**; no GET-02, BOT-02, PLAY work, paid service, production change or UX2 change is authorized.
+Branch `review/aip-perf-bot-02`, based on the latest `feature/smart-bot-player` tip `4cfd443097deddead1f677b77df1cf34d559fbd3`. Latest design reviewed: AIP-D41 / 2026-11-25. AIP-PERF-01 remains **CHANGES_REQUESTED**; GET-02 and later PLAY work are not started.
 
-## STAGING-SAFE-DELIVERY-01 — delivered; **PENDING_REVIEW with hosted-smoke blocker**
+## AIP-PERF-BOT-02 (AIP-D41) — implementation delivered for review
 
-Final source SHA: `ea8e0270236987895d38e8c30521325a940b7426`, pushed to `feature/smart-bot-player`. Focused lifecycle regressions (partial activation, paused-baseline no-op, malformed readback, ambiguous active versions) pass with diff-check, syntax and targeted ESLint. Reviewer corrections now prove the fixed account/Worker/D1, strict readbacks, version-owned run tag, independent containment and bounded 30-minute activation/smoke budget.
+The non-deploying review branch contains the compact server-only Bot result path, durable canonical commit proofs (event/checkpoint/shared-submission/authoritative row), correlation checks, and scheduler ack protection. Legacy full projections remain for human/test adapters. S1 adds exact fixed-target read-only D1 room guards with opaque fingerprints before activation and after closure. S2 adds authenticated-request/error/artifact redaction and canary coverage for raw and encoded credentials. The review ref does not run the Staging deploy job; production remains skipped.
 
-Exact-SHA Actions [45670682073](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45670682073): lint/build/fast, API and browser jobs **GREEN**; isolated Staging preflight, build/config/dry-run, D1 migration, deployment and ownership capture **GREEN**; production `deploy` **SKIPPED**. Staging Worker `three-kingdoms-ai-staging`, isolated D1 `62616495-59ea-4a9c-b669-2d3267a83cab`, deployed version `ff281fc0-be75-4e69-bd63-ccb3dc0cb8c2` with version tag `aip-staging-45670682073-ea8e0270236987895d38e8c30521325a940b7426`.
+Focused evidence on the working tree:
 
-Hosted smoke created fresh room `UV89N` and observed genuine Bot progression (Bot 2 attack, Bot 3/Bot 4 waiting), but failed before the refresh/rejoin assertion on `GET /api/rooms` with `ECONNRESET` at 18:15:59 UTC. This run does not prove CPU safety or successful rejoin; no 1102 was reported in this artifact. Automatic containment then succeeded: public=false, preview=false, Cron=[], matching routes/domains/queue consumers=0, with final readback in the lifecycle artifact. No production operation occurred. PM/UX2 impact: **NO IMPACT**; real iPhone acceptance and parent PERF CPU proof remain separate.
+- API scheduler: 37 tests, 36 pass, 1 skipped, 0 fail; long-room fixture reported 203 public events and 150 seeded Bot Work rows.
+- Bot outcome, lifecycle/config, S1 guard, reconnect logic and S2 diagnostics: 41/41 pass.
+- Targeted ESLint, `npm run build`, and `git diff --check`: pass.
 
-Resume only after Reviewer/Owner decides whether the hosted `ECONNRESET` is an in-scope correction. Do not repeat hosted smoke on this unchanged runtime or start another task.
+No Hosted Staging run is authorized yet. D41 requires disposition of the historical UV89N credential exposure from the prior hosted artifact and confirmation of controlled, time-bounded access before the single capped hosted validation. No production operation or Cloudflare resource change was made in this delivery.
+
+## Current bounded task
+
+Commit and push this review branch, verify exact-SHA GitHub Actions with Staging deploy and production skipped, then hand to Reviewer as **PENDING_REVIEW** if CI is green. Keep the Hosted gate blocked until the historical credential/access conditions are explicitly satisfied; otherwise record the concrete CI blocker. Do not start AIP-PERF-GET-02.

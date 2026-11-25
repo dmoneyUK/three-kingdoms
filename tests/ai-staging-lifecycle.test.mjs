@@ -11,11 +11,30 @@ import {
   containStaging,
   createCloudflareClient,
   emergencyContainStaging,
+  evaluateStagingRoomGuard,
   preflightStaging,
 } from "../scripts/ai-staging-lifecycle.mjs";
 
 const owner = { runId: "12345", commitSha: "a".repeat(40), tag: `aip-staging-12345-${"a".repeat(40)}` };
 const now = new Date("2026-11-25T15:00:00.000Z");
+
+function guardRow({ roomId = "old-room", status = "playing", testRoom = 0, createdAt = now.getTime() - 600_000, lastActivityAt = now.getTime() - 600_000, botCount = 1, humanCount = 0, latestHumanConnectedAt = null, botWorkCount = 0, liveBotWorkCount = 0, latestBotWorkAt = 0, schedulerLeaseUntil = 0, responseSubmissionCount = 0 } = {}) {
+  return {
+    room_id: roomId,
+    status,
+    test_room: testRoom,
+    created_at: createdAt,
+    last_activity_at: lastActivityAt,
+    genuine_bot_count: botCount,
+    genuine_human_count: humanCount,
+    latest_genuine_human_connected_at: latestHumanConnectedAt,
+    bot_work_count: botWorkCount,
+    live_bot_work_count: liveBotWorkCount,
+    latest_bot_work_at: latestBotWorkAt,
+    scheduler_lease_until: schedulerLeaseUntil,
+    response_submission_count: responseSubmissionCount,
+  };
+}
 
 function version({ id = "version-1", tag = null, createdOn = "2026-11-25T14:00:00.000Z", databaseId = AI_STAGING_LIFECYCLE_TARGET.databaseId } = {}) {
   return {
@@ -270,4 +289,33 @@ test("classifies a bounded network timeout without exposing credentials", async 
     assert.doesNotMatch(error.message, /timeout-secret/);
     return true;
   });
+});
+
+test("S1 room guard rejects eligible or unknown pre-existing rooms and keeps opaque evidence", () => {
+  assert.throws(() => evaluateStagingRoomGuard({
+    rows: [guardRow({ lastActivityAt: now.getTime() - 30_000 })], now: now.getTime(), phase: "baseline",
+  }), /pre-existing eligible/);
+  assert.throws(() => evaluateStagingRoomGuard({ rows: [{ room_id: "unknown" }], now: now.getTime(), phase: "baseline" }), /unknown or malformed/);
+  const result = evaluateStagingRoomGuard({ rows: [guardRow()], now: now.getTime(), phase: "baseline" });
+  assert.equal(result.complete, true);
+  assert.equal(result.roomCount, 1);
+  assert.equal(result.eligibleCount, 0);
+  assert.equal(result.fingerprints.length, 1);
+  assert.equal(result.fingerprints[0].length, 64);
+  assert.equal(JSON.stringify(result).includes("old-room"), false);
+});
+
+test("S1 pre-activation and post-closure guards fail on old-room mutation but allow a fresh room", () => {
+  const baseline = evaluateStagingRoomGuard({ rows: [guardRow()], now: now.getTime(), phase: "baseline" });
+  const unchanged = evaluateStagingRoomGuard({ rows: [guardRow()], now: now.getTime(), phase: "pre_activation", baseline });
+  assert.equal(unchanged.baselineFingerprintDigest, baseline.fingerprintDigest);
+  assert.throws(() => evaluateStagingRoomGuard({
+    rows: [guardRow({ lastActivityAt: now.getTime() - 590_000 })], now: now.getTime(), phase: "pre_activation", baseline,
+  }), /changed or disappeared|inventory changed/);
+  const fresh = guardRow({ roomId: "fresh-room", createdAt: now.getTime() + 1_000, lastActivityAt: now.getTime() + 1_000, botCount: 3, humanCount: 1, latestHumanConnectedAt: now.getTime() + 1_000 });
+  const closed = evaluateStagingRoomGuard({
+    rows: [guardRow(), fresh], now: now.getTime() + 30_000, phase: "post_closure", baseline, activationAt: now.getTime(),
+  });
+  assert.equal(closed.missingFingerprintCount, 0);
+  assert.throws(() => evaluateStagingRoomGuard({ rows: [fresh], now: now.getTime() + 30_000, phase: "post_closure", baseline, activationAt: now.getTime() }), /changed or disappeared/);
 });

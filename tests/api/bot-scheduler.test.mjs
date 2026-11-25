@@ -979,7 +979,7 @@ test("a Bot answers an ordinary Attack with its single canonical physical Dodge"
   assert.equal(resultEvent.decisionId, contextEvent.decisionId);
   assert.equal(resultEvent.selectedAction, "respond");
   assert.equal(resultEvent.httpStatus, 200);
-  assert.equal(resultEvent.canonicalOutcome, "accepted");
+  assert.equal(resultEvent.canonicalOutcome, "committed");
   assert.equal(resultEvent.mutationCommitted, true);
   assert.equal(resultEvent.before.hand.length, 1);
   assert.equal(resultEvent.after.hand.length, 0);

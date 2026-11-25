@@ -50,6 +50,7 @@ import { advanceCausalSemanticCheckpoint } from "../causal-envelope";
 import { isBotActionPrincipal, type BotActionPrincipal } from "../../../worker/bot-principal";
 import { shouldLookupAuthenticatedSession } from "../internal-bot-session";
 import { emitBotDecisionDiagnostic, type BotDecisionCard, type BotDecisionDiagnosticContext, type BotDecisionOption } from "../../../worker/bot-diagnostics";
+import { botCommitKindForAction, type BotActionOutcome, type BotCommitReference } from "../../../worker/bot-outcome";
 import { appendSequencedLogRecord, decodePublicLog, publicEventSequencesFromLog, publicSequenceWatermarkFromLog, type DecodedPublicLog } from "../../../game/public-log-sequence";
 import { legacyLogMessages, roomLogTimeline } from "../../../game/room-log-decode";
 import { publicPresentationTimelineForTurn } from "../../../game/public-presentation-turn";
@@ -143,6 +144,9 @@ const BOT_DEMO_SAFE_GENERAL_IDS = new Set([
 ]);
 
 const json = (data: unknown, status = 200, extraHeaders: Record<string, string> = {}) => Response.json(data, { status, headers: { "Cache-Control": "no-store", ...extraHeaders } });
+// Minted only by the in-process compact Bot dispatcher.  Nested canonical
+// actions use it as a non-credential marker so they never build a viewer DTO.
+const BOT_COMPACT_RESPONSE_TOKEN = "__internal_bot_compact_response__";
 const publicRoleName = (role: string | null | undefined) => role === "Renegade" ? "Spy" : role ?? null;
 const HARVEST_CHOICE_HOLD_MS = 1400;
 const HARVEST_CHOICE_DURATION_MS = 60_000;
@@ -3449,6 +3453,61 @@ function gameTimeline(entries: string[], viewerPlayerId?: string) {
     if (event.type === "cards") return Array.isArray(event.cards) && event.cards.length > 0 && event.cards.every((card) => Boolean(card && typeof card === "object" && typeof (card as { id?: unknown }).id === "string" && typeof (card as { kind?: unknown }).kind === "string"));
     return false;
   });
+}
+
+type BotDurableSnapshot = {
+  status: string;
+  phase: string | null;
+  pendingJson: string | null;
+  logJson: string | null;
+  latestEventId: string | null;
+  checkpointId: string | null;
+  submissionPresent: boolean;
+  submissionReference: string | null;
+};
+
+async function botDurableSnapshot(roomId: string, actorId: string): Promise<BotDurableSnapshot> {
+  const row = await env.DB.prepare("SELECT status, phase, pending_json, log_json FROM rooms WHERE id = ?")
+    .bind(roomId).first<{ status: string; phase: string | null; pending_json: string | null; log_json: string | null }>();
+  if (!row) throw new Error("bot durable room state unavailable");
+  const log = parse<string[]>(row.log_json, []);
+  const latestEventId = [...log].reverse().map((entry) => {
+    const marker = entry.startsWith("@event:") ? 7 : entry.startsWith("@card:") ? 6 : entry.startsWith("@cards:") ? 7 : entry.startsWith("@history:") ? 9 : 0;
+    if (!marker) return null;
+    try {
+      const value = JSON.parse(entry.slice(marker)) as Record<string, unknown>;
+      return typeof value.id === "string" && value.id.length > 0 ? value.id : null;
+    } catch { return null; }
+  }).find((id): id is string => Boolean(id)) ?? null;
+  const pending = parse<Record<string, unknown> | null>(row.pending_json, null);
+  const checkpointId = typeof pending?.id === "string" && pending.id.length > 0
+    && ["bot_action_checkpoint", "turn_end_checkpoint", "recovery_checkpoint", "defeat_handoff", "discard_turn_handoff"].includes(String(pending.kind))
+    ? pending.id : null;
+  const windowId = typeof pending?.windowId === "string" && pending.windowId.length > 0 ? pending.windowId : null;
+  const submissionTable = pending?.kind === "negation_window" ? "negation_window_submissions"
+    : pending?.kind === "shared_response_window" ? "shared_response_window_submissions" : null;
+  const submissionPresent = windowId && submissionTable
+    ? Boolean(await env.DB.prepare(`SELECT 1 FROM ${submissionTable} WHERE room_id = ? AND window_id = ? AND player_id = ?`)
+      .bind(roomId, windowId, actorId).first())
+    : false;
+  return {
+    status: row.status,
+    phase: row.phase,
+    pendingJson: row.pending_json,
+    logJson: row.log_json,
+    latestEventId,
+    checkpointId,
+    submissionPresent,
+    submissionReference: submissionPresent && windowId ? `${windowId}:${actorId}` : null,
+  };
+}
+
+function durableCommitReference(before: BotDurableSnapshot | null, after: BotDurableSnapshot | null): BotCommitReference | null {
+  if (!before || !after) return null;
+  if (after.latestEventId && after.latestEventId !== before.latestEventId) return { kind: "event", id: after.latestEventId };
+  if (after.checkpointId && after.checkpointId !== before.checkpointId) return { kind: "checkpoint", id: after.checkpointId };
+  if (!before.submissionPresent && after.submissionPresent && after.submissionReference) return { kind: "submission", id: after.submissionReference };
+  return null;
 }
 function privateStealResultForEvent(event: Record<string, unknown>, roomCode: string, viewerId: string) {
   const proof = record(event.privateStealResult);
@@ -7908,6 +7967,7 @@ function publicHarvestPoolDuringNegation(
 }
 
 async function roomState(code: string, token?: string, includeAttackDodgeDiagnostics = false, requestedViewerId?: string | null) {
+  if (token === BOT_COMPACT_RESPONSE_TOKEN) return null;
   const db = env.DB;
   const room = await db.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
   if (!room) return null;
@@ -8299,6 +8359,12 @@ function attackDodgeProjectionTrace(traceId: string, state: RoomStateResult, sta
 
 async function playCardRoomResponse(code: string, token: string, traceId: string | null) {
   const state = await roomState(code, token, Boolean(traceId));
+  // The compact internal Bot principal deliberately has no viewer token and
+  // therefore must not build a full private projection after the canonical
+  // mutation.  The mutation has already committed at this point; report that
+  // fact instead of translating the intentionally omitted projection into a
+  // false room-not-found rejection.
+  if (!state && token === BOT_COMPACT_RESPONSE_TOKEN) return json({ state: "committed" });
   if (!state) return json({ error: "Room not found." }, 404);
   if (traceId && state.pendingAttack) return json(attackDodgeProjectionTrace(traceId, state, "server-projection-after-play"));
   const room = { ...state };
@@ -9149,6 +9215,7 @@ export async function botControllerSnapshot(code: string, advanceExpiredWindows 
 
 export async function POST(request: Request, routeContext?: unknown) {
   const internalBot = isBotActionPrincipal(routeContext) ? routeContext : null;
+  const compactBot = internalBot?.compactResult === true;
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
   const uxTraceId = typeof body.uxTraceId === "string" && /^[a-zA-Z0-9-]{8,80}$/.test(body.uxTraceId) ? body.uxTraceId : null;
   let action = String(body.action ?? "");
@@ -9310,6 +9377,17 @@ export async function POST(request: Request, routeContext?: unknown) {
     const decisionPath = pendingForController?.kind === "response" || pendingForController?.kind === "dying"
       ? "bot_step.response"
       : room.status === "heroes" ? "bot_step.hero_selection" : `bot_step.${room.phase ?? "unknown"}`;
+    let durableBefore: BotDurableSnapshot | null = null;
+    if (compactBot) {
+      try {
+        durableBefore = await botDurableSnapshot(room.id, actor.id);
+      } catch {
+        return Response.json({ botOutcome: {
+          decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision,
+          kind: "failed", errorCode: "dispatch_error", retryable: true,
+        } satisfies BotActionOutcome }, { status: 503 });
+      }
+    }
     emitBotDecisionDiagnostic(diagnosticContext, {
       event: "bot_decision_context",
       roomCode: code,
@@ -9329,7 +9407,48 @@ export async function POST(request: Request, routeContext?: unknown) {
     });
     const finishDecision = async (response: Response, selectedAction: string | null, cause: string) => {
       let responseBody: { state?: unknown; code?: unknown; error?: unknown; stale?: unknown } | null = null;
-      try { responseBody = await response.clone().json() as typeof responseBody; } catch { /* Canonical outcome below remains fixed and body-free. */ }
+      try { responseBody = await (compactBot ? response : response.clone()).json() as typeof responseBody; } catch { /* Canonical outcome below remains fixed and body-free. */ }
+      let compactOutcome: BotActionOutcome = responseBody?.state === "unsupported" || responseBody?.code === "UNSUPPORTED_BOT_DECISION"
+        ? { decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision,
+          kind: "unsupported", reason: typeof responseBody.code === "string" ? responseBody.code : "unsupported_bot_decision" }
+        : responseBody?.stale === true || response.status === 409
+          ? { decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision, kind: "stale", reason: "revision_changed" }
+          : response.status >= 500
+            ? { decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision, kind: "failed", errorCode: "dispatch_error", retryable: true }
+            : !response.ok
+              ? { decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision, kind: "failed", errorCode: "canonical_rejected", retryable: false }
+              : { decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision,
+                kind: "committed", commitProof: {
+                  source: "canonical_executor", roomId: room.id, decisionId: internalBot.decisionId,
+                  actorId: actor.id, actionRevision: internalBot.actionRevision,
+                  commitKind: botCommitKindForAction(selectedAction ?? "bot_step", room.status === "finished"),
+                  reference: { kind: "event", id: "unresolved" },
+                } };
+      if (compactBot && compactOutcome.kind === "committed") {
+        try {
+          const durableAfter = await botDurableSnapshot(room.id, actor.id);
+          let reference = durableCommitReference(durableBefore, durableAfter);
+          if (!reference && selectedAction === "choose_hero") {
+            const heroAfter = await db.prepare("SELECT hero FROM players WHERE room_id = ? AND id = ? AND controller_type = 'bot'")
+              .bind(room.id, actor.id).first<{ hero: string | null }>();
+            if (heroAfter?.hero && heroAfter.hero !== actor.hero) reference = { kind: "row", id: `player:${actor.id}:hero` };
+          }
+          if (!reference) {
+            compactOutcome = { decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision,
+              kind: "failed", errorCode: "malformed_result", retryable: true };
+          } else {
+            compactOutcome = { ...compactOutcome, commitProof: {
+              ...compactOutcome.commitProof,
+              commitKind: botCommitKindForAction(selectedAction ?? "bot_step", durableAfter.status === "finished"),
+              reference,
+            } };
+          }
+        } catch {
+          compactOutcome = { decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision,
+            kind: "failed", errorCode: "dispatch_error", retryable: true };
+        }
+      }
+      if (compactBot && !diagnosticContext.enabled) return Response.json({ botOutcome: compactOutcome }, { status: response.status });
       let currentRoom: { phase: string | null; pending_json: string | null } | null = null;
       let currentActor: { hp: number | null; hand_json: string | null } | null = null;
       let work: { status: string; error_code: string | null; attempts: number } | null = null;
@@ -9346,7 +9465,7 @@ export async function POST(request: Request, routeContext?: unknown) {
           decisionPath, expectedHandCount: ownHand.length, loggedHandCount: 0,
           missingFields: ["post_dispatch_state", "bot_work_transition"],
         });
-        return response;
+        return compactBot ? Response.json({ botOutcome: compactOutcome }, { status: response.status }) : response;
       }
       const afterHand = parse<Card[]>(currentActor?.hand_json ?? null, []);
       const afterPending = parsePersistedPending(currentRoom?.pending_json ?? null);
@@ -9359,7 +9478,8 @@ export async function POST(request: Request, routeContext?: unknown) {
       const afterFingerprint = JSON.stringify({ hp: after.hp, hand: afterHand.map((card) => card.id), phase: after.phase, pending: currentRoom?.pending_json ?? null });
       const causeAfterDispatch = responseBody?.stale === true ? "stale_action_revision"
         : responseBody?.error && response.status < 500 ? "canonical_validation_rejected" : cause;
-      const canonicalOutcome = responseBody?.state === "unsupported" ? "unsupported"
+      const canonicalOutcome = compactBot ? compactOutcome.kind
+        : responseBody?.state === "unsupported" ? "unsupported"
         : responseBody?.stale === true || response.status >= 400 && response.status < 500 ? "canonical_validation_rejected"
           : response.ok ? "accepted" : "failed";
       emitBotDecisionDiagnostic(diagnosticContext, {
@@ -9383,7 +9503,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         attempts: work?.attempts ?? null,
         elapsedMs: Date.now() - decisionStartedAt,
       });
-      return response;
+      return compactBot ? Response.json({ botOutcome: compactOutcome }, { status: response.status }) : response;
     };
     const emitEvaluation = (selectedAction: string | null, cause: string) => emitBotDecisionDiagnostic(diagnosticContext, {
       event: "bot_decision_evaluation",
@@ -9406,7 +9526,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         ...botActionCheckpoint.fields,
         action: botActionCheckpoint.action,
         code,
-        token: "",
+        token: compactBot ? BOT_COMPACT_RESPONSE_TOKEN : "",
         context: {
           actionRevision: internalBot.actionRevision,
           meId: actor.id,
@@ -9431,7 +9551,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         emitEvaluation(null, "no_supported_action");
         return finishDecision(json({ state: "unsupported", code: "UNSUPPORTED_BOT_DECISION", actionRevision: internalBot.actionRevision }), null, "no_supported_action");
       }
-      const nextBody = { action: "choose_hero", code, token: "", heroId: hero.id };
+      const nextBody = { action: "choose_hero", code, token: compactBot ? BOT_COMPACT_RESPONSE_TOKEN : "", heroId: hero.id };
       emitEvaluation("choose_hero", "non_response_decision");
       let result: Response;
       try {
@@ -10048,7 +10168,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       ...actionFields,
       action: nextAction,
       code,
-      token: "",
+      token: compactBot ? BOT_COMPACT_RESPONSE_TOKEN : "",
       context: {
         actionRevision: internalBot.actionRevision,
         meId: actor.id,

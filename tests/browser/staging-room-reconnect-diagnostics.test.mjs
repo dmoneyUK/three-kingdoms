@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   classifyRejoinFailure,
+  createSafeAuthenticatedRequest,
   createRejoinDiagnostics,
   extractRayId,
+  redactSensitiveText,
+  safeRejoinError,
   sessionEvidence,
 } from "./staging-room-reconnect-diagnostics.mjs";
 
@@ -63,4 +66,40 @@ test("records ready/session/failure state as sanitized evidence", () => {
   assert.equal(snapshot.failure.category, "resource_limit_1102");
   assert.equal(extractRayId("Ray ID: ABCDEF12"), "ABCDEF12");
   assert.equal(JSON.stringify(snapshot).includes(token), false);
+});
+
+test("S2 redacts raw and encoded credentials from transport, assertions, and artifacts", async () => {
+  const secret = "room/session+token?opaque=1";
+  const encoded = encodeURIComponent(secret);
+  const raw = `GET https://example.test/api/rooms?code=${roomCode}&token=${encoded} Authorization: Bearer ${secret} body={"sessionToken":"${secret}"}`;
+  const sanitized = redactSensitiveText(raw, [secret]);
+  assert.equal(sanitized.includes(secret), false);
+  assert.equal(sanitized.includes(encoded), false);
+  assert.match(sanitized, /token=\[REDACTED\]/i);
+
+  const throwingRequest = {
+    async get(url) { throw new Error(`transport failed for ${url}?token=${encoded}`); },
+    async post(_url, options) { throw new Error(`POST body=${JSON.stringify(options?.data)} cookie=${secret}`); },
+  };
+  const safeRequest = createSafeAuthenticatedRequest(throwingRequest, { roomCode, expectedToken: secret });
+  await assert.rejects(safeRequest.get(`/api/rooms?code=${roomCode}&token=${encoded}`), (error) => {
+    assert.equal(error.category, "api_request_failed");
+    assert.equal(error.message.includes(secret), false);
+    assert.equal(error.message.includes(encoded), false);
+    return true;
+  });
+  await assert.rejects(safeRequest.post("/api/rooms", { data: { action: "respond", token: secret } }), (error) => {
+    assert.equal(error.category, "api_request_failed");
+    assert.equal(error.message.includes(secret), false);
+    return true;
+  });
+
+  const assertionError = safeRejoinError({
+    failure: { category: "api_http_error", status: 503, rayId: "abcdef12" },
+    operation: `POST /api/rooms token=${secret}`,
+  });
+  assert.equal(assertionError.message.includes(secret), false, "reporter-facing assertion text is sanitized");
+  const attachment = redactSensitiveText(JSON.stringify({ raw, assertion: assertionError.message }), [secret]);
+  assert.equal(attachment.includes(secret), false, "diagnostic attachment is sanitized");
+  assert.equal(attachment.includes(encoded), false, "encoded credentials are sanitized from attachments");
 });

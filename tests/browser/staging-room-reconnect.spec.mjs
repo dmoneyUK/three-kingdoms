@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { botTriggerChoices } from "../../ai/trigger-selection.ts";
 import { classifyBotCycle, classifyRejoinCheckpoint, extendProgressDeadline } from "./staging-room-reconnect-logic.mjs";
-import { classifyRejoinFailure, createRejoinDiagnostics, sessionEvidence, waitForRejoinResponse } from "./staging-room-reconnect-diagnostics.mjs";
+import { classifyRejoinFailure, createRejoinDiagnostics, redactSensitiveText, safeRejoinError, createSafeAuthenticatedRequest, sessionEvidence, waitForRejoinResponse } from "./staging-room-reconnect-diagnostics.mjs";
 
 function isPostAction(response, action) {
   if (new URL(response.url()).pathname !== "/api/rooms" || response.request().method() !== "POST") return false;
@@ -68,8 +68,9 @@ async function waitForRoom(request, roomCode, token, predicate, {
     await beforePoll?.();
     const response = await request.get(`/api/rooms?${new URLSearchParams({ code: roomCode, token })}`);
     if (!response.ok()) {
-      const body = (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 512);
-      throw new Error(`GET /api/rooms failed while waiting for ${label}: HTTP ${response.status()}${body ? `; body=${body}` : ""}`);
+      const body = await response.text().catch(() => "");
+      const failure = classifyRejoinFailure({ status: response.status(), body });
+      throw safeRejoinError({ failure, operation: `GET /api/rooms while waiting for ${label}` });
     }
     const body = await response.json();
     latest = body.room ?? body;
@@ -147,6 +148,10 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
   const hostId = created.room.meId;
   const hostSeat = created.room.players.find((player) => player.id === hostId).seat;
   const botDemoEnabled = created.room.botDemoEnabled === true;
+  // From this point onward every authenticated request crosses one redacting
+  // boundary.  The wrapper preserves Playwright responses but never rethrows
+  // its raw transport exception or URL/body/cookie contents.
+  request = createSafeAuthenticatedRequest(request, { roomCode, expectedToken: created.token });
   let nextLocalRecoveryAt = 0;
   const triggerLocalRecovery = async () => {
     if (!process.env.AI_BOT_DEMO_LOCAL_URL || Date.now() < nextLocalRecoveryAt) return;
@@ -435,7 +440,7 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
   };
   const attachDiagnostics = async () => {
     await testInfo.attach("staging-rejoin-diagnostics", {
-      body: JSON.stringify(diagnostics.snapshot(), null, 2),
+      body: redactSensitiveText(JSON.stringify(diagnostics.snapshot(), null, 2), [created.token]),
       contentType: "application/json",
     });
   };
@@ -461,7 +466,9 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
       diagnostics.phase("reload_completed");
     } catch (error) {
       reloadError = error;
-      diagnostics.failure(classifyRejoinFailure({ errorMessage: error?.message }));
+      const failure = classifyRejoinFailure({ errorMessage: error?.message });
+      diagnostics.failure(failure);
+      reloadError = safeRejoinError({ failure, operation: "Staging page reload" });
     }
     const responseResult = await rejoinResponsePromise;
     if (reloadError) throw reloadError;

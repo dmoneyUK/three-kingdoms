@@ -1,4 +1,72 @@
 const API_PATH = "/api/rooms";
+const SENSITIVE_KEYS = "token|access[_-]?token|authorization|cookie|session(?:[_-]?token)?|room[_-]?token";
+
+function encodedVariants(secret) {
+  if (typeof secret !== "string" || !secret) return [];
+  const variants = new Set([secret]);
+  let current = secret;
+  for (let index = 0; index < 3; index += 1) {
+    try {
+      const decoded = decodeURIComponent(current);
+      if (decoded === current) break;
+      variants.add(decoded);
+      current = decoded;
+    } catch { break; }
+  }
+  try { variants.add(encodeURIComponent(secret)); } catch { /* ignore malformed input */ }
+  return [...variants].filter(Boolean).sort((a, b) => b.length - a.length);
+}
+
+/**
+ * Redact credential-bearing values before an Error, reporter, or attachment
+ * can retain the raw Playwright URL/POST body.  The explicit secret list is
+ * dynamic; the key-value pass is defense-in-depth for encoded/unknown tokens.
+ */
+export function redactSensitiveText(value, secrets = []) {
+  let text = String(value ?? "");
+  for (const secret of secrets.flatMap(encodedVariants)) text = text.split(secret).join("[REDACTED]");
+  const keyPattern = new RegExp(`([?&\\"']?(?:${SENSITIVE_KEYS})[\\"']?\\s*(?:=|:)\\s*)([^&#,\\s}\\"']+)`, "gi");
+  return text
+    .replace(/(authorization\s*:\s*(?:bearer\s+)?)[^\s,;]+/gi, "$1[REDACTED]")
+    .replace(/(cookie\s*:\s*)[^\r\n]+/gi, "$1[REDACTED]")
+    .replace(keyPattern, "$1[REDACTED]");
+}
+
+export function safeRejoinError({ failure, operation = "Staging room request" } = {}) {
+  const safe = failure && typeof failure === "object" ? failure : { category: "unknown", status: null, rayId: null };
+  const category = typeof safe.category === "string" ? safe.category : "unknown";
+  const status = safeStatus(safe.status);
+  const rayId = typeof safe.rayId === "string" && /^[a-f0-9]{8,32}$/i.test(safe.rayId) ? safe.rayId : null;
+  const suffix = [category, status === null ? null : `HTTP ${status}`, rayId ? `Ray ${rayId}` : null].filter(Boolean).join(", ");
+  const error = new Error(`${redactSensitiveText(operation)} failed (${suffix})`);
+  error.name = "StagingRejoinError";
+  error.category = category;
+  error.status = status;
+  if (rayId) error.rayId = rayId;
+  return error;
+}
+
+/**
+ * One authenticated request boundary for the staging smoke.  Playwright's
+ * transport errors are normalized here; callers never rethrow the raw error
+ * that may contain a URL, POST body, cookie, or session token.
+ */
+export function createSafeAuthenticatedRequest(request, { roomCode, expectedToken } = {}) {
+  const secrets = [expectedToken];
+  const invoke = async (method, url, options = {}) => {
+    try {
+      return await request[method](url, options);
+    } catch (error) {
+      const classified = classifyRejoinFailure({ errorMessage: redactSensitiveText(error?.message, secrets), requestFailed: true });
+      throw safeRejoinError({ failure: classified, operation: `${method.toUpperCase()} ${API_PATH}` });
+    }
+  };
+  return Object.freeze({
+    get: (url, options) => invoke("get", url, options),
+    post: (url, options) => invoke("post", url, options),
+    roomCode,
+  });
+}
 
 function requestParts(url, roomCode, expectedToken) {
   try {
@@ -161,7 +229,8 @@ export async function waitForRejoinResponse(page, { roomCode, expectedToken, dia
     diagnostics?.phase("rejoin_response_received");
     return response;
   } catch (error) {
-    diagnostics?.failure(classifyRejoinFailure({ errorMessage: error?.message }));
-    throw error;
+    const failure = classifyRejoinFailure({ errorMessage: error?.message });
+    diagnostics?.failure(failure);
+    throw safeRejoinError({ failure, operation: "GET /api/rooms rejoin" });
   }
 }
