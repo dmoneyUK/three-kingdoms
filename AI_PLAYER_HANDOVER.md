@@ -21,7 +21,7 @@ Focused validation on the final working tree:
 - Real local Worker/D1 HTTP benchmark: fixture **203 events / 150 Bot Work rows**, 4 authenticated viewers, 3 measured samples/path. Current wall P50/P95 (ms): GET 5.21/5.83; active response GET 5.71/5.85; Bot step 17.72/18.30; scheduler wake 19.06/19.78; decline 13.40/13.75; advance timers 10.17/10.61; postwrite draw 11.73/12.69; final settlement 10.29/11.19. Client-process CPU only; Worker CPU, D1 read/write telemetry and hosted limits are not exposed by the local harness.
 - Targeted ESLint, `npm run build`, `node --check scripts/ai-staging-lifecycle.mjs`, and `git diff --check`: **pass**.
 
-Exact-SHA CI: **pending push and run verification for the final correction commit**. Run `45718514624` failed only on the pre-fix `peachEventId` scope error; the next review-ref run must show Lint/Fast, API and Browser green, with Staging and Production deploy jobs **SKIPPED**. Any retry/attempt will be recorded factually after observation.
+Exact-SHA CI for the final source correction: **run `45719390668`**, `headSha=d218807d3711378431eaff37a157c397f447e84d`, conclusion **success**. Lint/Fast, API and Browser jobs all passed; both Staging and Production deploy jobs were **SKIPPED**. The earlier run `45718514624` failed only on the pre-fix `peachEventId` scope error, which is covered by the second source commit above.
 
 No Staging or Production deployment, Cloudflare resource change, hosted activation, GET-02, or PLAY work was performed. Hosted validation remains intentionally blocked by the D42 historical credential-disposition and controlled-access prerequisites; no credential content is recorded.
 
