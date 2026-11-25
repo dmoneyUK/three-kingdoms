@@ -1412,8 +1412,8 @@ test("FIX14 Group failure Damage uses one child frame and resumes the next parti
   assert.equal(resumedEnvelope.interactionId, groupRoot.interactionId);
   assert.equal(resumedEnvelope.activeFrameId, groupFrame.frameId);
   assert.equal(resumedEnvelope.frames.find((frame) => frame.frameId === groupFrame.frameId)?.stage, "GROUP_RESOLUTION");
-  assert.equal(resumedEnvelope.presentationRevision, damageEnvelope.presentationRevision + 4,
-    "the revision includes the resolved nested Ganglie damage and the Group resume checkpoints");
+  assert.equal(resumedEnvelope.presentationRevision, damageEnvelope.presentationRevision + 5,
+    "the revision includes the Stauchness consequence-choice checkpoint, resolved nested Ganglie damage, and Group resume checkpoints");
   assert.equal(resumedEnvelope.checkpoint.frameId, groupFrame.frameId);
   assert.deepEqual(resumedEnvelope.frames.find((frame) => frame.frameId === groupFrame.frameId)?.current.currentTargetIds, [finalTarget.id]);
   assert.deepEqual(damageResolved.data.room.presentationV2.groupResolution?.participantProgress.find(({ playerId }) => playerId === damageTarget.id), {
