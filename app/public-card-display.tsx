@@ -12,6 +12,7 @@ import type { PresentationTargetCardSettlementMovement } from "../game/presentat
 import type { PublicInteractionNarration } from "../game/public-activity";
 import type { PublicDiscardAnnouncement } from "./public-discard-transition";
 import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
+import { publicStageBandClearance, type PublicStageStationarySurface } from "../game/public-stage-layout";
 import { positionLabeledCardAboveBand, publicStageSceneMatchesCard } from "../game/public-stage-layout";
 import { cardDefinition } from "../game/cards";
 import { publicAnnouncementEventCopyKey as buildPublicAnnouncementEventCopyKey, publicAnnouncementGeometryIdentity, publicAnnouncementGeometryKey, transitionPublicAnnouncementCopyLifecycle, type PublicAnnouncementCopyLifecycle, type PublicAnnouncementProtectedGeometry, type PublicAnnouncementSeatGeometry } from "../game/public-announcement";
@@ -225,6 +226,9 @@ export type PublicCardEffectFrameView = {
   [publicCardEffectFrameViewBrand]: true;
   eventId: string;
   activationEventId?: string;
+  /** Server-proven causal parent; H4 facts for this exact root may share the frame owner. */
+  rootEventId?: string;
+  rootResolutionId?: string;
   effectId: string;
   effectClass: "COST" | "CONVERSION" | "EFFECT" | "JUDGEMENT";
   activationOwnerId: string;
@@ -250,13 +254,14 @@ export function createPublicCardEffectFrameView(
     || effect.effectClass === "EFFECT" || effect.effectClass === "JUDGEMENT";
   const cards = Array.isArray(effect.cards) ? effect.cards : [];
   const materials = Array.isArray(effect.materials) ? effect.materials : [];
+  const hasRootIdentity = Boolean(effect.rootEventId) === Boolean(effect.rootResolutionId);
   const normalizedTitleParts = copy.titleParts && {
     skillName: copy.titleParts.skillName.trim(),
     ...(copy.titleParts.effectLabel?.trim() ? { effectLabel: copy.titleParts.effectLabel.trim() } : {}),
   };
   const titlePartsMatch = !normalizedTitleParts
     || `${normalizedTitleParts.skillName}${normalizedTitleParts.effectLabel ? ` · ${normalizedTitleParts.effectLabel}` : ""}` === copy.title.trim();
-  if (effect.semantics !== "PROVEN" || !effect.eventId || !effect.activationOwnerId || !classIsSupported
+  if (effect.semantics !== "PROVEN" || !effect.eventId || !effect.activationOwnerId || !classIsSupported || !hasRootIdentity
     || !copy.title.trim() || copy.title.length > 40 || !copy.accessibleLabel.trim() || copy.accessibleLabel.length > 240
     || normalizedTitleParts && !normalizedTitleParts.skillName || !titlePartsMatch
     || !copy.activationOwnerName.trim() || !cards.length || cards.length !== materials.length
@@ -274,6 +279,10 @@ export function createPublicCardEffectFrameView(
     [publicCardEffectFrameViewBrand]: true,
     eventId: effect.eventId,
     ...(effect.activationEventId ? { activationEventId: effect.activationEventId } : {}),
+    ...(effect.rootEventId && effect.rootResolutionId ? {
+      rootEventId: effect.rootEventId,
+      rootResolutionId: effect.rootResolutionId,
+    } : {}),
     effectId: effect.effectId,
     effectClass: effect.effectClass,
     activationOwnerId: effect.activationOwnerId,
@@ -539,6 +548,8 @@ function PublicJourneyCard({
       data-public-card-frame-material-count={frameMaterials.length}
       data-public-card-frame-event-id={publicCardEffectFrame.activationEventId ?? publicCardEffectFrame.eventId}
       data-public-card-frame-card-event-id={card.eventId}
+      data-public-card-frame-root-event-id={publicCardEffectFrame.rootEventId}
+      data-public-card-frame-root-resolution-id={publicCardEffectFrame.rootResolutionId}
       style={{
         left: -frameLayout.cardOffsetLeft,
         top: -frameLayout.cardOffsetTop,
@@ -709,6 +720,7 @@ type BattlefieldCenterCardSafety = {
   reservePlayerIds?: readonly string[];
   respectFixedUpperH4?: boolean;
   fixedPublicBands?: boolean;
+  stationarySurface?: PublicStageStationarySurface;
 };
 type ProtectedBattlefieldCenterCardSafety = BattlefieldCenterCardSafety & { requireProtectedClearance: true };
 
@@ -739,8 +751,9 @@ function battlefieldCenterCard(
     const safeTop = Math.max(8, bounds.top + 8, viewportTop + 8);
     const safeBottom = Math.min(bounds.bottom - 8, window.innerHeight - 8, viewportBottom - 8);
     if (!h4Band || !pacBand || safeRight - safeLeft < size.width) return null;
-    const laneTop = Math.max(safeTop, h4Band.bottom + 8);
-    const laneBottom = Math.min(safeBottom, pacBand.top - 8);
+    const bandClearance = publicStageBandClearance(safety.stationarySurface);
+    const laneTop = Math.max(safeTop, h4Band.bottom + bandClearance);
+    const laneBottom = Math.min(safeBottom, pacBand.top - bandClearance);
     const preferredLeft = safeLeft + (safeRight - safeLeft - size.width) / 2;
     const top = laneTop + (laneBottom - laneTop - size.height) / 2;
     if (laneBottom - laneTop < size.height) return null;
@@ -982,6 +995,7 @@ function battlefieldPublicEffectFrameCard(frame?: PublicCardEffectFrameView): Ca
     requireProtectedClearance: true,
     respectFixedUpperH4: true,
     fixedPublicBands: true,
+    stationarySurface: "effect-frame",
   });
   if (!safeFrame) return null;
   return {

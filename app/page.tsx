@@ -9792,6 +9792,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && selectedPublicCardAction.rootEventId === publicInteractionNarration.rootEventId
     && selectedPublicCardAction.interactionId === publicInteractionNarration.interactionId
     && selectedPublicCardAction.rootFrameId === publicInteractionNarration.rootFrameId);
+  const publicEffectFrameOwnsInteractionRoot = Boolean(publicInteractionNarration
+    && selectedPublicCardAction?.publicCardEffectFrame?.rootEventId
+    && selectedPublicCardAction.publicCardEffectFrame.rootEventId === publicInteractionNarration.rootEventId);
   const protectPublicInteractionUpperH4 = Boolean(publicInteractionNarration);
   const deflectionForPublicAction = (action: PublicCardDisplayAction | null) => {
     if (!action || action.cardKind !== "Attack" || action.motion?.type !== "attack-dodge" || !action.targetId) return null;
@@ -10025,7 +10028,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ) ?? undefined,
     publicAnnouncementIdentity,
     ...(interactionNarrationBelongsToAction && publicInteractionNarration ? { publicInteractionNarration, suppressAnnouncement: false }
-      : publicInteractionNarration ? { suppressAnnouncement: true } : {}),
+      : publicEffectFrameOwnsInteractionRoot ? { suppressAnnouncement: false }
+        : publicInteractionNarration ? { suppressAnnouncement: true } : {}),
     ...(genericPublicFactNarration ? { publicNegationNarration: genericPublicFactNarration, suppressAnnouncement: false } : {}),
     ...(attackConversionFrameCandidate ? {
       cardLabel: attackConversionFrameCandidate.spec.title,
@@ -10254,6 +10258,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       rootEventId: publicCardDisplayAction.rootEventId,
       interactionId: publicCardDisplayAction.interactionId ?? "",
       rootFrameId: publicCardDisplayAction.rootFrameId ?? "",
+      ...(publicCardDisplayAction.publicCardEffectFrame?.rootEventId
+        ? { causalRootEventId: publicCardDisplayAction.publicCardEffectFrame.rootEventId }
+        : {}),
     } : null,
     discard: publicDiscardCandidate,
     skillEvent: beautyNoticeEligible && beautyNotice ? { eventId: beautyNotice.eventId } : null,

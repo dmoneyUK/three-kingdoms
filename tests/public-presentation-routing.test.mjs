@@ -85,12 +85,56 @@ test("all public fact categories resolve to one H4 owner and duplicate projectio
     }, `${category} has one generic H4 surface when no accepted special owner applies`);
   }
 
-  const rootFact = fact("result-event", 5, "root-event", "actor-1", { category: "SKILL_USED" });
+  const rootFact = fact("result-event", 5, "root-event", "actor-1", { category: "SKILL_USED", resolutionId: "root-resolution" });
   const cardDisplayOwner = selectPublicH4AnnouncementOwner({
     fact: rootFact,
     cardDisplay: { enabled: true, rootEventId: "root-event", interactionId: "interaction-1", rootFrameId: "root-frame" },
   });
   assert.deepEqual(cardDisplayOwner, { eventId: rootFact.eventId, owner: "PublicCardDisplay" });
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: rootFact,
+    cardDisplay: {
+      enabled: true,
+      rootEventId: "effect-event",
+      interactionId: "interaction-1",
+      rootFrameId: "root-frame",
+      causalRootEventId: "root-event",
+    },
+  }), { eventId: rootFact.eventId, owner: "PublicCardDisplay" },
+  "a proof-backed effect frame owns a public fact linked to its exact causal root");
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: rootFact,
+    cardDisplay: {
+      enabled: true,
+      rootEventId: "effect-event",
+      interactionId: "interaction-1",
+      rootFrameId: "root-frame",
+      causalRootEventId: "different-root",
+    },
+  }), { eventId: rootFact.eventId, owner: "PublicInteractionAnnouncementLayer" },
+  "a frame cannot take ownership of a fact from another root");
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: rootFact,
+    cardDisplay: {
+      enabled: true,
+      rootEventId: "effect-event",
+      interactionId: "other-interaction",
+      rootFrameId: "root-frame",
+      causalRootEventId: "root-event",
+    },
+  }), { eventId: rootFact.eventId, owner: "PublicInteractionAnnouncementLayer" },
+  "a frame cannot take ownership across interaction identities");
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: rootFact,
+    cardDisplay: {
+      enabled: true,
+      rootEventId: "effect-event",
+      interactionId: "interaction-1",
+      rootFrameId: "different-frame",
+      causalRootEventId: "root-event",
+    },
+  }), { eventId: rootFact.eventId, owner: "PublicInteractionAnnouncementLayer" },
+  "a frame cannot take ownership across root frame identities");
   assert.deepEqual(selectPublicH4AnnouncementOwner({
     fact: { ...rootFact, category: "CARD_DISCARDED" },
     discard: { eventId: rootFact.eventId, order: rootFact.order },
@@ -119,6 +163,8 @@ test("all public fact categories resolve to one H4 owner and duplicate projectio
   assert.equal(merged[0].committedOutcome, withResult.committedOutcome, "the richer validated public result survives a duplicate checkpoint projection");
   assert.deepEqual(uniquePublicH4Facts([rootFact, { ...rootFact, category: "DAMAGE_APPLIED" }]), [],
     "contradictory facts for one durable event ID fail closed");
+  assert.deepEqual(uniquePublicH4Facts([rootFact, { ...rootFact, resolutionId: "other-resolution" }]), [],
+    "contradictory resolution identities for one durable event ID fail closed");
 });
 
 test("presentation queue keeps validated H4 facts in public order across resolution coalescing", () => {

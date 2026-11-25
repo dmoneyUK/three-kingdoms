@@ -35,6 +35,8 @@ test("public effect frame factory preserves true activation and material owners 
   });
   assert.ok(frame);
   assert.equal(frame.activationOwnerId, "attacker");
+  assert.equal(frame.rootEventId, "attack-event");
+  assert.equal(frame.rootResolutionId, "attack-resolution");
   assert.deepEqual(frame.titleParts, titleParts);
   assert.deepEqual(frame.materials.map(({ ownerId, ownerName, card: materialCard }) => ({
     ownerId, ownerName, id: materialCard.id,
@@ -56,4 +58,6 @@ test("public effect frame factory fails closed on identity, ownership-name, and 
     titleParts: { skillName: "FROST SWORD", effectLabel: "AS DODGE" },
   }), null);
   assert.equal(createPublicCardEffectFrameView(effect({ effectClass: "PRIVATE" }), copy), null);
+  assert.equal(createPublicCardEffectFrameView(effect({ rootResolutionId: undefined }), copy), null,
+    "causal root event and resolution identity must be provided together");
 });

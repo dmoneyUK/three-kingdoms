@@ -1066,6 +1066,15 @@ test("real Kirin Bow frames the target's discarded Mount for attacker, target an
     { name: "OBSERVER", role: "Rebel", hero: "simayi", hp: 4, maxHp: 4, hand: [] },
     { name: "FOURTH", role: "Renegade", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [] },
   ]);
+  const targetPage = await browser.newPage();
+  const observerPage = await browser.newPage();
+  try {
+    const viewers = [
+      { viewerPage: page, viewerId: seedData.players[0].id, privateHandCard: privateSourceCard },
+      { viewerPage: targetPage, viewerId: seedData.players[1].id, privateHandCard: privateTargetCard },
+      { viewerPage: observerPage, viewerId: seedData.players[2].id, privateHandCard: null },
+    ];
+    await Promise.all([openPlayer(page, seedData, 0), openPlayer(targetPage, seedData, 1), openPlayer(observerPage, seedData, 2)]);
   const opened = await request.post(`${API}/api/rooms`, {
     data: { action: "play_card", code: seedData.code, token: seedData.players[0].token, cardId: attack.id, targetId: seedData.players[1].id },
   });
@@ -1078,14 +1087,6 @@ test("real Kirin Bow frames the target's discarded Mount for attacker, target an
   expect(triggerDecision.currentAction).toMatchObject({ kind: "trigger", actorId: seedData.players[0].id });
   expect(triggerDecision.currentAction.triggerOptions.map((option) => option.effectId)).toContain("kirin_bow_damage_about_to_apply");
 
-  const targetPage = await browser.newPage();
-  const observerPage = await browser.newPage();
-  try {
-    const viewers = [
-      { viewerPage: page, viewerId: seedData.players[0].id, privateHandCard: privateSourceCard },
-      { viewerPage: targetPage, viewerId: seedData.players[1].id, privateHandCard: privateTargetCard },
-      { viewerPage: observerPage, viewerId: seedData.players[2].id, privateHandCard: null },
-    ];
     const activated = await request.post(`${API}/api/rooms`, {
       data: {
         action: "trigger", code: seedData.code, token: seedData.players[0].token,
@@ -1113,7 +1114,6 @@ test("real Kirin Bow frames the target's discarded Mount for attacker, target an
       .not.toEqual(expect.arrayContaining([expect.objectContaining({ id: mount.id, kind: "Shadowrunner" })]));
     expect(publicRoom.players.find((player) => player.id === seedData.players[1].id).hp).toBe(3);
 
-    await Promise.all([openPlayer(page, seedData, 0), openPlayer(targetPage, seedData, 1), openPlayer(observerPage, seedData, 2)]);
     const frameEvidence = await Promise.all(viewers.map(async ({ viewerPage, viewerId }) => {
       const handle = await viewerPage.waitForFunction(({ expectedViewerId, cardId }) => {
         const display = [...document.querySelectorAll(".public-card-display")]
@@ -1122,6 +1122,9 @@ test("real Kirin Bow frames the target's discarded Mount for attacker, target an
           .find((element) => element.dataset.publicCardJourneyCardIds === cardId
             && ["reveal", "move", "parked"].includes(element.dataset.publicCardJourneyPhase));
         if (!display || !journey || !journey.classList.contains("is-public-effect-frame")) return false;
+        const announcement = display.querySelector('[data-public-card-announcement="true"]');
+        const framePanel = journey.querySelector(".public-card-effect-frame-panel");
+        const pac = document.querySelector(".play-table [data-public-activity-chip='true']");
         return {
           viewerId: display.dataset.publicCardViewerId,
           eventId: journey.dataset.publicCardJourneyEventId,
@@ -1133,9 +1136,12 @@ test("real Kirin Bow frames the target's discarded Mount for attacker, target an
           frameMaterialCardIds: journey.dataset.publicCardJourneyCardIds,
           frameFaces: journey.dataset.publicCardJourneyCardIds.split(","),
           frameTitle: journey.querySelector(".public-card-lust-cost-parked, .public-card-effect-frame-title")?.textContent?.trim(),
-          title: journey.getAttribute("aria-label"),
+          announcementOwner: announcement?.getAttribute("data-public-h4-owner"),
           announcementCount: display.querySelectorAll('[data-public-card-announcement="true"]').length,
-          announcement: display.querySelector('[data-public-card-announcement="true"]')?.textContent?.trim(),
+          announcement: announcement?.textContent?.trim(),
+          frameRect: framePanel?.getBoundingClientRect().toJSON(),
+          announcementRect: announcement?.getBoundingClientRect().toJSON(),
+          pacRect: pac?.getBoundingClientRect().toJSON(),
           viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
         };
       }, { expectedViewerId: viewerId, cardId: mount.id }, { timeout: 8_000 });
@@ -1148,11 +1154,23 @@ test("real Kirin Bow frames the target's discarded Mount for attacker, target an
         viewerId, eventId: effectEvent.id, phase: expect.stringMatching(/^(reveal|move|parked)$/),
         journeyActorId: seedData.players[1].id, frameCount: 1, frameClass: "EFFECT",
         frameMaterialCardIds: mount.id, frameFaces: [mount.id], frameTitle: "KIRIN BOW · MOUNT EFFECT",
+        announcementOwner: "PublicCardDisplay",
         announcementCount: 1, viewport: { width: 390, height: 844, scrollWidth: 390 },
       });
-      expect(evidence.title).toContain("KIRIN BOW · MOUNT EFFECT");
-      expect(evidence.title).toContain("KIRIN USER");
-      expect(evidence.title).toContain("MOUNT TARGET");
+      expect(evidence.frameRect).toBeTruthy();
+      expect(evidence.announcementRect).toBeTruthy();
+      expect(evidence.pacRect).toBeTruthy();
+      expect(evidence.frameRect.top - evidence.announcementRect.bottom).toBeGreaterThanOrEqual(5);
+      expect(evidence.pacRect.top - evidence.frameRect.bottom).toBeGreaterThanOrEqual(5);
+      for (const rect of [evidence.frameRect, evidence.announcementRect, evidence.pacRect]) {
+        expect(rect.x).toBeGreaterThanOrEqual(0);
+        expect(rect.y).toBeGreaterThanOrEqual(0);
+        expect(rect.right).toBeLessThanOrEqual(390);
+        expect(rect.bottom).toBeLessThanOrEqual(844);
+      }
+      expect(evidence.announcement).toContain("KIRIN USER");
+      expect(evidence.announcement).toContain("MOUNT TARGET");
+      expect(evidence.announcement).toContain("Kirin Bow");
       expect(evidence.announcement).toContain("damage continues");
       if (privateHandCard) await expect(viewerPage.locator(`[data-hand-card-id="${privateHandCard.id}"]`)).toHaveCount(1);
     }
@@ -1163,6 +1181,9 @@ test("real Kirin Bow frames the target's discarded Mount for attacker, target an
     }
     expect(JSON.stringify(publicRoom)).not.toContain(privateSourceCard.id);
     expect(JSON.stringify(publicRoom)).not.toContain(privateTargetCard.id);
+    const parkedMaterial = targetPage.locator(`[data-public-card-journey-event-id="${effectEvent.id}"][data-public-card-journey-phase="parked"]`).first();
+    await expect(parkedMaterial).toHaveAttribute("data-public-card-journey-effect-parking-placement", "above-pac", { timeout: 7_000 });
+    await expect(parkedMaterial).toHaveAttribute("data-public-card-journey-effect-parking-owner-id", seedData.players[1].id);
   } finally {
     await targetPage.close();
     await observerPage.close();

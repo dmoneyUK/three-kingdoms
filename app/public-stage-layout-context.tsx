@@ -5,9 +5,11 @@ import { fixedPublicActivityBand, fixedPublicH4Band, measurePublicElementAtWidth
 import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 import {
   calculatePublicStageLayout,
+  publicStageBandClearance,
   publicStageSceneMatchesCard,
   type PublicStageLayout,
   type PublicStageRect,
+  type PublicStageStationarySurface,
 } from "../game/public-stage-layout";
 
 export type SharedPublicStageLayout = {
@@ -248,12 +250,12 @@ export function PublicStageLayoutProvider({
         bottom: (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight),
       };
       const tableBounds = rectOf(table);
-      const kirinBowEffectFrame = phase === "REVEAL"
-        && primary.querySelector<HTMLElement>(".public-card-effect-frame-panel[data-public-card-frame-effect-id='kirin_bow_damage_about_to_apply']");
+      const stationarySurface: PublicStageStationarySurface = phase === "REVEAL" && frameRects.length > 0
+        ? "effect-frame" : "card";
       const upperH4 = {
         top: h4Band.top,
         reservedHeight: h4Band.height,
-        gap: kirinBowEffectFrame ? 8 : 4,
+        gap: stationarySurface === "effect-frame" ? publicStageBandClearance(stationarySurface) : 4,
       };
       const harvestPoolWrapper = [...table.querySelectorAll<HTMLElement>(".battlefield-choice-stage")]
         .find((element) => element.dataset.harvestRootEventId === scopeId) ?? null;
@@ -408,6 +410,7 @@ export function PublicStageLayoutProvider({
         activity: measuredSize(activityRect),
         activityBottom: consoleBounds.top,
         obstacles,
+        stationarySurface,
         fixedBands: phase === "REVEAL" ? { h4: h4Band, pac: pacBand } : undefined,
         ...(harvestRootPoolOverlap ? { harvestRootPoolOverlap: {
           semantics: "PROVEN" as const,

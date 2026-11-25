@@ -343,12 +343,13 @@ test("measured upper H4 and reserved text height pin the reveal across text chan
   assert.ok(long.layout.card.bottom + 8 <= long.layout.activity.top);
 });
 
-test("full effect frame keeps an eight-pixel gap below wrapped upper H4 and reports no fit", () => {
+test("full effect frame uses the approved five-pixel upper-H4 gap and reports impossible geometry", () => {
   const geometry = {
     viewport: { left: 0, top: 0, right: 390, bottom: 844 },
     table: { left: 0, top: 0, right: 390, bottom: 620 },
     activityBottom: 620,
     upperH4: { top: 150, reservedHeight: 70, gap: 8 },
+    stationarySurface: "effect-frame",
     preferredCard: { left: 111, top: 300 },
     card: { width: 168, height: 190 },
     announcement: { width: 340, height: 48 },
@@ -360,10 +361,10 @@ test("full effect frame keeps an eight-pixel gap below wrapped upper H4 and repo
   assert.equal(wrapped.status, "placed");
   assert.equal(rewrapped.status, "placed");
   if (wrapped.status !== "placed" || rewrapped.status !== "placed") return;
-  assert.equal(wrapped.layout.card.top, 228);
+  assert.equal(wrapped.layout.card.top, 225);
   assert.deepEqual(wrapped.layout.card, rewrapped.layout.card);
-  assert.ok(wrapped.layout.card.top >= geometry.upperH4.top + geometry.upperH4.reservedHeight + 8);
-  assert.ok(wrapped.layout.card.bottom + 8 <= wrapped.layout.activity.top);
+  assert.ok(wrapped.layout.card.top - (geometry.upperH4.top + geometry.upperH4.reservedHeight) >= 5);
+  assert.ok(wrapped.layout.card.bottom + 5 <= wrapped.layout.activity.top);
 
   const noFit = calculatePublicStageLayout(input({
     ...geometry,
@@ -421,6 +422,71 @@ test("fixed H4 and PAC reserves pin the same stationary card while either messag
   const noFit = calculatePublicStageLayout(input({ ...geometry, card: { width: 90, height: 370 } }));
   assert.equal(noFit.status, "unavailable");
   if (noFit.status === "unavailable") assert.equal(noFit.reason, "NO_SAFE_STAGE_BAND");
+});
+
+test("Effect Frames use a 5px fixed-band clearance while ordinary card clearance stays 8px", () => {
+  const frameGeometry = {
+    viewport: { left: 0, top: 0, right: 390, bottom: 844 },
+    table: { left: 0, top: 0, right: 390, bottom: 700 },
+    activityBottom: 500,
+    preferredCard: { left: 111, top: 250 },
+    card: { width: 168, height: 194 },
+    announcement: { width: 340, height: 64 },
+    activity: { width: 340, height: 50 },
+    fixedBands: {
+      h4: { left: 25, top: 100, right: 365, bottom: 200 },
+      pac: { left: 25, top: 405, right: 365, bottom: 500 },
+    },
+    obstacles: [],
+  };
+  const frame = calculatePublicStageLayout(input({ ...frameGeometry, stationarySurface: "effect-frame" }));
+  assert.equal(frame.status, "placed", "a 5px lane fits the complete 168×194 Effect Frame");
+  if (frame.status === "placed") {
+    assert.ok(frame.layout.card.top - frameGeometry.fixedBands.h4.bottom >= 5);
+    assert.ok(frameGeometry.fixedBands.pac.top - frame.layout.card.bottom >= 5);
+  }
+
+  const ordinary = calculatePublicStageLayout(input(frameGeometry));
+  assert.equal(ordinary.status, "unavailable", "the same lane remains too small at the unchanged 8px ordinary-card clearance");
+
+  const belowFive = calculatePublicStageLayout(input({
+    ...frameGeometry,
+    fixedBands: {
+      ...frameGeometry.fixedBands,
+      pac: { ...frameGeometry.fixedBands.pac, top: 403 },
+    },
+    stationarySurface: "effect-frame",
+  }));
+  assert.equal(belowFive.status, "unavailable", "a lane with less than 5px clearance on both sides still fails closed");
+
+  const ordinaryCardBoundary = calculatePublicStageLayout(input({
+    ...frameGeometry,
+    card: { width: 90, height: 135 },
+    fixedBands: {
+      ...frameGeometry.fixedBands,
+      pac: { ...frameGeometry.fixedBands.pac, top: 350 },
+    },
+  }));
+  assert.equal(ordinaryCardBoundary.status, "unavailable", "ordinary CardFaces do not inherit the reduced Effect Frame gap");
+});
+
+test("the upper-H4 fallback applies the same 5px to both sides of a complete Effect Frame", () => {
+  const result = calculatePublicStageLayout(input({
+    viewport: { left: 0, top: 0, right: 390, bottom: 700 },
+    table: { left: 0, top: 0, right: 390, bottom: 600 },
+    activityBottom: 454,
+    preferredCard: { left: 111, top: 250 },
+    card: { width: 168, height: 194 },
+    announcement: { width: 340, height: 64 },
+    activity: { width: 340, height: 50 },
+    upperH4: { top: 100, reservedHeight: 100, gap: 8 },
+    stationarySurface: "effect-frame",
+  }));
+  assert.equal(result.status, "placed");
+  if (result.status !== "placed") return;
+  assert.equal(result.layout.card.top, 205);
+  assert.equal(result.layout.card.bottom, 399);
+  assert.equal(result.layout.activity.top - result.layout.card.bottom, 5);
 });
 
 test("a parked effect card label remains eight pixels above its reserved PAC band", () => {

@@ -210,7 +210,7 @@ function allPublicFacts(snapshot: AuditSnapshot): readonly PublicPresentationEve
 }
 
 type PublicH4FactOwnerProof = Pick<PublicPresentationEvent,
-  "eventId" | "order" | "frameId" | "parentFrameId" | "rootEventId" | "category" | "actorId" | "identity"
+  "eventId" | "resolutionId" | "order" | "frameId" | "parentFrameId" | "rootEventId" | "category" | "actorId" | "identity"
   | "committedOutcome" | "label" | "outcomeLabel" | "amount" | "effect" | "affectedPlayerIds">;
 
 /**
@@ -230,6 +230,7 @@ export function uniquePublicH4Facts<T extends PublicH4FactOwnerProof>(facts: rea
     }
     const sameProof = previous.order === fact.order
       && previous.rootEventId === fact.rootEventId
+      && previous.resolutionId === fact.resolutionId
       && previous.category === fact.category
       && previous.actorId === fact.actorId
       && previous.frameId === fact.frameId
@@ -313,7 +314,13 @@ export type PublicH4AnnouncementOwner =
 export function selectPublicH4AnnouncementOwner(input: {
   fact?: PublicH4FactOwnerProof | null;
   factIsActive?: boolean;
-  cardDisplay?: { enabled: boolean; rootEventId: string; interactionId: string; rootFrameId: string } | null;
+  cardDisplay?: {
+    enabled: boolean;
+    rootEventId: string;
+    interactionId: string;
+    rootFrameId: string;
+    causalRootEventId?: string;
+  } | null;
   discard?: { eventId: string; order: number } | null;
   skillEvent?: { eventId: string } | null;
 }): { eventId: string; owner: PublicH4AnnouncementOwner } | null {
@@ -324,10 +331,15 @@ export function selectPublicH4AnnouncementOwner(input: {
     return { eventId: discard.eventId, owner: "PublicDiscardAnnouncementLayer" };
   }
   if (fact) {
-    const cardDisplayOwns = Boolean(cardDisplay?.enabled
-      && fact.rootEventId === cardDisplay.rootEventId
-      && fact.identity.interactionId === cardDisplay.interactionId
-      && fact.identity.rootFrameId === cardDisplay.rootFrameId);
+    const cardDisplayOwns = Boolean(cardDisplay?.enabled && (
+      fact.rootEventId === cardDisplay.rootEventId
+        && fact.identity.interactionId === cardDisplay.interactionId
+        && fact.identity.rootFrameId === cardDisplay.rootFrameId
+      || Boolean(cardDisplay.causalRootEventId
+        && fact.rootEventId === cardDisplay.causalRootEventId
+        && fact.identity.interactionId === cardDisplay.interactionId
+        && fact.identity.rootFrameId === cardDisplay.rootFrameId)
+    ));
     return { eventId: fact.eventId, owner: cardDisplayOwns ? "PublicCardDisplay" : "PublicInteractionAnnouncementLayer" };
   }
   return skillEvent ? { eventId: skillEvent.eventId, owner: "PublicSkillEventAnnouncementLayer" } : null;
