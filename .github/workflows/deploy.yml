@@ -120,13 +120,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          started="$(date +%s)"
-          deadline="$((started + 1440))"
+          started_ms="$(node -e 'process.stdout.write(String(Math.floor(performance.timeOrigin + performance.now())))')"
+          started="$((started_ms / 1000))"
+          deadline="$((started + 1200))"
           {
             echo "STAGING_LIFECYCLE_STARTED_EPOCH=$started"
             echo "STAGING_LIFECYCLE_DEADLINE_EPOCH=$deadline"
+            echo "STAGING_LIFECYCLE_STARTED_EPOCH_MS=$started_ms"
           } >> "$GITHUB_ENV"
-          echo "::notice::Staging lifecycle start=$started deadline=$deadline; six-minute cleanup/readback reserve"
+          echo "::notice::Staging lifecycle T0=$started_ms deadline=$deadline; active probes stop by T0+14m and six-minute cleanup/readback reserve"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -163,16 +165,31 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Enforce pre-activation lifecycle budget
+        run: STAGING_LIFECYCLE_PHASE=before_activation node scripts/ai-staging-lifecycle.mjs budget
+        env:
+          STAGING_LIFECYCLE_STARTED_EPOCH_MS: ${{ env.STAGING_LIFECYCLE_STARTED_EPOCH_MS }}
+          STAGING_LIFECYCLE_NOW_EPOCH_MS: ${{ env.STAGING_LIFECYCLE_STARTED_EPOCH_MS }}
+      - name: Require exact-SHA Hosted safety gate
+        run: node scripts/ai-staging-lifecycle.mjs hosted-gate
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          STAGING_EXPECTED_SHA: ${{ github.sha }}
+          STAGING_S1_PASSED: "true"
+          STAGING_S2_PASSED: ${{ vars.STAGING_S2_PASSED || 'false' }}
+          STAGING_HISTORICAL_CREDENTIAL_DISPOSITION: ${{ vars.STAGING_HISTORICAL_CREDENTIAL_DISPOSITION || '' }}
+          STAGING_CONTROLLED_ACCESS: ${{ vars.STAGING_CONTROLLED_ACCESS || 'false' }}
       - name: Require bounded activation window
         shell: bash
         run: |
           set -euo pipefail
           remaining="$((STAGING_LIFECYCLE_DEADLINE_EPOCH - $(date +%s)))"
-          if (( remaining < 900 )); then
-            echo "Insufficient lifecycle budget before activation (${remaining}s remain; need at least 900s)." >&2
+          if (( remaining < 840 )); then
+            echo "Insufficient lifecycle budget before activation (${remaining}s remain; need at least 840s)." >&2
             exit 1
           fi
-          echo "::notice::Activation window has ${remaining}s; at least 360s remains reserved for containment/readback/artifacts"
+          echo "::notice::Activation window has ${remaining}s; active probes are capped at 840s and at least 360s remains reserved for containment/readback/artifacts"
       - name: Apply Staging D1 migrations
         run: timeout 240s npx wrangler d1 migrations apply three-kingdoms-ai-staging-db --remote --config dist/server/wrangler.json
         env:
@@ -184,7 +201,17 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Record Staging activation timestamp
-        run: echo "STAGING_LIFECYCLE_ACTIVATION_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
+        run: |
+          activation_ms="$(node -e 'process.stdout.write(String(Math.floor(performance.timeOrigin + performance.now())))')"
+          {
+            echo "STAGING_LIFECYCLE_ACTIVATION_EPOCH=$((activation_ms / 1000))"
+            echo "STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS=$activation_ms"
+          } >> "$GITHUB_ENV"
+          STAGING_LIFECYCLE_PHASE=active \
+          STAGING_LIFECYCLE_STARTED_EPOCH_MS="$STAGING_LIFECYCLE_STARTED_EPOCH_MS" \
+          STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS="$activation_ms" \
+          STAGING_LIFECYCLE_NOW_EPOCH_MS="$activation_ms" \
+          node scripts/ai-staging-lifecycle.mjs budget
       - name: Capture owned Staging deployment version
         if: always() && steps.staging_lifecycle_preflight.outcome == 'success'
         run: timeout 120s node scripts/ai-staging-lifecycle.mjs capture
@@ -197,12 +224,21 @@ jobs:
           set -euo pipefail
           remaining="$((STAGING_LIFECYCLE_DEADLINE_EPOCH - $(date +%s)))"
           smoke_budget="$((remaining - 360))"
+          if (( smoke_budget > 840 )); then smoke_budget=840; fi
           if (( smoke_budget < 60 )); then
             echo "Insufficient lifecycle budget for bounded mobile smoke (${remaining}s remain)." >&2
             exit 1
           fi
           echo "STAGING_SMOKE_TIMEOUT_SECONDS=$smoke_budget" >> "$GITHUB_ENV"
           echo "::notice::Mobile smoke budget=${smoke_budget}s; 360s reserved for containment/readback"
+      - name: S1 active-window room guard
+        if: steps.staging_room_guard_baseline.outcome == 'success'
+        run: STAGING_ROOM_GUARD_PHASE=monitor node scripts/ai-staging-lifecycle.mjs room-guard
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          STAGING_LIFECYCLE_ACTIVATION_EPOCH: ${{ env.STAGING_LIFECYCLE_ACTIVATION_EPOCH }}
+          STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS: ${{ env.STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS }}
       - name: Verify health and mobile room refresh/rejoin
         run: timeout "${STAGING_SMOKE_TIMEOUT_SECONDS}s" npx playwright test --config tests/browser/staging-playwright.config.mjs
       - name: Contain Staging Worker and Cron
@@ -224,7 +260,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          STAGING_LIFECYCLE_STARTED_EPOCH: ${{ env.STAGING_LIFECYCLE_ACTIVATION_EPOCH }}
+          STAGING_LIFECYCLE_STARTED_EPOCH: ${{ env.STAGING_LIFECYCLE_STARTED_EPOCH }}
+          STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS: ${{ env.STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS }}
       - name: Upload Staging lifecycle and mobile smoke evidence
         if: always()
         uses: actions/upload-artifact@v4

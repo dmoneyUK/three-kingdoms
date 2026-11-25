@@ -27,26 +27,69 @@ const DEFAULT_EVIDENCE_DIR = ".wrangler/ai-staging-lifecycle";
 const DEFAULT_TIMEOUT_MS = 8_000;
 const DEFAULT_ATTEMPTS = 2;
 const ROOM_GUARD_TASK_ID = "AIP-PERF-BOT-02 S1 staging room guard";
-const ROOM_GUARD_SQL = `SELECT
-  rooms.id AS room_id,
-  rooms.status AS status,
-  rooms.test_room AS test_room,
-  rooms.created_at AS created_at,
-  rooms.last_activity_at AS last_activity_at,
-  SUM(CASE WHEN players.controller_type = 'bot' AND players.is_test_player = 0 THEN 1 ELSE 0 END) AS genuine_bot_count,
-  SUM(CASE WHEN players.controller_type = 'human' AND players.is_test_player = 0 THEN 1 ELSE 0 END) AS genuine_human_count,
-  MAX(CASE WHEN players.controller_type = 'human' AND players.is_test_player = 0 THEN players.connected_at ELSE NULL END) AS latest_genuine_human_connected_at,
-  (SELECT COUNT(*) FROM bot_work WHERE bot_work.room_id = rooms.id) AS bot_work_count,
-  (SELECT COUNT(*) FROM bot_work WHERE bot_work.room_id = rooms.id AND bot_work.status IN ('pending', 'claimed')) AS live_bot_work_count,
-  (SELECT COALESCE(MAX(bot_work.updated_at), 0) FROM bot_work WHERE bot_work.room_id = rooms.id) AS latest_bot_work_at,
-  (SELECT COALESCE(MAX(bot_room_scheduler.lease_until), 0) FROM bot_room_scheduler WHERE bot_room_scheduler.room_id = rooms.id) AS scheduler_lease_until,
-  (SELECT COUNT(*) FROM negation_window_submissions WHERE negation_window_submissions.room_id = rooms.id) +
-    (SELECT COUNT(*) FROM shared_response_window_submissions WHERE shared_response_window_submissions.room_id = rooms.id) AS response_submission_count
-FROM rooms
-LEFT JOIN players ON players.room_id = rooms.id
-WHERE rooms.status IN ('heroes', 'playing')
-GROUP BY rooms.id, rooms.status, rooms.test_room, rooms.created_at, rooms.last_activity_at
-ORDER BY rooms.id`;
+export const HOSTED_LIFECYCLE_BUDGET = Object.freeze({
+  activeMs: 14 * 60_000,
+  totalMs: 20 * 60_000,
+  closureReserveMs: 6 * 60_000,
+});
+export const ROOM_GUARD_SQL = `WITH room_rows AS (
+  SELECT
+    rooms.id AS room_id,
+    rooms.status AS status,
+    rooms.test_room AS test_room,
+    rooms.created_at AS created_at,
+    rooms.last_activity_at AS last_activity_at,
+    SUM(CASE WHEN players.controller_type = 'bot' AND players.is_test_player = 0 THEN 1 ELSE 0 END) AS genuine_bot_count,
+    SUM(CASE WHEN players.controller_type = 'human' AND players.is_test_player = 0 THEN 1 ELSE 0 END) AS genuine_human_count,
+    MAX(CASE WHEN players.controller_type = 'human' AND players.is_test_player = 0 THEN players.connected_at ELSE NULL END) AS latest_genuine_human_connected_at,
+    (SELECT COUNT(*) FROM bot_work WHERE bot_work.room_id = rooms.id) AS bot_work_count,
+    (SELECT COUNT(*) FROM bot_work WHERE bot_work.room_id = rooms.id AND bot_work.status IN ('pending', 'claimed')) AS live_bot_work_count,
+    (SELECT COALESCE(MAX(bot_work.updated_at), 0) FROM bot_work WHERE bot_work.room_id = rooms.id) AS latest_bot_work_at,
+    (SELECT COALESCE(MAX(bot_room_scheduler.lease_until), 0) FROM bot_room_scheduler WHERE bot_room_scheduler.room_id = rooms.id) AS scheduler_lease_until,
+    (SELECT COUNT(*) FROM negation_window_submissions WHERE negation_window_submissions.room_id = rooms.id) +
+      (SELECT COUNT(*) FROM shared_response_window_submissions WHERE shared_response_window_submissions.room_id = rooms.id) AS response_submission_count,
+    json_object(
+      'id', rooms.id, 'status', rooms.status, 'phase', rooms.phase,
+      'test_room', rooms.test_room, 'turn_seat', rooms.turn_seat,
+      'turn_epoch', rooms.turn_epoch, 'turn_start_public_sequence', rooms.turn_start_public_sequence,
+      'shared_response_commit_id', COALESCE(rooms.shared_response_commit_id, ''),
+      'pending_json', COALESCE(rooms.pending_json, ''), 'log_json', COALESCE(rooms.log_json, ''),
+      'skill_state_json', COALESCE(rooms.skill_state_json, ''),
+      'causal_envelope_json', COALESCE(rooms.causal_envelope_json, ''),
+      'created_at', rooms.created_at, 'last_activity_at', rooms.last_activity_at
+    ) AS room_state_json,
+    (SELECT json_group_array(json_object(
+      'id', p.id, 'seat', p.seat, 'controller_type', p.controller_type,
+      'is_test_player', p.is_test_player, 'alive', p.alive, 'hp', p.hp,
+      'hero', p.hero, 'role', p.role, 'hand_json', COALESCE(p.hand_json, ''),
+      'equipment_json', COALESCE(p.equipment_json, ''), 'connected_at', p.connected_at,
+      'controller_request_id', COALESCE(p.controller_request_id, '')
+    )) FROM (SELECT * FROM players WHERE players.room_id = rooms.id ORDER BY seat, id) AS p) AS player_state_json,
+    (SELECT json_group_array(json_object(
+      'decision_id', w.decision_id, 'bot_id', w.bot_id, 'action_revision', w.action_revision,
+      'status', w.status, 'attempts', w.attempts, 'available_at', w.available_at,
+      'lease_until', w.lease_until, 'budget_reserved', w.budget_reserved,
+      'error_code', w.error_code, 'updated_at', w.updated_at
+    )) FROM (SELECT * FROM bot_work WHERE bot_work.room_id = rooms.id ORDER BY decision_id) AS w) AS bot_work_state_json,
+    (SELECT json_group_array(json_object(
+      'room_id', s.room_id, 'lease_until', s.lease_until,
+      'actions_reserved', s.actions_reserved, 'updated_at', s.updated_at
+    )) FROM (SELECT * FROM bot_room_scheduler WHERE bot_room_scheduler.room_id = rooms.id ORDER BY room_id) AS s) AS scheduler_state_json,
+    (SELECT json_group_array(json_object('source', 'negation', 'window_id', n.window_id, 'player_id', n.player_id, 'submission_json', n.submission_json))
+      FROM (SELECT * FROM negation_window_submissions WHERE negation_window_submissions.room_id = rooms.id ORDER BY window_id, player_id) AS n) ||
+    (SELECT json_group_array(json_object('source', 'shared', 'window_id', s.window_id, 'player_id', s.player_id, 'submission_json', s.submission_json))
+      FROM (SELECT * FROM shared_response_window_submissions WHERE shared_response_window_submissions.room_id = rooms.id ORDER BY window_id, player_id) AS s) AS submission_state_json
+  FROM rooms
+  LEFT JOIN players ON players.room_id = rooms.id
+  WHERE rooms.status IN ('lobby', 'heroes', 'playing', 'finished')
+  GROUP BY rooms.id, rooms.status, rooms.test_room, rooms.created_at, rooms.last_activity_at,
+    rooms.phase, rooms.turn_seat, rooms.turn_epoch, rooms.turn_start_public_sequence,
+    rooms.shared_response_commit_id, rooms.pending_json, rooms.log_json, rooms.skill_state_json,
+    rooms.causal_envelope_json
+)
+SELECT room_rows.*, COUNT(*) OVER () AS total_room_rows
+FROM room_rows
+ORDER BY room_id`;
 
 export class StagingLifecycleError extends Error {
   constructor(message, { code = "blocked", exitCode = LIFECYCLE_EXIT_CODES.blocked, endpoint = null } = {}) {
@@ -56,6 +99,72 @@ export class StagingLifecycleError extends Error {
     this.exitCode = exitCode;
     this.endpoint = endpoint;
   }
+}
+
+function strictEpoch(value, label) {
+  if (!Number.isSafeInteger(value) || value < 0) throw blocked(`${label} is missing or malformed`);
+  return value;
+}
+
+/**
+ * Machine-checked monotonic lifecycle budget.  Epoch milliseconds are captured
+ * once immediately before activation and compared with the same clock on every
+ * probe; callers must fail closed on a backwards/invalid clock rather than
+ * extending the hosted window.
+ */
+export function assertHostedLifecycleBudget({ startedAtEpochMs, activationAtEpochMs = null, nowEpochMs, phase = "before_activation" } = {}) {
+  const started = strictEpoch(startedAtEpochMs, "lifecycle T0");
+  const now = strictEpoch(nowEpochMs, "lifecycle clock");
+  if (now < started) throw blocked("lifecycle clock moved backwards");
+  if (!["before_activation", "active", "closure"].includes(phase)) throw invalidTarget("lifecycle phase is invalid");
+  if (activationAtEpochMs !== null) {
+    const activation = strictEpoch(activationAtEpochMs, "lifecycle activation time");
+    if (activation < started || now < activation) throw blocked("lifecycle activation time is outside the owned window");
+    const totalElapsedMs = now - started;
+    const activeElapsedMs = now - activation;
+    if (totalElapsedMs > HOSTED_LIFECYCLE_BUDGET.totalMs) throw blocked("hosted lifecycle exceeded the 20-minute total budget");
+    if (phase === "active" && activeElapsedMs > HOSTED_LIFECYCLE_BUDGET.activeMs) throw blocked("hosted active probes exceeded the 14-minute budget");
+    return {
+      startedAtEpochMs: started,
+      activationAtEpochMs: activation,
+      totalElapsedMs,
+      activeElapsedMs,
+      totalRemainingMs: Math.max(0, HOSTED_LIFECYCLE_BUDGET.totalMs - totalElapsedMs),
+      activeRemainingMs: Math.max(0, HOSTED_LIFECYCLE_BUDGET.activeMs - activeElapsedMs),
+      closureReserveSatisfied: totalElapsedMs <= HOSTED_LIFECYCLE_BUDGET.totalMs - HOSTED_LIFECYCLE_BUDGET.closureReserveMs,
+    };
+  }
+  if (phase !== "before_activation") throw blocked("hosted activation time is missing");
+  if (now - started > HOSTED_LIFECYCLE_BUDGET.totalMs - HOSTED_LIFECYCLE_BUDGET.closureReserveMs) {
+    throw blocked("insufficient lifecycle time remains before activation");
+  }
+  return {
+    startedAtEpochMs: started,
+    activationAtEpochMs: null,
+    totalElapsedMs: now - started,
+    activeElapsedMs: 0,
+    totalRemainingMs: HOSTED_LIFECYCLE_BUDGET.totalMs - (now - started),
+    activeRemainingMs: HOSTED_LIFECYCLE_BUDGET.activeMs,
+    closureReserveSatisfied: true,
+  };
+}
+
+/**
+ * Fail-closed, exact-run gate for the single future Hosted window.  This is
+ * intentionally independent of Cloudflare mutation calls; the correction
+ * branch can prove the gate is unavailable without activating anything.
+ */
+export function assertHostedActivationGate({ sourceSha, expectedSha, runId, s1, s2, historicalCredentialDisposition, controlledAccess } = {}) {
+  if (typeof sourceSha !== "string" || !/^[0-9a-f]{40}$/i.test(sourceSha)
+    || typeof expectedSha !== "string" || !/^[0-9a-f]{40}$/i.test(expectedSha)
+    || sourceSha.toLowerCase() !== expectedSha.toLowerCase()) {
+    throw invalidTarget("Hosted gate requires an exact full source SHA");
+  }
+  if (typeof runId !== "string" || !/^\d+$/.test(runId)) throw invalidTarget("Hosted gate requires an exact CI run ID");
+  if (s1 !== true || s2 !== true) throw blocked("Hosted gate requires passing S1 and S2 safety checks");
+  if (historicalCredentialDisposition !== "confirmed_invalid_or_revoked") throw blocked("historical Staging credential disposition is not confirmed");
+  if (controlledAccess !== true) throw blocked("controlled Staging access is not confirmed");
+  return Object.freeze({ sourceSha: sourceSha.toLowerCase(), runId, s1: true, s2: true, historicalCredentialDisposition, controlledAccess: true });
 }
 
 function invalidTarget(message, endpoint = null) {
@@ -258,47 +367,72 @@ function roomFingerprint(row) {
     row.roomId, row.status, row.testRoom, row.createdAt, row.lastActivityAt,
     row.genuineBotCount, row.genuineHumanCount, row.latestGenuineHumanConnectedAt,
     row.botWorkCount, row.liveBotWorkCount, row.latestBotWorkAt, row.schedulerLeaseUntil, row.responseSubmissionCount,
+    row.roomStateDigest, row.playerStateDigest, row.botWorkStateDigest,
+    row.schedulerStateDigest, row.submissionStateDigest,
   ]);
   return createHash("sha256").update(canonical).digest("hex");
 }
 
-function normalizeGuardRow(row) {
-  if (!isRecord(row) || typeof row.room_id !== "string" || row.room_id.length === 0
-    || !["heroes", "playing"].includes(row.status)
-    || ![0, 1].includes(Number(row.test_room))
-    || !Number.isFinite(Number(row.created_at))
-    || (row.last_activity_at !== null && !Number.isFinite(Number(row.last_activity_at)))
-    || !Number.isFinite(Number(row.genuine_bot_count))
-    || !Number.isFinite(Number(row.genuine_human_count))
-    || (row.latest_genuine_human_connected_at !== null && !Number.isFinite(Number(row.latest_genuine_human_connected_at)))
-    || !Number.isFinite(Number(row.bot_work_count)) || !Number.isFinite(Number(row.live_bot_work_count))
-    || !Number.isFinite(Number(row.latest_bot_work_at)) || !Number.isFinite(Number(row.scheduler_lease_until))
-    || !Number.isFinite(Number(row.response_submission_count))) {
+function strictInteger(value, { nullable = false, minimum = Number.MIN_SAFE_INTEGER } = {}) {
+  if (nullable && value === null) return true;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= minimum;
+}
+
+function snapshotDigest(value) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 4_000_000) return null;
+  try {
+    JSON.parse(value);
+  } catch {
     return null;
   }
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function normalizeGuardRow(row) {
+  if (!isRecord(row) || typeof row.room_id !== "string" || row.room_id.length === 0
+    || !["lobby", "heroes", "playing", "finished"].includes(row.status)
+    || ![0, 1].includes(row.test_room)
+    || !strictInteger(row.created_at, { minimum: 1 })
+    || !strictInteger(row.last_activity_at, { nullable: true })
+    || !strictInteger(row.genuine_bot_count, { minimum: 0 })
+    || !strictInteger(row.genuine_human_count, { minimum: 0 })
+    || !strictInteger(row.latest_genuine_human_connected_at, { nullable: true, minimum: 0 })
+    || !strictInteger(row.bot_work_count, { minimum: 0 }) || !strictInteger(row.live_bot_work_count, { minimum: 0 })
+    || !strictInteger(row.latest_bot_work_at, { minimum: 0 }) || !strictInteger(row.scheduler_lease_until, { minimum: 0 })
+    || !strictInteger(row.response_submission_count, { minimum: 0 })) {
+    return null;
+  }
+  const roomStateDigest = snapshotDigest(row.room_state_json);
+  const playerStateDigest = snapshotDigest(row.player_state_json);
+  const botWorkStateDigest = snapshotDigest(row.bot_work_state_json);
+  const schedulerStateDigest = snapshotDigest(row.scheduler_state_json);
+  const submissionStateDigest = snapshotDigest(row.submission_state_json);
+  if (!roomStateDigest || !playerStateDigest || !botWorkStateDigest || !schedulerStateDigest || !submissionStateDigest) return null;
   const normalized = {
     roomId: row.room_id,
     status: row.status,
-    testRoom: Number(row.test_room),
-    createdAt: Number(row.created_at),
-    lastActivityAt: row.last_activity_at === null ? null : Number(row.last_activity_at),
-    genuineBotCount: Number(row.genuine_bot_count),
-    genuineHumanCount: Number(row.genuine_human_count),
-    latestGenuineHumanConnectedAt: row.latest_genuine_human_connected_at === null ? null : Number(row.latest_genuine_human_connected_at),
-    botWorkCount: Number(row.bot_work_count),
-    liveBotWorkCount: Number(row.live_bot_work_count),
-    latestBotWorkAt: Number(row.latest_bot_work_at),
-    schedulerLeaseUntil: Number(row.scheduler_lease_until),
-    responseSubmissionCount: Number(row.response_submission_count),
+    testRoom: row.test_room,
+    createdAt: row.created_at,
+    lastActivityAt: row.last_activity_at,
+    genuineBotCount: row.genuine_bot_count,
+    genuineHumanCount: row.genuine_human_count,
+    latestGenuineHumanConnectedAt: row.latest_genuine_human_connected_at,
+    botWorkCount: row.bot_work_count,
+    liveBotWorkCount: row.live_bot_work_count,
+    latestBotWorkAt: row.latest_bot_work_at,
+    schedulerLeaseUntil: row.scheduler_lease_until,
+    responseSubmissionCount: row.response_submission_count,
+    roomStateDigest,
+    playerStateDigest,
+    botWorkStateDigest,
+    schedulerStateDigest,
+    submissionStateDigest,
   };
-  if (![0, 1].includes(normalized.testRoom)
-    || normalized.genuineBotCount < 0 || normalized.genuineHumanCount < 0
-    || normalized.createdAt <= 0 || normalized.botWorkCount < 0 || normalized.liveBotWorkCount < 0
-    || normalized.latestBotWorkAt < 0 || normalized.schedulerLeaseUntil < 0 || normalized.responseSubmissionCount < 0) return null;
   return normalized;
 }
 
 function rowIsEligible(row, now) {
+  if (row.status !== "heroes" && row.status !== "playing") return false;
   const recentActivityAt = row.lastActivityAt || row.createdAt;
   const recentActivity = recentActivityAt >= now - 5 * 60_000;
   const liveHuman = row.latestGenuineHumanConnectedAt !== null
@@ -316,12 +450,15 @@ function digestFingerprints(fingerprints) {
  * opaque hashes: room IDs, codes, names, roles, hands and session material do
  * not enter the persisted evidence.
  */
-export function evaluateStagingRoomGuard({ rows, now = Date.now(), baseline = null, phase = "baseline", activationAt = null } = {}) {
-  if (!Array.isArray(rows) || !Number.isFinite(Number(now))) throw blocked("Staging room guard readback is incomplete");
+export function evaluateStagingRoomGuard({ rows, now = Date.now(), baseline = null, phase = "baseline", activationAt = null, totalRoomRows = null, readbackComplete = true } = {}) {
+  if (!Array.isArray(rows) || !Number.isFinite(Number(now)) || readbackComplete !== true) throw blocked("Staging room guard readback is incomplete");
   const normalized = rows.map(normalizeGuardRow);
   if (normalized.some((row) => row === null)) throw blocked("Staging room guard contains an unknown or malformed room");
-  const complete = normalized.length === rows.length;
-  if (!complete) throw blocked("Staging room guard inventory is incomplete");
+  const ids = normalized.map((row) => row.roomId);
+  if (new Set(ids).size !== ids.length) throw blocked("Staging room guard contains duplicate room identities");
+  const reportedCount = totalRoomRows === null ? normalized.length : totalRoomRows;
+  if (!strictInteger(reportedCount, { minimum: 0 }) || reportedCount !== normalized.length) throw blocked("Staging room guard inventory is truncated or has an inconsistent total count");
+  const complete = true;
   const fingerprints = normalized.map(roomFingerprint).sort();
   const eligible = normalized.filter((row) => rowIsEligible(row, Number(now)));
   const result = {
@@ -338,7 +475,8 @@ export function evaluateStagingRoomGuard({ rows, now = Date.now(), baseline = nu
     if (eligible.length > 0) throw blocked("pre-existing eligible Staging rooms require isolation before activation");
     return result;
   }
-  if (!baseline || baseline.complete !== true || !Array.isArray(baseline.fingerprints)) {
+  if (!baseline || baseline.complete !== true || !Array.isArray(baseline.fingerprints)
+    || !strictInteger(baseline.roomCount, { minimum: 0 }) || baseline.roomCount !== baseline.fingerprints.length) {
     throw blocked("Staging room guard baseline is missing or incomplete");
   }
   const currentSet = new Set(fingerprints);
@@ -347,7 +485,8 @@ export function evaluateStagingRoomGuard({ rows, now = Date.now(), baseline = nu
   if (phase === "pre_activation" && result.fingerprintDigest !== baseline.fingerprintDigest) {
     throw blocked("Staging room inventory changed before activation");
   }
-  if (phase === "post_closure" && activationAt !== null) {
+  if ((phase === "monitor" || phase === "post_closure") && activationAt !== null) {
+    if (!strictInteger(activationAt, { minimum: 1 })) throw blocked("Staging room guard activation time is malformed");
     const baselineIds = new Set(baseline.fingerprints);
     const unexpectedOld = normalized.some((row) => !baselineIds.has(roomFingerprint(row)) && row.createdAt < Number(activationAt));
     if (unexpectedOld) throw blocked("Staging room inventory gained an unknown pre-existing room");
@@ -524,7 +663,7 @@ export async function preflightStaging({ client, evidenceDir = DEFAULT_EVIDENCE_
 export async function guardStagingRooms({ client, evidenceDir = DEFAULT_EVIDENCE_DIR, owner, phase = "baseline", now = new Date(), activationAt = null } = {}) {
   ensureClientTarget(client);
   const safe = safeOwner(owner);
-  if (!["baseline", "pre_activation", "post_closure"].includes(phase)) throw invalidTarget("Staging room guard phase is invalid");
+  if (!["baseline", "pre_activation", "monitor", "post_closure"].includes(phase)) throw invalidTarget("Staging room guard phase is invalid");
   const evidencePath = phasePath(evidenceDir, `room-guard-${phase}`);
   const base = { task: ROOM_GUARD_TASK_ID, phase: `room-guard-${phase}`, observedAt: isoNow(now), target: AI_STAGING_LIFECYCLE_TARGET, owner: safe };
   let baseline = null;
@@ -539,12 +678,18 @@ export async function guardStagingRooms({ client, evidenceDir = DEFAULT_EVIDENCE
       throw blocked("Staging room guard D1 readback is incomplete or paginated");
     }
     const rows = readback.result[0].results;
+    const rowCounts = rows.map((row) => row?.total_room_rows);
+    const totalRoomRows = rows.length > 0 ? rowCounts[0] : null;
+    if (rows.length === 0 || rowCounts.some((count) => count !== totalRoomRows)) {
+      throw blocked("Staging room guard D1 readback does not prove a complete inventory");
+    }
     const result = evaluateStagingRoomGuard({
       rows,
       now: now instanceof Date ? now.getTime() : Number(now),
       baseline: baseline?.result ?? null,
       phase,
       activationAt: activationAt instanceof Date ? activationAt.getTime() : activationAt,
+      totalRoomRows,
     });
     return { result };
   });
@@ -856,7 +1001,30 @@ function resolveAccountId(env = process.env) {
 
 async function cli() {
   const mode = process.argv[2];
-  if (!new Set(["preflight", "capture", "contain", "emergency-contain", "room-guard"]).has(mode)) throw invalidTarget("usage: ai-staging-lifecycle.mjs <preflight|capture|contain|emergency-contain|room-guard>");
+  if (mode === "hosted-gate") {
+    const result = assertHostedActivationGate({
+      sourceSha: process.env.GITHUB_SHA,
+      expectedSha: process.env.STAGING_EXPECTED_SHA ?? process.env.GITHUB_SHA,
+      runId: process.env.GITHUB_RUN_ID,
+      s1: process.env.STAGING_S1_PASSED === "true",
+      s2: process.env.STAGING_S2_PASSED === "true",
+      historicalCredentialDisposition: process.env.STAGING_HISTORICAL_CREDENTIAL_DISPOSITION,
+      controlledAccess: process.env.STAGING_CONTROLLED_ACCESS === "true",
+    });
+    console.log(JSON.stringify({ task: TASK_ID, phase: mode, ok: true, result }));
+    return;
+  }
+  if (mode === "budget") {
+    const result = assertHostedLifecycleBudget({
+      startedAtEpochMs: Number(process.env.STAGING_LIFECYCLE_STARTED_EPOCH_MS ?? Number.NaN),
+      activationAtEpochMs: process.env.STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS ? Number(process.env.STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS) : null,
+      nowEpochMs: Number(process.env.STAGING_LIFECYCLE_NOW_EPOCH_MS ?? Date.now()),
+      phase: process.env.STAGING_LIFECYCLE_PHASE ?? "before_activation",
+    });
+    console.log(JSON.stringify({ task: TASK_ID, phase: mode, ok: true, result }));
+    return;
+  }
+  if (!new Set(["preflight", "capture", "contain", "emergency-contain", "room-guard"]).has(mode)) throw invalidTarget("usage: ai-staging-lifecycle.mjs <preflight|capture|contain|emergency-contain|room-guard|hosted-gate|budget>");
   const evidenceDir = process.env.STAGING_LIFECYCLE_EVIDENCE_DIR ?? DEFAULT_EVIDENCE_DIR;
   const accountId = resolveAccountId();
   if (accountId !== AI_STAGING_LIFECYCLE_TARGET.accountId) throw invalidTarget("Cloudflare credentials select the wrong account");
@@ -874,7 +1042,11 @@ async function cli() {
             evidenceDir,
             owner,
             phase: process.env.STAGING_ROOM_GUARD_PHASE ?? "baseline",
-            activationAt: process.env.STAGING_LIFECYCLE_STARTED_EPOCH ? Number(process.env.STAGING_LIFECYCLE_STARTED_EPOCH) * 1000 : null,
+            activationAt: process.env.STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS
+              ? Number(process.env.STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS)
+              : process.env.STAGING_LIFECYCLE_ACTIVATION_EPOCH
+                ? Number(process.env.STAGING_LIFECYCLE_ACTIVATION_EPOCH) * 1000
+                : null,
           })
           : await emergencyContainStaging({
             client,

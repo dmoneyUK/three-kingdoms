@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { botTriggerChoices } from "../../ai/trigger-selection.ts";
 import { classifyBotCycle, classifyRejoinCheckpoint, extendProgressDeadline } from "./staging-room-reconnect-logic.mjs";
-import { classifyRejoinFailure, createRejoinDiagnostics, redactSensitiveText, safeRejoinError, createSafeAuthenticatedRequest, sessionEvidence, waitForRejoinResponse } from "./staging-room-reconnect-diagnostics.mjs";
+import { classifyRejoinFailure, createRejoinDiagnostics, safeAssertion, safeAttachment, safeRejoinError, createSafeAuthenticatedRequest, sessionEvidence, waitForRejoinResponse } from "./staging-room-reconnect-diagnostics.mjs";
 
 function isPostAction(response, action) {
   if (new URL(response.url()).pathname !== "/api/rooms" || response.request().method() !== "POST") return false;
@@ -184,7 +184,7 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
     const publicLobby = await publicLobbyResponse.json();
     expect(publicLobby.players.filter((player) => player.isBot)).toHaveLength(3);
     const publicLobbyJson = JSON.stringify(publicLobby);
-    expect(publicLobbyJson).not.toContain(created.token);
+    safeAssertion(!publicLobbyJson.includes(created.token), "public lobby projection must exclude session credentials", [created.token]);
     expect(publicLobbyJson).not.toContain("bot:no-login:");
     expect(publicLobbyJson).not.toContain("token_hash");
   } else {
@@ -400,8 +400,7 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
     }
     expect(currentRoom.players.filter((player) => player.isBot)).toHaveLength(3);
     const humanTokenAfterBots = await page.evaluate(() => JSON.parse(localStorage.getItem("three-realms-session") ?? "null")?.token);
-    expect(humanTokenAfterBots).toBe(created.token);
-    await page.screenshot({ path: testInfo.outputPath("staging-bot-demo.png"), fullPage: true });
+    safeAssertion(humanTokenAfterBots === created.token, "human session identity must survive Bot turns", [created.token]);
   } else {
     await expect(page.locator(".hero-shell")).toBeVisible();
     for (let selection = 0; selection < 4; selection += 1) {
@@ -439,10 +438,13 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
     }
   };
   const attachDiagnostics = async () => {
-    await testInfo.attach("staging-rejoin-diagnostics", {
-      body: redactSensitiveText(JSON.stringify(diagnostics.snapshot(), null, 2), [created.token]),
+    const attachment = safeAttachment({
+      name: "staging-rejoin-diagnostics",
+      body: diagnostics.snapshot(),
       contentType: "application/json",
+      secrets: [created.token],
     });
+    if (attachment) await testInfo.attach(attachment.name, { body: attachment.body, contentType: attachment.contentType });
   };
   page.on("request", onRequest);
   page.on("requestfailed", onRequestFailed);

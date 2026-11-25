@@ -47,10 +47,10 @@ import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
 import { childCausalFrame, contextFor, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
 import { advanceCausalSemanticCheckpoint } from "../causal-envelope";
-import { isBotActionPrincipal, type BotActionPrincipal } from "../../../worker/bot-principal";
+import { getBotExecutionContext, isBotActionPrincipal, recordBotCommit, recordBotOutcome, type BotActionPrincipal, type BotExecutionContext } from "../../../worker/bot-principal";
 import { shouldLookupAuthenticatedSession } from "../internal-bot-session";
 import { emitBotDecisionDiagnostic, type BotDecisionCard, type BotDecisionDiagnosticContext, type BotDecisionOption } from "../../../worker/bot-diagnostics";
-import { botCommitKindForAction, type BotActionOutcome, type BotCommitReference } from "../../../worker/bot-outcome";
+import type { BotActionOutcome, BotCommitKind } from "../../../worker/bot-outcome";
 import { appendSequencedLogRecord, decodePublicLog, publicEventSequencesFromLog, publicSequenceWatermarkFromLog, type DecodedPublicLog } from "../../../game/public-log-sequence";
 import { legacyLogMessages, roomLogTimeline } from "../../../game/room-log-decode";
 import { publicPresentationTimelineForTurn } from "../../../game/public-presentation-turn";
@@ -144,9 +144,68 @@ const BOT_DEMO_SAFE_GENERAL_IDS = new Set([
 ]);
 
 const json = (data: unknown, status = 200, extraHeaders: Record<string, string> = {}) => Response.json(data, { status, headers: { "Cache-Control": "no-store", ...extraHeaders } });
-// Minted only by the in-process compact Bot dispatcher.  Nested canonical
-// actions use it as a non-credential marker so they never build a viewer DTO.
-const BOT_COMPACT_RESPONSE_TOKEN = "__internal_bot_compact_response__";
+
+// Compact Bot dispatch is an in-process capability, not a request marker.  The
+// driver brackets each trusted dispatch with these reference-counted guards so
+// every nested canonical branch can call roomState without constructing a
+// viewer projection.  The key is only a room code; public requests cannot add
+// an entry because these functions are never called from the HTTP body/header
+// path.
+const compactProjectionGuards = new Map<string, Map<string, { count: number; context: BotExecutionContext }>>();
+export function beginBotCompactProjection(code: string, projectionToken: string, context: BotExecutionContext) {
+  const tokens = compactProjectionGuards.get(code) ?? new Map<string, { count: number; context: BotExecutionContext }>();
+  const current = tokens.get(projectionToken);
+  tokens.set(projectionToken, { count: (current?.count ?? 0) + 1, context });
+  compactProjectionGuards.set(code, tokens);
+}
+export function endBotCompactProjection(code: string, projectionToken: string) {
+  const tokens = compactProjectionGuards.get(code);
+  const current = tokens?.get(projectionToken);
+  if (!tokens || !current || current.count <= 1) tokens?.delete(projectionToken);
+  else tokens.set(projectionToken, { ...current, count: current.count - 1 });
+  if (tokens && tokens.size === 0) compactProjectionGuards.delete(code);
+}
+function compactProjectionActive(code: string, token?: string) {
+  return Boolean(token && compactProjectionGuards.get(code)?.has(token));
+}
+function activeBotExecutionContext(roomId: string): BotExecutionContext | null {
+  const tokens = compactProjectionGuards.get(roomId);
+  if (!tokens || tokens.size !== 1) return null;
+  return [...tokens.values()][0]?.context ?? null;
+}
+
+function botEventIdFromCanonicalLog(log: readonly string[]) {
+  for (let index = log.length - 1; index >= 0; index -= 1) {
+    const entry = log[index];
+    const marker = entry.startsWith("@event:") ? "@event:" : entry.startsWith("@card:") ? "@card:"
+      : entry.startsWith("@cards:") ? "@cards:" : entry.startsWith("@history:") ? "@history:" : null;
+    if (!marker) continue;
+    try {
+      const id = (JSON.parse(entry.slice(marker.length)) as { id?: unknown }).id;
+      if (typeof id === "string" && id.length > 0) return id;
+    } catch { /* Canonical proof remains absent when the event is malformed. */ }
+  }
+  return null;
+}
+
+function recordCanonicalBotCommit(context: BotExecutionContext | null | undefined, roomId: string,
+  commitKind: BotCommitKind, reference: { kind: "event" | "checkpoint" | "submission" | "row"; id: string } | null) {
+  if (!context || !reference) return;
+  // Some legacy canonical writers do not emit a public event for an otherwise
+  // successful CAS. Their affected room row is still the durable proof; never
+  // fabricate an event ID or silently turn that successful write into an
+  // ambiguous completion.
+  const durableReference = reference.id ? reference : { kind: "row" as const, id: roomId };
+  recordBotCommit(context, {
+    source: "canonical_executor",
+    roomId,
+    decisionId: context.correlation.decisionId,
+    actorId: context.correlation.actorId,
+    actionRevision: context.correlation.actionRevision,
+    commitKind,
+    reference: durableReference,
+  });
+}
 const publicRoleName = (role: string | null | undefined) => role === "Renegade" ? "Spy" : role ?? null;
 const HARVEST_CHOICE_HOLD_MS = 1400;
 const HARVEST_CHOICE_DURATION_MS = 60_000;
@@ -992,7 +1051,7 @@ function turnHistoryAttackWrite(room: RoomRow, player: PlayerRow) {
   return db().prepare("UPDATE rooms SET skill_state_json = ? WHERE id = ?").bind(attackTurnHistory(room, player), room.id);
 }
 
-async function commitSingleTargetAttack(room: RoomRow, source: PlayerRow, hand: Card[], state: CausalRoomState & { discard: Card[] }) {
+async function commitSingleTargetAttack(room: RoomRow, source: PlayerRow, hand: Card[], state: CausalRoomState & { discard: Card[] }, botContext: BotExecutionContext | null = null) {
   const database = db();
   const committedLog = JSON.stringify(state.log);
   const [updatedRoom] = await database.batch([
@@ -1012,7 +1071,9 @@ async function commitSingleTargetAttack(room: RoomRow, source: PlayerRow, hand: 
       AND EXISTS (SELECT 1 FROM rooms WHERE id = players.room_id AND log_json = ?)`)
       .bind(JSON.stringify(hand), source.id, room.id, committedLog),
   ]);
-  return (updatedRoom.meta.changes ?? 0) > 0;
+  const changed = (updatedRoom.meta.changes ?? 0) > 0;
+  if (changed) recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: botEventIdFromCanonicalLog(state.log) ?? "" });
+  return changed;
 }
 function latestResolutionId(log: string[], decodedLog?: DecodedPublicLog) {
   for (let index = log.length - 1; index >= 0; index--) {
@@ -3455,60 +3516,6 @@ function gameTimeline(entries: string[], viewerPlayerId?: string) {
   });
 }
 
-type BotDurableSnapshot = {
-  status: string;
-  phase: string | null;
-  pendingJson: string | null;
-  logJson: string | null;
-  latestEventId: string | null;
-  checkpointId: string | null;
-  submissionPresent: boolean;
-  submissionReference: string | null;
-};
-
-async function botDurableSnapshot(roomId: string, actorId: string): Promise<BotDurableSnapshot> {
-  const row = await env.DB.prepare("SELECT status, phase, pending_json, log_json FROM rooms WHERE id = ?")
-    .bind(roomId).first<{ status: string; phase: string | null; pending_json: string | null; log_json: string | null }>();
-  if (!row) throw new Error("bot durable room state unavailable");
-  const log = parse<string[]>(row.log_json, []);
-  const latestEventId = [...log].reverse().map((entry) => {
-    const marker = entry.startsWith("@event:") ? 7 : entry.startsWith("@card:") ? 6 : entry.startsWith("@cards:") ? 7 : entry.startsWith("@history:") ? 9 : 0;
-    if (!marker) return null;
-    try {
-      const value = JSON.parse(entry.slice(marker)) as Record<string, unknown>;
-      return typeof value.id === "string" && value.id.length > 0 ? value.id : null;
-    } catch { return null; }
-  }).find((id): id is string => Boolean(id)) ?? null;
-  const pending = parse<Record<string, unknown> | null>(row.pending_json, null);
-  const checkpointId = typeof pending?.id === "string" && pending.id.length > 0
-    && ["bot_action_checkpoint", "turn_end_checkpoint", "recovery_checkpoint", "defeat_handoff", "discard_turn_handoff"].includes(String(pending.kind))
-    ? pending.id : null;
-  const windowId = typeof pending?.windowId === "string" && pending.windowId.length > 0 ? pending.windowId : null;
-  const submissionTable = pending?.kind === "negation_window" ? "negation_window_submissions"
-    : pending?.kind === "shared_response_window" ? "shared_response_window_submissions" : null;
-  const submissionPresent = windowId && submissionTable
-    ? Boolean(await env.DB.prepare(`SELECT 1 FROM ${submissionTable} WHERE room_id = ? AND window_id = ? AND player_id = ?`)
-      .bind(roomId, windowId, actorId).first())
-    : false;
-  return {
-    status: row.status,
-    phase: row.phase,
-    pendingJson: row.pending_json,
-    logJson: row.log_json,
-    latestEventId,
-    checkpointId,
-    submissionPresent,
-    submissionReference: submissionPresent && windowId ? `${windowId}:${actorId}` : null,
-  };
-}
-
-function durableCommitReference(before: BotDurableSnapshot | null, after: BotDurableSnapshot | null): BotCommitReference | null {
-  if (!before || !after) return null;
-  if (after.latestEventId && after.latestEventId !== before.latestEventId) return { kind: "event", id: after.latestEventId };
-  if (after.checkpointId && after.checkpointId !== before.checkpointId) return { kind: "checkpoint", id: after.checkpointId };
-  if (!before.submissionPresent && after.submissionPresent && after.submissionReference) return { kind: "submission", id: after.submissionReference };
-  return null;
-}
 function privateStealResultForEvent(event: Record<string, unknown>, roomCode: string, viewerId: string) {
   const proof = record(event.privateStealResult);
   const transfer = record(event.privateHandTransfer);
@@ -3716,7 +3723,9 @@ async function finishIfWon(roomId: string) {
   const sequence = stored?.kind === "response" || stored?.kind === "dying" ? groupSequenceFromPending(stored) : null;
   const discard = sequence ? commitHeldGroupCards(parse<Card[]>(room?.discard_json ?? null, []), sequence) : parse<Card[]>(room?.discard_json ?? null, []);
   const log = matchVictoryLog(parse<string[]>(room?.log_json ?? null, []), outcome);
-  await db().prepare("UPDATE rooms SET status = 'finished', phase = 'finished', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), roomId).run(); return true;
+  const settled = await db().prepare("UPDATE rooms SET status = 'finished', phase = 'finished', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), roomId).run();
+  if ((settled.meta.changes ?? 0) > 0) recordCanonicalBotCommit(activeBotExecutionContext(roomId), roomId, "terminal", { kind: "row", id: roomId });
+  return (settled.meta.changes ?? 0) > 0;
 }
 
 function turnStartContext(player: PlayerRow) {
@@ -4289,7 +4298,7 @@ async function commitTurnBoundary(room: RoomRow, actor: PlayerRow, state: {
   log: string[];
   continuation?: TurnEndTriggerContinuation;
   payment?: { hand: Card[]; discard: Card[]; deck?: Card[]; lostHand?: Card[] };
-}) {
+}, botContext: BotExecutionContext | null = null) {
   const { payment, continuation } = state;
   const database = db();
   const checkpoint: TurnEndCheckpoint | null = continuation ? createTurnEndCheckpoint(continuation, payment?.lostHand) : null;
@@ -4313,6 +4322,8 @@ async function commitTurnBoundary(room: RoomRow, actor: PlayerRow, state: {
     : await write.run();
   if (!(result.meta.changes ?? 0)) return false;
   if (checkpoint) await advanceTurnEndCheckpoint(room.id, pendingJson!);
+  recordCanonicalBotCommit(botContext, room.id, checkpoint ? "checkpoint" : "transition",
+    checkpoint ? { kind: "checkpoint", id: checkpoint.id } : { kind: "event", id: botEventIdFromCanonicalLog(state.log) ?? "" });
   return true;
 }
 
@@ -6356,10 +6367,14 @@ async function resumeNormalStratagemUse(room: RoomRow, source: PlayerRow, player
   return startNegation(room, source, players, card, targetName, effectTargetId, effect, hand, deck, discard, log, effect.kind === "duel" ? effect.pending.causal : undefined, createdEnvelope);
 }
 
-async function beginStratagemUse(room: RoomRow, source: PlayerRow, players: PlayerRow[], physicalCard: Card, effectiveCard: Card, targetName: string, effectTargetId: string, effect: DeferredStratagem, hand: Card[], deck: Card[], discard: Card[], log: string[], createdEnvelope: CausalEnvelope | null = null): Promise<Card[]> {
+async function beginStratagemUse(room: RoomRow, source: PlayerRow, players: PlayerRow[], physicalCard: Card, effectiveCard: Card, targetName: string, effectTargetId: string, effect: DeferredStratagem, hand: Card[], deck: Card[], discard: Card[], log: string[], createdEnvelope: CausalEnvelope | null = null, botContext: BotExecutionContext | null = null): Promise<Card[]> {
   const context = { event: "stratagem_used" as const, sourceId: source.id, sourceEquipment: equipmentCards(source), sourceHand: hand, playerId: source.id, hero: source.hero, effectiveCard };
   const options = getTriggeredEffects(context);
-  if (!options.length) return resumeNormalStratagemUse(room, source, players, effectiveCard, effectTargetId, targetName, effect, hand, deck, discard, log, createdEnvelope);
+  if (!options.length) {
+    const result = await resumeNormalStratagemUse(room, source, players, effectiveCard, effectTargetId, targetName, effect, hand, deck, discard, log, createdEnvelope);
+    recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: botEventIdFromCanonicalLog(log) ?? "" });
+    return result;
+  }
   const physicalCardWasDiscarded = discard.some((card) => card.id === physicalCard.id);
   const continuation: StratagemUsedTriggerContinuation = {
     kind: "stratagem_used_event",
@@ -6382,10 +6397,11 @@ async function beginStratagemUse(room: RoomRow, source: PlayerRow, players: Play
     deadline: nextResponseDeadline(source),
     continuation,
   }, presentation.log, presentation.eventId);
-  await db().batch([
+  const committed = await db().batch([
     db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), source.id),
     causalRoomStateWrite(room.id, { phase: "response", pending, deck, discard, log: presentation.log, causalEnvelope: createdEnvelope ?? parseCausalEnvelope(room.causal_envelope_json) }),
   ]);
+  if ((committed[1]?.meta.changes ?? 0) > 0) recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: presentation.eventId });
   return [];
 }
 
@@ -6971,7 +6987,7 @@ async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, targe
 
 /** An ordinary Dodge has no durable intermediate claim. The exact response
  * and card payment either both advance or are both available for a retry. */
-async function commitAttackDodge(room: RoomRow, payer: PlayerRow, hand: Card[], discard: Card[], state: ReturnType<typeof dodgedAttackTransition>) {
+async function commitAttackDodge(room: RoomRow, payer: PlayerRow, hand: Card[], discard: Card[], state: ReturnType<typeof dodgedAttackTransition>, botContext: BotExecutionContext | null = null) {
   const database = db();
   const committedLog = JSON.stringify(state.log);
   const [updatedRoom] = await database.batch([
@@ -6988,7 +7004,9 @@ async function commitAttackDodge(room: RoomRow, payer: PlayerRow, hand: Card[], 
       AND EXISTS (SELECT 1 FROM rooms WHERE id = players.room_id AND log_json = ?)`)
       .bind(JSON.stringify(hand), payer.id, room.id, committedLog),
   ]);
-  return (updatedRoom.meta.changes ?? 0) > 0;
+  const changed = (updatedRoom.meta.changes ?? 0) > 0;
+  if (changed) recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: botEventIdFromCanonicalLog(state.log) ?? "" });
+  return changed;
 }
 
 /** Applies the semantic force-damage outcome after an Attack has been dodged. */
@@ -7967,7 +7985,7 @@ function publicHarvestPoolDuringNegation(
 }
 
 async function roomState(code: string, token?: string, includeAttackDodgeDiagnostics = false, requestedViewerId?: string | null) {
-  if (token === BOT_COMPACT_RESPONSE_TOKEN) return null;
+  if (compactProjectionActive(code, token)) return null;
   const db = env.DB;
   const room = await db.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
   if (!room) return null;
@@ -8357,14 +8375,9 @@ function attackDodgeProjectionTrace(traceId: string, state: RoomStateResult, sta
   };
 }
 
-async function playCardRoomResponse(code: string, token: string, traceId: string | null) {
+async function playCardRoomResponse(code: string, token: string, traceId: string | null, botContext: BotExecutionContext | null = null) {
+  if (botContext) return json({ state: "committed" });
   const state = await roomState(code, token, Boolean(traceId));
-  // The compact internal Bot principal deliberately has no viewer token and
-  // therefore must not build a full private projection after the canonical
-  // mutation.  The mutation has already committed at this point; report that
-  // fact instead of translating the intentionally omitted projection into a
-  // false room-not-found rejection.
-  if (!state && token === BOT_COMPACT_RESPONSE_TOKEN) return json({ state: "committed" });
   if (!state) return json({ error: "Room not found." }, 404);
   if (traceId && state.pendingAttack) return json(attackDodgeProjectionTrace(traceId, state, "server-projection-after-play"));
   const room = { ...state };
@@ -8541,10 +8554,10 @@ async function commitCanonicalResponse(input: {
   room: RoomRow; me: PlayerRow | null; code: string; token: string; action: string;
   body: { cardId?: string; cardIds?: string[]; providerId?: string }; canonicalResponseKind: string | null;
   canonicalResponseSatisfied: boolean; canonicalResponseDeclined: boolean;
-  responseExecution: ResponseExecution | null; uxTraceId: string | null;
+  responseExecution: ResponseExecution | null; uxTraceId: string | null; botContext?: BotExecutionContext | null;
 }): Promise<Response | null> {
   const { room, me, code, token, action, body, canonicalResponseKind, canonicalResponseSatisfied,
-    canonicalResponseDeclined, responseExecution, uxTraceId } = input;
+    canonicalResponseDeclined, responseExecution, uxTraceId, botContext = null } = input;
   const db = sharedResponseDatabase(env.DB);
   if (canonicalResponseKind === "borrowed_sword_attack" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
@@ -8603,16 +8616,18 @@ async function commitCanonicalResponse(input: {
         ...(continuation.causal?.interactionId ? { interactionId: continuation.causal.interactionId } : {}),
         ...(continuation.causal?.frameId ? { frameId: continuation.causal.frameId } : {}),
       });
-      await db.batch([
+      const transferCommit = await db.batch([
         db.prepare("UPDATE players SET equipment_json = ? WHERE id = ?").bind(JSON.stringify(equipment), currentHolder.id),
         db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), currentSource.id),
         db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving'").bind(JSON.stringify(log), resumedEnvelopeJson, room.id),
       ]);
+      if ((transferCommit[2]?.meta.changes ?? 0) > 0) recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: transferEvent.eventId });
       await advanceEquipmentLostEvents(room.id, equipmentLostRecords(currentHolder.id, [weapon], "borrowed_sword"), { kind: "phase", phase: continuation.resumePhase, playerId: continuation.resumePlayerId });
     };
     if (canonicalResponseDeclined || !responseExecution) {
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Borrowed Sword response has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       await transferOrEnd();
       return json({ room: await roomState(code, token) });
     }
@@ -8621,6 +8636,7 @@ async function commitCanonicalResponse(input: {
     if (attackCards.length !== (responseExecution.consumeCardIds ?? []).length) return json({ error: "That Attack provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Borrowed Sword response has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+    recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
     const attack = attackCards.length === 1 ? attackCards[0] : undefined;
     const hand = costHand.filter((card) => !attackCards.some((played) => played.id === card.id));
     const discard = [...parse<Card[]>(liveRoom.discard_json, []), ...attackCards];
@@ -8663,20 +8679,23 @@ async function commitCanonicalResponse(input: {
     const next = attackResponseDecision(declaration, target);
     if (attackTargetedOptions(holder, target, [], players).length) {
       await beginAttackTargeted(liveRoom, declaration, holder, target, discard, presentation.log, presentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId), turnHistoryAttackWrite(liveRoom, holder)]);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: presentation.eventId });
       await maybeOpenHandLossTrigger(room.id, costActorId, costHandBefore);
       return json({ room: await roomState(code, token) });
     }
     const prevention = addPassiveAttackPreventionNotice(presentation.log, holder, target, attack, declaration.causal, declaration.rootEventId, exactCausalEnvelope(liveRoom, declarationResult.createdEnvelope));
     if (prevention) {
-      await db.batch([
+      const borrowedTargetedCommit = await db.batch([
         db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
         turnHistoryAttackWrite(liveRoom, holder),
         db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(continuation.resumePhase, JSON.stringify(discard), JSON.stringify(prevention.log), attackEnvelope ? JSON.stringify(attackEnvelope) : null, room.id),
       ]);
-        await continueAfterDying(room.id, continuation.resumePlayerId);
+      if ((borrowedTargetedCommit[0]?.meta.changes ?? 0) > 0) recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: presentation.eventId });
+      await continueAfterDying(room.id, continuation.resumePlayerId);
     } else {
       await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId), turnHistoryAttackWrite(liveRoom, holder)]);
-      await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(next, presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), attackEnvelope ? JSON.stringify(attackEnvelope) : null, room.id).run();
+      const borrowedAttackCommit = await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(next, presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), attackEnvelope ? JSON.stringify(attackEnvelope) : null, room.id).run();
+      if ((borrowedAttackCommit.meta.changes ?? 0) > 0) recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: presentation.eventId });
     }
     await maybeOpenHandLossTrigger(room.id, costActorId, costHandBefore);
     return json({ room: await roomState(code, token) });
@@ -8700,6 +8719,7 @@ async function commitCanonicalResponse(input: {
     if (canonicalRespond && responseExecution && attackCards.length !== (responseExecution.consumeCardIds ?? []).length) return json({ error: "The selected Attack provider requested unavailable costs." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Duel response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
+    recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
     if (!canonicalRespond || !responseExecution) {
       await resolveDuelLoss(liveRoom, pending, semanticActor, opponent, discard, log);
     } else {
@@ -8771,6 +8791,7 @@ async function commitCanonicalResponse(input: {
         turnHistoryAttackWrite(liveRoom, semanticActor),
         causalRoomStateWrite(room.id, { phase: "response", pending: nextPending, discard, log: nextLog, causalEnvelope: nextEnvelope }),
       ]);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: contributionEventId });
       await advanceDuel(room.id);
     }
     await maybeOpenHandLossTrigger(room.id, costActorId, handBeforeDuel);
@@ -8800,6 +8821,7 @@ async function commitCanonicalResponse(input: {
     if (canonicalRespond && (!groupExecution || groupExecution.status !== "satisfied" || groupCards.length !== (groupExecution.consumeCardIds ?? []).length)) return json({ error: `Select a valid ${continuation.requiredKind} response and pay its required costs.` }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That global card response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
+    recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
     if (!canonicalRespond || !groupExecution) {
       await resolveGroupDamage(liveRoom, response, continuation, semanticActor, source, players, discard, log);
     } else {
@@ -8836,6 +8858,7 @@ async function commitCanonicalResponse(input: {
       } else {
         await finishGroupStep(liveRoom, settledResponse, nextContinuation, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId), ...(continuation.requiredKind === "Attack" ? [turnHistoryAttackWrite(liveRoom, semanticActor)] : [])], satisfiedGroupParticipantOutcome(continuation));
       }
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: responseEventId });
     }
     await maybeOpenHandLossTrigger(room.id, costActorId, handBeforeGroup);
     return json({ room: await roomState(code, token) });
@@ -8851,6 +8874,7 @@ async function commitCanonicalResponse(input: {
     const consumedIds = responseExecution.consumeCardIds ?? []; const hand = parse<Card[]>(me.hand_json, []); const providedCards = consumedIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)); const attackCard = providedCards.length === 1 ? providedCards[0] : undefined;
     if (!source || !source.alive || !target || !target.alive || providedCards.length !== consumedIds.length) return json({ error: "The Shu Attack or its target is no longer available.", stale: true, room: await roomState(code, token) }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Influencing Attack has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+    recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
     const nextHand = hand.filter((card) => !consumedIds.includes(card.id)); const discard = parse<Card[]>(liveRoom.discard_json, []); discard.push(...providedCards); let log = parse<string[]>(liveRoom.log_json, []);
     const conversion = publicConversionDraft(responseExecution.providerId, me.id, providedCards, { playerId: me.id, hand, equipment: equipmentCards(me) }, target.id, "Attack");
     const responseEventId = crypto.randomUUID();
@@ -8882,6 +8906,7 @@ async function commitCanonicalResponse(input: {
         await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source), causalRoomStateWrite(room.id, { phase: "response", pending: responsePending, discard, log: presentation.log, causalEnvelope: exactCausalEnvelope(liveRoom, createdEnvelope) })]);
       }
     }
+    recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: responseEventId });
     return json({ room: await roomState(code, token) });
   }
 
@@ -8898,6 +8923,7 @@ async function commitCanonicalResponse(input: {
     if (!semanticTarget) {
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Attack response has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       const endedLog = addLog(log, "The Attack target is no longer available; the response ends without applying damage.");
       await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'resolving'").bind(continuation.resumePhase ?? phaseAfterAttack(source), JSON.stringify(endedLog), room.id).run();
       return json({ room: await roomState(code, token) });
@@ -8910,6 +8936,7 @@ async function commitCanonicalResponse(input: {
     if (!atomicDodge) {
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Attack response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
     }
     let attackDodgeEvaluation: AttackDodgeProofEvaluation | null = null;
     let responseEventId: string | null = null;
@@ -8933,7 +8960,7 @@ async function commitCanonicalResponse(input: {
           : dodgedAttackTransition(liveRoom, source, semanticTarget, log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", continuation.origin, continuation.resumePlayerId, continuation.rootEventId);
         const handLoss = handLossTriggerTransition(me, handBeforeResponse, hand, { ...next, turnSeat: liveRoom.turn_seat });
         const transition = handLoss ? { ...next, ...handLoss, phase: "response" } : next;
-        if (!await commitAttackDodge(liveRoom, me, hand, discard, transition)) {
+        if (!await commitAttackDodge(liveRoom, me, hand, discard, transition, botContext)) {
           return json({ error: "That Attack response has already changed.", stale: true, room: await roomState(code, token) }, 409);
         }
       } else if (reopened) {
@@ -8959,6 +8986,7 @@ async function commitCanonicalResponse(input: {
         await resolveAttackDamageAboutToApply({ room: liveRoom, source, target: semanticTarget, players: rows.results ?? [], sourceHand: parse<Card[]>(source.hand_json, []), discard, log, resumePhase: continuation.resumePhase ?? phaseAfterAttack(source), resumePlayerId: continuation.resumePlayerId, sequenceStartCardId: continuation.sequenceStartCardId ?? "", rootEventId: continuation.rootEventId, damageCards: continuation.damageCards, physicalSuit: continuation.physicalSuit, origin: continuation.origin, causal: continuation.causal, label: "Attack", ...(attackHitProof ? { finalizeAttackHitLog: (damageLog: string[]) => attachAttackHitSettlement(damageLog, attackHitProof) } : {}) });
       }
     }
+    if (canonicalDodge) recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: responseEventId ?? "" });
     const nextRoom = await roomState(code, token);
     if (uxTraceId && attackDodgeEvaluation) {
       const responseEvent = responseEventId ? nextRoom?.timeline.find((event) => event.id === responseEventId) : undefined;
@@ -9012,6 +9040,7 @@ async function commitCanonicalResponse(input: {
     const peach = selectedPeach && (!canonicalResponseSatisfied || selectedExecution?.status === "satisfied" && selectedExecution.satisfies === "peach" && selectedExecution.consumeCardIds?.length === 1 && selectedExecution.consumeCardIds[0] === selectedPeach.id) ? selectedPeach : null;
     if (action === "give_peach" && !peach) return json({ error: "Select a valid Peach or First Aid card for this rescue." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'dying' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Peach rescue decision has already moved on." }, 409);
+    recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
     if (peach) {
       hand = hand.filter((card) => card.id !== peach.id);
       const resumedPending = appendDyingSequenceCard(pending, peach);
@@ -9124,6 +9153,7 @@ async function commitCanonicalResponse(input: {
     } else {
       await defeatDyingPlayer(liveRoom, pending, target, source);
     }
+    if (peach) recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: peachEventId });
     if (peach && !pending.sharedRescue) await maybeOpenHandLossTrigger(room.id, me.id, handBeforePeach);
     return json({ room: await roomState(code, token) });
   }
@@ -9215,7 +9245,8 @@ export async function botControllerSnapshot(code: string, advanceExpiredWindows 
 
 export async function POST(request: Request, routeContext?: unknown) {
   const internalBot = isBotActionPrincipal(routeContext) ? routeContext : null;
-  const compactBot = internalBot?.compactResult === true;
+  const botContext = getBotExecutionContext(internalBot);
+  const compactBot = botContext !== null;
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
   const uxTraceId = typeof body.uxTraceId === "string" && /^[a-zA-Z0-9-]{8,80}$/.test(body.uxTraceId) ? body.uxTraceId : null;
   let action = String(body.action ?? "");
@@ -9264,7 +9295,11 @@ export async function POST(request: Request, routeContext?: unknown) {
   }
 
   const code = String(body.code ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
-  const token = String(body.token ?? "");
+  // The trusted in-process context replaces the body token for the whole
+  // nested call graph. Public HTTP requests never possess this opaque value,
+  // so an arbitrary marker (including an empty string) cannot suppress a
+  // viewer projection during another Bot dispatch.
+  const token = botContext?.projectionToken ?? String(body.token ?? "");
   let room = await db.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
   if (!room) return json({ error: "Room not found. Check the five-character code." }, 404);
   if (internalBot && room.id !== internalBot.roomId) return json({ error: "The internal bot decision targets a different room." }, 403);
@@ -9377,17 +9412,6 @@ export async function POST(request: Request, routeContext?: unknown) {
     const decisionPath = pendingForController?.kind === "response" || pendingForController?.kind === "dying"
       ? "bot_step.response"
       : room.status === "heroes" ? "bot_step.hero_selection" : `bot_step.${room.phase ?? "unknown"}`;
-    let durableBefore: BotDurableSnapshot | null = null;
-    if (compactBot) {
-      try {
-        durableBefore = await botDurableSnapshot(room.id, actor.id);
-      } catch {
-        return Response.json({ botOutcome: {
-          decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision,
-          kind: "failed", errorCode: "dispatch_error", retryable: true,
-        } satisfies BotActionOutcome }, { status: 503 });
-      }
-    }
     emitBotDecisionDiagnostic(diagnosticContext, {
       event: "bot_decision_context",
       roomCode: code,
@@ -9405,50 +9429,37 @@ export async function POST(request: Request, routeContext?: unknown) {
       activeSkills: STANDARD_HEROES.find((hero) => hero.id === actor.hero)?.skills.map((skill) => skill.name) ?? [],
       ...(responseData.context ? { response: responseData.context } : {}),
     });
-    const finishDecision = async (response: Response, selectedAction: string | null, cause: string) => {
+    const botCorrelation = internalBot ? {
+      decisionId: internalBot.decisionId,
+      actorId: actor.id,
+      actionRevision: internalBot.actionRevision,
+    } : null;
+    const finishDecision = async (response: Response, selectedAction: string | null, cause: string, hintedOutcome?: BotActionOutcome) => {
       let responseBody: { state?: unknown; code?: unknown; error?: unknown; stale?: unknown } | null = null;
-      try { responseBody = await (compactBot ? response : response.clone()).json() as typeof responseBody; } catch { /* Canonical outcome below remains fixed and body-free. */ }
-      let compactOutcome: BotActionOutcome = responseBody?.state === "unsupported" || responseBody?.code === "UNSUPPORTED_BOT_DECISION"
-        ? { decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision,
-          kind: "unsupported", reason: typeof responseBody.code === "string" ? responseBody.code : "unsupported_bot_decision" }
-        : responseBody?.stale === true || response.status === 409
-          ? { decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision, kind: "stale", reason: "revision_changed" }
-          : response.status >= 500
-            ? { decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision, kind: "failed", errorCode: "dispatch_error", retryable: true }
-            : !response.ok
-              ? { decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision, kind: "failed", errorCode: "canonical_rejected", retryable: false }
-              : { decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision,
-                kind: "committed", commitProof: {
-                  source: "canonical_executor", roomId: room.id, decisionId: internalBot.decisionId,
-                  actorId: actor.id, actionRevision: internalBot.actionRevision,
-                  commitKind: botCommitKindForAction(selectedAction ?? "bot_step", room.status === "finished"),
-                  reference: { kind: "event", id: "unresolved" },
-                } };
-      if (compactBot && compactOutcome.kind === "committed") {
-        try {
-          const durableAfter = await botDurableSnapshot(room.id, actor.id);
-          let reference = durableCommitReference(durableBefore, durableAfter);
-          if (!reference && selectedAction === "choose_hero") {
-            const heroAfter = await db.prepare("SELECT hero FROM players WHERE room_id = ? AND id = ? AND controller_type = 'bot'")
-              .bind(room.id, actor.id).first<{ hero: string | null }>();
-            if (heroAfter?.hero && heroAfter.hero !== actor.hero) reference = { kind: "row", id: `player:${actor.id}:hero` };
-          }
-          if (!reference) {
-            compactOutcome = { decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision,
-              kind: "failed", errorCode: "malformed_result", retryable: true };
-          } else {
-            compactOutcome = { ...compactOutcome, commitProof: {
-              ...compactOutcome.commitProof,
-              commitKind: botCommitKindForAction(selectedAction ?? "bot_step", durableAfter.status === "finished"),
-              reference,
-            } };
-          }
-        } catch {
-          compactOutcome = { decisionId: internalBot.decisionId, actorId: actor.id, actionRevision: internalBot.actionRevision,
-            kind: "failed", errorCode: "dispatch_error", retryable: true };
-        }
+      if (!compactBot) {
+        try { responseBody = await response.clone().json() as typeof responseBody; } catch { /* legacy adapter remains body-safe */ }
       }
-      if (compactBot && !diagnosticContext.enabled) return Response.json({ botOutcome: compactOutcome }, { status: response.status });
+      let compactOutcome: BotActionOutcome | null = null;
+      if (compactBot && botContext && botCorrelation) {
+        if (hintedOutcome) recordBotOutcome(botContext, hintedOutcome);
+        if (!botContext.outcome) {
+          if (response.status === 409) recordBotOutcome(botContext, { ...botCorrelation, kind: "stale", reason: "revision_changed" });
+          else if (response.status >= 500) recordBotOutcome(botContext, { ...botCorrelation, kind: "failed", errorCode: "dispatch_error", retryable: true });
+          else if (!response.ok) recordBotOutcome(botContext, { ...botCorrelation, kind: "failed", errorCode: "canonical_rejected", retryable: false });
+          else if (selectedAction === null) recordBotOutcome(botContext, { ...botCorrelation, kind: "unsupported", reason: cause || "unsupported_bot_decision" });
+          else if (botContext.commit) {
+            recordBotOutcome(botContext, { ...botCorrelation, kind: "committed", commitProof: botContext.commit });
+          } else {
+            recordBotOutcome(botContext, { ...botCorrelation, kind: "failed", errorCode: "malformed_result", retryable: true });
+          }
+        }
+        compactOutcome = botContext.outcome ?? null;
+      }
+      // Private diagnostic reads are an explicitly authorized Staging-only
+      // option.  A scheduler can keep the coarse LOG/OBS stream enabled while
+      // the compact path remains free of post-dispatch room/hand/work reads.
+      const detailDiagnostics = diagnosticContext.enabled && diagnosticContext.privateStagingEnabled;
+      if (compactBot && !detailDiagnostics) return response;
       let currentRoom: { phase: string | null; pending_json: string | null } | null = null;
       let currentActor: { hp: number | null; hand_json: string | null } | null = null;
       let work: { status: string; error_code: string | null; attempts: number } | null = null;
@@ -9465,7 +9476,7 @@ export async function POST(request: Request, routeContext?: unknown) {
           decisionPath, expectedHandCount: ownHand.length, loggedHandCount: 0,
           missingFields: ["post_dispatch_state", "bot_work_transition"],
         });
-        return compactBot ? Response.json({ botOutcome: compactOutcome }, { status: response.status }) : response;
+        return response;
       }
       const afterHand = parse<Card[]>(currentActor?.hand_json ?? null, []);
       const afterPending = parsePersistedPending(currentRoom?.pending_json ?? null);
@@ -9476,9 +9487,9 @@ export async function POST(request: Request, routeContext?: unknown) {
         pendingKind: pendingKindForDiagnostic(afterPending),
       };
       const afterFingerprint = JSON.stringify({ hp: after.hp, hand: afterHand.map((card) => card.id), phase: after.phase, pending: currentRoom?.pending_json ?? null });
-      const causeAfterDispatch = responseBody?.stale === true ? "stale_action_revision"
+      const causeAfterDispatch = responseBody?.stale === true || compactOutcome?.kind === "stale" ? "stale_action_revision"
         : responseBody?.error && response.status < 500 ? "canonical_validation_rejected" : cause;
-      const canonicalOutcome = compactBot ? compactOutcome.kind
+      const canonicalOutcome = compactBot ? compactOutcome?.kind ?? "missing"
         : responseBody?.state === "unsupported" ? "unsupported"
         : responseBody?.stale === true || response.status >= 400 && response.status < 500 ? "canonical_validation_rejected"
           : response.ok ? "accepted" : "failed";
@@ -9503,7 +9514,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         attempts: work?.attempts ?? null,
         elapsedMs: Date.now() - decisionStartedAt,
       });
-      return compactBot ? Response.json({ botOutcome: compactOutcome }, { status: response.status }) : response;
+      return response;
     };
     const emitEvaluation = (selectedAction: string | null, cause: string) => emitBotDecisionDiagnostic(diagnosticContext, {
       event: "bot_decision_evaluation",
@@ -9526,7 +9537,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         ...botActionCheckpoint.fields,
         action: botActionCheckpoint.action,
         code,
-        token: compactBot ? BOT_COMPACT_RESPONSE_TOKEN : "",
+        token: "",
         context: {
           actionRevision: internalBot.actionRevision,
           meId: actor.id,
@@ -9551,7 +9562,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         emitEvaluation(null, "no_supported_action");
         return finishDecision(json({ state: "unsupported", code: "UNSUPPORTED_BOT_DECISION", actionRevision: internalBot.actionRevision }), null, "no_supported_action");
       }
-      const nextBody = { action: "choose_hero", code, token: compactBot ? BOT_COMPACT_RESPONSE_TOKEN : "", heroId: hero.id };
+      const nextBody = { action: "choose_hero", code, token: "", heroId: hero.id };
       emitEvaluation("choose_hero", "non_response_decision");
       let result: Response;
       try {
@@ -10168,7 +10179,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       ...actionFields,
       action: nextAction,
       code,
-      token: compactBot ? BOT_COMPACT_RESPONSE_TOKEN : "",
+        token: "",
       context: {
         actionRevision: internalBot.actionRevision,
         meId: actor.id,
@@ -10197,6 +10208,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       if ((checkpointed.meta.changes ?? 0) <= 0) {
         return finishDecision(json({ error: "The Bot turn changed before its durable checkpoint was written.", stale: true }, 409), nextAction, "stale_action_revision");
       }
+      recordCanonicalBotCommit(botContext, room.id, "checkpoint", { kind: "checkpoint", id: checkpoint.id });
     }
     let result: Response;
     try {
@@ -10453,6 +10465,8 @@ export async function POST(request: Request, routeContext?: unknown) {
       const result = await insertResponseWindowChoice(env.DB, "shared_response_window_submissions", {
         roomId: room.id, windowId: window.windowId, playerId: me.id, expectedPending: room.pending_json!, submission: choice, now: Date.now() });
       if (result === "conflict" || result === "closed") return json({ error: "This response is already locked or the window has closed.", stale: true, room: await viewerRoom() }, 409);
+      if (result === "inserted") recordCanonicalBotCommit(botContext, room.id, "shared_submission", { kind: "submission", id: `${window.windowId}:${me.id}` });
+      else if (result === "identical" && botContext) recordBotOutcome(botContext, { ...botContext.correlation, kind: "stale", reason: "duplicate" });
       await advanceSharedResponseWindow(room.id, code, token);
       return json({ room: await viewerRoom() });
     }
@@ -10494,6 +10508,8 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (result === "conflict" || result === "closed") return json({ error: result === "conflict"
           ? "A different response was already submitted for this window." : "That Negation intent or Pass was not accepted before the shared deadline.",
           stale: true, room: await roomState(code, token, false, isTestController ? me.id : undefined) }, 409);
+        if (result === "inserted") recordCanonicalBotCommit(botContext, room.id, "shared_submission", { kind: "submission", id: `${livePending.windowId}:${me.id}` });
+        else if (result === "identical" && botContext) recordBotOutcome(botContext, { ...botContext.correlation, kind: "stale", reason: "duplicate" });
         await advanceNegation(room.id, { allowExplicitEarlySettlement: true });
         return json({ room: await roomState(code, token, false, isTestController ? me.id : undefined) });
       }
@@ -10532,12 +10548,14 @@ export async function POST(request: Request, routeContext?: unknown) {
           }
         const claim = await db.prepare("UPDATE rooms SET pending_json = ?, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(serializePending(next), JSON.stringify(log), room.id, room.pending_json).run();
           if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That response has already advanced.", stale: true, room: await roomState(code, token) }, 409);
+          recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
           return json({ room: await roomState(code, token) });
         }
         if (response.continuation.kind === "influencing_attack") {
           const log = addLog(parse<string[]>(room.log_json, []), `${me?.name ?? "The current character"} declines Influencing; no Attack is produced.`);
           const claim = await db.prepare("UPDATE rooms SET phase = 'play', pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(JSON.stringify(log), room.id, room.pending_json).run();
           if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Influencing decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
+          recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
           return json({ room: await roomState(code, token) });
         }
         const requesterId = response.delegation.requesterId;
@@ -10553,6 +10571,7 @@ export async function POST(request: Request, routeContext?: unknown) {
           { resolutionId: entourage!.rootResolutionId, importance: "essential", publicFact: declineFact }).log;
         const claim = await db.prepare("UPDATE rooms SET pending_json = ?, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(serializePending(withoutDelegation), JSON.stringify(returnLog), room.id, room.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That response has already advanced.", stale: true, room: await roomState(code, token) }, 409);
+        recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
         return json({ room: await roomState(code, token) });
       }
       const declined = applyResponseDeclined(response);
@@ -10640,6 +10659,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         }
         const claim = await db.prepare("UPDATE rooms SET pending_json = ?, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(serializePending(nextPending), JSON.stringify(log), room.id, room.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That delegated response has already advanced.", stale: true, room: await roomState(code, token) }, 409);
+        recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
         return json({ room: await roomState(code, token) });
       }
     }
@@ -10661,12 +10681,14 @@ export async function POST(request: Request, routeContext?: unknown) {
       if (!validSubmission || !topIds || !bottomIds) return json({ error: "Assign every Stargazing card exactly once between the ordered top and bottom groups.", stale: true, room: await roomState(code, token) }, 409);
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Stargazing decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       const deck = parse<Card[]>(liveRoom.deck_json, []);
       const rebuiltDeck = rebuildDeckForReorder(deck, reorder.cards, topIds, bottomIds);
       if (!rebuiltDeck) return json({ error: "The held Stargazing cards are inconsistent; the decision was not completed.", stale: true, room: await roomState(code, token) }, 409);
       const log = addHistory(parse<string[]>(liveRoom.log_json, []), `${me.name} completes Stargazing; normal turn processing resumes.`);
-      await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving'")
+      const reorderCommit = await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving'")
         .bind(reorder.resumePhase, JSON.stringify(rebuiltDeck), JSON.stringify(log), room.id).run();
+      if ((reorderCommit.meta.changes ?? 0) > 0) recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       return json({ room: await roomState(code, token) });
     }
 
@@ -10689,6 +10711,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       if (recipients.some((recipient) => !recipient)) return json({ error: "A Legacy recipient is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That private card distribution has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       const byRecipient = new Map<string, Card[]>();
       for (const assignment of normalized as Array<{ cardId: string; recipientId: string }>) {
         const card = held.get(assignment.cardId)!;
@@ -10823,6 +10846,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       }
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND status = 'playing' AND turn_seat = ? AND phase LIKE 'play%'").bind(room.id, liveMe.seat).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "The turn changed before that hero skill resolved.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       if (execution.outcome.kind === "influencing_attack") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive);
         const delegates = playersInTurnOrder(livePlayers, liveMe.seat).slice(1).filter((player) => player.alive && STANDARD_HEROES.find((hero) => hero.id === player.hero)?.faction === "Shu");
@@ -10990,7 +11014,7 @@ export async function POST(request: Request, routeContext?: unknown) {
             }, hostileTargetMeta(liveRoom, [target.id]))
             : addCardEventWithId(log, liveMe.name, physicalCard, target.name, "play", true, hostileTargetMeta(liveRoom, [target.id]));
           log = addLog(presentation.log, `${liveMe.name} uses Captivating to play ${physicalCard.rank}${physicalCard.suit} as Overindulgence on ${target.name}.`);
-          await beginStratagemUse(liveRoom, { ...liveMe, hand_json: JSON.stringify(hand) }, livePlayers, physicalCard, delayed, target.name, target.id, { kind: "overindulgence", targetId: target.id, cardId: delayed.id }, hand, deck, discard, log);
+          await beginStratagemUse(liveRoom, { ...liveMe, hand_json: JSON.stringify(hand) }, livePlayers, physicalCard, delayed, target.name, target.id, { kind: "overindulgence", targetId: target.id, cardId: delayed.id }, hand, deck, discard, log, null, botContext);
         }
       } else if (execution.outcome.kind === "give_cards") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive);
@@ -11060,7 +11084,7 @@ export async function POST(request: Request, routeContext?: unknown) {
             ? addCardEventWithPublicEffect(log, liveMe.name, card, target.name, "play", proof, pressure)
             : addCardEventWithId(log, liveMe.name, card, target.name, "play", true, pressure);
           const qixiLog = addLog(presentation.log, `${liveMe.name} uses Ambushment as Burning Bridges on ${target.name}.`);
-          await beginStratagemUse(liveRoom, { ...liveMe, hand_json: JSON.stringify(hand) }, livePlayers, card, card, target.name, target.id, { kind: "dismantle", targetId: target.id }, hand, deck, discard, qixiLog);
+          await beginStratagemUse(liveRoom, { ...liveMe, hand_json: JSON.stringify(hand) }, livePlayers, card, card, target.name, target.id, { kind: "dismantle", targetId: target.id }, hand, deck, discard, qixiLog, null, botContext);
         }
       } else if (execution.outcome.kind === "fanjian") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive);
@@ -11168,6 +11192,7 @@ export async function POST(request: Request, routeContext?: unknown) {
     }
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That triggered effect has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+    recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
     const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
     const players = rows.results ?? [];
     const next = continueTriggerEvent(trigger, triggerExecution, nextResponseDeadline(players.find((player) => player.id === trigger.actorId)));
@@ -11215,6 +11240,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       }
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That recovery decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       let log = parse<string[]>(liveRoom.log_json, []);
       let deck = parse<Card[]>(liveRoom.deck_json, []);
       let discard = parse<Card[]>(liveRoom.discard_json, []);
@@ -11260,6 +11286,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       }
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Equipment-loss decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       let deck = parse<Card[]>(liveRoom.deck_json, []);
       let discard = parse<Card[]>(liveRoom.discard_json, []);
       let log = parse<string[]>(liveRoom.log_json, []);
@@ -11297,6 +11324,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       }
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Cultivation decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       let deck = parse<Card[]>(liveRoom.deck_json, []);
       let discard = parse<Card[]>(liveRoom.discard_json, []);
       let log = parse<string[]>(liveRoom.log_json, []);
@@ -11352,7 +11380,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         const committed = await commitTurnBoundary(liveRoom, me, {
           phase: "resolving", pending: null, continuation: { ...resolved, stage: "activation" },
           log: addLog(log, `${source.name} declines the turn-end option; the event continues.`),
-        });
+        }, botContext);
         if (!committed) return json({ error: "That turn-end decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
         return json({ room: await roomState(code, token) });
       }
@@ -11403,7 +11431,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         const committed = await commitTurnBoundary(liveRoom, me, {
           phase: "resolving", pending: null, log: nextLog, continuation: resolved,
           payment: { hand: nextHand, deck, discard: nextDiscard },
-        });
+        }, botContext);
         if (!committed) return json({ error: "That turn-end decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
         return json({ room: await roomState(code, token) });
       }
@@ -11527,7 +11555,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       const committed = await commitTurnBoundary(liveRoom, player, mustDiscard
         ? { phase: "discard", pending: null, log: addLog(log, `${player.name} enters Discard. Keep at most ${player.hp ?? 0} cards.`) }
         : { phase: "resolving", pending: null, log: addLog(log, `${player.name} skips Discard with Composure; the turn-end event begins.`),
-          continuation: turnEndContinuation(player) });
+          continuation: turnEndContinuation(player) }, botContext);
       if (!committed) return json({ error: "That Composure decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
       return json({ room: await roomState(code, token) });
     }
@@ -11541,6 +11569,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       if (!actor || parse<Card[]>(actor.hand_json, []).length !== 0) return json({ error: "That hand-loss decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That hand-loss decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       let deck = parse<Card[]>(liveRoom.deck_json, []);
       let discard = parse<Card[]>(liveRoom.discard_json, []);
       let log = parse<string[]>(liveRoom.log_json, []);
@@ -11607,6 +11636,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?")
           .bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Sowing Distrust choice has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+        recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
         const sourceHandAfter = sourceHand.filter((held) => held.id !== card.id);
         const targetHand = [...parse<Card[]>(target.hand_json, []), card];
         const updatedSource = { ...source, hand_json: JSON.stringify(sourceHandAfter) } satisfies PlayerRow;
@@ -11678,6 +11708,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (execution?.outcome.kind !== "fanjian_guess") return json({ error: "That Sowing Distrust suit choice is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Fanjian choice has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+        recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
         const log = addTriggeredEffectNotice(parse<string[]>(liveRoom.log_json, []), target.name, "Sowing Distrust — choose a suit", triggerPublicFact).log;
         const presentation = addLogWithId(log, `${target.name} chooses ${execution.outcome.guess}. ${target.name} now chooses one hidden card from ${source.name}'s hand.`);
         const next: TriggerPending = {
@@ -11696,6 +11727,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       if (!card || !continuation.guess) return json({ error: "That Sowing Distrust hidden-card choice is stale.", stale: true, room: await roomState(code, token) }, 409);
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Fanjian choice has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       const sourceHandAfter = sourceHand.filter((held) => held.id !== card.id);
       const targetHand = [...parse<Card[]>(target.hand_json, []), card];
       const updatedSource = { ...source, hand_json: JSON.stringify(sourceHandAfter) } satisfies PlayerRow;
@@ -11766,6 +11798,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       if (action === "apply_trigger" && !replacement) return json({ error: "The selected Necromancy card is no longer in Sima Yi's hand.", stale: true, room: await roomState(code, token) }, 409);
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Judgement decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       const discard = parse<Card[]>(liveRoom.discard_json, []);
       if (replacement) {
         const nextHand = hand.filter((card) => card.id !== replacement.id);
@@ -11799,6 +11832,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       if (execution?.outcome.kind === "obtain_judgement_card" && (execution.outcome.playerId !== actor.id || execution.outcome.cardId !== continuation.finalCard.id)) return json({ error: "That Judgment card is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That post-Judgment decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       let log = parse<string[]>(liveRoom.log_json, []);
       const finalCard = continuation.finalCard;
       const obtained = action === "apply_trigger";
@@ -11842,6 +11876,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       }
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Draw Phase decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       let log = parse<string[]>(liveRoom.log_json, []);
       const optionLabel = triggerExecution?.presentation?.label ?? triggerOptionsFor(trigger, players, liveRoom)[0]?.label ?? "Draw Phase effect";
       const drawModifier = action === "apply_trigger" && triggerExecution?.outcome.kind === "draw_phase_modifier" ? triggerExecution.outcome : null;
@@ -11873,6 +11908,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       }
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That turn-start decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
       const player = (rows.results ?? []).find((candidate) => candidate.id === continuation.playerId && candidate.alive);
       if (!player) return json({ error: "The turn-start player is no longer available.", stale: true, room: await roomState(code, token) }, 409);
@@ -11963,6 +11999,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       }
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That target decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       const deflectionDiscardEventId = redirect && redirectTarget && redirectCost ? crypto.randomUUID() : null;
       const deflectionProof = execution?.effectId === "daqiao_deflection" && redirect && redirectTarget && redirectCost && deflectionDiscardEventId
         ? daQiaoDeflectionActionProofFor(liveRoom, continuation.declaration, source, target, redirectTarget, redirectCost, deflectionDiscardEventId, log)
@@ -12110,6 +12147,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (!mount) return json({ error: "The selected Mount is no longer available.", stale: true, room: await roomState(code, token) }, 409);
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That damage reaction has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+        recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
         await applyKirinBowOutcome(liveRoom, continuation, source, target, players, discard, log, mount.id, triggerExecution.effectId);
         return json({ room: await roomState(code, token) });
       }
@@ -12119,11 +12157,13 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (selected.length !== 2 || selected.some((id) => !all.some((card) => card.id === id))) return json({ error: "The selected reaction no longer has its required two cards.", stale: true, room: await roomState(code, token) }, 409);
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That damage reaction has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+        recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
         await applyPreventDamageOutcome(liveRoom, continuation, source, target, discard, log, selected, triggerExecution.effectId);
         return json({ room: await roomState(code, token) });
       }
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That damage reaction has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       await resumeCanonicalTriggerContinuation(liveRoom, continuation, players, discard, log);
       return json({ room: await roomState(code, token) });
     }
@@ -12171,6 +12211,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (action === "apply_trigger" && execution?.outcome.kind !== "legacy_distribution" && execution?.outcome.kind !== "gain_damage_cards" && execution?.outcome.kind !== "gain_target_card" && (!source || execution.outcome.kind === "recover_player" && (execution.outcome.playerId !== source.id || execution.outcome.amount !== 1) || execution.outcome.kind === "draw_cards" && execution.outcome.amount !== 1)) return json({ error: "The damage source is no longer available for this post-damage reaction.", stale: true, room: await roomState(code, token) }, 409);
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That post-damage reaction has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+         recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
         if (action === "decline_trigger_effect") {
           const decliningPlayer = trigger.actorId === source?.id ? source : target;
           log = addLog(log, `${decliningPlayer.name} declines the optional post-damage reaction. Normal processing resumes.`);
@@ -12350,6 +12391,7 @@ export async function POST(request: Request, routeContext?: unknown) {
           : continuation.resolvedEffectIds;
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That post-damage consequence has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+        recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
         await continueDamageSufferedEvent(liveRoom, { ...continuation, stage: "reaction", resolvedEffectIds, secondaryEffectId: undefined, judgementCard: undefined }, players, parse<Card[]>(liveRoom.deck_json, []), discard, addLog(log, "The damage source is no longer available; the post-damage consequence ends."));
         return json({ room: await roomState(code, token) });
       }
@@ -12362,6 +12404,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (selected.length !== 2) return json({ error: "The selected hand cards are no longer available.", stale: true, room: await roomState(code, token) }, 409);
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Stauchness consequence has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+        recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
         const nextHand = hand.filter((card) => !execution.outcome.targetCardIds.includes(card.id));
         discard.push(...selected);
         const root = continuation.secondaryEffectId === "xiahou_dun_ganglie" ? publicRootLink(log, continuation.rootEventId) : null;
@@ -12387,6 +12430,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       if (execution.outcome.targetId !== source.id || execution.outcome.amount !== 1) return json({ error: "That Stauchness damage consequence is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Stauchness consequence has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       const resolvedEffectIds = continuation.secondaryEffectId
         ? [...new Set([...(continuation.resolvedEffectIds ?? []), continuation.secondaryEffectId])]
         : continuation.resolvedEffectIds;
@@ -12426,6 +12470,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       if (!source || !target || action === "decline_trigger_effect") {
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That trigger decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+        recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
         const nextLog = addLog(log, `${source?.name ?? "The attacker"} declines the remaining optional reactions.`);
         await resumeCanonicalTriggerContinuation(liveRoom, continuation, players, discard, nextLog);
         return json({ room: await roomState(code, token) });
@@ -12435,6 +12480,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (!attack) return json({ error: "The selected reaction no longer has its required card.", stale: true, room: await roomState(code, token) }, 409);
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That trigger decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+        recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
         log = addTriggeredEffectNotice(log, source.name, triggerExecution.presentation?.label ?? "an optional effect", triggerPublicFact).log;
         await applyFollowUpAttackOutcome(liveRoom, continuation, source, target, players, attack, hand, discard, log, triggerExecution.presentation?.label, triggerExecution.effectId);
         return json({ room: await roomState(code, token) });
@@ -12445,6 +12491,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (materials.length !== triggerExecution.outcome.consumeCardIds.length || materials.length === 0) return json({ error: "The selected reaction no longer has its required costs.", stale: true, room: await roomState(code, token) }, 409);
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That trigger decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+        recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
         log = addTriggeredEffectNotice(log, source.name, triggerExecution.presentation?.label ?? "an optional effect", triggerPublicFact).log;
         await applyForcedDamageOutcome(liveRoom, continuation, source, target, players, materials, hand, discard, log, triggerExecution.outcome.amount, triggerExecution.presentation?.label, triggerExecution.effectId);
         return json({ room: await roomState(code, token) });
@@ -12474,6 +12521,7 @@ export async function POST(request: Request, routeContext?: unknown) {
     }
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
+    recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
     await applyResponseOutcome(liveRoom, pending, me, source, players, parse<Card[]>(liveRoom.discard_json, []), parse<string[]>(liveRoom.log_json, []), responseExecution.providerId, responseExecution.resolution);
     return json({ room: await roomState(code, token) });
   }
@@ -12604,6 +12652,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       const taken = await db.prepare("SELECT 1 FROM players WHERE room_id = ? AND hero = ? AND id <> ?").bind(room.id, hero.id, selector.id).first();
       return json({ error: taken ? "That hero was just selected. Choose another." : "That general choice is stale. Refresh the table and try again.", stale: true, room: await roomState(code, token) }, 409);
     }
+    recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: selector.id });
     const remaining = await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ? AND hero IS NULL").bind(room.id).first<{ count: number }>();
     if ((remaining?.count ?? 0) === 0) {
       const ready = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
@@ -12647,6 +12696,7 @@ export async function POST(request: Request, routeContext?: unknown) {
     const consumedCards = consumedIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
     if (canonicalRespond && (!responseExecution || responseExecution.status !== "satisfied" || consumedCards.length !== consumedIds.length)) return json({ error: "That Negation provider is no longer available." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Negation decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+    recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
     if (canonicalRespond) {
       hand = hand.filter((card) => !consumedIds.includes(card.id)); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
       let committedNegationEventId: string | undefined;
@@ -12675,6 +12725,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       const readyAfterEventId = latestDecisionPresentationEventId(log, response.resolutionId);
       const readyPending = readyAfterEventId ? withPresentationBarrier(nextPending, log, readyAfterEventId) : nextPending;
       await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), causalRoomStateWrite(room.id, { phase: next.actor ? "response" : "resolving", pending: readyPending, discard, log, causalEnvelope: nextEnvelope })]);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: committedNegationEventId ?? botEventIdFromCanonicalLog(log) ?? "" });
       if (next.actor) await advanceNegation(room.id); else await resolveDeferredStratagem(room.id, nextPending.continuation);
     } else if (continuation.remainingIds[0]) {
       const next = nextEligibleNegationResponder((await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [], continuation.remainingIds, continuation);
@@ -12717,6 +12768,7 @@ export async function POST(request: Request, routeContext?: unknown) {
     if (!chosen) return json({ error: "Choose one of the revealed Bumper Harvest cards." }, 400);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Bumper Harvest choice has already been resolved." }, 409);
+    recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
     const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
     await resolveHarvestChoice(liveRoom, pending, me, rows.results ?? [], chosen);
     return json({ room: await roomState(code, token) });
@@ -12846,6 +12898,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         .bind(JSON.stringify(sourceHand), me.id, room.id, committedLog),
     ]);
     if ((settled.meta.changes ?? 0) === 0) return json({ error: "That card choice has already resolved or changed.", stale: true, room: await roomState(code, token) }, 409);
+    recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: botEventIdFromCanonicalLog(next?.log ?? log) ?? "" });
     return json({ room: await roomState(code, token) });
   }
 
@@ -12862,6 +12915,7 @@ export async function POST(request: Request, routeContext?: unknown) {
     if (!liveWeapon || liveWeapon.id !== pending.weaponId) {
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Borrowed Sword choice has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       const settledLog = addLog(parse<string[]>(liveRoom.log_json, []), "Borrowed Sword ends because its targeted Weapon changed or disappeared before a legal Attack target could be chosen.");
       await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'resolving'").bind(pending.resumePhase, JSON.stringify(settledLog), room.id).run();
       return json({ room: await roomState(code, token) });
@@ -12869,6 +12923,7 @@ export async function POST(request: Request, routeContext?: unknown) {
     if (!forcedTargetIds.length) {
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Borrowed Sword choice has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
       await settleBorrowedSwordNoAttackTarget({
         roomId: room.id,
         sourceId: pending.sourceId,
@@ -12890,6 +12945,7 @@ export async function POST(request: Request, routeContext?: unknown) {
     if (!chosen || !forcedTargetIds.includes(chosen.id)) return json({ error: `Choose a currently legal Attack target for ${holder.name}.` }, 400);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Borrowed Sword choice has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+    recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
     let log = parse<string[]>(liveRoom.log_json, []);
     const weapon = equipmentZone(holder).weapon;
     if (!weapon || weapon.id !== pending.weaponId) {
@@ -12936,7 +12992,8 @@ export async function POST(request: Request, routeContext?: unknown) {
     const choiceEvent = addLogWithId(log, `${me.name} chooses ${chosen.name} as the target of ${holder.name}'s forced Attack.`, undefined,
       { ...hostileTargetMeta(liveRoom, [chosen.id]), actorId: me.id, ...(targetChoiceFact ? { publicFact: targetChoiceFact } : {}) });
     log = choiceEvent.log;
-    await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(forced), JSON.stringify(log), child ? JSON.stringify(child.envelope) : liveRoom.causal_envelope_json, room.id).run();
+    const targetCommit = await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(forced), JSON.stringify(log), child ? JSON.stringify(child.envelope) : liveRoom.causal_envelope_json, room.id).run();
+    if ((targetCommit.meta.changes ?? 0) > 0) recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: choiceEvent.eventId });
     return json({ room: await roomState(code, token) });
   }
 
@@ -12945,7 +13002,7 @@ export async function POST(request: Request, routeContext?: unknown) {
   }
 
   const committedResponse = await commitCanonicalResponse({ room, me, code, token, action, body,
-    canonicalResponseKind, canonicalResponseSatisfied, canonicalResponseDeclined, responseExecution, uxTraceId });
+    canonicalResponseKind, canonicalResponseSatisfied, canonicalResponseDeclined, responseExecution, uxTraceId, botContext });
   if (committedResponse) return committedResponse;
 
   if (action === "start_rescue_timer") {
@@ -12993,6 +13050,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         return json({ room: await roomState(code, token), ...(delayedDrawn?.length ? { drawnCards: delayedDrawn } : {}) });
       }
       drawnCards = await beginDrawPhaseDecision(drawRoom, me, drawPhase, deck, discard, log, 0, [], players);
+      if (drawCheckpoint) recordCanonicalBotCommit(botContext, room.id, "checkpoint", { kind: "checkpoint", id: drawCheckpoint.id });
     } else if (action === "serpent_spear_attack") {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Draw before forming an Attack." }, 409);
       if (!canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, liveRoom.phase)) return json({ error: "You may use only one Attack per turn." }, 409);
@@ -13015,13 +13073,15 @@ export async function POST(request: Request, routeContext?: unknown) {
       if (attackTargetedOptions(me, target, [], players).length) {
         const targetedPresentation = addLogWithId(log, `${me.name}'s Attack-targeted abilities open for ${target.name}.`);
         await beginAttackTargeted(liveRoom, declaration, me, target, discard, targetedPresentation.log, targetedPresentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me)], [], undefined, createdEnvelope);
+        recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: serpentPresentation.eventId ?? targetedPresentation.eventId });
         await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
         return json({ room: await roomState(code, token) });
       }
       const presentation = addLogWithId(log, `Action passes from ${me.name} to ${target.name} for Dodge response.`);
       const readyAfterEventId = latestDecisionPresentationEventId(presentation.log, latestResolutionId(presentation.log));
       const nextPending = readyAfterEventId ? withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, readyAfterEventId) : attackResponseDecision(declaration, target);
-      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me), causalRoomStateWrite(room.id, { phase: "response", pending: nextPending, discard, log: presentation.log, causalEnvelope: exactCausalEnvelope(liveRoom, createdEnvelope) })]);
+      const serpentCommit = await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me), causalRoomStateWrite(room.id, { phase: "response", pending: nextPending, discard, log: presentation.log, causalEnvelope: exactCausalEnvelope(liveRoom, createdEnvelope) })]);
+      if ((serpentCommit[2]?.meta.changes ?? 0) > 0) recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: serpentPresentation.eventId ?? botEventIdFromCanonicalLog(presentation.log) ?? "" });
     } else if (action === "play_card") {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Draw before playing a card." }, 409);
       const card = hand.find((item) => item.id === String(body.cardId ?? ""));
@@ -13097,6 +13157,7 @@ export async function POST(request: Request, routeContext?: unknown) {
             me.hand_json, me.hp, liveRoom.id, checkpointJson);
         const writes = await db.batch([roomWrite, playerWrite]);
         if ((writes[0]?.meta.changes ?? 0) <= 0) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        recordCanonicalBotCommit(botContext, room.id, "checkpoint", { kind: "checkpoint", id: checkpoint.id });
         await advanceRecoveryCheckpoint(liveRoom.id, checkpointJson);
       } else if (cardDefinition(card.kind).equipmentSlot && !playableAttack) {
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
@@ -13153,23 +13214,24 @@ export async function POST(request: Request, routeContext?: unknown) {
         }
         log = addCardEvent(log, me.name, card, me.name, "equip", true,
           { actorId: me.id, ...(committedEquipPublicFact ? { publicFact: committedEquipPublicFact } : equipPublicFact ? { publicFact: equipPublicFact } : {}) }, equipEventId);
-        await db.batch([
+        const equipmentCommit = await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(hand), JSON.stringify(equipment), me.id),
           db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(replacedEquipment ? "resolving" : liveRoom.phase, JSON.stringify(discard), JSON.stringify(log), room.id),
         ]);
+        if ((equipmentCommit[1]?.meta.changes ?? 0) > 0) recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: equipEventId });
         if (replacedEquipment) await advanceEquipmentLostEvents(room.id, equipmentLostRecords(me.id, [replacedEquipment], "replacement"), { kind: "phase", phase: liveRoom.phase ?? "play", playerId: me.id, handLoss: { playerId: me.id, beforeHand } });
         else await maybeOpenHandLossTrigger(room.id, me.id, beforeHand);
       } else if (card.kind === "DrawTwo" && !playableAttack) {
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card);
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-        drawnCards = await beginStratagemUse(liveRoom, me, rows.results ?? [], card, card, me.name, me.id, { kind: "draw_two", cardId: card.id }, hand, deck, discard, log);
+        drawnCards = await beginStratagemUse(liveRoom, me, rows.results ?? [], card, card, me.name, me.id, { kind: "draw_two", cardId: card.id }, hand, deck, discard, log, null, botContext);
       } else if (card.kind === "Oath" && !playableAttack) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
         log = addCardEvent(log, me.name, card, "All living players"); log = addLog(log, `${me.name} plays Oath of the Peach Garden.`);
-        await beginStratagemUse(liveRoom, me, rows.results ?? [], card, card, "all living players", me.id, { kind: "oath" }, hand, deck, discard, log);
+        await beginStratagemUse(liveRoom, me, rows.results ?? [], card, card, "all living players", me.id, { kind: "oath" }, hand, deck, discard, log, null, botContext);
       } else if (card.kind === "BumperHarvest" && !playableAttack) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
         const players = rows.results ?? []; const choosersInOrder = playersInTurnOrder(players, me.seat);
@@ -13187,7 +13249,7 @@ export async function POST(request: Request, routeContext?: unknown) {
           rootEventId: root.eventId,
           rootResolutionId,
           rootCardId: card.id,
-        }, hand, deck, discard, root.log);
+        }, hand, deck, discard, root.log, null, botContext);
       } else if ((card.kind === "BarbarianInvasion" || card.kind === "RainingArrows") && !playableAttack) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
         const targets = playersInTurnOrder(players, me.seat).filter((player) => player.id !== me.id);
@@ -13200,13 +13262,13 @@ export async function POST(request: Request, routeContext?: unknown) {
         log = addLog(presentation.log, `${me.name} plays ${cardName}.`);
         const groupCreation = groupResponseDecision(card.kind, "GROUP", me.id, targets[0].id, orderedTargetIds, orderedTargetIds.slice(1), requiredKind, liveRoom.phase, `Respond to ${cardName}: select ${requiredKind} or take 1 damage`, nextResponseDeadline(targets[0]), [card], latestResolutionId(log), [card], undefined, presentation.eventId);
         const pending = withPresentationBarrier(groupCreation.value, log, presentation.eventId);
-        await beginStratagemUse(liveRoom, me, players, card, card, "all other players", targets[0].id, { kind: "group", pending }, hand, deck, discard, log, groupCreation.createdEnvelope);
+        await beginStratagemUse(liveRoom, me, players, card, card, "all other players", targets[0].id, { kind: "group", pending }, hand, deck, discard, log, groupCreation.createdEnvelope, botContext);
       } else if (card.kind === "Lightning" && !playableAttack) {
         if (parse<Card[]>(me.judgement_json, []).some((delayed) => delayed.kind === "Lightning")) return json({ error: "You already have Lightning in your Judgement Zone." }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
         log = addCardEvent(log, me.name, card); log = addLog(log, `${me.name} plays Lightning into their own Judgement Zone.`);
-        await beginStratagemUse(liveRoom, me, (await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [], card, card, me.name, me.id, { kind: "lightning", targetId: me.id, cardId: card.id }, hand, deck, discard, log);
+        await beginStratagemUse(liveRoom, me, (await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [], card, card, me.name, me.id, { kind: "lightning", targetId: me.id, cardId: card.id }, hand, deck, discard, log, null, botContext);
       } else if (card.kind === "Overindulgence" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose another living character for Overindulgence." }, 400);
@@ -13216,7 +13278,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
         log = addCardEvent(log, me.name, card, target.name, "play", true, hostileTargetMeta(liveRoom, [target.id])); log = addLog(log, `${me.name} plays Overindulgence on ${target.name}.`);
-        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "overindulgence", targetId: target.id, cardId: card.id }, hand, deck, discard, log);
+        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "overindulgence", targetId: target.id, cardId: card.id }, hand, deck, discard, log, null, botContext);
       } else if (card.kind === "RationsDepleted" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose another living character for Rations Depleted." }, 400);
@@ -13226,7 +13288,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name, "play", true, hostileTargetMeta(liveRoom, [target.id]));
-        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "rations_depleted", targetId: target.id, cardId: card.id }, hand, deck, discard, log);
+        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "rations_depleted", targetId: target.id, cardId: card.id }, hand, deck, discard, log, null, botContext);
       } else if (card.kind === "BorrowedSword" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id || !weaponCard(target)) return json({ error: "Choose another living character who has a Weapon for Borrowed Sword." }, 400);
@@ -13235,7 +13297,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name, "play", true, hostileTargetMeta(liveRoom, [target.id])); log = addLog(log, `${me.name} plays Borrowed Sword on ${target.name}.`);
-        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "borrowed_sword", targetId: target.id }, hand, deck, discard, log);
+        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "borrowed_sword", targetId: target.id }, hand, deck, discard, log, null, botContext);
       } else if (card.kind === "Dismantle" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent for Burning Bridges." }, 400);
@@ -13244,7 +13306,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 400);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name, "play", true, hostileTargetMeta(liveRoom, [target.id]));
-        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "dismantle", targetId: target.id }, hand, deck, discard, log);
+        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "dismantle", targetId: target.id }, hand, deck, discard, log, null, botContext);
       } else if (card.kind === "Steal" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent for Steal." }, 400);
@@ -13254,7 +13316,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, targetEvaluation.rejection.code === "NO_TARGETABLE_CARDS" ? 400 : 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name, "play", true, hostileTargetMeta(liveRoom, [target.id]));
-        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "steal", targetId: target.id }, hand, deck, discard, log);
+        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "steal", targetId: target.id }, hand, deck, discard, log, null, botContext);
       } else if (card.kind === "Duel" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent for Duel." }, 400);
@@ -13268,7 +13330,7 @@ export async function POST(request: Request, routeContext?: unknown) {
         const wushuangPlayerId = me.hero === "lü-bu" ? me.id : target.hero === "lü-bu" ? target.id : undefined;
         const duelCreation = duelResponseDecision(me.id, target.id, me.id, liveRoom.phase, "Respond to Duel: select Attack or take 1 damage", nextResponseDeadline(target), [card], wushuangPlayerId, undefined, undefined, presentation.eventId);
         const pending = withPresentationBarrier(duelCreation.value, log, presentation.eventId);
-        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "duel", pending }, hand, deck, discard, log, duelCreation.createdEnvelope);
+        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "duel", pending }, hand, deck, discard, log, duelCreation.createdEnvelope, botContext);
       } else if (playableAttack) {
         if (!canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, liveRoom.phase)) return json({ error: "You may play only one Attack per turn." }, 409);
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
@@ -13317,7 +13379,7 @@ export async function POST(request: Request, routeContext?: unknown) {
           log = addLog(log, `${me.name} uses their last hand card as Attack with Sky Piercing Halberd, targeting ${targets.map((entry) => entry.name).join(", ")}. ${target.name} resolves first.`);
           await beginGroupTarget(liveRoom, pending, pending.continuation, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me)], groupCreation.createdEnvelope);
           await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
-          return playCardRoomResponse(code, token, uxTraceId);
+          return playCardRoomResponse(code, token, uxTraceId, botContext);
         }
         // A provider-supplied virtual Attack keeps the original physical card
         // as its identity for suit, history, conservation, and stale checks.
@@ -13339,7 +13401,7 @@ export async function POST(request: Request, routeContext?: unknown) {
             attackState = { phase: "response", pending, discard, log: presentation.log, causalEnvelope: envelope };
           }
         }
-        if (!await commitSingleTargetAttack(liveRoom, me, hand, attackState)) {
+        if (!await commitSingleTargetAttack(liveRoom, me, hand, attackState, botContext)) {
           return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         }
       } else {
@@ -13371,21 +13433,21 @@ export async function POST(request: Request, routeContext?: unknown) {
         };
         committed = await commitTurnBoundary(liveRoom, me, {
           phase: "response", pending: withPresentationBarrier(pending, presentation.log, presentation.eventId), log: presentation.log,
-        });
+        }, botContext);
       } else if (needsDiscard) {
         committed = await commitTurnBoundary(liveRoom, me, { phase: "discard", pending: null,
           log: addLog(log, `${me.name} finishes Play and enters Discard. Keep at most ${me.hp ?? 0} cards.`),
-        });
+        }, botContext);
       } else {
         committed = await commitTurnBoundary(liveRoom, me, { phase: "resolving", pending: null,
           log: addLog(log, `${me.name} finishes Play; the turn-end event begins.`), continuation: turnEndContinuation(me),
-        });
+        }, botContext);
       }
       if (!committed) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
       return json({ room: await roomState(code, token) });
     }
     await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
-    if (action === "play_card") return playCardRoomResponse(code, token, uxTraceId);
+    if (action === "play_card") return playCardRoomResponse(code, token, uxTraceId, botContext);
     return json({ room: await roomState(code, token), ...(drawnCards.length ? { drawnCards } : {}) });
   }
 
@@ -13406,7 +13468,7 @@ export async function POST(request: Request, routeContext?: unknown) {
     const committed = await commitTurnBoundary(liveRoom, me, { phase: "resolving", pending: null, log,
       continuation: turnEndContinuation(me, handoff),
       payment: { hand, discard, ...(hand.length ? {} : { lostHand: handBeforeDiscard }) },
-    });
+    }, botContext);
     if (!committed) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
     return json({ room: await roomState(code, token) });
   }

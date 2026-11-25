@@ -15,7 +15,7 @@ export default defineConfig({
   forbidOnly: true,
   retries: 0,
   workers: 1,
-  reporter: "line",
+  reporter: "./staging-safe-reporter.mjs",
   outputDir: "test-results/staging-browser",
   use: {
     baseURL: parsedStagingUrl.origin,

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
-import { createBotActionPrincipal, isBotActionPrincipal } from "../worker/bot-principal.ts";
+import { attachBotExecutionContext, createBotActionPrincipal, createBotExecutionContext, getBotExecutionContext, isBotActionPrincipal } from "../worker/bot-principal.ts";
 import { isBotActionOutcome } from "../worker/bot-outcome.ts";
 
 const correlation = {
@@ -35,4 +36,26 @@ test("the compact selector cannot be forged from public request-shaped data", ()
     roomId: "room-1", botId: "actor-1", actionRevision: "revision-1", decisionId: "decision-1", compactResult: true,
   });
   assert.equal(isBotActionPrincipal(principal), true);
+  assert.equal(Object.hasOwn(principal, "compactResult"), false);
+});
+
+test("compact projection uses an opaque in-process capability, never a public marker", () => {
+  const principal = createBotActionPrincipal({ roomId: "room-1", botId: "actor-1", actionRevision: "revision-1", decisionId: "decision-1" });
+  const context = createBotExecutionContext(correlation);
+  assert.match(context.projectionToken, /^[0-9a-f-]{36}$/i);
+  assert.equal(getBotExecutionContext(principal), null);
+  attachBotExecutionContext(principal, context);
+  assert.equal(getBotExecutionContext(principal), context);
+  assert.equal(fs.readFileSync(new URL("../app/api/rooms/route.ts", import.meta.url), "utf8").includes("BOT_COMPACT_RESPONSE_TOKEN"), false);
+});
+
+test("compact outcomes reject placeholders, private extras, and malformed proof references", () => {
+  const proof = {
+    source: "canonical_executor", roomId: "room-1", ...correlation,
+    commitKind: "transition", reference: { kind: "event", id: "event-1" },
+  };
+  assert.equal(isBotActionOutcome({ ...correlation, kind: "committed", commitProof: { ...proof, reference: { kind: "event", id: "unknown" } } }), false);
+  assert.equal(isBotActionOutcome({ ...correlation, kind: "committed", commitProof: proof, privateHand: [{ id: "hidden" }] }), false);
+  assert.equal(isBotActionOutcome({ ...correlation, kind: "committed", commitProof: { ...proof, roomId: " " } }), false);
+  assert.equal(isBotActionOutcome({ ...correlation, kind: "failed", errorCode: "malformed_result", retryable: true, response: {} }), false);
 });

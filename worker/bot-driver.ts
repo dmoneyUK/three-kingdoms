@@ -1,8 +1,11 @@
 import type { BotPolicy } from "../ai/decision-router";
-import { createBotActionPrincipal } from "./bot-principal";
+import {
+  attachBotExecutionContext,
+  createBotActionPrincipal,
+  createBotExecutionContext,
+} from "./bot-principal";
 import { emitBotDiagnostic, isBotWorkStatus, type BotErrorCode, type BotSchedulerDiagnosticContext, type BotWorkStatus } from "./bot-diagnostics";
 import {
-  botCommitKindForAction,
   isBotActionOutcome,
   type BotActionOutcome,
   type BotActionOutcomeBase,
@@ -32,7 +35,7 @@ type BotWorkRow = {
 
 type BotRoomRow = { id: string; code: string; bot_count: number };
 type SchedulerOptions = { maxRoomsPerWakeup?: number; maxStepsPerWakeup?: number; roomCode?: string };
-type BotDispatchResult = BotActionOutcome | Response;
+type BotDispatchResult = BotActionOutcome;
 
 const MAX_BOT_SEATS_PER_ROOM = 3;
 const MAX_ATTEMPTS = 3;
@@ -63,78 +66,61 @@ async function loadRoomRouteHandlers() {
   return import("../app/api/rooms/route");
 }
 
-function outcomeResponse(outcome: BotActionOutcome) {
-  const status = outcome.kind === "stale" ? 409 : outcome.kind === "failed" ? outcome.retryable ? 503 : 400 : 200;
-  return Response.json({ botOutcome: outcome }, { status });
-}
-
-function fallbackOutcome(input: BotActionOutcomeBase, status: number, payload: unknown): BotActionOutcome {
-  const body = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
-  if (body.state === "waiting_for_human") return { ...input, kind: "waiting_for_human" };
-  if (body.state === "unsupported" || body.code === "UNSUPPORTED_BOT_DECISION") {
-    return { ...input, kind: "unsupported", reason: typeof body.reason === "string" ? body.reason : "unsupported_bot_decision" };
-  }
-  if (body.stale === true || status === 409) return { ...input, kind: "stale", reason: "revision_changed" };
-  if (status >= 500) return { ...input, kind: "failed", errorCode: "dispatch_error", retryable: true };
-  if (status < 200 || status >= 300) return { ...input, kind: "failed", errorCode: "dispatch_rejected", retryable: false };
-  return {
-    ...input,
-    kind: "committed",
-    commitProof: {
-      source: "canonical_executor",
-      roomId: "unknown",
-      decisionId: input.decisionId,
-      actorId: input.actorId,
-      actionRevision: input.actionRevision,
-      commitKind: botCommitKindForAction(typeof body.action === "string" ? body.action : "bot_step"),
-      reference: { kind: "event", id: "unknown" },
-    },
-  };
-}
-
-async function runBotStepInternal(_db: Pick<D1Database, "prepare">, input: BotStepInput, compactResult: boolean): Promise<Response> {
+async function runBotStepInternal(_db: Pick<D1Database, "prepare">, input: BotStepInput, compactResult: boolean): Promise<Response | BotActionOutcome> {
   const code = input.code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
-  if (!code || !input.botId) return Response.json({ error: "A room code and bot ID are required." }, { status: 400 });
-  const { botControllerSnapshot, POST: postRoom } = await loadRoomRouteHandlers();
+  const invalidInput = { decisionId: input.decisionId ?? "invalid", actorId: input.botId ?? "invalid", actionRevision: input.actionRevision ?? "invalid", kind: "failed" as const, errorCode: "dispatch_rejected" as const, retryable: false };
+  if (!code || !input.botId) return compactResult ? invalidInput : Response.json({ error: "A room code and bot ID are required." }, { status: 400 });
+  const { beginBotCompactProjection, botControllerSnapshot, endBotCompactProjection, POST: postRoom } = await loadRoomRouteHandlers();
   const room = await botControllerSnapshot(code);
-  if (!room) return Response.json({ error: "Room not found." }, { status: 404 });
-  if (!room.botIds.includes(input.botId)) return Response.json({ error: "The requested actor is not a bot in this room." }, { status: 403 });
+  if (!room) return compactResult ? { ...invalidInput, actorId: input.botId, actionRevision: input.actionRevision ?? "missing", errorCode: "dispatch_rejected" } : Response.json({ error: "Room not found." }, { status: 404 });
+  if (!room.botIds.includes(input.botId)) return compactResult ? { ...invalidInput, actorId: input.botId, actionRevision: room.actionRevision, errorCode: "dispatch_rejected" } : Response.json({ error: "The requested actor is not a bot in this room." }, { status: 403 });
   const decisionId = input.decisionId ?? crypto.randomUUID();
-  const correlation = { decisionId, actorId: input.botId, actionRevision: room.actionRevision } satisfies BotActionOutcomeBase;
+  const requestedRevision = input.actionRevision ?? room.actionRevision;
+  const correlation = { decisionId, actorId: input.botId, actionRevision: requestedRevision } satisfies BotActionOutcomeBase;
   if (!room.eligibleBotIds.includes(input.botId)) {
-    return compactResult ? outcomeResponse({ ...correlation, kind: "waiting_for_human" })
+    return compactResult ? { ...correlation, kind: "waiting_for_human" }
       : Response.json({ state: "waiting_for_human", actionRevision: room.actionRevision });
   }
   if (input.actionRevision && input.actionRevision !== room.actionRevision) {
-    return compactResult ? outcomeResponse({ ...correlation, kind: "stale", reason: "revision_changed" })
+    return compactResult ? { ...correlation, kind: "stale", reason: "revision_changed" }
       : Response.json({ error: "The bot decision is stale." }, { status: 409 });
   }
 
-  const principal = createBotActionPrincipal({
+  const context = compactResult
+    ? createBotExecutionContext(correlation, input.diagnostics?.enabled === true && input.diagnostics?.privateStagingEnabled === true)
+    : null;
+  const principalBase = createBotActionPrincipal({
     roomId: room.roomId,
     botId: input.botId,
     actionRevision: room.actionRevision,
     decisionId,
-    ...(compactResult ? { compactResult: true } : {}),
     ...(input.diagnostics ? { diagnostics: input.diagnostics } : {}),
     ...(input.mockPolicy ? { mockPolicy: input.mockPolicy } : {}),
   });
+  const principal = context ? attachBotExecutionContext(principalBase, context) : principalBase;
   const actionRequest = new Request("https://internal.invalid/api/rooms", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ action: "bot_step", code, token: "" }),
   });
-  const actionResponse = await postRoom(actionRequest, principal);
+  if (compactResult) beginBotCompactProjection(code, context!.projectionToken, context!);
+  let actionResponse: Response;
+  try {
+    actionResponse = await postRoom(actionRequest, principal);
+  } finally {
+    if (compactResult) endBotCompactProjection(code, context!.projectionToken);
+  }
+  if (compactResult) {
+    // The live scheduler consumes the private typed value.  A Response is
+    // deliberately not parsed or re-encoded between the canonical executor
+    // and the scheduler; a missing proof is an ambiguous retryable result.
+    return context.outcome ?? { ...correlation, kind: "failed", errorCode: "malformed_result", retryable: true };
+  }
   let payload: unknown;
   try {
     payload = await actionResponse.json();
   } catch {
-    return compactResult ? outcomeResponse({ ...correlation, kind: "failed", errorCode: "malformed_result", retryable: true })
-      : Response.json({ error: "The internal bot action returned an invalid response." }, { status: 502 });
-  }
-  if (compactResult && payload && typeof payload === "object" && !Array.isArray(payload)
-    && "botOutcome" in payload && isBotActionOutcome((payload as Record<string, unknown>).botOutcome)) {
-    return outcomeResponse((payload as { botOutcome: BotActionOutcome }).botOutcome);
+    return Response.json({ error: "The internal bot action returned an invalid response." }, { status: 502 });
   }
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
     const safePayload = { ...(payload as Record<string, unknown>) };
@@ -147,26 +133,25 @@ async function runBotStepInternal(_db: Pick<D1Database, "prepare">, input: BotSt
     }
     return Response.json(safePayload, { status: actionResponse.status });
   }
-  return compactResult ? outcomeResponse({ ...correlation, kind: "failed", errorCode: "malformed_result", retryable: true })
-    : Response.json({ error: "The internal bot action returned an invalid payload." }, { status: 502 });
+  return Response.json({ error: "The internal bot action returned an invalid payload." }, { status: 502 });
 }
 
 export async function runBotStep(_db: Pick<D1Database, "prepare">, input: BotStepInput): Promise<Response> {
-  return runBotStepInternal(_db, input, false);
+  const result = await runBotStepInternal(_db, input, false);
+  return result instanceof Response ? result : Response.json({ error: "The internal bot action returned no human response." }, { status: 502 });
 }
 
 export async function runBotStepOutcome(_db: Pick<D1Database, "prepare">, input: BotStepInput): Promise<BotActionOutcome> {
-  const decisionId = input.decisionId ?? crypto.randomUUID();
-  const actorId = input.botId;
-  const response = await runBotStepInternal(_db, { ...input, decisionId }, true);
-  let payload: unknown = null;
-  try { payload = await response.json(); } catch { /* the typed fallback below is fail-closed */ }
-  const candidate = payload && typeof payload === "object" && !Array.isArray(payload)
-    ? (payload as Record<string, unknown>).botOutcome : null;
-  const expectedRevision = input.actionRevision ?? "";
-  if (isBotActionOutcome(candidate) && candidate.decisionId === decisionId && candidate.actorId === actorId
-    && (expectedRevision === "" || candidate.actionRevision === expectedRevision)) return candidate;
-  return fallbackOutcome({ decisionId, actorId, actionRevision: expectedRevision }, response.status, payload);
+  const candidate = await runBotStepInternal(_db, { ...input, decisionId: input.decisionId ?? crypto.randomUUID() }, true);
+  if (isBotActionOutcome(candidate)) return candidate;
+  return {
+    decisionId: input.decisionId ?? "missing",
+    actorId: input.botId,
+    actionRevision: input.actionRevision ?? "missing",
+    kind: "failed",
+    errorCode: "malformed_result",
+    retryable: true,
+  };
 }
 
 async function acquireRoomLease(db: Pick<D1Database, "prepare">, roomId: string, now: number, leaseToken: string) {
@@ -386,13 +371,7 @@ export async function runBotScheduler(
             decisionId: work.decision_id,
             diagnostics,
           });
-          if (dispatched instanceof Response) {
-            let payload: unknown = null;
-            try { payload = await dispatched.json(); } catch { /* fail closed below */ }
-            actionOutcome = fallbackOutcome({ decisionId: work.decision_id, actorId, actionRevision: room.actionRevision }, dispatched.status, payload);
-          } else {
-            actionOutcome = dispatched;
-          }
+          actionOutcome = dispatched;
         } catch {
           const attempts = work.attempts + 1;
           const transientStatus: BotWorkStatus = attempts >= MAX_ATTEMPTS ? "failed" : "pending";

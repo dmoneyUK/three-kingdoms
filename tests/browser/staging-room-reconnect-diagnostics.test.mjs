@@ -6,7 +6,10 @@ import {
   createRejoinDiagnostics,
   extractRayId,
   redactSensitiveText,
+  safeAssertion,
+  safeAttachment,
   safeRejoinError,
+  sanitizeReporterError,
   sessionEvidence,
 } from "./staging-room-reconnect-diagnostics.mjs";
 
@@ -102,4 +105,21 @@ test("S2 redacts raw and encoded credentials from transport, assertions, and art
   const attachment = redactSensitiveText(JSON.stringify({ raw, assertion: assertionError.message }), [secret]);
   assert.equal(attachment.includes(secret), false, "diagnostic attachment is sanitized");
   assert.equal(attachment.includes(encoded), false, "encoded credentials are sanitized from attachments");
+});
+
+test("S2 safe assertion/reporter/upload canary never emits a credential or unsanitizable artifact", () => {
+  assert.throws(() => safeAssertion(false, `session token=${token}`, [token]), (error) => {
+    assert.equal(error.name, "StagingSafeAssertionError");
+    assert.equal(error.message.includes(token), false);
+    return true;
+  });
+  const safe = safeAttachment({ name: "diagnostics.json", body: { token }, contentType: "application/json", secrets: [token] });
+  assert.equal(safe.body.includes(token), false);
+  assert.equal(safe.body.includes("[REDACTED]"), true);
+  assert.equal(safeAttachment({ name: "failure.trace.zip", body: token, secrets: [token] }), null);
+  assert.equal(safeAttachment({ name: "network.har", body: token, secrets: [token] }), null);
+  const reporter = sanitizeReporterError({ name: "Error", message: `GET /api/rooms?token=${encodeURIComponent(token)}`, stack: `raw ${token}` }, [token]);
+  assert.equal(reporter.message.includes(token), false);
+  assert.equal(reporter.message.includes(encodeURIComponent(token)), false);
+  assert.equal(reporter.stack, null);
 });

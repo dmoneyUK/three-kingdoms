@@ -7,6 +7,8 @@ import {
   AI_STAGING_LIFECYCLE_TARGET,
   LIFECYCLE_EXIT_CODES,
   StagingLifecycleError,
+  assertHostedActivationGate,
+  assertHostedLifecycleBudget,
   captureStaging,
   containStaging,
   createCloudflareClient,
@@ -18,7 +20,7 @@ import {
 const owner = { runId: "12345", commitSha: "a".repeat(40), tag: `aip-staging-12345-${"a".repeat(40)}` };
 const now = new Date("2026-11-25T15:00:00.000Z");
 
-function guardRow({ roomId = "old-room", status = "playing", testRoom = 0, createdAt = now.getTime() - 600_000, lastActivityAt = now.getTime() - 600_000, botCount = 1, humanCount = 0, latestHumanConnectedAt = null, botWorkCount = 0, liveBotWorkCount = 0, latestBotWorkAt = 0, schedulerLeaseUntil = 0, responseSubmissionCount = 0 } = {}) {
+function guardRow({ roomId = "old-room", status = "playing", testRoom = 0, createdAt = now.getTime() - 600_000, lastActivityAt = now.getTime() - 600_000, botCount = 1, humanCount = 0, latestHumanConnectedAt = null, botWorkCount = 0, liveBotWorkCount = 0, latestBotWorkAt = 0, schedulerLeaseUntil = 0, responseSubmissionCount = 0, roomState = { status, phase: "play", revision: "r1" }, playerState = [{ id: "bot-1", controller_type: "bot", seat: 0 }], botWorkState = [], schedulerState = [], submissionState = [] } = {}) {
   return {
     room_id: roomId,
     status,
@@ -33,6 +35,11 @@ function guardRow({ roomId = "old-room", status = "playing", testRoom = 0, creat
     latest_bot_work_at: latestBotWorkAt,
     scheduler_lease_until: schedulerLeaseUntil,
     response_submission_count: responseSubmissionCount,
+    room_state_json: JSON.stringify(roomState),
+    player_state_json: JSON.stringify(playerState),
+    bot_work_state_json: JSON.stringify(botWorkState),
+    scheduler_state_json: JSON.stringify(schedulerState),
+    submission_state_json: JSON.stringify(submissionState),
   };
 }
 
@@ -318,4 +325,25 @@ test("S1 pre-activation and post-closure guards fail on old-room mutation but al
   });
   assert.equal(closed.missingFingerprintCount, 0);
   assert.throws(() => evaluateStagingRoomGuard({ rows: [fresh], now: now.getTime() + 30_000, phase: "post_closure", baseline, activationAt: now.getTime() }), /changed or disappeared/);
+});
+
+test("S1 guard fingerprints canonical state, rejects malformed counts/duplicates, and keeps lobby/terminal identities", () => {
+  const lobby = guardRow({ roomId: "lobby", status: "lobby", botCount: 0, roomState: { status: "lobby", phase: null, revision: "lobby-1" }, playerState: [] });
+  const finished = guardRow({ roomId: "finished", status: "finished", botCount: 0, roomState: { status: "finished", phase: "finished", revision: "terminal-1" }, playerState: [] });
+  const baseline = evaluateStagingRoomGuard({ rows: [lobby, finished], now: now.getTime(), phase: "baseline", totalRoomRows: 2 });
+  assert.equal(baseline.roomCount, 2);
+  assert.throws(() => evaluateStagingRoomGuard({ rows: [{ ...lobby, created_at: null }], now: now.getTime(), phase: "baseline", totalRoomRows: 1 }), /unknown or malformed/);
+  assert.throws(() => evaluateStagingRoomGuard({ rows: [lobby, { ...lobby }], now: now.getTime(), phase: "baseline", totalRoomRows: 2 }), /duplicate room/);
+  assert.throws(() => evaluateStagingRoomGuard({ rows: [lobby], now: now.getTime(), phase: "baseline", totalRoomRows: 2 }), /truncated/);
+  assert.throws(() => evaluateStagingRoomGuard({ rows: [{ ...lobby, room_state_json: JSON.stringify({ status: "lobby", phase: "changed" }) }, finished], now: now.getTime(), phase: "pre_activation", baseline }), /changed or disappeared|inventory changed/);
+});
+
+test("S1 hosted gate and monotonic clock fail closed at the exact safety boundaries", () => {
+  assert.deepEqual(assertHostedLifecycleBudget({ startedAtEpochMs: 1_000, nowEpochMs: 2_000, phase: "before_activation" }).closureReserveSatisfied, true);
+  assert.throws(() => assertHostedLifecycleBudget({ startedAtEpochMs: 1_000, nowEpochMs: 1_000 + 14 * 60_000 + 1, activationAtEpochMs: 1_000, phase: "active" }), /14-minute/);
+  assert.throws(() => assertHostedLifecycleBudget({ startedAtEpochMs: 1_000, nowEpochMs: 1_000 - 1, phase: "before_activation" }), /backwards/);
+  const sha = "a".repeat(40);
+  assert.deepEqual(assertHostedActivationGate({ sourceSha: sha, expectedSha: sha, runId: "123", s1: true, s2: true, historicalCredentialDisposition: "confirmed_invalid_or_revoked", controlledAccess: true }).s1, true);
+  assert.throws(() => assertHostedActivationGate({ sourceSha: sha, expectedSha: sha, runId: "123", s1: true, s2: false, historicalCredentialDisposition: "confirmed_invalid_or_revoked", controlledAccess: true }), /S1 and S2/);
+  assert.throws(() => assertHostedActivationGate({ sourceSha: sha, expectedSha: sha, runId: "123", s1: true, s2: true, historicalCredentialDisposition: "unknown", controlledAccess: true }), /credential disposition/);
 });

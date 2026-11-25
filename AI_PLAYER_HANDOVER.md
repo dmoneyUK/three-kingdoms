@@ -1,20 +1,28 @@
 # Smart Bot Player — Coding Agent Handover
 
-Branch `review/aip-perf-bot-02`, based on the latest `feature/smart-bot-player` tip `4cfd443097deddead1f677b77df1cf34d559fbd3`. Latest design reviewed: AIP-D41 / 2026-11-25. AIP-PERF-01 remains **CHANGES_REQUESTED**; GET-02 and later PLAY work are not started.
+Branch `review/aip-perf-bot-02`, based on the latest `origin/feature/smart-bot-player` design tip `c409479a1cfaa0278fe8560b1e7bacb2fa496a0a`. Latest design reviewed: **AIP-D42 / 2026-11-25**. Current bounded task: **AIP-PERF-BOT-02-CORR-01**. GET-02 and PLAY work are not started.
 
-## AIP-PERF-BOT-02 (AIP-D41) — **PENDING_REVIEW**
+## AIP-PERF-BOT-02-CORR-01 — **PENDING_REVIEW**
 
-Source commit `d2d217172c3da5ecd3b8052ef30d1105aea8e24c` is pushed to this non-deploying review branch. It contains the compact server-only Bot result path, durable canonical commit proofs (event/checkpoint/shared-submission/authoritative row), correlation checks, and scheduler ack protection. Legacy full projections remain for human/test adapters. S1 adds exact fixed-target read-only D1 room guards with opaque fingerprints before activation and after closure. S2 adds authenticated-request/error/artifact redaction and canary coverage for raw and encoded credentials. The review ref does not run the Staging deploy job; production remains skipped.
+Implemented the five D42 corrections in one non-deploying delivery:
 
-Focused evidence on the working tree:
+- Replaced the public compact marker and durable before/after snapshot inference with an opaque per-dispatch in-process context. Canonical CAS/transaction/checkpoint/shared-submission boundaries record the actual event, checkpoint, submission, or affected-row proof; missing proof fails closed. Correlation remains tied to the requested input revision.
+- Compact Bot scheduling consumes the typed outcome through the private context without parsing/re-encoding a Response or building a full viewer projection. Exact outcome/proof fields reject placeholders, extras, private data, malformed/mismatched proofs, and fabricated committed references. Human/test Response adaptation remains separate.
+- Recovery of an already-written Bot draw checkpoint now records the checkpoint proof after the canonical draw settles; an injected mid-settlement failure remains retryable and the subsequent lease recovery consumes exactly once.
+- Completed deterministic S1 room fingerprints/readback, strict counts/keysets and state digests, continuous monitor/budget gates, and fail-closed S2 assertion/reporter/attachment protection. Review refs keep both deployment jobs skipped.
 
-- API scheduler: 37 tests, 36 pass, 1 skipped, 0 fail; long-room fixture reported 203 public events and 150 seeded Bot Work rows.
-- Bot outcome, lifecycle/config, S1 guard, reconnect logic and S2 diagnostics: 41/41 pass.
-- Targeted ESLint, `npm run build`, and `git diff --check`: pass.
-- Exact-SHA [Actions 45698425786](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45698425786) for `d2d217172c3da5ecd3b8052ef30d1105aea8e24c`: Lint/Fast, API and Browser **GREEN**; `Deploy isolated AI Staging Worker` **SKIPPED**; production `deploy` **SKIPPED**.
+Focused validation on the final working tree:
 
-No Hosted Staging run is authorized yet. D41 requires disposition of the historical UV89N credential exposure from the prior hosted artifact and confirmation of controlled, time-bounded access before the single capped hosted validation. No production operation or Cloudflare resource change was made in this delivery.
+- `node --test` outcome/S1/S2/paired-benchmark suites: **28 pass, 0 fail**.
+- API scheduler: **37 tests, 36 pass, 1 skipped, 0 fail**; long fixture **203 public events / 150 Bot Work rows**; lease/replay, shared response, checkpoint/recovery, privacy and full-match regressions pass.
+- Paired deterministic benchmark: human projections remain byte-equivalent; optimized `bot_internal_step`/`postwrite` use **0 room/viewer projections, 0 log decodes, 0 JSON encodes/decodes and 0 response bytes** in the compact model, with one fewer D1 query/session lookup/token hash. This is a local route-shaped model, not hosted Worker CPU proof.
+- Real local Worker/D1 HTTP benchmark: fixture **203 events / 150 Bot Work rows**, 4 authenticated viewers, 3 measured samples/path. Current wall P50/P95 (ms): GET 5.21/5.83; active response GET 5.71/5.85; Bot step 17.72/18.30; scheduler wake 19.06/19.78; decline 13.40/13.75; advance timers 10.17/10.61; postwrite draw 11.73/12.69; final settlement 10.29/11.19. Client-process CPU only; Worker CPU, D1 read/write telemetry and hosted limits are not exposed by the local harness.
+- Targeted ESLint, `npm run build`, `node --check scripts/ai-staging-lifecycle.mjs`, and `git diff --check`: **pass**.
+
+Exact-SHA CI: **pending push and run verification for the final commit**. The review ref must show Lint/Fast, API and Browser green, with Staging and Production deploy jobs **SKIPPED**; any retry/attempt will be recorded factually after observation.
+
+No Staging or Production deployment, Cloudflare resource change, hosted activation, GET-02, or PLAY work was performed. Hosted validation remains intentionally blocked by the D42 historical credential-disposition and controlled-access prerequisites; no credential content is recorded.
 
 ## Current bounded task
 
-Wait for Reviewer/Owner review of this exact-SHA non-deploying delivery. Keep the single Hosted gate blocked until historical UV89N credential disposition and controlled time-bounded access are explicitly satisfied; no Hosted or production operation was performed. Do not start AIP-PERF-GET-02.
+Reviewer to inspect the exact-SHA correction delivery and decide acceptance. Agent does not self-accept and must not start AIP-PERF-GET-02.

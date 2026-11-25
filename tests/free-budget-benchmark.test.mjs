@@ -129,6 +129,23 @@ function runInvocation(fixture, scenario, { optimized }) {
     counters.d1Queries += 1;
   }
 
+  // A compact internal dispatch returns the canonical typed completion to the
+  // scheduler. It never constructs a viewer projection or a JSON Response;
+  // model that boundary explicitly so the paired work counters can catch a
+  // regression back to full roomState/encoding work.
+  if (optimized && scenario.internalBot) {
+    counters.schedulerDispatches += scenario.family === "postwrite" ? 1 : 0;
+    return {
+      fingerprint: "typed:canonical-bot-outcome",
+      counters,
+      wallMs: performance.now() - startedAt,
+      cpuUs: (() => {
+        const cpu = process.cpuUsage(cpuBefore);
+        return cpu.user + cpu.system;
+      })(),
+    };
+  }
+
   const viewers = Array.from({ length: scenario.viewerCount }, (_, index) => `viewer-${index}`);
   const room = viewers.map((viewer) => publicProjection(fixture, viewer, counters));
   const payload = {
@@ -209,10 +226,20 @@ test("AIP-PERF-01 FREE-BUDGET-01 deterministic benchmark and internal Bot lookup
   for (const scenario of SCENARIOS) {
     const baseline = runScenario(fixture, scenario, false);
     const optimized = runScenario(fixture, scenario, true);
-    assert.equal(optimized.fingerprint, baseline.fingerprint, `${scenario.name} public/private projection changed`);
-    assert.equal(optimized.summary.workPerInvocation.roomStateProjections, baseline.summary.workPerInvocation.roomStateProjections);
-    assert.equal(optimized.summary.workPerInvocation.logRecordsDecoded, baseline.summary.workPerInvocation.logRecordsDecoded);
-    assert.equal(optimized.summary.workPerInvocation.bytes, baseline.summary.workPerInvocation.bytes);
+    if (scenario.internalBot) {
+      assert.equal(optimized.fingerprint, "typed:canonical-bot-outcome", `${scenario.name} must stay on the typed internal boundary`);
+      assert.equal(optimized.summary.workPerInvocation.roomStateProjections, 0);
+      assert.equal(optimized.summary.workPerInvocation.viewerProjections, 0);
+      assert.equal(optimized.summary.workPerInvocation.logRecordsDecoded, 0);
+      assert.equal(optimized.summary.workPerInvocation.jsonEncodes, 0);
+      assert.equal(optimized.summary.workPerInvocation.jsonDecodes, 0);
+      assert.equal(optimized.summary.workPerInvocation.bytes, 0);
+    } else {
+      assert.equal(optimized.fingerprint, baseline.fingerprint, `${scenario.name} public/private projection changed`);
+      assert.equal(optimized.summary.workPerInvocation.roomStateProjections, baseline.summary.workPerInvocation.roomStateProjections);
+      assert.equal(optimized.summary.workPerInvocation.logRecordsDecoded, baseline.summary.workPerInvocation.logRecordsDecoded);
+      assert.equal(optimized.summary.workPerInvocation.bytes, baseline.summary.workPerInvocation.bytes);
+    }
     assert.ok(!optimized.fingerprint.includes(fixture.privateCardId), `${scenario.name} leaked a private card identifier`);
     results[scenario.name] = {
       family: scenario.family,

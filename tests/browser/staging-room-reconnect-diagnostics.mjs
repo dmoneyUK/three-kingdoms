@@ -47,6 +47,38 @@ export function safeRejoinError({ failure, operation = "Staging room request" } 
 }
 
 /**
+ * Convert an assertion into a stable, credential-free failure.  Playwright's
+ * default assertion formatter may include the compared values, so callers
+ * pass only the boolean verdict and a static label here.
+ */
+export function safeAssertion(condition, label, secrets = []) {
+  if (condition) return;
+  const error = new Error(redactSensitiveText(String(label || "Staging assertion failed"), secrets));
+  error.name = "StagingSafeAssertionError";
+  throw error;
+}
+
+/**
+ * Attach only sanitized text/json evidence.  Binary screenshots, traces and
+ * HARs are deliberately omitted because they cannot be proven credential-free
+ * at this boundary.
+ */
+export function safeAttachment({ name, body, contentType = "text/plain", secrets = [] } = {}) {
+  if (typeof name !== "string" || !name || /(?:screenshot|trace|har|network)/i.test(name)) return null;
+  const text = redactSensitiveText(typeof body === "string" ? body : JSON.stringify(body ?? null), secrets);
+  return { name, body: text, contentType };
+}
+
+export function sanitizeReporterError(error, secrets = []) {
+  if (!error || typeof error !== "object") return null;
+  return {
+    message: redactSensitiveText(error.message ?? "Staging test failed", secrets),
+    name: typeof error.name === "string" ? error.name : "Error",
+    stack: null,
+  };
+}
+
+/**
  * One authenticated request boundary for the staging smoke.  Playwright's
  * transport errors are normalized here; callers never rethrow the raw error
  * that may contain a URL, POST body, cookie, or session token.
