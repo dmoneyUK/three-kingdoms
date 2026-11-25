@@ -6,7 +6,7 @@
 > AI product / executable task authority: `docs/AI_PLAYER_DESIGN.md`
 > Coding-agent execution protocol: `docs/AI_PLAYER_AGENT_WORKFLOW.md`
 > Coding-agent-only checkpoint: `AI_PLAYER_HANDOVER.md`
-> Version: **`AIP-G5` (2026-11-24)** — retains independent PM/UX2 coordination and adds mandatory one-line Agent startup commands after publishing an executable task; startup commands never replace complete design/workflow reading
+> Version: **`AIP-G6` (2026-11-25)** — Owner-directed deliverable-sized autonomous units; independent Reviewer retrieves actual source/diffs/CI; short startup pointers only when needed
 >
 > **Permanent, task-neutral PROCESS GUIDE, not a current task/status report.** Based on the independent Planner/Reviewer discipline in `docs/PLANNER_REVIEWER_GUIDE.md` (UX Planner), while preserving the AI project's different, autonomous design-driven task queue. **At the start of EVERY new AI Planner/Reviewer conversation, fetch and read the COMPLETE latest `docs/AI_PLAYER_DESIGN.md` on the AI branch BEFORE designing or reviewing.**
 
@@ -49,6 +49,16 @@ The Owner has appointed a separate **Game Product Manager / independent cross-do
 6. In the Owner-facing review, state which PM/UX change was checked, its effect (`NO IMPACT`, `REQUIRES PM/UX2 ALIGNMENT`, `CHANGED DEPENDENCY` or `OWNER DECISION REQUIRED`), what code evidence actually passed, and exactly whether the Agent should continue, pause disputed scope, or await human acceptance.
 
 **No blanket PM stop:** current authorized `AIP-PERF-01` recovery and other non-overlapping permitted work continue. New `AIP-PERF-GET-02`, `AIP-PERF-BOT-02`, `AIP-SCALE-*` and shared UX/transport designs retain their existing `DRAFT`/PM/UX2/Owner gates. PM decisions never supersede authoritative server legality, card conservation, private hands/roles, previously human-accepted UX2 behavior or human acceptance without an explicit authorized change.
+
+## 0B. Owner-directed delivery-unit discipline (2026-11-25; mandatory)
+
+The Owner rejected fragmented investigation/checkpoint tasks and repeated manual copy/paste. **Plan coherent deliverables, not individual development steps.** This policy governs all future AI Planner reviews and supersedes conflicting micro-stop instructions; task-specific safety/acceptance/cost/PM gates remain binding.
+
+- Each task/unit must have a meaningful engineering/product outcome, complete implementation scope, acceptance criteria, tests, source delivery and CI expectation, and explicit real stop conditions. Combine closely related implementation, regression tests, necessary build prerequisites, CI correction, evidence and safe cleanup into one unit. Internal steps are Agent-managed checkpoints, not separate Owner prompts or Reviewer approvals.
+- Agent is authorized within the unit to diagnose and fix ordinary in-scope failures, run necessary task-local validation, commit, push to authorized ref, check exact-SHA CI and correct failures within a declared bounded retry/resource budget. Do not issue another task just because a test, build or CI stage needs ordinary correction. Stop only for a genuine safety/permission/cost/architecture/acceptance blocker, exhausted reasonable retry budget or completed deliverable; preserve actual code and concise evidence.
+- **Reviewer owns independent code review, diff retrieval, CI and source inspection.** Fetch actual Git commits and code from GitHub; never ask Agent to review itself, prepare a Markdown diff package, restate source, or have Owner copy/paste code or intermediate results. Agent owns normal implementation tests and its own Handover. Every deliverable must be accessible as real Git source on an authorized remote ref. If active branch deployment is unsafe, explicitly authorize a non-deploying review branch and, where feasible, ordinary CI there; label hosted gate outstanding. No deployment merely to expose code. Do not claim inaccessible local commits were reviewed.
+- Review once per complete unit, consolidate findings into one corrective unit, and publish the next meaningful unit in the design. Do not split each defect into a separate stop/restart or reopen an already settled decision. If an Owner-authorized batch has a bounded integrated outcome, permit its internal dependency steps without repeated human sign-off, but never waive a true release/privacy/architecture/production gate.
+- Owner-facing response gives one concise outcome, outstanding real decision (if any), links to actual source/CI and one short launcher when new work is published. The launcher is optional for a running Agent that rereads the remote design; never require the human to relay reports already in GitHub. Do not pretend a remote design update wakes a dormant runtime.
 
 ## 1. Mission and non-negotiable operating model
 
