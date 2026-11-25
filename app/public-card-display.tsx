@@ -12,7 +12,7 @@ import type { PresentationTargetCardSettlementMovement } from "../game/presentat
 import type { PublicInteractionNarration } from "../game/public-activity";
 import type { PublicDiscardAnnouncement } from "./public-discard-transition";
 import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
-import { publicStageBandClearance, type PublicStageStationarySurface } from "../game/public-stage-layout";
+import { publicStageBandClearance, publicStagePrimaryOriginFromVisualRect, type PublicStageStationarySurface } from "../game/public-stage-layout";
 import { positionLabeledCardAboveBand, publicStageSceneMatchesCard } from "../game/public-stage-layout";
 import { cardDefinition } from "../game/cards";
 import { publicAnnouncementEventCopyKey as buildPublicAnnouncementEventCopyKey, publicAnnouncementGeometryIdentity, publicAnnouncementGeometryKey, transitionPublicAnnouncementCopyLifecycle, type PublicAnnouncementCopyLifecycle, type PublicAnnouncementProtectedGeometry, type PublicAnnouncementSeatGeometry } from "../game/public-announcement";
@@ -24,7 +24,9 @@ import {
   canRetainPublicStageLayout,
   publicStageLayoutCandidateMatchesElement,
   sharedPublicStageMatchesElement,
+  publicEffectFrameVisualFootprint,
   usePublicStageLayout,
+  type SharedPublicStageLayout,
 } from "./public-stage-layout-context";
 
 type PublicCardDisplayResponseNode = {
@@ -965,26 +967,42 @@ function battlefieldPublicEffectFrameCard(frame: PublicCardEffectFrameView): Car
 function battlefieldPublicEffectFrameCard(frame?: PublicCardEffectFrameView): CardRect | null {
   const table = document.querySelector<HTMLElement>(".play-table");
   const frameLayout = publicCardEffectFrameLayout(frame?.materials.length ?? 1, window.innerWidth, window.innerHeight, frame);
+  const expectedCardIds = frame?.materials.map(({ card }) => card.id).join(",") ?? "";
+  const expectedOwnerIds = frame?.materials.map(({ ownerId }) => ownerId ?? "deck").join(",") ?? "";
   const renderedFrame = frame && table
     ? [...table.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel")].find((element) =>
-      element.dataset.publicCardFrameEffectId === frame.effectId
-      && element.dataset.publicCardFrameCardEventId === frame.eventId)
+      element.closest<HTMLElement>(".public-card-journey-card")?.dataset.publicCardJourneyEventId === frame.eventId
+      && element.closest<HTMLElement>(".public-card-journey-card")?.dataset.publicCardJourneyCardIds === expectedCardIds
+      && element.dataset.publicCardFrameEffectId === frame.effectId
+      && element.dataset.publicCardFrameEventId === (frame.activationEventId ?? frame.eventId)
+      && element.dataset.publicCardFrameCardEventId === frame.eventId
+      && (element.dataset.publicCardFrameRootEventId ?? "") === (frame.rootEventId ?? "")
+      && (element.dataset.publicCardFrameRootResolutionId ?? "") === (frame.rootResolutionId ?? "")
+      && element.dataset.publicCardFrameMaterialCardIds === expectedCardIds
+      && element.dataset.publicCardFrameMaterialOwnerIds === expectedOwnerIds)
     : undefined;
+  const primary = renderedFrame?.closest<HTMLElement>(".public-card-journey-card");
+  const renderedFootprint = primary && renderedFrame
+    ? publicEffectFrameVisualFootprint(primary)
+    : null;
+  // Once the committed frame exists, an incomplete DOM footprint is not a
+  // license to position from only its panel or first material. Wait for the
+  // validated complete title + all physical material faces instead.
+  if (renderedFrame && !renderedFootprint) return null;
   const renderedFrameRect = renderedFrame?.getBoundingClientRect();
   const renderedCard = frame && renderedFrame
     ? [...renderedFrame.querySelectorAll<HTMLElement>("[data-public-card-effect-frame-card-id]")]
       .find((element) => element.dataset.publicCardEffectFrameCardId === frame.materials[0]?.card.id)
     : undefined;
   const renderedCardRect = renderedCard?.getBoundingClientRect();
-  const renderedTitleRect = renderedFrame?.querySelector<HTMLElement>(".public-card-effect-frame-title")?.getBoundingClientRect();
-  const measuredRects = [renderedFrameRect, renderedCardRect, renderedTitleRect]
+  const measuredRects = [renderedFrameRect, renderedCardRect]
     .filter((rect): rect is DOMRect => Boolean(rect && rect.width > 0 && rect.height > 0));
-  const measuredFrame = measuredRects.length > 0 ? {
+  const measuredFrame = renderedFootprint?.rect ?? (measuredRects.length > 0 ? {
     left: Math.min(...measuredRects.map((rect) => rect.left)),
     top: Math.min(...measuredRects.map((rect) => rect.top)),
     right: Math.max(...measuredRects.map((rect) => rect.right)),
     bottom: Math.max(...measuredRects.map((rect) => rect.bottom)),
-  } : null;
+  } : null);
   const frameWidth = measuredFrame ? measuredFrame.right - measuredFrame.left : frameLayout.frameWidth;
   const frameHeight = measuredFrame ? measuredFrame.bottom - measuredFrame.top : frameLayout.frameHeight;
   const cardOffsetLeft = measuredFrame && renderedCardRect
@@ -1001,6 +1019,33 @@ function battlefieldPublicEffectFrameCard(frame?: PublicCardEffectFrameView): Ca
   return {
     left: safeFrame.left + cardOffsetLeft,
     top: safeFrame.top + cardOffsetTop,
+    width: REVEAL_CARD.width,
+    height: REVEAL_CARD.height,
+  };
+}
+
+function effectFramePrimaryRectFromSharedLayout(
+  shared: SharedPublicStageLayout | null,
+  input: { roomId: string; rootEventId: string; interactionId?: string | null; eventId: string; cardId: string; viewerId: string },
+): CardRect | null {
+  if (!shared || !shared.revealReady
+    || shared.layout.variant !== "fixed-bands"
+    || shared.primaryEventId !== input.eventId || shared.primaryCardId !== input.cardId
+    || (shared.announcementEventId !== input.eventId && shared.announcementAnchorEventId !== input.eventId)
+    || !publicStageSceneMatchesCard(shared.layout.scene, {
+      roomId: input.roomId,
+      scopeId: input.rootEventId,
+      interactionId: input.interactionId,
+      eventId: input.eventId,
+      cardId: input.cardId,
+      viewerId: input.viewerId,
+      phase: "REVEAL",
+    })) return null;
+  const primaryOrigin = publicStagePrimaryOriginFromVisualRect(shared.layout.card, shared.primaryOffset);
+  if (!primaryOrigin) return null;
+  return {
+    left: primaryOrigin.left,
+    top: primaryOrigin.top,
     width: REVEAL_CARD.width,
     height: REVEAL_CARD.height,
   };
@@ -4712,7 +4757,7 @@ function AttackDodgeCardJourney({
             layoutPending: framePlacementUnavailable && card.eventId === currentAction.publicCardEffectFrame?.eventId
               || false,
             layoutChangeReason: framePlacementUnavailable && card.eventId === currentAction.publicCardEffectFrame?.eventId
-              ? "kirin-effect-frame-awaiting-h4-safe-geometry" : "viewport-or-seat-anchor-reflow",
+              ? "public-effect-frame-awaiting-h4-safe-geometry" : "viewport-or-seat-anchor-reflow",
           };
           return {
             ...card,
@@ -5104,6 +5149,10 @@ function SingleTargetCardJourney({
   const responseHistoryOwnershipByEventId = new Map(responseHistoryOwnership.map((response) => [response.eventId, new Set(response.cardIds)]));
   const scopeKey = motion?.scopeKey ?? action.rootEventId;
   const ownershipIdentity = publicCardJourneyOwnershipIdentity(action, roomCode);
+  // The shared measured layout is the final placement authority for a proven
+  // complete Effect Frame. A later successful shared measurement must be able
+  // to recover an earlier local no-fit result without weakening its identity.
+  const sharedPublicStage = usePublicStageLayout();
   const [journey, setJourney] = useState<SingleTargetJourneyState>({ scopeKey: "", viewerId: "", harvestPoolReadOnly: false, showNegationChainOrdinals: false, cards: [], center: null, suppressTransitions: false, layoutPending: false });
   const retainSingleTargetJourney = motion?.type === "single-target"
     && (action.cardKind === "Steal" || action.cardKind === "Dismantle")
@@ -5205,12 +5254,22 @@ function SingleTargetCardJourney({
     const fallbackCenter = hasSingleTargetReveal
       ? battlefieldCenterCard(REVEAL_CARD, { ...reservations, requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true })
       : battlefieldCenterCard(REVEAL_CARD, { ...reservations, requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
-    const center = currentAction.publicCardEffectFrame
+    const sharedFrameCenter = currentAction.publicCardEffectFrame
+      ? effectFramePrimaryRectFromSharedLayout(sharedPublicStage, {
+        roomId: roomCode,
+        rootEventId: currentAction.rootEventId,
+        interactionId: currentAction.interactionId,
+        eventId: currentAction.publicCardEffectFrame.eventId,
+        cardId: currentAction.publicCardEffectFrame.materials[0]?.card.id ?? "",
+        viewerId: viewerIdRef.current,
+      })
+      : null;
+    const center = sharedFrameCenter ?? (currentAction.publicCardEffectFrame
       ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
       : currentMotion.type === "lust-cost" && currentAction.lustCostFrame
         ? battlefieldLustCostCard()
-      : singleTargetReveal ?? fallbackCenter;
-    const frameCenterUnavailable = isKirinBowPublicEffectFrame(currentAction.publicCardEffectFrame) && center === null;
+        : singleTargetReveal ?? fallbackCenter);
+    const frameCenterUnavailable = Boolean(currentAction.publicCardEffectFrame) && center === null;
     const pendingCenter = center ?? previous.center
       ?? boundCardRect((window.innerWidth - REVEAL_CARD.width) / 2, (window.innerHeight - REVEAL_CARD.height) / 2, REVEAL_CARD.width, REVEAL_CARD.height);
     const sameInteraction = previous.scopeKey === scopeKey;
@@ -5397,7 +5456,7 @@ function SingleTargetCardJourney({
       card.eventId === currentAction.publicCardEffectFrame?.eventId && card.phase === "reveal");
     const presentationCards = framePlacementUnavailable
       ? cards.map((card) => card.eventId === currentAction.publicCardEffectFrame?.eventId && card.phase === "reveal"
-        ? { ...card, layoutPending: true, layoutChangeReason: "kirin-effect-frame-awaiting-h4-safe-geometry" }
+        ? { ...card, layoutPending: true, layoutChangeReason: "public-effect-frame-awaiting-h4-safe-geometry" }
         : card)
       : cards;
     const layoutPending = framePlacementUnavailable || center === null
@@ -5426,7 +5485,7 @@ function SingleTargetCardJourney({
     };
     journeyRef.current = next;
     setJourney(next);
-  }, [enabled, journeyEnabled, historyOnly, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, action.showNegationChainOrdinals, scopeKey, eventSignature, publicEffectFrameSignature, freshSignature, viewerId, placementFailureReporter]);
+  }, [enabled, journeyEnabled, historyOnly, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, action.showNegationChainOrdinals, scopeKey, eventSignature, publicEffectFrameSignature, freshSignature, viewerId, sharedPublicStage?.layout.identity, sharedPublicStage?.revealReady, placementFailureReporter]);
 
   useEffect(() => {
     if (!journey.suppressTransitions || journey.scopeKey !== scopeKey) return;
@@ -5728,11 +5787,21 @@ function SingleTargetCardJourney({
         const fallbackCenter = hasSingleTargetReveal
           ? battlefieldCenterCard(REVEAL_CARD, { ...reservations, requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true })
           : battlefieldCenterCard(REVEAL_CARD, { ...reservations, requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
-        const center = currentAction.publicCardEffectFrame
+        const sharedFrameCenter = currentAction.publicCardEffectFrame
+          ? effectFramePrimaryRectFromSharedLayout(sharedPublicStage, {
+            roomId: roomCode,
+            rootEventId: currentAction.rootEventId,
+            interactionId: currentAction.interactionId,
+            eventId: currentAction.publicCardEffectFrame.eventId,
+            cardId: currentAction.publicCardEffectFrame.materials[0]?.card.id ?? "",
+            viewerId: viewerIdRef.current,
+          })
+          : null;
+        const center = sharedFrameCenter ?? (currentAction.publicCardEffectFrame
           ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
           : currentMotion?.type === "lust-cost" && currentAction.lustCostFrame
             ? battlefieldLustCostCard()
-            : singleTargetReveal ?? fallbackCenter;
+            : singleTargetReveal ?? fallbackCenter);
         const framePlacementUnavailable = center === null && current.cards.some((card) => card.phase === "reveal");
         const pendingCenter = current.center
           ?? boundCardRect((window.innerWidth - REVEAL_CARD.width) / 2, (window.innerHeight - REVEAL_CARD.height) / 2, REVEAL_CARD.width, REVEAL_CARD.height);
@@ -5820,7 +5889,7 @@ function SingleTargetCardJourney({
           center: center ?? (framePlacementUnavailable ? pendingCenter : null),
           cards: framePlacementUnavailable ? cards.map((card) => card.eventId === currentAction.publicCardEffectFrame?.eventId
             && card.phase === "reveal"
-            ? { ...card, layoutPending: true, layoutChangeReason: "kirin-effect-frame-awaiting-h4-safe-geometry" }
+            ? { ...card, layoutPending: true, layoutChangeReason: "public-effect-frame-awaiting-h4-safe-geometry" }
             : card) : cards,
           suppressTransitions: true,
           layoutPending,
@@ -5891,7 +5960,7 @@ function SingleTargetCardJourney({
       window.cancelAnimationFrame(resizeFrame);
       window.clearTimeout(placementRetryTimer);
     };
-  }, [action.publicCardEffectFrame?.effectId, journeyEnabled, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, isBumperHarvest, journey.layoutPending, journey.scopeKey, hasLocalKirinMaterialParking, scopeKey, placementFailureReporter]);
+  }, [action.publicCardEffectFrame?.effectId, journeyEnabled, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, isBumperHarvest, journey.layoutPending, journey.scopeKey, hasLocalKirinMaterialParking, scopeKey, sharedPublicStage?.layout.identity, sharedPublicStage?.revealReady, placementFailureReporter]);
 
   const currentCard = activeCard ?? journey.cards.find((card) => card.eventId === activeEventId) ?? null;
   const allParked = !journey.layoutPending && journey.cards.length > 0 && journey.cards.every((card) => card.phase === "parked");

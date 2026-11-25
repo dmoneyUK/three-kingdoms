@@ -48,6 +48,54 @@ function visibleForMeasure(element: HTMLElement): boolean {
   return style.display !== "none" && rect.width > 0 && rect.height > 0;
 }
 
+/** Measures the real union used by both shared placement and frame rendering.
+ * The panel's box alone is insufficient when title/material children overflow
+ * because of font metrics, transforms, or responsive wrapping. */
+export function publicEffectFrameVisualFootprint(primary: HTMLElement): {
+  rect: PublicStageRect;
+  primaryOffset: { left: number; top: number };
+} | null {
+  const panels = [...primary.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel")]
+    .filter(visibleForMeasure);
+  if (panels.length !== 1) return null;
+  const panel = panels[0];
+  const eventId = primary.dataset.publicCardJourneyEventId ?? "";
+  const journeyCardIds = (primary.dataset.publicCardJourneyCardIds ?? "").split(",").filter(Boolean);
+  const materialCardIds = (panel.dataset.publicCardFrameMaterialCardIds ?? "").split(",").filter(Boolean);
+  const materialNodes = [...panel.querySelectorAll<HTMLElement>("[data-public-card-effect-frame-card-id]")];
+  const titleNodes = [...panel.querySelectorAll<HTMLElement>(".public-card-effect-frame-title")];
+  const renderedMaterialIds = materialNodes.map((element) => element.dataset.publicCardEffectFrameCardId ?? "");
+  const materialCount = Number(panel.dataset.publicCardFrameMaterialCount);
+  if (!eventId || panel.dataset.publicCardFrameCardEventId !== eventId
+    || journeyCardIds.length === 0
+    || materialCount !== materialCardIds.length || materialCount !== materialNodes.length
+    || titleNodes.length !== 1 || !visibleForMeasure(titleNodes[0])
+    || materialNodes.some((element) => !visibleForMeasure(element))
+    || materialCardIds.some((id, index) => id !== journeyCardIds[index] || id !== renderedMaterialIds[index])) return null;
+  const elements = [panel,
+    ...panel.querySelectorAll<HTMLElement>([
+      ".public-card-effect-frame-title",
+      ".public-card-effect-frame-material",
+      ".public-card-effect-frame-materials",
+      ".public-card-effect-frame-count",
+      "[data-public-card-effect-frame-card-id]",
+    ].join(",")),
+  ].filter(visibleForMeasure);
+  if (elements.length === 0) return null;
+  const rects = elements.map((element) => element.getBoundingClientRect());
+  const rect = {
+    left: Math.min(...rects.map((item) => item.left)),
+    top: Math.min(...rects.map((item) => item.top)),
+    right: Math.max(...rects.map((item) => item.right)),
+    bottom: Math.max(...rects.map((item) => item.bottom)),
+  };
+  if (![rect.left, rect.top, rect.right, rect.bottom].every(Number.isFinite)
+    || rect.right <= rect.left || rect.bottom <= rect.top) return null;
+  const primaryRect = primary.getBoundingClientRect();
+  if (primaryRect.width <= 0 || primaryRect.height <= 0) return null;
+  return { rect, primaryOffset: { left: rect.left - primaryRect.left, top: rect.top - primaryRect.top } };
+}
+
 function visibleObstacle(element: HTMLElement): boolean {
   const style = window.getComputedStyle(element);
   return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0
@@ -185,17 +233,28 @@ export function PublicStageLayoutProvider({
         return;
       }
 
-      const frameRects = phase === "REVEAL"
-        ? [...primary.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel")]
-          .filter(visibleForMeasure).map((element) => element.getBoundingClientRect())
+      const framePanels = phase === "REVEAL"
+        ? [...primary.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel")].filter(visibleForMeasure)
         : [];
-      const visualPrimary = frameRects.reduce((rect, frameRect) => ({
-        left: Math.min(rect.left, frameRect.left),
-        top: Math.min(rect.top, frameRect.top),
-        right: Math.max(rect.right, frameRect.right),
-        bottom: Math.max(rect.bottom, frameRect.bottom),
-      }), { left: primaryRect.left, top: primaryRect.top, right: primaryRect.right, bottom: primaryRect.bottom });
-      const primaryOffset = { left: visualPrimary.left - primaryRect.left, top: visualPrimary.top - primaryRect.top };
+      const frameFootprint = framePanels.length === 1 ? publicEffectFrameVisualFootprint(primary) : null;
+      if (framePanels.length > 0 && !frameFootprint) {
+        setData(table, "data-public-stage-layout-status", "unavailable");
+        setData(table, "data-public-stage-layout-phase", phase.toLowerCase());
+        setData(table, "data-public-stage-layout-identity", undefined);
+        setData(table, "data-public-stage-layout-failure", JSON.stringify({
+          reason: framePanels.length === 1 ? "EFFECT_FRAME_FOOTPRINT_UNAVAILABLE" : "MULTIPLE_EFFECT_FRAME_PANELS",
+          eventId, cardId, viewerId, phase, generation: generationRef.current.generation,
+        }));
+        snapshotRef.current = null;
+        committedLayouts.delete(table);
+        setSnapshot((current) => current === null ? current : null);
+        return;
+      }
+      const visualPrimary = frameFootprint
+        ? frameFootprint.rect
+        : { left: primaryRect.left, top: primaryRect.top, right: primaryRect.right, bottom: primaryRect.bottom };
+      const primaryOffset = frameFootprint?.primaryOffset
+        ?? { left: visualPrimary.left - primaryRect.left, top: visualPrimary.top - primaryRect.top };
 
       const announcements = [...display.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
         .filter((announcement) => announcement.dataset.publicCardAnnouncementEventId === eventId
@@ -207,6 +266,22 @@ export function PublicStageLayoutProvider({
       const announcement = announcements.length === 1 ? announcements[0] : null;
       if (announcements.length > 1 || phase !== "REVEAL" && (!announcement || !chip)) {
         clear();
+        return;
+      }
+      if (frameFootprint && (!announcement || !chip)) {
+        setData(table, "data-public-stage-layout-status", "unavailable");
+        setData(table, "data-public-stage-layout-phase", phase.toLowerCase());
+        setData(table, "data-public-stage-layout-identity", undefined);
+        setData(table, "data-public-stage-layout-failure", JSON.stringify({
+          reason: "EFFECT_FRAME_PUBLIC_BANDS_UNAVAILABLE",
+          eventId, cardId, viewerId, phase,
+          frame: roundedRect(frameFootprint.rect),
+          hasMatchingH4: Boolean(announcement),
+          pac: chip ? roundedRect(rectOf(chip)) : null,
+        }));
+        snapshotRef.current = null;
+        committedLayouts.delete(table);
+        setSnapshot((current) => current === null ? current : null);
         return;
       }
       const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
@@ -250,7 +325,7 @@ export function PublicStageLayoutProvider({
         bottom: (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight),
       };
       const tableBounds = rectOf(table);
-      const stationarySurface: PublicStageStationarySurface = phase === "REVEAL" && frameRects.length > 0
+      const stationarySurface: PublicStageStationarySurface = phase === "REVEAL" && frameFootprint
         ? "effect-frame" : "card";
       const upperH4 = {
         top: h4Band.top,
@@ -476,17 +551,43 @@ export function PublicStageLayoutProvider({
       }
       const next: SharedPublicStageLayout = {
         layout: result.layout,
-        revealReady: phase !== "REVEAL" || !announcement || (() => {
-          const style = window.getComputedStyle(announcement);
-          const rect = announcement.getBoundingClientRect();
-          const target = result.layout.announcement;
+        revealReady: phase !== "REVEAL" || (!frameFootprint && !announcement) || (() => {
+          if (frameFootprint && (!announcement || !chip)) return false;
+          const cardReady = !frameFootprint || (
+            Math.abs(visualPrimary.left - result.layout.card.left) <= 1
+            && Math.abs(visualPrimary.top - result.layout.card.top) <= 1
+            && Math.abs(visualPrimary.right - result.layout.card.right) <= 1
+            && Math.abs(visualPrimary.bottom - result.layout.card.bottom) <= 1
+          );
+          if (!cardReady) return false;
+          const announcementReady = !announcement || (() => {
+            const style = window.getComputedStyle(announcement);
+            const rect = announcement.getBoundingClientRect();
+            const target = result.layout.announcement;
+            return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0
+              && announcement.dataset.publicCardAnnouncementPositioned === "true"
+              && Math.abs(rect.left - target.left) <= 1
+              && Math.abs(rect.top - target.top) <= 1
+              && Math.abs(rect.width - (target.right - target.left)) <= 1
+              && rect.height <= target.bottom - target.top + 1
+              && rect.bottom <= h4Band.bottom + 1;
+          })();
+          if (!announcementReady) return false;
+          if (!frameFootprint) return true;
+          const activityChip = chip!;
+          const style = window.getComputedStyle(activityChip);
+          const rect = activityChip.getBoundingClientRect();
+          const target = result.layout.activity;
+          // A status-kind transition can keep the PAC's ordinary placement
+          // owner while the active Effect Frame still owns the REVEAL. Accept
+          // it only when the real rendered chip remains inside the shared
+          // measured reserve; lifecycle and geometry, not a CSS-path marker,
+          // are the authority.
           return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0
-            && announcement.dataset.publicStageLayoutIdentity === result.layout.identity
-            && announcement.dataset.publicCardAnnouncementPositioned === "true"
-            && Math.abs(rect.left - target.left) <= 1
-            && Math.abs(rect.top - target.top) <= 1
-            && Math.abs(rect.width - (target.right - target.left)) <= 1
-            && rect.bottom <= h4Band.bottom + 1;
+            && rect.left >= target.left - 1
+            && rect.right <= target.right + 1
+            && rect.top >= target.top - 1
+            && rect.bottom <= target.bottom + 1;
         })(),
         primaryEventId: eventId,
         primaryCardId: cardId,

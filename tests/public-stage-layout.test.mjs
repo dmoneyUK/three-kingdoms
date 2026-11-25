@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findBattlefieldChoiceSafeTopOffset, harvestChoicePlacementPanelRect, isBattlefieldChoiceTopOffsetSafe } from "../app/battlefield-choice-stage.tsx";
-import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicStageSceneIdentity, publicStageSceneMatchesCard } from "../game/public-stage-layout.ts";
+import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicStagePrimaryOriginFromVisualRect, publicStageSceneIdentity, publicStageSceneMatchesCard } from "../game/public-stage-layout.ts";
 
 const scene = {
   semantics: "PROVEN",
@@ -65,6 +65,14 @@ test("shared reveal readiness requires the exact room, root, interaction, event,
     { phase: "MOVE" },
   ]) assert.equal(publicStageSceneMatchesCard(scene, { ...cardIdentity, ...change }), false);
   assert.equal(publicStageSceneMatchesCard({ ...scene, semantics: "INFERRED" }, cardIdentity), false);
+});
+
+test("shared measured Effect Frame union maps back to the same primary CardFace origin", () => {
+  const measuredFrame = { left: 111, top: 200, right: 279, bottom: 394 };
+  const primaryOffset = { left: -39, top: -47 };
+  assert.deepEqual(publicStagePrimaryOriginFromVisualRect(measuredFrame, primaryOffset), { left: 150, top: 247 });
+  assert.equal(publicStagePrimaryOriginFromVisualRect({ ...measuredFrame, right: measuredFrame.left }, primaryOffset), null);
+  assert.equal(publicStagePrimaryOriginFromVisualRect(measuredFrame, { ...primaryOffset, top: Number.NaN }), null);
 });
 
 test("Harvest pool uses the measured central band below H4 and above PAC", () => {

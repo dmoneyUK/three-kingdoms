@@ -1,15 +1,13 @@
 # HANDOVER
 
-## Latest verified delivery — §10.76-B
+## Current bounded task — §10.76-B correction
 
-Implementation `7614126ff43704222807030f10e2806c7fd6372e` is pushed to `ux-v2`. Exact-SHA [GitHub Actions 45577267852](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45577267852) passed API tests, lint/fast tests, browser startup/H4 smoke 2/2, D1 migration, Worker deployment and production smoke. Worker version `1fdbfaa5-17cc-4326-a20a-20c4d1bd67e1`; `/api/health` returned `{"ok":true,"worker":"available"}` and `/` returned HTTP 200. Owner iPhone review for §10.76-B / dependent §10.70 remains pending.
+**Design reviewed:** latest remote `docs/UX2-refine.md`, revision 2026-11-25 08:17 UTC, source `2a208de8bf52be470964f948a3f4e2b543b9baf0`.
 
-**Verified result:** Complete validated Effect Frames use one shared 5px H4/PAC clearance policy in the solver and actual renderer. Ordinary CardFaces stay at 8px; parked-mini spacing is unchanged. The focused 390×844 Kirin browser scenario passed across attacker, target and observer: one genuine Mount Effect Frame, one matching H4, measured clearance ≥5px above/below, no hidden Hand identity in observer projection, and the true material-owner miniature parked above PAC. Focused tests passed 40/40; build and `git diff --check` passed. Local UI/browser testing took 14 seconds with no retry.
+**Scope:** Continue the existing shared Effect Frame delivery. Use the approved 5px minimum for the complete stationary frame against H4/PAC; keep ordinary CardFaces at 8px and material miniatures at their existing 8px parking gap. Preserve proven physical card, owner, event, root, resolution and viewer identity.
 
-## Current bounded task — §10.77
+**Local result:** The shared provider, local center placement and readiness now measure the same complete visible frame union (title plus every genuine material Face). A later valid shared measurement recovers local no-fit without relaxing identity checks; incomplete rendered footprints fail closed. No-fit diagnostics retain measured H4/PAC/frame geometry. The true material owner still receives the parked miniature.
 
-**Design reviewed:** latest remote `docs/UX2-refine.md`, revision 2026-11-25 08:17 UTC; source `7614126ff43704222807030f10e2806c7fd6372e`.
+**Validation:** focused Node tests 30/30 passed; `npm run build` passed (existing chunk-size and static-route-classification warnings); `git diff --check` passed. Final focused 390×844 Kirin browser case passed 1/1 in 13 seconds across attacker, target and observer, checking visible matching H4, complete-frame ≥5px clearance, authentic parking ≥8px, and observer hand privacy. Cumulative local browser testing remains within this task's original five-minute cap. Exact-SHA GitHub Actions, Worker deployment and production smoke are pending this correction's push.
 
-**Task:** `§10.77 UNIVERSAL-H4-ACTION-OUTCOME-COPY-01` — truthful source/action plus committed public outcome. Reuse validated server facts for actual damage, Oath recovery and Frost Sword discards; when source is unproven, state only the factual result. Preserve real actor/recipient, amount, causal linkage, privacy, accepted special copy, one H4 owner and §10.76 synchronization. No gameplay/rule/timing changes; do not infer from turn, HP deltas or client text, expose private draws, or redo §10.76-B.
-
-**Resume point:** Follow §10.77 binding scope and minimum proof in the remote design. Add focused API/projection/formatter regressions for Attack and unknown-source damage, HP cost vs damage, Oath one/multiple/no eligible recipients with true root/actor, Frost Sword’s actual two discards and damage prevention, privacy, and preservation of accepted skill/equipment wording. Prefer no browser test; if H4 owner arbitration needs one, remain within the same task’s five-minute total local UI/browser budget. Commit/push and verify exact-SHA CI, deployment and production smoke before continuing to §10.72.
+**Next bounded task after delivery:** §10.77 — only after this correction's exact-SHA CI, deployment and production smoke are verified. Preserve the existing §10.77 worktree and reconcile it at that boundary.

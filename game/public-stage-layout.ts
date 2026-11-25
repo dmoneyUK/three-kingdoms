@@ -167,6 +167,17 @@ export function publicStageSceneMatchesCard(scene: PublicStageScene | null | und
     && scene!.phase === card.phase;
 }
 
+/** Maps the measured shared visual union back to its real primary card anchor. */
+export function publicStagePrimaryOriginFromVisualRect(
+  visual: PublicStageRect,
+  primaryOffset: { left: number; top: number },
+): { left: number; top: number } | null {
+  if (!finiteRect(visual) || !Number.isFinite(primaryOffset.left) || !Number.isFinite(primaryOffset.top)) return null;
+  const left = visual.left - primaryOffset.left;
+  const top = visual.top - primaryOffset.top;
+  return Number.isFinite(left) && Number.isFinite(top) ? { left, top } : null;
+}
+
 /**
  * Finds the shared collision-free placement for one proven public-card phase.
  * REVEAL uses H4 → full CardFace → PAC. MOVE/PARKED preserve the measured card

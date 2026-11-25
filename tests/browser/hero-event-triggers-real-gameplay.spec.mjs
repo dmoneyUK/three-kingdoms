@@ -1120,11 +1120,40 @@ test("real Kirin Bow frames the target's discarded Mount for attacker, target an
           .find((element) => element.dataset.publicCardViewerId === expectedViewerId);
         const journey = [...(display?.querySelectorAll("[data-public-card-journey-event-id]") ?? [])]
           .find((element) => element.dataset.publicCardJourneyCardIds === cardId
-            && ["reveal", "move", "parked"].includes(element.dataset.publicCardJourneyPhase));
+            && element.dataset.publicCardJourneyPhase === "reveal"
+            && element.dataset.publicCardRevealReadiness === "ready");
         if (!display || !journey || !journey.classList.contains("is-public-effect-frame")) return false;
         const announcement = display.querySelector('[data-public-card-announcement="true"]');
         const framePanel = journey.querySelector(".public-card-effect-frame-panel");
+        const table = display.closest(".play-table");
         const pac = document.querySelector(".play-table [data-public-activity-chip='true']");
+        const consoleGuidance = document.querySelector(".local-player-dock .console-guidance");
+        if (!framePanel || !announcement || !pac
+          || announcement.dataset.publicCardAnnouncementEventId !== journey.dataset.publicCardJourneyEventId
+          || announcement.dataset.publicCardAnnouncementPositioned !== "true"
+          || getComputedStyle(pac).visibility !== "visible"
+          || Number(getComputedStyle(pac).opacity) <= 0
+          || !consoleGuidance
+          || table?.dataset.publicStageLayoutStatus !== "shared-reveal") return false;
+        const frameParts = [framePanel, ...framePanel.querySelectorAll([
+          ".public-card-effect-frame-title", ".public-card-effect-frame-materials",
+          ".public-card-effect-frame-material", "[data-public-card-effect-frame-card-id]",
+        ].join(","))].filter((element) => {
+          if (!element) return false;
+          const rect = element.getBoundingClientRect();
+          return getComputedStyle(element).display !== "none" && rect.width > 0 && rect.height > 0;
+        });
+        const frameRects = frameParts.map((element) => element.getBoundingClientRect());
+        const frameUnionRect = frameRects.length ? {
+          x: Math.min(...frameRects.map((rect) => rect.left)),
+          y: Math.min(...frameRects.map((rect) => rect.top)),
+          right: Math.max(...frameRects.map((rect) => rect.right)),
+          bottom: Math.max(...frameRects.map((rect) => rect.bottom)),
+        } : null;
+        if (frameUnionRect) {
+          frameUnionRect.width = frameUnionRect.right - frameUnionRect.x;
+          frameUnionRect.height = frameUnionRect.bottom - frameUnionRect.y;
+        }
         return {
           viewerId: display.dataset.publicCardViewerId,
           eventId: journey.dataset.publicCardJourneyEventId,
@@ -1136,12 +1165,25 @@ test("real Kirin Bow frames the target's discarded Mount for attacker, target an
           frameMaterialCardIds: journey.dataset.publicCardJourneyCardIds,
           frameFaces: journey.dataset.publicCardJourneyCardIds.split(","),
           frameTitle: journey.querySelector(".public-card-lust-cost-parked, .public-card-effect-frame-title")?.textContent?.trim(),
+          frameVisibility: framePanel ? {
+            display: getComputedStyle(framePanel).display,
+            visibility: getComputedStyle(framePanel).visibility,
+            opacity: Number(getComputedStyle(framePanel).opacity),
+          } : null,
+          revealReadiness: journey.dataset.publicCardRevealReadiness,
           announcementOwner: announcement?.getAttribute("data-public-h4-owner"),
+          announcementEventId: announcement?.getAttribute("data-public-card-announcement-event-id"),
+          announcementPositioned: announcement?.getAttribute("data-public-card-announcement-positioned"),
           announcementCount: display.querySelectorAll('[data-public-card-announcement="true"]').length,
           announcement: announcement?.textContent?.trim(),
           frameRect: framePanel?.getBoundingClientRect().toJSON(),
+          frameUnionRect,
           announcementRect: announcement?.getBoundingClientRect().toJSON(),
           pacRect: pac?.getBoundingClientRect().toJSON(),
+          consoleRect: consoleGuidance?.getBoundingClientRect().toJSON(),
+          tableRect: table?.getBoundingClientRect().toJSON(),
+          layoutStatus: table?.getAttribute("data-public-stage-layout-status"),
+          framePlacement: display.getAttribute("data-public-card-effect-frame-placement"),
           viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
         };
       }, { expectedViewerId: viewerId, cardId: mount.id }, { timeout: 8_000 });
@@ -1151,18 +1193,29 @@ test("real Kirin Bow frames the target's discarded Mount for attacker, target an
       const evidence = frameEvidence[index];
       const { viewerPage, viewerId, privateHandCard } = viewers[index];
       expect(evidence).toMatchObject({
-        viewerId, eventId: effectEvent.id, phase: expect.stringMatching(/^(reveal|move|parked)$/),
+        viewerId, eventId: effectEvent.id, phase: "reveal", revealReadiness: "ready",
         journeyActorId: seedData.players[1].id, frameCount: 1, frameClass: "EFFECT",
         frameMaterialCardIds: mount.id, frameFaces: [mount.id], frameTitle: "KIRIN BOW · MOUNT EFFECT",
+        frameVisibility: { display: "block", visibility: "visible", opacity: expect.any(Number) },
         announcementOwner: "PublicCardDisplay",
+        announcementEventId: effectEvent.id,
+        announcementPositioned: "true",
         announcementCount: 1, viewport: { width: 390, height: 844, scrollWidth: 390 },
       });
+      expect(evidence.frameVisibility.opacity).toBeGreaterThan(0);
+      expect(evidence.layoutStatus).toBe("shared-reveal");
+      expect(evidence.framePlacement).toBeNull();
       expect(evidence.frameRect).toBeTruthy();
+      expect(evidence.frameUnionRect).toBeTruthy();
       expect(evidence.announcementRect).toBeTruthy();
       expect(evidence.pacRect).toBeTruthy();
-      expect(evidence.frameRect.top - evidence.announcementRect.bottom).toBeGreaterThanOrEqual(5);
-      expect(evidence.pacRect.top - evidence.frameRect.bottom).toBeGreaterThanOrEqual(5);
-      for (const rect of [evidence.frameRect, evidence.announcementRect, evidence.pacRect]) {
+      expect(evidence.consoleRect).toBeTruthy();
+      expect(evidence.frameUnionRect.y - evidence.announcementRect.bottom).toBeGreaterThanOrEqual(5);
+      expect(evidence.pacRect.top - evidence.frameUnionRect.bottom).toBeGreaterThanOrEqual(5);
+      expect(Math.abs(evidence.pacRect.bottom - evidence.consoleRect.top)).toBeLessThanOrEqual(2);
+      expect(Math.abs(evidence.pacRect.left + evidence.pacRect.right
+        - evidence.tableRect.left - evidence.tableRect.right)).toBeLessThanOrEqual(2);
+      for (const rect of [evidence.frameUnionRect, evidence.announcementRect, evidence.pacRect]) {
         expect(rect.x).toBeGreaterThanOrEqual(0);
         expect(rect.y).toBeGreaterThanOrEqual(0);
         expect(rect.right).toBeLessThanOrEqual(390);
@@ -1184,6 +1237,20 @@ test("real Kirin Bow frames the target's discarded Mount for attacker, target an
     const parkedMaterial = targetPage.locator(`[data-public-card-journey-event-id="${effectEvent.id}"][data-public-card-journey-phase="parked"]`).first();
     await expect(parkedMaterial).toHaveAttribute("data-public-card-journey-effect-parking-placement", "above-pac", { timeout: 7_000 });
     await expect(parkedMaterial).toHaveAttribute("data-public-card-journey-effect-parking-owner-id", seedData.players[1].id);
+    const parkedGeometry = await parkedMaterial.evaluate((element) => {
+      const label = element.querySelector(".public-card-lust-cost-parked");
+      const pac = document.querySelector(".play-table [data-public-activity-chip='true']");
+      const labelRect = label?.getBoundingClientRect();
+      const pacRect = pac?.getBoundingClientRect();
+      return {
+        cardId: element.getAttribute("data-public-card-journey-card-id"),
+        labelVisible: Boolean(label && getComputedStyle(label).visibility !== "hidden" && labelRect?.width && labelRect.height),
+        clearance: labelRect && pacRect ? pacRect.top - labelRect.bottom : null,
+      };
+    });
+    expect(parkedGeometry.cardId).toBe(mount.id);
+    expect(parkedGeometry.labelVisible).toBe(true);
+    expect(parkedGeometry.clearance).toBeGreaterThanOrEqual(8);
   } finally {
     await targetPage.close();
     await observerPage.close();

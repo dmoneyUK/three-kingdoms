@@ -2931,8 +2931,8 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
         expect(placement.titleText).toContain("KIRIN BOW");
         expect(placement.faceText.trim().length).toBeGreaterThan(0);
         expect(placement.journeyCards).toBe(1);
-        expect(placement.frame.top - placement.h4.bottom).toBeGreaterThanOrEqual(8);
-        expect(placement.pac.top - placement.frame.bottom).toBeGreaterThanOrEqual(8);
+        expect(placement.frame.top - placement.h4.bottom).toBeGreaterThanOrEqual(5);
+        expect(placement.pac.top - placement.frame.bottom).toBeGreaterThanOrEqual(5);
         expect(placement.face.left).toBeGreaterThanOrEqual(placement.frame.left);
         expect(placement.face.top).toBeGreaterThanOrEqual(placement.frame.top);
         expect(placement.face.right).toBeLessThanOrEqual(placement.frame.right);
