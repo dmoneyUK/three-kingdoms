@@ -3,6 +3,8 @@
 **Status:** discussion draft — visual redesign remains design-review gated; the UI-01 read-only adapter scaffold is implemented
 **Date:** 2026-10-02
 
+> **Historical baseline only — Owner reaffirmed 2026-11-25:** `docs/UX2-refine.md` is the current UX2 presentation authority. All older visible causal/relationship diagrams, connector/arrow presentation and central causal graph or reaction-chain visual requirements are superseded and must not be implemented or resumed. Retain this document for historical evidence and compatible server-authoritative semantic/architecture contracts only. It is not an execution queue.
+
 ## Goal
 
 Make the local player's operational area the stable center of interaction while preserving table position, distance, target selection, and public information for every other player.
