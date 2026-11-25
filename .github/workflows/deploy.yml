@@ -2,7 +2,7 @@ name: Deploy to Cloudflare
 
 on:
   push:
-    branches: [main, ux-v2, feature/smart-bot-player]
+    branches: [main, ux-v2, feature/smart-bot-player, review/aip-staging-lifecycle-01]
     paths-ignore:
       - "**/*.md"
   pull_request:
@@ -102,6 +102,7 @@ jobs:
   deploy-staging:
     name: Deploy isolated AI Staging Worker
     needs: [lint-fast, api, browser-smoke]
+    # The review ref is validation-only; this guard intentionally permits deploys only from the active AI branch.
     if: github.event_name == 'push' && github.ref == 'refs/heads/feature/smart-bot-player'
     environment:
       name: ai-staging
@@ -182,6 +183,7 @@ jobs:
 
   deploy:
     needs: [lint-fast, api, browser-smoke]
+    # Production remains restricted to the original release branches; review refs are always skipped.
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ux-v2')
     runs-on: ubuntu-latest
     steps:
