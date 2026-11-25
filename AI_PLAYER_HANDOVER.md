@@ -1,36 +1,17 @@
 # Smart Bot Player — Coding Agent Handover
 
-Branch `feature/smart-bot-player` (local worktree `codex/aip-perf-01-20261122`). Latest design reviewed: AIP-D37 / `c5fbba9d`; `AIP-PERF-01` remains **CHANGES_REQUESTED**, not accepted. Do not start AIP-PERF-GET-02, AIP-PERF-BOT-02, PLAY work or another hosted retry.
+Branch `feature/smart-bot-player` (local worktree `codex/aip-perf-01-20261122`). Latest design reviewed: AIP-D37 / `8009e578`. `AIP-PERF-01` remains **CHANGES_REQUESTED**; do not start GET-02, BOT-02, PLAY or another hosted retry.
 
-## Current result
+## Current result — FREE-BUDGET-01
 
-Code SHA `4210d4033e9e097cb0229fd53e40e4f2b886fcbe` implements the request-local LOG-DECODE fix: one decoded structured-log representation is reused for public sequence validation, viewer-filtered timeline and legacy text log. It does not change polling, rules, UI, SQL or cross-request caching.
+Delivery source SHA `3c6fb522ed0161900b7e56a2486a9b59e48816df` skips the duplicate token-hash/authenticated-session query only for a server-minted internal Bot principal. Human authentication remains unchanged; the canonical all-player actor/controller, role, actionRevision, stale/replay, lease and privacy checks remain in the existing POST path.
 
-Focused local validation passed:
+Checked-in command: `WTK_SOURCE_SHA=3c6fb522ed0161900b7e56a2486a9b59e48816df node --import tsx --test tests/free-budget-benchmark.test.mjs`. The fixed seed `0x5eedf00d` uses 4 seats, 203 public events and 150 Bot-work rows, 5 warmups plus 20 measured samples for unchanged/active GET, both human response actions, final settlement, Bot step, postwrite and Cron classes. It reports local process CPU and wall time separately from synthetic D1 work counts; it is not hosted CPU evidence. Deep-equal projections, private-card absence and valid/wrong-room/wrong-actor/wrong-role/test-seat/stale/replay outcomes are equal before/after. Bot step and postwrite remove exactly one token hash, authenticated session lookup and modeled D1 query; other classes and payload bytes are unchanged.
 
-- `tests/room-log-decode.test.mjs`: 2/2;
-- `tests/public-presentation-turn.test.mjs`: 5/5;
-- targeted ESLint: 0 errors (existing hook warnings only);
-- `git diff --check`: passed.
+Focused local evidence: benchmark 1/1; rebuilt Worker; targeted ESLint 0 errors; `git diff --check`; Bot scheduler API 35 passed, 1 conditional skip, 0 failed.
 
-Exact-SHA [Actions 45486329645](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45486329645) passed Lint/Fast, API, Browser and isolated AI Staging deployment/mobile refresh-rejoin. Staging Worker Version: `6c76a713-a477-411d-984f-49506395296e`; URL: `https://three-kingdoms-ai-staging.dai-jinge.workers.dev`; D1: `three-kingdoms-ai-staging-db`; `BOT_AI_ENABLED=false`; production `deploy` was `skipped`.
-
-## Reliability gate and blocker
-
-The one post-green-CI disposable long-room run used `25VF2` from 21:23:03–21:35:35 UTC, seeded with 203 public records and 150 Bot-work rows. It reached 34 turn epochs, 95 authoritative revisions and 4 target-card settlements. Before archive, D1 readback was `status=playing`, 200 retained records, 241 Bot-work rows and 88 live consumed rows; the room was then archived `finished`.
-
-Tail evidence from the dedicated driver window:
-
-- authenticated GET: 456 samples; CPU P50/P95/P99/max `6/13/26/34 ms`; wall `58/104/136/211 ms`;
-- room POST: 105 samples; CPU `40/72/88/102 ms`; wall `755/1011/1148/1190 ms`;
-- 8 GET and 3 POST HTTP 503 `outcome=exceededCpu`; HTTP 1102: 0;
-- first repeated CPU-failure window: 21:34:50–21:35:04 UTC. The run stopped and was not retried;
-- D1 account analytics for 21:22:00–21:37:31 UTC: 6,409 read queries / 620,534 rows read and 984 write queries / 2,370 rows written.
-
-The long fixture did not reach its final privacy/rejoin probes. Exact-SHA CI mobile smoke did pass refresh/rejoin, and focused log projections covered host/other/anonymous/invalid-viewer secrecy. Cloudflare account/version settings reported `usage_model=standard` but no `limits.cpu_ms`, so the effective Staging CPU ceiling is **UNKNOWN**; observed 9–10 ms terminations are runtime evidence, not configuration proof.
-
-Cleanup is complete: fixture archived, no tail/driver process remains, and final Staging inventory is ingress `false`, previews `false`, Cron schedules `0`, domains `0`, matching queue consumers `0`, matching zone routes `0`.
+Exact-SHA [Actions 45514264725](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45514264725): Lint/Fast, API and Browser all GREEN; Staging D1 guard/migration and Worker deploy GREEN; Staging Worker Version `a090ca17-9078-4262-889b-21855886bbe2`. Production `deploy` was **SKIPPED**. The required mobile Staging refresh/rejoin smoke FAILED after 13.7 minutes in disposable room `QT3AS`: the room was still `playing`, `draw`, `turnSeat=3`, waiting for a testable human action; D1 showed a pending Dodge response for the human after Bot 4's Attack, with no current Bot work row. This is a hosted progression/smoke blocker, not proof that the narrow lookup change caused the timeout. The fixture was archived in isolated Staging only (`status=finished`, `phase=finished`, `pending_json=NULL`); no production state or diagnostic ingress was changed.
 
 ## One next bounded task
 
-Planner/Reviewer must choose one source-backed follow-up to measure and optimize the remaining canonical `roomState` projection/serialization path, including the final settlement POST. Keep the scope inside AIP-PERF-01; do not modify UX2, raise `cpu_ms`, add infrastructure, start GET-02/BOT-02/PLAY, or reopen Staging until that proposal is approved. Owner still needs one real iPhone Safari 10–15 minute 1-human+3-Bot acceptance after engineering evidence is green.
+Reviewer/PM must review the failed `QT3AS` Bot-cycle smoke and the Free-budget benchmark/`BOT-02` vs `GET-02` decision package. Keep `AIP-PERF-01` **CHANGES_REQUESTED**; do not rerun the same hosted room, claim Free CPU safety, or implement either DRAFT architecture without a new bounded authorization. Owner still needs the separate real iPhone Safari acceptance after engineering evidence is green.
