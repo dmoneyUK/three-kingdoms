@@ -112,6 +112,8 @@ jobs:
     timeout-minutes: 30
     env:
       STAGING_URL: https://three-kingdoms-ai-staging.dai-jinge.workers.dev
+      STAGING_DEPLOY_TAG: aip-staging-${{ github.run_id }}-${{ github.sha }}
+      STAGING_LIFECYCLE_EVIDENCE_DIR: .wrangler/ai-staging-lifecycle
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -120,7 +122,13 @@ jobs:
           cache: "npm"
       - run: npm ci
       - name: Verify Staging target guard regressions
-        run: node --test tests/ai-staging-config.test.mjs
+        run: node --test tests/ai-staging-config.test.mjs tests/ai-staging-lifecycle.test.mjs tests/browser/staging-room-reconnect-diagnostics.test.mjs tests/browser/staging-room-reconnect-logic.test.mjs
+      - name: Preflight paused Staging lifecycle and ownership
+        id: staging_lifecycle_preflight
+        run: node scripts/ai-staging-lifecycle.mjs preflight
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Install Chromium for mobile Staging smoke
         run: npx playwright install --with-deps chromium
       - name: Build for the Staging environment
@@ -130,25 +138,45 @@ jobs:
       - name: Verify generated Worker and D1 target
         run: node scripts/verify-ai-staging-config.mjs
       - name: Dry-run the Staging Worker deployment
-        run: npx wrangler deploy --dry-run --config dist/server/wrangler.json --name three-kingdoms-ai-staging
+        run: npx wrangler deploy --dry-run --config dist/server/wrangler.json --name three-kingdoms-ai-staging --tag "$STAGING_DEPLOY_TAG"
       - name: Apply Staging D1 migrations
         run: npx wrangler d1 migrations apply three-kingdoms-ai-staging-db --remote --config dist/server/wrangler.json
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy Staging Worker
-        run: npx wrangler deploy --config dist/server/wrangler.json --name three-kingdoms-ai-staging
+        run: npx wrangler deploy --config dist/server/wrangler.json --name three-kingdoms-ai-staging --tag "$STAGING_DEPLOY_TAG" --message "AIP-PERF-01 Staging lifecycle $GITHUB_RUN_ID"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Capture owned Staging deployment version
+        if: always() && steps.staging_lifecycle_preflight.outcome == 'success'
+        run: node scripts/ai-staging-lifecycle.mjs capture
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Verify health and mobile room refresh/rejoin
         run: npx playwright test --config tests/browser/staging-playwright.config.mjs
-      - name: Upload Staging mobile smoke evidence
+      - name: Contain Staging Worker and Cron
+        if: always()
+        run: node scripts/ai-staging-lifecycle.mjs contain
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Upload Staging lifecycle and mobile smoke evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: staging-mobile-smoke-evidence
           path: tests/browser/test-results/staging-browser/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Upload Staging lifecycle readback
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-lifecycle-evidence
+          path: .wrangler/ai-staging-lifecycle/
           if-no-files-found: ignore
           retention-days: 14
 
