@@ -116,7 +116,7 @@ test("Lust offers ordered male Duel targets, accepts one Hand cost, bypasses Neg
     { kind: "DAMAGE_APPLIED", playerId: setup.first.id, amount: 1 },
   ], "the outcome reports the true one HP loss, not only the attempted Duel damage");
   const damageH4 = assertPublicOutcomeHasH4Owner(finished.data.room, committedDamageEvent.id);
-  assert.equal(damageH4.narration.headline, `${setup.second.name} dealt 1 damage to ${setup.first.name}.`,
+  assert.equal(damageH4.narration.headline, `${setup.second.name} dealt 1 damage to ${setup.first.name} with Duel.`,
     "the real damage result reaches the same shared H4 formatter and single-owner route");
   assert.ok(finished.data.room.log.some((entry) => entry.includes(`${setup.second.name}`) && entry.includes(`${setup.first.name}`)), JSON.stringify(finished.data.room.log));
   const lustResults = finished.data.room.presentationSnapshot.diaoChanSkillNotices.filter((notice) => notice.notice === "DUEL_RESULT");
