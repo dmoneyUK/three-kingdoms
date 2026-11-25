@@ -3583,9 +3583,27 @@ function decisionLabel(action: CurrentAction, reason: string) {
 function decisionInstruction(action: CurrentAction, reason: string) {
   if (action.kind === "trigger") {
     const option = action.triggerOptions?.[0];
-    if (option) return triggerDecisionInstruction(option.label, option.description, action.declineAction === "decline_trigger" || action.legalActions.includes("decline_trigger"));
+    if (option) {
+      if (isStauchnessConsequenceOption(option)) return "Choose a Stauchness consequence.";
+      return triggerDecisionInstruction(option.label, option.description, action.declineAction === "decline_trigger" || action.legalActions.includes("decline_trigger"));
+    }
   }
   return reason || "Make the required choice.";
+}
+
+function isStauchnessConsequenceOption(option: TriggerOptionView): option is TriggerOptionView & { selection: ChoiceTriggerSelection } {
+  const selection = option.selection;
+  if (option.effectId !== "xiahou_dun_ganglie" || option.allowDecline !== false || selection?.type !== "choice") return false;
+  const ids = selection.choices.map((choice) => choice.id);
+  return ids.includes("take_damage")
+    && ids.every((id) => id === "take_damage" || id === "discard_two")
+    && (!ids.includes("discard_two") || selection.cardCountByChoice?.discard_two === 2);
+}
+
+function stauchnessConsequenceLabel(choiceId: string) {
+  if (choiceId === "discard_two") return "Discard 2 Hand cards";
+  if (choiceId === "take_damage") return "Take 1 damage from Xiahou Dun";
+  return choiceId;
 }
 
 function presentationStageLabel(stage: PresentationClientView["stage"]) {
@@ -12132,7 +12150,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         </section>
       </BattlefieldChoiceStage>}
       {targetCardPickerInModal && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && <TargetCardPicker poolPlayerCount={room.players.length} poolScope={[room.code, room.meId, room.actionRevision ?? ""].join("\u001f")} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} option={targetCardPickerOption} compact={targetCardPickerUsesUnifiedModal} forceSharedPool={targetCardPickerOption.effectId === "kirin_bow_damage_about_to_apply"} kirinBowPool={targetCardPickerKirinBowPool} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={triggerControlsDisabled} canDecline={Boolean(consoleDecision.authoritativeDecline)} showCancel={targetCardPickerOption.effectId !== "sima_yi_fankui" && targetCardPickerOption.effectId !== "kirin_bow_damage_about_to_apply" && (targetCardPickerUsesUnifiedModal || consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId))} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={submitTargetCardPicker} onCancel={cancelTargetCardPicker} onDecline={() => onAction("decline_trigger")} />}
-      {triggerResponse && responseDecisionReady && choiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={choiceTriggerOption} selection={choiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={triggerControlsDisabled} error={error} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => { const validKeys = triggerSelectedKeys.filter((selectedKey) => choiceTriggerOption.selection?.type === "choice" && choiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = choiceTriggerOption.selection?.type === "choice" ? choiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; setTriggerSelectedKeys(validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys); }} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: choiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
+      {triggerResponse && responseDecisionReady && choiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={choiceTriggerOption} selection={choiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={triggerControlsDisabled} error={error} playerCount={room.players.length} placementKey={[room.code, room.meId, room.actionRevision ?? "", choiceTriggerOption.effectId].join("\u001f")} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => { const validKeys = triggerSelectedKeys.filter((selectedKey) => choiceTriggerOption.selection?.type === "choice" && choiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = choiceTriggerOption.selection?.type === "choice" ? choiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; setTriggerSelectedKeys(validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys); }} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: choiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}
       {groupScopePreview.active && <p className="group-scope-preview-label" data-group-scope-preview={groupScopePreview.cardKind ?? undefined} role="status">PREVIEW · {groupScopePreview.label}</p>}
       <div ref={playerBoardRef} className="player-board" aria-label="Players" data-player-count={room.players.length} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-mobile-top-ring={mobileSeatRingEnabled ? "true" : undefined} data-mobile-top-capacity={mobileSeatRingEnabled ? mobileSeatRingMetrics.topCapacity : undefined} data-mobile-side-count={mobileSeatRingEnabled ? mobileSideSeatCount : undefined} data-measured-board-width={mobileSeatRingEnabled ? mobileSeatRingMetrics.boardWidth : undefined} style={playerBoardStyle}>
@@ -12900,7 +12918,15 @@ function PrivateCardDistributionDialog({ cards, players, disabled, error, onSubm
   </section></div>;
 }
 
-export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice, selectedKeys, disabled, error, onChoice, onToggle, onConfirm }: { option: TriggerOptionView; selection: ChoiceTriggerSelection; hand: Card[]; selectedChoice: string; selectedKeys: string[]; disabled: boolean; error: string; onChoice: (choice: string) => void; onToggle: (key: string) => void; onConfirm: (choice: string, cardKeys: string[]) => void }) {
+export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice, selectedKeys, disabled, error, playerCount = 4, placementKey, onChoice, onToggle, onConfirm }: { option: TriggerOptionView; selection: ChoiceTriggerSelection; hand: Card[]; selectedChoice: string; selectedKeys: string[]; disabled: boolean; error: string; playerCount?: number; placementKey?: string; onChoice: (choice: string) => void; onToggle: (key: string) => void; onConfirm: (choice: string, cardKeys: string[]) => void }) {
+  const compactStauchness = isStauchnessConsequenceOption(option);
+  const placement = useBattlefieldChoicePlacement({
+    enabled: compactStauchness,
+    playerCount,
+    placementKey: placementKey ?? option.effectId,
+    requireSafePlacement: compactStauchness,
+    protectSharedPublicStage: compactStauchness,
+  });
   const validSelectedKeys = selectedKeys.filter((key) => selection.eligibleHandKeys.includes(key));
   const handKeys = selection.eligibleHandKeys
     .filter((key) => /^hand:\d+$/.test(key))
@@ -12908,8 +12934,56 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
   const [handRowRef, handRowOverflowing] = useHorizontalOverflow<HTMLDivElement>(`mandatory-choice:${option.effectId}:${handKeys.length}`);
   const requiredHandCount = selectedChoice ? selection.cardCountByChoice?.[selectedChoice] ?? (selectedChoice === "discard" ? 1 : 0) : 0;
   const needsHandCard = requiredHandCount > 0;
-  const complete = Boolean(selectedChoice && validSelectedKeys.length === requiredHandCount);
+  const choiceAvailable = selection.choices.some((choice) => choice.id === selectedChoice);
+  const complete = Boolean(choiceAvailable && selectedChoice && validSelectedKeys.length === requiredHandCount);
   const labelForChoice = (choice: { id: string; label: string }) => choice.label;
+  if (compactStauchness) return <BattlefieldChoiceStage
+    ref={placement.ref}
+    className="game-event-stage harvest-choice-stage stauchness-choice-stage"
+    mode="actor-select"
+    accessibilityLabel="Stauchness consequence choice"
+    data-stauchness-choice="true"
+    data-stauchness-choice-ready={placement.ready ? "true" : "false"}
+    aria-hidden={!placement.ready}
+    style={{ top: placement.top === null ? undefined : `${placement.top}px`, visibility: placement.ready ? "visible" : "hidden" }}
+  >
+    <section className="card-pool-panel harvest-choice-panel harvest-choice-panel--actor stauchness-choice-panel" role="dialog" aria-modal="false" aria-label="Stauchness decision">
+      <header className="card-pool-panel__heading harvest-choice-heading stauchness-choice-heading">
+        <b className="card-pool-panel__title">STAUCHNESS</b>
+        <span className="card-pool-panel__instruction">Choose one.</span>
+      </header>
+      <div className="choice-trigger-options stauchness-choice-options" role="group" aria-label="Choose a Stauchness consequence">
+        {selection.choices.map((choice) => <button
+          type="button"
+          key={choice.id}
+          data-stauchness-choice-option={choice.id}
+          className={selectedChoice === choice.id ? "selected" : ""}
+          disabled={disabled || !placement.ready}
+          tabIndex={placement.ready ? 0 : -1}
+          aria-pressed={selectedChoice === choice.id}
+          onClick={() => onChoice(choice.id)}
+        >{stauchnessConsequenceLabel(choice.id)}</button>)}
+      </div>
+      {needsHandCard && <>
+        <span className="stauchness-hand-guidance">Hand cards only.</span>
+        {handRowOverflowing && <span className="target-card-picker-zone-scroll-hint">Swipe to see all hand cards</span>}
+        <div ref={handRowRef} className="target-card-picker-card-row choice-trigger-card-row stauchness-choice-card-row" aria-label="Eligible hand cards" data-hand-scrollable={handKeys.length > 4 ? "true" : undefined}>
+          {handKeys.map((key) => { const index = Number(key.slice(5)); const card = hand[index]; if (!card) return null; const selected = validSelectedKeys.includes(key); return <button type="button" key={key} className={`target-card-picker-card ${selected ? "selected" : ""}`} disabled={disabled || !placement.ready} tabIndex={placement.ready ? 0 : -1} aria-pressed={selected} aria-label={`${cardDefinition(card.kind).name} ${card.rank}${card.suit}`} onClick={() => onToggle(key)}><CardFace card={card} />{selected && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>; })}
+        </div>
+      </>}
+      <CardPoolDecisionFooter
+        className="stauchness-choice-footer"
+        selectionCount={needsHandCard ? `${validSelectedKeys.length} / ${requiredHandCount} selected` : undefined}
+        confirmAction={{
+          accessibleLabel: needsHandCard ? "Confirm Stauchness card choice" : "Confirm Stauchness choice",
+          disabled: disabled || !placement.ready || !complete,
+          pending: disabled,
+          onClick: () => onConfirm(selectedChoice, validSelectedKeys),
+        }}
+      />
+      {error && <p className="card-pool-panel__error" role="alert">{error}</p>}
+    </section>
+  </BattlefieldChoiceStage>;
   return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel choice-trigger-panel" role="dialog" aria-modal="false" aria-label={`${option.label} decision`}>
     <header><strong>{option.label.toUpperCase()}</strong><span>{option.description ?? "Choose one:"}</span></header>
     <div className="choice-trigger-options">{selection.choices.map((choice) => <button type="button" key={choice.id} className={selectedChoice === choice.id ? "selected" : ""} disabled={disabled} aria-pressed={selectedChoice === choice.id} onClick={() => onChoice(choice.id)}>{labelForChoice(choice)}</button>)}</div>

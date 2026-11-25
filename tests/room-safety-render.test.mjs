@@ -1032,9 +1032,22 @@ test("normalized malformed and unknown response states render safely", () => {
   const choiceSelection = { type: "choice", choices: [{ id: "discard_two", label: "Discard exactly 2 cards from your hand" }, { id: "take_damage", label: "Take 1 damage from Xiahou Dun" }], eligibleHandKeys: ["hand:0", "hand:1"], cardCountByChoice: { discard_two: 2 } };
   const ganglieHand = [{ ...card("ganglie-dodge", "Dodge"), suit: "♠", rank: "7" }, { ...card("ganglie-peach", "Peach"), suit: "♥", rank: "Q" }];
   const ganglieChoiceHtml = renderToStaticMarkup(React.createElement(MandatoryChoiceDialog, { option: { effectId: "xiahou_dun_ganglie", label: "Stauchness", description: "The Judgement is not a Heart. Choose one: discard exactly 2 cards from your hand, or take 1 damage from Xiahou Dun. Equipment and Judgement Zone cards cannot be discarded for this choice.", allowDecline: false, selection: choiceSelection }, selection: choiceSelection, hand: ganglieHand, selectedChoice: "", selectedKeys: [], disabled: false, error: "", onChoice: () => {}, onToggle: () => {}, onConfirm: () => {} }));
-  assert.match(ganglieChoiceHtml, /The Judgement is not a Heart/);
-  assert.match(ganglieChoiceHtml, /Discard exactly 2 cards from your hand/);
+  assert.match(ganglieChoiceHtml, /class="battlefield-choice-stage game-event-stage harvest-choice-stage stauchness-choice-stage"/);
+  assert.match(ganglieChoiceHtml, />STAUCHNESS<\/b>/);
+  assert.match(ganglieChoiceHtml, />Choose one\.<\/span>/);
+  assert.doesNotMatch(ganglieChoiceHtml, /The Judgement is not a Heart|Equipment and Judgement Zone cards cannot/);
+  assert.match(ganglieChoiceHtml, />Discard 2 Hand cards<\/button>/);
   assert.match(ganglieChoiceHtml, /Take 1 damage from Xiahou Dun/);
+  assert.match(ganglieChoiceHtml, /aria-label="Confirm Stauchness choice"[^>]*>Confirm<\/button>/);
+  assert.doesNotMatch(ganglieChoiceHtml, />Confirm choice<\/button>|>Skip<\/button>|>Cancel<\/button>/);
+  const takeDamageOnlySelection = { type: "choice", choices: [{ id: "take_damage", label: "Take 1 damage from Xiahou Dun" }], eligibleHandKeys: [] };
+  const takeDamageOnlyHtml = renderToStaticMarkup(React.createElement(MandatoryChoiceDialog, {
+    option: { effectId: "xiahou_dun_ganglie", label: "Stauchness", description: "The Judgement is not a Heart. Choose one.", allowDecline: false, selection: takeDamageOnlySelection },
+    selection: takeDamageOnlySelection, hand: [], selectedChoice: "", selectedKeys: [], disabled: false, error: "", onChoice: () => {}, onToggle: () => {}, onConfirm: () => {},
+  }));
+  assert.match(takeDamageOnlyHtml, />Take 1 damage from Xiahou Dun<\/button>/);
+  assert.doesNotMatch(takeDamageOnlyHtml, /Discard 2 Hand cards/);
+  assert.match(takeDamageOnlyHtml, /aria-label="Confirm Stauchness choice"[^>]*disabled[^>]*>Confirm<\/button>/);
   const ganglieDiscardChoiceHtml = renderToStaticMarkup(React.createElement(MandatoryChoiceDialog, {
     option: { effectId: "xiahou_dun_ganglie", label: "Stauchness", description: "The Judgement is not a Heart. Choose one: discard exactly 2 cards from your hand, or take 1 damage from Xiahou Dun. Equipment and Judgement Zone cards cannot be discarded for this choice.", allowDecline: false, selection: choiceSelection }, selection: choiceSelection, hand: ganglieHand, selectedChoice: "discard_two", selectedKeys: ["hand:0", "hand:1"], disabled: false, error: "",
     onChoice: () => {}, onToggle: () => {}, onConfirm: () => {},
@@ -1047,6 +1060,9 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.match(ganglieDiscardChoiceHtml, /Q<small class="card-rank-suit-glyph">♥<\/small>/);
   assert.match(ganglieDiscardChoiceHtml, /♠/);
   assert.match(ganglieDiscardChoiceHtml, /♥/);
+  assert.match(ganglieDiscardChoiceHtml, /Hand cards only\./);
+  assert.match(ganglieDiscardChoiceHtml, /2 \/ 2 selected/);
+  assert.match(ganglieDiscardChoiceHtml, /aria-label="Confirm Stauchness card choice"[^>]*>Confirm<\/button>/);
   assert.equal((ganglieDiscardChoiceHtml.match(/class="target-card-picker-card selected/g) ?? []).length, 2, "Stauchness allows exactly the two eligible hand cards to be selected");
   assert.doesNotMatch(ganglieDiscardChoiceHtml, /Hidden hand card|concealed-card|>\?<\/span>/);
   assert.match(html, /Attack/);

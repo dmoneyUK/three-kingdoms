@@ -651,6 +651,7 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
 
   const sourcePage = await browser.newPage();
   try {
+    await sourcePage.setViewportSize({ width: 390, height: 844 });
     await openPlayer(sourcePage, seedData, 0);
     const sourceView = await view(request, seedData, 0);
     const choice = sourceView.currentAction.triggerOptions.find((option) => option.effectId === "xiahou_dun_ganglie");
@@ -658,6 +659,10 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
     const dialog = sourcePage.getByRole("dialog", { name: "Stauchness decision" });
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveAttribute("aria-modal", "false");
+    await expect(sourcePage.locator(".stauchness-choice-stage")).toHaveAttribute("data-stauchness-choice-ready", "true");
+    await expect(dialog.getByText("STAUCHNESS", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("Choose one.", { exact: true })).toBeVisible();
+    await expect(sourcePage.locator(".local-player-dock .console-guidance")).toContainText("Choose a Stauchness consequence.");
     const overlayBehavior = await dialog.evaluate((panel) => {
       const overlay = panel.parentElement;
       const table = overlay?.parentElement;
@@ -665,17 +670,31 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
       const panelHit = document.elementFromPoint(panelBox.left + panelBox.width / 2, panelBox.top + panelBox.height / 2);
       return {
         rootPosition: overlay && getComputedStyle(overlay).position,
-        rootInsets: overlay && ["top", "right", "bottom", "left"].map((property) => getComputedStyle(overlay)[property]),
         rootPointerEvents: overlay && getComputedStyle(overlay).pointerEvents,
         panelPointerEvents: getComputedStyle(panel).pointerEvents,
+        panelWidth: panelBox.width,
         panelWithinTable: Boolean(table && panelBox.left >= table.getBoundingClientRect().left - 1
           && panelBox.right <= table.getBoundingClientRect().right + 1
           && panelBox.top >= table.getBoundingClientRect().top - 1
           && panelBox.bottom <= table.getBoundingClientRect().bottom + 1),
-        panelReceivesInput: Boolean(panelHit?.closest(".target-card-picker-panel")),
+        panelReceivesInput: Boolean(panelHit?.closest(".stauchness-choice-panel")),
       };
     });
-    expect(overlayBehavior).toEqual({ rootPosition: "absolute", rootInsets: ["0px", "0px", "0px", "0px"], rootPointerEvents: "none", panelPointerEvents: "auto", panelWithinTable: true, panelReceivesInput: true });
+    expect(overlayBehavior.rootPosition).toBe("absolute");
+    expect(overlayBehavior.rootPointerEvents).toBe("none");
+    expect(overlayBehavior.panelPointerEvents).toBe("auto");
+    expect(overlayBehavior.panelWidth).toBeGreaterThanOrEqual(220);
+    expect(overlayBehavior.panelWidth).toBeLessThanOrEqual(270);
+    expect(overlayBehavior.panelWithinTable).toBe(true);
+    expect(overlayBehavior.panelReceivesInput).toBe(true);
+    const discardChoice = dialog.getByRole("button", { name: "Discard 2 Hand cards", exact: true });
+    const damageChoice = dialog.getByRole("button", { name: "Take 1 damage from Xiahou Dun", exact: true });
+    await expect(discardChoice).toBeVisible();
+    await expect(damageChoice).toBeVisible();
+    for (const choiceButton of [discardChoice, damageChoice]) {
+      expect((await choiceButton.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+    }
+    await expect(dialog.getByRole("button", { name: "Confirm Stauchness choice", exact: true })).toBeDisabled();
     const inspectedPlayerId = seedData.players[2].id;
     const inspectionOpener = sourcePage.locator(`[data-player-anchor="${inspectedPlayerId}"] .opponent-hero-target`);
     await inspectionOpener.click();
@@ -685,9 +704,27 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
     await inspectionOpener.click();
     await expect(inspection).toHaveCount(0);
     await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Take 1 damage from Xiahou Dun", exact: true }).click();
+    await discardChoice.click();
+    await expect(sourcePage.locator(".stauchness-choice-stage")).toHaveAttribute("data-stauchness-choice-ready", "true");
+    await expect(dialog.getByText("Hand cards only.", { exact: true })).toBeVisible();
+    const handCards = dialog.locator(".stauchness-choice-card-row .target-card-picker-card");
+    await expect(handCards).toHaveCount(2);
     const confirm = dialog.getByRole("button", { name: "Confirm Stauchness card choice", exact: true });
-    await expect(confirm).toBeEnabled();
+    await expect(confirm).toBeDisabled();
+    await handCards.nth(0).click();
+    await expect(dialog.locator(".card-pool-decision-footer__count")).toHaveText("1 / 2 selected");
+    await damageChoice.click();
+    await expect(dialog.locator(".stauchness-choice-card-row")).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "Confirm Stauchness choice", exact: true })).toBeEnabled();
+    await discardChoice.click();
+    await expect(sourcePage.locator(".stauchness-choice-stage")).toHaveAttribute("data-stauchness-choice-ready", "true");
+    await expect(dialog.locator(".card-pool-decision-footer__count")).toHaveText("0 / 2 selected");
+    await expect(confirm).toBeDisabled();
+    await handCards.nth(0).click();
+    await handCards.nth(1).click();
+    await expect(dialog.locator(".card-pool-decision-footer__count")).toHaveText("2 / 2 selected");
+    await expect(confirm).toHaveText("Confirm");
+    expect((await confirm.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
     const submittedPromise = sourcePage.waitForResponse((response) => response.url() === API + "/api/rooms"
       && response.request().method() === "POST"
       && response.request().postDataJSON()?.action === "trigger"
@@ -695,8 +732,10 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
     await confirm.click();
     const submitted = await submittedPromise;
     expect(submitted.ok()).toBeTruthy();
-    expect(submitted.request().postDataJSON()).toMatchObject({ action: "trigger", providerId: "xiahou_dun_ganglie", choice: "take_damage" });
-    expect((await submitted.json()).room.players.find((player) => player.id === seedData.players[0].id).hp).toBe(3);
+    expect(submitted.request().postDataJSON()).toMatchObject({ action: "trigger", providerId: "xiahou_dun_ganglie", choice: "discard_two", cardKeys: ["hand:0", "hand:1"] });
+    const committed = await submitted.json();
+    expect(committed.room.myHand).toHaveLength(0);
+    expect(committed.room.players.find((player) => player.id === seedData.players[0].id).hp).toBe(4);
     await expect(page.locator('[data-public-card-frame-effect-id="xiahou_dun_ganglie"]')).toHaveCount(0);
     await expect(sourcePage.locator('[data-public-card-frame-effect-id="xiahou_dun_ganglie"]')).toHaveCount(0);
     await expect(xiahou.duplicate).toHaveCount(0);

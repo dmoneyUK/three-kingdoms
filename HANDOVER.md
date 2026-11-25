@@ -1,11 +1,21 @@
-# HANDOVER — UX2 current task §10.75
+# HANDOVER
 
-**Latest verified delivery — §10.74 / §10.70 dependent geometry:** source `44ded7566a2ed4f23082b78181900b06d5552520`; exact-SHA [Actions 45522229976](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45522229976) passed Lint/fast, API, browser smoke, D1 migration, Worker deployment and production smoke. Worker version `543a1181-c72d-4339-90a8-25741b7ab3d1`; direct production `/api/health` returned HTTP 200 (`{"ok":true,"worker":"available"}`). §10.74 is **IMPLEMENTED / DEPLOYED — PENDING OWNER iPHONE REVIEW**; original §10.70 phone acceptance also remains pending.
+## Current task — §10.75 STAUCHNESS-COMPACT-CHOICE-MODAL-01
 
-**Design reviewed:** latest `docs/UX2-refine.md`, revision 2026-11-24 22:38 UTC, remote design baseline `d2b1461a13d8e639ca6a493907705e670551f24f` (current `ux-v2` source tip after delivery: `44ded7566a2ed4f23082b78181900b06d5552520`).
+**Design reviewed:** `docs/UX2-refine.md`, revision 2026-11-24 22:38 UTC. **Branch:** `ux-v2` delivery target; worktree branch `codex/ux2-1066-turn-boundary-clear`. **Base:** `0c1f93987a00450c3f9f66b26fa76efb1653a343` (matches `origin/ux-v2`).
 
-**Current bounded task — §10.75 STAUCHNESS-COMPACT-CHOICE-MODAL-01:** compact only the server-authorized mandatory Stauchness consequence choice. Reuse `BattlefieldChoiceStage` and shared decision/footer primitives; show `STAUCHNESS`, concise instruction and the actual server-provided “Discard 2 Hand cards” / “Take 1 damage from Xiahou Dun” choice labels. Use one compact gold `Confirm` with ≥44px hit height; no Skip, Cancel or dismiss path. Preserve the own-Hand two-card picker, selection clearing on option change, authenticated action/callback, timeout, stale/busy guards and gameplay rules. Do not alter §10.74 geometry or §10.72 narration.
+Implemented the approved compact mandatory Stauchness choice stage. It preserves server-provided choice IDs, eligible viewer-owned Hand cards, original action callbacks and timeout behavior; uses the shared Confirm footer; hides the stage until measured safe placement is ready; keeps the eligible Hand row scrollable; and leaves other mandatory choices on the existing renderer. No gameplay or §10.72 H4 copy changes.
 
-**Next action:** implement only §10.75. Use fast component/API coverage for alternate damage, insufficient cards, stale/unauthorized choice and timeout; run at most one focused four-player phone browser scenario within the five-minute cumulative local UI limit, then commit/push and verify exact-SHA CI, deployment and production smoke.
+**Local validation observed:**
 
-**Review boundary:** §10.75 and §10.74 remain **PENDING OWNER iPHONE REVIEW**. No player-facing UX is USER-ACCEPTED by this delivery.
+- `node --import tsx --test tests/room-safety-render.test.mjs` — 28/28 passed.
+- `GAME_TEST_FILES=tests/api/judgement.test.mjs node tests/run-tests.mjs` — 14/14 passed.
+- `npm run build` — passed; only existing bundle-size/static-route warnings.
+- Focused real Stauchness phone-layout browser scenario — 1 passed (11.5s), after rebuilding the local Worker client and capping the internally scrollable choice panel at 240px.
+- Combined local UI/browser time remained below five minutes. `git diff --check` — passed immediately before staging.
+
+**Commit gate:** latest relevant remote run checked before implementation commit was `45522229976` for SHA `44ded7566a2ed4f23082b78181900b06d5552520`, successful: https://github.com/dmoneyUK/three-kingdoms/actions/runs/45522229976. No queued/in-progress run was present. This is the previous source checkpoint, not validation of the pending implementation.
+
+**Delivery state:** implementation and focused tests are local and uncommitted. Exact implementation SHA, its Actions result, Worker deployment/version and production health are pending. Do not mark USER-ACCEPTED; owner iPhone review remains required.
+
+**Resume:** final scoped diff reviewed and `git diff --check` passed; commit only the four implementation/test files and this handover, push to `ux-v2`, then verify exact-SHA Actions, deployment and production smoke. After this bounded delivery, move the single current task to the evidence-led §10.72 re-review.
