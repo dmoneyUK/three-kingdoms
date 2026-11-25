@@ -1,21 +1,19 @@
 # Smart Bot Player — Coding Agent Handover
 
-Branch `feature/smart-bot-player` (local worktree `codex/aip-perf-01-20261122`). Latest design reviewed: AIP-D37 / 2026-11-25. Parent `AIP-PERF-01` remains **CHANGES_REQUESTED**; the current bounded slice is `AIP-PERF-01 STAGING-CONTAIN-01`. FREE-CI-FIX-01 is historical and superseded. No GET-02, BOT-02, PLAY work, paid service, production change or UX2 change is authorized.
+Task: **AIP-PERF-01 STAGING-SAFE-DELIVERY-01**. Latest design reviewed: **AIP-D37 / 2026-11-25 16:15 UTC**. Parent `AIP-PERF-01` remains **CHANGES_REQUESTED**; this bounded delivery is **IN_PROGRESS** on `review/aip-staging-lifecycle-01`.
 
-## Current task — STAGING-CONTAIN-01 (complete; parent CHANGES_REQUESTED)
+## Published implementation
 
-Safely close the already-deployed AI Staging surface after the failed validation, without redeploying, modifying D1 data, touching Production or starting another monitor/retry. Keep the defeat-handoff source fix and its failed hosted evidence available for independent review.
+The existing scoped implementation is preserved in code commits `93c58b12` and `994a9fc2` on top of remote design tip `db5ec3af4f50d0164a320197f3e34d71a1f4bd36`. It adds fixed-target Staging lifecycle preflight/capture/containment with fail-closed ownership/version checks, sanitized evidence and emergency pause documentation; Staging-only generated-config/CI guards (`preview_urls=false`, deployment tagging, bounded cleanup); and bounded browser room rejoin diagnostics. Production workflow guards, UX2 files, game rules, D1 schema and public protocol are unchanged.
 
-## Containment and failure evidence
+The review ref is explicitly non-deploying: no push to `feature/smart-bot-player`, `main` or `ux-v2`; no Cloudflare Worker/D1 operation, migration, Cron activation or Production change is authorized or performed. The previously contained Staging surface remains paused.
 
-- Before containment at 2026-11-25 13:59 UTC, read-only inventory showed the isolated Worker `three-kingdoms-ai-staging` with public access **enabled**, preview access **enabled**, one `* * * * *` Cron, and zero matching domains, queue consumers or zone routes.
-- Using the existing fixed-target pause operation, at `2026-11-25T13:59:21.850Z` the Worker was set to public `false`, preview `false`, and schedules `[]`. Immediate readback confirmed the same plus zero domains, queue consumers and zone routes. No Worker deployment, D1 write, migration or Production operation was performed.
-- Cloudflare read-only analytics for `13:59:21Z–14:00:30Z` reported zero Worker requests, zero D1 analytics rows and zero scheduled invocations. No local `wrangler tail`, Playwright, driver or diagnostic process remains. `wrangler d1 migrations list ... --remote --env ai-staging` reported `No migrations to apply`.
-- Failure evidence for source SHA `e5072a4c2bb19ea1764da0a9e3b72b2cf84e392e` remains [Actions 45622433984](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45622433984): base Lint/Fast, API and Browser jobs passed; Staging job `139236653778` deployed Worker `872f653b-d5ab-48e7-9245-f764f2166af4`, then the mobile artifact showed Cloudflare **Error 1102** (Ray `a6010c2299be2efd`, 13:37:19 UTC) and the test ultimately timed out after 25 minutes waiting for the post-refresh `/api/rooms` response at `staging-room-reconnect.spec.mjs:417`. This proves a resource-limit page occurred in the smoke, but does not identify the responsible route, defeat-handoff state or CPU hotspot. Production job `139236657485` was **SKIPPED**.
-- PM/UX2 impact: **NO IMPACT**. This slice changed no repository source/config/schema/UI and made no production change.
+## Validation checkpoint
 
-## Source/CI checkpoint and next gate
+The review ref is ready for the first authorized publication. The remaining work in this same unit is: push this source plus Handover to the review ref, run the required local `CLOUDFLARE_ENV=ai-staging npm run build` and generated-config/Wrangler dry-run (no credentials or cloud writes), then run ordinary exact-SHA lint/build/fast/API/browser CI with both Cloudflare deploy jobs skipped. The existing 32 focused tests are retained and will not be repeated without a related failure.
 
-The retained defeat-handoff source/test SHA is `e5072a4c2bb19ea1764da0a9e3b72b2cf84e392e`; its focused Worker/D1 test was **21/21**, with syntax, targeted ESLint, diff-check and build passing. The containment-only documentation update is separate and does not claim a new code CI run.
+PM/UX2 impact: **NO IMPACT**. Human review, real iPhone acceptance, effective Free CPU proof and `ACCEPTED` status remain separate gates.
 
-Next bounded task: independent review of the sanitized 1102/rejoin evidence and the retained defeat-handoff fix. Do not redeploy, reopen ingress/Cron, repeat the hosted smoke, or start GET-02/BOT-02/PLAY without a new explicit review decision. Parent `AIP-PERF-01` and the defeat-handoff slice remain **CHANGES_REQUESTED**; effective CPU-limit proof, hosted recovery evidence and real iPhone acceptance remain outstanding.
+## Next bounded task
+
+Complete `STAGING-SAFE-DELIVERY-01` on this review ref, record the exact code/Handover SHAs and CI outcomes, and finish at **PENDING_REVIEW** (or report an actual blocker). Do not start GET-02, BOT-02, PLAY work, deployment or production changes.
