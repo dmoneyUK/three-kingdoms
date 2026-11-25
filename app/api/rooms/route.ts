@@ -108,6 +108,25 @@ type RecoveryCheckpoint = {
   records: RecoveryRecord[];
   resume: RecoveryResume;
 };
+/**
+ * A private checkpoint for the only defeat branch that may own the turn:
+ * the current turn owner was defeated without a parent/group continuation.
+ * The checkpoint is never part of the public Pending union.  Its expected
+ * source state is retained only as an internal CAS/fencing record so a retry
+ * cannot repeat death settlement or advance two turns.
+ */
+type DefeatHandoffCheckpoint = {
+  kind: "defeat_handoff";
+  version: 1;
+  id: string;
+  targetId: string;
+  resumePlayerId: string;
+  expectedTurnSeat: number;
+  expectedTurnEpoch: number;
+  expectedPhase: string;
+  expectedPendingJson: string;
+  nextTurnSeat: number;
+};
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; is_test_player: number; controller_type: "human" | "bot" | "test"; controller_request_id: string | null; connected_at: number };
 type CausalCreation<T> = { value: T; createdEnvelope: CausalEnvelope | null };
@@ -241,6 +260,20 @@ function parseRecoveryCheckpoint(value: string | null): RecoveryCheckpoint | nul
     && (checkpoint.effect === "oath" || checkpoint.effect === "peach") && Array.isArray(records)
     && resume?.kind === "phase" && typeof resume.phase === "string"
     ? checkpoint as unknown as RecoveryCheckpoint : null;
+}
+
+function parseDefeatHandoffCheckpoint(value: string | null): DefeatHandoffCheckpoint | null {
+  const checkpoint = parse<Record<string, unknown> | null>(value, null);
+  return checkpoint?.kind === "defeat_handoff" && checkpoint.version === 1
+    && typeof checkpoint.id === "string" && checkpoint.id.length > 0
+    && typeof checkpoint.targetId === "string" && checkpoint.targetId.length > 0
+    && typeof checkpoint.resumePlayerId === "string" && checkpoint.resumePlayerId.length > 0
+    && Number.isSafeInteger(checkpoint.expectedTurnSeat)
+    && Number.isSafeInteger(checkpoint.expectedTurnEpoch)
+    && typeof checkpoint.expectedPhase === "string" && checkpoint.expectedPhase.length > 0
+    && typeof checkpoint.expectedPendingJson === "string" && checkpoint.expectedPendingJson.length > 0
+    && Number.isSafeInteger(checkpoint.nextTurnSeat)
+    ? checkpoint as unknown as DefeatHandoffCheckpoint : null;
 }
 
 function resumableBotActionCheckpoint(room: RoomRow, checkpoint: BotActionCheckpoint | null, players: PlayerRow[]) {
@@ -408,8 +441,8 @@ async function beginStandardHeroSelection(roomId: string, players: PlayerRow[], 
   return false;
 }
 function parsePersistedPending(value: string | null): Pending | null {
-  const pending = parse<Pending | TurnEndCheckpoint | BotActionCheckpoint | RecoveryCheckpoint | null>(value, null);
-  return pending?.kind === "turn_end_checkpoint" || pending?.kind === "bot_action_checkpoint" || pending?.kind === "recovery_checkpoint" ? null : pending;
+  const pending = parse<Pending | TurnEndCheckpoint | BotActionCheckpoint | RecoveryCheckpoint | DefeatHandoffCheckpoint | null>(value, null);
+  return pending?.kind === "turn_end_checkpoint" || pending?.kind === "bot_action_checkpoint" || pending?.kind === "recovery_checkpoint" || pending?.kind === "defeat_handoff" ? null : pending;
 }
 function actionPlayerIdForPending(room: RoomRow, pending: Pending | null, players: PlayerRow[]) {
   if (room.status !== "playing") return null;
@@ -4095,22 +4128,24 @@ function turnStartTransition(player: PlayerRow, log: string[]) {
 }
 
 /** Canonical beginning-of-turn transition. Only this path may offer turn-start capabilities. */
-async function beginTurnStart(roomId: string, turnSeat: number, expectedPendingJson?: string, expectedPhase: "draw" | "resolving" = "resolving") {
-  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
-  const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
+async function beginTurnStart(roomId: string, turnSeat: number, expectedPendingJson?: string, expectedPhase: "draw" | "resolving" = "resolving", database: D1Database = db(), expectedTurnSeat = turnSeat) {
+  const room = await database.prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+  const rows = await database.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   const player = rows.results?.find((candidate) => candidate.seat === turnSeat && candidate.alive);
   if (!room || !player) return;
   const next = turnStartTransition(player, parse<string[]>(room.log_json, []));
   const boundary = expectedPendingJson !== undefined
-    ? { where: "phase = 'resolving' AND pending_json = ? AND turn_seat = ?", values: [expectedPendingJson, turnSeat] }
+    ? { where: "phase = 'resolving' AND pending_json = ? AND turn_seat = ?", values: [expectedPendingJson, expectedTurnSeat] }
     : expectedPhase === "draw"
       ? { where: "phase = 'draw' AND pending_json IS NULL AND turn_seat = ? AND turn_epoch = 0", values: [turnSeat] }
       : { where: "phase = 'resolving' AND pending_json IS NULL AND turn_seat = ?", values: [turnSeat] };
   const logWrite = next.pending ? { column: "log_json = ?,", values: [JSON.stringify(next.log)] } : { column: "", values: [] };
-  await db().prepare(`UPDATE rooms SET turn_seat = ?, phase = ?, pending_json = ?, ${logWrite.column} skill_state_json = ?,
+  const beginStatement = database.prepare(`UPDATE rooms SET turn_seat = ?, phase = ?, pending_json = ?, ${logWrite.column} skill_state_json = ?,
     turn_epoch = turn_epoch + 1, turn_start_public_sequence = ? WHERE id = ? AND status = 'playing' AND ${boundary.where}`)
     .bind(turnSeat, next.phase, next.pending ? serializePending(next.pending) : null, ...logWrite.values,
-      next.skillState, next.startPublicSequence, roomId, ...boundary.values).run();
+      next.skillState, next.startPublicSequence, roomId, ...boundary.values);
+  const beginResult = await beginStatement.run();
+  return beginResult.meta.changes ?? 0;
 }
 
 async function advanceDiscardTurnHandoff(roomId: string, observedPendingJson?: string | null) {
@@ -4242,6 +4277,35 @@ async function advanceRecoveryCheckpoint(roomId: string, observedPendingJson: st
     .bind(roomId, observedPendingJson).first<RoomRow>();
   if (!room) return true;
   await advanceHpRecoveredEvents(roomId, checkpoint.records, checkpoint.resume, [], observedPendingJson);
+  return true;
+}
+
+/** Resume a defeated current-turn owner through the canonical turn-start CAS. */
+async function advanceDefeatHandoffCheckpoint(roomId: string, observedPendingJson: string) {
+  const checkpoint = parseDefeatHandoffCheckpoint(observedPendingJson);
+  if (!checkpoint) return false;
+  const room = await db().prepare("SELECT * FROM rooms WHERE id = ? AND status = 'playing' AND phase = 'resolving' AND pending_json = ?")
+    .bind(roomId, observedPendingJson).first<RoomRow>();
+  if (!room) return true;
+  const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
+  const target = players.find((player) => player.id === checkpoint.targetId);
+  if (!target || target.alive || target.hp !== 0 || room.turn_seat !== checkpoint.expectedTurnSeat
+    || room.turn_epoch !== checkpoint.expectedTurnEpoch || !["dying", "resolving"].includes(checkpoint.expectedPhase)
+    || checkpoint.nextTurnSeat === checkpoint.expectedTurnSeat) return true;
+  const decision = determineDefeatContinuation({
+    players,
+    turnSeat: checkpoint.expectedTurnSeat,
+    resumePlayerId: checkpoint.resumePlayerId,
+    hasGroupContinuation: false,
+  });
+  if (decision.kind === "finish") {
+    await finishIfWon(roomId);
+    return true;
+  }
+  if (decision.kind !== "advance_turn" || decision.nextSeat !== checkpoint.nextTurnSeat) return true;
+  // beginTurnStart() uses the checkpoint JSON as its exact expected pending
+  // value, so concurrent GET/timer/Bot wakes can only create one new epoch.
+  await beginTurnStart(roomId, checkpoint.nextTurnSeat, observedPendingJson, "resolving", env.DB, checkpoint.expectedTurnSeat);
   return true;
 }
 
@@ -4868,6 +4932,45 @@ async function resumeGroupAfterDying(roomId: string, pending: DyingPending) {
   }, room.pending_json).run();
 }
 
+/**
+ * Identify the one defeat continuation that can safely be persisted without
+ * carrying a parent event forward: the defeated player is the current turn
+ * owner, is also the canonical resume player, and no Group/Dying/turn-end
+ * continuation is present. Every other branch stays on the existing
+ * resolver so no parent causal frame or response is silently dropped.
+ */
+function defeatHandoffDecision(room: RoomRow, pending: DyingPending, players: PlayerRow[]) {
+  if (pending.resumePending || pending.resumeTrigger || pending.resumeEffect || pending.sharedRescue) return null;
+  const target = players.find((player) => player.id === pending.targetId);
+  if (!target || room.turn_seat === null || target.seat !== room.turn_seat || pending.resumePlayerId !== target.id) return null;
+  const afterDefeat = players.map((player) => player.id === target.id ? { ...player, alive: 0, hp: 0 } : player);
+  const decision = determineDefeatContinuation({
+    players: afterDefeat,
+    turnSeat: room.turn_seat,
+    // The target owns the turn being handed off. Passing that canonical owner
+    // into the shared decision function preserves its victory check and
+    // next-alive-seat selection after the simulated death.
+    resumePlayerId: target.id,
+    hasGroupContinuation: false,
+  });
+  return decision.kind === "advance_turn" ? decision : null;
+}
+
+function createDefeatHandoffCheckpoint(room: RoomRow, pending: DyingPending, nextTurnSeat: number): DefeatHandoffCheckpoint {
+  return {
+    kind: "defeat_handoff",
+    version: 1,
+    id: crypto.randomUUID(),
+    targetId: pending.targetId,
+    resumePlayerId: pending.resumePlayerId,
+    expectedTurnSeat: room.turn_seat!,
+    expectedTurnEpoch: room.turn_epoch,
+    expectedPhase: room.phase ?? "resolving",
+    expectedPendingJson: room.pending_json ?? serializePending(pending),
+    nextTurnSeat,
+  };
+}
+
 async function continueAfterDefeat(roomId: string, pending: DyingPending) {
   if (await finishIfWon(roomId)) return;
   if (pending.resumePending) await resumeGroupAfterDying(roomId, pending);
@@ -5007,73 +5110,134 @@ async function continueDyingResumeEffect(roomId: string, effect: DyingResumeEffe
 }
 
 async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: PlayerRow | null, source?: PlayerRow | null) {
-  let deck = parse<Card[]>(room.deck_json, []); let discard = parse<Card[]>(room.discard_json, []); let log = addLog(parse<string[]>(room.log_json, []), `${target?.name ?? "The dying player"} receives no Peach and is defeated.`);
+  // Read the fencing inputs before constructing any settlement writes.  The
+  // current-turn-owner branch is allowed to move directly from the canonical
+  // Dying state into a private checkpoint; all other callers retain the
+  // existing resolver path.
+  const liveRoom = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
+  const livePlayers = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
+  const livePending = liveRoom ? parsePersistedPending(liveRoom.pending_json) : null;
+  const sharedDyingPending = livePending?.kind === "shared_response_window"
+    && livePending.continuation.mode === "DYING_PEACH"
+    && !livePending.settlement?.winner
+    && livePending.continuation.dying.targetId === pending.targetId
+    && livePending.continuation.dying.resumePlayerId === pending.resumePlayerId;
+  const handoffPendingMatches = Boolean(liveRoom && (liveRoom.pending_json === serializePending(pending) || sharedDyingPending));
+  const handoffDecision = liveRoom && handoffPendingMatches
+    ? defeatHandoffDecision(liveRoom, pending, livePlayers)
+    : null;
+  const handoffCheckpoint = handoffDecision && liveRoom
+    ? createDefeatHandoffCheckpoint(liveRoom, pending, handoffDecision.nextSeat)
+    : null;
+  const settlementRoom = handoffCheckpoint && liveRoom ? liveRoom : room;
+  const settlementTarget = handoffCheckpoint && liveRoom ? livePlayers.find((player) => player.id === pending.targetId) ?? null : target ?? null;
+  const settlementSource = handoffCheckpoint && liveRoom ? livePlayers.find((player) => player.id === pending.sourceId) ?? null : source ?? null;
+  const checkpointJson = handoffCheckpoint ? JSON.stringify(handoffCheckpoint) : null;
+  let deck = parse<Card[]>(settlementRoom.deck_json, []); let discard = parse<Card[]>(settlementRoom.discard_json, []); let log = addLog(parse<string[]>(settlementRoom.log_json, []), `${settlementTarget?.name ?? "The dying player"} receives no Peach and is defeated.`);
   const resume = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.resumePlayerId).first<PlayerRow>();
-  if (target?.role) log = addLog(log, `${target.name}'s role is revealed: ${publicRoleName(target.role)}.`);
-  const defeatedHand = parse<Card[]>(target?.hand_json ?? null, []);
-  const defeatedJudgement = parse<Card[]>(target?.judgement_json ?? null, []);
-  const defeatedEquipment = equipmentCards(target);
+  if (settlementTarget?.role) log = addLog(log, `${settlementTarget.name}'s role is revealed: ${publicRoleName(settlementTarget.role)}.`);
+  const defeatedHand = parse<Card[]>(settlementTarget?.hand_json ?? null, []);
+  const defeatedJudgement = parse<Card[]>(settlementTarget?.judgement_json ?? null, []);
+  const defeatedEquipment = equipmentCards(settlementTarget);
   if (defeatedHand.length) {
     discard.push(...defeatedHand);
-    log = addDiscardEvent(log, target ?? "The defeated player", defeatedHand);
-    log = addLog(log, `${target?.name ?? "The defeated player"} discards all remaining cards after being defeated.`);
+    log = addDiscardEvent(log, settlementTarget ?? "The defeated player", defeatedHand);
+    log = addLog(log, `${settlementTarget?.name ?? "The defeated player"} discards all remaining cards after being defeated.`);
   }
   if (defeatedJudgement.length) {
     discard.push(...defeatedJudgement);
-    log = addDiscardEvent(log, target ?? "The defeated player", defeatedJudgement);
+    log = addDiscardEvent(log, settlementTarget ?? "The defeated player", defeatedJudgement);
   }
   if (defeatedEquipment.length) {
     discard.push(...defeatedEquipment);
-    log = addDiscardEvent(log, target ?? "The defeated player", defeatedEquipment);
+    log = addDiscardEvent(log, settlementTarget ?? "The defeated player", defeatedEquipment);
   }
-  const writes = [db().prepare("UPDATE players SET hp = 0, alive = 0, hand_json = '[]', judgement_json = '[]', equipment_json = '{}' WHERE id = ?").bind(pending.targetId)];
-  if (target?.role === "Rebel" && source?.alive) {
+  const checkpointPlayerFence = handoffCheckpoint && liveRoom && checkpointJson
+    ? " AND EXISTS (SELECT 1 FROM rooms WHERE id = players.room_id AND id = ? AND status = 'playing' AND phase = 'resolving' AND pending_json = ?)"
+    : "";
+  const checkpointFenceValues = handoffCheckpoint && liveRoom && checkpointJson ? [room.id, checkpointJson] : [];
+  const targetWrite = handoffCheckpoint && liveRoom && settlementTarget
+    ? db().prepare(`UPDATE players SET hp = 0, alive = 0, hand_json = '[]', judgement_json = '[]', equipment_json = '{}'
+      WHERE id = ? AND alive IS ? AND hp IS ? AND hand_json IS ? AND judgement_json IS ? AND equipment_json IS ?${checkpointPlayerFence}`)
+      .bind(settlementTarget.id, settlementTarget.alive, settlementTarget.hp, settlementTarget.hand_json, settlementTarget.judgement_json, settlementTarget.equipment_json, ...checkpointFenceValues)
+    : db().prepare("UPDATE players SET hp = 0, alive = 0, hand_json = '[]', judgement_json = '[]', equipment_json = '{}' WHERE id = ?").bind(pending.targetId);
+  const writes = [targetWrite];
+  if (settlementTarget?.role === "Rebel" && settlementSource?.alive) {
     const reward = drawCards(deck, discard, 3, log); deck = reward.deck; discard = reward.discard; log = reward.log;
-    for (const drawn of reward.drawn) log = addPrivateDrawEvent(log, source, drawn);
-    const sourceHand = [...parse<Card[]>(source.hand_json, []), ...reward.drawn];
-    writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id));
-    const rewardMessage = `${source.name} defeated Rebel ${target.name} and draws ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}.`;
+    for (const drawn of reward.drawn) log = addPrivateDrawEvent(log, settlementSource, drawn);
+    const sourceHand = [...parse<Card[]>(settlementSource.hand_json, []), ...reward.drawn];
+    writes.push(handoffCheckpoint && liveRoom
+      ? db().prepare(`UPDATE players SET hand_json = ? WHERE id = ? AND alive IS ? AND hand_json IS ?${checkpointPlayerFence}`).bind(JSON.stringify(sourceHand), settlementSource.id, settlementSource.alive, settlementSource.hand_json, ...checkpointFenceValues)
+      : db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), settlementSource.id));
+    const rewardMessage = `${settlementSource.name} defeated Rebel ${settlementTarget.name} and draws ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}.`;
     if (reward.drawn.length > 0) {
       const rewardEventId = crypto.randomUUID();
-      const rewardEnvelope = parseCausalEnvelope(room.causal_envelope_json);
+      const rewardEnvelope = parseCausalEnvelope(settlementRoom.causal_envelope_json);
       const committedRoot = committedPublicRootForInteraction(log, pending.causal?.interactionId);
       const rewardFact = pending.causal ? publicFactFor(pending.causal, "EFFECT_APPLIED", {
         rootEventId: pending.rootEventId ?? committedRoot?.eventId ?? rewardEventId,
-        actorId: source.id,
-        affectedPlayerIds: [source.id, target.id],
+        actorId: settlementSource.id,
+        affectedPlayerIds: [settlementSource.id, settlementTarget.id],
         label: "Rebel Defeat Reward",
         effect: { kind: "draw" },
       }, rewardEnvelope, committedRoot?.identity) : undefined;
       const committedRewardFact = withCommittedPublicOutcome(rewardFact, {
         outcomeLabel: `drew ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}`,
         source: { kind: "other", label: "Rebel Defeat Reward" },
-        changes: [{ kind: "CARD_DRAWN", playerId: source.id, amount: reward.drawn.length, fromZone: "DECK", toZone: "HAND" }],
+        changes: [{ kind: "CARD_DRAWN", playerId: settlementSource.id, amount: reward.drawn.length, fromZone: "DECK", toZone: "HAND" }],
       });
-      log = addLogWithId(log, rewardMessage, source.id, {
-        actorId: source.id,
+      log = addLogWithId(log, rewardMessage, settlementSource.id, {
+        actorId: settlementSource.id,
         importance: "essential",
         ...(committedRewardFact?.committedIdentity && committedRewardFact.committedOutcome ? { publicFact: committedRewardFact } : {}),
       }, rewardEventId).log;
     } else {
-      log = addLog(log, rewardMessage, source.id);
+      log = addLog(log, rewardMessage, settlementSource.id);
     }
-  } else if (target?.role === "Loyalist" && source?.role === "Lord") {
-    const lordHand = parse<Card[]>(source.hand_json, []);
-    const lordEquipment = equipmentCards(source);
+  } else if (settlementTarget?.role === "Loyalist" && settlementSource?.role === "Lord") {
+    const lordHand = parse<Card[]>(settlementSource.hand_json, []);
+    const lordEquipment = equipmentCards(settlementSource);
     if (lordHand.length) {
       discard.push(...lordHand);
-      log = addDiscardEvent(log, source, lordHand);
+      log = addDiscardEvent(log, settlementSource, lordHand);
     }
     if (lordEquipment.length) {
       discard.push(...lordEquipment);
-      log = addDiscardEvent(log, source, lordEquipment);
+      log = addDiscardEvent(log, settlementSource, lordEquipment);
     }
-    writes.push(db().prepare("UPDATE players SET hand_json = '[]', equipment_json = '{}' WHERE id = ?").bind(source.id));
-    log = addLog(log, `${source.name} defeated Loyalist ${target.name} and discards all cards as the Lord's penalty.`);
+    writes.push(handoffCheckpoint && liveRoom
+      ? db().prepare(`UPDATE players SET hand_json = '[]', equipment_json = '{}' WHERE id = ? AND alive IS ? AND hand_json IS ? AND equipment_json IS ?${checkpointPlayerFence}`).bind(settlementSource.id, settlementSource.alive, settlementSource.hand_json, settlementSource.equipment_json, ...checkpointFenceValues)
+      : db().prepare("UPDATE players SET hand_json = '[]', equipment_json = '{}' WHERE id = ?").bind(settlementSource.id));
+    log = addLog(log, `${settlementSource.name} defeated Loyalist ${settlementTarget.name} and discards all cards as the Lord's penalty.`);
   }
-  if (target && pending.resumeEffect) {
-    log = appendDyingResumePublicOutcome(log, target, pending.resumeEffect, pending.causal,
-      parseCausalEnvelope(room.causal_envelope_json), 0);
+  if (settlementTarget && pending.resumeEffect) {
+    log = appendDyingResumePublicOutcome(log, settlementTarget, pending.resumeEffect, pending.causal,
+      parseCausalEnvelope(settlementRoom.causal_envelope_json), 0);
+  }
+  if (handoffCheckpoint && liveRoom) {
+    const handoffLog = addLog(log, "The defeated turn owner cannot continue; the next living player begins their turn.");
+    const sourceReward = settlementTarget.role === "Rebel" && settlementSource?.alive;
+    const sourcePenalty = settlementTarget.role === "Loyalist" && settlementSource?.role === "Lord";
+    const sourceGuard = sourceReward
+      ? " AND EXISTS (SELECT 1 FROM players WHERE room_id = rooms.id AND id = ? AND alive IS ? AND hand_json IS ?)"
+      : sourcePenalty
+        ? " AND EXISTS (SELECT 1 FROM players WHERE room_id = rooms.id AND id = ? AND alive IS ? AND hand_json IS ? AND equipment_json IS ? AND role IS ?)"
+        : "";
+    const roomStatement = db().prepare(`UPDATE rooms SET phase = 'resolving', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = NULL
+      WHERE id = ? AND status = 'playing' AND phase = ? AND pending_json = ? AND turn_seat = ? AND turn_epoch = ?
+        AND deck_json IS ? AND discard_json IS ? AND log_json IS ? AND causal_envelope_json IS ?
+        AND EXISTS (SELECT 1 FROM players WHERE room_id = rooms.id AND id = ? AND alive IS ? AND hp IS ? AND hand_json IS ? AND judgement_json IS ? AND equipment_json IS ?)
+        ${sourceGuard}`)
+      .bind(checkpointJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(handoffLog), room.id,
+        liveRoom.phase, liveRoom.pending_json, liveRoom.turn_seat, liveRoom.turn_epoch,
+        liveRoom.deck_json, liveRoom.discard_json, liveRoom.log_json, liveRoom.causal_envelope_json,
+        settlementTarget.id, settlementTarget.alive, settlementTarget.hp, settlementTarget.hand_json, settlementTarget.judgement_json, settlementTarget.equipment_json,
+        ...(sourceReward ? [settlementSource.id, settlementSource.alive, settlementSource.hand_json] : sourcePenalty ? [settlementSource.id, settlementSource.alive, settlementSource.hand_json, settlementSource.equipment_json, settlementSource.role] : []));
+    const result = await db().batch([roomStatement, ...writes]);
+    if ((result[0]?.meta.changes ?? 0) > 0) {
+      await advanceDefeatHandoffCheckpoint(room.id, checkpointJson);
+    }
+    return;
   }
   const next = dyingResumeState(pending, resume);
   writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(next.phase, next.pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
@@ -5132,6 +5296,13 @@ async function advanceDyingRescue(roomId: string) {
       const moved = await causalRoomStateWrite(roomId, { phase: "dying", pending: next.pending, log: parse<string[]>(room.log_json, []), causalEnvelope: next.causalEnvelope }, room.pending_json).run();
       if ((moved.meta.changes ?? 0) > 0) return;
       continue;
+    }
+    // The current-turn-owner defeat path is committed directly from Dying to
+    // the private handoff checkpoint.  Avoid a separate resolving claim here;
+    // otherwise termination between the claim and the settlement would leave
+    // an unowned Dying record that no recovery boundary can identify.
+    if (defeatHandoffDecision(room, pending, players)) {
+      await defeatDyingPlayer(room, pending, target, source); return;
     }
     const claimed = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'dying' AND pending_json = ?").bind(roomId, room.pending_json).run();
     if ((claimed.meta.changes ?? 0) <= 0) continue;
@@ -7785,7 +7956,9 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const tokenHash = token ? await hash(token) : "";
   const turnEndInProgress = room.phase === "resolving" && Boolean(parseTurnEndCheckpoint(room.pending_json));
   const recoveryInProgress = room.phase === "resolving" && Boolean(parseRecoveryCheckpoint(room.pending_json));
-  const actualActionPlayerId = discardTurnHandoff || turnEndInProgress || recoveryInProgress ? null : actionPlayerIdForPending(room, pending, players);
+  const defeatHandoffInProgress = room.phase === "resolving" && Boolean(parseDefeatHandoffCheckpoint(room.pending_json));
+  const internalCheckpointInProgress = turnEndInProgress || recoveryInProgress || defeatHandoffInProgress;
+  const actualActionPlayerId = discardTurnHandoff || internalCheckpointInProgress ? null : actionPlayerIdForPending(room, pending, players);
   const sessionPlayers = players.filter((player) => player.token_hash === tokenHash);
   // A host token may control the host plus generated test seats. In a mixed
   // room, only project an active seat when that seat belongs to this token;
@@ -7919,7 +8092,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     : undefined;
   const currentAction: CurrentAction = {
     version: 3,
-    kind: sharedWindow ? sharedWindow.continuation.mode === "DYING_PEACH" ? "dying" : "response" : concealPrivateTriggerDecision || discardTurnHandoff || recoveryInProgress ? "none" : responsePending || negationWindow ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
+    kind: sharedWindow ? sharedWindow.continuation.mode === "DYING_PEACH" ? "dying" : "response" : concealPrivateTriggerDecision || discardTurnHandoff || internalCheckpointInProgress ? "none" : responsePending || negationWindow ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
     actorId: sharedWindow ? sharedPendingForViewer ? me?.id ?? null : null : concealPrivateTriggerDecision ? null : room.status === "heroes" ? projectedActionPlayerId : negationWindow ? me?.id ?? null : actionPlayerId,
     deadline: concealPrivateTriggerDecision ? 0 : responseDeadline,
     reason: actionReason,
@@ -8163,13 +8336,14 @@ export async function GET(request: Request) {
       if (membership.handoff_pending_json) {
         let recoveryAdvanced = false;
         try {
-          recoveryAdvanced = await advanceRecoveryCheckpoint(membership.room_id, membership.handoff_pending_json);
+          recoveryAdvanced = await advanceDefeatHandoffCheckpoint(membership.room_id, membership.handoff_pending_json);
+          if (!recoveryAdvanced) recoveryAdvanced = await advanceRecoveryCheckpoint(membership.room_id, membership.handoff_pending_json);
         } catch (error) {
           // A failed recovery write must remain retryable. Keep returning the
           // same private-checkpoint projection instead of turning a refresh
           // into a 500 while preserving a low-cardinality diagnostic.
           console.warn(JSON.stringify({
-            event: "recovery_checkpoint_get_retry",
+            event: "internal_checkpoint_get_retry",
             roomId: membership.room_id,
             error: error instanceof Error ? error.message : String(error),
           }));
@@ -8930,7 +9104,7 @@ export async function botControllerSnapshot(code: string, advanceExpiredWindows 
   const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
   const botIds = players.filter((player) => player.controller_type === "bot" && !player.is_test_player).map(({ id }) => id);
   if (advanceExpiredWindows && room.phase === "resolving" && room.pending_json
-    && await advanceRecoveryCheckpoint(room.id, room.pending_json)) return botControllerSnapshot(code, false, roleBotId);
+    && (await advanceDefeatHandoffCheckpoint(room.id, room.pending_json) || await advanceRecoveryCheckpoint(room.id, room.pending_json))) return botControllerSnapshot(code, false, roleBotId);
   if (advanceExpiredWindows && room.phase === "resolving" && room.pending_json
     && await advanceTurnEndCheckpoint(room.id, room.pending_json)) return botControllerSnapshot(code, false, roleBotId);
   const handoff = parseDiscardTurnHandoff(room.pending_json);
@@ -9994,7 +10168,7 @@ export async function POST(request: Request, routeContext?: unknown) {
   }
 
   if (GAMEPLAY_ACTION_SET.has(action) && sessionPlayers.length && room.phase === "resolving" && room.pending_json
-    && await advanceRecoveryCheckpoint(room.id, room.pending_json)) {
+    && (await advanceDefeatHandoffCheckpoint(room.id, room.pending_json) || await advanceRecoveryCheckpoint(room.id, room.pending_json))) {
     const refreshed = await roomState(code, token, false, typeof body.testViewerId === "string" ? body.testViewerId : undefined);
     return action === "advance_timers" ? json({ room: refreshed })
       : json({ error: "The effect is being resumed. Refresh for the current legal action.", stale: true, room: refreshed }, 409);

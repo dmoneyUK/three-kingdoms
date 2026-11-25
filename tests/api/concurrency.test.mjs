@@ -961,3 +961,116 @@ test("interrupted Discard commits its payment and public handoff at most once", 
   assert.deepEqual(restored.myHand.map(({ id }) => id), [keep.id]);
   assert.equal(discardIds(code).filter((id) => id === discard.id).length, 1);
 });
+
+test("defeated current-turn owner persists and recovers one private handoff", { timeout: 60_000 }, async () => {
+  const game = await createHumanGame();
+  const [ownerMember, opponentMember, lordMember] = game.members;
+  const [owner, opponent, lord, other] = game.room.players;
+  const code = game.code;
+  const roomId = query(`SELECT id FROM rooms WHERE code=${quote(code)}`);
+  const duel = card("Duel", "defeat-handoff");
+  const attack = card("Attack", "defeat-handoff-reply");
+  const hiddenOpponentCard = card("Dodge", "defeat-handoff-private");
+
+  // The owner is a non-Lord so a four-seat match remains non-terminal after
+  // the lethal Duel loss.  All heroes are pinned to a no-trigger fixture.
+  sql(`UPDATE players SET role=CASE seat WHEN ${owner.seat} THEN 'Rebel' WHEN ${opponent.seat} THEN 'Loyalist' WHEN ${lord.seat} THEN 'Lord' ELSE 'Renegade' END, hero='zhao-yun' WHERE room_id=${quote(roomId)}`);
+  setHand(owner.id, [duel], 1, 4);
+  setHand(opponent.id, [attack, hiddenOpponentCard], 4, 4);
+  setHand(lord.id, [], 4, 4);
+  setHand(other.id, [], 4, 4);
+  setTurn(code, owner.seat, "play");
+
+  const duelOpened = await request("play_card", { code, token: ownerMember.token, cardId: duel.id, targetId: opponent.id });
+  assert.equal(duelOpened.status, 200, JSON.stringify(duelOpened.data));
+  assert.equal(duelOpened.data.room.currentAction.kind, "response");
+  assert.ok(duelOpened.data.room.currentAction.negationWindowId);
+  await passNegationWindows(code, game.members);
+  const duelTargetView = (await state(code, opponentMember.token)).data;
+  assert.equal(duelTargetView.currentAction.kind, "response");
+  assert.equal(duelTargetView.currentAction.actorId, opponent.id);
+
+  const duelAnswered = await request("respond", { code, token: opponentMember.token, providerId: "card", cardId: attack.id });
+  assert.equal(duelAnswered.status, 200, JSON.stringify(duelAnswered.data));
+  const ownerResponse = (await state(code, ownerMember.token)).data;
+  assert.equal(ownerResponse.currentAction.kind, "response");
+  assert.equal(ownerResponse.currentAction.actorId, owner.id);
+
+  const duelLost = await request("decline_response", { code, token: ownerMember.token });
+  assert.equal(duelLost.status, 200, JSON.stringify(duelLost.data));
+  const dying = (await state(code, ownerMember.token)).data;
+  assert.equal(dying.phase, "dying", JSON.stringify(dying));
+  assert.equal(dying.pendingDying.targetId, owner.id);
+
+  const failedPost = async (token) => {
+    const view = (await state(code, token)).data;
+    const response = await fetch(new URL("/api/rooms", process.env.GAME_TEST_URL ?? "http://localhost:3137"), {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "skip_rescue", code, token, windowId: view.currentAction.sharedWindow?.windowId }),
+    });
+    assert.equal(response.status, 500);
+    await response.body?.cancel();
+  };
+
+  // The old implementation committed death, then exposed play with the dead
+  // seat before the separate continuation.  Keep that boundary armed so the
+  // regression proves the new checkpoint is the only committed handoff.
+  sql(`CREATE TRIGGER abort_legacy_defeat_handoff BEFORE UPDATE OF phase ON rooms
+    WHEN OLD.id=${quote(roomId)} AND OLD.phase='resolving' AND NEW.phase='resolving' AND NEW.pending_json IS NULL
+      AND json_extract(OLD.pending_json,'$.kind') != 'defeat_handoff'
+    BEGIN SELECT RAISE(ABORT, 'interrupted legacy defeat handoff'); END;`);
+  sql(`CREATE TRIGGER abort_defeat_checkpoint_start BEFORE UPDATE OF phase ON rooms
+    WHEN OLD.id=${quote(roomId)} AND OLD.phase='resolving' AND json_extract(OLD.pending_json,'$.kind')='defeat_handoff' AND NEW.phase IN ('draw','response')
+    BEGIN SELECT RAISE(ABORT, 'interrupted defeat checkpoint start'); END;`);
+  try {
+    let finalRescueToken = ownerMember.token;
+    for (let guard = 0; guard < game.members.length + 1; guard++) {
+      const open = [];
+      for (const member of game.members) {
+        const view = (await state(code, member.token)).data;
+        if (view.currentAction?.legalActions?.includes("skip_rescue") && !view.currentAction.sharedWindow?.locked) open.push(member);
+      }
+      assert.ok(open.length > 0, "a shared Dying window keeps one pass available");
+      finalRescueToken = open[open.length - 1].token;
+      if (open.length === 1) break;
+      const passed = await request("skip_rescue", { code, token: open[0].token });
+      assert.equal(passed.status, 200, JSON.stringify(passed.data));
+    }
+    await failedPost(finalRescueToken);
+    const persisted = JSON.parse(query(`SELECT json_object('phase',phase,'pending',pending_json,'turnSeat',turn_seat,'turnEpoch',turn_epoch) FROM rooms WHERE id=${quote(roomId)}`));
+    assert.equal(persisted.phase, "resolving");
+    assert.equal(JSON.parse(persisted.pending).kind, "defeat_handoff");
+    assert.equal(persisted.turnSeat, owner.seat);
+    assert.equal(Number(persisted.turnEpoch), Number(query(`SELECT turn_epoch FROM rooms WHERE id=${quote(roomId)}`)));
+    const defeated = JSON.parse(query(`SELECT json_object('alive',alive,'hp',hp,'hand',hand_json) FROM players WHERE id=${quote(owner.id)}`));
+    assert.equal(defeated.alive, 0);
+    assert.equal(defeated.hp, 0);
+    assert.deepEqual(JSON.parse(defeated.hand), []);
+
+    // The internal checkpoint is hidden from both anonymous and authenticated
+    // public projections while the recovery write is fault-injected.
+    const hidden = await state(code, "");
+    assert.equal(hidden.data.pending, null);
+    assert.equal(hidden.data.currentAction.kind, "none");
+    assert.deepEqual(hidden.data.currentAction.legalActions, []);
+    assert.equal(JSON.stringify(hidden.data).includes("defeat_handoff"), false);
+  } finally {
+    sql("DROP TRIGGER abort_legacy_defeat_handoff");
+    sql("DROP TRIGGER abort_defeat_checkpoint_start");
+  }
+
+  const epoch = Number(query(`SELECT turn_epoch FROM rooms WHERE id=${quote(roomId)}`));
+  const [first, second] = await Promise.all([state(code, ownerMember.token), state(code, opponentMember.token)]);
+  assert.equal(first.data.phase, "draw");
+  assert.equal(first.data.turnSeat, opponent.seat);
+  assert.equal(first.data.currentAction.actorId, opponent.id);
+  assert.equal(second.data.phase, "draw");
+  assert.equal(Number(query(`SELECT turn_epoch FROM rooms WHERE id=${quote(roomId)}`)), epoch + 1);
+  assert.equal(query(`SELECT json_extract(pending_json,'$.kind') FROM rooms WHERE id=${quote(roomId)}`), "");
+  assert.equal(query(`SELECT COUNT(*) FROM players WHERE id=${quote(owner.id)} AND alive=0 AND hp=0`), "1");
+  assert.equal((await state(code, ownerMember.token)).data.isMyAction, false);
+  assert.equal((await state(code, ownerMember.token)).data.myHand.some(({ id }) => id === duel.id), false);
+  assert.equal((await state(code, ownerMember.token)).data.currentAction.actorId, opponent.id);
+  assert.equal((await state(code, lordMember.token)).data.currentAction.actorId, opponent.id);
+  assert.equal(JSON.stringify(first.data).includes(hiddenOpponentCard.id), false, "private opponent hand stays private");
+});
