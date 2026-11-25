@@ -1,7 +1,7 @@
 import test from "node:test";
 import {
   assert, card, query, quote, request, requestAndSettle, runBotScheduler, runBotStep,
-  setDeck, setEquipment, setHand, setTurn, roomCardCount, sql, state,
+  setDeck, setEquipment, setHand, setJudgement, setTurn, roomCardCount, sql, state,
 } from "./test-support.mjs";
 
 const hourlyAddLimitDisabledForTest = process.env.GAME_TEST_BOT_DEMO_DISABLE_HOURLY_ADD_LIMIT === "true";
@@ -55,6 +55,25 @@ async function createBotGame() {
     assert.ok(options.some((option) => option.id === assignment.hero), "the selected bot Hero came from its server-assigned candidates");
   }
   return { code, token: created.data.token, hostId, room, bots };
+}
+
+async function logRolePolicyDiagnostic(code, token, fixture) {
+  const view = (await state(code, token)).data ?? {};
+  const pendingRaw = query(`SELECT pending_json FROM rooms WHERE code=${quote(code)}`);
+  let pending = null;
+  try { pending = pendingRaw ? JSON.parse(pendingRaw) : null; } catch { pending = { kind: "malformed" }; }
+  const actor = view.players?.find(({ id }) => id === view.actionPlayerId);
+  console.error(JSON.stringify({
+    fixture,
+    phase: view.phase ?? null,
+    pendingKind: pending?.kind ?? null,
+    pendingEvent: pending?.event ?? null,
+    actorSeat: actor?.seat ?? null,
+    heroIds: view.players?.map(({ hero }) => hero ?? null) ?? [],
+    turnSeat: Number(query(`SELECT turn_seat FROM rooms WHERE code=${quote(code)}`) || 0),
+    transitionKind: view.currentAction?.kind ?? null,
+    legalActions: view.currentAction?.legalActions ?? [],
+  }));
 }
 
 test("a long Bot room refreshes the final authenticated projection without leaking private state", async () => {
@@ -735,27 +754,86 @@ test("role policy filters converted, Serpent Spear, and multi-target Attacks thr
 test("a Loyalist ends safely when a targeted Stratagem can only harm the living Lord", async () => {
   const { code, token, hostId, bots } = await createBotGame();
   const loyalist = bots[0];
-  // Huang Gai can spend a one-card hand with Kurou, which would mask the End Turn fallback under test.
+  // Fix every actor's Hero and turn-boundary state. The failing CI fixture left
+  // three random Heroes in place, so a legitimate private turn-start/end
+  // trigger could replace the expected safe End Turn -> Draw transition.
   const steal = card("Steal", "role-guard-only-lord");
-  sql(`UPDATE players SET role='Lord' WHERE id=${quote(hostId)};
-    UPDATE players SET role='Loyalist', hero='cao-cao' WHERE id=${quote(loyalist.id)};
-    UPDATE players SET role='Rebel' WHERE id=${quote(bots[1].id)};
-    UPDATE players SET role='Renegade' WHERE id=${quote(bots[2].id)}`);
+  const lordDodge = card("Dodge", "role-guard-only-lord-target");
+  sql(`UPDATE rooms SET skill_state_json='{}' WHERE code=${quote(code)};
+    UPDATE players SET role='Lord', hero='sun-quan', hp=4, max_hp=4, alive=1, equipment_json='{}', judgement_json='[]' WHERE id=${quote(hostId)};
+    UPDATE players SET role='Loyalist', hero='cao-cao', hp=4, max_hp=4, alive=1, equipment_json='{}', judgement_json='[]' WHERE id=${quote(loyalist.id)};
+    UPDATE players SET role='Rebel', hero='zhang-fei', hp=4, max_hp=4, alive=1, equipment_json='{}', judgement_json='[]' WHERE id=${quote(bots[1].id)};
+    UPDATE players SET role='Renegade', hero='gongsun-zan', hp=4, max_hp=4, alive=1, equipment_json='{}', judgement_json='[]' WHERE id=${quote(bots[2].id)}`);
   setHand(loyalist.id, [steal], 4, 4);
-  setHand(hostId, [card("Dodge", "role-guard-only-lord-target")], 4, 4);
+  setHand(hostId, [lordDodge], 4, 4);
   setHand(bots[1].id, [], 4, 4);
   setHand(bots[2].id, [], 4, 4);
-  setEquipment(hostId, {});
-  setEquipment(bots[1].id, {});
-  setEquipment(bots[2].id, {});
+  for (const player of [hostId, loyalist.id, bots[1].id, bots[2].id]) {
+    setEquipment(player, {});
+    setJudgement(player, []);
+  }
   setTurn(code, loyalist.seat, "play");
   const before = (await state(code, token)).data;
   const result = await runBotStep(code, loyalist.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
   assert.equal(result.status, 200, JSON.stringify(result.data));
+  let after;
+  try {
+    after = (await state(code, token)).data;
+    assert.notEqual(after.actionPlayerId, loyalist.id, "the Bot uses a legally offered safe End Turn fallback instead of retrying");
+    assert.equal(roomCardCount(code, steal.id), 1, "the Lord-targeted Steal remains unplayed");
+    assert.equal(roomCardCount(code, lordDodge.id), 1, "the Lord's original card remains conserved");
+    assert.equal(after.players.find(({ id }) => id === hostId).hp, 4, "the Lord HP is unchanged");
+    assert.equal(after.phase, "draw", `safe End Turn must reach Draw with no pending continuation: ${JSON.stringify({ phase: after.phase, currentAction: after.currentAction?.kind })}`);
+    assert.equal(query(`SELECT pending_json IS NULL FROM rooms WHERE code=${quote(code)}`), "1", "safe End Turn leaves no pending trigger");
+    assert.equal(after.actionPlayerId, bots[1].id, "the next living seat owns the Draw phase");
+  } catch (error) {
+    await logRolePolicyDiagnostic(code, token, "role-guard-only-lord-deterministic-fallback");
+    throw error;
+  }
+  sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
+});
+
+test("a deterministic End Turn can open and canonically decline a real turn-start trigger", async () => {
+  const { code, token, hostId, bots, room } = await createBotGame();
+  const host = room.players.find(({ id }) => id === hostId);
+  const endingBot = room.players.find(({ seat }) => seat === (host.seat + 3) % 4);
+  assert.ok(host && endingBot?.isBot, "fixture has deterministic adjacent host/Bot seats");
+  const top = card("Attack", "role-guard-stargazing-top");
+  const bottom = card("Dodge", "role-guard-stargazing-bottom");
+  sql(`UPDATE rooms SET skill_state_json='{}' WHERE code=${quote(code)};
+    UPDATE players SET role='Lord', hero='zhuge-liang', hp=4, max_hp=4, alive=1, equipment_json='{}', judgement_json='[]' WHERE id=${quote(hostId)};
+    UPDATE players SET role='Loyalist', hero='zhang-fei', hp=4, max_hp=4, alive=1, equipment_json='{}', judgement_json='[]' WHERE id=${quote(bots[0].id)};
+    UPDATE players SET role='Rebel', hero='sun-quan', hp=4, max_hp=4, alive=1, equipment_json='{}', judgement_json='[]' WHERE id=${quote(bots[1].id)};
+    UPDATE players SET role='Renegade', hero='gongsun-zan', hp=4, max_hp=4, alive=1, equipment_json='{}', judgement_json='[]' WHERE id=${quote(bots[2].id)}`);
+  for (const player of room.players) {
+    setHand(player.id, [], 4, 4);
+    setEquipment(player.id, {});
+    setJudgement(player.id, []);
+  }
+  setDeck(code, [top, bottom]);
+  setTurn(code, endingBot.seat, "play");
+
+  const before = (await state(code, token)).data;
+  const ended = await runBotStep(code, endingBot.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
+  assert.equal(ended.status, 200, JSON.stringify(ended.data));
+  const pending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(code)}`));
+  assert.equal(pending.kind, "trigger");
+  assert.equal(pending.event, "turn_start");
+  assert.equal(pending.actorId, hostId, "the next seat's canonical turn-start trigger belongs to the host");
+  const opened = (await state(code, token)).data;
+  assert.equal(opened.currentAction.actorId, hostId);
+  assert.equal(opened.currentAction.kind, "trigger");
+  assert.equal(opened.currentAction.triggerEvent, "turn_start");
+  assert.ok(opened.currentAction.triggerOptions.some(({ effectId }) => effectId === "zhuge_liang_stargazing"));
+
+  const declined = await request("decline_trigger", { code, token });
+  assert.equal(declined.status, 200, JSON.stringify(declined.data));
   const after = (await state(code, token)).data;
-  assert.notEqual(after.actionPlayerId, loyalist.id, "the Bot uses a legally offered safe End Turn fallback instead of retrying");
-  assert.equal(roomCardCount(code, steal.id), 1, "the Lord-targeted Steal remains unplayed");
   assert.equal(after.phase, "draw");
+  assert.equal(after.actionPlayerId, hostId, "canonical decline resumes the host's Draw phase");
+  assert.equal(query(`SELECT pending_json IS NULL FROM rooms WHERE code=${quote(code)}`), "1");
+  assert.equal(roomCardCount(code, top.id), 1);
+  assert.equal(roomCardCount(code, bottom.id), 1);
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });
 
