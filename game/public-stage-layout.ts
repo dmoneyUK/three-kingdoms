@@ -2,6 +2,31 @@ export type PublicStageRect = { left: number; top: number; right: number; bottom
 export type PublicStageSize = { width: number; height: number };
 export type PublicStagePhase = "REVEAL" | "MOVE" | "PARKED";
 
+/** Positions a card and its measured attached label above a reserved band. */
+export function positionLabeledCardAboveBand(input: {
+  centerX: number;
+  bandTop: number;
+  card: PublicStageSize;
+  label: PublicStageRect;
+  gap?: number;
+}): { card: PublicStageRect; footprint: PublicStageRect } | null {
+  const { centerX, bandTop, card, label } = input;
+  const gap = input.gap ?? 8;
+  if (![centerX, bandTop, gap, label.left, label.top, label.right, label.bottom].every(Number.isFinite)
+    || !finiteSize(card) || label.right <= label.left || label.bottom <= label.top || gap < 0) return null;
+  const left = centerX - card.width / 2;
+  const labelBottom = Math.max(card.height, label.bottom);
+  const top = bandTop - gap - labelBottom;
+  const footprintLeft = left + Math.min(0, label.left);
+  const footprintTop = top + Math.min(0, label.top);
+  const footprintRight = left + Math.max(card.width, label.right);
+  const footprintBottom = top + labelBottom;
+  return {
+    card: { left, top, right: left + card.width, bottom: top + card.height },
+    footprint: { left: footprintLeft, top: footprintTop, right: footprintRight, bottom: footprintBottom },
+  };
+}
+
 /** A layout identity is valid only when every field comes from proven public state. */
 export type PublicStageScene = {
   semantics: "PROVEN";
@@ -40,13 +65,15 @@ export type PublicStageLayoutInput = {
   };
   phaseRects?: { card: PublicStageRect; activity: PublicStageRect; announcement?: PublicStageRect };
   upperH4?: { top: number; reservedHeight: number; gap: number };
+  /** Permanent message-free H4/PAC reservations used for stationary reveals. */
+  fixedBands?: { h4: PublicStageRect; pac: PublicStageRect };
   announcementCardGap?: number;
   cardActivityGap?: number;
 };
 
 export type PublicStageLayout = {
   identity: string;
-  variant: "stack" | "compact-split" | "move" | "parked";
+  variant: "stack" | "compact-split" | "fixed-bands" | "move" | "parked";
   generation: number;
   scene: PublicStageScene;
   safeBounds: PublicStageRect;
@@ -171,6 +198,53 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     safeBounds.bottom - activity.height,
     activity,
   );
+  if (input.scene.phase === "REVEAL" && input.fixedBands) {
+    const { h4, pac } = input.fixedBands;
+    if (!finiteRect(h4) || !finiteRect(pac) || h4.left < safeBounds.left || h4.right > safeBounds.right
+      || pac.left < safeBounds.left || pac.right > safeBounds.right
+      || pac.bottom > activityBottom + 2 || pac.bottom < activityBottom - 2
+      || h4.bottom >= pac.top) {
+      return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
+    }
+    const centerX = (safeBounds.left + safeBounds.right) / 2;
+    const announcementRect = makeRect(centerX, h4.top, announcement);
+    const activityRect = makeRect(centerX, activityBottom - activity.height, activity);
+    const laneTop = Math.max(safeBounds.top, h4.bottom + 8);
+    const laneBottom = Math.min(safeBounds.bottom, pac.top - 8);
+    const minLeft = safeBounds.left;
+    const maxLeft = safeBounds.right - card.width;
+    const maxTop = laneBottom - card.height;
+    if (maxLeft < minLeft || maxTop < laneTop
+      || announcementRect.left < safeBounds.left || announcementRect.right > safeBounds.right
+      || announcement.height > h4.bottom - h4.top
+      || activityRect.top < pac.top || activityRect.bottom > pac.bottom + 2) {
+      return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
+    }
+    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+    const preferredLeft = clamp(centerX - card.width / 2, minLeft, maxLeft);
+    const preferredTop = laneTop + (laneBottom - laneTop - card.height) / 2;
+    const lefts = new Set([preferredLeft]);
+    const tops = new Set([preferredTop]);
+    for (const { rect } of cardObstacles) {
+      lefts.add(clamp(rect.left - card.width - 8, minLeft, maxLeft));
+      lefts.add(clamp(rect.right + 8, minLeft, maxLeft));
+      tops.add(clamp(rect.top - card.height - 8, laneTop, maxTop));
+      tops.add(clamp(rect.bottom + 8, laneTop, maxTop));
+    }
+    const candidates = [...lefts].flatMap((left) => [...tops].map((top) => ({
+      left, top, right: left + card.width, bottom: top + card.height,
+      distance: Math.abs(left - preferredLeft) + Math.abs(top - preferredTop),
+    }))).sort((left, right) => left.distance - right.distance || left.top - right.top || left.left - right.left);
+    const cardRect = candidates.find((candidate) => candidate.left >= minLeft && candidate.right <= safeBounds.right
+      && candidate.top >= laneTop && candidate.bottom <= laneBottom
+      && !cardObstacles.some((obstacle) => overlaps(candidate, obstacle.rect)));
+    if (!cardRect) return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
+    return { status: "placed", layout: { identity, variant: "fixed-bands", generation: input.scene.generation,
+      scene: input.scene, safeBounds,
+      protectedRects: input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
+      announcement: announcementRect, card: { left: cardRect.left, top: cardRect.top, right: cardRect.right, bottom: cardRect.bottom },
+      activity: activityRect, cardActivityGap: activityRect.top - cardRect.bottom } };
+  }
   if (input.upperH4) {
     const { top, reservedHeight, gap } = input.upperH4;
     if (![top, reservedHeight, gap].every(Number.isFinite) || reservedHeight < announcement.height || gap < 0) {

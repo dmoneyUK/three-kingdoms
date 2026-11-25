@@ -1,3 +1,5 @@
+import { publicH4WidthLimit } from "../game/public-h4-copy";
+
 type CardRect = { left: number; top: number; width: number; height: number };
 const PARKED_CARD = { width: 48, height: 72 };
 export function parkedCardSize() {
@@ -93,6 +95,145 @@ export function fixedUpperHistoryAnnouncementAnchor(table: HTMLElement): { top: 
 
 
 const supportMetrics = new Map<string, { lineHeight: number; marginTop: number }>();
+type FixedBand = { left: number; top: number; right: number; bottom: number; width: number; height: number };
+type FixedBandMeasurements = { h4Height: number; pacHeight: number; h4Width: number; pacWidth: number };
+const fixedBandMeasurements = new WeakMap<HTMLElement, { key: string; value: FixedBandMeasurements }>();
+
+function measureProbe(table: HTMLElement, element: HTMLElement): DOMRect {
+  element.dataset.publicLayoutProbe = "true";
+  element.setAttribute("aria-hidden", "true");
+  element.inert = true;
+  element.style.cssText += ";position:absolute!important;left:-10000px!important;top:0!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important;transform:none!important;translate:none!important;max-height:none!important;height:auto!important;margin:0!important";
+  table.append(element);
+  const rect = element.getBoundingClientRect();
+  element.remove();
+  return rect;
+}
+
+/** Measures real copy at a canonical width without changing the React-owned live node. */
+export function measurePublicElementAtWidth(
+  table: HTMLElement,
+  source: HTMLElement,
+  width: number,
+): { width: number; height: number } | null {
+  if (!Number.isFinite(width) || width <= 0) return null;
+  const probe = source.cloneNode(true) as HTMLElement;
+  probe.setAttribute("aria-hidden", "true");
+  probe.inert = true;
+  probe.dataset.publicLayoutProbe = "true";
+  probe.removeAttribute("id");
+  probe.querySelectorAll<HTMLElement>("[id]").forEach((element) => element.removeAttribute("id"));
+  probe.style.setProperty("width", `${width}px`, "important");
+  probe.style.setProperty("height", "auto", "important");
+  probe.style.setProperty("max-height", "none", "important");
+
+  // Copy the immediate parent so motion/kind selectors keep their real text
+  // styles; keep the wrapper inert and out of flow while measuring the child.
+  const sourceParent = source.parentElement;
+  if (sourceParent && sourceParent !== table) {
+    const wrapper = sourceParent.cloneNode(false) as HTMLElement;
+    wrapper.removeAttribute("id");
+    wrapper.setAttribute("aria-hidden", "true");
+    wrapper.inert = true;
+    wrapper.dataset.publicLayoutProbe = "true";
+    wrapper.style.cssText += ";position:absolute!important;left:-10000px!important;top:0!important;right:auto!important;bottom:auto!important;width:0!important;height:0!important;margin:0!important;padding:0!important;overflow:visible!important;transform:none!important;translate:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important";
+    probe.style.setProperty("position", "relative", "important");
+    probe.style.setProperty("left", "0", "important");
+    probe.style.setProperty("top", "0", "important");
+    probe.style.setProperty("right", "auto", "important");
+    probe.style.setProperty("bottom", "auto", "important");
+    probe.style.setProperty("margin", "0", "important");
+    probe.style.setProperty("transform", "none", "important");
+    probe.style.setProperty("translate", "none", "important");
+    wrapper.append(probe);
+    table.append(wrapper);
+    const rect = probe.getBoundingClientRect();
+    wrapper.remove();
+    return rect.width > 0 && rect.height > 0 ? { width: rect.width, height: rect.height } : null;
+  }
+
+  const rect = measureProbe(table, probe);
+  return rect.width > 0 && rect.height > 0 ? { width: rect.width, height: rect.height } : null;
+}
+
+function fixedBandMetrics(table: HTMLElement): FixedBandMeasurements {
+  const tableRect = table.getBoundingClientRect();
+  const shell = table.closest<HTMLElement>(".game-shell");
+  const playerBoard = table.querySelector<HTMLElement>(".player-board")
+    ?? document.querySelector<HTMLElement>(".player-board");
+  const h4Width = publicH4WidthLimit(window.innerWidth, tableRect.width - 16, tableRect.width - 16);
+  const pacWidth = Math.max(1, Math.min(340, tableRect.width - 16));
+  const key = [window.innerWidth, window.innerHeight, tableRect.left, tableRect.top, tableRect.width, tableRect.height,
+    playerBoard?.dataset.playerCount ?? "", shell?.className ?? "", h4Width, pacWidth].join(":");
+  const cached = fixedBandMeasurements.get(table);
+  if (cached?.key === key) return cached.value;
+
+  const h4 = document.createElement("div");
+  h4.className = "public-card-display-journey-copy is-negation-narration";
+  h4.style.width = `${h4Width}px`;
+  const headline = document.createElement("b");
+  headline.textContent = "A player used a committed public card effect against another player.";
+  const support = document.createElement("span");
+  support.className = "public-card-announcement-support public-negation-narration-support";
+  support.textContent = "The server committed this public result.";
+  h4.append(headline, support);
+  const h4Rect = measureProbe(table, h4);
+
+  const pac = document.createElement("div");
+  pac.className = "public-activity-chip";
+  pac.style.width = `${pacWidth}px`;
+  const status = document.createElement("strong");
+  status.textContent = "Waiting for Test Player 4 to use an available skill or complete the current response before the next decision.";
+  const stage = document.createElement("small");
+  stage.textContent = "Choose the action currently available for this public stage.";
+  pac.append(status, stage);
+  const pacRect = measureProbe(table, pac);
+  const value = {
+    h4Height: Math.max(1, h4Rect.height, publicH4ReservedHeight(h4)),
+    pacHeight: Math.max(1, pacRect.height),
+    h4Width,
+    pacWidth,
+  };
+  fixedBandMeasurements.set(table, { key, value });
+  return value;
+}
+
+/** Stable H4 reserve measured from supported styles, independent of current copy or visibility. */
+export function fixedPublicH4Band(table: HTMLElement, announcement?: HTMLElement | null, measuredHeight = 0): FixedBand | null {
+  const upper = fixedUpperHistoryAnnouncementAnchor(table);
+  if (!upper) return null;
+  const metrics = fixedBandMetrics(table);
+  const rect = announcement?.getBoundingClientRect();
+  const style = announcement ? window.getComputedStyle(announcement) : null;
+  const activeHeight = rect && rect.width > 0 && rect.height > 0
+    && style?.display !== "none" && style?.visibility !== "hidden" && Number(style?.opacity) > 0 ? rect.height : 0;
+  const height = Math.max(metrics.h4Height, activeHeight, Number.isFinite(measuredHeight) ? measuredHeight : 0);
+  const tableRect = table.getBoundingClientRect();
+  const left = tableRect.left + (tableRect.width - metrics.h4Width) / 2;
+  return { left, top: upper.top, right: left + metrics.h4Width, bottom: upper.top + height,
+    width: metrics.h4Width, height };
+}
+
+/** Stable PAC reserve ending at the real Console guidance top, whether PAC is mounted or not. */
+export function fixedPublicActivityBand(
+  table: HTMLElement,
+  consoleGuidance: HTMLElement,
+  activity?: HTMLElement | null,
+  measuredHeight = 0,
+): FixedBand | null {
+  const metrics = fixedBandMetrics(table);
+  const consoleRect = consoleGuidance.getBoundingClientRect();
+  if (consoleRect.width <= 0 || consoleRect.height <= 0) return null;
+  const rect = activity?.getBoundingClientRect();
+  const style = activity ? window.getComputedStyle(activity) : null;
+  const activeHeight = rect && rect.width > 0 && rect.height > 0
+    && style?.display !== "none" && style?.visibility !== "hidden" && Number(style?.opacity) > 0 ? rect.height : 0;
+  const height = Math.max(metrics.pacHeight, activeHeight, Number.isFinite(measuredHeight) ? measuredHeight : 0);
+  const tableRect = table.getBoundingClientRect();
+  const left = tableRect.left + (tableRect.width - metrics.pacWidth) / 2;
+  return { left, top: consoleRect.top - height, right: left + metrics.pacWidth, bottom: consoleRect.top,
+    width: metrics.pacWidth, height };
+}
 
 /** Reserve the measured worst supported H4: two headline lines and one support line. */
 export function publicH4ReservedHeight(element: HTMLElement): number {

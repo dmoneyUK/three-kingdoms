@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findBattlefieldChoiceSafeTopOffset, harvestChoicePlacementPanelRect, isBattlefieldChoiceTopOffsetSafe } from "../app/battlefield-choice-stage.tsx";
-import { calculatePublicStageLayout, publicStageSceneIdentity } from "../game/public-stage-layout.ts";
+import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicStageSceneIdentity } from "../game/public-stage-layout.ts";
 
 const scene = {
   semantics: "PROVEN",
@@ -349,6 +349,73 @@ test("full effect frame keeps an eight-pixel gap below wrapped upper H4 and repo
   }));
   assert.equal(noFit.status, "unavailable");
   if (noFit.status === "unavailable") assert.equal(noFit.reason, "NO_SAFE_STAGE_BAND");
+});
+
+test("fixed H4 and PAC reserves pin the same stationary card while either message is absent or wraps", () => {
+  const geometry = {
+    viewport: { left: 0, top: 0, right: 440, bottom: 766 },
+    table: { left: 0, top: 0, right: 440, bottom: 680 },
+    activityBottom: 660,
+    preferredCard: { left: 175, top: 350 },
+    card: { width: 90, height: 135 },
+    announcement: { width: 340, height: 64 },
+    activity: { width: 340, height: 82 },
+    fixedBands: {
+      h4: { left: 50, top: 120, right: 390, bottom: 190 },
+      pac: { left: 50, top: 560, right: 390, bottom: 660 },
+    },
+    obstacles: [],
+  };
+  const layouts = [
+    calculatePublicStageLayout(input(geometry)), // H4 and PAC visible
+    calculatePublicStageLayout(input({ ...geometry, announcement: { width: 340, height: 35 } })), // H4 wraps less
+    calculatePublicStageLayout(input({ ...geometry, activity: { width: 340, height: 48 } })), // PAC wraps less
+    calculatePublicStageLayout(input({ ...geometry, announcement: { width: 340, height: 35 }, activity: { width: 340, height: 48 } })), // both absent: reserve geometry only
+  ];
+  assert.ok(layouts.every((result) => result.status === "placed"));
+  const cards = layouts.map((result) => result.status === "placed" ? result.layout.card : null);
+  for (const card of cards.slice(1)) assert.deepEqual(card, cards[0]);
+  const placed = layouts[0];
+  assert.equal(placed.status, "placed");
+  if (placed.status !== "placed") return;
+  assert.equal(placed.layout.variant, "fixed-bands");
+  assert.ok(placed.layout.card.top >= geometry.fixedBands.h4.bottom + 8);
+  assert.ok(placed.layout.card.bottom <= geometry.fixedBands.pac.top - 8);
+  assert.equal((placed.layout.card.left + placed.layout.card.right) / 2, 220);
+
+  const blocked = calculatePublicStageLayout(input({
+    ...geometry,
+    obstacles: [{ id: "seat-projection", rect: { left: 150, top: 260, right: 290, bottom: 410 } }],
+  }));
+  assert.equal(blocked.status, "placed");
+  if (blocked.status === "placed") {
+    assert.ok(blocked.layout.card.top >= geometry.fixedBands.h4.bottom + 8);
+    assert.ok(blocked.layout.card.bottom <= geometry.fixedBands.pac.top - 8);
+    assert.ok(blocked.layout.card.right <= 150 || blocked.layout.card.left >= 290
+      || blocked.layout.card.bottom <= 260 || blocked.layout.card.top >= 410);
+  }
+
+  const noFit = calculatePublicStageLayout(input({ ...geometry, card: { width: 90, height: 370 } }));
+  assert.equal(noFit.status, "unavailable");
+  if (noFit.status === "unavailable") assert.equal(noFit.reason, "NO_SAFE_STAGE_BAND");
+});
+
+test("a parked effect card label remains eight pixels above its reserved PAC band", () => {
+  const placement = positionLabeledCardAboveBand({
+    centerX: 220,
+    bandTop: 500,
+    card: { width: 40, height: 60 },
+    label: { left: -8, top: 56, right: 48, bottom: 70 },
+    gap: 8,
+  });
+  assert.ok(placement);
+  if (!placement) return;
+  assert.equal(placement.card.left, 200);
+  assert.equal(placement.card.top, 422);
+  assert.equal(placement.footprint.left, 192);
+  assert.equal(placement.footprint.right, 248);
+  assert.equal(placement.footprint.bottom, 492);
+  assert.equal(500 - placement.footprint.bottom, 8);
 });
 
 test("measured upper H4 remains fixed during move and parked phases", () => {

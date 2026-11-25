@@ -1,7 +1,7 @@
 "use client";
 
 import { publicH4Copy, matchingPublicH4Segments, publicH4WidthLimit, type PublicH4Segment } from "../game/public-h4-copy";
-import { fixedUpperHistoryAnnouncementAnchor, parkedCardSize } from "./public-upper-anchor";
+import { fixedPublicActivityBand, fixedPublicH4Band, fixedUpperHistoryAnnouncementAnchor, parkedCardSize } from "./public-upper-anchor";
 
 import { publicCorridorWidth } from "./public-corridor";
 
@@ -12,6 +12,7 @@ import type { PresentationTargetCardSettlementMovement } from "../game/presentat
 import type { PublicInteractionNarration } from "../game/public-activity";
 import type { PublicDiscardAnnouncement } from "./public-discard-transition";
 import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
+import { positionLabeledCardAboveBand } from "../game/public-stage-layout";
 import { cardDefinition } from "../game/cards";
 import { publicAnnouncementEventCopyKey as buildPublicAnnouncementEventCopyKey, publicAnnouncementGeometryIdentity, publicAnnouncementGeometryKey, transitionPublicAnnouncementCopyLifecycle, type PublicAnnouncementCopyLifecycle, type PublicAnnouncementProtectedGeometry, type PublicAnnouncementSeatGeometry } from "../game/public-announcement";
 import { compactLustDuelAttackMessage } from "./lust-public-copy";
@@ -341,6 +342,13 @@ type JourneyCard = {
   actorName: string;
   cardFace: Card;
   cardFaces?: readonly Card[];
+  /** Public material context retained for this physical event through parking. */
+  parkedPublicEffect?: {
+    placement: "above-pac";
+    ownerId: string;
+    cardId: string;
+    title: string;
+  };
   ariaLabel: string;
   semanticLabel?: string;
   role: "root" | "response" | "deflection";
@@ -398,6 +406,7 @@ function PublicJourneyCard({
   harvestRootParked = false,
   lustCostFrame,
   publicCardEffectFrame,
+  parkedEffectLabel,
   onInspectCard,
 }: {
   card: JourneyCard;
@@ -416,6 +425,7 @@ function PublicJourneyCard({
   harvestRootParked?: boolean;
   lustCostFrame?: PublicCardDisplayAction["lustCostFrame"];
   publicCardEffectFrame?: PublicCardEffectFrameView;
+  parkedEffectLabel?: string;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
   const sharedPublicStage = usePublicStageLayout();
@@ -484,6 +494,8 @@ function PublicJourneyCard({
     data-public-card-journey-size={size}
     data-public-card-journey-layout-pending={card.layoutPending ? "true" : "false"}
     data-public-card-journey-layout-reason={card.layoutChangeReason}
+    data-public-card-journey-effect-parking-placement={card.parkedPublicEffect?.placement}
+    data-public-card-journey-effect-parking-owner-id={card.parkedPublicEffect?.ownerId}
     data-public-card-journey-reveal-started-at={card.revealStartedAtIso ?? undefined}
     data-public-card-journey-target-left={parkingTargetKnown ? card.target.left : undefined}
     data-public-card-journey-target-top={parkingTargetKnown ? card.target.top : undefined}
@@ -568,7 +580,7 @@ function PublicJourneyCard({
         ><CardFace card={face} /></span>)}
       </span>
       : <CardFace card={card.cardFace} publicEffectFrameCardId={publicCardEffectFrame ? card.cardFace.id : undefined} />}
-    {publicCardEffectFrame && card.phase === "parked" && <small className="public-card-lust-cost-parked">{publicCardEffectFrame.title}</small>}
+    {(publicCardEffectFrame?.title ?? parkedEffectLabel) && card.phase === "parked" && <small className="public-card-lust-cost-parked">{publicCardEffectFrame?.title ?? parkedEffectLabel}</small>}
     {card.semanticLabel && <small className="public-card-journey-semantic">{card.semanticLabel}</small>}
     {showOrdinal && card.globalOrdinal !== undefined && <small className="public-card-journey-ordinal" aria-hidden="true">#{card.globalOrdinal}</small>}
   </button>;
@@ -685,6 +697,7 @@ type BattlefieldCenterCardSafety = {
   reserveSeatHistoryDepth?: number;
   reservePlayerIds?: readonly string[];
   respectFixedUpperH4?: boolean;
+  fixedPublicBands?: boolean;
 };
 type ProtectedBattlefieldCenterCardSafety = BattlefieldCenterCardSafety & { requireProtectedClearance: true };
 
@@ -699,6 +712,53 @@ function battlefieldCenterCard(
     ? null
     : boundCardRect((window.innerWidth - size.width) / 2, (window.innerHeight - size.height) / 2, size.width, size.height);
   const bounds = table.getBoundingClientRect();
+  if (safety.fixedPublicBands || safety.respectFixedUpperH4) {
+    const announcement = table.querySelector<HTMLElement>("[data-public-card-announcement='true']");
+    const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
+    const h4Band = fixedPublicH4Band(table, announcement);
+    const pacBand = consoleGuidance ? fixedPublicActivityBand(table, consoleGuidance,
+      table.querySelector<HTMLElement>("[data-public-activity-chip='true']")) : null;
+    const viewport = window.visualViewport;
+    const viewportLeft = viewport?.offsetLeft ?? 0;
+    const viewportTop = viewport?.offsetTop ?? 0;
+    const viewportRight = viewportLeft + (viewport?.width ?? window.innerWidth);
+    const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
+    const safeLeft = Math.max(8, bounds.left + 8, viewportLeft + 8);
+    const safeRight = Math.min(window.innerWidth - 8, bounds.right - 8, viewportRight - 8);
+    const safeTop = Math.max(8, bounds.top + 8, viewportTop + 8);
+    const safeBottom = Math.min(bounds.bottom - 8, window.innerHeight - 8, viewportBottom - 8);
+    if (!h4Band || !pacBand || safeRight - safeLeft < size.width) return null;
+    const laneTop = Math.max(safeTop, h4Band.bottom + 8);
+    const laneBottom = Math.min(safeBottom, pacBand.top - 8);
+    const preferredLeft = safeLeft + (safeRight - safeLeft - size.width) / 2;
+    const top = laneTop + (laneBottom - laneTop - size.height) / 2;
+    if (laneBottom - laneTop < size.height) return null;
+    const obstacles = [...document.querySelectorAll<HTMLElement>(
+      ".opponent-player-card[data-player-anchor], .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .opponent-inspection-floating-shell, .card-details-panel, .hero-details-panel, .interaction-stage-dying, .dying-handoff-compact, .card-pool-target-stage, .battlefield-choice-stage, .local-player-dock, .local-hand-rail, .local-hand, .console-guidance",
+    )].filter((element) => {
+      const style = window.getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0;
+    }).map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
+    const maxLeft = safeRight - size.width;
+    const maxTop = laneBottom - size.height;
+    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+    const lefts = new Set([preferredLeft]);
+    const tops = new Set([top]);
+    for (const rect of obstacles) {
+      lefts.add(clamp(rect.left - size.width - 8, safeLeft, maxLeft));
+      lefts.add(clamp(rect.right + 8, safeLeft, maxLeft));
+      tops.add(clamp(rect.top - size.height - 8, laneTop, maxTop));
+      tops.add(clamp(rect.bottom + 8, laneTop, maxTop));
+    }
+    const candidates = [...lefts].flatMap((left) => [...tops].map((candidateTop) => ({
+      left, top: candidateTop,
+      distance: Math.abs(left - preferredLeft) + Math.abs(candidateTop - top),
+    }))).sort((first, second) => first.distance - second.distance || first.top - second.top || first.left - second.left);
+    const selected = candidates.find(({ left, top: candidateTop }) => obstacles.every((rect) =>
+      left + size.width <= rect.left || left >= rect.right || candidateTop + size.height <= rect.top || candidateTop >= rect.bottom));
+    if (!selected) return null;
+    return { left: selected.left, top: selected.top, width: size.width, height: size.height };
+  }
   const preferredTop = bounds.top + bounds.height * 0.5 - size.height / 2;
   const preferredLeft = bounds.left + (bounds.width - size.width) / 2;
   const fixedUpperH4 = safety.respectFixedUpperH4
@@ -819,7 +879,7 @@ function battlefieldCenterCard(
 
 /** Full-size public reveal placement that clears the real upper H4 and protected controls. */
 export function h4SafeBattlefieldCardRect(size: { width: number; height: number }) {
-  return battlefieldCenterCard(size, { requireProtectedClearance: true, respectFixedUpperH4: true });
+  return battlefieldCenterCard(size, { requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
 }
 
 function singleTargetBattlefieldRevealCard(size: { width: number; height: number }): CardRect | null {
@@ -876,113 +936,46 @@ function singleTargetBattlefieldRevealCard(size: { width: number; height: number
   return overlapsProtectedControl ? null : candidate;
 }
 
-function battlefieldPublicEffectFrameCard(): CardRect;
+function battlefieldPublicEffectFrameCard(): CardRect | null;
 function battlefieldPublicEffectFrameCard(frame: PublicCardEffectFrameView): CardRect | null;
 function battlefieldPublicEffectFrameCard(frame?: PublicCardEffectFrameView): CardRect | null {
   const table = document.querySelector<HTMLElement>(".play-table");
-  const bounds = table?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
-  const safeLeft = Math.max(8, bounds.left + 8);
-  const safeRight = Math.min(window.innerWidth - 8, bounds.right - 8);
   const frameLayout = publicCardEffectFrameLayout(frame?.materials.length ?? 1, window.innerWidth, window.innerHeight, frame);
-  if (frame?.effectId === "kirin_bow_damage_about_to_apply") {
-    const upperAnnouncement = table?.querySelector<HTMLElement>(
-      "[data-public-card-announcement='true'][data-public-card-announcement-fixed-upper='true'][data-public-card-announcement-positioned='true']",
-    );
-    const announcementRect = upperAnnouncement?.getBoundingClientRect();
-    const announcementStyle = upperAnnouncement ? window.getComputedStyle(upperAnnouncement) : null;
-    if (!announcementRect || announcementRect.width <= 0 || announcementRect.height <= 0
-      || announcementStyle?.display === "none" || announcementStyle?.visibility === "hidden"
-      || Number(announcementStyle?.opacity) === 0) return null;
-
-    const renderedFrame = table
-      ? [...table.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel")].find((element) =>
-        element.dataset.publicCardFrameEffectId === frame.effectId
-        && element.dataset.publicCardFrameCardEventId === frame.eventId)
-      : undefined;
-    const renderedFrameRect = renderedFrame?.getBoundingClientRect();
-    const renderedCard = renderedFrame
-      ? [...renderedFrame.querySelectorAll<HTMLElement>("[data-public-card-effect-frame-card-id]")]
-        .find((element) => element.dataset.publicCardEffectFrameCardId === frame.materials[0]?.card.id)
-      : undefined;
-    const renderedTitle = renderedFrame?.querySelector<HTMLElement>(".public-card-effect-frame-title");
-    const renderedCardRect = renderedCard?.getBoundingClientRect();
-    const renderedTitleRect = renderedTitle?.getBoundingClientRect();
-    const measuredRects = [renderedFrameRect, renderedCardRect, renderedTitleRect]
-      .filter((rect): rect is DOMRect => Boolean(rect && rect.width > 0 && rect.height > 0));
-    const measuredFrame = measuredRects.length > 0
-      ? {
-        left: Math.min(...measuredRects.map((rect) => rect.left)),
-        top: Math.min(...measuredRects.map((rect) => rect.top)),
-        right: Math.max(...measuredRects.map((rect) => rect.right)),
-        bottom: Math.max(...measuredRects.map((rect) => rect.bottom)),
-      }
-      : null;
-    const frameWidth = measuredFrame ? measuredFrame.right - measuredFrame.left : frameLayout.frameWidth;
-    const frameHeight = measuredFrame ? measuredFrame.bottom - measuredFrame.top : frameLayout.frameHeight;
-    const cardOffsetLeft = measuredFrame && renderedCardRect
-      ? renderedCardRect.left - measuredFrame.left
-      : frameLayout.cardOffsetLeft;
-    const cardOffsetTop = measuredFrame && renderedCardRect
-      ? renderedCardRect.top - measuredFrame.top
-      : frameLayout.cardOffsetTop;
-    const safeFrame = battlefieldCenterCard({ width: frameWidth, height: frameHeight }, {
-      requireProtectedClearance: true,
-      respectFixedUpperH4: true,
-    });
-    if (!safeFrame) return null;
-    return {
-      left: safeFrame.left + cardOffsetLeft,
-      top: safeFrame.top + cardOffsetTop,
-      width: REVEAL_CARD.width,
-      height: REVEAL_CARD.height,
-    };
-  }
-  const frameWidth = Math.max(1, Math.min(frameLayout.frameWidth, safeRight - safeLeft));
-  const safeTop = Math.max(8, bounds.top + 8);
-  const safeBottom = Math.min(window.innerHeight - 8, bounds.bottom - 2);
-  const maxFrameLeft = Math.max(safeLeft, safeRight - frameWidth);
-  const frameLeft = Math.max(safeLeft, Math.min(maxFrameLeft, bounds.left + (bounds.width - frameWidth) / 2));
-  const announcementGap = PUBLIC_CARD_ANNOUNCEMENT_GAP;
-  const announcementHeight = 50;
-  const frameHeight = frameLayout.frameHeight;
-  const maxFrameTop = safeBottom - frameHeight - announcementGap - announcementHeight;
-  const preferredTop = bounds.top + (bounds.height - frameHeight) / 2;
-  const obstacleElements = [...document.querySelectorAll<HTMLElement>(
-    ".opponent-player-card[data-player-anchor], .player-square, .player-square-target, .play-seat, .player-board-status, .visible-countdown, .stage-system-cluster, .local-player-dock, .console-guidance, .public-activity-chip",
-  )];
-  const topSeatBottom = table?.dataset.seatTopology === "top-row"
-    ? [...document.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor]")].reduce((bottom, element) => {
-      const rect = element.getBoundingClientRect();
-      const style = window.getComputedStyle(element);
-      return style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0
-        ? bottom : Math.max(bottom, rect.bottom);
-    }, bounds.top)
-    : bounds.top;
-  const minimumFrameTop = Math.max(safeTop, topSeatBottom + 8);
-  const obstacles = obstacleElements.flatMap((element) => {
-    const rect = element.getBoundingClientRect();
-    const style = window.getComputedStyle(element);
-    return style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0
-      || rect.width <= 0 || rect.height <= 0 ? [] : [rect];
+  const renderedFrame = frame && table
+    ? [...table.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel")].find((element) =>
+      element.dataset.publicCardFrameEffectId === frame.effectId
+      && element.dataset.publicCardFrameCardEventId === frame.eventId)
+    : undefined;
+  const renderedFrameRect = renderedFrame?.getBoundingClientRect();
+  const renderedCard = frame && renderedFrame
+    ? [...renderedFrame.querySelectorAll<HTMLElement>("[data-public-card-effect-frame-card-id]")]
+      .find((element) => element.dataset.publicCardEffectFrameCardId === frame.materials[0]?.card.id)
+    : undefined;
+  const renderedCardRect = renderedCard?.getBoundingClientRect();
+  const renderedTitleRect = renderedFrame?.querySelector<HTMLElement>(".public-card-effect-frame-title")?.getBoundingClientRect();
+  const measuredRects = [renderedFrameRect, renderedCardRect, renderedTitleRect]
+    .filter((rect): rect is DOMRect => Boolean(rect && rect.width > 0 && rect.height > 0));
+  const measuredFrame = measuredRects.length > 0 ? {
+    left: Math.min(...measuredRects.map((rect) => rect.left)),
+    top: Math.min(...measuredRects.map((rect) => rect.top)),
+    right: Math.max(...measuredRects.map((rect) => rect.right)),
+    bottom: Math.max(...measuredRects.map((rect) => rect.bottom)),
+  } : null;
+  const frameWidth = measuredFrame ? measuredFrame.right - measuredFrame.left : frameLayout.frameWidth;
+  const frameHeight = measuredFrame ? measuredFrame.bottom - measuredFrame.top : frameLayout.frameHeight;
+  const cardOffsetLeft = measuredFrame && renderedCardRect
+    ? renderedCardRect.left - measuredFrame.left : frameLayout.cardOffsetLeft;
+  const cardOffsetTop = measuredFrame && renderedCardRect
+    ? renderedCardRect.top - measuredFrame.top : frameLayout.cardOffsetTop;
+  const safeFrame = battlefieldCenterCard({ width: frameWidth, height: frameHeight }, {
+    requireProtectedClearance: true,
+    respectFixedUpperH4: true,
+    fixedPublicBands: true,
   });
-  const candidateTops = [preferredTop, ...obstacles.flatMap((obstacle) => [
-    obstacle.bottom + 8,
-    obstacle.top - frameHeight - 8,
-  ])];
-  for (let distance = 8; distance <= 200; distance += 8) {
-    candidateTops.push(preferredTop - distance, preferredTop + distance);
-  }
-  const legalFrameTops = [...new Set(candidateTops)]
-    .filter((top) => top >= minimumFrameTop && top <= maxFrameTop)
-    .sort((left, right) => Math.abs(left - preferredTop) - Math.abs(right - preferredTop));
-  const selectedFrameTop = legalFrameTops.find((top) => {
-      const frameRect = { left: frameLeft, top, width: frameWidth, height: frameHeight };
-      return obstacles.every((obstacle) => !rectsOverlap(frameRect, obstacle, 1));
-    });
-  const frameTop = selectedFrameTop ?? Math.max(minimumFrameTop, Math.min(maxFrameTop, preferredTop));
+  if (!safeFrame) return null;
   return {
-    left: frameLeft + frameLayout.cardOffsetLeft,
-    top: frameTop + frameLayout.cardOffsetTop,
+    left: safeFrame.left + cardOffsetLeft,
+    top: safeFrame.top + cardOffsetTop,
     width: REVEAL_CARD.width,
     height: REVEAL_CARD.height,
   };
@@ -992,8 +985,8 @@ function isKirinBowPublicEffectFrame(frame?: PublicCardEffectFrameView): frame i
   return frame?.effectId === "kirin_bow_damage_about_to_apply";
 }
 
-function battlefieldLustCostCard(): CardRect {
-  return battlefieldPublicEffectFrameCard()!;
+function battlefieldLustCostCard(): CardRect | null {
+  return battlefieldPublicEffectFrameCard();
 }
 
 function battlefieldPublicEffectFrame(card: CardRect, frame?: PublicCardEffectFrameView): CardRect {
@@ -1081,6 +1074,8 @@ function actorParkedCard(actorId: string, cardIndex = 0, preferLocalAuthorDock =
 
 type SeatHistoryCardParking = { rect: CardRect; side: "local" | "top" | "left" | "right" };
 
+const parkedEffectLabelMetricCache = new WeakMap<HTMLElement, Map<string, { left: number; top: number; right: number; bottom: number }>>();
+
 type SeatHistoryCardParkingOptions = {
   cardSize?: Pick<CardRect, "width" | "height">;
   sameAuthorRects?: readonly CardRect[];
@@ -1096,7 +1091,48 @@ type SeatHistoryCardParkingOptions = {
   allowAuthorPortraitEdgeOverlap?: boolean;
   preserveAuthorControls?: boolean;
   keepHarvestResponseNearAuthor?: boolean;
+  placeKirinMaterialAbovePacReserve?: boolean;
+  parkedEffectLabel?: string;
 };
+
+function measureParkedEffectLabelOffset(
+  table: HTMLElement,
+  cardSize: Pick<CardRect, "width" | "height">,
+  labelText: string,
+): { left: number; top: number; right: number; bottom: number } | null {
+  if (!labelText.trim()) return null;
+  const cacheKey = [labelText, cardSize.width, cardSize.height, window.innerWidth, window.innerHeight,
+    table.closest<HTMLElement>(".game-shell")?.className ?? ""].join(":");
+  const tableCache = parkedEffectLabelMetricCache.get(table) ?? new Map();
+  parkedEffectLabelMetricCache.set(table, tableCache);
+  const cached = tableCache.get(cacheKey);
+  if (cached) return cached;
+  const card = document.createElement("button");
+  card.className = "public-card-journey-card is-parked is-public-effect-frame";
+  card.dataset.publicCardJourneyPhase = "parked";
+  card.dataset.publicCardJourneySize = "thumbnail";
+  card.dataset.publicLayoutProbe = "true";
+  card.setAttribute("aria-hidden", "true");
+  card.inert = true;
+  card.style.cssText = `position:absolute!important;left:-10000px!important;top:0!important;width:${cardSize.width}px!important;height:${cardSize.height}px!important;box-sizing:border-box!important;padding:0!important;border:0!important;margin:0!important;transform:none!important;transition:none!important;overflow:visible!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important`;
+  const label = document.createElement("small");
+  label.className = "public-card-lust-cost-parked";
+  label.textContent = labelText;
+  card.append(label);
+  table.append(card);
+  const cardRect = card.getBoundingClientRect();
+  const labelRect = label.getBoundingClientRect();
+  card.remove();
+  if (cardRect.width <= 0 || cardRect.height <= 0 || labelRect.width <= 0 || labelRect.height <= 0) return null;
+  const offset = {
+    left: labelRect.left - cardRect.left,
+    top: labelRect.top - cardRect.top,
+    right: labelRect.right - cardRect.left,
+    bottom: labelRect.bottom - cardRect.top,
+  };
+  tableCache.set(cacheKey, offset);
+  return offset;
+}
 
 function seatHistoryParkingProtectedSelectors(options: SeatHistoryCardParkingOptions) {
   if (!options.protectInteractionControls) return [];
@@ -1269,6 +1305,45 @@ function seatHistoryCardParking(
         && obstacles.every((rect) => !rectsOverlap(rect, visible.rect, 2))
         && otherAnchors.every((rect) => !rectsOverlap(rect, visible.rect, 2));
     };
+    if (options.placeKirinMaterialAbovePacReserve) {
+      const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
+      const pacBand = consoleGuidance ? fixedPublicActivityBand(table, consoleGuidance,
+        table.querySelector<HTMLElement>("[data-public-activity-chip='true']")) : null;
+      const labelOffset = pacBand && options.parkedEffectLabel?.trim()
+        ? measureParkedEffectLabelOffset(table, cardSize, options.parkedEffectLabel)
+        : null;
+      const placement = pacBand && labelOffset ? positionLabeledCardAboveBand({
+        centerX: heroCenterX,
+        bandTop: pacBand.top,
+        card: cardSize,
+        label: labelOffset,
+        gap: 8,
+      }) : null;
+      const kirinMini = placement ? {
+        left: placement.card.left,
+        top: placement.card.top,
+        width: placement.card.right - placement.card.left,
+        height: placement.card.bottom - placement.card.top,
+      } : null;
+      const labeledFootprint = placement ? {
+        left: placement.footprint.left,
+        top: placement.footprint.top,
+        width: placement.footprint.right - placement.footprint.left,
+        height: placement.footprint.bottom - placement.footprint.top,
+      } : null;
+      if (!isLocalAnchor || !pacBand || !kirinMini || !labeledFootprint
+        || labeledFootprint.left < tableRect.left + 8
+        || labeledFootprint.left + labeledFootprint.width > tableRect.right - 8
+        || labeledFootprint.top < tableRect.top + 8 || labeledFootprint.top + labeledFootprint.height > pacBand.top - 8
+        || !isFree(labeledFootprint)) {
+        reportEarlyFailure("kirin-material-no-safe-pac-reserve-slot", {
+          pacReserve: pacBand, candidate: kirinMini, labeledFootprint, labelOffset,
+          consoleGuidance: consoleGuidance ? (() => { const rect = consoleGuidance.getBoundingClientRect(); return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }; })() : null,
+        });
+        return null;
+      }
+      return { rect: kirinMini, side: "local" };
+    }
     const belowSeatCandidates = (left: number): CardRect[] => {
       const firstTop = seat.bottom + (window.matchMedia("(max-width: 700px)").matches ? 0 : gap) + cascade;
       const tops = new Set([firstTop]);
@@ -4085,9 +4160,9 @@ function AttackDodgeCardJourney({
       ? currentAction.publicCardEffectFrame : undefined;
     const center = currentPublicFrame
       ? battlefieldPublicEffectFrameCard(currentPublicFrame)
-      : battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
+      : battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)), requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
     const previousState = journeyRef.current;
-    const centerUnavailableForKirin = isKirinBowPublicEffectFrame(currentPublicFrame) && center === null;
+    const centerPlacementUnavailable = center === null && currentAction.cardFace !== undefined;
     const pendingRevealCenter = center ?? previousState.center
       ?? boundCardRect((window.innerWidth - REVEAL_CARD.width) / 2, (window.innerHeight - REVEAL_CARD.height) / 2, REVEAL_CARD.width, REVEAL_CARD.height);
     const sameInteraction = previousState.scopeKey === scopeKey;
@@ -4147,8 +4222,7 @@ function AttackDodgeCardJourney({
             target: parkedTarget,
             rect: phase === "parked" ? parkedTarget : phase === "reveal" ? center ?? prior.rect : prior.rect,
             moveStartedAtMs: null,
-            layoutPending: (centerUnavailableForKirin && phase === "reveal"
-              && candidate.eventId === currentPublicFrame?.eventId) || phase === "parked" && !target,
+            layoutPending: centerPlacementUnavailable && phase === "reveal" || phase === "parked" && !target,
             layoutChangeReason: "viewer-switch",
           };
         }
@@ -4227,8 +4301,7 @@ function AttackDodgeCardJourney({
         revealElapsedMs: retained?.revealElapsedMs ?? 0,
         revealRemainingMs: retained?.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
         moveStartedAtMs: null,
-        layoutPending: (centerUnavailableForKirin && phase === "reveal"
-          && candidate.eventId === currentPublicFrame?.eventId) || phase === "parked" && !target,
+        layoutPending: centerPlacementUnavailable && phase === "reveal" || phase === "parked" && !target,
         layoutChangeReason: phase === "reveal"
           ? "public-event-committed"
           : latestNewResponseEventId && candidate.role !== "root"
@@ -4281,11 +4354,11 @@ function AttackDodgeCardJourney({
     }
     const roleOrder: Record<JourneyCard["role"], number> = { root: 0, response: 1, deflection: 2 };
     nextCards.sort((left, right) => roleOrder[left.role] - roleOrder[right.role]);
-    const framePlacementUnavailable = centerUnavailableForKirin
-      && nextCards.some((card) => card.eventId === currentPublicFrame?.eventId && card.phase === "reveal");
+    const framePlacementUnavailable = centerPlacementUnavailable
+      && nextCards.some((card) => card.phase === "reveal");
     const presentationCards = framePlacementUnavailable
-      ? nextCards.map((card) => card.eventId === currentPublicFrame?.eventId && card.phase === "reveal"
-        ? { ...card, layoutPending: true, layoutChangeReason: "kirin-effect-frame-awaiting-h4-safe-geometry" }
+      ? nextCards.map((card) => card.phase === "reveal"
+        ? { ...card, layoutPending: true, layoutChangeReason: "fixed-public-bands-awaiting-safe-geometry" }
         : card)
       : nextCards;
     const layoutPending = framePlacementUnavailable || presentationCards.some((card) => card.layoutPending);
@@ -4400,7 +4473,7 @@ function AttackDodgeCardJourney({
         return parked;
       });
       if (activePhase === "move" || cards.every((card) => card.phase !== "reveal" && card.phase !== "move")) {
-        cards = withFirstQueuedAttackDodgeReveal(cards, current.center ?? battlefieldCenterCard());
+        if (current.center) cards = withFirstQueuedAttackDodgeReveal(cards, current.center);
       }
       const next = { ...current, cards };
       journeyRef.current = next;
@@ -4594,10 +4667,8 @@ function AttackDodgeCardJourney({
       const current = journeyRef.current;
       const center = currentAction.publicCardEffectFrame?.eventId === currentAction.rootEventId
         ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
-        : battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
-      const framePlacementUnavailable = isKirinBowPublicEffectFrame(currentAction.publicCardEffectFrame)
-        && center === null
-        && current.cards.some((card) => card.eventId === currentAction.publicCardEffectFrame?.eventId && card.phase === "reveal");
+        : battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)), requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
+      const framePlacementUnavailable = center === null && current.cards.some((card) => card.phase === "reveal");
       const pendingCenter = center ?? current.center
         ?? boundCardRect((window.innerWidth - REVEAL_CARD.width) / 2, (window.innerHeight - REVEAL_CARD.height) / 2, REVEAL_CARD.width, REVEAL_CARD.height);
       const next = {
@@ -4769,7 +4840,8 @@ function AttackDodgeCardJourney({
         key={card.eventId}
         card={card}
         visualPlacementUnavailable={Boolean(journey.framePlacementUnavailable
-          && card.eventId === action.publicCardEffectFrame?.eventId && card.phase === "reveal")}
+          && card.phase === "reveal"
+          && (!action.publicCardEffectFrame || card.eventId === action.publicCardEffectFrame.eventId))}
         onInspectCard={onInspectCard}
         size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
         className={`${isCurrent ? "is-current" : ""} ${isHistorical ? "is-prior" : ""} ${card.role === "deflection" ? "is-deflection" : ""}`}
@@ -4834,12 +4906,21 @@ function singleTargetJourneyEvents(action: PublicCardDisplayAction, sourceName: 
     ? frameMaterials[0]?.ownerName ?? (frameActorId === action.sourceId ? sourceName : "")
     : sourceName;
   const rootCards = frameCards.length ? frameCards : action.cardFace ? [action.cardFace] : [];
+  const parkedPublicEffectMaterial = frame?.effectId === "kirin_bow_damage_about_to_apply"
+    ? frame.materials.find((material) => material.card.id === rootCards[0]?.id && material.ownerId === frameActorId)
+    : undefined;
   if (rootCards.length && frameActorName) events.push({
     eventId: action.rootEventId,
     actorId: frameActorId,
     actorName: frameActorName,
     cardFace: rootCards[0],
     cardFaces: rootCards,
+    ...(parkedPublicEffectMaterial ? { parkedPublicEffect: {
+      placement: "above-pac" as const,
+      ownerId: frameActorId,
+      cardId: parkedPublicEffectMaterial.card.id,
+      title: frame!.title,
+    } } : {}),
     ariaLabel: action.ariaLabel,
     role: "root",
     globalOrdinal: 1,
@@ -4890,6 +4971,7 @@ function singleTargetParkingOptions(
   event: JourneyCard,
   harvestPoolVisible: boolean,
   extendNegationChainCollisionSlots = action.showNegationChainOrdinals === true,
+  viewerId?: string,
 ): SeatHistoryCardParkingOptions {
   const harvest = action.cardFace?.kind === "BumperHarvest";
   const compactHarvestMini = harvest
@@ -4903,6 +4985,13 @@ function singleTargetParkingOptions(
     // All parked Harvest history (root and committed responses) uses the
     // same footprint. The 90×135 reveal remains a separate live phase.
     cardSize: compactHarvestMini ? HARVEST_MOBILE_RESPONSE_CARD : parkedCardSize(),
+    ...(event.parkedPublicEffect?.placement === "above-pac"
+      && event.parkedPublicEffect.cardId === event.cardFace.id
+      && event.parkedPublicEffect.ownerId === event.actorId
+      && event.actorId === viewerId
+      ? { placeKirinMaterialAbovePacReserve: true, anchorLocalHero: true, preferLocalAuthorDock: true,
+        protectInteractionControls: true, preserveAuthorControls: true, parkedEffectLabel: event.parkedPublicEffect.title }
+      : {}),
     ...(harvest ? {
       anchorLocalHero: true,
       avoidAuthorSeat: event.role !== "response",
@@ -5041,6 +5130,14 @@ function SingleTargetCardJourney({
     ? preserveGroupRootJourneyEvents(incoming, journey.cards)
     : incoming;
   const eventSignature = journeyEvents.map((event) => `${event.eventId}:${event.actorId}:${event.cardFace.id}`).join(",");
+  const publicEffectFrameSignature = action.publicCardEffectFrame
+    ? JSON.stringify([
+      action.publicCardEffectFrame.effectId,
+      action.publicCardEffectFrame.eventId,
+      action.publicCardEffectFrame.title,
+      action.publicCardEffectFrame.materials.map(({ card, ownerId }) => [card.id, ownerId]),
+    ])
+    : "";
   const freshSignature = motion?.freshEventIds.join(",") ?? "";
 
   useLayoutEffect(() => {
@@ -5080,8 +5177,8 @@ function SingleTargetCardJourney({
       ? { reserveSeatHistoryDepth: 2 }
       : { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) };
     const fallbackCenter = hasSingleTargetReveal
-      ? battlefieldCenterCard(REVEAL_CARD, { ...reservations, requireProtectedClearance: true })
-      : battlefieldCenterCard(REVEAL_CARD, reservations);
+      ? battlefieldCenterCard(REVEAL_CARD, { ...reservations, requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true })
+      : battlefieldCenterCard(REVEAL_CARD, { ...reservations, requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
     const center = currentAction.publicCardEffectFrame
       ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
       : currentMotion.type === "lust-cost" && currentAction.lustCostFrame
@@ -5108,22 +5205,27 @@ function SingleTargetCardJourney({
     const measuredTargetEventIds = new Set<string>();
     const cards = journeyEvents.map((event) => {
       const old = priorById.get(event.eventId);
-      const actorIndex = actorIndexes.get(event.actorId) ?? 0;
-      actorIndexes.set(event.actorId, actorIndex + 1);
-      const localAuthor = event.actorId === viewerId
+      const parkedPublicEffect = event.parkedPublicEffect
+        ?? (old?.parkedPublicEffect?.cardId === event.cardFace.id ? old.parkedPublicEffect : undefined);
+      const parkingEvent = parkedPublicEffect
+        ? { ...event, actorId: parkedPublicEffect.ownerId, parkedPublicEffect }
+        : event;
+      const actorIndex = actorIndexes.get(parkingEvent.actorId) ?? 0;
+      actorIndexes.set(parkingEvent.actorId, actorIndex + 1);
+      const localAuthor = parkingEvent.actorId === viewerId
         && (currentAction.cardKind === "Steal" || currentAction.cardKind === "Dismantle");
       const parkingOptions = {
-        ...singleTargetParkingOptions(action, event, harvestPoolAboveRoot, hasNegationChainParking),
-        ...(event.actorId === viewerId ? { preferLocalAuthorDock: true } : {}),
+        ...singleTargetParkingOptions(action, parkingEvent, harvestPoolAboveRoot, hasNegationChainParking, viewerId),
+        ...(parkingEvent.actorId === viewerId ? { preferLocalAuthorDock: true } : {}),
         ...(localAuthor ? { anchorLocalHero: true, protectInteractionControls: true, protectSingleTargetControls: true } : {}),
-        sameAuthorRects: measuredRectsByActor.get(event.actorId) ?? [],
+        sameAuthorRects: measuredRectsByActor.get(parkingEvent.actorId) ?? [],
         ...placementFailureReporter(event),
       };
       const measuredTarget = (old && !viewerChanged && !harvestLayoutChanged && !ordinalLayoutChanged && !hasNegationChainParking && !previous.layoutPending && !parkingOptions.protectInteractionControls
         ? old.target
-        : seatHistoryCardParking(event.actorId, actorIndex, occupied, parkingOptions)?.rect
+        : seatHistoryCardParking(parkingEvent.actorId, actorIndex, occupied, parkingOptions)?.rect
           ?? (!parkingOptions.protectInteractionControls
-            ? actorParkedCard(event.actorId, actorIndex, event.actorId === viewerId)
+            ? actorParkedCard(parkingEvent.actorId, actorIndex, parkingEvent.actorId === viewerId)
             : null));
       const parkedSize = parkingOptions.cardSize ?? parkedCardSize();
       // Retain the last real author target while a same-viewer measurement is
@@ -5134,7 +5236,7 @@ function SingleTargetCardJourney({
         parkingFailureSignaturesRef.current.delete(`${viewerIdRef.current}:${event.eventId}`);
         measuredTargetEventIds.add(event.eventId);
         occupied.push(measuredTarget);
-        measuredRectsByActor.set(event.actorId, [...(measuredRectsByActor.get(event.actorId) ?? []), measuredTarget]);
+        measuredRectsByActor.set(parkingEvent.actorId, [...(measuredRectsByActor.get(parkingEvent.actorId) ?? []), measuredTarget]);
       }
       if (old && !viewerChanged) {
         const now = performance.now();
@@ -5151,6 +5253,7 @@ function SingleTargetCardJourney({
           return {
             ...event,
             ...old,
+            parkedPublicEffect,
             actorName: event.actorName,
             cardFace: event.cardFace,
             ariaLabel: event.ariaLabel,
@@ -5175,6 +5278,7 @@ function SingleTargetCardJourney({
           return {
             ...event,
             ...old,
+            parkedPublicEffect,
             actorName: event.actorName,
             cardFace: event.cardFace,
             ariaLabel: event.ariaLabel,
@@ -5197,6 +5301,7 @@ function SingleTargetCardJourney({
         return {
           ...event,
           ...old,
+          parkedPublicEffect,
           actorName: event.actorName,
           cardFace: event.cardFace,
           ariaLabel: event.ariaLabel,
@@ -5224,6 +5329,7 @@ function SingleTargetCardJourney({
         return {
           ...event,
           ...old,
+          parkedPublicEffect,
           actorName: event.actorName,
           cardFace: event.cardFace,
           ariaLabel: event.ariaLabel,
@@ -5294,7 +5400,7 @@ function SingleTargetCardJourney({
     };
     journeyRef.current = next;
     setJourney(next);
-  }, [enabled, journeyEnabled, historyOnly, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, action.showNegationChainOrdinals, scopeKey, eventSignature, freshSignature, viewerId, placementFailureReporter]);
+  }, [enabled, journeyEnabled, historyOnly, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, action.showNegationChainOrdinals, scopeKey, eventSignature, publicEffectFrameSignature, freshSignature, viewerId, placementFailureReporter]);
 
   useEffect(() => {
     if (!journey.suppressTransitions || journey.scopeKey !== scopeKey) return;
@@ -5507,6 +5613,9 @@ function SingleTargetCardJourney({
     return () => { window.cancelAnimationFrame(firstFrame); window.cancelAnimationFrame(secondFrame); };
   }, [journeyEnabled, documentVisible, journey.center, journey.scopeKey, scopeKey, activeCard?.eventId, activeCard?.phase, activeCard?.revealStartedAtMs, activeCard?.awaitingParkingTarget]);
 
+  const hasLocalKirinMaterialParking = journey.cards.some((card) => card.actorId === viewerId
+    && card.parkedPublicEffect?.placement === "above-pac");
+
   useLayoutEffect(() => {
     if (!journeyEnabled || journey.scopeKey !== scopeKey) return;
     let resizeFrame = 0;
@@ -5520,15 +5629,17 @@ function SingleTargetCardJourney({
     let announcementObserver: MutationObserver | null = null;
     let placementRetryTimer = 0;
     let placementRetryAttempts = 0;
+    const watchesKirinAnnouncement = action.publicCardEffectFrame?.effectId === "kirin_bow_damage_about_to_apply"
+      || hasLocalKirinMaterialParking;
     const parkingSelectors = () => {
       const action = actionRef.current;
       const isSingleTarget = action.cardKind === "Steal" || action.cardKind === "Dismantle";
-      return seatHistoryParkingProtectedSelectors({
+      const selectors = seatHistoryParkingProtectedSelectors({
         protectInteractionControls: isSingleTarget,
         protectSingleTargetControls: isSingleTarget,
       });
+      return watchesKirinAnnouncement ? [...selectors, ".public-activity-chip"] : selectors;
     };
-    const watchesKirinAnnouncement = action.publicCardEffectFrame?.effectId === "kirin_bow_damage_about_to_apply";
     const layoutElements = () => [...new Set([
       document.querySelector<HTMLElement>(".play-table"),
       document.querySelector<HTMLElement>(".player-board"),
@@ -5589,16 +5700,14 @@ function SingleTargetCardJourney({
           ? { reserveSeatHistoryDepth: 2 }
           : { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) };
         const fallbackCenter = hasSingleTargetReveal
-          ? battlefieldCenterCard(REVEAL_CARD, { ...reservations, requireProtectedClearance: true })
-          : battlefieldCenterCard(REVEAL_CARD, reservations);
+          ? battlefieldCenterCard(REVEAL_CARD, { ...reservations, requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true })
+          : battlefieldCenterCard(REVEAL_CARD, { ...reservations, requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
         const center = currentAction.publicCardEffectFrame
           ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
           : currentMotion?.type === "lust-cost" && currentAction.lustCostFrame
             ? battlefieldLustCostCard()
             : singleTargetReveal ?? fallbackCenter;
-        const framePlacementUnavailable = isKirinBowPublicEffectFrame(currentAction.publicCardEffectFrame)
-          && center === null
-          && current.cards.some((card) => card.eventId === currentAction.publicCardEffectFrame?.eventId && card.phase === "reveal");
+        const framePlacementUnavailable = center === null && current.cards.some((card) => card.phase === "reveal");
         const pendingCenter = current.center
           ?? boundCardRect((window.innerWidth - REVEAL_CARD.width) / 2, (window.innerHeight - REVEAL_CARD.height) / 2, REVEAL_CARD.width, REVEAL_CARD.height);
         const occupied: CardRect[] = [];
@@ -5611,7 +5720,7 @@ function SingleTargetCardJourney({
           const localAuthor = card.actorId === viewerIdRef.current
             && (currentAction.cardKind === "Steal" || currentAction.cardKind === "Dismantle");
           const parkingOptions = {
-            ...singleTargetParkingOptions(currentAction, card, harvestPoolAboveRoot),
+            ...singleTargetParkingOptions(currentAction, card, harvestPoolAboveRoot, undefined, viewerIdRef.current),
             ...(card.actorId === viewerIdRef.current ? { preferLocalAuthorDock: true } : {}),
             ...(localAuthor ? { anchorLocalHero: true, protectInteractionControls: true, protectSingleTargetControls: true } : {}),
             sameAuthorRects: measuredRectsByActor.get(card.actorId) ?? [],
@@ -5756,7 +5865,7 @@ function SingleTargetCardJourney({
       window.cancelAnimationFrame(resizeFrame);
       window.clearTimeout(placementRetryTimer);
     };
-  }, [action.publicCardEffectFrame?.effectId, journeyEnabled, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, isBumperHarvest, journey.layoutPending, journey.scopeKey, scopeKey, placementFailureReporter]);
+  }, [action.publicCardEffectFrame?.effectId, journeyEnabled, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, isBumperHarvest, journey.layoutPending, journey.scopeKey, hasLocalKirinMaterialParking, scopeKey, placementFailureReporter]);
 
   const currentCard = activeCard ?? journey.cards.find((card) => card.eventId === activeEventId) ?? null;
   const allParked = !journey.layoutPending && journey.cards.length > 0 && journey.cards.every((card) => card.phase === "parked");
@@ -6069,6 +6178,7 @@ function SingleTargetCardJourney({
         lustCostFrame={action.motion?.type === "lust-cost" && card.role === "root" ? action.lustCostFrame : undefined}
         publicCardEffectFrame={card.role === "root" && card.eventId === action.publicCardEffectFrame?.eventId
           ? action.publicCardEffectFrame : undefined}
+        parkedEffectLabel={card.actorId === viewerId ? card.parkedPublicEffect?.title : undefined}
       />;
     })}
     <ol className="duel-public-card-history-accessible" aria-label={showNegationChainOrdinals ? "Chronological Negation chain history" : "Chronological public card history"}>
@@ -6413,7 +6523,7 @@ function DuelCardJourney({
         ? battlefieldLustCostCard()
         : currentMotion.type === "duel"
           ? battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)), requireProtectedClearance: true, respectFixedUpperH4: true })
-          : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
+          : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)), requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
     const previous = journeyRef.current;
     const sameInteraction = previous.scopeKey === scopeKey;
     const viewerChanged = sameInteraction && previous.viewerId !== viewerId;
@@ -6784,7 +6894,7 @@ function DuelCardJourney({
             ? battlefieldLustCostCard()
             : currentMotion?.type === "duel"
               ? battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)), requireProtectedClearance: true, respectFixedUpperH4: true })
-              : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
+              : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)), requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
         const targets = duelParkingTargets(events);
         setJourney((current) => {
           if (current.scopeKey !== scopeKey || currentLayoutRun !== layoutRun) return current;

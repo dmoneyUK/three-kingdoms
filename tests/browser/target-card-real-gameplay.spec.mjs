@@ -2676,7 +2676,7 @@ test("Retaliation Skip is a distinct authorized server action at 440x766", async
 });
 
 for (const weapon of ["FrostSword", "KirinBow"]) {
-  test(`real ${weapon} Attack reaction reaches and submits through its unified modal`, async ({ page, request }) => {
+  test(`real ${weapon} Attack reaction reaches and submits through its unified modal`, async ({ browser, page, request }) => {
     const attack = card("Attack", `real-${weapon.toLowerCase()}-attack`, weapon === "KirinBow" ? "♥" : "♠");
     const mounts = weapon === "KirinBow"
       ? { offensiveHorse: card("FerganaSteed", "real-kirin-offensive-mount"), defensiveHorse: card("Shadowrunner", "real-kirin-defensive-mount") }
@@ -2693,6 +2693,10 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
     ));
     if (weapon === "KirinBow") await page.setViewportSize({ width: 390, height: 844 });
     await openGame(page, seed);
+    const materialOwnerPage = weapon === "KirinBow"
+      ? await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 })
+      : null;
+    if (materialOwnerPage) await openGame(materialOwnerPage, seed, 1, { width: 390, height: 844 });
     await playCardThroughPage(page, attack.id, "TARGET");
     await act(request, seed, 1, "decline_response");
 
@@ -2936,6 +2940,11 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
         const overlaps = (left, right) => left.left < right.right && left.right > right.left
           && left.top < right.bottom && left.bottom > right.top;
         expect(placement.protectedRects.some((rect) => overlaps(placement.frame, rect))).toBe(false);
+        if (materialOwnerPage) {
+          const ownerFrame = materialOwnerPage.locator('.public-card-effect-frame-panel[data-public-card-frame-effect-id="kirin_bow_damage_about_to_apply"]');
+          await expect(ownerFrame).toBeVisible({ timeout: 15_000 });
+          await expect(ownerFrame.locator('[data-public-card-effect-frame-card-id]')).toHaveAttribute("data-public-card-effect-frame-card-id", chosenId);
+        }
       }
       await expect.poll(async () => {
         const latest = await roomView(request, seed, 0);
@@ -2948,6 +2957,44 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
       expect(settledTarget.equipmentCards.map((item) => item.id)).toContain("real-kirin-unrelated-armor");
       expect(settledTarget.equipmentCards.map((item) => item.id)).not.toContain(chosenId);
       expect(settledTarget.hp).toBe(targetView.hp - 1);
+      if (materialOwnerPage) {
+        const parkedLabel = materialOwnerPage.locator('.public-card-journey-card[data-public-card-journey-phase="parked"][data-public-card-journey-actor-id] > .public-card-lust-cost-parked');
+        await expect(parkedLabel).toHaveCount(1, { timeout: 15_000 });
+        await expect(parkedLabel).toBeVisible();
+        const parkedGeometry = await parkedLabel.evaluate((label) => {
+          const card = label.closest(".public-card-journey-card");
+          const table = label.closest(".play-table");
+          const ownerId = card?.getAttribute("data-public-card-journey-actor-id") ?? null;
+          const anchor = ownerId ? [...document.querySelectorAll("[data-player-anchor]")]
+            .find((element) => element.getAttribute("data-player-anchor") === ownerId && element.classList.contains("local-player-dock")) : null;
+          const pac = document.querySelector("[data-public-activity-chip='true']");
+          const consoleGuidance = document.querySelector(".local-player-dock .console-guidance");
+          const rect = (element) => {
+            if (!element) return null;
+            const style = getComputedStyle(element);
+            if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return null;
+            const box = element?.getBoundingClientRect();
+            return box && box.width > 0 && box.height > 0 ? { left: box.left, top: box.top, right: box.right, bottom: box.bottom } : null;
+          };
+          return {
+            ownerId, localAnchor: Boolean(anchor), label: rect(label), card: rect(card), table: rect(table), pac: rect(pac), console: rect(consoleGuidance),
+            parkingPlacement: card?.getAttribute("data-public-card-journey-effect-parking-placement") ?? null,
+            parkingOwnerId: card?.getAttribute("data-public-card-journey-effect-parking-owner-id") ?? null,
+          };
+        });
+        expect(parkedGeometry.ownerId).toBe(seed.players[1].id);
+        expect(parkedGeometry.localAnchor).toBe(true);
+        expect(parkedGeometry.label).toBeTruthy();
+        expect(parkedGeometry.card).toBeTruthy();
+        expect(parkedGeometry.table).toBeTruthy();
+        expect(parkedGeometry.parkingPlacement, JSON.stringify(parkedGeometry)).toBe("above-pac");
+        expect(parkedGeometry.parkingOwnerId).toBe(seed.players[1].id);
+        expect(parkedGeometry.label.left).toBeGreaterThanOrEqual(parkedGeometry.table.left + 8);
+        expect(parkedGeometry.label.right).toBeLessThanOrEqual(parkedGeometry.table.right - 8);
+        if (parkedGeometry.pac) {
+          expect(parkedGeometry.label.bottom, JSON.stringify(parkedGeometry)).toBeLessThanOrEqual(parkedGeometry.pac.top - 8);
+        }
+      }
     }
   });
 }

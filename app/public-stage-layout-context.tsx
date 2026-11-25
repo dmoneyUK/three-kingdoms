@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { fixedUpperHistoryAnnouncementAnchor, publicH4ReservedHeight } from "./public-upper-anchor";
+import { fixedPublicActivityBand, fixedPublicH4Band, measurePublicElementAtWidth } from "./public-upper-anchor";
 import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 import {
   calculatePublicStageLayout,
@@ -197,25 +197,37 @@ export function PublicStageLayoutProvider({
             && Boolean(interactionId)
             && announcement.dataset.publicCardStagePrimaryEventId === eventId));
       const chip = table.querySelector<HTMLElement>("[data-public-activity-chip='true']");
-      if (announcements.length !== 1 || !chip) {
+      const announcement = announcements.length === 1 ? announcements[0] : null;
+      if (announcements.length > 1 || phase !== "REVEAL" && (!announcement || !chip)) {
         clear();
         return;
       }
-      const announcement = announcements[0];
       const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
       if (!consoleGuidance || !visibleObstacle(consoleGuidance)) {
         clear();
         return;
       }
       const consoleBounds = rectOf(consoleGuidance);
-      // Measure both widths before publishing a single shared generation. The
-      // H4 may already be compact from the previous frame, so measure its
-      // stylesheet width independently instead of feeding that back as normal.
-      const savedWidth = announcement.style.width;
-      announcement.style.removeProperty("width");
-      const announcementRect = announcement.getBoundingClientRect();
-      announcement.style.width = savedWidth;
-      const activityRect = chip.getBoundingClientRect();
+      let h4Band = fixedPublicH4Band(table, announcement);
+      let pacBand = fixedPublicActivityBand(table, consoleGuidance, chip);
+      if (!h4Band || !pacBand) {
+        clear();
+        return;
+      }
+      // Measure clones at canonical widths so React-owned H4/PAC nodes are
+      // never temporarily restyled. With no copy mounted, reserve geometry only.
+      const measuredAnnouncement = announcement
+        ? measurePublicElementAtWidth(table, announcement, h4Band.width)
+        : null;
+      h4Band = fixedPublicH4Band(table, announcement, measuredAnnouncement?.height ?? 0) ?? h4Band;
+      const measuredFullActivity = chip
+        ? measurePublicElementAtWidth(table, chip, pacBand.width)
+        : null;
+      pacBand = fixedPublicActivityBand(table, consoleGuidance, chip, measuredFullActivity?.height ?? 0) ?? pacBand;
+      const announcementRect = new DOMRect(h4Band.left, h4Band.top, h4Band.width,
+        measuredAnnouncement?.height ?? h4Band.height);
+      const activityHeight = measuredFullActivity?.height ?? pacBand.height;
+      const activityRect = new DOMRect(pacBand.left, pacBand.bottom - activityHeight, pacBand.width, activityHeight);
       const measuredSize = (rect: { width: number; height: number }) => ({ width: rect.width, height: rect.height });
       if (announcementRect.width <= 0 || announcementRect.height <= 0
         || activityRect.width <= 0 || activityRect.height <= 0) {
@@ -231,14 +243,13 @@ export function PublicStageLayoutProvider({
         bottom: (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight),
       };
       const tableBounds = rectOf(table);
-      const upper = fixedUpperHistoryAnnouncementAnchor(table);
       const kirinBowEffectFrame = phase === "REVEAL"
         && primary.querySelector<HTMLElement>(".public-card-effect-frame-panel[data-public-card-frame-effect-id='kirin_bow_damage_about_to_apply']");
-      const upperH4 = upper ? {
-        top: upper.top,
-        reservedHeight: publicH4ReservedHeight(announcement),
+      const upperH4 = {
+        top: h4Band.top,
+        reservedHeight: h4Band.height,
         gap: kirinBowEffectFrame ? 8 : 4,
-      } : undefined;
+      };
       const harvestPoolWrapper = [...table.querySelectorAll<HTMLElement>(".battlefield-choice-stage")]
         .find((element) => element.dataset.harvestRootEventId === scopeId) ?? null;
       const harvestPoolPanel = harvestPoolWrapper?.querySelector<HTMLElement>(".harvest-choice-panel") ?? null;
@@ -255,7 +266,7 @@ export function PublicStageLayoutProvider({
       const obstacles = [...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)]
         .filter((element) => element !== primary && element !== announcement && element !== chip
           && !(harvestRootPoolOverlap && element === harvestPoolWrapper)
-          && !primary.contains(element) && !announcement.contains(element) && !chip.contains(element)
+          && !primary.contains(element) && (!announcement || !announcement.contains(element)) && (!chip || !chip.contains(element))
           && visibleObstacle(element))
         .map((element, index) => ({
           id: harvestRootPoolOverlap && element === harvestPoolPanel
@@ -270,8 +281,8 @@ export function PublicStageLayoutProvider({
       const measuredCardRect = { left: visualPrimary.left, top: visualPrimary.top, right: visualPrimary.right, bottom: visualPrimary.bottom };
       const phaseRects = phase === "REVEAL" ? undefined : {
         card: rectOf(primary),
-        activity: rectOf(chip),
-        ...(phase === "MOVE" ? { announcement: rectOf(announcement) } : {}),
+        activity: rectOf(chip!),
+        ...(phase === "MOVE" ? { announcement: rectOf(announcement!) } : {}),
       };
       let moveTarget: PublicStageRect | null = null;
       let movePath: PublicStageRect | null = null;
@@ -367,7 +378,7 @@ export function PublicStageLayoutProvider({
       const safeBottom = Math.min(viewport.bottom, consoleBounds.top);
       const compactWidth = safeRight - safeLeft - cardSize.width - 8;
       let compactAnnouncement: { width: number; height: number } | undefined;
-      if (phase === "REVEAL" && compactWidth >= 120) {
+      if (phase === "REVEAL" && announcement && compactWidth >= 120) {
         announcement.style.width = `${compactWidth}px`;
         const compactRect = announcement.getBoundingClientRect();
         compactAnnouncement = measuredSize(compactRect);
@@ -388,6 +399,7 @@ export function PublicStageLayoutProvider({
         activity: measuredSize(activityRect),
         activityBottom: consoleBounds.top,
         obstacles,
+        fixedBands: phase === "REVEAL" ? { h4: h4Band, pac: pacBand } : undefined,
         ...(harvestRootPoolOverlap ? { harvestRootPoolOverlap: {
           semantics: "PROVEN" as const,
           scopeId,
@@ -426,7 +438,7 @@ export function PublicStageLayoutProvider({
           table: roundedRect(tableBounds),
           consoleGuidance: roundedRect(consoleBounds),
           primary: roundedRect(visualPrimary),
-          announcement: roundedRect(rectOf(announcement)),
+          announcement: roundedRect(announcementRect),
           compactAnnouncement,
           activity: roundedRect(rectOf(chip)),
           obstacles: obstacles.map(({ id, rect }) => ({ id, rect: roundedRect(rect) })),
@@ -455,9 +467,9 @@ export function PublicStageLayoutProvider({
         primaryEventId: eventId,
         primaryCardId: cardId,
         primaryOffset,
-        announcementEventId: announcement.dataset.publicCardAnnouncementEventId ?? "",
-        announcementCopyKey: announcement.dataset.publicCardAnnouncementCopyKey ?? "",
-        announcementAnchorEventId: announcement.dataset.publicCardAnnouncementAnchorEventId || null,
+        announcementEventId: announcement?.dataset.publicCardAnnouncementEventId ?? "",
+        announcementCopyKey: announcement?.dataset.publicCardAnnouncementCopyKey ?? "",
+        announcementAnchorEventId: announcement?.dataset.publicCardAnnouncementAnchorEventId || null,
         tableRect: tableBounds,
       };
       const protectedRectByValue = new Set(result.layout.protectedRects.map(({ rect }) => JSON.stringify(roundedRect(rect))));
@@ -481,7 +493,7 @@ export function PublicStageLayoutProvider({
       setSnapshot((current) => sameSnapshot(current, next) ? current : next);
       resizeObserver?.disconnect();
       for (const element of [table, display, ...(phase === "MOVE" ? [] : [primary]), announcement, chip,
-        ...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)]) resizeObserver?.observe(element);
+        ...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)].filter((candidate): candidate is HTMLElement => Boolean(candidate))) resizeObserver?.observe(element);
     };
     function schedule() {
       if (frame) return;
@@ -659,19 +671,20 @@ export function canPlaceRetainedPublicActivity(
 export function sharedPublicStageMatchesElement(table: HTMLElement, shared: SharedPublicStageLayout): boolean {
   if (table.dataset.publicStageLayoutIdentity !== shared.layout.identity
     || table.dataset.publicStageLayoutPhase !== shared.layout.scene.phase.toLowerCase()) return false;
-  const h4 = [...table.querySelectorAll<HTMLElement>('[data-public-card-announcement="true"]')]
+  const h4 = shared.announcementEventId ? [...table.querySelectorAll<HTMLElement>('[data-public-card-announcement="true"]')]
     .find((el) => el.dataset.publicCardAnnouncementEventId === shared.announcementEventId
-      && (el.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey);
+      && (el.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey) : null;
   const pac = table.querySelector<HTMLElement>('[data-public-activity-chip="true"]');
   const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
-  if (!h4 || !pac || !consoleGuidance || !visibleObstacle(consoleGuidance)) return false;
+  if (!consoleGuidance || !visibleObstacle(consoleGuidance)
+    || shared.layout.scene.phase !== "REVEAL" && (!h4 || !pac)) return false;
   const consoleTop = consoleGuidance.getBoundingClientRect().top;
   // Validate generation ownership before consumers apply the published rects.
   // Requiring the H4/PAC to already match those rects here deadlocks first
   // placement: the consumers hide both elements until this predicate succeeds.
   if (Math.abs(shared.layout.activity.bottom - consoleTop) > 2
-    || h4.dataset.publicCardAnnouncementEventId !== shared.announcementEventId
-    || (h4.dataset.publicCardAnnouncementCopyKey ?? "") !== shared.announcementCopyKey) return false;
+    || h4 && (h4.dataset.publicCardAnnouncementEventId !== shared.announcementEventId
+      || (h4.dataset.publicCardAnnouncementCopyKey ?? "") !== shared.announcementCopyKey)) return false;
   return [...table.querySelectorAll<HTMLElement>(
     '.public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="reveal"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="move"], .public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="parked"]',
   )].some((card) => card.dataset.publicCardJourneyEventId === shared.primaryEventId
