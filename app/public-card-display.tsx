@@ -12,7 +12,7 @@ import type { PresentationTargetCardSettlementMovement } from "../game/presentat
 import type { PublicInteractionNarration } from "../game/public-activity";
 import type { PublicDiscardAnnouncement } from "./public-discard-transition";
 import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
-import { positionLabeledCardAboveBand } from "../game/public-stage-layout";
+import { positionLabeledCardAboveBand, publicStageSceneMatchesCard } from "../game/public-stage-layout";
 import { cardDefinition } from "../game/cards";
 import { publicAnnouncementEventCopyKey as buildPublicAnnouncementEventCopyKey, publicAnnouncementGeometryIdentity, publicAnnouncementGeometryKey, transitionPublicAnnouncementCopyLifecycle, type PublicAnnouncementCopyLifecycle, type PublicAnnouncementProtectedGeometry, type PublicAnnouncementSeatGeometry } from "../game/public-announcement";
 import { compactLustDuelAttackMessage } from "./lust-public-copy";
@@ -406,6 +406,7 @@ function PublicJourneyCard({
   harvestRootParked = false,
   lustCostFrame,
   publicCardEffectFrame,
+  sharedStageIdentity,
   parkedEffectLabel,
   onInspectCard,
 }: {
@@ -425,14 +426,19 @@ function PublicJourneyCard({
   harvestRootParked?: boolean;
   lustCostFrame?: PublicCardDisplayAction["lustCostFrame"];
   publicCardEffectFrame?: PublicCardEffectFrameView;
+  sharedStageIdentity?: { roomId: string; scopeId: string; interactionId?: string | null; viewerId: string };
   parkedEffectLabel?: string;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
   const sharedPublicStage = usePublicStageLayout();
   const sharesCurrentStageIdentity = Boolean(sharedPublicStage && primary && !visualPlacementUnavailable
-    && card.eventId === sharedPublicStage.primaryEventId
-    && card.cardFace.id === sharedPublicStage.primaryCardId
-    && card.phase.toUpperCase() === sharedPublicStage.layout.scene.phase);
+    && sharedStageIdentity
+    && publicStageSceneMatchesCard(sharedPublicStage.layout.scene, {
+      ...sharedStageIdentity,
+      eventId: card.eventId,
+      cardId: card.cardFace.id,
+      phase: card.phase.toUpperCase() as "REVEAL" | "MOVE" | "PARKED",
+    }));
   const usesSharedRevealLayout = sharesCurrentStageIdentity && card.phase === "reveal";
   const journeyLeft = usesSharedRevealLayout && sharedPublicStage
     ? sharedPublicStage.layout.card.left - sharedPublicStage.primaryOffset.left
@@ -442,8 +448,11 @@ function PublicJourneyCard({
     : card.rect.top;
   const placementUnavailable = visualPlacementUnavailable
     || !parkingTargetKnown && card.phase === "parked" && !preservePendingParking;
-  const inspectable = !placementUnavailable && !passive && card.phase === "parked" && Boolean(onInspectCard);
-  const publicFrameAccessible = !placementUnavailable && Boolean(publicCardEffectFrame && card.phase !== "move");
+  const sharedRevealReadinessPending = Boolean(primary && card.phase === "reveal" && sharedStageIdentity
+    && (!sharesCurrentStageIdentity || !sharedPublicStage?.revealReady));
+  const positionUnavailable = placementUnavailable || sharedRevealReadinessPending;
+  const inspectable = !positionUnavailable && !passive && card.phase === "parked" && Boolean(onInspectCard);
+  const publicFrameAccessible = !positionUnavailable && Boolean(publicCardEffectFrame && card.phase !== "move");
   const frameMaterials = publicCardEffectFrame?.materials ?? [];
   const frameLayout = publicCardEffectFrame && typeof window !== "undefined"
     ? publicCardEffectFrameLayout(frameMaterials.length, window.innerWidth, window.innerHeight, publicCardEffectFrame)
@@ -469,7 +478,7 @@ function PublicJourneyCard({
     className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : ""} ${card.phase === "parked" ? "is-parked" : ""} ${card.layoutPending ? "is-layout-pending" : ""} ${harvestHistory && card.phase === "parked" ? "is-harvest-history-parked" : ""} ${passive ? "is-harvest-history-passive" : ""} ${className} ${lustCostFrame ? "is-lust-cost" : ""} ${publicCardEffectFrame ? "is-public-effect-frame" : ""} ${inspectable ? "is-inspectable" : ""}`}
     disabled={!inspectable && !publicFrameAccessible}
     tabIndex={inspectable ? 0 : -1}
-    aria-hidden={placementUnavailable ? true : inspectable || publicFrameAccessible ? undefined : true}
+    aria-hidden={positionUnavailable ? true : inspectable || publicFrameAccessible ? undefined : true}
     aria-label={accessibleName}
     onClick={inspectable ? (event) => {
       const requestedCardId = (event.target as HTMLElement).closest<HTMLElement>("[data-public-card-effect-frame-card-id]")?.dataset.publicCardEffectFrameCardId;
@@ -493,6 +502,8 @@ function PublicJourneyCard({
     data-public-card-journey-phase={card.phase}
     data-public-card-journey-size={size}
     data-public-card-journey-layout-pending={card.layoutPending ? "true" : "false"}
+    data-public-card-reveal-readiness={primary && card.phase === "reveal" && sharedStageIdentity
+      ? sharesCurrentStageIdentity && sharedPublicStage?.revealReady ? "ready" : "pending" : undefined}
     data-public-card-journey-layout-reason={card.layoutChangeReason}
     data-public-card-journey-effect-parking-placement={card.parkedPublicEffect?.placement}
     data-public-card-journey-effect-parking-owner-id={card.parkedPublicEffect?.ownerId}
@@ -513,7 +524,7 @@ function PublicJourneyCard({
       width: card.rect.width,
       height: card.rect.height,
       ["--public-card-journey-move-duration"]: `${Math.max(0, Math.round(card.moveRemainingMs ?? MOVE_DURATION_MS))}ms`,
-      ...(placementUnavailable ? { visibility: "hidden", pointerEvents: "none" } : {}),
+      ...(positionUnavailable ? { visibility: "hidden", pointerEvents: "none" } : {}),
     } as CSSProperties}
   >
     {publicCardEffectFrame && frameLayout && card.phase !== "parked" && <span
@@ -4839,6 +4850,7 @@ function AttackDodgeCardJourney({
       return <PublicJourneyCard
         key={card.eventId}
         card={card}
+        sharedStageIdentity={{ roomId: roomCode, scopeId: action.rootEventId, interactionId: action.interactionId, viewerId }}
         visualPlacementUnavailable={Boolean(journey.framePlacementUnavailable
           && card.phase === "reveal"
           && (!action.publicCardEffectFrame || card.eventId === action.publicCardEffectFrame.eventId))}
@@ -6159,6 +6171,7 @@ function SingleTargetCardJourney({
       return <PublicJourneyCard
         key={card.eventId}
         card={card}
+        sharedStageIdentity={{ roomId: roomCode, scopeId: action.rootEventId, interactionId: action.interactionId, viewerId }}
         visualPlacementUnavailable={Boolean(journey.framePlacementUnavailable
           && card.eventId === action.publicCardEffectFrame?.eventId && card.phase === "reveal")}
         parkingTargetKnown={!card.layoutPending}
@@ -7118,6 +7131,7 @@ function DuelCardJourney({
     {journey.cards.filter((card) => card.phase !== "queued").map((card) => <PublicJourneyCard
       key={card.eventId}
       card={card}
+      sharedStageIdentity={{ roomId: roomCode, scopeId: action.rootEventId, interactionId: action.interactionId, viewerId }}
       onInspectCard={onInspectCard}
       size={card.phase === "reveal" || card.phase === "move" && card.rect.width >= DUEL_REVEAL_CARD.width ? "duel-reveal" : "thumbnail"}
       className={`public-card-duel-parked-card ${card.phase === "parked" && card.eventId !== activeEventId ? "is-prior" : ""} ${card.eventId === activeEventId ? "is-current" : ""} ${card.role === "root" ? "is-duel-root" : "is-duel-response"}`}

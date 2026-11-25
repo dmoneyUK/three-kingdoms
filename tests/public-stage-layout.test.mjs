@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findBattlefieldChoiceSafeTopOffset, harvestChoicePlacementPanelRect, isBattlefieldChoiceTopOffsetSafe } from "../app/battlefield-choice-stage.tsx";
-import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicStageSceneIdentity } from "../game/public-stage-layout.ts";
+import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicStageSceneIdentity, publicStageSceneMatchesCard } from "../game/public-stage-layout.ts";
 
 const scene = {
   semantics: "PROVEN",
@@ -42,6 +42,29 @@ test("public stage identity is scoped to proven event, physical card, viewer, ph
   assert.equal(publicStageSceneIdentity({ ...scene, semantics: "INFERRED" }), null);
   assert.equal(publicStageSceneIdentity({ ...scene, cardId: "" }), null);
   assert.notEqual(publicStageSceneIdentity({ ...scene, scopeId: "root-event-2" }), identity);
+});
+
+test("shared reveal readiness requires the exact room, root, interaction, event, card, viewer and phase", () => {
+  const cardIdentity = {
+    roomId: scene.roomId,
+    scopeId: scene.scopeId,
+    interactionId: scene.interactionId,
+    eventId: scene.eventId,
+    cardId: scene.cardId,
+    viewerId: scene.viewerId,
+    phase: "REVEAL",
+  };
+  assert.equal(publicStageSceneMatchesCard(scene, cardIdentity), true);
+  for (const change of [
+    { roomId: "room-2" },
+    { scopeId: "root-event-2" },
+    { interactionId: "interaction-2" },
+    { eventId: "event-2" },
+    { cardId: "card-2" },
+    { viewerId: "viewer-2" },
+    { phase: "MOVE" },
+  ]) assert.equal(publicStageSceneMatchesCard(scene, { ...cardIdentity, ...change }), false);
+  assert.equal(publicStageSceneMatchesCard({ ...scene, semantics: "INFERRED" }, cardIdentity), false);
 });
 
 test("Harvest pool uses the measured central band below H4 and above PAC", () => {

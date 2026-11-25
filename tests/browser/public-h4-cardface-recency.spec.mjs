@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+const API = "http://127.0.0.1:3137";
+
 async function publishFanjianActivation(page) {
   await page.evaluate(() => {
     const room = window.__browserRoom;
@@ -352,4 +354,152 @@ test("one committed Fanjian result stays visible for three seconds without hidin
   await expect(switchedH4).toBeVisible();
   await expect(switchedH4).toHaveAttribute("data-public-card-announcement-copy-key", keys[0]);
   await page.evaluate((viewerId) => window.__updateBrowserRoom((room) => ({ ...room, meId: viewerId })), originalViewerId);
+});
+
+test("a real Attack reveals its authentic CardFace with the matching H4 from the same first readable frame", async ({ page, request }) => {
+  const runtimeErrors = [];
+  page.on("pageerror", (error) => runtimeErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") runtimeErrors.push(message.text());
+  });
+  const attack = { id: "h4-attack-cardface-sync", kind: "Attack", suit: "♣", rank: "10" };
+  const dodge = { id: "h4-attack-hidden-dodge", kind: "Dodge", suit: "♥", rank: "2" };
+  const seeded = await request.post(`${API}/__test/seed-playing-game`, {
+    data: {
+      phase: "play",
+      turnSeat: 0,
+      players: [
+        { name: "SYNC ATTACKER", role: "Lord", hero: "sun-quan", hp: 4, maxHp: 4, hand: [attack] },
+        { name: "SYNC TARGET", role: "Loyalist", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [dodge] },
+        { name: "SYNC OBSERVER", role: "Rebel", hero: "simayi", hp: 4, maxHp: 4, hand: [] },
+        { name: "SYNC FOURTH", role: "Renegade", hero: "xiahou-dun", hp: 4, maxHp: 4, hand: [] },
+      ],
+    },
+  });
+  if (!seeded.ok()) throw new Error(`Card/H4 sync room seed failed: ${await seeded.text()}`);
+  const room = await seeded.json();
+  const [attacker, target, observer] = room.players;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    window.__publicRevealSync = { expected: null, rows: [] };
+    const capture = (now) => {
+      const trace = window.__publicRevealSync;
+      const expected = trace?.expected;
+      if (expected) {
+        const cards = [...document.querySelectorAll('.public-card-journey-card[data-public-card-primary-card="true"]')]
+          .filter((card) => card.dataset.publicCardJourneyEventId === expected.eventId
+            && card.dataset.publicCardJourneyCardId === expected.cardId
+            && card.dataset.publicCardJourneyPhase === "reveal");
+        const card = cards[0];
+        if (card) {
+          const face = card.querySelector(".played-card");
+          const cardRect = card.getBoundingClientRect();
+          const faceRect = face?.getBoundingClientRect();
+          const cardStyle = getComputedStyle(card);
+          const display = card.closest("[data-public-card-display='true']");
+          const announcements = [...document.querySelectorAll('[data-public-card-announcement="true"]')]
+            .filter((copy) => copy.dataset.publicCardAnnouncementEventId === expected.eventId
+              || copy.dataset.publicCardAnnouncementAnchorEventId === expected.eventId
+              || copy.dataset.publicCardAnnouncementStagePrimaryEventId === expected.eventId)
+            .map((copy) => {
+              const rect = copy.getBoundingClientRect();
+              const style = getComputedStyle(copy);
+              return {
+                eventId: copy.dataset.publicCardAnnouncementEventId ?? null,
+                anchorEventId: copy.dataset.publicCardAnnouncementAnchorEventId ?? null,
+                stagePrimaryEventId: copy.dataset.publicCardAnnouncementStagePrimaryEventId ?? null,
+                copyKey: copy.dataset.publicCardAnnouncementCopyKey ?? null,
+                delivery: copy.dataset.publicCardAnnouncementDelivery ?? null,
+                placement: copy.dataset.publicCardAnnouncementPlacement ?? null,
+                layoutIdentity: copy.dataset.publicStageLayoutIdentity ?? null,
+                visibility: style.visibility,
+                display: style.display,
+                opacity: Number(style.opacity),
+                text: copy.textContent?.trim() ?? "",
+                rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
+              };
+            });
+          const table = card.closest(".play-table");
+          trace.rows.push({
+            at: now,
+            elapsed: now - expected.startedAt,
+            eventId: card.dataset.publicCardJourneyEventId,
+            cardId: card.dataset.publicCardJourneyCardId,
+            phase: card.dataset.publicCardJourneyPhase,
+            cardVisibility: cardStyle.visibility,
+            cardOpacity: Number(cardStyle.opacity),
+            faceVisible: Boolean(face && faceRect?.width > 0 && faceRect?.height > 0),
+            cardRect: { left: cardRect.left, top: cardRect.top, right: cardRect.right, bottom: cardRect.bottom, width: cardRect.width, height: cardRect.height },
+            displayRootEventId: display?.dataset.publicCardRootEventId ?? null,
+            displayInteractionId: display?.dataset.publicCardInteractionId ?? null,
+            displayViewerId: display?.dataset.publicCardViewerId ?? null,
+            layoutViewerId: display?.dataset.publicCardLayoutViewerId ?? null,
+            layoutPending: display?.dataset.publicCardLayoutPending ?? null,
+            revealReadiness: card.dataset.publicCardRevealReadiness ?? null,
+            tableLayoutFailure: table?.dataset.publicStageLayoutFailure ?? null,
+            tableLayoutScope: table?.dataset.publicStageLayoutScope ?? null,
+            sharedLayoutStatus: table?.dataset.publicStageLayoutStatus ?? null,
+            sharedLayoutPhase: table?.dataset.publicStageLayoutPhase ?? null,
+            sharedLayoutIdentity: table?.dataset.publicStageLayoutIdentity ?? null,
+            cardLayoutIdentity: card.dataset.publicStageLayoutIdentity ?? null,
+            announcements,
+          });
+          if (trace.rows.length > 600) trace.rows.splice(0, trace.rows.length - 600);
+        }
+      }
+      requestAnimationFrame(capture);
+    };
+    requestAnimationFrame(capture);
+  });
+  await page.addInitScript(({ code, token, name }) => {
+    localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
+  }, { code: room.code, token: observer.token, name: observer.name });
+  await page.goto(`${API}/`);
+  await expect(page.locator(".game-shell")).toBeVisible();
+
+  const beforePlay = await request.get(`${API}/api/rooms?code=${room.code}&token=${attacker.token}`);
+  expect(beforePlay.ok()).toBeTruthy();
+  expect((await beforePlay.json()).currentAction.legalActions).toContain("play_card");
+  const commitMarkedAt = await page.evaluate(() => performance.now());
+  const played = await request.post(`${API}/api/rooms`, {
+    data: { action: "play_card", code: room.code, token: attacker.token, cardId: attack.id, targetId: target.id },
+  });
+  if (!played.ok()) throw new Error(`Real Attack failed: ${await played.text()}`);
+  const playResult = await played.json();
+  const attackEvent = playResult.room.timeline.find((event) => event.type === "card" && event.card?.id === attack.id);
+  expect(attackEvent, "the real Attack commit must retain its public event identity").toBeTruthy();
+  await page.evaluate(({ eventId, cardId, startedAt }) => {
+    window.__publicRevealSync.expected = { eventId, cardId, startedAt };
+  }, { eventId: attackEvent.id, cardId: attack.id, startedAt: commitMarkedAt });
+
+  const revealed = page.locator(`.public-card-journey-card[data-public-card-journey-event-id="${attackEvent.id}"][data-public-card-journey-card-id="${attack.id}"][data-public-card-journey-phase="reveal"]`);
+  await expect(revealed).toBeVisible({ timeout: 5_000 });
+  expect(runtimeErrors).toEqual([]);
+  await expect.poll(() => page.evaluate(() => window.__publicRevealSync.rows.filter((row) =>
+    row.faceVisible && row.cardVisibility === "visible" && row.cardOpacity > 0.95).length), { timeout: 5_000 })
+    .toBeGreaterThan(30);
+  expect(runtimeErrors).toEqual([]);
+  const rows = await page.evaluate(() => window.__publicRevealSync.rows);
+  const readable = rows.filter((row) => row.faceVisible && row.cardVisibility === "visible" && row.cardOpacity > 0.95);
+  const firstReadable = readable[0];
+  const matchingVisibleH4 = (row) => row.announcements.filter((copy) => copy.visibility === "visible"
+    && copy.display !== "none" && copy.opacity > 0
+    && copy.rect.width > 0 && copy.rect.height > 0
+    && (copy.eventId === attackEvent.id || copy.anchorEventId === attackEvent.id || copy.stagePrimaryEventId === attackEvent.id));
+  const overlap = (left, right) => left.left < right.right && left.right > right.left
+    && left.top < right.bottom && left.bottom > right.top;
+  expect(firstReadable, JSON.stringify(rows.slice(0, 6))).toBeTruthy();
+  expect(matchingVisibleH4(firstReadable), JSON.stringify(firstReadable)).toHaveLength(1);
+  expect(readable.every((row) => matchingVisibleH4(row).length === 1), JSON.stringify(readable.filter((row) => matchingVisibleH4(row).length !== 1).slice(0, 8))).toBe(true);
+  expect(readable.every((row) => !overlap(row.cardRect, matchingVisibleH4(row)[0].rect)), JSON.stringify(readable.filter((row) => overlap(row.cardRect, matchingVisibleH4(row)[0]?.rect)).slice(0, 8))).toBe(true);
+  expect(new Set(readable.map((row) => row.eventId)).size).toBe(1);
+  expect(new Set(readable.map((row) => row.cardId)).size).toBe(1);
+  expect(firstReadable.displayViewerId).toBe(observer.id);
+  expect(firstReadable.layoutViewerId).toBe(observer.id);
+  expect(firstReadable.revealReadiness).toBe("ready");
+  expect(firstReadable.sharedLayoutStatus).toBe("shared-reveal");
+  expect(firstReadable.sharedLayoutPhase).toBe("reveal");
+  expect(firstReadable.cardLayoutIdentity).toBe(firstReadable.sharedLayoutIdentity);
+  expect(matchingVisibleH4(firstReadable)[0].layoutIdentity).toBe(firstReadable.sharedLayoutIdentity);
+  expect(matchingVisibleH4(firstReadable)[0].delivery).toBe("VISIBLE");
 });

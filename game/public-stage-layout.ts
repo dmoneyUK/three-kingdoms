@@ -134,6 +134,27 @@ export function publicStageSceneIdentity(scene: PublicStageScene | null | undefi
   ]);
 }
 
+/** Match one authentic card/reveal against the full committed shared scene.
+ * Consumers use this same identity before moving or exposing the CardFace. */
+export function publicStageSceneMatchesCard(scene: PublicStageScene | null | undefined, card: {
+  roomId: string;
+  scopeId: string;
+  interactionId?: string | null;
+  eventId: string;
+  cardId: string;
+  viewerId: string;
+  phase: PublicStagePhase;
+}): boolean {
+  return publicStageSceneIdentity(scene) !== null
+    && scene!.roomId === card.roomId
+    && scene!.scopeId === card.scopeId
+    && (scene!.interactionId ?? null) === (card.interactionId ?? null)
+    && scene!.eventId === card.eventId
+    && scene!.cardId === card.cardId
+    && scene!.viewerId === card.viewerId
+    && scene!.phase === card.phase;
+}
+
 /**
  * Finds the shared collision-free placement for one proven public-card phase.
  * REVEAL uses H4 → full CardFace → PAC. MOVE/PARKED preserve the measured card

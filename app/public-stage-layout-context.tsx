@@ -5,12 +5,14 @@ import { fixedPublicActivityBand, fixedPublicH4Band, measurePublicElementAtWidth
 import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 import {
   calculatePublicStageLayout,
+  publicStageSceneMatchesCard,
   type PublicStageLayout,
   type PublicStageRect,
 } from "../game/public-stage-layout";
 
 export type SharedPublicStageLayout = {
   layout: PublicStageLayout;
+  revealReady: boolean;
   primaryEventId: string;
   primaryCardId: string;
   primaryOffset: { left: number; top: number };
@@ -146,8 +148,7 @@ export function PublicStageLayoutProvider({
       )].find((candidate) => candidate.dataset.publicCardRootEventId === scopeId
         && (!interactionId || candidate.dataset.publicCardInteractionId === interactionId)
         && candidate.dataset.publicCardViewerId === viewerId
-        && candidate.dataset.publicCardLayoutViewerId === viewerId
-        && candidate.dataset.publicCardLayoutPending !== "true");
+        && candidate.dataset.publicCardLayoutViewerId === viewerId);
       if (!display) {
         clear();
         return;
@@ -169,6 +170,10 @@ export function PublicStageLayoutProvider({
         return;
       }
       const phase = phaseName;
+      if (display.dataset.publicCardLayoutPending === "true" && phase !== "REVEAL") {
+        clear();
+        return;
+      }
       const eventId = primary.dataset.publicCardJourneyEventId ?? "";
       const cardId = primary.dataset.publicCardJourneyCardId ?? "";
       const cardSceneKey = JSON.stringify([roomId, scopeId, interactionId, eventId, cardId, viewerId]);
@@ -379,10 +384,14 @@ export function PublicStageLayoutProvider({
       const compactWidth = safeRight - safeLeft - cardSize.width - 8;
       let compactAnnouncement: { width: number; height: number } | undefined;
       if (phase === "REVEAL" && announcement && compactWidth >= 120) {
+        const savedWidth = announcement.style.width;
         announcement.style.width = `${compactWidth}px`;
-        const compactRect = announcement.getBoundingClientRect();
-        compactAnnouncement = measuredSize(compactRect);
-        announcement.style.width = savedWidth;
+        try {
+          const compactRect = announcement.getBoundingClientRect();
+          compactAnnouncement = measuredSize(compactRect);
+        } finally {
+          announcement.style.width = savedWidth;
+        }
       }
       const result = calculatePublicStageLayout({
         scene,
@@ -464,6 +473,18 @@ export function PublicStageLayoutProvider({
       }
       const next: SharedPublicStageLayout = {
         layout: result.layout,
+        revealReady: phase !== "REVEAL" || !announcement || (() => {
+          const style = window.getComputedStyle(announcement);
+          const rect = announcement.getBoundingClientRect();
+          const target = result.layout.announcement;
+          return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0
+            && announcement.dataset.publicStageLayoutIdentity === result.layout.identity
+            && announcement.dataset.publicCardAnnouncementPositioned === "true"
+            && Math.abs(rect.left - target.left) <= 1
+            && Math.abs(rect.top - target.top) <= 1
+            && Math.abs(rect.width - (target.right - target.left)) <= 1
+            && rect.bottom <= h4Band.bottom + 1;
+        })(),
         primaryEventId: eventId,
         primaryCardId: cardId,
         primaryOffset,
@@ -692,12 +713,21 @@ export function sharedPublicStageMatchesElement(table: HTMLElement, shared: Shar
     && card.dataset.publicCardJourneyPhase?.toUpperCase() === shared.layout.scene.phase
     && card.dataset.publicStageLayoutIdentity === shared.layout.identity
     && (shared.layout.scene.phase !== "REVEAL" || ["reveal", "duel-reveal"].includes(card.dataset.publicCardJourneySize ?? ""))
-    && card.closest<HTMLElement>(".public-card-display")?.dataset.publicCardRootEventId === shared.layout.scene.scopeId
-    && (!shared.layout.scene.interactionId
-      || card.closest<HTMLElement>(".public-card-display")?.dataset.publicCardInteractionId === shared.layout.scene.interactionId)
-    && card.closest<HTMLElement>(".public-card-display")?.dataset.publicCardViewerId === shared.layout.scene.viewerId
-    && card.closest<HTMLElement>(".public-card-display")?.dataset.publicCardLayoutViewerId === shared.layout.scene.viewerId
-    && card.closest<HTMLElement>(".public-card-display")?.dataset.publicCardLayoutPending !== "true");
+    && (() => {
+      const display = card.closest<HTMLElement>(".public-card-display");
+      return Boolean(display
+        && display.dataset.publicCardLayoutViewerId === shared.layout.scene.viewerId
+        && publicStageSceneMatchesCard(shared.layout.scene, {
+          roomId: shared.layout.scene.roomId,
+          scopeId: display.dataset.publicCardRootEventId ?? "",
+          interactionId: display.dataset.publicCardInteractionId ?? null,
+          eventId: card.dataset.publicCardJourneyEventId ?? "",
+          cardId: card.dataset.publicCardJourneyCardId ?? "",
+          viewerId: display.dataset.publicCardViewerId ?? "",
+          phase: shared.layout.scene.phase,
+        })
+        && (shared.layout.scene.phase === "REVEAL" || display.dataset.publicCardLayoutPending !== "true"));
+    })());
 }
 
 export function publicStageLayoutCandidateMatchesElement(table: HTMLElement, criteria: {
