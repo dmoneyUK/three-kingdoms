@@ -116,6 +116,17 @@ jobs:
       STAGING_DEPLOY_TAG: aip-staging-${{ github.run_id }}-${{ github.sha }}
       STAGING_LIFECYCLE_EVIDENCE_DIR: .wrangler/ai-staging-lifecycle
     steps:
+      - name: Record Staging lifecycle budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          started="$(date +%s)"
+          deadline="$((started + 1440))"
+          {
+            echo "STAGING_LIFECYCLE_STARTED_EPOCH=$started"
+            echo "STAGING_LIFECYCLE_DEADLINE_EPOCH=$deadline"
+          } >> "$GITHUB_ENV"
+          echo "::notice::Staging lifecycle start=$started deadline=$deadline; six-minute cleanup/readback reserve"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -140,27 +151,56 @@ jobs:
         run: node scripts/verify-ai-staging-config.mjs
       - name: Dry-run the Staging Worker deployment
         run: npx wrangler deploy --dry-run --config dist/server/wrangler.json --name three-kingdoms-ai-staging --tag "$STAGING_DEPLOY_TAG"
+      - name: Require bounded activation window
+        shell: bash
+        run: |
+          set -euo pipefail
+          remaining="$((STAGING_LIFECYCLE_DEADLINE_EPOCH - $(date +%s)))"
+          if (( remaining < 900 )); then
+            echo "Insufficient lifecycle budget before activation (${remaining}s remain; need at least 900s)." >&2
+            exit 1
+          fi
+          echo "::notice::Activation window has ${remaining}s; at least 360s remains reserved for containment/readback/artifacts"
       - name: Apply Staging D1 migrations
-        run: npx wrangler d1 migrations apply three-kingdoms-ai-staging-db --remote --config dist/server/wrangler.json
+        run: timeout 240s npx wrangler d1 migrations apply three-kingdoms-ai-staging-db --remote --config dist/server/wrangler.json
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy Staging Worker
-        run: npx wrangler deploy --config dist/server/wrangler.json --name three-kingdoms-ai-staging --tag "$STAGING_DEPLOY_TAG" --message "AIP-PERF-01 Staging lifecycle $GITHUB_RUN_ID"
+        run: timeout 300s npx wrangler deploy --config dist/server/wrangler.json --name three-kingdoms-ai-staging --tag "$STAGING_DEPLOY_TAG" --message "AIP-PERF-01 Staging lifecycle $GITHUB_RUN_ID"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Capture owned Staging deployment version
         if: always() && steps.staging_lifecycle_preflight.outcome == 'success'
-        run: node scripts/ai-staging-lifecycle.mjs capture
+        run: timeout 120s node scripts/ai-staging-lifecycle.mjs capture
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Bound mobile smoke to remaining lifecycle budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          remaining="$((STAGING_LIFECYCLE_DEADLINE_EPOCH - $(date +%s)))"
+          smoke_budget="$((remaining - 360))"
+          if (( smoke_budget < 60 )); then
+            echo "Insufficient lifecycle budget for bounded mobile smoke (${remaining}s remain)." >&2
+            exit 1
+          fi
+          echo "STAGING_SMOKE_TIMEOUT_SECONDS=$smoke_budget" >> "$GITHUB_ENV"
+          echo "::notice::Mobile smoke budget=${smoke_budget}s; 360s reserved for containment/readback"
       - name: Verify health and mobile room refresh/rejoin
-        run: npx playwright test --config tests/browser/staging-playwright.config.mjs
+        run: timeout "${STAGING_SMOKE_TIMEOUT_SECONDS}s" npx playwright test --config tests/browser/staging-playwright.config.mjs
       - name: Contain Staging Worker and Cron
         if: always()
-        run: node scripts/ai-staging-lifecycle.mjs contain
+        run: |
+          set -euo pipefail
+          remaining="$((STAGING_LIFECYCLE_DEADLINE_EPOCH - $(date +%s)))"
+          contain_budget="$((remaining - 60))"
+          if (( contain_budget > 300 )); then contain_budget=300; fi
+          if (( contain_budget < 30 )); then contain_budget=30; fi
+          echo "::notice::Containment budget=${contain_budget}s"
+          timeout "${contain_budget}s" node scripts/ai-staging-lifecycle.mjs contain
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

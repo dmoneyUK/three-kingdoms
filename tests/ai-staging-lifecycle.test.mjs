@@ -29,11 +29,12 @@ function version({ id = "version-1", tag = null, createdOn = "2026-11-25T14:00:0
   };
 }
 
-function inventory({ paused = true, versionId = "version-1", versionTag = null, versionCreatedOn = "2026-11-25T14:00:00.000Z", databaseId = AI_STAGING_LIFECYCLE_TARGET.databaseId, domainsCount = 0, queueConsumers = 0, routeCount = 0, routeCheckFailures = 0 } = {}) {
+function inventory({ paused = true, versionId = "version-1", versionTag = null, versionCreatedOn = "2026-11-25T14:00:00.000Z", databaseId = AI_STAGING_LIFECYCLE_TARGET.databaseId, domainsCount = 0, queueConsumers = 0, routeCount = 0, routeCheckFailures = 0, enabled = !paused, previewsEnabled = false, cronSchedules = paused ? [] : [AI_STAGING_LIFECYCLE_TARGET.cron] } = {}) {
   return {
     accountId: AI_STAGING_LIFECYCLE_TARGET.accountId,
-    access: { enabled: !paused, previewsEnabled: !paused && false },
-    cronSchedules: paused ? [] : [AI_STAGING_LIFECYCLE_TARGET.cron],
+    workerName: AI_STAGING_LIFECYCLE_TARGET.workerName,
+    access: { enabled, previewsEnabled },
+    cronSchedules,
     domainsCount,
     queueConsumers,
     routeCount,
@@ -79,6 +80,80 @@ async function prepareOwnedRun(client, dir) {
   client.state = inventory({ paused: false, versionId: "version-2", versionTag: owner.tag, versionCreatedOn: "2026-11-25T15:00:01.000Z" });
   await captureStaging({ client, evidenceDir: dir, owner, now: new Date("2026-11-25T15:00:02.000Z") });
 }
+
+test("captures a newly owned version before activation flags are complete", async () => {
+  const dir = await evidenceDir();
+  const client = new FakeClient(inventory());
+  await preflightStaging({ client, evidenceDir: dir, owner, now });
+  client.state = inventory({
+    paused: false,
+    enabled: false,
+    previewsEnabled: true,
+    cronSchedules: [],
+    versionId: "version-2",
+    versionTag: owner.tag,
+    versionCreatedOn: "2026-11-25T15:00:01.000Z",
+  });
+  await captureStaging({ client, evidenceDir: dir, owner, now: new Date("2026-11-25T15:00:02.000Z") });
+  const result = await containStaging({ client, evidenceDir: dir, owner, now });
+  assert.equal(result.operations.length, 2);
+  assert.equal(client.state.access.enabled, false);
+  assert.equal(client.state.access.previewsEnabled, false);
+  assert.deepEqual(client.state.cronSchedules, []);
+});
+
+test("contains a verified paused baseline as a no-op when capture evidence is absent", async () => {
+  const dir = await evidenceDir();
+  const client = new FakeClient(inventory());
+  await preflightStaging({ client, evidenceDir: dir, owner, now });
+  const result = await containStaging({ client, evidenceDir: dir, owner, now });
+  assert.equal(result.noop, true);
+  assert.deepEqual(result.operations, []);
+  assert.deepEqual(client.calls, ["inventory", "inventory"]);
+  assert.equal(client.calls.filter((call) => call.startsWith("set")).length, 0);
+});
+
+test("rejects malformed lifecycle readback before any mutation", async () => {
+  const dir = await evidenceDir();
+  const malformedAccess = new FakeClient(inventory());
+  malformedAccess.state.access.enabled = "false";
+  await assert.rejects(preflightStaging({ client: malformedAccess, evidenceDir: dir, owner, now }), /subdomain readback is missing or malformed/);
+
+  const malformedSchedules = new FakeClient(inventory());
+  malformedSchedules.state.cronSchedules = null;
+  await assert.rejects(preflightStaging({ client: malformedSchedules, evidenceDir: await evidenceDir(), owner, now }), /schedule readback is missing or malformed/);
+  assert.deepEqual(malformedSchedules.calls, ["inventory"]);
+});
+
+test("rejects an ambiguous active deployment readback", async () => {
+  const client = createCloudflareClient({
+    token: "test-token",
+    attempts: 1,
+    fetchImpl: async (url) => {
+      const path = new URL(url).pathname;
+      let result;
+      if (path.endsWith("/subdomain")) result = { enabled: false, previews_enabled: false };
+      else if (path.endsWith("/schedules")) result = { schedules: [] };
+      else if (path.includes("/workers/domains")) result = [];
+      else if (path.includes("/queues")) return new Response(JSON.stringify({ success: true, result: [], result_info: { total_pages: 1 } }), { status: 200 });
+      else if (path.endsWith("/zones")) return new Response(JSON.stringify({ success: true, result: [], result_info: { total_pages: 1 } }), { status: 200 });
+      else if (path.endsWith("/deployments")) {
+        result = {
+          deployments: [{
+            id: "deployment-ambiguous",
+            created_on: "2026-11-25T15:00:00.000Z",
+            versions: [
+              { version_id: "version-a", percentage: 100 },
+              { version_id: "version-b", percentage: 100 },
+            ],
+          }],
+        };
+      } else throw new Error(`unexpected path ${path}`);
+      return new Response(JSON.stringify({ success: true, result }), { status: 200 });
+    },
+  });
+  await assert.rejects(client.inventory(), /ambiguous active versions/);
+});
 
 test("preflights a paused fixed target, captures the owned version, and contains it", async () => {
   const dir = await evidenceDir();

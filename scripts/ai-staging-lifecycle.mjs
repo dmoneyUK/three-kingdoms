@@ -94,10 +94,16 @@ export function ownerFromEnvironment(env = process.env) {
 }
 
 function deploymentVersionId(deployment) {
-  if (!deployment || !Array.isArray(deployment.versions)) return null;
-  return deployment.versions.find((version) => version?.percentage === 100)?.version_id
-    ?? deployment.versions[0]?.version_id
-    ?? null;
+  if (!deployment || typeof deployment !== "object" || !Array.isArray(deployment.versions)
+    || deployment.versions.length === 0) {
+    throw blocked("deployment readback is missing or malformed");
+  }
+  const activeVersions = deployment.versions.filter((version) => version?.percentage === 100);
+  if (activeVersions.length !== 1 || typeof activeVersions[0]?.version_id !== "string"
+    || activeVersions[0].version_id.length === 0) {
+    throw blocked("deployment readback has ambiguous active versions");
+  }
+  return activeVersions[0].version_id;
 }
 
 function deploymentTag(version) {
@@ -105,40 +111,115 @@ function deploymentTag(version) {
 }
 
 function normalizeVersion(version) {
-  if (!version || typeof version !== "object") return null;
-  const bindings = Array.isArray(version.resources?.bindings) ? version.resources.bindings : [];
-  const d1 = bindings.find((binding) => binding?.type === "d1" && binding?.name === "DB");
+  if (!version || typeof version !== "object" || Array.isArray(version)
+    || typeof version.id !== "string" || version.id.length === 0
+    || typeof version.metadata?.created_on !== "string") {
+    throw blocked("version binding readback is missing or malformed");
+  }
+  if (!Array.isArray(version.resources?.bindings)) {
+    throw blocked("version binding readback is missing bindings");
+  }
+  const bindings = version.resources.bindings;
+  const d1Bindings = bindings.filter((binding) => binding?.type === "d1" && binding?.name === "DB");
+  if (d1Bindings.length !== 1 || typeof d1Bindings[0]?.database_id !== "string"
+    || d1Bindings[0].database_id.length === 0) {
+    throw blocked("version binding readback does not prove one DB binding");
+  }
+  const d1 = d1Bindings[0];
   return {
-    id: typeof version.id === "string" ? version.id : null,
+    id: version.id,
     tag: deploymentTag(version),
-    createdOn: version.metadata?.created_on ?? null,
-    databaseId: d1?.database_id ?? d1?.id ?? null,
-    databaseName: d1?.name ?? null,
+    createdOn: version.metadata.created_on,
+    databaseId: d1.database_id,
+    databaseName: d1.name,
     databaseIds: bindings.map((binding) => binding?.database_id ?? binding?.id).filter((id) => typeof id === "string"),
     bindingNames: bindings.map((binding) => binding?.name).filter((name) => typeof name === "string").sort(),
   };
 }
 
 function normalizeDeployment(deployment) {
-  if (!deployment || typeof deployment !== "object") return null;
+  if (!deployment || typeof deployment !== "object" || Array.isArray(deployment)
+    || typeof deployment.id !== "string" || deployment.id.length === 0
+    || typeof deployment.created_on !== "string") {
+    throw blocked("deployment readback is missing or malformed");
+  }
   return {
-    id: typeof deployment.id === "string" ? deployment.id : null,
-    createdOn: deployment.created_on ?? null,
+    id: deployment.id,
+    createdOn: deployment.created_on,
     versionId: deploymentVersionId(deployment),
     tag: deployment.annotations?.["workers/tag"] ?? null,
   };
 }
 
 function sortDeployments(deployments) {
-  return [...(Array.isArray(deployments) ? deployments : [])].sort((left, right) => {
+  if (!Array.isArray(deployments)) throw blocked("deployment list readback is missing or malformed");
+  return [...deployments].sort((left, right) => {
     const a = Date.parse(left?.created_on ?? "") || 0;
     const b = Date.parse(right?.created_on ?? "") || 0;
     return b - a;
   });
 }
 
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function assertInventoryShape(inventory) {
+  if (!isRecord(inventory)) throw blocked("Staging inventory readback is missing or malformed");
+  if (inventory.accountId !== AI_STAGING_LIFECYCLE_TARGET.accountId
+    || inventory.workerName !== AI_STAGING_LIFECYCLE_TARGET.workerName) {
+    throw invalidTarget("Staging inventory does not identify the fixed Worker target");
+  }
+  if (!isRecord(inventory.access)
+    || typeof inventory.access.enabled !== "boolean"
+    || typeof inventory.access.previewsEnabled !== "boolean") {
+    throw blocked("subdomain readback is missing or malformed");
+  }
+  if (!Array.isArray(inventory.cronSchedules)
+    || inventory.cronSchedules.some((cron) => typeof cron !== "string")) {
+    throw blocked("schedule readback is missing or malformed");
+  }
+  for (const [label, value] of [
+    ["domain", inventory.domainsCount],
+    ["queue consumer", inventory.queueConsumers],
+    ["route", inventory.routeCount],
+    ["route check", inventory.routeCheckFailures],
+  ]) {
+    if (!Number.isInteger(value) || value < 0) throw blocked(`${label} readback is missing or malformed`);
+  }
+  if (!Array.isArray(inventory.deploymentTags)
+    || inventory.deploymentTags.some((tag) => typeof tag !== "string")) {
+    throw blocked("deployment tag readback is missing or malformed");
+  }
+  if (inventory.deployment !== null) {
+    if (!isRecord(inventory.deployment)
+      || typeof inventory.deployment.id !== "string"
+      || typeof inventory.deployment.createdOn !== "string"
+      || typeof inventory.deployment.versionId !== "string"
+      || (inventory.deployment.tag !== null && typeof inventory.deployment.tag !== "string")) {
+      throw blocked("deployment readback is missing or malformed");
+    }
+  }
+  if (inventory.version !== null) {
+    if (!isRecord(inventory.version)
+      || typeof inventory.version.id !== "string"
+      || typeof inventory.version.createdOn !== "string"
+      || typeof inventory.version.databaseId !== "string"
+      || inventory.version.databaseName !== "DB"
+      || !Array.isArray(inventory.version.databaseIds)
+      || inventory.version.databaseIds.some((id) => typeof id !== "string")
+      || !Array.isArray(inventory.version.bindingNames)
+      || inventory.version.bindingNames.some((name) => typeof name !== "string")
+      || (inventory.version.tag !== null && typeof inventory.version.tag !== "string")) {
+      throw blocked("version binding readback is missing or malformed");
+    }
+  }
+}
+
 function sanitizeInventory(inventory) {
   return {
+    accountId: inventory.accountId,
+    workerName: inventory.workerName,
     access: inventory.access,
     cronSchedules: inventory.cronSchedules,
     domainsCount: inventory.domainsCount,
@@ -200,6 +281,7 @@ async function withEvidence(evidencePath, base, operation) {
 }
 
 function assertVersionBinding(inventory) {
+  assertInventoryShape(inventory);
   const version = inventory.version;
   if (!version || version.databaseId !== AI_STAGING_LIFECYCLE_TARGET.databaseId
     || version.databaseName !== "DB" || version.databaseIds.includes(AI_STAGING_LIFECYCLE_TARGET.productionDatabaseId)) {
@@ -208,6 +290,7 @@ function assertVersionBinding(inventory) {
 }
 
 function assertNoUnexpectedExposure(inventory) {
+  assertInventoryShape(inventory);
   if (inventory.routeCheckFailures > 0) throw blocked("Worker route readback is incomplete");
   if (inventory.domainsCount > 0 || inventory.queueConsumers > 0 || inventory.routeCount > 0) {
     throw exposure("unexpected Staging domain, route or queue consumer is present");
@@ -215,22 +298,20 @@ function assertNoUnexpectedExposure(inventory) {
 }
 
 function assertPaused(inventory) {
+  assertInventoryShape(inventory);
   if (inventory.access.enabled || inventory.access.previewsEnabled || inventory.cronSchedules.length > 0) {
     throw exposure("AI Staging is not paused before lifecycle ownership is proven");
   }
 }
 
-function assertActiveExpected(inventory) {
-  if (!inventory.access.enabled || inventory.access.previewsEnabled
-    || inventory.cronSchedules.length !== 1 || inventory.cronSchedules[0] !== AI_STAGING_LIFECYCLE_TARGET.cron) {
-    throw blocked("deployed AI Staging readback does not match the bounded configuration");
-  }
-}
-
 function assertOwnedVersion(inventory, owner, capture) {
-  if (inventory.deployment?.versionId !== capture.owned?.versionId
+  assertVersionBinding(inventory);
+  if (inventory.deployment?.id !== capture.owned?.deploymentId
+    || inventory.deployment?.versionId !== capture.owned?.versionId
     || inventory.version?.id !== capture.owned?.versionId
-    || inventory.version?.tag !== owner.tag) {
+    || inventory.deployment?.tag !== owner.tag
+    || inventory.version?.tag !== owner.tag
+    || inventory.version?.databaseId !== AI_STAGING_LIFECYCLE_TARGET.databaseId) {
     throw blocked("Staging version changed; refusing to pause a newer deployment");
   }
 }
@@ -243,6 +324,50 @@ function assertEmergencyVersion(inventory, expectedVersionId) {
 
 function currentDeploymentTags(inventory) {
   return Array.isArray(inventory.deploymentTags) ? inventory.deploymentTags : [];
+}
+
+function assertCapturedDeployment(inventory, owner, preflight) {
+  assertVersionBinding(inventory);
+  const versionId = inventory.deployment?.versionId ?? inventory.version?.id;
+  if (!inventory.deployment || !inventory.version || !versionId
+    || versionId === preflight.baseline?.versionId
+    || inventory.deployment.id === preflight.baseline?.deploymentId
+    || inventory.deployment.versionId !== inventory.version.id) {
+    throw blocked("Staging deployment did not produce a new unambiguous version");
+  }
+  if (inventory.deployment.tag !== owner.tag || inventory.version.tag !== owner.tag) {
+    throw blocked("new Staging version is not owned by this run tag");
+  }
+  const createdOn = Date.parse(inventory.version.createdOn);
+  const deploymentCreatedOn = Date.parse(inventory.deployment.createdOn);
+  const startedOn = Date.parse(preflight.observedAt ?? "");
+  if (!createdOn || !deploymentCreatedOn || !startedOn || createdOn < startedOn || deploymentCreatedOn < startedOn) {
+    throw blocked("Staging version timestamp is outside this run");
+  }
+  return { versionId, deploymentId: inventory.deployment.id };
+}
+
+function isPausedBaseline(inventory, preflight) {
+  assertNoUnexpectedExposure(inventory);
+  if (inventory.access.enabled || inventory.access.previewsEnabled || inventory.cronSchedules.length > 0) return false;
+  const baseline = preflight.baseline ?? {};
+  return inventory.deployment?.id === (baseline.deploymentId ?? null)
+    && inventory.deployment?.versionId === (baseline.versionId ?? null)
+    && (inventory.deployment?.createdOn ?? null) === (baseline.deploymentCreatedOn ?? null)
+    && (inventory.deployment?.tag ?? null) === (baseline.deploymentTag ?? null)
+    && (inventory.version?.id ?? null) === (baseline.versionId ?? null)
+    && (inventory.version?.createdOn ?? null) === (baseline.versionCreatedOn ?? null)
+    && (inventory.version?.tag ?? null) === (baseline.versionTag ?? null);
+}
+
+function strictReadbackList(value, label, keys = []) {
+  if (Array.isArray(value)) return value;
+  if (isRecord(value)) {
+    for (const key of keys) {
+      if (Array.isArray(value[key])) return value[key];
+    }
+  }
+  throw blocked(`${label} readback is missing or malformed`);
 }
 
 export async function preflightStaging({ client, evidenceDir = DEFAULT_EVIDENCE_DIR, owner, now = new Date() } = {}) {
@@ -261,7 +386,10 @@ export async function preflightStaging({ client, evidenceDir = DEFAULT_EVIDENCE_
       baseline: {
         deploymentId: inventory.deployment?.id ?? null,
         versionId: inventory.deployment?.versionId ?? null,
+        deploymentCreatedOn: inventory.deployment?.createdOn ?? null,
+        deploymentTag: inventory.deployment?.tag ?? null,
         versionCreatedOn: inventory.version?.createdOn ?? null,
+        versionTag: inventory.version?.tag ?? null,
       },
       inventory: sanitizeInventory(inventory),
     };
@@ -284,19 +412,17 @@ export async function captureStaging({ client, evidenceDir = DEFAULT_EVIDENCE_DI
   return withEvidence(evidencePath, base, async () => {
     const inventory = await client.inventory();
     assertNoUnexpectedExposure(inventory);
-    assertActiveExpected(inventory);
-    assertVersionBinding(inventory);
-    const versionId = inventory.deployment?.versionId ?? inventory.version?.id;
-    if (!versionId || versionId === preflight.baseline?.versionId) throw blocked("Staging deployment did not produce a new version");
-    if (inventory.version?.tag !== safe.tag) throw blocked("new Staging version is not owned by this run tag");
-    const createdOn = Date.parse(inventory.version?.createdOn ?? "");
-    const startedOn = Date.parse(preflight.observedAt ?? "");
-    if (!createdOn || !startedOn || createdOn < startedOn) throw blocked("Staging version timestamp is outside this run");
+    const { versionId, deploymentId } = assertCapturedDeployment(inventory, safe, preflight);
     return {
       owned: {
-        deploymentId: inventory.deployment?.id ?? null,
+        deploymentId,
         versionId,
         versionCreatedOn: inventory.version?.createdOn ?? null,
+        deploymentCreatedOn: inventory.deployment?.createdOn ?? null,
+        tag: safe.tag,
+        accountId: AI_STAGING_LIFECYCLE_TARGET.accountId,
+        workerName: AI_STAGING_LIFECYCLE_TARGET.workerName,
+        databaseId: AI_STAGING_LIFECYCLE_TARGET.databaseId,
       },
       inventory: sanitizeInventory(inventory),
     };
@@ -324,6 +450,15 @@ export async function containStaging({ client, evidenceDir = DEFAULT_EVIDENCE_DI
   }
   if (!capture?.ok || !capture.owned?.versionId) {
     try {
+      const current = await client.inventory();
+      if (isPausedBaseline(current, preflight)) {
+        return withEvidence(evidencePath, base, async () => ({
+          noop: true,
+          owned: null,
+          operations: [],
+          inventory: sanitizeInventory(current),
+        }));
+      }
       await captureStaging({ client, evidenceDir, owner: safe, now });
       capture = await readJson(phasePath(evidenceDir, "capture"), "capture");
     } catch (error) {
@@ -464,32 +599,65 @@ export function createCloudflareClient({ token, accountId = AI_STAGING_LIFECYCLE
       request("zone readback", `/zones?account.id=${AI_STAGING_LIFECYCLE_TARGET.accountId}&per_page=50`, { raw: true }),
       request("deployment readback", `${workerPath}/deployments`),
     ]);
-    if ((zones?.result_info?.total_pages ?? 1) > 1) throw blocked("zone readback is paginated; refusing incomplete route verification");
-    if ((queues?.result_info?.total_pages ?? 1) > 1) throw blocked("queue readback is paginated; refusing incomplete consumer verification");
-    const zoneList = Array.isArray(zones?.result) ? zones.result : Array.isArray(zones) ? zones : [];
-    const routeResults = await Promise.all(zoneList.map((zone) => request("Worker route readback", `/zones/${zone.id}/workers/routes`).catch((error) => ({ error }))));
+    if (!isRecord(subdomain)
+      || typeof subdomain.enabled !== "boolean"
+      || typeof subdomain.previews_enabled !== "boolean") {
+      throw blocked("subdomain readback is missing or malformed");
+    }
+    if (!isRecord(schedule) || !Array.isArray(schedule.schedules)
+      || schedule.schedules.some((entry) => !isRecord(entry) || typeof entry.cron !== "string")) {
+      throw blocked("schedule readback is missing or malformed");
+    }
+    if (!isRecord(zones) || !isRecord(zones.result_info)
+      || zones.result_info.total_pages !== 1) {
+      throw blocked("zone readback is paginated or malformed; refusing incomplete route verification");
+    }
+    if (!isRecord(queues) || !isRecord(queues.result_info)
+      || queues.result_info.total_pages !== 1) {
+      throw blocked("queue readback is paginated or malformed; refusing incomplete consumer verification");
+    }
+    const zoneList = strictReadbackList(zones.result, "zone", ["zones"]);
+    if (zoneList.some((zone) => !isRecord(zone) || typeof zone.id !== "string" || zone.id.length === 0)) {
+      throw blocked("zone readback is missing or malformed");
+    }
+    const routeResults = await Promise.all(zoneList.map(async (zone) => {
+      try {
+        const result = await request("Worker route readback", `/zones/${zone.id}/workers/routes`);
+        return { routes: strictReadbackList(result, "Worker route") };
+      } catch (error) {
+        return { error };
+      }
+    }));
     const routeCheckFailures = routeResults.filter((result) => result?.error).length;
-    const routes = routeResults.flatMap((result) => Array.isArray(result) ? result : []);
-    const queueList = Array.isArray(queues?.result) ? queues.result : Array.isArray(queues) ? queues : [];
-    const queueConsumers = queueList.reduce((count, queue) => count + (queue.consumers ?? []).filter((consumer) => consumer?.script_name === AI_STAGING_LIFECYCLE_TARGET.workerName).length, 0);
-    const domainsList = Array.isArray(domains?.result) ? domains.result : Array.isArray(domains) ? domains : [];
-    const deployments = sortDeployments(deploymentResult?.deployments ?? deploymentResult ?? []);
-    const deployment = deployments[0] ?? null;
-    const versionId = deploymentVersionId(deployment);
+    const routes = routeResults.flatMap((result) => result.routes ?? []);
+    if (routes.some((route) => !isRecord(route))) throw blocked("Worker route readback is missing or malformed");
+    const queueList = strictReadbackList(queues.result, "queue", ["queues"]);
+    if (queueList.some((queue) => !isRecord(queue) || !Array.isArray(queue.consumers))) {
+      throw blocked("queue consumer readback is missing or malformed");
+    }
+    const queueConsumers = queueList.reduce((count, queue) => count
+      + queue.consumers.filter((consumer) => consumer?.script_name === AI_STAGING_LIFECYCLE_TARGET.workerName).length, 0);
+    const domainsList = strictReadbackList(domains, "custom-domain", ["domains"]);
+    if (domainsList.some((domain) => !isRecord(domain))) throw blocked("custom-domain readback is missing or malformed");
+    const deployments = sortDeployments(strictReadbackList(deploymentResult, "deployment", ["deployments"]));
+    const normalizedDeployments = deployments.map((item) => normalizeDeployment(item));
+    const deployment = normalizedDeployments[0] ?? null;
+    const versionId = deployment?.versionId ?? null;
     const versionRaw = versionId ? await request("version binding readback", `${workerPath}/versions/${versionId}`) : null;
-    const version = normalizeVersion(versionRaw);
+    const version = versionRaw === null ? null : normalizeVersion(versionRaw);
     return {
       accountId: AI_STAGING_LIFECYCLE_TARGET.accountId,
-      access: { enabled: subdomain?.enabled === true, previewsEnabled: subdomain?.previews_enabled === true },
-      cronSchedules: Array.isArray(schedule?.schedules) ? schedule.schedules.map((entry) => entry?.cron).filter((cron) => typeof cron === "string") : [],
+      workerName: AI_STAGING_LIFECYCLE_TARGET.workerName,
+      access: { enabled: subdomain.enabled, previewsEnabled: subdomain.previews_enabled },
+      cronSchedules: schedule.schedules.map((entry) => entry.cron),
       domainsCount: domainsList.length,
       queueConsumers,
       routeCount: routes.filter((route) => route?.script === AI_STAGING_LIFECYCLE_TARGET.workerName).length,
       routeCheckFailures,
-      deployment: normalizeDeployment(deployment),
+      deployment,
       version,
       deploymentTags: [...new Set([
-        ...deployments.map((item) => item?.annotations?.["workers/tag"]),
+        ...normalizedDeployments.map((item) => item.tag),
         version?.tag,
       ].filter((tag) => typeof tag === "string"))],
     };
