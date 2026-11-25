@@ -1,19 +1,17 @@
 # HANDOVER
 
-## Latest verified delivery — §10.76-B
+## Latest verified delivery — §10.77
 
-**Design:** latest remote `docs/UX2-refine.md`, revision 2026-11-25 08:17 UTC (owner-approved 5 CSS px clearance for complete stationary Effect Frame ↔ H4/PAC; ordinary card and parked-miniature gaps remain 8 px).
+**Design:** remote `docs/UX2-refine.md`, revision 2026-11-25 08:17 UTC.
 
-**Implementation:** `1c88059f67af4c9986cf471447d9aabe70e21fd3` — shared proof-backed reveal target, safe paint/parking completion gate, owned-placement remeasurement to resolve REVEAL bootstrap/no-fit, and same-scene geometry diagnostics. Identity, root, event, viewer and H4 ownership checks remain strict.
+**Implementation:** `362ec98da42d9a2f01c13cfbf93589ef05cda1c4` — generic Damage no longer becomes an action heading or says “lost HP to damage”; mixed results retain proven source/actor, recipient and actual changes.
 
-**Validation:** focused layout/Effect Frame tests 29/29 pass; targeted ESLint 0 errors (15 hook-dependency warnings); `git diff --check` passes. GitHub Actions attempt 1 had a broad API `fetch failed`; attempt 2 on the same SHA passed API, Lint/fast tests and browser startup/H4 smoke: [run 45604914832](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45604914832). D1 migrations, build, Worker deploy and production smoke passed. Worker version `ec722755-9572-4927-a3b4-6e6213be5a70`; production `/api/health` returned `{"ok":true,"worker":"available"}`. Local `tsc --noEmit` reported existing/multiple errors in `app/public-card-display.tsx` despite CI build passing. Local UI/browser verification was **SKIPPED** because the task’s five-minute budget was already exhausted; the 390×844 complete-frame fit and actual miniature parking remain unverified. Owner phone review pending.
+**Validation/deployment:** focused H4 tests 37/37; targeted ESLint and diff check pass. Exact-SHA [Actions 45609088268](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45609088268) passed API, Lint/fast tests, browser startup/H4 smoke, D1, build, Worker deployment and production smoke. Worker version `77b58248-4257-47a0-83eb-0da9d5da5f88`; `/api/health` returned `{"ok":true,"worker":"available"}`. No local UI test was needed. Owner iPhone review remains pending.
 
-## Current bounded task — §10.77 UNIVERSAL-H4-ACTION-OUTCOME-COPY-01
+## Current bounded task — §10.72 STAUCHNESS-H4-OUTCOME-COPY-01
 
-**Design reviewed:** latest remote §10.77 at `96c2b611703f46b978e9fd62095f0e7f3546e388`, revision 2026-11-25 08:17 UTC.
+**Design reviewed:** latest remote §10.72 at `362ec98da42d9a2f01c13cfbf93589ef05cda1c4`, revision 2026-11-25 08:17 UTC.
 
-**Implementation staged:** generic `Damage` is no longer formatted as an action title or as “lost HP to damage”. Mixed committed outcomes use natural damage wording while preserving a proven actor/source, actual recipient, and other committed deltas. Unknown actors fall back to the affected player’s result. Physical identity and typed player-fragment validation are unchanged.
+Trace only the proven Stauchness activation → original Judgement → optional Necromancy replacement/skip → final effective card → committed consequence. H4 must name the actual activator and shown rank/suit; avoid claiming a final consequence before replacement resolves. At final settlement, use the proven Heart/no-effect, actual damage or actual discard result, with one H4 and typed player IDs. PAC owns pending Necromancy and pending consequence. Reuse §§10.76/10.77 contracts; do not repeat shared formatting/geometry work or change rules. Keep §10.75 menu/PAC work separate.
 
-**Validation:** `tests/api/public-activity.test.mjs` 37/37 pass; targeted ESLint and `git diff --check` pass. Existing focused API coverage verifies actual Attack damage, Oath single/multiple/no-recipient recovery and source/root linkage, Frost Sword discarded cards, and H4 ownership. No local UI/browser scenario was needed. Before this task commit, latest relevant Actions passed on implementation baseline `1c88059f67af4c9986cf471447d9aabe70e21fd3`; handover-only `96c2b611` is excluded by workflow `paths-ignore`. Exact-SHA validation and deployment remain pending for this change.
-
-**Resume:** commit `game/public-activity.ts`, its focused regression tests, and this handoff; push to `ux-v2`, then verify exact-SHA required Actions, deployment and production smoke. Keep §10.72-specific Stauchness wording and §10.78 Frost Sword pool migration in their ordered tasks. No owner acceptance claimed.
+Focused API/projection/formatter proof plus one existing four-player real-game browser scenario through Judgement and one final consequence; combined local UI/browser budget ≤5 minutes including retries. Then exact-SHA Actions, deployment/smoke and truthful handoff. Do not claim owner acceptance.
