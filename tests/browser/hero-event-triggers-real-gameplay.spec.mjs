@@ -745,6 +745,7 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
 });
 
 test("real Stauchness frames the two committed source cards for actor, payer and observer on mobile", async ({ page, browser, request }) => {
+  test.setTimeout(90_000);
   const attack = card("Attack", "real-ganglie-discard-attack");
   const paidCards = [card("Peach", "real-ganglie-paid-peach", "♥"), card("Dodge", "real-ganglie-paid-dodge", "♣")];
   const privateCard = card("Attack", "real-ganglie-private-hand");
@@ -769,7 +770,35 @@ test("real Stauchness frames the two committed source cards for actor, payer and
     await Promise.all([openPlayer(sourcePage, seedData, 0), openPlayer(observerPage, seedData, 2)]);
     const dialog = sourcePage.getByRole("dialog", { name: "Stauchness decision" });
     await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Discard exactly 2 cards from your hand", exact: true }).click();
+
+    const pendingProjection = await view(request, seedData, 2);
+    const pendingFacts = [
+      ...(pendingProjection.presentationSnapshot?.retainedPublicEventFacts ?? []),
+      ...(pendingProjection.presentationSnapshot?.publicEventFacts ?? []),
+    ].filter((fact) => fact.label === "Stauchness" && fact.effect?.kind === "skill_pending_choice")
+      .sort((left, right) => left.order - right.order);
+    const pendingFact = pendingFacts.at(-1);
+    expect(pendingFact?.eventId).toBeTruthy();
+    expect(pendingFact?.rootEventId).toBeTruthy();
+    expect(pendingFact?.identity?.interactionId).toBeTruthy();
+    expect(pendingFact?.resolutionId).toBeTruthy();
+    const pendingTimelineEvent = pendingProjection.timeline.find((event) => event.id === pendingFact.eventId);
+    expect(pendingTimelineEvent?.resolutionId).toBe(pendingFact.resolutionId);
+    for (const [viewerPage, viewerIndex] of [[page, 1], [sourcePage, 0], [observerPage, 2]]) {
+      const pendingH4 = viewerPage.locator(`[data-public-h4-event-id="${pendingFact.eventId}"]`);
+      const pendingOwner = viewerPage.locator(`.public-interaction-event-announcement[data-public-interaction-event-id="${pendingFact.eventId}"]`);
+      await expect(pendingOwner).toHaveCount(1, { timeout: 10_000 });
+      await expect(pendingOwner).toBeVisible();
+      await expect(pendingH4).toHaveCount(1);
+      await expect(pendingH4).toBeVisible();
+      await expect(pendingH4).toHaveAttribute("data-public-h4-owner", "PublicInteractionAnnouncementLayer");
+      await expect(pendingOwner).toHaveAttribute("data-public-event-root-id", pendingFact.rootEventId);
+      await expect(pendingH4).toContainText("XIAHOU DUN used Stauchness: waiting for SOURCE to choose a consequence.");
+      await expect(viewerPage.locator('[data-public-card-announcement="true"]:visible')).toHaveCount(1);
+      const viewerProjection = await view(request, seedData, viewerIndex);
+      expect(viewerProjection.presentationSnapshot.publicEventFacts).toEqual(pendingProjection.presentationSnapshot.publicEventFacts);
+    }
+    await dialog.getByRole("button", { name: "Discard 2 Hand cards", exact: true }).click();
     await dialog.getByRole("button", { name: "Peach 7♥", exact: true }).click();
     await dialog.getByRole("button", { name: "Dodge 7♣", exact: true }).click();
     const readFrame = async (viewerPage, viewerId) => {
@@ -795,8 +824,7 @@ test("real Stauchness frames the two committed source cards for actor, payer and
             frameFaces: [...frame.querySelectorAll("[data-public-card-effect-frame-card-id]")]
               .map((face) => face.getAttribute("data-public-card-effect-frame-card-id")),
             title: frame.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
-            announcementCount: display.querySelectorAll('[data-public-card-announcement="true"]').length,
-            announcement: display.querySelector('[data-public-card-announcement="true"]')?.textContent?.trim(),
+            announcementCount: document.querySelectorAll('[data-public-card-announcement="true"][data-public-card-announcement-delivery="VISIBLE"]').length,
             viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
           };
         }, { expectedViewerId: viewerId, cardIds: paidCards.map((paid) => paid.id) }, { timeout: 8_000 });
@@ -842,6 +870,23 @@ test("real Stauchness frames the two committed source cards for actor, payer and
     const costEvent = projected.timeline.find((event) => event.type === "cards" && event.action === "discard"
       && paidCards.every((paid) => event.cards.some((revealed) => revealed.id === paid.id)));
     expect(costEvent).toBeTruthy();
+    const committedFact = [
+      ...(projected.presentationSnapshot.retainedPublicEventFacts ?? []),
+      ...projected.presentationSnapshot.publicEventFacts,
+    ].find((fact) => fact.eventId === costEvent.id);
+    expect(committedFact?.rootEventId).toBe(pendingFact.rootEventId);
+    expect(committedFact?.identity?.interactionId).toBe(pendingFact.identity.interactionId);
+    expect(committedFact?.resolutionId).toBe(costEvent.resolutionId);
+    expect(committedFact?.order).toBeGreaterThan(pendingFact.order);
+    for (const viewerPage of [page, sourcePage, observerPage]) {
+      const committedH4 = viewerPage.locator(`[data-public-h4-event-id="${costEvent.id}"]`);
+      await expect(committedH4).toHaveCount(1, { timeout: 10_000 });
+      await expect(committedH4).toBeVisible();
+      await expect(committedH4).toHaveAttribute("data-public-h4-owner", "PublicInteractionAnnouncementLayer");
+      await expect(committedH4).toHaveAttribute("data-public-h4-public-sequence", String(committedFact.order));
+      await expect(committedH4).toHaveText("XIAHOU DUN used Stauchness: SOURCE discarded 2 Hand cards.");
+      await expect(viewerPage.locator('[data-public-card-announcement="true"]:visible')).toHaveCount(1);
+    }
     expect(costEvent.publicCardEffects).toEqual(expect.arrayContaining([
       expect.objectContaining({
         effectId: "xiahou_dun_ganglie", effectClass: "COST", activationOwnerId: seedData.players[1].id,
@@ -871,8 +916,6 @@ test("real Stauchness frames the two committed source cards for actor, payer and
         announcementCount: 1,
         viewport: { width: 390, height: 844, scrollWidth: 390 },
       });
-      expect(frameEvidence[index].announcement).toContain("XIAHOU DUN used Stauchness");
-      expect(frameEvidence[index].announcement).toContain("SOURCE, the damage source, discarded exactly two Hand cards");
     }
     await expect(observerPage.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(0);
     await expect(sourcePage.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(1);

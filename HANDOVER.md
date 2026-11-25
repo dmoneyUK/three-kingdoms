@@ -1,21 +1,15 @@
 # HANDOVER
 
-## Current task — §10.75 STAUCHNESS-COMPACT-CHOICE-MODAL-01
+## Latest verified delivery
 
-**Design reviewed:** `docs/UX2-refine.md`, revision 2026-11-24 22:38 UTC. **Branch:** `ux-v2` delivery target; worktree branch `codex/ux2-1066-turn-boundary-clear`. **Base:** `0c1f93987a00450c3f9f66b26fa76efb1653a343` (matches `origin/ux-v2`).
+§10.75 STAUCHNESS-COMPACT-CHOICE-MODAL-01 is deployed at `6fba35c1876071cf641a95d9d5801a67cbb7a6b3`; exact-SHA [Actions 45527919981](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45527919981) passed all required jobs and production smoke. Worker `21939246-0e06-437f-aab8-3b6de4a723f8`; `/api/health` returned `ok`. §10.74, including §10.70's remaining geometry, is deployed at `44ded7566a2ed4f23082b78181900b06d5552520`; [Actions 45522229976](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45522229976) passed and deployed Worker `543a1181-c72d-4339-90a8-25741b7ab3d1`. Both remain pending Owner iPhone review.
 
-Implemented the approved compact mandatory Stauchness choice stage. It preserves server-provided choice IDs, eligible viewer-owned Hand cards, original action callbacks and timeout behavior; uses the shared Confirm footer; hides the stage until measured safe placement is ready; keeps the eligible Hand row scrollable; and leaves other mandatory choices on the existing renderer. No gameplay or §10.72 H4 copy changes.
+## Current task — §10.72 STAUCHNESS-H4-OUTCOME-COPY-01 re-review
 
-**Local validation observed:**
+**Design reviewed:** `docs/UX2-refine.md`, revision 2026-11-24 22:38 UTC. **Review source:** `6fba35c1876071cf641a95d9d5801a67cbb7a6b3`.
 
-- `node --import tsx --test tests/room-safety-render.test.mjs` — 28/28 passed.
-- `GAME_TEST_FILES=tests/api/judgement.test.mjs node tests/run-tests.mjs` — 14/14 passed.
-- `npm run build` — passed; only existing bundle-size/static-route warnings.
-- Focused real Stauchness phone-layout browser scenario — 1 passed (11.5s), after rebuilding the local Worker client and capping the internally scrollable choice panel at 240px.
-- Combined local UI/browser time remained below five minutes. `git diff --check` — passed immediately before staging.
+**Finding:** A fresh real non-Heart Stauchness flow showed one visible, correctly owned H4 per actor, chooser and observer at both checkpoints: pending (`XIAHOU DUN used Stauchness: waiting for SOURCE to choose a consequence.`) and committed discard (`XIAHOU DUN used Stauchness: SOURCE discarded 2 Hand cards.`). Both facts share the same causal root/interaction and retain their own resolution IDs. The screenshot's separate generic line was not reproduced at these checkpoints; without its loaded build SHA/event trace it cannot be attributed safely to Judgement/activation or terminal outcome. No speculative source correction.
 
-**Commit gate:** latest relevant remote run checked before implementation commit was `45522229976` for SHA `44ded7566a2ed4f23082b78181900b06d5552520`, successful: https://github.com/dmoneyUK/three-kingdoms/actions/runs/45522229976. No queued/in-progress run was present. This is the previous source checkpoint, not validation of the pending implementation.
+**Validation:** `npm run build` passed on the reviewed source; `git diff --check` passed. Extended the existing mobile real-gameplay scenario; final run passed 1/1 in 17.1s, within the five-minute total UI/browser budget. Earlier runs exposed stale test assumptions (pre-§10.75 choice label, retained-fact lookup, and H4 being owned outside the card-display wrapper); corrected those assertions. The test/docs commit is pending push and exact-SHA CI/deployment.
 
-**First delivery:** `d638b79dbde2d6f5e73db744f504602a7b3987f2` pushed to `ux-v2`. Exact-SHA run `45526842647` (https://github.com/dmoneyUK/three-kingdoms/actions/runs/45526842647) completed with failure: API and Browser startup/H4 smoke passed; Lint failed with seven `react-hooks/refs` errors because JSX read `placement.ref`, `.ready` and `.top` from the hook result object. Deployment was skipped.
-
-**Local CI repair in progress:** destructured `{ ref, top, ready }` from `useBattlefieldChoicePlacement`, matching existing call sites and preserving geometry/behavior. Focused local ESLint was attempted, but local Node `v26.3.0` overflowed in `react-hooks/rules-of-hooks` on both the changed source and its baseline copy; it cannot independently verify this large file in this environment. The exact CI diagnostic identified only render-time reads from `placement.*`. Run `45526842647` completed: API and Browser jobs passed; Lint failed; deployment skipped. The repair is uncommitted. After that run fully completed, commit only this repair and HANDOVER, push, then wait for exact-SHA CI/deploy/smoke before advancing. Do not mark USER-ACCEPTED; owner iPhone review remains required.
+**Resume:** push this bounded test/design/handover update to `origin/ux-v2`, wait for its exact-SHA required Actions and deployment/production smoke, then record actual results here. No USER-ACCEPTED status. Owner iPhone review remains pending; the reported generic screenshot event remains unassigned without its exact trace/build.
