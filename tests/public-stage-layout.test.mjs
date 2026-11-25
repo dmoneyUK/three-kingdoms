@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findBattlefieldChoiceSafeTopOffset, harvestChoicePlacementPanelRect, isBattlefieldChoiceTopOffsetSafe } from "../app/battlefield-choice-stage.tsx";
-import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicStagePrimaryOriginFromVisualRect, publicStageSceneIdentity, publicStageSceneMatchesCard } from "../game/public-stage-layout.ts";
+import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicStageEffectFrameRevealTargetMatches, publicStagePrimaryOriginFromVisualRect, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard } from "../game/public-stage-layout.ts";
 
 const scene = {
   semantics: "PROVEN",
@@ -73,6 +73,80 @@ test("shared measured Effect Frame union maps back to the same primary CardFace 
   assert.deepEqual(publicStagePrimaryOriginFromVisualRect(measuredFrame, primaryOffset), { left: 150, top: 247 });
   assert.equal(publicStagePrimaryOriginFromVisualRect({ ...measuredFrame, right: measuredFrame.left }, primaryOffset), null);
   assert.equal(publicStagePrimaryOriginFromVisualRect(measuredFrame, { ...primaryOffset, top: Number.NaN }), null);
+});
+
+test("Effect Frame target can bootstrap before paint readiness without relaxing scene or H4 ownership", () => {
+  const effectScene = { ...scene, scopeId: "root-kirin", eventId: "kirin-effect", cardId: "mount-card", generation: 3 };
+  const result = calculatePublicStageLayout(input({
+    scene: effectScene,
+    viewport: { left: 0, top: 0, right: 390, bottom: 844 },
+    table: { left: 0, top: 0, right: 390, bottom: 700 },
+    activityBottom: 500,
+    preferredCard: { left: 111, top: 300 },
+    card: { width: 168, height: 194 },
+    fixedBands: {
+      h4: { left: 25, top: 100, right: 365, bottom: 200 },
+      pac: { left: 25, top: 405, right: 365, bottom: 500 },
+    },
+    stationarySurface: "effect-frame",
+  }));
+  assert.equal(result.status, "placed");
+  if (result.status !== "placed") return;
+  const valid = {
+    layout: result.layout,
+    roomId: effectScene.roomId,
+    rootEventId: effectScene.scopeId,
+    interactionId: effectScene.interactionId,
+    eventId: effectScene.eventId,
+    cardId: effectScene.cardId,
+    viewerId: effectScene.viewerId,
+    primaryEventId: effectScene.eventId,
+    primaryCardId: effectScene.cardId,
+    announcementEventId: effectScene.eventId,
+    announcementAnchorEventId: null,
+  };
+  // This pure target is available before the DOM reaches it and can therefore
+  // make the first placement that later satisfies revealReady.
+  assert.equal(publicStageEffectFrameRevealTargetMatches(valid), true);
+  for (const change of [
+    { eventId: "other-event" },
+    { rootEventId: "other-root" },
+    { cardId: "other-card" },
+    { viewerId: "other-viewer" },
+    { primaryCardId: "other-card" },
+    { announcementEventId: "other-event", announcementAnchorEventId: "other-anchor" },
+  ]) assert.equal(publicStageEffectFrameRevealTargetMatches({ ...valid, ...change }), false);
+});
+
+test("a public reveal cannot retire before safe paint and a measured target for this viewer", () => {
+  const ready = {
+    phase: "REVEAL",
+    layoutPending: false,
+    safePainted: true,
+    viewerId: "viewer-1",
+    parkingTargetViewerId: "viewer-1",
+    parkingTarget: { width: 32, height: 48 },
+  };
+  assert.equal(publicStageRevealCanRetire(ready), true);
+  for (const change of [
+    { layoutPending: true },
+    { safePainted: false },
+    { phase: "MOVE" },
+    { parkingTargetViewerId: "viewer-2" },
+    { parkingTarget: { width: 0, height: 48 } },
+  ]) assert.equal(publicStageRevealCanRetire({ ...ready, ...change }), false);
+});
+
+test("only the matching pending REVEAL schedules a remeasure after owned placement styles land", () => {
+  const pendingCurrentReveal = { phase: "REVEAL", revealReady: false, identityMatches: true };
+  assert.equal(publicStageRevealNeedsOwnedRemeasure(pendingCurrentReveal), true);
+  for (const change of [
+    { revealReady: true },
+    { phase: "MOVE" },
+    { phase: "PARKED" },
+    { identityMatches: false },
+    { revealReady: undefined },
+  ]) assert.equal(publicStageRevealNeedsOwnedRemeasure({ ...pendingCurrentReveal, ...change }), false);
 });
 
 test("Harvest pool uses the measured central band below H4 and above PAC", () => {

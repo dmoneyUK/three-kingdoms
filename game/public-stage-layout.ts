@@ -12,6 +12,15 @@ export function publicStageBandClearance(surface: PublicStageStationarySurface =
     : PUBLIC_STAGE_CARD_BAND_CLEARANCE_PX;
 }
 
+/** Re-measure only the same current REVEAL while its measured placement is pending paint. */
+export function publicStageRevealNeedsOwnedRemeasure(input: {
+  phase?: PublicStagePhase | null;
+  revealReady?: boolean;
+  identityMatches: boolean;
+}): boolean {
+  return input.phase === "REVEAL" && input.revealReady === false && input.identityMatches;
+}
+
 /** Positions a card and its measured attached label above a reserved band. */
 export function positionLabeledCardAboveBand(input: {
   centerX: number;
@@ -176,6 +185,60 @@ export function publicStagePrimaryOriginFromVisualRect(
   const left = visual.left - primaryOffset.left;
   const top = visual.top - primaryOffset.top;
   return Number.isFinite(left) && Number.isFinite(top) ? { left, top } : null;
+}
+
+/**
+ * Validates the measured target for a complete public Effect Frame.
+ * The target may be consumed while the frame is still moving into place:
+ * `revealReady` is a paint confirmation, so requiring it before applying the
+ * target would prevent the DOM from ever reaching the position that makes it
+ * ready. Proof identity and the matching H4 owner remain mandatory here.
+ */
+export function publicStageEffectFrameRevealTargetMatches(input: {
+  layout: PublicStageLayout | null | undefined;
+  roomId: string;
+  rootEventId: string;
+  interactionId?: string | null;
+  eventId: string;
+  cardId: string;
+  viewerId: string;
+  primaryEventId: string;
+  primaryCardId: string;
+  announcementEventId: string;
+  announcementAnchorEventId: string | null;
+}): boolean {
+  const layout = input.layout;
+  return Boolean(layout
+    && layout.variant === "fixed-bands"
+    && input.primaryEventId === input.eventId
+    && input.primaryCardId === input.cardId
+    && (input.announcementEventId === input.eventId || input.announcementAnchorEventId === input.eventId)
+    && publicStageSceneMatchesCard(layout.scene, {
+      roomId: input.roomId,
+      scopeId: input.rootEventId,
+      interactionId: input.interactionId,
+      eventId: input.eventId,
+      cardId: input.cardId,
+      viewerId: input.viewerId,
+      phase: "REVEAL",
+    }));
+}
+
+/** A reveal may retire only after its real safe paint and measured viewer target. */
+export function publicStageRevealCanRetire(input: {
+  phase: PublicStagePhase;
+  layoutPending: boolean;
+  safePainted: boolean;
+  viewerId: string;
+  parkingTargetViewerId?: string | null;
+  parkingTarget: Pick<PublicStageSize, "width" | "height"> | null | undefined;
+}): boolean {
+  return input.phase === "REVEAL"
+    && !input.layoutPending
+    && input.safePainted
+    && Boolean(input.viewerId.trim())
+    && input.parkingTargetViewerId === input.viewerId
+    && finiteSize(input.parkingTarget ?? { width: 0, height: 0 });
 }
 
 /**

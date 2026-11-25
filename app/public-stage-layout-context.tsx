@@ -6,8 +6,10 @@ import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-d
 import {
   calculatePublicStageLayout,
   publicStageBandClearance,
+  publicStageRevealNeedsOwnedRemeasure,
   publicStageSceneMatchesCard,
   type PublicStageLayout,
+  type PublicStagePhase,
   type PublicStageRect,
   type PublicStageStationarySurface,
 } from "../game/public-stage-layout";
@@ -219,7 +221,7 @@ export function PublicStageLayoutProvider({
         clear();
         return;
       }
-      const phase = phaseName;
+      const phase = phaseName as PublicStagePhase;
       if (display.dataset.publicCardLayoutPending === "true" && phase !== "REVEAL") {
         clear();
         return;
@@ -243,7 +245,8 @@ export function PublicStageLayoutProvider({
         setData(table, "data-public-stage-layout-identity", undefined);
         setData(table, "data-public-stage-layout-failure", JSON.stringify({
           reason: framePanels.length === 1 ? "EFFECT_FRAME_FOOTPRINT_UNAVAILABLE" : "MULTIPLE_EFFECT_FRAME_PANELS",
-          eventId, cardId, viewerId, phase, generation: generationRef.current.generation,
+          roomId, rootEventId: scopeId, scopeId, interactionId, eventId, cardId, viewerId, phase,
+          generation: generationRef.current.generation,
         }));
         snapshotRef.current = null;
         committedLayouts.delete(table);
@@ -274,7 +277,7 @@ export function PublicStageLayoutProvider({
         setData(table, "data-public-stage-layout-identity", undefined);
         setData(table, "data-public-stage-layout-failure", JSON.stringify({
           reason: "EFFECT_FRAME_PUBLIC_BANDS_UNAVAILABLE",
-          eventId, cardId, viewerId, phase,
+          roomId, rootEventId: scopeId, scopeId, interactionId, eventId, cardId, viewerId, phase,
           frame: roundedRect(frameFootprint.rect),
           hasMatchingH4: Boolean(announcement),
           pac: chip ? roundedRect(rectOf(chip)) : null,
@@ -521,13 +524,22 @@ export function PublicStageLayoutProvider({
         setData(table, "data-public-stage-layout-identity", undefined);
         setData(table, "data-public-stage-layout-failure", JSON.stringify({
           reason: result.reason,
+          roomId, rootEventId: scopeId, scopeId, interactionId, eventId, cardId, viewerId, phase,
+          stationarySurface,
+          bandClearance: publicStageBandClearance(stationarySurface),
+          h4Reserve: roundedRect(h4Band),
+          pacReserve: roundedRect(pacBand),
+          availableLaneHeight: Math.max(0, pacBand.top - h4Band.bottom),
+          requiredLaneHeight: cardSize.height + 2 * publicStageBandClearance(stationarySurface),
+          actualTopClearance: visualPrimary.top - h4Band.bottom,
+          actualBottomClearance: pacBand.top - visualPrimary.bottom,
           viewport: roundedRect(viewport),
           table: roundedRect(tableBounds),
           consoleGuidance: roundedRect(consoleBounds),
           primary: roundedRect(visualPrimary),
           announcement: roundedRect(announcementRect),
           compactAnnouncement,
-          activity: roundedRect(rectOf(chip)),
+          activity: chip ? roundedRect(rectOf(chip)) : null,
           obstacles: obstacles.map(({ id, rect }) => ({ id, rect: roundedRect(rect) })),
         }));
         snapshotRef.current = null;
@@ -625,11 +637,40 @@ export function PublicStageLayoutProvider({
       frame = window.requestAnimationFrame(measure);
     }
 
-    const ownedGeometryElement = (target: Node) => {
+    const ownedGeometryElement = (target: Node): HTMLElement | null => {
       const element = target instanceof HTMLElement ? target : target.parentElement;
-      return Boolean(element && (element.matches(
+      return element?.matches(
         '.public-card-journey-card[data-public-card-primary-card="true"], [data-public-card-announcement="true"], [data-public-activity-chip="true"]',
-      )));
+      ) ? element : null;
+    };
+    const isPendingCurrentRevealPlacement = (target: Node) => {
+      const pending = snapshotRef.current;
+      const scene = pending?.layout.scene;
+      const element = ownedGeometryElement(target);
+      if (!pending || !scene || !element) return false;
+      const identityMatches = scene.roomId === roomId && scene.scopeId === scopeId
+        && (scene.interactionId ?? null) === interactionId && scene.viewerId === viewerId;
+      if (!publicStageRevealNeedsOwnedRemeasure({
+        phase: scene.phase,
+        revealReady: pending.revealReady,
+        identityMatches,
+      })) return false;
+
+      if (element.matches('[data-public-activity-chip="true"]')) {
+        return element === table.querySelector<HTMLElement>('[data-public-activity-chip="true"]');
+      }
+      const display = element.closest<HTMLElement>(".public-card-display");
+      if (!display || display.dataset.publicCardRootEventId !== scene.scopeId
+        || (display.dataset.publicCardInteractionId ?? null) !== (scene.interactionId ?? null)
+        || display.dataset.publicCardViewerId !== scene.viewerId
+        || display.dataset.publicCardLayoutViewerId !== scene.viewerId) return false;
+      if (element.matches('.public-card-journey-card[data-public-card-primary-card="true"]')) {
+        return element.dataset.publicCardJourneyEventId === pending.primaryEventId
+          && element.dataset.publicCardJourneyCardId === pending.primaryCardId
+          && element.dataset.publicCardJourneyPhase === "reveal";
+      }
+      return element.dataset.publicCardAnnouncementEventId === pending.primaryEventId
+        || element.dataset.publicCardAnnouncementAnchorEventId === pending.primaryEventId;
     };
     const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
       if (records.some((record) => {
@@ -637,7 +678,13 @@ export function PublicStageLayoutProvider({
           && ["data-public-stage-layout-status", "data-public-stage-layout-phase", "data-public-stage-layout-identity", "data-public-stage-layout-failure"].includes(record.attributeName ?? "")) return false;
         if (record.type === "attributes" && record.attributeName?.startsWith("data-public-stage-layout-")
           && record.target !== table) return false;
-        if (record.type === "attributes" && record.attributeName === "style" && ownedGeometryElement(record.target)) return false;
+        if (record.type === "attributes" && record.attributeName === "style" && ownedGeometryElement(record.target)) {
+          // The first shared layout moves the real card and H4 to the measured
+          // target. Re-measure that same proven REVEAL once those React-owned
+          // styles land, otherwise revealReady can stay false forever because
+          // the measurement observer intentionally ignores owned style writes.
+          return isPendingCurrentRevealPlacement(record.target);
+        }
         return true;
       })) schedule();
     });
