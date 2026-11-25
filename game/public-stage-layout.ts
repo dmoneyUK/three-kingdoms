@@ -5,11 +5,58 @@ export type PublicStageStationarySurface = "card" | "effect-frame";
 
 export const PUBLIC_STAGE_CARD_BAND_CLEARANCE_PX = 8;
 export const PUBLIC_STAGE_EFFECT_FRAME_BAND_CLEARANCE_PX = 5;
+const PUBLIC_STAGE_EFFECT_FRAME_SOLVER_HEADROOM_PX = 0.5;
 
 export function publicStageBandClearance(surface: PublicStageStationarySurface = "card") {
   return surface === "effect-frame"
     ? PUBLIC_STAGE_EFFECT_FRAME_BAND_CLEARANCE_PX
     : PUBLIC_STAGE_CARD_BAND_CLEARANCE_PX;
+}
+
+/** Check actual measured bands against a stationary public visual. The caller
+ * supplies both visible copy and fixed reserves when present; an absent PAC is
+ * represented by its fixed reserve alone. This comparison has no layout
+ * tolerance: a measured 4.9px gap must not satisfy a 5px requirement. */
+export function publicStageMeasuredBandClearanceSatisfied(input: {
+  visual: PublicStageRect;
+  upperBands: readonly PublicStageRect[];
+  lowerBands: readonly PublicStageRect[];
+  minimumGap: number;
+}): boolean {
+  return finiteRect(input.visual)
+    && Number.isFinite(input.minimumGap) && input.minimumGap >= 0
+    && input.upperBands.length > 0 && input.upperBands.every((band) => finiteRect(band)
+      && input.visual.top - band.bottom >= input.minimumGap)
+    && input.lowerBands.length > 0 && input.lowerBands.every((band) => finiteRect(band)
+      && band.top - input.visual.bottom >= input.minimumGap);
+}
+
+/** Readiness is phase-specific: only REVEAL needs a painted centre frame.
+ * MOVE and PARKED need the current viewer's measured author target, not the
+ * already-retired REVEAL DOM/layout. */
+export function publicStageJourneyPhaseReady(input: {
+  phase: PublicStagePhase;
+  viewerId: string;
+  targetViewerId?: string | null;
+  target: PublicStageRect | null | undefined;
+  revealCenterAvailable: boolean;
+  revealPainted: boolean;
+}): boolean {
+  if (!publicStageJourneyTargetReady(input)) {
+    return false;
+  }
+  return input.phase !== "REVEAL" || input.revealCenterAvailable && input.revealPainted;
+}
+
+/** A MOVE/PARKED visual may proceed only with this viewer's measured target. */
+export function publicStageJourneyTargetReady(input: {
+  viewerId: string;
+  targetViewerId?: string | null;
+  target: PublicStageRect | null | undefined;
+}): boolean {
+  return Boolean(input.viewerId.trim()
+    && input.targetViewerId === input.viewerId
+    && finiteRect(input.target ?? { left: 0, top: 0, right: 0, bottom: 0 }));
 }
 
 /** Re-measure only the same current REVEAL while its measured placement is pending paint. */
@@ -333,7 +380,8 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
   );
   if (input.scene.phase === "REVEAL" && input.fixedBands) {
     const { h4, pac } = input.fixedBands;
-    const bandClearance = publicStageBandClearance(input.stationarySurface);
+    const bandClearance = publicStageBandClearance(input.stationarySurface)
+      + (input.stationarySurface === "effect-frame" ? PUBLIC_STAGE_EFFECT_FRAME_SOLVER_HEADROOM_PX : 0);
     if (!finiteRect(h4) || !finiteRect(pac) || h4.left < safeBounds.left || h4.right > safeBounds.right
       || pac.left < safeBounds.left || pac.right > safeBounds.right
       || pac.bottom > activityBottom + 2 || pac.bottom < activityBottom - 2

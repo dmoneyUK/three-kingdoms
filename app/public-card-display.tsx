@@ -12,8 +12,18 @@ import type { PresentationTargetCardSettlementMovement } from "../game/presentat
 import type { PublicInteractionNarration } from "../game/public-activity";
 import type { PublicDiscardAnnouncement } from "./public-discard-transition";
 import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
-import { publicStageBandClearance, publicStageEffectFrameRevealTargetMatches, publicStagePrimaryOriginFromVisualRect, publicStageRevealCanRetire, type PublicStageStationarySurface } from "../game/public-stage-layout";
-import { positionLabeledCardAboveBand, publicStageSceneMatchesCard } from "../game/public-stage-layout";
+import {
+  positionLabeledCardAboveBand,
+  publicStageBandClearance,
+  publicStageEffectFrameRevealTargetMatches,
+  publicStageJourneyPhaseReady,
+  publicStageJourneyTargetReady,
+  publicStageMeasuredBandClearanceSatisfied,
+  publicStagePrimaryOriginFromVisualRect,
+  publicStageRevealCanRetire,
+  publicStageSceneMatchesCard,
+  type PublicStageStationarySurface,
+} from "../game/public-stage-layout";
 import { cardDefinition } from "../game/cards";
 import { publicAnnouncementEventCopyKey as buildPublicAnnouncementEventCopyKey, publicAnnouncementGeometryIdentity, publicAnnouncementGeometryKey, transitionPublicAnnouncementCopyLifecycle, type PublicAnnouncementCopyLifecycle, type PublicAnnouncementProtectedGeometry, type PublicAnnouncementSeatGeometry } from "../game/public-announcement";
 import { compactLustDuelAttackMessage } from "./lust-public-copy";
@@ -1114,7 +1124,14 @@ function hasPaintedLargePublicEffectFrame(
   const panel = panels.length === 1 ? panels[0] : null;
   const primaryStyle = window.getComputedStyle(element);
   const footprint = panel ? publicEffectFrameVisualFootprint(element) : null;
+  const display = element.closest<HTMLElement>(".public-card-display");
+  const announcement = display && shared ? [...display.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
+    .find((candidate) => candidate.dataset.publicCardAnnouncementEventId === shared?.announcementEventId
+      && (candidate.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey) : null;
+  const activityChip = table?.querySelector<HTMLElement>("[data-public-activity-chip='true']") ?? null;
+  const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
   if (!table || !shared?.revealReady || !panel || !footprint
+    || !display || !announcement || !consoleGuidance
     || frame.eventId !== eventId
     || element.dataset.publicCardJourneyEventId !== eventId
     || element.dataset.publicCardJourneyCardIds !== expectedCardIds
@@ -1143,6 +1160,20 @@ function hasPaintedLargePublicEffectFrame(
   const primaryRect = element.getBoundingClientRect();
   const visualRect = footprint.rect;
   const layoutCard = shared.layout.card;
+  const announcementStyle = window.getComputedStyle(announcement);
+  const announcementRect = announcement.getBoundingClientRect();
+  const announcementTarget = shared.layout.announcement;
+  const pacBand = fixedPublicActivityBand(table, consoleGuidance, activityChip);
+  const h4Band = fixedPublicH4Band(table, announcement);
+  const pacStyle = activityChip ? window.getComputedStyle(activityChip) : null;
+  const pacRect = activityChip?.getBoundingClientRect();
+  const activityTarget = shared.layout.activity;
+  const pacVisibleAndSafe = !activityChip || Boolean(pacStyle && pacRect
+    && pacStyle.display !== "none" && pacStyle.visibility !== "hidden" && Number(pacStyle.opacity) > 0
+    && pacRect.width > 0 && pacRect.height > 0
+    && pacRect.left >= activityTarget.left - 1 && pacRect.right <= activityTarget.right + 1
+    && pacRect.top >= activityTarget.top - 1 && pacRect.bottom <= activityTarget.bottom + 1
+    && Math.abs(pacRect.bottom - consoleGuidance.getBoundingClientRect().top) <= 2);
   const visibleViewport = window.visualViewport;
   const viewportLeft = visibleViewport?.offsetLeft ?? 0;
   const viewportTop = visibleViewport?.offsetTop ?? 0;
@@ -1152,13 +1183,28 @@ function hasPaintedLargePublicEffectFrame(
   const withinOnePixel = (left: number, right: number) => Math.abs(left - right) <= 1;
   return element.isConnected && element.getClientRects().length > 0
     && primaryStyle.display !== "none" && primaryStyle.visibility !== "hidden" && Number(primaryStyle.opacity) > 0
+    && announcement.isConnected && announcement.getClientRects().length > 0
+    && announcementStyle.display !== "none" && announcementStyle.visibility !== "hidden" && Number(announcementStyle.opacity) > 0
+    && announcement.dataset.publicCardAnnouncementPositioned === "true"
+    && withinOnePixel(announcementRect.left, announcementTarget.left)
+    && withinOnePixel(announcementRect.top, announcementTarget.top)
+    && withinOnePixel(announcementRect.right, announcementTarget.right)
+    && pacVisibleAndSafe && Boolean(pacBand && h4Band)
     && withinOnePixel(primaryRect.width, REVEAL_CARD.width) && withinOnePixel(primaryRect.height, REVEAL_CARD.height)
     && withinOnePixel(visualRect.left, layoutCard.left) && withinOnePixel(visualRect.top, layoutCard.top)
     && withinOnePixel(visualRect.right, layoutCard.right) && withinOnePixel(visualRect.bottom, layoutCard.bottom)
     && visualRect.left >= viewportLeft && visualRect.top >= viewportTop
     && visualRect.right <= viewportRight && visualRect.bottom <= viewportBottom
-    && layoutCard.top - shared.layout.announcement.bottom >= clearance - 1
-    && shared.layout.activity.top - layoutCard.bottom >= clearance - 1;
+    && publicStageMeasuredBandClearanceSatisfied({
+      visual: visualRect,
+      upperBands: [h4Band!, rectOfAnnouncement(announcementRect)],
+      lowerBands: [pacBand!, ...(pacRect ? [rectOfAnnouncement(pacRect)] : [])],
+      minimumGap: clearance,
+    });
+}
+
+function rectOfAnnouncement(rect: DOMRect): { left: number; top: number; right: number; bottom: number } {
+  return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
 }
 
 function hasPaintedLargePublicCard(
@@ -5623,6 +5669,19 @@ function SingleTargetCardJourney({
     ?? [...journey.cards].reverse().find((card) => card.phase !== "queued")?.eventId
     ?? action.rootEventId;
   const primaryJourneyCard = journey.cards.find((card) => card.eventId === activeEventId);
+  const primaryNonRevealTargetReady = Boolean(primaryJourneyCard
+    && (primaryJourneyCard.phase === "move" || primaryJourneyCard.phase === "parked")
+    && !primaryJourneyCard.layoutPending
+    && publicStageJourneyTargetReady({
+      viewerId,
+      targetViewerId: primaryJourneyCard.parkingTargetViewerId,
+      target: {
+        left: primaryJourneyCard.target.left,
+        top: primaryJourneyCard.target.top,
+        right: primaryJourneyCard.target.left + primaryJourneyCard.target.width,
+        bottom: primaryJourneyCard.target.top + primaryJourneyCard.target.height,
+      },
+    }));
   // The latest H4 fact can be a pick without owning a physical card Journey.
   // Associate it with this viewer's proven root/response only for stage layout.
   const harvestStagePrimaryEventId = harvestPoolVisible
@@ -5639,7 +5698,10 @@ function SingleTargetCardJourney({
   // Shared H4/PAC placement belongs to the current primary card. An unrelated
   // older parked author's unmeasured Seat may keep that one miniature hidden,
   // but it must not make an otherwise measured current public stage disappear.
-  const sharedStageLayoutPending = !journey.center || !primaryJourneyCard || primaryJourneyCard.layoutPending;
+  const primaryStageGeometryReady = primaryJourneyCard?.phase === "reveal"
+    ? journey.center !== null
+    : primaryNonRevealTargetReady;
+  const sharedStageLayoutPending = !primaryJourneyCard || primaryJourneyCard.layoutPending || !primaryStageGeometryReady;
   const activePhase = activeCard?.phase ?? null;
   useEffect(() => {
     if (!journeyEnabled || !documentVisible || journey.scopeKey !== scopeKey || !activeCard || !activePhase) return;
@@ -5971,6 +6033,7 @@ function SingleTargetCardJourney({
         const measuredRectsByActor = new Map<string, CardRect[]>();
         const actorIndexes = new Map<string, number>();
         const measuredTargets = new Map<string, CardRect>();
+        const revealPaintResults = new Map<string, boolean>();
         const cards = current.cards.map((card) => {
           const actorIndex = actorIndexes.get(card.actorId) ?? 0;
           actorIndexes.set(card.actorId, actorIndex + 1);
@@ -6006,7 +6069,7 @@ function SingleTargetCardJourney({
             : card.moveRemainingMs;
           const expectedFrame = currentAction.publicCardEffectFrame?.eventId === card.eventId
             ? currentAction.publicCardEffectFrame : undefined;
-          const safeFramePainted = expectedFrame
+          const safeFramePainted = card.phase === "reveal" && expectedFrame
             ? hasPaintedLargePublicCard(card.eventId, REVEAL_CARD, expectedFrame, {
               roomId: roomCode,
               rootEventId: currentAction.rootEventId,
@@ -6014,6 +6077,20 @@ function SingleTargetCardJourney({
               viewerId: viewerIdRef.current,
             })
             : true;
+          if (card.phase === "reveal") revealPaintResults.set(card.eventId, safeFramePainted);
+          const phaseReady = publicStageJourneyPhaseReady({
+            phase: card.phase === "move" ? "MOVE" : card.phase === "parked" ? "PARKED" : "REVEAL",
+            viewerId: viewerIdRef.current,
+            targetViewerId: measuredTarget ? viewerIdRef.current : null,
+            target: measuredTarget ? {
+              left: measuredTarget.left,
+              top: measuredTarget.top,
+              right: measuredTarget.left + measuredTarget.width,
+              bottom: measuredTarget.top + measuredTarget.height,
+            } : null,
+            revealCenterAvailable: card.phase !== "reveal" || center !== null && !framePlacementUnavailable,
+            revealPainted: safeFramePainted,
+          });
           const waitingRevealWithTarget = card.phase === "reveal" && card.awaitingParkingTarget
             && Boolean(measuredTarget) && center !== null && !framePlacementUnavailable && safeFramePainted;
           const reducedMotion = waitingRevealWithTarget && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -6036,13 +6113,13 @@ function SingleTargetCardJourney({
               moveStartedAtMs: reducedMotion ? null : now,
               moveRemainingMs: reducedMotion ? 0 : MOVE_DURATION_MS,
             } : {}),
-            layoutPending: !measuredTarget || center === null || Boolean(expectedFrame && !safeFramePainted),
+            layoutPending: !phaseReady,
             layoutChangeReason: waitingRevealWithTarget
               ? reducedMotion ? "four-second-reveal-complete-reduced-motion" : "author-parking-anchor-recovered"
               : measuredTarget ? "viewport-resize-author-anchor-measured" : "author-parking-unavailable-awaiting-remeasure",
           };
         });
-        const layoutPending = framePlacementUnavailable || center === null || cards.some((card) => card.layoutPending);
+        const layoutPending = cards.some((card) => card.layoutPending);
         if (layoutPending && sampledFrames < 8) {
           resizeFrame = window.requestAnimationFrame(measureWhenSettled);
           return;
@@ -6079,14 +6156,7 @@ function SingleTargetCardJourney({
             && (card.revealElapsedMs ?? 0) >= STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS - 1;
           if (!revealHoldComplete || !nextCard || nextCard.layoutPending
             || nextCard.phase !== "move" && nextCard.phase !== "parked") continue;
-          const safelyPainted = expectedFrame
-            ? hasPaintedLargePublicCard(card.eventId, REVEAL_CARD, expectedFrame, {
-              roomId: roomCode,
-              rootEventId: currentAction.rootEventId,
-              interactionId: currentAction.interactionId,
-              viewerId: viewerIdRef.current,
-            })
-            : true;
+          const safelyPainted = expectedFrame ? revealPaintResults.get(card.eventId) === true : true;
           if (safelyPainted) notifyRevealCompletedOnce(card.eventId, card.cardFace.id);
         }
       };
@@ -6162,7 +6232,8 @@ function SingleTargetCardJourney({
   const viewerLayoutPending = journey.scopeKey === scopeKey && journey.viewerId !== viewerId;
   const publicCopyViewerGeometryReady = journey.scopeKey === scopeKey
     && journey.viewerId === viewerId
-    && journey.center !== null;
+    && (primaryJourneyCard?.phase === "move" || primaryJourneyCard?.phase === "parked"
+      ? primaryNonRevealTargetReady : journey.center !== null);
   useLayoutEffect(() => {
     const historyCards = [...document.querySelectorAll<HTMLElement>(".public-card-display-journey.is-harvest-history-passive [data-public-card-harvest-history-parked='true']")];
     for (const card of historyCards) {
@@ -6389,7 +6460,8 @@ function SingleTargetCardJourney({
       onJourneyOwnershipChange?.(roomCode, ownershipIdentity, viewerId, ownershipScopeGeneration, false, []);
     };
   }, [onJourneyOwnershipChange, ownershipIdentity, ownershipScopeGeneration, ownershipScopeKey, roomCode, viewerId]);
-  if (!journeyEnabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center && !journey.framePlacementUnavailable) return null;
+  if (!journeyEnabled || !sourceName || journey.scopeKey !== scopeKey
+    || !journey.center && !journey.framePlacementUnavailable && !primaryNonRevealTargetReady) return null;
   return <section
     className={`public-card-display public-card-display-journey${harvestPoolAboveRoot ? " is-harvest-pool-active" : ""}${historyOnly ? " is-harvest-history-passive" : ""}${showNegationChainOrdinals ? " is-negation-chain-ordinal" : ""}${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}${viewerLayoutPending ? " is-viewer-layout-pending" : ""}`}
     data-public-card-display="true"

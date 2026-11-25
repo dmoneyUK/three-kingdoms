@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findBattlefieldChoiceSafeTopOffset, harvestChoicePlacementPanelRect, isBattlefieldChoiceTopOffsetSafe } from "../app/battlefield-choice-stage.tsx";
-import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicStageEffectFrameRevealTargetMatches, publicStageFailedRevealMatchesScene, publicStagePrimaryOriginFromVisualRect, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard } from "../game/public-stage-layout.ts";
+import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicStageEffectFrameRevealTargetMatches, publicStageFailedRevealMatchesScene, publicStageJourneyPhaseReady, publicStageMeasuredBandClearanceSatisfied, publicStagePrimaryOriginFromVisualRect, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard } from "../game/public-stage-layout.ts";
 
 const scene = {
   semantics: "PROVEN",
@@ -178,6 +178,52 @@ test("only the matching pending REVEAL schedules a remeasure after owned placeme
     { identityMatches: false },
     { revealReady: undefined },
   ]) assert.equal(publicStageRevealNeedsOwnedRemeasure({ ...pendingCurrentReveal, ...change }), false);
+});
+
+test("journey readiness uses REVEAL paint only until a viewer-owned move/park target exists", () => {
+  const readyTarget = { left: 24, top: 48, right: 56, bottom: 96 };
+  const common = { viewerId: "viewer-1", targetViewerId: "viewer-1", target: readyTarget };
+  assert.equal(publicStageJourneyPhaseReady({
+    ...common, phase: "REVEAL", revealCenterAvailable: true, revealPainted: true,
+  }), true);
+  assert.equal(publicStageJourneyPhaseReady({
+    ...common, phase: "REVEAL", revealCenterAvailable: true, revealPainted: false,
+  }), false);
+  for (const phase of ["MOVE", "PARKED"]) {
+    assert.equal(publicStageJourneyPhaseReady({
+      ...common, phase, revealCenterAvailable: false, revealPainted: false,
+    }), true, `${phase} does not depend on retired REVEAL geometry`);
+    assert.equal(publicStageJourneyPhaseReady({
+      ...common, phase, targetViewerId: "viewer-2", revealCenterAvailable: true, revealPainted: true,
+    }), false, `${phase} still requires this viewer's target`);
+    assert.equal(publicStageJourneyPhaseReady({
+      ...common, phase, target: { left: 24, top: 48, right: 24, bottom: 96 }, revealCenterAvailable: true, revealPainted: true,
+    }), false, `${phase} rejects an invalid target`);
+  }
+});
+
+test("measured Effect Frame clearance enforces an exact five-pixel gap and preserves ordinary eight-pixel clearance", () => {
+  const visual = { left: 100, top: 200, right: 268, bottom: 394 };
+  const h4 = { left: 20, top: 100, right: 370, bottom: 195 };
+  const pacReserve = { left: 20, top: 399, right: 370, bottom: 500 };
+  const measured = (upper, lower, minimumGap = 5) => publicStageMeasuredBandClearanceSatisfied({
+    visual,
+    upperBands: [upper],
+    lowerBands: [lower],
+    minimumGap,
+  });
+  assert.equal(measured({ ...h4, bottom: 195.1 }, pacReserve), false, "4.9px above is not 5px");
+  assert.equal(measured(h4, pacReserve), true, "exactly 5px on both sides passes");
+  assert.equal(measured({ ...h4, bottom: 193.7 }, { ...pacReserve, top: 400.3 }), true, "6.3px on both sides passes");
+  assert.equal(measured(h4, { ...pacReserve, top: 398.9 }), false, "4.9px below is not 5px");
+  assert.equal(measured(h4, pacReserve, 8), false, "an Effect Frame does not weaken an ordinary eight-pixel requirement");
+  assert.equal(measured({ ...h4, bottom: 192 }, { ...pacReserve, top: 402 }, 8), true, "ordinary 8px clearance remains measurable");
+  assert.equal(publicStageMeasuredBandClearanceSatisfied({
+    visual,
+    upperBands: [h4],
+    lowerBands: [pacReserve, { ...pacReserve, top: 398.9 }],
+    minimumGap: 5,
+  }), false, "a mounted PAC must fit too; the clear reserve cannot hide its collision");
 });
 
 test("Harvest pool uses the measured central band below H4 and above PAC", () => {
@@ -555,8 +601,8 @@ test("Effect Frames use a 5px fixed-band clearance while ordinary card clearance
   const frame = calculatePublicStageLayout(input({ ...frameGeometry, stationarySurface: "effect-frame" }));
   assert.equal(frame.status, "placed", "a 5px lane fits the complete 168×194 Effect Frame");
   if (frame.status === "placed") {
-    assert.ok(frame.layout.card.top - frameGeometry.fixedBands.h4.bottom >= 5);
-    assert.ok(frameGeometry.fixedBands.pac.top - frame.layout.card.bottom >= 5);
+    assert.ok(frame.layout.card.top - frameGeometry.fixedBands.h4.bottom >= 5.5, "solver leaves subpixel headroom for an actual 5px gap");
+    assert.ok(frameGeometry.fixedBands.pac.top - frame.layout.card.bottom >= 5.5, "solver leaves subpixel headroom below the frame");
   }
 
   const exactApprovedGap = calculatePublicStageLayout(input({
@@ -565,6 +611,10 @@ test("Effect Frames use a 5px fixed-band clearance while ordinary card clearance
     cardActivityGap: 5,
   }));
   assert.equal(exactApprovedGap.status, "placed", "a validated Effect Frame accepts the owner-approved 5px clearance input");
+  if (exactApprovedGap.status === "placed") {
+    assert.ok(exactApprovedGap.layout.card.top - frameGeometry.fixedBands.h4.bottom >= 5.5);
+    assert.ok(frameGeometry.fixedBands.pac.top - exactApprovedGap.layout.card.bottom >= 5.5);
+  }
   const ordinaryBelowEight = calculatePublicStageLayout(input({ ...frameGeometry, cardActivityGap: 5 }));
   assert.equal(ordinaryBelowEight.status, "unavailable", "ordinary CardFaces keep the existing 8px minimum");
   if (ordinaryBelowEight.status === "unavailable") assert.equal(ordinaryBelowEight.reason, "INVALID_GEOMETRY");

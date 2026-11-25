@@ -7,6 +7,7 @@ import {
   calculatePublicStageLayout,
   publicStageBandClearance,
   publicStageFailedRevealMatchesScene,
+  publicStageMeasuredBandClearanceSatisfied,
   publicStageRevealNeedsOwnedRemeasure,
   publicStageSceneMatchesCard,
   type PublicStageLayout,
@@ -290,7 +291,7 @@ export function PublicStageLayoutProvider({
         clear();
         return;
       }
-      if (frameFootprint && (!announcement || !chip)) {
+      if (frameFootprint && !announcement) {
         observeUnavailableGeometry(JSON.stringify([roomId, scopeId, interactionId, eventId, cardId, viewerId, "public-bands"]), [
           table, display, primary, announcement, chip,
           ...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS),
@@ -389,7 +390,9 @@ export function PublicStageLayoutProvider({
       const measuredCardRect = { left: visualPrimary.left, top: visualPrimary.top, right: visualPrimary.right, bottom: visualPrimary.bottom };
       const phaseRects = phase === "REVEAL" ? undefined : {
         card: rectOf(primary),
-        activity: rectOf(chip!),
+        activity: chip ? rectOf(chip) : {
+          left: pacBand.left, top: pacBand.top, right: pacBand.right, bottom: pacBand.bottom,
+        },
         ...(phase === "MOVE" ? { announcement: rectOf(announcement!) } : {}),
       };
       let moveTarget: PublicStageRect | null = null;
@@ -591,7 +594,7 @@ export function PublicStageLayoutProvider({
       const next: SharedPublicStageLayout = {
         layout: result.layout,
         revealReady: phase !== "REVEAL" || (!frameFootprint && !announcement) || (() => {
-          if (frameFootprint && (!announcement || !chip)) return false;
+          if (frameFootprint && !announcement) return false;
           const cardReady = !frameFootprint || (
             Math.abs(visualPrimary.left - result.layout.card.left) <= 1
             && Math.abs(visualPrimary.top - result.layout.card.top) <= 1
@@ -613,20 +616,30 @@ export function PublicStageLayoutProvider({
           })();
           if (!announcementReady) return false;
           if (!frameFootprint) return true;
-          const activityChip = chip!;
-          const style = window.getComputedStyle(activityChip);
-          const rect = activityChip.getBoundingClientRect();
-          const target = result.layout.activity;
-          // A status-kind transition can keep the PAC's ordinary placement
-          // owner while the active Effect Frame still owns the REVEAL. Accept
-          // it only when the real rendered chip remains inside the shared
-          // measured reserve; lifecycle and geometry, not a CSS-path marker,
-          // are the authority.
-          return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0
-            && rect.left >= target.left - 1
-            && rect.right <= target.right + 1
-            && rect.top >= target.top - 1
-            && rect.bottom <= target.bottom + 1;
+          if (chip) {
+            const style = window.getComputedStyle(chip);
+            const rect = chip.getBoundingClientRect();
+            const target = result.layout.activity;
+            // A mounted PAC remains subject to its visible, shared safe rect;
+            // absence is allowed because pacBand continues reserving the lane.
+            if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) <= 0
+              || rect.left < target.left - 1 || rect.right > target.right + 1
+              || rect.top < target.top - 1 || rect.bottom > target.bottom + 1) return false;
+          }
+          const visibleH4 = announcement!.getBoundingClientRect();
+          const mountedPac = chip ? rectOf(chip) : null;
+          return publicStageMeasuredBandClearanceSatisfied({
+            visual: frameFootprint.rect,
+            upperBands: [
+              { left: h4Band.left, top: h4Band.top, right: h4Band.right, bottom: h4Band.bottom },
+              rectOf(announcement!),
+            ],
+            lowerBands: [
+              { left: pacBand.left, top: pacBand.top, right: pacBand.right, bottom: pacBand.bottom },
+              ...(mountedPac ? [mountedPac] : []),
+            ],
+            minimumGap: publicStageBandClearance("effect-frame"),
+          }) && visibleH4.width > 0 && visibleH4.height > 0;
         })(),
         primaryEventId: eventId,
         primaryCardId: cardId,
@@ -799,31 +812,67 @@ export function canRetainPublicStageLayout(table: HTMLElement, shared: SharedPub
       && (el.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey);
   const pac = table.querySelector<HTMLElement>('[data-public-activity-chip="true"]');
   const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
-  if (!h4 || !pac || !consoleGuidance || !visibleObstacle(consoleGuidance)) return false;
-  const rects = [rectOf(h4), rectOf(pac)];
+  const effectFrameReveal = scene.phase === "REVEAL"
+    && Boolean(card.querySelector(".public-card-effect-frame-panel"));
+  const missingPacEffectReveal = effectFrameReveal && !pac;
+  if (!h4 || (!pac && !missingPacEffectReveal) || !consoleGuidance || !visibleObstacle(consoleGuidance)) return false;
+  const pacBand = fixedPublicActivityBand(table, consoleGuidance, pac);
+  const h4Band = fixedPublicH4Band(table, h4);
+  if (!pacBand || !h4Band) return false;
+  const h4Rect = rectOf(h4);
+  const pacRect = pac ? rectOf(pac) : {
+    left: pacBand.left, top: pacBand.top, right: pacBand.right, bottom: pacBand.bottom,
+  };
+  const rects = [h4Rect, pacRect];
   const saved = [shared.layout.announcement, shared.layout.activity];
   const intersects = (a: PublicStageRect, b: PublicStageRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
   const within = (r: PublicStageRect, bounds: PublicStageRect) => r.left >= bounds.left - 1 && r.right <= bounds.right + 1 && r.top >= bounds.top - 1 && r.bottom <= bounds.bottom + 1;
   const liveBounds = rectOf(table);
   const consoleBounds = rectOf(consoleGuidance);
-  const pacInSafeCorridor = rects[1].left >= liveBounds.left - 1 && rects[1].right <= liveBounds.right + 1
-    && rects[1].top >= liveBounds.top - 1 && rects[1].bottom <= consoleBounds.top + 2;
-  if (!within(rects[0], liveBounds) || !pacInSafeCorridor
-    || Math.abs(rects[1].bottom - consoleBounds.top) > 2
-    || rects.some((r, i) => Math.abs(r.left - saved[i].left) > 1 || Math.abs(r.top - saved[i].top) > 1
-    || Math.abs((r.right - r.left) - (saved[i].right - saved[i].left)) > 1
-    || Math.abs((r.bottom - r.top) - (saved[i].bottom - saved[i].top)) > 1)
-    || intersects(rects[0], rects[1])) return false;
+  const pacVisibleAndSafe = !pac || visibleObstacle(pac)
+    && Math.abs(pacRect.bottom - consoleBounds.top) <= 2
+    && pacRect.left >= liveBounds.left - 1 && pacRect.right <= liveBounds.right + 1
+    && pacRect.top >= Math.max(liveBounds.top, pacBand.top) - 1 && pacRect.bottom <= consoleBounds.top + 2
+    && pacRect.left >= pacBand.left - 1 && pacRect.right <= pacBand.right + 1;
+  const pacReserveMatches = pac
+    ? [pacRect.left - saved[1].left, pacRect.top - saved[1].top,
+      (pacRect.right - pacRect.left) - (saved[1].right - saved[1].left),
+      (pacRect.bottom - pacRect.top) - (saved[1].bottom - saved[1].top)].every((value) => Math.abs(value) <= 1)
+    : Math.abs(pacBand.left - saved[1].left) <= 1
+      && Math.abs(pacBand.right - saved[1].right) <= 1
+      && Math.abs(pacBand.bottom - saved[1].bottom) <= 2
+      && pacBand.top <= saved[1].top + 1;
+  const h4Matches = [h4Rect.left - saved[0].left, h4Rect.top - saved[0].top,
+    (h4Rect.right - h4Rect.left) - (saved[0].right - saved[0].left),
+    (h4Rect.bottom - h4Rect.top) - (saved[0].bottom - saved[0].top)].every((value) => Math.abs(value) <= 1);
+  const currentFrame = effectFrameReveal ? publicEffectFrameVisualFootprint(card) : null;
+  const retainedFrameClearance = !effectFrameReveal || Boolean(currentFrame
+    && publicStageMeasuredBandClearanceSatisfied({
+      visual: currentFrame.rect,
+      upperBands: [h4Band, h4Rect],
+      lowerBands: [pacBand, ...(pac ? [pacRect] : [])],
+      minimumGap: publicStageBandClearance("effect-frame"),
+    })
+    && Math.abs(currentFrame.rect.left - shared.layout.card.left) <= 1
+    && Math.abs(currentFrame.rect.top - shared.layout.card.top) <= 1
+    && Math.abs(currentFrame.rect.right - shared.layout.card.right) <= 1
+    && Math.abs(currentFrame.rect.bottom - shared.layout.card.bottom) <= 1);
+  if (!within(h4Rect, liveBounds) || !pacVisibleAndSafe
+    || Math.abs(pacBand.bottom - consoleBounds.top) > 2
+    || !h4Matches || !pacReserveMatches || !retainedFrameClearance
+    || intersects(h4Band, pacBand) || intersects(h4Rect, pacRect)) return false;
   const obstacles = [...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)]
     .filter((el) => el !== card && el !== h4 && el !== pac && !card.contains(el) && visibleObstacle(el))
     .map(rectOf);
+  if (effectFrameReveal && currentFrame) obstacles.push(currentFrame.rect);
   if (card.dataset.publicCardJourneyPhase !== 'parked') {
     obstacles.push(rectOf(card));
     card.querySelectorAll<HTMLElement>('.public-card-effect-frame-panel').forEach((el) => {
       if (visibleForMeasure(el)) obstacles.push(rectOf(el));
     });
   }
-  return !rects.some((rect) => obstacles.some((obstacle) => intersects(rect, obstacle)));
+  return !(effectFrameReveal && obstacles.some((obstacle) => intersects(h4Band, obstacle)))
+    && !rects.some((rect) => obstacles.some((obstacle) => intersects(rect, obstacle)));
 }
 
 /**
