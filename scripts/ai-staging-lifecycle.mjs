@@ -609,11 +609,13 @@ export function createCloudflareClient({ token, accountId = AI_STAGING_LIFECYCLE
       throw blocked("schedule readback is missing or malformed");
     }
     if (!isRecord(zones) || !isRecord(zones.result_info)
-      || zones.result_info.total_pages !== 1) {
+      || !Number.isInteger(zones.result_info.total_pages)
+      || zones.result_info.total_pages < 0 || zones.result_info.total_pages > 1) {
       throw blocked("zone readback is paginated or malformed; refusing incomplete route verification");
     }
     if (!isRecord(queues) || !isRecord(queues.result_info)
-      || queues.result_info.total_pages !== 1) {
+      || !Number.isInteger(queues.result_info.total_pages)
+      || queues.result_info.total_pages < 0 || queues.result_info.total_pages > 1) {
       throw blocked("queue readback is paginated or malformed; refusing incomplete consumer verification");
     }
     const zoneList = strictReadbackList(zones.result, "zone", ["zones"]);
