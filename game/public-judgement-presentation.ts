@@ -520,8 +520,10 @@ type PublicJudgementDisplayAction = {
 export function publicInteractionNarrationWithJudgement(
   stageNarration: PublicInteractionNarration | null,
   judgementNarration: PublicInteractionNarration | null,
+  sameResolutionJudgementResult = false,
 ): PublicInteractionNarration | null {
   if (!judgementNarration) return stageNarration;
+  if (sameResolutionJudgementResult) return judgementNarration;
   if (!stageNarration) return judgementNarration;
   if (judgementNarration.publicSequence === undefined) return stageNarration;
   return judgementNarration.publicSequence >= (stageNarration.publicSequence ?? -1)

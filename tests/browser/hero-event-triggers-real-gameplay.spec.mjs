@@ -18,9 +18,9 @@ async function view(request, seedData, index) {
   return response.json();
 }
 
-async function openPlayer(page, seedData, index) {
+async function openPlayer(page, seedData, index, viewport = { width: 390, height: 844 }) {
   const member = seedData.players[index];
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize(viewport);
   await page.addInitScript(({ code, token, name }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
   }, { code: seedData.code, token: member.token, name: member.name });
@@ -29,12 +29,12 @@ async function openPlayer(page, seedData, index) {
   return member;
 }
 
-async function activateDirectSkill({ page, request, seedData, playerIndex, label, providerId }) {
+async function activateDirectSkill({ page, request, seedData, playerIndex, label, providerId, viewport = { width: 390, height: 844 } }) {
   const member = seedData.players[playerIndex];
   const projection = await view(request, seedData, playerIndex);
   expect(projection.currentAction.actorId).toBe(member.id);
   expect((projection.currentAction.triggerOptions ?? []).map((option) => option.effectId)).toContain(providerId);
-  const user = await openPlayer(page, seedData, playerIndex);
+  const user = await openPlayer(page, seedData, playerIndex, viewport);
   const dock = page.locator(`.local-player-dock[data-player-anchor="${user.id}"]`);
   const skill = dock.locator(".local-hero-skills").getByRole("button", { name: label, exact: true });
   const duplicate = dock.locator('[data-action-extras="true"]').getByRole("button", { name: new RegExp(label, "i") });
@@ -401,18 +401,17 @@ test("E15: final Judgement, two-card discard and next-turn status stay coherent 
   expect(observerState.currentAction.actorId).toBe(game.players[1].id);
 });
 
-test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple phone viewers", async ({ page, browser, request }) => {
+test("§10.81-B: Stauchness Necromancy replacement shares one two-stage Judgement display", async ({ page, browser, request }) => {
   test.setTimeout(90_000);
-  const attack = card("Attack", "w4-f8-eight-trigrams-attack");
-  const armor = card("EightTrigrams", "w4-f8-eight-trigrams-armor");
-  const replacement = card("Peach", "w4-f8-replacement", "♥");
-  const privateCard = card("Dodge", "w4-f8-private-card", "♠");
-  const original = card("Dodge", "w4-f8-original-judgement", "♣");
+  const attack = card("Attack", "10-81-b-stauchness-attack");
+  const replacement = card("Dodge", "10-81-b-necromancy-replacement", "♠");
+  const privateCard = card("Peach", "10-81-b-private-card", "♥");
+  const original = card("Dodge", "10-81-b-original-judgement", "♥");
   const seedResponse = await request.post(`${API}/__test/seed-playing-game`, { data: {
     phase: "play", turnSeat: 0,
     players: [
       { name: "ATTACKER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [attack] },
-      { name: "TARGET", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [], equipment: { armor } },
+      { name: "XIAHOU DUN", role: "Loyalist", hero: "xiahou-dun", hp: 4, maxHp: 4, hand: [] },
       { name: "SIMA YI", role: "Rebel", hero: "simayi", hp: 4, maxHp: 4, hand: [replacement, privateCard] },
       { name: "OBSERVER", role: "Renegade", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
     ],
@@ -420,29 +419,33 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
   } });
   expect(seedResponse.ok()).toBeTruthy();
   const game = await seedResponse.json();
+  const targetPage = await browser.newPage();
   const observerPage = await browser.newPage();
   try {
     const sima = await openPlayer(page, game, 2);
+    const xiahou = await openPlayer(targetPage, game, 1);
     const observer = await openPlayer(observerPage, game, 3);
-    await Promise.all([page, observerPage].map((viewerPage) => viewerPage.setViewportSize({ width: 440, height: 894 })));
+    await Promise.all([page, targetPage, observerPage].map((viewerPage) => viewerPage.setViewportSize({ width: 440, height: 894 })));
     const openedAttack = await request.post(`${API}/api/rooms`, {
       data: { action: "play_card", code: game.code, token: game.players[0].token, cardId: attack.id, targetId: game.players[1].id },
     });
     expect(openedAttack.ok(), await openedAttack.text()).toBeTruthy();
     let projected = await view(request, game, 1);
     expect(projected.currentAction).toMatchObject({ kind: "response", actorId: game.players[1].id, requirement: "dodge" });
-    expect(projected.currentAction.options.map((option) => option.providerId)).toContain("eight_trigrams_dodge");
-    const openedJudgement = await request.post(`${API}/api/rooms`, {
-      data: { action: "respond", code: game.code, token: game.players[1].token, providerId: "eight_trigrams_dodge" },
+    const declinedResponse = await request.post(`${API}/api/rooms`, {
+      data: { action: "decline_response", code: game.code, token: game.players[1].token },
     });
-    expect(openedJudgement.ok(), await openedJudgement.text()).toBeTruthy();
+    expect(declinedResponse.ok(), await declinedResponse.text()).toBeTruthy();
+    projected = await view(request, game, 1);
+    expect(projected.currentAction.triggerOptions.map((option) => option.effectId)).toContain("xiahou_dun_ganglie");
+    await activateDirectSkill({ page: targetPage, request, seedData: game, playerIndex: 1, label: "Stauchness", providerId: "xiahou_dun_ganglie", viewport: { width: 440, height: 894 } });
     projected = await view(request, game, 2);
     expect(projected.currentAction).toMatchObject({ kind: "trigger", actorId: sima.id, triggerEvent: "judgement_revealed" });
     const originalReveal = projected.timeline.find((event) => event.type === "card" && event.card?.id === original.id);
     expect(originalReveal).toMatchObject({ action: "reveal", judgement: true, presentation: true });
     expect(originalReveal.privateToPlayerId).toBeUndefined();
-    const provisionalH4Copy = "TARGET used Eight Trigrams Formation. Judgement: 7♣.";
-    const revealEvidence = await Promise.all([page, observerPage].map(async (viewerPage) => {
+    const provisionalH4Copy = "XIAHOU DUN used Stauchness. Judgement: 7♥.";
+    const revealEvidence = await Promise.all([page, targetPage, observerPage].map(async (viewerPage) => {
       const owner = viewerPage.locator(`[data-public-judgement-reveal-event-id="${originalReveal.id}"]`);
       await expect(owner).toBeVisible({ timeout: 12_000 });
       await expect(owner).toHaveCount(1);
@@ -500,6 +503,7 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
     expect(revealEvidence.map(({ eventId, cardId }) => ({ eventId, cardId }))).toEqual([
       { eventId: originalReveal.id, cardId: original.id },
       { eventId: originalReveal.id, cardId: original.id },
+      { eventId: originalReveal.id, cardId: original.id },
     ]);
 
     const dock = page.locator(`.local-player-dock[data-player-anchor="${sima.id}"]`);
@@ -541,13 +545,14 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
       && effect.effectId === "sima_yi_guicai" && effect.effectClass === "JUDGEMENT");
     expect(projectedEffect).toMatchObject({ eventId: replacementEvent.id, effectId: "sima_yi_guicai", effectClass: "JUDGEMENT" });
     const replacementJudgement = result.room.presentationSnapshot?.publicJudgementPresentations?.find((fact) => fact.eventId === replacementEvent.id);
-    const expectedReplacementH4 = "TARGET used Eight Trigrams Formation. Judgement: 7♣.\nSIMA YI used Necromancy to replace the Judgement card with 7♥. Match.";
+    const expectedReplacementH4 = "XIAHOU DUN used Stauchness. Judgement: 7♥.\nSIMA YI used Necromancy to replace the Judgement card with 7♠. Match.";
     expect(replacementJudgement).toMatchObject({
       judgementId: originalEvent.id, phase: "REPLACEMENT", eventId: replacementEvent.id,
       replacement: { physicalCardId: replacement.id, actorId: sima.id, materialOwnerId: sima.id },
       copy: { message: expectedReplacementH4 },
     });
-    const viewers = [{ player: sima, page }, { player: observer, page: observerPage }];
+    expect(result.room.discardTop).toMatchObject({ id: replacement.id, suit: "♠", rank: "7" });
+    const viewers = [{ player: sima, page }, { player: xiahou, page: targetPage }, { player: observer, page: observerPage }];
     const frameEvidence = await Promise.all(viewers.map(async ({ player, page: viewerPage }) => {
       const frameSnapshot = ({ viewerId, eventId, cardId }) => {
         const journey = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
@@ -608,15 +613,38 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
       } catch (error) {
         const snapshot = await viewerPage.evaluate(frameSnapshot, { viewerId: player.id, eventId: replacementEvent.id, cardId: replacement.id });
         const activeDisplays = await viewerPage.locator(".public-card-display").evaluateAll((elements) => elements.map((element) => ({
+          className: element.className,
           key: element.getAttribute("data-public-card-action-key"),
+          viewerId: element.getAttribute("data-public-card-viewer-id"),
+          layoutViewerId: element.getAttribute("data-public-card-layout-viewer-id"),
+          layoutPending: element.getAttribute("data-public-card-layout-pending"),
+          framePlacement: element.getAttribute("data-public-card-effect-frame-placement"),
           rootEventId: element.getAttribute("data-public-card-root-event-id"),
           eventId: element.getAttribute("data-public-card-event-id"),
           motion: element.getAttribute("data-public-card-motion"),
           cards: [...element.querySelectorAll("[data-public-card-journey-event-id]")].map((card) => ({
             eventId: card.getAttribute("data-public-card-journey-event-id"),
-            cardId: card.getAttribute("data-public-card-id"),
+            cardId: card.getAttribute("data-public-card-journey-card-id"),
+            cardIds: card.getAttribute("data-public-card-journey-card-ids"),
             phase: card.getAttribute("data-public-card-journey-phase"),
+            revealReadiness: card.getAttribute("data-public-card-reveal-readiness"),
+            layoutPending: card.getAttribute("data-public-card-journey-layout-pending"),
+            layoutReason: card.getAttribute("data-public-card-journey-layout-reason"),
+            visibility: getComputedStyle(card).visibility,
+            opacity: getComputedStyle(card).opacity,
+            ancestors: (() => {
+              const rows = [];
+              let node = card;
+              while (node && rows.length < 7) {
+                const style = getComputedStyle(node);
+                rows.push({ tag: node.tagName, className: node.className, visibility: style.visibility, display: style.display, opacity: style.opacity });
+                node = node.parentElement;
+              }
+              return rows;
+            })(),
             frame: card.querySelector("[data-public-card-frame-effect-id]")?.getAttribute("data-public-card-frame-effect-id") ?? null,
+            frameCardIds: card.querySelector("[data-public-card-frame-effect-id]")?.getAttribute("data-public-card-frame-material-card-ids") ?? null,
+            frameOpacity: card.querySelector("[data-public-card-frame-effect-id]") ? getComputedStyle(card.querySelector("[data-public-card-frame-effect-id]")).opacity : null,
           })),
           announcement: element.querySelector('[data-public-card-announcement="true"]')?.textContent?.trim(),
         })));
@@ -631,6 +659,12 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
       announcementCount: 1, viewport: { width: 440, height: 894, scrollWidth: 440 },
     });
     expect(frameEvidence[1]).toMatchObject({
+      viewerId: xiahou.id, eventId: replacementEvent.id, frameCount: 1, frameClass: "JUDGEMENT",
+      frameOwnerId: sima.id, frameMaterialOwnerIds: sima.id, frameMaterialCardIds: replacement.id,
+      frameFaces: [replacement.id], frameTitle: "NECROMANCY · JUDGEMENT REPLACEMENT",
+      announcementCount: 1, viewport: { width: 440, height: 894, scrollWidth: 440 },
+    });
+    expect(frameEvidence[2]).toMatchObject({
       viewerId: observer.id, eventId: replacementEvent.id, frameCount: 1, frameClass: "JUDGEMENT",
       frameOwnerId: sima.id, frameMaterialOwnerIds: sima.id, frameMaterialCardIds: replacement.id,
       frameFaces: [replacement.id], frameTitle: "NECROMANCY · JUDGEMENT REPLACEMENT",
@@ -645,21 +679,28 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
       expect(evidence.h4FrameClearance, JSON.stringify(evidence)).toBeGreaterThanOrEqual(5);
       if (evidence.pacFrameClearance !== null) expect(evidence.pacFrameClearance, JSON.stringify(evidence)).toBeGreaterThanOrEqual(5);
     }
-    for (const viewerPage of [page, observerPage]) {
+    for (const viewerPage of [page, targetPage, observerPage]) {
       await expect(viewerPage.locator(`[data-public-judgement-reveal-event-id="${originalEvent.id}"]`)).toHaveCount(0);
       await expect(viewerPage.locator(`[data-public-judgement-reveal-event-id="${replacementEvent.id}"]`)).toHaveCount(0);
       await expect(viewerPage.locator(`[data-public-card-journey-event-id="${replacementEvent.id}"]`)).toHaveCount(1);
       await expect(viewerPage.locator(`[data-public-h4-event-id="${replacementEvent.id}"]`)).toHaveCount(1);
     }
-    await expect(page.locator(`[data-public-card-journey-event-id="${replacementEvent.id}"]`))
-      .toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 8_000 });
+    await Promise.all([page, targetPage, observerPage].map((viewerPage) =>
+      expect(viewerPage.locator(`[data-public-card-journey-event-id="${replacementEvent.id}"]`))
+        .toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 8_000 })));
     await expect(page.locator(`.active-table-reveal.judgement-flight[data-public-zone-transition-card-id="${replacement.id}"]`),
       "the completed genuine public reveal remains the sole central owner for this exact card").toHaveCount(0);
+    const settled = await view(request, game, 0);
+    expect(settled.players.find((player) => player.id === xiahou.id)?.hp).toBe(4);
+    expect(settled.currentAction).toMatchObject({ kind: "trigger", actorId: game.players[0].id, triggerEvent: "damage_suffered" });
+    expect(settled.currentAction.triggerOptions.map((option) => option.effectId)).toContain("xiahou_dun_ganglie");
+    expect(settled.players.find((player) => player.id === sima.id)?.handCount).toBe(1);
     expect(await view(request, game, 3).then((projection) => JSON.stringify(projection))).not.toContain(privateCard.id);
     await expect(observerPage.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(0);
     await expect(page.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(1);
 
   } finally {
+    await targetPage.close();
     await observerPage.close();
   }
 });

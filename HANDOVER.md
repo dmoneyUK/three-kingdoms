@@ -1,13 +1,11 @@
 # HANDOVER
 
-**Latest verified deployment:** §10.79 at `4d835b85c6ca7ac3252b2a8721e7c6a48617d1d1`; GitHub Actions `45807468300` passed exact-SHA CI, Worker `7432ad67-3639-4e41-a405-6100e4ea2f22` deployed, production smoke passed. Owner iPhone review remains pending.
+**Latest verified deployment:** §10.81-A, `40bcc7bbb1b73c09d1c9544d86bac0ca20d674c3`; GitHub Actions `45812539029` passed exact-SHA CI and Worker `37259ab2-a676-4488-8005-930ea84269a2` deployed. Owner iPhone review remains pending.
 
-**Design reviewed:** `docs/UX2-refine.md`, revision 2026-11-26 11:35 UTC; §10.81-A.
+**Design reviewed:** `docs/UX2-refine.md`, revision 2026-11-26 12:42 UTC; §10.81-B.
 
-## Current bounded task — §10.81-A UNIVERSAL-JUDGEMENT-REPLACEMENT-PRESENTATION-01
+## Current bounded task — §10.81-B shared two-stage Judgement presentation
 
-**Status:** implementation complete locally; one task commit and exact-SHA CI/deployment remain pending. The public Judgement projection keeps the reveal event identity distinct from its exact originating committed public action and resolution. An optional link is included only when the source event is uniquely present, public and resolution-matched; invalid supplied links fail closed.
+**Status:** Local implementation is ready for its single task commit. A same-resolution committed Judgement result can no longer take H4 ownership from the canonical original/replacement narration or exact replacement frame; a later committed non-Judgement consequence still advances H4 normally. The real four-player Stauchness→Necromancy scenario checks original then replacement, final H4, physical card/destination, all three viewers, continuation and private-card isolation. Its shared browser helper now preserves the scenario's 440×894 viewport instead of resetting one viewer to 390×844.
 
-**Validation:** `npm run build` passed. Focused Judgement projection/display unit tests passed 14/14. Focused Judgement API suite passed 16/16 after rebuilding the `dist/server` artifact; an earlier API run used the stale artifact and failed the new regression. `git diff --check` passed. No local UI/browser test was needed for §10.81-A.
-
-**Next boundary after this task's exact-SHA gate succeeds:** §10.81-B shared two-stage Judgement presentation. Do not claim §10.81 USER-ACCEPTED; owner iPhone review is still required.
+**Validation:** `npm run build` passed; focused Judgement display, routing and transition tests passed 25/25; `node --check` and `git diff --check` passed after the test-helper correction. The first local browser attempt failed at 390×844 because the helper reset one viewer from the scenario's 440×894 size. The helper is corrected, but the UI scenario was not rerun; actual browser geometry remains unverified. No further local UI run will be made for this task. Exact-SHA Actions/deployment/production smoke remain pending. Do not mark §10.81 USER-ACCEPTED; Owner iPhone review remains required.

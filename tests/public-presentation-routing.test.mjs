@@ -233,6 +233,26 @@ test("Judgement H4 selects one owner, with the replacement frame claiming only i
   assert.deepEqual(selectPublicH4AnnouncementOwner({ judgement: {
     presentation: replacement, isActive: true, replacementFrameMatches: false,
   } }), { eventId: "replacement-1", owner: "PublicInteractionAnnouncementLayer" });
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: fact("stauchness-judgement-result", 12, "judgement-1", "target-1", {
+      resolutionId: "judgement-resolution", effect: { kind: "judgement", label: "Stauchness" },
+    }),
+    judgement: {
+      presentation: { ...replacement, resolutionId: "judgement-resolution" },
+      isActive: false, replacementFrameMatches: true,
+    },
+  }), { eventId: "replacement-1", owner: "PublicCardDisplay" },
+  "a same-resolution terminal Judgement fact cannot take H4 away from the exact replacement frame");
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: fact("stauchness-consequence", 13, "judgement-1", "source-1", {
+      resolutionId: "judgement-resolution", effect: { kind: "skill_result", label: "Stauchness" },
+    }),
+    judgement: {
+      presentation: { ...replacement, resolutionId: "judgement-resolution" },
+      isActive: false, replacementFrameMatches: true,
+    },
+  }), { eventId: "stauchness-consequence", owner: "PublicInteractionAnnouncementLayer" },
+  "a later committed non-Judgement consequence may advance H4 normally");
   assert.deepEqual(selectPublicH4AnnouncementOwner({ judgement: {
     presentation: replacement, isActive: false, replacementFrameMatches: false,
   }, discard: { eventId: "later-discard", order: 12 } }), {

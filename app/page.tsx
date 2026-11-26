@@ -10440,9 +10440,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     room.presentationSnapshot,
     room.players,
   );
+  const sameResolutionJudgementResult = Boolean(currentPublicJudgementPresentation?.resolutionId
+    && currentInteractionFact?.resolutionId === currentPublicJudgementPresentation.resolutionId
+    && currentInteractionFact.effect?.kind === "judgement");
   const publicInteractionNarration = publicInteractionNarrationWithJudgement(
     stagePublicInteractionNarration,
     currentPublicJudgementNarration,
+    sameResolutionJudgementResult,
   );
   const judgementNarrationBelongsToAction = publicJudgementNarrationBelongsToAction({
     presentation: currentPublicJudgementPresentation,

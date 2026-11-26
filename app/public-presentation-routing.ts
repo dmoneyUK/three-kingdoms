@@ -331,7 +331,11 @@ export function selectPublicH4AnnouncementOwner(input: {
   skillEvent?: { eventId: string } | null;
 }): { eventId: string; owner: PublicH4AnnouncementOwner } | null {
   const { fact, factIsActive = false, judgement, discard, cardDisplay, skillEvent } = input;
-  if (judgement && (!fact || judgement.presentation.order >= fact.order)) {
+  const sameResolutionJudgementResult = Boolean(judgement && fact
+    && judgement.presentation.resolutionId
+    && fact.resolutionId === judgement.presentation.resolutionId
+    && fact.effect?.kind === "judgement");
+  if (judgement && (!fact || judgement.presentation.order >= fact.order || sameResolutionJudgementResult)) {
     if (discard && !judgement.isActive && discard.order > judgement.presentation.order) {
       return { eventId: discard.eventId, owner: "PublicDiscardAnnouncementLayer" };
     }

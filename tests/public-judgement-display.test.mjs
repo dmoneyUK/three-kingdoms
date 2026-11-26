@@ -89,6 +89,8 @@ test("replacement narration follows the newest public stage and only its exact E
   const narration = publicJudgementNarrationForPresentation(replacement);
   const laterStage = { ...narration, eventId: "later-public-stage", publicSequence: 12 };
   assert.equal(publicInteractionNarrationWithJudgement(laterStage, narration), laterStage);
+  assert.equal(publicInteractionNarrationWithJudgement(laterStage, narration, true), narration,
+    "a same-resolution terminal Judgement fact cannot replace the canonical original/replacement H4");
   assert.equal(publicInteractionNarrationWithJudgement(narration, null), narration);
 
   const action = {
