@@ -2,6 +2,7 @@
 import test from "node:test";
 import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import { selectPublicH4AnnouncementOwner } from "../../app/public-presentation-routing.ts";
+import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts } from "../../app/public-discard-settlement.ts";
 import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
   advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestForViewer, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
@@ -1048,6 +1049,56 @@ test("Kirin Bow discards one damaged target Mount and then applies the Attack da
     "the material owner receives the same public physical-card proof as the attacker");
   assert.deepEqual(observerKirin?.publicFact?.committedOutcome?.changes, kirinEvent.publicFact.committedOutcome.changes,
     "the material owner receives the same committed discard outcome fact");
+
+  const attackerFacts = [
+    ...resolved.data.room.presentationSnapshot.publicEventFacts,
+    ...(resolved.data.room.presentationSnapshot.retainedPublicEventFacts ?? []),
+  ];
+  const discardSettlement = normalizePublicDiscardSettlements({
+    timeline: resolved.data.room.timeline,
+    publicCardEffects: resolved.data.room.presentationSnapshot.publicCardEffects,
+    dismantleSettlements: [],
+    publicEventFacts: attackerFacts,
+  }).find((settlement) => settlement.eventId === kirinEvent.id);
+  assert.ok(discardSettlement, "the committed Kirin event becomes one shared discard settlement");
+  const discardCopy = publicDiscardSettlementCopyForFacts({
+    settlement: discardSettlement,
+    players: resolved.data.room.players,
+    publicEventFacts: attackerFacts,
+  });
+  assert.equal(discardCopy?.headline,
+    `${hostPlayer.name} used Kirin Bow to discard ${alicePlayer.name}’s A♠ Shadowrunner.`,
+    "the Kirin H4 identifies the actual discarded Mount instead of attributing damage to the bow");
+  assert.equal(discardCopy?.cards?.[0]?.id, "shadowrunner-defensive");
+
+  const damageEvent = resolved.data.room.timeline.find((event) => event.publicFact?.committedOutcome?.changes
+    ?.some((change) => change.kind === "DAMAGE_APPLIED" && change.playerId === alicePlayer.id));
+  assert.ok(damageEvent, "the resumed Attack has its own committed damage event");
+  const damageH4 = assertPublicOutcomeHasH4Owner(resolved.data.room, damageEvent.id);
+  assert.equal(damageH4.fact.committedOutcome.source.label, "Attack");
+  assert.equal(damageH4.narration.headline,
+    `${hostPlayer.name} dealt 1 damage to ${alicePlayer.name} with Attack.`,
+    "the following damage H4 names Attack, not Kirin Bow");
+
+  const observerFacts = [
+    ...observer.data.presentationSnapshot.publicEventFacts,
+    ...(observer.data.presentationSnapshot.retainedPublicEventFacts ?? []),
+  ];
+  const observerDamageH4 = assertPublicOutcomeHasH4Owner(observer.data, damageEvent.id);
+  assert.equal(observerDamageH4.narration.headline, damageH4.narration.headline,
+    "the observer sees the identical committed Attack damage copy");
+  const observerDiscardSettlement = normalizePublicDiscardSettlements({
+    timeline: observer.data.timeline,
+    publicCardEffects: observer.data.presentationSnapshot.publicCardEffects,
+    dismantleSettlements: [],
+    publicEventFacts: observerFacts,
+  }).find((settlement) => settlement.eventId === kirinEvent.id);
+  assert.ok(observerDiscardSettlement, "the observer receives the same public Kirin discard settlement");
+  assert.equal(publicDiscardSettlementCopyForFacts({
+    settlement: observerDiscardSettlement,
+    players: observer.data.players,
+    publicEventFacts: observerFacts,
+  })?.headline, discardCopy?.headline, "all viewers share the same actual Mount H4");
 
 });
 
