@@ -11,6 +11,7 @@ Implemented only the approved R2/S1/S2/S3 boundaries and actual runtime counters
 - **S2:** request/diagnostic failures are categorical and credential-free, dynamic raw/encoded secret masking is registered, unsafe trace/HAR/screenshot/network artifacts are excluded, and the final upload is an explicit allowlist with fail-closed content scanning.
 - **S3:** self-derived `STAGING_EXPECTED_SHA` authorization was removed. Hosted admission requires externally supplied exact SHA, exact run ID, expiry, S1/S2, historical-credential and controlled-access evidence; T0 is recorded before any Staging mutation with the bounded active/closure budget. This branch remains blocked from deployment by workflow guards.
 - **Runtime evidence:** `BotRuntimeCounters` are private to the driver and returned only by the test-only scheduler endpoint. The real local Worker/D1 fixture reports room-state calls, compact short-circuits, JSON/request counters and diagnostic D1 reads without exposing them in public outcomes.
+- **CI fixture correction:** the role-policy regression now fixes all four roles, Heroes, skill state, HP and card zones; this removes random active-Hero decisions from the target-ranking assertion without changing runtime code.
 
 Focused validation on the final working tree:
 
@@ -19,7 +20,7 @@ Focused validation on the final working tree:
 - Real local Worker/D1 benchmark (`FREE_BUDGET_RUNTIME_WARMUPS=1`, `FREE_BUDGET_RUNTIME_SAMPLES=3`): **1 pass**; same fixture **203 events / 150 Bot Work rows**, 4 authenticated viewers and 3 measured samples per path. Runtime counters per scheduler wake: `roomStateCalls=1`, `compactProjectionShortCircuits=1`, `fullViewerProjectionCalls=0`, `requestJsonEncodes=2`, `requestJsonParses=2`, `responseJsonParses=0`, `diagnosticD1Reads=0`. Wall/process CPU are reported separately; local Wrangler exposes neither Cloudflare Worker CPU nor hosted D1 telemetry, so no Free-plan CPU claim is made.
 - `npm run build`, targeted ESLint, and `git diff --check`: pass. Standalone `tsc --noEmit` remains a known repository baseline failure (missing Cloudflare type declarations and unrelated existing errors), not a CLOSE-01 gate.
 
-Source commit and exact-SHA GitHub Actions evidence will be recorded here after the initial review-branch push. Staging and Production are not deployed or activated; both deploy jobs must remain **SKIPPED** for the exact source SHA. No Cloudflare resource, D1 migration, OpenAI call, feature-branch merge or production operation was performed.
+Final source commit: `a151d761ae3c7d853d7e265f5f645f14f55caaef` (the CLOSE-01 implementation is in `71eb051a0c1d3c886833f3d2d6525d82e8e57475`; this second source commit is the deterministic CI-fixture correction). Exact GitHub Actions run: `45792373312`, `headSha=a151d761ae3c7d853d7e265f5f645f14f55caaef`; **Lint and fast tests**, **API tests**, and **Browser startup and visible committed H4 smoke (2 tests)** passed. **Deploy isolated AI Staging Worker** and **deploy** were both **SKIPPED**. Staging and Production were not deployed or activated. No Cloudflare resource, D1 migration, OpenAI call, feature-branch merge or production operation was performed.
 
 ## Current bounded task
 
