@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  publicActionAnnouncementOverride,
+  publicInteractionNarrationBelongsToAction,
+  publicInteractionNarrationWithJudgement,
+  publicJudgementNarrationBelongsToAction,
   publicJudgementNarrationForPresentation,
   publicJudgementPresentationAtCursor,
   publicJudgementReplacementFrameMatches,
@@ -79,4 +83,49 @@ test("only the exact committed replacement Effect Frame can own the replacement 
     { frameEffectClass: "COST" },
     { frameMaterialCardIds: ["replacement-card", "extra-card"] },
   ]) assert.equal(publicJudgementReplacementFrameMatches({ ...proof, ...change }), false);
+});
+
+test("replacement narration follows the newest public stage and only its exact Effect Frame", () => {
+  const narration = publicJudgementNarrationForPresentation(replacement);
+  const laterStage = { ...narration, eventId: "later-public-stage", publicSequence: 12 };
+  assert.equal(publicInteractionNarrationWithJudgement(laterStage, narration), laterStage);
+  assert.equal(publicInteractionNarrationWithJudgement(narration, null), narration);
+
+  const action = {
+    rootEventId: "replacement-event",
+    cardFace: { id: "replacement-card" },
+    sourceId: "sima-yi",
+    targetId: "target-1",
+    interactionId: "interaction-1",
+    rootFrameId: "judgement-frame-1",
+    publicCardEffectFrame: {
+      eventId: "replacement-event", rootEventId: "judgement-1", rootResolutionId: "resolution-1",
+      effectId: "sima_yi_guicai", effectClass: "JUDGEMENT", activationOwnerId: "sima-yi",
+      materials: [{ card: { id: "replacement-card" } }],
+    },
+  };
+  assert.equal(publicJudgementNarrationBelongsToAction({
+    presentation: replacement, narration, action,
+  }), true);
+  assert.equal(publicInteractionNarrationBelongsToAction({
+    judgementNarrationBelongsToAction: true, narration, action,
+    activeJudgementRevealRoute: false, currentInteractionEffectKind: "judgement",
+  }), true);
+  assert.equal(publicInteractionNarrationBelongsToAction({
+    judgementNarrationBelongsToAction: false, narration, action: { ...action, interactionId: "wrong-interaction" },
+    activeJudgementRevealRoute: false,
+  }), false);
+  assert.equal(publicJudgementNarrationBelongsToAction({
+    presentation: replacement, narration,
+    action: { ...action, cardFace: { id: "different-card" } },
+  }), false);
+
+  assert.deepEqual(publicActionAnnouncementOverride({
+    action, judgementNarrationBelongsToAction: false,
+    interactionNarrationBelongsToAction: false, narration, effectFrameOwnsInteractionRoot: false,
+  }), { suppressAnnouncement: true });
+  assert.deepEqual(publicActionAnnouncementOverride({
+    action, judgementNarrationBelongsToAction: true,
+    interactionNarrationBelongsToAction: true, narration, effectFrameOwnsInteractionRoot: true,
+  }), { publicInteractionNarration: narration, suppressAnnouncement: false });
 });

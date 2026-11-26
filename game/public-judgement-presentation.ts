@@ -482,3 +482,130 @@ export function publicJudgementReplacementFrameMatches(input: {
   return !presentation.causal || input.actionInteractionId === presentation.causal.interactionId
     && input.actionRootFrameId === presentation.causal.frameId;
 }
+
+type PublicJudgementDisplayAction = {
+  rootEventId: string;
+  cardFace?: { id: string } | null;
+  sourceId: string;
+  targetId: string | null;
+  interactionId?: string;
+  rootFrameId?: string;
+  publicCardEffectFrame?: {
+    eventId: string;
+    rootEventId?: string;
+    rootResolutionId?: string;
+    effectId: string;
+    effectClass: string;
+    activationOwnerId: string;
+    materials: readonly { card: { id: string } }[];
+  } | null;
+};
+
+/** Selects the newest proved public Judgement narration at the current stage. */
+export function publicInteractionNarrationWithJudgement(
+  stageNarration: PublicInteractionNarration | null,
+  judgementNarration: PublicInteractionNarration | null,
+): PublicInteractionNarration | null {
+  if (!judgementNarration) return stageNarration;
+  if (!stageNarration) return judgementNarration;
+  if (judgementNarration.publicSequence === undefined) return stageNarration;
+  return judgementNarration.publicSequence >= (stageNarration.publicSequence ?? -1)
+    ? judgementNarration : stageNarration;
+}
+
+/** Routes the narration only when its committed interaction/frame identity matches the selected action. */
+export function publicInteractionNarrationBelongsToAction(input: {
+  judgementNarrationBelongsToAction: boolean;
+  narration: PublicInteractionNarration | null;
+  action: PublicJudgementDisplayAction | null;
+  activeJudgementRevealRoute: boolean;
+  currentInteractionEffectKind?: string;
+}): boolean {
+  if (input.judgementNarrationBelongsToAction) return true;
+  const { narration, action } = input;
+  return Boolean(narration && action
+    && !input.activeJudgementRevealRoute
+    && input.currentInteractionEffectKind !== "judgement"
+    && action.rootEventId === narration.rootEventId
+    && action.interactionId === narration.interactionId
+    && action.rootFrameId === narration.rootFrameId);
+}
+
+/** Confirms that the selected committed frame is the exact replacement behind H4. */
+export function publicJudgementNarrationBelongsToAction(input: {
+  presentation: PublicJudgementPresentation | null;
+  narration: PublicInteractionNarration | null;
+  action: PublicJudgementDisplayAction | null;
+}): boolean {
+  const { presentation, action } = input;
+  const frame = action?.publicCardEffectFrame;
+  if (!presentation || presentation.phase !== "REPLACEMENT" || input.narration?.eventId !== presentation.eventId
+    || !action || !frame) return false;
+  return publicJudgementReplacementFrameMatches({
+    presentation,
+    actionEventId: action.rootEventId,
+    actionCardId: action.cardFace?.id ?? "",
+    actionActorId: action.sourceId,
+    actionTargetId: action.targetId,
+    actionInteractionId: action.interactionId,
+    actionRootFrameId: action.rootFrameId,
+    frameEventId: frame.eventId,
+    frameRootEventId: frame.rootEventId,
+    frameResolutionId: frame.rootResolutionId,
+    frameEffectId: frame.effectId,
+    frameEffectClass: frame.effectClass,
+    frameActivationOwnerId: frame.activationOwnerId,
+    frameMaterialCardIds: frame.materials.map((material) => material.card.id),
+  });
+}
+
+/** Checks whether the selected public Effect Frame owns this narration root. */
+export function publicEffectFrameOwnsInteractionRoot(input: {
+  narration: PublicInteractionNarration | null;
+  frame: { rootEventId?: string; effectId: string } | null | undefined;
+  judgementNarrationBelongsToAction: boolean;
+}): boolean {
+  const { narration, frame } = input;
+  if (!narration || !frame?.rootEventId || frame.rootEventId !== narration.rootEventId) return false;
+  return frame.effectId !== "sima_yi_guicai" || input.judgementNarrationBelongsToAction;
+}
+
+/** Keeps public narration and its display-frame announcement on one owner. */
+export function publicActionAnnouncementOverride(input: {
+  action: PublicJudgementDisplayAction | null;
+  judgementNarrationBelongsToAction: boolean;
+  interactionNarrationBelongsToAction: boolean;
+  narration: PublicInteractionNarration | null;
+  effectFrameOwnsInteractionRoot: boolean;
+}): { publicInteractionNarration?: PublicInteractionNarration; suppressAnnouncement?: boolean } {
+  if (input.action?.publicCardEffectFrame?.effectId === "sima_yi_guicai" && !input.judgementNarrationBelongsToAction) {
+    return { suppressAnnouncement: true };
+  }
+  if (input.interactionNarrationBelongsToAction && input.narration) {
+    return { publicInteractionNarration: input.narration, suppressAnnouncement: false };
+  }
+  if (input.effectFrameOwnsInteractionRoot) return { suppressAnnouncement: false };
+  if (input.narration) return { suppressAnnouncement: true };
+  return {};
+}
+
+/** Creates the Judgement input only when its narration owns the current event. */
+export function publicJudgementH4OwnerInput(input: {
+  presentation: PublicJudgementPresentation | null;
+  narration: PublicInteractionNarration | null;
+  cursor: { id: string } | null | undefined;
+  displayEnabled: boolean;
+  replacementFrameMatches: boolean;
+}): {
+  presentation: PublicJudgementPresentation;
+  isActive: boolean;
+  replacementFrameMatches: boolean;
+} | null {
+  const { presentation } = input;
+  if (!presentation || input.narration?.eventId !== presentation.eventId) return null;
+  return {
+    presentation,
+    isActive: input.cursor?.id === presentation.eventId,
+    replacementFrameMatches: input.displayEnabled && input.replacementFrameMatches,
+  };
+}
