@@ -14,6 +14,7 @@ import type { PublicDiscardAnnouncement } from "./public-discard-transition";
 import type { PublicDiscardSettlementCopy } from "./public-discard-settlement";
 import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
 import {
+  publicEffectFrameLanePreferredTop,
   positionLabeledCardAboveBand,
   publicStageEffectFrameRevealTargetMatches,
   publicStageJourneyPhaseReady,
@@ -762,8 +763,18 @@ function battlefieldCenterCard(
     const safeBottom = Math.min(bounds.bottom - 8, window.innerHeight - 8, viewportBottom - 8);
     if (safeRight - safeLeft < size.width) return null;
     const preferredLeft = safeLeft + (safeRight - safeLeft - size.width) / 2;
+    const fixedFrameLaneTop = safety.stationarySurface === "effect-frame"
+      ? (() => {
+        const h4Reserve = fixedPublicH4Band(table);
+        const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
+        const pacReserve = consoleGuidance ? fixedPublicActivityBand(table, consoleGuidance) : null;
+        return h4Reserve && pacReserve
+          ? publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, size.height)
+          : null;
+      })()
+      : null;
     const preferredTop = Math.max(safeTop, Math.min(safeBottom - size.height,
-      bounds.top + (bounds.height - size.height) / 2));
+      fixedFrameLaneTop ?? bounds.top + (bounds.height - size.height) / 2));
     if (safeBottom - safeTop < size.height) return null;
     const obstacles = [...document.querySelectorAll<HTMLElement>(
       ".opponent-player-card[data-player-anchor], .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .opponent-inspection-floating-shell, .card-details-panel, .hero-details-panel, .interaction-stage-dying, .dying-handoff-compact, .card-pool-target-stage, .battlefield-choice-stage, .local-player-dock, .local-hand-rail, .local-hand, .console-guidance",

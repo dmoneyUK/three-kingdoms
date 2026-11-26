@@ -12449,22 +12449,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     endTurnConfirmationIdentity === endTurnConfirmationScope
     && endTurnConfirmationAuthorized,
   );
-  const endTurnConfirmationPlacement = useBattlefieldChoicePlacement({
-    enabled: endTurnConfirmationIsCurrent,
-    playerCount: room.players.length,
-    placementKey: endTurnConfirmationScope,
-    requireSafePlacement: true,
-    protectActiveReveal: true,
-    allowPassivePublicRevealOverlap: true,
-  });
   useEffect(() => {
     if (!isAttackDodgeUxTraceActive()) return;
     const signature = JSON.stringify([
       endTurnConfirmationIdentity === endTurnConfirmationScope,
       endTurnConfirmationAuthorizationReason,
-      endTurnConfirmationPlacement.ready,
-      endTurnConfirmationPlacement.reason,
-      endTurnConfirmationPlacement.top,
+      endTurnConfirmationSubmitting,
       busy,
     ]);
     if (signature === endTurnConfirmationTraceSignatureRef.current) return;
@@ -12472,21 +12462,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     recordAttackDodgeUxTrace("end-turn-confirmation-gate", {
       open: endTurnConfirmationIdentity === endTurnConfirmationScope,
       authorizationReason: endTurnConfirmationAuthorizationReason,
-      placementReady: endTurnConfirmationPlacement.ready,
-      placementReason: endTurnConfirmationPlacement.reason,
-      placementTop: endTurnConfirmationPlacement.top,
+      position: "fixed-foreground",
+      mounted: endTurnConfirmationIsCurrent,
+      submitting: endTurnConfirmationSubmitting,
       busy,
       actionKind: room.currentAction?.kind ?? null,
       actorMatchesViewer: room.currentAction?.actorId === room.meId,
       actionRevisionPresent: Boolean(room.actionRevision),
     });
-  }, [busy, endTurnConfirmationAuthorizationReason, endTurnConfirmationIdentity, endTurnConfirmationPlacement.ready,
-    endTurnConfirmationPlacement.reason, endTurnConfirmationPlacement.top, endTurnConfirmationScope,
+  }, [busy, endTurnConfirmationAuthorizationReason, endTurnConfirmationIdentity, endTurnConfirmationIsCurrent,
+    endTurnConfirmationScope, endTurnConfirmationSubmitting,
     room.actionRevision, room.currentAction?.actorId, room.currentAction?.kind, room.meId]);
   useEffect(() => {
-    if (!endTurnConfirmationIsCurrent || !endTurnConfirmationPlacement.ready) return;
-    window.requestAnimationFrame(() => endTurnConfirmationCancelRef.current?.focus({ preventScroll: true }));
-  }, [endTurnConfirmationIdentity, endTurnConfirmationIsCurrent, endTurnConfirmationPlacement.ready]);
+    if (!endTurnConfirmationIsCurrent) return;
+    endTurnConfirmationCancelRef.current?.focus({ preventScroll: true });
+  }, [endTurnConfirmationIdentity, endTurnConfirmationIsCurrent]);
   useEffect(() => {
     if (!endTurnConfirmationIsCurrent) return;
     const dismissOnEscape = (event: KeyboardEvent) => {
@@ -12501,10 +12491,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const confirmEndTurn = async () => {
     const blockedReason = endTurnConfirmationSubmissionRef.current ? "submission-already-in-flight"
       : !endTurnConfirmationIsCurrent ? endTurnConfirmationAuthorizationReason ?? "confirmation-scope-stale"
-        : !endTurnConfirmationPlacement.ready ? `placement-not-ready:${endTurnConfirmationPlacement.reason}`
-          : busy ? "gameplay-request-busy"
-            : !canUseAction(room.currentAction, "end_turn") ? "end-turn-no-longer-authorized"
-              : null;
+        : busy ? "gameplay-request-busy"
+          : !canUseAction(room.currentAction, "end_turn") ? "end-turn-no-longer-authorized"
+            : null;
     if (blockedReason) {
       if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-confirm", { result: "blocked", reason: blockedReason });
       return;
@@ -12989,29 +12978,26 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         />
       </BattlefieldChoiceStage>}
       {endTurnConfirmationIsCurrent && <BattlefieldChoiceStage
-        ref={endTurnConfirmationPlacement.ref}
         className="game-event-stage harvest-choice-stage end-turn-confirmation-stage"
         mode="actor-select"
         accessibilityLabel="End turn confirmation"
         data-end-turn-confirmation="true"
-        data-end-turn-confirmation-ready={endTurnConfirmationPlacement.ready ? "true" : "false"}
-        data-end-turn-placement-reason={endTurnConfirmationPlacement.reason}
-        aria-hidden={!endTurnConfirmationPlacement.ready}
-        style={{ top: endTurnConfirmationPlacement.top === null ? undefined : `${endTurnConfirmationPlacement.top}px` }}
+        data-end-turn-confirmation-ready="true"
+        data-end-turn-confirmation-placement="fixed-foreground"
+        data-end-turn-placement-reason="fixed-foreground"
       >
         <section className="card-pool-panel card-pool-panel--end-turn-confirmation harvest-choice-panel harvest-choice-panel--actor end-turn-confirmation-panel" role="dialog" aria-modal="false" aria-labelledby="end-turn-confirmation-title">
           <header className="card-pool-panel__heading end-turn-confirmation__heading">
             <b id="end-turn-confirmation-title">End your Play Phase?</b>
           </header>
           <footer className="card-pool-panel__footer end-turn-confirmation__actions">
-            <button ref={endTurnConfirmationCancelRef} type="button" className="end end-turn-confirmation__cancel" tabIndex={endTurnConfirmationPlacement.ready ? 0 : -1} disabled={endTurnConfirmationSubmitting} onClick={() => {
+            <button ref={endTurnConfirmationCancelRef} type="button" className="end end-turn-confirmation__cancel" disabled={endTurnConfirmationSubmitting} onClick={() => {
               if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-cancel", { result: "cancelled", requestSent: false });
               closeEndTurnConfirmation(true);
             }}>Cancel</button>
-            <button type="button" className="primary end-turn-confirmation__confirm" tabIndex={endTurnConfirmationPlacement.ready ? 0 : -1} disabled={!endTurnConfirmationPlacement.ready || busy || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onPointerDown={() => {
+            <button type="button" className="primary end-turn-confirmation__confirm" disabled={busy || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onPointerDown={() => {
               if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-hit", {
-                control: "confirm-end", placementReady: endTurnConfirmationPlacement.ready,
-                placementReason: endTurnConfirmationPlacement.reason, busy,
+                control: "confirm-end", position: "fixed-foreground", busy,
               });
             }} onClick={() => { void confirmEndTurn(); }}>Confirm End</button>
           </footer>
@@ -13958,6 +13944,7 @@ function TargetCardPicker({ option, presentationCopy, compact = false, forceShar
       playerCount={poolPlayerCount} scope={poolScope} title="FROST SWORD" instruction={`Choose ${amount} card${selection.max === 1 ? "" : "s"} to discard`}
       accessibilityLabel="Frost Sword target card selection" confirmAccessibleLabel="Confirm Frost Sword selection" skipAccessibleLabel="Skip Frost Sword"
       disabled={disabled} canDecline={canDecline} error={error} scrollHint={target.handCount > 4 ? "Swipe to see all" : undefined} protectSharedPublicStage
+      compactDensity
       onToggle={onToggle} onConfirm={() => onUse(validSelectedKeys)} onDecline={onDecline} onInfo={(card, trigger) => onInfoCard?.(card, trigger)} />;
   }
   if (forceSharedPool) {

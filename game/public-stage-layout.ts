@@ -19,6 +19,18 @@ export function publicStageBandClearance(surface: PublicStageStationarySurface =
     : PUBLIC_STAGE_CARD_BAND_CLEARANCE_PX;
 }
 
+/** Preferred top for a complete passive Effect Frame centered in the fixed
+ * H4-to-PAC display lane. The inputs are nominal reserves, never live copy. */
+export function publicEffectFrameLanePreferredTop(
+  h4Reserve: PublicStageRect,
+  pacReserve: PublicStageRect,
+  frameHeight: number,
+): number | null {
+  if (!finiteRect(h4Reserve) || !finiteRect(pacReserve)
+    || !Number.isFinite(frameHeight) || frameHeight <= 0) return null;
+  return (h4Reserve.bottom + pacReserve.top - frameHeight) / 2;
+}
+
 /** Check actual measured bands against a stationary public visual. The caller
  * supplies both visible copy and fixed reserves when present; an absent PAC is
  * represented by its fixed reserve alone. This comparison has no layout

@@ -78,6 +78,18 @@ test("shared pool actions do not relabel specialized non-pool controls", () => {
   assert.doesNotMatch(gameRoomSource.slice(endTurnStart, endTurnEnd), /CardPoolDecisionFooter/);
 });
 
+test("authorized End confirmation uses the fixed battlefield foreground without placement readiness", () => {
+  const start = gameRoomSource.indexOf("const endTurnConfirmationAuthorized");
+  const end = gameRoomSource.indexOf("const consoleSelection", start);
+  assert.ok(start >= 0 && end > start, "the End confirmation authority block is present");
+  const endConfirmationSource = gameRoomSource.slice(start, end);
+  assert.doesNotMatch(endConfirmationSource, /endTurnConfirmationPlacement|placement-not-ready/);
+  assert.match(gameRoomSource, /data-end-turn-confirmation-placement="fixed-foreground"/);
+  assert.match(sequenceStyleSource, /\.game-shell \.play-table > \.battlefield-choice-stage \{[^}]*top:\s*50%;/s);
+  assert.match(sequenceStyleSource, /\.game-shell \.play-table > \.end-turn-confirmation-stage \{\s*visibility:\s*visible;\s*z-index:\s*40;/);
+  assert.doesNotMatch(sequenceStyleSource, /end-turn-confirmation-stage\[data-end-turn-confirmation-ready="false"\]\s*\{\s*visibility:\s*hidden/);
+});
+
 test("Harvest actor pools use the shared footer while public pools stay action-free", () => {
   const publicChoice = {
     type: "public-card",
@@ -1189,6 +1201,7 @@ test("normalized malformed and unknown response states render safely", () => {
   });
   const pickerHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: pickerRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(pickerHtml, /data-trigger-target-pool="true"[^>]*data-target-card-pool-layout="central"/);
+  assert.match(pickerHtml, /card-pool-panel--compact-density/, "Frost opts into the existing shared compact pool density");
   assert.match(pickerHtml, /class="card-pool-panel__title">FROST SWORD<\/b>/);
   assert.match(pickerHtml, /class="card-pool-panel__instruction">Choose 2 cards to discard<\/span>/);
   assert.deepEqual([...pickerHtml.matchAll(/role="tab"[^>]*aria-label="([^"]+)"/g)].map((match) => match[1]), ["Hand (4), 0 selected", "Equipment (1), 0 selected"], "only server-authorized populated zones become tabs and stable multi-select tabs expose their counts");
@@ -1199,6 +1212,39 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.doesNotMatch(pickerHtml, /target-card-picker-overlay|target-card-picker-panel--zones|card-pool-decision-footer__cancel/);
   assert.match(pickerHtml, /aria-label="Confirm Frost Sword selection"[^>]*disabled=""[^>]*>Confirm<\/button>/);
   assert.match(pickerHtml, /aria-label="Skip Frost Sword"[^>]*>Skip<\/button>/);
+
+  const selectedCompactFrostHtml = renderToStaticMarkup(React.createElement(CardPoolPanel, {
+    mode: "actor-target-select",
+    title: "FROST SWORD",
+    instruction: "Choose 2 cards to discard",
+    accessibilityLabel: "Frost Sword target card selection",
+    publicTarget: { handCount: 1, equipmentCards: [card("compact-armor", "NioShield")], judgementCards: [] },
+    zones: [
+      { id: "hand", title: "HAND 1", accessibleName: "Hand, 1 card", choices: [{ type: "concealed-position", opaqueKey: "hand:0", accessibleLabel: "Hidden Hand position 1", position: 0, state: "selected" }] },
+      { id: "equipment", title: "EQUIPMENT", accessibleName: "Equipment", choices: [{ type: "public-card", eligibleKey: "compact-armor", publicCardFace: card("compact-armor", "NioShield"), cardName: "Nio Shield", accessibleLabel: "Equipment: Nio Shield", state: "selected" }] },
+    ],
+    compactDensity: true,
+    compactSelectionCount: "2/2",
+    stableMultiSelectTabs: true,
+    selectionCount: "2 / 2 selected",
+    confirmAccessibleLabel: "Confirm Frost Sword selection",
+    skipAction: { accessibleLabel: "Skip Frost Sword", disabled: false, onClick: () => {} },
+    disabled: false,
+    confirmDisabled: false,
+    onToggle: () => {},
+    onConfirm: () => {},
+    onInfo: () => {},
+  }));
+  assert.match(selectedCompactFrostHtml, /card-pool-panel--compact-density/, "selected Hand and Equipment remain in the shared compact pool");
+  assert.match(selectedCompactFrostHtml, /aria-label="2 \/ 2 selected"[^>]*>2\/2<\/span>/, "the visual count is explicit while its accessible label stays complete");
+  assert.match(selectedCompactFrostHtml, /aria-label="Hand \(1\), 1 selected"/);
+  assert.match(selectedCompactFrostHtml, /aria-label="Equipment \(1\), 1 selected"/);
+  assert.match(selectedCompactFrostHtml, /data-pool-action="skip"[^>]*>Skip<\/button>/);
+  assert.match(selectedCompactFrostHtml, /data-pool-action="confirm"[^>]*>Confirm<\/button>/);
+  assert.match(selectedCompactFrostHtml, /card-pool-decision-footer--compact-density/);
+  assert.match(sequenceStyleSource, /card-pool-panel--compact-density \.card-pool-panel__tabs--stable-multi-select \{\s*width: max-content;[^}]*max-width: 100%;/);
+  assert.match(sequenceStyleSource, /card-pool-panel--compact-density \.card-pool-panel__tab--stable-multi-select \{[^}]*min-width: 44px;[^}]*min-height: 44px;/s);
+  assert.match(sequenceStyleSource, /card-pool-decision-footer--compact-density \.card-pool-decision-footer__pair\[data-action-count="2"\] \{\s*grid-template-columns: repeat\(2, 72px\)/);
 
   const invalidFrostRoom = {
     ...pickerRoom,

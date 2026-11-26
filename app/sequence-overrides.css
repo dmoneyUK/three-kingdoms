@@ -7489,14 +7489,10 @@
   -webkit-line-clamp: unset;
 }
 
-/* §10.26 / §10.78: the End confirmation uses the battlefield choice shell
-   without a backdrop. Only its measured panel captures input, and this
-   existing confirmation can sit above an already-committed passive reveal. */
-.game-shell .play-table > .end-turn-confirmation-stage[data-end-turn-confirmation-ready="false"] {
-  visibility: hidden;
-  pointer-events: none;
-}
-.game-shell .play-table > .end-turn-confirmation-stage[data-end-turn-confirmation-ready="true"] {
+/* §10.26 / §10.78: an authorized End confirmation is painted immediately at
+   the battlefield's fixed center anchor. Its stage has no backdrop or async
+   placement gate; only the compact panel receives input. */
+.game-shell .play-table > .end-turn-confirmation-stage {
   visibility: visible;
   z-index: 40;
 }
@@ -8492,6 +8488,35 @@
   .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__target-public-zone-title {
     align-self: center;
   }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__tabs--stable-multi-select {
+    width: max-content;
+    max-width: 100%;
+    justify-content: flex-start;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__tab--stable-multi-select {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: max-content;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 4px 6px;
+    white-space: nowrap;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__tab--stable-multi-select > span,
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__tab--stable-multi-select > small {
+    display: inline;
+    flex: 0 0 auto;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__tab--stable-multi-select > small {
+    font: 700 8px/1 Arial, sans-serif;
+  }
   .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-density {
     --wtk-card-pool-action-width: 72px;
     --wtk-card-pool-action-height: 44px;
@@ -8504,8 +8529,12 @@
     min-height: 48px;
   }
   .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-density .card-pool-decision-footer__count {
+    justify-self: center;
     min-width: 0;
+    width: max-content;
+    max-width: 100%;
     overflow: visible;
+    font-size: 9px;
     text-overflow: clip;
     white-space: nowrap;
   }
