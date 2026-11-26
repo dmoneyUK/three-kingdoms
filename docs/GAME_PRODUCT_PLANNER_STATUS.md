@@ -1,18 +1,18 @@
 # WTK Game Product Planner — Current State and Cross-Agent Handover
 
-**Status snapshot:** 2026-11-23, cross-domain Planner initialization  
+**Status snapshot:** **2026-11-26** — Owner-approved UX3 DESIGN board, AI Player **AIP-D46 G/M/S reset**, D45 CLOSE-01 code-only authority. Previous 2026-11-23 status preserved in Git history. **No code, Hosted, production or UX3 Agent launch was authorized by this main status edit**.  
 **Canonical status file:** `docs/GAME_PRODUCT_PLANNER_STATUS.md` on `main`  
 **Operating charter:** [GAME_PRODUCT_PLANNER_GUIDE.md](GAME_PRODUCT_PLANNER_GUIDE.md)  
 **Role:** independent Game Product Planner/Architect/Reviewer, NOT UX2/AI Coding Agent.  
-**Execution permission:** NONE from this file. All GP-* proposals below remain **DRAFT** pending Owner authorization.  
+**Execution permission:** NONE from this main status file; GP-* and UX3 source tasks remain **DRAFT**, while **AIP-PERF-BOT-02-CLOSE-01 has separate Owner APPROVED CODE-ONLY authority** on the AI design's non-deploy review branch. Never infer Hosted/merge/GET/PLAY approval.  
 **Update rule:** Before any new review, reread the live branch heads, design-status indexes, actual code/CI and the two agent-owned handovers. This is a historical **as-of** checkpoint, not an automatically refreshed dashboard.
 
 ## 1. How a new Planner resumes safely
 
 1. Read the full canonical [Game Product Planner guide](GAME_PRODUCT_PLANNER_GUIDE.md), including roles, authority, source-reading order, frontend architecture, work-routing, approval gates and separate G/M acceptance criteria.
 2. Read this entire status file. Treat the evidence/source pins below as **last-reviewed references**, not as a substitute for refreshing GitHub.
-3. Refresh `main`, `ux-v2`, `feature/smart-bot-player` heads. Read repo `AGENTS.md` plus the current UX and AI planner guides and design sources. **Per AI Planner rules, read the full current AI_PLAYER_DESIGN.md at each new Planner session.**
-4. Read the current `ux-v2/HANDOVER.md` and `feature/smart-bot-player/AI_PLAYER_HANDOVER.md` **read-only**; compare status with authoritative original design sections and exact-SHA code/CI. Never assume a prior `PENDING_REVIEW` became accepted.
+3. Refresh `main`, `ux-v2`, **`ux3`**, `feature/smart-bot-player` and `review/aip-perf-bot-02` heads. Read repo `AGENTS.md` plus the current UX and AI planner guides and design sources. **Per AI Planner rules, read the full current AI_PLAYER_DESIGN.md at each new Planner session.**
+4. Read the current `ux-v2/HANDOVER.md` and `review/aip-perf-bot-02/AI_PLAYER_HANDOVER.md` **read-only**; future `ux3/UX3_HANDOVER.md` exists only after first separately authorized UX3 Agent coding task; compare status with authoritative original design sections and exact-SHA code/CI. Never assume a prior `PENDING_REVIEW` became accepted.
 5. If the Owner asks for a cross-domain review or planning, inspect relevant code/tests/CI, update this status with **verified new facts** under user-authorized review/write scope, and route any approved implementation specification into the authorized source-of-truth design in its OWN branch. Do NOT dispatch a GP-* item merely because it appears here.
 6. For a fresh conversation with no substantive task, summarize current status and ask for the Owner's next decision; do not autonomously continue a previous task or interfere with an existing Coding Agent.
 
@@ -20,17 +20,23 @@
 
 ## 2. Last verified GitHub baselines — refresh at every new session
 
-| Branch | Last reviewed remote HEAD | Responsibility |
+**Verified live refs as of this status update.** Source pins must be refreshed after either Agent pushes; a docs HEAD is never the same as a previously validated source SHA.
+
+| Branch | Verified HEAD / code-bearing baseline | Responsibility and current gate |
 | --- | --- | --- |
-| `main` | `2abae856a160c1b017f5f459b1c178e1b6a0efaf` **before this handover file is committed** | Shared cross-product Planner charter + this status file. Its HEAD changes with this document creation and the guide-link edit; check fresh. |
-| `ux-v2` | `dbf57a7c11ce44c4ca438f44a0de345d763e0451` | Current production-facing UX2 design/source; `docs/UX2-refine.md` is the canonical UX requirements and owner acceptance ledger. |
-| `feature/smart-bot-player` | `e8b859ae12698bc4d2e33e63a339fbecf1010917` | AI Staging Bot code and design. AI code-bearing base `a2e3d861b1f802f64d07c5ffd3cf31e4eabcb046`; last change amended AI design with a multi-room capacity review (no new game code). |
+| `main` | Guide update `2b36113262bcf64b94d27e4d31a566254399cb08` (this status commit follows it) | Cross-product ADRs, G/M/S and status; **NO coding authority** |
+| `ux-v2` | `136c2788a2589b536d7a8883c7bad8d961690fca`; UX2 design blob `69ef97b782b9cf427c114d8bdce85869f2da0402` | Production-facing UX2 Owner-accepted semantics, 77 original headings, §10.80 in-flight / later §10.78 etc; `HANDOVER.md` Agent-owned |
+| **`ux3` NEW** | `92649c62503e7e913e54d7c15e7ad27ab8a14237`, forked from UX2 `136c2788` | [`docs/UX3_DESIGN.md`](https://github.com/dmoneyUK/three-kingdoms/blob/ux3/docs/UX3_DESIGN.md) full UX2 crosswalk, architecture task board; [UX3 workflow](https://github.com/dmoneyUK/three-kingdoms/blob/ux3/docs/UX3_AGENT_WORKFLOW.md). **Design-only; UX3-FE-01 code DRAFT; no UX3 Agent/CI/deploy** |
+| `feature/smart-bot-player` | `51fd33ab30b0dcb2e334255a853c97854c152cd1`; AI design `AIP-D46` blob `b0f9888b87aed652ea83535f7980ce17417a5b25` | [AI Player D46](https://github.com/dmoneyUK/three-kingdoms/blob/feature/smart-bot-player/docs/AI_PLAYER_DESIGN.md) G/M/S priority; **CLOSE-01 code only approved**, no Hosted/merge |
+| `review/aip-perf-bot-02` | `14e79104a314de699635009e7d46c3c5291bc88c`; last code `d218807d3711378431eaff37a157c397f447e84d` | Bot CORR-01 exact [Actions 45719390668](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45719390668): lint/fast/API/browser GREEN, BOTH deployment jobs SKIPPED. D43 review found R2/S1/S2/S3 still open; D45 CLOSE-01 new capped code permission, Agent handover historically at D42 |
 
-- **UX design:** [ux-v2/docs/UX2-refine.md](https://github.com/dmoneyUK/three-kingdoms/blob/ux-v2/docs/UX2-refine.md), [UX original interaction/stage design](https://github.com/dmoneyUK/three-kingdoms/blob/ux-v2/docs/UX_V2_INTERACTION_STAGE_DESIGN.md), [UX planner guide](https://github.com/dmoneyUK/three-kingdoms/blob/ux-v2/docs/PLANNER_REVIEWER_GUIDE.md). UX Agent handover: `ux-v2/HANDOVER.md`.
-- **AI design:** [feature/smart-bot-player/docs/AI_PLAYER_DESIGN.md](https://github.com/dmoneyUK/three-kingdoms/blob/feature/smart-bot-player/docs/AI_PLAYER_DESIGN.md), [AI planner guide](https://github.com/dmoneyUK/three-kingdoms/blob/feature/smart-bot-player/docs/AI_PLAYER_PLANNER_REVIEWER_GUIDE.md). AI Agent handover: `feature/smart-bot-player/AI_PLAYER_HANDOVER.md`.
-- **Rules:** `docs/OFFICIAL_CARD_REFERENCE.md`, `docs/STANDARD_HERO_REFERENCE.md`, `docs/STANDARD_108_DECK_MANIFEST.md`; supplemental https://wtkgames.com/generalCard/.
+**Source authorities:**
+- **UX2:** [original authoritative UX2 refinement](https://github.com/dmoneyUK/three-kingdoms/blob/ux-v2/docs/UX2-refine.md), its original accepted sections and closed/pending verdicts; prior `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` historical only. **Do not edit UX2 Agent's `HANDOVER.md`.**
+- **UX3:** [new UX3 design](https://github.com/dmoneyUK/three-kingdoms/blob/ux3/docs/UX3_DESIGN.md), [new UX3 Agent workflow](https://github.com/dmoneyUK/three-kingdoms/blob/ux3/docs/UX3_AGENT_WORKFLOW.md); UX3 source fork 136c2788 includes original UX2 documents/source. Need reconcile post-fork UX2 changes before any code.
+- **AI:** [new AIP-D46 manager roadmap](https://github.com/dmoneyUK/three-kingdoms/blob/feature/smart-bot-player/docs/AI_PLAYER_DESIGN.md) §0B and current D45 CLOSE-01 contract §7.2D. **Do not edit AI Agent's `AI_PLAYER_HANDOVER.md`.**
+- **Rules:** `docs/OFFICIAL_CARD_REFERENCE.md`, `docs/STANDARD_HERO_REFERENCE.md`, `docs/STANDARD_108_DECK_MANIFEST.md`; supplement `https://wtkgames.com/generalCard/`.
 
-**Cross-branch caution:** `app/page.tsx`, `app/public-card-display.tsx` and `app/api/rooms/route.ts` differed by blob SHA between UX and AI at last review. Some shared projection/layout files already matched. Never edit/merge on the assumption that both branches have identical runtime code; compare the exact current versions.
+**Branch integration warning:** UX2 and UX3 have the same inherited runtime only at fork. AI `app/api/rooms/route.ts` and `app/page.tsx` have different blobs; future UX2 pushes diverge from UX3. No cross-branch merge or concurrent same-file editing without versioned Owner/PM integration manifest.
 
 ## 3. Product goal and readiness — TWO DIFFERENT GATES
 
@@ -42,32 +48,31 @@
 
 **Do not use “single 9m28s Bot smoke passed” as evidence that G or M passed.** Actual game-completion and concurrent-room certification are separate, parallel release gates; both must PASS for the declared product.
 
-## 4. AI branch: current task/review status
+## 4. AI branch — current verified tasks and next direction (D46)
 
-**Source pins:** `docs/AI_PLAYER_DESIGN.md` at blob `4bb45007167936d624ab076172700c69680263ed`, `AI_PLAYER_HANDOVER.md` at blob `cf280873fb68b19800e303fed3728b4df1b95e0f`.
+| Scope | Verified status | Next rule |
+| --- | --- | --- |
+| **`AIP-PERF-BOT-02-CLOSE-01`** | **Owner APPROVED CODE ONLY 2026-11-25 23:49:46 UTC.** R2 terminal commit proof + S1 continuous old-room/single smoke guard + S2 safe full reporter/artifact boundary + S3 external SHA/run Owner gate and <=20m active window. Max **3 NEW** materially changed source submissions on nondeploy `review/aip-perf-bot-02` | **Current sole executable AI coding task.** Agent implements/tests/pushes once within budget and STOPS after exact-SHA lint/fast/API/browser; both deploy jobs SKIPPED. No Hosted/merge/GET/PLAY. Historical CORR-01 material budget stays 0 |
+| **Prior `BOT-02-CORR-01` & `AIP-PERF-01`** | Historical CORR-01 BLOCKED after D43, parent BOT-02/PERF-01 CHANGES_REQUESTED; source `d218807d` tests green non-deploy, Hosted CPU and rejoin not certified | Preserve code; Reviewer independently checks new code. No another open-ended Bot JSON micro-optimization without controlled evidence and new Owner decision |
+| **`AIP-LOG-02 / OBS-02 / RSP-01`** | Independent `PENDING_REVIEW`/human Owner gates; existing Staging/CI success was not specific persisted log and ordinary Dodge evidence | Cannot self-accept; original gate still precedes full PLAY integrated batch |
+| **`AIP-GAP-01`** | **Planner/Reviewer only; NOT Agent work** | After CLOSE-01 code boundary, Planner maps already implemented 108-card/30-Hero Standard action and real normal game evidence, then selects only missing `AIP-PLAY` code |
+| **`AIP-PLAY-01..07` (incl. 05B/06B)** | **Original integrated batch Owner-approved but GATED** on safe PERF review, independent GAP and LOG/OBS/RSP human acceptance and branch reconciliation | Game-completion **Track G** next engineering outcome. Avoid duplicate existing Bot candidate code; real unseeded full game + persisted winner and Owner phone needed |
+| **`GET-02` + `SCALE-00..05`** | **DRAFT / NOT CODE-AUTHORIZED** | Measured viewer-safe protocol jointly with UX3/NET-01, 1/4/8 room synthetic fairness and D1 CPU first. No duplicate implementation, capacity lift, new services or paid plan |
+| **`AIP-AI-INT`, Live OpenAI/production** | Offline gated / live DRAFT respectively | Deterministic G and M/S first. No real model expenditure, real-player data export or production inferred |
 
-| Item | As-of state / independent review requirement |
-| --- | --- |
-| **AIP-PERF-01** | **IN_PROGRESS**. Real owner iPhone 1102 GET/POST CPU-limit incidents caused a long-room reliability review; atomic Dodge and duplicate authenticated GET optimization implementation `a2e3d861...` is **PENDING_REVIEW**, not accepted. [Exact-SHA Actions 45144294659 attempt 2](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45144294659/attempts/2) passed isolated CI and Staging, with 643 GET/36 POST during a **9m28s** Bot-cycle sample without reproduced 1102. Cannot certify 10–15-min under real gameplay. Separate `P8XE4` stuck `choose_target_card` work/lease remains uncorrelated. Follow AI Planner's accepted task gates, investigate if refreshed results change. |
-| **AIP-LOG-02 / AIP-OBS-02 / AIP-RSP-01** | **PENDING_REVIEW** in current AI design, with separate forensic export/ordinary Dodge test proof needed as specified; do not self-accept or incorrectly treat a generic smoke as those exact scenarios. |
-| **AIP-ROLE-01 / AIP-SYNC-02** | **OWNER ACCEPTED** only for role policy and that one UX integration; does NOT validate later UX branch changes, CPU recovery, production or new multi-room architecture. |
-| **AIP-PLAY-01..07 (and 05B/06B)** | Owner-authorized deterministic full-game roadmap **subject to current existing review/prerequisite gates** and isolated AI Staging only. Do not start while blocking P0 review conflicts; real OpenAI separately unauthorized. |
-| **AIP-SCALE-00..05** | **DRAFT / NOT EXECUTABLE.** Multi-room scheduling/fairness, viewer polling/projection, overload, data partition RFC and capacity certification. They have a comprehensive source-level plan in `docs/AI_PLAYER_DESIGN.md §7.5`; new Game Product Planner must avoid duplicate task authorization. |
+**Correct next management direction:** S closes once under current bounded budget → G full ordinary game with existing AIP-PLAY sequence → UX3 RoomSession/presentation architecture in a separate branch and safe window → M actual synthetic/GET/CPU bottleneck evidence. These are **product outcome priorities**, not automatic overrides of existing Owner approval gates.
 
-**Current Bot runtime context:** global Cron-based scheduler effectively caps minute wake processing at 4 Bot steps over at most 8 candidate rooms, plus bounded postwrite wakeups; one shared Staging D1; existing 8 active Bot-demo-room cap and 200 per-room demo action budget. These limits do not prove zero scalability, but do demand measured fairness/load evidence. Never simply increase them.
+## 5. UX2 and NEW UX3 boards — preserve original and migrate architecture separately
 
-## 5. UX branch: current task/review status
+| Board / evidence | Current verified work | Authority and safe next decision |
+| --- | --- | --- |
+| **UX2 `ux-v2`** | Latest `docs/UX2-refine.md` 2026-11-25 23:53 UTC; **77 original §10.* feature headings**; table A current §10.80 Retaliation CI/delivery, then §10.78 Frost correction and §10.79 Kirin attribution recheck, then §§10.81-A/B Judgement, 10.82-A/B universal discard and §10.83 Serpent Spear. §10.67 HOLD, §10.72 final wording Owner review, §10.76-B Frost partial. Many earlier §10.* are explicit phone-ACCEPTED, never reopen | UX2 Agent owns `HANDOVER.md`, current approved visual semantics and unfinished tasks. No UX3 redesign of genuine card/H4/PAC/Console, 4/5/6 seats, response deadlines, Steal/privacy, Owner-approved visual behavior; no new causal-arrow graph or 7/8-player new-room UI |
+| **UX3 `ux3` NEW** | Forked from `ux-v2` `136c2788`, [UX3 design](https://github.com/dmoneyUK/three-kingdoms/blob/ux3/docs/UX3_DESIGN.md) 77-source-section index + historical refs + exact active task preservation, [UX3 execution guide](https://github.com/dmoneyUK/three-kingdoms/blob/ux3/docs/UX3_AGENT_WORKFLOW.md). **No source or CI/deploy setup yet** | UX3-GATE-00 Planner characterization, then **UX3-FE-01 proposed** typed RoomSession/CommandGateway, FE-02 immutable store, FE-03 event cursor/reducer, FE-05 root geometry, FE-06 modularization, NET-01 with AI GET-02. **All new code tasks DRAFT**; start at safe UX2 file ownership boundary and only after explicit Owner code/CI-only approval. No editing UX2 `HANDOVER.md` |
+| **Cross-domain integration** | AI vs UX2 frontend/backend blobs differ; no combined G/M certification | PM owns exact-sha manifest and integration test; UX2 accepted H4/PAC/CardFace/Hand and user-device PASS are invariants; no auto merge or production |
 
-**Source pins:** `docs/UX2-refine.md` blob `43826cabd3fac23be2c2da499f9ed0b33182cfcf`; `HANDOVER.md` blob `b67e7e5bd8150d5595072f7a10b5fa12e3dba319`.
+**Live evidence limitation:** these are independently read GitHub source documents / current handover, **not** a new phone test or Cloudflare verification. UX3 design-only GitHub pushes did not run full source CI.
 
-- **§10.67 Stargazing genuine pool compactness and §10.68 shared rank/suit hierarchy:** UX Agent handover states these are **implemented/deployed, pending Owner iPhone review**. Its CI evidence includes [Actions 45035325789](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45035325789). Do not confuse technical delivery with owner acceptance.
-- **§10.69 Judgement/H4-safe centre:** UX Agent handover states implemented/deployed, **pending Owner actual iPhone review**, including the real 10–85% stationary card-flight phase not fully observed in a local browser. [Exact-SHA Actions 45038664443](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45038664443) passed according to handover. Branch HEAD includes subsequent design-only notes; exact code build remains `aedc17d4a925c487259912353170dcc4dd9f027d` per handover. No new next UX task authorized in that handover.
-- **§10.51 / §10.64-A:** separate evidence-gated/conditional UX2 scopes; do not infer closure from earlier successful CI and owner acceptance of other items. Refresh UX status table and applicable original section before any new work.
-- **Owner-approved UX baselines remain binding:** single proven physical CardFace, H4 public committed outcomes, PAC context, Console private/legal actions, judgement identity, 4–6 new Classic room seat gate, local Hand swipe, protected Inspector/selection/pickers, privacy, public sequence/turn handoff. Do not reopen closed items just because architecture modularization touches a related component.
-- **EPIC-CARD-FLIGHT-01:** design-only, independent future UX proposal, not a currently approved implementation task.
-- **Production and AI Staging differ:** successful real-UX deployment/phone PASS on UX branch does not automatically exist on AI Staging. The AI branch was previously synchronized once; new integration requires diff/authorization/review.
-
-## 6. Shared architecture review outcome — engineering roadmap but NO coding authorization
+## 6. Original architecture review and NEW UX3 implementation board — this main guide remains non-executable
 
 **Last independent audit:** 2026-11-23. Frontend is the first architectural investment, while backend remains a scalability and reliability risk.
 
@@ -76,7 +81,7 @@
 - Target **mainstream server-authoritative room protocol** (inspired by established Colyseus/Nakama patterns, without adopting their new infrastructure): command → atomic canonical server state and ordered committed events → viewer-safe stable projection → one versioned authenticated RoomSessionStore → one pure PresentationCoordinator/reducer → narrow React components, declarative CSS layout and one root geometry owner.
 - Existing D1 read/projection amplification from per-viewer 2s/1s full GET, globally bounded Bot scheduler and one D1 primary still need performance and fairness measurements. No unapproved paid infrastructure, aggressive polling removal, client legality, or speculative WebSocket/Durable Object rewrite.
 
-**Draft task plan** in the main guide (NOT currently executable):
+**Original GP-* proposals remain DRAFT; the new UX3 design is now the dedicated future frontend architecture task authority, not a duplicate implementation queue**. Main §3 ADR-001–006 remain binding across projects. Current UX3-FE-01 is still CODE-DRAFT, not an Agent start. Original draft tasks for traceability:
 
 | Planning priority | Work item | Reason/order |
 | --- | --- | --- |
@@ -89,19 +94,18 @@
 | parallel gated | **GP-REL-01, GP-REL-02** multi-room/polling/fairness certification, respecting AIP-SCALE drafts | Require independent Owner authorization and measured SLOs. |
 | later | **GP-OPS-01 / GP-ARCH-RFC-01** telemetry/cost/admission and optional push/partition design | Add infrastructure only if benchmark demands it and Owner approves. |
 
-## 7. Open owner decisions and recommended NEXT review
+## 7. Open Owner/Planner decisions and the next safe code boundary
 
-| Decision / verification | Current state | Required next action |
+| Decision | Current permitted action | Not yet permitted |
 | --- | --- | --- |
-| **New unified Planner guide and status documentation** | **Owner explicitly approved creation of this additional status/handover doc in the current conversation.** | File is informational; it does not authorize GP implementation, rewriting both legacy planner guides, or editing Agent handovers. |
-| **GP-00 first capacity/frontend baseline task** | **DRAFT** | Ask Owner for explicit start authorization and owning implementation branch/scope once current live agent conflicts checked. If current request is only documentation, do not begin GP-00 now. |
-| **Agent active tasks / reviews** | AI AIP-PERF-01 IN_PROGRESS, UX §§10.67–69 reported deployed PENDING Owner phone review | Refresh evidence; do not mark technical delivery as owner acceptance. Preserve active agent handover/current task. |
-| **Small-real-user capacity target & operating budget** | Proposal to measure 1/4/8 active 4-seat rooms; **not user-approved SLA** | Set target with Owner after baseline; any live Staging >8 Bot rooms or billable platform change needs separate approval. |
-| **Cross-branch implementation/migration** | Not authorized | Supply explicit merge/integration RFC with owner, branch, exact SHAs, affected contract and rollback plan before any merge. |
-| **Full-game terminal acceptance** | No combined certification | Establish independent test matrix and Owner real-device completion after existing AIP-PLAY work finishes. |
-| **Review of live reliability incident** | One short passing smoke, longer unsolved performance/lease correlation | AI Planner reviews new Agent result and targeted CPU/lease evidence, with exact-SHA CI and 10–15min long-room check before acceptance. |
+| AI `CLOSE-01` | **Already Owner-approved code-only** on nondeploy review branch, max 3 material submissions and exact-SHA regular CI; independent Reviewer assesses once | Feature merge, Hosted Staging, token revocation without authorized operator, GET-02, further scope or production |
+| UX2 current | Finish existing §10.80 in-flight delivery safely; retain original §10.78/79/81/82/83 approved work and all explicit Owner UX acceptance | Silently cancelling UX2 tasks, moving them into UX3, pretending partial Frost/Judgement/Steal results were accepted |
+| UX3 first coding opportunity | Independent Planner source/UX2 acceptance reconciliation; Owner decides **when to give exclusive `app/page.tsx` editing window** and approves `UX3-FE-01` + CI-only workflow | Automatic UX3 Agent start, source edit under design-only approval, production deploy, unreviewed UX2 upstream merge |
+| M / GET decision | PM/AI/UX3 jointly define same viewer freshness/room state contract and synthetic 1/4/8 measurement gate | `GET-02` or `AIP-SCALE-00` code, more D1/DO/Queues/paid resources, claimed multi-room capacity |
+| Track G & release | Planner independently identifies missing original AIP-PLAY implementation; after original Owner gates, Agent implements bounded missing PLAY; actual physical Owner iPhone acceptance | Treat seeded winners, local P95 or green unit tests as ordinary full game or launch proof |
+| Cross-branch | version-specific manifest, compatible public/private contracts and exact-source CI at a safe ownership boundary | Force-merge, rewrite UX2 design/handover, parallel conflicting modifications |
 
-**Recommended new-session response before any implementation request:** “I read the current shared Planner guide and status, then refreshed `ux-v2` and `feature/smart-bot-player` authorities. Two product gates remain unverified: canonical complete matches and concurrent active multi-room support. The leading proposed cross-domain task is GP-00, an evidence-only frontend/server benchmark; current UX/AI task owners remain separate. No GP task has been automatically authorized.” Use Chinese to report to Owner.
+**Startup response for next Game Product Planner:** “我已读取更新的 GPP-02 和这份状态索引，并重新核验 live GitHub。当前代码授权只有 AI CLOSE-01；UX3 是独立的新架构设计计划，但首个编码任务还需 UX2 安全边界与 Owner/CI 授权；下一产品目标是完整对局 G，然后用真实证据改善 GET/多房间 M。UX2 所有已验收行为和待处理任务仍保留。”
 
 ## 8. File permission and write ledger
 
@@ -109,7 +113,8 @@
 | --- | --- |
 | `main/docs/GAME_PRODUCT_PLANNER_GUIDE.md` | Can read; edit only on explicit Owner charter/workflow revision. |
 | `main/docs/GAME_PRODUCT_PLANNER_STATUS.md` | Cross-domain status/handover document; can maintain **after an Owner-requested verified Planner review or explicit status update**, with source HEAD/SHA/evidence and no invented verdicts. |
-| `ux-v2/docs/UX2-refine.md` | Read. Revision goes through explicit Owner authorization and existing UX Planner standards/accepted sections; not edited just to synchronize this status. |
+| `ux-v2/docs/UX2-refine.md` | Preserve as current UX2 UI semantics/task authority; new UX3 does not overwrite. Any change requires separate Owner+UX2 permission. |
+| `ux3/docs/UX3_DESIGN.md`, `ux3/docs/UX3_AGENT_WORKFLOW.md` | New Owner-directed architecture program; design-only files currently created; future source/CI changes need separate Owner approval and safety gate. |
 | `feature/smart-bot-player/docs/AI_PLAYER_DESIGN.md` | Read the **full latest** at fresh-session startup. Revise only with explicit Owner authorization and existing AI Planner rules; never upgrade DRAFT capacity work silently. |
 | `ux-v2/HANDOVER.md`, `feature/smart-bot-player/AI_PLAYER_HANDOVER.md` | **READ-ONLY** for this Planner unless Owner gives an explicit file-specific exception. Coding Agents own execution handovers. |
 | `AGENTS.md`, both Agent workflow/Planner guides, gameplay and frontend source, DB schema/migrations, tests, CI, Cloudflare config | **READ/REVIEW ONLY** for this role unless separately authorized; no opportunistic change during cross-domain status write. |
@@ -119,4 +124,4 @@ When a review changes this file, update the as-of timestamp, branch heads, exact
 
 ---
 
-**Handover boundary:** This doc is a concise snapshot of independently verified source architecture plus the two agent reports, with their CI claims labeled as such. It is neither an Agent command nor a production readiness certificate. Source/CI drift after 2026-11-23 requires fresh review.
+**Handover boundary:** Current as-of 2026-11-26 GitHub sources and AI/UX2 Agent handovers were read independently; no UX3 Agent exists yet, CI/Cloudflare not rerun. This main status is neither a Coding Agent command nor a game/capacity/production readiness certificate. Always refresh actual remote SHA and original Owner verdict before planning.
