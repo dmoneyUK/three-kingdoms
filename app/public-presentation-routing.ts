@@ -326,11 +326,27 @@ export function selectPublicH4AnnouncementOwner(input: {
     interactionId: string;
     rootFrameId: string;
     causalRootEventId?: string;
+    discardEventId?: string;
+    discardMaterialIds?: readonly string[];
   } | null;
-  discard?: { eventId: string; order: number } | null;
+  discard?: { eventId: string; order: number; materialIds?: readonly string[] } | null;
   skillEvent?: { eventId: string } | null;
 }): { eventId: string; owner: PublicH4AnnouncementOwner } | null {
   const { fact, factIsActive = false, judgement, discard, cardDisplay, skillEvent } = input;
+  const cardDisplayOwnsFact = Boolean(fact && cardDisplay?.enabled && (
+    fact.rootEventId === cardDisplay.rootEventId
+      && fact.identity.interactionId === cardDisplay.interactionId
+      && fact.identity.rootFrameId === cardDisplay.rootFrameId
+    || Boolean(cardDisplay.causalRootEventId
+      && fact.rootEventId === cardDisplay.causalRootEventId
+      && fact.identity.interactionId === cardDisplay.interactionId
+      && fact.identity.rootFrameId === cardDisplay.rootFrameId)
+  ));
+  const cardDisplayMatchesDiscard = Boolean(cardDisplayOwnsFact && discard
+    && cardDisplay?.discardEventId === discard.eventId
+    && discard.materialIds?.length
+    && cardDisplay.discardMaterialIds?.length === discard.materialIds.length
+    && cardDisplay.discardMaterialIds.every((id, index) => id === discard.materialIds?.[index]));
   const sameResolutionJudgementResult = Boolean(judgement && fact
     && judgement.presentation.resolutionId
     && fact.resolutionId === judgement.presentation.resolutionId
@@ -345,22 +361,17 @@ export function selectPublicH4AnnouncementOwner(input: {
         ? "PublicCardDisplay" : "PublicInteractionAnnouncementLayer",
     };
   }
+  if (discard && fact?.eventId === discard.eventId && fact.committedOutcome && discard.materialIds?.length
+    && !cardDisplayMatchesDiscard) {
+    return { eventId: discard.eventId, owner: "PublicDiscardAnnouncementLayer" };
+  }
   if (discard && (!fact
     || (!factIsActive && discard.order > fact.order)
     || (discard.eventId === fact.eventId && fact.category === "CARD_DISCARDED" && !fact.committedOutcome))) {
     return { eventId: discard.eventId, owner: "PublicDiscardAnnouncementLayer" };
   }
   if (fact) {
-    const cardDisplayOwns = Boolean(cardDisplay?.enabled && (
-      fact.rootEventId === cardDisplay.rootEventId
-        && fact.identity.interactionId === cardDisplay.interactionId
-        && fact.identity.rootFrameId === cardDisplay.rootFrameId
-      || Boolean(cardDisplay.causalRootEventId
-        && fact.rootEventId === cardDisplay.causalRootEventId
-        && fact.identity.interactionId === cardDisplay.interactionId
-        && fact.identity.rootFrameId === cardDisplay.rootFrameId)
-    ));
-    return { eventId: fact.eventId, owner: cardDisplayOwns ? "PublicCardDisplay" : "PublicInteractionAnnouncementLayer" };
+    return { eventId: fact.eventId, owner: cardDisplayOwnsFact ? "PublicCardDisplay" : "PublicInteractionAnnouncementLayer" };
   }
   return skillEvent ? { eventId: skillEvent.eventId, owner: "PublicSkillEventAnnouncementLayer" } : null;
 }

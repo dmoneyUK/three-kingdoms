@@ -1,13 +1,13 @@
 # HANDOVER
 
-Latest verified delivery: §10.81-B, 16ace7b45c9c95bea9497e688e6c3d9f73e2e8fc; exact-SHA Actions 45822562194 passed and Worker db3acedd-9c29-4dff-9db9-661dee731b92 deployed. Target browser geometry was not rerun after the viewport-helper correction. Owner iPhone review remains pending.
+Latest verified delivery: §10.82-A, 739ae7dbb7b2ab89fd8fac5c5aee5da314891f5f. Exact-SHA Actions 45828075993 passed API, lint/fast, browser startup smoke, D1 migration, Worker deployment and production smoke. Worker version: adbc8338-17c2-4f0f-b896-810683a3471f. §10.82-A Owner iPhone review remains pending.
 
-Design reviewed: docs/UX2-refine.md, revision 2026-11-26 13:16 UTC.
+Design reviewed: docs/UX2-refine.md, revision 2026-11-26 13:31 UTC.
 
-## Current bounded task — §10.82-A UNIVERSAL-PUBLIC-DISCARD-SETTLEMENT-01
+## Current bounded task — §10.82-B shared discard display and lifecycle
 
-Status: Canonical public discard normalization now falls back to independently proven zone transitions when optional specialized proof is unusable, preserves exact per-card owners, and uses the catalog name “Burning Bridges.” Explicit contradictory PROVEN context remains fail-closed. API regressions cover Stauchness and Dismantle, including retained public facts and observer-equal proof.
+Status: Tighten H4 ownership to the exact discard event and complete ordered physical-card set. Preserve exact material owners when a proven public effect includes cards from more than one player. Strengthen the existing Stauchness real-gameplay scenario to require its true two-card Effect Frame and canonical full-detail H4 to be visible together for actor, payer and observer, with one H4 owner.
 
-Validation: tests/public-discard-settlement.test.mjs passed 15/15; API test syntax and git diff --check passed. Local API suite, build and UI tests were not run. Task commit and exact-SHA CI/deployment are pending.
+Validation: focused routing/settlement/effect-frame tests passed 30/30; browser scenario was attempted but failed before seeding because `127.0.0.1:3137` refused the connection. Local UI result is unverified; no retry under the five-minute cap. `git diff --check` passed. Exact-SHA Actions, deployment and production smoke remain required. One task, one commit.
 
-Next boundary: Finish §10.82-A in one commit. Continue §10.82-B only after its exact-SHA CI/deployment gate; do not claim Owner acceptance.
+Next boundary: Complete §10.82-B; after its exact-SHA CI/deployment, continue §10.83. Owner iPhone acceptance remains pending.

@@ -973,6 +973,17 @@ test("real Stauchness frames the two committed source cards for actor, payer and
               && ["reveal", "move"].includes(element.dataset.publicCardJourneyPhase));
           const frame = journey?.querySelector('[data-public-card-frame-effect-id="xiahou_dun_ganglie"]');
           if (!display || !journey || !frame) return false;
+          const eventId = journey.dataset.publicCardJourneyEventId;
+          const h4Matches = [...document.querySelectorAll("[data-public-h4-event-id]")]
+            .filter((element) => element.dataset.publicH4EventId === eventId);
+          const h4 = h4Matches[0];
+          const h4Rect = h4?.getBoundingClientRect();
+          const h4Visible = Boolean(h4 && h4Rect && h4Rect.width > 0 && h4Rect.height > 0
+            && getComputedStyle(h4).visibility === "visible" && Number(getComputedStyle(h4).opacity) > 0.01);
+          const h4Text = h4?.textContent?.replace(/\s+/g, " ").trim();
+          if (!h4Visible || h4Matches.length !== 1 || h4?.dataset.publicH4Owner !== "PublicCardDisplay"
+            || h4Text !== "XIAHOU DUN used Stauchness, causing SOURCE to discard 2 cards: 7♥ Peach · 7♣ Dodge."
+            || document.querySelector(`[data-public-discard-announcement-event-id="${eventId}"]`)) return false;
           return {
             viewerId: display.dataset.publicCardViewerId,
             eventId: journey.dataset.publicCardJourneyEventId,
@@ -986,6 +997,10 @@ test("real Stauchness frames the two committed source cards for actor, payer and
             frameFaces: [...frame.querySelectorAll("[data-public-card-effect-frame-card-id]")]
               .map((face) => face.getAttribute("data-public-card-effect-frame-card-id")),
             title: frame.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
+            h4Count: h4Matches.length,
+            h4Visible,
+            h4Owner: h4.dataset.publicH4Owner,
+            h4Text,
             viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
           };
         }, { expectedViewerId: viewerId, cardIds: paidCards.map((paid) => paid.id) }, { timeout: 8_000 });
@@ -1074,6 +1089,10 @@ test("real Stauchness frames the two committed source cards for actor, payer and
         frameMaterialCardIds: paidCards.map((paid) => paid.id).join(","),
         frameFaces: paidCards.map((paid) => paid.id),
         title: "STAUCHNESS",
+        h4Count: 1,
+        h4Visible: true,
+        h4Owner: "PublicCardDisplay",
+        h4Text: "XIAHOU DUN used Stauchness, causing SOURCE to discard 2 cards: 7♥ Peach · 7♣ Dodge.",
         viewport: { width: 390, height: 844, scrollWidth: 390 },
       });
     }

@@ -49,6 +49,21 @@ test("public effect frame factory preserves true activation and material owners 
   assert.equal((frame.accessibleLabel.match(/Target's Attack, 7 of Spades/g) ?? []).length, 2);
 });
 
+test("public effect frame factory preserves each distinct public material owner in source order", () => {
+  const frame = createPublicCardEffectFrameView(effect({
+    materials: [
+      { cardId: "target-card-1", ownerId: "target", fromZone: "HAND", toZone: "DISCARD" },
+      { cardId: "target-card-2", ownerId: "attacker", fromZone: "EQUIPMENT", toZone: "DISCARD" },
+    ],
+  }), copy);
+  assert.deepEqual(frame?.materials.map(({ ownerId, ownerName, card: materialCard }) => ({
+    ownerId, ownerName, cardId: materialCard.id,
+  })), [
+    { ownerId: "target", ownerName: "Target", cardId: "target-card-1" },
+    { ownerId: "attacker", ownerName: "Attacker", cardId: "target-card-2" },
+  ]);
+});
+
 test("public effect frame factory fails closed on identity, ownership-name, and class errors", () => {
   assert.equal(createPublicCardEffectFrameView(effect({ cards: [card("wrong-card"), card("target-card-2")] }), copy), null);
   assert.equal(createPublicCardEffectFrameView(effect(), { ...copy, ownerNamesById: { attacker: "Attacker" } }), null);

@@ -142,15 +142,25 @@ test("all public fact categories resolve to one H4 owner and duplicate projectio
     "an exact physical discard keeps its approved H4 owner when no composite result is attached");
   assert.deepEqual(selectPublicH4AnnouncementOwner({
     fact: { ...rootFact, category: "CARD_DISCARDED", committedOutcome: { eventId: rootFact.eventId } },
-    discard: { eventId: rootFact.eventId, order: rootFact.order },
-  }), { eventId: rootFact.eventId, owner: "PublicInteractionAnnouncementLayer" },
-    "a same-event composite result keeps its complete public deltas in the shared narrator");
+    discard: { eventId: rootFact.eventId, order: rootFact.order, materialIds: ["discard-a", "discard-b"] },
+  }), { eventId: rootFact.eventId, owner: "PublicDiscardAnnouncementLayer" },
+    "a same-event discard with exact public materials uses the richer canonical copy when no matching display frame owns it");
   assert.deepEqual(selectPublicH4AnnouncementOwner({
     fact: { ...rootFact, category: "CARD_DISCARDED", committedOutcome: { eventId: rootFact.eventId } },
     cardDisplay: { enabled: true, rootEventId: "frame-event", interactionId: rootFact.identity.interactionId,
-      rootFrameId: rootFact.identity.rootFrameId, causalRootEventId: rootFact.rootEventId },
+      rootFrameId: rootFact.identity.rootFrameId, causalRootEventId: rootFact.rootEventId,
+      discardEventId: rootFact.eventId, discardMaterialIds: ["discard-a", "discard-b"] },
+    discard: { eventId: rootFact.eventId, order: rootFact.order, materialIds: ["discard-a", "discard-b"] },
   }), { eventId: rootFact.eventId, owner: "PublicCardDisplay" },
     "a committed discard with its exact frame keeps detail and same-event outcome on one H4 owner");
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: { ...rootFact, category: "CARD_DISCARDED", committedOutcome: { eventId: rootFact.eventId } },
+    cardDisplay: { enabled: true, rootEventId: "frame-event", interactionId: rootFact.identity.interactionId,
+      rootFrameId: rootFact.identity.rootFrameId, causalRootEventId: rootFact.rootEventId,
+      discardEventId: rootFact.eventId, discardMaterialIds: ["discard-b", "discard-a"] },
+    discard: { eventId: rootFact.eventId, order: rootFact.order, materialIds: ["discard-a", "discard-b"] },
+  }), { eventId: rootFact.eventId, owner: "PublicDiscardAnnouncementLayer" },
+    "a display frame with the same event but a different material order cannot own the discard H4");
   assert.deepEqual(selectPublicH4AnnouncementOwner({
     fact: rootFact, discard: { eventId: "later-discard", order: rootFact.order + 1 },
   }), { eventId: "later-discard", owner: "PublicDiscardAnnouncementLayer" },

@@ -10213,8 +10213,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (existingActions.some((action) => action.publicCardEffectFrame?.eventId === eventId
       && action.publicCardEffectFrame.materials.length === materialIds.length
       && action.publicCardEffectFrame.materials.every((material, index) => material.card.id === materialIds[index]))) return null;
-    const materialOwners = effect.materials.map((material) => material.ownerId);
-    if (!effect.activationOwnerId || materialOwners.some((ownerId) => !ownerId || ownerId !== materialOwners[0])) return null;
+    if (!effect.activationOwnerId || effect.materials.some((material) => material.ownerId
+      && !room.players.some((player) => player.id === material.ownerId))) return null;
     const activationOwner = room.players.filter((player) => player.id === effect.activationOwnerId);
     if (activationOwner.length !== 1 || !activationOwner[0].name.trim()) return null;
     const copy = publicDiscardSettlementCopyForFacts({ settlement, players: room.players, publicEventFacts: canonicalPublicDiscardFacts });
@@ -10403,7 +10403,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const publicDiscardCandidate = latestPublicDiscardAnnouncement
     && !presentedEventIds.has(latestPublicDiscardAnnouncement.eventId)
     && !activeEventSupersedesDiscard
-    ? { eventId: latestPublicDiscardAnnouncement.eventId, order: latestPublicDiscardAnnouncement.order }
+    ? {
+      eventId: latestPublicDiscardAnnouncement.eventId,
+      order: latestPublicDiscardAnnouncement.order,
+      ...(latestPublicDiscardAnnouncement.cards?.length
+        ? { materialIds: latestPublicDiscardAnnouncement.cards.map((card) => card.id) }
+        : {}),
+    }
     : null;
   const fanjianSettlementNarration: PublicInteractionNarration | null = skillEffectSettlementCandidate ? (() => {
     const settlement = skillEffectSettlementCandidate.action;
@@ -10942,6 +10948,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ...(publicCardDisplayAction.publicCardEffectFrame?.rootEventId
         ? { causalRootEventId: publicCardDisplayAction.publicCardEffectFrame.rootEventId }
         : {}),
+      ...(publicCardDisplayAction.publicDiscardSettlement ? {
+        discardEventId: publicCardDisplayAction.publicDiscardSettlement.eventId,
+        discardMaterialIds: publicCardDisplayAction.publicDiscardSettlement.cards?.map((card) => card.id),
+      } : {}),
     } : null,
     discard: publicDiscardCandidate,
     skillEvent: beautyNoticeEligible && beautyNotice ? { eventId: beautyNotice.eventId } : null,
