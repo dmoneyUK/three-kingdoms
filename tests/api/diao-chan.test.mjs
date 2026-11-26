@@ -47,6 +47,7 @@ test("Lust offers ordered male Duel targets, accepts one Hand cost, bypasses Neg
     effectId: "diao_chan_lust", effectClass: "COST",
     activationOwnerId: setup.diao.id,
     materials: [{ cardId: setup.cost.id, ownerId: setup.diao.id, fromZone: "HAND", toZone: "DISCARD" }],
+    source: { kind: "skill", label: "Lust", providerId: "diao_chan_lust" },
     targetIds: [setup.first.id, setup.second.id],
     outcome: "DUEL_DECLARED",
   }], "the public proof identifies only the committed physical cost and its true payer");
