@@ -20,7 +20,7 @@ Use these roles:
 
 The current refinement design document is not a task queue. A newly added design requirement does not silently replace a task already in progress. If the current task remains compatible, finish it; if it directly conflicts, stop source edits and replan from the latest `docs/UX2-refine.md` and direct user instructions. Ask the user only when the conflict leaves a material product decision unresolved.
 
-The Reviewer may contribute findings through the design document but does not gate authorized autonomous UI implementation. Do not wait for separate Reviewer approval or claim human acceptance unless it was explicitly reported.
+The Reviewer may contribute findings through the design document but does not gate authorized autonomous UI implementation. **Owner standing direction (2026-11-26 17:11 UTC):** within an already authorized active task, Planner publishes necessary evidence-based technical/design corrections directly; Agent synchronizes and resumes safely without separate Owner/Reviewer reapproval or a new launch message. Use latest compatible design; preserve local work. Routine implementation tradeoffs, soft visual spacing, empty reserves and missing optional UI evidence are not user-input blockers. New product scope, gameplay/semantic/privacy authority, genuine unresolved hard interaction conflicts and explicit pauses still require Owner direction. Never claim human acceptance unless explicitly reported.
 
 ## 2. Fresh session / resume
 
@@ -72,7 +72,7 @@ For the active task:
 4. Add focused regression proof that would fail on the previous broken behavior where practical.
 5. Run only focused local validation needed for that proof.
 6. Update HANDOVER with a concise implementation result and exact validation actually run.
-7. Commit and push to `ux-v2`.
+7. Commit and push to `ux-v2`. Complete a small bounded correction in one delivery, not artificial stages or separate approvals. When Owner explicitly requires one combined delivery, do not split it. For §10.78 specifically both remaining defects are one implementation and delivery.
 
 ### Local UI-test time limit
 
@@ -84,7 +84,7 @@ Prefer behavioral/semantic assertions over source-shape assertions. For layout, 
 
 GitHub Actions is the full validation gate.
 
-Before every commit, inspect the latest relevant push-triggered run for the current remote `ux-v2` head. If the latest run is still queued or in progress, wait for it to complete before committing. If it succeeds, continue with the scoped task commit; a successful run for another SHA does not satisfy this gate.
+Before every commit, inspect the latest relevant required push-triggered CI for current remote `ux-v2` code. If queued/in progress, wait; if successful, continue. **Markdown-only HEAD exception:** deploy.yml deliberately ignores `**/*.md` changes. If HEAD has no run because intervening commits after latest successfully validated code SHA changed ONLY Markdown documentation paths (including HANDOVER), verify ancestry and complete changed-path diff, record both SHAs and successful run, then proceed. Do not wait for nonexistent CI or require docs-only deploy. If any non-Markdown/build/workflow/test/config change, missing ancestry or uncertain diff exists, exception does not apply. A later failed/running relevant code run cannot be bypassed. Every new code delivery still requires its own exact-SHA CI and deploy/smoke.
 
 If the latest run is **failed**, stop normal task delivery and diagnose/fix the failure first. Run the narrowest useful local reproduction and validation. Commit the CI repair with its necessary focused regression/documentation; never bundle unrelated feature work. Push it, record its exact SHA as `CI REPAIR PUSHED — VALIDATION PENDING`, and do not resume feature commits until that SHA's required CI succeeds. If it fails again, repeat the repair cycle.
 
@@ -136,7 +136,7 @@ At the planning boundary:
 6. Write exactly one next bounded task into HANDOVER and record the design revision reviewed.
 7. Apply the commit-time CI gate in §5 before the task's first commit and again before every later commit.
 
-If user authorization or semantic authority is missing, stop and ask the user only for the missing decision. Separate Reviewer approval is not a gate. If boundedness is missing, split the work. Never copy a broad roadmap list into HANDOVER.
+If authorization or semantic authority is genuinely missing, stop and ask only for the missing material decision. Published within-scope corrections need no separate approval. Separate Reviewer approval is not a gate. Do not split small bounded work or a combined delivery explicitly required by Owner; split genuinely large work only where authorized. Never copy a broad roadmap list into HANDOVER.
 
 ## 9. User-input stop conditions
 
@@ -147,10 +147,12 @@ Record `BLOCKED — USER INPUT REQUIRED` and stop when:
 - semantic authority is missing or ambiguous;
 - public/private ownership is unclear;
 - a visual task would require gameplay/server-rule changes;
-- fitting the layout requires a material product decision not specified by the current design or direct user instructions;
+- fitting layout requires a genuinely unresolved hard product/interaction decision not specified by current design or direct user instructions; soft gaps, nominal empty reserves and permissible foreground layering are not hard blockers;
 - CI can only be made green by weakening meaningful coverage;
 - the task unexpectedly requires a large unrelated rewrite;
-- any remaining action would require guessing.
+- remaining action requires guessing gameplay, privacy/authority or genuinely material product behavior (not ordinary bounded implementation judgment).
+
+Before blocking, read latest remote design and use permitted fallback. Missing optional local visual evidence is recorded, not an automatic commit veto. If still blocked, report exact remaining hard issue without marking task complete or splitting an explicitly combined delivery.
 
 HANDOVER should contain only the exact blocker, evidence, affected surface, and smallest human decision required.
 
