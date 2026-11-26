@@ -413,7 +413,8 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
       || activityPaint !== null && (activityPaint.left < safeBounds.left || activityPaint.right > safeBounds.right
         || activityPaint.top < safeBounds.top || activityPaint.bottom > activityBottom + 2)
       || announcementPaint !== null && activityPaint !== null && overlaps(announcementPaint, activityPaint)
-      || announcementPaint !== null && input.obstacles.some((obstacle) => overlaps(announcementPaint, obstacle.rect))) {
+      || announcementPaint !== null && input.obstacles.some((obstacle) => overlaps(announcementPaint, obstacle.rect))
+      || activityPaint !== null && input.obstacles.some((obstacle) => overlaps(activityPaint, obstacle.rect))) {
       return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
     }
     const centerX = (safeBounds.left + safeBounds.right) / 2;
@@ -470,9 +471,10 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
         || cardRect.top < safeBounds.top || cardRect.bottom > safeBounds.bottom
         || activityRect.bottom > activityBottom + 2
         || activityPaint !== null && overlaps(cardRect, activityPaint)
+        || activityPaint !== null && input.obstacles.some(({ rect }) => overlaps(activityPaint, rect))
         || announcementPaint !== null && (input.obstacles.some(({ rect }) => overlaps(announcementPaint, rect))
           || activityPaint !== null && overlaps(announcementPaint, activityPaint))
-        || input.obstacles.some(({ rect }) => overlaps(cardRect, rect))
+        || cardObstacles.some(({ rect }) => overlaps(cardRect, rect))
         || announcementPaint !== null && !publicStageHasVisibleAreaAfterForegroundOverlay(cardRect, announcementPaint)) {
         return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
       }
