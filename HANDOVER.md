@@ -6,7 +6,7 @@
 
 ## Current bounded task — §10.81-A: canonical Judgement proof and H4 copy
 
-**Status:** implemented locally; focused validation passed; task commit and exact-SHA CI/deployment remain pending.
+**Status:** implementation pushed as `1af071aef0e4d0d53aca4c17dbad3dba83a13e0a`. Its fast/lint/build and browser-smoke jobs passed, but API CI failed because an existing engine-composition test had not included the new independent Judgement projection in its expected snapshot. The corrected projection-aware comparison passes the affected API file 45/45 locally; a single CI-repair push is pending. Deployment was skipped pending green CI.
 
 **Changes:** adds one typed public Judgement projection keyed by the exact original reveal event, using the authoritative seven-purpose judgement rules. It distinguishes provisional original reveal, final original result, and a proven committed Necromancy replacement. Replacement requires matching raw and projected proof, exact physical Hand→Judgement card, owner, target, root, resolution and event order. Private unconfirmed Hand identity stays out of the public snapshot. Canonical accessible copy preserves verified player spans and the approved two-line replacement wording. No gameplay rules or React rendering changed.
 
@@ -14,4 +14,4 @@
 
 **Validation:** Judgement unit tests 8/8; focused Judgement/Da Qiao API tests 34/34; Wei hero API tests 26/26; targeted ESLint and `git diff --check` passed. Build passed earlier in this work phase. No local UI/browser test was run.
 
-**Resume point:** review diff, commit this bounded task once, push to `ux-v2`, and verify exact-SHA Actions, deployment and production smoke. Then the next authorized task is §10.81-B, using this projection in the shared two-stage CardFace/H4 lifecycle. Do not claim Owner acceptance.
+**Resume point:** push the narrow CI correction, verify its exact-SHA Actions, deployment and production smoke, then start the next authorized task, §10.81-B. Do not claim Owner acceptance.

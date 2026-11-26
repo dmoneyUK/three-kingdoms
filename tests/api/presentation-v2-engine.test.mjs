@@ -1,5 +1,6 @@
 import test from "node:test";
 import { attackRootProjectionDiagnosticsFor, projectPresentationV2 } from "../../game/presentation-v2.ts";
+import { projectPublicJudgementPresentations } from "../../game/public-judgement-presentation.ts";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import { oathRecipientIds } from "../../game/oath.ts";
@@ -79,6 +80,13 @@ function assertProjectionMatchesEngine(code, token) {
       publicNextDecision: serverDecision,
       publicDrawPhaseDecision: view.presentationSnapshot.publicDrawPhaseDecision,
       viewerNegationChoice: view.presentationSnapshot.viewerNegationChoice,
+      publicJudgementPresentations: projectPublicJudgementPresentations(
+        view.timeline.filter((event) => event.presentation !== false
+          && typeof event.privateToPlayerId !== "string"
+          && view.publicPresentationTimeline.some((presentationEvent) => presentationEvent.id === event.id)),
+        view.presentationV2.publicCardEffects,
+        view.players.map((player) => ({ id: player.id, name: player.name, hero: player.hero })),
+      ),
     });
     assert.deepEqual(view.presentationSnapshot, expectedSnapshot, "route PresentationSnapshot is composed from the persisted engine projection");
     assert.deepEqual(view.presentationSnapshot.identity, expectedSnapshot.identity, "snapshot identity follows the atomic public authority gate");
