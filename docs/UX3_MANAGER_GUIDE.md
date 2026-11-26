@@ -1,6 +1,6 @@
 # WTK UX3 Manager — Independent Planner & Reviewer Operating Guide
 
-**Guide revision:** UX3-MGR-02 · 2026-11-26  
+**Guide revision:** UX3-MGR-03 · 2026-11-26  
 **Project:** War of Three Kingdoms (WTK) · https://github.com/dmoneyUK/three-kingdoms  
 **Manager branch:** `ux3` · **UX3 design authority:** [`docs/UX3_DESIGN.md`](UX3_DESIGN.md) · **UX3 Coding Agent method:** [`docs/UX3_AGENT_WORKFLOW.md`](UX3_AGENT_WORKFLOW.md)  
 **Reusable new-conversation prompt:** [`docs/UX3_MANAGER_BOOTSTRAP.md`](UX3_MANAGER_BOOTSTRAP.md)
@@ -109,7 +109,7 @@ Status vocabulary: `DRAFT`, `OWNER_APPROVED_CODE_ONLY`, `OWNER_APPROVED_CONDITIO
 
 - Owner approval to establish a **Manager chat** or **write UX3 design documentation** is not approval to modify source, CI workflow or deploy. Before dispatch verify the selected task's recorded approval, budget, applicable editing boundary and actual CI isolation. Non-overlapping preparation and hosted exceptions require explicit live design authority. Never request identical approval just because the conversation changed.
 - To write an approved design revision: fetch `ux3/docs/UX3_DESIGN.md` current blob SHA, apply the narrow edit preserving all live and original UX2 contracts, push to `ux3`, independently re-fetch both file content and new commit. **Do not edit `ux-v2/docs/UX2-refine.md`, `ux-v2/HANDOVER.md`, `ux3/UX3_HANDOVER.md`, Agent workflow, main guide or AI design without explicit separate authority.**
-- A GitHub push is a durable design handoff, NOT a command that launches a dormant Coding Agent. Provide Owner a short **Chinese copyable UX3 Agent launch instruction** only after code authorization, with exact design task ID/branch/ref; do not claim the Coding Agent was started.
+- A GitHub push is a durable design handoff, NOT a command that launches a dormant Coding Agent. Provide Owner a minimal **Chinese copyable UX3 Agent instruction** only after task authorization and gate release: task ID (and correction/review stage if needed), a short direction to read the latest UX3_DESIGN.md on ux3 and execute that contract. An existing Agent needs no repeated repo/branch/ref, file list, algorithm, tests, restrictions or budget in chat; all of those belong in the design. For a new Agent add only the branch and links to Design and Agent Workflow. Do not claim actual launch.
 
 ### Stage E — Independently review actual Coding Agent delivery
 
@@ -135,7 +135,7 @@ Default CI is isolated and non-deploying; verify actual active-ref workflow conf
 
 **On a requested proposal:** independently inspect relevant source, decide one technical solution, document acceptance and STOP conditions; publish approved task/design in UX3_DESIGN.md. Do not ask the Agent to choose architecture.
 
-**On an approved executable task:** supply copyable separate Agent launch/continuation instruction with live task ID, exact branch/ref, allowed files, scope, tests, budgets, Agent workflow and its own handover. Do not dispatch duplicate Agents. A doc push is not an actual Agent launch.
+**On an approved executable task:** first persist the complete task contract (pinned ref, allowed files, implementation, tests, budget, stop conditions, permissions and delivery evidence) in UX3_DESIGN.md and verify remote readback. Then give only a minimal copyable instruction, normally 1–2 short Chinese sentences: task ID and stage, read latest design and execute the specified contract, stop for review. Do not duplicate the contract in chat. Example: `执行 UX3-<task ID>（如适用：本轮修正），按最新 UX3_DESIGN.md 的任务契约执行，完成后更新 UX3_HANDOVER.md 并停止。` New Agent bootstrap may additionally include branch and document links. Do not dispatch duplicate Agents. A doc push is not an actual Agent launch.
 
 **Durable Manager session handoff:** after substantive approved decisions and independent reviews, update the design's live status, authorization, exact evidence, open blockers, accepted scope, next eligibility and remaining budget. Preserve old decisions and UX2 contracts. Read current blob before writing, compare and re-fetch remote result. No separate competing roadmap or Manager handover; Agent-owned handover stays read-only. Keep permanent guide/bootstrap free from current task IDs, SHAs and live status. Governance changes require Owner direction.
 
