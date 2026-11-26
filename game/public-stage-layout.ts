@@ -12,7 +12,6 @@ export type PublicStageH4Geometry = {
 
 export const PUBLIC_STAGE_CARD_BAND_CLEARANCE_PX = 8;
 export const PUBLIC_STAGE_EFFECT_FRAME_BAND_CLEARANCE_PX = 5;
-const PUBLIC_STAGE_EFFECT_FRAME_SOLVER_HEADROOM_PX = 0.5;
 
 export function publicStageBandClearance(surface: PublicStageStationarySurface = "card") {
   return surface === "effect-frame"
@@ -454,7 +453,6 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
       || ![reservedHeight, gap].every(Number.isFinite) || gap < 0) {
       return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
     }
-    const centerX = (safeBounds.left + safeBounds.right) / 2;
     const h4 = h4Paint;
     const activityRect = input.scene.phase === "REVEAL" || input.activityBottom !== undefined ? anchoredActivity : input.phaseRects!.activity;
     if (input.scene.phase === "REVEAL") {
