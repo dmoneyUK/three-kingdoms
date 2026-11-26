@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
+  DEFAULT_GENERATED_CONFIG_PATH,
   UX3_STAGING_D1_SENTINEL,
   verifyUx3StagingConfig,
 } from "../scripts/verify-ux3-staging-config.mjs";
@@ -52,6 +53,27 @@ test("preparation accepts the dedicated generated target with only the sentinel 
   assert.deepEqual(result, { mode: "preparation", databaseIdClass: "sentinel" });
 });
 
+test("the generated ../../drizzle path resolves from the actual generated config location", () => {
+  const result = verifyUx3StagingConfig(cloneConfig(), {
+    mode: "preparation",
+    configPath: DEFAULT_GENERATED_CONFIG_PATH,
+  });
+  assert.deepEqual(result, { mode: "preparation", databaseIdClass: "sentinel" });
+});
+
+test("preparation permits only empty legacy binding and unsafe defaults", () => {
+  const config = cloneConfig();
+  config.wasm_modules = [];
+  config.text_blobs = [];
+  config.data_blobs = [];
+  config.unsafe_hello_world = [];
+  config.unsafe = {};
+  assert.deepEqual(
+    verifyUx3StagingConfig(config, { mode: "preparation" }),
+    { mode: "preparation", databaseIdClass: "sentinel" },
+  );
+});
+
 test("preparation accepts a local fixture UUID only when separately supplied", () => {
   const config = cloneConfig();
   config.d1_databases[0].database_id = LOCAL_FIXTURE_D1_ID;
@@ -86,7 +108,7 @@ const preparationRejections = [
   ["rejects a missing D1 binding", (c) => { c.d1_databases = []; }, /exactly one D1 binding/],
   ["rejects an additional D1 binding", (c) => { c.d1_databases.push(structuredClone(c.d1_databases[0])); }, /exactly one D1 binding/],
   ["rejects an incorrect D1 binding name", (c) => { c.d1_databases[0].binding = "OTHER"; }, /binding must be DB/],
-  ["rejects an incorrect migration directory", (c) => { c.d1_databases[0].migrations_dir = "other"; }, /resolve to drizzle/],
+  ["rejects an incorrect migration directory", (c) => { c.d1_databases[0].migrations_dir = "other"; }, /trusted checkout drizzle directory/],
   ["rejects an unexpected D1 option", (c) => { c.d1_databases[0].preview_database_id = LOCAL_FIXTURE_D1_ID; }, /not an allowed field/],
   ["rejects workers.dev", (c) => { c.workers_dev = true; }, /workers_dev must be false/],
   ["rejects a missing workers.dev guard", (c) => { delete c.workers_dev; }, /workers_dev must be false/],
@@ -121,6 +143,64 @@ for (const [title, mutate, expected] of preparationRejections) {
     assert.throws(() => verifyUx3StagingConfig(config, { mode: "preparation" }), expected);
   });
 }
+
+test("preparation rejects an absolute migration path ending in drizzle", () => {
+  const config = cloneConfig();
+  config.d1_databases[0].migrations_dir = join(tmpdir(), "untrusted-checkout", "drizzle");
+  assert.throws(
+    () => verifyUx3StagingConfig(config, { mode: "preparation" }),
+    /trusted checkout drizzle directory/,
+  );
+});
+
+test("preparation rejects a traversal migration path ending in drizzle", () => {
+  const config = cloneConfig();
+  config.d1_databases[0].migrations_dir = "../../../tmp/drizzle";
+  assert.throws(
+    () => verifyUx3StagingConfig(config, { mode: "preparation" }),
+    /trusted checkout drizzle directory/,
+  );
+});
+
+test("preparation rejects a generated config path outside the trusted checkout", () => {
+  const config = cloneConfig();
+  assert.throws(
+    () => verifyUx3StagingConfig(config, {
+      mode: "preparation",
+      configPath: join(tmpdir(), "untrusted-checkout", "dist", "server", "wrangler.json"),
+    }),
+    /generated config path must be inside the trusted checkout/,
+  );
+});
+
+for (const key of ["wasm_modules", "text_blobs", "data_blobs"]) {
+  test(`preparation rejects an active ${key} legacy binding map`, () => {
+    const config = cloneConfig();
+    config[key] = [{ binding: "UNSAFE_BINDING", name: "active" }];
+    assert.throws(
+      () => verifyUx3StagingConfig(config, { mode: "preparation" }),
+      /legacy named binding map must be empty/,
+    );
+  });
+}
+
+test("preparation rejects active unsafe settings", () => {
+  const config = cloneConfig();
+  config.unsafe = { bindings: [{ name: "ACTIVE_UNSAFE_BINDING" }] };
+  assert.throws(
+    () => verifyUx3StagingConfig(config, { mode: "preparation" }),
+    /unsafe setting is forbidden/,
+  );
+});
+
+test("preparation rejects a non-empty unsafe hello-world default", () => {
+  const config = cloneConfig();
+  config.unsafe_hello_world = ["active"];
+  assert.throws(
+    () => verifyUx3StagingConfig(config, { mode: "preparation" }),
+    /unsafe setting is forbidden/,
+  );
+});
 
 test("preparation rejects a remote flag anywhere outside the D1 entry", () => {
   const config = cloneConfig();

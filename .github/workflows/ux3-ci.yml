@@ -34,6 +34,8 @@ jobs:
           node-version: "22.13.0"
           cache: "npm"
       - run: npm ci
+      - name: Run staging config guard unit tests
+        run: node --test tests/ux3-staging-config.test.mjs
       - name: Build the isolated UX3 staging config locally
         run: npm run build
         env:
@@ -54,13 +56,28 @@ jobs:
         with:
           node-version: "22.13.0"
           cache: "npm"
-      - run: npm ci
+      - name: Install dependencies
+        id: install
+        run: npm ci
+      - name: Check Linux stack limit for ESLint
+        run: |
+          node --input-type=module -e '
+            import { execFileSync } from "node:child_process";
+
+            const stackLimit = execFileSync("bash", ["-c", "ulimit -s"], { encoding: "utf8" }).trim();
+            const sufficient = stackLimit === "unlimited" || Number(stackLimit) >= 4096;
+            console.log(`Linux stack limit: ${stackLimit} KiB; ESLint V8 stack: 4096 KiB.`);
+            if (!sufficient) process.exit(1);
+          '
       - name: Run ESLint with full React Compiler rule coverage
-        run: npm run lint
-        env:
-          NODE_OPTIONS: --max-old-space-size=8192
-      - run: npm run build
-      - run: npm run test:fast
+        run: node --stack-size=4096 --max-old-space-size=8192 ./node_modules/eslint/bin/eslint.js . --ignore-pattern dist --ignore-pattern .next
+      - name: Build
+        id: build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run build
+      - name: Fast tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.build.outcome == 'success' }}
+        run: npm run test:fast
 
   api:
     if: github.event_name == 'push' && github.ref == 'refs/heads/ux3'

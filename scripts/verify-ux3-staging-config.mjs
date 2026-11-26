@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const UX3_STAGING = Object.freeze({
@@ -10,6 +10,15 @@ export const UX3_STAGING = Object.freeze({
 });
 
 export const UX3_STAGING_D1_SENTINEL = "00000000-0000-0000-0000-000000000000";
+
+const TRUSTED_CHECKOUT_ROOT = resolve(fileURLToPath(new URL("../", import.meta.url)));
+const TRUSTED_MIGRATION_DIRECTORY = resolve(TRUSTED_CHECKOUT_ROOT, UX3_STAGING.migrationDirectory);
+export const DEFAULT_GENERATED_CONFIG_PATH = resolve(
+  TRUSTED_CHECKOUT_ROOT,
+  "dist",
+  "server",
+  "wrangler.json",
+);
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DENIED_DATABASE_IDS = new Set([
@@ -23,6 +32,7 @@ const AI_FLAG_KEY = /^(?:AI[A-Z0-9]|ai[A-Z0-9])|(?:^|[_-])ai(?:[_-]|$)/i;
 const TEST_CAPABILITY_KEY = /^(?:wtk[_-]?)?test[_-]?capabilities$/i;
 const PRIVATE_VALUE_KEY = /(?:token|secret|password|credential|private[_-]?key|account[_-]?id)/i;
 const ROUTE_KEYS = ["routes", "route", "custom_domains", "custom_domain", "dev_routes"];
+const LEGACY_BINDING_MAP_KEYS = new Set(["wasm_modules", "text_blobs", "data_blobs"]);
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -40,6 +50,61 @@ function pathText(path) {
     if (typeof part === "number") return `${result}[${part}]`;
     return `${result}${result ? "." : ""}${part}`;
   }, "");
+}
+
+function isPathInside(directory, target) {
+  const relativePath = relative(directory, target);
+  return relativePath === ""
+    || (relativePath !== ".."
+      && !relativePath.startsWith(`..${sep}`)
+      && !isAbsolute(relativePath));
+}
+
+function resolveConfigPath(configPath, issues) {
+  if (configPath === undefined) return DEFAULT_GENERATED_CONFIG_PATH;
+  if (typeof configPath !== "string" || configPath.trim() === "") {
+    issues.add("generated config path must be a non-empty string");
+    return null;
+  }
+
+  const resolvedPath = resolve(configPath);
+  if (!isPathInside(TRUSTED_CHECKOUT_ROOT, resolvedPath)) {
+    issues.add("generated config path must be inside the trusted checkout");
+  }
+  return resolvedPath;
+}
+
+function inspectUnsafeSettings(value, issues, path = []) {
+  if (!isRecord(value) && !Array.isArray(value)) return;
+
+  const entries = Array.isArray(value)
+    ? value.map((child, index) => [index, child])
+    : Object.entries(value);
+
+  for (const [key, child] of entries) {
+    const nextPath = [...path, key];
+    if (typeof key === "string" && /^unsafe(?:_|$)/i.test(key) && hasActiveValue(child)) {
+      issues.add(`${pathText(nextPath)} unsafe setting is forbidden`);
+    }
+    inspectUnsafeSettings(child, issues, nextPath);
+  }
+}
+
+function inspectLegacyBindingMaps(value, issues, path = []) {
+  if (!isRecord(value) && !Array.isArray(value)) return;
+
+  const entries = Array.isArray(value)
+    ? value.map((child, index) => [index, child])
+    : Object.entries(value);
+
+  for (const [key, child] of entries) {
+    const nextPath = [...path, key];
+    if (typeof key === "string" && LEGACY_BINDING_MAP_KEYS.has(key.toLowerCase())
+      && hasActiveValue(child)) {
+      issues.add(`${pathText(nextPath)} legacy named binding map must be empty`);
+    }
+    inspectLegacyBindingMaps(child, issues, nextPath);
+  }
 }
 
 function inspectForbiddenSettings(value, mode, issues, path = []) {
@@ -153,6 +218,7 @@ function validateDatabaseId(value, mode, options, issues) {
 export function verifyUx3StagingConfig(config, options = {}) {
   const issues = new Set();
   const { mode } = options;
+  const configPath = resolveConfigPath(options.configPath, issues);
 
   if (mode !== "preparation" && mode !== "hosted") {
     throw new Error("mode must be preparation or hosted");
@@ -188,8 +254,9 @@ export function verifyUx3StagingConfig(config, options = {}) {
         issues.add("d1_databases[0].database_name must be the dedicated UX3 Staging database");
       }
       if (typeof d1.migrations_dir !== "string"
-        || d1.migrations_dir.replaceAll("\\", "/").split("/").at(-1) !== UX3_STAGING.migrationDirectory) {
-        issues.add("d1_databases[0].migrations_dir must resolve to drizzle");
+        || !configPath
+        || resolve(dirname(configPath), d1.migrations_dir) !== TRUSTED_MIGRATION_DIRECTORY) {
+        issues.add("d1_databases[0].migrations_dir must resolve exactly to the trusted checkout drizzle directory");
       }
 
       const allowedD1Keys = mode === "hosted"
@@ -205,6 +272,8 @@ export function verifyUx3StagingConfig(config, options = {}) {
 
   addRouteAndCronIssues(config, issues);
   inspectForbiddenSettings(config, mode, issues);
+  inspectLegacyBindingMaps(config, issues);
+  inspectUnsafeSettings(config, issues);
 
   if (issues.size > 0) {
     throw new Error(`UX3 staging config rejected: ${[...issues].join("; ")}`);
@@ -247,9 +316,10 @@ function parseArguments(args) {
 export function runCli(args) {
   try {
     const options = parseArguments(args);
+    const configPath = resolve(options.configPath);
     let source;
     try {
-      source = readFileSync(resolve(options.configPath), "utf8");
+      source = readFileSync(configPath, "utf8");
     } catch {
       throw new Error("generated Wrangler config could not be read");
     }
@@ -261,7 +331,7 @@ export function runCli(args) {
       throw new Error("generated Wrangler config is missing or invalid JSON");
     }
 
-    const result = verifyUx3StagingConfig(config, options);
+    const result = verifyUx3StagingConfig(config, { ...options, configPath });
     console.log(`UX3 staging config verified (${result.mode}; database ID class: ${result.databaseIdClass}).`);
     return 0;
   } catch (error) {
