@@ -1584,6 +1584,269 @@ type LocalOpponentInspectionPresentation = { id: string; name: string; hero: Her
 type PrivateStealResult = { semantics: "PRIVATE_PROVEN"; roomCode: string; eventId: string; rootEventId: string; rootResolutionId: string; sourceId: string; targetId: string; sourceZone: "hand"; card: Card };
 type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; serverNow?: number; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; privateStealResult: PrivateStealResult | null; privateStealParticipantResult: PrivateStealParticipantResult | null; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; timelineHistory?: GameEvent[]; publicPresentationTurn?: PublicPresentationTurnScope; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; publicDiscardHandoff?: { eventId: string; actorId: string; cardCount: number } | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealEventId: string | null; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; complete: boolean; countdownUntil: number } | null; publicHarvestPool?: { semantics: "PROVEN"; rootEventId: string; revealEventId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[] } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
 
+type ActiveCardAcquisitionSettlementState = {
+  eventId: string;
+  roomCode: string;
+  rootEventId: string;
+  actionRevision: string | null;
+  privateResultScope?: string;
+  exiting: boolean;
+  journeySettled: boolean;
+  h4VisibleSinceMs: number | null;
+};
+
+type CardAcquisitionSettlementCandidate = {
+  action: PresentationCardAcquisitionSettlement;
+  rootEvent: GameEvent;
+  settlementEvent: Extract<GameEvent, { type: "message" }>;
+  source: Player;
+  target: Player;
+  exiting: boolean;
+  journeySettled: boolean;
+  h4VisibleSinceMs: number | null;
+};
+
+function cardAcquisitionSettlementEventMatches(event: GameEvent, proof: PresentationCardAcquisitionSettlement) {
+  if (event.type !== "message") return false;
+  if (proof.acquisitionKind === "STEAL") {
+    const eventProof = event.publicStealSettlement;
+    return eventProof?.semantics === proof.semantics && eventProof.rootEventId === proof.rootEventId
+      && eventProof.rootResolutionId === proof.rootResolutionId && eventProof.sourceId === proof.sourceId
+      && eventProof.targetId === proof.targetId && eventProof.outcome === proof.outcome;
+  }
+  const eventProof = event.publicCardAcquisitionSettlement;
+  return eventProof?.semantics === proof.semantics && eventProof.acquisitionKind === proof.acquisitionKind
+    && eventProof.providerId === proof.providerId && eventProof.rootEventId === proof.rootEventId
+    && eventProof.rootResolutionId === proof.rootResolutionId && eventProof.interactionId === proof.interactionId
+    && eventProof.rootFrameId === proof.rootFrameId && eventProof.sourceId === proof.sourceId
+    && eventProof.targetId === proof.targetId && eventProof.outcome === proof.outcome
+    && eventProof.sourceZone === proof.sourceZone && eventProof.affectedCardOwnerId === proof.affectedCardOwnerId
+    && eventProof.destinationZone === proof.destinationZone && eventProof.destinationOwnerId === proof.destinationOwnerId
+    && eventProof.affectedCardFace?.id === proof.affectedCardFace?.id
+    && eventProof.affectedCardFace?.kind === proof.affectedCardFace?.kind
+    && eventProof.affectedCardFace?.suit === proof.affectedCardFace?.suit
+    && eventProof.affectedCardFace?.rank === proof.affectedCardFace?.rank;
+}
+
+function freshCardAcquisitionSettlements(events: readonly GameEvent[], settlements: readonly PresentationCardAcquisitionSettlement[]) {
+  return events.flatMap((event) => {
+    const matches = settlements.filter((proof) => proof.eventId === event.id);
+    return matches.length === 1 && cardAcquisitionSettlementEventMatches(event, matches[0]) ? matches : [];
+  });
+}
+
+function cardAcquisitionSettlementCandidate(
+  room: Room,
+  settlements: readonly PresentationCardAcquisitionSettlement[],
+  active: ActiveCardAcquisitionSettlementState | null,
+  liveRootEventId: string | null,
+): CardAcquisitionSettlementCandidate | null {
+  const settlement = settlements.find((candidate) => candidate.eventId === active?.eventId);
+  const expectedOutcome = settlement?.acquisitionKind === "RETALIATION" ? "RETALIATION_RESOLVED" : "STEAL_RESOLVED";
+  if (!settlement || settlement.semantics !== "PROVEN" || settlement.outcome !== expectedOutcome
+    || active?.roomCode !== room.code || active.rootEventId !== settlement.rootEventId
+    || active.actionRevision !== (room.actionRevision ?? null)
+    || liveRootEventId && liveRootEventId !== settlement.rootEventId) return null;
+  const rootEvents = room.timeline.filter((event) => event.id === settlement.rootEventId);
+  const settlementEvents = room.timeline.filter((event) => event.id === settlement.eventId);
+  if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
+  const rootEvent = rootEvents[0];
+  const settlementEvent = settlementEvents[0];
+  if (rootEvent.presentation === false || typeof rootEvent.privateToPlayerId === "string"
+    || rootEvent.resolutionId !== settlement.rootResolutionId || settlementEvent.type !== "message"
+    || settlementEvent.presentation === false || typeof settlementEvent.privateToPlayerId === "string"
+    || settlementEvent.importance !== "essential" || settlementEvent.finalResult !== true
+    || settlementEvent.resolutionId !== settlement.rootResolutionId) return null;
+  if (settlement.acquisitionKind === "STEAL") {
+    const eventProof = settlementEvent.publicStealSettlement;
+    if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.card.kind !== "Steal"
+      || eventProof?.semantics !== settlement.semantics || eventProof.rootEventId !== settlement.rootEventId
+      || eventProof.rootResolutionId !== settlement.rootResolutionId || eventProof.sourceId !== settlement.sourceId
+      || eventProof.targetId !== settlement.targetId || eventProof.outcome !== "STEAL_RESOLVED"
+      || eventProof.sourceZone !== settlement.sourceZone || eventProof.affectedCardOwnerId !== settlement.affectedCardOwnerId
+      || eventProof.destinationZone !== settlement.destinationZone || eventProof.destinationOwnerId !== settlement.destinationOwnerId
+      || eventProof.affectedCardFace?.id !== settlement.affectedCardFace?.id
+      || eventProof.affectedCardFace?.kind !== settlement.affectedCardFace?.kind
+      || eventProof.affectedCardFace?.suit !== settlement.affectedCardFace?.suit
+      || eventProof.affectedCardFace?.rank !== settlement.affectedCardFace?.rank) return null;
+  } else {
+    const eventProof = settlementEvent.publicCardAcquisitionSettlement;
+    if (eventProof?.semantics !== settlement.semantics || eventProof.acquisitionKind !== "RETALIATION"
+      || eventProof.providerId !== settlement.providerId || eventProof.rootEventId !== settlement.rootEventId
+      || eventProof.rootResolutionId !== settlement.rootResolutionId || eventProof.interactionId !== settlement.interactionId
+      || eventProof.rootFrameId !== settlement.rootFrameId || eventProof.sourceId !== settlement.sourceId
+      || eventProof.targetId !== settlement.targetId || eventProof.outcome !== "RETALIATION_RESOLVED"
+      || eventProof.sourceZone !== settlement.sourceZone || eventProof.affectedCardOwnerId !== settlement.affectedCardOwnerId
+      || eventProof.destinationZone !== settlement.destinationZone || eventProof.destinationOwnerId !== settlement.destinationOwnerId
+      || eventProof.affectedCardFace?.id !== settlement.affectedCardFace?.id
+      || eventProof.affectedCardFace?.kind !== settlement.affectedCardFace?.kind
+      || eventProof.affectedCardFace?.suit !== settlement.affectedCardFace?.suit
+      || eventProof.affectedCardFace?.rank !== settlement.affectedCardFace?.rank
+      || !settlement.interactionId || !settlement.rootFrameId) return null;
+  }
+  const source = room.players.find((player) => player.id === settlement.sourceId);
+  const target = room.players.find((player) => player.id === settlement.targetId);
+  if (!source?.name || !target?.name || source.id === target.id) return null;
+  return {
+    action: settlement, rootEvent, settlementEvent, source, target,
+    exiting: active?.exiting === true,
+    journeySettled: active?.journeySettled === true,
+    h4VisibleSinceMs: active?.h4VisibleSinceMs ?? null,
+  };
+}
+
+function currentPrivateAcquisitionParticipantResult(
+  result: PrivateStealParticipantResult | null | undefined,
+  candidate: CardAcquisitionSettlementCandidate | null,
+  viewerSwitchPending: boolean,
+  room: Room,
+) {
+  const action = candidate?.action;
+  if (!result || !action || viewerSwitchPending
+    || action.acquisitionKind === "STEAL" && !candidate.journeySettled
+    || result.roomCode !== room.code || result.viewerId !== room.meId
+    || result.settlementEventId !== action.eventId || result.rootEventId !== action.rootEventId
+    || result.rootResolutionId !== action.rootResolutionId || result.sourceId !== action.sourceId
+    || result.targetId !== action.targetId || action.sourceZone !== "hand"
+    || (result.acquisitionKind ?? "STEAL") !== action.acquisitionKind
+    || result.sourceZone !== "hand" || result.physicalCardId !== result.card.id
+    || (room.serverNow ?? Date.now()) > result.eligibleUntil
+    || result.role === "TAKER" && (room.meId !== action.sourceId || !result.transferId)
+    || result.role === "FORMER_OWNER" && room.meId !== action.targetId) return null;
+  return result;
+}
+
+function cardAcquisitionDisplayAction(
+  candidate: CardAcquisitionSettlementCandidate | null,
+  roomCode: string,
+  seenEventIds: ReadonlySet<string>,
+): PublicCardDisplayAction | null {
+  if (!candidate) return null;
+  const action = candidate.action;
+  if (action.acquisitionKind === "STEAL" && candidate.rootEvent.type !== "card") return null;
+  const cardFace = action.acquisitionKind === "STEAL" && candidate.rootEvent.type === "card"
+    ? candidate.rootEvent.card : undefined;
+  const acquiredFace = action.affectedCardFace;
+  const acquiredCardLabel = acquiredFace
+    ? `${acquiredFace.rank}${acquiredFace.suit} ${cardDefinition(acquiredFace.kind).name}` : "a Hand card";
+  const isRetaliation = action.acquisitionKind === "RETALIATION";
+  return {
+    key: ["card-acquisition-settlement", action.acquisitionKind, action.rootEventId, action.eventId].join(":"),
+    rootEventId: action.rootEventId,
+    interactionId: action.interactionId,
+    rootFrameId: action.rootFrameId,
+    sourceId: action.sourceId,
+    targetId: action.targetId,
+    ...(cardFace ? { cardKind: "Steal" as const, cardFace } : {}),
+    cardLabel: isRetaliation ? "RETALIATION" : "STEAL",
+    ariaLabel: isRetaliation
+      ? `${candidate.source.name} used Retaliation to obtain ${acquiredCardLabel} from ${candidate.target.name}.`
+      : `${candidate.source.name} played Steal targeting ${candidate.target.name}`,
+    motion: {
+      type: "single-target",
+      scopeKey: [roomCode, action.rootEventId].join(":"),
+      freshEventIds: isRetaliation || seenEventIds.has(action.rootEventId) ? [] : [action.rootEventId],
+    },
+    settlement: {
+      eventId: action.eventId,
+      rootResolutionId: action.rootResolutionId,
+      outcome: action.outcome,
+      exiting: candidate.exiting,
+      targetCardMovement: {
+        sourceZone: action.sourceZone,
+        affectedCardOwnerId: action.affectedCardOwnerId,
+        destinationZone: action.destinationZone,
+        destinationOwnerId: action.destinationOwnerId,
+        ...(action.affectedCardFace ? { affectedCardFace: action.affectedCardFace } : {}),
+      },
+    },
+  };
+}
+
+function cardAcquisitionNarration(
+  candidate: CardAcquisitionSettlementCandidate | null,
+  privateParticipant: PrivateStealParticipantResult | null,
+  currentInteractionEventId: string | null | undefined,
+  timeline: readonly GameEvent[],
+): PublicInteractionNarration | null {
+  if (!candidate || candidate.action.acquisitionKind !== "RETALIATION" || currentInteractionEventId !== candidate.action.eventId) return null;
+  const { action, source, target } = candidate;
+  const card = action.affectedCardFace
+    ?? (privateParticipant?.acquisitionKind === "RETALIATION" && privateParticipant.settlementEventId === action.eventId
+      ? privateParticipant.card : undefined);
+  const copy = publicH4Copy([
+    { id: source.id, name: source.name }, " used Retaliation to obtain ",
+    card ? `${card.rank}${card.suit} ${cardDefinition(card.kind).name}` : "a Hand card",
+    " from ", { id: target.id, name: target.name }, ".",
+  ]);
+  return {
+    eventId: action.eventId,
+    publicSequence: publicSequenceForEvent(timeline, action.eventId),
+    rootEventId: action.rootEventId,
+    interactionId: action.interactionId ?? "",
+    rootFrameId: action.rootFrameId ?? "",
+    actorId: action.sourceId,
+    headline: copy.message,
+    headlineSegments: copy.segments,
+    compactHeadline: copy.message,
+    accessibleLabel: copy.message,
+    latestCommittedEventId: action.eventId,
+    phase: "FINAL",
+  };
+}
+
+function publicInteractionNarrationForStage(
+  retaliation: PublicInteractionNarration | null,
+  fanjian: PublicInteractionNarration | null,
+  currentFact: { rootEventId?: string; eventId: string; identity: { interactionId: string; rootFrameId: string } } | null,
+  snapshot: PresentationSnapshot | null,
+  players: readonly Player[],
+): PublicInteractionNarration | null {
+  if (retaliation) return retaliation;
+  if (fanjian) return fanjian;
+  if (!currentFact?.rootEventId) return null;
+  return derivePublicInteractionNarration({
+    snapshot,
+    players,
+    rootEventId: currentFact.rootEventId,
+    interactionId: currentFact.identity.interactionId,
+    rootFrameId: currentFact.identity.rootFrameId,
+    eventId: currentFact.eventId,
+  });
+}
+
+function retaliationSettlementH4IsActive(
+  candidate: CardAcquisitionSettlementCandidate | null,
+  active: ActiveCardAcquisitionSettlementState | null,
+  mustHide: boolean,
+  narration: PublicInteractionNarration | null,
+  h4Owner: { eventId: string; owner: string } | null,
+) {
+  const eventId = candidate?.action.eventId;
+  return Boolean(candidate?.action.acquisitionKind === "RETALIATION" && eventId
+    && active?.eventId === eventId && !mustHide && narration?.eventId === eventId
+    && h4Owner?.eventId === eventId
+    && (h4Owner.owner === "PublicInteractionAnnouncementLayer" || h4Owner.owner === "PublicCardDisplay"));
+}
+
+type TargetCardSettlementOutcome = "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "RETALIATION_RESOLVED";
+function targetCardSettlementPresentation<TD, TS>(
+  retaliationH4Active: boolean,
+  displayAction: PublicCardDisplayAction | null,
+  activeDismantle: TD,
+  activeAcquisition: TS,
+  acquisitionCandidate: CardAcquisitionSettlementCandidate | null,
+): { outcome: TargetCardSettlementOutcome | null; eventId: string | null; active: TD | TS | null } {
+  const displayOutcome = displayAction?.settlement?.outcome;
+  const outcome: TargetCardSettlementOutcome | null = retaliationH4Active ? "RETALIATION_RESOLVED"
+    : displayOutcome === "DISMANTLE_RESOLVED" || displayOutcome === "STEAL_RESOLVED" ? displayOutcome : null;
+  const eventId = outcome === "RETALIATION_RESOLVED" ? acquisitionCandidate?.action.eventId ?? null
+    : outcome ? displayAction?.settlement?.eventId ?? null : null;
+  const active = outcome === "DISMANTLE_RESOLVED" ? activeDismantle
+    : outcome === "STEAL_RESOLVED" || outcome === "RETALIATION_RESOLVED" ? activeAcquisition : null;
+  return { outcome, eventId, active };
+}
+
 function sharedContributionDisplayAction(room: Room, domainPublicCardDisplayAction: PublicCardDisplayAction | null,
   currentFact: { eventId: string; order: number } | null, seenEventIds: ReadonlySet<string>,
   publicInteractionNarration: PublicInteractionNarration | null): PublicCardDisplayAction | null {
@@ -4495,16 +4758,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     h4VisibleSinceMs: number | null;
   } | null>(null);
   const retiredDismantleSettlementIds = useRef(new Set<string>());
-  const [activeStealSettlement, setActiveStealSettlement] = useState<{
-    eventId: string;
-    roomCode: string;
-    rootEventId: string;
-    actionRevision: string | null;
-    privateResultScope?: string;
-    exiting: boolean;
-    journeySettled: boolean;
-    h4VisibleSinceMs: number | null;
-  } | null>(null);
+  const [activeStealSettlement, setActiveStealSettlement] = useState<ActiveCardAcquisitionSettlementState | null>(null);
   const [activeAttackHitSettlement, setActiveAttackHitSettlement] = useState<{ eventId: string; exiting: boolean; firstRenderedAt: number | null; lifecycle: AttackHitSettlementHoldIdentity } | null>(null);
   const [activeGroupSettlement, setActiveGroupSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeBumperHarvestSettlement, setActiveBumperHarvestSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
@@ -6207,34 +6461,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         else retiredDismantleSettlementIds.current.add(publicDismantleSettlementRetirementKey(identity));
       }
     }
-    const freshCardAcquisitionSettlements = fresh.flatMap((event) => {
-      if (event.type !== "message") return [];
-      const proofs = cardAcquisitionSettlements.filter((proof) => proof.eventId === event.id);
-      if (proofs.length !== 1) return [];
-      const proof = proofs[0];
-      if (proof.acquisitionKind === "STEAL") {
-        const eventProof = event.publicStealSettlement;
-        return eventProof?.semantics === proof.semantics && eventProof.rootEventId === proof.rootEventId
-          && eventProof.rootResolutionId === proof.rootResolutionId && eventProof.sourceId === proof.sourceId
-          && eventProof.targetId === proof.targetId && eventProof.outcome === proof.outcome ? [proof] : [];
-      }
-      const eventProof = event.publicCardAcquisitionSettlement;
-      return eventProof?.semantics === proof.semantics && eventProof.acquisitionKind === proof.acquisitionKind
-        && eventProof.providerId === proof.providerId && eventProof.rootEventId === proof.rootEventId
-        && eventProof.rootResolutionId === proof.rootResolutionId && eventProof.interactionId === proof.interactionId
-        && eventProof.rootFrameId === proof.rootFrameId && eventProof.sourceId === proof.sourceId
-        && eventProof.targetId === proof.targetId && eventProof.outcome === proof.outcome
-        && eventProof.sourceZone === proof.sourceZone && eventProof.affectedCardOwnerId === proof.affectedCardOwnerId
-        && eventProof.destinationZone === proof.destinationZone && eventProof.destinationOwnerId === proof.destinationOwnerId
-        && eventProof.affectedCardFace?.id === proof.affectedCardFace?.id
-        && eventProof.affectedCardFace?.kind === proof.affectedCardFace?.kind
-        && eventProof.affectedCardFace?.suit === proof.affectedCardFace?.suit
-        && eventProof.affectedCardFace?.rank === proof.affectedCardFace?.rank ? [proof] : [];
-    });
-    if (freshCardAcquisitionSettlements.length === 1) setActiveStealSettlement({
-      eventId: freshCardAcquisitionSettlements[0].eventId,
+    const freshCardAcquisitionProofs = freshCardAcquisitionSettlements(fresh, cardAcquisitionSettlements);
+    if (freshCardAcquisitionProofs.length === 1) setActiveStealSettlement({
+      eventId: freshCardAcquisitionProofs[0].eventId,
       roomCode: room.code,
-      rootEventId: freshCardAcquisitionSettlements[0].rootEventId,
+      rootEventId: freshCardAcquisitionProofs[0].rootEventId,
       actionRevision: room.actionRevision ?? null,
       exiting: false,
       journeySettled: false,
@@ -8063,78 +8294,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       h4VisibleSinceMs: activeDismantleSettlement?.h4VisibleSinceMs ?? null,
     };
   })();
-  const stealSettlementCandidate = (() => {
-    const settlement = cardAcquisitionSettlements.find((candidate) => candidate.eventId === activeStealSettlement?.eventId);
-    const expectedOutcome = settlement?.acquisitionKind === "RETALIATION" ? "RETALIATION_RESOLVED" : "STEAL_RESOLVED";
-    if (!settlement || settlement.semantics !== "PROVEN" || settlement.outcome !== expectedOutcome) return null;
-    if (activeStealSettlement?.roomCode !== room.code
-      || activeStealSettlement.rootEventId !== settlement.rootEventId
-      || activeStealSettlement.actionRevision !== (room.actionRevision ?? null)) return null;
-    const liveRootEventId = clientPresentation.rootAction?.rootEventId;
-    if (liveRootEventId && liveRootEventId !== settlement.rootEventId) return null;
-    const rootEvents = room.timeline.filter((event) => event.id === settlement.rootEventId);
-    const settlementEvents = room.timeline.filter((event) => event.id === settlement.eventId);
-    if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
-    const rootEvent = rootEvents[0];
-    const settlementEvent = settlementEvents[0];
-    if (rootEvent.presentation === false || typeof rootEvent.privateToPlayerId === "string"
-      || rootEvent.resolutionId !== settlement.rootResolutionId
-      || settlementEvent.type !== "message" || settlementEvent.presentation === false
-      || typeof settlementEvent.privateToPlayerId === "string" || settlementEvent.importance !== "essential"
-      || settlementEvent.finalResult !== true || settlementEvent.resolutionId !== settlement.rootResolutionId) return null;
-    if (settlement.acquisitionKind === "STEAL") {
-      if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.card.kind !== "Steal") return null;
-      const eventProof = settlementEvent.publicStealSettlement;
-      if (eventProof?.semantics !== settlement.semantics || eventProof.rootEventId !== settlement.rootEventId
-        || eventProof.rootResolutionId !== settlement.rootResolutionId || eventProof.sourceId !== settlement.sourceId
-        || eventProof.targetId !== settlement.targetId || eventProof.outcome !== "STEAL_RESOLVED"
-        || eventProof.sourceZone !== settlement.sourceZone || eventProof.affectedCardOwnerId !== settlement.affectedCardOwnerId
-        || eventProof.destinationZone !== settlement.destinationZone || eventProof.destinationOwnerId !== settlement.destinationOwnerId
-        || eventProof.affectedCardFace?.id !== settlement.affectedCardFace?.id
-        || eventProof.affectedCardFace?.kind !== settlement.affectedCardFace?.kind
-        || eventProof.affectedCardFace?.suit !== settlement.affectedCardFace?.suit
-        || eventProof.affectedCardFace?.rank !== settlement.affectedCardFace?.rank) return null;
-    } else {
-      const eventProof = settlementEvent.publicCardAcquisitionSettlement;
-      if (eventProof?.semantics !== settlement.semantics || eventProof.acquisitionKind !== "RETALIATION"
-        || eventProof.providerId !== settlement.providerId || eventProof.rootEventId !== settlement.rootEventId
-        || eventProof.rootResolutionId !== settlement.rootResolutionId || eventProof.interactionId !== settlement.interactionId
-        || eventProof.rootFrameId !== settlement.rootFrameId || eventProof.sourceId !== settlement.sourceId
-        || eventProof.targetId !== settlement.targetId || eventProof.outcome !== "RETALIATION_RESOLVED"
-        || eventProof.sourceZone !== settlement.sourceZone || eventProof.affectedCardOwnerId !== settlement.affectedCardOwnerId
-        || eventProof.destinationZone !== settlement.destinationZone || eventProof.destinationOwnerId !== settlement.destinationOwnerId
-        || eventProof.affectedCardFace?.id !== settlement.affectedCardFace?.id
-        || eventProof.affectedCardFace?.kind !== settlement.affectedCardFace?.kind
-        || eventProof.affectedCardFace?.suit !== settlement.affectedCardFace?.suit
-        || eventProof.affectedCardFace?.rank !== settlement.affectedCardFace?.rank
-        || !settlement.interactionId || !settlement.rootFrameId) return null;
-    }
-    const source = room.players.find((player) => player.id === settlement.sourceId);
-    const target = room.players.find((player) => player.id === settlement.targetId);
-    if (!source?.name || !target?.name || source.id === target.id) return null;
-    return {
-      action: settlement, rootEvent, settlementEvent, source, target,
-      exiting: activeStealSettlement?.exiting === true,
-      journeySettled: activeStealSettlement?.journeySettled === true,
-      h4VisibleSinceMs: activeStealSettlement?.h4VisibleSinceMs ?? null,
-    };
-  })();
-  const privateStealSettlementParticipant = (() => {
-    const result = activePrivateStealParticipantResult;
-    const action = stealSettlementCandidate?.action;
-    if (privateStealViewerSwitchPending || !result || !action
-      || action.acquisitionKind === "STEAL" && !stealSettlementCandidate?.journeySettled
-      || result.roomCode !== room.code || result.viewerId !== room.meId
-      || result.settlementEventId !== action.eventId || result.rootEventId !== action.rootEventId
-      || result.rootResolutionId !== action.rootResolutionId || result.sourceId !== action.sourceId
-      || result.targetId !== action.targetId || action.sourceZone !== "hand"
-      || (result.acquisitionKind ?? "STEAL") !== action.acquisitionKind
-      || result.sourceZone !== "hand" || result.physicalCardId !== result.card.id
-      || (room.serverNow ?? Date.now()) > result.eligibleUntil
-      || result.role === "TAKER" && (room.meId !== action.sourceId || !result.transferId)
-      || result.role === "FORMER_OWNER" && room.meId !== action.targetId) return null;
-    return result;
-  })();
+  const stealSettlementCandidate = cardAcquisitionSettlementCandidate(
+    room, cardAcquisitionSettlements, activeStealSettlement, clientPresentation.rootAction?.rootEventId ?? null,
+  );
+  const privateStealSettlementParticipant = currentPrivateAcquisitionParticipantResult(
+    activePrivateStealParticipantResult, stealSettlementCandidate, privateStealViewerSwitchPending, room,
+  );
   const currentPrivateStealSettlementScope = privateStealSettlementParticipant
     ? privateStealParticipantScope(privateStealSettlementParticipant)
     : null;
@@ -9309,7 +9474,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   } : null;
   const singleTargetNegationOwnsRoot = Boolean(singleTargetNegationUsesJourney && singleTargetNegationProofCandidate
     && (!rootAction || rootAction.rootEventId === singleTargetNegationProofCandidate.rootEvent.id));
-  const nonHeroLivePublicCardAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
+  function selectNonHeroLivePublicCardAction(): PublicCardDisplayAction | null {
+  const nonHeroLivePublicCardActionBeforeAcquisition: PublicCardDisplayAction | null = heldPublicNegationReadAction
     ? heldPublicNegationReadAction
     : lustDuelPublicAction
     ? lustDuelPublicAction
@@ -9502,47 +9668,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         },
       },
     }
-    : stealSettlementCandidate
-    ? {
-      key: ["card-acquisition-settlement", stealSettlementCandidate.action.acquisitionKind, stealSettlementCandidate.action.rootEventId, stealSettlementCandidate.action.eventId].join(":"),
-      rootEventId: stealSettlementCandidate.action.rootEventId,
-      interactionId: stealSettlementCandidate.action.interactionId,
-      rootFrameId: stealSettlementCandidate.action.rootFrameId,
-      sourceId: stealSettlementCandidate.action.sourceId,
-      targetId: stealSettlementCandidate.action.targetId,
-      ...(stealSettlementCandidate.action.acquisitionKind === "STEAL" ? {
-        cardKind: "Steal" as const,
-        cardFace: stealSettlementCandidate.rootEvent.card,
-      } : {}),
-      cardLabel: stealSettlementCandidate.action.acquisitionKind === "RETALIATION" ? "RETALIATION" : "STEAL",
-      ariaLabel: stealSettlementCandidate.action.acquisitionKind === "RETALIATION"
-        ? `${stealSettlementCandidate.source.name} used Retaliation to obtain ${stealSettlementCandidate.action.affectedCardFace
-          ? `${stealSettlementCandidate.action.affectedCardFace.rank}${stealSettlementCandidate.action.affectedCardFace.suit} ${cardDefinition(stealSettlementCandidate.action.affectedCardFace.kind).name}`
-          : "a Hand card"} from ${stealSettlementCandidate.target.name}.`
-        : `${stealSettlementCandidate.source.name} played Steal targeting ${stealSettlementCandidate.target.name}`,
-      motion: {
-        type: "single-target",
-        scopeKey: [room.code, stealSettlementCandidate.action.rootEventId].join(":"),
-        freshEventIds: stealSettlementCandidate.action.acquisitionKind === "RETALIATION"
-          || publicCardJourneySeenEventIds.has(stealSettlementCandidate.action.rootEventId)
-          ? []
-          : [stealSettlementCandidate.action.rootEventId],
-      },
-      settlement: {
-        eventId: stealSettlementCandidate.action.eventId,
-        rootResolutionId: stealSettlementCandidate.action.rootResolutionId,
-        outcome: stealSettlementCandidate.action.outcome,
-        exiting: stealSettlementCandidate.exiting,
-        targetCardMovement: {
-          sourceZone: stealSettlementCandidate.action.sourceZone,
-          affectedCardOwnerId: stealSettlementCandidate.action.affectedCardOwnerId,
-          destinationZone: stealSettlementCandidate.action.destinationZone,
-          destinationOwnerId: stealSettlementCandidate.action.destinationOwnerId,
-          ...(stealSettlementCandidate.action.affectedCardFace ? { affectedCardFace: stealSettlementCandidate.action.affectedCardFace } : {}),
-        },
-      },
-    }
-    : attackHitSettlementCandidate
+    : null;
+  const nonHeroLivePublicCardActionAfterAcquisition: PublicCardDisplayAction | null = attackHitSettlementCandidate
     ? {
       key: ["attack-hit-settlement", attackHitSettlementCandidate.action.rootEventId, attackHitSettlementCandidate.action.eventId].join(":"),
       rootEventId: attackHitSettlementCandidate.action.rootEventId,
@@ -9734,6 +9861,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ariaLabel: `${selfTargetCandidate.source.name} used Peach on self`,
       }
       : null;
+  return nonHeroLivePublicCardActionBeforeAcquisition
+    ?? cardAcquisitionDisplayAction(stealSettlementCandidate, room.code, publicCardJourneySeenEventIds)
+    ?? nonHeroLivePublicCardActionAfterAcquisition;
+  }
+  const nonHeroLivePublicCardAction = selectNonHeroLivePublicCardAction();
   const publicCardActionCheckpointEventId = (action: PublicCardDisplayAction) =>
     action.publicNegationNarration?.latestCommittedEventId
     ?? action.settlement?.eventId
@@ -9873,51 +10005,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       phase: "FINAL",
     };
   })() : null;
-  const retaliationSettlementNarration: PublicInteractionNarration | null = stealSettlementCandidate?.action.acquisitionKind === "RETALIATION"
-    && currentInteractionFact?.eventId === stealSettlementCandidate.action.eventId
-    ? (() => {
-      const settlement = stealSettlementCandidate.action;
-      const card = settlement.affectedCardFace
-        ?? (privateStealSettlementParticipant?.acquisitionKind === "RETALIATION"
-          && privateStealSettlementParticipant.settlementEventId === settlement.eventId
-          ? privateStealSettlementParticipant.card : undefined);
-      const parts = [
-        { id: stealSettlementCandidate.source.id, name: stealSettlementCandidate.source.name },
-        " used Retaliation to obtain ",
-        ...(card
-          ? [`${card.rank}${card.suit} ${cardDefinition(card.kind).name}`]
-          : ["a Hand card"]),
-        " from ",
-        { id: stealSettlementCandidate.target.id, name: stealSettlementCandidate.target.name },
-        ".",
-      ] as const;
-      const copy = publicH4Copy(parts);
-      return {
-        eventId: settlement.eventId,
-        publicSequence: publicSequenceForEvent(room.timeline, settlement.eventId),
-        rootEventId: settlement.rootEventId,
-        interactionId: settlement.interactionId ?? "",
-        rootFrameId: settlement.rootFrameId ?? "",
-        actorId: settlement.sourceId,
-        headline: copy.message,
-        headlineSegments: copy.segments,
-        compactHeadline: copy.message,
-        accessibleLabel: copy.message,
-        latestCommittedEventId: settlement.eventId,
-        phase: "FINAL" as const,
-      };
-    })()
-    : null;
-  const publicInteractionNarration = retaliationSettlementNarration ?? fanjianSettlementNarration ?? (currentInteractionFact?.rootEventId
-    ? derivePublicInteractionNarration({
-      snapshot: room.presentationSnapshot,
-      players: room.players,
-      rootEventId: currentInteractionFact.rootEventId,
-      interactionId: currentInteractionFact.identity.interactionId,
-      rootFrameId: currentInteractionFact.identity.rootFrameId,
-      eventId: currentInteractionFact.eventId,
-    })
-    : null);
+  const retaliationSettlementNarration = cardAcquisitionNarration(
+    stealSettlementCandidate, privateStealSettlementParticipant, currentInteractionFact?.eventId, room.timeline,
+  );
+  const publicInteractionNarration = publicInteractionNarrationForStage(
+    retaliationSettlementNarration,
+    fanjianSettlementNarration,
+    currentInteractionFact,
+    room.presentationSnapshot,
+    room.players,
+  );
   const interactionNarrationBelongsToAction = Boolean(publicInteractionNarration && selectedPublicCardAction
     && !activeJudgementRevealRoute
     && currentInteractionFact?.effect?.kind !== "judgement"
@@ -10429,12 +10526,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || activeStealSettlementScopeChanged || activeStealSettlementActionAdvanced
       || activeStealSettlementHasNewerH4Owner || activeStealSettlementHasNewerDiscardTransition
       || activeStealSettlementRootChanged));
-  const retaliationSettlementH4Active = Boolean(stealSettlementCandidate?.action.acquisitionKind === "RETALIATION"
-    && activeStealSettlement?.eventId === stealSettlementCandidate.action.eventId
-    && !activeStealSettlementMustHide
-    && publicInteractionNarration?.eventId === stealSettlementCandidate.action.eventId
-    && publicH4Owner?.eventId === stealSettlementCandidate.action.eventId
-    && (publicH4Owner.owner === "PublicInteractionAnnouncementLayer" || publicH4Owner.owner === "PublicCardDisplay"));
+  const retaliationSettlementH4Active = retaliationSettlementH4IsActive(
+    stealSettlementCandidate, activeStealSettlement, activeStealSettlementMustHide, publicInteractionNarration, publicH4Owner,
+  );
   useEffect(() => {
     const settlement = stealSettlementCandidate?.action;
     const active = activeStealSettlement;
@@ -10614,12 +10708,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
   }, [activeSkillEffectSettlement?.eventId, activeSkillEffectSettlement?.exiting]);
-  const activeTargetCardSettlementOutcome = retaliationSettlementH4Active
-    ? "RETALIATION_RESOLVED"
-    : publicCardDisplayAction?.settlement?.outcome === "DISMANTLE_RESOLVED"
-      || publicCardDisplayAction?.settlement?.outcome === "STEAL_RESOLVED"
-      ? publicCardDisplayAction.settlement.outcome
-      : null;
+  const targetCardSettlement = targetCardSettlementPresentation(
+    retaliationSettlementH4Active, publicCardDisplayAction, activeDismantleSettlement,
+    activeStealSettlement, stealSettlementCandidate,
+  );
+  const activeTargetCardSettlementOutcome = targetCardSettlement.outcome;
   const targetCardActivityOwnsPac = room.pendingTargetCard?.cardKind === "Dismantle"
     || room.pendingTargetCard?.cardKind === "Steal"
     || clientPresentation.rootAction?.cardKind === "Dismantle"
@@ -10627,13 +10720,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     || publicCardDisplayAction?.cardKind === "Dismantle"
     || publicCardDisplayAction?.cardKind === "Steal"
     || activeTargetCardSettlementOutcome !== null;
-  const activeTargetCardSettlementEventId = activeTargetCardSettlementOutcome === "RETALIATION_RESOLVED"
-    ? stealSettlementCandidate?.action.eventId ?? null
-    : activeTargetCardSettlementOutcome ? publicCardDisplayAction?.settlement?.eventId ?? null : null;
-  const activeTargetCardSettlement = activeTargetCardSettlementOutcome === "DISMANTLE_RESOLVED"
-    ? activeDismantleSettlement
-    : activeTargetCardSettlementOutcome === "STEAL_RESOLVED" || activeTargetCardSettlementOutcome === "RETALIATION_RESOLVED"
-      ? activeStealSettlement : null;
+  const activeTargetCardSettlementEventId = targetCardSettlement.eventId;
+  const activeTargetCardSettlement = targetCardSettlement.active;
   const activeTargetCardSettlementJourneySettled = Boolean(activeTargetCardSettlement?.eventId === activeTargetCardSettlementEventId
     && activeTargetCardSettlement.journeySettled);
   const activeTargetCardSettlementExiting = Boolean(activeTargetCardSettlement?.eventId === activeTargetCardSettlementEventId
@@ -12170,23 +12258,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         card: dismantleSettlementCandidate.action.affectedCardFace,
         accessibleLabel: `Public discarded card from ${dismantleSettlementCandidate.target.name}`,
       }} />}
-      {!activeStealSettlementMustHide && stealSettlementCandidate?.journeySettled && (stealSettlementCandidate.action.affectedCardFace || stealSettlementCandidate.action.sourceZone === "hand") && <PublicSettlementCardResult key={`${room.code}:${stealSettlementCandidate.action.rootEventId}:${stealSettlementCandidate.action.eventId}:${privateStealSettlementParticipant ? privateStealParticipantScope(privateStealSettlementParticipant) : "anonymous"}`} result={{
-        eventId: stealSettlementCandidate.action.eventId,
-        rootEventId: stealSettlementCandidate.action.rootEventId,
-        outcome: "obtained",
-        ...(stealSettlementCandidate.action.affectedCardFace
-          ? { card: stealSettlementCandidate.action.affectedCardFace }
-          : privateStealSettlementParticipant
-            ? { card: privateStealSettlementParticipant.card, privateResultScope: privateStealParticipantScope(privateStealSettlementParticipant) }
-            : { anonymousHandBack: true }),
-        accessibleLabel: stealSettlementCandidate.action.affectedCardFace
-          ? `${stealSettlementCandidate.action.acquisitionKind === "RETALIATION" ? "Retaliation" : "Steal"} obtained ${cardDefinition(stealSettlementCandidate.action.affectedCardFace.kind).name} from ${stealSettlementCandidate.target.name}`
-          : privateStealSettlementParticipant?.role === "TAKER"
-            ? `Private ${stealSettlementCandidate.action.acquisitionKind === "RETALIATION" ? "Retaliation" : "Steal"} result: ${cardDefinition(privateStealSettlementParticipant.card.kind).name}, ${privateStealSettlementParticipant.card.rank} ${privateStealSettlementParticipant.card.suit}. The card was added to your Hand.`
-            : privateStealSettlementParticipant?.role === "FORMER_OWNER"
-              ? `Private ${stealSettlementCandidate.action.acquisitionKind === "RETALIATION" ? "Retaliation" : "Steal"} result: ${cardDefinition(privateStealSettlementParticipant.card.kind).name}, ${privateStealSettlementParticipant.card.rank} ${privateStealSettlementParticipant.card.suit}. The card was taken from your Hand.`
-              : `A concealed Hand card was obtained from ${stealSettlementCandidate.target.name}`,
-      }} />}
+      <CardAcquisitionSettlementResultLayer roomCode={room.code} hidden={activeStealSettlementMustHide}
+        candidate={stealSettlementCandidate} participant={privateStealSettlementParticipant} />
       {activePublicHandRevealTransition && activeEvent?.type === "card" && <PublicHandRevealCardTransition key={activePublicHandRevealTransition.claimId} event={activeEvent} route={activePublicHandRevealTransition} players={room.players} myTableIndex={myTableIndex} claimStart={claimPublicHandRevealStart} onPresented={markPublicHandRevealTransitionPresented} />}
       {harvestDisplay && <BattlefieldChoiceStage
         key={harvestDisplay.revealEventId ?? "bumper-harvest-public-pool"}
@@ -13841,6 +13914,36 @@ type PublicSettlementCardResult = {
   privateResultScope?: string;
   accessibleLabel: string;
 };
+
+function CardAcquisitionSettlementResultLayer({ roomCode, hidden, candidate, participant }: {
+  roomCode: string;
+  hidden: boolean;
+  candidate: CardAcquisitionSettlementCandidate | null;
+  participant: PrivateStealParticipantResult | null;
+}) {
+  const action = candidate?.action;
+  const publicCardFace = action?.sourceZone === "hand" ? undefined : action?.affectedCardFace;
+  if (hidden || !candidate?.journeySettled || !action || (!publicCardFace && action.sourceZone !== "hand")) return null;
+  const kindLabel = action.acquisitionKind === "RETALIATION" ? "Retaliation" : "Steal";
+  const privateScope = !publicCardFace && participant ? privateStealParticipantScope(participant) : undefined;
+  const result: PublicSettlementCardResult = {
+    eventId: action.eventId,
+    rootEventId: action.rootEventId,
+    outcome: "obtained",
+    ...(publicCardFace ? { card: publicCardFace }
+      : participant ? { card: participant.card, privateResultScope: privateScope }
+        : { anonymousHandBack: true }),
+    accessibleLabel: publicCardFace
+      ? `${kindLabel} obtained ${cardDefinition(publicCardFace.kind).name} from ${candidate.target.name}`
+      : participant?.role === "TAKER"
+        ? `Private ${kindLabel} result: ${cardDefinition(participant.card.kind).name}, ${participant.card.rank} ${participant.card.suit}. The card was added to your Hand.`
+        : participant?.role === "FORMER_OWNER"
+          ? `Private ${kindLabel} result: ${cardDefinition(participant.card.kind).name}, ${participant.card.rank} ${participant.card.suit}. The card was taken from your Hand.`
+          : `A concealed Hand card was obtained from ${candidate.target.name}`,
+  };
+  const key = `${roomCode}:${action.rootEventId}:${action.eventId}:${privateScope ?? "anonymous"}`;
+  return <PublicSettlementCardResult key={key} result={result} />;
+}
 
 function PublicSettlementCardResult({ result }: { result: PublicSettlementCardResult }) {
   const cardRef = useRef<HTMLDivElement>(null);
