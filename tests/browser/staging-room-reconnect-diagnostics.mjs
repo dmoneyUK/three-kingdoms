@@ -1,5 +1,10 @@
 const API_PATH = "/api/rooms";
 const SENSITIVE_KEYS = "token|access[_-]?token|authorization|cookie|session(?:[_-]?token)?|room[_-]?token";
+const DYNAMIC_SECRETS = new Set();
+
+export function registerSensitiveSecrets(secrets = []) {
+  for (const secret of secrets) if (typeof secret === "string" && secret) DYNAMIC_SECRETS.add(secret);
+}
 
 function encodedVariants(secret) {
   if (typeof secret !== "string" || !secret) return [];
@@ -24,7 +29,7 @@ function encodedVariants(secret) {
  */
 export function redactSensitiveText(value, secrets = []) {
   let text = String(value ?? "");
-  for (const secret of secrets.flatMap(encodedVariants)) text = text.split(secret).join("[REDACTED]");
+  for (const secret of [...DYNAMIC_SECRETS, ...secrets].flatMap(encodedVariants)) text = text.split(secret).join("[REDACTED]");
   const keyPattern = new RegExp(`([?&\\"']?(?:${SENSITIVE_KEYS})[\\"']?\\s*(?:=|:)\\s*)([^&#,\\s}\\"']+)`, "gi");
   return text
     .replace(/(authorization\s*:\s*(?:bearer\s+)?)[^\s,;]+/gi, "$1[REDACTED]")
@@ -71,9 +76,10 @@ export function safeAttachment({ name, body, contentType = "text/plain", secrets
 
 export function sanitizeReporterError(error, secrets = []) {
   if (!error || typeof error !== "object") return null;
+  void secrets;
   return {
-    message: redactSensitiveText(error.message ?? "Staging test failed", secrets),
-    name: typeof error.name === "string" ? error.name : "Error",
+    message: "staging_test_failure",
+    name: typeof error.name === "string" && /^[A-Za-z][A-Za-z0-9_]{0,40}$/.test(error.name) ? error.name : "Error",
     stack: null,
   };
 }

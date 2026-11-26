@@ -154,17 +154,23 @@ export function assertHostedLifecycleBudget({ startedAtEpochMs, activationAtEpoc
  * intentionally independent of Cloudflare mutation calls; the correction
  * branch can prove the gate is unavailable without activating anything.
  */
-export function assertHostedActivationGate({ sourceSha, expectedSha, runId, s1, s2, historicalCredentialDisposition, controlledAccess } = {}) {
+export function assertHostedActivationGate({ sourceSha, authorizedSha, runId, authorizedRunId, authorizationExpiresAtEpochMs, nowEpochMs = Date.now(), s1, s2, historicalCredentialDisposition, controlledAccess } = {}) {
   if (typeof sourceSha !== "string" || !/^[0-9a-f]{40}$/i.test(sourceSha)
-    || typeof expectedSha !== "string" || !/^[0-9a-f]{40}$/i.test(expectedSha)
-    || sourceSha.toLowerCase() !== expectedSha.toLowerCase()) {
-    throw invalidTarget("Hosted gate requires an exact full source SHA");
+    || typeof authorizedSha !== "string" || !/^[0-9a-f]{40}$/i.test(authorizedSha)
+    || sourceSha.toLowerCase() !== authorizedSha.toLowerCase()) {
+    throw invalidTarget("Hosted gate requires an exact externally authorized source SHA");
   }
-  if (typeof runId !== "string" || !/^\d+$/.test(runId)) throw invalidTarget("Hosted gate requires an exact CI run ID");
+  if (typeof runId !== "string" || !/^\d+$/.test(runId)
+    || typeof authorizedRunId !== "string" || !/^\d+$/.test(authorizedRunId)
+    || runId !== authorizedRunId) throw invalidTarget("Hosted gate requires the exact externally authorized CI run ID");
+  if (!Number.isSafeInteger(authorizationExpiresAtEpochMs) || authorizationExpiresAtEpochMs <= 0
+    || !Number.isSafeInteger(nowEpochMs) || nowEpochMs > authorizationExpiresAtEpochMs) {
+    throw blocked("Hosted gate authorization is missing or expired");
+  }
   if (s1 !== true || s2 !== true) throw blocked("Hosted gate requires passing S1 and S2 safety checks");
   if (historicalCredentialDisposition !== "confirmed_invalid_or_revoked") throw blocked("historical Staging credential disposition is not confirmed");
   if (controlledAccess !== true) throw blocked("controlled Staging access is not confirmed");
-  return Object.freeze({ sourceSha: sourceSha.toLowerCase(), runId, s1: true, s2: true, historicalCredentialDisposition, controlledAccess: true });
+  return Object.freeze({ sourceSha: sourceSha.toLowerCase(), authorizedSha: authorizedSha.toLowerCase(), runId, authorizedRunId, authorizationExpiresAtEpochMs, s1: true, s2: true, historicalCredentialDisposition, controlledAccess: true });
 }
 
 function invalidTarget(message, endpoint = null) {
@@ -450,7 +456,7 @@ function digestFingerprints(fingerprints) {
  * opaque hashes: room IDs, codes, names, roles, hands and session material do
  * not enter the persisted evidence.
  */
-export function evaluateStagingRoomGuard({ rows, now = Date.now(), baseline = null, phase = "baseline", activationAt = null, totalRoomRows = null, readbackComplete = true } = {}) {
+export function evaluateStagingRoomGuard({ rows, now = Date.now(), baseline = null, phase = "baseline", activationAt = null, totalRoomRows = null, readbackComplete = true, trackedFreshFingerprint = null } = {}) {
   if (!Array.isArray(rows) || !Number.isFinite(Number(now)) || readbackComplete !== true) throw blocked("Staging room guard readback is incomplete");
   const normalized = rows.map(normalizeGuardRow);
   if (normalized.some((row) => row === null)) throw blocked("Staging room guard contains an unknown or malformed room");
@@ -485,13 +491,18 @@ export function evaluateStagingRoomGuard({ rows, now = Date.now(), baseline = nu
   if (phase === "pre_activation" && result.fingerprintDigest !== baseline.fingerprintDigest) {
     throw blocked("Staging room inventory changed before activation");
   }
+  let freshFingerprint = null;
   if ((phase === "monitor" || phase === "post_closure") && activationAt !== null) {
     if (!strictInteger(activationAt, { minimum: 1 })) throw blocked("Staging room guard activation time is malformed");
     const baselineIds = new Set(baseline.fingerprints);
+    const fresh = normalized.filter((row) => !baselineIds.has(roomFingerprint(row)));
+    if (fresh.length > 1) throw blocked("Staging room inventory gained an unexpected second/new room");
+    freshFingerprint = fresh[0] ? roomFingerprint(fresh[0]) : null;
+    if (trackedFreshFingerprint && freshFingerprint !== trackedFreshFingerprint) throw blocked("tracked Staging smoke room identity changed or disappeared");
     const unexpectedOld = normalized.some((row) => !baselineIds.has(roomFingerprint(row)) && row.createdAt < Number(activationAt));
     if (unexpectedOld) throw blocked("Staging room inventory gained an unknown pre-existing room");
   }
-  return { ...result, baselineFingerprintDigest: baseline.fingerprintDigest, missingFingerprintCount: missing.length };
+  return { ...result, baselineFingerprintDigest: baseline.fingerprintDigest, missingFingerprintCount: missing.length, ...(freshFingerprint ? { freshFingerprint } : {}) };
 }
 
 function serializeError(error) {
@@ -679,9 +690,24 @@ export async function guardStagingRooms({ client, evidenceDir = DEFAULT_EVIDENCE
     }
     const rows = readback.result[0].results;
     const rowCounts = rows.map((row) => row?.total_room_rows);
-    const totalRoomRows = rows.length > 0 ? rowCounts[0] : null;
-    if (rows.length === 0 || rowCounts.some((count) => count !== totalRoomRows)) {
+    const totalRoomRows = rows.length > 0 ? rowCounts[0] : 0;
+    if (rowCounts.some((count) => count !== totalRoomRows)) {
       throw blocked("Staging room guard D1 readback does not prove a complete inventory");
+    }
+    if (typeof client.inventory === "function" && phase !== "baseline") {
+      const inventory = await client.inventory();
+      assertNoUnexpectedExposure(inventory);
+      assertVersionBinding(inventory);
+      if (inventory.version?.tag !== safe.tag) throw blocked("Staging room guard Worker version is not owned by this run");
+    }
+    let trackedFreshFingerprint = null;
+    if (phase === "monitor" || phase === "post_closure") {
+      try {
+        const prior = await readJson(phasePath(evidenceDir, "room-guard-monitor"), "room guard monitor");
+        trackedFreshFingerprint = prior.result?.freshFingerprint ?? null;
+      } catch {
+        trackedFreshFingerprint = null;
+      }
     }
     const result = evaluateStagingRoomGuard({
       rows,
@@ -690,6 +716,7 @@ export async function guardStagingRooms({ client, evidenceDir = DEFAULT_EVIDENCE
       phase,
       activationAt: activationAt instanceof Date ? activationAt.getTime() : activationAt,
       totalRoomRows,
+      trackedFreshFingerprint,
     });
     return { result };
   });
@@ -1004,8 +1031,11 @@ async function cli() {
   if (mode === "hosted-gate") {
     const result = assertHostedActivationGate({
       sourceSha: process.env.GITHUB_SHA,
-      expectedSha: process.env.STAGING_EXPECTED_SHA ?? process.env.GITHUB_SHA,
+      authorizedSha: process.env.STAGING_AUTHORIZED_SHA,
       runId: process.env.GITHUB_RUN_ID,
+      authorizedRunId: process.env.STAGING_AUTHORIZED_RUN_ID,
+      authorizationExpiresAtEpochMs: Number(process.env.STAGING_AUTHORIZATION_EXPIRES_AT_EPOCH_MS ?? Number.NaN),
+      nowEpochMs: Number(process.env.STAGING_AUTHORIZATION_NOW_EPOCH_MS ?? Date.now()),
       s1: process.env.STAGING_S1_PASSED === "true",
       s2: process.env.STAGING_S2_PASSED === "true",
       historicalCredentialDisposition: process.env.STAGING_HISTORICAL_CREDENTIAL_DISPOSITION,

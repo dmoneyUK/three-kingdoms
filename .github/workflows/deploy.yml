@@ -175,7 +175,12 @@ jobs:
         env:
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-          STAGING_EXPECTED_SHA: ${{ github.sha }}
+          # These are Owner-controlled protected variables. The workflow may
+          # read them, but never derives or writes authorization from github.sha.
+          STAGING_AUTHORIZED_SHA: ${{ vars.STAGING_AUTHORIZED_SHA || '' }}
+          STAGING_AUTHORIZED_RUN_ID: ${{ vars.STAGING_AUTHORIZED_RUN_ID || '' }}
+          STAGING_AUTHORIZATION_EXPIRES_AT_EPOCH_MS: ${{ vars.STAGING_AUTHORIZATION_EXPIRES_AT_EPOCH_MS || '' }}
+          STAGING_AUTHORIZATION_NOW_EPOCH_MS: ${{ vars.STAGING_AUTHORIZATION_NOW_EPOCH_MS || '' }}
           STAGING_S1_PASSED: "true"
           STAGING_S2_PASSED: ${{ vars.STAGING_S2_PASSED || 'false' }}
           STAGING_HISTORICAL_CREDENTIAL_DISPOSITION: ${{ vars.STAGING_HISTORICAL_CREDENTIAL_DISPOSITION || '' }}
@@ -190,6 +195,19 @@ jobs:
             exit 1
           fi
           echo "::notice::Activation window has ${remaining}s; active probes are capped at 840s and at least 360s remains reserved for containment/readback/artifacts"
+      - name: Record activation boundary before any Staging mutation
+        run: |
+          set -euo pipefail
+          activation_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          {
+            echo "STAGING_LIFECYCLE_ACTIVATION_EPOCH=$((activation_ms / 1000))"
+            echo "STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS=$activation_ms"
+          } >> "$GITHUB_ENV"
+          STAGING_LIFECYCLE_PHASE=active \
+          STAGING_LIFECYCLE_STARTED_EPOCH_MS="$STAGING_LIFECYCLE_STARTED_EPOCH_MS" \
+          STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS="$activation_ms" \
+          STAGING_LIFECYCLE_NOW_EPOCH_MS="$activation_ms" \
+          node scripts/ai-staging-lifecycle.mjs budget
       - name: Apply Staging D1 migrations
         run: timeout 240s npx wrangler d1 migrations apply three-kingdoms-ai-staging-db --remote --config dist/server/wrangler.json
         env:
@@ -200,18 +218,6 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - name: Record Staging activation timestamp
-        run: |
-          activation_ms="$(node -e 'process.stdout.write(String(Math.floor(performance.timeOrigin + performance.now())))')"
-          {
-            echo "STAGING_LIFECYCLE_ACTIVATION_EPOCH=$((activation_ms / 1000))"
-            echo "STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS=$activation_ms"
-          } >> "$GITHUB_ENV"
-          STAGING_LIFECYCLE_PHASE=active \
-          STAGING_LIFECYCLE_STARTED_EPOCH_MS="$STAGING_LIFECYCLE_STARTED_EPOCH_MS" \
-          STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS="$activation_ms" \
-          STAGING_LIFECYCLE_NOW_EPOCH_MS="$activation_ms" \
-          node scripts/ai-staging-lifecycle.mjs budget
       - name: Capture owned Staging deployment version
         if: always() && steps.staging_lifecycle_preflight.outcome == 'success'
         run: timeout 120s node scripts/ai-staging-lifecycle.mjs capture
@@ -231,16 +237,43 @@ jobs:
           fi
           echo "STAGING_SMOKE_TIMEOUT_SECONDS=$smoke_budget" >> "$GITHUB_ENV"
           echo "::notice::Mobile smoke budget=${smoke_budget}s; 360s reserved for containment/readback"
-      - name: S1 active-window room guard
+      - name: Supervise S1 room guard during mobile smoke
         if: steps.staging_room_guard_baseline.outcome == 'success'
-        run: STAGING_ROOM_GUARD_PHASE=monitor node scripts/ai-staging-lifecycle.mjs room-guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          monitor_failure=".wrangler/ai-staging-lifecycle/monitor-failed"
+          rm -f "$monitor_failure"
+          monitor() {
+            while true; do
+              if ! STAGING_ROOM_GUARD_PHASE=monitor node scripts/ai-staging-lifecycle.mjs room-guard; then
+                touch "$monitor_failure"
+                return 1
+              fi
+              sleep 60
+            done
+          }
+          monitor & monitor_pid=$!
+          trap 'kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true' EXIT
+          timeout "${STAGING_SMOKE_TIMEOUT_SECONDS}s" npx playwright test --config tests/browser/staging-playwright.config.mjs
+          kill "$monitor_pid" 2>/dev/null || true
+          wait "$monitor_pid" 2>/dev/null || true
+          if [[ -f "$monitor_failure" ]]; then
+            echo "S1 supervised room monitor failed; refusing to treat smoke as valid" >&2
+            exit 1
+          fi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           STAGING_LIFECYCLE_ACTIVATION_EPOCH: ${{ env.STAGING_LIFECYCLE_ACTIVATION_EPOCH }}
           STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS: ${{ env.STAGING_LIFECYCLE_ACTIVATION_EPOCH_MS }}
-      - name: Verify health and mobile room refresh/rejoin
-        run: timeout "${STAGING_SMOKE_TIMEOUT_SECONDS}s" npx playwright test --config tests/browser/staging-playwright.config.mjs
+      - name: Prepare sanitized Staging artifacts
+        if: always()
+        run: node scripts/prepare-staging-artifacts.mjs
+        env:
+          STAGING_ARTIFACT_INPUT_DIR: tests/browser/test-results/staging-browser
+          STAGING_ARTIFACT_OUTPUT_DIR: .wrangler/staging-safe-artifacts
+          STAGING_ROOM_TOKEN: ${{ secrets.STAGING_ROOM_TOKEN }}
       - name: Contain Staging Worker and Cron
         if: always()
         run: |
@@ -267,7 +300,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: staging-mobile-smoke-evidence
-          path: tests/browser/test-results/staging-browser/
+          path: .wrangler/staging-safe-artifacts/
           if-no-files-found: ignore
           retention-days: 14
       - name: Upload Staging lifecycle readback

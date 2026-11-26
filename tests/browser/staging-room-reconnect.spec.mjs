@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { botTriggerChoices } from "../../ai/trigger-selection.ts";
 import { classifyBotCycle, classifyRejoinCheckpoint, extendProgressDeadline } from "./staging-room-reconnect-logic.mjs";
-import { classifyRejoinFailure, createRejoinDiagnostics, safeAssertion, safeAttachment, safeRejoinError, createSafeAuthenticatedRequest, sessionEvidence, waitForRejoinResponse } from "./staging-room-reconnect-diagnostics.mjs";
+import { classifyRejoinFailure, createRejoinDiagnostics, registerSensitiveSecrets, safeAssertion, safeAttachment, safeRejoinError, createSafeAuthenticatedRequest, sessionEvidence, waitForRejoinResponse } from "./staging-room-reconnect-diagnostics.mjs";
 
 function isPostAction(response, action) {
   if (new URL(response.url()).pathname !== "/api/rooms" || response.request().method() !== "POST") return false;
@@ -145,6 +145,7 @@ test("mobile browser creates a Staging room, runs genuine bots, and rejoins afte
   expect(created?.token?.length > 0).toBe(true);
 
   const roomCode = created.room.code;
+  registerSensitiveSecrets([created.token]);
   const hostId = created.room.meId;
   const hostSeat = created.room.players.find((player) => player.id === hostId).seat;
   const botDemoEnabled = created.room.botDemoEnabled === true;

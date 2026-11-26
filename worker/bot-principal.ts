@@ -1,6 +1,7 @@
 import type { BotPolicy } from "../ai/decision-router";
 import type { BotSchedulerDiagnosticContext } from "./bot-diagnostics";
 import type { BotActionOutcome, BotActionOutcomeBase, BotCommitProof } from "./bot-outcome";
+import { createBotRuntimeCounters, type BotRuntimeCounters } from "./bot-runtime-counters";
 
 const BOT_ACTION_CAPABILITY = Symbol("server-owned-bot-action");
 
@@ -11,6 +12,7 @@ export type BotActionPrincipalInput = {
   decisionId: string;
   diagnostics?: BotSchedulerDiagnosticContext;
   mockPolicy?: BotPolicy;
+  runtimeCounters?: BotRuntimeCounters;
 };
 
 export type BotActionPrincipal = BotActionPrincipalInput & {
@@ -29,6 +31,7 @@ export type BotExecutionContext = {
   outcome?: BotActionOutcome;
   commit?: BotCommitProof;
   readonly diagnosticsDetailEnabled?: boolean;
+  readonly runtimeCounters: BotRuntimeCounters;
 };
 
 const EXECUTION_CONTEXTS = new WeakMap<object, BotExecutionContext>();
@@ -46,8 +49,8 @@ export function createBotActionPrincipal(input: BotActionPrincipalInput): BotAct
   return Object.freeze(principal) as BotActionPrincipal;
 }
 
-export function createBotExecutionContext(correlation: BotActionOutcomeBase, diagnosticsDetailEnabled = false): BotExecutionContext {
-  return { correlation, projectionToken: crypto.randomUUID(), diagnosticsDetailEnabled };
+export function createBotExecutionContext(correlation: BotActionOutcomeBase, diagnosticsDetailEnabled = false, runtimeCounters?: BotRuntimeCounters): BotExecutionContext {
+  return { correlation, projectionToken: crypto.randomUUID(), diagnosticsDetailEnabled, runtimeCounters: runtimeCounters ?? createBotRuntimeCounters() };
 }
 
 export function attachBotExecutionContext(principal: BotActionPrincipal, context: BotExecutionContext) {

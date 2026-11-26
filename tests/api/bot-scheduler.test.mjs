@@ -630,8 +630,8 @@ test("a Bot commits its physical Attack and the human Dodge window together", as
   assert.equal(roomCardCount(code, physicalAttack.id), 1);
 
   const replay = await runBotStep(code, bot.id, { actionRevision: before.actionRevision, decisionId: crypto.randomUUID() });
-  assert.equal(replay.status, 200, JSON.stringify(replay.data));
-  assert.equal(replay.data.state, "waiting_for_human");
+  assert.equal(replay.status, 409, JSON.stringify(replay.data));
+  assert.match(replay.data.error, /stale/i);
   assert.equal((await state(code, token)).data.actionRevision, pending.actionRevision);
   sql(`UPDATE rooms SET status='finished', phase='finished' WHERE code=${quote(code)}`);
 });

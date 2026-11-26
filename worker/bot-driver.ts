@@ -10,6 +10,7 @@ import {
   type BotActionOutcome,
   type BotActionOutcomeBase,
 } from "./bot-outcome";
+import { createBotRuntimeCounters, type BotRuntimeCounters } from "./bot-runtime-counters";
 
 type BotStepInput = {
   code: string;
@@ -18,6 +19,7 @@ type BotStepInput = {
   decisionId?: string;
   diagnostics?: BotSchedulerDiagnosticContext;
   mockPolicy?: BotPolicy;
+  runtimeCounters?: BotRuntimeCounters;
 };
 
 type BotWorkRow = {
@@ -34,7 +36,7 @@ type BotWorkRow = {
 };
 
 type BotRoomRow = { id: string; code: string; bot_count: number };
-type SchedulerOptions = { maxRoomsPerWakeup?: number; maxStepsPerWakeup?: number; roomCode?: string };
+type SchedulerOptions = { maxRoomsPerWakeup?: number; maxStepsPerWakeup?: number; roomCode?: string; captureRuntimeCounters?: boolean };
 type BotDispatchResult = BotActionOutcome;
 
 const MAX_BOT_SEATS_PER_ROOM = 3;
@@ -58,6 +60,7 @@ export type BotSchedulerSummary = {
   failed: number;
   retries: number;
   skippedLocked: number;
+  runtimeCounters?: BotRuntimeCounters;
 };
 
 async function loadRoomRouteHandlers() {
@@ -77,17 +80,17 @@ async function runBotStepInternal(_db: Pick<D1Database, "prepare">, input: BotSt
   const decisionId = input.decisionId ?? crypto.randomUUID();
   const requestedRevision = input.actionRevision ?? room.actionRevision;
   const correlation = { decisionId, actorId: input.botId, actionRevision: requestedRevision } satisfies BotActionOutcomeBase;
-  if (!room.eligibleBotIds.includes(input.botId)) {
-    return compactResult ? { ...correlation, kind: "waiting_for_human" }
-      : Response.json({ state: "waiting_for_human", actionRevision: room.actionRevision });
-  }
   if (input.actionRevision && input.actionRevision !== room.actionRevision) {
     return compactResult ? { ...correlation, kind: "stale", reason: "revision_changed" }
       : Response.json({ error: "The bot decision is stale." }, { status: 409 });
   }
+  if (!room.eligibleBotIds.includes(input.botId)) {
+    return compactResult ? { ...correlation, kind: "waiting_for_human" }
+      : Response.json({ state: "waiting_for_human", actionRevision: room.actionRevision });
+  }
 
   const context = compactResult
-    ? createBotExecutionContext(correlation, input.diagnostics?.enabled === true && input.diagnostics?.privateStagingEnabled === true)
+    ? createBotExecutionContext(correlation, input.diagnostics?.enabled === true && input.diagnostics?.privateStagingEnabled === true, input.runtimeCounters)
     : null;
   const principalBase = createBotActionPrincipal({
     roomId: room.roomId,
@@ -98,10 +101,12 @@ async function runBotStepInternal(_db: Pick<D1Database, "prepare">, input: BotSt
     ...(input.mockPolicy ? { mockPolicy: input.mockPolicy } : {}),
   });
   const principal = context ? attachBotExecutionContext(principalBase, context) : principalBase;
+  const actionBody = JSON.stringify({ action: "bot_step", code, token: "" });
+  if (input.runtimeCounters) input.runtimeCounters.requestJsonEncodes += 1;
   const actionRequest = new Request("https://internal.invalid/api/rooms", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action: "bot_step", code, token: "" }),
+    body: actionBody,
   });
   if (compactResult) beginBotCompactProjection(code, context!.projectionToken, context!);
   let actionResponse: Response;
@@ -114,10 +119,11 @@ async function runBotStepInternal(_db: Pick<D1Database, "prepare">, input: BotSt
     // The live scheduler consumes the private typed value.  A Response is
     // deliberately not parsed or re-encoded between the canonical executor
     // and the scheduler; a missing proof is an ambiguous retryable result.
-    return context.outcome ?? { ...correlation, kind: "failed", errorCode: "malformed_result", retryable: true };
+    return context!.outcome ?? { ...correlation, kind: "failed", errorCode: "malformed_result", retryable: true };
   }
   let payload: unknown;
   try {
+    if (input.runtimeCounters) input.runtimeCounters.responseJsonParses += 1;
     payload = await actionResponse.json();
   } catch {
     return Response.json({ error: "The internal bot action returned an invalid response." }, { status: 502 });
@@ -229,6 +235,7 @@ export async function runBotScheduler(
     failed: 0,
     retries: 0,
     skippedLocked: 0,
+    ...(options.captureRuntimeCounters ? { runtimeCounters: createBotRuntimeCounters() } : {}),
   };
   const roomLimit = testOptions(options.maxRoomsPerWakeup, MAX_ROOMS_PER_WAKEUP);
   const stepLimit = testOptions(options.maxStepsPerWakeup, BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP);
@@ -362,6 +369,7 @@ export async function runBotScheduler(
         summary.steps++;
 
         const dispatchStartedAt = Date.now();
+        const runtimeCounters = options.captureRuntimeCounters ? createBotRuntimeCounters() : undefined;
         let actionOutcome: BotActionOutcome;
         try {
           const dispatched = await dispatchStep(db, {
@@ -370,6 +378,7 @@ export async function runBotScheduler(
             actionRevision: room.actionRevision,
             decisionId: work.decision_id,
             diagnostics,
+            ...(runtimeCounters ? { runtimeCounters } : {}),
           });
           actionOutcome = dispatched;
         } catch {
@@ -385,6 +394,11 @@ export async function runBotScheduler(
             logWorkTransition(diagnostics, candidate.code, work.decision_id, "claimed", transientStatus, "dispatch_error", attempts, Date.now() - dispatchStartedAt);
           }
           break;
+        }
+        if (runtimeCounters && summary.runtimeCounters) {
+          for (const key of Object.keys(runtimeCounters) as (keyof BotRuntimeCounters)[]) {
+            summary.runtimeCounters[key] += runtimeCounters[key];
+          }
         }
 
         const expectedOutcome = { decisionId: work.decision_id, actorId, actionRevision: room.actionRevision } satisfies BotActionOutcomeBase;

@@ -12,6 +12,7 @@ import {
   sanitizeReporterError,
   sessionEvidence,
 } from "./staging-room-reconnect-diagnostics.mjs";
+import { sanitizeStagingArtifact } from "./staging-artifact-safety.mjs";
 
 const roomCode = "AB12C";
 const token = "session-token-never-written-to-evidence";
@@ -122,4 +123,7 @@ test("S2 safe assertion/reporter/upload canary never emits a credential or unsan
   assert.equal(reporter.message.includes(token), false);
   assert.equal(reporter.message.includes(encodeURIComponent(token)), false);
   assert.equal(reporter.stack, null);
+  assert.equal(sanitizeStagingArtifact("staging-rejoin-diagnostics.json", { status: "passed", token: "[REDACTED]" }, [token]).includes(token), false);
+  assert.throws(() => sanitizeStagingArtifact("staging-rejoin-diagnostics.json", { authorization: "Bearer raw" }, []), /safety scan/);
+  assert.equal(sanitizeStagingArtifact("playwright-report.html", "raw", []), null);
 });

@@ -281,6 +281,7 @@ async function collectScenario(name, sampleFactory) {
 test("AIP-PERF-01 FREE-BUDGET-01R uses real local Worker/D1 requests", { timeout: 12 * 60_000 }, async () => {
   resetStaleLocalBotRooms();
   const scenarios = [];
+  const runtimeCounterEvidence = [];
   const correctness = {
     fixtureRows: { publicEvents: PUBLIC_EVENTS, botWorkRows: BOT_WORK_ROWS },
     privateViews: "pending",
@@ -384,11 +385,13 @@ test("AIP-PERF-01 FREE-BUDGET-01R uses real local Worker/D1 requests", { timeout
     const sample = await measured("run_bot_scheduler", async () => jsonFetch("/__test/run-bot-scheduler", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ roomCode: fixture.code, maxStepsPerWakeup: 1 }),
+      body: JSON.stringify({ roomCode: fixture.code, maxStepsPerWakeup: 1, captureRuntimeCounters: true }),
     }));
     assert.equal(sample.status, 200, JSON.stringify({ status: sample.status }));
     assert.equal(sample.data.steps, 1, JSON.stringify({ steps: sample.data.steps }));
     assert.equal(sample.data.consumed, 1, JSON.stringify({ consumed: sample.data.consumed }));
+    assert.ok(sample.data.runtimeCounters, "scheduler returns counters from the actual compact runtime");
+    runtimeCounterEvidence.push({ scenario: "bot_room_targeted_scheduler_wake", counters: sample.data.runtimeCounters });
     assert.equal(playerHandContains(fixture.bot.id, fixture.drawn.id), true);
     finishLocalBotRoom(fixture.roomId);
     return [sample];
@@ -480,6 +483,7 @@ test("AIP-PERF-01 FREE-BUDGET-01R uses real local Worker/D1 requests", { timeout
       d1RowsAndQueries: "not exposed by local harness; fixture row counts are verified, not read/write telemetry",
       hostedCloudflareCpu: "not observed; local measurements are not Free-plan proof",
     },
+    runtimeCounterEvidence,
     correctness,
     scenarios,
     trafficAssumptions: { normalPolling: "one authenticated GET per 2s, offline estimate only", activeResponsePolling: "one authenticated GET per 1s, offline estimate only", viewers: [1, 2, 4] },

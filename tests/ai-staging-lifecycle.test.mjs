@@ -325,6 +325,10 @@ test("S1 pre-activation and post-closure guards fail on old-room mutation but al
   });
   assert.equal(closed.missingFingerprintCount, 0);
   assert.throws(() => evaluateStagingRoomGuard({ rows: [fresh], now: now.getTime() + 30_000, phase: "post_closure", baseline, activationAt: now.getTime() }), /changed or disappeared/);
+  assert.throws(() => evaluateStagingRoomGuard({ rows: [guardRow(), fresh, guardRow({ roomId: "second-fresh", createdAt: now.getTime() + 2_000, lastActivityAt: now.getTime() + 2_000 })], now: now.getTime() + 30_000, phase: "monitor", baseline, activationAt: now.getTime() }), /second\/new room/);
+  const tracked = evaluateStagingRoomGuard({ rows: [guardRow(), fresh], now: now.getTime() + 30_000, phase: "monitor", baseline, activationAt: now.getTime() });
+  assert.ok(tracked.freshFingerprint);
+  assert.throws(() => evaluateStagingRoomGuard({ rows: [guardRow(), { ...fresh, last_activity_at: now.getTime() + 9_000 }], now: now.getTime() + 31_000, phase: "monitor", baseline, activationAt: now.getTime(), trackedFreshFingerprint: tracked.freshFingerprint }), /identity changed/);
 });
 
 test("S1 guard fingerprints canonical state, rejects malformed counts/duplicates, and keeps lobby/terminal identities", () => {
@@ -343,7 +347,17 @@ test("S1 hosted gate and monotonic clock fail closed at the exact safety boundar
   assert.throws(() => assertHostedLifecycleBudget({ startedAtEpochMs: 1_000, nowEpochMs: 1_000 + 14 * 60_000 + 1, activationAtEpochMs: 1_000, phase: "active" }), /14-minute/);
   assert.throws(() => assertHostedLifecycleBudget({ startedAtEpochMs: 1_000, nowEpochMs: 1_000 - 1, phase: "before_activation" }), /backwards/);
   const sha = "a".repeat(40);
-  assert.deepEqual(assertHostedActivationGate({ sourceSha: sha, expectedSha: sha, runId: "123", s1: true, s2: true, historicalCredentialDisposition: "confirmed_invalid_or_revoked", controlledAccess: true }).s1, true);
-  assert.throws(() => assertHostedActivationGate({ sourceSha: sha, expectedSha: sha, runId: "123", s1: true, s2: false, historicalCredentialDisposition: "confirmed_invalid_or_revoked", controlledAccess: true }), /S1 and S2/);
-  assert.throws(() => assertHostedActivationGate({ sourceSha: sha, expectedSha: sha, runId: "123", s1: true, s2: true, historicalCredentialDisposition: "unknown", controlledAccess: true }), /credential disposition/);
+  const gate = { sourceSha: sha, authorizedSha: sha, runId: "123", authorizedRunId: "123", authorizationExpiresAtEpochMs: 10_000, nowEpochMs: 2_000, s1: true, s2: true, historicalCredentialDisposition: "confirmed_invalid_or_revoked", controlledAccess: true };
+  assert.deepEqual(assertHostedActivationGate(gate).s1, true);
+  assert.throws(() => assertHostedActivationGate({ ...gate, authorizedSha: "b".repeat(40) }), /externally authorized source SHA/);
+  assert.throws(() => assertHostedActivationGate({ ...gate, s2: false }), /S1 and S2/);
+  assert.throws(() => assertHostedActivationGate({ ...gate, historicalCredentialDisposition: "unknown" }), /credential disposition/);
+  assert.throws(() => assertHostedActivationGate({ ...gate, nowEpochMs: 10_001 }), /expired/);
+});
+
+test("S1 accepts a valid zero-row inventory and keeps it complete", () => {
+  const result = evaluateStagingRoomGuard({ rows: [], totalRoomRows: 0, now: now.getTime(), phase: "baseline" });
+  assert.equal(result.complete, true);
+  assert.equal(result.roomCount, 0);
+  assert.equal(result.fingerprintDigest.length, 64);
 });

@@ -48,6 +48,7 @@ import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presenta
 import { childCausalFrame, contextFor, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
 import { advanceCausalSemanticCheckpoint } from "../causal-envelope";
 import { getBotExecutionContext, isBotActionPrincipal, recordBotCommit, recordBotOutcome, type BotActionPrincipal, type BotExecutionContext } from "../../../worker/bot-principal";
+import { incrementBotRuntimeCounter } from "../../../worker/bot-runtime-counters";
 import { shouldLookupAuthenticatedSession } from "../internal-bot-session";
 import { emitBotDecisionDiagnostic, type BotDecisionCard, type BotDecisionDiagnosticContext, type BotDecisionOption } from "../../../worker/bot-diagnostics";
 import type { BotActionOutcome, BotCommitKind } from "../../../worker/bot-outcome";
@@ -165,13 +166,8 @@ export function endBotCompactProjection(code: string, projectionToken: string) {
   else tokens.set(projectionToken, { ...current, count: current.count - 1 });
   if (tokens && tokens.size === 0) compactProjectionGuards.delete(code);
 }
-function compactProjectionActive(code: string, token?: string) {
-  return Boolean(token && compactProjectionGuards.get(code)?.has(token));
-}
-function activeBotExecutionContext(roomId: string): BotExecutionContext | null {
-  const tokens = compactProjectionGuards.get(roomId);
-  if (!tokens || tokens.size !== 1) return null;
-  return [...tokens.values()][0]?.context ?? null;
+function compactProjectionContext(code: string, token?: string): BotExecutionContext | null {
+  return token ? compactProjectionGuards.get(code)?.get(token)?.context ?? null : null;
 }
 
 function botEventIdFromCanonicalLog(log: readonly string[]) {
@@ -3715,7 +3711,7 @@ function matchVictoryLog(log: string[], outcome: NonNullable<ReturnType<typeof d
   return addLog(log, `${winner}! The match is over.`);
 }
 
-async function finishIfWon(roomId: string) {
+async function finishIfWon(roomId: string, botContext: BotExecutionContext | null = null) {
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>(); const outcome = determineMatchOutcome(rows.results ?? []);
   if (!outcome) return false;
   const room = await db().prepare("SELECT log_json, discard_json, pending_json FROM rooms WHERE id = ?").bind(roomId).first<{ log_json: string | null; discard_json: string | null; pending_json: string | null }>();
@@ -3724,7 +3720,7 @@ async function finishIfWon(roomId: string) {
   const discard = sequence ? commitHeldGroupCards(parse<Card[]>(room?.discard_json ?? null, []), sequence) : parse<Card[]>(room?.discard_json ?? null, []);
   const log = matchVictoryLog(parse<string[]>(room?.log_json ?? null, []), outcome);
   const settled = await db().prepare("UPDATE rooms SET status = 'finished', phase = 'finished', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), roomId).run();
-  if ((settled.meta.changes ?? 0) > 0) recordCanonicalBotCommit(activeBotExecutionContext(roomId), roomId, "terminal", { kind: "row", id: roomId });
+  if ((settled.meta.changes ?? 0) > 0) recordCanonicalBotCommit(botContext, roomId, "terminal", { kind: "row", id: roomId });
   return (settled.meta.changes ?? 0) > 0;
 }
 
@@ -4196,7 +4192,8 @@ function turnStartTransition(player: PlayerRow, log: string[]) {
 }
 
 /** Canonical beginning-of-turn transition. Only this path may offer turn-start capabilities. */
-async function beginTurnStart(roomId: string, turnSeat: number, expectedPendingJson?: string, expectedPhase: "draw" | "resolving" = "resolving", database: D1Database = db(), expectedTurnSeat = turnSeat) {
+async function beginTurnStart(roomId: string, turnSeat: number, expectedPendingJson?: string, expectedPhase: "draw" | "resolving" = "resolving", database: D1Database = db(), expectedTurnSeat = turnSeat, botContext: BotExecutionContext | null = null) {
+  void botContext;
   const room = await database.prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   const rows = await database.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   const player = rows.results?.find((candidate) => candidate.seat === turnSeat && candidate.alive);
@@ -4321,13 +4318,13 @@ async function commitTurnBoundary(room: RoomRow, actor: PlayerRow, state: {
       .bind(JSON.stringify(payment.hand), room.id, actor.id, pendingJson)]))[0]
     : await write.run();
   if (!(result.meta.changes ?? 0)) return false;
-  if (checkpoint) await advanceTurnEndCheckpoint(room.id, pendingJson!);
+  if (checkpoint) await advanceTurnEndCheckpoint(room.id, pendingJson!, botContext);
   recordCanonicalBotCommit(botContext, room.id, checkpoint ? "checkpoint" : "transition",
     checkpoint ? { kind: "checkpoint", id: checkpoint.id } : { kind: "event", id: botEventIdFromCanonicalLog(state.log) ?? "" });
   return true;
 }
 
-async function advanceTurnEndCheckpoint(roomId: string, observedPendingJson: string) {
+async function advanceTurnEndCheckpoint(roomId: string, observedPendingJson: string, botContext: BotExecutionContext | null = null) {
   const checkpoint = parseTurnEndCheckpoint(observedPendingJson);
   if (!checkpoint) return false;
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ? AND status = 'playing' AND phase = 'resolving' AND pending_json = ?")
@@ -4335,7 +4332,7 @@ async function advanceTurnEndCheckpoint(roomId: string, observedPendingJson: str
   if (!room || room.turn_seat !== checkpoint.continuation.endingSeat) return true;
   const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
   await continueTurnEndEvent(room, checkpoint.continuation, players, parse<Card[]>(room.deck_json, []),
-    parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []), checkpoint);
+    parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []), checkpoint, botContext);
   return true;
 }
 
@@ -4351,7 +4348,7 @@ async function advanceRecoveryCheckpoint(roomId: string, observedPendingJson: st
 }
 
 /** Resume a defeated current-turn owner through the canonical turn-start CAS. */
-async function advanceDefeatHandoffCheckpoint(roomId: string, observedPendingJson: string) {
+async function advanceDefeatHandoffCheckpoint(roomId: string, observedPendingJson: string, botContext: BotExecutionContext | null = null) {
   const checkpoint = parseDefeatHandoffCheckpoint(observedPendingJson);
   if (!checkpoint) return false;
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ? AND status = 'playing' AND phase = 'resolving' AND pending_json = ?")
@@ -4369,13 +4366,13 @@ async function advanceDefeatHandoffCheckpoint(roomId: string, observedPendingJso
     hasGroupContinuation: false,
   });
   if (decision.kind === "finish") {
-    await finishIfWon(roomId);
+    await finishIfWon(roomId, botContext);
     return true;
   }
   if (decision.kind !== "advance_turn" || decision.nextSeat !== checkpoint.nextTurnSeat) return true;
   // beginTurnStart() uses the checkpoint JSON as its exact expected pending
   // value, so concurrent GET/timer/Bot wakes can only create one new epoch.
-  await beginTurnStart(roomId, checkpoint.nextTurnSeat, observedPendingJson, "resolving", env.DB, checkpoint.expectedTurnSeat);
+  await beginTurnStart(roomId, checkpoint.nextTurnSeat, observedPendingJson, "resolving", env.DB, checkpoint.expectedTurnSeat, botContext);
   return true;
 }
 
@@ -4407,7 +4404,7 @@ async function settleTurnEndCheckpoint(room: RoomRow, checkpoint: TurnEndCheckpo
 }
 
 /** Finds turn-end providers, then advances only after the persisted event is exhausted. */
-async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerContinuation, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], checkpoint?: TurnEndCheckpoint) {
+async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerContinuation, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], checkpoint?: TurnEndCheckpoint, botContext: BotExecutionContext | null = null) {
   const endingPlayer = players.find((player) => player.id === continuation.endingPlayerId) ?? null;
   if (endingPlayer?.alive) {
     const resolved = continuation.resolvedEffectIds ?? [];
@@ -4465,7 +4462,7 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
       });
       return;
     }
-  } else if (await finishIfWon(room.id)) return;
+  } else if (await finishIfWon(room.id, botContext)) return;
   const currentRoom = checkpoint ? room : await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
   const currentPlayers = checkpoint ? players : (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
   if (!currentRoom || currentRoom.status !== "playing") return;
@@ -4513,7 +4510,7 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
   }
   await db().prepare("UPDATE rooms SET turn_seat = ?, phase = 'resolving', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ? AND status = 'playing'")
     .bind(next, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextLog), room.id).run();
-  await beginTurnStart(room.id, next);
+  await beginTurnStart(room.id, next, undefined, "resolving", db(), next, botContext);
 }
 
 async function beginMatch(roomId: string, players: PlayerRow[]) {
@@ -4967,7 +4964,8 @@ async function resetAudit(roomId: string) {
   ]);
 }
 
-async function continueAfterDying(roomId: string, sourceId: string) {
+async function continueAfterDying(roomId: string, sourceId: string, _botContext: BotExecutionContext | null = null) {
+  void _botContext;
   void roomId; void sourceId;
   // Human turn endings are committed by the explicit end_turn/discard action.
 }
@@ -5041,8 +5039,8 @@ function createDefeatHandoffCheckpoint(room: RoomRow, pending: DyingPending, nex
   };
 }
 
-async function continueAfterDefeat(roomId: string, pending: DyingPending) {
-  if (await finishIfWon(roomId)) return;
+async function continueAfterDefeat(roomId: string, pending: DyingPending, botContext: BotExecutionContext | null = null) {
+  if (await finishIfWon(roomId, botContext)) return;
   if (pending.resumePending) await resumeGroupAfterDying(roomId, pending);
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
@@ -5053,8 +5051,8 @@ async function continueAfterDefeat(roomId: string, pending: DyingPending) {
     return;
   }
   const decision = determineDefeatContinuation({ players: rows.results ?? [], turnSeat: room.turn_seat, resumePlayerId: pending.resumePlayerId, hasGroupContinuation: Boolean(pending.resumePending) });
-  if (decision.kind === "finish") { await finishIfWon(roomId); return; }
-  if (decision.kind === "resume_group") { await advanceGroup(roomId); return; }
+  if (decision.kind === "finish") { await finishIfWon(roomId, botContext); return; }
+  if (decision.kind === "resume_group") { await advanceGroup(roomId, botContext); return; }
   if (pending.resumeTrigger) {
     const current = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
@@ -5064,7 +5062,7 @@ async function continueAfterDefeat(roomId: string, pending: DyingPending) {
   if (decision.kind === "advance_turn") {
     const log = addLog(parse<string[]>(room.log_json, []), "The defeated turn owner cannot continue; the next living player begins their turn.");
     await db().prepare("UPDATE rooms SET turn_seat = ?, phase = 'resolving', pending_json = NULL, log_json = ? WHERE id = ? AND status = 'playing'").bind(decision.nextSeat, JSON.stringify(log), roomId).run();
-    await beginTurnStart(roomId, decision.nextSeat);
+    await beginTurnStart(roomId, decision.nextSeat, undefined, "resolving", db(), decision.nextSeat, botContext);
     return;
   }
   if (!pending.resumePhase?.startsWith("draw")) await continueAfterDying(roomId, pending.resumePlayerId);
@@ -5078,11 +5076,11 @@ function dyingResumeState(pending: DyingPending, resume?: PlayerRow | null) {
     : { phase: pending.resumePhase ?? phaseAfterAttack(resume), pendingJson: null };
 }
 
-async function continueDyingResolution(roomId: string, pending: DyingPending) {
-  if (await finishIfWon(roomId)) return;
+async function continueDyingResolution(roomId: string, pending: DyingPending, botContext: BotExecutionContext | null = null) {
+  if (await finishIfWon(roomId, botContext)) return;
   if (pending.resumePending) {
     await resumeGroupAfterDying(roomId, pending);
-    await advanceGroup(roomId);
+    await advanceGroup(roomId, botContext);
   }
   else if (pending.resumeEffect) await continueDyingResumeEffect(roomId, pending.resumeEffect, pending.causal);
   else if (pending.resumeTrigger) {
@@ -5090,7 +5088,7 @@ async function continueDyingResolution(roomId: string, pending: DyingPending) {
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
     if (room) await continueDamageSufferedEvent(room, pending.resumeTrigger, rows.results ?? [], parse<Card[]>(room.deck_json, []), parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []));
   }
-  else if (!pending.resumePhase?.startsWith("draw")) await continueAfterDying(roomId, pending.resumePlayerId);
+  else if (!pending.resumePhase?.startsWith("draw")) await continueAfterDying(roomId, pending.resumePlayerId, botContext);
 }
 
 /** Resume a small persisted effect after canonical Dying/rescue settles. */
@@ -5179,7 +5177,7 @@ async function continueDyingResumeEffect(roomId: string, effect: DyingResumeEffe
     .bind(JSON.stringify(draw.deck), JSON.stringify(draw.discard), JSON.stringify(nextLog), roomId).run();
 }
 
-async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: PlayerRow | null, source?: PlayerRow | null) {
+async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: PlayerRow | null, source?: PlayerRow | null, botContext: BotExecutionContext | null = null) {
   // Read the fencing inputs before constructing any settlement writes.  The
   // current-turn-owner branch is allowed to move directly from the canonical
   // Dying state into a private checkpoint; all other callers retain the
@@ -5305,14 +5303,14 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
         ...(sourceReward ? [settlementSource.id, settlementSource.alive, settlementSource.hand_json] : sourcePenalty ? [settlementSource.id, settlementSource.alive, settlementSource.hand_json, settlementSource.equipment_json, settlementSource.role] : []));
     const result = await db().batch([roomStatement, ...writes]);
     if ((result[0]?.meta.changes ?? 0) > 0) {
-      await advanceDefeatHandoffCheckpoint(room.id, checkpointJson);
+      await advanceDefeatHandoffCheckpoint(room.id, checkpointJson, botContext);
     }
     return;
   }
   const next = dyingResumeState(pending, resume);
   writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(next.phase, next.pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
   if (writes.length) await db().batch(writes);
-  await continueAfterDefeat(room.id, pending);
+  await continueAfterDefeat(room.id, pending, botContext);
 }
 
 /** Find the next real rescue blocker without publishing skipped candidates. */
@@ -5395,14 +5393,14 @@ async function expireDyingRescue(roomId: string) {
   }
 }
 
-async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], extraWrites: D1PreparedStatement[] = [], resumePlayer: PlayerRow = source ?? target, resumePhase = source ? phaseAfterAttack(source) : "draw", resumePending?: ResponsePending, dyingHp = target.hp ?? 0, origin?: AttackOrigin, resumeTrigger?: DamageSufferedTriggerContinuation, resumeEffect?: DyingResumeEffect, causal?: CausalContext, rootEventId?: string, expectedPendingJson?: string | null, expectedPhase?: string | null) {
+async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], extraWrites: D1PreparedStatement[] = [], resumePlayer: PlayerRow = source ?? target, resumePhase = source ? phaseAfterAttack(source) : "draw", resumePending?: ResponsePending, dyingHp = target.hp ?? 0, origin?: AttackOrigin, resumeTrigger?: DamageSufferedTriggerContinuation, resumeEffect?: DyingResumeEffect, causal?: CausalContext, rootEventId?: string, expectedPendingJson?: string | null, expectedPhase?: string | null, botContext: BotExecutionContext | null = null) {
   const order = playersInTurnOrder(players, room.turn_seat ?? source?.seat ?? target.seat);
   const committedRootEventId = rootEventId ?? resumeTrigger?.rootEventId ?? resumeEffect?.publicOutcome?.rootEventId;
   const basePending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: "", remainingIds: order.map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending, ...(causal ? { causal } : {}), ...(committedRootEventId ? { rootEventId: committedRootEventId } : {}), ...(origin ? { origin } : {}), ...(resumeTrigger ? { resumeTrigger } : {}), ...(resumeEffect ? { resumeEffect } : {}), reason: `Decide whether to give Peach to ${target.name}` };
-  await startSharedDyingWindow(room, basePending, players, deck, discard, log, extraWrites, dyingHp, expectedPendingJson, expectedPhase);
+  await startSharedDyingWindow(room, basePending, players, deck, discard, log, extraWrites, dyingHp, expectedPendingJson, expectedPhase, botContext);
 }
 
-async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePending; continuation: DuelContinuation }, loser: PlayerRow, opponent: PlayerRow, discard: Card[], log: string[]) {
+async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePending; continuation: DuelContinuation }, loser: PlayerRow, opponent: PlayerRow, discard: Card[], log: string[], botContext: BotExecutionContext | null = null) {
   const resume = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.continuation.resumePlayerId ?? pending.continuation.sourceId).first<PlayerRow>();
   if (!resume) return;
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
@@ -5452,6 +5450,7 @@ async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePendi
     cause: "duel",
     label: "Duel damage",
     damageDescription: (amount) => `${loser.name} fails to play Attack and takes ${amount} Duel damage from ${opponent.name}`,
+    botContext,
     ...(pending.continuation.lust ? { finalizeDamageLog: (damageLog: string[], damageAmount: number) => attachDiaoChanNotice(damageLog, {
       semantics: "PROVEN",
       effectId: "diao_chan_lust",
@@ -6686,6 +6685,7 @@ type AttackDamageTransition = {
   onDamageApplied?: (hp: number) => Promise<void> | void;
   finalizeAttackHitLog?: (log: string[]) => string[];
   skipTriggers?: boolean;
+  botContext?: BotExecutionContext | null;
 };
 type AttackDamageResult =
   | { kind: "reaction_pending" }
@@ -6724,10 +6724,11 @@ type SourcedDamageTransition = {
   onDamageApplied?: (hp: number) => Promise<void> | void;
   finalizeDamageLog?: (log: string[], actualHpLost: number) => string[];
   finalizeAttackHitLog?: (log: string[]) => string[];
+  botContext?: BotExecutionContext | null;
 };
 
 /** Applies sourced damage, then discovers the generic post-damage event. */
-async function resolveSourcedDamage({ room, source, target, players, amount, deck = parse<Card[]>(room.deck_json, []), discard, log, resumePhase, resumePlayerId, sequenceStartCardId, rootEventId, damageCards = [], physicalSuit, origin, causal, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumeChildCausal, resumePending, resumeDamageSuffered, resumeTurnEnd, expectedRoomPhase, expectedPendingJson, resumeTurnEndPayment, onDamageApplied, finalizeDamageLog, finalizeAttackHitLog }: SourcedDamageTransition): Promise<AttackDamageResult> {
+async function resolveSourcedDamage({ room, source, target, players, amount, deck = parse<Card[]>(room.deck_json, []), discard, log, resumePhase, resumePlayerId, sequenceStartCardId, rootEventId, damageCards = [], physicalSuit, origin, causal, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumeChildCausal, resumePending, resumeDamageSuffered, resumeTurnEnd, expectedRoomPhase, expectedPendingJson, resumeTurnEndPayment, onDamageApplied, finalizeDamageLog, finalizeAttackHitLog, botContext = null }: SourcedDamageTransition): Promise<AttackDamageResult> {
   const inheritedCausal = causal ?? resumeGroup?.causal ?? resumePending?.causal ?? resumeDamageSuffered?.causal ?? resumeTurnEnd?.causal;
   const finalAmount = resolveDamageModifiers({ sourceId: source?.id, sourceHero: source?.hero, cause, baseAmount: amount, turnState: parse<KingSkillState>(room.skill_state_json, {}) });
   const effectiveResumeGroup = finalAmount > 0 ? withPendingGroupDamageOutcome(resumeGroup, target.id) : resumeGroup;
@@ -6788,7 +6789,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
       ? damageSufferedTriggerOptions(dyingSource?.alive ? dyingSource : null, dyingTarget, finalAmount, undefined, [], damageCards, [], cause, physicalSuit, skillState, playPhase, recoverableCardIds)
       : [];
     const needsPostDamageResume = pendingPostDamageOptions.length > 0 || Boolean(effectiveResumeGroup || resumeDamageSuffered || resumeTurnEnd);
-    await startDyingRescue(room, source, dyingTarget, players, deck, discard, damageLog, writes, resumePlayer, resumePhase, effectiveResumePending, hp, origin, needsPostDamageResume ? damageContinuation : undefined, undefined, inheritedCausal, rootEventId, expectedPendingJson, expectedRoomPhase);
+    await startDyingRescue(room, source, dyingTarget, players, deck, discard, damageLog, writes, resumePlayer, resumePhase, effectiveResumePending, hp, origin, needsPostDamageResume ? damageContinuation : undefined, undefined, inheritedCausal, rootEventId, expectedPendingJson, expectedRoomPhase, botContext);
     return { kind: "dying" };
   }
 
@@ -6847,12 +6848,12 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
       : null;
     const committed = await db().batch([checkpoint.statement, guardedHp, ...(guardedPayment ? [guardedPayment] : [])]);
     if ((committed[0]?.meta.changes ?? 0) <= 0) return { kind: "damage_applied", hp: target.hp ?? 0, log };
-    await advanceTurnEndCheckpoint(room.id, checkpoint.pendingJson);
+    await advanceTurnEndCheckpoint(room.id, checkpoint.pendingJson, botContext);
     return { kind: "damage_applied", hp, log: damageLog };
   }
   if (effectiveResumeGroup) {
     const resumedRoom = resumeGroupCausalRoom(room, resumeChildCausal);
-    await finishGroupStep(resumedRoom, effectiveResumeGroup, effectiveResumeGroup.continuation, updatedPlayers, discard, damageLog, [...writes, db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id)]);
+    await finishGroupStep(resumedRoom, effectiveResumeGroup, effectiveResumeGroup.continuation, updatedPlayers, discard, damageLog, [...writes, db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id)], undefined, botContext);
     return { kind: "damage_applied", hp, log: damageLog };
   }
   if (resumePhase.startsWith("draw")) {
@@ -6869,7 +6870,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     causalRoomStateWrite(room.id, { phase: resumePhase, pending: null, deck, discard, log: finalDamageLog, causalEnvelope: null }),
   ]);
   if (onDamageApplied) await onDamageApplied(hp);
-  else await continueAfterDying(room.id, resumePlayerId ?? source?.id ?? target.id);
+  else await continueAfterDying(room.id, resumePlayerId ?? source?.id ?? target.id, botContext);
   return { kind: "damage_applied", hp, log: finalDamageLog };
 }
 
@@ -6878,7 +6879,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
  * discovery, the canonical reaction decision, original damage, and Dying all
  * belong here; Attack callers only provide their continuation and presentation.
  */
-async function resolveAttackDamageAboutToApply({ room, source, target, players, sourceHand, discard, log, resumePhase, resumePlayerId, sequenceStartCardId, rootEventId, damageCards = [], physicalSuit, origin, causal, label = "Attack", writes = [], onDamageApplied, finalizeAttackHitLog, skipTriggers = false }: AttackDamageTransition): Promise<AttackDamageResult> {
+async function resolveAttackDamageAboutToApply({ room, source, target, players, sourceHand, discard, log, resumePhase, resumePlayerId, sequenceStartCardId, rootEventId, damageCards = [], physicalSuit, origin, causal, label = "Attack", writes = [], onDamageApplied, finalizeAttackHitLog, skipTriggers = false, botContext = null }: AttackDamageTransition): Promise<AttackDamageResult> {
   const options = damageTriggerOptions(source, target);
   if (!skipTriggers && options.length) {
     const presentation = addLogWithId(log, `${source.name}'s ${label} would damage ${target.name}. Optional reactions may prevent that damage.`);
@@ -6897,7 +6898,7 @@ async function resolveAttackDamageAboutToApply({ room, source, target, players, 
   // future source-owned damage provider is discovered.
   return resolveSourcedDamage({
     room, source: { ...source, hand_json: JSON.stringify(sourceHand) }, target, players, amount: 1, discard, log, resumePhase, resumePlayerId,
-    sequenceStartCardId, rootEventId, damageCards, physicalSuit, origin, causal, cause: "attack", label, writes: [
+    sequenceStartCardId, rootEventId, damageCards, physicalSuit, origin, causal, cause: "attack", label, botContext, writes: [
       ...writes,
       db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id),
     ], onDamageApplied, finalizeAttackHitLog,
@@ -7421,7 +7422,7 @@ function groupSettlementProofFor(room: RoomRow, response: ResponsePending, conti
   };
 }
 
-async function finishGroupStep(room: RoomRow, response: ResponsePending, continuation: GroupContinuation, players: PlayerRow[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], outcome?: GroupParticipantProgressOutcome) {
+async function finishGroupStep(room: RoomRow, response: ResponsePending, continuation: GroupContinuation, players: PlayerRow[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], outcome?: GroupParticipantProgressOutcome, botContext: BotExecutionContext | null = null) {
   const participantOutcome = outcome ?? pendingGroupDamageOutcomeFor(continuation, response.actorId, players);
   const completedContinuation = finishGroupParticipant(continuation, response.actorId, players, participantOutcome);
   const next = nextGroupResponse(response, completedContinuation, players);
@@ -7441,10 +7442,10 @@ async function finishGroupStep(room: RoomRow, response: ResponsePending, continu
   }).log;
   writes.push(causalRoomStateWrite(room.id, { phase: completedContinuation.resumePhase, pending: null, discard: commitHeldGroupCards(discard, completedContinuation), log: finalResult, causalEnvelope: null }));
   if (writes.length) await db().batch(writes);
-  await continueAfterDying(room.id, completedContinuation.sourceId);
+  await continueAfterDying(room.id, completedContinuation.sourceId, botContext);
 }
 
-async function resolveGroupDamage(room: RoomRow, response: ResponsePending, continuation: GroupContinuation, actor: PlayerRow, source: PlayerRow, players: PlayerRow[], discard: Card[], log: string[]) {
+async function resolveGroupDamage(room: RoomRow, response: ResponsePending, continuation: GroupContinuation, actor: PlayerRow, source: PlayerRow, players: PlayerRow[], discard: Card[], log: string[], botContext: BotExecutionContext | null = null) {
   const cardName = groupCardName(continuation.cardKind);
   const pausedContinuation = withGroupParticipantStatus(continuation, actor.id, "PAUSED");
   const pausedResponse = { ...response, continuation: pausedContinuation } as GroupResponsePending;
@@ -7479,10 +7480,11 @@ async function resolveGroupDamage(room: RoomRow, response: ResponsePending, cont
     damageDescription: `${actor.name} does not play ${continuation.requiredKind} and takes 1 damage from ${cardName}`,
     resumeGroup: pausedResponse,
     resumePending,
+    botContext,
   });
 }
 
-async function advanceGroup(roomId: string) {
+async function advanceGroup(roomId: string, botContext: BotExecutionContext | null = null) {
   for (let guard = 0; guard < 30; guard++) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
     const stored = parse<Pending | null>(room?.pending_json ?? null, null);
@@ -7495,7 +7497,7 @@ async function advanceGroup(roomId: string) {
     if (!actor) {
       const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) continue;
-      await finishGroupStep(room, responsePending, continuation, players, parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []));
+      await finishGroupStep(room, responsePending, continuation, players, parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []), [], undefined, botContext);
       return;
     }
     // The group response is always a real private decision. An empty option
@@ -7985,7 +7987,12 @@ function publicHarvestPoolDuringNegation(
 }
 
 async function roomState(code: string, token?: string, includeAttackDodgeDiagnostics = false, requestedViewerId?: string | null) {
-  if (compactProjectionActive(code, token)) return null;
+  const projectionContext = compactProjectionContext(code, token);
+  incrementBotRuntimeCounter(projectionContext?.runtimeCounters, "roomStateCalls");
+  if (projectionContext) {
+    incrementBotRuntimeCounter(projectionContext.runtimeCounters, "compactProjectionShortCircuits");
+    return null;
+  }
   const db = env.DB;
   const room = await db.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
   if (!room) return null;
@@ -8463,13 +8470,13 @@ function sharedWindowFor(room: RoomRow): SharedResponseWindowPending | null {
 }
 async function startSharedDyingWindow(room: RoomRow, pending: DyingPending, players: PlayerRow[],
   deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], hp?: number,
-  expectedPendingJson?: string | null, expectedPhase?: string | null) {
+  expectedPendingJson?: string | null, expectedPhase?: string | null, botContext: BotExecutionContext | null = null) {
   const target = players.find((player) => player.id === pending.targetId);
   if (!target) return;
   const source = players.find((player) => player.id === pending.sourceId);
   const window = createSharedResponseWindow(players, pending.targetId, pending.targetId,
     { mode: "DYING_PEACH", dying: pending }, Date.now(), room.turn_seat ?? source?.seat ?? target.seat);
-  if (!window) { await defeatDyingPlayer(room, pending, target, source ?? null); return; }
+  if (!window) { await defeatDyingPlayer(room, pending, target, source ?? null, botContext); return; }
   await db().batch([...writes,
     ...(hp === undefined ? [] : [db().prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(hp, target.id)]),
     causalRoomStateWrite(room.id, { phase: "dying", pending: window, deck, discard, log,
@@ -8721,7 +8728,7 @@ async function commitCanonicalResponse(input: {
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Duel response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
     recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
     if (!canonicalRespond || !responseExecution) {
-      await resolveDuelLoss(liveRoom, pending, semanticActor, opponent, discard, log);
+      await resolveDuelLoss(liveRoom, pending, semanticActor, opponent, discard, log, botContext);
     } else {
       const attackIds = new Set(attackCards.map((card) => card.id)); hand = hand.filter((card) => !attackIds.has(card.id)); discard.push(...attackCards);
       const responseOrdinal = Number.isSafeInteger(pending.continuation.attackResponseCount)
@@ -8823,7 +8830,7 @@ async function commitCanonicalResponse(input: {
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That global card response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
     recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "row", id: room.id });
     if (!canonicalRespond || !groupExecution) {
-      await resolveGroupDamage(liveRoom, response, continuation, semanticActor, source, players, discard, log);
+      await resolveGroupDamage(liveRoom, response, continuation, semanticActor, source, players, discard, log, botContext);
     } else {
       const responseCards = selectedResponse ? [selectedResponse] : serpentCards; const responseIds = new Set(responseCards.map((card) => card.id)); hand = hand.filter((card) => !responseIds.has(card.id)); const nextContinuation = appendHeldGroupCards(continuation, responseCards);
       const conversion = publicConversionDraft(groupExecution.providerId, me.id, responseCards, { playerId: me.id, hand: handBeforeGroup, equipment: equipmentCards(me) }, semanticActor.id, continuation.requiredKind);
@@ -8983,7 +8990,7 @@ async function commitCanonicalResponse(input: {
           && continuation.damageCards[0].id === continuation.sequenceStartCardId
           ? attackHitSettlementProofFor(liveRoom, source, semanticTarget, continuation.sequenceStartCardId ?? "", response.resolutionId ?? continuation.resolutionId, continuation.causal, log)
           : undefined;
-        await resolveAttackDamageAboutToApply({ room: liveRoom, source, target: semanticTarget, players: rows.results ?? [], sourceHand: parse<Card[]>(source.hand_json, []), discard, log, resumePhase: continuation.resumePhase ?? phaseAfterAttack(source), resumePlayerId: continuation.resumePlayerId, sequenceStartCardId: continuation.sequenceStartCardId ?? "", rootEventId: continuation.rootEventId, damageCards: continuation.damageCards, physicalSuit: continuation.physicalSuit, origin: continuation.origin, causal: continuation.causal, label: "Attack", ...(attackHitProof ? { finalizeAttackHitLog: (damageLog: string[]) => attachAttackHitSettlement(damageLog, attackHitProof) } : {}) });
+        await resolveAttackDamageAboutToApply({ room: liveRoom, source, target: semanticTarget, players: rows.results ?? [], sourceHand: parse<Card[]>(source.hand_json, []), discard, log, resumePhase: continuation.resumePhase ?? phaseAfterAttack(source), resumePlayerId: continuation.resumePlayerId, sequenceStartCardId: continuation.sequenceStartCardId ?? "", rootEventId: continuation.rootEventId, damageCards: continuation.damageCards, physicalSuit: continuation.physicalSuit, origin: continuation.origin, causal: continuation.causal, label: "Attack", botContext, ...(attackHitProof ? { finalizeAttackHitLog: (damageLog: string[]) => attachAttackHitSettlement(damageLog, attackHitProof) } : {}) });
       }
     }
     if (canonicalDodge) recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: responseEventId ?? "" });
@@ -9135,12 +9142,12 @@ async function commitCanonicalResponse(input: {
           const settledPlayers = await db.prepare("SELECT * FROM players WHERE id IN (?, ?)").bind(target.id, source?.id ?? target.id).all<PlayerRow>();
           const settledTarget = settledPlayers.results?.find((player) => player.id === target.id) ?? target;
           const settledSource = settledPlayers.results?.find((player) => player.id === source?.id) ?? source;
-          if (settledRoom) await defeatDyingPlayer(settledRoom, resumedPending, settledTarget, settledSource);
+          if (settledRoom) await defeatDyingPlayer(settledRoom, resumedPending, settledTarget, settledSource, botContext);
         }
       } else {
         const next = dyingResumeState(resumedPending, resume);
         await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId), causalRoomStateWrite(room.id, { phase: next.phase, pending: next.pendingJson ? resumedPending : null, discard, log, causalEnvelope: liveRoom.causal_envelope_json ? causalEnvelopeAtStage(liveRoom, resumedPending.causal, "DAMAGE", { currentSourceId: pending.sourceId, currentEffect: "damage", currentTargetIds: [pending.targetId], resolvingPlayerId: resumedPending.actorId }) : null })]);
-        await continueDyingResolution(room.id, resumedPending);
+        await continueDyingResolution(room.id, resumedPending, botContext);
       }
       recordCanonicalBotCommit(botContext, room.id, "transition", { kind: "event", id: peachEventId });
     } else if (pending.remainingIds.length) {
@@ -9148,11 +9155,11 @@ async function commitCanonicalResponse(input: {
       if (transition.pending) {
         await causalRoomStateWrite(room.id, { phase: "dying", pending: transition.pending, log: parse<string[]>(liveRoom.log_json, []), causalEnvelope: transition.causalEnvelope }, liveRoom.pending_json).run();
       } else {
-        await defeatDyingPlayer(liveRoom, pending, target, source);
+        await defeatDyingPlayer(liveRoom, pending, target, source, botContext);
       }
       return json({ room: await roomState(code, token) });
     } else {
-      await defeatDyingPlayer(liveRoom, pending, target, source);
+      await defeatDyingPlayer(liveRoom, pending, target, source, botContext);
     }
     if (peach && !pending.sharedRescue) await maybeOpenHandLossTrigger(room.id, me.id, handBeforePeach);
     return json({ room: await roomState(code, token) });
@@ -9247,6 +9254,7 @@ export async function POST(request: Request, routeContext?: unknown) {
   const internalBot = isBotActionPrincipal(routeContext) ? routeContext : null;
   const botContext = getBotExecutionContext(internalBot);
   const compactBot = botContext !== null;
+  if (botContext) incrementBotRuntimeCounter(botContext.runtimeCounters, "requestJsonParses");
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
   const uxTraceId = typeof body.uxTraceId === "string" && /^[a-zA-Z0-9-]{8,80}$/.test(body.uxTraceId) ? body.uxTraceId : null;
   let action = String(body.action ?? "");
@@ -9464,6 +9472,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       let currentActor: { hp: number | null; hand_json: string | null } | null = null;
       let work: { status: string; error_code: string | null; attempts: number } | null = null;
       try {
+        if (botContext) incrementBotRuntimeCounter(botContext.runtimeCounters, "diagnosticD1Reads", 3);
         [currentRoom, currentActor, work] = await Promise.all([
           db.prepare("SELECT phase, pending_json FROM rooms WHERE id = ?").bind(room.id).first<{ phase: string | null; pending_json: string | null }>(),
           db.prepare("SELECT hp, hand_json FROM players WHERE room_id = ? AND id = ? AND controller_type = 'bot'").bind(room.id, actor.id).first<{ hp: number | null; hand_json: string | null }>(),
@@ -9549,6 +9558,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       emitEvaluation("draw", "durable_checkpoint_recovery");
       let result: Response;
       try {
+        if (botContext) incrementBotRuntimeCounter(botContext.runtimeCounters, "requestJsonEncodes");
         result = await POST(new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(nextBody) }), internalBot satisfies BotActionPrincipal);
       } catch {
         return finishDecision(json({ error: "The canonical Bot action dispatch failed." }, 500), "draw", "dispatch_threw");
@@ -9566,6 +9576,7 @@ export async function POST(request: Request, routeContext?: unknown) {
       emitEvaluation("choose_hero", "non_response_decision");
       let result: Response;
       try {
+        if (botContext) incrementBotRuntimeCounter(botContext.runtimeCounters, "requestJsonEncodes");
         result = await POST(new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(nextBody) }), internalBot satisfies BotActionPrincipal);
       } catch {
         return finishDecision(json({ error: "The canonical Bot action dispatch failed." }, 500), "choose_hero", "dispatch_threw");
@@ -10212,6 +10223,7 @@ export async function POST(request: Request, routeContext?: unknown) {
     }
     let result: Response;
     try {
+      if (botContext) incrementBotRuntimeCounter(botContext.runtimeCounters, "requestJsonEncodes");
       result = await POST(new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(nextBody) }), internalBot satisfies BotActionPrincipal);
     } catch {
       return finishDecision(json({ error: "The canonical Bot action dispatch failed." }, 500), nextAction, "dispatch_threw");
@@ -10300,14 +10312,14 @@ export async function POST(request: Request, routeContext?: unknown) {
   }
 
   if (GAMEPLAY_ACTION_SET.has(action) && sessionPlayers.length && room.phase === "resolving" && room.pending_json
-    && (await advanceDefeatHandoffCheckpoint(room.id, room.pending_json) || await advanceRecoveryCheckpoint(room.id, room.pending_json))) {
+    && (await advanceDefeatHandoffCheckpoint(room.id, room.pending_json, botContext) || await advanceRecoveryCheckpoint(room.id, room.pending_json))) {
     const refreshed = await roomState(code, token, false, typeof body.testViewerId === "string" ? body.testViewerId : undefined);
     return action === "advance_timers" ? json({ room: refreshed })
       : json({ error: "The effect is being resumed. Refresh for the current legal action.", stale: true, room: refreshed }, 409);
   }
 
   if (GAMEPLAY_ACTION_SET.has(action) && sessionPlayers.length && room.phase === "resolving" && room.pending_json
-    && await advanceTurnEndCheckpoint(room.id, room.pending_json)) {
+    && await advanceTurnEndCheckpoint(room.id, room.pending_json, botContext)) {
     const refreshed = await roomState(code, token, false, typeof body.testViewerId === "string" ? body.testViewerId : undefined);
     return action === "advance_timers" ? json({ room: refreshed })
       : json({ error: "The turn is being handed off. Refresh for the current legal action.", stale: true, room: refreshed }, 409);

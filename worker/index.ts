@@ -114,10 +114,11 @@ const worker = {
       });
     }
     if (url.pathname === "/__test/run-bot-scheduler" && env.WTK_TEST_CAPABILITIES === "1" && request.method === "POST") {
-      const body = await request.json<{ maxRoomsPerWakeup?: unknown; maxStepsPerWakeup?: unknown; captureDiagnostics?: unknown; roomCode?: unknown; simulateDispatchError?: unknown }>().catch(() => ({}));
+      const body = await request.json<{ maxRoomsPerWakeup?: unknown; maxStepsPerWakeup?: unknown; captureDiagnostics?: unknown; captureRuntimeCounters?: unknown; roomCode?: unknown; simulateDispatchError?: unknown }>().catch(() => ({}));
       if (body.maxRoomsPerWakeup !== undefined && typeof body.maxRoomsPerWakeup !== "number"
         || body.maxStepsPerWakeup !== undefined && typeof body.maxStepsPerWakeup !== "number"
         || body.captureDiagnostics !== undefined && typeof body.captureDiagnostics !== "boolean"
+        || body.captureRuntimeCounters !== undefined && typeof body.captureRuntimeCounters !== "boolean"
         || body.simulateDispatchError !== undefined && typeof body.simulateDispatchError !== "boolean"
         || body.roomCode !== undefined && (typeof body.roomCode !== "string" || !/^[A-Z0-9]{1,5}$/i.test(body.roomCode))) {
         return Response.json({ error: "Scheduler test options are invalid." }, { status: 400 });
@@ -128,6 +129,7 @@ const worker = {
         ...(typeof body.roomCode === "string" ? { roomCode: body.roomCode.toUpperCase() } : {}),
         ...(typeof body.maxRoomsPerWakeup === "number" ? { maxRoomsPerWakeup: body.maxRoomsPerWakeup } : {}),
         ...(typeof body.maxStepsPerWakeup === "number" ? { maxStepsPerWakeup: body.maxStepsPerWakeup } : {}),
+        ...(body.captureRuntimeCounters === true ? { captureRuntimeCounters: true } : {}),
       }, diagnostics, body.simulateDispatchError === true
         ? async () => { throw new Error("test-only dispatch exception token=must-not-be-logged"); }
         : undefined));
