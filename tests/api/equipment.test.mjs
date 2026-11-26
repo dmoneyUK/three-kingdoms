@@ -662,6 +662,7 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
   assert.equal(duelAnswer.status, 200); assert.equal(hostAfterDuel.data.currentAction.kind, "response"); assert.equal(hostAfterDuel.data.currentAction.requirement, "attack"); assert.equal(hostAfterDuel.data.currentAction.actorId, hostPlayer.id); assert.ok(duelAnswer.data.room.timeline.some((event) => event.type === "cards" && event.action === "play" && event.player === "Alice"));
   const duelSpearEvent = duelAnswer.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "peach-duel-one"));
   assert.equal(duelSpearEvent.publicCardEffects?.[0]?.effectId, "serpent_spear_attack", "Duel responses expose the same physical proof path");
+  assert.equal(duelSpearEvent.playedAs, "attack", "the response provider persists the semantic Attack result");
   assert.equal(duelSpearEvent.publicCardEffects?.[0]?.targetId, hostPlayer.id);
   const duelContext = duelSpearEvent.publicCardEffects[0].attackContext;
   assert.deepEqual(duelContext, {
@@ -699,6 +700,7 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
   const invasionRoot = bobInvasionAnswer.data.room.timeline.find((event) => event.type === "card" && event.action === "play" && event.card.kind === "BarbarianInvasion");
   const invasionSpearEvent = bobInvasionAnswer.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "peach-invasion-one"));
   const groupContext = invasionSpearEvent.publicCardEffects?.[0]?.attackContext;
+  assert.equal(invasionSpearEvent.playedAs, "attack", "the first group conversion persists the semantic Attack result");
   assert.equal(groupContext?.kind, "GROUP_RESPONSE");
   assert.equal(groupContext.providerId, alicePlayer.id);
   assert.equal(groupContext.semanticActorId, alicePlayer.id);
@@ -717,6 +719,7 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
   assert.equal(groupSnapshotEffect?.rootFrameId, groupContext.rootFrameId,
     "the shared viewer snapshot accepts the ordered group participants and exact causal frame");
   const bobInvasionSpearEvent = bobInvasionAnswer.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "peach-invasion-bob-one"));
+  assert.equal(bobInvasionSpearEvent.playedAs, "attack", "the second group conversion persists the semantic Attack result");
   assert.equal(bobInvasionSpearEvent.publicCardEffects?.[0]?.attackContext?.participantOrdinal, 2,
     "the second committed Serpent Spear response retains its true group seat ordinal");
   assert.equal(latestSerpentSpearGroupResponseEventId(
