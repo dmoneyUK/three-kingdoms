@@ -42,6 +42,13 @@ export type PublicDiscardAnnouncement = {
   accessibleLabel: string;
 };
 
+export type PublicDiscardByActionAnnouncement = {
+  cards: readonly { id: string; name: string; rank: CardRank; suit: CardSuit }[] | null;
+  headline: string;
+  segments?: readonly PublicH4Segment[];
+  accessibleLabel: string;
+};
+
 function eventCards(event: PublicDiscardTimelineEvent): readonly PublicDiscardCard[] {
   if (event.type === "card") return event.card ? [event.card] : [];
   return event.type === "cards" && Array.isArray(event.cards) ? event.cards : [];
@@ -149,4 +156,36 @@ export function publicDiscardAnnouncement(input: {
     : ` discarded ${count} ${count === 1 ? "card" : "cards"}.`;
   const { message: headline, segments } = publicH4Copy([{ id: event.actorId!, name: actor }, suffix]);
   return { eventId: event.id, actorId: event.actorId!, order: event.publicSequence!, count, cards: cardList, headline, segments, accessibleLabel: headline };
+}
+
+/** Formats one committed effect that makes its target's discarded cards public. */
+export function publicDiscardByActionAnnouncement(input: {
+  actor: { id: string; name: string };
+  materialOwner: { id: string; name: string };
+  actionLabel: string;
+  cards: readonly PublicDiscardCard[];
+}): PublicDiscardByActionAnnouncement | null {
+  const { actor, materialOwner, actionLabel, cards } = input;
+  if (!actor.id || !actor.name.trim() || !materialOwner.id || !materialOwner.name.trim()
+    || !actionLabel.trim() || !cards.length || cards.some((card) => !card.id || !card.kind)
+    || new Set(cards.map((card) => card.id)).size !== cards.length) return null;
+  const ranks = new Set<CardRank>(["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]);
+  const suits = new Set<CardSuit>(["♥", "♦", "♣", "♠"]);
+  const identities = cards.map((card) => {
+    if (!ranks.has(card.rank as CardRank) || !suits.has(card.suit as CardSuit)) return null;
+    const definition = cardDefinition(card.kind as CardKind);
+    return definition ? { id: card.id, name: definition.name, rank: card.rank as CardRank, suit: card.suit as CardSuit } : null;
+  });
+  const cardList = identities.length === cards.length && identities.every((identity) => identity !== null)
+    ? identities as Array<{ id: string; name: string; rank: CardRank; suit: CardSuit }>
+    : null;
+  const count = cards.length;
+  const cardCopy = cardList ? `: ${cardList.map((card) => `${card.rank}${card.suit} ${card.name}`).join(" · ")}.` : ".";
+  const { message: headline, segments } = publicH4Copy([
+    { id: actor.id, name: actor.name.trim() },
+    ` used ${actionLabel.trim()} to discard ${count} ${count === 1 ? "card" : "cards"} from `,
+    { id: materialOwner.id, name: materialOwner.name.trim() },
+    cardCopy,
+  ]);
+  return { cards: cardList, headline, segments, accessibleLabel: headline };
 }

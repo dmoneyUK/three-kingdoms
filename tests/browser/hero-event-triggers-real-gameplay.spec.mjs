@@ -1363,13 +1363,50 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
       { viewerPage: targetPage, viewerId: seedData.players[1].id, privateHandCard: privateTargetCard },
       { viewerPage: observerPage, viewerId: seedData.players[2].id, privateHandCard: null },
     ];
-    const activated = await request.post(`${API}/api/rooms`, {
-      data: {
-        action: "trigger", code: seedData.code, token: seedData.players[0].token,
-        providerId: "frost_sword_damage_about_to_apply", cardKeys: ["hand:0", equipmentMaterial.id],
-      },
-    });
+    await Promise.all([openPlayer(page, seedData, 0), openPlayer(targetPage, seedData, 1), openPlayer(observerPage, seedData, 2)]);
+    const stage = page.locator('.card-pool-target-stage[data-trigger-target-pool="true"]');
+    const pool = stage.locator('.card-pool-panel--actor-target-select[aria-label="Frost Sword target card selection"]');
+    await expect(pool).toBeVisible();
+    await expect(pool.locator('[data-target-card-public-zone="hand"] .card-pool-panel__target-select').first()).toBeVisible();
+    await expect(pool.getByRole("tab", { name: /Judgement/ })).toHaveCount(0);
+    await expect(page.locator(`[data-hand-card-id="${privateTargetCard.id}"]`)).toHaveCount(0);
+    const handChoice = pool.locator('[data-target-card-public-zone="hand"] .card-pool-panel__target-select').first();
+    await handChoice.click();
+    await expect(handChoice).toHaveAttribute("aria-pressed", "true");
+    await pool.getByRole("tab", { name: /^Equipment/ }).click();
+    const equipmentChoice = pool.locator('[data-target-card-public-zone="equipment"] .card-pool-panel__target-select');
+    await expect(equipmentChoice).toHaveCount(1);
+    await equipmentChoice.click();
+    await expect(pool).toBeVisible();
+    await expect(page.locator('.card-pool-decision-footer__count')).toHaveText("2 / 2 selected");
+    await expect(pool.getByRole("tab", { name: /Hand.*1 selected/ })).toBeVisible();
+    await expect(pool.getByRole("tab", { name: /Equipment.*1 selected/ })).toBeVisible();
+    const unchangedPollResponse = page.waitForResponse((response) => response.url().startsWith(`${API}/api/rooms?`)
+      && response.request().method() === "GET", { timeout: 10_000 });
+    const unchangedPoll = await unchangedPollResponse;
+    expect(unchangedPoll.ok()).toBeTruthy();
+    const afterPoll = await unchangedPoll.json();
+    expect(afterPoll.currentAction).toMatchObject({ kind: "trigger", actorId: seedData.players[0].id,
+      });
+    expect(afterPoll.actionRevision).toBe(triggerDecision.actionRevision);
+    await expect(pool).toBeVisible();
+    await expect(stage).toHaveAttribute("data-target-card-pool-ready", "true");
+    await pool.getByRole("tab", { name: /^Hand/ }).click();
+    await expect(handChoice).toHaveAttribute("aria-pressed", "true");
+    await pool.getByRole("tab", { name: /^Equipment/ }).click();
+    await expect(equipmentChoice).toHaveAttribute("aria-pressed", "true");
+    const confirm = pool.getByRole("button", { name: "Confirm Frost Sword selection" });
+    await expect(confirm).toBeEnabled();
+    const activationResponse = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "trigger"
+      && response.request().postDataJSON()?.providerId === "frost_sword_damage_about_to_apply");
+    await confirm.click();
+    const activated = await activationResponse;
     expect(activated.ok(), await activated.text()).toBeTruthy();
+    expect(activated.request().postDataJSON()).toMatchObject({ action: "trigger", code: seedData.code,
+      token: seedData.players[0].token, providerId: "frost_sword_damage_about_to_apply",
+      cardKeys: ["hand:0", equipmentMaterial.id] });
     const publicRoom = await view(request, seedData, 2);
     const effectEvent = publicRoom.timeline.find((event) => event.type === "cards"
       && event.action === "discard" && event.cards.some((item) => item.id === handMaterial.id));
@@ -1397,7 +1434,6 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
     expect(JSON.stringify(publicRoom)).not.toContain(privateSourceCard.id);
     expect(JSON.stringify(publicRoom)).not.toContain(privateTargetCard.id);
 
-    await Promise.all([openPlayer(page, seedData, 0), openPlayer(targetPage, seedData, 1), openPlayer(observerPage, seedData, 2)]);
     const frameEvidence = await Promise.all(viewers.map(async ({ viewerPage, viewerId }) => {
       const handle = await viewerPage.waitForFunction(({ expectedViewerId, expectedEventId, cardIds }) => {
         const display = [...document.querySelectorAll(".public-card-display")]
@@ -1434,12 +1470,17 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
         journeyActorId: seedData.players[1].id, frameCount: 1,
         materialCardIds: `${handMaterial.id},${equipmentMaterial.id}`,
         cardFaces: [handMaterial.id, equipmentMaterial.id],
-        title: "FROST SWORD · DAMAGE PREVENTED",
+        title: "FROST SWORD · DISCARD",
         viewport: { width: 390, height: 844, scrollWidth: 390 },
       });
       expect(evidence.accessibleLabel).toContain("FROST USER");
       expect(evidence.accessibleLabel).toContain("FROST TARGET");
-      expect(evidence.announcement).toContain("Attack damage was prevented");
+      expect(evidence.accessibleLabel).toContain("7♣ Dodge");
+      expect(evidence.accessibleLabel).toContain("7♠ Nio Shield");
+      expect(evidence.announcement).toBe(
+        "FROST USER used Frost Sword to discard 2 cards from FROST TARGET: 7♣ Dodge · 7♠ Nio Shield.",
+      );
+      expect(evidence.announcement).not.toContain("prevent");
       if (privateHandCard) await expect(viewerPage.locator(`[data-hand-card-id="${privateHandCard.id}"]`)).toHaveCount(1);
     }
     for (const { viewerPage, privateHandCard } of viewers) {

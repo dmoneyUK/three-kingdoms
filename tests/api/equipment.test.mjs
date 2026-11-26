@@ -914,6 +914,13 @@ test("Frost Sword prevents Attack damage only when its owner discards exactly tw
   const frostOutcome = assertPublicOutcomeHasH4Owner(frost.data.room, frostEvent.id);
   assert.equal(frostOutcome.narration.headline, `${hostPlayer.name} used Frost Sword to discard 2 cards from ${alicePlayer.name}.`);
   assert.deepEqual(frostOutcome.owner, { eventId: frostEvent.id, owner: "PublicInteractionAnnouncementLayer" });
+  const frostNotices = frost.data.room.timeline.filter((event) => event.type === "message" && event.effectNotice
+    && event.message.includes("Frost Sword"));
+  assert.deepEqual(frostNotices, [],
+    `a proven Frost discard owns the public result without a separate prevention notice: ${JSON.stringify(frostNotices.map(({ id, message, effectNotice, publicFact, resolutionId, actorId }) => ({ id, message, effectNotice, publicFact, resolutionId, actorId })))}`);
+  assert.equal(frost.data.room.timeline.some((event) => event.type === "message"
+    && /optional reaction to prevent damage/i.test(event.message)), false,
+  "the committed discard event replaces prevention-led duplicate narration");
 
   setHand(hostPlayer.id, [card("Attack", "one-eligible-attack")], 4, 4); setHand(alicePlayer.id, [card("Peach", "one-eligible-target")], 4, 4); setEquipment(alicePlayer.id); setTurn(game.code, hostPlayer.seat);
   const oneEligibleAttack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-one-eligible-attack", targetId: alicePlayer.id });

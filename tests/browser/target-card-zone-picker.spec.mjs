@@ -716,8 +716,8 @@ for (const targetCardCase of ["unfocused", "unprojected"]) {
 test("Frost Sword uses the shared tabbed pool and retains mixed-zone selections", async ({ page }) => {
   const { stage, dialog } = await loadFrostSwordModal(page, { width: 390, height: 844 });
   const handPositions = dialog.locator('[data-target-card-public-zone="hand"] .card-pool-panel__target-select');
-  const handTab = dialog.getByRole("tab", { name: "Hand (4)" });
-  const equipmentTab = dialog.getByRole("tab", { name: "Equipment (1)" });
+  const handTab = dialog.getByRole("tab", { name: /^Hand \(4\)/ });
+  const equipmentTab = dialog.getByRole("tab", { name: /^Equipment \(1\)/ });
   const use = dialog.getByRole("button", { name: "Confirm Frost Sword selection" });
 
   await expect(stage).toHaveAttribute("data-target-card-pool-layout", "central");
@@ -729,6 +729,10 @@ test("Frost Sword uses the shared tabbed pool and retains mixed-zone selections"
   await expect(dialog.getByRole("button", { name: "Skip Frost Sword" })).toBeVisible();
   await expect(handPositions).toHaveCount(2);
   await expect(use).toBeDisabled();
+  const initialTabRects = await dialog.getByRole("tab").evaluateAll((tabs) => tabs.map((tab) => {
+    const rect = tab.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  }));
 
   const [poolBox, dockBox] = await Promise.all([dialog.boundingBox(), page.locator(".local-player-dock").boundingBox()]);
   expect(poolBox && dockBox).toBeTruthy();
@@ -740,12 +744,25 @@ test("Frost Sword uses the shared tabbed pool and retains mixed-zone selections"
   await handPositions.first().click();
   await expect(handPositions.first()).toHaveAttribute("aria-pressed", "true");
   await equipmentTab.click();
+  await expect(stage).toBeVisible();
+  await expect(stage).toHaveAttribute("data-target-card-pool-ready", "true");
   await expect(dialog.locator('[data-active-zone="equipment"]')).toBeVisible();
   const equipment = dialog.locator('[data-target-card-public-zone="equipment"] .card-pool-panel__target-select');
   await expect(equipment).toHaveCount(1);
   await equipment.click();
   await expect(dialog.locator(".card-pool-decision-footer__count")).toHaveText("2 / 2 selected");
-  await expect(dialog.locator(".card-pool-panel__selected-zone")).toContainText("Selection retained · HAND");
+  await expect(dialog.getByRole("tab", { name: "Hand (4), 1 selected" })).toBeVisible();
+  await expect(dialog.getByRole("tab", { name: "Equipment (1), 1 selected" })).toBeVisible();
+  await expect(dialog.locator(".card-pool-panel__selected-zone")).toHaveCount(0);
+  const selectedTabRects = await dialog.getByRole("tab").evaluateAll((tabs) => tabs.map((tab) => {
+    const rect = tab.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  }));
+  expect(selectedTabRects).toHaveLength(initialTabRects.length);
+  for (let index = 0; index < selectedTabRects.length; index += 1) {
+    expect(Math.abs(selectedTabRects[index].width - initialTabRects[index].width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(selectedTabRects[index].height - initialTabRects[index].height)).toBeLessThanOrEqual(1);
+  }
   await expect(use).toBeEnabled();
   const actionCountBeforeInfo = await page.evaluate(() => window.__browserActions.length);
   await dialog.getByRole("button", { name: /^Card details: Equipment:/ }).click();

@@ -68,13 +68,31 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
   const [top, setTop] = useState<number | null>(null);
   const [insets, setInsets] = useState<BattlefieldChoiceInsets | null>(null);
   const [boundedPanelHeight, setBoundedPanelHeight] = useState<{ placementKey: string; height: number } | null>(null);
+  const boundedPanelHeightRef = useRef(boundedPanelHeight);
   const [readiness, setReadiness] = useState<{ placementKey: string; ready: boolean }>(() => ({ placementKey, ready: false }));
   const ready = readiness.placementKey === placementKey && readiness.ready;
   const setReady = useCallback((nextReady: boolean) => setReadiness({ placementKey, ready: nextReady }), [placementKey]);
+  const previousPlacementKeyRef = useRef(placementKey);
   const [rootCardOverlap, setRootCardOverlap] = useState(false);
   const insetsRef = useRef<BattlefieldChoiceInsets | null>(null);
   const rootEventIdRef = useRef(rootEventId);
   const stableHarvestPlacementRef = useRef<{ placementKey: string; geometrySignature: string; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    boundedPanelHeightRef.current = boundedPanelHeight;
+  }, [boundedPanelHeight]);
+
+  useLayoutEffect(() => {
+    if (previousPlacementKeyRef.current === placementKey) return;
+    previousPlacementKeyRef.current = placementKey;
+    stableHarvestPlacementRef.current = null;
+    setTop(null);
+    setInsets(null);
+    insetsRef.current = null;
+    setBoundedPanelHeight(null);
+    setReady(false);
+    setRootCardOverlap(false);
+  }, [placementKey, setReady]);
 
   useLayoutEffect(() => {
     insetsRef.current = insets;
@@ -107,13 +125,6 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
     const stage = ref.current;
     const table = stage?.closest<HTMLElement>(".play-table");
     if (!stage || !table) return;
-    const resetFrame = centralTargetLayout ? scheduleFrame(() => {
-      setTop(null);
-      setInsets(null);
-      insetsRef.current = null;
-      setReady(false);
-      setRootCardOverlap(false);
-    }) : null;
     let frame: ScheduledBattlefieldFrame | null = null;
     const observed = new Set<Element>();
     let observer: ResizeObserver | null = null;
@@ -310,7 +321,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
           const overlapsRootCard = Boolean(rootCard && resolvedPanelTop !== null
             && panelRect.left < rootCard.rect.right && panelRect.right > rootCard.rect.left
             && resolvedPanelTop < rootCard.rect.bottom && resolvedPanelTop + panelRect.height > rootCard.rect.top);
-          const currentBoundedHeight = boundedPanelHeight?.placementKey === placementKey ? boundedPanelHeight.height : null;
+          const currentBoundedHeight = boundedPanelHeightRef.current?.placementKey === placementKey ? boundedPanelHeightRef.current.height : null;
           const naturalPanelHeight = Math.max(panelRect.height, panel.scrollHeight);
           if (protectUpperH4 && currentBoundedHeight !== null && resolvedTop !== null) {
             const naturalTop = findBattlefieldChoiceSafeTopOffset({
@@ -319,9 +330,12 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
             });
             if (naturalTop !== null) {
               setBoundedPanelHeight(null);
-              setTop(null);
-              setReady(false);
-              setRootCardOverlap(false);
+              const naturalPanelTop = tableRect.top + naturalTop;
+              const naturalOverlapsRoot = Boolean(rootCard && panelRect.left < rootCard.rect.right && panelRect.right > rootCard.rect.left
+                && naturalPanelTop < rootCard.rect.bottom && naturalPanelTop + naturalPanelHeight > rootCard.rect.top);
+              setTop(naturalTop);
+              setReady(true);
+              setRootCardOverlap(naturalOverlapsRoot);
               return;
             }
           }
@@ -334,8 +348,12 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
               margin,
             });
             if (maxHeight >= 44 && (currentBoundedHeight === null || Math.abs(currentBoundedHeight - maxHeight) > 0.5)) {
+              const boundedSafeTop = findBattlefieldChoiceSafeTopOffset({
+                ...safePlacement,
+                panel: { ...panelRect, height: maxHeight },
+              });
               setBoundedPanelHeight({ placementKey, height: maxHeight });
-              setTop(null);
+              if (boundedSafeTop !== null) setTop(boundedSafeTop);
               setReady(false);
               setRootCardOverlap(false);
               return;
@@ -522,10 +540,9 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
       observer?.disconnect();
       mutationObserver?.disconnect();
       cancelFrame(frame);
-      cancelFrame(resetFrame);
       targetWidthProbe?.remove();
     };
-  }, [boundedPanelHeight, centralTargetLayout, enabled, playerCount, placementKey, protectActiveReveal, protectSharedPublicStage, requireSafePlacement, reserveHarvestFooterFootprint, setReady, stableHarvestTop]);
+  }, [centralTargetLayout, enabled, playerCount, placementKey, protectActiveReveal, protectSharedPublicStage, requireSafePlacement, reserveHarvestFooterFootprint, setReady, stableHarvestTop]);
 
   return { ref, top, insets, ready, rootCardOverlap, maxHeight: boundedPanelHeight?.placementKey === placementKey ? boundedPanelHeight.height : null };
 }

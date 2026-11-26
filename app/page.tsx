@@ -9,6 +9,7 @@ import { classifyRoomGetFailure, RoomGetError, RoomPollRecovery } from "../game/
 import { runSharedResponseExpiryAttempt } from "../game/shared-response-expiry";
 import { gameplayDeclineButtonClassName } from "./semantic-action-style";
 import { projectPublicEquipmentTargetPool } from "./public-equipment-target-pool";
+import { publicDiscardByActionAnnouncement } from "./public-discard-transition";
 import { normalizeHandChoiceKeys, projectEligibleHandChoices, toggleHandChoiceKey } from "./hand-choice-selection";
 
 import { isEntourageDodgeFor } from "../game/entourage-presentation";
@@ -4573,6 +4574,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [targetCardZone, setTargetCardZone] = useState<"hand" | "equipment" | "judgement" | "">("");
   const [targetCardId, setTargetCardId] = useState("");
   const [triggerSelectedKeys, setTriggerSelectedKeys] = useState<string[]>([]);
+  const targetCardPickerDraftScopeRef = useRef("");
   const stauchnessChoiceSelectionIdentityRef = useRef("");
   const targetCardSubmissionRef = useRef("");
   const targetCardPickerSubmissionRef = useRef("");
@@ -5403,10 +5405,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const pendingTargetCardProjectionKey = pendingTargetCardProjection
     ? [room.actionRevision ?? "", pendingTargetCardProjection.targetId, ...pendingTargetCardProjection.eligibleKeys].join("\u001f")
     : "";
-  const targetCardPickerSelectionKey = targetCardPickerSelection
-    ? [room.actionRevision ?? "", targetCardPickerOption?.effectId ?? "", targetCardPickerSelection.targetId, targetCardPickerSelection.min, targetCardPickerSelection.max, ...targetCardPickerSelection.eligibleKeys].join("\u001f")
+  const targetCardPickerDraftScope = targetCardPickerSelection
+    ? [room.code, room.meId, room.actionRevision ?? "", targetCardPickerOption?.effectId ?? "", targetCardPickerSelection.targetId].join("\u001f")
     : "";
-  const targetCardPickerEligibleKeys = useMemo(() => targetCardPickerSelectionKey ? targetCardPickerSelectionKey.split("\u001f").slice(5) : [], [targetCardPickerSelectionKey]);
+  const targetCardPickerSelectionKey = targetCardPickerSelection
+    ? [targetCardPickerDraftScope, targetCardPickerSelection.min, targetCardPickerSelection.max, ...targetCardPickerSelection.eligibleKeys].join("\u001f")
+    : "";
+  const targetCardPickerEligibleKeys = useMemo(() => targetCardPickerSelection ? [...targetCardPickerSelection.eligibleKeys] : [], [targetCardPickerSelectionKey]);
   const triggerCardOption = selectedTriggerOption?.selection?.type === "cards" ? selectedTriggerOption : null;
   const triggerSelection = selectedTriggerOption?.selection ?? null;
   const triggerSelectionUsesCards = triggerSelection?.type === "cards";
@@ -6857,11 +6862,19 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => {
     if (!targetCardPickerSelectionKey) return;
     const timer = setTimeout(() => {
-      setTriggerSelectedKeys((keys) => keys.filter((key) => targetCardPickerEligibleKeys.includes(key)));
-      targetCardPickerSubmissionRef.current = "";
+      if (targetCardPickerDraftScopeRef.current !== targetCardPickerDraftScope) {
+        targetCardPickerDraftScopeRef.current = targetCardPickerDraftScope;
+        setTriggerSelectedKeys([]);
+        targetCardPickerSubmissionRef.current = "";
+        return;
+      }
+      setTriggerSelectedKeys((keys) => {
+        const validKeys = keys.filter((key) => targetCardPickerEligibleKeys.includes(key));
+        return validKeys.length === keys.length ? keys : validKeys;
+      });
     }, 0);
     return () => clearTimeout(timer);
-  }, [targetCardPickerEligibleKeys, targetCardPickerSelectionKey]);
+  }, [targetCardPickerDraftScope, targetCardPickerEligibleKeys, targetCardPickerSelectionKey]);
   useEffect(() => {
     if (canChooseBorrowedSword && (!borrowedSwordTargetId || borrowedSwordEligibleTargetIds.includes(borrowedSwordTargetId))) return;
     if (!borrowedSwordTargetId) return;
@@ -9291,16 +9304,25 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       });
     return proved.sort((left, right) => room.timeline.indexOf(right.effectEvent) - room.timeline.indexOf(left.effectEvent))[0] ?? null;
   })();
+  const frostSwordH4Copy = frostSwordEffectFrameCandidate ? publicDiscardByActionAnnouncement({
+    actor: frostSwordEffectFrameCandidate.activationOwner,
+    materialOwner: frostSwordEffectFrameCandidate.materialOwner,
+    actionLabel: "Frost Sword",
+    cards: frostSwordEffectFrameCandidate.discardedCards.map((card) => ({
+      id: card.id, kind: card.kind, rank: card.rank, suit: card.suit,
+    })),
+  }) : null;
   const frostSwordEffectFrameAction: PublicCardDisplayAction | null = frostSwordEffectFrameCandidate ? {
     key: ["frost-sword-effect", frostSwordEffectFrameCandidate.effectEvent.id].join(":"),
     rootEventId: frostSwordEffectFrameCandidate.effectEvent.id,
     sourceId: frostSwordEffectFrameCandidate.materialOwner.id,
     targetId: null,
     cardFace: frostSwordEffectFrameCandidate.discardedCards[0],
-    cardLabel: "FROST SWORD · TWO CARD DISCARD",
-    ariaLabel: `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword against ${frostSwordEffectFrameCandidate.materialOwner.name}. The target's two real cards were discarded and the Attack damage was prevented.`,
-    publicNotice: `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword. ${frostSwordEffectFrameCandidate.materialOwner.name} discarded two cards; Attack damage was prevented.`,
-    publicNoticeCompact: `Frost Sword: ${frostSwordEffectFrameCandidate.materialOwner.name} discarded two cards; damage prevented.`,
+    cardLabel: "FROST SWORD · DISCARD",
+    ariaLabel: frostSwordH4Copy?.accessibleLabel ?? `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword to discard 2 cards from ${frostSwordEffectFrameCandidate.materialOwner.name}.`,
+    publicNotice: frostSwordH4Copy?.headline ?? `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword to discard 2 cards from ${frostSwordEffectFrameCandidate.materialOwner.name}.`,
+    publicNoticeSegments: frostSwordH4Copy?.segments,
+    publicNoticeCompact: frostSwordH4Copy?.headline ?? `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword to discard 2 cards from ${frostSwordEffectFrameCandidate.materialOwner.name}.`,
     motion: {
       type: "single-target",
       scopeKey: [room.code, "frost_sword_damage_about_to_apply", frostSwordEffectFrameCandidate.effectEvent.id].join(":"),
@@ -9308,8 +9330,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ? [] : [frostSwordEffectFrameCandidate.effectEvent.id],
     },
     publicCardEffectFrame: createPublicCardEffectFrameView(frostSwordEffectFrameCandidate.effect, {
-      title: "FROST SWORD · DAMAGE PREVENTED",
-      accessibleLabel: `${frostSwordEffectFrameCandidate.activationOwner.name} activated Frost Sword against ${frostSwordEffectFrameCandidate.materialOwner.name}. The target's committed cards, ${frostSwordEffectFrameCandidate.discardedCards.map((discardedCard) => `${cardDefinition(discardedCard.kind).name}, ${discardedCard.rank}${discardedCard.suit}`).join(" and ")}, were discarded; Attack damage was prevented.`,
+      title: "FROST SWORD · DISCARD",
+      accessibleLabel: frostSwordH4Copy?.accessibleLabel ?? `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword to discard 2 cards from ${frostSwordEffectFrameCandidate.materialOwner.name}.`,
       activationOwnerName: frostSwordEffectFrameCandidate.activationOwner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
@@ -12412,7 +12434,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           </footer>
         </section>
       </BattlefieldChoiceStage>}
-      {targetCardPickerInModal && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && <TargetCardPicker poolPlayerCount={room.players.length} poolScope={[room.code, room.meId, room.actionRevision ?? ""].join("\u001f")} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} option={targetCardPickerOption} compact={targetCardPickerUsesUnifiedModal} forceSharedPool={targetCardPickerOption.effectId === "kirin_bow_damage_about_to_apply"} kirinBowPool={targetCardPickerKirinBowPool} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={triggerControlsDisabled} canDecline={Boolean(consoleDecision.authoritativeDecline)} showCancel={targetCardPickerOption.effectId !== "sima_yi_fankui" && targetCardPickerOption.effectId !== "kirin_bow_damage_about_to_apply" && (targetCardPickerUsesUnifiedModal || consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId))} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={submitTargetCardPicker} onCancel={cancelTargetCardPicker} onDecline={() => onAction("decline_trigger")} />}
+      {targetCardPickerInModal && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && <TargetCardPicker poolPlayerCount={room.players.length} poolScope={[room.code, room.meId, room.actionRevision ?? "", targetCardPickerOption.effectId, targetCardPickerSelection.targetId].join("\u001f")} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} option={targetCardPickerOption} compact={targetCardPickerUsesUnifiedModal} forceSharedPool={targetCardPickerOption.effectId === "kirin_bow_damage_about_to_apply"} kirinBowPool={targetCardPickerKirinBowPool} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={triggerControlsDisabled} canDecline={Boolean(consoleDecision.authoritativeDecline)} showCancel={targetCardPickerOption.effectId !== "sima_yi_fankui" && targetCardPickerOption.effectId !== "kirin_bow_damage_about_to_apply" && (targetCardPickerUsesUnifiedModal || consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId))} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={submitTargetCardPicker} onCancel={cancelTargetCardPicker} onDecline={() => onAction("decline_trigger")} />}
       {triggerResponse && responseDecisionReady && choiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={choiceTriggerOption} selection={choiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={triggerControlsDisabled} error={error} playerCount={room.players.length} placementKey={[room.code, room.meId, room.actionRevision ?? "", choiceTriggerOption.effectId].join("\u001f")} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => { const validKeys = triggerSelectedKeys.filter((selectedKey) => choiceTriggerOption.selection?.type === "choice" && choiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = choiceTriggerOption.selection?.type === "choice" ? choiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; setTriggerSelectedKeys(validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys); }} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: choiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}
       {groupScopePreview.active && <p className="group-scope-preview-label" data-group-scope-preview={groupScopePreview.cardKind ?? undefined} role="status">PREVIEW · {groupScopePreview.label}</p>}
@@ -13272,7 +13294,7 @@ function TriggerTargetCardPool({ selection, publicTarget, selectedKeys, playerCo
 }) {
   const zones = publicTargetCardPoolZones(selection, publicTarget, selectedKeys);
   const { ref: stageRef, top, insets, ready, maxHeight } = useBattlefieldChoicePlacement({ enabled: zones.length > 0, playerCount,
-    placementKey: [scope, selection.targetId, ...selection.eligibleKeys].join("\u001f"), centralTargetLayout: true, requireSafePlacement: true, protectSharedPublicStage });
+    placementKey: [scope, selection.targetId].join("\u001f"), centralTargetLayout: true, requireSafePlacement: true, protectSharedPublicStage });
   if (!zones.length) return null;
   return <BattlefieldChoiceStage ref={stageRef} className="game-event-stage harvest-choice-stage card-pool-target-stage"
     mode="actor-target-select" accessibilityLabel={accessibilityLabel} data-trigger-target-pool="true" data-retaliation-pool={isRetaliation ? "true" : undefined} data-target-card-pool-layout="central"
@@ -13281,6 +13303,7 @@ function TriggerTargetCardPool({ selection, publicTarget, selectedKeys, playerCo
     <CardPoolPanel mode="actor-target-select" title={title} instruction={instruction} accessibilityLabel={accessibilityLabel}
       publicTarget={publicTarget} zones={zones} scrollHint={scrollHint} compactDensity={compactDensity}
       compactSelectionCount={compactDensity ? `${selectedKeys.length}/${selection.max}` : undefined}
+      stableMultiSelectTabs={selection.min > 1 && selection.max > 1}
       selectionCount={`${selectedKeys.length} / ${selection.max} selected`} confirmAccessibleLabel={confirmAccessibleLabel} disabled={disabled}
       confirmDisabled={disabled || selectedKeys.length < selection.min || selectedKeys.length > selection.max}
       skipAction={canDecline ? { accessibleLabel: skipAccessibleLabel, disabled, onClick: onDecline } : undefined}

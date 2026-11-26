@@ -6813,6 +6813,33 @@
   box-shadow: inset 0 0 0 1px #e3c36e55;
 }
 
+.game-shell .card-pool-panel__tab--stable-multi-select {
+  flex: 1 0 72px;
+  min-width: 72px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  align-content: center;
+  justify-items: center;
+  gap: 1px;
+  white-space: nowrap;
+}
+.game-shell .card-pool-panel__tabs--stable-multi-select {
+  width: 100%;
+}
+.game-shell .card-pool-panel__tab--stable-multi-select > span,
+.game-shell .card-pool-panel__tab--stable-multi-select > small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+.game-shell .card-pool-panel__tab--stable-multi-select > small {
+  color: #d9c68f;
+  font: 700 7px/1 Arial, sans-serif;
+  letter-spacing: 0;
+}
+
 .game-shell .card-pool-panel__tabpanel {
   width: max-content;
   min-width: 0;
@@ -7009,6 +7036,9 @@
     padding-inline: 3px;
     font-size: 7px;
     letter-spacing: 0;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__tab--stable-multi-select {
+    min-height: 44px;
   }
   .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__tabpanel {
     flex: 0 0 auto;

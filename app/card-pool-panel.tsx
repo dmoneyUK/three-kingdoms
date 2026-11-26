@@ -86,6 +86,7 @@ type TargetSelectProps = SharedProps & {
   handRailDescription?: string;
   compactDensity?: boolean;
   compactSelectionCount?: string;
+  stableMultiSelectTabs?: boolean;
   selectionCount: string;
   confirmAccessibleLabel: string;
   confirmPending?: boolean;
@@ -252,6 +253,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
     : [];
   const populatedTargetZoneTabs = targetZoneTabs.filter((zone) => zone.count > 0);
   const showActorTargetZoneTabs = Boolean(actorTargetProps && populatedTargetZoneTabs.length > 1);
+  const stableMultiSelectTabs = Boolean(actorTargetProps?.stableMultiSelectTabs && showActorTargetZoneTabs);
   const firstPopulatedTargetZoneId = populatedTargetZoneTabs[0]?.id ?? "hand";
   const [activeTargetZoneId, setActiveTargetZoneId] = useState<TargetCardPoolZone["id"]>(firstPopulatedTargetZoneId);
   const activeTargetZoneTab = targetZoneTabs.find((zone) => zone.id === activeTargetZoneId && zone.count > 0)
@@ -259,7 +261,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
     ?? targetZoneTabs[0]
     ?? { id: "hand" as const, label: "Hand", count: 0 };
   const activeTargetZone = actorTargetProps?.zones.find((zone) => zone.id === activeTargetZoneTab.id) ?? null;
-  const retainedTargetZones = actorTargetProps?.zones.filter((zone) => zone.id !== activeTargetZone?.id
+  const retainedTargetZones = stableMultiSelectTabs ? [] : actorTargetProps?.zones.filter((zone) => zone.id !== activeTargetZone?.id
     && zone.choices.some((choice) => choice.state === "selected")) ?? [];
   const selectedZoneMessage = retainedTargetZones.length
     ? `Selection retained · ${retainedTargetZones.map((zone) => zone.title).join(", ")}`
@@ -359,20 +361,23 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
     </>}
     {targetPublicProps && <>
     {actorTargetProps?.selectionControls}
-    {showActorTargetZoneTabs && <div className="card-pool-panel__tabs" role="tablist" aria-label="Target card zones" tabIndex={-1} onKeyDown={handleTargetZoneTabKeyDown}>
+    {showActorTargetZoneTabs && <div className={`card-pool-panel__tabs${stableMultiSelectTabs ? " card-pool-panel__tabs--stable-multi-select" : ""}`} role="tablist" aria-label="Target card zones" tabIndex={-1} onKeyDown={handleTargetZoneTabKeyDown}>
       {populatedTargetZoneTabs.map((zone) => <button
         key={zone.id}
         id={`card-pool-target-tab-${zone.id}`}
         type="button"
         role="tab"
-        aria-label={`${zone.label} (${zone.count})`}
+        aria-label={`${zone.label} (${zone.count})${stableMultiSelectTabs ? `, ${actorTargetProps?.zones.find((candidate) => candidate.id === zone.id)?.choices.filter((choice) => choice.state === "selected").length ?? 0} selected` : ""}`}
         aria-selected={zone.id === activeTargetZoneTab.id}
         aria-controls="card-pool-target-public-zones"
         tabIndex={zone.count > 0 && zone.id === activeTargetZoneTab.id ? 0 : -1}
         disabled={zone.count === 0}
-        className="card-pool-panel__tab"
+        className={`card-pool-panel__tab${stableMultiSelectTabs ? " card-pool-panel__tab--stable-multi-select" : ""}`}
         onClick={() => focusTargetZone(zone.id)}
-      >{zone.label} ({zone.count})</button>)}
+      >{stableMultiSelectTabs ? <>
+        <span>{zone.label} ({zone.count})</span>
+        <small>✓ {actorTargetProps?.zones.find((candidate) => candidate.id === zone.id)?.choices.filter((choice) => choice.state === "selected").length ?? 0}</small>
+      </> : `${zone.label} (${zone.count})`}</button>)}
     </div>}
     <div
       id="card-pool-target-public-zones"
@@ -465,7 +470,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
         </div> : <span className="card-pool-panel__target-public-empty">0 cards</span>}
       </div>)}
     </div>
-      {actorTargetProps && <p className={`card-pool-panel__selected-zone${selectedZoneMessage ? "" : " is-empty"}`} role="status" aria-hidden={selectedZoneMessage ? undefined : "true"}>{selectedZoneMessage ?? ""}</p>}
+      {actorTargetProps && !stableMultiSelectTabs && <p className={`card-pool-panel__selected-zone${selectedZoneMessage ? "" : " is-empty"}`} role="status" aria-hidden={selectedZoneMessage ? undefined : "true"}>{selectedZoneMessage ?? ""}</p>}
       {actorTargetProps && <>
         <CardPoolDecisionFooter
           selectionCount={actorTargetProps.selectionCount}

@@ -1,17 +1,15 @@
 # HANDOVER
 
-**Latest verified deployment:** §10.79, source `2b65d67df4593d605299fdfc358993eb1b78cf25`, lint repair `3bffb814c5efafcb3f7e300f1ba3e838a8c22636`; Actions 45713646993 passed and Worker `bf399ab8-09c4-4a52-81ee-b3d58e2efc39` deployed. Owner review remains pending.
+**Latest verified delivery:** §10.80, `11d134f490da9323cb1d5dc4fc1b4b3fa2cc6f21`; Actions 45732784733 passed and Worker `17c9cd5b-2115-4790-b659-2957b4886715` deployed. Owner iPhone review remains pending.
 
-**Design reviewed:** `docs/UX2-refine.md`, revision 2026-11-25 23:53 UTC. Finish §10.80 CI/deployment first; next §10.78, then reconcile §10.79 feedback only if still present, followed by §10.81-A → §10.81-B → §10.82-A → §10.82-B → §10.83.
+**Design reviewed:** `docs/UX2-refine.md`, revision 2026-11-25 23:53 UTC.
 
-## Current bounded task — §10.80 RETALIATION-SHARED-CARD-TRANSFER-DISPLAY-01
+## Current bounded task — §10.78 FROST-SWORD-SHARED-POOL-AND-DISCARD-DISPLAY-01
 
-**Status:** NOT DELIVERED. Final source correction is prepared locally; exact-SHA CI and deployment are pending.
+**Status:** implementation and focused non-UI validation complete locally; one task commit, exact-SHA Actions, deployment and production smoke are pending. Owner iPhone review remains required.
 
-**Remote attempts:** `3ee6fb86b03e8de8c898ed131f0edaefb85d8ede` failed the API contract assertion and lint. Compatibility correction `136c2788a2589b536d7a8883c7bad8d961690fca` passed API and browser smoke, but Actions 45725879932 failed full lint with `react-hooks/rules-of-hooks` stack overflow in `GameRoom`; fast tests and deploy were skipped. The preceding exact SHA `3bffb814c5efafcb3f7e300f1ba3e838a8c22636` passed full lint, so the failure is not established as pre-existing.
+**Changes:** Frost Sword uses the existing shared tabbed Hand/Equipment pool, retains valid mixed-zone selections for the same authoritative decision, and keeps tab geometry stable during selection. Same-decision battlefield remeasurement no longer clears safe placement while a bounded height changes. A proven committed Frost discard owns one discard-led H4 and the existing full two-card Effect Frame; the separate prevention notice is suppressed only for that proven Frost settlement. Other prevention notices and unproven fallbacks remain.
 
-**Current correction:** `app/page.tsx` moves acquisition proof validation, public candidate construction, narration, H4 ownership, settlement selection and result rendering into reusable helpers/components; candidate priority selection is isolated from `GameRoom` control flow. Steal’s legacy private payload shape and all participant privacy checks remain intact.
+**Validation:** `npm run build` passed; focused `tests/api/equipment.test.mjs` passed 22/22 after the fresh build; `tests/public-discard-transition.test.mjs` passed 10/10; browser test files passed `node --check`; `git diff --check` passed. Local UI/browser testing was not run per Owner instruction. Latest push-triggered CI for base SHA `11d134f490da9323cb1d5dc4fc1b4b3fa2cc6f21` was Actions 45732784733, success.
 
-**Local validation:** `npm run build` passed; `tests/api/judgement.test.mjs` passed 15/15, including Retaliation Hand privacy and public Equipment/Judgement acquisition; `git diff --check` passed. Local UI/browser scenario not run per Owner instruction. No deployment or Worker version for §10.80 yet.
-
-**Next boundary:** Commit and push this complete §10.80 correction once, verify exact-SHA CI, deployment and production smoke. Start §10.78 only after those gates pass. Keep the whole UX task pending Owner review.
+**Delivery:** keep all §10.78 implementation, regression coverage and this handoff in one task commit. After push, verify that exact SHA's Actions, Worker deployment and production smoke. Do not claim Owner acceptance.

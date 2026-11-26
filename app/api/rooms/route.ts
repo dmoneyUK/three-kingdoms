@@ -6471,7 +6471,7 @@ async function applyForcedDamageOutcome(room: RoomRow, continuation: AttackDodge
   });
 }
 
-async function applyPreventDamageOutcome(room: RoomRow, continuation: DamageAboutToApplyTriggerContinuation, source: PlayerRow, target: PlayerRow, discard: Card[], log: string[], targetCardIds: string[], effectId?: string) {
+async function applyPreventDamageOutcome(room: RoomRow, continuation: DamageAboutToApplyTriggerContinuation, source: PlayerRow, target: PlayerRow, discard: Card[], log: string[], targetCardIds: string[], effectId?: string, fallbackNotice?: { label: string; publicFact?: PublicPresentationEventFactDraft }) {
   if (targetCardIds.length !== 2) return false;
   const hand = parse<Card[]>(target.hand_json, []);
   const equipment = equipmentZone(target);
@@ -6505,13 +6505,20 @@ async function applyPreventDamageOutcome(room: RoomRow, continuation: DamageAbou
       committedOutcome: { source: { kind: "equipment", label: frostSwordName }, changes: discardChanges },
     }, parseCausalEnvelope(room.causal_envelope_json), publicIdentityFromCommittedRoot(log, root.rootEventId, continuation.causal))
     : undefined;
+  const provenFrostSettlement = effectId === "frost_sword_damage_about_to_apply"
+    && Boolean(root && materials?.length === 2 && outcomeFact?.committedOutcome);
   log = materials && root
     ? addCardGroupEventWithPublicEffect(log, target.name, discarded, "discard", target.name, {
       effectId: "frost_sword_damage_about_to_apply", effectClass: "EFFECT", activationOwnerId: source.id,
       materials, targetId: target.id, outcome: "DAMAGE_PREVENTED", ...root,
     }, undefined, outcomeFact?.committedOutcome ? { resolutionId: root.rootResolutionId, publicFact: outcomeFact } : undefined, outcomeEventId).log
     : addDiscardEvent(log, target, discarded);
-  log = addLog(log, `${source.name} uses an optional reaction to prevent damage and discards ${discarded.length} card${discarded.length === 1 ? "" : "s"} from ${target.name}. Action returns to ${source.name}.`);
+  if (effectId === "frost_sword_damage_about_to_apply" && !provenFrostSettlement && fallbackNotice) {
+    log = addTriggeredEffectNotice(log, source.name, fallbackNotice.label, fallbackNotice.publicFact).log;
+  }
+  if (!provenFrostSettlement) {
+    log = addLog(log, `${source.name} uses an optional reaction to prevent damage and discards ${discarded.length} card${discarded.length === 1 ? "" : "s"} from ${target.name}. Action returns to ${source.name}.`);
+  }
   await db().batch([
     db().prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), JSON.stringify(nextEquipment), target.id),
     db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(lostEquipment.length ? "resolving" : continuation.resumePhase, JSON.stringify(discard), JSON.stringify(log), room.id),
@@ -10366,7 +10373,9 @@ export async function POST(request: Request) {
       const discard = parse<Card[]>(liveRoom.discard_json, []);
       let log = parse<string[]>(liveRoom.log_json, []);
       if (!source || !target) return json({ error: "That damage reaction is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-      if (action === "apply_trigger" && triggerExecution) log = addTriggeredEffectNotice(log, me.name, triggerExecution.presentation?.label ?? "an optional effect", triggerPublicFact).log;
+      const frostSwordSettlement = action === "apply_trigger" && triggerExecution?.effectId === "frost_sword_damage_about_to_apply"
+        && triggerExecution.outcome.kind === "prevent_damage";
+      if (action === "apply_trigger" && triggerExecution && !frostSwordSettlement) log = addTriggeredEffectNotice(log, me.name, triggerExecution.presentation?.label ?? "an optional effect", triggerPublicFact).log;
       if (action === "apply_trigger" && triggerExecution?.outcome.kind === "target_discard") {
         const mount = equipmentCards(target).find((card) => card.id === triggerExecution.outcome.targetCardId);
         if (!mount) return json({ error: "The selected Mount is no longer available.", stale: true, room: await roomState(code, token) }, 409);
@@ -10381,7 +10390,8 @@ export async function POST(request: Request) {
         if (selected.length !== 2 || selected.some((id) => !all.some((card) => card.id === id))) return json({ error: "The selected reaction no longer has its required two cards.", stale: true, room: await roomState(code, token) }, 409);
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That damage reaction has already moved on.", stale: true, room: await roomState(code, token) }, 409);
-        await applyPreventDamageOutcome(liveRoom, continuation, source, target, discard, log, selected, triggerExecution.effectId);
+        await applyPreventDamageOutcome(liveRoom, continuation, source, target, discard, log, selected, triggerExecution.effectId,
+          { label: triggerExecution.presentation?.label ?? "an optional effect", publicFact: triggerPublicFact });
         return json({ room: await roomState(code, token) });
       }
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();

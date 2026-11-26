@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { publicDiscardAnnouncement, routePublicDiscardTransition } from "../app/public-discard-transition.ts";
+import { publicDiscardAnnouncement, publicDiscardByActionAnnouncement, routePublicDiscardTransition } from "../app/public-discard-transition.ts";
 import { layoutPublicResultCards } from "../app/public-result-layout.ts";
 
 const actorId = "player-1";
@@ -92,6 +92,27 @@ test("complete discard H4 retains exact rank, suit, name, identity and order for
     assert.deepEqual(announcement.cards, cards.map((card) => ({ id: card.id, name: card.kind, rank: card.rank, suit: card.suit })));
     assert.match(announcement.headline, new RegExp(`discarded ${count} ${count === 1 ? "card" : "cards"}:`));
   }
+});
+
+test("effect-led discard H4 attributes the committed actor and names exact cards in material order", () => {
+  const copy = publicDiscardByActionAnnouncement({
+    actor: { id: "frost-user", name: "Frost User" },
+    materialOwner: { id: "frost-target", name: "Frost Target" },
+    actionLabel: "Frost Sword",
+    cards: [
+      { id: "hidden-before-commit", kind: "Dodge", rank: "7", suit: "♣" },
+      { id: "equipped-before-commit", kind: "NioShield", rank: "7", suit: "♠" },
+    ],
+  });
+  assert.equal(copy?.headline, "Frost User used Frost Sword to discard 2 cards from Frost Target: 7♣ Dodge · 7♠ Nio Shield.");
+  assert.equal(copy?.accessibleLabel, copy?.headline);
+  assert.deepEqual(copy?.cards?.map(({ id }) => id), ["hidden-before-commit", "equipped-before-commit"]);
+  assert.equal(publicDiscardByActionAnnouncement({
+    actor: { id: "frost-user", name: "Frost User" },
+    materialOwner: { id: "frost-target", name: "Frost Target" },
+    actionLabel: "Frost Sword",
+    cards: [{ id: "incomplete-card", kind: "Dodge" }],
+  })?.headline, "Frost User used Frost Sword to discard 1 card from Frost Target.");
 });
 
 test("a committed play root is not double-claimed by the generic discard route", () => {
