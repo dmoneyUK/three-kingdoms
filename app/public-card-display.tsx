@@ -16,7 +16,6 @@ import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-la
 import {
   positionLabeledCardAboveBand,
   publicStageEffectFrameRevealTargetMatches,
-  publicStageHasVisibleAreaAfterForegroundOverlay,
   publicStageJourneyPhaseReady,
   publicStageJourneyTargetReady,
   publicStagePrimaryOriginFromVisualRect,
@@ -691,12 +690,6 @@ const REVEAL_CARD = { width: 90, height: 135 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
 const HARVEST_MOBILE_RESPONSE_CARD = { width: 32, height: 48 };
 const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 520;
-// Two 15px mobile lines at 1.2 line-height plus 4px vertical padding and
-// borders. Used only before the mounted announcement can be measured.
-const PUBLIC_CARD_ANNOUNCEMENT_HEIGHT = 46;
-// A single 15px line plus mobile padding and borders, used to reserve a
-// compact-copy position when the full sentence cannot fit above the card.
-const COMPACT_PUBLIC_CARD_ANNOUNCEMENT_HEIGHT = 32;
 const PUBLIC_CARD_ANNOUNCEMENT_GAP = 7;
 const STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS = 4000;
 const DUEL_REVEAL_HOLD_MS = 4000;
