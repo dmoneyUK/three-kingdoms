@@ -10,5 +10,20 @@
       "database_id": "3151997a-f69e-4a45-ab51-9e4fd062aeb3",
       "migrations_dir": "drizzle"
     }
-  ]
+  ],
+  "env": {
+    "ux3-staging": {
+      "name": "three-kingdoms-ux3-staging",
+      "workers_dev": false,
+      "preview_urls": false,
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "three-kingdoms-ux3-staging-db",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "drizzle"
+        }
+      ]
+    }
+  }
 }

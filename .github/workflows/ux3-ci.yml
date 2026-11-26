@@ -20,6 +20,27 @@ env:
 # Owner-approved isolated validation. No deployment jobs, cloud credentials,
 # remote migrations, production smoke, or pull_request triggers.
 jobs:
+  staging-config:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/ux3'
+    name: UX3 staging config guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+          cache: "npm"
+      - run: npm ci
+      - name: Build the isolated UX3 staging config locally
+        run: npm run build
+        env:
+          CLOUDFLARE_ENV: ux3-staging
+      - name: Reject unsafe generated targets
+        run: node scripts/verify-ux3-staging-config.mjs --mode preparation --config dist/server/wrangler.json
+
   lint-fast:
     if: github.event_name == 'push' && github.ref == 'refs/heads/ux3'
     name: Lint and fast tests
