@@ -333,11 +333,23 @@ test("Guo Jia Jealousy of God waits for the final Judgment card and handles Necr
   await passNegationWindows(accepted.game.code, accepted.game.members);
   const revealed = await waitForState(accepted.game.code, accepted.guoMember.token, (room) => room.currentAction?.kind === "trigger" && room.currentAction.triggerEvent === "judgement_revealed");
   assert.equal(revealed.currentAction.triggerOptions.length, 0, "Guo Jia is not offered before Necromancy finishes");
+  const provisionalJudgement = revealed.presentationSnapshot?.publicJudgementPresentations ?? [];
+  assert.equal(provisionalJudgement.length, 1);
+  assert.equal(provisionalJudgement[0].status, "PROVISIONAL");
+  assert.doesNotMatch(provisionalJudgement[0].copy.message, /\b(?:Not )?Match\.$/);
   const replaced = await requestAndSettle("trigger", { code: accepted.game.code, token: accepted.simaMember.token, providerId: "sima_yi_guicai", cardId: replacement.id });
   assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
   const reloaded = await waitForState(accepted.game.code, accepted.guoMember.token, (room) => room.currentAction?.kind === "trigger" && room.currentAction.triggerEvent === "judgement_effective");
   assert.equal(reloaded.currentAction.triggerEvent, "judgement_effective");
   assert.deepEqual(reloaded.currentAction.triggerOptions.map((option) => option.label), ["Jealousy of God"]);
+  const replacedPresentation = reloaded.presentationSnapshot?.publicJudgementPresentations ?? [];
+  assert.deepEqual(replacedPresentation.map((entry) => entry.phase), ["ORIGINAL", "REPLACEMENT"]);
+  assert.equal(replacedPresentation[0].status, "PROVISIONAL");
+  assert.equal(replacedPresentation[1].status, "FINAL");
+  assert.equal(replacedPresentation[1].replacement.physicalCardId, replacement.id);
+  assert.equal(replacedPresentation[0].copy.message, "Alice is judging Overindulgence. Judgement: 7♠.");
+  assert.equal(replacedPresentation[1].copy.message,
+    "Alice is judging Overindulgence. Judgement: 7♠.\nBob used Necromancy to replace the Judgement card with Q♥. Match.");
   assert.deepEqual((await state(accepted.game.code, accepted.simaMember.token)).data.currentAction.triggerOptions ?? [], [], "the private Jealousy choice belongs only to Guo Jia");
   const acceptedResult = await requestAndSettle("trigger", { code: accepted.game.code, token: accepted.guoMember.token, providerId: "guo_jia_jealousy_of_god" });
   assert.equal(acceptedResult.status, 200, JSON.stringify(acceptedResult.data));
@@ -370,6 +382,11 @@ test("Guo Jia Jealousy of God waits for the final Judgment card and handles Necr
   await waitForState(declined.game.code, declined.guoMember.token, (room) => room.currentAction?.kind === "trigger" && room.currentAction.triggerEvent === "judgement_effective");
   const declinedResult = await requestAndSettle("decline_trigger", { code: declined.game.code, token: declined.guoMember.token });
   assert.equal(declinedResult.status, 200, JSON.stringify(declinedResult.data));
+  const declinedPresentation = declinedResult.data.room.presentationSnapshot?.publicJudgementPresentations ?? [];
+  assert.equal(declinedPresentation.length, 1);
+  assert.equal(declinedPresentation[0].status, "FINAL");
+  assert.equal(declinedPresentation[0].phase, "ORIGINAL");
+  assert.equal(declinedPresentation[0].copy.message, "Alice is judging Overindulgence. Judgement: 7♠. Not Match.");
   assert.equal(roomCardCount(declined.game.code, declinedOriginal.id), 1, "a declined final Judgment card follows the normal discard/reshuffle destination");
 });
 

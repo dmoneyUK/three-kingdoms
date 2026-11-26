@@ -1,5 +1,6 @@
 import type { SharedResponseContribution } from "./shared-response-contribution";
 import { normalizePublicSharedWindow, type PublicSharedResponseWindow } from "./shared-response-presentation";
+import type { PublicJudgementPresentation } from "./public-judgement-presentation";
 import { isEntourageDodgeFor, entourageDecisionMatchesSnapshot, type EntourageDecision } from "./entourage-presentation";
 import type { CurrentAction } from "./protocol";
 import { CARD_KINDS, type Card, type CardKind, type CardSuit } from "./model";
@@ -154,6 +155,8 @@ export type PresentationSnapshot = {
   publicNextDecision: PublicPresentationDecision | null;
   /** Server-proven public Draw Phase choice when no interaction frame exists. */
   publicDrawPhaseDecision?: PresentationPublicDrawPhaseDecision | null;
+  /** Server-proven public Judgement stage and canonical accessible H4 copy. */
+  publicJudgementPresentations?: readonly PublicJudgementPresentation[];
   /** Current viewer's private Negation choice category only. */
   viewerNegationChoice: ViewerNegationChoice | null;
   /** Reserved until durable public transition occurrences are accepted. */
@@ -168,6 +171,7 @@ export type PresentationSnapshotInput = {
   publicNextDecision?: unknown;
   publicDrawPhaseDecision?: unknown;
   viewerNegationChoice?: unknown;
+  publicJudgementPresentations?: readonly PublicJudgementPresentation[];
 };
 
 const REST_BOUNDARY: PresentationStableBoundary = {
@@ -1773,6 +1777,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
       ? { retainedPublicEvent: validateRetainedPublicEvent(input.presentationV2.retainedPublicEvent)! } : {}),
     publicNextDecision: semantic.nextDecision,
     publicDrawPhaseDecision: provenPublicDrawPhaseDecision(input.publicDrawPhaseDecision),
+    ...(input.publicJudgementPresentations?.length ? { publicJudgementPresentations: input.publicJudgementPresentations } : {}),
     ...(input.presentationV2.sharedResponseRecovery ? { sharedResponseRecovery: input.presentationV2.sharedResponseRecovery } : {}),
     ...(input.presentationV2.sharedResponseContributions?.length ? { sharedResponseContributions: input.presentationV2.sharedResponseContributions } : {}),
     ...(normalizePublicSharedWindow(input.presentationV2.sharedResponseWindow) ? { sharedResponseWindow: normalizePublicSharedWindow(input.presentationV2.sharedResponseWindow) } : {}),

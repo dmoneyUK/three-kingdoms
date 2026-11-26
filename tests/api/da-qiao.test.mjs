@@ -261,6 +261,15 @@ test("Diao Qiao Overindulgence publishes a single 2 club reveal with current PAC
   assert.equal(settled.data.room.timeline.filter((event) => event.type === "card" && event.action === "reveal"
     && event.judgement === true && event.card?.id === judgeCard.id).length, 1);
   const snapshot = settled.data.room.presentationSnapshot;
+  const judgementPresentations = snapshot.publicJudgementPresentations ?? [];
+  assert.equal(judgementPresentations.length, 1, "the delayed Judgement has one canonical final presentation fact");
+  assert.equal(judgementPresentations[0].judgingPlayerId, daqiao.id);
+  assert.equal(judgementPresentations[0].sourceCard.id, delayed.id,
+    "the Overindulgence source stays distinct from the deck Judgement card");
+  assert.equal(judgementPresentations[0].originalCard.id, judgeCard.id);
+  assert.equal(judgementPresentations[0].effectiveCard.id, judgeCard.id);
+  assert.equal(judgementPresentations[0].copy.message,
+    `${daqiao.name} is judging Overindulgence. Judgement: 2♣. Not Match.`);
   const facts = [...(snapshot.publicEventFacts ?? []), ...(snapshot.retainedPublicEventFacts ?? [])];
   const revealFact = facts.find((fact) => fact.eventId === reveal.id);
   assert.equal(revealFact?.actorId, daqiao.id);

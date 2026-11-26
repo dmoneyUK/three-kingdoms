@@ -26,7 +26,8 @@ import { PUBLIC_DISCARD_HANDOFF_MS } from "../../../game/public-discard-handoff"
 import { applyDamage, applyRecovery, isDying, recoveredAmount, recoveryNeeded } from "../../../game/match/dying.js";
 import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
-import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
+import { drawJudgementCard, judgementResolutionFor, judgementSucceeds, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
+import { projectPublicJudgementPresentations, type PublicJudgementPresentationRecord } from "../../../game/public-judgement-presentation";
 import { deckReorderCount, rebuildDeckForReorder } from "../../../game/decisions/deck-reorder";
 import { asTriggerPending, isGroupParticipantProgressOutcomeAllowed, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestChoice, type HarvestNegationResponseRecord, type HarvestParticipantProgress, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type HarvestPending, type HeroChoiceTriggerContinuation, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type NegationWindowPending, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
@@ -50,7 +51,7 @@ export const runtime = "edge";
 type TargetCardZone = "hand" | "equipment" | "judgement";
 const PRIVATE_STEAL_RESULT_WINDOW_MS = 12_000;
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { sharedResponseContribution?: SharedResponseContribution; entourageInvocation?: EntourageInvocation; resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; actorId?: string; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicFact?: PublicPresentationEventFactDraft; publicZoneTransition?: PublicPhysicalZoneTransition; publicZoneTransitions?: readonly PublicPhysicalZoneTransition[]; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicCardAcquisitionSettlement?: PresentationCardAcquisitionSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PresentationMeta = { sharedResponseContribution?: SharedResponseContribution; entourageInvocation?: EntourageInvocation; resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; actorId?: string; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicFact?: PublicPresentationEventFactDraft; publicJudgementPresentation?: PublicJudgementPresentationRecord; publicZoneTransition?: PublicPhysicalZoneTransition; publicZoneTransitions?: readonly PublicPhysicalZoneTransition[]; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicCardAcquisitionSettlement?: PresentationCardAcquisitionSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type AttackDodgeProofDiagnostic = {
   result: "PROVEN" | "REJECTED" | "NOT_ATTEMPTED";
   reason: string;
@@ -772,7 +773,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { ...(meta?.sharedResponseContribution ? { sharedResponseContribution: meta.sharedResponseContribution } : {}), ...(meta?.entourageInvocation ? { entourageInvocation: meta.entourageInvocation } : {}), resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicCardAcquisitionSettlement ? { publicCardAcquisitionSettlement: meta.publicCardAcquisitionSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
+  return { ...(meta?.sharedResponseContribution ? { sharedResponseContribution: meta.sharedResponseContribution } : {}), ...(meta?.entourageInvocation ? { entourageInvocation: meta.entourageInvocation } : {}), resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.publicFact ? { publicFact: meta.publicFact } : {}), ...(meta?.publicJudgementPresentation ? { publicJudgementPresentation: meta.publicJudgementPresentation } : {}), ...(meta?.publicZoneTransition ? { publicZoneTransition: meta.publicZoneTransition } : {}), ...(meta?.publicZoneTransitions?.length ? { publicZoneTransitions: meta.publicZoneTransitions } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicCardAcquisitionSettlement ? { publicCardAcquisitionSettlement: meta.publicCardAcquisitionSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
 function publicFactFor(causal: CausalContext | undefined, category: PublicPresentationEventFactDraft["category"], fields: Partial<Pick<PublicPresentationEventFactDraft, "rootEventId" | "actorId" | "affectedPlayerIds" | "label" | "outcomeLabel" | "outcomeCopySegments" | "amount" | "effect" | "bumperHarvestPickProof" | "committedOutcome">> = {}, envelope?: CausalEnvelope | null, rootIdentity?: NonNullable<PublicPresentationEventFactDraft["committedIdentity"]>): PublicPresentationEventFactDraft | undefined {
   if (!causal?.interactionId || !causal.frameId) return undefined;
@@ -1507,6 +1508,82 @@ function addHistory(log: string[], message: string, drawPlayerId?: string, meta?
 }
 function addCardEvent(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" = "play", presentation = true, meta?: PresentationMeta, eventId = crypto.randomUUID()) {
   return appendSequencedLogRecord(log, "@card:", { id: eventId, player, target, card, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential") });
+}
+function publicJudgementPresentationRecord(
+  judgement: JudgementContinuation,
+  stage: PublicJudgementPresentationRecord["stage"],
+  finalCard?: Card,
+  finalEventId?: string,
+  log: readonly string[] = [],
+): PublicJudgementPresentationRecord {
+  const originalStatus = judgementSucceeds(judgement.purpose, judgement.revealedCard) ? "satisfied" : "unsatisfied";
+  const causal = judgement.causal ? {
+    interactionId: judgement.causal.interactionId,
+    frameId: judgement.causal.frameId,
+    ...(judgement.causal.parentFrameId ? { parentFrameId: judgement.causal.parentFrameId } : {}),
+  } : undefined;
+  const base = {
+    semantics: "PROVEN" as const,
+    visibility: "PUBLIC" as const,
+    judgementId: judgement.revealedEventId ?? "",
+    targetId: judgement.targetId,
+    judgingPlayerId: judgement.targetId,
+    purpose: judgement.purpose,
+    continuationKind: judgement.resume.kind,
+    ...(judgement.resume.kind === "delayed" ? { sourceCard: judgement.resume.delayedCard } : {}),
+    ...(judgement.resolutionId ? { resolutionId: judgement.resolutionId } : {}),
+    ...(causal ? { causal } : {}),
+    originalStatus,
+  };
+  if (stage === "OPEN") return { ...base, stage };
+  if (!finalCard || finalCard.id === judgement.revealedCard.id) {
+    const finalStatus = finalCard ? judgementSucceeds(judgement.purpose, finalCard) ? "satisfied" : "unsatisfied" : undefined;
+    return { ...base, stage, ...(finalStatus ? { finalStatus } : {}) };
+  }
+  const replacementEvents = gameTimeline([...log]).filter((event) => event.id === finalEventId && event.type === "card");
+  const replacementEvent = replacementEvents.length === 1 ? replacementEvents[0] : null;
+  const replacementEffects = replacementEvent && Array.isArray(replacementEvent.publicCardEffects)
+    ? (replacementEvent.publicCardEffects as Array<Record<string, unknown>>).filter((effect) => effect?.effectId === "sima_yi_guicai" && effect.effectClass === "JUDGEMENT")
+    : [];
+  const replacement = replacementEffects.length === 1 ? replacementEffects[0] : null;
+  const replacementActorId = replacement?.semantics === "PROVEN" && replacement.eventId === finalEventId
+    && typeof replacement.activationOwnerId === "string" && replacement.activationOwnerId.length > 0
+    ? replacement.activationOwnerId : null;
+  if (!replacementEvent || replacementEvent.presentation === false || replacementEvent.privateToPlayerId
+    || replacementEvent.action !== "reveal" || replacementEvent.judgement !== true
+    || (replacementEvent.card as Card | undefined)?.id !== finalCard.id || !replacementActorId || !finalEventId) {
+    return { ...base, stage: "UNVERIFIED" };
+  }
+  return {
+    ...base,
+    stage,
+    finalStatus: judgementSucceeds(judgement.purpose, finalCard) ? "satisfied" : "unsatisfied",
+    replacementEventId: finalEventId,
+    replacementActorId,
+  };
+}
+function attachPublicJudgementPresentation(log: string[], judgement: JudgementContinuation, record: PublicJudgementPresentationRecord) {
+  const eventId = judgement.revealedEventId;
+  if (!eventId || record.judgementId !== eventId) return log;
+  let matches = 0;
+  const next = log.map((entry) => {
+    if (!entry.startsWith("@card:")) return entry;
+    try {
+      const event = JSON.parse(entry.slice(6)) as Record<string, unknown>;
+      const card = event.card as Card | undefined;
+      if (event.id !== eventId) return entry;
+      matches += 1;
+      if (event.presentation === false || event.action !== "reveal" || event.judgement !== true
+        || typeof event.privateToPlayerId === "string" || card?.id !== judgement.revealedCard.id
+        || card.kind !== judgement.revealedCard.kind || card.suit !== judgement.revealedCard.suit
+        || card.rank !== judgement.revealedCard.rank) return entry;
+      const previous = event.publicJudgementPresentation as PublicJudgementPresentationRecord | undefined;
+      if (previous && (previous.judgementId !== record.judgementId || previous.targetId !== record.targetId
+        || previous.purpose !== record.purpose || previous.continuationKind !== record.continuationKind)) return entry;
+      return `@card:${JSON.stringify({ ...event, publicJudgementPresentation: record })}`;
+    } catch { return entry; }
+  });
+  return matches === 1 ? next : log;
 }
 function addPrivateDrawEvent(log: string[], player: PlayerRow, card: Card, initialDeal = false) {
   return addPrivateHandArrivalEvent(log, player, card, { sourceZone: "deck" }, { action: "draw", initialDeal });
@@ -2542,7 +2619,9 @@ async function beginJudgementResolution(room: RoomRow, target: PlayerRow, player
     : causalEnvelope;
   const persistedJudgement = judgement;
   if (actor) {
-    const presentation = addLogWithId(log, `${actor.name} may use Necromancy to replace the Judgement card.`);
+    const provisional = publicJudgementPresentationRecord(persistedJudgement, "OPEN");
+    const judgementLog = attachPublicJudgementPresentation(log, persistedJudgement, provisional);
+    const presentation = addLogWithId(judgementLog, `${actor.name} may use Necromancy to replace the Judgement card.`);
     const pending: TriggerPending = withPresentationBarrier({
       kind: "trigger",
       event: "judgement_revealed",
@@ -2832,6 +2911,8 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
   if (!target) return [];
   const rule = judgementResolutionFor(judgement.purpose);
   const result = resolveJudgement(judgement.revealedCard, rule, finalCard);
+  const judgementPresentation = publicJudgementPresentationRecord(judgement, "FINAL", finalCard, finalEventId, log);
+  log = attachPublicJudgementPresentation(log, judgement, judgementPresentation);
   const eightTrigramsResume = judgement.resume.kind === "response" && judgement.resume.providerId === "eight_trigrams_dodge"
     && judgement.resume.requirement.kind === "dodge" ? judgement.resume : null;
   const judgementRootEventId = eightTrigramsResume && (eightTrigramsResume.continuation.kind === "attack" || eightTrigramsResume.continuation.kind === "group")
@@ -7708,7 +7789,12 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
       actionLabels: currentTriggerOptions.map((option) => option.label.trim()),
       allowSkip: currentTriggerOptions.some(triggerAllowsDecline) }
     : null;
-  const presentationSnapshot = composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null, publicNextDecision, publicDrawPhaseDecision, viewerNegationChoice });
+  const publicJudgementPresentations = projectPublicJudgementPresentations(
+    currentTurnPublicTimeline,
+    presentationV2.publicCardEffects,
+    players.map((player) => ({ id: player.id, name: player.name, hero: player.hero })),
+  );
+  const presentationSnapshot = composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null, publicNextDecision, publicDrawPhaseDecision, viewerNegationChoice, publicJudgementPresentations });
   return {
     ...(attackDodgeProjectionDiagnostics ? { attackDodgeProjectionDiagnostics } : {}),
     serverNow,
