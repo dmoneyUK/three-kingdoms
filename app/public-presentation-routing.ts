@@ -311,6 +311,18 @@ export type PublicH4AnnouncementOwner =
   | "PublicInteractionAnnouncementLayer"
   | "PublicSkillEventAnnouncementLayer";
 
+/** A committed Retaliation settlement owns its notice for the full event lifetime. */
+export function publicRetaliationSettlementOwnsEvent(
+  eventId: string | null | undefined,
+  settlements: readonly Pick<PresentationSnapshot["cardAcquisitionSettlements"][number],
+    "eventId" | "semantics" | "acquisitionKind" | "outcome">[],
+): boolean {
+  if (!eventId) return false;
+  const matches = settlements.filter((settlement) => settlement.eventId === eventId);
+  return matches.length === 1 && matches[0]?.semantics === "PROVEN"
+    && matches[0].acquisitionKind === "RETALIATION" && matches[0].outcome === "RETALIATION_RESOLVED";
+}
+
 /** Selects one existing H4 surface for the active or newest already-proven candidate. */
 export function selectPublicH4AnnouncementOwner(input: {
   fact?: PublicH4FactOwnerProof | null;

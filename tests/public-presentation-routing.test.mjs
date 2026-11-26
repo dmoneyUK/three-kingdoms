@@ -5,6 +5,7 @@ import {
   coalescePresentationQueue,
   presentationEventBlocksActions,
   publicH4FactAtPresentationCursor,
+  publicRetaliationSettlementOwnsEvent,
   routePublicPresentation,
   selectPublicH4AnnouncementOwner,
   uniquePublicH4Facts,
@@ -181,6 +182,24 @@ test("all public fact categories resolve to one H4 owner and duplicate projectio
     "contradictory facts for one durable event ID fail closed");
   assert.deepEqual(uniquePublicH4Facts([rootFact, { ...rootFact, resolutionId: "other-resolution" }]), [],
     "contradictory resolution identities for one durable event ID fail closed");
+});
+
+test("a proven Retaliation settlement owns its exact event and prevents a generic duplicate notice", () => {
+  const retaliation = {
+    eventId: "retaliation-settlement", semantics: "PROVEN", acquisitionKind: "RETALIATION", outcome: "RETALIATION_RESOLVED",
+  };
+  assert.equal(publicRetaliationSettlementOwnsEvent(retaliation.eventId, [retaliation]), true);
+  assert.equal(publicRetaliationSettlementOwnsEvent("later-independent-event", [retaliation]), false,
+    "a later independent public event retains its own H4");
+  assert.equal(publicRetaliationSettlementOwnsEvent(retaliation.eventId, [
+    retaliation, { ...retaliation },
+  ]), false, "ambiguous duplicate proof must fail closed");
+  assert.equal(publicRetaliationSettlementOwnsEvent(retaliation.eventId, [
+    { ...retaliation, semantics: "UNPROVEN" },
+  ]), false, "unproven acquisition facts cannot suppress generic public feedback");
+  assert.equal(publicRetaliationSettlementOwnsEvent(retaliation.eventId, [
+    { ...retaliation, acquisitionKind: "STEAL", outcome: "STEAL_RESOLVED" },
+  ]), false, "existing Steal notice ownership remains unchanged");
 });
 
 test("presentation queue keeps validated H4 facts in public order across resolution coalescing", () => {

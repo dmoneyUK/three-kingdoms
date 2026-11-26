@@ -65,7 +65,7 @@ import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDis
 import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts, publicDiscardSettlementForMaterials } from "./public-discard-settlement";
 import { layoutPublicResultCards, type PublicResultObstacle } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
-import { coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
+import { coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, publicRetaliationSettlementOwnsEvent, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
 import { shouldAcceptPublicPresentationTurn, type PublicPresentationTurnScope, type PublicPresentationTurnViewer } from "../game/public-presentation-turn";
 import { publicActionAnnouncementOverride, publicEffectFrameOwnsInteractionRoot, publicInteractionNarrationBelongsToAction, publicInteractionNarrationWithJudgement, publicJudgementH4OwnerInput, publicJudgementNarrationBelongsToAction, publicJudgementNarrationForPresentation, publicJudgementPresentationAtCursor, publicJudgementReplacementFrameMatches, type PublicJudgementPresentation } from "../game/public-judgement-presentation";
 
@@ -2031,10 +2031,11 @@ function publicInteractionNarrationForStage(
   snapshot: PresentationSnapshot | null,
   players: readonly Player[],
   liveKirinBowEffectEventId?: string,
+  retaliationSettlementOwnsCurrentFact = false,
 ): PublicInteractionNarration | null {
   if (retaliation) return retaliation;
   if (fanjian) return fanjian;
-  if (!currentFact?.rootEventId) return null;
+  if (!currentFact?.rootEventId || retaliationSettlementOwnsCurrentFact) return null;
   return derivePublicInteractionNarration({
     snapshot,
     players,
@@ -10539,6 +10540,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     room.presentationSnapshot,
     room.players,
     freshKirinBowEffectEventId(selectedPublicCardAction),
+    publicRetaliationSettlementOwnsEvent(currentInteractionFact?.eventId, cardAcquisitionSettlements),
   );
   const sameResolutionJudgementResult = Boolean(currentPublicJudgementPresentation?.resolutionId
     && currentInteractionFact?.resolutionId === currentPublicJudgementPresentation.resolutionId
@@ -10989,9 +10991,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     activePublicEffectFrameAction?.publicCardEffectFrame?.activationEventId,
     activePublicEffectFrameAction?.settlement?.eventId,
   ].filter((eventId): eventId is string => Boolean(eventId)));
-  const effectNoticeOwnedByPublicCardFrame = Boolean(effectNotice
+  const effectNoticeOwnedByPublicCardResult = Boolean(effectNotice
     && (activePublicEffectFrameEventIds.has(effectNotice.eventId)
-      || publicInteractionNarration?.eventId === effectNotice.eventId));
+      || publicInteractionNarration?.eventId === effectNotice.eventId
+      || publicRetaliationSettlementOwnsEvent(effectNotice.eventId, cardAcquisitionSettlements)));
   const publicCardDisplayOwnsPresentation = Boolean(publicCardDisplayReady
     || publicCardDisplayAction?.motion?.type === "attack-dodge"
       && rootActionSource?.name
@@ -12793,7 +12796,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       />
       {effectNotice && effectNotice.roomCode === room.code && effectNotice.viewerId === room.meId
         && !effectNotice.beautyRootEventId
-        && !effectNoticeOwnedByPublicCardFrame
+        && !effectNoticeOwnedByPublicCardResult
           && <div key={effectNotice.eventId} className={`effect-notice${effectNotice.exiting ? " is-exiting" : ""}`} role="status" aria-live="polite" aria-atomic="true" data-effect-notice-event-id={effectNotice.eventId} data-diao-chan-beauty-root-event-id={effectNotice.beautyRootEventId} data-diao-chan-beauty-source-id={effectNotice.beautySourceId} data-diao-chan-beauty-proof-event-id={effectNotice.beautyProofEventId} data-diao-chan-beauty-phase={effectNotice.beautyPhase}><span>{effectNotice.heading}</span><b>{effectNotice.message}</b></div>}
       </div>
       {turnNotice && !borrowedSwordContinuationConsole && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
