@@ -1,15 +1,15 @@
 # HANDOVER
 
-**Latest verified delivery:** §10.82-B at `7c6e517737ea6da74429b32d0c6fbf8cdc3b7756`; Actions `45778351943` passed, deployed Worker `24de5ac0-ec16-461b-b21d-2f5537fc7b2d`, production `/` and `/api/health` smoke passed.
+**Latest verified delivery:** §10.83 at `fffd4d91f8a199a849dbc82ed49be2b0ace103f6`; Actions `45801259202` passed browser smoke, API, lint/fast tests, D1 migration, deployment and production smoke. Worker `68edb782-de84-4358-b36f-56ed813fe823`; production `/` returned 200 and `/api/health` returned `available`.
 
-**Design reviewed:** `docs/UX2-refine.md`, revision 2026-11-25 23:53 UTC; execution workflow reviewed.
+**Design reviewed:** `docs/UX2-refine.md`, revision 2026-11-25 23:53 UTC; §10.78 correction and current dispatch index reviewed.
 
-## Current bounded task — §10.83 SERPENT-SPEAR-PUBLIC-CONVERSION-FRAME-01
+## Current bounded task — §10.78 FROST-SWORD-SHARED-POOL-AND-DISCARD-DISPLAY-01
 
-**Status:** implementation and focused local validation complete; one task commit/push and exact-SHA CI/deploy verification remain. Do not split this task into feature commits. Owner iPhone review remains required; not USER-ACCEPTED.
+**Status:** current deployed code contains the approved stable mixed-zone pool and discard-led shared frame. A focused real four-player local scenario passes after correcting three test-only assumptions. The previous Owner phone build is unknown; keep iPhone acceptance pending.
 
-**Scope:** show the two actual Serpent Spear Attack materials in one compact shared Effect Frame and provide matching proof-based H4 for direct Attack, Duel/Lust Duel, Barbarian Invasion, Borrowed Sword and authorized Influencing contexts. Preserve actual card owner, semantic actor, target, causal proof, response ordinal and privacy.
+**Change in this task commit:** correct the real-game regression to unwrap trace-wrapped poll responses, inspect the material faces inside the shared Effect Frame (excluding hidden journey copies), and read the H4 accessible label from the live announcement. No gameplay/source change is justified by this run.
 
-**Validation:** build passed; focused API suites passed 40/40 and privacy suite 24/24; presentation/snapshot/layout tests passed 77/77; targeted ESLint had 0 errors and 15 existing hook-dependency warnings; `git diff --check` passed. Local browser/UI was not run; the focused real-game regression is in CI, within the five-minute local UI limit.
+**Validation:** the focused mobile Frost Sword real-game scenario passed (one selected Hand card + one public Equipment card, normal poll, Confirm once, two actual discards, damage prevented, one matching discard H4/frame for activator, target and observer, privacy retained). Combined local UI/browser time stayed under five minutes. Exact-SHA CI/deploy for this test correction commit remains pending.
 
-**Review boundary:** Owner iPhone review of compact two-face frame, exact material names/ranks/suits, matching H4, one logical Attack and representative response contexts.
+**Review boundary:** Owner iPhone review of Hand/Equipment mixed selection retention, truthful single discard H4, both actual faces in `FROST SWORD · DISCARD`, no misleading prevention headline, and observer visibility.

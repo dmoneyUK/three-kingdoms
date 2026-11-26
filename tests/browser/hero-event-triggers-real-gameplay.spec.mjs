@@ -1438,7 +1438,8 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
       && response.request().method() === "GET", { timeout: 10_000 });
     const unchangedPoll = await unchangedPollResponse;
     expect(unchangedPoll.ok()).toBeTruthy();
-    const afterPoll = await unchangedPoll.json();
+    const pollPayload = await unchangedPoll.json();
+    const afterPoll = pollPayload.room ?? pollPayload;
     expect(afterPoll.currentAction).toMatchObject({ kind: "trigger", actorId: seedData.players[0].id,
       });
     expect(afterPoll.actionRevision).toBe(triggerDecision.actionRevision);
@@ -1496,6 +1497,7 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
             && element.dataset.publicCardJourneyCardIds === cardIds.join(",")
             && ["reveal", "move", "parked"].includes(element.dataset.publicCardJourneyPhase));
         if (!display || !journey || !journey.classList.contains("is-public-effect-frame")) return false;
+        const framePanel = journey.querySelector(".public-card-effect-frame-panel");
         const frameTitle = journey.querySelector(".public-card-effect-frame-title, .public-card-lust-cost-parked")?.textContent?.trim();
         return {
           viewerId: display.dataset.publicCardViewerId,
@@ -1505,10 +1507,11 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
           frameCount: [...display.querySelectorAll(".public-card-journey-card.is-public-effect-frame")]
             .filter((item) => item.dataset.publicCardJourneyEventId === expectedEventId).length,
           materialCardIds: journey.dataset.publicCardJourneyCardIds,
-          cardFaces: [...journey.querySelectorAll("[data-public-card-effect-frame-card-id]")]
+          frameMaterialIds: framePanel?.getAttribute("data-public-card-frame-material-card-ids"),
+          cardFaces: [...(framePanel?.querySelectorAll("[data-public-card-effect-frame-card-id]") ?? [])]
             .map((face) => face.getAttribute("data-public-card-effect-frame-card-id")),
           title: frameTitle,
-          accessibleLabel: journey.getAttribute("aria-label"),
+          accessibleLabel: display.querySelector('[data-public-card-announcement="true"] b')?.getAttribute("aria-label"),
           announcement: display.querySelector('[data-public-card-announcement="true"]')?.textContent?.trim(),
           viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
         };
@@ -1522,6 +1525,7 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
         viewerId, eventId: effectEvent.id, phase: expect.stringMatching(/^(reveal|move|parked)$/),
         journeyActorId: seedData.players[1].id, frameCount: 1,
         materialCardIds: `${handMaterial.id},${equipmentMaterial.id}`,
+        frameMaterialIds: `${handMaterial.id},${equipmentMaterial.id}`,
         cardFaces: [handMaterial.id, equipmentMaterial.id],
         title: "FROST SWORD · DISCARD",
         viewport: { width: 390, height: 844, scrollWidth: 390 },
