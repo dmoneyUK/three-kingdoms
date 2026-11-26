@@ -5,6 +5,7 @@
 > **Legacy UX2 source of truth at fork:** `docs/UX2-refine.md` blob `69ef97b782b9cf427c114d8bdce85869f2da0402`, 77 original `§10.*` feature headings, authoritative UX2 A/B/C index, original UX2 accepted rules and [archived earlier snapshots](https://github.com/dmoneyUK/three-kingdoms/blob/b86c7a781468094fc844fe67b4ffda4e5b9a8d36/docs/UX2-refine.md).
 > **External cross-product architecture:** [main / GAME_PRODUCT_PLANNER_GUIDE.md](https://github.com/dmoneyUK/three-kingdoms/blob/main/docs/GAME_PRODUCT_PLANNER_GUIDE.md), ADR-001–006. **AI design authority:** [AI_PLAYER_DESIGN.md](https://github.com/dmoneyUK/three-kingdoms/blob/feature/smart-bot-player/docs/AI_PLAYER_DESIGN.md).
 > **Status:** UX3 architecture direction and design document approved by Owner request; **NO UX3 implementation, CI workflow change, merge, production deployment, cost or iPhone acceptance is implied**. UX2's existing agent and `HANDOVER.md` remain owned by UX2. Start a UX3 coding task only when the Owner expressly authorizes that exact task, approves its ref/CI isolation and a safe integration boundary.
+> **UX3 MANAGER (independent first conversation):** [UX3 Manager Guide](UX3_MANAGER_GUIDE.md) is the permanent UX3 Planner/Reviewer process — **not** UX2 Planner Guide or the Coding Agent workflow. [UX3 Manager Bootstrap](UX3_MANAGER_BOOTSTRAP.md) supplies copyable setup instructions and a first-chat prompt; the first chat only evaluates and prepares `UX3-GATE-00` / `UX3-FE-01`, without starting the Agent.
 
 ## 0. Product mission and current verdict
 
@@ -25,7 +26,7 @@
 2. Historic `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, `docs/UX_V2_RELEASE_GATE.md`, `docs/AUTONOMOUS_UI_ROADMAP.md`, `docs/history/` and UX2's archived Git revisions are **retained references**, not alternative current visual requirements. **The old green/red causal graph, relationship arrows, and central causal diagrams remain CANCELLED, not deferred.** No code or historical proposal may resurrect them.
 3. Preserve accepted features as **immutable observable behavior**, not freezing file structure. Internal modules may move if old and new visible/private outputs are proven equivalent. **Do not promote "technically delivered", "PENDING OWNER REVIEW", "HOLD" or "OWNER REJECTED" to accepted.**
 4. **UX2 and UX3 are independent coding queues.** UX2's `HANDOVER.md` is maintained ONLY by its Agent. UX3 must never edit it, import unfinished UX2 tasks as new UX3 work or silently pause UX2 in-flight code. At fork UX2 §10.80 is in-flight CI/delivery. A documented safe handoff and original Owner verdict, plus exact source-sha integration, are required before UX3 touches any same files or deploys.
-5. UX3 design authority is **this** `docs/UX3_DESIGN.md` on `ux3`; use the existing root `AGENTS.md` gameplay/privacy invariants and `docs/UX3_AGENT_WORKFLOW.md` for new Agent mode once independently authorized. Root `AGENTS.md` still describes UX2 mode; it does **not** authorize a fresh UX3 Agent or a shared code edit.
+5. UX3 **Manager's** permanent process authority is **`docs/UX3_MANAGER_GUIDE.md`**, its new-chat prompt is `docs/UX3_MANAGER_BOOTSTRAP.md`, and UX3 **design/task authority is this `docs/UX3_DESIGN.md`** on `ux3`. Read existing root `AGENTS.md` gameplay/privacy invariants. **`docs/UX3_AGENT_WORKFLOW.md` controls only the separate Coding Agent after exact task authorization**. Root `AGENTS.md` still describes UX2 mode; it does not authorize a fresh UX3 Agent or shared code edit.
 6. **ONE integration owner:** PM coordinates any UX3 ↔ AI Backend ↔ UX2 change. Require explicit source SHAs, diff manifest, exact owner of `app/page.tsx`, `app/api/rooms/route.ts`, server presentation modules, tests, CI and rollback. No automatic merge into `main`, `ux-v2` or `feature/smart-bot-player`.
 
 ### 1.2 Hard regression invariants — all UX3 engineering slices must pass
@@ -234,7 +235,9 @@ UX3 owns CLIENT `RoomSession/CommandGateway` semantics. AI Planner owns server-a
 
 **Technical completion ≠ Owner acceptance:** same-SHA CI on the actual new branch, diff review, original UX2 visual-equivalence fixtures and Owner actual iPhone check for any visible UX3 change. A screenshot is necessary geometry evidence, not proof of private semantics or game terminal. Preserve production rollback behavior and legacy room compatibility. User-visible changes require per-feature Owner permission, not only UX3 architecture direction.
 
-## 6. UX3 Coding Agent and Planner operating boundaries
+## 6. UX3 Manager and Coding Agent operating boundaries
+
+**Startup requirement for a new UX3 Manager:** open [UX3 Manager Guide](UX3_MANAGER_GUIDE.md) in full and use [UX3 Manager Bootstrap](UX3_MANAGER_BOOTSTRAP.md) for the first conversation. That manager independently analyzes the latest UX2 sources, decides task architecture and reviews Agent results; its design edit permission follows Owner's request. The separate `docs/UX3_AGENT_WORKFLOW.md` cannot replace the Manager's guide. First-chat `UX3-GATE-00` is Manager-only and does **not** authorize coding, CI or deployment.
 
 - **PM / UX3 Planner**: independent source and UX2-history audit, classify existing accepted vs pending, decide architecture and which old effects migrate first, own task contracts and verify code/CI/real device. No separate audit-only Agent task, no speculative UI redesign.
 - **UX3 Coding Agent**: only bounded already Owner-APPROVED code/test task, actual implementation, focused regression, standard CI, factual deployment/monitor if separately authorized and safe, own UX3 handover. No architecture research or new task prioritization.
@@ -250,6 +253,7 @@ UX3 owns CLIENT `RoomSession/CommandGateway` semantics. AI Planner owns server-a
 
 ## 8. Source and evidence index
 
+- [UX3 Manager Guide — task-neutral rules, permissions, UX2 boundaries, delivery review](UX3_MANAGER_GUIDE.md); [New UX3 Manager copyable bootstrap](UX3_MANAGER_BOOTSTRAP.md). These belong to the **Manager**; separate [UX3 Coding Agent Workflow](UX3_AGENT_WORKFLOW.md) remains Agent-only.
 - UX2 current [canonical full 77-section design at fork](https://github.com/dmoneyUK/three-kingdoms/blob/136c2788a2589b536d7a8883c7bad8d961690fca/docs/UX2-refine.md), latest live `ux-v2/docs/UX2-refine.md` for newer decisions, archived [pre-cleanup history](https://github.com/dmoneyUK/three-kingdoms/blob/b86c7a781468094fc844fe67b4ffda4e5b9a8d36/docs/UX2-refine.md).
 - UX2 [prior semantic design](https://github.com/dmoneyUK/three-kingdoms/blob/136c2788a2589b536d7a8883c7bad8d961690fca/docs/UX_V2_INTERACTION_STAGE_DESIGN.md) is compatible-only; [UX2 release evidence](https://github.com/dmoneyUK/three-kingdoms/blob/136c2788a2589b536d7a8883c7bad8d961690fca/docs/UX_V2_RELEASE_GATE.md) not universal live certification.
 - [Main cross-domain ADR and Product Gate](https://github.com/dmoneyUK/three-kingdoms/blob/main/docs/GAME_PRODUCT_PLANNER_GUIDE.md); [AI Bot / SCALE authority](https://github.com/dmoneyUK/three-kingdoms/blob/feature/smart-bot-player/docs/AI_PLAYER_DESIGN.md). Source inventory is grounded in current GitHub at the fork; future branch drift must be independently reconciled.
