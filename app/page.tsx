@@ -67,7 +67,7 @@ import { layoutPublicResultCards, type PublicResultObstacle } from "./public-res
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
 import { coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, publicRetaliationSettlementOwnsEvent, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
 import { shouldAcceptPublicPresentationTurn, type PublicPresentationTurnScope, type PublicPresentationTurnViewer } from "../game/public-presentation-turn";
-import { publicActionAnnouncementOverride, publicEffectFrameOwnsInteractionRoot, publicInteractionNarrationBelongsToAction, publicInteractionNarrationWithJudgement, publicJudgementH4OwnerInput, publicJudgementNarrationBelongsToAction, publicJudgementNarrationForPresentation, publicJudgementPresentationAtCursor, publicJudgementReplacementFrameMatches, type PublicJudgementPresentation } from "../game/public-judgement-presentation";
+import { publicActionAnnouncementOverride, publicEffectFrameOwnsInteractionRoot, publicInteractionNarrationBelongsToAction, publicInteractionNarrationWithJudgement, publicJudgementH4OwnerInput, publicJudgementNarrationBelongsToAction, publicJudgementNarrationForPresentation, publicJudgementPresentationAtCursor, publicJudgementReplacementFrameMatches, publicJudgementReplacementFrameOwnsCursor, type PublicJudgementPresentation } from "../game/public-judgement-presentation";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = PrecommitSelectionDraft;
@@ -10386,8 +10386,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       },
     }
     : null;
+  const publicH4PresentationCursor = activeEvent ?? eventQueue[0] ?? null;
+  const currentPublicJudgementPresentation = publicJudgementPresentationForGameRoom(room, publicH4PresentationCursor);
+  const cursorOwnedJudgementReplacementAction = publicJudgementReplacementFrameOwnsCursor({
+    cursorEventId: publicH4PresentationCursor?.id,
+    presentation: currentPublicJudgementPresentation,
+    action: necromancyJudgementFrameAction,
+  }) ? necromancyJudgementFrameAction : null;
   const selectedPublicCardActionBase: PublicCardDisplayAction | null = heldPublicNegationReadAction
     ?? heldAttackDodgeReadAction
+    ?? cursorOwnedJudgementReplacementAction
     ?? livePublicCardAction;
   const selectedPublicDiscardSettlement = selectedPublicCardActionBase ? (() => {
     const frame = selectedPublicCardActionBase.publicCardEffectFrame;
@@ -10474,8 +10482,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   ].filter((fact) => fact.rootEventId && (
         isPublicInteractionOutcomeFact(fact)
       )));
-  const publicH4PresentationCursor = activeEvent ?? eventQueue[0] ?? null;
-  const currentPublicJudgementPresentation = publicJudgementPresentationForGameRoom(room, publicH4PresentationCursor);
   const currentPublicJudgementNarration = publicJudgementNarrationForPresentation(currentPublicJudgementPresentation);
   const { fact: currentFactAtPresentationCursor, isExactCursorFact: cursorPublicH4Fact } = publicH4FactAtPresentationCursor(
     narratableInteractionFacts,

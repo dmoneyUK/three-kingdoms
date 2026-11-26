@@ -582,6 +582,21 @@ export function publicJudgementNarrationBelongsToAction(input: {
   });
 }
 
+/** Keeps a proven replacement CardFace selected while its exact H4 event is the presentation cursor. */
+export function publicJudgementReplacementFrameOwnsCursor(input: {
+  cursorEventId?: string | null;
+  presentation: PublicJudgementPresentation | null;
+  action: PublicJudgementDisplayAction | null;
+}): boolean {
+  const { cursorEventId, presentation, action } = input;
+  if (!cursorEventId || presentation?.phase !== "REPLACEMENT" || cursorEventId !== presentation.eventId) return false;
+  return publicJudgementNarrationBelongsToAction({
+    presentation,
+    narration: publicJudgementNarrationForPresentation(presentation),
+    action,
+  });
+}
+
 /** Checks whether the selected public Effect Frame owns this narration root. */
 export function publicEffectFrameOwnsInteractionRoot(input: {
   narration: PublicInteractionNarration | null;

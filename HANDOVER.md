@@ -1,11 +1,11 @@
 # HANDOVER
 
-Design reviewed: `docs/UX2-refine.md` §§10.80–10.81 at `origin/ux-v2` baseline `63b6be1d` (design revision `3e6e51d8`, 2026-11-26).
+Design reviewed: latest `docs/UX2-refine.md` at `origin/ux-v2` `d14601eb` (2026-11-26); active sections §10.80 and §10.81-B.
 
-Latest prior delivery: §10.78/§10.79 at `63b6be1d`; exact-SHA Actions `45883526809` passed, including Worker deployment and production smoke. Worker `ecde43b5-9efc-4747-8c2a-a67f026c780d`.
+§10.80 delivered at `b1e42ce8122a805da9dd7cec39aff99a99e5f028`. Exact-SHA Actions `45887588763` passed Lint/fast, API, build, browser startup/H4 smoke, D1 migration and production smoke; Worker `dff82d76-78c8-4174-b2d2-6f18e7d4a77a`. Focused routing test passed 13/13. Owner iPhone review remains pending; source-zone and other-viewer visibility were not verified.
 
-## Current task — §10.80 Retaliation acquisition H4 ownership
+## Current task — §10.81-B replacement CardFace/H4 cursor ownership
 
-Fix only the duplicate generic H4 after the proven Retaliation acquisition display. Keep the existing exact event/card proof, participant privacy, card transfer, H4 and gameplay flow unchanged; do not address unverified source-zone or other-viewer appearance, and do not treat TEST SWITCH disappearance as a defect.
+Ensure the validated real Necromancy replacement CardFace is the selected shared Effect Frame while its exact replacement H4 event is the public presentation cursor. Require exact event, stage, physical-card, actor/target and causal-frame proof. Preserve original reveal, two-line H4, normal interruption by later events, privacy, continuation and no-replay behavior. Do not change layout or rules.
 
-Focused routing test: 13/13 passed. `git diff --check` and targeted lint for the routing module and test passed. Local lint of `app/page.tsx` hit `react-hooks/rules-of-hooks` stack overflow at the same baseline location when run against the unmodified `HEAD` file; no local UI/browser test was run. Exact-SHA CI, deployment and production smoke for this correction are pending. Owner iPhone review remains pending.
+Focused Judgement/routing tests: 18/18 passed; targeted lint for the shared Judgement module and tests and `git diff --check` passed. Local lint of `app/page.tsx` hits the same `react-hooks/rules-of-hooks` stack overflow reproduced against the unmodified baseline; exact-SHA CI is the authoritative full lint check. No local UI/browser test was run. Exact-SHA CI, deployment, smoke and Owner iPhone review for this correction remain pending.
