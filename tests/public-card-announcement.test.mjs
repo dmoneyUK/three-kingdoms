@@ -971,6 +971,7 @@ test("public announcement typography is readable and never truncates its verifie
   const text = css.match(/^\.public-card-display-journey-copy>b\{([^}]+)\}/m)?.[1] ?? "";
   assert.match(announcement, /520px/);
   assert.match(announcement, /z-index:38/);
+  assert.match(announcement, /pointer-events:none/, "H4 stays informational and passes pointer input through");
   assert.match(text, /font:600 15px\/1\.2 Arial,sans-serif/);
   assert.match(text, /letter-spacing:\.01em/);
   assert.doesNotMatch(text, /line-clamp|overflow:hidden/);
@@ -979,6 +980,10 @@ test("public announcement typography is readable and never truncates its verifie
   assert.doesNotMatch(css, /data-public-card-announcement-long-names/);
   assert.match(overrides, /\.game-shell \.public-card-display-journey\.is-harvest-pool-active > \.public-card-display-journey-copy \{\s*z-index: 38;/);
   assert.match(overrides, /\.public-card-display-journey\[data-public-card-kind="Dismantle"\] > \.public-card-display-journey-copy[\s\S]*?z-index: 38;/);
+  assert.match(overrides, /\.game-shell \.play-table:has\(> \.public-card-display-journey > \.public-card-journey-card\.is-current\[data-public-card-journey-phase="reveal"\]\):not\(:has\(> \.battlefield-choice-stage\)\):not\(:has\(> \.card-pool-target-stage\)\):not\(:has\(> \.end-turn-confirmation-stage\)\) > \.public-activity-chip \{\s*z-index: 35;/,
+    "during a passive reveal, PAC sits above the journey stack unless an interactive stage is present");
+  const pac = overrides.match(/\.game-shell \.play-table > \.public-activity-chip \{([^}]+)\}/)?.[1] ?? "";
+  assert.match(pac, /pointer-events:\s*none/, "PAC remains informational and passes pointer input through");
   assert.match(overrides, /\.card-pool-target-stage\[data-choice-mode="actor-target-select"\]:not\(\[data-target-card-pool-ready="true"\]\)[\s\S]*?visibility: hidden !important;[\s\S]*?pointer-events: none !important;/);
   assert.match(page, /aria-hidden=\{!pendingTargetCardPoolPlacement\.ready\}/);
   assert.match(page, /data-target-card-pool-layout="central"/);

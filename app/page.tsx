@@ -4726,6 +4726,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     || expiredSharedWindowIdentity === sharedWindowIdentity
   ));
   const endTurnConfirmationScopeRef = useRef(endTurnConfirmationScope);
+  const endTurnConfirmationTraceSignatureRef = useRef("");
   const endTurnConfirmationSubmissionRef = useRef(false);
   const endTurnConfirmationButtonRef = useRef<HTMLButtonElement | null>(null);
   const endTurnConfirmationCancelRef = useRef<HTMLButtonElement | null>(null);
@@ -12435,15 +12436,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : room.currentAction?.kind === "turn" && currentActionOwnedByViewer ? "turn"
     : room.currentAction?.kind === "none" || !room.currentAction ? "rest"
     : "waiting";
-  const endTurnConfirmationAuthorized = Boolean(
-    room.isMyTurn
-    && room.isMyAction
-    && canPlay
-    && consoleKind === "turn"
-    && room.currentAction?.kind === "turn"
-    && room.currentAction.actorId === room.meId
-    && canUseAction(room.currentAction, "end_turn"),
-  );
+  const endTurnConfirmationAuthorizationReason = !room.isMyTurn ? "not-viewer-turn"
+    : !room.isMyAction ? "current-action-not-owned-by-viewer"
+      : !canPlay ? "play-phase-not-actionable"
+        : consoleKind !== "turn" ? "console-not-in-turn-mode"
+          : room.currentAction?.kind !== "turn" ? "current-action-not-turn"
+            : room.currentAction.actorId !== room.meId ? "current-action-actor-mismatch"
+              : !canUseAction(room.currentAction, "end_turn") ? "end-turn-not-in-current-action-legal-actions"
+                : null;
+  const endTurnConfirmationAuthorized = endTurnConfirmationAuthorizationReason === null;
   const endTurnConfirmationIsCurrent = Boolean(
     endTurnConfirmationIdentity === endTurnConfirmationScope
     && endTurnConfirmationAuthorized,
@@ -12456,6 +12457,32 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     protectActiveReveal: true,
     allowPassivePublicRevealOverlap: true,
   });
+  useEffect(() => {
+    if (!isAttackDodgeUxTraceActive()) return;
+    const signature = JSON.stringify([
+      endTurnConfirmationIdentity === endTurnConfirmationScope,
+      endTurnConfirmationAuthorizationReason,
+      endTurnConfirmationPlacement.ready,
+      endTurnConfirmationPlacement.reason,
+      endTurnConfirmationPlacement.top,
+      busy,
+    ]);
+    if (signature === endTurnConfirmationTraceSignatureRef.current) return;
+    endTurnConfirmationTraceSignatureRef.current = signature;
+    recordAttackDodgeUxTrace("end-turn-confirmation-gate", {
+      open: endTurnConfirmationIdentity === endTurnConfirmationScope,
+      authorizationReason: endTurnConfirmationAuthorizationReason,
+      placementReady: endTurnConfirmationPlacement.ready,
+      placementReason: endTurnConfirmationPlacement.reason,
+      placementTop: endTurnConfirmationPlacement.top,
+      busy,
+      actionKind: room.currentAction?.kind ?? null,
+      actorMatchesViewer: room.currentAction?.actorId === room.meId,
+      actionRevisionPresent: Boolean(room.actionRevision),
+    });
+  }, [busy, endTurnConfirmationAuthorizationReason, endTurnConfirmationIdentity, endTurnConfirmationPlacement.ready,
+    endTurnConfirmationPlacement.reason, endTurnConfirmationPlacement.top, endTurnConfirmationScope,
+    room.actionRevision, room.currentAction?.actorId, room.currentAction?.kind, room.meId]);
   useEffect(() => {
     if (!endTurnConfirmationIsCurrent || !endTurnConfirmationPlacement.ready) return;
     window.requestAnimationFrame(() => endTurnConfirmationCancelRef.current?.focus({ preventScroll: true }));
@@ -12472,14 +12499,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     return () => window.removeEventListener("keydown", dismissOnEscape, true);
   }, [closeEndTurnConfirmation, endTurnConfirmationIsCurrent]);
   const confirmEndTurn = async () => {
-    if (endTurnConfirmationSubmissionRef.current
-      || !endTurnConfirmationIsCurrent
-      || !endTurnConfirmationPlacement.ready
-      || busy
-      || !canUseAction(room.currentAction, "end_turn")) return;
+    const blockedReason = endTurnConfirmationSubmissionRef.current ? "submission-already-in-flight"
+      : !endTurnConfirmationIsCurrent ? endTurnConfirmationAuthorizationReason ?? "confirmation-scope-stale"
+        : !endTurnConfirmationPlacement.ready ? `placement-not-ready:${endTurnConfirmationPlacement.reason}`
+          : busy ? "gameplay-request-busy"
+            : !canUseAction(room.currentAction, "end_turn") ? "end-turn-no-longer-authorized"
+              : null;
+    if (blockedReason) {
+      if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-confirm", { result: "blocked", reason: blockedReason });
+      return;
+    }
     endTurnConfirmationSubmissionRef.current = true;
     setEndTurnConfirmationSubmitting(true);
+    if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-confirm", { result: "submitted", action: "end_turn" });
     const submitted = await onAction("end_turn");
+    if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-response", { submitted, action: "end_turn" });
     if (submitted) {
       setEndTurnConfirmationIdentity(null);
       return;
@@ -12961,6 +12995,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         accessibilityLabel="End turn confirmation"
         data-end-turn-confirmation="true"
         data-end-turn-confirmation-ready={endTurnConfirmationPlacement.ready ? "true" : "false"}
+        data-end-turn-placement-reason={endTurnConfirmationPlacement.reason}
         aria-hidden={!endTurnConfirmationPlacement.ready}
         style={{ top: endTurnConfirmationPlacement.top === null ? undefined : `${endTurnConfirmationPlacement.top}px` }}
       >
@@ -12969,8 +13004,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             <b id="end-turn-confirmation-title">End your Play Phase?</b>
           </header>
           <footer className="card-pool-panel__footer end-turn-confirmation__actions">
-            <button ref={endTurnConfirmationCancelRef} type="button" className="end end-turn-confirmation__cancel" tabIndex={endTurnConfirmationPlacement.ready ? 0 : -1} disabled={endTurnConfirmationSubmitting} onClick={() => closeEndTurnConfirmation(true)}>Cancel</button>
-            <button type="button" className="primary end-turn-confirmation__confirm" tabIndex={endTurnConfirmationPlacement.ready ? 0 : -1} disabled={!endTurnConfirmationPlacement.ready || busy || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onClick={() => { void confirmEndTurn(); }}>Confirm End</button>
+            <button ref={endTurnConfirmationCancelRef} type="button" className="end end-turn-confirmation__cancel" tabIndex={endTurnConfirmationPlacement.ready ? 0 : -1} disabled={endTurnConfirmationSubmitting} onClick={() => {
+              if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-cancel", { result: "cancelled", requestSent: false });
+              closeEndTurnConfirmation(true);
+            }}>Cancel</button>
+            <button type="button" className="primary end-turn-confirmation__confirm" tabIndex={endTurnConfirmationPlacement.ready ? 0 : -1} disabled={!endTurnConfirmationPlacement.ready || busy || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onPointerDown={() => {
+              if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-hit", {
+                control: "confirm-end", placementReady: endTurnConfirmationPlacement.ready,
+                placementReason: endTurnConfirmationPlacement.reason, busy,
+              });
+            }} onClick={() => { void confirmEndTurn(); }}>Confirm End</button>
           </footer>
         </section>
       </BattlefieldChoiceStage>}
@@ -13288,7 +13331,24 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName(busy ? "Skipping…" : "Skip")} disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}
             {triggerResponse && triggerDeclineAction && (!targetCardPickerInModal || targetCardPickerInLocalDock) && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName("Skip")} disabled={responseControlsDisabled || !consoleDecision.authoritativeDecline.enabled} onClick={() => onAction("decline_trigger")}>Skip</button>}
             {canRespond && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName(responseDeclineLabel)} disabled={responseControlsDisabled || !responseDamageAction || !consoleDecision.authoritativeDecline.enabled} onClick={() => responseDamageAction && onAction(responseDamageAction)}>{responseDeclineLabel}</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && <button ref={endTurnConfirmationButtonRef} className="end" disabled={busy || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onClick={() => { if (endTurnConfirmationAuthorized && !endTurnConfirmationSubmissionRef.current) setEndTurnConfirmationIdentity(endTurnConfirmationScope); }}>{busy ? "Finishing…" : "End"}</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && <button ref={endTurnConfirmationButtonRef} className="end"
+              data-end-turn-block-reason={busy ? "gameplay-request-busy"
+                : !canUseAction(room.currentAction, "end_turn") ? "end-turn-not-in-current-action-legal-actions"
+                  : endTurnConfirmationAuthorizationReason ?? "ready"}
+              disabled={busy || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting}
+              onClick={() => {
+                const reason = endTurnConfirmationAuthorizationReason
+                  ?? (endTurnConfirmationSubmissionRef.current ? "submission-already-in-flight" : null);
+                if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-button-click", {
+                  result: reason ? "blocked" : "confirmation-open-requested",
+                  reason: reason ?? "authorized",
+                  busy,
+                  actionKind: room.currentAction?.kind ?? null,
+                  actorMatchesViewer: room.currentAction?.actorId === room.meId,
+                  actionRevisionPresent: Boolean(room.actionRevision),
+                });
+                if (!reason) setEndTurnConfirmationIdentity(endTurnConfirmationScope);
+              }}>{busy ? "Finishing…" : "End"}</button>}
           </div>
         </div>
       </div>

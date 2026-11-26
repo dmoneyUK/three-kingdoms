@@ -395,28 +395,13 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     activity,
   );
   if (input.scene.phase === "REVEAL" && input.fixedBands) {
-    const { h4, pac } = input.fixedBands;
-    const h4Reserve = h4.reserve;
-    const announcementRect = h4.paint;
-    const announcementPaint = input.announcementPaint ?? null;
-    const activityPaint = input.activityPaint ?? null;
-    if (h4.overlapPolicy !== "PASSIVE_REVEAL_FOREGROUND"
-      || !finiteRect(h4Reserve) || !finiteRect(announcementRect) || !finiteRect(pac)
-      || announcementPaint !== null && !finiteRect(announcementPaint)
-      || activityPaint !== null && !finiteRect(activityPaint)
-      || Math.abs(announcementRect.left - h4Reserve.left) > 1
-      || Math.abs(announcementRect.right - h4Reserve.right) > 1
-      || Math.abs(announcementRect.top - h4Reserve.top) > 1
-      || Math.abs(pac.bottom - activityBottom) > 2
-      || announcementPaint !== null && (announcementPaint.left < safeBounds.left || announcementPaint.right > safeBounds.right
-        || announcementPaint.top < safeBounds.top || announcementPaint.bottom > safeBounds.bottom)
-      || activityPaint !== null && (activityPaint.left < safeBounds.left || activityPaint.right > safeBounds.right
-        || activityPaint.top < safeBounds.top || activityPaint.bottom > activityBottom + 2)
-      || announcementPaint !== null && activityPaint !== null && overlaps(announcementPaint, activityPaint)
-      || announcementPaint !== null && input.obstacles.some((obstacle) => overlaps(announcementPaint, obstacle.rect))
-      || activityPaint !== null && input.obstacles.some((obstacle) => overlaps(activityPaint, obstacle.rect))) {
-      return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
-    }
+    const { h4 } = input.fixedBands;
+    // H4/PAC are independently painted foreground layers. Their nominal or
+    // actual rectangles are useful for placement and diagnostics, but never
+    // veto a proven passive reveal, including when the layers intersect.
+    const announcementRect = finiteRect(h4.paint) ? h4.paint
+      : finiteRect(h4.reserve) ? h4.reserve
+        : makeRect((safeBounds.left + safeBounds.right) / 2, safeBounds.top, input.announcement);
     const centerX = (safeBounds.left + safeBounds.right) / 2;
     const activityRect = makeRect(centerX, activityBottom - activity.height, activity);
     // Keep the existing canonical card position. H4/PAC reserves and preferred
@@ -430,21 +415,39 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     if (cardRect.left < safeBounds.left || cardRect.right > safeBounds.right
       || cardRect.top < safeBounds.top || cardRect.bottom > safeBounds.bottom
       || activityRect.bottom > activityBottom + 2
-      || activityPaint !== null && overlaps(cardRect, activityPaint)
-      || cardObstacles.some((obstacle) => overlaps(cardRect, obstacle.rect))
-      || announcementPaint !== null && !publicStageHasVisibleAreaAfterForegroundOverlay(cardRect, announcementPaint)) {
+      || cardObstacles.some((obstacle) => overlaps(cardRect, obstacle.rect))) {
       return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
     }
     return { status: "placed", layout: { identity, variant: "fixed-bands", generation: input.scene.generation,
       scene: input.scene, safeBounds,
-      protectedRects: [...input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
-        ...(announcementPaint ? [{ id: "public-h4-foreground", rect: { ...announcementPaint } }] : []),
-        ...(activityPaint ? [{ id: "public-activity-paint", rect: { ...activityPaint } }] : [])],
+      protectedRects: input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
       announcement: announcementRect, card: cardRect,
       activity: activityRect, cardActivityGap: activityRect.top - cardRect.bottom } };
   }
   if (input.upperH4) {
     const { reserve, paint: h4Paint, gap, overlapPolicy } = input.upperH4;
+    if (input.scene.phase === "REVEAL") {
+      const announcementRect = finiteRect(h4Paint) ? h4Paint
+        : finiteRect(reserve) ? reserve
+          : makeRect((safeBounds.left + safeBounds.right) / 2, safeBounds.top, input.announcement);
+      const activityRect = anchoredActivity;
+      const cardRect = {
+        left: input.preferredCard.left,
+        top: input.preferredCard.top,
+        right: input.preferredCard.left + card.width,
+        bottom: input.preferredCard.top + card.height,
+      };
+      if (cardRect.left < safeBounds.left || cardRect.right > safeBounds.right
+        || cardRect.top < safeBounds.top || cardRect.bottom > safeBounds.bottom
+        || cardObstacles.some(({ rect }) => overlaps(cardRect, rect))) {
+        return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
+      }
+      return { status: "placed", layout: { identity, variant: "stack", generation: input.scene.generation,
+        scene: input.scene, safeBounds,
+        protectedRects: input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
+        announcement: announcementRect, card: cardRect, activity: activityRect,
+        cardActivityGap: activityRect.top - cardRect.bottom } };
+    }
     const reservedHeight = finiteRect(reserve) ? reserve.bottom - reserve.top : Number.NaN;
     if (overlapPolicy !== "PASSIVE_REVEAL_FOREGROUND"
       || !finiteRect(reserve) || !finiteRect(h4Paint)
@@ -456,36 +459,6 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     }
     const h4 = h4Paint;
     const activityRect = input.scene.phase === "REVEAL" || input.activityBottom !== undefined ? anchoredActivity : input.phaseRects!.activity;
-    if (input.scene.phase === "REVEAL") {
-      const cardRect = {
-        left: input.preferredCard.left,
-        top: input.preferredCard.top,
-        right: input.preferredCard.left + card.width,
-        bottom: input.preferredCard.top + card.height,
-      };
-      const announcementPaint = input.announcementPaint ?? null;
-      const activityPaint = input.activityPaint ?? null;
-      if (announcementPaint !== null && !finiteRect(announcementPaint)
-        || activityPaint !== null && !finiteRect(activityPaint)
-        || cardRect.left < safeBounds.left || cardRect.right > safeBounds.right
-        || cardRect.top < safeBounds.top || cardRect.bottom > safeBounds.bottom
-        || activityRect.bottom > activityBottom + 2
-        || activityPaint !== null && overlaps(cardRect, activityPaint)
-        || activityPaint !== null && input.obstacles.some(({ rect }) => overlaps(activityPaint, rect))
-        || announcementPaint !== null && (input.obstacles.some(({ rect }) => overlaps(announcementPaint, rect))
-          || activityPaint !== null && overlaps(announcementPaint, activityPaint))
-        || cardObstacles.some(({ rect }) => overlaps(cardRect, rect))
-        || announcementPaint !== null && !publicStageHasVisibleAreaAfterForegroundOverlay(cardRect, announcementPaint)) {
-        return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
-      }
-      return { status: "placed", layout: { identity, variant: "stack", generation: input.scene.generation,
-        scene: input.scene, safeBounds,
-        protectedRects: [...input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
-          ...(announcementPaint ? [{ id: "public-h4-foreground", rect: { ...announcementPaint } }] : []),
-          ...(activityPaint ? [{ id: "public-activity-paint", rect: { ...activityPaint } }] : [])],
-        announcement: h4, card: cardRect, activity: activityRect,
-        cardActivityGap: activityRect.top - cardRect.bottom } };
-    }
     const cardRect = input.phaseRects!.card;
     const stageRects = input.scene.phase === "REVEAL" ? [h4, cardRect, activityRect] : [h4, activityRect];
     if (stageRects.some((rect, index) => rect.left < safeBounds.left || rect.right > safeBounds.right || rect.top < safeBounds.top || rect.bottom > safeBounds.bottom

@@ -498,7 +498,7 @@ test("short mobile stage fits a measured wrapped announcement beside the full ca
   assert.ok(card.top >= 94 && activity.bottom <= result.layout.safeBounds.bottom);
 });
 
-test("measured upper H4 paint can grow across a passive reveal without moving its fixed layout reserve", () => {
+test("measured upper H4 paint can grow across a passive reveal and PAC without moving the fixed card", () => {
   const shortPaint = h4Geometry(50, 150.15625, 340, 70.5, 70.5).paint;
   const geometry = { viewport: { left: 0, top: 0, right: 440, bottom: 766 }, table: { left: 0, top: 0, right: 440, bottom: 474 }, activityBottom: 479,
     preferredCard: { left: 175, top: 200 }, card: { width: 90, height: 135 },
@@ -514,11 +514,12 @@ test("measured upper H4 paint can grow across a passive reveal without moving it
   assert.equal(long.layout.announcement.bottom, 245);
   assert.ok(long.layout.announcement.bottom > long.layout.card.top, "long H4 paint may cover the passive CardFace");
   assert.ok(long.layout.card.bottom + 8 <= long.layout.activity.top);
-  assert.equal(calculatePublicStageLayout(input({ ...geometry,
+  const overlapsPac = calculatePublicStageLayout(input({ ...geometry,
     upperH4: { ...geometry.upperH4, paint: { ...longPaint, bottom: 420 } },
     announcementPaint: { ...longPaint, bottom: 420 },
-    activityPaint: { left: 50, top: 412, right: 390, bottom: 479 } })).status,
-    "unavailable", "H4 still fails closed when paint would cover PAC/Console");
+    activityPaint: { left: 50, top: 412, right: 390, bottom: 479 } }));
+  assert.equal(overlapsPac.status, "placed", "H4/PAC overlap is paint order, not a passive reveal gate");
+  if (overlapsPac.status === "placed") assert.deepEqual(overlapsPac.layout.card, long.layout.card);
 });
 
 test("fixed-band Effect Frame preserves its position across passive reserve overlap while protecting actual obstacles", () => {
@@ -556,18 +557,17 @@ test("fixed-band Effect Frame preserves its position across passive reserve over
 
   const overlapsSeat = calculatePublicStageLayout(input({
     ...geometry,
-    fixedBands: { ...geometry.fixedBands, h4: h4Geometry(25, 100, 340, 52, 220) },
-    announcementPaint: h4Geometry(25, 100, 340, 52, 220).paint,
-    obstacles: [{ id: "seat", rect: { left: 100, top: 250, right: 180, bottom: 270 } }],
+    obstacles: [{ id: "seat", rect: { left: 150, top: 320, right: 180, bottom: 340 } }],
   }));
-  assert.equal(overlapsSeat.status, "unavailable", "H4 paint still protects seats and controls");
+  assert.equal(overlapsSeat.status, "unavailable", "the actual seat remains a hard obstacle for the card itself");
   const overlapsPac = calculatePublicStageLayout(input({
     ...geometry,
     fixedBands: { ...geometry.fixedBands, h4: h4Geometry(25, 100, 340, 52, 310) },
     announcementPaint: h4Geometry(25, 100, 340, 52, 310).paint,
     activityPaint: geometry.fixedBands.pac,
   }));
-  assert.equal(overlapsPac.status, "unavailable", "H4 paint cannot cover PAC");
+  assert.equal(overlapsPac.status, "placed", "H4/PAC overlap remains an independent foreground paint case");
+  if (overlapsPac.status === "placed") assert.deepEqual(overlapsPac.layout.card, short.layout.card);
 });
 
 test("full effect frame preserves its canonical position and reports impossible geometry", () => {
@@ -643,7 +643,7 @@ test("fixed H4 and PAC reserves pin the same stationary card while either messag
   if (noFit.status === "unavailable") assert.equal(noFit.reason, "NO_SAFE_STAGE_BAND");
 });
 
-test("fixed reveal reserves are soft while actual PAC and full H4 occlusion remain hard", () => {
+test("fixed reveal keeps its canonical position through actual H4 and PAC overlap", () => {
   const frameGeometry = {
     viewport: { left: 0, top: 0, right: 390, bottom: 844 },
     table: { left: 0, top: 0, right: 390, bottom: 700 },
@@ -674,7 +674,8 @@ test("fixed reveal reserves are soft while actual PAC and full H4 occlusion rema
     ...frameGeometry,
     activityPaint: { left: 100, top: 300, right: 290, bottom: 410 },
   }));
-  assert.equal(actualPacCollision.status, "unavailable", "visible PAC content remains a hard collision");
+  assert.equal(actualPacCollision.status, "placed", "visible PAC is an independent foreground layer");
+  if (actualPacCollision.status === "placed") assert.deepEqual(actualPacCollision.layout.card, frame.layout.card);
 
   const partialH4Overlay = calculatePublicStageLayout(input({
     ...frameGeometry,
@@ -686,7 +687,25 @@ test("fixed reveal reserves are soft while actual PAC and full H4 occlusion rema
     ...frameGeometry,
     announcementPaint: { left: 100, top: 240, right: 290, bottom: 450 },
   }));
-  assert.equal(fullH4Occlusion.status, "unavailable", "H4 cannot completely hide the card");
+  assert.equal(fullH4Occlusion.status, "placed", "H4 remains an independent foreground layer even when it covers the frame");
+  if (fullH4Occlusion.status === "placed") assert.deepEqual(fullH4Occlusion.layout.card, frame.layout.card);
+
+  const observedPhoneGeometry = calculatePublicStageLayout(input({
+    ...frameGeometry,
+    viewport: { left: 0, top: 0, right: 440, bottom: 766 },
+    table: { left: 0, top: 0, right: 440, bottom: 630 },
+    activityBottom: 479,
+    preferredCard: { left: 118, top: 136 },
+    card: { width: 204, height: 202 },
+    fixedBands: {
+      h4: h4Geometry(50, 150, 340, 52),
+      pac: { left: 50, top: 435, right: 390, bottom: 479 },
+    },
+    activityPaint: { left: 50, top: 412, right: 390, bottom: 456 },
+  }));
+  assert.equal(observedPhoneGeometry.status, "placed", "the observed 23px PAC target mismatch and 74px card gap do not veto reveal");
+  if (observedPhoneGeometry.status === "placed") assert.deepEqual(observedPhoneGeometry.layout.card,
+    { left: 118, top: 136, right: 322, bottom: 338 });
 
   const ordinaryCardBoundary = calculatePublicStageLayout(input({
     ...frameGeometry,
@@ -753,7 +772,7 @@ test("measured upper H4 remains fixed during move and parked phases", () => {
   }
 });
 
-test("only a proven same-root Harvest CardFace may overlap its pool, while H4 and PAC stay protected", () => {
+test("only a proven same-root Harvest CardFace may overlap its pool; H4/PAC remain independent paint", () => {
   const harvestScene = { ...scene, interactionId: "interaction-1", eventId: "root-event-1" };
   const pool = { id: "harvest-choice-panel", rect: { left: 66, top: 237, right: 374, bottom: 365 } };
   const rootPoolProof = {
@@ -801,12 +820,13 @@ test("only a proven same-root Harvest CardFace may overlap its pool, while H4 an
     { rect: { left: 66, top: 420, right: 374, bottom: 480 },
       protectedPaint: { activityPaint: { left: 50, top: 419, right: 390, bottom: 479 } } },
   ]) {
-    const blocked = calculatePublicStageLayout(input({
+    const layered = calculatePublicStageLayout(input({
       ...geometry,
       obstacles: [{ id: "harvest-choice-panel", rect }],
       ...protectedPaint,
       harvestRootPoolOverlap: rootPoolProof,
     }));
-    assert.equal(blocked.status, "unavailable", "the pool remains a blocker for H4 and PAC");
+    assert.equal(layered.status, "placed", "passive H4/PAC overlap cannot veto the proven stationary reveal");
+    if (layered.status === "placed") assert.deepEqual(layered.layout.card, placed.layout.card);
   }
 });

@@ -1,11 +1,9 @@
 # HANDOVER
 
-Design reviewed: latest `docs/UX2-refine.md` at `origin/ux-v2` `d14601eb` (2026-11-26); active sections §10.80 and §10.81-B.
+Design reviewed: `docs/UX2-refine.md` at `origin/ux-v2` `5e2e7662f45247b6f0a74491008d9145b8b51c69` (§10.78, 2026-11-26 21:09 UTC). Latest validated code base: `6372cb80b057e46877411131b57844a45cc7017b`, Actions `45889665244` successful; remote changes since then are design-document-only.
 
-§10.80 delivered at `b1e42ce8122a805da9dd7cec39aff99a99e5f028`. Exact-SHA Actions `45887588763` passed Lint/fast, API, build, browser startup/H4 smoke, D1 migration and production smoke; Worker `dff82d76-78c8-4174-b2d2-6f18e7d4a77a`. Focused routing test passed 13/13. Owner iPhone review remains pending; source-zone and other-viewer visibility were not verified.
+## Current task — §10.78 Frost Sword reveal and End Turn correction
 
-## Current task — §10.81-B replacement CardFace/H4 cursor ownership
+One combined delivery. Shared reveal no longer treats H4/PAC reserve, alignment, overlap or optional PAC presence as a paint/readiness/lifecycle gate. Keep the canonical full-size proven CardFace/Effect Frame, require same-event factual H4 and real viewport/table/Seat/Dock/Console bounds, preserve privacy and retirement. First-paint checks use bounded frame checks plus observers instead of an endless animation-frame retry. End confirmation remains CurrentAction-authorized and two-step; passive reveal/status geometry is excluded from its safe-placement blockers, with sanitized gate/click/Confirm/Cancel/request tracing.
 
-Ensure the validated real Necromancy replacement CardFace is the selected shared Effect Frame while its exact replacement H4 event is the public presentation cursor. Require exact event, stage, physical-card, actor/target and causal-frame proof. Preserve original reveal, two-line H4, normal interruption by later events, privacy, continuation and no-replay behavior. Do not change layout or rules.
-
-Focused Judgement/routing tests: 18/18 passed; targeted lint for the shared Judgement module and tests and `git diff --check` passed. Local lint of `app/page.tsx` hits the same `react-hooks/rules-of-hooks` stack overflow reproduced against the unmodified baseline; exact-SHA CI is the authoritative full lint check. No local UI/browser test was run. Exact-SHA CI, deployment, smoke and Owner iPhone review for this correction remain pending.
+Focused validation before commit: `tests/public-stage-layout.test.mjs`, `tests/public-card-announcement.test.mjs`, `tests/active-skill-interactions.test.mjs` — 121/121 passed; `git diff --check` passed. No local UI/browser/device test: §10.78 aggregate UI budget was already exhausted. One combined implementation + tests + HANDOVER commit and push are pending; exact-SHA Actions, deployment and production smoke remain pending. Stop after delivery for Owner iPhone review; do not claim acceptance.

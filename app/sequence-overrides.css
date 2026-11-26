@@ -4250,9 +4250,15 @@
   visibility: hidden;
 }
 
-/* The public status can cover a parked miniature; active cards and H4 remain
-   protected by measured placement. Keep an open Inspector above the status. */
+/* The public status can cover parked history. Keep an open Inspector above it. */
 .game-shell .play-table:has(.public-card-journey-card[data-public-card-journey-phase="parked"]) > .public-activity-chip {
+  z-index: 35;
+}
+/* A committed reveal is passive paint. Lift PAC above the journey stacking
+   context so its fixed lower anchor remains visible over the card; H4 keeps
+   its existing foreground position inside that context. PAC never captures
+   input, and actionable choice/confirmation stages retain their higher layer. */
+.game-shell .play-table:has(> .public-card-display-journey > .public-card-journey-card.is-current[data-public-card-journey-phase="reveal"]):not(:has(> .battlefield-choice-stage)):not(:has(> .card-pool-target-stage)):not(:has(> .end-turn-confirmation-stage)) > .public-activity-chip {
   z-index: 35;
 }
 .game-shell .play-table:has(> .public-activity-chip) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {

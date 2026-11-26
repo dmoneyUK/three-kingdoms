@@ -70,9 +70,16 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
   const [insets, setInsets] = useState<BattlefieldChoiceInsets | null>(null);
   const [boundedPanelHeight, setBoundedPanelHeight] = useState<{ placementKey: string; height: number } | null>(null);
   const boundedPanelHeightRef = useRef(boundedPanelHeight);
-  const [readiness, setReadiness] = useState<{ placementKey: string; ready: boolean }>(() => ({ placementKey, ready: false }));
+  const [readiness, setReadiness] = useState<{ placementKey: string; ready: boolean; reason?: string }>(() => ({ placementKey, ready: false }));
   const ready = readiness.placementKey === placementKey && readiness.ready;
-  const setReady = useCallback((nextReady: boolean) => setReadiness({ placementKey, ready: nextReady }), [placementKey]);
+  const placementReason = readiness.placementKey === placementKey
+    ? readiness.reason ?? (readiness.ready ? "ready" : "measuring")
+    : "stale-placement-key";
+  const setReady = useCallback((nextReady: boolean, reason?: string) => setReadiness({
+    placementKey,
+    ready: nextReady,
+    reason: nextReady ? undefined : reason ?? "not-ready",
+  }), [placementKey]);
   const previousPlacementKeyRef = useRef(placementKey);
   const [rootCardOverlap, setRootCardOverlap] = useState(false);
   const insetsRef = useRef<BattlefieldChoiceInsets | null>(null);
@@ -125,7 +132,10 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
     }
     const stage = ref.current;
     const table = stage?.closest<HTMLElement>(".play-table");
-    if (!stage || !table) return;
+    if (!stage || !table) {
+      setReady(false, "missing-choice-stage-or-table");
+      return;
+    }
     let frame: ScheduledBattlefieldFrame | null = null;
     const observed = new Set<Element>();
     let observer: ResizeObserver | null = null;
@@ -167,7 +177,10 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
         const tableRect = table.getBoundingClientRect();
         const measuredRootEventId = rootEventIdRef.current;
         const panel = stage.querySelector<HTMLElement>(".card-pool-panel, .harvest-choice-panel");
-        if (!panel || tableRect.width <= 0 || tableRect.height <= 0) return;
+        if (!panel || tableRect.width <= 0 || tableRect.height <= 0) {
+          setReady(false, "choice-panel-or-table-not-measurable");
+          return;
+        }
         const panelRect = panel.getBoundingClientRect();
         if (panelRect.width <= 0 || panelRect.height <= 0) return;
         const harvestActorSelect = stage.dataset.choiceMode === "actor-select";
@@ -417,7 +430,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
         const obstacles = [...new Set(protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]))]
           .filter((element) => element !== stage && !stage.contains(element))
           .filter((element) => !allowPassivePublicRevealOverlap
-            || !element.matches(".public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip], .public-card-journey-card[data-public-card-journey-phase='reveal'], .public-card-journey-card[data-public-card-journey-phase='move'], .active-table-reveal"))
+            || !element.matches(".public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip], .visible-countdown, .stage-system-cluster, .public-card-journey-card[data-public-card-journey-phase='reveal'], .public-card-journey-card[data-public-card-journey-phase='move'], .active-table-reveal"))
           .filter((element) => protectPublicStage
             || !element.matches(".public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip]"))
           .map((element) => ({ element, rect: element.getBoundingClientRect() }))
@@ -471,7 +484,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
         if (mustPlaceSafely && safeOffset === null) {
           if (stableHarvestTop) stableHarvestPlacementRef.current = null;
           setTop(null);
-          setReady(false);
+          setReady(false, obstacles.length === 0 ? "no-safe-viewport-slot" : "no-safe-slot-around-interactive-controls");
           setRootCardOverlap(false);
           return;
         }
@@ -549,7 +562,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
     };
   }, [allowPassivePublicRevealOverlap, centralTargetLayout, enabled, playerCount, placementKey, protectActiveReveal, protectSharedPublicStage, requireSafePlacement, reserveHarvestFooterFootprint, setReady, stableHarvestTop]);
 
-  return { ref, top, insets, ready, rootCardOverlap, maxHeight: boundedPanelHeight?.placementKey === placementKey ? boundedPanelHeight.height : null };
+  return { ref, top, insets, ready, reason: placementReason, rootCardOverlap, maxHeight: boundedPanelHeight?.placementKey === placementKey ? boundedPanelHeight.height : null };
 }
 
 type SideLanePlacementInput = {

@@ -152,6 +152,9 @@ function protectedRects(table: HTMLElement): ProtectedRect[] {
   for (const element of elements) {
     const insideTable = table.contains(element) || element.closest(".play-table") === table;
     if (!insideTable && !element.matches(EXTERNAL_ACTION_OBSTACLES)) continue;
+    const passiveReveal = element.matches(".public-card-display-journey-copy, [data-public-card-announcement='true']")
+      || Boolean(element.closest(".public-card-journey-card[data-public-card-journey-phase='reveal'], .public-card-journey-card[data-public-card-journey-phase='move']"));
+    if (passiveReveal) continue;
     const rect = visibleRect(element);
     const parked = element.closest<HTMLElement>('[data-public-card-journey-phase="parked"]');
     const parkedRect = parked ? visibleRect(parked) : null;
@@ -441,7 +444,7 @@ function placeChip(
     }
   }
 
-  if (fixedLowerCenter && !hasActiveFullReveal) {
+  if (fixedLowerCenter) {
     const rect = {
       left: tableRect.left + (tableRect.width - width) / 2,
       top: fixedLowerEdge - height,
@@ -456,7 +459,7 @@ function placeChip(
     chip.style.left = `${rect.left - tableRect.left}px`;
     chip.style.top = `${rect.top - tableRect.top}px`;
     chip.style.visibility = "visible";
-    chip.dataset.publicActivityLayout = blockers.length || outOfBounds ? "fixed-lower-center-blocked" : "fixed-lower-center";
+    chip.dataset.publicActivityLayout = blockers.length || outOfBounds ? "fixed-lower-center-overlap" : "fixed-lower-center";
     chip.dataset.publicActivityPlacementBlockers = [
       ...blockers.flatMap(({ ids }) => ids),
       ...(outOfBounds ? ["fixed-lower-center-out-of-bounds"] : []),
@@ -725,22 +728,25 @@ export function PublicActivityChip({ status, roomId, viewerId, seatLayoutKey, ha
             };
             return;
           }
-          // Hold PAC until the provider's current generation reaches this
-          // viewer. Independent placement here can overlap the active Frame.
+          // Keep the public status visible at its existing independent lower
+          // anchor while a same-scene shared generation is being measured.
+          // Passive H4/CardFace intersections are handled by paint order.
           sharedPlacementMemoryRef.current = null;
-          currentChip.style.visibility = "hidden";
-          currentChip.dataset.publicActivityLayout = "pending-shared-stage-layout";
+          const fallback = placeChip(currentChip, currentTable, harvestPoolReadOnly, useFixedLowerCenter,
+            status.kind, status.stage, viewerId, seatLayoutKey, placementMemoryRef.current);
+          placementMemoryRef.current = fallback;
           delete currentChip.dataset.publicStageLayoutIdentity;
-          delete currentChip.dataset.publicActivityPlacementBlockers;
-          const signature = `hidden:${viewerId}:${currentTable?.dataset.publicStageLayoutScope ?? ""}`;
+          const signature = `pending-shared:${viewerId}:${currentTable?.dataset.publicStageLayoutScope ?? ""}:${fallback.visible}`;
           if (signature !== sharedTraceRef.current && isAttackDodgeUxTraceActive()) {
             sharedTraceRef.current = signature;
             recordAttackDodgeUxTrace("public-activity-shared-transition", {
-              reason: "awaiting-safe-shared-layout", visible: false,
+              reason: fallback.visible ? "independent-anchor-while-shared-layout-pending" : "blocked-by-protected-geometry",
+              visible: fallback.visible,
               rootEventId: currentTable?.dataset.publicStageLayoutScope ?? null, viewerId,
               eventId: sharedPublicStage?.primaryEventId ?? null, publicCardId: sharedPublicStage?.primaryCardId ?? null,
               phase: currentTable?.dataset.publicStageLayoutPhase ?? null,
               identity: sharedPublicStage?.layout.identity ?? null,
+              actualPac: fallback.rect,
             });
           }
           return;
