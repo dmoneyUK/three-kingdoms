@@ -61,7 +61,7 @@ import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game
 import { isM2EquipmentTransitionEvent, routePublicEquipmentTransition } from "./public-equipment-transition";
 import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEvent, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, publicJudgementTransitionUsesCompletedPriorReveal, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition, type PublicCardRevealCompletion, type PublicJudgementRevealRoute } from "./public-judgement-transition";
 import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
-import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts, publicDiscardSettlementForMaterials, type CanonicalPublicDiscardSettlement, type PublicDiscardSettlementCopy } from "./public-discard-settlement";
+import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts, publicDiscardSettlementForMaterials } from "./public-discard-settlement";
 import { layoutPublicResultCards, type PublicResultObstacle } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
 import { coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
