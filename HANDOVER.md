@@ -1,11 +1,9 @@
 # HANDOVER
 
-Design reviewed: `docs/UX2-refine.md`, revision 2026-11-26, including the Owner's direct instruction to deliver §§10.78 and 10.79's remaining Kirin correction together as one task and one commit.
+Design reviewed: `docs/UX2-refine.md` §10.78–§10.79 at `origin/ux-v2` `3e6e51d8` (2026-11-26). The 18:38 Owner checkpoint adds review evidence but does not expand or interrupt this delivery.
 
-## Current bounded task — §§10.78 + 10.79 combined correction
+## Current task — CI repair for combined §10.78/§10.79 delivery
 
-Implementation is ready for its single delivery commit on the worktree based on `origin/ux-v2` `c2850d7fb22921bd30e2a1e5ac8bbdaf5bd43371`. The shared reveal keeps its canonical full-size card position; empty H4/PAC reserves no longer shift or block it, actual visible PAC and hard safety boundaries remain protected, and End confirmation remains available only for the authoritative legal turn action. The live Kirin frame can own one H4 containing only its exact committed Mount discard and matching positive Attack damage; pre-damage copy is discard-only.
+Feature commit `af2d0c17a26a007238691d5200adeb8d2d24270d` is pushed to `ux-v2`. Exact-SHA Actions run `45876984490` failed in ESLint: `react-hooks/rules-of-hooks` overflowed while analyzing `GameRoom` at `app/page.tsx:4631`; API tests and browser smoke passed, deployment was skipped. The failure is a rule-analysis crash, not a reported lint violation.
 
-Validation: `npm run build` passed; focused PublicStage layout tests passed 3/3; Effect Frame H4 routing test passed 1/1; targeted equipment API file passed 22/22 including the Kirin target/observer copy. `git diff --check` passed. No local UI/browser/device test was run; the existing UI budget is exhausted.
-
-Single commit, push to `ux-v2`, exact-SHA GitHub Actions, Worker deployment and production smoke are still pending. Stop after technical delivery for Owner iPhone review; §§10.78 and 10.79 remain pending Owner acceptance.
+Repair in progress: move the Kirin frame projection's conditional derivation out of the large `GameRoom` component into module-level pure helpers, preserving proof checks and rendered behavior. Local build and `git diff --check` pass. No local UI/browser test was run; its budget remains exhausted. Next: commit/push this bounded CI correction, verify its exact-SHA Actions and deployment/smoke, then await Owner iPhone review. Do not claim §§10.78/10.79 accepted.

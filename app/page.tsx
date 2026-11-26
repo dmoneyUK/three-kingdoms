@@ -1408,6 +1408,76 @@ function verifiedKirinBowEffectFrameForEvent(
     || effectEvent.player !== materialOwner.name || effectEvent.target !== materialOwner.name) return null;
   return { effectEvent, effect, rootEvent, mount, activationOwner, materialOwner };
 }
+
+type KirinBowAttackHitCandidate = {
+  action: PresentationAttackHitSettlementProof & { eventId: string };
+  exiting: boolean;
+} | null;
+
+function kirinBowEffectFrameActions(
+  candidate: VerifiedKirinBowEffectFrameProof | null,
+  snapshot: PresentationSnapshot | null | undefined,
+  players: readonly Player[],
+  roomCode: string,
+  seenEventIds: ReadonlySet<string>,
+  attackHit: KirinBowAttackHitCandidate,
+): { effectAction: PublicCardDisplayAction | null; damageAction: PublicCardDisplayAction | null } {
+  if (!candidate) return { effectAction: null, damageAction: null };
+
+  const effectFact = uniquePublicH4Facts([
+    ...(snapshot?.publicEventFacts ?? []),
+    ...(snapshot?.retainedPublicEventFacts ?? []),
+  ]).find((fact) => fact.eventId === candidate.effect.eventId
+    && fact.category === "EFFECT_APPLIED"
+    && fact.rootEventId === candidate.effect.rootEventId
+    && fact.resolutionId === candidate.effect.rootResolutionId);
+  const interactionId = candidate.effect.interactionId ?? effectFact?.identity.interactionId;
+  const rootFrameId = candidate.effect.rootFrameId ?? effectFact?.identity.rootFrameId;
+  const effectAction: PublicCardDisplayAction = {
+    key: ["kirin-bow-effect", candidate.effectEvent.id].join(":"),
+    rootEventId: candidate.effectEvent.id,
+    ...(interactionId ? { interactionId } : {}),
+    ...(rootFrameId ? { rootFrameId } : {}),
+    sourceId: candidate.activationOwner.id,
+    targetId: candidate.materialOwner.id,
+    cardFace: candidate.mount,
+    cardLabel: "KIRIN BOW · MOUNT DISCARD",
+    ariaLabel: `${candidate.activationOwner.name} used Kirin Bow to discard ${candidate.materialOwner.name}'s ${candidate.mount.rank}${candidate.mount.suit} ${cardDefinition(candidate.mount.kind).name}.`,
+    publicNotice: `${candidate.activationOwner.name} used Kirin Bow to discard ${candidate.materialOwner.name}'s ${candidate.mount.rank}${candidate.mount.suit} ${cardDefinition(candidate.mount.kind).name}.`,
+    publicNoticeCompact: `Kirin Bow discarded ${candidate.materialOwner.name}'s ${candidate.mount.rank}${candidate.mount.suit} ${cardDefinition(candidate.mount.kind).name}.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [roomCode, "kirin_bow_damage_about_to_apply", candidate.effectEvent.id].join(":"),
+      freshEventIds: seenEventIds.has(candidate.effectEvent.id) ? [] : [candidate.effectEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(candidate.effect, {
+      title: "KIRIN BOW · MOUNT EFFECT",
+      accessibleLabel: `${candidate.activationOwner.name} activated Kirin Bow. ${candidate.materialOwner.name}'s real equipped ${candidate.mount.rank}${candidate.mount.suit} ${cardDefinition(candidate.mount.kind).name} was discarded.`,
+      activationOwnerName: candidate.activationOwner.name,
+      ownerNamesById: Object.fromEntries(players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  };
+  const hit = attackHit?.action;
+  if (!hit || hit.outcome !== "ATTACK_DAMAGE_APPLIED"
+    || candidate.effect.rootEventId !== hit.rootEventId || candidate.effect.rootResolutionId !== hit.rootResolutionId
+    || candidate.effect.activationOwnerId !== hit.sourceId || candidate.effect.targetId !== hit.targetId) {
+    return { effectAction, damageAction: null };
+  }
+  return {
+    effectAction,
+    damageAction: {
+      ...effectAction,
+      settlement: { eventId: hit.eventId, outcome: hit.outcome, exiting: attackHit.exiting },
+    },
+  };
+}
+
+function freshKirinBowEffectEventId(action: PublicCardDisplayAction | null | undefined): string | undefined {
+  const effectFrame = action?.publicCardEffectFrame;
+  return effectFrame?.effectId === "kirin_bow_damage_about_to_apply"
+    && action.motion?.freshEventIds.includes(effectFrame.eventId) ? effectFrame.eventId : undefined;
+}
+
 type VerifiedFrostSwordEffectFrameProof = {
   effectEvent: CardGroupEvent;
   effect: PresentationSnapshotPublicCardEffect;
@@ -9597,51 +9667,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       });
     return proved.sort((left, right) => room.timeline.indexOf(right.effectEvent) - room.timeline.indexOf(left.effectEvent))[0] ?? null;
   })();
-  const kirinBowEffectFact = kirinBowEffectFrameCandidate ? uniquePublicH4Facts([
-    ...(room.presentationSnapshot?.publicEventFacts ?? []),
-    ...(room.presentationSnapshot?.retainedPublicEventFacts ?? []),
-  ]).find((fact) => fact.eventId === kirinBowEffectFrameCandidate.effect.eventId
-    && fact.category === "EFFECT_APPLIED"
-    && fact.rootEventId === kirinBowEffectFrameCandidate.effect.rootEventId
-    && fact.resolutionId === kirinBowEffectFrameCandidate.effect.rootResolutionId) : null;
-  const kirinBowEffectFrameAction: PublicCardDisplayAction | null = kirinBowEffectFrameCandidate ? {
-    key: ["kirin-bow-effect", kirinBowEffectFrameCandidate.effectEvent.id].join(":"),
-    rootEventId: kirinBowEffectFrameCandidate.effectEvent.id,
-    ...((kirinBowEffectFrameCandidate.effect.interactionId ?? kirinBowEffectFact?.identity.interactionId)
-      ? { interactionId: kirinBowEffectFrameCandidate.effect.interactionId ?? kirinBowEffectFact!.identity.interactionId } : {}),
-    ...((kirinBowEffectFrameCandidate.effect.rootFrameId ?? kirinBowEffectFact?.identity.rootFrameId)
-      ? { rootFrameId: kirinBowEffectFrameCandidate.effect.rootFrameId ?? kirinBowEffectFact!.identity.rootFrameId } : {}),
-    sourceId: kirinBowEffectFrameCandidate.activationOwner.id,
-    targetId: kirinBowEffectFrameCandidate.materialOwner.id,
-    cardFace: kirinBowEffectFrameCandidate.mount,
-    cardLabel: "KIRIN BOW · MOUNT DISCARD",
-    ariaLabel: `${kirinBowEffectFrameCandidate.activationOwner.name} used Kirin Bow to discard ${kirinBowEffectFrameCandidate.materialOwner.name}'s ${kirinBowEffectFrameCandidate.mount.rank}${kirinBowEffectFrameCandidate.mount.suit} ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name}.`,
-    publicNotice: `${kirinBowEffectFrameCandidate.activationOwner.name} used Kirin Bow to discard ${kirinBowEffectFrameCandidate.materialOwner.name}'s ${kirinBowEffectFrameCandidate.mount.rank}${kirinBowEffectFrameCandidate.mount.suit} ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name}.`,
-    publicNoticeCompact: `Kirin Bow discarded ${kirinBowEffectFrameCandidate.materialOwner.name}'s ${kirinBowEffectFrameCandidate.mount.rank}${kirinBowEffectFrameCandidate.mount.suit} ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name}.`,
-    motion: {
-      type: "single-target",
-      scopeKey: [room.code, "kirin_bow_damage_about_to_apply", kirinBowEffectFrameCandidate.effectEvent.id].join(":"),
-      freshEventIds: publicCardJourneySeenEventIds.has(kirinBowEffectFrameCandidate.effectEvent.id)
-        ? [] : [kirinBowEffectFrameCandidate.effectEvent.id],
-    },
-    publicCardEffectFrame: createPublicCardEffectFrameView(kirinBowEffectFrameCandidate.effect, {
-      title: "KIRIN BOW · MOUNT EFFECT",
-      accessibleLabel: `${kirinBowEffectFrameCandidate.activationOwner.name} activated Kirin Bow. ${kirinBowEffectFrameCandidate.materialOwner.name}'s real equipped ${kirinBowEffectFrameCandidate.mount.rank}${kirinBowEffectFrameCandidate.mount.suit} ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name} was discarded.`,
-      activationOwnerName: kirinBowEffectFrameCandidate.activationOwner.name,
-      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
-    }) ?? undefined,
-  } : null;
-  const kirinBowDamageFrameAction: PublicCardDisplayAction | null = (() => {
-    const effect = kirinBowEffectFrameCandidate?.effect;
-    const hit = attackHitSettlementCandidate?.action;
-    if (!kirinBowEffectFrameAction || !effect || !hit || hit.outcome !== "ATTACK_DAMAGE_APPLIED"
-      || effect.rootEventId !== hit.rootEventId || effect.rootResolutionId !== hit.rootResolutionId
-      || effect.activationOwnerId !== hit.sourceId || effect.targetId !== hit.targetId) return null;
-    return {
-      ...kirinBowEffectFrameAction,
-      settlement: { eventId: hit.eventId, outcome: hit.outcome, exiting: attackHitSettlementCandidate.exiting },
-    };
-  })();
+  const { effectAction: kirinBowEffectFrameAction, damageAction: kirinBowDamageFrameAction } = kirinBowEffectFrameActions(
+    kirinBowEffectFrameCandidate,
+    room.presentationSnapshot,
+    room.players,
+    room.code,
+    publicCardJourneySeenEventIds,
+    attackHitSettlementCandidate,
+  );
   const frostSwordEffectFrameCandidate = (() => {
     const effects = room.presentationSnapshot?.publicCardEffects ?? [];
     const proved = effects.filter((effect) => effect.effectId === "frost_sword_damage_about_to_apply"
@@ -10505,9 +10538,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     currentInteractionFact,
     room.presentationSnapshot,
     room.players,
-    selectedPublicCardAction?.publicCardEffectFrame?.effectId === "kirin_bow_damage_about_to_apply"
-      && selectedPublicCardAction.motion?.freshEventIds.includes(selectedPublicCardAction.publicCardEffectFrame.eventId)
-      ? selectedPublicCardAction.publicCardEffectFrame.eventId : undefined,
+    freshKirinBowEffectEventId(selectedPublicCardAction),
   );
   const sameResolutionJudgementResult = Boolean(currentPublicJudgementPresentation?.resolutionId
     && currentInteractionFact?.resolutionId === currentPublicJudgementPresentation.resolutionId
