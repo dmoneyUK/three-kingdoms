@@ -1509,6 +1509,15 @@ function addHistory(log: string[], message: string, drawPlayerId?: string, meta?
 function addCardEvent(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" = "play", presentation = true, meta?: PresentationMeta, eventId = crypto.randomUUID()) {
   return appendSequencedLogRecord(log, "@card:", { id: eventId, player, target, card, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential") });
 }
+function publicJudgementOriginatingAction(log: readonly string[], eventId: string | undefined) {
+  if (!eventId) return undefined;
+  const matches = gameTimeline([...log]).filter((event) => event.id === eventId
+    && event.presentation !== false && typeof event.privateToPlayerId !== "string"
+    && typeof event.resolutionId === "string" && event.resolutionId.trim());
+  return matches.length === 1
+    ? { eventId: matches[0].id, resolutionId: matches[0].resolutionId! }
+    : undefined;
+}
 function publicJudgementPresentationRecord(
   judgement: JudgementContinuation,
   stage: PublicJudgementPresentationRecord["stage"],
@@ -1522,6 +1531,7 @@ function publicJudgementPresentationRecord(
     frameId: judgement.causal.frameId,
     ...(judgement.causal.parentFrameId ? { parentFrameId: judgement.causal.parentFrameId } : {}),
   } : undefined;
+  const originatingAction = publicJudgementOriginatingAction(log, judgement.actionRootEventId);
   const base = {
     semantics: "PROVEN" as const,
     visibility: "PUBLIC" as const,
@@ -1530,6 +1540,7 @@ function publicJudgementPresentationRecord(
     judgingPlayerId: judgement.targetId,
     purpose: judgement.purpose,
     continuationKind: judgement.resume.kind,
+    ...(originatingAction ? { originatingAction } : {}),
     ...(judgement.resume.kind === "delayed" ? { sourceCard: judgement.resume.delayedCard } : {}),
     ...(judgement.resolutionId ? { resolutionId: judgement.resolutionId } : {}),
     ...(causal ? { causal } : {}),
@@ -2607,7 +2618,7 @@ async function beginJudgementResolution(room: RoomRow, target: PlayerRow, player
     : causalEnvelope;
   const persistedJudgement = judgement;
   if (actor) {
-    const provisional = publicJudgementPresentationRecord(persistedJudgement, "OPEN");
+    const provisional = publicJudgementPresentationRecord(persistedJudgement, "OPEN", undefined, undefined, log);
     const judgementLog = attachPublicJudgementPresentation(log, persistedJudgement, provisional);
     const presentation = addLogWithId(judgementLog, `${actor.name} may use Necromancy to replace the Judgement card.`);
     const pending: TriggerPending = withPresentationBarrier({
@@ -2648,6 +2659,7 @@ async function beginCavalryJudgement(room: RoomRow, source: PlayerRow, target: P
     purpose: "cavalry",
     revealedCard: draw.card,
     revealedEventId: presentation.eventId,
+    ...(declaration.rootEventId ? { actionRootEventId: declaration.rootEventId } : {}),
     resolutionId: declaration.resolutionId,
     ...(declaration.causal ? { causal: declaration.causal } : {}),
     resume: { kind: "attack_targeted", declaration, ...(group ? { group } : {}) },
@@ -3265,7 +3277,9 @@ async function beginDelayedJudgement(room: RoomRow, target: PlayerRow, players: 
     judgement: true,
     ...(judgementFact ? { publicFact: judgementFact } : {}),
   });
-  const judgement: JudgementContinuation = { targetId: target.id, purpose, revealedCard: draw.card, revealedEventId: presentation.eventId, ...(causalRoot ? { causal: causalRoot.context } : {}), resume: { kind: "delayed", targetId: target.id, delayedCard: delayed, remainingDelayedCards: remaining, resumePhase } };
+  const judgement: JudgementContinuation = { targetId: target.id, purpose, revealedCard: draw.card, revealedEventId: presentation.eventId,
+    ...(rootEventId ? { actionRootEventId: rootEventId } : {}), ...(causalRoot ? { causal: causalRoot.context } : {}),
+    resume: { kind: "delayed", targetId: target.id, delayedCard: delayed, remainingDelayedCards: remaining, resumePhase } };
   return beginJudgementResolution(room, target, players, judgement, deck, discard, presentation.log, writes, causalRoot?.envelope);
 }
 function messageEvent(entry: string, index: number) {
@@ -6186,6 +6200,7 @@ async function applyResponseOutcome(room: RoomRow, pending: Pending, actor: Play
     purpose: resolution.purpose,
     revealedCard: draw.card,
     revealedEventId: presentation.eventId,
+    ...("rootEventId" in continuation && continuation.rootEventId ? { actionRootEventId: continuation.rootEventId } : {}),
     resolutionId: response.resolutionId,
     ...(continuation.causal ? { causal: continuation.causal } : {}),
     resume: { kind: "response", actorId: response.actorId, requirement: response.requirement, reason: response.reason, providerId, ...(response.resolutionId ? { resolutionId: response.resolutionId } : {}), ...(response.disabledProviderIds ? { disabledProviderIds: response.disabledProviderIds } : {}), ...(response.delegation ? { delegation: response.delegation } : {}), continuation },
@@ -10837,6 +10852,7 @@ export async function POST(request: Request) {
           purpose: "ganglie",
           revealedCard: draw.card,
           revealedEventId: presentation.eventId,
+          ...(stauchnessRevealFact?.rootEventId ? { actionRootEventId: stauchnessRevealFact.rootEventId } : {}),
           resolutionId: continuation.resolutionId,
           ...(continuation.causal ? { causal: continuation.causal } : {}),
           resume: { kind: "damage_suffered", continuation: { ...continuation, secondaryEffectId: triggerExecution?.effectId } },

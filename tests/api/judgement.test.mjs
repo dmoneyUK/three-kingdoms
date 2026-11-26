@@ -146,6 +146,10 @@ test("real Judgement replacement rejects stale and duplicate submissions without
   const openJudgementPresentation = revealed.data.presentationSnapshot?.publicJudgementPresentations ?? [];
   assert.equal(openJudgementPresentation.length, 1, "the public original reveal has one typed provisional presentation");
   assert.equal(openJudgementPresentation[0].judgementId, originalJudgement?.id);
+  assert.equal(openJudgementPresentation[0].originatingAction?.eventId, originalJudgement?.publicFact?.rootEventId,
+    "the public Judgement fact preserves the exact committed Attack root separately from the reveal event");
+  assert.ok(openJudgementPresentation[0].originatingAction?.resolutionId,
+    "the originating action keeps its own committed resolution identity");
   assert.equal(openJudgementPresentation[0].status, "PROVISIONAL");
   assert.equal(openJudgementPresentation[0].replacement, undefined);
   assert.doesNotMatch(openJudgementPresentation[0].copy.message, /\b(?:Not )?Match\.$/,
@@ -190,6 +194,9 @@ test("real Judgement replacement rejects stale and duplicate submissions without
   const replacedJudgementPresentation = after.data.presentationSnapshot?.publicJudgementPresentations ?? [];
   assert.equal(replacedJudgementPresentation.length, 2, "the replacement appends one final stage to the exact original Judgement identity");
   assert.deepEqual(replacedJudgementPresentation.map((entry) => entry.phase), ["ORIGINAL", "REPLACEMENT"]);
+  assert.ok(replacedJudgementPresentation.every((entry) => entry.originatingAction?.eventId === openJudgementPresentation[0].originatingAction?.eventId
+    && entry.originatingAction?.resolutionId === openJudgementPresentation[0].originatingAction?.resolutionId),
+  "both public stages stay linked to the same real source action");
   assert.equal(replacedJudgementPresentation[0].judgementId, originalJudgement?.id);
   assert.equal(replacedJudgementPresentation[0].status, "PROVISIONAL");
   assert.equal(replacedJudgementPresentation[1].judgementId, originalJudgement?.id);

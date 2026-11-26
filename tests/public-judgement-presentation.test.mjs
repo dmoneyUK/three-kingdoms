@@ -12,7 +12,7 @@ function continuationFor(purpose) {
     : purpose === "cavalry" ? "attack_targeted" : purpose === "eight_trigrams" ? "response" : "delayed";
 }
 
-function judgementEvent({ id = "judgement-1", target = judge, purpose = "ganglie", continuationKind = continuationFor(purpose), card = makeCard("original-1", "Attack", "2", "♠"), sourceCard = undefined, stage = "OPEN", originalStatus = undefined, finalStatus = undefined, replacementEventId = undefined, replacementActorId = undefined, resolutionId = "resolution-1", publicSequence = 10 } = {}) {
+function judgementEvent({ id = "judgement-1", target = judge, purpose = "ganglie", continuationKind = continuationFor(purpose), card = makeCard("original-1", "Attack", "2", "♠"), sourceCard = undefined, originatingAction = undefined, stage = "OPEN", originalStatus = undefined, finalStatus = undefined, replacementEventId = undefined, replacementActorId = undefined, resolutionId = "resolution-1", publicSequence = 10 } = {}) {
   const status = originalStatus ?? (judgementSucceeds(purpose, card) ? "satisfied" : "unsatisfied");
   return {
     type: "card", id, publicSequence, resolutionId, player: target.name, target: target.name,
@@ -21,6 +21,7 @@ function judgementEvent({ id = "judgement-1", target = judge, purpose = "ganglie
       semantics: "PROVEN", visibility: "PUBLIC", judgementId: id, targetId: target.id,
       judgingPlayerId: target.id, purpose, continuationKind, stage, originalStatus: status,
       ...(sourceCard ? { sourceCard } : {}),
+      ...(originatingAction ? { originatingAction } : {}),
       ...(finalStatus ? { finalStatus } : {}),
       ...(replacementEventId ? { replacementEventId, replacementActorId } : {}),
     },
@@ -195,6 +196,39 @@ test("delayed-card source remains distinct from the original Judgement reveal", 
   assert.equal(fact.originalCard.id, revealedCard.id);
   assert.equal(fact.effectiveCard.id, revealedCard.id);
   assert.equal(fact.copy.message, "Player 4 is judging Overindulgence. Judgement: 2♥. Match.");
+});
+
+test("canonical Judgement facts retain a separately proven originating action identity", () => {
+  const root = {
+    type: "card", id: "attack-root", publicSequence: 9, resolutionId: "attack-root-resolution",
+    player: judge.name, target: judge.name, card: makeCard("attack-root-card", "Attack", "6", "♦"),
+    action: "play", presentation: true,
+  };
+  const original = judgementEvent({
+    id: "judgement-reveal", resolutionId: "judgement-resolution", publicSequence: 10,
+    originatingAction: { eventId: root.id, resolutionId: root.resolutionId },
+  });
+  const [fact] = projectPublicJudgementPresentations([root, original], [], [judge, sima]);
+  assert.equal(fact.judgementId, original.id, "the reveal remains the stable per-Judgement identity");
+  assert.deepEqual(fact.originatingAction, { eventId: root.id, resolutionId: root.resolutionId },
+    "the source action is retained independently from the Judgement reveal/resolution");
+
+  const mismatchedRoot = {
+    ...original,
+    publicJudgementPresentation: {
+      ...original.publicJudgementPresentation,
+      originatingAction: { eventId: root.id, resolutionId: "wrong-root-resolution" },
+    },
+  };
+  assert.deepEqual(projectPublicJudgementPresentations([root, mismatchedRoot], [], [judge, sima]), [],
+    "a present source event with a mismatched resolution cannot be attached to a public Judgement fact");
+  assert.deepEqual(projectPublicJudgementPresentations([root, root, original], [], [judge, sima]), [],
+    "a duplicated source event identity fails closed");
+  assert.deepEqual(projectPublicJudgementPresentations([original], [], [judge, sima]), [],
+    "a source link without its committed public event fails closed");
+  assert.deepEqual(projectPublicJudgementPresentations([
+    { ...root, privateToPlayerId: judge.id }, original,
+  ], [], [judge, sima]), [], "a private source event cannot own a public Judgement source link");
 });
 
 test("an open replacement decision exposes only the public original Judgement", () => {

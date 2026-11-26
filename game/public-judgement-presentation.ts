@@ -19,6 +19,7 @@ export type PublicJudgementPresentationRecord = {
   judgingPlayerId: string;
   purpose: JudgementPurpose;
   continuationKind: PublicJudgementContinuationKind;
+  originatingAction?: { eventId: string; resolutionId: string };
   sourceCard?: PublicJudgementCardFace;
   resolutionId?: string;
   causal?: { interactionId: string; frameId: string; parentFrameId?: string };
@@ -48,6 +49,7 @@ export type PublicJudgementPresentation = {
   judgingPlayerId: string;
   purpose: JudgementPurpose;
   continuationKind: PublicJudgementContinuationKind;
+  originatingAction?: { eventId: string; resolutionId: string };
   sourceCard?: PublicJudgementCardFace;
   resolutionId?: string;
   causal?: { interactionId: string; frameId: string; parentFrameId?: string };
@@ -304,6 +306,18 @@ export function projectPublicJudgementPresentations(
     const originalCard = eventCard(originalEvent);
     const target = players.find((player) => player.id === raw.targetId);
     const sourceCard = raw.sourceCard === undefined ? undefined : publicCardFace(raw.sourceCard);
+    const rawOriginatingAction = raw.originatingAction === undefined ? undefined : record(raw.originatingAction);
+    const originatingAction = rawOriginatingAction && nonEmptyString(rawOriginatingAction.eventId)
+      && nonEmptyString(rawOriginatingAction.resolutionId)
+      ? { eventId: rawOriginatingAction.eventId, resolutionId: rawOriginatingAction.resolutionId }
+      : undefined;
+    const originatingActionEvent = originatingAction ? byEventId.get(originatingAction.eventId) : undefined;
+    if (raw.originatingAction !== undefined && (!originatingAction
+      || eventIdCounts.get(originatingAction.eventId) !== 1
+      || !originatingActionEvent
+      || originatingActionEvent.presentation === false
+      || typeof originatingActionEvent.privateToPlayerId === "string"
+      || originatingActionEvent.resolutionId !== originatingAction.resolutionId)) continue;
     if (raw.sourceCard !== undefined && !sourceCard) continue;
     if (!originalCard || !target?.name || originalEvent.player !== target.name || originalEvent.target !== target.name
       || statusFor(raw.purpose as JudgementPurpose, originalCard) !== raw.originalStatus
@@ -324,6 +338,7 @@ export function projectPublicJudgementPresentations(
       judgingPlayerId: raw.judgingPlayerId,
       purpose: raw.purpose as JudgementPurpose,
       continuationKind: raw.continuationKind as PublicJudgementContinuationKind,
+      ...(originatingAction ? { originatingAction } : {}),
       ...(sourceCard ? { sourceCard } : {}),
       // The durable original event is the server authority for resolution
       // identity. Older committed records may omit the redundant nested copy;
