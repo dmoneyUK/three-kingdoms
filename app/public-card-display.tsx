@@ -2466,7 +2466,7 @@ export function publicCardAnnouncementCopy(
   eventId?: string,
 ): PublicCardAnnouncementCopy {
   const dismantleFace = publicDismantleCardFaceCopy(action, sourceName, targetName, eventId);
-  if (action.publicDiscardSettlement?.eventId === eventId) {
+  if (action.publicDiscardSettlement && action.publicDiscardSettlement.eventId === eventId) {
     return {
       message: action.publicDiscardSettlement.headline,
       segments: matchingPublicH4Segments(action.publicDiscardSettlement.headline, action.publicDiscardSettlement.segments),
