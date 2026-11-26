@@ -1,4 +1,4 @@
-# WTK UX3 — Coding Agent Workflow (UX3-AUTO-02)
+# WTK UX3 — Coding Agent Workflow (UX3-AUTO-03)
 
 > UX3 architecture program, independent branch `ux3`; original fork and current reconciled source are recorded in UX3 Design. **NO CODING TASK is automatically authorized by this workflow.**
 > UX3 task authority: `docs/UX3_DESIGN.md`; legacy immutable visible contract: current `ux-v2/docs/UX2-refine.md` plus UX3's pinned original-section index; existing UX2 Coding Agent owns `ux-v2/HANDOVER.md`.
@@ -39,4 +39,4 @@ If source/authority/safety proof is absent or the approved correction budget is 
 
 ## 5. No automatic next task
 
-Read the current UX3 Design and the Manager's explicit task instruction at every handoff. Do not use a historical task, guide example, old SHA or Agent Handover as authority. Implement exactly one released unit, then stop for independent Manager review even if CI passes. Never self-select or auto-launch a subsequent task. All open UX2 requirements remain independent; do not silently absorb or mark them accepted.
+Read the current UX3 Design and the Manager's explicit task instruction at every handoff. The instruction may contain only the task ID, correction stage (if needed) and a short execution direction. Read the full matching contract, pinned source, scope, tests, budget, permissions and STOP conditions from UX3_DESIGN.md; brevity in chat does not waive any requirement. Do not use a historical task, guide example, old SHA or Agent Handover as authority. Implement exactly one released unit, then stop for independent Manager review even if CI passes. Never self-select or auto-launch a subsequent task. All open UX2 requirements remain independent; do not silently absorb or mark them accepted.
