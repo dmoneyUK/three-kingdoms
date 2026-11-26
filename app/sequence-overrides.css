@@ -7469,15 +7469,30 @@
   pointer-events: none !important;
 }
 
-/* §10.26: the End confirmation uses the battlefield choice shell without a
-   backdrop. Only the measured panel captures input; an unsafe placement waits
-   until the active reveal/other protected content clears. */
+/* §10.78: one shared H4 foreground layer may overlap only passive committed
+   CardFace/Frame paint. Its fixed position and normal geometry reserve stay
+   owned by the shared layout; copy and passive cards never capture input. */
+.game-shell .play-table > .public-card-display-journey > .public-card-display-journey-copy {
+  z-index: 38;
+  pointer-events: none;
+}
+.game-shell .public-card-display-journey-copy > b {
+  display: block;
+  overflow: visible;
+  -webkit-box-orient: initial;
+  -webkit-line-clamp: unset;
+}
+
+/* §10.26 / §10.78: the End confirmation uses the battlefield choice shell
+   without a backdrop. Only its measured panel captures input, and this
+   existing confirmation can sit above an already-committed passive reveal. */
 .game-shell .play-table > .end-turn-confirmation-stage[data-end-turn-confirmation-ready="false"] {
   visibility: hidden;
   pointer-events: none;
 }
 .game-shell .play-table > .end-turn-confirmation-stage[data-end-turn-confirmation-ready="true"] {
   visibility: visible;
+  z-index: 40;
 }
 .game-shell .end-turn-confirmation-panel {
   box-sizing: border-box;

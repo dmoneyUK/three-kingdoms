@@ -55,6 +55,7 @@ type BattlefieldChoicePlacementOptions = {
   rootEventId?: string;
   requireSafePlacement?: boolean;
   protectActiveReveal?: boolean;
+  allowPassivePublicRevealOverlap?: boolean;
   protectSharedPublicStage?: boolean;
   reserveHarvestFooterFootprint?: boolean;
   stableHarvestTop?: boolean;
@@ -63,7 +64,7 @@ type BattlefieldChoicePlacementOptions = {
 type ScheduledBattlefieldFrame = { kind: "animation"; id: number } | { kind: "timeout"; id: ReturnType<typeof setTimeout> };
 
 /** Measures the shared panel and places it in Harvest's current safe battlefield corridor. */
-export function useBattlefieldChoicePlacement({ enabled, playerCount, placementKey, centralTargetLayout = false, rootEventId, requireSafePlacement = false, protectActiveReveal = false, protectSharedPublicStage = false, reserveHarvestFooterFootprint = false, stableHarvestTop = false }: BattlefieldChoicePlacementOptions) {
+export function useBattlefieldChoicePlacement({ enabled, playerCount, placementKey, centralTargetLayout = false, rootEventId, requireSafePlacement = false, protectActiveReveal = false, allowPassivePublicRevealOverlap = false, protectSharedPublicStage = false, reserveHarvestFooterFootprint = false, stableHarvestTop = false }: BattlefieldChoicePlacementOptions) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [top, setTop] = useState<number | null>(null);
   const [insets, setInsets] = useState<BattlefieldChoiceInsets | null>(null);
@@ -412,9 +413,11 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
         }
 
         const isFanjianCombinedChoice = stage.dataset.fanjianCombinedChoice === "true";
-        const protectPublicStage = protectSharedPublicStage || isFanjianCombinedChoice;
+        const protectPublicStage = protectSharedPublicStage || isFanjianCombinedChoice || allowPassivePublicRevealOverlap;
         const obstacles = [...new Set(protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]))]
           .filter((element) => element !== stage && !stage.contains(element))
+          .filter((element) => !allowPassivePublicRevealOverlap
+            || !element.matches(".public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip], .public-card-journey-card[data-public-card-journey-phase='reveal'], .public-card-journey-card[data-public-card-journey-phase='move'], .active-table-reveal"))
           .filter((element) => protectPublicStage
             || !element.matches(".public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip]"))
           .map((element) => ({ element, rect: element.getBoundingClientRect() }))
@@ -432,8 +435,10 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
           setRootCardOverlap(false);
           return;
         }
-        const fixedUpperH4Rect = fixedUpperH4?.getBoundingClientRect();
-        const authorReservationRects = measureAuthorReservationRects();
+        const fixedUpperH4Rect = allowPassivePublicRevealOverlap
+          ? null
+          : fixedUpperH4?.getBoundingClientRect();
+        const authorReservationRects = allowPassivePublicRevealOverlap ? [] : measureAuthorReservationRects();
         const obstacleRects = [...obstacles.map(({ rect }) => rect), ...authorReservationRects];
         const viewportHeight = Math.min(window.innerHeight, (window.visualViewport?.offsetTop ?? 0) + (window.visualViewport?.height ?? window.innerHeight));
         const minimumTop = fixedUpperH4Rect ? fixedUpperH4Rect.bottom + margin : undefined;
@@ -542,7 +547,7 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
       cancelFrame(frame);
       targetWidthProbe?.remove();
     };
-  }, [centralTargetLayout, enabled, playerCount, placementKey, protectActiveReveal, protectSharedPublicStage, requireSafePlacement, reserveHarvestFooterFootprint, setReady, stableHarvestTop]);
+  }, [allowPassivePublicRevealOverlap, centralTargetLayout, enabled, playerCount, placementKey, protectActiveReveal, protectSharedPublicStage, requireSafePlacement, reserveHarvestFooterFootprint, setReady, stableHarvestTop]);
 
   return { ref, top, insets, ready, rootCardOverlap, maxHeight: boundedPanelHeight?.placementKey === placementKey ? boundedPanelHeight.height : null };
 }

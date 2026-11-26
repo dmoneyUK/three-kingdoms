@@ -1960,6 +1960,7 @@ function publicInteractionNarrationForStage(
   currentFact: { rootEventId?: string; eventId: string; identity: { interactionId: string; rootFrameId: string } } | null,
   snapshot: PresentationSnapshot | null,
   players: readonly Player[],
+  liveKirinBowEffectEventId?: string,
 ): PublicInteractionNarration | null {
   if (retaliation) return retaliation;
   if (fanjian) return fanjian;
@@ -1971,6 +1972,7 @@ function publicInteractionNarrationForStage(
     interactionId: currentFact.identity.interactionId,
     rootFrameId: currentFact.identity.rootFrameId,
     eventId: currentFact.eventId,
+    ...(liveKirinBowEffectEventId ? { liveKirinBowEffectEventId } : {}),
   });
 }
 
@@ -9595,16 +9597,27 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       });
     return proved.sort((left, right) => room.timeline.indexOf(right.effectEvent) - room.timeline.indexOf(left.effectEvent))[0] ?? null;
   })();
+  const kirinBowEffectFact = kirinBowEffectFrameCandidate ? uniquePublicH4Facts([
+    ...(room.presentationSnapshot?.publicEventFacts ?? []),
+    ...(room.presentationSnapshot?.retainedPublicEventFacts ?? []),
+  ]).find((fact) => fact.eventId === kirinBowEffectFrameCandidate.effect.eventId
+    && fact.category === "EFFECT_APPLIED"
+    && fact.rootEventId === kirinBowEffectFrameCandidate.effect.rootEventId
+    && fact.resolutionId === kirinBowEffectFrameCandidate.effect.rootResolutionId) : null;
   const kirinBowEffectFrameAction: PublicCardDisplayAction | null = kirinBowEffectFrameCandidate ? {
     key: ["kirin-bow-effect", kirinBowEffectFrameCandidate.effectEvent.id].join(":"),
     rootEventId: kirinBowEffectFrameCandidate.effectEvent.id,
-    sourceId: kirinBowEffectFrameCandidate.materialOwner.id,
-    targetId: null,
+    ...((kirinBowEffectFrameCandidate.effect.interactionId ?? kirinBowEffectFact?.identity.interactionId)
+      ? { interactionId: kirinBowEffectFrameCandidate.effect.interactionId ?? kirinBowEffectFact!.identity.interactionId } : {}),
+    ...((kirinBowEffectFrameCandidate.effect.rootFrameId ?? kirinBowEffectFact?.identity.rootFrameId)
+      ? { rootFrameId: kirinBowEffectFrameCandidate.effect.rootFrameId ?? kirinBowEffectFact!.identity.rootFrameId } : {}),
+    sourceId: kirinBowEffectFrameCandidate.activationOwner.id,
+    targetId: kirinBowEffectFrameCandidate.materialOwner.id,
     cardFace: kirinBowEffectFrameCandidate.mount,
     cardLabel: "KIRIN BOW · MOUNT DISCARD",
-    ariaLabel: `${kirinBowEffectFrameCandidate.activationOwner.name} used Kirin Bow on ${kirinBowEffectFrameCandidate.materialOwner.name}. ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name} was discarded from the target's Equipment, and Attack damage continues.`,
-    publicNotice: `${kirinBowEffectFrameCandidate.activationOwner.name} used Kirin Bow to discard ${kirinBowEffectFrameCandidate.materialOwner.name}'s ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name}. Attack damage continues.`,
-    publicNoticeCompact: `Kirin Bow: ${kirinBowEffectFrameCandidate.materialOwner.name}'s Mount was discarded; Attack damage continues.`,
+    ariaLabel: `${kirinBowEffectFrameCandidate.activationOwner.name} used Kirin Bow to discard ${kirinBowEffectFrameCandidate.materialOwner.name}'s ${kirinBowEffectFrameCandidate.mount.rank}${kirinBowEffectFrameCandidate.mount.suit} ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name}.`,
+    publicNotice: `${kirinBowEffectFrameCandidate.activationOwner.name} used Kirin Bow to discard ${kirinBowEffectFrameCandidate.materialOwner.name}'s ${kirinBowEffectFrameCandidate.mount.rank}${kirinBowEffectFrameCandidate.mount.suit} ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name}.`,
+    publicNoticeCompact: `Kirin Bow discarded ${kirinBowEffectFrameCandidate.materialOwner.name}'s ${kirinBowEffectFrameCandidate.mount.rank}${kirinBowEffectFrameCandidate.mount.suit} ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name}.`,
     motion: {
       type: "single-target",
       scopeKey: [room.code, "kirin_bow_damage_about_to_apply", kirinBowEffectFrameCandidate.effectEvent.id].join(":"),
@@ -9613,11 +9626,22 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     },
     publicCardEffectFrame: createPublicCardEffectFrameView(kirinBowEffectFrameCandidate.effect, {
       title: "KIRIN BOW · MOUNT EFFECT",
-      accessibleLabel: `${kirinBowEffectFrameCandidate.activationOwner.name} activated Kirin Bow. ${kirinBowEffectFrameCandidate.materialOwner.name}'s real equipped ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name} was discarded; Attack damage continues.`,
+      accessibleLabel: `${kirinBowEffectFrameCandidate.activationOwner.name} activated Kirin Bow. ${kirinBowEffectFrameCandidate.materialOwner.name}'s real equipped ${kirinBowEffectFrameCandidate.mount.rank}${kirinBowEffectFrameCandidate.mount.suit} ${cardDefinition(kirinBowEffectFrameCandidate.mount.kind).name} was discarded.`,
       activationOwnerName: kirinBowEffectFrameCandidate.activationOwner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
+  const kirinBowDamageFrameAction: PublicCardDisplayAction | null = (() => {
+    const effect = kirinBowEffectFrameCandidate?.effect;
+    const hit = attackHitSettlementCandidate?.action;
+    if (!kirinBowEffectFrameAction || !effect || !hit || hit.outcome !== "ATTACK_DAMAGE_APPLIED"
+      || effect.rootEventId !== hit.rootEventId || effect.rootResolutionId !== hit.rootResolutionId
+      || effect.activationOwnerId !== hit.sourceId || effect.targetId !== hit.targetId) return null;
+    return {
+      ...kirinBowEffectFrameAction,
+      settlement: { eventId: hit.eventId, outcome: hit.outcome, exiting: attackHitSettlementCandidate.exiting },
+    };
+  })();
   const frostSwordEffectFrameCandidate = (() => {
     const effects = room.presentationSnapshot?.publicCardEffects ?? [];
     const proved = effects.filter((effect) => effect.effectId === "frost_sword_damage_about_to_apply"
@@ -9739,7 +9763,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction,
     dauntlessEquipmentEffectFrameAction, betrothmentCostFrameAction,
     equilibriumCostFrameAction, firstAidConversionFrameAction, necromancyJudgementFrameAction,
-    stauchnessCostFrameAction, rockCleavingAxeCostFrameAction, kirinBowEffectFrameAction,
+    stauchnessCostFrameAction, rockCleavingAxeCostFrameAction, kirinBowDamageFrameAction ?? kirinBowEffectFrameAction,
     frostSwordEffectFrameAction,
     yinYangSwordsEffectFrameAction,
     greenDragonBladeEffectFrameAction,
@@ -10304,7 +10328,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       value: latestHeroPublicCardEffectFrameAction,
       rootEventId: latestHeroPublicCardEffectFrameAction.rootEventId,
       checkpointEventId: publicCardActionCheckpointEventId(latestHeroPublicCardEffectFrameAction),
-      priority: 1,
+      priority: kirinBowDamageFrameAction ? 3 : 1,
       // Retiring the public copy must not remove its proof-backed physical
       // CardFace; suppressAnnouncement is handled by the shared renderer.
       supersedeOnNewerPublicPlay: true,
@@ -10481,6 +10505,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     currentInteractionFact,
     room.presentationSnapshot,
     room.players,
+    selectedPublicCardAction?.publicCardEffectFrame?.effectId === "kirin_bow_damage_about_to_apply"
+      && selectedPublicCardAction.motion?.freshEventIds.includes(selectedPublicCardAction.publicCardEffectFrame.eventId)
+      ? selectedPublicCardAction.publicCardEffectFrame.eventId : undefined,
   );
   const sameResolutionJudgementResult = Boolean(currentPublicJudgementPresentation?.resolutionId
     && currentInteractionFact?.resolutionId === currentPublicJudgementPresentation.resolutionId
@@ -12387,6 +12414,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     placementKey: endTurnConfirmationScope,
     requireSafePlacement: true,
     protectActiveReveal: true,
+    allowPassivePublicRevealOverlap: true,
   });
   useEffect(() => {
     if (!endTurnConfirmationIsCurrent || !endTurnConfirmationPlacement.ready) return;
@@ -12408,7 +12436,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || !endTurnConfirmationIsCurrent
       || !endTurnConfirmationPlacement.ready
       || busy
-      || presentationBusy && !ordinaryTurnPlayAuthorized
       || !canUseAction(room.currentAction, "end_turn")) return;
     endTurnConfirmationSubmissionRef.current = true;
     setEndTurnConfirmationSubmitting(true);
@@ -12903,7 +12930,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           </header>
           <footer className="card-pool-panel__footer end-turn-confirmation__actions">
             <button ref={endTurnConfirmationCancelRef} type="button" className="end end-turn-confirmation__cancel" tabIndex={endTurnConfirmationPlacement.ready ? 0 : -1} disabled={endTurnConfirmationSubmitting} onClick={() => closeEndTurnConfirmation(true)}>Cancel</button>
-            <button type="button" className="primary end-turn-confirmation__confirm" tabIndex={endTurnConfirmationPlacement.ready ? 0 : -1} disabled={!endTurnConfirmationPlacement.ready || busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onClick={() => { void confirmEndTurn(); }}>Confirm End</button>
+            <button type="button" className="primary end-turn-confirmation__confirm" tabIndex={endTurnConfirmationPlacement.ready ? 0 : -1} disabled={!endTurnConfirmationPlacement.ready || busy || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onClick={() => { void confirmEndTurn(); }}>Confirm End</button>
           </footer>
         </section>
       </BattlefieldChoiceStage>}
@@ -13221,7 +13248,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName(busy ? "Skipping…" : "Skip")} disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}
             {triggerResponse && triggerDeclineAction && (!targetCardPickerInModal || targetCardPickerInLocalDock) && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName("Skip")} disabled={responseControlsDisabled || !consoleDecision.authoritativeDecline.enabled} onClick={() => onAction("decline_trigger")}>Skip</button>}
             {canRespond && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName(responseDeclineLabel)} disabled={responseControlsDisabled || !responseDamageAction || !consoleDecision.authoritativeDecline.enabled} onClick={() => responseDamageAction && onAction(responseDamageAction)}>{responseDeclineLabel}</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && <button ref={endTurnConfirmationButtonRef} className="end" disabled={busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onClick={() => { if (endTurnConfirmationAuthorized && !endTurnConfirmationSubmissionRef.current) setEndTurnConfirmationIdentity(endTurnConfirmationScope); }}>{busy ? "Finishing…" : "End"}</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && <button ref={endTurnConfirmationButtonRef} className="end" disabled={busy || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onClick={() => { if (endTurnConfirmationAuthorized && !endTurnConfirmationSubmissionRef.current) setEndTurnConfirmationIdentity(endTurnConfirmationScope); }}>{busy ? "Finishing…" : "End"}</button>}
           </div>
         </div>
       </div>

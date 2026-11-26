@@ -622,6 +622,8 @@ export function derivePublicInteractionNarration(input: {
   rootFrameId: string;
   /** Selects the exact active public event instead of a later same-root result. */
   eventId?: string;
+  /** Exact live Kirin Bow frame whose own committed discard and Attack hit may share H4. */
+  liveKirinBowEffectEventId?: string;
 }): PublicInteractionNarration | null {
   const snapshot = input.snapshot;
   const identity = snapshot?.identity;
@@ -686,6 +688,48 @@ export function derivePublicInteractionNarration(input: {
       && fact.resolutionId === latest!.resolutionId && isSpecificCommittedOutcomeFact(fact)).at(-1) ?? latest;
   }
   if (!latest) return null;
+
+  // Keep the Kirin Bow frame and the real resumed Attack result together only
+  // while that exact frame is still the selected public display. Every name,
+  // card face, target and amount below comes from committed public proof.
+  const kirinEffect = input.liveKirinBowEffectEventId
+    ? snapshot.publicCardEffects.filter((effect) => effect.eventId === input.liveKirinBowEffectEventId)
+    : [];
+  const kirinFrameCopy = (() => {
+    if (kirinEffect.length !== 1 || latest.category !== "DAMAGE_APPLIED"
+      || latest.committedOutcome?.source.kind !== "damage" || latest.committedOutcome.source.label !== "Attack") return null;
+    const effect = kirinEffect[0]!;
+    const discardFacts = verifiedFacts.filter((fact) => fact.eventId === effect.eventId && fact.category === "EFFECT_APPLIED");
+    const damageChanges = latest.committedOutcome.changes.filter((change) => change.kind === "DAMAGE_APPLIED");
+    const discardChanges = discardFacts[0]?.committedOutcome?.changes.filter((change) => change.kind === "CARD_DISCARDED") ?? [];
+    if (effect.semantics !== "PROVEN" || effect.effectId !== "kirin_bow_damage_about_to_apply"
+      || effect.effectClass !== "EFFECT" || effect.source?.kind !== "equipment" || effect.source.label !== "Kirin Bow"
+      || effect.activationOwnerId !== latest.actorId || effect.rootEventId !== input.rootEventId
+      || effect.rootResolutionId !== latest.resolutionId || !effect.targetId
+      || effect.materials.length !== 1 || effect.cards.length !== 1
+      || effect.materials[0]?.cardId !== effect.cards[0]?.id
+      || effect.materials[0]?.ownerId !== effect.targetId || effect.materials[0]?.fromZone !== "EQUIPMENT"
+      || effect.materials[0]?.toZone !== "DISCARD" || effect.cards[0]?.suit === undefined || effect.cards[0]?.rank === undefined
+      || discardFacts.length !== 1 || damageChanges.length !== 1 || discardChanges.length !== 1) return null;
+    const discardFact = discardFacts[0]!;
+    const damage = damageChanges[0]!;
+    const discarded = discardChanges[0]!;
+    if (discardFact.actorId !== effect.activationOwnerId || discardFact.affectedPlayerIds.length !== 1
+      || discardFact.affectedPlayerIds[0] !== effect.targetId || discardFact.order >= latest.order
+      || discardFact.rootEventId !== input.rootEventId || discardFact.resolutionId !== effect.rootResolutionId
+      || discardFact.identity.interactionId !== input.interactionId || discardFact.identity.rootFrameId !== input.rootFrameId
+      || discardFact.committedOutcome?.source.kind !== "equipment" || discardFact.committedOutcome.source.label !== "Kirin Bow"
+      || discarded.playerId !== effect.targetId || discarded.amount !== 1 || discarded.fromZone !== "EQUIPMENT" || discarded.toZone !== "DISCARD"
+      || damage.playerId !== effect.targetId || damage.amount <= 0 || latest.affectedPlayerIds.length !== 1
+      || latest.affectedPlayerIds[0] !== effect.targetId || latest.amount !== damage.amount) return null;
+    const actor = narrationPlayerPart(input.players, effect.activationOwnerId);
+    const target = narrationPlayerPart(input.players, effect.targetId);
+    const cardName = CARD_DEFINITIONS[effect.cards[0]!.kind]?.name;
+    if (!actor || !target || !cardName) return null;
+    return verifiedPlayerCopy([actor, " used Kirin Bow to discard ", target, "’s ",
+      `${effect.cards[0]!.rank}${effect.cards[0]!.suit} ${cardName}`, ` and dealt ${damage.amount} damage to `,
+      target, " with Attack."]);
+  })();
 
   const actorPart = narrationPlayerPart(input.players, latest.actorId ?? undefined);
   const rootFact = verifiedFacts.find((fact) => fact.eventId === input.rootEventId);
@@ -788,6 +832,11 @@ export function derivePublicInteractionNarration(input: {
       : "A public effect stage completed.";
   } else {
     return null;
+  }
+
+  if (kirinFrameCopy) {
+    headlineCopy = kirinFrameCopy;
+    headline = kirinFrameCopy.message;
   }
 
   return {

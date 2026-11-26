@@ -1,4 +1,5 @@
 import { publicH4WidthLimit } from "../game/public-h4-copy";
+import type { PublicStageH4Geometry, PublicStageRect } from "../game/public-stage-layout";
 
 type CardRect = { left: number; top: number; width: number; height: number };
 const PARKED_CARD = { width: 48, height: 72 };
@@ -95,7 +96,7 @@ export function fixedUpperHistoryAnnouncementAnchor(table: HTMLElement): { top: 
 
 
 const supportMetrics = new Map<string, { lineHeight: number; marginTop: number }>();
-type FixedBand = { left: number; top: number; right: number; bottom: number; width: number; height: number };
+export type FixedBand = { left: number; top: number; right: number; bottom: number; width: number; height: number };
 type FixedBandMeasurements = { h4Height: number; pacHeight: number; h4Width: number; pacWidth: number };
 const fixedBandMeasurements = new WeakMap<HTMLElement, { key: string; value: FixedBandMeasurements }>();
 
@@ -198,20 +199,34 @@ function fixedBandMetrics(table: HTMLElement): FixedBandMeasurements {
   return value;
 }
 
-/** Stable H4 reserve measured from supported styles, independent of current copy or visibility. */
-export function fixedPublicH4Band(table: HTMLElement, announcement?: HTMLElement | null, measuredHeight = 0): FixedBand | null {
+/** Stable H4 layout reserve measured from supported styles, independent of current copy or visibility. */
+export function fixedPublicH4Band(table: HTMLElement): FixedBand | null {
   const upper = fixedUpperHistoryAnnouncementAnchor(table);
   if (!upper) return null;
   const metrics = fixedBandMetrics(table);
-  const rect = announcement?.getBoundingClientRect();
-  const style = announcement ? window.getComputedStyle(announcement) : null;
-  const activeHeight = rect && rect.width > 0 && rect.height > 0
-    && style?.display !== "none" && style?.visibility !== "hidden" && Number(style?.opacity) > 0 ? rect.height : 0;
-  const height = Math.max(metrics.h4Height, activeHeight, Number.isFinite(measuredHeight) ? measuredHeight : 0);
   const tableRect = table.getBoundingClientRect();
   const left = tableRect.left + (tableRect.width - metrics.h4Width) / 2;
-  return { left, top: upper.top, right: left + metrics.h4Width, bottom: upper.top + height,
-    width: metrics.h4Width, height };
+  return { left, top: upper.top, right: left + metrics.h4Width, bottom: upper.top + metrics.h4Height,
+    width: metrics.h4Width, height: metrics.h4Height };
+}
+
+/** Real H4 paint bounds are tracked separately from the fixed layout reserve. */
+export function measuredPublicH4PaintRect(announcement: HTMLElement | null | undefined): PublicStageRect | null {
+  if (!announcement) return null;
+  const rect = announcement.getBoundingClientRect();
+  const style = window.getComputedStyle(announcement);
+  if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) <= 0
+    || rect.width <= 0 || rect.height <= 0) return null;
+  return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+}
+
+/** Typed shared geometry: fixed placement reserve plus the independently measured H4 paint box. */
+export function publicStageH4Geometry(reserve: FixedBand, paint: PublicStageRect): PublicStageH4Geometry {
+  return {
+    reserve: { left: reserve.left, top: reserve.top, right: reserve.right, bottom: reserve.bottom },
+    paint,
+    overlapPolicy: "PASSIVE_REVEAL_FOREGROUND",
+  };
 }
 
 /** Stable PAC reserve ending at the real Console guidance top, whether PAC is mounted or not. */

@@ -1100,6 +1100,18 @@ test("Kirin Bow discards one damaged target Mount and then applies the Attack da
   assert.equal(damageH4.narration.headline,
     `${hostPlayer.name} dealt 1 damage to ${alicePlayer.name} with Attack.`,
     "the following damage H4 names Attack, not Kirin Bow");
+  const combinedKirinH4 = derivePublicInteractionNarration({
+    snapshot: resolved.data.room.presentationSnapshot,
+    players: resolved.data.room.players,
+    rootEventId: damageH4.fact.rootEventId,
+    interactionId: damageH4.fact.identity.interactionId,
+    rootFrameId: damageH4.fact.identity.rootFrameId,
+    eventId: damageEvent.id,
+    liveKirinBowEffectEventId: kirinEvent.id,
+  });
+  assert.equal(combinedKirinH4?.headline,
+    `${hostPlayer.name} used Kirin Bow to discard ${alicePlayer.name}’s A♠ Shadowrunner and dealt 1 damage to ${alicePlayer.name} with Attack.`,
+    "the still-live Kirin Frame owns the real discard and subsequent committed Attack damage together");
 
   const observerFacts = [
     ...observer.data.presentationSnapshot.publicEventFacts,
@@ -1108,6 +1120,17 @@ test("Kirin Bow discards one damaged target Mount and then applies the Attack da
   const observerDamageH4 = assertPublicOutcomeHasH4Owner(observer.data, damageEvent.id);
   assert.equal(observerDamageH4.narration.headline, damageH4.narration.headline,
     "the observer sees the identical committed Attack damage copy");
+  const observerCombinedKirinH4 = derivePublicInteractionNarration({
+    snapshot: observer.data.presentationSnapshot,
+    players: observer.data.players,
+    rootEventId: observerDamageH4.fact.rootEventId,
+    interactionId: observerDamageH4.fact.identity.interactionId,
+    rootFrameId: observerDamageH4.fact.identity.rootFrameId,
+    eventId: damageEvent.id,
+    liveKirinBowEffectEventId: kirinEvent.id,
+  });
+  assert.equal(observerCombinedKirinH4?.headline, combinedKirinH4?.headline,
+    "all viewers receive the same combined Kirin and Attack result copy");
   const observerDiscardSettlement = normalizePublicDiscardSettlements({
     timeline: observer.data.timeline,
     publicCardEffects: observer.data.presentationSnapshot.publicCardEffects,

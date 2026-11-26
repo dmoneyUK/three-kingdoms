@@ -1,7 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { judgementSucceeds } from "../game/decisions/judgement.ts";
-import { projectPublicJudgementPresentations } from "../game/public-judgement-presentation.ts";
+import { projectPublicJudgementPresentations, publicInteractionNarrationBelongsToAction } from "../game/public-judgement-presentation.ts";
+
+test("a public Effect Frame can own H4 for its exact committed causal root", () => {
+  const narration = { eventId: "damage-event", rootEventId: "attack-root", interactionId: "interaction", rootFrameId: "root-frame" };
+  const action = {
+    rootEventId: "effect-event", interactionId: "interaction", rootFrameId: "root-frame",
+    publicCardEffectFrame: { eventId: "effect-event", rootEventId: "attack-root" },
+  };
+  const input = {
+    judgementNarrationBelongsToAction: false, narration, action,
+    activeJudgementRevealRoute: false, currentInteractionEffectKind: "damage_applied",
+  };
+  assert.equal(publicInteractionNarrationBelongsToAction(input), true);
+  assert.equal(publicInteractionNarrationBelongsToAction({
+    ...input, action: { ...action, publicCardEffectFrame: { ...action.publicCardEffectFrame, rootEventId: "other-root" } },
+  }), false, "an unrelated effect frame cannot take ownership of this H4");
+});
 
 const judge = { id: "judge-1", name: "Player 4", hero: "xiahou-dun" };
 const sima = { id: "sima-1", name: "Player 2", hero: "simayi" };

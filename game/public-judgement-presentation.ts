@@ -540,10 +540,16 @@ export function publicInteractionNarrationBelongsToAction(input: {
 }): boolean {
   if (input.judgementNarrationBelongsToAction) return true;
   const { narration, action } = input;
+  const frame = action?.publicCardEffectFrame;
+  const exactFrameCausalRoot = Boolean(frame && action
+    && action.rootEventId === frame.eventId
+    && frame.rootEventId === narration?.rootEventId
+    && action.interactionId === narration?.interactionId
+    && action.rootFrameId === narration?.rootFrameId);
   return Boolean(narration && action
     && !input.activeJudgementRevealRoute
     && input.currentInteractionEffectKind !== "judgement"
-    && action.rootEventId === narration.rootEventId
+    && (action.rootEventId === narration.rootEventId || exactFrameCausalRoot)
     && action.interactionId === narration.interactionId
     && action.rootFrameId === narration.rootFrameId);
 }

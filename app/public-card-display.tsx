@@ -1,7 +1,7 @@
 "use client";
 
 import { publicH4Copy, matchingPublicH4Segments, publicH4WidthLimit, type PublicH4Segment } from "../game/public-h4-copy";
-import { fixedPublicActivityBand, fixedPublicH4Band, fixedUpperHistoryAnnouncementAnchor, parkedCardSize } from "./public-upper-anchor";
+import { fixedPublicActivityBand, fixedPublicH4Band, fixedUpperHistoryAnnouncementAnchor, measuredPublicH4PaintRect, parkedCardSize } from "./public-upper-anchor";
 
 import { publicCorridorWidth } from "./public-corridor";
 
@@ -15,11 +15,10 @@ import type { PublicDiscardSettlementCopy } from "./public-discard-settlement";
 import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
 import {
   positionLabeledCardAboveBand,
-  publicStageBandClearance,
   publicStageEffectFrameRevealTargetMatches,
+  publicStageHasVisibleAreaAfterForegroundOverlay,
   publicStageJourneyPhaseReady,
   publicStageJourneyTargetReady,
-  publicStageMeasuredBandClearanceSatisfied,
   publicStagePrimaryOriginFromVisualRect,
   publicStageRevealCanRetire,
   publicStageSceneMatchesCard,
@@ -761,7 +760,7 @@ function battlefieldCenterCard(
   if (safety.fixedPublicBands || safety.respectFixedUpperH4) {
     const announcement = table.querySelector<HTMLElement>("[data-public-card-announcement='true']");
     const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
-    const h4Band = fixedPublicH4Band(table, announcement);
+    const h4Band = fixedPublicH4Band(table);
     const pacBand = consoleGuidance ? fixedPublicActivityBand(table, consoleGuidance,
       table.querySelector<HTMLElement>("[data-public-activity-chip='true']")) : null;
     const viewport = window.visualViewport;
@@ -774,37 +773,24 @@ function battlefieldCenterCard(
     const safeTop = Math.max(8, bounds.top + 8, viewportTop + 8);
     const safeBottom = Math.min(bounds.bottom - 8, window.innerHeight - 8, viewportBottom - 8);
     if (!h4Band || !pacBand || safeRight - safeLeft < size.width) return null;
-    const bandClearance = publicStageBandClearance(safety.stationarySurface);
-    const laneTop = Math.max(safeTop, h4Band.bottom + bandClearance);
-    const laneBottom = Math.min(safeBottom, pacBand.top - bandClearance);
     const preferredLeft = safeLeft + (safeRight - safeLeft - size.width) / 2;
-    const top = laneTop + (laneBottom - laneTop - size.height) / 2;
-    if (laneBottom - laneTop < size.height) return null;
+    const preferredTop = Math.max(safeTop, Math.min(safeBottom - size.height,
+      bounds.top + (bounds.height - size.height) / 2));
+    if (safeBottom - safeTop < size.height) return null;
     const obstacles = [...document.querySelectorAll<HTMLElement>(
       ".opponent-player-card[data-player-anchor], .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .opponent-inspection-floating-shell, .card-details-panel, .hero-details-panel, .interaction-stage-dying, .dying-handoff-compact, .card-pool-target-stage, .battlefield-choice-stage, .local-player-dock, .local-hand-rail, .local-hand, .console-guidance",
     )].filter((element) => {
       const style = window.getComputedStyle(element);
       return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0;
     }).map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
-    const maxLeft = safeRight - size.width;
-    const maxTop = laneBottom - size.height;
-    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-    const lefts = new Set([preferredLeft]);
-    const tops = new Set([top]);
-    for (const rect of obstacles) {
-      lefts.add(clamp(rect.left - size.width - 8, safeLeft, maxLeft));
-      lefts.add(clamp(rect.right + 8, safeLeft, maxLeft));
-      tops.add(clamp(rect.top - size.height - 8, laneTop, maxTop));
-      tops.add(clamp(rect.bottom + 8, laneTop, maxTop));
-    }
-    const candidates = [...lefts].flatMap((left) => [...tops].map((candidateTop) => ({
-      left, top: candidateTop,
-      distance: Math.abs(left - preferredLeft) + Math.abs(candidateTop - top),
-    }))).sort((first, second) => first.distance - second.distance || first.top - second.top || first.left - second.left);
-    const selected = candidates.find(({ left, top: candidateTop }) => obstacles.every((rect) =>
-      left + size.width <= rect.left || left >= rect.right || candidateTop + size.height <= rect.top || candidateTop >= rect.bottom));
-    if (!selected) return null;
-    return { left: selected.left, top: selected.top, width: size.width, height: size.height };
+    const cardRect = { left: preferredLeft, top: preferredTop, right: preferredLeft + size.width, bottom: preferredTop + size.height };
+    const intersects = (rect: DOMRect) => cardRect.left < rect.right && cardRect.right > rect.left
+      && cardRect.top < rect.bottom && cardRect.bottom > rect.top;
+    if (cardRect.left < safeLeft || cardRect.right > safeRight || cardRect.top < safeTop || cardRect.bottom > safeBottom
+      || obstacles.some(intersects)) return null;
+    const actualH4 = announcement ? measuredPublicH4PaintRect(announcement) : null;
+    if (actualH4 && !publicStageHasVisibleAreaAfterForegroundOverlay(cardRect, actualH4)) return null;
+    return { left: preferredLeft, top: preferredTop, width: size.width, height: size.height };
   }
   const preferredTop = bounds.top + bounds.height * 0.5 - size.height / 2;
   const preferredLeft = bounds.left + (bounds.width - size.width) / 2;
@@ -1173,9 +1159,10 @@ function hasPaintedLargePublicEffectFrame(
   const layoutCard = shared.layout.card;
   const announcementStyle = window.getComputedStyle(announcement);
   const announcementRect = announcement.getBoundingClientRect();
+  const announcementPaint = measuredPublicH4PaintRect(announcement);
   const announcementTarget = shared.layout.announcement;
   const pacBand = fixedPublicActivityBand(table, consoleGuidance, activityChip);
-  const h4Band = fixedPublicH4Band(table, announcement);
+  const h4Band = fixedPublicH4Band(table);
   const pacStyle = activityChip ? window.getComputedStyle(activityChip) : null;
   const pacRect = activityChip?.getBoundingClientRect();
   const activityTarget = shared.layout.activity;
@@ -1190,13 +1177,14 @@ function hasPaintedLargePublicEffectFrame(
   const viewportTop = visibleViewport?.offsetTop ?? 0;
   const viewportRight = viewportLeft + (visibleViewport?.width ?? window.innerWidth);
   const viewportBottom = viewportTop + (visibleViewport?.height ?? window.innerHeight);
-  const clearance = publicStageBandClearance("effect-frame");
+  const tableRect = table.getBoundingClientRect();
   const withinOnePixel = (left: number, right: number) => Math.abs(left - right) <= 1;
   return element.isConnected && element.getClientRects().length > 0
     && primaryStyle.display !== "none" && primaryStyle.visibility !== "hidden" && Number(primaryStyle.opacity) > 0
     && announcement.isConnected && announcement.getClientRects().length > 0
     && announcementStyle.display !== "none" && announcementStyle.visibility !== "hidden" && Number(announcementStyle.opacity) > 0
     && announcement.dataset.publicCardAnnouncementPositioned === "true"
+    && Boolean(announcementPaint)
     && withinOnePixel(announcementRect.left, announcementTarget.left)
     && withinOnePixel(announcementRect.top, announcementTarget.top)
     && withinOnePixel(announcementRect.right, announcementTarget.right)
@@ -1206,16 +1194,13 @@ function hasPaintedLargePublicEffectFrame(
     && withinOnePixel(visualRect.right, layoutCard.right) && withinOnePixel(visualRect.bottom, layoutCard.bottom)
     && visualRect.left >= viewportLeft && visualRect.top >= viewportTop
     && visualRect.right <= viewportRight && visualRect.bottom <= viewportBottom
-    && publicStageMeasuredBandClearanceSatisfied({
-      visual: visualRect,
-      upperBands: [h4Band!, rectOfAnnouncement(announcementRect)],
-      lowerBands: [pacBand!, ...(pacRect ? [rectOfAnnouncement(pacRect)] : [])],
-      minimumGap: clearance,
-    });
-}
-
-function rectOfAnnouncement(rect: DOMRect): { left: number; top: number; right: number; bottom: number } {
-  return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+    && announcementPaint!.left >= Math.max(viewportLeft, tableRect.left)
+    && announcementPaint!.right <= Math.min(viewportRight, tableRect.right)
+    && announcementPaint!.top >= Math.max(viewportTop, tableRect.top)
+    && announcementPaint!.bottom <= Math.min(viewportBottom, consoleGuidance.getBoundingClientRect().top)
+    && (!pacRect || announcementPaint!.bottom <= pacRect.top || announcementPaint!.top >= pacRect.bottom)
+    && (!pacRect || visualRect.bottom <= pacRect.top || visualRect.top >= pacRect.bottom)
+    && publicStageHasVisibleAreaAfterForegroundOverlay(visualRect, announcementPaint!);
 }
 
 function hasPaintedLargePublicCard(
@@ -3245,18 +3230,22 @@ function PublicCardAnnouncement({
           setPx("top", upper.top);
           setPx("width", width);
           const rect = copy.getBoundingClientRect();
-          const currentCard = display.querySelector<HTMLElement>('.public-card-journey-card[data-public-card-journey-phase="reveal"]');
-          const controls = [...sharedTable.querySelectorAll<HTMLElement>(".player-square, .public-activity-chip, .visible-countdown, .stage-system-cluster, .card-pool-target-stage")];
+          const controls = [...sharedTable.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor], .player-square, .public-activity-chip, [data-public-activity-chip], .visible-countdown, .stage-system-cluster, .card-pool-target-stage, .battlefield-choice-stage, .opponent-inspection-floating-shell")];
           const collision = (element: HTMLElement) => {
             const style = window.getComputedStyle(element);
             const other = element.getBoundingClientRect();
-            return style.display !== "none" && style.visibility !== "hidden" && other.width > 0 && other.height > 0
+            return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0 && other.width > 0 && other.height > 0
               && rect.left < other.right && rect.right > other.left && rect.top < other.bottom && rect.bottom > other.top;
           };
-          const cardRect = currentCard?.getBoundingClientRect();
-          const safeCard = !cardRect || cardRect.width <= 0 || rect.bottom + 3 <= cardRect.top;
-          const safeSlots = upper.slots.every(({ rect: slot }) => rect.top >= slot.top + slot.height - 0.5);
-          if (rect.left >= safeLeft - 0.5 && rect.right <= safeRight + 0.5 && safeCard && safeSlots && !controls.some(collision)) {
+          const tableBottom = Math.min(tableBounds.bottom, (window.visualViewport?.offsetTop ?? 0)
+            + (window.visualViewport?.height ?? window.innerHeight));
+          const consoleTop = document.querySelector<HTMLElement>(".local-player-dock .console-guidance")?.getBoundingClientRect().top ?? tableBottom;
+          const viewportTop = window.visualViewport?.offsetTop ?? 0;
+          const viewportBottom = viewportTop + (window.visualViewport?.height ?? window.innerHeight);
+          const safePaint = rect.top >= viewportTop && rect.bottom <= Math.min(tableBottom, consoleTop, viewportBottom)
+            && upper.slots.every(({ rect: slot }) => rect.right <= slot.left || rect.left >= slot.left + slot.width
+              || rect.bottom <= slot.top || rect.top >= slot.top + slot.height);
+          if (rect.left >= safeLeft - 0.5 && rect.right <= safeRight + 0.5 && safePaint && !controls.some(collision)) {
             setData("data-public-card-announcement-positioned", "true");
             setData("data-public-card-announcement-fixed-upper", "true");
             setData("data-public-card-announcement-fixed-upper-top", `${Math.round(upper.top * 2) / 2}`);

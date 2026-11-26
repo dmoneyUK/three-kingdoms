@@ -1558,18 +1558,52 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
             && ["reveal", "move", "parked"].includes(element.dataset.publicCardJourneyPhase));
         if (!display || !journey || !journey.classList.contains("is-public-effect-frame")) return false;
         const framePanel = journey.querySelector(".public-card-effect-frame-panel");
+        const table = journey.closest(".play-table");
+        const journeyStyle = getComputedStyle(journey);
+        const frameStyle = framePanel ? getComputedStyle(framePanel) : null;
         const frameTitle = journey.querySelector(".public-card-effect-frame-title, .public-card-lust-cost-parked")?.textContent?.trim();
+        const announcement = [...(display?.querySelectorAll("[data-public-card-announcement='true']") ?? [])]
+          .filter((element) => element.dataset.publicCardAnnouncementEventId === expectedEventId);
+        const h4Rect = announcement[0]?.getBoundingClientRect();
+        const frameRect = framePanel?.getBoundingClientRect();
+        const faces = [...(framePanel?.querySelectorAll("[data-public-card-effect-frame-card-id]") ?? [])].map((face) => {
+          const rect = face.getBoundingClientRect();
+          const style = getComputedStyle(face);
+          const intersectionWidth = Math.max(0, Math.min(rect.right, h4Rect?.right ?? 0) - Math.max(rect.left, h4Rect?.left ?? 0));
+          const intersectionHeight = Math.max(0, Math.min(rect.bottom, h4Rect?.bottom ?? 0) - Math.max(rect.top, h4Rect?.top ?? 0));
+          const visibleArea = Math.max(0, rect.width * rect.height - intersectionWidth * intersectionHeight);
+          return {
+            id: face.getAttribute("data-public-card-effect-frame-card-id"),
+            rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
+            visible: style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0,
+            visibleArea,
+          };
+        });
         return {
           viewerId: display.dataset.publicCardViewerId,
           eventId: journey.dataset.publicCardJourneyEventId,
           phase: journey.dataset.publicCardJourneyPhase,
+          revealReadiness: journey.dataset.publicCardRevealReadiness ?? null,
+          layoutPending: journey.dataset.publicCardJourneyLayoutPending,
+          layoutStatus: table?.getAttribute("data-public-stage-layout-status"),
+          layoutFailure: table?.getAttribute("data-public-stage-layout-failure"),
+          journeyVisibility: journeyStyle.visibility,
+          journeyOpacity: journeyStyle.opacity,
+          frameVisibility: frameStyle?.visibility ?? null,
+          frameOpacity: frameStyle?.opacity ?? null,
           journeyActorId: journey.dataset.publicCardJourneyActorId,
           frameCount: [...display.querySelectorAll(".public-card-journey-card.is-public-effect-frame")]
             .filter((item) => item.dataset.publicCardJourneyEventId === expectedEventId).length,
           materialCardIds: journey.dataset.publicCardJourneyCardIds,
           frameMaterialIds: framePanel?.getAttribute("data-public-card-frame-material-card-ids"),
-          cardFaces: [...(framePanel?.querySelectorAll("[data-public-card-effect-frame-card-id]") ?? [])]
-            .map((face) => face.getAttribute("data-public-card-effect-frame-card-id")),
+          cardFaces: faces.map((face) => face.id),
+          faceRects: faces,
+          h4Count: announcement.length,
+          h4Owner: announcement[0]?.dataset.publicH4Owner,
+          h4Rect: h4Rect && { left: h4Rect.left, top: h4Rect.top, right: h4Rect.right, bottom: h4Rect.bottom },
+          frameRect: frameRect && { left: frameRect.left, top: frameRect.top, right: frameRect.right, bottom: frameRect.bottom },
+          h4ZIndex: announcement[0] ? getComputedStyle(announcement[0]).zIndex : null,
+          frameZIndex: getComputedStyle(journey).zIndex,
           title: frameTitle,
           accessibleLabel: display.querySelector('[data-public-card-announcement="true"] b')?.getAttribute("aria-label"),
           announcement: display.querySelector('[data-public-card-announcement="true"]')?.textContent?.trim(),
@@ -1587,6 +1621,8 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
         materialCardIds: `${handMaterial.id},${equipmentMaterial.id}`,
         frameMaterialIds: `${handMaterial.id},${equipmentMaterial.id}`,
         cardFaces: [handMaterial.id, equipmentMaterial.id],
+        h4Count: 1,
+        h4Owner: "PublicCardDisplay",
         title: "FROST SWORD · DISCARD",
         viewport: { width: 390, height: 844, scrollWidth: 390 },
       });
@@ -1598,6 +1634,18 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
         "FROST USER used Frost Sword to discard 2 cards from FROST TARGET: 7♣ Dodge · 7♠ Nio Shield.",
       );
       expect(evidence.announcement).not.toContain("prevent");
+      expect(Number(evidence.h4ZIndex)).toBeGreaterThan(Number(evidence.frameZIndex));
+      expect(evidence.h4Rect.bottom).toBeGreaterThan(evidence.h4Rect.top);
+      expect(evidence.h4Rect.bottom).toBeLessThan((await viewerPage.locator(".local-player-dock .console-guidance").evaluate((element) => element.getBoundingClientRect().top)));
+      for (const face of evidence.faceRects) {
+        expect.soft(face.visible, JSON.stringify({ viewerId, phase: evidence.phase, readiness: evidence.revealReadiness,
+          pending: evidence.layoutPending, layoutStatus: evidence.layoutStatus, layoutFailure: evidence.layoutFailure,
+          journeyVisibility: evidence.journeyVisibility, journeyOpacity: evidence.journeyOpacity,
+          frameVisibility: evidence.frameVisibility, frameOpacity: evidence.frameOpacity, face })).toBe(true);
+        expect(face.rect.width).toBeGreaterThan(0);
+        expect(face.rect.height).toBeGreaterThan(0);
+        expect.soft(face.visibleArea).toBeGreaterThan(0, "the upper H4 overlay must leave part of every real CardFace visible");
+      }
       if (privateHandCard) await expect(viewerPage.locator(`[data-hand-card-id="${privateHandCard.id}"]`)).toHaveCount(1);
     }
     for (const { viewerPage, privateHandCard } of viewers) {
@@ -1605,6 +1653,66 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
       await expect(viewerPage.locator(`[data-hand-card-id="${privateSourceCard.id}"]`)).toHaveCount(0);
       await expect(viewerPage.locator(`[data-hand-card-id="${privateTargetCard.id}"]`)).toHaveCount(0);
     }
+
+    const authoritativeActorView = await view(request, seedData, 0);
+    expect(authoritativeActorView.currentAction).toMatchObject({ kind: "turn", actorId: seedData.players[0].id });
+    expect(authoritativeActorView.currentAction.legalActions).toContain("end_turn");
+    const endRequests = [];
+    page.on("request", (requestEvent) => {
+      if (requestEvent.url() === `${API}/api/rooms` && requestEvent.method() === "POST"
+        && requestEvent.postDataJSON()?.action === "end_turn") endRequests.push(requestEvent);
+    });
+    const endButton = page.getByRole("button", { name: "End", exact: true });
+    await expect(endButton).toBeEnabled();
+    await endButton.click();
+    const confirmationStage = page.locator('.play-table > [data-end-turn-confirmation="true"]');
+    const confirmationGeometry = await confirmationStage.evaluate((stage) => {
+      const rect = (element) => {
+        const value = element.getBoundingClientRect();
+        return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height };
+      };
+      const table = stage.closest(".play-table");
+      const panel = stage.querySelector(".end-turn-confirmation-panel");
+      const selectors = [".player-board > .opponent-player-card", ".public-card-display-journey-copy",
+        ".public-card-journey-card[data-public-card-journey-phase='reveal']",
+        ".public-card-journey-card[data-public-card-journey-phase='move']", ".public-activity-chip",
+        "[data-public-activity-chip]", ".visible-countdown", ".stage-system-cluster",
+        ".opponent-inspection-floating-shell", ".local-player-dock", ".local-hand-section", ".turn-controls"];
+      return {
+        ready: stage.getAttribute("data-end-turn-confirmation-ready"),
+        stage: rect(stage), panel: rect(panel), table: rect(table),
+        stageTop: stage.style.top,
+        panelVisibility: getComputedStyle(panel).visibility,
+        fixedH4: (() => { const node = table.querySelector("[data-public-card-announcement-fixed-upper='true']"); return node ? rect(node) : null; })(),
+        blockers: selectors.flatMap((selector) => [...table.querySelectorAll(selector)]
+          .filter((element) => { const style = getComputedStyle(element); return style.display !== "none" && style.visibility !== "hidden"; })
+          .map((element) => ({ selector, rect: rect(element), className: element.className?.toString?.() ?? "" }))),
+      };
+    });
+    await expect(confirmationStage, JSON.stringify(confirmationGeometry))
+      .toHaveAttribute("data-end-turn-confirmation-ready", "true", { timeout: 5_000 });
+    const endDialog = page.getByRole("dialog", { name: "End your Play Phase?" });
+    await expect(endDialog).toBeVisible();
+    expect(endRequests).toHaveLength(0, "the first End tap only opens the existing confirmation");
+    const confirmationLayer = await endDialog.evaluate((element) => ({
+      zIndex: getComputedStyle(element.parentElement).zIndex,
+      buttonHitTarget: document.elementFromPoint(
+        element.querySelector(".end-turn-confirmation__confirm").getBoundingClientRect().left + element.querySelector(".end-turn-confirmation__confirm").getBoundingClientRect().width / 2,
+        element.querySelector(".end-turn-confirmation__confirm").getBoundingClientRect().top + element.querySelector(".end-turn-confirmation__confirm").getBoundingClientRect().height / 2,
+      )?.textContent?.trim(),
+    }));
+    expect(Number(confirmationLayer.zIndex)).toBeGreaterThan(38);
+    expect(confirmationLayer.buttonHitTarget).toContain("Confirm End");
+    const endSubmission = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "end_turn");
+    await endDialog.getByRole("button", { name: "Confirm End" }).click();
+    const ended = await endSubmission;
+    expect(ended.ok(), await ended.text()).toBeTruthy();
+    expect(endRequests).toHaveLength(1, "Confirm End submits exactly once");
+    const nextTurn = await view(request, seedData, 0);
+    expect(nextTurn).toMatchObject({ phase: "draw", turnSeat: seedData.players[1].seat,
+      currentAction: { actorId: seedData.players[1].id } });
   } finally {
     await targetPage.close();
     await observerPage.close();
