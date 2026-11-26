@@ -1573,7 +1573,7 @@ function addPrivateStealParticipantResultEvents(log: string[], source: PlayerRow
     sourceId: proof.sourceId,
     targetId: proof.targetId,
     sourceZone: proof.sourceZone,
-    acquisitionKind,
+    ...(acquisitionKind === "RETALIATION" ? { acquisitionKind } : {}),
     physicalCardId: card.id,
     committedAt,
     eligibleUntil,
@@ -1587,7 +1587,7 @@ function addPrivateStealParticipantResultEvents(log: string[], source: PlayerRow
     sourceId: proof.sourceId,
     targetId: proof.targetId,
     sourceZone: proof.sourceZone,
-    acquisitionKind,
+    ...(acquisitionKind === "RETALIATION" ? { acquisitionKind } : {}),
   };
   const withTakerResult = addPrivateHandArrivalEvent(log, source, card, {
     sourceZone: "hand", sourcePlayerId: proof.targetId,
@@ -3350,7 +3350,7 @@ function privateStealParticipantResultForEvent(
     rootResolutionId: settlement.rootResolutionId,
     sourceId: settlement.sourceId,
     targetId: settlement.targetId,
-    acquisitionKind: settlement.acquisitionKind,
+    ...(settlement.acquisitionKind === "RETALIATION" ? { acquisitionKind: settlement.acquisitionKind } : {}),
     sourceZone: "hand" as const,
     physicalCardId: card.id,
     committedAt: proof.committedAt as number,
