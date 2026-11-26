@@ -6,8 +6,8 @@ Design reviewed: docs/UX2-refine.md, revision 2026-11-26 13:31 UTC.
 
 ## Current bounded task — §10.82-B shared discard display and lifecycle
 
-Status: Tighten H4 ownership to the exact discard event and complete ordered physical-card set. Preserve exact material owners when a proven public effect includes cards from more than one player. Strengthen the existing Stauchness real-gameplay scenario to require its true two-card Effect Frame and canonical full-detail H4 to be visible together for actor, payer and observer, with one H4 owner.
+Status: Commit `9168942826aba922dfad1fbdbfc1fce9da52469a` is pushed. Actions `45832150355`: browser startup smoke and API tests passed; lint failed with `RangeError` in `react-hooks/rules-of-hooks`, so deployment was skipped. The local follow-up moves the new discard projection and material-owner checks outside the large `GameRoom` component; exact-SHA CI/deployment still required.
 
-Validation: focused routing/settlement/effect-frame tests passed 30/30; browser scenario was attempted but failed before seeding because `127.0.0.1:3137` refused the connection. Local UI result is unverified; no retry under the five-minute cap. `git diff --check` passed. Exact-SHA Actions, deployment and production smoke remain required. One task, one commit.
+Validation: focused routing/settlement/effect-frame tests passed 30/30; `git diff --check` passed. The local Stauchness scenario did not seed because `127.0.0.1:3137` refused the connection; no retry under the five-minute UI cap. Local ESLint also stack-overflows on the §10.82-A baseline under Node 26, so it cannot verify the CI-only lint failure.
 
-Next boundary: Complete §10.82-B; after its exact-SHA CI/deployment, continue §10.83. Owner iPhone acceptance remains pending.
+Next boundary: Push the bounded lint correction, verify its exact-SHA Actions/deployment, then continue §10.83. Owner iPhone acceptance remains pending.

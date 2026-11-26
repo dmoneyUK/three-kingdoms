@@ -4594,6 +4594,37 @@ function entourageAttackBlockMessage(proof: PresentationAttackDodgeResponse, pla
   return source && target && helper ? `${source}'s Attack on ${target} was blocked by ${helper}'s Dodge.` : undefined;
 }
 
+function publicDiscardAnnouncementCandidate(input: {
+  announcement: { eventId: string; order: number; cards?: readonly { id: string }[] | null } | null;
+  presentedEventIds: ReadonlySet<string>;
+  superseded: boolean;
+}) {
+  const announcement = input.announcement;
+  if (!announcement || input.presentedEventIds.has(announcement.eventId) || input.superseded) return null;
+  const materialIds = announcement.cards?.map((card) => card.id);
+  return materialIds?.length
+    ? { eventId: announcement.eventId, order: announcement.order, materialIds }
+    : { eventId: announcement.eventId, order: announcement.order };
+}
+
+function publicCardDisplayDiscardH4Context(settlement: {
+  eventId: string;
+  cards?: readonly { id: string }[] | null;
+} | null | undefined) {
+  return settlement ? {
+    discardEventId: settlement.eventId,
+    discardMaterialIds: settlement.cards?.map((card) => card.id),
+  } : {};
+}
+
+function publicDiscardMaterialsHaveKnownOwners(
+  materials: readonly { ownerId?: string | null }[],
+  players: readonly Player[],
+) {
+  return materials.every((material) => !material.ownerId
+    || players.some((player) => player.id === material.ownerId));
+}
+
 export function GameRoom({ room, presentationView, busy, busyAction = null, error, onAction, onLeave, onPublicCounterReadVisible, onSwitchTestViewer = async () => undefined }: { room: Room; presentationView?: PresentationClientView; busy: boolean; busyAction?: string | null; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void; onSwitchTestViewer?: (playerId: string) => Promise<void> }) {
   const endTurnConfirmationScope = [
     room.code,
@@ -10213,8 +10244,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (existingActions.some((action) => action.publicCardEffectFrame?.eventId === eventId
       && action.publicCardEffectFrame.materials.length === materialIds.length
       && action.publicCardEffectFrame.materials.every((material, index) => material.card.id === materialIds[index]))) return null;
-    if (!effect.activationOwnerId || effect.materials.some((material) => material.ownerId
-      && !room.players.some((player) => player.id === material.ownerId))) return null;
+    if (!effect.activationOwnerId || !publicDiscardMaterialsHaveKnownOwners(effect.materials, room.players)) return null;
     const activationOwner = room.players.filter((player) => player.id === effect.activationOwnerId);
     if (activationOwner.length !== 1 || !activationOwner[0].name.trim()) return null;
     const copy = publicDiscardSettlementCopyForFacts({ settlement, players: room.players, publicEventFacts: canonicalPublicDiscardFacts });
@@ -10400,17 +10430,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeEventSupersedesDiscard = Boolean(activeEvent && activeEvent.id !== latestPublicDiscardAnnouncement?.eventId
     && Number.isSafeInteger((activeEvent as GameEvent & { publicSequence?: number }).publicSequence)
     && ((activeEvent as GameEvent & { publicSequence?: number }).publicSequence ?? -1) > (latestPublicDiscardAnnouncement?.order ?? -1));
-  const publicDiscardCandidate = latestPublicDiscardAnnouncement
-    && !presentedEventIds.has(latestPublicDiscardAnnouncement.eventId)
-    && !activeEventSupersedesDiscard
-    ? {
-      eventId: latestPublicDiscardAnnouncement.eventId,
-      order: latestPublicDiscardAnnouncement.order,
-      ...(latestPublicDiscardAnnouncement.cards?.length
-        ? { materialIds: latestPublicDiscardAnnouncement.cards.map((card) => card.id) }
-        : {}),
-    }
-    : null;
+  const publicDiscardCandidate = publicDiscardAnnouncementCandidate({
+    announcement: latestPublicDiscardAnnouncement,
+    presentedEventIds,
+    superseded: activeEventSupersedesDiscard,
+  });
   const fanjianSettlementNarration: PublicInteractionNarration | null = skillEffectSettlementCandidate ? (() => {
     const settlement = skillEffectSettlementCandidate.action;
     const card = skillEffectSettlementCandidate.revealEvent.card;
@@ -10948,10 +10972,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ...(publicCardDisplayAction.publicCardEffectFrame?.rootEventId
         ? { causalRootEventId: publicCardDisplayAction.publicCardEffectFrame.rootEventId }
         : {}),
-      ...(publicCardDisplayAction.publicDiscardSettlement ? {
-        discardEventId: publicCardDisplayAction.publicDiscardSettlement.eventId,
-        discardMaterialIds: publicCardDisplayAction.publicDiscardSettlement.cards?.map((card) => card.id),
-      } : {}),
+      ...publicCardDisplayDiscardH4Context(publicCardDisplayAction.publicDiscardSettlement),
     } : null,
     discard: publicDiscardCandidate,
     skillEvent: beautyNoticeEligible && beautyNotice ? { eventId: beautyNotice.eventId } : null,
