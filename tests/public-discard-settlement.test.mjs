@@ -77,7 +77,7 @@ test("Dismantle proof normalizes the exact committed face while previously-read 
   assert.equal(settlement.presentation, "eligible");
   assert.equal(settlement.mode, "direct");
   assert.equal(settlement.materials[0].ownerId, ownerId);
-  assert.match(publicDiscardSettlementCopy({ settlement, players }).headline, /Player One used Dismantle to discard Player Two’s 2♣ Attack\./);
+  assert.match(publicDiscardSettlementCopy({ settlement, players }).headline, /Player One used Burning Bridges to discard Player Two’s 2♣ Attack\./);
 
   const judgement = face("judgement-card", "Lightning", "A", "♠");
   const judgementProof = { ...proof, sourceZone: "judgement", affectedCardOwnerId: null, affectedCardFace: judgement };
@@ -252,6 +252,62 @@ test("private, duplicate, mismatched-source, wrong-root and ambiguous-order proo
   assert.equal(normalize({ event: [base, { ...base, id: "second-event", publicSequence: base.publicSequence }] }).length, 0);
   assert.equal(normalize({ event: [{ ...base, publicDiscardContext: { semantics: "PROVEN", eventId: base.id, mode: "self", source: { kind: "phase", label: "Discard phase" }, activationOwnerId: actorId } }] }).length, 0,
     "an ordinary self-discard context cannot relabel another player's physical discard");
+});
+
+test("a mismatched specialised proof falls back to the independently proven public zone transition", () => {
+  const equipmentCard = face("discarded-equipment", "FerganaSteed", "K", "♠");
+  const eventId = "equipment-discard-with-stale-effect";
+  const effect = {
+    semantics: "PROVEN", effectId: "yue_jin_dauntless", effectClass: "COST", eventId,
+    activationOwnerId: ownerId,
+    materials: [{ cardId: equipmentCard.id, ownerId, fromZone: "HAND", toZone: "DISCARD" }],
+    source: { kind: "skill", label: "Dauntless", providerId: "yue_jin_dauntless" },
+    targetId: ownerId, outcome: "ACTIVATION_COST", cards: [equipmentCard],
+  };
+  const effectEvent = {
+    id: eventId, type: "card", action: "discard", actorId: ownerId, resolutionId: "resolution-1",
+    publicSequence: 1, presentation: true, card: equipmentCard, publicCardEffects: [effect],
+    publicZoneTransitions: [transition(eventId, eventId, equipmentCard.id, equipment(ownerId, "weapon"))],
+  };
+  const dismantledCard = face("discarded-hand-card", "Peach", "Q", "♥");
+  const dismantleId = "discard-with-unusable-dismantle-proof";
+  const dismantle = {
+    semantics: "PROVEN", eventId: dismantleId, rootEventId: dismantleId, rootResolutionId: "resolution-2",
+    sourceId: actorId, targetId: ownerId, outcome: "DISMANTLE_RESOLVED", sourceZone: "unknown",
+    affectedCardOwnerId: ownerId, destinationZone: "discard", destinationOwnerId: null,
+    affectedCardFace: dismantledCard,
+  };
+  const dismantleEvent = {
+    id: dismantleId, type: "card", action: "discard", finalResult: true, actorId: ownerId,
+    resolutionId: "resolution-2", publicSequence: 2, presentation: true, card: dismantledCard,
+    publicDismantleSettlement: dismantle,
+    publicZoneTransition: transition(dismantleId, dismantleId, dismantledCard.id, hand(ownerId)),
+  };
+
+  const settlements = normalize({ event: [effectEvent, dismantleEvent], effects: [effect], dismantles: [dismantle] });
+  assert.equal(settlements.length, 2);
+  assert.deepEqual(settlements.map((settlement) => settlement.presentation), ["eligible", "eligible"]);
+  assert.deepEqual(settlements.map((settlement) => settlement.materials[0].physicalCardId), [equipmentCard.id, dismantledCard.id]);
+  assert.equal(publicDiscardSettlementCopy({ settlement: settlements[0], players }).headline,
+    "Player Two discarded 1 card: K♠ Fergana Steed.");
+  assert.equal(publicDiscardSettlementCopy({ settlement: settlements[1], players }).headline,
+    "Player Two discarded 1 card: Q♥ Peach.");
+});
+
+test("malformed optional discard context degrades to truthful anonymous copy and retains each material owner", () => {
+  const cards = [face("same-print-one", "Attack", "7", "♠"), face("same-print-two", "Attack", "7", "♠")];
+  const eventId = "multi-owner-discard";
+  const event = {
+    id: eventId, type: "cards", action: "discard", actorId, publicSequence: 12, presentation: true, cards,
+    publicDiscardContext: { semantics: "UNPROVEN", eventId, mode: "self", source: { kind: "phase", label: "Discard phase" } },
+    publicZoneTransitions: cards.map((card, index) => transition(eventId, eventId, card.id, hand(index === 0 ? actorId : ownerId))),
+  };
+  const [settlement] = normalize({ event: [event] });
+  assert.equal(settlement.presentation, "eligible");
+  assert.deepEqual(settlement.materials.map((material) => material.ownerId), [actorId, ownerId]);
+  assert.deepEqual(settlement.materials.map((material) => material.physicalCardId), cards.map((card) => card.id));
+  assert.equal(publicDiscardSettlementCopy({ settlement, players }).headline,
+    "Publicly discarded 2 cards: 7♠ Attack · 7♠ Attack.");
 });
 
 test("source identity and actual committed discard counts must agree before formatting", () => {

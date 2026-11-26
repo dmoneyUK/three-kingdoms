@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts } from "../../app/public-discard-settlement.ts";
+import { cardDefinition } from "../../game/cards.ts";
 import { derivePublicActivityStatus, derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import {
   assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
@@ -123,6 +125,51 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
     { cardId: "peach-ganglie-cost-b", ownerId: resolved.source.id, fromZone: "HAND", toZone: "DISCARD" },
   ], "the damage source owns the two paid cards even though Xiahou Dun activated Stauchness");
   assert.equal(stauchnessCost.publicCardEffects?.[0]?.rootEventId, attackRoot?.id);
+  const publicDiscardSettlements = normalizePublicDiscardSettlements({
+    timeline: discarded.data.room.timeline,
+    publicCardEffects: discarded.data.room.presentationV2.publicCardEffects,
+    dismantleSettlements: discarded.data.room.presentationV2.dismantleSettlements,
+    publicEventFacts: [
+      ...(discarded.data.room.presentationSnapshot.publicEventFacts ?? []),
+      ...(discarded.data.room.presentationSnapshot.retainedPublicEventFacts ?? []),
+    ],
+  });
+  const stauchnessDiscard = publicDiscardSettlements.filter((settlement) => settlement.eventId === stauchnessCost.id);
+  assert.equal(stauchnessDiscard.length, 1, "the committed two-card Stauchness cost has one canonical public settlement");
+  assert.equal(stauchnessDiscard[0].presentation, "eligible");
+  assert.deepEqual(stauchnessDiscard[0].materials.map(({ physicalCardId, ownerId, fromZone, toZone }) => ({ physicalCardId, ownerId, fromZone, toZone })), [
+    { physicalCardId: "dodge-ganglie-cost-a", ownerId: resolved.source.id, fromZone: "HAND", toZone: "DISCARD" },
+    { physicalCardId: "peach-ganglie-cost-b", ownerId: resolved.source.id, fromZone: "HAND", toZone: "DISCARD" },
+  ]);
+  const stauchnessDiscardCopy = publicDiscardSettlementCopyForFacts({
+    settlement: stauchnessDiscard[0], players: discarded.data.room.players,
+    publicEventFacts: [
+      ...(discarded.data.room.presentationSnapshot.publicEventFacts ?? []),
+      ...(discarded.data.room.presentationSnapshot.retainedPublicEventFacts ?? []),
+    ],
+  });
+  const stauchnessCardList = stauchnessCost.cards.map(({ kind, rank, suit }) => `${rank}${suit} ${cardDefinition(kind).name}`).join(" · ");
+  assert.equal(stauchnessDiscardCopy?.headline,
+    `${resolved.target.name} used Stauchness, causing ${resolved.source.name} to discard 2 cards: ${stauchnessCardList}.`,
+    "the actual committed identities, true activator and material owner feed one detailed public H4 copy");
+  const observerDiscardedView = (await state(resolved.code, resolved.members[3].token)).data;
+  const observerStauchnessDiscard = normalizePublicDiscardSettlements({
+    timeline: observerDiscardedView.timeline,
+    publicCardEffects: observerDiscardedView.presentationV2.publicCardEffects,
+    dismantleSettlements: observerDiscardedView.presentationV2.dismantleSettlements,
+    publicEventFacts: [
+      ...(observerDiscardedView.presentationSnapshot.publicEventFacts ?? []),
+      ...(observerDiscardedView.presentationSnapshot.retainedPublicEventFacts ?? []),
+    ],
+  }).find((settlement) => settlement.eventId === stauchnessCost.id);
+  assert.deepEqual(observerStauchnessDiscard, stauchnessDiscard[0], "the exact public settlement is identical in an observer projection");
+  assert.equal(publicDiscardSettlementCopyForFacts({
+    settlement: observerStauchnessDiscard, players: observerDiscardedView.players,
+    publicEventFacts: [
+      ...(observerDiscardedView.presentationSnapshot.publicEventFacts ?? []),
+      ...(observerDiscardedView.presentationSnapshot.retainedPublicEventFacts ?? []),
+    ],
+  })?.headline, stauchnessDiscardCopy?.headline, "observers receive the same detailed public H4 copy");
   assert.equal(discarded.data.room.players.find((player) => player.id === resolved.target.id).hp, 2);
   assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(resolved.source.id)}`)).length, 0);
   for (const id of ["dodge-ganglie-spade-judge", "dodge-ganglie-cost-a", "peach-ganglie-cost-b"]) assert.ok(discardIds(resolved.code).includes(id), `${id} is conserved in discard`);

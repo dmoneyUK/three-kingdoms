@@ -7,6 +7,7 @@ import type {
   PresentationV2Event,
 } from "../game/presentation-v2";
 import { publicH4Copy, type PublicH4Segment } from "../game/public-h4-copy";
+import { cardDefinition } from "../game/cards";
 import { formatCommittedPublicOutcomeWithSegments } from "../game/public-activity";
 import { publicDiscardCardFaces, publicDiscardCardList, type PublicDiscardCardFace } from "./public-discard-transition";
 
@@ -160,6 +161,11 @@ function publicDiscardContext(event: EventWithDiscardProof): {
     ...(typeof context.rootEventId === "string" ? { rootEventId: context.rootEventId } : {}),
     ...(typeof context.resolutionId === "string" ? { resolutionId: context.resolutionId } : {}),
   };
+}
+
+function declaresProvenDiscardContext(event: EventWithDiscardProof): boolean {
+  const context = record(event.publicDiscardContext);
+  return context?.semantics === "PROVEN" && context.eventId === event.id;
 }
 
 function sourceValue(value: unknown): { kind: PublicOutcomeSourceKind; label?: string; providerId?: string } | null {
@@ -357,7 +363,6 @@ export function normalizePublicDiscardSettlements(input: {
     const cards = eventCards(event);
     const selected = physicalCard(proof.affectedCardFace);
     if (!cards || cards.length !== 1 || !selected || !sameCards(cards, [selected])) continue;
-    specializedEventIds.add(event.id);
     const sourceZone = proof.sourceZone === "hand" ? "HAND" : proof.sourceZone === "equipment" ? "EQUIPMENT" : proof.sourceZone === "judgement" ? "JUDGEMENT" : null;
     if (!sourceZone) continue;
     const ownerId = proof.affectedCardOwnerId;
@@ -372,9 +377,10 @@ export function normalizePublicDiscardSettlements(input: {
       ...(proof.rootInteractionId ? { interactionId: proof.rootInteractionId } : {}),
       ...(proof.rootFrameId ? { frameId: proof.rootFrameId } : {}),
       activationOwnerId: proof.sourceId, affectedPlayerIds: [proof.targetId],
-      source: { kind: "card", label: "Dismantle", providerId: "dismantle" }, mode: "direct",
+      source: { kind: "card", label: cardDefinition("Dismantle").name, providerId: "dismantle" }, mode: "direct",
       materials: [{ card: selected, physicalCardId: selected.id, ownerId, ...(sourceZone === "JUDGEMENT" ? { affectedPlayerId: proof.targetId } : {}), fromZone: sourceZone, ...(transitions?.[0]?.fromSlot ? { fromSlot: transitions[0].fromSlot } : {}), toZone: "DISCARD" }],
     };
+    specializedEventIds.add(event.id);
     settlements.push(sourceZone === "JUDGEMENT" ? excluded(base, "previously-read-judgement") : { ...base, presentation: "eligible" });
   }
 
@@ -384,7 +390,6 @@ export function normalizePublicDiscardSettlements(input: {
     const cards = event ? eventCards(event) : null;
     if (!event || !publicEvent(event, counts) || orderCounts.get(event.publicSequence!) !== 1
       || !cards || !matchingRawEffect(event, proof) || !sameCards(cards, proof.cards)) continue;
-    specializedEventIds.add(event.id);
     const discardMaterials = proof.materials.filter((material) => material.toZone === "DISCARD");
     const materials: PublicDiscardSettlementMaterial[] = [];
     let materialsValid = true;
@@ -417,9 +422,16 @@ export function normalizePublicDiscardSettlements(input: {
         : "effect",
       materials,
     };
-    if (proof.effectClass === "CONVERSION") settlements.push(excluded(base, "conversion"));
-    else if (proof.effectClass === "JUDGEMENT") settlements.push(excluded(base, "judgement"));
-    else if ((event.action === "play" || event.action === "reveal") && proof.effectClass !== "COST") settlements.push(excluded(base, "already-presented-play"));
+    if (proof.effectClass === "CONVERSION") {
+      specializedEventIds.add(event.id);
+      settlements.push(excluded(base, "conversion"));
+    } else if (proof.effectClass === "JUDGEMENT") {
+      specializedEventIds.add(event.id);
+      settlements.push(excluded(base, "judgement"));
+    } else if ((event.action === "play" || event.action === "reveal") && proof.effectClass !== "COST") {
+      specializedEventIds.add(event.id);
+      settlements.push(excluded(base, "already-presented-play"));
+    }
     else {
       const rootEventId = proof.rootEventId ?? fact?.rootEventId ?? event.id;
       const transitions = Array.isArray(event.publicZoneTransitions) ? transitionsFor(event, cards.map((card) => ({ physicalCardId: card.id, card })), rootEventId) : null;
@@ -432,9 +444,15 @@ export function normalizePublicDiscardSettlements(input: {
         if (!aligned) continue;
         for (let index = 0; index < materials.length; index++) materials[index] = { ...materials[index], ...(transitions[index].fromSlot ? { fromSlot: transitions[index].fromSlot } : {}) };
       }
-      if (materials.some((material) => material.fromZone === "JUDGEMENT")) settlements.push(excluded(base, "previously-read-judgement"));
+      if (materials.some((material) => material.fromZone === "JUDGEMENT")) {
+        specializedEventIds.add(event.id);
+        settlements.push(excluded(base, "previously-read-judgement"));
+      }
       else if (!factMatchesMaterials(fact, materials)) continue;
-      else settlements.push({ ...base, materials, presentation: "eligible" });
+      else {
+        specializedEventIds.add(event.id);
+        settlements.push({ ...base, materials, presentation: "eligible" });
+      }
     }
   }
 
@@ -444,12 +462,14 @@ export function normalizePublicDiscardSettlements(input: {
     const cards = eventCardRefs(event);
     if (!cards) continue;
     const context = publicDiscardContext(event);
-    if (event.publicDiscardContext !== undefined && !context) continue;
+    if (event.publicDiscardContext !== undefined && !context && declaresProvenDiscardContext(event)) continue;
     const fact = eventFact(event.id, input.publicEventFacts);
     const rootEventId = context?.rootEventId ?? fact?.rootEventId ?? event.id;
     if (!rootMatches(events, counts, event, rootEventId, context?.resolutionId ?? event.resolutionId)) continue;
     const materials = transitionsFor(event, cards, rootEventId);
-    if (!materials || materials.some((material) => material.ownerId !== event.actorId)) continue;
+    if (!materials) continue;
+    if (context && (context.mode === "self" || context.mode === "equipment-replacement" || context.mode === "lord-punishment")
+      && materials.some((material) => material.ownerId !== context.activationOwnerId)) continue;
     if (!factMatchesMaterials(fact, materials)) continue;
     const mode = context?.mode ?? modeFromFact(fact);
     const source = context?.source ?? sourceFor(undefined, fact);

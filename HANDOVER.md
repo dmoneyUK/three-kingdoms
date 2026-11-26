@@ -1,11 +1,13 @@
 # HANDOVER
 
-**Latest verified deployment:** §10.81-A, `40bcc7bbb1b73c09d1c9544d86bac0ca20d674c3`; GitHub Actions `45812539029` passed exact-SHA CI and Worker `37259ab2-a676-4488-8005-930ea84269a2` deployed. Owner iPhone review remains pending.
+Latest verified delivery: §10.81-B, 16ace7b45c9c95bea9497e688e6c3d9f73e2e8fc; exact-SHA Actions 45822562194 passed and Worker db3acedd-9c29-4dff-9db9-661dee731b92 deployed. Target browser geometry was not rerun after the viewport-helper correction. Owner iPhone review remains pending.
 
-**Design reviewed:** `docs/UX2-refine.md`, revision 2026-11-26 12:42 UTC; §10.81-B.
+Design reviewed: docs/UX2-refine.md, revision 2026-11-26 13:16 UTC.
 
-## Current bounded task — §10.81-B shared two-stage Judgement presentation
+## Current bounded task — §10.82-A UNIVERSAL-PUBLIC-DISCARD-SETTLEMENT-01
 
-**Status:** Local implementation is ready for its single task commit. A same-resolution committed Judgement result can no longer take H4 ownership from the canonical original/replacement narration or exact replacement frame; a later committed non-Judgement consequence still advances H4 normally. The real four-player Stauchness→Necromancy scenario checks original then replacement, final H4, physical card/destination, all three viewers, continuation and private-card isolation. Its shared browser helper now preserves the scenario's 440×894 viewport instead of resetting one viewer to 390×844.
+Status: Canonical public discard normalization now falls back to independently proven zone transitions when optional specialized proof is unusable, preserves exact per-card owners, and uses the catalog name “Burning Bridges.” Explicit contradictory PROVEN context remains fail-closed. API regressions cover Stauchness and Dismantle, including retained public facts and observer-equal proof.
 
-**Validation:** `npm run build` passed; focused Judgement display, routing and transition tests passed 25/25; `node --check` and `git diff --check` passed after the test-helper correction. The first local browser attempt failed at 390×844 because the helper reset one viewer from the scenario's 440×894 size. The helper is corrected, but the UI scenario was not rerun; actual browser geometry remains unverified. No further local UI run will be made for this task. Exact-SHA Actions/deployment/production smoke remain pending. Do not mark §10.81 USER-ACCEPTED; Owner iPhone review remains required.
+Validation: tests/public-discard-settlement.test.mjs passed 15/15; API test syntax and git diff --check passed. Local API suite, build and UI tests were not run. Task commit and exact-SHA CI/deployment are pending.
+
+Next boundary: Finish §10.82-A in one commit. Continue §10.82-B only after its exact-SHA CI/deployment gate; do not claim Owner acceptance.
