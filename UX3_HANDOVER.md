@@ -2,7 +2,7 @@
 
 ## Current unit
 
-**UX3-ENV-01A — D06 final correction, D07 evidence submission complete; BLOCKED / CHANGES_REQUESTED, not accepted.** The sole remaining material source submission has been used. Stop here for independent Manager review; no more source submissions or unchanged-job reruns without new Owner authorization.
+**UX3-ENV-01A — D07 correction submitted; BLOCKED / CHANGES_REQUESTED, not accepted.** Owner clarified that failed CI jobs may be rerun and repaired. The failed API job was rerun at the same source SHA and passed; the remaining lint failure is reproducible on inherited `app/page.tsx`. The D07 fixed stack/heap values and source allowlist do not provide an authorized safe lint repair, so this is returned to the independent Manager for review and a bounded resolution decision.
 
 - Branch: `ux3`
 - D07 documentation baseline: `8673140ad49ed26d2d06f61fc701d07083b5c7e4`
@@ -36,11 +36,12 @@ The guard resolves `migrations_dir` from the actual generated config location an
 
 - `UX3 staging config guard` (`139781940635`) — **passed**. Focused guard tests **52/52**, staging build passed, generated-config guard passed with preparation mode and sentinel classification.
 - `Browser smoke` (`139781940867`) — **passed**.
-- `Lint and fast tests` (`139781940703`) — **failed** in full ESLint. Runner reported Linux stack limit 16384 KiB; Node `v22.13.0`; the specified `--stack-size=4096 --max-old-space-size=8192` command hit `FATAL ERROR: ... heap out of memory` and exited 134. The gated Build then passed and Fast tests passed **523/523**. This is not a green lint result.
-- `API tests` (`139781940457`) — **failed**. Build passed. API shard 1 had 79/212 passing and 133 failures with `TypeError: fetch failed` from `seedPlayingGame` in `tests/api/harness.mjs:213` during Yue Jin Dauntless tests; shard 2 passed **180/180**. No API retry was run.
+- `Lint and fast tests` (`139781940703`) — **failed** in full ESLint. Runner reported Linux stack limit 16384 KiB; Node `v22.13.0`; the specified `--stack-size=4096 --max-old-space-size=8192` command hit `FATAL ERROR: ... heap out of memory` and exited 134. The gated Build then passed and Fast tests passed **523/523**. A focused local diagnostic on `app/page.tsx` alone with Node `v26.3.0` and a 1 GiB heap also exited 134 after 8.4 seconds; this confirms a per-file memory pressure signal, not that the CI's full 8 GiB failure has an authorized source fix. The lint failure remains fatal.
+- `API tests` (`139781940457`, initial attempt) — **failed**. Build passed. API shard 1 had 79/212 passing and 133 failures with `TypeError: fetch failed` from `seedPlayingGame` in `tests/api/harness.mjs:213`; shard 2 passed **180/180**.
+- `API tests` (`139788735520`, rerun of the failed job in run `45782754400`, same head SHA) — **passed**. Build passed; all **392/392 API tests** passed across 32 files and two sequential shards (236.45 seconds). This establishes the initial fetch failure as non-reproducible on retry, without a source change.
 
 The earlier run `45732474325` at `56aa9e13f68675463608428348d40d33c007b02f` also failed inherited lint before running build/fast. It does not affect this exact-SHA result.
 
 ## Boundaries and stop point
 
-No game/UI, UX2 or AI worktree, production workflow, Cloudflare resource, secret, remote migration, deployment, or paid resource was changed or created. The sentinel is not a real database ID. ENV-01B remains blocked; FE-01 remains behind GATE-00. **ENV-01A remains unaccepted pending Manager review of this source and the complete CI evidence. Do not start another task or make further source changes without new Owner authorization.**
+No game/UI, UX2 or AI worktree, production workflow, Cloudflare resource, secret, remote migration, deployment, or paid resource was changed or created. The sentinel is not a real database ID. ENV-01B remains blocked; FE-01 remains behind GATE-00. **ENV-01A remains unaccepted: three CI jobs pass, while full lint fails. Stop for independent Manager review; do not start ENV-01B or FE-01.**
