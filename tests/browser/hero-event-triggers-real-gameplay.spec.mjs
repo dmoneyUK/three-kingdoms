@@ -1884,6 +1884,19 @@ test("Serpent Spear presents two real cards as one Attack for actor, target and 
       if (!display || !journey || !publicFramePresent) return false;
       const frameRect = frame?.getBoundingClientRect();
       const announcementRect = announcement?.getBoundingClientRect();
+      const faceRects = [...(frame?.querySelectorAll("[data-public-card-effect-frame-card-id]") ?? [])].map((face) => {
+        const rect = face.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      });
+      const rectanglesOverlap = Boolean(frameRect && announcementRect
+        && announcementRect.left < frameRect.right && announcementRect.right > frameRect.left
+        && announcementRect.top < frameRect.bottom && announcementRect.bottom > frameRect.top);
+      const horizontalGap = frameRect && announcementRect
+        ? Math.max(0, announcementRect.left - frameRect.right, frameRect.left - announcementRect.right) : null;
+      const verticalGap = frameRect && announcementRect
+        ? Math.max(0, announcementRect.top - frameRect.bottom, frameRect.top - announcementRect.bottom) : null;
+      const frameAnnouncementClearance = rectanglesOverlap ? 0
+        : horizontalGap === null || verticalGap === null ? null : Math.hypot(horizontalGap, verticalGap);
       return {
         viewerId: display.dataset.publicCardViewerId,
         rootEventId: journey.dataset.publicCardJourneyEventId,
@@ -1898,11 +1911,12 @@ test("Serpent Spear presents two real cards as one Attack for actor, target and 
         materialCardIds: frame?.dataset.publicCardFrameMaterialCardIds ?? journey.dataset.publicCardJourneyCardIds,
         materialFaces: [...new Set([...journey.querySelectorAll("[data-public-card-effect-frame-card-id]")]
           .map((face) => face.getAttribute("data-public-card-effect-frame-card-id")))],
+        frameWidth: frameRect?.width ?? null,
+        faceRects,
+        frameAnnouncementClearance,
         announcement: announcement?.textContent?.trim() ?? journey.getAttribute("aria-label"),
         announcementCount: announcement ? display.querySelectorAll('[data-public-card-announcement="true"]').length : 1,
-        overlapsAnnouncement: Boolean(frameRect && announcementRect && announcementRect.left < frameRect.right
-          && announcementRect.right > frameRect.left && announcementRect.top < frameRect.bottom
-          && announcementRect.bottom > frameRect.top),
+        overlapsAnnouncement: rectanglesOverlap,
         viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
       };
     }, { expectedViewerId: viewerId, expectedRootEventId: rootEventId }, { timeout: 12_000 });
@@ -1973,7 +1987,17 @@ test("Serpent Spear presents two real cards as one Attack for actor, target and 
         announcementCount: 1, overlapsAnnouncement: false,
         viewport: { width: 390, height: 844, scrollWidth: 390 },
       });
-      expect(evidence.announcement).toMatch(/two (real )?Hand cards AS Attack/i);
+      expect(evidence.frameWidth).toBeGreaterThanOrEqual(203);
+      expect(evidence.frameWidth).toBeLessThanOrEqual(205);
+      expect(evidence.faceRects).toHaveLength(2);
+      for (const face of evidence.faceRects) {
+        expect(Math.abs(face.width - 90)).toBeLessThanOrEqual(1);
+        expect(Math.abs(face.height - 135)).toBeLessThanOrEqual(1);
+      }
+      expect(evidence.frameAnnouncementClearance).toBeGreaterThanOrEqual(5);
+      expect(evidence.announcement).toContain(`${firstMaterial.rank}${firstMaterial.suit} Peach`);
+      expect(evidence.announcement).toContain(`${secondMaterial.rank}${secondMaterial.suit} Dodge`);
+      expect(evidence.announcement).toMatch(/Serpent Spear to play Attack against DODGE TARGET/i);
     }
 
     const targetView = await view(request, seedData, 1);

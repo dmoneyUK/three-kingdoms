@@ -1,7 +1,33 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { composePresentationSnapshot } from "../game/presentation-snapshot.ts";
+import { composePresentationSnapshot, provenPublicCardEffects } from "../game/presentation-snapshot.ts";
 import { projectPresentationV2 } from "../game/presentation-v2.ts";
+
+test("Serpent Spear group context stays linked to its exact root and response frame in the public snapshot", () => {
+  const groupEffect = {
+    semantics: "PROVEN", effectId: "serpent_spear_attack", effectClass: "CONVERSION", eventId: "spear-response",
+    activationOwnerId: "B", materials: [
+      { cardId: "spear-face-1", ownerId: "B", fromZone: "HAND", toZone: "DISCARD" },
+      { cardId: "spear-face-2", ownerId: "B", fromZone: "HAND", toZone: "DISCARD" },
+    ], rootEventId: "barbarian-root", rootResolutionId: "barbarian-resolution",
+    interactionId: "group-interaction", rootFrameId: "group-frame", targetId: "B",
+    resultingCardKind: "Attack", outcome: "AS_ATTACK",
+    attackContext: {
+      kind: "GROUP_RESPONSE", providerId: "B", semanticActorId: "B", groupCardKind: "BarbarianInvasion",
+      rootEventId: "barbarian-root", rootResolutionId: "barbarian-resolution",
+      interactionId: "group-interaction", rootFrameId: "group-frame", participantIds: ["B", "C"], participantOrdinal: 1,
+    },
+    cards: [
+      { id: "spear-face-1", kind: "Peach", suit: "♥", rank: "8" },
+      { id: "spear-face-2", kind: "Dodge", suit: "♣", rank: "Q" },
+    ],
+  };
+  assert.deepEqual(provenPublicCardEffects([groupEffect]).map((effect) => effect.eventId), ["spear-response"]);
+  assert.deepEqual(provenPublicCardEffects([{ ...groupEffect, interactionId: "other-interaction" }]), [],
+    "a mismatched top-level interaction cannot rebind the committed group response");
+  assert.deepEqual(provenPublicCardEffects([{ ...groupEffect, rootFrameId: "other-frame" }]), [],
+    "a mismatched top-level causal frame cannot rebind the committed group response");
+});
 
 function scene(overrides = {}) {
   return {

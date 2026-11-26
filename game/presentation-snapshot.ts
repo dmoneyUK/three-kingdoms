@@ -36,6 +36,7 @@ import type {
   PresentationSelfTargetAction,
   PresentationStableBoundary,
   PresentationV2,
+  SerpentSpearAttackPresentationContext,
 } from "./presentation-v2";
 import { isProvenGroupRootCardProof, isSupportedAttackDodgeResponseProof } from "./presentation-v2";
 import { projectPublicPresentationSemantics, validateRetainedPublicEvent, type PublicBumperHarvestPick, type PublicPresentationDecision, type PublicPresentationEvent, type ViewerNegationChoice } from "./presentation-semantics";
@@ -186,6 +187,62 @@ function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
+function provenSerpentSpearAttackContext(
+  value: unknown,
+  effect: PresentationSnapshotPublicCardEffect,
+): value is SerpentSpearAttackPresentationContext {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const context = value as Record<string, unknown>;
+  const providerId = context.providerId;
+  const semanticActorId = context.semanticActorId;
+  if (!nonEmptyString(providerId) || providerId !== effect.activationOwnerId || !nonEmptyString(semanticActorId)) return false;
+  const targetId = context.targetId;
+  switch (context.kind) {
+    case "DIRECT_ATTACK":
+      return semanticActorId === providerId && nonEmptyString(targetId) && effect.targetId === targetId
+        && !effect.rootEventId && !effect.rootResolutionId && !effect.interactionId && !effect.rootFrameId;
+    case "DUEL_RESPONSE":
+      return nonEmptyString(targetId) && effect.targetId === targetId
+        && [context.interactionId, context.rootFrameId, context.rootEventId, context.rootResolutionId].every(nonEmptyString)
+        && Number.isSafeInteger(context.ordinal) && (context.ordinal as number) > 0
+        && effect.rootEventId === context.rootEventId && effect.rootResolutionId === context.rootResolutionId
+        && effect.interactionId === context.interactionId && effect.rootFrameId === context.rootFrameId;
+    case "LUST_DUEL_RESPONSE":
+      return nonEmptyString(targetId) && effect.targetId === targetId
+        && [context.interactionId, context.rootFrameId, context.activationEventId, context.activationResolutionId,
+          context.costEventId, context.costCardId, context.ownerId, context.firstParticipantId,
+          context.secondParticipantId, context.firstActorId].every(nonEmptyString)
+        && Number.isSafeInteger(context.ordinal) && (context.ordinal as number) > 0
+        && effect.interactionId === context.interactionId && effect.rootFrameId === context.rootFrameId
+        && !effect.rootEventId;
+    case "GROUP_RESPONSE": {
+      const participantIds = Array.isArray(context.participantIds) ? context.participantIds : [];
+      const normalizedParticipantIds = participantIds.filter(nonEmptyString);
+      return context.groupCardKind === "BarbarianInvasion"
+        && [context.rootEventId, context.rootResolutionId, context.interactionId, context.rootFrameId].every(nonEmptyString)
+        && participantIds.length > 0 && normalizedParticipantIds.length === participantIds.length
+        && new Set(normalizedParticipantIds).size === normalizedParticipantIds.length
+        && Number.isSafeInteger(context.participantOrdinal)
+        && (context.participantOrdinal as number) > 0
+        && normalizedParticipantIds.indexOf(semanticActorId) + 1 === context.participantOrdinal
+        && semanticActorId === effect.targetId && effect.rootEventId === context.rootEventId
+        && effect.rootResolutionId === context.rootResolutionId
+        && effect.interactionId === context.interactionId && effect.rootFrameId === context.rootFrameId;
+    }
+    case "BORROWED_SWORD":
+      return nonEmptyString(targetId) && effect.targetId === targetId
+        && [context.borrowerId, context.holderId, context.borrowedSwordEventId,
+          context.borrowedSwordResolutionId, context.borrowedSwordCardId].every(nonEmptyString)
+        && context.holderId === semanticActorId
+        && effect.rootEventId === context.borrowedSwordEventId
+        && effect.rootResolutionId === context.borrowedSwordResolutionId;
+    case "INFLUENCING_RESPONSE":
+      return nonEmptyString(targetId) && effect.targetId === targetId && nonEmptyString(context.windowId);
+    default:
+      return false;
+  }
+}
+
 function provenPublicDrawPhaseDecision(value: unknown): PresentationPublicDrawPhaseDecision | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Partial<PresentationPublicDrawPhaseDecision>;
@@ -281,6 +338,9 @@ export function provenPublicCardEffects(value: unknown): PresentationSnapshotPub
         && effect.targetIds.every(nonEmptyString) && new Set(effect.targetIds).size === effect.targetIds.length)
       && (effect.outcome === undefined || nonEmptyString(effect.outcome) && effect.outcome.length <= 80)
       && (effect.effectClass !== "CONVERSION" || conversionResult[effect.effectId] === effect.resultingCardKind)
+      && (effect.effectId === "serpent_spear_attack"
+        ? provenSerpentSpearAttackContext(effect.attackContext, effect)
+        : effect.attackContext === undefined)
       && (effect.effectClass !== "JUDGEMENT" || effect.resultingCardKind === undefined
         || effect.effectId === "eight_trigrams_dodge" && effect.resultingCardKind === "Dodge")
       && ((effect.effectClass === "CONVERSION" || effect.effectClass === "JUDGEMENT") || effect.resultingCardKind === undefined);
@@ -305,6 +365,7 @@ export function provenPublicCardEffects(value: unknown): PresentationSnapshotPub
     ...(effect.targetIds ? { targetIds: [...effect.targetIds] } : {}),
     ...(effect.resultingCardKind ? { resultingCardKind: effect.resultingCardKind } : {}),
     ...(effect.outcome ? { outcome: effect.outcome } : {}),
+    ...(effect.attackContext ? { attackContext: { ...effect.attackContext } } : {}),
     cards: effect.cards.map(publicPhysicalCard).filter((card): card is Card => Boolean(card)),
   }));
 }

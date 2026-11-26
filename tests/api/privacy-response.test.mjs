@@ -891,6 +891,22 @@ test("Influencing reuses the normal Attack pipeline for semantic providers", { t
     const accepted = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: scenario.providerId, ...scenario.selection });
     assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
     assert.equal(accepted.data.room.players.find((player) => player.id === target.id).hp, 3, `${scenario.providerId} enters the ordinary Dodge/damage pipeline`);
+    if (scenario.providerId === "serpent_spear_attack") {
+      const responseEvent = accepted.data.room.timeline.find((event) => event.type === "cards"
+        && event.cards.some((item) => item.id === materials[0].id));
+      const conversion = responseEvent?.publicCardEffects?.find((proof) => proof.effectId === "serpent_spear_attack");
+      const contribution = responseEvent?.sharedResponseContribution;
+      assert.ok(conversion && contribution, "the committed delegate response has both shared proofs");
+      assert.deepEqual(conversion.attackContext, {
+        kind: "INFLUENCING_RESPONSE", providerId: delegate.id,
+        semanticActorId: contribution.requesterId, targetId: contribution.targetId, windowId: contribution.windowId,
+      }, "the physical provider is distinct from Liu Bei's semantic Attack actor");
+      assert.equal(contribution.eventId, responseEvent.id);
+      assert.equal(conversion.targetId, target.id);
+      const snapshotEffect = accepted.data.room.presentationSnapshot.publicCardEffects.find((proof) => proof.eventId === responseEvent.id);
+      assert.equal(snapshotEffect?.attackContext?.kind, "INFLUENCING_RESPONSE",
+        "the delegated two-card conversion remains public through the shared snapshot");
+    }
     for (const material of materials) assert.ok(discardIds(game.code).includes(material.id), `${scenario.providerId} consumes ${material.id}`);
     assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(delegate.id)}`)).length, 0, `${scenario.providerId} removes provider costs from the delegate`);
     assert.equal((await state(game.code, game.members[0].token)).data.currentAction.triggerOptions?.some((option) => option.effectId === "liu_bei_jijiang") ?? false, false, "a successful delegated Attack consumes Liu Bei's normal Attack allowance");

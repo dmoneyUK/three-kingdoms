@@ -614,7 +614,8 @@ type VerifiedSerpentSpearAttackFrameProof = {
   effect: PresentationSnapshotPublicCardEffect;
   sourceCards: readonly [Card, Card];
   owner: Player;
-  target: Player;
+  semanticActor: Player;
+  target: Player | null;
 };
 type VerifiedBraveheartDodgeResponseFrameProof = {
   responseEvent: CardEvent;
@@ -827,15 +828,19 @@ function verifiedSerpentSpearAttackFrameForEvent(
   const effect = projectedMatches[0];
   const rawEffect = rawMatches[0];
   const owner = players.find((player) => player.id === effect.activationOwnerId);
-  const target = players.find((player) => player.id === effect.targetId);
+  const context = effect.attackContext;
+  const semanticActor = context ? players.find((player) => player.id === context.semanticActorId) : null;
+  const targetId = context && "targetId" in context ? context.targetId : null;
+  const target = targetId ? players.find((player) => player.id === targetId) ?? null : null;
   const projectedCards = effect.cards;
-  if (!owner?.name || !target?.name || owner.id === target.id
+  if (!context || !owner?.name || !semanticActor?.name || targetId && !target?.name
     || effect.semantics !== "PROVEN" || rawEffect.semantics !== "PROVEN"
     || effect.eventId !== conversionEvent.id || rawEffect.eventId !== conversionEvent.id
     || effect.effectClass !== "CONVERSION" || rawEffect.effectClass !== "CONVERSION"
+    || JSON.stringify(effect.attackContext) !== JSON.stringify(rawEffect.attackContext)
     || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
     || effect.activationOwnerId !== rawEffect.activationOwnerId || effect.activationOwnerId !== owner.id
-    || effect.targetId !== rawEffect.targetId || effect.targetId !== target.id
+    || context.providerId !== owner.id
     || effect.resultingCardKind !== "Attack" || rawEffect.resultingCardKind !== "Attack"
     || effect.outcome !== "AS_ATTACK" || rawEffect.outcome !== "AS_ATTACK"
     || effect.materials.length !== 2 || rawEffect.materials.length !== 2 || projectedCards.length !== 2) return null;
@@ -851,15 +856,54 @@ function verifiedSerpentSpearAttackFrameForEvent(
       && material.fromZone === "HAND" && rawMaterial.fromZone === "HAND"
       && material.toZone === "DISCARD" && rawMaterial.toZone === "DISCARD");
   });
-  if (!materialsMatch || conversionEvent.player !== owner.name || conversionEvent.target !== target.name) return null;
-  return { conversionEvent, effect, sourceCards: [conversionEvent.cards[0], conversionEvent.cards[1]], owner, target };
+  if (!materialsMatch || conversionEvent.player !== owner.name || conversionEvent.actorId !== owner.id
+    || context.kind === "DIRECT_ATTACK" && (semanticActor.id !== owner.id || target?.id === owner.id || conversionEvent.target !== target?.name)
+    || context.kind === "GROUP_RESPONSE" && (context.semanticActorId !== effect.targetId
+      || context.groupCardKind !== "BarbarianInvasion"
+      || !context.interactionId || !context.rootFrameId || !context.participantIds.length
+      || new Set(context.participantIds).size !== context.participantIds.length
+      || !context.participantIds.includes(context.semanticActorId)
+      || context.participantIds.indexOf(context.semanticActorId) + 1 !== context.participantOrdinal
+      || effect.rootEventId !== context.rootEventId || effect.rootResolutionId !== context.rootResolutionId
+      || effect.interactionId !== context.interactionId || effect.rootFrameId !== context.rootFrameId)
+    || context.kind !== "GROUP_RESPONSE" && (!target || conversionEvent.target !== target.name)) return null;
+  if (context.kind === "BORROWED_SWORD") {
+    const roots = timeline.filter((candidate) => candidate.id === context.borrowedSwordEventId);
+    const root = roots.length === 1 ? roots[0] : null;
+    if (!root || root.type !== "card" || root.card.kind !== "BorrowedSword"
+      || root.card.id !== context.borrowedSwordCardId || root.resolutionId !== context.borrowedSwordResolutionId
+      || root.actorId !== context.borrowerId || root.target !== semanticActor.name) return null;
+  }
+  return { conversionEvent, effect, sourceCards: [conversionEvent.cards[0], conversionEvent.cards[1]], owner, semanticActor, target };
 }
 function publicSerpentSpearAttackFrame(
   proof: VerifiedSerpentSpearAttackFrameProof,
   players: readonly Player[],
 ) {
-  const publicNotice = `${proof.owner.name} formed one Attack with Serpent Spear: two Hand cards AS ATTACK, targeting ${proof.target.name}.`;
-  const accessibleLabel = `${proof.owner.name} used Serpent Spear to form one Attack from two real Hand cards as Attack, targeting ${proof.target.name}.`;
+  const materials = proof.sourceCards.map((card) => `${card.rank}${card.suit} ${cardDefinition(card.kind).name}`).join(" and ");
+  const owner = { id: proof.owner.id, name: proof.owner.name };
+  const semanticActor = { id: proof.semanticActor.id, name: proof.semanticActor.name };
+  const target = proof.target ? { id: proof.target.id, name: proof.target.name } : null;
+  const context = proof.effect.attackContext!;
+  const borrower = context.kind === "BORROWED_SWORD"
+    ? players.find((player) => player.id === context.borrowerId) : null;
+  const semanticActorQualifier = owner.id === semanticActor.id ? [] : [" for ", semanticActor] as const;
+  const copy = context.kind === "DIRECT_ATTACK" && target
+    ? verifiedPlayerCopy([owner, " used Serpent Spear to play Attack against ", target, " with ", materials, "."])
+    : context.kind === "DUEL_RESPONSE"
+      ? verifiedPlayerCopy([owner, " used Serpent Spear to respond to Duel", ...semanticActorQualifier, " with ", materials, " as Attack."])
+      : context.kind === "LUST_DUEL_RESPONSE"
+        ? verifiedPlayerCopy([owner, " used Serpent Spear to respond to a Lust Duel", ...semanticActorQualifier, " with ", materials, " as Attack."])
+        : context.kind === "GROUP_RESPONSE"
+          ? verifiedPlayerCopy([owner, " used Serpent Spear to respond to ", cardDefinition(context.groupCardKind).name, ...semanticActorQualifier, " with ", materials, " as Attack."])
+          : context.kind === "BORROWED_SWORD" && target && borrower?.name
+            ? verifiedPlayerCopy([owner, " used Serpent Spear to answer ", borrower, "'s Borrowed Sword with Attack against ", target, " using ", materials, "."])
+            : context.kind === "INFLUENCING_RESPONSE" && target
+              ? verifiedPlayerCopy([owner, " used Serpent Spear to provide Attack for ", semanticActor, " against ", target, " with ", materials, "."])
+              : null;
+  if (!copy) return null;
+  const publicNotice = copy.message;
+  const accessibleLabel = copy.message;
   const frame = createPublicCardEffectFrameView(proof.effect, {
     title: "SERPENT SPEAR · AS ATTACK",
     titleParts: { skillName: "SERPENT SPEAR", effectLabel: "AS ATTACK" },
@@ -867,7 +911,7 @@ function publicSerpentSpearAttackFrame(
     activationOwnerName: proof.owner.name,
     ownerNamesById: Object.fromEntries(players.map((player) => [player.id, player.name])),
   });
-  return frame ? { frame, publicNotice, accessibleLabel } : null;
+  return frame ? { frame, publicNotice, publicNoticeSegments: copy.segments, publicNoticeCompact: copy.message, accessibleLabel } : null;
 }
 function verifiedAmbushmentConversionFrameForEvent(
   timeline: readonly GameEvent[],
@@ -1985,18 +2029,31 @@ function sharedContributionDisplayAction(room: Room, domainPublicCardDisplayActi
     if (nextFact && nextFact.eventId !== proof.eventId && nextFact.order > (event.publicSequence ?? -1)) return null;
     const conversion = room.presentationSnapshot?.publicCardEffects.find((effect) => effect.eventId === proof.eventId
       && effect.effectClass === "CONVERSION" && effect.activationOwnerId === proof.actorId);
+    const serpentProof = conversion?.effectId === "serpent_spear_attack"
+      ? verifiedSerpentSpearAttackFrameForEvent(room.timeline, room.presentationSnapshot?.publicCardEffects ?? [], room.players, proof.eventId)
+      : null;
+    const serpentFrame = serpentProof?.effect.attackContext?.kind === "INFLUENCING_RESPONSE"
+      ? publicSerpentSpearAttackFrame(serpentProof, room.players)
+      : null;
     const matchingNarration = publicInteractionNarration?.rootEventId === proof.eventId ? publicInteractionNarration : null;
     return { key: `shared-contribution:${proof.eventId}`, rootEventId: proof.eventId,
       ...(matchingNarration ? { interactionId: matchingNarration.interactionId, rootFrameId: matchingNarration.rootFrameId,
         publicInteractionNarration: matchingNarration, suppressAnnouncement: false } : {}),
-      sourceId: proof.actorId, targetId: proof.requesterId, cardFace: face,
-      cardKind: proof.effectiveKind, cardLabel: proof.effectiveKind.toUpperCase(), ariaLabel: proof.message,
-      publicNotice: proof.message, publicNoticeEventId: proof.eventId,
+      sourceId: proof.actorId, targetId: serpentProof?.target?.id ?? proof.requesterId,
+      ...(serpentProof ? { cardFace: serpentProof.sourceCards[0] } : { cardFace: face }),
+      cardKind: proof.effectiveKind,
+      cardLabel: serpentFrame ? "SERPENT SPEAR · AS ATTACK" : proof.effectiveKind.toUpperCase(),
+      ariaLabel: serpentFrame?.accessibleLabel ?? proof.message,
+      publicNotice: serpentFrame?.publicNotice ?? proof.message,
+      ...(serpentFrame ? { publicNoticeCompact: serpentFrame.publicNoticeCompact } : {}),
+      ...(serpentFrame ? { publicNoticeSegments: serpentFrame.publicNoticeSegments } : {}),
+      publicNoticeEventId: proof.eventId,
       ...(conversion ? { publicCardEffectFrame: createPublicCardEffectFrameView(conversion, {
         title: `AS ${proof.effectiveKind.toUpperCase()}`, accessibleLabel: proof.message,
         activationOwnerName: room.players.find((player) => player.id === proof.actorId)?.name ?? "A player",
         ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
       }) ?? undefined } : {}),
+      ...(serpentFrame ? { publicCardEffectFrame: serpentFrame.frame } : {}),
       motion: { type: "single-target", scopeKey: `${room.code}:shared-contribution:${proof.eventId}`, freshEventIds: seenEventIds.has(proof.eventId) ? [] : [proof.eventId] } };
 }
 
@@ -7375,10 +7432,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       const responseMatches = room.timeline.filter((event) => event.id === response.responseEventId);
       if (responseMatches.length !== 1) return [];
       const responseEvent = responseMatches[0];
-      const eventProof = responseEvent.type === "card" ? responseEvent.duelAttackResponse : undefined;
-      if (responseEvent.type !== "card" || responseEvent.action !== "play" || responseEvent.presentation === false
-        || responseEvent.resolutionId !== response.responseResolutionId
-        || responseEvent.card.kind !== "Attack" && responseEvent.playedAs?.toLowerCase() !== "attack"
+      const responseCards = eventCards(responseEvent);
+      const eventProof = responseEvent.type === "card" || responseEvent.type === "cards" ? responseEvent.duelAttackResponse : undefined;
+      if ((responseEvent.type !== "card" && responseEvent.type !== "cards") || responseEvent.action !== "play" || responseEvent.presentation === false
+        || responseEvent.privateToPlayerId || responseEvent.resolutionId !== response.responseResolutionId
+        || responseEvent.actorId !== response.responseActorId || !responseCards.length
+        || responseCards.map((card) => card.id).join("\u001f") !== response.responseCardIds.join("\u001f")
         || !eventProof || eventProof.semantics !== "PROVEN" || eventProof.relation !== "DUEL_EXCHANGE"
         || eventProof.interactionId !== exchange.interactionId
         || eventProof.rootFrameId !== exchange.rootFrameId || eventProof.rootEventId !== exchange.root.eventId
@@ -7390,8 +7449,32 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       const responseActor = room.players.find((player) => player.id === response.responseActorId);
       const decisionActor = room.players.find((player) => player.id === response.decisionActorId);
       const responseTarget = room.players.find((player) => player.id === response.targetId);
-      if (!responseActor?.name || !decisionActor?.name || !responseTarget?.name) return [];
-      return [{ response, responseEvent, responseActor, decisionActor, responseTarget }];
+      if (!responseActor?.name || !decisionActor?.name || !responseTarget?.name || responseEvent.player !== responseActor.name) return [];
+      const serpentProof = responseEvent.type === "cards"
+        ? verifiedSerpentSpearAttackFrameForEvent(room.timeline, room.presentationSnapshot?.publicCardEffects ?? [], room.players, responseEvent.id)
+        : null;
+      const serpentFrame = serpentProof?.effect.attackContext?.kind === "DUEL_RESPONSE"
+        && serpentProof.effect.attackContext.interactionId === exchange.interactionId
+        && serpentProof.effect.attackContext.rootFrameId === exchange.rootFrameId
+        && serpentProof.effect.attackContext.rootEventId === exchange.root.eventId
+        && serpentProof.effect.attackContext.rootResolutionId === exchange.root.resolutionId
+        && serpentProof.effect.attackContext.ordinal === response.ordinal
+        && serpentProof.effect.attackContext.semanticActorId === response.decisionActorId
+        && serpentProof.effect.attackContext.targetId === response.targetId
+        ? publicSerpentSpearAttackFrame(serpentProof, room.players)
+        : null;
+      const naturalAttack = responseEvent.type === "card" && responseEvent.card.kind === "Attack" && responseEvent.playedAs === undefined;
+      const otherConvertedAttack = responseEvent.playedAs?.toLowerCase() === "attack"
+        && responseEvent.type === "card"
+        && room.presentationSnapshot?.publicCardEffects.some((effect) => effect.eventId === responseEvent.id
+          && effect.effectClass === "CONVERSION" && effect.effectId !== "serpent_spear_attack"
+          && effect.resultingCardKind === "Attack" && effect.activationOwnerId === response.responseActorId
+          && effect.targetId === response.targetId && effect.materials.length === responseCards.length
+          && effect.materials.every((material, cardIndex) => material.cardId === responseCards[cardIndex]?.id
+            && material.ownerId === response.responseActorId && material.toZone === "DISCARD")) === true;
+      if (!naturalAttack && !otherConvertedAttack && !serpentFrame) return [];
+      return [{ response, responseEvent, responseActor, decisionActor, responseTarget,
+        cardFaces: responseCards, ...(serpentFrame ? { serpentFrame } : {}) }];
     });
     if (responses.length !== exchange.responseCount) return null;
     const latest = responses.at(-1) ?? null;
@@ -7466,6 +7549,25 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         && eventCardIds.every((id, cardIndex) => id === response.responseCardIds[cardIndex]);
       const naturalAttack = isPublicPhysicalPlay && responseEvent.playedAs !== "attack"
         && cardFaces.length > 0 && cardFaces.every((card) => card.kind === "Attack");
+      const serpentProof = responseEvent.type === "cards"
+        ? verifiedSerpentSpearAttackFrameForEvent(room.timeline, room.presentationSnapshot?.publicCardEffects ?? [], room.players, responseEvent.id)
+        : null;
+      const serpentFrame = serpentProof?.effect.attackContext?.kind === "LUST_DUEL_RESPONSE"
+        && serpentProof.effect.attackContext.interactionId === exchange.interactionId
+        && serpentProof.effect.attackContext.rootFrameId === exchange.rootFrameId
+        && serpentProof.effect.attackContext.activationEventId === exchange.root.activationEventId
+        && serpentProof.effect.attackContext.activationResolutionId === exchange.root.activationResolutionId
+        && serpentProof.effect.attackContext.costEventId === exchange.root.costEventId
+        && serpentProof.effect.attackContext.costCardId === exchange.root.costCardId
+        && serpentProof.effect.attackContext.ownerId === exchange.root.ownerId
+        && serpentProof.effect.attackContext.firstParticipantId === exchange.root.firstParticipantId
+        && serpentProof.effect.attackContext.secondParticipantId === exchange.root.secondParticipantId
+        && serpentProof.effect.attackContext.firstActorId === exchange.root.firstActorId
+        && serpentProof.effect.attackContext.ordinal === response.ordinal
+        && serpentProof.effect.attackContext.semanticActorId === response.decisionActorId
+        && serpentProof.effect.attackContext.targetId === response.targetId
+        ? publicSerpentSpearAttackFrame(serpentProof, room.players)
+        : null;
       const convertedAttack = isPublicPhysicalPlay && responseEvent.playedAs === "attack"
         && room.presentationSnapshot?.publicCardEffects.some((effect) => effect.eventId === responseEvent.id
           && effect.effectClass === "CONVERSION" && effect.resultingCardKind === "Attack"
@@ -7479,8 +7581,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       const responseActor = room.players.find((player) => player.id === response.responseActorId);
       const responseTarget = room.players.find((player) => player.id === response.targetId);
       if (!proofMatchesEvent || !responseActor?.name || !responseTarget?.name
-        || !naturalAttack && !convertedAttack && !noCardAttackNotice) return [];
-      return [{ response, responseEvent, responseActor, responseTarget, cardFaces }];
+        || responseEvent.type !== "message" && (responseEvent.player !== responseActor.name || responseEvent.actorId !== response.responseActorId)
+        || !naturalAttack && !convertedAttack && !noCardAttackNotice
+        || responseEvent.type === "cards" && !serpentFrame) return [];
+      return [{ response, responseEvent, responseActor, responseTarget, cardFaces,
+        ...(serpentFrame ? { serpentFrame } : {}) }];
     });
     if (responses.length !== exchange.responseCount) return null;
     let settlementNotice: Extract<PresentationSnapshotDiaoChanSkillNotice, { effectId: "diao_chan_lust"; notice: "DUEL_RESULT" }> | null = null;
@@ -8549,7 +8654,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ? verifiedSerpentSpearAttackFrameForEvent(room.timeline, room.presentationSnapshot?.publicCardEffects ?? [], room.players, rootEvent.id)
       : null;
     const physicalAttackRoot = rootEvent.type === "card" && rootEvent.card.kind === "Attack" && rootEvent.playedAs === undefined;
-    const serpentAttackRoot = Boolean(serpentSpearProof
+    const serpentAttackRoot = Boolean(serpentSpearProof?.target
       && serpentSpearProof.owner.id === settlement.sourceId && serpentSpearProof.target.id === settlement.targetId);
     if ((rootEvent.type !== "card" && rootEvent.type !== "cards") || rootEvent.presentation === false || rootEvent.privateToPlayerId
       || rootEvent.action !== "play" || !(physicalAttackRoot || serpentAttackRoot)
@@ -8587,7 +8692,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const rootActionMatchesSerpentSpearProof = Boolean(rootActionSerpentSpearProof && rootAction?.action === "ATTACK"
     && "conversionId" in rootAction && rootAction.conversionId === "serpent_spear_attack"
     && (rootAction.physicalActorId ?? rootAction.sourceId) === rootActionSerpentSpearProof.owner.id
-    && rootAction.targetId === rootActionSerpentSpearProof.target.id
+    && rootAction.targetId === rootActionSerpentSpearProof.target?.id
     && rootAction.materialCardIds.length === 2
     && rootAction.materialCardIds.every((cardId, index) => cardId === rootActionSerpentSpearProof?.sourceCards[index]?.id));
   const rootActionAmbushmentProof = rootAction?.action === "STRATAGEM" && rootAction.cardKind === "Dismantle"
@@ -8629,13 +8734,74 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : null;
   const attackDodgeMatchesSerpentSpearProof = Boolean(attackDodgeSerpentSpearProof && attackDodgeDisplayCandidate
     && attackDodgeSerpentSpearProof.owner.id === attackDodgeDisplayCandidate.proof.rootSourceId
-    && attackDodgeSerpentSpearProof.target.id === attackDodgeDisplayCandidate.proof.targetId);
+    && attackDodgeSerpentSpearProof.target?.id === attackDodgeDisplayCandidate.proof.targetId);
   const attackDodgeSerpentSpearFrame = attackDodgeMatchesSerpentSpearProof && attackDodgeSerpentSpearProof
     ? publicSerpentSpearAttackFrame(attackDodgeSerpentSpearProof, room.players)
     : null;
   const attackHitSerpentSpearFrame = attackHitSettlementCandidate?.serpentSpearProof
     ? publicSerpentSpearAttackFrame(attackHitSettlementCandidate.serpentSpearProof, room.players)
     : null;
+  const serpentSpearGroupResponseDisplayAction: PublicCardDisplayAction | null = (() => {
+    const group = room.presentationV2?.groupResolution;
+    if (!group || group.semantics !== "PROVEN" || group.cardKind !== "BarbarianInvasion"
+      || !group.interactionId || !group.groupFrameId || !group.rootCardProof
+      || group.rootCardProof.semantics !== "PROVEN" || group.rootCardProof.cardKind !== "BarbarianInvasion"
+      || group.rootCardProof.interactionId !== group.interactionId || group.rootCardProof.groupFrameId !== group.groupFrameId) return null;
+    const candidates = room.presentationSnapshot?.publicCardEffects.filter((effect) => effect.effectId === "serpent_spear_attack"
+      && effect.attackContext?.kind === "GROUP_RESPONSE"
+      && effect.attackContext.groupCardKind === "BarbarianInvasion"
+      && effect.rootEventId === group.rootCardProof?.rootEventId
+      && effect.rootResolutionId === group.rootCardProof?.rootEventResolutionId
+      && effect.interactionId === group.interactionId && effect.rootFrameId === group.groupFrameId
+      && effect.attackContext.rootEventId === group.rootCardProof?.rootEventId
+      && effect.attackContext.rootResolutionId === group.rootCardProof?.rootEventResolutionId
+      && effect.attackContext.interactionId === group.interactionId
+      && effect.attackContext.rootFrameId === group.groupFrameId
+      && effect.attackContext.participantIds.length === group.targetIds.length
+      && effect.attackContext.participantIds.every((id, index) => id === group.targetIds[index])) ?? [];
+    const candidate = candidates.length === 1 ? candidates[0] : null;
+    const proof = candidate
+      ? verifiedSerpentSpearAttackFrameForEvent(room.timeline, room.presentationSnapshot?.publicCardEffects ?? [], room.players, candidate.eventId)
+      : null;
+    if (!proof || proof.effect.attackContext?.kind !== "GROUP_RESPONSE"
+      || proof.semanticActor.id !== proof.effect.targetId
+      || !group.targetIds.includes(proof.semanticActor.id)
+      || !group.participantProgress?.some((participant) => participant.playerId === proof.semanticActor.id)
+      || proof.effect.attackContext.rootEventId !== group.rootCardProof.rootEventId
+      || proof.effect.attackContext.rootResolutionId !== group.rootCardProof.rootEventResolutionId
+      || proof.effect.attackContext.interactionId !== group.interactionId
+      || proof.effect.attackContext.rootFrameId !== group.groupFrameId
+      || proof.effect.attackContext.participantOrdinal !== group.targetIds.indexOf(proof.semanticActor.id) + 1) return null;
+    const event = proof.conversionEvent;
+    if (room.timeline.some((later) => later.presentation !== false && !later.privateToPlayerId
+      && (later.type === "card" || later.type === "cards")
+      && ["play", "equip", "activate"].includes(later.action)
+      && (later.publicSequence ?? -1) > (event.publicSequence ?? -1))) return null;
+    const frame = publicSerpentSpearAttackFrame(proof, room.players);
+    if (!frame) return null;
+    return {
+      key: ["serpent-spear-group-response", group.interactionId, group.groupFrameId, event.id].join(":"),
+      interactionId: group.interactionId,
+      rootFrameId: group.groupFrameId,
+      rootEventId: event.id,
+      sourceId: proof.owner.id,
+      targetId: null,
+      cardFace: proof.sourceCards[0],
+      cardKind: "Attack",
+      cardLabel: "SERPENT SPEAR · AS ATTACK",
+      ariaLabel: frame.accessibleLabel,
+      publicNotice: frame.publicNotice,
+      publicNoticeSegments: frame.publicNoticeSegments,
+      publicNoticeCompact: frame.publicNoticeCompact,
+      publicNoticeEventId: event.id,
+      publicCardEffectFrame: frame.frame,
+      motion: {
+        type: "single-target",
+        scopeKey: [room.code, "serpent-spear-group-response", group.interactionId, group.groupFrameId, event.id].join(":"),
+        freshEventIds: publicCardJourneySeenEventIds.has(event.id) ? [] : [event.id],
+      },
+    };
+  })();
   const rootActionCardFace = rootActionSerpentSpearFrame && rootActionSerpentSpearProof
     ? rootActionSerpentSpearProof.sourceCards[0]
     : rootAction && rootActionEvent?.type === "card"
@@ -9594,18 +9760,24 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         readRemainingMs: lustDuelExchangeDisplayCandidate.exchange.settlement.readRemainingMs,
       },
     } : {}),
-    ...(lustDuelExchangeDisplayCandidate.responses.length ? {
-      responses: lustDuelExchangeDisplayCandidate.responses.map(({ response, responseActor, responseTarget, cardFaces, responseEvent }) => ({
+      ...(lustDuelExchangeDisplayCandidate.responses.length ? {
+      responses: lustDuelExchangeDisplayCandidate.responses.map(({ response, responseActor, responseTarget, cardFaces, responseEvent, serpentFrame }) => ({
         eventId: response.responseEventId,
         ordinal: response.ordinal,
         actorId: response.responseActorId,
         actorName: responseActor.name,
         targetName: responseTarget.name,
         ...(cardFaces.length ? { cardFace: cardFaces[0], cardFaces } : {}),
+        ...(serpentFrame ? {
+          publicNotice: serpentFrame.publicNotice,
+          publicNoticeSegments: serpentFrame.publicNoticeSegments,
+          publicNoticeCompact: serpentFrame.publicNoticeCompact,
+          publicCardEffectFrame: serpentFrame.frame,
+        } : {}),
         ...(responseEvent.playedAs?.toLowerCase() === "attack" && cardFaces.some((card) => card.kind !== "Attack")
           ? { semanticLabel: "AS ATTACK" }
           : {}),
-        ariaLabel: `${responseActor.name} played Attack targeting ${responseTarget.name}`,
+        ariaLabel: serpentFrame?.accessibleLabel ?? `${responseActor.name} played Attack targeting ${responseTarget.name}`,
       })),
     } : {}),
   } : null;
@@ -9614,6 +9786,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   function selectNonHeroLivePublicCardAction(): PublicCardDisplayAction | null {
   const nonHeroLivePublicCardActionBeforeAcquisition: PublicCardDisplayAction | null = heldPublicNegationReadAction
     ? heldPublicNegationReadAction
+    : serpentSpearGroupResponseDisplayAction
+    ? serpentSpearGroupResponseDisplayAction
     : lustDuelPublicAction
     ? lustDuelPublicAction
     : lustCostFrameAction
@@ -9821,7 +9995,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ?? `${attackHitSettlementCandidate.source.name} played Attack targeting ${attackHitSettlementCandidate.target.name}`,
       ...(attackHitSerpentSpearFrame ? {
         publicNotice: attackHitSerpentSpearFrame.publicNotice,
-        publicNoticeCompact: `${attackHitSettlementCandidate.source.name} used Serpent Spear · AS ATTACK.`,
+        publicNoticeSegments: attackHitSerpentSpearFrame.publicNoticeSegments,
+        publicNoticeCompact: attackHitSerpentSpearFrame.publicNoticeCompact,
         publicCardEffectFrame: attackHitSerpentSpearFrame.frame,
       } : {}),
       motion: {
@@ -9874,16 +10049,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             cardFace: responseEvent.card,
             ariaLabel: `${responseActor.name} played Negation during ${duelExchangeDisplayCandidate.source.name}'s Duel.`,
           })),
-          ...duelExchangeDisplayCandidate.responses.map(({ response, responseEvent, responseActor, responseTarget }) => ({
+          ...duelExchangeDisplayCandidate.responses.map(({ response, responseEvent, responseActor, responseTarget, cardFaces, serpentFrame }) => ({
             eventId: response.responseEventId,
             ordinal: duelExchangeDisplayCandidate.negationResponses.length + response.ordinal,
             actorId: response.responseActorId,
             actorName: responseActor.name,
-            cardFace: responseEvent.card,
-            ...(responseEvent.card.kind !== "Attack" && responseEvent.playedAs?.toLowerCase() === "attack"
+            cardFace: cardFaces[0],
+            cardFaces,
+            ...(serpentFrame ? {
+              publicNotice: serpentFrame.publicNotice,
+              publicNoticeSegments: serpentFrame.publicNoticeSegments,
+              publicNoticeCompact: serpentFrame.publicNoticeCompact,
+              publicCardEffectFrame: serpentFrame.frame,
+            } : {}),
+            ...(cardFaces.some((card) => card.kind !== "Attack") && responseEvent.playedAs?.toLowerCase() === "attack"
               ? { semanticLabel: "AS ATTACK" }
               : {}),
-            ariaLabel: `${responseActor.name} played Attack targeting ${responseTarget.name}`,
+            ariaLabel: serpentFrame?.accessibleLabel ?? `${responseActor.name} played Attack targeting ${responseTarget.name}`,
           })),
         ],
       } : {}),
@@ -9917,7 +10099,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         },
         ...(rootActionSerpentSpearFrame ? {
           publicNotice: rootActionSerpentSpearFrame.publicNotice,
-          publicNoticeCompact: `${rootActionSerpentSpearProof?.owner.name ?? "A player"} used Serpent Spear · AS ATTACK.`,
+          publicNoticeSegments: rootActionSerpentSpearFrame.publicNoticeSegments,
+          publicNoticeCompact: rootActionSerpentSpearFrame.publicNoticeCompact,
           publicCardEffectFrame: rootActionSerpentSpearFrame.frame,
         } : {}),
         ...(!rootActionSerpentSpearFrame && rootAction.targetId === room.meId
@@ -9952,7 +10135,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           ?? `${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.rootSourceId)?.name ?? "Unknown player"} played Attack targeting ${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.targetId)?.name ?? "unknown player"}`,
         ...(attackDodgeSerpentSpearFrame ? {
           publicNotice: attackDodgeSerpentSpearFrame.publicNotice,
-          publicNoticeCompact: `${attackDodgeDisplayCandidate.proof.rootSourceId === attackDodgeSerpentSpearProof?.owner.id ? attackDodgeSerpentSpearProof.owner.name : "A player"} used Serpent Spear · AS ATTACK.`,
+          publicNoticeSegments: attackDodgeSerpentSpearFrame.publicNoticeSegments,
+          publicNoticeCompact: attackDodgeSerpentSpearFrame.publicNoticeCompact,
           publicCardEffectFrame: attackDodgeSerpentSpearFrame.frame,
         } : {}),
         motion: {

@@ -35,7 +35,7 @@ import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { evaluatePlayTarget, type PlayTargetEligibilityPlayer, type PlayTargetMode, type PlayTargetRejection } from "../../../game/capabilities/play-target-eligibility";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { attackRootProjectionDiagnosticsFor, projectPresentationV2, publicCardPlayProvesEffectiveKind, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationCardAcquisitionSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationPublicDiscardContext, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
+import { attackRootProjectionDiagnosticsFor, projectPresentationV2, publicCardPlayProvesEffectiveKind, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationCardAcquisitionSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationPublicDiscardContext, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2, type SerpentSpearAttackPresentationContext } from "../../../game/presentation-v2";
 import { composePresentationSnapshot, type PresentationPublicDrawPhaseDecision } from "../../../game/presentation-snapshot";
 import { validateCommittedPublicOutcomeDraft, type CommittedPublicOutcomeChange, type CommittedPublicOutcomeDraft, type PublicPhysicalZoneTransition, type PublicPresentationDecision, type PublicPresentationEventFactDraft, type PublicZoneEndpoint, type ViewerNegationChoice } from "../../../game/presentation-semantics";
 import { oathRecipientIds } from "../../../game/oath";
@@ -1803,12 +1803,19 @@ function publicConversionEffectId(providerId: string | undefined, resultingCardK
   if (resultingCardKind === "Dismantle" && providerId === "gan_ning_qixi") return providerId;
   return null;
 }
-function publicConversionDraft(providerId: string | undefined, activationOwnerId: string, cards: readonly Card[], owner: { playerId: string; hand: readonly Card[]; equipment: readonly Card[] }, targetId: string, resultingCardKind: Card["kind"], toZone: "DISCARD" | "PUBLIC_PLAY" | "JUDGEMENT" = "DISCARD"): PresentationPublicCardEffectDraft | null {
+function publicConversionDraft(providerId: string | undefined, activationOwnerId: string, cards: readonly Card[], owner: { playerId: string; hand: readonly Card[]; equipment: readonly Card[] }, targetId: string, resultingCardKind: Card["kind"], toZone: "DISCARD" | "PUBLIC_PLAY" | "JUDGEMENT" = "DISCARD", attackContext?: SerpentSpearAttackPresentationContext): PresentationPublicCardEffectDraft | null {
   const effectId = publicConversionEffectId(providerId, resultingCardKind);
   const materials = publicCardMaterials(cards, [owner], toZone);
+  if (providerId === "serpent_spear_attack" && !attackContext
+    || providerId !== "serpent_spear_attack" && attackContext) return null;
+  const causalLink = attackContext && "interactionId" in attackContext
+    ? { interactionId: attackContext.interactionId, rootFrameId: attackContext.rootFrameId }
+    : {};
   return effectId && materials ? {
     effectId, effectClass: "CONVERSION", activationOwnerId, materials, targetId, resultingCardKind,
     outcome: `AS_${resultingCardKind.toUpperCase()}`,
+    ...causalLink,
+    ...(attackContext ? { attackContext } : {}),
   } : null;
 }
 function attachPublicCardEffect(log: string[], eventId: string, draft: PresentationPublicCardEffectDraft) {
@@ -8153,14 +8160,25 @@ async function commitCanonicalResponse(input: {
       ...(responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : {}),
       ...(attackFact ? { publicFact: attackFact } : {}),
     };
-    const conversion = publicConversionDraft(responseExecution.providerId, me.id, attackCards, { playerId: me.id, hand: costHandBefore, equipment: equipmentCards(me) }, target.id, "Attack");
+    const borrowedSwordRoot = publicRootLink(baseLog, continuation.rootEventId);
+    const borrowedSpearContext: SerpentSpearAttackPresentationContext | undefined = responseExecution.providerId === "serpent_spear_attack"
+      && borrowedSwordRoot && borrowedSwordRoot.rootResolutionId === continuation.rootResolutionId && continuation.rootCardId
+      ? { kind: "BORROWED_SWORD", providerId: me.id, semanticActorId: holder.id, targetId: target.id,
+        borrowerId: continuation.sourceId, holderId: holder.id, borrowedSwordEventId: borrowedSwordRoot.rootEventId,
+        borrowedSwordResolutionId: borrowedSwordRoot.rootResolutionId, borrowedSwordCardId: continuation.rootCardId }
+      : undefined;
+    const conversion = publicConversionDraft(responseExecution.providerId, me.id, attackCards,
+      { playerId: me.id, hand: costHandBefore, equipment: equipmentCards(me) }, target.id, "Attack", "DISCARD", borrowedSpearContext);
+    const provenConversion = borrowedSpearContext
+      ? conversion && borrowedSwordRoot ? { ...conversion, ...borrowedSwordRoot } : null
+      : conversion;
     const presentation = attackCards.length === 1
-      ? conversion
-        ? addCardEventWithPublicEffect(baseLog, me.name, attackCards[0], target.name, "play", conversion, responseMeta, attackEventId)
+      ? provenConversion
+        ? addCardEventWithPublicEffect(baseLog, me.name, attackCards[0], target.name, "play", provenConversion, responseMeta, attackEventId)
         : addCardEventWithId(baseLog, me.name, attackCards[0], target.name, "play", true, responseMeta, attackEventId)
       : attackCards.length > 1
-        ? conversion
-          ? addCardGroupEventWithPublicEffect(baseLog, me.name, attackCards, "play", target.name, conversion, undefined, responseMeta, attackEventId)
+        ? provenConversion
+          ? addCardGroupEventWithPublicEffect(baseLog, me.name, attackCards, "play", target.name, provenConversion, undefined, responseMeta, attackEventId)
           : addCardGroupEventWithId(baseLog, me.name, attackCards, "play", true, target.name, undefined, responseMeta, attackEventId)
         : addLogWithId(baseLog, `${me.name} provides an Attack on ${holder.name}'s behalf.`, undefined, { ...responseMeta, actorId: holder.id }, attackEventId);
     const next = attackResponseDecision(declaration, target);
@@ -8239,8 +8257,22 @@ async function commitCanonicalResponse(input: {
         ...(lustDuelProof ? { resolutionId: lustDuelProof.activationResolutionId, lustDuelAttackResponse: lustDuelProof } : {}),
         ...(responseFact ? { publicFact: responseFact } : {}),
       };
-      const conversion = publicConversionDraft(responseExecution.providerId, me.id, attackCards, { playerId: me.id, hand: handBeforeDuel, equipment: equipmentCards(me) }, opponent.id, "Attack");
-      const provenConversion = conversion ? { ...conversion, ...(responseRoot ?? {}) } : null;
+      const serpentContext: SerpentSpearAttackPresentationContext | undefined = responseExecution.providerId !== "serpent_spear_attack"
+        ? undefined
+        : duelProof ? { kind: "DUEL_RESPONSE", providerId: me.id, semanticActorId: duelProof.decisionActorId,
+          targetId: duelProof.targetId, interactionId: duelProof.interactionId, rootFrameId: duelProof.rootFrameId,
+          rootEventId: duelProof.rootEventId, rootResolutionId: duelProof.rootResolutionId, ordinal: duelProof.ordinal }
+          : lustDuelProof ? { kind: "LUST_DUEL_RESPONSE", providerId: me.id, semanticActorId: lustDuelProof.decisionActorId,
+            targetId: lustDuelProof.targetId, interactionId: lustDuelProof.interactionId, rootFrameId: lustDuelProof.rootFrameId,
+            activationEventId: lustDuelProof.activationEventId, activationResolutionId: lustDuelProof.activationResolutionId,
+            costEventId: lustDuelProof.costEventId, costCardId: lustDuelProof.costCardId, ownerId: lustDuelProof.ownerId,
+            firstParticipantId: lustDuelProof.firstParticipantId, secondParticipantId: lustDuelProof.secondParticipantId,
+            firstActorId: lustDuelProof.firstActorId, ordinal: lustDuelProof.ordinal }
+            : undefined;
+      const conversion = publicConversionDraft(responseExecution.providerId, me.id, attackCards,
+        { playerId: me.id, hand: handBeforeDuel, equipment: equipmentCards(me) }, opponent.id, "Attack", "DISCARD", serpentContext);
+      // A Lust Duel is rooted in its typed public skill proof, not a physical card root.
+      const provenConversion = conversion ? { ...conversion, ...(duelProof ? { rootEventId: duelProof.rootEventId, rootResolutionId: duelProof.rootResolutionId } : {}) } : null;
       const presentation = attackCards.length === 1
         ? provenConversion
           ? addCardEventWithPublicEffect(log, me.name, attackCards[0], opponent.name, "play", provenConversion, responseMeta, contributionEventId)
@@ -8307,10 +8339,26 @@ async function commitCanonicalResponse(input: {
       await resolveGroupDamage(liveRoom, response, continuation, semanticActor, source, players, discard, log);
     } else {
       const responseCards = selectedResponse ? [selectedResponse] : serpentCards; const responseIds = new Set(responseCards.map((card) => card.id)); hand = hand.filter((card) => !responseIds.has(card.id)); const nextContinuation = appendHeldGroupCards(continuation, responseCards);
-      const conversion = publicConversionDraft(groupExecution.providerId, me.id, responseCards, { playerId: me.id, hand: handBeforeGroup, equipment: equipmentCards(me) }, semanticActor.id, continuation.requiredKind);
       const root = publicRootLink(log, continuation.rootEventId);
-      const provenConversion = conversion ? { ...conversion, ...(root ?? {}) } : null;
       const responseEventId = crypto.randomUUID();
+      const groupParticipantIds = continuation.participantProgress?.participants.map(({ playerId }) => playerId) ?? [];
+      const participantOrdinal = groupParticipantIds.indexOf(semanticActor.id) + 1;
+      const groupProgressMatchesRoot = Boolean(continuation.participantProgress
+        && continuation.participantProgress.interactionId === continuation.causal?.interactionId
+        && continuation.participantProgress.groupFrameId === continuation.causal?.frameId);
+      const serpentContext: SerpentSpearAttackPresentationContext | undefined = groupExecution.providerId === "serpent_spear_attack"
+        && root && continuation.cardKind === "BarbarianInvasion" && continuation.requiredKind === "Attack"
+        && groupProgressMatchesRoot && participantOrdinal > 0
+        && groupParticipantIds.every(Boolean) && new Set(groupParticipantIds).size === groupParticipantIds.length
+        ? { kind: "GROUP_RESPONSE", providerId: me.id, semanticActorId: semanticActor.id,
+          groupCardKind: "BarbarianInvasion", rootEventId: root.rootEventId, rootResolutionId: root.rootResolutionId,
+          interactionId: continuation.participantProgress!.interactionId, rootFrameId: continuation.participantProgress!.groupFrameId,
+          participantIds: groupParticipantIds, participantOrdinal }
+        : undefined;
+      const conversion = publicConversionDraft(groupExecution.providerId, me.id, responseCards,
+        { playerId: me.id, hand: handBeforeGroup, equipment: equipmentCards(me) }, semanticActor.id, continuation.requiredKind,
+        "DISCARD", serpentContext);
+      const provenConversion = conversion ? { ...conversion, ...(root ?? {}) } : null;
       const contribution = committedSharedContribution(liveRoom, responseEventId, me, responseCards,
         `${me.name} provided ${continuation.requiredKind} for ${semanticActor.name} using Influencing against ${source.name}.`);
       const responseMeta: PresentationMeta = { actorId: me.id,
@@ -8355,7 +8403,6 @@ async function commitCanonicalResponse(input: {
     if (!source || !source.alive || !target || !target.alive || providedCards.length !== consumedIds.length) return json({ error: "The Shu Attack or its target is no longer available.", stale: true, room: await roomState(code, token) }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Influencing Attack has already resolved.", stale: true, room: await roomState(code, token) }, 409);
     const nextHand = hand.filter((card) => !consumedIds.includes(card.id)); const discard = parse<Card[]>(liveRoom.discard_json, []); discard.push(...providedCards); let log = parse<string[]>(liveRoom.log_json, []);
-    const conversion = publicConversionDraft(responseExecution.providerId, me.id, providedCards, { playerId: me.id, hand, equipment: equipmentCards(me) }, target.id, "Attack");
     const responseEventId = crypto.randomUUID();
     const { value: declaration, createdEnvelope } = attackDeclaration(source, target, "triggered", providedCards,
       phaseAfterAttack(source), attackCard, undefined, responseEventId);
@@ -8363,6 +8410,12 @@ async function commitCanonicalResponse(input: {
       actorId: me.id, affectedPlayerIds: [target.id], label: "Attack", effect: { kind: "card_play", label: "Attack" },
       outcomeLabel: `provided Attack for ${source.name} using Influencing against ${target.name}` }, createdEnvelope);
     const contribution = committedSharedContribution(liveRoom, responseEventId, me, providedCards, `${me.name} provided Attack for ${source.name} using Influencing against ${target.name}.`);
+    const influencingSpearContext: SerpentSpearAttackPresentationContext | undefined = responseExecution.providerId === "serpent_spear_attack" && contribution
+      ? { kind: "INFLUENCING_RESPONSE", providerId: me.id, semanticActorId: contribution.requesterId,
+        targetId: contribution.targetId, windowId: contribution.windowId }
+      : undefined;
+    const conversion = publicConversionDraft(responseExecution.providerId, me.id, providedCards,
+      { playerId: me.id, hand, equipment: equipmentCards(me) }, target.id, "Attack", "DISCARD", influencingSpearContext);
     const meta: PresentationMeta = { actorId: me.id, ...(contribution ? { sharedResponseContribution: contribution } : {}), ...(responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : {}),
       ...(contributionFact ? { publicFact: contributionFact } : {}) };
     const materialPresentation = providedCards.length === 1
@@ -11443,9 +11496,11 @@ export async function POST(request: Request) {
       if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, "Attack", target, true) }, 409);
       if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
       const materialIds = new Set(materials.map((item) => item.id)); hand = hand.filter((item) => !materialIds.has(item.id)); discard.push(...materials);
-      const serpentProof = publicConversionDraft("serpent_spear_attack", me.id, materials, { playerId: me.id, hand: handBeforeAction, equipment: equipmentCards(me) }, target.id, "Attack");
+      const serpentProof = publicConversionDraft("serpent_spear_attack", me.id, materials,
+        { playerId: me.id, hand: handBeforeAction, equipment: equipmentCards(me) }, target.id, "Attack", "DISCARD",
+        { kind: "DIRECT_ATTACK", providerId: me.id, semanticActorId: me.id, targetId: target.id });
       const serpentPresentation = serpentProof
-        ? addCardGroupEventWithPublicEffect(log, me.name, materials, "play", target.name, serpentProof, undefined, { playedAs: "attack" })
+        ? addCardGroupEventWithPublicEffect(log, me.name, materials, "play", target.name, serpentProof, undefined, { actorId: me.id, playedAs: "attack" })
         : { log: addCardGroupEvent(log, me.name, materials, "play", true, target.name), eventId: undefined };
       log = addLog(serpentPresentation.log, `${me.name} discards 2 cards with Serpent Spear to form an Attack on ${target.name}.`);
       const { value: declaration, createdEnvelope } = attackDeclaration(me, target, "serpent_spear", materials, phaseAfterAttack(me), undefined, undefined, serpentPresentation.eventId);
@@ -11652,7 +11707,7 @@ export async function POST(request: Request) {
         const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
-        hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name); log = addLog(log, `${me.name} plays Borrowed Sword on ${target.name}.`);
+        hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name, "play", true, { actorId: me.id }); log = addLog(log, `${me.name} plays Borrowed Sword on ${target.name}.`);
         await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "borrowed_sword", targetId: target.id }, hand, deck, discard, log);
       } else if (card.kind === "Dismantle" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
