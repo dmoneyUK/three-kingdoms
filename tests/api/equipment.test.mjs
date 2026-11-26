@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
 import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { latestSerpentSpearGroupResponseEventId } from "../../game/serpent-spear-group-response-routing.ts";
 import { selectPublicH4AnnouncementOwner } from "../../app/public-presentation-routing.ts";
 import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts } from "../../app/public-discard-settlement.ts";
 import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
@@ -680,16 +681,23 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
     "the shared viewer snapshot accepts the same Duel response proof and causal frame");
 
   setEquipment(alicePlayer.id, { weapon: card("SerpentSpear", "invasion") });
-  setHand(hostPlayer.id, [card("BarbarianInvasion", "serpent")], 4, 4); setHand(alicePlayer.id, [card("Peach", "invasion-one"), card("Dodge", "invasion-two")], 4, 4); setHand(bobPlayer.id, [], 4, 4); setHand(carolPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
+  setEquipment(bobPlayer.id, { weapon: card("SerpentSpear", "invasion-bob") });
+  setHand(hostPlayer.id, [card("BarbarianInvasion", "serpent")], 4, 4); setHand(alicePlayer.id, [card("Peach", "invasion-one"), card("Dodge", "invasion-two")], 4, 4); setHand(bobPlayer.id, [card("Peach", "invasion-bob-one"), card("Dodge", "invasion-bob-two")], 4, 4); setHand(carolPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
   const invasionStarted = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "barbarianinvasion-serpent" });
   assert.equal(invasionStarted.status, 200);
   const invasionGroup = invasionStarted.data.room.presentationV2.groupResolution;
   assert.equal(invasionGroup?.cardKind, "BarbarianInvasion");
   assert.ok(invasionGroup?.rootCardProof, "the response is tied to the real ordered group root");
   const invasionAnswer = await requestAndSettle("respond", { code: game.code, token: alice.token, cardIds: ["peach-invasion-one", "dodge-invasion-two"] });
-  assert.equal(invasionAnswer.status, 200); assert.equal(invasionAnswer.data.room.pendingGroup, null); assert.equal(invasionAnswer.data.room.players.find(p => p.id === bobPlayer.id).hp, 3); assert.equal(invasionAnswer.data.room.players.find(p => p.id === carolPlayer.id).hp, 3); assert.ok(invasionAnswer.data.room.timeline.some((event) => event.type === "cards" && event.action === "play" && event.player === "Alice"));
-  const invasionRoot = invasionAnswer.data.room.timeline.find((event) => event.type === "card" && event.action === "play" && event.card.kind === "BarbarianInvasion");
-  const invasionSpearEvent = invasionAnswer.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "peach-invasion-one"));
+  assert.equal(invasionAnswer.status, 200); assert.equal(invasionAnswer.data.room.currentAction.actorId, bobPlayer.id,
+    "the next real group participant keeps their own legal response options");
+  const bobInvasionAnswer = await requestAndSettle("respond", { code: game.code, token: bob.token, providerId: "serpent_spear_attack", cardIds: ["peach-invasion-bob-one", "dodge-invasion-bob-two"] });
+  assert.equal(bobInvasionAnswer.status, 200); assert.equal(bobInvasionAnswer.data.room.pendingGroup, null);
+  assert.equal(bobInvasionAnswer.data.room.players.find(p => p.id === bobPlayer.id).hp, 4);
+  assert.equal(bobInvasionAnswer.data.room.players.find(p => p.id === carolPlayer.id).hp, 3);
+  assert.ok(bobInvasionAnswer.data.room.timeline.some((event) => event.type === "cards" && event.action === "play" && event.player === "Alice"));
+  const invasionRoot = bobInvasionAnswer.data.room.timeline.find((event) => event.type === "card" && event.action === "play" && event.card.kind === "BarbarianInvasion");
+  const invasionSpearEvent = bobInvasionAnswer.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "peach-invasion-one"));
   const groupContext = invasionSpearEvent.publicCardEffects?.[0]?.attackContext;
   assert.equal(groupContext?.kind, "GROUP_RESPONSE");
   assert.equal(groupContext.providerId, alicePlayer.id);
@@ -708,6 +716,16 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
   assert.equal(groupSnapshotEffect?.interactionId, groupContext.interactionId);
   assert.equal(groupSnapshotEffect?.rootFrameId, groupContext.rootFrameId,
     "the shared viewer snapshot accepts the ordered group participants and exact causal frame");
+  const bobInvasionSpearEvent = bobInvasionAnswer.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "peach-invasion-bob-one"));
+  assert.equal(bobInvasionSpearEvent.publicCardEffects?.[0]?.attackContext?.participantOrdinal, 2,
+    "the second committed Serpent Spear response retains its true group seat ordinal");
+  assert.equal(latestSerpentSpearGroupResponseEventId(
+    bobInvasionAnswer.data.room.timeline,
+    bobInvasionAnswer.data.room.presentationSnapshot.publicCardEffects,
+    { interactionId: invasionGroup.interactionId, groupFrameId: invasionGroup.groupFrameId,
+      rootEventId: invasionRoot.id, rootResolutionId: invasionRoot.resolutionId, participantIds: invasionGroup.targetIds },
+  ), bobInvasionSpearEvent.id,
+  "multiple genuine Serpent Spear responses resolve to the latest committed public frame owner");
 
   setEquipment(hostPlayer.id, { weapon: card("SerpentSpear", "trigrams-spear") });
   setEquipment(alicePlayer.id, { armor: card("EightTrigrams", "trigrams-spear-armor") });

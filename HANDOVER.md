@@ -1,13 +1,11 @@
 # HANDOVER
 
-Latest verified delivery: §10.82-A, 739ae7dbb7b2ab89fd8fac5c5aee5da314891f5f. Exact-SHA Actions 45828075993 passed API, lint/fast, browser startup smoke, D1 migration, Worker deployment and production smoke. Worker version: adbc8338-17c2-4f0f-b896-810683a3471f. §10.82-A Owner iPhone review remains pending.
+Latest verified delivery: §10.82-B, exact SHA `6b33702fab02b21d9fe461510c7d692728d28924`. Actions `45833275870` attempt 2 passed API, lint/fast, browser startup smoke, D1 migration, Worker deployment and production smoke. Worker version: `ee40f05d-073b-4dbd-a749-7601ee8db435`. Focused local tests passed 30/30. The local Stauchness browser scenario could not seed because port 3137 refused the connection; no retry. Owner iPhone review remains pending.
 
-Design reviewed: docs/UX2-refine.md, revision 2026-11-26 13:31 UTC.
+Design reviewed: `docs/UX2-refine.md`, revision 2026-11-26 14:31 UTC.
 
-## Current bounded task — §10.82-B shared discard display and lifecycle
+## Current bounded task — §10.83 Serpent Spear public conversion frame
 
-Status: Commit `9168942826aba922dfad1fbdbfc1fce9da52469a` is pushed. Actions `45832150355`: browser startup smoke and API tests passed; lint failed with `RangeError` in `react-hooks/rules-of-hooks`, so deployment was skipped. The local follow-up moves the new discard projection and material-owner checks outside the large `GameRoom` component; exact-SHA CI/deployment still required.
+Implement the approved shared proof, H4, two-card frame and event routing for all server-proven legal Serpent Spear Attack contexts. The correction selects the latest valid Barbarian Invasion Serpent Spear response from unique persisted `publicSequence`, rather than suppressing the entire frame when the interaction contains multiple conversions. Preserve physical card identity, provider/semantic actor distinction, Duel sequence history, current rules and privacy.
 
-Validation: focused routing/settlement/effect-frame tests passed 30/30; `git diff --check` passed. The local Stauchness scenario did not seed because `127.0.0.1:3137` refused the connection; no retry under the five-minute UI cap. Local ESLint also stack-overflows on the §10.82-A baseline under Node 26, so it cannot verify the CI-only lint failure.
-
-Next boundary: Push the bounded lint correction, verify its exact-SHA Actions/deployment, then continue §10.83. Owner iPhone acceptance remains pending.
+Validation: focused presentation/routing/layout tests passed 64/64; `git diff --check` passed. One browser and one targeted API scenario failed before setup because `127.0.0.1:3137` refused connections; neither was retried. §10.83 exact-SHA CI, deployment and production smoke are not yet run. Next: deliver this bounded scope in one commit, push, and verify the exact SHA. Owner iPhone acceptance remains pending.

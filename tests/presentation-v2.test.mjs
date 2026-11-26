@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { presentationBarrierState, projectPresentationV2 } from "../game/presentation-v2.ts";
+import { latestSerpentSpearGroupResponseEventId } from "../game/serpent-spear-group-response-routing.ts";
 import { attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate } from "../game/attack-dodge-response-selection.ts";
 
 const card = (id, kind = "Attack") => ({ id, kind });
@@ -17,6 +18,65 @@ function point(label, pending, currentAction, timeline, expected) {
 
 const attack = { kind: "response", actorId: "B", requirement: { kind: "dodge", sourceId: "A", targetId: "B" }, reason: "Respond to Attack", resolutionId: "r1", readyAfterEventId: "attack-event", continuation: { kind: "attack", sourceId: "A", targetId: "B", sequenceStartCardId: "attack-card", resumePhase: "play", resolutionId: "r1" } };
 const damage = { kind: "trigger", actorId: "B", event: "damage_about_to_apply", reason: "Damage may be modified", resolutionId: "r1", readyAfterEventId: "damage-event", continuation: { kind: "damage_about_to_apply_event", sourceId: "A", targetId: "B", sequenceStartCardId: "attack-card", resumePhase: "play", resolutionId: "r1" } };
+
+const spearGroupIdentity = {
+  interactionId: "group-interaction",
+  groupFrameId: "group-frame",
+  rootEventId: "barbarian-root",
+  rootResolutionId: "group-resolution",
+  participantIds: ["participant-1", "participant-2"],
+};
+const spearGroupRoot = {
+  id: spearGroupIdentity.rootEventId, type: "card", action: "play", presentation: true,
+  card: { id: "barbarian-card", kind: "BarbarianInvasion" }, resolutionId: spearGroupIdentity.rootResolutionId,
+  publicSequence: 40,
+};
+function spearGroupResponse(eventId, sequence, participantId, ordinal, suffix = eventId) {
+  const cards = [
+    { id: `${suffix}-material-1`, kind: "Peach", suit: "♥", rank: "8" },
+    { id: `${suffix}-material-2`, kind: "Dodge", suit: "♣", rank: "Q" },
+  ];
+  const materials = cards.map((card) => ({ cardId: card.id, ownerId: `provider-${ordinal}`, fromZone: "HAND", toZone: "DISCARD" }));
+  return {
+    event: { id: eventId, type: "cards", action: "play", playedAs: "attack", presentation: true,
+      actorId: `provider-${ordinal}`, player: `Provider ${ordinal}`, target: `Participant ${ordinal}`,
+      resolutionId: `response-${ordinal}`, publicSequence: sequence, cards },
+    effect: {
+      semantics: "PROVEN", effectId: "serpent_spear_attack", effectClass: "CONVERSION", eventId,
+      activationOwnerId: `provider-${ordinal}`, materials, cards, rootEventId: spearGroupIdentity.rootEventId,
+      rootResolutionId: spearGroupIdentity.rootResolutionId, interactionId: spearGroupIdentity.interactionId,
+      rootFrameId: spearGroupIdentity.groupFrameId, targetId: participantId, resultingCardKind: "Attack", outcome: "AS_ATTACK",
+      attackContext: { kind: "GROUP_RESPONSE", providerId: `provider-${ordinal}`, semanticActorId: participantId,
+        groupCardKind: "BarbarianInvasion", rootEventId: spearGroupIdentity.rootEventId,
+        rootResolutionId: spearGroupIdentity.rootResolutionId, interactionId: spearGroupIdentity.interactionId,
+        rootFrameId: spearGroupIdentity.groupFrameId, participantIds: spearGroupIdentity.participantIds,
+        participantOrdinal: ordinal },
+    },
+  };
+}
+
+test("group Serpent Spear routing selects the latest exact committed response by public sequence", () => {
+  const first = spearGroupResponse("spear-response-1", 44, "participant-1", 1);
+  const second = spearGroupResponse("spear-response-2", 48, "participant-2", 2);
+  assert.equal(latestSerpentSpearGroupResponseEventId(
+    [spearGroupRoot, second.event, first.event], [second.effect, first.effect], spearGroupIdentity,
+  ), second.event.id, "participant order is taken from the server sequence, not array order");
+
+  const tied = spearGroupResponse("spear-response-tied", 48, "participant-1", 1);
+  assert.equal(latestSerpentSpearGroupResponseEventId(
+    [spearGroupRoot, second.event, tied.event], [second.effect, tied.effect], spearGroupIdentity,
+  ), null, "ambiguous public ordering must fail closed");
+
+  const missingSequence = { ...first.event, publicSequence: undefined };
+  assert.equal(latestSerpentSpearGroupResponseEventId(
+    [spearGroupRoot, missingSequence], [first.effect], spearGroupIdentity,
+  ), null, "an event without persisted public ordering cannot own the frame");
+
+  const wrongRoot = { ...second.effect, rootEventId: "unrelated-root" };
+  assert.equal(latestSerpentSpearGroupResponseEventId(
+    [spearGroupRoot, second.event], [wrongRoot], spearGroupIdentity,
+  ), null, "a conversion from another causal root cannot join this group display");
+});
 
 const sequentialDodgeCandidate = (index) => ({ proof: {
   semantics: "PROVEN",

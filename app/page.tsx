@@ -60,6 +60,7 @@ import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate } fro
 import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
 import { isM2EquipmentTransitionEvent, routePublicEquipmentTransition } from "./public-equipment-transition";
 import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEvent, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, publicJudgementTransitionUsesCompletedPriorReveal, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition, type PublicCardRevealCompletion, type PublicJudgementRevealRoute } from "./public-judgement-transition";
+import { latestSerpentSpearGroupResponseEventId } from "../game/serpent-spear-group-response-routing";
 import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
 import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts, publicDiscardSettlementForMaterials } from "./public-discard-settlement";
 import { layoutPublicResultCards, type PublicResultObstacle } from "./public-result-layout";
@@ -8790,7 +8791,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       && effect.attackContext.rootFrameId === group.groupFrameId
       && effect.attackContext.participantIds.length === group.targetIds.length
       && effect.attackContext.participantIds.every((id, index) => id === group.targetIds[index])) ?? [];
-    const candidate = candidates.length === 1 ? candidates[0] : null;
+    const latestResponseEventId = latestSerpentSpearGroupResponseEventId(
+      room.timeline,
+      room.presentationSnapshot?.publicCardEffects ?? [],
+      {
+        interactionId: group.interactionId,
+        groupFrameId: group.groupFrameId,
+        rootEventId: group.rootCardProof.rootEventId,
+        rootResolutionId: group.rootCardProof.rootEventResolutionId,
+        participantIds: group.targetIds,
+      },
+    );
+    const candidate = candidates.find((effect) => effect.eventId === latestResponseEventId) ?? null;
     const proof = candidate
       ? verifiedSerpentSpearAttackFrameForEvent(room.timeline, room.presentationSnapshot?.publicCardEffects ?? [], room.players, candidate.eventId)
       : null;
