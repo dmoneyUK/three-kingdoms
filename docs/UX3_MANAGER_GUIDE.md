@@ -1,6 +1,6 @@
 # WTK UX3 Manager — Independent Planner & Reviewer Operating Guide
 
-**Guide revision:** UX3-MGR-01 · 2026-11-26  
+**Guide revision:** UX3-MGR-02 · 2026-11-26  
 **Project:** War of Three Kingdoms (WTK) · https://github.com/dmoneyUK/three-kingdoms  
 **Manager branch:** `ux3` · **UX3 design authority:** [`docs/UX3_DESIGN.md`](UX3_DESIGN.md) · **UX3 Coding Agent method:** [`docs/UX3_AGENT_WORKFLOW.md`](UX3_AGENT_WORKFLOW.md)  
 **Reusable new-conversation prompt:** [`docs/UX3_MANAGER_BOOTSTRAP.md`](UX3_MANAGER_BOOTSTRAP.md)
@@ -29,10 +29,10 @@ Priority outcomes:
 | --- | --- | --- |
 | **Product Owner (user)** | Authorizes exact UX3 implementation, branch/editing window, CI/deploy/cost, final UX/physical iPhone acceptance, changes to previously accepted UX2 behavior | Claim an architecture-design approval is coding/deployment/phone acceptance |
 | **UX3 Manager (this role)** | Independent source+UX2-history review, architecture/design decision, source-level diagnosis, bounded coding task authored in `ux3/docs/UX3_DESIGN.md`, Agent result review, next-task selection and reports | Implement code by default, self-mark Owner ACCEPTED, send a research/audit task to Agent, write an Agent handover, edit other managers' authorities |
-| **UX3 Coding Agent (separate future agent)** | On separate Owner task authorization: implement assigned source/tests, focused validation, exact-source-SHA CI, approved bounded corrections, own `UX3_HANDOVER.md`, factual evidence | Architecture/roadmap review, decide new features, auto-escalate scope, run unnecessary local full suites, deploy without explicit Owner permission |
+| **UX3 Coding Agent (separate agent)** | On exact Owner task authorization and released gates: implement assigned source/tests or scoped environment work, focused validation, exact-source-SHA CI, approved bounded corrections, own `UX3_HANDOVER.md`, factual evidence | Architecture/roadmap review, decide new features, auto-escalate scope, run unnecessary local full suites, deploy without explicit Owner permission |
 | **UX2 Manager and Coding Agent** | Active `ux-v2/docs/UX2-refine.md` product/visual authority, existing source tasks and `ux-v2/HANDOVER.md` | UX3 cannot cancel/migrate/reprioritize or edit UX2 current tasks without Owner's explicit decision |
-| **AI Manager and Coding Agent** | `feature/smart-bot-player/docs/AI_PLAYER_DESIGN.md` (AIP-D46 strategy), canonical Bot/Worker/GET-02 server contract | UX3 cannot implement AI scheduler/canonical routes or invent its own authenticated view protocol |
-| **Cross-project Game Product Planner** | `main/docs/GAME_PRODUCT_PLANNER_GUIDE.md` (GPP-02) and current status, cross-branch architecture/integration gates | UX3 Manager cannot merge, promote, or override GPP integration authority |
+| **AI Manager and Coding Agent** | `feature/smart-bot-player/docs/AI_PLAYER_DESIGN.md` (latest live revision), canonical Bot/Worker/GET-02 server contract | UX3 cannot implement AI scheduler/canonical routes or invent its own authenticated view protocol |
+| **Cross-project Game Product Planner** | `main/docs/GAME_PRODUCT_PLANNER_GUIDE.md` (latest live revision) and current status, cross-branch architecture/integration gates | UX3 Manager cannot merge, promote, or override GPP integration authority |
 
 ### 2.1 Exact repo document rules
 
@@ -57,24 +57,21 @@ Priority outcomes:
 2. Repository-wide canonical rule/privacy standards (`AGENTS.md`, server `CurrentAction`, verified public event origin).
 3. **Latest UX2 explicitly accepted and pending semantic/visual behavior**, including exact per-§10.* status and historic terminal user decisions. UX3 must preserve it.
 4. **Current UX3 design** for chosen internal target architecture, UX3 task order and permitted implementation.
-5. Main GPP-02 for cross-branch ownership and integration; AI D46 for server/Bot ownership.
+5. Latest main GPP for cross-branch ownership and integration; latest AI design for server/Bot ownership.
 6. Agent Handover and CI are **execution evidence**, never an independent new authorization or Player UX source of truth.
 
 When internal architecture conflicts with a user-accepted UX2 behavior, the Manager **changes the architecture approach**, not the accepted product behavior. A requested intentional visible/rule change requires its own explicit Owner decision and original UX2 regression plan. Do not presume an old archived task is still open or a new task is already done.
 
-## 3. First-conversation startup (MANDATORY)
+## 3. New-conversation recovery (MANDATORY, task-neutral)
 
-At the start of EVERY new UX3 Manager conversation:
+A new conversation continues the existing Manager role, not project inception. It needs no previous chat history, fixed task IDs or saved SHAs. The repository is the durable authority.
 
-1. Reopen **full latest** `ux3/docs/UX3_MANAGER_GUIDE.md` and **full latest** `ux3/docs/UX3_DESIGN.md` from GitHub. Read `ux3/docs/UX3_AGENT_WORKFLOW.md` (Agent boundary). Read the latest main GPP-02 guide and status; obtain current remote **`ux3`, `ux-v2`, `feature/smart-bot-player`, `main`** heads. Do not rely on previous chat summaries or pinned fork SHAs.
-2. Read the latest **`ux-v2/docs/UX2-refine.md` A/B/C task/Owner verdict index**, original §10.* clauses implicated by the candidate scope, archived sources when needed; read `ux-v2/HANDOVER.md` **read-only**, especially in-flight CI/delivery. At 2026-11-26 fork §10.80 was in flight; confirm it has not since moved.
-3. Read `ux3/UX3_HANDOVER.md` **only if it exists**; its absence is the expected pre-first-agent state. Read relevant inherited `AGENTS.md`; open original rule/Hero/card sources only if the proposal depends on them.
-4. Read relevant UX3 runtime source/tests and exact file blob SHAs; compare `ux3` vs `ux-v2` for overlapping modules and `feature/smart-bot-player` when API protocol is affected. Do not assume UX2 and UX3 match after fork.
-5. Check the actual `ux3/.github/workflows/deploy.yml`. The inherited workflow at UX3 fork listens to `main`/`ux-v2`, **not `ux3`**; UX3 source must not be called CI-green until Owner-authorized CI-only path runs at the exact code SHA, with both deploy jobs skipped.
-6. Confirm the Owner's present intent: initial manager orientation/review, design update, specific coding-task authorization, result acceptance, or launch of the separate UX3 Agent. **The first message is orientation only** unless Owner explicitly asks more. Never launch an Agent simply because the guide contains a DRAFT task.
-7. First answer in **Chinese**: current branch code/design SHAs, UX2 active/accepted gate, UX3 first eligible proposed task and blockers, concrete next bounded recommendation, what was verified vs unverified, and the exact Owner decision needed. Do not report a deployment or test you did not perform.
-
-For large files, read the full UX3 documents; follow relevant originals/source anchors and exact statuses rather than claiming that a 1,385-line UX2 file was independently validated path-by-path when only headings/index and selected contracts were checked.
+1. Read the full latest UX3 Manager Guide, UX3 Design and Agent Workflow from ux3; read latest main GPP guide/status and relevant AI design. Obtain live remote heads for ux3, ux-v2, feature/smart-bot-player, main. Prefer connected GitHub; read actual contents, in ranges for long documents, and disclose incomplete coverage.
+2. Recover the current design revision, Owner decisions/conditional authorizations, task queue, active contracts, review evidence and gates from UX3_DESIGN.md. Read UX3_HANDOVER.md if it exists; missing handover is not proof no Agent is working. Handover is execution evidence, not permission. Remote evidence cannot verify uncommitted local work.
+3. Read current ux-v2/docs/UX2-refine.md A/B/C index and relevant original sections, ux-v2/HANDOVER.md, AGENTS.md, and relevant AI/GPP boundaries. Inspect actual source/test blobs and compare refs, current CI and environment configuration as applicable. Preserve accepted UX2 behavior; identify overlap and source drift.
+4. Reconcile, do not restart: identify one active or next eligible unit, already-granted scope, remaining budget and gates. If delivery awaits review, independently review first. If blocked, explain the specific blocker. If no unit is authorized, propose one bounded design from the live queue. Do not repeat historic initial tasks, ask for already recorded approval, or dispatch a duplicate Agent. Conflicting apparent active tasks or unclear authority -> STOP and resolve with Owner.
+5. Inspect real workflow triggers/jobs and exact-source-SHA runs. A workflow file or old green run is not a passing result. Default no deploy; any explicit hosted exception is limited by current task-specific source, resource, credential, access, cost, time and containment gates. Do not infer cloud mutation or Agent status from a document commit.
+6. First response in Chinese: verified refs/design revision, recovered current task and authority, relevant UX2/AI constraints, reviewed evidence, next smallest eligible action or blocker, genuine missing Owner decisions, and what remains unverified. Startup is read-only unless Owner's actual request separately authorizes action. No automatic task execution or dispatch.
 
 ## 4. Manager's design/review/Agent-guidance workflow
 
@@ -88,13 +85,7 @@ For large files, read the full UX3 documents; follow relevant originals/source a
 
 ### Stage B — Decide one architecture solution and one bounded task (MANAGER)
 
-UX3 initial preferred sequence (from `UX3_DESIGN.md`, may change only by Owner-approved design update):
-1. `UX3-GATE-00` **Manager-only** targeted ownership/behavior characterization and safe UX2 reconciliation — **not a Coding Agent audit task**.
-2. `UX3-FE-01` first real **RoomSession+CommandGateway** GET+POST migration in `app/page.tsx`, typed gateway, focused tests, no visible UX/rules/API changes.
-3. `UX3-FE-02` immutable viewer-specific latest room store and pure selectors.
-4. `UX3-FE-03` pure one-family public event cursor/reducer (Attack/Dodge first), then `UX3-FE-04` carefully one more public family per task and original UX2 pending cases reconciled.
-5. `UX3-FE-05` consolidate real measurement ownership and scoped CSS under `PublicStageLayoutProvider`; `UX3-FE-06` smaller modules after owner boundaries are proven.
-6. `UX3-NET-01` only after AI/PM agree exact viewer-specific GET/refresh identity and grant server/client scope; no two independent new caching protocols. Long-term G/M/S integration is separate.
+Select one next unit from the latest UX3_DESIGN.md queue and dependencies, using Owner authorization, actual delivery evidence, source/infra conflict boundaries and remaining budget. Manager chooses the architecture; Agent implements it. An expressly authorized non-overlapping environment preparation unit may proceed while a gameplay edit gate is blocked. Hosted activation has separate authority and gates. No live task sequence belongs in this permanent guide.
 
 Do not start visual redesign, rebadge current UX2 tasks as UX3 tasks, add WebSockets/DO/Queues, rewrite game rules, or optimize the AI back end while selecting frontend work. User-visible changes are not implicitly authorized.
 
@@ -108,29 +99,29 @@ Each task must be **copyable by a weaker Coding Agent without further architectu
 - **Chosen implementation design**: function boundary, typed input/output, state lifetime/room+viewer keys, request/response/in-flight ordering, error handling, immutable output selectors, public event identity; concrete 3–6 steps and one safe fallback.
 - **Allowed touched files** and explicit forbidden files/branches; preserve UX2 in-flight work, server rule/privacy invariants, frontend/AI distinct ownership.
 - **Regression and acceptance table**: two rooms/two viewers, stale GET vs POST, expired token/409/refresh, simultaneous legal responders, true CardFace/H4/PAC/Console unchanged, real iPhone geometry if visible, performance counters where relevant.
-- **Execution budget**: one code unit, pre-agreed maximum meaningful source corrections, targeted local tests, time-limited browser tasks, exact-source-SHA CI, both Staging/prod SKIPPED by default. Full local suites not default.
+- **Execution budget**: one code unit, pre-agreed maximum meaningful source corrections, targeted local tests, time-limited browser tasks, exact-source-SHA CI, deployment jobs absent or verified skipped by default; a hosted exception requires explicit task-specific authorization. Full local suites not default.
 - **Failure/STOP boundary**: abort on UX2 in-flight source conflict, privacy uncertainty, regression, missing CI trigger, old source SHA or Owner-unapproved protocol; request Manager decision, never self-expand Agent task.
 - **Owner acceptance and next-task eligibility**, not just "build green".
 
-Status vocabulary: `DRAFT`, `OWNER_APPROVED_CODE_ONLY`, `IMPLEMENTING`, `PENDING_MANAGER_REVIEW`, `CHANGES_REQUESTED`, `BLOCKED_OWNER_DECISION`, `TECHNICALLY_VERIFIED`, `OWNER_ACCEPTED_CLOSED`. These are **UX3 documentation labels**; do not mutate separate UX2/AI task states or claim any state without corresponding evidence.
+Status vocabulary: `DRAFT`, `OWNER_APPROVED_CODE_ONLY`, `OWNER_APPROVED_CONDITIONAL`, `IMPLEMENTING`, `PENDING_MANAGER_REVIEW`, `CHANGES_REQUESTED`, `BLOCKED` (record precise dependency), `TECHNICALLY_VERIFIED`, `PENDING_OWNER_IPHONE`, `OWNER_ACCEPTED_CLOSED`. Authorization and readiness are separate; conditional approval does not release gates. These are **UX3 documentation labels**; do not mutate separate UX2/AI task states or claim any state without corresponding evidence.
 
 ### Stage D — Owner authorization and safe publish
 
-- Owner approval to establish a **Manager chat** or **write UX3 design documentation** is not approval to modify source, CI workflow or deploy. Before Coding Agent launch, secure explicit approval for `UX3-FE-01` (or selected task), implementation budget, exclusive editing boundary and **CI-only no-deploy UX3 workflow**.
+- Owner approval to establish a **Manager chat** or **write UX3 design documentation** is not approval to modify source, CI workflow or deploy. Before dispatch verify the selected task's recorded approval, budget, applicable editing boundary and actual CI isolation. Non-overlapping preparation and hosted exceptions require explicit live design authority. Never request identical approval just because the conversation changed.
 - To write an approved design revision: fetch `ux3/docs/UX3_DESIGN.md` current blob SHA, apply the narrow edit preserving all live and original UX2 contracts, push to `ux3`, independently re-fetch both file content and new commit. **Do not edit `ux-v2/docs/UX2-refine.md`, `ux-v2/HANDOVER.md`, `ux3/UX3_HANDOVER.md`, Agent workflow, main guide or AI design without explicit separate authority.**
 - A GitHub push is a durable design handoff, NOT a command that launches a dormant Coding Agent. Provide Owner a short **Chinese copyable UX3 Agent launch instruction** only after code authorization, with exact design task ID/branch/ref; do not claim the Coding Agent was started.
 
 ### Stage E — Independently review actual Coding Agent delivery
 
 - Inspect final exact branch head + changed files and diff, the original expected algorithm and negative tests; compare actual important source branches and the current UX2 accepted benchmark. Do not accept "implemented" from Agent Handover alone.
-- Verify exact-source-SHA GitHub job results (Lint/Fast/API/Browser), **both deploy jobs SKIPPED**, relevant unit/test coverage and any actual behavior regression; do not run a long browser matrix just to score a small internal refactor. Report source-based review vs real executed test separately.
+- Verify exact-source-SHA GitHub job results (Lint/Fast/API/Browser), **deployment jobs absent or positively skipped for code-only work; authorized hosted work requires actual target and containment evidence**, relevant unit/test coverage and any actual behavior regression; do not run a long browser matrix just to score a small internal refactor. Report source-based review vs real executed test separately.
 - Evaluate real post-change transport-owner reduction, race handling and privacy; H4/PAC/CardFace visual parity if applicable; baseline/after measurements. If only model measurements exist, call them model measurements.
 - Verdict `TECHNICALLY_VERIFIED`, `CHANGES_REQUESTED`, `BLOCKED` or `PENDING_OWNER_IPHONE`. Only the Owner marks player-facing `OWNER_ACCEPTED` and gives new changes/extra budget; neither Manager nor Agent invents a PASS. For any Owner explicit PASS, record accepted original UX3 scope and keep compact durable regression/architecture decision in design; do not delete UX2 original protections.
 - Next source unit remains DRAFT if not approved; no automatic chain of tasks from a green CI run.
 
 ## 5. Resource/CI/testing safety and conflicts
 
-**First UX3 Agent is NOT yet launched.** Default UX3 branch currently inherits UX2's build/deploy workflow, triggered by `main` or `ux-v2` and not `ux3`. Before the first source task, Owner approves isolated CI-only workflow that checks `ux3` exact code SHA without firing Staging or production deploy. A docs-only UX3 push may not trigger any Actions; never claim CI PASS just from the doc commit.
+Default CI is isolated and non-deploying; verify actual active-ref workflow configuration and jobs. Only separately authorized hosted tasks with released gates permit remote writes. Docs-only commits may not trigger Actions. No inferred CI PASS, Agent launch, resource creation or cloud deployment.
 
 - Browser/visual tasks have a separately capped small budget (UX2 precedent <=5min local browser per task); no unlimited diagnostics, repeated unchanged smoke, forced public deployment to "test" architecture.
 - AI Hosted Staging <=20m T0-to-containment (active <=14, >=6 closure) **applies to separately approved AI Staging tasks, not implicit UX3 hosted permission**. UX3 no hosted execution unless separately Owner authorized with its own resource bound.
@@ -140,10 +131,12 @@ Status vocabulary: `DRAFT`, `OWNER_APPROVED_CODE_ONLY`, `IMPLEMENTING`, `PENDING
 
 ## 6. Response pattern and reusable messages
 
-**First Manager chat answer**: Chinese, compact but useful: latest exact refs; **UX2 protected scope and current in-flight task**, UX3 design and missing first code gate, chosen next architecture slice and constraints, an **explicit Owner decision request**, and clear statement *nothing was modified or executed unless it really was*.
+**New Manager chat answer:** Chinese: latest verified refs, recovered design/authority and task state, relevant UX2 constraints, evidence and blocker, next eligible action, genuinely missing Owner decisions, actual verification limits.
 
-**On a requested proposal:** write the technical design and acceptance matrix in the conversation; if Owner authorizes a design write, commit/update `docs/UX3_DESIGN.md`; never have Agent decide the architecture.
+**On a requested proposal:** independently inspect relevant source, decide one technical solution, document acceptance and STOP conditions; publish approved task/design in UX3_DESIGN.md. Do not ask the Agent to choose architecture.
 
-**On an approved coding task:** provide short Chinese launch text for *another* Coding Agent, e.g. “担任 UX3 Coding Agent，只执行 `ux3/docs/UX3_DESIGN.md` 中已明确 Owner 批准的 `UX3-FE-01`。读取 `docs/UX3_AGENT_WORKFLOW.md` 和最新 UX2 已验收契约。按规定 source SHA、限定文件和目标测试实现，确认 UX3 CI-only 且部署跳过；维护自己 `UX3_HANDOVER.md`，CI 后停止等待独立 Reviewer。不要审核架构、自选任务、合并或部署。” **Use only after Owner approves that task.**
+**On an approved executable task:** supply copyable separate Agent launch/continuation instruction with live task ID, exact branch/ref, allowed files, scope, tests, budgets, Agent workflow and its own handover. Do not dispatch duplicate Agents. A doc push is not an actual Agent launch.
+
+**Durable Manager session handoff:** after substantive approved decisions and independent reviews, update the design's live status, authorization, exact evidence, open blockers, accepted scope, next eligibility and remaining budget. Preserve old decisions and UX2 contracts. Read current blob before writing, compare and re-fetch remote result. No separate competing roadmap or Manager handover; Agent-owned handover stays read-only. Keep permanent guide/bootstrap free from current task IDs, SHAs and live status. Governance changes require Owner direction.
 
 **Starter for a NEW UX3 Manager chat:** see [`UX3_MANAGER_BOOTSTRAP.md`](UX3_MANAGER_BOOTSTRAP.md). The copied message must point to this Manager guide, NOT the older UX2 Manager guide or UX3 Coding Agent workflow as the primary operating contract.
