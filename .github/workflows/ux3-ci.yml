@@ -1,0 +1,77 @@
+name: UX3 CI only
+
+on:
+  push:
+    branches: [ux3]
+    paths-ignore:
+      - "**/*.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ux3-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NEXT_PUBLIC_BUILD_SHA: ${{ github.sha }}
+  WRANGLER_SEND_METRICS: "false"
+
+# Owner-approved isolated validation. No deployment jobs, cloud credentials,
+# remote migrations, production smoke, or pull_request triggers.
+jobs:
+  lint-fast:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/ux3'
+    name: Lint and fast tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+          cache: "npm"
+      - run: npm ci
+      - name: Run ESLint with full React Compiler rule coverage
+        run: npm run lint
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+      - run: npm run build
+      - run: npm run test:fast
+
+  api:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/ux3'
+    name: API tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:api
+
+  browser-smoke:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/ux3'
+    name: Browser smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+          cache: "npm"
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run test:browser:smoke
