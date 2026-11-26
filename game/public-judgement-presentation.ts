@@ -2,6 +2,7 @@ import { judgementResolutionFor, judgementSucceeds, type JudgementPurpose } from
 import { CARD_DEFINITIONS } from "./cards";
 import type { Card, CardKind, CardRank, CardSuit } from "./model";
 import { verifiedPlayerCopy, type VerifiedPlayerCopySegment } from "./verified-player-copy";
+import type { PublicInteractionNarration } from "./public-activity";
 
 export type PublicJudgementStatus = "satisfied" | "unsatisfied";
 export type PublicJudgementContinuationKind = "luoshen" | "delayed" | "attack_targeted" | "response" | "damage_suffered";
@@ -92,6 +93,8 @@ type ProjectedJudgementEffect = {
   outcome?: string;
   rootEventId?: string;
   rootResolutionId?: string;
+  interactionId?: string;
+  rootFrameId?: string;
   materials: readonly { cardId: string; ownerId: string | null; fromZone: string; toZone: string }[];
   cards: readonly { id: string; kind: string; suit: string; rank: string }[];
 };
@@ -234,9 +237,15 @@ function replacementProofFor(input: {
   const actorEvent = input.byEventId.get(input.replacementId);
   const owner = input.players.find((player) => player.id === input.replacementActorId);
   const target = input.players.find((player) => player.id === input.targetId);
+  const originalPresentation = record(input.originalEvent.publicJudgementPresentation);
+  const originalCausal = record(originalPresentation?.causal);
   if (actorEvent !== replacementEvent || !owner?.name || owner.hero !== "simayi" || !target?.name
     || replacementEvent.player !== owner.name || replacementEvent.target !== target.name
-    || input.originalEvent.target !== target.name) return null;
+    || input.originalEvent.target !== target.name
+    || originalCausal && (raw.interactionId !== originalCausal.interactionId
+      || raw.rootFrameId !== originalCausal.frameId
+      || projected.interactionId !== originalCausal.interactionId
+      || projected.rootFrameId !== originalCausal.frameId)) return null;
   return {
     card: replacementCard,
     replacement: {
@@ -298,6 +307,7 @@ export function projectPublicJudgementPresentations(
     if (raw.sourceCard !== undefined && !sourceCard) continue;
     if (!originalCard || !target?.name || originalEvent.player !== target.name || originalEvent.target !== target.name
       || statusFor(raw.purpose as JudgementPurpose, originalCard) !== raw.originalStatus
+      || !nonEmptyString(originalEvent.resolutionId)
       || raw.resolutionId !== undefined && (!nonEmptyString(raw.resolutionId) || originalEvent.resolutionId !== raw.resolutionId)) continue;
     const rawCausal = record(raw.causal);
     const causal = rawCausal && nonEmptyString(rawCausal.interactionId) && nonEmptyString(rawCausal.frameId)
@@ -315,7 +325,10 @@ export function projectPublicJudgementPresentations(
       purpose: raw.purpose as JudgementPurpose,
       continuationKind: raw.continuationKind as PublicJudgementContinuationKind,
       ...(sourceCard ? { sourceCard } : {}),
-      ...(nonEmptyString(raw.resolutionId) ? { resolutionId: raw.resolutionId } : {}),
+      // The durable original event is the server authority for resolution
+      // identity. Older committed records may omit the redundant nested copy;
+      // replacement validation still requires the exact same resolution.
+      resolutionId: nonEmptyString(raw.resolutionId) ? raw.resolutionId : originalEvent.resolutionId as string,
       ...(causal ? { causal } : {}),
       originalCard,
     };
@@ -379,4 +392,93 @@ export function projectPublicJudgementPresentations(
     if (originalFact && replacementFact) projected.push(originalFact, replacementFact);
   }
   return projected.sort((left, right) => left.order - right.order || left.judgementId.localeCompare(right.judgementId));
+}
+
+/**
+ * Select the newest proven Judgement stage that has reached the public event
+ * cursor. This keeps an original reveal visible while a later replacement is
+ * already present in the same poll.
+ */
+export function publicJudgementPresentationAtCursor(
+  presentations: readonly PublicJudgementPresentation[],
+  cursor: { eventId: string; order?: number } | null,
+): PublicJudgementPresentation | null {
+  const candidates = presentations.filter((presentation) => presentation.semantics === "PROVEN"
+    && presentation.visibility === "PUBLIC" && nonEmptyString(presentation.judgementId)
+    && nonEmptyString(presentation.eventId) && Number.isSafeInteger(presentation.order)
+    && (presentation.phase === "ORIGINAL" || presentation.phase === "REPLACEMENT")
+    && (presentation.status === "PROVISIONAL" || presentation.status === "FINAL"));
+  if (cursor) {
+    const exact = candidates.filter((presentation) => presentation.eventId === cursor.eventId);
+    if (exact.length > 1) return null;
+    if (exact.length === 1) return exact[0];
+    if (!Number.isSafeInteger(cursor.order)) return null;
+  }
+  const eligible = cursor
+    ? candidates.filter((presentation) => presentation.order <= (cursor.order ?? -1))
+    : candidates;
+  if (!eligible.length) return null;
+  const ordered = [...eligible].sort((left, right) => left.order - right.order);
+  const latest = ordered.at(-1)!;
+  return ordered.filter((presentation) => presentation.order === latest.order).length === 1 ? latest : null;
+}
+
+/** Adapts canonical server Judgement copy to the existing shared H4 surface. */
+export function publicJudgementNarrationForPresentation(
+  presentation: PublicJudgementPresentation | null,
+): PublicInteractionNarration | null {
+  if (!presentation || presentation.semantics !== "PROVEN" || presentation.visibility !== "PUBLIC"
+    || !presentation.eventId || !presentation.judgementId || !presentation.copy.message.trim()) return null;
+  const actorId = presentation.phase === "REPLACEMENT"
+    ? presentation.replacement?.actorId
+    : presentation.judgingPlayerId;
+  if (!actorId) return null;
+  return {
+    eventId: presentation.eventId,
+    publicSequence: presentation.order,
+    rootEventId: presentation.judgementId,
+    ...(presentation.causal ? {
+      interactionId: presentation.causal.interactionId,
+      rootFrameId: presentation.causal.frameId,
+    } : {}),
+    actorId,
+    headline: presentation.copy.message,
+    headlineSegments: presentation.copy.segments,
+    compactHeadline: presentation.copy.message,
+    accessibleLabel: presentation.copy.message,
+    latestCommittedEventId: presentation.eventId,
+    phase: presentation.status === "PROVISIONAL" ? "WINDOW_OPEN" : "FINAL",
+  };
+}
+
+/** A replacement frame may own H4 only when every physical and causal ID agrees. */
+export function publicJudgementReplacementFrameMatches(input: {
+  presentation: PublicJudgementPresentation | null;
+  actionEventId: string;
+  actionCardId: string;
+  actionActorId: string;
+  actionTargetId: string | null;
+  actionInteractionId?: string;
+  actionRootFrameId?: string;
+  frameEventId: string;
+  frameRootEventId?: string;
+  frameResolutionId?: string;
+  frameEffectId: string;
+  frameEffectClass: string;
+  frameActivationOwnerId: string;
+  frameMaterialCardIds: readonly string[];
+}): boolean {
+  const presentation = input.presentation;
+  const replacement = presentation?.replacement;
+  if (!presentation || presentation.phase !== "REPLACEMENT" || !replacement
+    || presentation.eventId !== input.actionEventId || replacement.eventId !== input.actionEventId
+    || presentation.judgementId !== input.frameRootEventId || presentation.targetId !== input.actionTargetId
+    || replacement.physicalCardId !== input.actionCardId || replacement.actorId !== input.actionActorId
+    || replacement.materialOwnerId !== input.actionActorId || replacement.effectId !== input.frameEffectId
+    || replacement.effectId !== "sima_yi_guicai" || input.frameEffectClass !== "JUDGEMENT"
+    || input.frameEventId !== input.actionEventId || input.frameActivationOwnerId !== input.actionActorId
+    || input.frameMaterialCardIds.length !== 1 || input.frameMaterialCardIds[0] !== input.actionCardId
+    || !presentation.resolutionId || input.frameResolutionId !== presentation.resolutionId) return false;
+  return !presentation.causal || input.actionInteractionId === presentation.causal.interactionId
+    && input.actionRootFrameId === presentation.causal.frameId;
 }

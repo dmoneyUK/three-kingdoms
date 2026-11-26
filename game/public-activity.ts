@@ -287,8 +287,8 @@ export type PublicInteractionNarration = {
   eventId: string;
   publicSequence?: number;
   rootEventId: string;
-  interactionId: string;
-  rootFrameId: string;
+  interactionId?: string;
+  rootFrameId?: string;
   actorId?: string;
   headline: string;
   headlineSegments?: readonly VerifiedPlayerCopySegment[];

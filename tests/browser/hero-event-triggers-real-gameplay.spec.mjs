@@ -424,6 +424,7 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
   try {
     const sima = await openPlayer(page, game, 2);
     const observer = await openPlayer(observerPage, game, 3);
+    await Promise.all([page, observerPage].map((viewerPage) => viewerPage.setViewportSize({ width: 440, height: 894 })));
     const openedAttack = await request.post(`${API}/api/rooms`, {
       data: { action: "play_card", code: game.code, token: game.players[0].token, cardId: attack.id, targetId: game.players[1].id },
     });
@@ -440,10 +441,15 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
     const originalReveal = projected.timeline.find((event) => event.type === "card" && event.card?.id === original.id);
     expect(originalReveal).toMatchObject({ action: "reveal", judgement: true, presentation: true });
     expect(originalReveal.privateToPlayerId).toBeUndefined();
+    const provisionalH4Copy = "TARGET used Eight Trigrams Formation. Judgement: 7♣.";
     const revealEvidence = await Promise.all([page, observerPage].map(async (viewerPage) => {
       const owner = viewerPage.locator(`[data-public-judgement-reveal-event-id="${originalReveal.id}"]`);
       await expect(owner).toBeVisible({ timeout: 12_000 });
       await expect(owner).toHaveCount(1);
+      const h4 = viewerPage.locator(`[data-public-h4-event-id="${originalReveal.id}"]`);
+      await expect(h4).toHaveCount(1);
+      await expect(h4).toContainText(provisionalH4Copy);
+      await expect(h4).not.toContainText(/\b(?:Not )?Match\./);
       const face = owner.locator(".played-card");
       await expect(face).toHaveCount(1);
       const geometry = await viewerPage.evaluate(({ eventId }) => {
@@ -452,8 +458,9 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
         if (!element || !table) return null;
         const face = element.getBoundingClientRect();
         const stage = table.getBoundingClientRect();
-        const h4 = table.querySelector("[data-public-card-announcement='true']");
+        const h4 = table.querySelector(`[data-public-h4-event-id="${eventId}"]`);
         const announcement = h4?.getBoundingClientRect();
+        const h4Copy = h4?.querySelector("b");
         const pac = table.querySelector("[data-public-activity-chip='true']");
         const activity = pac && getComputedStyle(pac).display !== "none" && getComputedStyle(pac).visibility !== "hidden"
           ? pac.getBoundingClientRect() : null;
@@ -469,6 +476,8 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
             expectedY: face.top + face.height / 2 - stage.top,
           },
           h4: announcement ? { top: announcement.top, bottom: announcement.bottom, height: announcement.height } : null,
+          h4Copy: h4Copy?.textContent?.trim() ?? null,
+          h4WhiteSpace: h4Copy ? getComputedStyle(h4Copy).whiteSpace : null,
           pac: activity ? { top: activity.top, bottom: activity.bottom } : null,
           face: { top: face.top, bottom: face.bottom, left: face.left, right: face.right },
           ready: reveal?.dataset.publicRevealPositioned === "true",
@@ -482,6 +491,8 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
       expect(Math.abs(geometry.sharedWaypoint.x - geometry.sharedWaypoint.expectedX)).toBeLessThan(1);
       expect(Math.abs(geometry.sharedWaypoint.y - geometry.sharedWaypoint.expectedY)).toBeLessThan(1);
       expect(geometry.h4, "the committed Judgement reveal keeps its actual H4 anchor").not.toBeNull();
+      expect(geometry.h4Copy).toBe(provisionalH4Copy);
+      expect(geometry.h4WhiteSpace).toBe("pre-line");
       expect(geometry.face.top - geometry.h4.bottom, "the full Judgement face clears H4 by at least 8px").toBeGreaterThanOrEqual(8);
       if (geometry.pac) expect(geometry.pac.top - geometry.face.bottom, "the full Judgement face clears PAC by at least 8px").toBeGreaterThanOrEqual(8);
       return { eventId: originalReveal.id, cardId: originalReveal.card.id, geometry };
@@ -521,11 +532,21 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
     expect(replacementEvent.publicCardEffects).toContainEqual(expect.objectContaining({
       effectId: "sima_yi_guicai", effectClass: "JUDGEMENT", activationOwnerId: sima.id,
       targetId: game.players[1].id, rootEventId: originalEvent.id, rootResolutionId: originalEvent.resolutionId,
+      interactionId: originalEvent.publicJudgementPresentation.causal.interactionId,
+      rootFrameId: originalEvent.publicJudgementPresentation.causal.frameId,
       outcome: "REPLACED_JUDGEMENT",
       materials: [{ cardId: replacement.id, ownerId: sima.id, fromZone: "HAND", toZone: "JUDGEMENT" }],
     }));
-    const projectedEffect = result.room.presentationSnapshot?.publicCardEffects?.find((effect) => effect.eventId === replacementEvent.id);
+    const projectedEffect = result.room.presentationSnapshot?.publicCardEffects?.find((effect) => effect.eventId === replacementEvent.id
+      && effect.effectId === "sima_yi_guicai" && effect.effectClass === "JUDGEMENT");
     expect(projectedEffect).toMatchObject({ eventId: replacementEvent.id, effectId: "sima_yi_guicai", effectClass: "JUDGEMENT" });
+    const replacementJudgement = result.room.presentationSnapshot?.publicJudgementPresentations?.find((fact) => fact.eventId === replacementEvent.id);
+    const expectedReplacementH4 = "TARGET used Eight Trigrams Formation. Judgement: 7♣.\nSIMA YI used Necromancy to replace the Judgement card with 7♥. Match.";
+    expect(replacementJudgement).toMatchObject({
+      judgementId: originalEvent.id, phase: "REPLACEMENT", eventId: replacementEvent.id,
+      replacement: { physicalCardId: replacement.id, actorId: sima.id, materialOwnerId: sima.id },
+      copy: { message: expectedReplacementH4 },
+    });
     const viewers = [{ player: sima, page }, { player: observer, page: observerPage }];
     const frameEvidence = await Promise.all(viewers.map(async ({ player, page: viewerPage }) => {
       const frameSnapshot = ({ viewerId, eventId, cardId }) => {
@@ -533,12 +554,30 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
           .find((element) => element.dataset.publicCardJourneyEventId === eventId);
         const display = journey?.closest(".public-card-display");
         const frame = journey?.querySelector('[data-public-card-frame-effect-id="sima_yi_guicai"]');
+        const h4 = display?.querySelector('[data-public-card-announcement="true"]');
+        const h4Text = h4?.querySelector("b");
         const phase = journey?.dataset.publicCardJourneyPhase;
+        const journeyStyle = journey ? getComputedStyle(journey) : null;
+        const frameStyle = frame ? getComputedStyle(frame) : null;
         if (!journey || display?.dataset.publicCardViewerId !== viewerId || !frame
           || !["reveal", "move"].includes(phase)
-          || journey.dataset.publicCardJourneyCardIds !== cardId) return false;
+          || journey.dataset.publicCardJourneyCardIds !== cardId
+          || journeyStyle?.visibility === "hidden" || Number(journeyStyle?.opacity) <= 0
+          || frameStyle?.display === "none" || frameStyle?.visibility === "hidden" || Number(frameStyle?.opacity) <= 0) return false;
         const faces = [...frame.querySelectorAll("[data-public-card-effect-frame-card-id]")]
           .map((face) => face.getAttribute("data-public-card-effect-frame-card-id"));
+        const clearance = (a, b) => {
+          if (!a || !b) return null;
+          const dx = Math.max(0, a.left - b.right, b.left - a.right);
+          const dy = Math.max(0, a.top - b.bottom, b.top - a.bottom);
+          if (dx || dy) return Math.hypot(dx, dy);
+          return -Math.min(Math.min(a.right, b.right) - Math.max(a.left, b.left), Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+        };
+        const frameRect = frame.getBoundingClientRect();
+        const h4Rect = h4?.getBoundingClientRect() ?? null;
+        const pac = document.querySelector(".play-table [data-public-activity-chip='true']");
+        const pacRect = pac && getComputedStyle(pac).display !== "none" && getComputedStyle(pac).visibility !== "hidden"
+          ? pac.getBoundingClientRect() : null;
         return {
           viewerId: display.dataset.publicCardViewerId,
           eventId: journey.dataset.publicCardJourneyEventId,
@@ -551,7 +590,15 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
           frameFaces: faces,
           frameTitle: frame.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
           announcementCount: display.querySelectorAll('[data-public-card-announcement="true"]').length,
-          announcement: display.querySelector('[data-public-card-announcement="true"]')?.textContent?.trim(),
+          announcement: h4?.textContent?.trim(),
+          h4EventId: h4?.getAttribute("data-public-h4-event-id"),
+          h4Copy: h4Text?.textContent?.trim() ?? null,
+          h4WhiteSpace: h4Text ? getComputedStyle(h4Text).whiteSpace : null,
+          h4FrameClearance: clearance(h4Rect, frameRect),
+          pacFrameClearance: clearance(pacRect, frameRect),
+          frameRect: { left: frameRect.left, top: frameRect.top, right: frameRect.right, bottom: frameRect.bottom },
+          h4Rect: h4Rect ? { left: h4Rect.left, top: h4Rect.top, right: h4Rect.right, bottom: h4Rect.bottom } : null,
+          pacRect: pacRect ? { left: pacRect.left, top: pacRect.top, right: pacRect.right, bottom: pacRect.bottom } : null,
           viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
         };
       };
@@ -581,18 +628,28 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
       viewerId: sima.id, eventId: replacementEvent.id, frameCount: 1, frameClass: "JUDGEMENT",
       frameOwnerId: sima.id, frameMaterialOwnerIds: sima.id, frameMaterialCardIds: replacement.id,
       frameFaces: [replacement.id], frameTitle: "NECROMANCY · JUDGEMENT REPLACEMENT",
-      announcementCount: 1, viewport: { width: 390, height: 844, scrollWidth: 390 },
+      announcementCount: 1, viewport: { width: 440, height: 894, scrollWidth: 440 },
     });
     expect(frameEvidence[1]).toMatchObject({
       viewerId: observer.id, eventId: replacementEvent.id, frameCount: 1, frameClass: "JUDGEMENT",
       frameOwnerId: sima.id, frameMaterialOwnerIds: sima.id, frameMaterialCardIds: replacement.id,
       frameFaces: [replacement.id], frameTitle: "NECROMANCY · JUDGEMENT REPLACEMENT",
-      announcementCount: 1, viewport: { width: 390, height: 844, scrollWidth: 390 },
+      announcementCount: 1, viewport: { width: 440, height: 894, scrollWidth: 440 },
     });
     for (const evidence of frameEvidence) {
       expect(evidence.phase).toMatch(/^(reveal|move)$/);
-      expect(evidence.announcement).toContain("replace");
-      expect(evidence.announcement).toContain("Judgement");
+      expect(evidence.announcementCount).toBe(1);
+      expect(evidence.h4EventId).toBe(replacementEvent.id);
+      expect(evidence.h4Copy).toBe(expectedReplacementH4);
+      expect(evidence.h4WhiteSpace).toBe("pre-line");
+      expect(evidence.h4FrameClearance, JSON.stringify(evidence)).toBeGreaterThanOrEqual(5);
+      if (evidence.pacFrameClearance !== null) expect(evidence.pacFrameClearance, JSON.stringify(evidence)).toBeGreaterThanOrEqual(5);
+    }
+    for (const viewerPage of [page, observerPage]) {
+      await expect(viewerPage.locator(`[data-public-judgement-reveal-event-id="${originalEvent.id}"]`)).toHaveCount(0);
+      await expect(viewerPage.locator(`[data-public-judgement-reveal-event-id="${replacementEvent.id}"]`)).toHaveCount(0);
+      await expect(viewerPage.locator(`[data-public-card-journey-event-id="${replacementEvent.id}"]`)).toHaveCount(1);
+      await expect(viewerPage.locator(`[data-public-h4-event-id="${replacementEvent.id}"]`)).toHaveCount(1);
     }
     await expect(page.locator(`[data-public-card-journey-event-id="${replacementEvent.id}"]`))
       .toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 8_000 });

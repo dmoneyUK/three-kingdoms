@@ -124,6 +124,24 @@ test("a committed replacement keeps the exact original Judgement identity and us
   assert.equal(projected[1].replacement.materialOwnerId, sima.id);
 });
 
+test("replacement projection uses the original event's committed resolution when its nested copy is absent", () => {
+  const original = judgementEvent({ purpose: "ganglie", card: makeCard("original-heart", "Attack", "2", "♥"),
+    stage: "FINAL", finalStatus: "satisfied", replacementEventId: "replacement-1", replacementActorId: sima.id });
+  delete original.publicJudgementPresentation.resolutionId;
+  const replacement = replacementEvent(original, makeCard("replacement-spade", "Dodge", "7", "♠"));
+  const projected = projectPublicJudgementPresentations([original, replacement.event], [replacement.projected], [judge, sima]);
+  assert.deepEqual(projected.map((fact) => fact.resolutionId), [original.resolutionId, original.resolutionId]);
+  assert.equal(projected[1].replacement.physicalCardId, replacement.event.card.id);
+
+  const mismatchedNestedResolution = {
+    ...original,
+    publicJudgementPresentation: { ...original.publicJudgementPresentation, resolutionId: "different-resolution" },
+  };
+  assert.deepEqual(projectPublicJudgementPresentations(
+    [mismatchedNestedResolution, replacement.event], [replacement.projected], [judge, sima],
+  ), [], "the top-level event cannot override a conflicting persisted nested resolution");
+});
+
 test("replacement projection fails closed for missing, mismatched or duplicate proof", () => {
   const original = judgementEvent({ purpose: "ganglie", card: makeCard("original", "Attack", "2", "♥"), stage: "FINAL",
     finalStatus: "satisfied", replacementEventId: "replacement-1", replacementActorId: sima.id });

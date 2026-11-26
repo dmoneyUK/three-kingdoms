@@ -210,6 +210,35 @@ test("H4 cursor selection never jumps ahead of the event currently being present
   }, "a fresh or restored view presents the latest retained committed fact");
 });
 
+test("Judgement H4 selects one owner, with the replacement frame claiming only its exact stage", () => {
+  const original = {
+    semantics: "PROVEN", visibility: "PUBLIC", judgementId: "judgement-1", eventId: "judgement-1", order: 10,
+    phase: "ORIGINAL", status: "PROVISIONAL",
+  };
+  const replacement = {
+    ...original, eventId: "replacement-1", order: 11, phase: "REPLACEMENT", status: "FINAL",
+  };
+  assert.deepEqual(selectPublicH4AnnouncementOwner({ judgement: {
+    presentation: original, isActive: true, replacementFrameMatches: false,
+  } }), { eventId: "judgement-1", owner: "PublicInteractionAnnouncementLayer" });
+  assert.deepEqual(selectPublicH4AnnouncementOwner({ judgement: {
+    presentation: replacement, isActive: true, replacementFrameMatches: true,
+  } }), { eventId: "replacement-1", owner: "PublicCardDisplay" });
+  assert.deepEqual(selectPublicH4AnnouncementOwner({ judgement: {
+    presentation: replacement, isActive: true, replacementFrameMatches: false,
+  } }), { eventId: "replacement-1", owner: "PublicInteractionAnnouncementLayer" });
+  assert.deepEqual(selectPublicH4AnnouncementOwner({ judgement: {
+    presentation: replacement, isActive: false, replacementFrameMatches: false,
+  }, discard: { eventId: "later-discard", order: 12 } }), {
+    eventId: "later-discard", owner: "PublicDiscardAnnouncementLayer",
+  });
+  assert.deepEqual(selectPublicH4AnnouncementOwner({ judgement: {
+    presentation: replacement, isActive: true, replacementFrameMatches: false,
+  }, discard: { eventId: "later-discard", order: 12 } }), {
+    eventId: "replacement-1", owner: "PublicInteractionAnnouncementLayer",
+  }, "a later queued discard does not preempt the currently read Judgement stage");
+});
+
 test("Attack, Duel and committed Negation response cards retain one public journey owner", () => {
   for (const response of [null, { eventId: "duel-attack-event", cardId: "duel-attack-card", actorId: "actor-2" }, { eventId: "negation-event", cardId: "negation-card", actorId: "actor-3" }]) {
     const result = routePublicPresentation(journeyInput({ response }));

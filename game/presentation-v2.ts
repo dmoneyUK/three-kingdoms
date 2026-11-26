@@ -30,6 +30,7 @@ export type PresentationV2Event = {
   presentation?: boolean;
   privateToPlayerId?: string;
   judgement?: boolean;
+  publicJudgementPresentation?: unknown;
   negationSettlement?: unknown;
   selfTargetAction?: unknown;
   entourageInvocation?: unknown;
@@ -3581,6 +3582,33 @@ function deflectionActionsFor(input: PresentationV2Input): PresentationDeflectio
   return actions.filter((action) => rootActionCounts.get(JSON.stringify([action.interactionId, action.rootEventId, action.rootFrameId])) === 1);
 }
 
+function persistedJudgementRootCausalityMatches(input: {
+  rootEvent: PresentationV2Event | null;
+  eventId: string;
+  rootResolutionId: string | null;
+  interactionId: string | null;
+  rootFrameId: string | null;
+  effectClass: PresentationPublicCardEffectClass;
+  activationOwnerId: string;
+  targetId: string | undefined | null;
+}): boolean {
+  const { rootEvent } = input;
+  const judgement = record(rootEvent?.publicJudgementPresentation);
+  const causal = record(judgement?.causal);
+  return Boolean(rootEvent && rootEvent.type === "card" && rootEvent.action === "reveal"
+    && rootEvent.judgement === true && rootEvent.presentation !== false
+    && typeof rootEvent.privateToPlayerId !== "string" && input.effectClass === "JUDGEMENT"
+    && judgement?.semantics === "PROVEN" && judgement.visibility === "PUBLIC"
+    && judgement.judgementId === rootEvent.id && judgement.stage === "FINAL"
+    && judgement.replacementEventId === input.eventId
+    && judgement.replacementActorId === input.activationOwnerId
+    && typeof judgement.targetId === "string" && judgement.targetId.length > 0
+    && judgement.targetId === input.targetId
+    && typeof input.rootResolutionId === "string" && rootEvent.resolutionId === input.rootResolutionId
+    && typeof input.interactionId === "string" && typeof input.rootFrameId === "string"
+    && causal?.interactionId === input.interactionId && causal.frameId === input.rootFrameId);
+}
+
 function publicCardEffectsFor(input: PresentationV2Input): PresentationPublicCardEffect[] {
   const eventIdCounts = new Map<string, number>();
   for (const event of input.timeline) {
@@ -3666,18 +3694,25 @@ function publicCardEffectsFor(input: PresentationV2Input): PresentationPublicCar
       if (effectClass === "JUDGEMENT" && resultingCardKind !== undefined && judgementResultById[effectId] !== resultingCardKind) return [];
       if (effectClass !== "CONVERSION" && effectClass !== "JUDGEMENT" && resultingCardKind !== undefined) return [];
 
+      let rootEvent: PresentationV2Event | null = null;
       if (rootEventId) {
-        const root = uniqueTimelineEventById(rootEventId, input.timeline);
-        const rootCards = root?.type === "card" ? [root.card] : root?.type === "cards" ? root.cards ?? [] : [];
-        if (!root || root.id === eventId || root.presentation === false || typeof root.privateToPlayerId === "string"
+        rootEvent = uniqueTimelineEventById(rootEventId, input.timeline);
+        const rootCards = rootEvent?.type === "card" ? [rootEvent.card] : rootEvent?.type === "cards" ? rootEvent.cards ?? [] : [];
+        if (!rootEvent || rootEvent.id === eventId || rootEvent.presentation === false || typeof rootEvent.privateToPlayerId === "string"
           || !rootCards.length || rootCards.some((card) => !publicPhysicalCard(card))
-          || !["play", "reveal"].includes(String(root.action))
-          || root.action === "reveal" && (root.type !== "card" || root.judgement !== true)
-          || root.resolutionId !== rootResolutionId) return [];
+          || !["play", "reveal"].includes(String(rootEvent.action))
+          || rootEvent.action === "reveal" && (rootEvent.type !== "card" || rootEvent.judgement !== true)
+          || rootEvent.resolutionId !== rootResolutionId) return [];
       }
       if (interactionId && rootFrameId) {
         const envelope = input.causalEnvelope ?? null;
-        if (!envelope || envelope.interactionId !== interactionId || !envelope.frames.some((frame) => frame.frameId === rootFrameId)) return [];
+        const activeEnvelopeProves = Boolean(envelope && envelope.interactionId === interactionId
+          && envelope.frames.some((frame) => frame.frameId === rootFrameId));
+        const persistedJudgementProves = persistedJudgementRootCausalityMatches({
+          rootEvent, eventId, rootResolutionId, interactionId, rootFrameId, effectClass,
+          activationOwnerId, targetId,
+        });
+        if (!activeEnvelopeProves && !persistedJudgementProves) return [];
       }
 
       return [{

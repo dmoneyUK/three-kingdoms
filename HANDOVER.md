@@ -1,17 +1,15 @@
 # HANDOVER
 
-**Latest verified delivery:** `df6eb1eb27e3fdefcdbeb49c6ed7f865dd222b37` on `ux-v2`; Actions 45739187376 passed all test, migration, deployment and production-smoke jobs. Worker `cd7b73f7-0768-4e29-b239-e9226ce1302f`; `/api/health` returned `available`. Owner iPhone review remains pending.
+**Latest verified delivery:** §10.81-A, `2d92f1da722b2254b2ca9c1126dc997dd27317aa`; Actions 45747248852 passed lint/fast, API, browser-smoke, D1 migration, deployment and production smoke. Worker `5552482c-fbe2-4081-8bfc-3bb65e65fbf5`; `/api/health` returned `available`.
 
 **Design reviewed:** `docs/UX2-refine.md`, revision 2026-11-25 23:53 UTC.
 
-## Current bounded task — §10.81-A: canonical Judgement proof and H4 copy
+## Current bounded task — §10.81-B: shared two-stage Judgement presentation
 
-**Status:** implementation pushed as `1af071aef0e4d0d53aca4c17dbad3dba83a13e0a`. Its fast/lint/build and browser-smoke jobs passed, but API CI failed because an existing engine-composition test had not included the new independent Judgement projection in its expected snapshot. The corrected projection-aware comparison passes the affected API file 45/45 locally; a single CI-repair push is pending. Deployment was skipped pending green CI.
+**Status:** implementation and focused validation are ready for one task commit. Exact-SHA CI, Worker deployment and production smoke are pending this push. Owner iPhone review remains pending.
 
-**Changes:** adds one typed public Judgement projection keyed by the exact original reveal event, using the authoritative seven-purpose judgement rules. It distinguishes provisional original reveal, final original result, and a proven committed Necromancy replacement. Replacement requires matching raw and projected proof, exact physical Hand→Judgement card, owner, target, root, resolution and event order. Private unconfirmed Hand identity stays out of the public snapshot. Canonical accessible copy preserves verified player spans and the approved two-line replacement wording. No gameplay rules or React rendering changed.
+**Changes:** restore the committed Necromancy replacement’s causal frame route when an older original Judgement event stores `resolutionId` only at the authoritative top level; preserve strict raw/projected proof, physical card, target, actor, root and resolution matching. One shared H4 owner presents the original and actual replacement in order; the replacement frame and two-line H4 share one display owner. No game-rule change or private Hand disclosure.
 
-**§10.79 reconciliation:** source review confirms resumed damage carries `Attack` as its source label. The reported Kirin Mount discard identity/H4 remains in §10.82-A/B; no new phone trace was available to prove a separate §10.79 code defect.
+**Validation:** Judgement/display/routing unit tests 24/24; focused API projection test 1/1; `npm run build`; targeted ESLint and `git diff --check` passed. W4-F8 real-gameplay browser scenario passed at 440×894 for actor and observer, including true face/owner, one frame/H4, measured ≥5px H4/PAC clearance, completion/parking, no third reveal and private-card protection. At 390×844 the fixed safe corridor was 190.5px for the 210px frame; the renderer correctly failed closed and kept H4. Browser run/recovery stayed within the five-minute task budget.
 
-**Validation:** Judgement unit tests 8/8; focused Judgement/Da Qiao API tests 34/34; Wei hero API tests 26/26; targeted ESLint and `git diff --check` passed. Build passed earlier in this work phase. No local UI/browser test was run.
-
-**Resume point:** push the narrow CI correction, verify its exact-SHA Actions, deployment and production smoke, then start the next authorized task, §10.81-B. Do not claim Owner acceptance.
+**Next boundary:** after this SHA's required CI/deployment/smoke pass, begin §10.82-A. Do not claim USER-ACCEPTED.

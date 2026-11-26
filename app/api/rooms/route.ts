@@ -10131,6 +10131,10 @@ export async function POST(request: Request) {
           ? addCardEventWithPublicEffect(replacementLog, actor.name, replacement, target.name, "reveal", {
             effectId: "sima_yi_guicai", effectClass: "JUDGEMENT", activationOwnerId: actor.id,
             materials, targetId: target.id, outcome: "REPLACED_JUDGEMENT", ...root,
+            ...(continuation.judgement.causal ? {
+              interactionId: continuation.judgement.causal.interactionId,
+              rootFrameId: continuation.judgement.causal.frameId,
+            } : {}),
           }, { judgement: true })
           : addCardEventWithId(replacementLog, actor.name, replacement, target.name, "reveal", true, { judgement: true });
         const log = addLog(replacementPresentation.log, `${judgementActorName(actor)} replaces the Judgement card with ${replacement.rank}${replacement.suit} using Necromancy.`);

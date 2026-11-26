@@ -1,6 +1,7 @@
 import type { PresentationClientView } from "../game/presentation-client";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PublicPresentationEvent, PublicZoneEndpoint } from "../game/presentation-semantics";
+import type { PublicJudgementPresentation } from "../game/public-judgement-presentation";
 
 export type PublicPresentationCoverageId =
   | "E01" | "E02" | "E03" | "E04" | "E05" | "E06" | "E07"
@@ -314,6 +315,11 @@ export type PublicH4AnnouncementOwner =
 export function selectPublicH4AnnouncementOwner(input: {
   fact?: PublicH4FactOwnerProof | null;
   factIsActive?: boolean;
+  judgement?: {
+    presentation: PublicJudgementPresentation;
+    isActive: boolean;
+    replacementFrameMatches: boolean;
+  } | null;
   cardDisplay?: {
     enabled: boolean;
     rootEventId: string;
@@ -324,7 +330,17 @@ export function selectPublicH4AnnouncementOwner(input: {
   discard?: { eventId: string; order: number } | null;
   skillEvent?: { eventId: string } | null;
 }): { eventId: string; owner: PublicH4AnnouncementOwner } | null {
-  const { fact, factIsActive = false, discard, cardDisplay, skillEvent } = input;
+  const { fact, factIsActive = false, judgement, discard, cardDisplay, skillEvent } = input;
+  if (judgement && (!fact || judgement.presentation.order >= fact.order)) {
+    if (discard && !judgement.isActive && discard.order > judgement.presentation.order) {
+      return { eventId: discard.eventId, owner: "PublicDiscardAnnouncementLayer" };
+    }
+    return {
+      eventId: judgement.presentation.eventId,
+      owner: judgement.presentation.phase === "REPLACEMENT" && judgement.replacementFrameMatches
+        ? "PublicCardDisplay" : "PublicInteractionAnnouncementLayer",
+    };
+  }
   if (discard && (!fact
     || (!factIsActive && discard.order > fact.order)
     || (discard.eventId === fact.eventId && fact.category === "CARD_DISCARDED" && !fact.committedOutcome))) {
